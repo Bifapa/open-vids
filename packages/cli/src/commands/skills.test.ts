@@ -452,10 +452,9 @@ describe("hyperframes skills", () => {
   // removed from every agent dir on the machine.
   //
   // Reproduced on the pre-fix build: running `skills update` from a hyperframes
-  // checkout whose manifest listed 19 of the 25 published skills printed
-  // "Removing 6 skill(s) no longer published: captions-overlay, changelog-video,
-  // cut-the-curve, motion-doctrine, oversized-cursor, seam-craft" and deleted
-  // all six — every one of them currently published.
+  // checkout whose manifest listed only a subset of the published skills printed
+  // a "Removing N skill(s) no longer published" notice and deleted the missing
+  // ones — every one of them currently published.
   it("resolves the prune's manifest canonically, so a local manifest can never drive deletion", async () => {
     setPlatform("linux");
     const { checkSkills } = await import("../utils/skillsManifest.js");
@@ -826,7 +825,8 @@ describe("hyperframes skills update <names>", () => {
     await skillsCmd.run?.({ args: {}, rawArgs: [], cmd: skillsCmd } as never);
 
     const args = state.spawnCalls[0]?.args ?? [];
-    // The upstream `*` would rediscover the repo-internal skills (26 vs 20).
+    // The upstream `*` installs every skill in the repo, including ones the
+    // published manifest does not cover.
     expect(skillFlagValues(args)).not.toContain("*");
     expect(skillFlagValues(args).sort()).toEqual([...FALLBACK_CORE_SKILLS].sort());
     expect(vi.mocked(clack.log.warn)).toHaveBeenCalledWith(

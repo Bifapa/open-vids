@@ -15,14 +15,8 @@ import { parse as parseYaml, YAMLParseError } from "yaml";
 import type { RegistryManifest } from "../packages/core/src/index.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
-// Every location that ships SKILL.md files gets linted. `skills/` is the
-// marketplace-distributed set; `.claude/skills/` and `.agents/skills/` are the
-// repo-native project skills auto-discovered by Claude Code and Codex CLI.
-const SKILLS_DIRS = [
-  join(REPO_ROOT, "skills"),
-  join(REPO_ROOT, ".claude", "skills"),
-  join(REPO_ROOT, ".agents", "skills"),
-];
+// `skills/` is the marketplace-distributed set — the only skill root this repo ships.
+const SKILLS_DIRS = [join(REPO_ROOT, "skills")];
 
 interface Violation {
   file: string;
@@ -349,7 +343,7 @@ for (const dir of SKILLS_DIRS) {
   files.push(...collectSkillFiles(dir));
 }
 if (files.length === 0) {
-  console.log("No SKILL.md files found across skills/, .claude/skills/, .agents/skills/.");
+  console.log("No SKILL.md files found under skills/.");
   process.exit(0);
 }
 

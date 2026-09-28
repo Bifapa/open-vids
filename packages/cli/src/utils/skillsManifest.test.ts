@@ -535,25 +535,23 @@ describe("checkSkills removed-upstream detection", () => {
   });
 
   // GH #3111 — the data-loss regression. `skills add --skill '*'` installs every
-  // skill in the repo, including the repo-native ones under `.claude/skills/`
-  // and `.agents/skills/`, and attributes them all to our source. The published
-  // manifest is generated from `<repoRoot>/skills` ONLY (gen-skills-manifest.ts),
-  // so it never lists them — and reading that silence as "no longer published"
-  // deleted them from every agent directory on the machine, immediately after
-  // the same command installed them.
+  // skill in the repo but attributes them all to our source, while the published
+  // manifest is generated from `<repoRoot>/skills` ONLY (gen-skills-manifest.ts).
+  // Reading that silence as "no longer published" deleted manifest-uncovered
+  // skills from every agent directory on the machine, immediately after the
+  // same command installed them.
   //
   // Reproduced end-to-end pre-fix against the real CLI: `skills add` installed
-  // 25 skills, then `skills update` printed "Removing 6 skill(s) no longer
-  // published: captions-overlay, changelog-video, cut-the-curve, motion-doctrine,
-  // oversized-cursor, seam-craft" and deleted all six. Their lock entries carried
-  // `.agents/skills/<name>/SKILL.md`; the survivors carried `skills/<name>/…`.
+  // the uncovered skills, then `skills update` printed a "Removing N skill(s)
+  // no longer published" notice and deleted them. Their lock entries carried a
+  // skillPath outside `skills/`; the survivors carried `skills/<name>/…`.
   it("never prunes a skill installed outside the manifest's coverage root", async () => {
     const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
     writeGlobalLock(home, {
       alpha: { source: "test" }, // published, in the manifest → untouched
       gamma: {
         source: "test", // ours, absent from the manifest…
-        skillPath: ".agents/skills/gamma/SKILL.md", // …but the manifest never covered it
+        skillPath: "other/gamma/SKILL.md", // …but the manifest never covered it
       },
     });
 

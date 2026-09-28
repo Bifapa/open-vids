@@ -311,10 +311,10 @@ export interface UpdateSkillsResult {
  *   - with `refreshInstalled`, whatever is already installed (refreshed, so an
  *     update never *expands* a deliberate partial install),
  *   - with `all`, every skill the manifest publishes. The upstream `*` wildcard
- *     is not used on any path: it also sweeps up the repo-internal skills under
- *     `.claude/skills` / `.agents/skills` (26 installed vs 20 published,
- *     observed 2026-09-04). Offline, where the published set is unknowable, the
- *     full install warns and degrades to the pinned core set instead.
+ *     is not used on any path: it installs every skill in the repo, including
+ *     ones the published manifest does not cover. Offline, where the published
+ *     set is unknowable, the full install warns and degrades to the pinned
+ *     core set instead.
  *
  * Only targets that are actually missing or outdated are passed to
  * `skills add` (one spawn, one `--skill` flag per name); when everything is

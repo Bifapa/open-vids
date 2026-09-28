@@ -10,8 +10,8 @@ test("a branch that only adds reports nothing", () => {
 });
 
 test("a deleted file is named", () => {
-  const { deleted } = classify("D\t.agents/skills/README.md\nA\tsrc/new.ts\n");
-  assert.deepEqual(deleted, [".agents/skills/README.md"]);
+  const { deleted } = classify("D\tdocs/gone.md\nA\tsrc/new.ts\n");
+  assert.deepEqual(deleted, ["docs/gone.md"]);
 });
 
 test("a rename is not reported as a deletion", () => {

@@ -36,11 +36,6 @@ registry/blocks/orbit-card/assets/gsap-3.14.2.min.js
 registry/blocks/lottie-character-walk/assets/mascot.json
 # reference snippets with intentional pseudo-markup (literal "..." attributes)
 skills/talking-head-recut/references/frames/polaroid.html
-# repo-native skill examples with intentional pseudo-markup placeholders
-# (e.g. <RANGE>, <TOTAL> tokens the agent replaces at build time — not real HTML)
-.claude/skills/**/examples/**/*.html
-.agents/skills/**/examples/**/*.html
-
 # Generated demo compositions — large video-pipeline output (GSAP/Three/WebGL
 # embedded), not hand-authored source; reformatting them is churn + risk. Listed
 # explicitly (not registry/examples/**/*.html) so hand-authored example HTML still

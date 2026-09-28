@@ -38,10 +38,8 @@ function fixture(t) {
   write("packages/cli/package.json", manifest);
   write("skills-manifest.json", { skills: { hyperframes: {} } });
   write("skills/hyperframes/SKILL.md", "bundled skill");
-  write(".claude/skills/internal/SKILL.md", "private contributor workflow");
   write("assets/logo.png", "logo");
   write("assets/icon.png", "icon");
-  write("LICENSE", "license");
   git("add", ".");
   git("commit", "-qm", "fixture");
   return { root, git, write };

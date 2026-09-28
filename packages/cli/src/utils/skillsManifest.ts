@@ -433,9 +433,9 @@ interface LockEntry {
   sourceUrl?: string;
   /**
    * Path of the skill's SKILL.md within the source repo, as upstream records it
-   * (`skills/general-video/SKILL.md`, `.agents/skills/seam-craft/SKILL.md`). The
-   * only field distinguishing skills the published manifest covers from ones
-   * installed out of the same repo's other skill roots — see manifestCoversSkill.
+   * (e.g. `skills/general-video/SKILL.md`). The only field distinguishing skills
+   * the published manifest covers from ones installed out of the same repo's
+   * other skill roots — see manifestCoversSkill.
    */
   skillPath?: string;
 }
@@ -521,8 +521,7 @@ interface RemovedResult {
  * The repo directory the published manifest is generated from — see
  * `packages/cli/scripts/gen-skills-manifest.ts`, which walks `<repoRoot>/skills`
  * and nothing else. Anything installed from a DIFFERENT root of the same repo
- * (`.claude/skills/`, `.agents/skills/` — the repo-native contributor skills) is
- * outside the manifest's coverage, so the manifest says nothing about it.
+ * is outside the manifest's coverage, so the manifest says nothing about it.
  */
 const MANIFEST_COVERAGE_ROOT = "skills/";
 
@@ -531,10 +530,10 @@ const MANIFEST_COVERAGE_ROOT = "skills/";
  *
  * Only for skills installed from the directory the manifest is generated from.
  * The lock records where in the repo each skill came from (`skillPath`, e.g.
- * `skills/general-video/SKILL.md` vs `.agents/skills/seam-craft/SKILL.md`), and
- * both carry the same `source`, so source attribution alone cannot tell them
- * apart. An entry with no `skillPath` (older lock format) is treated as NOT
- * covered — for a delete, unknown provenance must fail safe. GH #3111.
+ * `skills/general-video/SKILL.md`), and entries from other roots carry the same
+ * `source`, so source attribution alone cannot tell them apart. An entry with
+ * no `skillPath` (older lock format) is treated as NOT covered — for a delete,
+ * unknown provenance must fail safe. GH #3111.
  */
 function manifestCoversSkill(entry: LockEntry | undefined): boolean {
   const path = entry?.skillPath;
@@ -546,8 +545,7 @@ function manifestCoversSkill(entry: LockEntry | undefined): boolean {
  *
  * "Absent from the manifest" only means "removed upstream" for skills the
  * manifest actually covers. `skills add --skill '*'` installs every skill in the
- * repo — including the repo-native ones under `.claude/skills/` and
- * `.agents/skills/`, which the published manifest deliberately omits — and
+ * repo — including ones the published manifest deliberately omits — and
  * attributes them all to our source. Without the coverage filter, every install
  * is immediately followed by a prune that deletes those skills as "no longer
  * published", so `check || update` never converges: `add` reinstalls them and
