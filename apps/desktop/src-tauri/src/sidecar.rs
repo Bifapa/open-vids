@@ -47,13 +47,18 @@ impl std::fmt::Display for SidecarError {
                 PORT_REPORT_TIMEOUT
             ),
             Self::BadLifecycle(detail) => {
-                write!(f, "the Studio runtime reported an unusable lifecycle line: {detail}")
+                write!(
+                    f,
+                    "the Studio runtime reported an unusable lifecycle line: {detail}"
+                )
             }
             Self::NotReady(last) => write!(
                 f,
                 "the Studio runtime bound port {last} but never served /api/projects"
             ),
-            Self::Spawned(detail) => write!(f, "the Studio runtime exited during startup: {detail}"),
+            Self::Spawned(detail) => {
+                write!(f, "the Studio runtime exited during startup: {detail}")
+            }
         }
     }
 }
@@ -79,11 +84,16 @@ impl StudioServer {
     /// The Studio deep link for a project served by this instance.
     ///
     /// The embedded server is single-project and resolves the project id from
-    /// the directory name, so this is the only URL that can name it.
-    pub fn project_url(&self, project_id: &str) -> String {
+    /// the directory name, so this is the only URL that can name it. The
+    /// `openvidsHome` query tells Studio where the Projects home screen
+    /// lives so its header can offer a back button; a query string survives
+    /// View > Reload (the query outlives hash rewrites) and the prod Hono
+    /// server ignores it via its SPA fallback.
+    pub fn project_url(&self, project_id: &str, home_origin: &str) -> String {
         format!(
-            "{}/#project/{}",
+            "{}/?openvidsHome={}#project/{}",
             self.origin(),
+            urlencode(home_origin),
             urlencode(project_id)
         )
     }
@@ -99,7 +109,7 @@ impl Drop for StudioServer {
 
 /// Percent-encode the characters Studio's `isValidProjectId` lets through but
 /// that would otherwise change the meaning of a URL path or fragment.
-fn urlencode(value: &str) -> String {
+pub fn urlencode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.as_bytes() {
         match byte {
@@ -110,6 +120,16 @@ fn urlencode(value: &str) -> String {
         }
     }
     out
+}
+
+/// The `project_url` shape without the child handle, for unit tests.
+#[cfg(test)]
+pub fn project_url_for_test(studio_origin: &str, project_id: &str, home_origin: &str) -> String {
+    format!(
+        "{studio_origin}/?openvidsHome={}#project/{}",
+        urlencode(home_origin),
+        urlencode(project_id)
+    )
 }
 
 /// Reap the sidecar's process group when the app shuts down.

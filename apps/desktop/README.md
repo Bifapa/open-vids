@@ -51,10 +51,18 @@ a way that looks like a Studio bug.
 
 ## Menus
 
-**File > Open Project Folder…** (`⌘O`) switches projects. **Edit** supplies
-macOS text-field Undo/Redo, Cut/Copy/Paste and Select All; **Window** owns
-Minimize, Full Screen and Close Window. **View > Reload** (`⌘R`) reloads the
-current Studio window without dropping the open project.
+**File > Open Project Folder…** (`⌘O`) switches projects and records the
+choice in recents. **File > Show All Projects** (`⌘⇧O`) stops the Studio
+sidecar and returns to the Projects home screen — so does the **Projects**
+back button in Studio's header (top-left, where the logo sits when Studio
+runs inside OpenVids). Both take the same path: the button is a plain
+document navigation to the home origin (the webview has no IPC by design),
+and an `on_navigation` hook on the main window runs the shared cleanup
+(stop sidecar, forget the project, idle the open phase) when that
+navigation lands. Outside OpenVids the logo renders exactly as before.
+**Edit** supplies macOS text-field Undo/Redo, Cut/Copy/Paste and Select All;
+**Window** owns Minimize, Full Screen and Close Window. **View > Reload**
+(`⌘R`) reloads the current window without dropping the open project.
 
 For a Code-tab edit that has saved to disk but has not appeared in the preview,
 use **View > Reload**; see the limitation below.
@@ -70,7 +78,16 @@ apps/desktop/
   src-tauri/
     src/lib.rs             Window, menu, mode selection, project opening
     src/sidecar.rs         Spawn + readiness-poll + teardown the Studio server
-    src/placeholder.rs     The "no project open" page
+    src/home.rs            Projects home screen: lifetime-owned loopback server
+    src/home.html          The home page document (token injected per launch)
+    src/home_routes.rs     Home HTTP plumbing: request reading, routing
+    src/home_create.rs     POST /api/create (scaffold, then open)
+    src/home_project.rs    Rename (folder + meta.json) and Trash handlers
+    src/home_auth.rs       Per-launch token + Host/Origin checks
+    src/recents.rs         recents.json persistence (dedupe, sort, rename)
+    src/structure.rs       index.html + data-composition-id validation, patching
+    src/create.rs          Blank-template scaffold (fps/size/duration, meta.json)
+    src/thumbnails.rs      Background thumbnail refresh from Studio
     src/project.rs         Directory -> Studio project id
     capabilities/main.json The webview's permissions (none)
   sidecar/
@@ -121,11 +138,13 @@ Chrome instances the render pipeline spawns go with it. `StudioServer::drop`
 reaps it on every exit path, and the `ExitRequested`/`Exit` handler does it
 explicitly.
 
-Before a project is chosen, the window shows a placeholder page served by a
-small loopback listener. The embedded server is single-project by construction
+Before a project is chosen, the window shows the Projects home screen
+served by a small loopback listener that lives for the whole app lifetime
+(never dropped on project open, so File > Show All Projects is a plain
+navigation back). The embedded server is single-project by construction
 (`createStudioServer` takes one `projectDir`), so there is nothing to serve
 until the user picks something. Opening a different project restarts the
-sidecar rather than re-pointing at it.
+sidecar rather than re-pointing at it; the home server is untouched.
 
 ## Choosing the runtime: bun, not Node
 
@@ -177,7 +196,27 @@ The webview gets no native access at all.
   folder picker is `rfd`, called from Rust — a Tauri dialog plugin would have
   put a dialog capability in the bundle, and picking a folder is the one
   privileged action the app performs.
-- The server binds `127.0.0.1` only.
+- Trash uses the `trash` crate's `NsFileManager` backend
+  (`trashItemAtURL`), not its default Finder AppleScript: the script path
+  shells out to `osascript` and never returns without a GUI session to
+  answer it (observed live: every `/api/trash` request hung until the
+  client timed out), while `trashItemAtURL` completes synchronously. The
+  trade-off is no Finder "Put Back" undo entry.
+- The servers bind `127.0.0.1` only.
+- The Studio project URL carries an `openvidsHome` query parameter naming
+  the home origin, so the header can offer its back button. Studio validates
+  it before navigating: only `http://127.0.0.1:<port>` and
+  `http://localhost:<port>` origins are accepted — remote hosts, `file:`,
+  `javascript:`, credentials, paths and query strings are rejected and the
+  logo stays. The value is built by Rust from a bound loopback port, and the
+  query survives View > Reload; the prod Hono server ignores it via its SPA
+  fallback.
+- The home-screen API is token-gated: a 128-bit per-launch token
+  (`home_auth::HomeToken`, OS randomness) is injected into the served HTML
+  and required as `X-OpenVids-Token` on every `/api` request; `Host` must
+  name the server and a present `Origin` must match it, so a foreign website
+  that guesses the port still cannot trigger pickers or deletes. Plain
+  page/thumbnail GETs stay open so `<img>` tags load without scripting.
 - `dragDropEnabled` is **off**. Tauri otherwise intercepts OS file drops and
   re-emits them as its own drag-drop event, so the webview never sees the HTML5
   drop — and Studio imports assets through exactly that
@@ -254,7 +293,7 @@ preview does not reliably live-reload the changed source. The same behaviour
 reproduces in upstream Chrome without OpenVids. **View > Reload** shows the
 saved change; it does not perform an additional save.
 
-## Known limitation: the loopback API is unauthenticated
+## Known limitation: the Studio loopback API is unauthenticated
 
 The Studio server on `127.0.0.1` exposes project file read/write/delete, render
 spawning and media proxy transcoding with no authentication — this is upstream
@@ -263,11 +302,9 @@ and any web page the user visits, can reach that port while OpenVids is running.
 The port is chosen per-launch and is not guessable in advance, but it is
 discoverable (it is in the window's own origin, and on macOS `lsof` lists it).
 
-This is reported, not redesigned. If it ever needs addressing, the fix belongs
-in `@hyperframes/studio-server`: an unguessable token that the CLI injects into
-the served page and requires on every `/api` request. Doing it in the Tauri
-shell instead would mean patching served HTML, which is the kind of second
-convention this app exists to avoid.
+The Projects home-screen API does not share this limitation: it mints a
+per-launch token (see Security above). Only the Studio server itself is
+reported, not redesigned — the fix belongs in `@hyperframes/studio-server`.
 
 ## Rendering and thumbnails
 
