@@ -95,7 +95,6 @@ COPY packages/gcp-cloud-run/package.json packages/gcp-cloud-run/package.json
 COPY packages/lint/package.json packages/lint/package.json
 COPY packages/parsers/package.json packages/parsers/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
-COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
 COPY packages/studio-server/package.json packages/studio-server/package.json
 COPY scripts/package-subpaths.mjs scripts/package-subpaths.mjs
 # A corrupt tarball extraction can print an error and then hang instead of
@@ -137,7 +136,6 @@ COPY packages/gcp-cloud-run/ packages/gcp-cloud-run/
 COPY packages/lint/ packages/lint/
 COPY packages/parsers/ packages/parsers/
 COPY packages/sdk/ packages/sdk/
-COPY packages/sdk-playground/ packages/sdk-playground/
 COPY packages/studio-server/ packages/studio-server/
 
 # Build workspace dependencies before the producer bundle. The published
@@ -150,7 +148,6 @@ RUN bun run --cwd packages/parsers build \
     && bun run --cwd packages/core build \
     && bun run --cwd packages/core build:hyperframes-runtime:modular \
     && bun run --cwd packages/sdk build \
-    && bun run --cwd packages/sdk-playground build \
     && bun run --cwd packages/engine build \
     && (cd packages/producer && bunx tsx scripts/generate-font-data.ts) \
     && bun run --cwd packages/producer build \

@@ -35,9 +35,9 @@ function assert(condition: unknown, message: string): void {
 
 function loadGsapSource(): string | null {
   const req = createRequire(import.meta.url);
-  // gsap is a dep of studio / player / sdk-playground, hoisted in the
+  // gsap is a dep of studio / player, hoisted in the
   // workspace store — resolve through whichever package has it.
-  for (const pkg of ["studio", "player", "sdk-playground"]) {
+  for (const pkg of ["studio", "player"]) {
     try {
       const path = req.resolve("gsap/dist/gsap.min.js", {
         paths: [resolvePath(thisDir, `../../${pkg}`)],

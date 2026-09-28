@@ -394,8 +394,6 @@ else
 !packages/parsers/**
 !packages/sdk/
 !packages/sdk/**
-!packages/sdk-playground/
-!packages/sdk-playground/**
 !packages/studio-server/
 !packages/studio-server/**
 !packages/player/

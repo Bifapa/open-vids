@@ -12,7 +12,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run studio",
-    "build": "bun run --filter '@hyperframes/{parsers,lint,studio-server}' build && bun run --filter @hyperframes/core build && bun run --filter '@hyperframes/{engine,producer,player,studio,shader-transitions,aws-lambda,gcp-cloud-run,sdk}' build && bun run --filter @hyperframes/cli build && bun run --filter @hyperframes/sdk-playground build",
+    "build": "bun run --filter '@hyperframes/{parsers,lint,studio-server}' build && bun run --filter @hyperframes/core build && bun run --filter '@hyperframes/{engine,producer,player,studio,shader-transitions,aws-lambda,gcp-cloud-run,sdk}' build && bun run --filter @hyperframes/cli build",
     "desktop:dev": "bun run --cwd apps/desktop tauri dev",
     "desktop:build": "bun run --cwd apps/desktop build",
     "desktop:stage": "bun run --cwd apps/desktop stage",
