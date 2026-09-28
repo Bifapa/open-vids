@@ -14,35 +14,30 @@ import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { invocation, pluginVersion } from "./plugin-cli.mjs";
 
-function fixture(t, manifest = "plugin.json", version = "1.2.3") {
+function fixture(t, version = "1.2.3") {
   const root = mkdtempSync(join(tmpdir(), "hf-plugin-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, "skills/hyperframes/scripts"), { recursive: true });
-  mkdirSync(join(root, manifest, ".."), { recursive: true });
-  writeFileSync(join(root, manifest), JSON.stringify({ name: "hyperframes", version }));
+  mkdirSync(join(root, "packages/cli"), { recursive: true });
+  writeFileSync(
+    join(root, "packages/cli/package.json"),
+    JSON.stringify({ name: "@hyperframes/cli", version }),
+  );
   const launcher = join(root, "skills/hyperframes/scripts/plugin-cli.mjs");
   copyFileSync(new URL("./plugin-cli.mjs", import.meta.url), launcher);
   return { root, launcher };
 }
 
-for (const manifest of [
-  "plugin.json",
-  ".claude-plugin/plugin.json",
-  ".codex-plugin/plugin.json",
-  ".cursor-plugin/plugin.json",
-  "gemini-extension.json",
-]) {
-  test(`locates ${manifest} without repository packages`, (t) => {
-    const { root } = fixture(t, manifest);
-    assert.equal(pluginVersion(root), "1.2.3");
-  });
-}
+test("locates packages/cli/package.json without repository packages", (t) => {
+  const { root } = fixture(t);
+  assert.equal(pluginVersion(root), "1.2.3");
+});
 
-test("rejects missing and floating plugin versions", (t) => {
-  const { root } = fixture(t, "plugin.json", "latest");
-  assert.throws(() => pluginVersion(root), /Invalid HyperFrames plugin release/);
-  rmSync(join(root, "plugin.json"));
-  assert.throws(() => pluginVersion(root), /No HyperFrames plugin manifest/);
+test("rejects missing and floating CLI versions", (t) => {
+  const { root } = fixture(t, "latest");
+  assert.throws(() => pluginVersion(root), /Invalid HyperFrames CLI release/);
+  rmSync(join(root, "packages/cli/package.json"));
+  assert.throws(() => pluginVersion(root), /No HyperFrames release manifest/);
 });
 
 test("pins CLI, suppresses standalone refresh, preserves unrelated environment", () => {
@@ -100,7 +95,7 @@ test("installed helper keeps cwd, arguments, release environment and exit code",
     helper,
     "console.log(JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2), skip: process.env.HYPERFRAMES_SKIP_SKILLS, version: process.env.HYPERFRAMES_SKILL_PKG_VERSION })); process.exit(7);",
   );
-  const before = readFileSync(join(root, "plugin.json"), "utf8");
+  const before = readFileSync(join(root, "packages/cli/package.json"), "utf8");
   const result = spawnSync(
     process.execPath,
     [launcher, "--script", helper, "literal $value & spaces"],
@@ -113,5 +108,5 @@ test("installed helper keeps cwd, arguments, release environment and exit code",
     skip: "1",
     version: "1.2.3",
   });
-  assert.equal(readFileSync(join(root, "plugin.json"), "utf8"), before);
+  assert.equal(readFileSync(join(root, "packages/cli/package.json"), "utf8"), before);
 });

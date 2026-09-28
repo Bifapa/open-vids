@@ -9,8 +9,6 @@ description: >
   including transcription and subject matting; split multi-shot footage before applying it.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
-
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update embedded-captions`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Embedded Captions
@@ -21,10 +19,9 @@ description: >
 
 ## Runtime prerequisites
 
-Plugin installs use the bundled, manifest-pinned CLI for matting, transcription,
-and rendering; no source checkout is required. The local preview and caption
-measurement helpers also need Sharp, Puppeteer (with its Chromium browser), and
-GSAP. Install these in the **caption project**, not inside the read-only plugin:
+The local preview and caption
+measurement helpers need Sharp, Puppeteer (with its Chromium browser), and
+GSAP. Install these in the **caption project**:
 
 ```bash
 npm install --prefix <project> --save-dev --save-exact sharp@0.35.3 puppeteer@25.8.0 gsap@3.15.0
@@ -33,11 +30,10 @@ npm install --prefix <project> --save-dev --save-exact sharp@0.35.3 puppeteer@25
 Keep the project's lockfile. If these dependencies already exist, use its locked
 versions instead of overwriting them. Bash and FFmpeg/ffprobe must be on PATH.
 Matting and transcription may download their own models on first use.
-
 Rendering waits for the CLI to exit successfully before compositing. The old
 `HF_TIMEOUT_S` shell watchdog is no longer used: a large partial file is not proof
 that rendering finished. An explicit built-checkout argument or `HYPERFRAMES_ROOT`
-selects the contributor CLI instead of the plugin pin. Cancel a stalled render normally through the CLI/terminal;
+selects the contributor CLI. Cancel a stalled render normally through the CLI/terminal;
 the caption helper does not force-kill or recover a render from a process snapshot.
 
 ## Operational flow (TL;DR)
@@ -273,7 +269,7 @@ The full **embed-track** playbook lives in **[references/composition-craft.md](r
 
 ## Dependencies
 
-- **HyperFrames CLI:** plugin installs use the bundled manifest-pinned launcher. Source contributors can use a built checkout (`packages/cli/dist/cli.js`) via `HYPERFRAMES_ROOT`, the skill’s source tree, or `~/Downloads/hyperframes`.
+- **HyperFrames CLI:** use a built checkout (`packages/cli/dist/cli.js`) via `HYPERFRAMES_ROOT`, the skill's source tree, or `~/Downloads/hyperframes`.
 - **Node-first; two Python touchpoints via `uvx` (no manual installs):** transcription runs WhisperX through `uvx` (word-level timings; falls back per SKILL §transcription), and Theme's `drawon` setpiece shells `python3 scripts/gen-stroke-path.py` at compile time. Everything else runs on the toolchain hyperframes already ships: matting via the hyperframes CLI's **`remove-background`** (u2net_human_seg; weights auto-download once, ~168 MB, to `~/.cache/hyperframes/`), image/alpha math via **`sharp`**, layout/occlusion/overflow via **`puppeteer`**, plus **`ffmpeg`**. Install Sharp, Puppeteer, and GSAP in the caption project as described in **Runtime prerequisites** above. The helpers check that project first and retain checkout dependency lookup for source contributors.
 - **Transcription = WhisperX via `uvx`** (word-level timings + alignment; no manual install — `transcribe.cjs` drives `uvx whisperx`). Falls back to an existing word-level `transcript.json` if present.
 - **Source video** — `matte.cjs` / `transcribe.cjs` auto-resolve `source.mp4` (or glob the clip / read `hyperframes.json`), so `hyperframes init --video X.mp4` needs no manual rename.

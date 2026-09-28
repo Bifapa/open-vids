@@ -8,16 +8,11 @@ function hfCli(checkout) {
     const cli = path.join(dir, "packages/cli/dist/cli.js");
     if (fs.existsSync(cli)) return cli;
   }
-  const manifests = [
-    "plugin.json",
-    ".claude-plugin/plugin.json",
-    ".codex-plugin/plugin.json",
-    ".cursor-plugin/plugin.json",
-    "gemini-extension.json",
-  ];
+  // A source checkout is recognizable by its skill freshness manifest; the
+  // deleted plugin manifests (plugin.json, gemini-extension.json) no longer exist.
   if (
     !fs.existsSync(path.join(root, "packages/cli/dist/cli.js")) &&
-    manifests.some((p) => fs.existsSync(path.join(root, p)))
+    fs.existsSync(path.join(root, "skills-manifest.json"))
   ) {
     return path.join(root, "skills/hyperframes/scripts/plugin-cli.mjs");
   }
@@ -26,7 +21,7 @@ function hfCli(checkout) {
     if (fs.existsSync(cli)) return cli;
   }
   throw new Error(
-    "HyperFrames CLI unavailable: install the full plugin or set HYPERFRAMES_ROOT to a built checkout.",
+    "HyperFrames CLI unavailable: install the skills or set HYPERFRAMES_ROOT to a built checkout.",
   );
 }
 module.exports = { hfCli };

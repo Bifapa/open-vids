@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveNpxInvocation } from "./lib/npx-sync.mjs";
 
-// Installed plugins have no monorepo packages/ tree. The plugin launcher passes
-// the release version and suppression environment through to this legacy shim.
+// Standalone global skill installs have no monorepo packages/ tree. The release
+// launcher passes the version and suppression environment through to this legacy shim.
 const pluginVersion = process.env.HYPERFRAMES_PLUGIN_VERSION;
 if (pluginVersion) {
   const invocation = resolveNpxInvocation(
