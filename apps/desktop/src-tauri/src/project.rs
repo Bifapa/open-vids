@@ -38,8 +38,9 @@ pub struct Project {
 }
 
 /// Studio's rule, restated so a bad directory name fails here with a clear
-/// message instead of a 404 much later.
-fn is_valid_project_id(value: &str) -> bool {
+/// message instead of a 404 much later. Mirrors
+/// `isValidProjectId` in `packages/studio/src/utils/projectRouting.ts`.
+pub fn is_valid_project_id(value: &str) -> bool {
     !value.is_empty()
         && value != "."
         && value != ".."
@@ -50,9 +51,7 @@ fn is_valid_project_id(value: &str) -> bool {
 }
 
 pub fn validate(dir: &Path) -> Result<Project, ProjectError> {
-    let dir = dir
-        .canonicalize()
-        .unwrap_or_else(|_| dir.to_path_buf());
+    let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
     if !dir.is_dir() {
         return Err(ProjectError::NotADirectory(dir));
     }

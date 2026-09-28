@@ -1,8 +1,9 @@
-import type { MouseEvent } from "react";
-import { Camera } from "../icons/SystemIcons";
+import { useMemo, type MouseEvent } from "react";
+import { ArrowLeft, Camera } from "../icons/SystemIcons";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { readOpenvidsHomeOrigin } from "../utils/openvidsHost";
 import { Button, buttonBase, buttonSizes, buttonVariants, cn, Tooltip } from "./ui";
 import { Dock } from "./dock/Dock";
 import { InspectorIcon } from "./icons/InspectorIcon";
@@ -153,6 +154,35 @@ export function shouldOpenInspector(
   return rightCollapsed || !inspectorPanelActive;
 }
 
+/**
+ * Inside OpenVids the logo becomes a back button to the Projects home
+ * screen. A plain <button> (not an <a href>): the home origin arrives via
+ * the query string, and an href would let a crafted link aim the tab at an
+ * arbitrary URL before validation runs. Assigning `window.location.href`
+ * only after validation keeps one trusted navigation path.
+ */
+function OpenvidsBackOrLogo() {
+  const homeOrigin = useMemo(() => readOpenvidsHomeOrigin(), []);
+  if (!homeOrigin) return <HyperframesLogo />;
+  return (
+    <Tooltip label="Back to projects" side="bottom">
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label="Back to projects"
+        data-testid="openvids-back"
+        icon={<ArrowLeft size={14} weight="bold" />}
+        onClick={() => {
+          trackStudioEvent("navigation", { action: "back_to_projects" });
+          window.location.href = homeOrigin;
+        }}
+      >
+        Projects
+      </Button>
+    </Tooltip>
+  );
+}
+
 // fallow-ignore-next-line complexity
 export function StudioHeader({
   captureFrameHref,
@@ -171,9 +201,9 @@ export function StudioHeader({
 
   return (
     <div className="flex items-center justify-between h-10 px-3 bg-surface border-b border-border-strong shrink-0">
-      {/* Left: logo + project name */}
+      {/* Left: logo + project name — inside OpenVids the logo is a back button */}
       <div className="flex items-center gap-3">
-        <HyperframesLogo />
+        <OpenvidsBackOrLogo />
         <span className="text-text-5 select-none" aria-hidden="true">
           |
         </span>

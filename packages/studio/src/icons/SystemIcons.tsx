@@ -17,6 +17,7 @@ import {
   CaretRight,
   ClipboardText,
   ArrowCounterClockwise,
+  ArrowLeft as PhArrowLeft,
   Camera as PhCamera,
   ArrowClockwise,
   Gear,
@@ -68,6 +69,7 @@ export const ChevronDown = ({ title, style, ...props }: IconProps) => {
 export const ChevronRight = makeIcon(CaretRight);
 export const ClipboardList = makeIcon(ClipboardText);
 export const RotateCcw = makeIcon(ArrowCounterClockwise);
+export const ArrowLeft = makeIcon(PhArrowLeft);
 export const Camera = makeIcon(PhCamera);
 export const RotateCw = makeIcon(ArrowClockwise);
 export const Settings = makeIcon(Gear);
