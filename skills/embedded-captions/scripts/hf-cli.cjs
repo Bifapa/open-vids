@@ -8,8 +8,7 @@ function hfCli(checkout) {
     const cli = path.join(dir, "packages/cli/dist/cli.js");
     if (fs.existsSync(cli)) return cli;
   }
-  // A source checkout is recognizable by its skill freshness manifest; the
-  // deleted plugin manifests (plugin.json, gemini-extension.json) no longer exist.
+  // A source checkout without a built CLI is recognizable by its skill freshness manifest.
   if (
     !fs.existsSync(path.join(root, "packages/cli/dist/cli.js")) &&
     fs.existsSync(path.join(root, "skills-manifest.json"))
