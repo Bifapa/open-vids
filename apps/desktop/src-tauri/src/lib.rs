@@ -202,6 +202,12 @@ fn open_project(app: &tauri::AppHandle, dir: PathBuf) -> Result<String, String> 
 /// Dev never reaches this path — the sidecar only runs in a release build —
 /// but a missing payload is reported as a clear build error rather than a
 /// confusing spawn failure.
+///
+/// Every candidate is a location the *installed app* owns. There is deliberately
+/// no `CARGO_MANIFEST_DIR/../runtime` fallback: a shipped app must never resolve
+/// its runtime through a checkout that may not exist on the user's machine. A
+/// `cargo run --release` build therefore finds nothing, and says so, rather than
+/// silently working only on the machine that built it.
 fn resource_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
@@ -216,10 +222,6 @@ fn resource_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     if let Ok(dir) = app.path().resource_dir() {
         candidates.push(dir);
     }
-    // Last resort: the staging directory, for a `cargo run --release` build.
-    // Deliberately final — a shipped app must not resolve its runtime through a
-    // checkout that may not exist on the user's machine.
-    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime"));
 
     for root in &candidates {
         if PAYLOAD.iter().all(|name| root.join(name).is_file()) {
@@ -311,7 +313,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 pub fn run() {
     tauri::Builder::default()
-        .menu(|app| build_menu(app))
+        .menu(build_menu)
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "open_project" {
                 pick_and_open(app);

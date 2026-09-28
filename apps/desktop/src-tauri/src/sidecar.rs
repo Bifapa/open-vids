@@ -114,25 +114,25 @@ fn urlencode(value: &str) -> String {
 
 /// Reap the sidecar's process group when the app shuts down.
 ///
-/// This is best-effort by necessity, and the reason it is not the whole story
-/// is worth recording. On macOS an ad-hoc-signed app cannot signal processes it
-/// spawned: measured on darwin-arm64, both `/bin/kill -TERM -<pgid>` and
-/// `libc::killpg(pgid, SIGTERM)` return EPERM from inside the running .app,
-/// while the identical signals from an ordinary shell succeed. So on that
-/// platform this call is a no-op that returns immediately, and the guarantee
-/// that no Studio server outlives OpenVids comes from `sidecar/serve.mjs` —
-/// the launcher the child runs under, which watches the parent pid and stops
-/// the server itself.
+/// This is the normal teardown path, and it works: measured in the ad-hoc-signed
+/// `OpenVids.app`, `libc::killpg(pgid, SIGTERM)` returns 0 and the full
+/// graceful-then-fatal sequence runs. An earlier version of this comment said
+/// the call returned `EPERM`; that was measured before `--foreground` was
+/// added, when the CLI re-exec'd itself detached, so the pid the app held was
+/// not the group it then signalled. With `--foreground` the child is the CLI
+/// itself, inside the group this process created.
 ///
-/// Where signalling does work (a normally signed install, Linux, and Windows
-/// via `Child::kill`), this runs the full graceful-then-fatal sequence.
+/// It cannot cover the cases where OpenVids' own code never runs — a
+/// `SIGKILL`, a crash, a logout — because then nothing gets to call this. That
+/// is what `sidecar/serve.mjs` is for; see "Teardown" in the README.
+///
+/// Windows has no process groups, so it uses `Child::kill` instead.
 fn terminate(child: &mut Child) {
     #[cfg(unix)]
     {
         let pid = child.id() as libc::pid_t;
         if pid > 0 {
             // SIGTERM first so the CLI runs its own shutdown (it closes Chrome
-            // and releases the fs watcher), then SIGKILL whatever is left.
             let signalled = unsafe { libc::killpg(pid, libc::SIGTERM) } == 0;
             if signalled {
                 let deadline = Instant::now() + TERM_GRACE;

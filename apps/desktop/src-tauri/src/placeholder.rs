@@ -110,7 +110,7 @@ fn respond(mut stream: TcpStream) {
     let mut head = [0_u8; 2048];
     let _ = stream.read(&mut head);
 
-    let body = format!("{PAGE}");
+    let body = PAGE.to_string();
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{body}",
         body.len()

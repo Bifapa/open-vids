@@ -4,12 +4,11 @@
  * Runs HyperFrames' embedded Studio server and guarantees it does not outlive
  * OpenVids.
  *
- * Why this exists rather than spawning `cli.js` directly: on macOS an
- * ad-hoc-signed Tauri app cannot signal processes it spawned. Measured on
- * darwin-arm64 — `libc::killpg(pgid, SIGTERM)` and `/bin/kill -TERM -<pgid>`
- * both return EPERM from inside the running .app, while the same signals from an
- * ordinary shell succeed. The app's own `Drop` therefore cannot reap what it
- * spawned, and a Studio server would survive Cmd+Q holding a loopback port.
+ * Why this exists rather than spawning `cli.js` directly: the app's own
+ * teardown only runs when OpenVids' shutdown code runs. On quit that is
+ * enough — `killpg` on the child's process group works, and the app reaps the
+ * server itself. But a `SIGKILL` of OpenVids, a crash, or a logout never
+ * reaches that code, and the server would be orphaned holding a loopback port.
  *
  * A plain process has no such restriction, so the watch lives here. This
  * process records OpenVids' pid, and while `process.kill(pid, 0)` — a

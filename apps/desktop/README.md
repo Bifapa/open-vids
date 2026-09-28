@@ -174,33 +174,61 @@ The webview gets no native access at all.
   makes in six components keep working. Another reason not to use a custom
   scheme.
 
-## Teardown: why the app does not kill its own child
+`app.security.csp` was removed. Tauri only applies it to documents it serves
+itself — it is baked into the embedded asset map at build time
+(`tauri-codegen`'s `EmbeddedAssets`) and applied as a response header by the
+`tauri://localhost` protocol handler (`tauri/src/protocol/tauri.rs`) and the
+isolation pattern. The window here loads `WebviewUrl::External`, so the
+document is fetched straight from the Studio server and Tauri is not in the
+response path. Verified in the running webview: `document.querySelectorAll
+('meta[http-equiv]')` is empty and Chrome reports the same for the same build,
+so the policy was never applied. Keeping it would have been a security
+guarantee the app did not actually provide.
 
-The guarantee that no Studio server outlives OpenVids does **not** come from
-the app signalling its child. On macOS an ad-hoc-signed app cannot: measured on
-darwin-arm64, both `libc::killpg(pgid, SIGTERM)` and `/bin/kill -TERM -<pgid>`
-return `EPERM` from inside the running `.app`, while the identical signals from
-an ordinary shell succeed. The app's `Drop` therefore cannot reap what it
-spawned, and a Studio server survives Cmd+Q holding a loopback port.
+`frontendDist` stays: `tauri-build` requires it to be a real directory. It
+holds only `dist/index.html`, a comment explaining that nothing is ever served
+from it, and is never displayed.
 
-So the watch lives in `sidecar/serve.mjs`, the launcher the app spawns instead
-of `cli.js` directly. A plain process has no such restriction: it records
+## Teardown
+
+Two mechanisms reap the sidecar, and they cover different failures.
+
+**`sidecar::terminate` is the normal path.** The child is put in its own
+process group, and on every exit path — window close, Cmd+Q, a panic on the
+main thread — `StudioServer::drop` sends `SIGTERM` to the group, waits three
+seconds, then sends `SIGKILL` to whatever is left. The `ExitRequested`/`Exit`
+handler also drops the state explicitly, while the child can still be waited on.
+
+Re-measured in the ad-hoc-signed `OpenVids.app` with `--foreground` in place:
+
+```text
+[openvids] killpg(<pgid>, SIGTERM) -> 0
+```
+
+so the group *is* signalable from the running app and the graceful-then-fatal
+sequence runs to completion. After quitting through the app menu, no
+`serve.mjs`, no `hyperframes/cli.js`, no Chrome, and no listener on the port
+remain. An earlier note in this file claimed `EPERM` here; that was measured
+before `--foreground` was added, when the CLI re-exec'd itself detached, so the
+pid the app held was not the process group the app believed it owned. With
+`--foreground` the child is the CLI itself, in the app's group, and the signal
+works.
+
+**`sidecar/serve.mjs` is the backstop.** The app can only reap what it owns
+while its own shutdown code runs. A `SIGKILL` of OpenVids, a crash, or a
+logout never reaches `Drop` at all. The launcher therefore records
 OpenVids' pid and, while `process.kill(pid, 0)` — a permission probe, not a
-signal — keeps succeeding, leaves the server alone. When the probe starts
-failing, the app is gone and the server is killed outright. The launcher
-deliberately does not exit until the server has actually been reaped.
+signal — keeps succeeding, leaves the server alone; when the probe starts
+failing the app is gone and the server is killed outright. The launcher does
+not exit until the server has actually been reaped.
 
-One more thing is load-bearing: the app passes `--foreground`. Without it the
-CLI reads a non-TTY stdin as "run this in the background", re-execs itself
-detached, and the original process exits — leaving a server the launcher cannot
-supervise. `--foreground` is the CLI's own documented flag for exactly this.
-
-Verified: after quitting through the app menu, no `serve.mjs`, no
-`hyperframes/cli.js`, and no listener on the port remain.
-
-- `127.0.0.1` is a secure context, so the `navigator.clipboard` calls Studio
-  makes in six components keep working. Another reason not to use a custom
-  scheme.
+**`--foreground` is load-bearing for both.** Without it the CLI reads a
+non-TTY stdin as "run this in the background", re-execs itself detached, and
+the original process exits — leaving a server the app cannot signal and the
+launcher cannot supervise. `--foreground` is the CLI's own documented flag for
+exactly this.
+The loopback port is chosen per-launch, so a reaped server releases it
+immediately.
 
 ## Known limitation: the loopback API is unauthenticated
 
