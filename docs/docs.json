@@ -64,10 +64,7 @@
             "group": "Explore",
             "pages": [
               "examples",
-              "thirty-days",
-              "product-updates",
-              "weekly-updates",
-              "changelog"
+              "thirty-days"
             ]
           },
           {
@@ -1014,10 +1011,6 @@
       {
         "header": "Resources",
         "items": [
-          {
-            "label": "Product updates",
-            "href": "/product-updates"
-          },
           {
             "label": "Playground",
             "href": "https://www.hyperframes.dev/"
