@@ -1,0 +1,91 @@
+export { createStudioApi } from "./createStudioApi.js";
+export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
+export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
+export { affectsPreview } from "./helpers/previewReads.js";
+export {
+  DEFAULT_HISTORY_ROOT,
+  openProjectHistory,
+  MAX_WINDOW_IDLE_MS,
+  UNDO_MODES,
+  type UndoMode,
+  type ClosedWindow,
+  type ProjectHistory,
+  type ProjectHistoryOptions,
+  type HistoryListItem,
+  type HistoryResult,
+  type HistoryWindow,
+  HistoryClosedError,
+} from "./history/projectHistory.js";
+export { HistoryBusyError } from "./history/ownerLock.js";
+export { HistoryIdError } from "./history/historyId.js";
+export { historyCache } from "./history/historyCache.js";
+export { pruneGoneProjectHistories, type PrunedHistory } from "./history/pruneHistories.js";
+export {
+  START as HISTORY_START,
+  type HistoryEntry,
+  type HistoryEntrySide,
+  type HistoryFileChange,
+  type HistoryWho,
+} from "./history/historyLog.js";
+export type {
+  StudioApiAdapter,
+  ResolvedProject,
+  RenderJobState,
+  MediaProcessingJobState,
+  LintResult,
+  StudioSelectionResponse,
+  StudioSelectionSnapshot,
+  StudioSelectionTextField,
+} from "./types.js";
+export { isSafePath, walkDir } from "./helpers/safePath.js";
+export { stampProjectHfIds } from "./helpers/hfIdPersist.js";
+export {
+  patchElementInHtml,
+  splitElementInHtml,
+  removeElementFromHtml,
+  findTargetElement,
+  parseSourceDocument,
+  dedupeClonedCompositionId,
+  type PatchOperation,
+  type SourceMutationTarget,
+} from "./helpers/sourceMutation.js";
+export { duplicateElementInHtml, type DuplicateElementResult } from "./helpers/duplicateElement.js";
+export {
+  applyFileMutations,
+  type AppliedFileMutation,
+  type FileMutationInput,
+} from "./helpers/applyFileMutations.js";
+export type { PreviewApiAdapter } from "./helpers/mediaProxyPreview.js";
+export { PREVIEW_BUNDLE_OPTIONS } from "./routes/preview.js";
+export { createPreviewDocumentStore } from "./helpers/previewDocumentStore.js";
+export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
+export { requestSubPath } from "./helpers/requestSubPath.js";
+export {
+  consumeFileWriteReceipt,
+  identifyFileWrite,
+  fileContentVersion,
+  DELETED_VERSION,
+  settledFileTag,
+  type FileWriteReceipt,
+} from "./helpers/fileVersion.js";
+export { buildSubCompositionHtml } from "./helpers/subComposition.js";
+export { getElementScreenshotClip, type ScreenshotClip } from "./helpers/screenshotClip.js";
+export {
+  thumbnailDeviceScaleFactor,
+  type ThumbnailOutputDimensions,
+} from "./helpers/thumbnailOutput.js";
+export {
+  createBackgroundRemovalJob,
+  type BackgroundRemovalRender,
+} from "./helpers/backgroundRemovalJob.js";
+export {
+  STUDIO_MANUAL_EDITS_PATH,
+  createStudioManualEditsRenderBodyScript,
+  createStudioPositionSeekReapplyScript,
+  type StudioManualEditsRenderScriptOptions,
+} from "./helpers/manualEditsRenderScript.js";
+export {
+  STUDIO_MOTION_PATH,
+  createStudioMotionRenderBodyScript,
+  type StudioMotionRenderScriptOptions,
+} from "./helpers/studioMotionRenderScript.js";
