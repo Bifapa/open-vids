@@ -35,19 +35,6 @@ HyperFrames is an open-source framework for turning HTML, CSS, media, and seekab
 
 ### With an AI coding agent
 
-For Claude Code, install the versioned plugin:
-
-```bash
-claude plugin marketplace add heygen-com/hyperframes
-claude plugin install hyperframes@hyperframes
-```
-
-Enable auto-update for the **hyperframes** marketplace in `/plugin` → **Marketplaces**,
-then use `/hyperframes:hyperframes`. See the [plugin guide](docs/guides/plugins.mdx)
-for Copilot, VS Code, Cursor, Gemini CLI, updates, and migration.
-
-For standalone skills (including OpenCode), use:
-
 ```bash
 npx skills add heygen-com/hyperframes
 ```
@@ -69,22 +56,6 @@ HyperFrames ships 21 skills agents load on demand. Read `/hyperframes` first —
 For standalone installation, default to the **core set** — the router installs each creation workflow on demand. `npx hyperframes skills update` installs exactly that from anywhere; the interactive picker (`npx skills add heygen-com/hyperframes`) lists it as the "Core Skills" group, nothing pre-selected. The picker is interactive-only — a non-interactive or agent run without `--skill` installs all 21. Use `npx skills add heygen-com/hyperframes --all` to install the complete published set deliberately (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name>` for just one (bare name, no leading `/`).
 
 Standalone installs stay lean after that: `npx hyperframes init` keeps the **core set** fresh (the router, the `hyperframes-*` domain skills, and `media-use` — plus whatever is already installed; `/figma` stays on demand) and never expands a partial install; the creation workflows install **on demand** — the router runs `npx hyperframes skills update <workflow>` before entering one. Nothing re-pulls the full set behind your back.
-
-### Plugin packages
-
-Plugins bundle the full skill catalog and use their agent's update manager.
-`bun run package:agent-plugin` builds the committed portable ZIP, source metadata,
-and SHA-256 checksum. See the [maintainer checklist](docs/contributing/agent-plugins.mdx).
-
-### Upload to Codex
-
-Build the upload-ready Codex plugin archive from the committed `HEAD` version of the manifest, brand assets, and skills:
-
-```bash
-bun run package:codex-plugin
-```
-
-This writes `dist/hyperframes-plugin.zip` with a `hyperframes/` root folder and fails if the archive exceeds Codex's 100 MB upload limit.
 
 ### Router
 

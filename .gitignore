@@ -113,8 +113,7 @@ packages/studio/data/
 # .claude/ = Claude Code, .agents/ = Codex CLI (both auto-discover their project skills
 # from these dirs).
 
-.claude/*
-!.claude/settings.json
+.claude/
 
 .agents/*
 skills-lock.json
@@ -155,7 +154,7 @@ test-runs/
 test-outputs/
 
 # Superpowers docs (Claude Code worktrees + local state are handled above by
-# the blanket .claude/ rule and its re-inclusions)
+# the blanket .claude/ rule)
 docs/superpowers/
 .worktrees
 hyperframes-bench/
