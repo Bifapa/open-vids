@@ -84,6 +84,10 @@ registers `OPENVIDS_PROJECT`, and starts Studio's Vite dev server on a fixed
 strict port. The window then loads `devUrl` from `tauri.conf.json`. No sidecar,
 no bundling, full HMR.
 
+The base Tauri config deliberately has no bundled runtime resources: a fresh
+clone can start dev mode or run `cargo check` before the production payload is
+staged. The icons are tracked, and Tauri generates `gen/schemas` as needed.
+
 ### Production
 
 `desktop:build` runs the HyperFrames build first (`bun run build`), which
@@ -97,8 +101,9 @@ that the CLI's `build:copy` step places there. `stage-runtime.mjs` then assemble
 | `runtime/hyperframes/` | A copy of `packages/cli/dist` plus its published dependencies. |
 | `runtime/runtime.json` | The layout manifest.                                           |
 
-Those three are bundled as app resources. Nothing in the shipped app refers to
-the monorepo.
+`tauri.prod.conf.json` supplies the runtime resource paths only to
+`desktop:build`, after staging has created them. They are bundled into the app;
+nothing in the shipped app refers to the monorepo.
 
 At runtime the Rust side:
 
@@ -195,9 +200,9 @@ response path. Verified in the running webview: `document.querySelectorAll
 so the policy was never applied. Keeping it would have been a security
 guarantee the app did not actually provide.
 
-`frontendDist` stays: `tauri-build` requires it to be a real directory. It
-holds only `dist/index.html`, a comment explaining that nothing is ever served
-from it, and is never displayed.
+`frontendDist` stays: `tauri-build` requires it to be a real directory. Its
+placeholder `dist/index.html` is tracked so a fresh clone can run Tauri without
+a separate frontend build; the webview never displays it.
 
 ## Teardown
 

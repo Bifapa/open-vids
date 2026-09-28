@@ -24,12 +24,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {
-      "../runtime/bun": "bun",
-      "../runtime/serve.mjs": "serve.mjs",
-      "../runtime/hyperframes": "hyperframes",
-      "../runtime/runtime.json": "runtime.json"
-    },
     "macOS": {
       "minimumSystemVersion": "11.0"
     }

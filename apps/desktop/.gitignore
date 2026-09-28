@@ -3,6 +3,8 @@
 # packages/cli/dist, its installed dependencies, and a bun binary.
 runtime/
 
-# Tauri's scaffolding uses a local frontend directory; the window loads
-# http://127.0.0.1 instead, so nothing is ever built into it.
-dist/
+# Tauri requires frontendDist to exist even though this app loads its UI from
+# the loopback server. Track its placeholder index, not other generated files.
+!dist/
+dist/*
+!dist/index.html
