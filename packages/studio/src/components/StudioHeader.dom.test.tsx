@@ -51,6 +51,7 @@ beforeEach(() => {
   editHistory.undoLabel = undefined;
   editHistory.redoLabel = undefined;
   renderQueue.isRendering = false;
+  window.history.replaceState(null, "", "/");
 });
 
 afterEach(() => {
@@ -61,7 +62,10 @@ afterEach(() => {
   host.remove();
 });
 
-function mount(props: { inspectorButtonActive?: boolean } = {}): HTMLElement {
+function mount(props: { inspectorButtonActive?: boolean; search?: string } = {}): HTMLElement {
+  if (props.search !== undefined) {
+    window.history.replaceState(null, "", `/${props.search}`);
+  }
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -178,4 +182,30 @@ it("classifies the new header controls for the hotkey filters as the old ones we
     expect(isTypingTarget(el), el.getAttribute("aria-label") ?? el.tagName).toBe(false);
     expect(shouldIgnorePlaybackShortcutTarget(el), el.tagName).toBe(true);
   }
+});
+
+it("keeps the logo when Studio is not embedded in OpenVids", () => {
+  const host = mount();
+
+  expect(host.querySelector('[data-testid="openvids-back"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Hyperframes"]')).not.toBeNull();
+});
+
+it("swaps the logo for a back button when the OpenVids home param is present", () => {
+  const host = mount({ search: "?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035" });
+  const back = query(host, '[data-testid="openvids-back"]');
+
+  expect(back.tagName).toBe("BUTTON");
+  expect(back.getAttribute("aria-label")).toBe("Back to projects");
+  expect(back.textContent).toContain("Projects");
+  expect(host.querySelector('[aria-label="Hyperframes"]')).toBeNull();
+  expect(isTypingTarget(back)).toBe(false);
+  expect(shouldIgnorePlaybackShortcutTarget(back)).toBe(true);
+});
+
+it("keeps the logo when the OpenVids home param fails validation", () => {
+  const host = mount({ search: "?openvidsHome=http%3A%2F%2Fexample.com%3A57035" });
+
+  expect(host.querySelector('[data-testid="openvids-back"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Hyperframes"]')).not.toBeNull();
 });
