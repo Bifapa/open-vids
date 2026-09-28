@@ -284,15 +284,23 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ],
     )?;
 
-    let view = Submenu::with_items(
+    let edit = Submenu::with_items(
         app,
-        "View",
+        "Edit",
         true,
         &[
-            &PredefinedMenuItem::fullscreen(app, Some("Enter Full Screen"))?,
-            &PredefinedMenuItem::minimize(app, Some("Minimize"))?,
+            &PredefinedMenuItem::undo(app, Some("Undo"))?,
+            &PredefinedMenuItem::redo(app, Some("Redo"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, Some("Cut"))?,
+            &PredefinedMenuItem::copy(app, Some("Copy"))?,
+            &PredefinedMenuItem::paste(app, Some("Paste"))?,
+            &PredefinedMenuItem::select_all(app, Some("Select All"))?,
         ],
     )?;
+
+    let reload = MenuItem::with_id(app, "reload", "Reload", true, Some("CmdOrCtrl+R"))?;
+    let view = Submenu::with_items(app, "View", true, &[&reload])?;
 
     let window = Submenu::with_items(
         app,
@@ -306,7 +314,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ],
     )?;
 
-    Menu::with_items(app, &[&app_menu, &file, &view, &window])
+    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window])
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────────
@@ -317,6 +325,13 @@ pub fn run() {
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "open_project" {
                 pick_and_open(app);
+            }
+            if event.id().as_ref() == "reload" {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(error) = window.reload() {
+                        eprintln!("[openvids] could not reload the window: {error}");
+                    }
+                }
             }
         })
         .setup(|app| {

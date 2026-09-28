@@ -49,6 +49,16 @@ resolves through their `node` export condition (`parsers`, `lint`,
 `studio-server`, `core`). It is a few seconds, and a stale `dist` there fails in
 a way that looks like a Studio bug.
 
+## Menus
+
+**File > Open Project Folder…** (`⌘O`) switches projects. **Edit** supplies
+macOS text-field Undo/Redo, Cut/Copy/Paste and Select All; **Window** owns
+Minimize, Full Screen and Close Window. **View > Reload** (`⌘R`) reloads the
+current Studio window without dropping the open project.
+
+For a Code-tab edit that has saved to disk but has not appeared in the preview,
+use **View > Reload**; see the limitation below.
+
 ## Architecture
 
 ```
@@ -205,7 +215,7 @@ Re-measured in the ad-hoc-signed `OpenVids.app` with `--foreground` in place:
 [openvids] killpg(<pgid>, SIGTERM) -> 0
 ```
 
-so the group *is* signalable from the running app and the graceful-then-fatal
+so the group _is_ signalable from the running app and the graceful-then-fatal
 sequence runs to completion. After quitting through the app menu, no
 `serve.mjs`, no `hyperframes/cli.js`, no Chrome, and no listener on the port
 remain. An earlier note in this file claimed `EPERM` here; that was measured
@@ -229,6 +239,13 @@ launcher cannot supervise. `--foreground` is the CLI's own documented flag for
 exactly this.
 The loopback port is chosen per-launch, so a reaped server releases it
 immediately.
+
+## Known limitation: Code-tab preview can remain stale
+
+Studio autosaves Code-tab edits to the project file, but its embedded-mode
+preview does not reliably live-reload the changed source. The same behaviour
+reproduces in upstream Chrome without OpenVids. **View > Reload** shows the
+saved change; it does not perform an additional save.
 
 ## Known limitation: the loopback API is unauthenticated
 
