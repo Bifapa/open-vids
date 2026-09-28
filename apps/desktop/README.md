@@ -200,9 +200,11 @@ response path. Verified in the running webview: `document.querySelectorAll
 so the policy was never applied. Keeping it would have been a security
 guarantee the app did not actually provide.
 
-`frontendDist` stays: `tauri-build` requires it to be a real directory. Its
-placeholder `dist/index.html` is tracked so a fresh clone can run Tauri without
-a separate frontend build; the webview never displays it.
+`frontendDist` stays: Tauri's release codegen checks that it names a real
+directory. Debug `cargo check` uses `devUrl` and skips embedding those assets,
+so it does not prove this check. The tracked `dist/index.html` placeholder makes
+a fresh clone buildable without a separate frontend build; the webview never
+displays it.
 
 ## Teardown
 
