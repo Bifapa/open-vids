@@ -40,6 +40,7 @@ function fixture(t) {
   write("skills/hyperframes/SKILL.md", "bundled skill");
   write("assets/logo.png", "logo");
   write("assets/icon.png", "icon");
+  write("LICENSE", "license");
   git("add", ".");
   git("commit", "-qm", "fixture");
   return { root, git, write };
