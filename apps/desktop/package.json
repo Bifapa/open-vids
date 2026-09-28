@@ -1,0 +1,16 @@
+{
+  "name": "@openvids/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenVids — Tauri shell for HyperFrames Studio",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "dev:serve": "bun run scripts/serve-studio-dev.mjs",
+    "build:hyperframes": "bun run --cwd ../.. build",
+    "stage": "bun run scripts/stage-runtime.mjs",
+    "build": "bun run build:hyperframes && bun run stage && tauri build",
+    "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml --all-targets",
+    "clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings"
+  }
+}

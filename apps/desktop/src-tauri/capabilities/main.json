@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "OpenVids grants the webview no native access. The window loads http://127.0.0.1 — a remote origin as far as Tauri is concerned — and this capability deliberately declares no `remote` block, so that document is denied every IPC command. Every file read, write, upload and delete the editor performs already goes through the Studio HTTP API, which runs in the sidecar process with full OS access, so nothing is lost. Deliberately empty: adding any permission here would be the only way the webview could reach the host, so the list stays empty unless a specific need appears.",
+  "windows": ["main"],
+  "permissions": []
+}

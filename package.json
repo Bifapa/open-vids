@@ -6,12 +6,17 @@
     "url": "https://github.com/heygen-com/hyperframes"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "type": "module",
   "scripts": {
     "dev": "bun run studio",
     "build": "bun run --filter '@hyperframes/{parsers,lint,studio-server}' build && bun run --filter @hyperframes/core build && bun run --filter '@hyperframes/{engine,producer,player,studio,shader-transitions,aws-lambda,gcp-cloud-run,sdk}' build && bun run --filter @hyperframes/cli build && bun run --filter @hyperframes/sdk-playground build",
+    "desktop:dev": "bun run --cwd apps/desktop tauri dev",
+    "desktop:build": "bun run --cwd apps/desktop build",
+    "desktop:stage": "bun run --cwd apps/desktop stage",
+    "desktop:check": "bun run --cwd apps/desktop check:rust",
     "build:producer": "bun run --filter @hyperframes/producer build",
     "studio": "bun run --filter @hyperframes/studio dev",
     "build:hyperframes-runtime": "bun run --filter @hyperframes/core build:hyperframes-runtime",
@@ -68,6 +73,7 @@
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
     "@hyperframes/player": "workspace:*",
+    "@tauri-apps/cli": "^2.9.1",
     "@types/node": "^25.0.10",
     "concurrently": "^8.2.0",
     "fallow": "^2.75.0",
