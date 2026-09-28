@@ -35,7 +35,6 @@ import {
 } from "@hyperframes/core/audio-fade";
 import { parseGainInput, parseRateInput, parseSecondsInput } from "./audioInspectorInput";
 
-// fallow-ignore-next-line complexity
 export function FlatMediaSection({
   projectDir,
   element,

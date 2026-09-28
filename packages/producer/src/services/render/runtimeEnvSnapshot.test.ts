@@ -1,6 +1,5 @@
 /**
- * Tests for the `snapshotRuntimeEnv` helper that backs the
- * `LockedRenderConfig.runtimeEnv` field.
+ * Tests for the `snapshotRuntimeEnv` helper.
  */
 
 import { describe, expect, it } from "bun:test";

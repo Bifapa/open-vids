@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { describe, test, expect } from "vitest";
 import {
   extractSnapTargets,

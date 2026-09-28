@@ -29,7 +29,6 @@ export function useRemoveBackground(
   );
 
   return useCallback(
-    // fallow-ignore-next-line complexity
     async (inputPath: string, options: RemoveBackgroundOptions) => {
       const response = await fetch(
         `/api/projects/${encodeURIComponent(projectId)}/media/remove-background`,

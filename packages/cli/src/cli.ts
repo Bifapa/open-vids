@@ -148,7 +148,6 @@ const commandLoaders = {
   present: () => import("./commands/present.js").then((m) => m.default),
   preview: () =>
     assertStudioWorkspaceBuilt().then(() => import("./commands/preview.js").then((m) => m.default)),
-  publish: () => import("./commands/publish.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
   check: () => import("./commands/check.js").then((m) => m.default),
@@ -171,7 +170,6 @@ const commandLoaders = {
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
   skills: () => import("./commands/skills.js").then((m) => m.default),
-  feedback: () => import("./commands/feedback.js").then((m) => m.default),
   telemetry: () => import("./commands/telemetry.js").then((m) => m.default),
   events: () => import("./commands/events.js").then((m) => m.default),
   validate: () => import("./commands/validate.js").then((m) => m.default),
@@ -181,10 +179,6 @@ const commandLoaders = {
   "grade-compare": () => import("./commands/grade-compare.js").then((m) => m.default),
   compare: () => import("./commands/compare.js").then((m) => m.default),
   capture: () => import("./commands/capture.js").then((m) => m.default),
-  lambda: () => import("./commands/lambda.js").then((m) => m.default),
-  cloudrun: () => import("./commands/cloudrun.js").then((m) => m.default),
-  cloud: () => import("./commands/cloud.js").then((m) => m.default),
-  auth: () => import("./commands/auth.js").then((m) => m.default),
   figma: () => import("./commands/figma.js").then((m) => m.default),
 };
 
@@ -300,7 +294,6 @@ const runId = getRunId();
 let finalized = false;
 
 // Root-only lifecycle fan-in: telemetry, notices, flushing, then exit code.
-// fallow-ignore-next-line complexity
 async function finalizeCli(result: CommandResult): Promise<void> {
   if (finalized) return;
   finalized = true;
@@ -348,27 +341,23 @@ registerRootExitCodeSanitizer(() => {
 // Sync-only: exit handlers cannot await promises or drain microtasks.
 // _trackCommandResult / _trackCliError are captured references resolved
 // at init time, so they're callable synchronously here.
-process.on(
-  "exit",
-  // fallow-ignore-next-line complexity
-  (code) => {
-    if (!finalized) {
-      _trackCommandResult?.({
-        command,
-        success: code === 0 && commandSucceededForTelemetry(),
-        exitCode: code,
-        durationMs: Date.now() - commandStart,
-        runId,
-      });
-    }
-    // Unconditional: this is the exit-time delivery for every command (gating it on `finalized`
-    // was the 0.7.65 render_complete loss). Empty queue is a no-op; uuids make re-sends idempotent.
-    _flushSync?.();
-  },
-);
+process.on("exit", (code) => {
+  if (!finalized) {
+    _trackCommandResult?.({
+      command,
+      success: code === 0 && commandSucceededForTelemetry(),
+      exitCode: code,
+      durationMs: Date.now() - commandStart,
+      runId,
+    });
+  }
+  // Unconditional: this is the exit-time delivery for every command (gating it on `finalized`
+  // was the 0.7.65 render_complete loss). Empty queue is a no-op; uuids make re-sends idempotent.
+  _flushSync?.();
+});
 
 // Report a CLI error event to telemetry. Extracted from the process-error
-// handlers so their bodies stay simple linear branches (see fallow CRAP
+// handlers so their bodies stay simple linear branches
 // scoring — arrow handlers with inline telemetry calls tip past threshold).
 function emitCliErrorEvent(kind: "uncaught_exception" | "unhandled_rejection", error: Error): void {
   _trackCliError?.({
@@ -400,7 +389,7 @@ function reportPostRenderTerminationEvent(
 
 // Terminate the process after a post-artifact-validated throw. Wraps
 // report + flush + exit(0) so the caller arrow handler doesn't accumulate
-// optional-chain branches (fallow CRAP scoring on the arrow tips past
+// optional-chain branches on the arrow tips past
 // threshold otherwise).
 function exitAfterPostRenderTermination(
   label: "uncaughtException" | "unhandledRejection",
@@ -438,7 +427,7 @@ function commandSucceededForTelemetry(): boolean {
 
 // Terminate the process after a genuine CLI failure — mark commandFailed,
 // emit telemetry, flush, exit(1). Same rationale as above: keeps the arrow
-// handler linear so fallow CRAP stays under threshold.
+// handler linear and easy to follow.
 function exitAfterCliFailure(
   kind: "uncaught_exception" | "unhandled_rejection",
   error: Error,
@@ -503,7 +492,6 @@ function commandResultForError(error: unknown): CommandResult {
 
 // Root-only command boundary; keeping every result path here prevents modules
 // from bypassing output, telemetry, or finalizers.
-// fallow-ignore-next-line complexity
 async function executeCli(): Promise<void> {
   let result: CommandResult = { exitCode: 0, kind: "success" };
   try {

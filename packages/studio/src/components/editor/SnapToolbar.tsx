@@ -3,7 +3,6 @@ import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-i
 import { usePlayerStore } from "../../player/store/playerStore";
 import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
 
-// fallow-ignore-next-line complexity
 export const SnapToolbar = memo(function SnapToolbar() {
   const [gridPopoverOpen, setGridPopoverOpen] = useState(false);
   const { state, actions } = usePreviewOverlayContext();
@@ -32,7 +31,6 @@ export const SnapToolbar = memo(function SnapToolbar() {
   }, [prefs.gridVisible, updatePrefs]);
 
   useEffect(() => {
-    // fallow-ignore-next-line complexity
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       const t = e.target;

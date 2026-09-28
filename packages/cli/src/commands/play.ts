@@ -215,7 +215,6 @@ export async function registerCompositionRoute(
 ): Promise<void> {
   const { isSafePath } = await import("@hyperframes/core/studio-api");
 
-  // fallow-ignore-next-line complexity
   app.get("/composition/*", async (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
     const filePath = resolve(project.dir, reqPath);

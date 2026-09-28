@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
@@ -150,7 +149,6 @@ export interface SynthesizeResult {
 /**
  * Synthesize text to speech using Kokoro-82M via kokoro-onnx.
  */
-// fallow-ignore-next-line complexity
 export async function synthesize(
   text: string,
   outputPath: string,

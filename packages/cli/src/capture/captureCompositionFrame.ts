@@ -246,7 +246,6 @@ export async function seekCompositionTimeline(
 
   await page.evaluate(
     // Serialized into the page; the seek-target cascade must stay one function.
-    // fallow-ignore-next-line complexity
     (t: number, fallbackToBridgeAndTimelines: boolean) => {
       const getProperty = (target: unknown, key: string): unknown => {
         if ((typeof target !== "object" || target === null) && typeof target !== "function") {

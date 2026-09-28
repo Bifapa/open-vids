@@ -144,7 +144,6 @@ export function extractFontMetadata(fontsDir: string, outputPath: string): Fonts
   return manifest;
 }
 
-// fallow-ignore-next-line complexity
 function readSingleFont(fullPath: string, filename: string): FontFileMetadata {
   const empty: FontFileMetadata = {
     file: filename,
@@ -233,7 +232,6 @@ export function isIconCharacterSet(characterSet: number[]): boolean {
 }
 
 /** Aggregate per-file entries into per-family summaries — most useful shape for DESIGN.md. */
-// fallow-ignore-next-line complexity
 function aggregateFamilies(files: FontFileMetadata[]): FontFamilySummary[] {
   const byFamily = new Map<string, FontFamilySummary>();
   for (const f of files) {
@@ -278,7 +276,6 @@ function deriveFamilyFromPostscript(postscript: string): string {
  *
  * Exported for unit testing.
  */
-// fallow-ignore-next-line complexity
 export function inferWeightFromSubfamily(subfamily: string): number {
   const s = subfamily.toLowerCase().replace(/[\s-]+/g, "");
   if (s.includes("thin")) return 100;
@@ -345,7 +342,6 @@ const WEIGHT_TOKEN_RE = new RegExp(`\\s+(${Object.keys(WEIGHT_TOKEN_TO_VALUE).jo
  * information is lost.
  */
 // Exported for unit testing.
-// fallow-ignore-next-line complexity
 export function canonicalizeFamily(family: string): {
   canonical: string;
   inferredWeight: number | null;

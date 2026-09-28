@@ -57,7 +57,6 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
   shouldPromoteMediaAutoplayFallback?: () => boolean;
 }
 
-// fallow-ignore-next-line complexity
 export function handleRuntimeMessage(
   event: MessageEvent,
   frameWindow: Window | null,

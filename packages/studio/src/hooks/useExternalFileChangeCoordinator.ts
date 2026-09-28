@@ -259,7 +259,6 @@ export function useExternalFileChangeCoordinator({
   }, []);
 
   const drainOnePending = useCallback(
-    // fallow-ignore-next-line complexity
     async (payload: unknown) => {
       const path = readStudioFileChangePath(payload);
       if (!path) return;
@@ -371,7 +370,6 @@ export function useExternalFileChangeCoordinator({
   }, [drainOnePending]);
 
   const processChange = useCallback(
-    // fallow-ignore-next-line complexity
     (payload: unknown) => {
       const path = readStudioFileChangePath(payload);
       if (!path || !projectId) {
@@ -448,38 +446,33 @@ export function useExternalFileChangeCoordinator({
     processChange(current.payload);
   }, [processChange, resetSaveQueues]);
 
-  const useExternalFile = useCallback(
-    // fallow-ignore-next-line complexity
-    async () => {
-      const current = blockedRef.current;
-      if (!current || !projectId || current.generation !== generationRef.current) return;
-      const path = current.status === "conflict" ? current.error.filePath : current.path;
-      const external =
-        current.status === "conflict" && current.error.currentContent != null
-          ? current.error.currentContent
-          : await readProjectFile(path);
-      if (current.generation !== generationRef.current) return;
-      discardPendingChanges();
-      resetSaveQueues?.();
-      onUseExternalFile?.(path, external);
-      await deleteConflictSnapshot?.(projectId, path);
-      setBlocked(null);
-      onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(current.payload));
-      reloadAcceptedGeneration(path, readFileChangeAffectsPreview(current.payload));
-    },
-    [
-      deleteConflictSnapshot,
-      discardPendingChanges,
-      onUseExternalFile,
-      onAcceptedPersistedFileChange,
-      projectId,
-      readProjectFile,
-      reloadAcceptedGeneration,
-      resetSaveQueues,
-    ],
-  );
+  const useExternalFile = useCallback(async () => {
+    const current = blockedRef.current;
+    if (!current || !projectId || current.generation !== generationRef.current) return;
+    const path = current.status === "conflict" ? current.error.filePath : current.path;
+    const external =
+      current.status === "conflict" && current.error.currentContent != null
+        ? current.error.currentContent
+        : await readProjectFile(path);
+    if (current.generation !== generationRef.current) return;
+    discardPendingChanges();
+    resetSaveQueues?.();
+    onUseExternalFile?.(path, external);
+    await deleteConflictSnapshot?.(projectId, path);
+    setBlocked(null);
+    onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(current.payload));
+    reloadAcceptedGeneration(path, readFileChangeAffectsPreview(current.payload));
+  }, [
+    deleteConflictSnapshot,
+    discardPendingChanges,
+    onUseExternalFile,
+    onAcceptedPersistedFileChange,
+    projectId,
+    readProjectFile,
+    reloadAcceptedGeneration,
+    resetSaveQueues,
+  ]);
 
-  // fallow-ignore-next-line complexity
   const keepStudioFile = useCallback(async () => {
     const current = blockedRef.current;
     if (!current || !projectId) return;

@@ -90,7 +90,6 @@ export function waitForMediaJob(
     };
     signal?.addEventListener("abort", handleAbort, { once: true });
 
-    // fallow-ignore-next-line complexity
     events.addEventListener("progress", (event) => {
       const progress = parseProgressEvent(event);
       if (progress instanceof Error) {

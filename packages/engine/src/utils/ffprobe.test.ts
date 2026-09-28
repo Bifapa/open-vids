@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { EventEmitter } from "events";
 import { spawnSync } from "child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";

@@ -34,41 +34,17 @@ describe("hyperframes-core contract docs", () => {
     expect(brief).not.toContain("`lint` / `validate` / `inspect`");
   });
 
-  it("requires actionable reproduction packets in CLI defect feedback", () => {
+  it("documents the in-chat defect report contract", () => {
     const skill = read("skills", "hyperframes-cli", "SKILL.md");
-    const renderReference = read("skills", "hyperframes-cli", "references", "preview-render.md");
 
-    expect(skill).toContain("reproduction packet");
-    expect(renderReference).toContain("REPRO COMMAND:");
-    expect(renderReference).toContain("EXPECTED / ACTUAL:");
-    expect(renderReference).toContain("EXACT ERROR:");
-    expect(renderReference).toContain("OUTCOME:");
-    expect(renderReference).toContain("WORKAROUND:");
-  });
-
-  it("mandates a composition-structure block for visual-defect feedback", () => {
-    const skill = read("skills", "hyperframes-cli", "SKILL.md");
-    const renderReference = read("skills", "hyperframes-cli", "references", "preview-render.md");
-
-    // Skill teaches the mandate at a high level.
+    // The deleted `hyperframes feedback` command's packet lives on as the
+    // in-chat report contract: rerunnable command, expected/actual,
+    // verbatim error, outcome, workaround, composition structure.
+    expect(skill).toContain("expected vs actual behavior");
+    expect(skill).toContain("verbatim error");
     expect(skill).toContain("COMPOSITION_STRUCTURE:");
-    // Reference carries the fillable block + agent-helper pointer.
-    expect(renderReference).toContain("COMPOSITION_STRUCTURE:");
-    expect(renderReference).toContain("elements: video=");
-    expect(renderReference).toContain("attributes:");
-    expect(renderReference).toContain("timeline:");
-    expect(renderReference).toContain("buildCompositionCensus");
-  });
-
-  it("teaches safe cloud archive size remediation", () => {
-    const skill = read("skills", "hyperframes-cli", "SKILL.md");
-    const cloudReference = read("skills", "hyperframes-cli", "references", "cloud.md");
-
-    expect(skill).toContain("cloud render --dry-run --json");
-    expect(skill).toContain("Never ignore an asset merely because it is large");
-    expect(cloudReference).toContain(".hyperframesignore");
-    expect(cloudReference).toContain("Never ignore all of `assets/`");
-    expect(cloudReference).toContain("dynamically computed asset path");
+    expect(skill).toContain("whether output completed/fell back/failed");
+    expect(skill).toContain("repro-project status");
   });
 });
 

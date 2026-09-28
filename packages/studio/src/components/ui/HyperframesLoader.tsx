@@ -56,7 +56,6 @@ export function HyperframesLoader({
   );
 }
 
-// fallow-ignore-next-line unused-export
 export function StatusFrame(props: HyperframesLoaderProps) {
   return (
     <div className="hf-frame">

@@ -6,7 +6,7 @@ async function findByCode(html: string, code: string, isSubComposition = true) {
   return result.findings.filter((f) => f.code === code);
 }
 
-/** system_font_will_alias only applies to distributed / Lambda renders. */
+/** system_font_will_alias only applies when system-font capture is disabled. */
 async function findAliasFindings(html: string) {
   const result = await lintHyperframeHtml(html, { isSubComposition: true, distributed: true });
   return result.findings.filter((f) => f.code === "system_font_will_alias");

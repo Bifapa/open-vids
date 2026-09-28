@@ -19,7 +19,6 @@ const hooks = vi.hoisted(() => ({ studioDir: "" }));
 
 // The bundle directory is resolved from __dirname at server construction, so
 // point that one `resolve(<...>/server, "studio")` call at a temp tree.
-// fallow-ignore-next-line code-duplication
 vi.mock("node:path", async (importOriginal) => {
   const actual = await importOriginal<typeof path>();
   return {

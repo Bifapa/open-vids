@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { buildStackingTimelineLayers, insertPreviewTrackOrder } from "./timelineTrackOrder";
 
-// fallow-ignore-next-line complexity
 function rowElement(input: {
   id: string;
   track?: number;

@@ -163,7 +163,6 @@ async function replaceSetWithSingleKeyframe(
   );
 }
 
-// fallow-ignore-next-line complexity
 function readElementPosition(
   iframe: HTMLIFrameElement | null,
   sel: DomEditSelection,
@@ -387,7 +386,6 @@ export async function promoteSetToKeyframes(
  * every authored stop's time; inserting a spatial waypoint instead redistributes
  * the path and can silently compress the animation.
  */
-// fallow-ignore-next-line complexity
 export async function applyArcKeyframeAtPlayhead(
   session: EnableKeyframesSession,
   sel: DomEditSelection,
@@ -461,7 +459,6 @@ export async function applyArcKeyframeAtPlayhead(
 export function useEnableKeyframes(
   sessionRef: React.RefObject<EnableKeyframesSession | undefined>,
 ) {
-  // fallow-ignore-next-line complexity
   return useCallback(async () => {
     const session = sessionRef.current;
     if (!session) return;

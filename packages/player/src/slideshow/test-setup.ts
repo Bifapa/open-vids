@@ -23,7 +23,6 @@ class InMemoryBroadcastChannel {
     set.add(this);
   }
 
-  // fallow-ignore-next-line complexity
   postMessage(data: unknown): void {
     if (this._closed) return;
     const peers = registry.get(this.name);

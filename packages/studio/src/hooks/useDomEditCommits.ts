@@ -134,9 +134,7 @@ export function useDomEditCommits({
 
   const reportedUnresolvableRef = useRef(new Set<string>());
 
-  // fallow-ignore-next-line complexity
   const performPersistDomEditOperations = useCallback(
-    // fallow-ignore-next-line complexity
     async (
       selection: DomEditSelection,
       operations: PatchOperation[],
@@ -302,7 +300,6 @@ export function useDomEditCommits({
       return queueDomEditSave(
         // One queued transaction owns validation, persistence, history, reload,
         // and its durable result; splitting those phases risks partial commits.
-        // fallow-ignore-next-line complexity
         async () => {
           if (projectIdRef.current !== expectedProjectId) {
             throw new Error("Active project changed before the edit could be saved");

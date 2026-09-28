@@ -45,7 +45,6 @@ function isGetVariablesCallee(callee: any): boolean {
 
 /** Collect ids from an ObjectPattern destructuring of the values object. */
 // Exhaustive AST-node classification — branchy by nature, same as gsapParserAcorn.
-// fallow-ignore-next-line complexity
 function collectFromObjectPattern(pattern: any, out: Sink): void {
   for (const prop of pattern.properties ?? []) {
     if (prop?.type === "RestElement") {
@@ -85,7 +84,6 @@ function collectFromMemberAccess(member: any, out: Sink): void {
  * alias holding it) by its immediate syntactic context. Returns the alias
  * name when the value is bound to a plain variable (`const vars = …`).
  */
-// fallow-ignore-next-line complexity
 function classifyValueRead(parent: any, valueNode: any, out: Sink): string | null {
   if (!parent || parent.type === "ExpressionStatement") {
     // Bare statement — value unused, nothing read.
@@ -151,7 +149,6 @@ export function scanVariableUsage(scriptText: string): VariableUsageScan {
   // the scan report extra ids or flip scanIncomplete, never miss a read.
   if (aliases.size > 0) {
     acornWalk.ancestor(ast, {
-      // fallow-ignore-next-line complexity
       Identifier(node: any, _: unknown, ancestors: any[]) {
         if (!aliases.has(String(node.name))) return;
         const parent = ancestors[ancestors.length - 2];

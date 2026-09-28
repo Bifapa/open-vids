@@ -20,7 +20,6 @@ interface ClipContextMenuProps {
 }
 
 // A menu with many independently gated items (Split/Delete/Copy/Paste/Duplicate).
-// fallow-ignore-next-line complexity
 export const ClipContextMenu = memo(function ClipContextMenu({
   x,
   y,

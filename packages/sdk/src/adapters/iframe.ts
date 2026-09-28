@@ -132,7 +132,6 @@ export function alphaIsOpaque(imageData: ImageData, threshold = 1): boolean {
  *
  * Pure — no DOM/window access; unit-testable with plain objects.
  */
-// fallow-ignore-next-line complexity
 export function mapPointToImagePixel(
   rect: { left: number; top: number; width: number; height: number },
   natural: { width: number; height: number },
@@ -221,7 +220,6 @@ function parseObjectPosition(
 
   // Resolve a single token into a pixel offset along the given axis.
   // `available` is the "slack" (box dimension - content dimension).
-  // fallow-ignore-next-line complexity
   function resolveToken(token: string, available: number): number {
     if (token === "left" || token === "top") return 0;
     if (token === "right" || token === "bottom") return available;
@@ -388,7 +386,6 @@ function hasRotationOrSkew(el: Element | null, win: Window & typeof globalThis):
  * `win` is the iframe's contentWindow, used to call getComputedStyle on the
  * element which lives in the iframe's document.
  */
-// fallow-ignore-next-line complexity
 export function imageAlphaOpaqueAt(
   img: HTMLImageElement,
   clientX: number,

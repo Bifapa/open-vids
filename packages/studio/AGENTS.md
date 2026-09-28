@@ -78,9 +78,6 @@ the unit test on the pure function underneath.
 
 - **600 lines per file.** CI checks only non-test files your PR changed. A file
   that grows past it has to be split in the same PR that grew it.
-- **`bunx fallow audit --base origin/main --fail-on-issues`** — complexity per
-  function, duplication, unused exports. Adding branches to an already-complex
-  function trips it; extract rather than nest.
 - **oxlint and oxfmt**, not eslint or prettier.
 
 ## Traps worth knowing

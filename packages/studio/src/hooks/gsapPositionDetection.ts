@@ -10,7 +10,6 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { getIframeGsap, queryIframeElement } from "./gsapShared";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 
-// fallow-ignore-next-line complexity
 export function readGsapPositionFromIframe(
   iframe: HTMLIFrameElement | null,
   elementSelector: string,
@@ -26,7 +25,6 @@ export function readGsapPositionFromIframe(
   return { x, y };
 }
 
-// fallow-ignore-next-line complexity
 function animHasPosition(anim: GsapAnimation): boolean {
   if (anim.keyframes?.keyframes.some((kf) => "x" in kf.properties || "y" in kf.properties))
     return true;
@@ -39,7 +37,6 @@ function animHasPosition(anim: GsapAnimation): boolean {
   return "x" in anim.properties || "y" in anim.properties;
 }
 
-// fallow-ignore-next-line complexity
 export function findGsapPositionAnimation(
   animations: GsapAnimation[],
   selector?: string,
@@ -75,7 +72,6 @@ export function findGsapPositionAnimation(
  * extends) the 4s tween, not the 1.5s one. Tie-break: most keyframes (so a
  * gesture-recorded tween beats a stub when both are equidistant).
  */
-// fallow-ignore-next-line complexity
 export function pickClosestToPlayhead(anims: GsapAnimation[]): GsapAnimation | null {
   if (anims.length <= 1) return anims[0] ?? null;
   const ct = usePlayerStore.getState().currentTime;

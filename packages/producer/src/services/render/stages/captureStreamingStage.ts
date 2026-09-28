@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication complexity
 /**
  * captureStreamingStage — single-machine fused capture + encode path.
  *
@@ -965,7 +964,6 @@ export async function runCaptureStreamingStage(
             // Keep status cadence identical to disk sequential capture; the
             // capture error wrapper below must remain separate from finally so it
             // can throw with the browser console before encoder cleanup runs.
-            // fallow-ignore-next-line code-duplication
             reportFrameProgress(
               job,
               `Streaming frame ${i + 1}/${totalFrames}`,
@@ -980,7 +978,6 @@ export async function runCaptureStreamingStage(
         dedupPerfs.push(getCapturePerfSummary(session));
         // This must mirror disk capture: catch wraps the original failure with
         // browser diagnostics, finally only handles cleanup.
-        // fallow-ignore-next-line code-duplication
       } catch (error) {
         lastBrowserConsole = session.browserConsoleBuffer;
         throw wrapCaptureStageError(error, lastBrowserConsole);

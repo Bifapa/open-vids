@@ -94,7 +94,6 @@ function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
   );
 }
 
-// fallow-ignore-next-line complexity
 export function FlatColorGradingSection({
   grading,
   assets,

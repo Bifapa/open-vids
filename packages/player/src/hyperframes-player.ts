@@ -246,7 +246,6 @@ class HyperframesPlayer extends HTMLElement {
     this._abandonComposition("Player disconnected before runtime data was applied");
   }
 
-  // fallow-ignore-next-line complexity
   attributeChangedCallback(name: string, oldVal: string | null, val: string | null) {
     switch (name) {
       case "src":
@@ -370,7 +369,6 @@ class HyperframesPlayer extends HTMLElement {
     return this._scenes;
   }
 
-  // fallow-ignore-next-line complexity
   play() {
     if (this._ready && !this._assetsReady) {
       this._pendingPlay = true;

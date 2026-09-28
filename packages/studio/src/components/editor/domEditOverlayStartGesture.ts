@@ -116,7 +116,6 @@ export function startGroupDrag(
   return true;
 }
 
-// fallow-ignore-next-line complexity
 export function startGesture(
   kind: GestureKind,
   e: React.PointerEvent<HTMLElement>,

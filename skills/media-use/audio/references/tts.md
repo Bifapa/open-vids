@@ -4,7 +4,7 @@
 `--provider` or `--words` flag. For HeyGen audio plus word timestamps, use the
 bundled `heygen-tts.mjs` script below.
 
-> **Run the Preflight first — no credential is not a green light to silently use the local voice.** Before generating a voiceover, complete the sign-in **Preflight** (see `../SKILL.md` → Preflight): run `npx hyperframes auth status`, recommend signing in, and **STOP for the user's choice** (sign in for HeyGen voices, or continue offline with local Kokoro). This applies to a one-off "generate a voiceover" request just as much as inside a full workflow.
+> **Run the Preflight first — no credential is not a green light to silently use the local voice.** Before generating a voiceover, complete the credential **Preflight** (see `../SKILL.md` → Preflight): check for a HeyGen key, and **STOP for the user's choice** (provide a key for HeyGen voices, or continue offline with local Kokoro). This applies to a one-off "generate a voiceover" request just as much as inside a full workflow.
 
 ## Narrating a HyperFrames docs video
 
@@ -61,15 +61,11 @@ no CLI provider plumbing:
 The script resolves a HeyGen credential the same way the CLI does — first source
 wins: `$HEYGEN_API_KEY` → `$HYPERFRAMES_API_KEY` → a project `.env` (auto-loaded,
 walks up ≤5 dirs) → `~/.heygen/credentials` (shared with heygen-cli;
-`$HEYGEN_CONFIG_DIR` overrides the dir). An OAuth login is sent as
-`Authorization: Bearer`; an API key as `X-Api-Key`; both include
-`X-HeyGen-Source: cli`. OAuth CLI users can consume the web-plan free allowance
-(10 min/month) before paid usage; API keys follow normal API billing. If the
-only credential is an expired OAuth token it stops with a hint to run
-`npx hyperframes auth refresh`.
+`$HEYGEN_CONFIG_DIR` overrides the dir). A key is sent as
+`X-Api-Key`. If no credential resolves, the script stops with a hint to set
+`$HEYGEN_API_KEY`.
 
 ```bash
-# Only needed if you haven't run `npx hyperframes auth login`:
 export HEYGEN_API_KEY=...   # or put it in a project .env
 
 # Synthesize + capture word timestamps in one call (skips a Whisper pass)

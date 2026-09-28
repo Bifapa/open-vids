@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { captureFontExtension, captureFontFilename } from "./captureFontValidation.js";
 
 const font = readFileSync(
-  new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),
+  new URL("./__fixtures__/test-font-a.woff2", import.meta.url),
 );
 
 describe("capture font publication", () => {

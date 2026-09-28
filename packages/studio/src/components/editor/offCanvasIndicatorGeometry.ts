@@ -62,7 +62,6 @@ function measureItemRect(
   return base ? { ...base, ...hugRectForElement(base, element) } : null;
 }
 
-// fallow-ignore-next-line complexity
 export function recomputeOffCanvasIndicators(
   iframe: HTMLIFrameElement,
   overlay: HTMLDivElement,

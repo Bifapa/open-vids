@@ -10,7 +10,6 @@ export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): vo
     return c.json(items);
   });
 
-  // fallow-ignore-next-line complexity
   api.post("/projects/:id/registry/install", async (c) => {
     if (!adapter.installRegistryBlock) {
       return c.json({ error: "Installing catalog items needs hyperframes preview" }, 501);

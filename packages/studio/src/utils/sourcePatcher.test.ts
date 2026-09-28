@@ -408,7 +408,6 @@ describe("motion attribute round-trip via sourcePatcher", () => {
       duration: 0.6,
       ease: "power2.out",
       from: { autoAlpha: 0, y: 32 },
-      // fallow-ignore-next-line code-duplication
       to: { autoAlpha: 1, y: 0 },
     };
 
@@ -463,7 +462,6 @@ describe("motion attribute round-trip via sourcePatcher", () => {
       duration: 1,
       ease: "none",
       from: { opacity: 0 },
-      // fallow-ignore-next-line code-duplication
       to: { opacity: 1 },
     };
 

@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file complexity
 /**
  * HyperFrames early stub — injected at the very start of `<head>` before any
  * other scripts run. Compiled to an IIFE by scripts/build-hf-early-stub.ts.
@@ -196,7 +195,6 @@ function varsHasThreeD(vars: unknown): boolean {
  * a quad's subtree makes that quad unprojectable (the engine falls back). */
 const allTweenTargets = new Set<unknown>();
 
-// fallow-ignore-next-line complexity
 function recordThreeDTweenTarget(args: unknown[]): void {
   const target = args[0];
   if (target === null || target === undefined) return;
@@ -273,7 +271,6 @@ function scheduleTimelinesBuiltCheck(): void {
   });
 }
 
-// fallow-ignore-next-line complexity
 function flushBatch(): void {
   batchScheduled = false;
   const batch = pendingOperations.splice(0, BATCH_SIZE);
@@ -315,7 +312,6 @@ const BATCHED_METHODS = new Set(["to", "from", "fromTo", "set", "add"]);
  * thenable, which would cause `Promise.resolve(proxy)` / `await proxy` to
  * hang for paused timelines.
  */
-// fallow-ignore-next-line complexity
 function forwardRemainingMethods(proxy: TimelineProxy, real: GsapTimeline): void {
   let obj: object | null = real as object;
   while (obj !== null && obj !== Object.prototype) {

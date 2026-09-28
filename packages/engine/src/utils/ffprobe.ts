@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication complexity
 import { spawn } from "child_process";
 import { createReadStream, readFileSync, statSync } from "fs";
 import { chunkCrc32 } from "./crc32.js";

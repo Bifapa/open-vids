@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { describe, expect, it } from "vitest";

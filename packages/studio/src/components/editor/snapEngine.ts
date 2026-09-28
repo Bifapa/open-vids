@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 // Snap computation engine — pure functions, zero React/DOM dependencies.
 // All position values are in overlay-space (screen) pixels.
 
@@ -198,7 +197,6 @@ interface EdgeCandidate {
  * `movingEdges` are the edges of the moving rect (e.g. left, centerX, right).
  * `targetEdges` are the corresponding edges on each target.
  */
-// fallow-ignore-next-line complexity
 function collectCandidates(
   movingEdges: number[],
   targets: SnapTarget[],
@@ -368,7 +366,6 @@ const DISABLED_RESULT = (dx: number, dy: number): SnapResult => ({
 // resolveSnapAdjustment — main drag snap entry point
 // ---------------------------------------------------------------------------
 
-// fallow-ignore-next-line complexity
 export function resolveSnapAdjustment(input: {
   movingRect: Rect;
   proposedDx: number;
@@ -452,7 +449,6 @@ export function resolveGuideLineRect(guide: SnapGuide, composition: Rect): Rect 
 // resolveEquidistanceGuides
 // ---------------------------------------------------------------------------
 
-// fallow-ignore-next-line complexity
 export function resolveEquidistanceGuides(input: {
   movingRect: Rect;
   targets: SnapTarget[];

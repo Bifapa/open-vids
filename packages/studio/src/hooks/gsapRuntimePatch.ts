@@ -191,7 +191,6 @@ function mergeKeyframeStep(
  * mutations. Declines (→ caller soft-reloads) for array-form, motionPath arcs,
  * non-finite/dynamic values, or a tween whose parent/targets can't be resolved.
  */
-// fallow-ignore-next-line complexity
 function rebuildKeyframeTween(tween: RuntimeTween, pct: number, props: KeyframeStep): boolean {
   const vars = tween.vars;
   if (!vars || "motionPath" in vars) return false;

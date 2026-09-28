@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity
 /**
  * GPU Encoder Detection
  *

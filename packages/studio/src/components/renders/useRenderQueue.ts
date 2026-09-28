@@ -171,7 +171,6 @@ export function useRenderQueue(
   // Start a render and track progress via SSE
   // Pre-existing branchy fetch/poll flow — the variables passthrough added one branch.
   const startRender = useCallback(
-    // fallow-ignore-next-line complexity
     async (opts: StartRenderOptions = {}) => {
       if (!projectId) return;
       // The server would answer this with a 503 anyway. Refusing here keeps

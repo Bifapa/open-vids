@@ -24,7 +24,6 @@ function inlineStyleProperties(
   return Array.from(new Set([...Object.keys(originalStyles), ...Object.keys(nextStyles)]));
 }
 
-// fallow-ignore-next-line complexity
 export function buildTextFieldChildOperations(
   originalFields: DomEditTextField[],
   nextFields: DomEditTextField[],

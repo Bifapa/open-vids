@@ -443,7 +443,6 @@ async function injectAuditScripts(page: Page, contrast: boolean): Promise<void> 
 
 async function getCompositionDuration(page: Page): Promise<number> {
   // Duration resolution is serialized into the page and must remain self-contained.
-  // fallow-ignore-next-line complexity
   return page.evaluate(() => {
     const value = (target: unknown, key: string): unknown =>
       typeof target === "object" && target !== null ? Reflect.get(target, key) : undefined;
@@ -476,7 +475,6 @@ async function getCompositionDuration(page: Page): Promise<number> {
 
 async function collectTweenBoundaries(page: Page): Promise<number[]> {
   // GSAP getter binding and parent-time conversion form one serialized algorithm.
-  // fallow-ignore-next-line complexity
   return page.evaluate(() => {
     const property = (target: unknown, key: string): unknown =>
       (typeof target === "object" && target !== null) || typeof target === "function"
@@ -726,7 +724,6 @@ async function resolveAnchors(page: Page, requests: AnchorRequest[]): Promise<Ch
       // Clones the anchor-extraction block in prepareContrast's evaluate() below;
       // both run inside separate serialized browser closures and can't share a
       // Node-side helper.
-      // fallow-ignore-next-line code-duplication
       const dataAttributes: Record<string, string> = {};
       for (const attribute of Array.from(element?.attributes ?? [])) {
         if (attribute.name.startsWith("data-")) dataAttributes[attribute.name] = attribute.value;
@@ -884,7 +881,6 @@ async function removeAnnotationOverlay(page: Page): Promise<void> {
 
 async function prepareContrast(page: Page, time: number): Promise<unknown[]> {
   // Candidate-to-element provenance must be captured while the prepare restore list is live.
-  // fallow-ignore-next-line complexity
   return page.evaluate((sampleTime: number) => {
     const prepare = Reflect.get(window, "__contrastAuditPrepare");
     const candidates = typeof prepare === "function" ? Reflect.apply(prepare, window, []) : [];
@@ -917,7 +913,6 @@ async function prepareContrast(page: Page, time: number): Promise<unknown[]> {
       return parts.reverse().join(" > ") || fallback;
     };
     // Part of the serialized evaluate body above; cannot delegate to Node helpers.
-    // fallow-ignore-next-line complexity
     return candidates.map((candidate, index) => {
       const restore = restoreList[index];
       const candidateObject = typeof candidate === "object" && candidate !== null ? candidate : {};

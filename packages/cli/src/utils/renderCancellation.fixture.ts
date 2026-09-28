@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file
 import { writeFileSync } from "node:fs";
 import { registerRootExitRequester, requestCliExit } from "./commandResult.js";
 import { runCancellableProcess } from "./cancellableProcess.js";

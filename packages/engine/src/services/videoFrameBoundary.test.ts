@@ -1,5 +1,4 @@
 // @vitest-environment node
-// fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
 import { type Page } from "puppeteer-core";

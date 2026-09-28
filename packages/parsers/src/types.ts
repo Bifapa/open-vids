@@ -108,24 +108,21 @@ export function isAspectAgnosticResolutionAlias(input: string | undefined): bool
 
 /**
  * Public-boundary helper: given a raw `--resolution` / `--output-resolution`
- * flag value, return the pair every distributed render entrypoint needs to
- * forward end-to-end so the compile stage can adapt aspect-agnostic aliases
- * to the composition's orientation:
+ * flag value, return the pair the local render entrypoint needs to forward
+ * end-to-end so the compile stage can adapt aspect-agnostic aliases to the
+ * composition's orientation:
  *
  *   - `outputResolution`: normalized {@link CanvasResolution} (or `undefined`
  *     for unknown values — callers own their invalid-input UX).
  *   - `outputResolutionAspectAgnostic`: `true` when the raw input was a
- *     tier-only alias (`1080p` / `hd` / `4k` / `uhd`). Passes through to
- *     `DistributedRenderConfig.outputResolutionAspectAgnostic` so the compile
- *     stage remaps `landscape` → `portrait` / `square` when the composition
- *     dimensions demand it.
+ *     tier-only alias (`1080p` / `hd` / `4k` / `uhd`). Passed through so the
+ *     compile stage remaps `landscape` → `portrait` / `square` when the
+ *     composition dimensions demand it.
  *
  * Exported to centralize the two-step pattern (`normalizeResolutionFlag` +
  * `isAspectAgnosticResolutionAlias`) that would otherwise be duplicated at
- * every entrypoint that emits a `DistributedRenderConfig` (`hyperframes
- * cloudrun render`, `hyperframes lambda render` / `render-batch`, the local
- * CLI). Divergence between those callers is what shipped the portrait-1080p
- * regression this helper prevents from recurring.
+ * every entrypoint. Divergence between callers is what shipped the
+ * portrait-1080p regression this helper prevents from recurring.
  */
 export interface ResolvedResolutionFlag {
   outputResolution: CanvasResolution | undefined;

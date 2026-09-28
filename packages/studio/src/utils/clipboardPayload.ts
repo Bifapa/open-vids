@@ -30,7 +30,6 @@ export function serializeClipboardPayload(payload: ClipboardPayload): string {
 
 // Each branch validates one wire shape at the trust boundary; splitting further
 // would fragment one parse into partial validators with no independent reuse.
-// fallow-ignore-next-line complexity
 export function deserializeClipboardPayload(json: string): ClipboardPayload | null {
   let parsed: unknown;
   try {
@@ -78,7 +77,6 @@ export function deserializeClipboardPayload(json: string): ClipboardPayload | nu
  * the composition root if the selector doesn't match — so paste never silently
  * drops the content.
  */
-// fallow-ignore-next-line complexity
 export function insertAsSibling(
   source: string,
   newHtml: string,
@@ -130,7 +128,6 @@ export function insertAsSibling(
   return source + newHtml;
 }
 
-// fallow-ignore-next-line complexity
 function findClosingTagPosition(html: string, openTagStart: number): number {
   // Find the end of the opening tag
   const openTagEnd = html.indexOf(">", openTagStart);

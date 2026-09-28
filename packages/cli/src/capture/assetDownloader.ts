@@ -307,7 +307,6 @@ async function downloadDeclaredIcons(
   return { assets, manifest };
 }
 
-// fallow-ignore-next-line complexity
 export async function downloadAssets(
   tokens: DesignTokens,
   outputDir: string,
@@ -534,7 +533,6 @@ function normalizeUrl(u: string): string {
  * Download fonts referenced in CSS and rewrite URLs to local paths.
  * Returns the modified CSS string with local font paths.
  */
-// fallow-ignore-next-line complexity
 export async function downloadAndRewriteFonts(
   css: string,
   outputDir: string,

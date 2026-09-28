@@ -31,7 +31,6 @@ export function gsapAnimatesTransform(el: HTMLElement): boolean {
  * Checks whether GSAP actively animates one or more CSS/GSAP properties on
  * the given element by inspecting all registered `__timelines`.
  */
-// fallow-ignore-next-line complexity
 export function gsapAnimatesProperty(el: HTMLElement, ...props: string[]): boolean {
   const win = el.ownerDocument.defaultView as
     | (Window & {

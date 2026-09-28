@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * Gesture handling for DomEditOverlay.
  * Owns: onPointerMove, onPointerUp, clearPointerState.
@@ -105,7 +104,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
   const moveGroupDrag = createGroupDragMover(opts, setDraftGroupOverlayItems);
 
-  // fallow-ignore-next-line complexity
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
@@ -274,7 +272,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
   };
 
-  // fallow-ignore-next-line complexity
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     opts.snapGuidesRef.current = null;
     const g = opts.gestureRef.current;
@@ -509,7 +506,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
   };
 
-  // fallow-ignore-next-line complexity
   const clearPointerState = (selectionRef: RefObject<DomEditSelection | null>) => {
     opts.snapGuidesRef.current = null;
     const groupG = opts.groupGestureRef.current;

@@ -363,7 +363,6 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
   // Concurrent requests for one document (an early prefetch and the player's own load) share a build.
   const previewBuilds = new Map<string, Promise<string | null>>();
 
-  // fallow-ignore-next-line complexity
   async function buildPreview(
     project: ResolvedProject,
     previewVariables: Record<string, unknown> | null,
@@ -456,13 +455,11 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
   }
 
   // Bundled composition preview
-  // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview", async (c) => {
     const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
     if (!resolved) return c.json({ error: "not found" }, 404);
     const { project, signature } = resolved;
 
-    // fallow-ignore-next-line code-duplication
     const vars = previewVariablesFromRequest(c.req.query("variables"));
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
@@ -506,13 +503,11 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
   }
 
   // Sub-composition preview
-  // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview/comp/*", async (c) => {
     const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
     if (!resolved) return c.json({ error: "not found" }, 404);
     const { project, signature } = resolved;
 
-    // fallow-ignore-next-line code-duplication
     const vars = previewVariablesFromRequest(c.req.query("variables"));
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
@@ -560,7 +555,6 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
   });
 
   // Static asset serving (with range request support for audio/video seeking)
-  // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview/*", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);

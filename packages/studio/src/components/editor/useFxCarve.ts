@@ -260,7 +260,6 @@ export function useFxCarve(
    * the second leaves them half-applied; that needs a multi-attribute quiet
    * commit, which does not exist yet.
    */
-  // fallow-ignore-next-line complexity
   const setCarve = async (nextRaw: HfCarveSettings | null): Promise<void> => {
     const doc = element.element?.ownerDocument;
     // Plural voiceover ⇒ carve targets a group, always — auto-created here if
@@ -288,7 +287,6 @@ export function useFxCarve(
   // their own functions (resolveCarveVoices, measureCarve, mintCarveNodes,
   // carveLanes); what is left is the orchestration between them, including the
   // two-attribute write order the comments below explain the reason for.
-  // fallow-ignore-next-line complexity
   /**
    * One auto-carve decision at a time.
    *

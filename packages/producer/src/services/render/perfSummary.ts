@@ -137,7 +137,6 @@ export interface DrawElementPerfInput {
 }
 
 // Flat field mapping — branches are ?? fallbacks, not logic.
-// fallow-ignore-next-line complexity
 function aggregateDrawElement(
   perfs: CapturePerfSummary[],
   de: DrawElementPerfInput,

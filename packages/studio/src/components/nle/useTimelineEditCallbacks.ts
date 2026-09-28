@@ -120,7 +120,6 @@ export function resolveTimelineKeyframeTarget(
  * The keyframe callbacks resolve the dragged diamond back to its GSAP anim id +
  * tween-relative percentage, reading DOM-edit selection state from context.
  */
-// fallow-ignore-next-line complexity
 export function useTimelineEditCallbacks({
   handleTimelineElementMove,
   handleTimelineElementsMove,
@@ -293,7 +292,6 @@ export function useTimelineEditCallbacks({
       // drop past the boundary (last keyframe past the end, first before the start)
       // resizes the tween — position/duration grow so the dragged keyframe lands at
       // the drop while every other keyframe keeps its absolute time (value+ease too).
-      // fallow-ignore-next-line complexity
       onMoveKeyframe: async (elId, keyframe, toClipPct) => {
         const animations = resolveElementAnimations(elId);
         const target = resolveKeyframeTarget(elId, keyframe, animations);
@@ -357,7 +355,6 @@ export function useTimelineEditCallbacks({
         }
         return Promise.resolve(false);
       },
-      // fallow-ignore-next-line complexity
       onToggleKeyframeAtPlayhead: (el: TimelineElement) => {
         const currentTime = usePlayerStore.getState().currentTime;
         const pct =

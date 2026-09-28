@@ -117,7 +117,6 @@ describe("commitGsapPositionFromDrag — flat tween", () => {
   });
 
   it("extends the existing tween (never spawns a parallel one) when dragged OUTSIDE its range", async () => {
-    // fallow-ignore-next-line code-duplication
     usePlayerStore.setState({ currentTime: 6 }); // outside [1.2, 3.4]
     const { types, callbacks } = recordingCallbacks();
 
@@ -137,9 +136,7 @@ describe("commitGsapPositionFromDrag — flat tween", () => {
   });
 
   it("adds a keyframe at the playhead when dragged INSIDE its range", async () => {
-    // fallow-ignore-next-line code-duplication
     usePlayerStore.setState({ currentTime: 2 }); // inside [1.2, 3.4]
-    // fallow-ignore-next-line code-duplication
     const { types, callbacks } = recordingCallbacks();
 
     await commitGsapPositionFromDrag(
@@ -160,7 +157,6 @@ describe("commitGsapPositionFromDrag — flat tween", () => {
     // User clicked the 100% diamond (activeKeyframePct=100), playhead drifted past
     // the end. Expect: convert + add-keyframe AT 100% — not replace-with-keyframes.
     usePlayerStore.setState({ currentTime: 6, activeKeyframePct: 100 }); // outside [1.2, 3.4]
-    // fallow-ignore-next-line code-duplication
     const { types, mutations, callbacks } = recordingCallbacks();
 
     await commitGsapPositionFromDrag(
@@ -357,7 +353,6 @@ describe("commitStaticGsapPosition — instantPatch (value-only set)", () => {
     await commitStaticGsapPosition(
       selection(),
       { x: -50, y: 30 },
-      // fallow-ignore-next-line code-duplication
       { x: 0, y: 0 },
       "#puck-a",
       null, // no existing set → `add` a new base gsap.set
@@ -570,7 +565,6 @@ describe("commitStaticGsapRotation — instantPatch (value-only set)", () => {
   it("ADDS a global gsap.set with a global-set instantPatch (off-timeline, no flash)", async () => {
     const { commits, callbacks } = optionRecordingCallbacks();
 
-    // fallow-ignore-next-line code-duplication
     await commitStaticGsapRotation(selection(), 42, "#puck-a", null, callbacks);
 
     expect(commits).toHaveLength(1);

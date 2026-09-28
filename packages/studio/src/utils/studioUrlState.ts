@@ -173,7 +173,6 @@ export function readStudioUrlStateFromWindow(): StudioUrlState {
 }
 
 // Pre-existing param-assembly complexity — surfaced by this PR's line shifts.
-// fallow-ignore-next-line complexity
 export function buildStudioHash(projectId: string, state: StudioUrlState): string {
   const params = new URLSearchParams();
 

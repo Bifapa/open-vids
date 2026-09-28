@@ -1,6 +1,5 @@
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
-// fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, rmSync, writeFileSync } from "node:fs";
@@ -284,7 +283,6 @@ function pickRunner(engine: string, sherpaUsable: () => boolean, language?: stri
 /** When Parakeet fails, only auto falls back; an explicit --engine parakeet fails with the error. */
 const parakeetFallsBack = (engine: string) => engine === "auto";
 
-// fallow-ignore-next-line complexity
 async function transcribeAudio(
   inputPath: string,
   dir: string,

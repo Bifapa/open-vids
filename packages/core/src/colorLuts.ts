@@ -91,7 +91,6 @@ function isNumericDataLine(token: string): boolean {
   return /^[+-]?(?:\d|\.\d)/.test(token);
 }
 
-// fallow-ignore-next-line complexity
 export function parseCubeLut(input: string, options: ParseCubeLutOptions = {}): CubeLut3D {
   const maxSize = options.maxSize ?? DEFAULT_MAX_CUBE_LUT_SIZE;
   let title: string | null = null;

@@ -84,7 +84,6 @@ export function usePreviewInteraction({
   }, [previewIframeRef]);
 
   const handlePreviewCanvasMouseDown = useCallback(
-    // fallow-ignore-next-line complexity
     async (e: React.MouseEvent<HTMLDivElement>, options?: PreviewMouseDownOptions) => {
       if (captionEditMode || compositionLoading) return;
 
@@ -233,7 +232,6 @@ export function usePreviewInteraction({
   );
 
   const handlePreviewCanvasPointerMove = useCallback(
-    // fallow-ignore-next-line complexity
     async (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
       if (captionEditMode || compositionLoading) {
         updateDomEditHoverSelection(null);

@@ -87,7 +87,6 @@ export interface VideoFrameCoverageErrorDetails {
 
 export class VideoFrameCoverageError extends Error {
   // Read structurally by isVideoFrameCoverageError and cross-module callers.
-  // fallow-ignore-next-line unused-class-member
   readonly hyperframesVideoFrameCoverageError = true as const;
   readonly threshold: number;
   readonly worst: VideoFrameCoverageReport;

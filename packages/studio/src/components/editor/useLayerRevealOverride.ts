@@ -65,7 +65,6 @@ function restoreInline(el: HTMLElement, property: string, prior: string): void {
 
 // This decoder owns the complete serialized reveal-commit schema. Splitting
 // field checks across helpers would create multiple authorities for validity.
-// fallow-ignore-next-line complexity
 function readPendingRevealCommit(element: HTMLElement): PendingRevealCommit | null {
   const raw = element.getAttribute(LAYER_REVEAL_PENDING_COMMIT_ATTR);
   if (!raw) return null;

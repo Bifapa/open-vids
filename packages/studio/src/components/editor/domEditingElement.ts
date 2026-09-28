@@ -31,7 +31,6 @@ export function isElementComputedVisible(
 
 const VISUAL_LEAF_TAGS = new Set(["img", "video", "canvas", "svg", "audio"]);
 
-// fallow-ignore-next-line complexity
 function hasVisualPresence(el: HTMLElement): boolean {
   const win = el.ownerDocument.defaultView;
   if (!win) return false;
@@ -327,7 +326,6 @@ export function findPreviewNode(
   );
 }
 
-// fallow-ignore-next-line complexity
 export function findElementForTimelineElement(
   doc: Document,
   element: TimelineElementDomTarget,

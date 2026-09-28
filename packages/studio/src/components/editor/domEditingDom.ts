@@ -309,7 +309,6 @@ function getPreferredClassSelector(el: HTMLElement): string | undefined {
   return preferred ? `.${escapeCssIdentifier(preferred)}` : undefined;
 }
 
-// fallow-ignore-next-line complexity
 export function buildElementLabel(el: HTMLElement): string {
   const compositionId = el.getAttribute("data-composition-id");
   if (compositionId && compositionId !== "main") {

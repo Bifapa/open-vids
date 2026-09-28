@@ -832,9 +832,9 @@ function warnUnresolvedFonts(unresolved: string[]): void {
 // Google Fonts on-demand fetch + local cache
 // ---------------------------------------------------------------------------
 
-let lambdaFontCacheRoot: string | undefined;
+let serverlessFontCacheRoot: string | undefined;
 
-// On AWS Lambda `$HOME` resolves to a `/home/sbx_*` tree that's read-only;
+// On serverless workers (e.g. AWS Lambda) `$HOME` may resolve to a read-only tree;
 // only `/tmp` is writable. Create one private, unguessable cache directory per
 // warm process and reuse it across invocations. Honor HYPERFRAMES_FONT_CACHE_DIR
 // as an explicit override for any environment.
@@ -843,8 +843,8 @@ function resolveFontCacheRoot(): string {
     return process.env.HYPERFRAMES_FONT_CACHE_DIR;
   }
   if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    lambdaFontCacheRoot ??= mkdtempSync(join(tmpdir(), "hyperframes-fonts-"));
-    return lambdaFontCacheRoot;
+    serverlessFontCacheRoot ??= mkdtempSync(join(tmpdir(), "hyperframes-fonts-"));
+    return serverlessFontCacheRoot;
   }
   return join(homedir(), ".cache", "hyperframes", "fonts");
 }

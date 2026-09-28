@@ -44,7 +44,6 @@ export function normalizePreviewViewport(doc: Document, win: Window): void {
 
 // Legacy recovery retained until versioned composition manifests complete
 // their compatibility soak across published CDN runtimes.
-// fallow-ignore-next-line complexity
 export function autoHealMissingCompositionIds(doc: Document): void {
   const compositionIdRe = /data-composition-id=["']([^"']+)["']/gi;
   const referencedIds = new Set<string>();

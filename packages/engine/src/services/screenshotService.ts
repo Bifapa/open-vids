@@ -1,11 +1,9 @@
-// fallow-ignore-file code-duplication complexity
 /**
  * Screenshot Service
  *
  * BeginFrame-based deterministic screenshot capture and video frame injection.
  */
 
-// fallow-ignore-file code-duplication
 import { type Page } from "puppeteer-core";
 import { type CaptureOptions } from "../types.js";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
@@ -404,7 +402,6 @@ export async function applyDomLayerMask(
   extraHideIds: string[],
 ): Promise<void> {
   await page.evaluate(
-    // fallow-ignore-next-line complexity
     (args: {
       show: string[];
       hide: string[];
@@ -653,7 +650,6 @@ export async function injectVideoFramesBatch(
 ): Promise<string[]> {
   if (updates.length === 0) return [];
   return await page.evaluate(
-    // fallow-ignore-next-line complexity
     async (
       items: Array<{ videoId: string; dataUri: string; frameId: string }>,
       visualProperties: string[],
@@ -692,7 +688,6 @@ export async function injectVideoFramesBatch(
       // shorter than the host's authored data-duration, where the runtime
       // truncates visibility but the replacement <img> must hold its last
       // frame) — those must NOT be skipped here.
-      // fallow-ignore-next-line code-duplication
       const isVisualAncestorHidden = (el: HTMLElement): boolean => {
         let parent = el.parentElement;
         while (parent !== null && parent !== document.documentElement) {
@@ -843,7 +838,6 @@ export async function syncVideoFrameVisibility(
   activeVideoIds: string[],
 ): Promise<void> {
   await page.evaluate(
-    // fallow-ignore-next-line complexity
     (ids: string[], colorGradingSourceHiddenAttr: string) => {
       // Mirror the ancestor-visibility guard from `injectVideoFramesBatch`.
       // See that copy for the full rationale on why `visibility: hidden` is

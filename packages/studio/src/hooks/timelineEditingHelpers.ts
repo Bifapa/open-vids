@@ -51,7 +51,6 @@ function isHTMLElement(element: Element | null): element is HTMLElement {
  * be resolved. Extracted from StudioApp's timeline hook to keep it under the
  * studio 600-LOC cap.
  */
-// fallow-ignore-next-line complexity
 export function applyTimelineStackingReorder(input: {
   element: TimelineElement;
   stackingReorder: TimelineStackingReorderIntent | null | undefined;
@@ -202,7 +201,6 @@ export function removeIframeTimelineElements(
     findTimelineElementInIframe(iframe, element, activeCompositionPath)?.remove();
 }
 
-// fallow-ignore-next-line complexity
 function resolveResizePlaybackStart(
   original: string,
   target: PatchTarget,

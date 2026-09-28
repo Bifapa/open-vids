@@ -124,7 +124,6 @@ export function registerFontRoutes(api: Hono): void {
   api.get("/fonts", (c) => c.json({ fonts: listInstalledFontFamilies() }));
   api.get("/fonts/google", async (c) => c.json({ fonts: await listGoogleFontFamilies() }));
 
-  // fallow-ignore-next-line complexity
   api.get("/fonts/file", (c) => {
     const family = c.req.query("family");
     if (!family) return c.json({ error: "family parameter required" }, 400);

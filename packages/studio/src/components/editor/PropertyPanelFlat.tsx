@@ -46,7 +46,6 @@ import {
 import { isAudioDomElement } from "../../utils/timelineInspector";
 
 /** The flat inspector shell with one shared open-group state. */
-// fallow-ignore-next-line complexity
 export function PropertyPanelFlat({
   element,
   styles,

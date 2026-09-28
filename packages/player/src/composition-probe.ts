@@ -72,7 +72,6 @@ export class CompositionProbe {
     private readonly _callbacks: ProbeCallbacks,
   ) {}
 
-  // fallow-ignore-next-line unused-class-member
   get runtimeInjected(): boolean {
     return this._runtimeInjected;
   }
@@ -83,7 +82,6 @@ export class CompositionProbe {
     this._runtimeInjected = false;
     let attempts = 0;
 
-    // fallow-ignore-next-line complexity
     this._interval = setInterval(() => {
       attempts++;
       try {
@@ -157,7 +155,6 @@ export class CompositionProbe {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member
   resolveDirectTimelineAdapterFromWindow(win: Window): DirectTimelineAdapter | null {
     return this._resolveDirectTimelineAdapterFromWindow(win);
   }

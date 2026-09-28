@@ -90,7 +90,6 @@ export function usePlaybackKeyboard({
   // Pre-existing dispatcher, already over the complexity gate before this
   // branch's one-line "a" fix touched it. A real fix is a dispatch-table
   // rewrite, out of scope here; the branch this PR changed is its own function.
-  // fallow-ignore-next-line complexity
   const handlePlaybackKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -197,7 +196,6 @@ export function usePlaybackKeyboard({
   playbackKeyDownRef.current = handlePlaybackKeyDown;
   playbackKeyUpRef.current = handlePlaybackKeyUp;
 
-  // fallow-ignore-next-line complexity
   const attachIframeShortcutListeners = useCallback(() => {
     iframeShortcutCleanupRef.current?.();
     iframeShortcutCleanupRef.current = null;

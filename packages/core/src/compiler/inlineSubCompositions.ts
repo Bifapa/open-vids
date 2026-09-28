@@ -275,7 +275,6 @@ function defaultBuildScopeSelector(compId: string): string {
  * 10. Remove `data-composition-src` from host
  * 11. Inject the content into the host element
  */
-// fallow-ignore-next-line complexity
 export function inlineSubCompositions(
   document: Document,
   hosts: Element[],

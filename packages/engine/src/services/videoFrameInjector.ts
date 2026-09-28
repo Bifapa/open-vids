@@ -87,7 +87,6 @@ function createFrameSourceCache(
     evictions++;
   }
 
-  // fallow-ignore-next-line complexity
   function remember(framePath: string, dataUri: string): string {
     // Skip caching entries that alone exceed the byte budget. Caching them
     // would trigger immediate self-eviction on insert and pollute LRU order
@@ -205,7 +204,6 @@ export function createVideoFrameInjector(
     lastCacheTouchByDir.set(cacheDir, now);
   }
 
-  // fallow-ignore-next-line complexity
   return async (page: Page, time: number) => {
     const activePayloads = frameLookup.getActiveFramePayloads(time);
 
@@ -454,7 +452,6 @@ export async function queryElementStacking(
 ): Promise<ElementStackingInfo[]> {
   const hdrIds = Array.from(nativeHdrIds);
   return page.evaluate(
-    // fallow-ignore-next-line complexity
     (hdrIdList: string[], prefix: string, suffix: string): ElementStackingInfo[] => {
       const hdrSet = new Set(hdrIdList);
       const elements = document.querySelectorAll("[data-start]");
@@ -494,7 +491,6 @@ export async function queryElementStacking(
 
       // Find border-radius that clips the element. Replaced elements like <video>
       // clip to their own border-radius; ancestors need overflow !== visible.
-      // fallow-ignore-next-line complexity
       function getEffectiveBorderRadius(node: Element): [number, number, number, number] {
         // Resolve a CSS border-radius value to pixels. Chrome's getComputedStyle
         // returns percentages as-is (e.g. "50%"), not resolved to px.
@@ -597,7 +593,6 @@ export async function queryElementStacking(
       // position offsets + CSS transforms. This correctly handles GSAP
       // animations on wrapper divs (rotation, scale) that getBoundingClientRect
       // conflates into an axis-aligned bounding box.
-      // fallow-ignore-next-line complexity
       function getViewportMatrix(node: Element): string {
         const chain: HTMLElement[] = [];
         let current: Element | null = node;
@@ -646,7 +641,6 @@ export async function queryElementStacking(
         return mat.toString();
       }
 
-      // fallow-ignore-next-line complexity
       function composeIndividualTransforms(cs: CSSStyleDeclaration): DOMMatrix | null {
         const translate = cs.getPropertyValue("translate").trim();
         const rotate = cs.getPropertyValue("rotate").trim();

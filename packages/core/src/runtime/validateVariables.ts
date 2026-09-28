@@ -36,7 +36,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// fallow-ignore-next-line complexity
 function checkType(value: unknown, decl: CompositionVariable): VariableValidationIssue | null {
   switch (decl.type) {
     case "string":

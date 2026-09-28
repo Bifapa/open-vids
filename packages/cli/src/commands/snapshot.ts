@@ -1,5 +1,4 @@
 import { failCommand } from "../utils/commandResult.js";
-// fallow-ignore-file complexity
 import { defineCommand } from "citty";
 import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

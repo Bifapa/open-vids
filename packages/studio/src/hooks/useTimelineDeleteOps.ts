@@ -77,9 +77,7 @@ export function useTimelineDeleteOps({
   // toast system has no action buttons, so Undo and the toggle location are
   // named in words instead.
   const rippleNoticeShownRef = useRef(false);
-  // fallow-ignore-next-line complexity
   const handleTimelineElementsDelete = useCallback(
-    // fallow-ignore-next-line complexity
     async (selection: TimelineElement[]) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");

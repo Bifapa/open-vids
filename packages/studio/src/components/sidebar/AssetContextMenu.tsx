@@ -6,7 +6,6 @@ function isValidAssetName(name: string): boolean {
   return name.length > 0 && !/[/\\]/.test(name) && !name.includes("..");
 }
 
-// fallow-ignore-next-line complexity
 export function ContextMenu({
   x,
   y,

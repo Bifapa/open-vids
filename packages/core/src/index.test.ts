@@ -63,12 +63,11 @@ describe("@hyperframes/core public API exports", () => {
       expect(core.isAspectAgnosticResolutionAlias(undefined)).toBe(false);
     });
 
-    it("exports resolveResolutionFlagPair — the pair every distributed entrypoint must forward", () => {
-      // The single source of truth every distributed adapter reads
-      // (`hyperframes cloudrun render`, `hyperframes lambda render`,
-      // `hyperframes lambda render-batch`). Divergent copies across those
-      // callers is what shipped the portrait-1080p failure this helper
-      // exists to prevent (PR #2529). Case-insensitive on the raw input.
+    it("exports resolveResolutionFlagPair — the pair the local render entrypoint must forward", () => {
+      // The single source of truth the local render path reads. Divergent
+      // copies across callers is what shipped the portrait-1080p failure
+      // this helper exists to prevent (PR #2529). Case-insensitive on
+      // the raw input.
       expect(core.resolveResolutionFlagPair("1080p")).toEqual({
         outputResolution: "landscape",
         outputResolutionAspectAgnostic: true,

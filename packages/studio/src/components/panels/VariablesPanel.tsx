@@ -66,7 +66,6 @@ function ValidationStrip({ issues }: { issues: VariableValidationIssue[] }) {
   );
 }
 
-// fallow-ignore-next-line complexity
 function VariableRow({
   decl,
   value,
@@ -245,7 +244,6 @@ const EMPTY_STATE = (
 );
 
 // Panel orchestrator — JSX conditionals per section, same shape as StudioRightPanels.
-// fallow-ignore-next-line complexity
 export const VariablesPanel = memo(function VariablesPanel({
   sdkSession,
   publishSdkSession,
@@ -429,7 +427,6 @@ export const VariablesPanel = memo(function VariablesPanel({
 
   const handleBind = useCallback(
     // Guard chain (session, selection, type-compat) — one branch per guard.
-    // fallow-ignore-next-line complexity
     (action: BindAction, id: string) => {
       if (!sdkSession || !domEditSelection?.hfId) return;
       // Binding to an existing variable is allowed, but only when the types
@@ -484,7 +481,6 @@ export const VariablesPanel = memo(function VariablesPanel({
         )}
         <ValidationStrip issues={issues} />
         {declarations.length === 0 && !addOpen && EMPTY_STATE}
-        {/* fallow-ignore-next-line complexity */}
         {declarations.map((decl) => (
           <VariableRow
             key={decl.id}

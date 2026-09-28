@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication complexity
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { MAX_AUDIO_GAIN } from "../audioGain.js";
 import { WebAudioTransport } from "./webAudioTransport";

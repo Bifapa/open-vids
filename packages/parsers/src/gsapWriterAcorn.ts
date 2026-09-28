@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * Browser-safe GSAP write path — magic-string offset-splice.
  *
@@ -55,7 +54,6 @@ function safeKey(key: string): string {
   return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
 }
 
-// fallow-ignore-next-line complexity
 function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, "id">): string {
   const selector = JSON.stringify(anim.targetSelector);
   const props: Record<string, number | string> = { ...anim.properties };
@@ -126,7 +124,6 @@ function findEnclosingExpressionStatement(ancestors: Node[]): Node | null {
 function findTimelineDeclarationStatement(ast: Node, timelineVar: string): Node | null {
   let found: Node = null;
   acornWalk.simple(ast, {
-    // fallow-ignore-next-line complexity
     VariableDeclaration(node: Node) {
       if (found) return;
       for (const decl of node.declarations ?? []) {
@@ -340,7 +337,6 @@ function findGlobalSetInsertionPoint(
 
 // ── Public write API ─────────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 export function updateAnimationInScript(
   script: string,
   animationId: string,
@@ -773,7 +769,6 @@ function percentagePropsOf(kfNode: Node): Node[] {
 const LITERAL_NODE_TYPES = new Set(["Literal", "NumericLiteral", "StringLiteral"]);
 
 /** Read one value node: a number/string literal, a negative number, or raw source. */
-// fallow-ignore-next-line complexity
 function readValueNode(v: Node, source: string): number | string {
   if (
     LITERAL_NODE_TYPES.has(v?.type) &&
@@ -1460,7 +1455,6 @@ export function removePropertyFromAnimation(
  * keyframe's properties: the first for `from()`, the last otherwise (the
  * destination = the visible resting state).
  */
-// fallow-ignore-next-line complexity
 export function removeAllKeyframesFromScript(script: string, animationId: string): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
@@ -1989,7 +1983,6 @@ function blockRemoveRange(
   return [allProps[blockStart - 1].end, allProps[blockEnd - 1].end];
 }
 
-// fallow-ignore-next-line complexity
 function readLastWaypointXY(mpVal: Node): { x: number | null; y: number | null } {
   if (mpVal?.type !== "ObjectExpression") return { x: null, y: null };
   const pathProp = findPropertyNode(mpVal, "path");
@@ -2368,7 +2361,6 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
  * or spans the split as a flat tween (its interpolated midpoint). Decoupled from
  * the reverse write loop so the spanning-tween midpoint reads earlier tweens.
  */
-// fallow-ignore-next-line complexity
 function computeForwardBaselines(
   matching: GsapAnimation[],
   splitTime: number,

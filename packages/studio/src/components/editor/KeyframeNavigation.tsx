@@ -115,7 +115,6 @@ function ArrowRight({ disabled }: { disabled: boolean }) {
   );
 }
 
-// fallow-ignore-next-line complexity
 export const KeyframeNavigation = memo(function KeyframeNavigation({
   property,
   keyframes,

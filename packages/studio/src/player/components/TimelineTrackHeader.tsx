@@ -81,7 +81,6 @@ interface TimelineTrackHeaderProps {
   onSeek?: (time: number) => void;
 }
 
-// fallow-ignore-next-line complexity
 export function TimelineTrackHeader({
   trackNumber,
   trackDisplayNumber,

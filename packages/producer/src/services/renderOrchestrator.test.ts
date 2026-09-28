@@ -801,7 +801,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(extracted.framePaths.get(0)).toBe(framePath);
   });
 
-  // fallow-ignore-next-line code-duplication
   it("remaps Windows cache frames under compiledDir using only the frame basename", () => {
     const compiledDir = win32.resolve("C:\\compiled");
     const outputDir = win32.resolve("D:\\cache\\abc123");
@@ -809,7 +808,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     const extracted = createExtractedFrames(outputDir, framePath);
     const symlinks: Array<{ target: string; path: string }> = [];
 
-    // fallow-ignore-next-line code-duplication
     materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
       pathModule: win32,
       fileSystem: {
@@ -831,7 +829,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(symlinks).toEqual([{ target: outputDir, path: linkPath }]);
   });
 
-  // fallow-ignore-next-line code-duplication
   it("recursively copies frames into compiledDir when materializeSymlinks is true", () => {
     // Distributed plan() must produce a self-contained planDir — symlinks
     // don't survive S3 / GCS round-trips. With materializeSymlinks=true the
@@ -842,7 +839,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     const extracted = createExtractedFrames(outputDir, framePath);
     const copies: Array<{ src: string; dest: string; recursive: boolean }> = [];
 
-    // fallow-ignore-next-line code-duplication
     materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
       pathModule: win32,
       fileSystem: {
@@ -864,7 +860,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
   });
 
-  // fallow-ignore-next-line code-duplication
   it("falls back to copying frames when symlinkSync fails with EPERM (Windows, no Developer Mode)", () => {
     // Windows without Developer Mode/Administrator rejects symlink creation with
     // EPERM — high/standard-quality renders failed here while draft worked. The
@@ -875,7 +870,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     const extracted = createExtractedFrames(outputDir, framePath);
     const copies: Array<{ src: string; dest: string; recursive: boolean }> = [];
 
-    // fallow-ignore-next-line code-duplication
     materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
       pathModule: win32,
       fileSystem: {
@@ -923,7 +917,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     ).toThrow(/ENOSPC/);
   });
 
-  // fallow-ignore-next-line code-duplication
   it("clears a stale dangling entry and re-stages when symlinkSync fails with EEXIST", () => {
     // After the extraction cache is GC'd, a symlink from a prior render dangles
     // (its target removed). existsSync() follows the dead link so the caller's
@@ -939,7 +932,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     const symlinks: Array<{ target: string; path: string }> = [];
     let symlinkCalls = 0;
 
-    // fallow-ignore-next-line code-duplication
     materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
       pathModule: win32,
       fileSystem: {
@@ -968,7 +960,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
   });
 
-  // fallow-ignore-next-line code-duplication
   it("falls back to copying when symlinkSync fails with UNKNOWN (some Windows privilege denials)", () => {
     // Some Windows builds surface a no-symlink-privilege denial as an
     // UNKNOWN-coded error rather than EPERM/EACCES — it must still degrade to a
@@ -979,7 +970,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     const extracted = createExtractedFrames(outputDir, framePath);
     const copies: Array<{ src: string; dest: string; recursive: boolean }> = [];
 
-    // fallow-ignore-next-line code-duplication
     materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
       pathModule: win32,
       fileSystem: {
@@ -1001,7 +991,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
   });
 
-  // fallow-ignore-next-line code-duplication
   it("clears a stale entry and re-copies when the eager-copy path (materializeSymlinks) hits EEXIST", () => {
     // #2025 routes Windows through the eager-copy branch. Reusing a dir a prior
     // Linux run populated with a (now dangling) symlink makes cpSync collide
@@ -1016,7 +1005,6 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     const copies: Array<{ src: string; dest: string }> = [];
     let cpCalls = 0;
 
-    // fallow-ignore-next-line code-duplication
     materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
       pathModule: win32,
       materializeSymlinks: true,
@@ -1163,7 +1151,6 @@ function createCompiledComposition(
   };
 }
 
-// fallow-ignore-next-line code-duplication
 function createConfig(): EngineConfig {
   return {
     fps: 30,
@@ -1201,7 +1188,6 @@ function createConfig(): EngineConfig {
 }
 
 describe("applyRenderModeHints", () => {
-  // fallow-ignore-next-line code-duplication
   it("forces screenshot mode when compatibility hints recommend it", () => {
     const compiled = createCompiledComposition(["iframe", "requestAnimationFrame"]);
     const log = {
@@ -1232,7 +1218,6 @@ describe("applyRenderModeHints", () => {
     expect(log.warn).not.toHaveBeenCalled();
   });
 
-  // fallow-ignore-next-line code-duplication
   it("returns false when neither caller nor hint forces", () => {
     const compiled = createCompiledComposition([]);
     const log = {
@@ -1343,7 +1328,6 @@ describe("resolveRenderWorkerCount", () => {
     expect(workers).toBe(1);
   });
 
-  // fallow-ignore-next-line code-duplication
   it("forces single worker when html-in-canvas is detected", () => {
     const log = {
       error: vi.fn(),
@@ -1370,7 +1354,6 @@ describe("resolveRenderWorkerCount", () => {
     expect(log.warn).toHaveBeenCalledOnce();
   });
 
-  // fallow-ignore-next-line code-duplication
   it("overrides explicit --workers when html-in-canvas is detected", () => {
     const log = {
       error: vi.fn(),
@@ -1397,7 +1380,6 @@ describe("resolveRenderWorkerCount", () => {
     expect(log.warn).toHaveBeenCalledOnce();
   });
 
-  // fallow-ignore-next-line code-duplication
   it("pins to 1 worker in low-memory mode when no explicit --workers is set", () => {
     const log = {
       error: vi.fn(),
@@ -1421,7 +1403,6 @@ describe("resolveRenderWorkerCount", () => {
     expect(log.info).toHaveBeenCalledOnce();
   });
 
-  // fallow-ignore-next-line code-duplication
   it("respects explicit --workers in low-memory mode (only the pin is bypassed)", () => {
     const log = {
       error: vi.fn(),

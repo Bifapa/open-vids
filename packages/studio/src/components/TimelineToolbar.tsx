@@ -128,7 +128,6 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
   };
 }
 
-// fallow-ignore-next-line complexity
 export function TimelineToolbar({
   domEditSession,
   onSplitElement,
@@ -181,7 +180,6 @@ export function TimelineToolbar({
   // "N" toggles timeline snapping (industry convention: Resolve/FCP).
   // Skip when typing in an input/contenteditable.
   useEffect(() => {
-    // fallow-ignore-next-line complexity
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "n" && e.key !== "N") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;

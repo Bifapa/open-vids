@@ -17,7 +17,6 @@
  * Used by both the tweened commit and the static `set` commit / live preview, so
  * the preview and the committed value agree by construction.
  */
-// fallow-ignore-next-line complexity
 export function computeDraggedGsapPosition(
   element: HTMLElement,
   studioOffset: { x: number; y: number },

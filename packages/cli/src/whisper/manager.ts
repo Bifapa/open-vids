@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication complexity
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir, platform } from "node:os";

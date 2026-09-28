@@ -81,7 +81,6 @@ export const SourceEditor = memo(function SourceEditor({
   const contentRef = useRef(content);
   contentRef.current = content;
 
-  // fallow-ignore-next-line complexity
   const mountEditor = useCallback(
     (node: HTMLDivElement | null) => {
       if (editorRef.current) {

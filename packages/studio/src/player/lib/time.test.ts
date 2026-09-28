@@ -6,7 +6,6 @@ describe("formatTime", () => {
     expect(formatTime(0)).toBe("00:00");
   });
 
-  // fallow-ignore-next-line code-duplication
   it("formats seconds less than a minute", () => {
     expect(formatTime(5)).toBe("00:05");
     expect(formatTime(30)).toBe("00:30");

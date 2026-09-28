@@ -85,9 +85,7 @@ export function useElementLifecycleOps({
   commitDomEditPatchBatches,
   onElementDeleted,
 }: UseElementLifecycleOpsParams) {
-  // fallow-ignore-next-line complexity
   const handleDomEditElementsDelete = useCallback(
-    // fallow-ignore-next-line complexity
     async (selections: DomEditSelection[]): Promise<DomEditCommitOutcome> => {
       const pid = projectIdRef.current;
       if (!pid) return domEditCommitDeclined("no-project");
@@ -249,7 +247,6 @@ export function useElementLifecycleOps({
       // One async owner must bracket reveal tokens, optimistic DOM/store state,
       // atomic persistence, rollback, and the final persistence-count release.
       // Splitting those phases would make transaction ownership less explicit.
-      // fallow-ignore-next-line complexity
       return (async () => {
         const releaseZPersists = entries.map((entry) => beginLayerZPersist(entry.element));
         try {

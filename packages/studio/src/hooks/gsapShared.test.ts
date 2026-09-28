@@ -13,7 +13,7 @@ import {
 } from "./gsapShared";
 
 // Fixtures carry only the fields the function under test reads; the double-cast
-// is the documented way to stand in for the full runtime shape (CONTRIBUTING.md).
+// is the documented way to stand in for the full runtime shape.
 const tween = (duration: number | undefined) => ({ duration }) as unknown as GsapAnimation;
 
 describe("resolveEditableTweenDuration", () => {
@@ -146,8 +146,7 @@ describe("toClipPercentage", () => {
 
 describe("toClipKeyframes", () => {
   // Fixture carries only the fields the function under test reads; the
-  // double-cast is the documented way to stand in for the full runtime shape
-  // (CONTRIBUTING.md).
+  // double-cast is the documented way to stand in for the full runtime shape.
   const durationless = {
     id: "a1",
     method: "to",

@@ -130,7 +130,6 @@ export interface CaptureHdrStageResult {
   warnings: CaptureWarning[];
 }
 
-// fallow-ignore-next-line complexity
 export async function runCaptureHdrStage(
   input: CaptureHdrStageInput,
 ): Promise<CaptureHdrStageResult> {

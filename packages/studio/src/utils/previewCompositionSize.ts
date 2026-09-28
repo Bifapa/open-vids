@@ -4,7 +4,6 @@ export interface PreviewCompositionSize {
 }
 
 /** The root composition's authored size, read from the preview document itself. */
-// fallow-ignore-next-line complexity
 export function readPreviewCompositionSize(
   iframe: HTMLIFrameElement | null,
 ): PreviewCompositionSize | null {

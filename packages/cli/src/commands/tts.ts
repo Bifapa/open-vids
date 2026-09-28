@@ -1,5 +1,4 @@
 import { failCommand } from "../utils/commandResult.js";
-// fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -82,7 +81,6 @@ export default defineCommand({
       default: false,
     },
   },
-  // fallow-ignore-next-line complexity
   async run({ args }) {
     // ── List voices mode ──────────────────────────────────────────────
     if (args.list) {

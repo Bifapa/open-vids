@@ -21,7 +21,6 @@ export const HF_VFX_ATTR = "data-vfx-chain";
  * Exported for the exporter (hyperframes-ae-mcp), which stamps the version it
  * emits; inside this repo only parse/serialize below read it.
  */
-// fallow-ignore-next-line unused-export
 export const HF_VFX_CHAIN_VERSION = 1;
 
 /**
@@ -124,7 +123,6 @@ const DISPLACEMENT_CHANNELS = [
  * Exported as the whole registry for the exporter and Studio's effect picker;
  * inside the runtime, defs are reached through `getVfxDef`.
  */
-// fallow-ignore-next-line unused-export
 export const HF_VFX: readonly HfVfxDef[] = [
   {
     id: "fractal-noise",
@@ -666,7 +664,6 @@ function serializeVfxNode(node: HfVfxNode) {
 // Mirrors audioFx.ts's identical helper (Task 1.1: copy the shape of the
 // audio chain, not its code — the two chain files stay independently
 // readable rather than sharing a module neither owns).
-// fallow-ignore-next-line code-duplication
 function withoutUndefined<T extends object>(obj: T): T {
   for (const key of Object.keys(obj) as Array<keyof T>) {
     if (obj[key] === undefined) delete obj[key];

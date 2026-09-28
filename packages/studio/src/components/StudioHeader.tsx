@@ -183,7 +183,6 @@ function OpenvidsBackOrLogo() {
   );
 }
 
-// fallow-ignore-next-line complexity
 export function StudioHeader({
   captureFrameHref,
   captureFrameFilename,

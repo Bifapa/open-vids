@@ -108,7 +108,6 @@ export interface UseDomEditWiringParams {
   handleDomManualEditsReset: (sel: DomEditSelection) => Promise<void>;
 }
 
-// fallow-ignore-next-line complexity
 export function useDomEditWiring(params: UseDomEditWiringParams) {
   const {
     projectId,

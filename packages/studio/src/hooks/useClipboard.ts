@@ -347,7 +347,6 @@ export function useClipboard({
   const handleCopy = useCallback((): boolean => copyToClipboard() !== null, [copyToClipboard]);
 
   // Two independent paste modes (timeline clip vs DOM element) behind one guarded save.
-  // fallow-ignore-next-line complexity
   const handlePaste = useCallback(async () => {
     const payload = await clipboardRef.current;
     if (!payload) {

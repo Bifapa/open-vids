@@ -94,7 +94,6 @@ export function useTimelineKeyboardActor({
 
   const onKeyDown = useCallback(
     // One handler owns navigation, context-menu, and disclosure keyboard semantics.
-    // fallow-ignore-next-line complexity
     (event: KeyboardEvent<HTMLElement>) => {
       const targetElement = eventTarget(event);
       const id = targetElement?.dataset.timelineFocusId;

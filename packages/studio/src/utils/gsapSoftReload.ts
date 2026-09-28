@@ -315,7 +315,6 @@ export function applySoftReload(
     return readStampedAuthoredOpacity(el);
   };
 
-  // fallow-ignore-next-line complexity
   const doReload = () => {
     const timelines = win.__timelines;
     const allTargets: Element[] = [];

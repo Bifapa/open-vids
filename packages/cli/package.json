@@ -51,10 +51,8 @@
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
     "@google/genai": "1.52.0",
-    "@hyperframes/aws-lambda": "workspace:*",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
-    "@hyperframes/gcp-cloud-run": "workspace:*",
     "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/producer": "workspace:*",

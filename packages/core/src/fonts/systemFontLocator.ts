@@ -230,7 +230,6 @@ type SystemProfilerEntry = {
 
 let profilerCache: Map<string, SystemProfilerEntry[]> | null = null;
 
-// fallow-ignore-next-line complexity
 function getSystemProfilerIndex(): Map<string, SystemProfilerEntry[]> {
   if (profilerCache) return profilerCache;
   profilerCache = new Map();
@@ -285,7 +284,6 @@ function locateViaSystemProfiler(targetFamily: string): LocatedFont | null {
   return pickBestCandidate(candidates);
 }
 
-// fallow-ignore-next-line complexity
 function locateViaFcMatch(targetFamily: string): LocatedFont | null {
   if (platform() !== "linux") return null;
   try {

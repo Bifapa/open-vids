@@ -71,7 +71,6 @@ function keyframedScaleFixture(): GsapAnimation {
 }
 
 // Resize/rotation hold tests intentionally pin the same no-conversion contract.
-// fallow-ignore-next-line code-duplication
 it("updates a duration-zero size hold in place instead of converting it to keyframes", async () => {
   const el = document.createElement("div");
   el.id = "box";
@@ -117,7 +116,6 @@ it("updates a duration-zero size hold in place instead of converting it to keyfr
   );
 });
 
-// fallow-ignore-next-line code-duplication
 it("requires explicit unroll for helper-authored resize before mutating", async () => {
   const el = document.createElement("div");
   el.id = "box";
@@ -146,7 +144,6 @@ it("requires explicit unroll for helper-authored resize before mutating", async 
   expect(commitMutation).not.toHaveBeenCalled();
 });
 
-// fallow-ignore-next-line code-duplication
 it("reuses the ownership parse instead of fetching a resolved size group twice", async () => {
   const el = document.createElement("div");
   el.id = "box";
@@ -332,7 +329,6 @@ it("non-uniform drag commits scaleX/scaleY longhands", async () => {
  * left it rendering at 7532px, over three times where it was dropped, and the
  * next drag compounded it.
  */
-// fallow-ignore-next-line code-duplication
 it("scales from the element's real box, not a hardcoded fallback", async () => {
   const el = document.createElement("div");
   el.id = "clip";
@@ -379,7 +375,6 @@ it("scales from the element's real box, not a hardcoded fallback", async () => {
  * and the longhands won. The resize computed the right number, wrote it, and
  * the element snapped straight back to its old size on release.
  */
-// fallow-ignore-next-line code-duplication
 it("does not mix the scale shorthand into a tween that speaks longhands", async () => {
   const el = document.createElement("div");
   el.id = "clip";

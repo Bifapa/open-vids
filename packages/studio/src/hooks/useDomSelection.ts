@@ -103,7 +103,6 @@ export function useDomSelection({
   );
 
   const applyDomSelection = useCallback(
-    // fallow-ignore-next-line complexity
     (selection: DomEditSelection | null, options?: ApplyDomSelectionOptions) => {
       if (!selection) {
         logSelect("clear", { hadGroup: domEditGroupSelectionsRef.current.length });
@@ -233,7 +232,6 @@ export function useDomSelection({
   );
 
   const resolveDomSelectionFromPreviewPoint = useCallback(
-    // fallow-ignore-next-line complexity
     async (
       clientX: number,
       clientY: number,
@@ -270,7 +268,6 @@ export function useDomSelection({
   );
 
   const resolveAllDomSelectionsFromPreviewPoint = useCallback(
-    // fallow-ignore-next-line complexity
     async (clientX: number, clientY: number): Promise<DomEditSelection[]> => {
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return [];
@@ -297,7 +294,6 @@ export function useDomSelection({
   }, []);
 
   const buildDomSelectionForTimelineElement = useCallback(
-    // fallow-ignore-next-line complexity
     async (element: TimelineElement): Promise<DomEditSelection | null> => {
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
@@ -355,7 +351,6 @@ export function useDomSelection({
   >(async () => {});
 
   const refreshDomEditSelectionFromPreview = useCallback(
-    // fallow-ignore-next-line complexity
     async (selection: DomEditSelection) => {
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
@@ -395,7 +390,6 @@ export function useDomSelection({
   );
 
   const refreshDomEditGroupSelectionsFromPreview = useCallback(
-    // fallow-ignore-next-line complexity
     async (selections: DomEditSelection[]) => {
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
@@ -483,7 +477,6 @@ export function useDomSelection({
   useStudioTestHooks({ previewIframeRef, buildDomSelectionFromTarget, applyDomSelection });
 
   const applyMarqueeSelection = useCallback(
-    // fallow-ignore-next-line complexity
     (selections: DomEditSelection[], additive: boolean) => {
       logSelect("marquee", { hits: selections.length, additive });
       if (selections.length === 0) {

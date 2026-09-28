@@ -23,7 +23,6 @@ interface TransformCommitDeps {
  * animated (matching the drag gesture and keyframe buttons), and otherwise
  * falls through to the manual transform setter.
  */
-// fallow-ignore-next-line unit-size
 export function createTransformCommitHandlers({
   element,
   styles,
@@ -82,7 +81,6 @@ export function createTransformCommitHandlers({
     );
   };
 
-  // fallow-ignore-next-line complexity
   const commitManualSize = async (axis: "width" | "height", nextValue: string) => {
     const parsed = parsePxMetricValue(nextValue);
     if (parsed == null || parsed <= 0) return;

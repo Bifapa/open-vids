@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication complexity
 /**
  * File Server for Render Mode
  *

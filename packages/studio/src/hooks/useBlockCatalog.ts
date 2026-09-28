@@ -43,7 +43,6 @@ export function useBlockCatalog() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<BlockCategory | null>(null);
 
-  // fallow-ignore-next-line complexity
   useEffect(() => {
     if (catalogCache) return;
     let cancelled = false;

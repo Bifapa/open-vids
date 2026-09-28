@@ -1,7 +1,6 @@
 import { formatTime } from "../lib/time";
 import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 
-// fallow-ignore-next-line complexity
 export function getTimelineMajorTickInterval(
   duration: number,
   pixelsPerSecond?: number,
@@ -35,7 +34,6 @@ export function getTimelineMajorTickInterval(
 
 // Prefer quarter subdivisions so the midpoint remains visible; fall back to
 // smaller whole-frame-compatible sets as ticks become too dense to read.
-// fallow-ignore-next-line complexity
 function getMinorSubdivisions(
   majorInterval: number,
   pixelsPerSecond?: number,

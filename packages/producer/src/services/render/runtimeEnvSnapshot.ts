@@ -61,10 +61,10 @@ export function snapshotRuntimeEnv(
  * is mandatory defense-in-depth against a hand-crafted or corrupted plan.
  *
  * Returns a `restore()` function that reverts `env` to its pre-apply
- * state for the keys this call touched. Callers that run multiple chunks
- * in a single process (Cloud Run Job, Temporal activity worker) MUST
- * invoke `restore()` in a `finally` block — without it, chunk N's
- * snapshot leaks into chunk N+1's environment.
+ * state for the keys this call touched. Callers that apply multiple
+ * snapshots in a single process MUST
+ * invoke `restore()` in a `finally` block — without it, one snapshot
+ * leaks into the next environment.
  *
  * Existing snapshot keys are overwritten. Keys NOT in the snapshot are
  * never touched — the worker's host may set additional runtime knobs

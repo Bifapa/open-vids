@@ -377,7 +377,6 @@ export class ParentMediaManager {
     return rawSrc ? new URL(rawSrc, iframeEl.ownerDocument.baseURI).href : null;
   }
 
-  // fallow-ignore-next-line complexity
   private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
     // Skip elements the preloader has demoted — the observer will re-trigger
     // when the preload attribute is promoted to "auto".
@@ -416,7 +415,6 @@ export class ParentMediaManager {
     this.teardownObserver();
     if (typeof MutationObserver === "undefined" || !doc.body) return;
 
-    // fallow-ignore-next-line complexity
     const obs = new MutationObserver((mutations) => {
       for (const m of mutations) {
         if (m.type === "attributes" && m.attributeName === "preload") {

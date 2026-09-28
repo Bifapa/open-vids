@@ -31,7 +31,6 @@
   }
 
   // Mirrors layout-audit.browser.js isVisibleElement.
-  // fallow-ignore-next-line complexity
   function isVisibleElement(element) {
     if (IGNORE_TAGS.has(element.tagName)) return false;
     const style = getComputedStyle(element);

@@ -36,7 +36,6 @@ interface TimelineClipProps {
   children?: ReactNode;
 }
 
-// fallow-ignore-next-line complexity
 export const TimelineClip = memo(function TimelineClip({
   el,
   pps,

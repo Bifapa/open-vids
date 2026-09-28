@@ -121,7 +121,6 @@ export function planHdrResources(args: {
  * probe for HDR images whose `data-start` instant reports zero dims (GSAP
  * `from` tweens animate the element in slightly later).
  */
-// fallow-ignore-next-line complexity code-duplication
 export async function probeHdrExtractionDims(args: {
   domSession: CaptureSession;
   nativeHdrIds: Set<string>;
@@ -395,7 +394,6 @@ export interface HdrVideoExtractionResult {
  * source teardown and the aggregate scratch reservation, which intentionally
  * remains held until the capture-stage finally block.
  */
-// fallow-ignore-next-line complexity
 export async function extractHdrVideoFrames(args: {
   job: RenderJob;
   log: ProducerLogger;

@@ -242,7 +242,6 @@ export function serializeGsapAnimations(
       b.resolvedStart ?? (typeof b.position === "number" ? b.position : Number.MAX_SAFE_INTEGER);
     return aNum - bNum;
   });
-  // fallow-ignore-next-line complexity
   const lines = sorted.map((anim) => {
     const selector = JSON.stringify(anim.targetSelector);
     const props: Record<string, number | string> = { ...anim.properties };
@@ -401,7 +400,6 @@ export function keyframesToGsapAnimations(
   const baseY = base?.y ?? 0;
   const baseScale = base?.scale ?? 1;
 
-  // fallow-ignore-next-line complexity
   sorted.forEach((kf, i) => {
     const absoluteTime = elementStartTime + kf.time;
     const isFirst = i === 0;
@@ -452,49 +450,46 @@ export function gsapAnimationsToKeyframes(
   const baseTimeEpsilon = 0.001;
   const baseValueEpsilon = 0.00001;
 
-  return (
-    animations
-      .filter(
-        (a): a is GsapAnimation & { position: number } =>
-          validMethods.includes(a.method) && typeof a.position === "number",
-      )
-      // fallow-ignore-next-line complexity
-      .map((a) => {
-        const relativeTimeRaw = a.position - elementStartTime;
-        const time = clampTimeToZero ? Math.max(0, relativeTimeRaw) : relativeTimeRaw;
+  return animations
+    .filter(
+      (a): a is GsapAnimation & { position: number } =>
+        validMethods.includes(a.method) && typeof a.position === "number",
+    )
+    .map((a) => {
+      const relativeTimeRaw = a.position - elementStartTime;
+      const time = clampTimeToZero ? Math.max(0, relativeTimeRaw) : relativeTimeRaw;
 
-        const properties: Partial<KeyframeProperties> = {};
-        for (const [key, value] of Object.entries(a.properties)) {
-          if (typeof value !== "number") continue;
-          if (key === "x") properties.x = value - baseX;
-          else if (key === "y") properties.y = value - baseY;
-          else if (key === "scale") {
-            properties.scale = baseScale !== 0 ? value / baseScale : value;
-          } else {
-            (properties as Record<string, number>)[key] = value;
-          }
+      const properties: Partial<KeyframeProperties> = {};
+      for (const [key, value] of Object.entries(a.properties)) {
+        if (typeof value !== "number") continue;
+        if (key === "x") properties.x = value - baseX;
+        else if (key === "y") properties.y = value - baseY;
+        else if (key === "scale") {
+          properties.scale = baseScale !== 0 ? value / baseScale : value;
+        } else {
+          (properties as Record<string, number>)[key] = value;
         }
+      }
 
-        if (
-          skipBaseSet &&
-          a.method === "set" &&
-          time < baseTimeEpsilon &&
-          Object.values(properties).every(
-            (v) => typeof v === "number" && Math.abs(v) < baseValueEpsilon,
-          )
-        ) {
-          return null;
-        }
+      if (
+        skipBaseSet &&
+        a.method === "set" &&
+        time < baseTimeEpsilon &&
+        Object.values(properties).every(
+          (v) => typeof v === "number" && Math.abs(v) < baseValueEpsilon,
+        )
+      ) {
+        return null;
+      }
 
-        return {
-          id: a.id.replace(/^.*-kf-/, ""),
-          time,
-          properties: properties as KeyframeProperties,
-          ease: a.ease,
-        };
-      })
-      .filter((kf): kf is NonNullable<typeof kf> => kf !== null)
-  );
+      return {
+        id: a.id.replace(/^.*-kf-/, ""),
+        time,
+        properties: properties as KeyframeProperties,
+        ease: a.ease,
+      };
+    })
+    .filter((kf): kf is NonNullable<typeof kf> => kf !== null);
 }
 
 // ── Keyframe-conversion transforms (pure; shared by recast + acorn writers) ────

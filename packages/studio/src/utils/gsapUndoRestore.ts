@@ -178,7 +178,6 @@ function hasAmbiguousGsapScriptChange(previous: string, restored: string): boole
  * Returns "soft" when applied in place, "full" when it escalated to reloadPreview
  * (ineligible restore, missing target, or a permanent soft-reload failure).
  */
-// fallow-ignore-next-line complexity
 export function applyUndoRestoreToPreview(
   iframe: HTMLIFrameElement | null,
   activeCompPath: string | null,

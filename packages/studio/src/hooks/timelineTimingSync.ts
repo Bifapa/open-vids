@@ -230,7 +230,6 @@ async function rollbackAfterFailure(
  */
 // The ledger, reverse rollback, final ownership check, and history fold are one
 // transaction; extracting phases would obscure which function owns convergence.
-// fallow-ignore-next-line complexity
 async function foldGsapMutationInQueue(input: {
   projectId: string;
   label: string;

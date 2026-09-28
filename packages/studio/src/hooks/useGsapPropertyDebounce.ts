@@ -75,7 +75,6 @@ export function useGsapPropertyDebounce(
   const sdkRef = useRef(sdk);
   sdkRef.current = sdk;
 
-  // fallow-ignore-next-line complexity
   const flushPendingPropertyEdit = useCallback(async () => {
     const pending = pendingPropertyEditRef.current;
     if (!pending) return;
@@ -84,7 +83,6 @@ export function useGsapPropertyDebounce(
     const mutation = { type: "update-property", animationId, property, value };
     const label = `Edit GSAP ${property}`;
     try {
-      // fallow-ignore-next-line code-duplication
       const { sdkSession, sdkDeps, activeCompPath } = sdkRef.current ?? {};
       if (sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
@@ -141,9 +139,7 @@ export function useGsapPropertyDebounce(
     };
   }, [flushPendingPropertyEdit]);
 
-  // fallow-ignore-next-line complexity
   const addGsapProperty = useCallback(
-    // fallow-ignore-next-line complexity
     async (selection: DomEditSelection, animationId: string, property: string) => {
       let defaultValue = PROPERTY_DEFAULTS[property] ?? 0;
       const el = selection.element;

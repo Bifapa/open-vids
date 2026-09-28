@@ -175,7 +175,6 @@ function filterAuthorInteractiveTargets(
 // draws) doesn't hit-test to the group via elementsFromPoint. Recover it: if the
 // point falls within a group's live member-union rect, return that wrapper.
 // Innermost (smallest-area) group wins for nested groups.
-// fallow-ignore-next-line complexity
 function findGroupAtPoint(doc: Document, x: number, y: number): HTMLElement | null {
   let best: HTMLElement | null = null;
   let bestArea = Infinity;
@@ -202,7 +201,6 @@ function findGroupAtPoint(doc: Document, x: number, y: number): HTMLElement | nu
   return best;
 }
 
-// fallow-ignore-next-line complexity
 export function getPreviewTargetFromPointer(
   iframe: HTMLIFrameElement,
   clientX: number,

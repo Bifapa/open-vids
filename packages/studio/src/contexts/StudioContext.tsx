@@ -92,7 +92,6 @@ export function useStudioPlaybackContextOptional(): StudioPlaybackValue | null {
 }
 
 /** @deprecated Use useStudioShellContext and/or useStudioPlaybackContext instead. */
-// fallow-ignore-next-line unused-export
 export function useStudioContext(): StudioContextValue {
   const shell = useStudioShellContext();
   const playback = useStudioPlaybackContext();
@@ -198,7 +197,6 @@ export function StudioPlaybackProvider({
 }
 
 /** @deprecated Use StudioShellProvider and StudioPlaybackProvider instead. */
-// fallow-ignore-next-line unused-export
 export function StudioProvider({
   value,
   children,

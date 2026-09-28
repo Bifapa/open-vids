@@ -89,7 +89,6 @@ function missingBoundError(sceneId: string, missing: "startTime" | "endTime"): s
   return `slide "${sceneId}" sets ${present} but ${missing} cannot be resolved (no scene "${sceneId}")`;
 }
 
-// fallow-ignore-next-line complexity
 function resolveTimeRange(
   ref: SlideRef,
   scene: SceneRange | undefined,

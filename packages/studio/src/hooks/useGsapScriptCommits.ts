@@ -312,7 +312,6 @@ function instantPatchesFor(
 }
 
 // oxfmt-ignore
-// fallow-ignore-next-line complexity
 export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, publishSdkSession, writeProjectFile, forceReloadSdkSession }: GsapScriptCommitsParams) {
   const activeProjectId = projectIdRef.current;
   const activeCompPathRef = useRef(activeCompPath);

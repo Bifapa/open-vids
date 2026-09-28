@@ -227,7 +227,6 @@ describe("resolveDomEditCapabilities", () => {
 });
 
 describe("resolveVisualDomEditSelectionTarget", () => {
-  // fallow-ignore-next-line code-duplication
   it("prefers the visible leaf under the pointer over an oversized container", () => {
     const document = createDocument(`
       <section id="container" class="hero-shell">
@@ -544,7 +543,6 @@ describe("resolveDomEditSelection", () => {
     expect(selection?.capabilities.canEditStyles).toBe(true);
   });
 
-  // fallow-ignore-next-line code-duplication
   it("does not prefer a scene host clip ancestor when selecting inside it", async () => {
     const document = createDocument(`
       <div data-composition-id="main">
@@ -773,7 +771,6 @@ describe("resolveDomEditSelection", () => {
     ).toBe(mask);
   });
 
-  // fallow-ignore-next-line code-duplication
   it("collects simple child text blocks as separate editable fields", async () => {
     const document = createDocument(`
       <section id="card" class="clip" style="left: 10px; top: 20px; width: 200px; height: 100px; position: absolute;">

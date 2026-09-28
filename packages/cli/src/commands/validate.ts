@@ -2,7 +2,6 @@
 // inside a page.evaluate() body, which is serialized into the browser and
 // cannot import the Node helper. Line-level markers don't survive the clone
 // window drifting as the file is edited, hence the file-level suppression.
-// fallow-ignore-file code-duplication
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -152,7 +151,6 @@ export async function auditClipDurations(
   analyzeClipMediaFit: typeof import("@hyperframes/engine").analyzeClipMediaFit,
   extraWaitMs: number,
 ): Promise<ConsoleEntry[]> {
-  // fallow-ignore-next-line complexity
   const clips = await page.evaluate(async (maxWaitMs: number) => {
     const nodes = Array.from(
       document.querySelectorAll("audio[data-duration]"),

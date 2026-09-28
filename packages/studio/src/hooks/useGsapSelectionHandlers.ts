@@ -16,7 +16,6 @@ import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
  * delegating to the underlying GSAP script-commit functions. Extracted
  * from useDomEditSession to keep that file under the 600-line limit.
  */
-// fallow-ignore-next-line complexity
 export function useGsapSelectionHandlers({
   domEditSelection,
   updateGsapProperty,

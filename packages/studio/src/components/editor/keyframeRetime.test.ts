@@ -1,6 +1,5 @@
 // Boundary cases share an arrange/assert shape on purpose: each case states its
 // own window, drag, and expected remap so a failure reads without cross-referencing.
-// fallow-ignore-file code-duplication
 import { describe, expect, it } from "vitest";
 import { resolveKeyframeRetime, type RetimeKeyframe } from "./keyframeRetime";
 

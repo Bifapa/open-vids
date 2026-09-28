@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -107,25 +106,6 @@ vi.mock("../utils/producer.js", () => ({
       producerState.resolveConfigCalls.push(overrides);
       return { ...overrides, resolved: true };
     }),
-    createRenderRequest: vi.fn(
-      (input: {
-        projectDir: string;
-        outputPath: string;
-        engineConfig: unknown;
-        options: object;
-      }) => ({
-        version: 1,
-        projectDir: input.projectDir,
-        outputPath: input.outputPath,
-        options: { ...input.options, engineConfig: input.engineConfig },
-      }),
-    ),
-    renderConfigFromRequest: vi.fn(
-      (request: { options: Record<string, unknown> }, runtime: { logger?: unknown }) => {
-        const { engineConfig, ...options } = request.options;
-        return { ...options, producerConfig: engineConfig, logger: runtime.logger };
-      },
-    ),
     createRenderJob: vi.fn((config: Record<string, unknown>) => {
       producerState.createdJobs.push(config);
       return { config, progress: 100, outcome: "completed", warnings: [] };
@@ -685,7 +665,6 @@ describe("renderLocal browser GPU config", () => {
       browserGpuMode: "software",
       hdrMode: "auto",
       quiet: true,
-      skipFeedback: true,
     });
 
     expect(trackingState.renderObservations).toEqual([

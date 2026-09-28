@@ -143,7 +143,6 @@ function buildChildren(
   return out;
 }
 
-// fallow-ignore-next-line complexity
 function buildElement(
   el: Element,
   scopePrefix: string,
@@ -208,7 +207,6 @@ function buildElement(
   };
 }
 
-// fallow-ignore-next-line complexity
 function extractGsapScript(doc: Document): string | null {
   return getGsapScripts(doc)[0] ?? null;
 }
@@ -220,7 +218,6 @@ function extractStyles(doc: Document): string | null {
 
 // Root resolution delegates to the engine's findRoot so dimension extraction
 // and mutations agree on which element is the composition root.
-// fallow-ignore-next-line complexity
 function extractDimensions(doc: Document): { width: number | null; height: number | null } {
   const stage = findRoot(doc);
   if (!stage) return { width: null, height: null };

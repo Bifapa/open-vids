@@ -1,4 +1,3 @@
-// fallow-ignore-file dead-code
 import { usePlayerStore, type ZoomMode } from "../store/playerStore";
 
 export interface TimelineZoomState {

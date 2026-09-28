@@ -253,7 +253,6 @@ class CompositionImpl implements Composition {
 
   // Scan/merge dispatcher — same complexity class as the suppressed
   // variableUsage.ts classifiers it drives.
-  // fallow-ignore-next-line complexity
   getVariableUsage(): VariableUsageReport {
     const usedIds: string[] = [];
     const seen = new Set<string>();
@@ -342,7 +341,6 @@ class CompositionImpl implements Composition {
     labels: ReturnType<typeof extractGsapLabels>;
   } | null = null;
 
-  // fallow-ignore-next-line complexity
   getElementTimings(): Record<HfId, ElementTimingSnapshot> {
     const scripts = getGsapScripts(this.parsed.document);
 
@@ -530,19 +528,16 @@ class CompositionImpl implements Composition {
   }
 
   find(query: FindQuery): string[] {
-    return (
-      this.getElements()
-        // fallow-ignore-next-line complexity
-        .filter((el) => {
-          if (query.tag && el.tag !== query.tag) return false;
-          if (query.text && !el.text?.includes(query.text)) return false;
-          if (query.name && el.attributes["data-name"] !== query.name) return false;
-          if (query.track !== undefined && el.trackIndex !== query.track) return false;
-          if (query.composition && !el.scopedId.startsWith(`${query.composition}/`)) return false;
-          return true;
-        })
-        .map((el) => el.scopedId)
-    );
+    return this.getElements()
+      .filter((el) => {
+        if (query.tag && el.tag !== query.tag) return false;
+        if (query.text && !el.text?.includes(query.text)) return false;
+        if (query.name && el.attributes["data-name"] !== query.name) return false;
+        if (query.track !== undefined && el.trackIndex !== query.track) return false;
+        if (query.composition && !el.scopedId.startsWith(`${query.composition}/`)) return false;
+        return true;
+      })
+      .map((el) => el.scopedId);
   }
 
   getAllAnimationIds(): Set<string> {
@@ -604,7 +599,6 @@ class CompositionImpl implements Composition {
 
   // ── Dispatch / batch ─────────────────────────────────────────────────────────
 
-  // fallow-ignore-next-line complexity
   private _dispatch(op: EditOp, origin: unknown): MutationResult {
     const result = applyOp(this.parsed, op);
     const { forward, inverse } = result;
@@ -681,7 +675,6 @@ class CompositionImpl implements Composition {
    * handlers (parity with no-op dispatch) — subscribers must not assume
    * silence when wrapping speculative operations.
    */
-  // fallow-ignore-next-line complexity
   batch(fn: () => void, opts?: { origin?: unknown }): void {
     const origin = opts?.origin ?? ORIGIN_LOCAL;
     this.batchDepth++;
@@ -748,7 +741,6 @@ class CompositionImpl implements Composition {
   on(event: "selectionchange", handler: (ids: string[]) => void): () => void;
   on(event: "patch", handler: (event: PatchEvent) => void): () => void;
   on(event: "persist:error", handler: (event: PersistErrorEvent) => void): () => void;
-  // fallow-ignore-next-line complexity
   on(event: string, handler: unknown): () => void {
     const h = handler as (...args: unknown[]) => void;
     if (event === "change") {
@@ -799,7 +791,6 @@ class CompositionImpl implements Composition {
     return { ...this.overrides };
   }
 
-  // fallow-ignore-next-line complexity
   applyPatches(patches: readonly JsonPatchOp[], opts?: { origin?: unknown }): void {
     const origin = opts?.origin ?? ORIGIN_APPLY_PATCHES;
 
@@ -863,7 +854,6 @@ function declaredDefaults(parsed: ParsedDocument): Record<string, unknown> {
  * Embedded (T3): supply overrides — SDK emits patches; host owns history + persistence.
  * Headless (agents): omit both — SDK is a stateless transform + serializer.
  */
-// fallow-ignore-next-line complexity
 export async function openComposition(
   html: string,
   opts?: OpenCompositionOptions,

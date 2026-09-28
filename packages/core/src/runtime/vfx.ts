@@ -232,12 +232,10 @@ function compileShader(
 // makes; the two differ in their failure reporting (loud here, `swallow` there)
 // and in who owns the vertex shader, so sharing one helper would couple the
 // vfx runtime's error contract to the colour pipeline's.
-// fallow-ignore-next-line code-duplication
 function linkVfxProgram(gl: WebGL2RenderingContext, frag: string): WebGLProgram | null {
   const vertex = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
   const fragment = vertex ? compileShader(gl, gl.FRAGMENT_SHADER, frag) : null;
   if (!vertex || !fragment) return null;
-  // fallow-ignore-next-line code-duplication
   const program = gl.createProgram();
   if (!program) return null;
   gl.attachShader(program, vertex);

@@ -109,7 +109,6 @@ interface DomEditOverlayProps {
   ) => void;
 }
 
-// fallow-ignore-next-line complexity
 export const DomEditOverlay = memo(function DomEditOverlay({
   iframeRef,
   activeCompositionPath,
@@ -320,7 +319,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     }
   };
 
-  // fallow-ignore-next-line complexity
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement || event.button !== 0) return;
     if (event.shiftKey) {

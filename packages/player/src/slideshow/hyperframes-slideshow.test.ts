@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { handleRuntimeMessage } from "../runtime-message-handler.js";
 import {

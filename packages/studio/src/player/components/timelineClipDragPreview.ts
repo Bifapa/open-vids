@@ -256,7 +256,6 @@ export interface ResizePreviewResult {
 }
 
 /** Compute the trim preview for a pointer x (pure — the hook applies the state). */
-// fallow-ignore-next-line complexity
 export function computeResizePreview(
   resize: ResizingClipState,
   clientX: number,

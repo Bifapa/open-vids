@@ -59,7 +59,6 @@ export interface FittedKeyframe {
  * - Accelerates from start → Easy Ease Out
  * - Both → Easy Ease (full)
  */
-// fallow-ignore-next-line complexity
 export function fitEasesFromVelocity(
   keyframes: FittedKeyframe[],
   rawSamples: { time: number; properties: Record<string, number> }[],

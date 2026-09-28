@@ -28,7 +28,6 @@ export function toggleMainLineSlide(
   return { ...manifest, slides };
 }
 
-// fallow-ignore-next-line complexity
 /** Move a main-line slide up or down by one position. */
 /** Swap the slide with `sceneId` one step up/down within a slide list. */
 function swapSlide(slides: SlideRef[], sceneId: string, direction: "up" | "down"): SlideRef[] {

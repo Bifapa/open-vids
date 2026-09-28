@@ -70,7 +70,6 @@ export function useTimelinePlayer({
   // iframe discovery path has the same owner for deciding whether it may write.
   const syncTimelineElements = useCallback(
     // The lease guard adds one deliberate branch at the shared synchronization boundary.
-    // fallow-ignore-next-line complexity
     (elements: TimelineElement[], nextDuration?: number) => {
       if (hasTimelinePerformanceFixtureLease()) return;
       const state = usePlayerStore.getState();

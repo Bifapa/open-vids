@@ -68,7 +68,6 @@ type ToolVersionResult =
   | { ok: true; detail: string; majorVersion?: number }
   | { ok: false; detail: string };
 
-// fallow-ignore-next-line complexity
 async function readToolVersion(
   binaryPath: string,
   signal?: AbortSignal,
@@ -187,7 +186,6 @@ async function checkFFprobe(signal?: AbortSignal): Promise<EnvironmentCheckOutco
  * `Failed to launch the browser process` mid-render. No-op off Linux and when
  * `ldd` can't run (probe inconclusive).
  */
-// fallow-ignore-next-line complexity
 async function chromeSharedLibOutcome(
   executablePath: string,
   found: EnvironmentCheckOutcome,
@@ -389,7 +387,6 @@ function checkWindowsUncPath(projectDir = process.cwd()): EnvironmentCheckOutcom
   };
 }
 
-// fallow-ignore-next-line complexity
 export async function runEnvironmentChecks(
   options: EnvironmentCheckOptions = {},
 ): Promise<EnvironmentCheckResult> {

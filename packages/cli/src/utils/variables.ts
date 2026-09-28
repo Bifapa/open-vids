@@ -1,11 +1,7 @@
 import { failCommand } from "./commandResult.js";
 /**
  * Shared `--variables` / `--variables-file` / `--strict-variables` parsing
- * and validation helpers used by both `hyperframes render` (in-process) and
- * `hyperframes lambda render` (distributed). The Lambda CLI mirrors the
- * local UX exactly — same flag names, same parse-error messages, same
- * strict-mode behavior — so users who learned the local flow can drive
- * Lambda renders without re-learning the surface.
+ * and validation helpers for `hyperframes render`.
  *
  * Side-effecting wrappers (`resolveVariablesArg`) call `process.exit(1)`
  * on validation failure after rendering an `errorBox`; the pure parsers
@@ -42,9 +38,7 @@ export type VariablesParseResult =
  * `kind` discriminant so the side-effecting wrapper owns all UI strings.
  */
 // Exported for tests in `./variables.test.ts`; not consumed outside the
-// package. Suppressed so fallow's unused-exports audit doesn't flag a
-// type-discriminated parser whose value is exactly testability.
-// fallow-ignore-next-line unused-export complexity
+// package.
 export function parseVariablesArg(
   inline: string | undefined,
   filePath: string | undefined,
@@ -200,10 +194,8 @@ export function validateVariablesAgainstSchema(
 
 /**
  * Print a uniform warning block for variable validation issues; in
- * `strict` mode, render an errorBox and exit(1). Used by both
- * `hyperframes render` and `hyperframes lambda render` so the UX is
- * identical across the two surfaces. Pass `quiet: true` to suppress the
- * warning block (the errorBox in strict mode still prints).
+ * `strict` mode, render an errorBox and exit(1). Pass `quiet: true` to
+ * suppress the warning block (the errorBox in strict mode still prints).
  */
 export function reportVariableIssues(
   issues: readonly VariableValidationIssue[],

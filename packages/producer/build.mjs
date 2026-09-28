@@ -70,7 +70,6 @@ await Promise.all([
     entryPoints: ["src/services/healthWorkerThread.ts"],
     outfile: "dist/services/healthWorkerThread.js",
   }),
-  build({ ...sharedOpts, entryPoints: ["src/distributed.ts"], outfile: "dist/distributed.js" }),
 ]);
 
 // Copy core runtime artifacts so the producer can find them at dist/

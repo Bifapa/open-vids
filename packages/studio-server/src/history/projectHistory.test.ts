@@ -1,5 +1,4 @@
 // @vitest-environment node
-// fallow-ignore-file code-duplication
 import {
   cpSync,
   existsSync,

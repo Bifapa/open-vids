@@ -49,7 +49,6 @@ import {
  * reasons the terminal shows.
  */
 // a consent gate: each branch is a distinct reason the tier cannot run, and each has to be reported separately
-// fallow-ignore-next-line complexity
 async function prepareOnDeviceTier(opts: {
   assumedYes: boolean;
   artifactRevision?: string;
@@ -198,7 +197,6 @@ export default defineCommand({
     },
   },
   // one flag-parsing entry point feeding three output paths (json, interactive, table); splitting those is its own change
-  // fallow-ignore-next-line complexity
   async run({ args }) {
     const json = args.json === true;
     const interactive = args["human-friendly"] === true;

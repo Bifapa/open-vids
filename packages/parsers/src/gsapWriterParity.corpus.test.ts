@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * Recast-vs-acorn GSAP-writer differential suite (WS-3.F cutover gate).
  *

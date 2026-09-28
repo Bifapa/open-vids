@@ -2,25 +2,20 @@
  * Tests for plan-time validators. Each validator pins both branches:
  *
  *   - PASS — the config is acceptable; no throw.
- *   - FAIL — the config trips a banned-in-distributed-mode rule; throws
+ *   - FAIL — the config trips a banned rule; throws
  *     PlanValidationError with the expected typed `code`.
  */
 
 import { describe, expect, it } from "bun:test";
 import {
-  BROWSER_GPU_NOT_SOFTWARE,
-  DISTRIBUTED_DURATION_OUT_OF_RANGE,
-  MAX_DISTRIBUTED_DURATION_SECONDS,
   MAX_RENDER_DURATION_SECONDS,
   PlanValidationError,
   RENDER_DURATION_OUT_OF_RANGE,
   SYSTEM_FONT_USED,
-  parseFontFamilyValue,
-  validateDistributedDuration,
   validateRenderDuration,
-  validateNoGpuEncode,
   validateNoSystemFonts,
 } from "./planValidation.js";
+import { parseFontFamilyValue } from "../deterministicFonts.js";
 
 describe("PlanValidationError", () => {
   it("preserves the typed `code` field", () => {
@@ -32,75 +27,8 @@ describe("PlanValidationError", () => {
   });
 });
 
-describe("validateNoGpuEncode", () => {
-  it("accepts a software-only config (no fields set)", () => {
-    expect(() => validateNoGpuEncode({})).not.toThrow();
-  });
-
-  it("accepts useGpu=false + browserGpuMode='software'", () => {
-    expect(() => validateNoGpuEncode({ useGpu: false, browserGpuMode: "software" })).not.toThrow();
-  });
-
-  it("accepts useGpu=undefined (in-process default) + browserGpuMode='software'", () => {
-    expect(() => validateNoGpuEncode({ browserGpuMode: "software" })).not.toThrow();
-  });
-
-  it("throws BROWSER_GPU_NOT_SOFTWARE when useGpu === true", () => {
-    let caught: unknown;
-    try {
-      validateNoGpuEncode({ useGpu: true });
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(PlanValidationError);
-    expect((caught as PlanValidationError).code).toBe(BROWSER_GPU_NOT_SOFTWARE);
-    expect((caught as PlanValidationError).code).toBe("BROWSER_GPU_NOT_SOFTWARE");
-    expect((caught as Error).message).toContain("GPU encode is banned");
-    expect((caught as Error).message).toContain("useGpu === true");
-  });
-
-  it("throws BROWSER_GPU_NOT_SOFTWARE when browserGpuMode === 'auto'", () => {
-    let caught: unknown;
-    try {
-      validateNoGpuEncode({ browserGpuMode: "auto" });
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(PlanValidationError);
-    expect((caught as PlanValidationError).code).toBe(BROWSER_GPU_NOT_SOFTWARE);
-    expect((caught as Error).message).toContain("Hardware browser GPU is banned");
-    expect((caught as Error).message).toContain(`"auto"`);
-  });
-
-  it("throws BROWSER_GPU_NOT_SOFTWARE for any non-'software' browserGpuMode value", () => {
-    for (const mode of ["hardware", "discrete", "any", "swiftshader-fallback"]) {
-      let caught: unknown;
-      try {
-        validateNoGpuEncode({ browserGpuMode: mode });
-      } catch (err) {
-        caught = err;
-      }
-      expect(caught).toBeInstanceOf(PlanValidationError);
-      expect((caught as PlanValidationError).code).toBe(BROWSER_GPU_NOT_SOFTWARE);
-    }
-  });
-
-  it("checks useGpu BEFORE browserGpuMode so the useGpu message wins when both trip", () => {
-    let caught: unknown;
-    try {
-      validateNoGpuEncode({ useGpu: true, browserGpuMode: "auto" });
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(PlanValidationError);
-    expect((caught as Error).message).toContain("GPU encode is banned");
-  });
-});
-
-describe("validateDistributedDuration", () => {
-  it("keeps the generic validator and legacy distributed API behavior aligned", () => {
-    expect(MAX_RENDER_DURATION_SECONDS).toBe(MAX_DISTRIBUTED_DURATION_SECONDS);
-    expect(RENDER_DURATION_OUT_OF_RANGE).toBe(DISTRIBUTED_DURATION_OUT_OF_RANGE);
+describe("validateRenderDuration", () => {
+  it("accepts a finite duration within the ceiling", () => {
     expect(() =>
       validateRenderDuration({
         duration: MAX_RENDER_DURATION_SECONDS,
@@ -110,20 +38,10 @@ describe("validateDistributedDuration", () => {
     ).not.toThrow();
   });
 
-  it("accepts a finite duration within the distributed ceiling", () => {
-    expect(() =>
-      validateDistributedDuration({
-        duration: MAX_DISTRIBUTED_DURATION_SECONDS,
-        totalFrames: MAX_DISTRIBUTED_DURATION_SECONDS * 30,
-        fps: 30,
-      }),
-    ).not.toThrow();
-  });
-
-  it("throws DISTRIBUTED_DURATION_OUT_OF_RANGE for the engine's infinite-timeline sentinel", () => {
+  it("throws RENDER_DURATION_OUT_OF_RANGE for the engine's infinite-timeline sentinel", () => {
     let caught: unknown;
     try {
-      validateDistributedDuration({
+      validateRenderDuration({
         duration: 10_000_000_000,
         totalFrames: 300_000_000_000,
         fps: 30,
@@ -132,12 +50,12 @@ describe("validateDistributedDuration", () => {
       caught = err;
     }
     expect(caught).toBeInstanceOf(PlanValidationError);
-    expect((caught as PlanValidationError).code).toBe(DISTRIBUTED_DURATION_OUT_OF_RANGE);
+    expect((caught as PlanValidationError).code).toBe(RENDER_DURATION_OUT_OF_RANGE);
     expect((caught as Error).message).toContain("300000000000");
     expect((caught as Error).message).toContain("GSAP repeat:-1");
   });
 
-  it("throws DISTRIBUTED_DURATION_OUT_OF_RANGE for non-finite or zero values", () => {
+  it("throws RENDER_DURATION_OUT_OF_RANGE for non-finite or zero values", () => {
     for (const input of [
       { duration: Number.POSITIVE_INFINITY, totalFrames: 1, fps: 30 },
       { duration: 0, totalFrames: 1, fps: 30 },
@@ -146,12 +64,12 @@ describe("validateDistributedDuration", () => {
     ]) {
       let caught: unknown;
       try {
-        validateDistributedDuration(input);
+        validateRenderDuration(input);
       } catch (err) {
         caught = err;
       }
       expect(caught).toBeInstanceOf(PlanValidationError);
-      expect((caught as PlanValidationError).code).toBe(DISTRIBUTED_DURATION_OUT_OF_RANGE);
+      expect((caught as PlanValidationError).code).toBe(RENDER_DURATION_OUT_OF_RANGE);
     }
   });
 });

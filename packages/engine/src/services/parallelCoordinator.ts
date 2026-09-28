@@ -310,7 +310,6 @@ export interface WorkerSizing {
  */
 // The branch count is the decision provenance itself — each if records WHICH
 // constraint bound, which is the entire point of the function.
-// fallow-ignore-next-line complexity
 export function computeWorkerSizing(
   totalFrames: number,
   requested?: number,
@@ -552,7 +551,6 @@ function resolveParallelWorkerTimeoutMs(enabled: boolean): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
 }
 
-// fallow-ignore-next-line complexity
 async function captureFrameRange(
   session: CaptureSession,
   task: WorkerTask,
@@ -796,7 +794,6 @@ async function psnrForDiskSample(
 // Branches are the gate conditions themselves (mode/armed/streaming guards +
 // per-sample skip/breach) — already decomposed into psnrForDiskSample +
 // assertDiskSampleAboveFloor; further splitting obscures the check.
-// fallow-ignore-next-line complexity
 export async function verifyDiskDrawElementSamples(
   session: CaptureSession,
   task: WorkerTask,
@@ -823,7 +820,6 @@ export async function verifyDiskDrawElementSamples(
 // capture → self-verify → perf, with a classifying catch + closing finally);
 // flagged only because the disk self-verify call shifted its line range into
 // the changed-code audit. Not restructured by this PR.
-// fallow-ignore-next-line complexity
 async function executeWorkerTask(
   task: WorkerTask,
   serverUrl: string,

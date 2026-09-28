@@ -29,7 +29,6 @@ export function createGroupDragMover(
   let lastGesture: GroupGestureState | null = null;
 
   /** Snap the group's delta to nearby edges, publishing the guides drawn for it. */
-  // fallow-ignore-next-line complexity
   const snapGroupDelta = (
     groupG: GroupGestureState,
     e: React.PointerEvent<HTMLDivElement>,

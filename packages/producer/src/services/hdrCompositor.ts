@@ -166,7 +166,6 @@ export function resolveHdrVideoFrameIndex(
   return loop ? frameIndex % frameCount : Math.min(frameIndex, frameCount - 1);
 }
 
-// fallow-ignore-next-line complexity
 export function blitHdrVideoLayer(
   canvas: Buffer,
   el: ElementStackingInfo,
@@ -494,7 +493,6 @@ export interface HdrCompositeContext {
  *                          dumps. Pass `-1` to disable per-layer dumps even
  *                          when `KEEP_TEMP=1` (e.g. for warmup frames).
  */
-// fallow-ignore-next-line complexity
 export async function compositeHdrFrame(
   ctx: HdrCompositeContext,
   canvas: Buffer,

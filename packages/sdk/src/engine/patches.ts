@@ -153,7 +153,6 @@ export function pathToKey(path: string): string | null {
  * Used to replay a stored override-set onto a fresh base document (T3 init).
  */
 // Exhaustive key-family dispatcher — same shape as apply-patches.ts parsePath.
-// fallow-ignore-next-line complexity
 export function keyToPath(key: string): string | null {
   const style = /^([^.]+)\.style\.(.+)$/.exec(key);
   if (style?.[1] && style[2]) return stylePath(style[1], style[2]);

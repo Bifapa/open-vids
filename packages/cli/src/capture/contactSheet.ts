@@ -132,7 +132,6 @@ function escapeXml(s: string): string {
  * Output files: basePath → base-1.jpg, base-2.jpg, ...
  * Returns the list of written file paths (empty if no images).
  */
-// fallow-ignore-next-line complexity
 async function createContactSheetPages(
   imagePaths: string[],
   outputBasePath: string,
@@ -279,7 +278,6 @@ export async function createAssetContactSheet(
  * parent assets/ root (for external SVGs downloaded as <img src="*.svg">).
  * Files are deduplicated by basename so duplicates across dirs are collapsed.
  */
-// fallow-ignore-next-line complexity
 export async function createSvgContactSheet(
   svgsDir: string,
   outputPath: string,

@@ -316,7 +316,6 @@ async function closeBrowserAfterFailedProbe(
 
 // The probe keeps its renderer setup, bounded CDP sequence, PNG validation,
 // diagnostics, and cleanup together so every failure uses one contract.
-// fallow-ignore-next-line complexity
 async function probeBeginFrameSupport(
   browser: Browser,
   timeoutMs = BEGINFRAME_PROBE_TIMEOUT_MS,
@@ -690,7 +689,6 @@ export async function acquireBrowser(
   return browserLeasePool.acquire(createBrowserLaunchFingerprint(chromeArgs, config), enablePool);
 }
 
-// fallow-ignore-next-line complexity
 async function launchBrowser(
   fingerprint: Readonly<BrowserLaunchFingerprint>,
 ): Promise<{ browser: Browser; captureMode: CaptureMode }> {

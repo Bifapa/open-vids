@@ -39,7 +39,6 @@ interface StudioContextInput {
   refreshPreviewDocumentVersion: () => void;
 }
 
-// fallow-ignore-next-line complexity
 export function buildStudioContextValue(input: StudioContextInput): StudioContextValue {
   return {
     projectId: input.projectId,

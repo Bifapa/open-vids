@@ -126,7 +126,6 @@ export function runCancellableProcess(
       }
     });
     child.once("error", (error) => void finishReject(error));
-    // fallow-ignore-next-line complexity
     child.once("close", async (status, closeSignal) => {
       if (settled) return;
       if (terminationTask) {

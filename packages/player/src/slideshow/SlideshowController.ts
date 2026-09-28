@@ -30,7 +30,6 @@ export class SlideshowController {
     this.enterSlide(0);
   }
 
-  // fallow-ignore-next-line unused-class-member
   dispose(): void {
     // No subscriptions to tear down — navigation is seek-driven (see playTo).
   }
@@ -84,7 +83,6 @@ export class SlideshowController {
     );
   }
 
-  // fallow-ignore-next-line unused-class-member
   onChange(cb: () => void): () => void {
     this.changeCbs.add(cb);
     return () => this.changeCbs.delete(cb);

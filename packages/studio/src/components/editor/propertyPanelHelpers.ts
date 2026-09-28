@@ -448,7 +448,6 @@ export function extractBackgroundImageUrl(value: string | undefined): string {
 // value (e.g. rotationX) has re-parsed into `gsapAnimations`. Without this the
 // cube + fields drop the prop and flicker to 0 on every commit; gsap.getProperty
 // reflects the in-place instant patch, so it's the true current value.
-// fallow-ignore-next-line complexity
 const ALWAYS_READ_CHANNELS = [
   "x",
   "y",
@@ -545,7 +544,6 @@ export function readGsapBorderRadiusForPanel(
  * needs the same string), so it lives here rather than as a PropertyPanel
  * closure. Pure — the caller owns the clipboard write, toast, and copied state.
  */
-// fallow-ignore-next-line complexity
 export function buildElementInfoText(
   element: DomEditSelection,
   sourceLabel: string,

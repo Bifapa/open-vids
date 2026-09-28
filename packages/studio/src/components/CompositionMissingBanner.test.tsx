@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 // The mount/unmount harness matches ProjectUnreachableBanner.test.tsx's — the
 // same small React-root scaffold every banner test in this directory uses.
 // @vitest-environment happy-dom

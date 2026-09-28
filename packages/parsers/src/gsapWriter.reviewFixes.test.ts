@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * Correctness regressions for the SDK-cutover review (PR #1539).
  *

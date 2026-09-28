@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity
 /**
  * audioPadTrim — pad-or-trim the mixed-audio file so its exact duration
  * matches the assembled video's frame count divided by fps.

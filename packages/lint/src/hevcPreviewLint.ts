@@ -113,7 +113,6 @@ async function probeIsHevc(ffprobePath: string, filePath: string): Promise<boole
  * `missing_local_asset` already reports those, and hevc_preview_codec never
  * probes a file that doesn't exist.
  */
-// fallow-ignore-next-line complexity
 export function collectLocalVideoCandidates(
   projectDir: string,
   htmlSources: HtmlSourceLike[],

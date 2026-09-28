@@ -64,7 +64,6 @@ function pickBestAnimation(
   if (candidates.length === 1) return candidates[0];
   const currentTime = usePlayerStore.getState().currentTime;
   // Intentional multi-signal ranking: group match, selector specificity, and playhead overlap.
-  // fallow-ignore-next-line complexity
   const scored = candidates.map((a) => {
     let score = 0;
     if (a.keyframes) score += 10;
@@ -317,7 +316,6 @@ function buildGlobalStaticSetCall(
 }
 
 /** Convert-if-flat, then write ALL props into ONE keyframe at the playhead. */
-// fallow-ignore-next-line complexity
 async function commitKeyframeProps(
   selection: DomEditSelection,
   anim: GsapAnimation,
@@ -430,7 +428,6 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
 
   const commitAnimatedProperties = useCallback(
     // This is the single routing boundary for set, keyframe, whole-tween, and first-group writes.
-    // fallow-ignore-next-line complexity
     async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
       if (!gsapCommitMutation) return;
       const propEntries = Object.entries(props);

@@ -74,7 +74,6 @@ export function strengthAtTime(
   return Math.min(1, computeRmsAt(analysis.channelData, analysis.sampleRate, time) / analysis.peak);
 }
 
-// fallow-ignore-next-line complexity
 export async function detectBeats(audioBuffer: AudioBuffer): Promise<number[]> {
   const channelData = audioBuffer.getChannelData(0);
   const sampleRate = audioBuffer.sampleRate;
@@ -156,7 +155,6 @@ function octaveAlignBpm(bpm: number, reference: number): number {
   return best;
 }
 
-// fallow-ignore-next-line complexity
 function regularizeBeats(rawBeats: number[], bpm: number, duration: number): number[] {
   if (rawBeats.length === 0 || bpm <= 0 || duration <= 0) return rawBeats;
   const beatInterval = 60 / bpm;
@@ -212,7 +210,6 @@ function gateBeatsBySilence(
   return { times, strengths, peak };
 }
 
-// fallow-ignore-next-line complexity
 export async function analyzeMusicFromBuffer(audioBuffer: AudioBuffer): Promise<MusicBeatAnalysis> {
   const channelData = audioBuffer.getChannelData(0);
   const sampleRate = audioBuffer.sampleRate;

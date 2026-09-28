@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-type code-duplication complexity
 /**
  * Streaming Encoder Service
  *

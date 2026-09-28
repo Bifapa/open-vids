@@ -133,7 +133,6 @@ export type { GsapDragCommitCallbacks };
  * Returns an explicit persisted/blocked outcome. Callers must reject blocked
  * outcomes so the gesture layer restores its runtime and overlay drafts.
  */
-// fallow-ignore-next-line complexity
 async function preflightGsapDragIntercept(
   selection: DomEditSelection,
   animations: GsapAnimation[],
@@ -404,7 +403,6 @@ export async function tryGsapRotationIntercept(
     return { status: "persisted" };
   }
 
-  // fallow-ignore-next-line code-duplication
   if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
     const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
     if (newId) anim = { ...anim, id: newId };

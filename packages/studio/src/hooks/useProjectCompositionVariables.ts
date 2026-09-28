@@ -16,7 +16,6 @@ export interface CompositionVariableGroup {
 }
 
 /** Read one composition file's declarations, or null to skip (unreadable / none / unparseable). */
-// fallow-ignore-next-line complexity
 async function readGroup(
   path: string,
   readProjectFile: (path: string) => Promise<string>,

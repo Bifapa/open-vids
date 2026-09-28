@@ -84,7 +84,6 @@ export function parsePx(value: string | undefined): number | null {
 }
 
 /** Whether a CSS transform is the identity (matrix or matrix3d). Core-internal. */
-// fallow-ignore-next-line complexity
 function isIdentityTransform(value: string | undefined): boolean {
   const transform = (value ?? "none").trim();
   if (!transform || transform === "none") return true;
@@ -114,7 +113,6 @@ function isIdentityTransform(value: string | undefined): boolean {
   return values.every((part, index) => Math.abs(part - (identity[index] ?? 0)) < 0.0001);
 }
 
-// fallow-ignore-next-line complexity
 function resolveCapabilities(facts: EditableElementFacts): DomEditCapabilities {
   if (!facts.hasStableTarget || facts.isInsideLockedComposition) {
     return {

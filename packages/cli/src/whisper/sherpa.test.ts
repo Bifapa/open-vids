@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DownloadOptions } from "../cloud/download.js";
+import type { DownloadOptions } from "../utils/httpsDownload.js";
 import {
   ensureParakeetModel,
   installSherpaRuntime,

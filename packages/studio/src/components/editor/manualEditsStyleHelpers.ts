@@ -1,7 +1,6 @@
 export function splitTopLevelWhitespace(value: string): string[] {
   const parts: string[] = [];
   let depth = 0;
-  // fallow-ignore-next-line code-duplication
   let current = "";
   for (const char of value.trim()) {
     if (char === "(") depth += 1;

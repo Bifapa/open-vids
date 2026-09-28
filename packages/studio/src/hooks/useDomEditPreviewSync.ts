@@ -54,7 +54,6 @@ export function useDomEditPreviewSync({
   useEffect(() => {
     if (!previewIframe) return;
 
-    // fallow-ignore-next-line complexity
     const syncSelectionFromDocument = async () => {
       if (captionEditMode) return;
       const currentSelection = domEditSelectionRef.current;
@@ -137,18 +136,14 @@ export function useDomEditPreviewSync({
   // not when openSourceForSelection is recreated due to editingFile content updates.
   const openSourceRef = useRef(openSourceForSelection);
   openSourceRef.current = openSourceForSelection;
-  useEffect(
-    // fallow-ignore-next-line complexity
-    () => {
-      if (!domEditSelection || !openSourceRef.current) return;
-      if (!domEditSelection.sourceFile) return;
-      if (!useDockLayoutStore.getState().visiblePanels.has("code")) return;
-      openSourceRef.current(domEditSelection.sourceFile, {
-        id: domEditSelection.id,
-        selector: domEditSelection.selector,
-        selectorIndex: domEditSelection.selectorIndex,
-      });
-    },
-    [domEditSelection],
-  );
+  useEffect(() => {
+    if (!domEditSelection || !openSourceRef.current) return;
+    if (!domEditSelection.sourceFile) return;
+    if (!useDockLayoutStore.getState().visiblePanels.has("code")) return;
+    openSourceRef.current(domEditSelection.sourceFile, {
+      id: domEditSelection.id,
+      selector: domEditSelection.selector,
+      selectorIndex: domEditSelection.selectorIndex,
+    });
+  }, [domEditSelection]);
 }

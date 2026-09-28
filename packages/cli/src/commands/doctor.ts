@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity
 import { defineCommand } from "citty";
 import { execFileSync, execSync } from "node:child_process";
 import * as fs from "node:fs";

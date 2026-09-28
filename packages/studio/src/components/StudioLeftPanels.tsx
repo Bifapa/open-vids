@@ -35,7 +35,6 @@ function PanelColumn({ footer, children }: { footer: ReactNode; children: ReactN
   );
 }
 
-// fallow-ignore-next-line complexity
 export function StudioLeftPanels({
   onSelectComposition,
   onAddBlock,

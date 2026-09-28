@@ -76,7 +76,6 @@ function collectTextureCss(styles: LintContext["styles"]): {
     }
     roots.push(root);
 
-    // fallow-ignore-next-line complexity
     root.walkRules((rule) => {
       const selectors = rule.selectors ?? [];
       let hasMaskImage = false;
@@ -98,7 +97,6 @@ function collectTextureCss(styles: LintContext["styles"]): {
   }
 
   for (const root of roots) {
-    // fallow-ignore-next-line complexity
     root.walkRules((rule) => {
       const selectors = rule.selectors ?? [];
       let hasDropShadow = false;
@@ -128,7 +126,6 @@ function collectTextureCss(styles: LintContext["styles"]): {
   return { definedTextureClasses, dropShadowRules };
 }
 
-// fallow-ignore-next-line complexity
 export const textureRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   ({ tags, styles }) => {
     const findings: HyperframeLintFinding[] = [];

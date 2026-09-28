@@ -35,7 +35,6 @@ export default defineCommand({
         "Bump this project's package.json hyperframes@<version> script pins to latest (default: current dir)",
     },
   },
-  // fallow-ignore-next-line complexity
   async run({ args }) {
     const useJson = args.json === true;
     const checkOnly = args.check === true;
@@ -104,7 +103,6 @@ async function confirmUpgrade(): Promise<boolean> {
  * method — not a hardcoded `npm install -g`, which fails or silently shadows a
  * bun/pnpm/brew install. Extracted from `run` to keep that handler simple.
  */
-// fallow-ignore-next-line complexity
 function applyUpgrade(result: UpdateCheckResult, autoYes: boolean): void {
   // Reject anything that isn't a strict semver before it reaches a command. A
   // poisoned npm registry response could otherwise put shell metacharacters

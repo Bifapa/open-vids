@@ -476,10 +476,8 @@ export default defineCommand({
     },
   },
   // `run` is 28 cyclomatic and predates this change, which touches only
-  // `runAdd`. Fallow scores it as new because the file changed. Splitting the
-  // tag-fallback branch out would fix it honestly and is worth doing, but not
-  // inside a telemetry change.
-  // fallow-ignore-next-line complexity
+  // `runAdd`. Splitting the tag-fallback branch out would fix it honestly
+  // and is worth doing, but not inside a telemetry change.
   async run({ args }) {
     const projectDir = resolve(args.dir ?? process.cwd());
     const json = args.json === true;

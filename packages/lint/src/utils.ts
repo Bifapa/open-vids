@@ -147,7 +147,6 @@ export function findHtmlTag(tags: readonly OpenTag[]): OpenTag | null {
   return tags.find((tag) => tag.name === "html") ?? null;
 }
 
-// fallow-ignore-next-line complexity
 export function findRootTag(source: string, parsedTags?: readonly OpenTag[]): OpenTag | null {
   const tags = parsedTags ?? parseHtmlStructure(source).tags;
   const bodyTag = tags.find((tag) => tag.name === "body");
@@ -380,7 +379,6 @@ export function getInlineScriptSyntaxError(
   }
 }
 
-// fallow-ignore-next-line complexity
 /**
  * Blank the contents of every `'...'` and `"..."` literal, keeping the quotes so
  * the source stays the same shape.
@@ -401,7 +399,6 @@ export function stripStringLiterals(source: string): string {
   );
 }
 
-// fallow-ignore-next-line complexity
 function scanJsComments(source: string): { out: string; balanced: boolean } {
   let out = "";
   let i = 0;
@@ -601,7 +598,6 @@ class CodeContext {
  * parse this scanner cannot model degrades to the caller's pre-existing behaviour
  * rather than silently blanking real code on an `error`-severity gate.
  */
-// fallow-ignore-next-line complexity
 export function stripJsStringLiterals(source: string): string {
   let out = "";
   let i = 0;
@@ -722,7 +718,6 @@ export function stripJsStringLiterals(source: string): string {
  * a slide printing comment markers as content otherwise pairs two of them and
  * deletes the real rules in between.
  */
-// fallow-ignore-next-line complexity
 export function stripCssComments(source: string): string {
   let out = "";
   let i = 0;

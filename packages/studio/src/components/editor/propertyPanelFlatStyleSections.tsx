@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { useEffect, useState } from "react";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
@@ -36,7 +35,6 @@ import { GradientField, ImageFillField } from "./propertyPanelFill";
 /*  Flat Fill sub-block (design_handoff_studio_inspector, #11a)        */
 /* ------------------------------------------------------------------ */
 
-// fallow-ignore-next-line complexity
 function FlatFillFields({
   projectId,
   element,
@@ -226,7 +224,6 @@ function FlatStrokeRow({
 /*  Flat Radius row — always delegates to BorderRadiusEditor            */
 /* ------------------------------------------------------------------ */
 
-// fallow-ignore-next-line complexity
 function FlatRadiusRow({
   styles,
   gsapBorderRadius,

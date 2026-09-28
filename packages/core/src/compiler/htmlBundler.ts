@@ -398,7 +398,6 @@ function warnColorGradingLutNotInlined(lutSrc: string): void {
   );
 }
 
-// fallow-ignore-next-line complexity
 function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: string): string {
   if (!value.trim().startsWith("{")) return value;
   let parsed: unknown;
@@ -537,7 +536,6 @@ function countBundledAuthoredCompositionIds(hosts: Element[]): Map<string, numbe
   return counts;
 }
 
-// fallow-ignore-next-line complexity
 export function assignBundledRuntimeCompositionIds(
   hosts: Element[],
   counts: Map<string, number> = countBundledAuthoredCompositionIds(hosts),

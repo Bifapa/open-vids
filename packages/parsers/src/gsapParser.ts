@@ -729,7 +729,6 @@ function tryResolveStringProp(propValue: AstNode, scope: ScopeBindings): string 
  * normalized `GsapKeyframesData` structure. Handles all three GSAP formats:
  * percentage objects, object arrays, and simple (property-array) objects.
  */
-// fallow-ignore-next-line complexity
 function parseKeyframesNode(
   node: AstNode | undefined,
   scope: ScopeBindings,
@@ -766,7 +765,6 @@ function parseKeyframesNode(
   return undefined;
 }
 
-// fallow-ignore-next-line complexity
 function parsePercentageKeyframes(node: AstNode, scope: ScopeBindings): GsapKeyframesData {
   const keyframes: GsapPercentageKeyframe[] = [];
   let ease: string | undefined;
@@ -831,7 +829,6 @@ function computeKeyframesTotalDuration(
   return getObjectArrayKeyframeTiming(durations)?.totalDuration;
 }
 
-// fallow-ignore-next-line complexity
 function parseObjectArrayKeyframes(
   node: AstNode,
   scope: ScopeBindings,
@@ -878,7 +875,6 @@ function parseObjectArrayKeyframes(
   return { format: "object-array", keyframes };
 }
 
-// fallow-ignore-next-line complexity
 function parseSimpleArrayKeyframes(node: AstNode, scope: ScopeBindings): GsapKeyframesData {
   const arrayProps: Map<string, (number | string)[]> = new Map();
   let ease: string | undefined;
@@ -1007,7 +1003,6 @@ function parseMotionPathNode(
   };
 }
 
-// fallow-ignore-next-line complexity
 function tweenCallToAnimation(
   call: TweenCallInfo,
   scope: ScopeBindings,
@@ -1898,7 +1893,6 @@ export interface SplitAnimationsResult {
   skippedSelectors: string[];
 }
 
-// fallow-ignore-next-line complexity
 export function splitAnimationsInScript(
   script: string,
   opts: SplitAnimationsOptions,
@@ -3244,7 +3238,6 @@ export function removeArcPathFromScript(script: string, animationId: string): st
  * has the most properties. If the tween already belongs to a single group,
  * returns the script unchanged with the original ID.
  */
-// fallow-ignore-next-line complexity
 export function splitIntoPropertyGroups(
   script: string,
   animationId: string,

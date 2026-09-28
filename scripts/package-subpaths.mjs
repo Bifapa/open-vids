@@ -1,6 +1,5 @@
 // Manifest condition normalization is deliberately branch-heavy; every shape
 // is covered by package-subpaths.test.mjs and the clean packed-consumer gate.
-// fallow-ignore-file complexity
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

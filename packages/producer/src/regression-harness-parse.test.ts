@@ -1,9 +1,8 @@
 // Pure-function tests for `parseArgs()` in the regression harness. Pins the
 // `--exclude-tags` comma-parsing contract that the values baked into
-// `Dockerfile.test` and `packages/producer/package.json` test scripts depend
-// on. When someone changes the parser (e.g. to space-separated or repeated
-// flags) these tests + the invocation strings in the Dockerfile / package.json
-// must move together.
+// `packages/producer/package.json` test scripts depend on. When someone
+// changes the parser (e.g. to space-separated or repeated flags) these tests
+// + the invocation strings in package.json must move together.
 
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -32,11 +31,11 @@ describe("parseArgs() — --exclude-tags", () => {
     expect(opts.excludeTags).toEqual(["transparency", "field-signal-reproducer"]);
   });
 
-  it("matches the values baked into Dockerfile.test ENTRYPOINT and package.json scripts", () => {
-    // Pins the exact string the Dockerfile.test ENTRYPOINT + package.json
-    // `test:regression*` scripts pass. If either invocation site changes to
-    // whitespace-separated or another delimiter, this test fails and forces
-    // an audit of the parser at the same time.
+  it("matches the values baked into package.json scripts", () => {
+    // Pins the exact string the package.json `test:regression*` scripts
+    // pass. If the invocation site changes to whitespace-separated or
+    // another delimiter, this test fails and forces an audit of the parser
+    // at the same time.
     const opts = parseArgs(
       withProgram([
         "--sequential",

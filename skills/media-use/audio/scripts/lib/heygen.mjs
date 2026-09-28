@@ -100,10 +100,10 @@ export function heygenAuthHeaders() {
   }
   if (cred?.expired)
     throw new Error(
-      "HeyGen OAuth token expired — run `npx hyperframes auth refresh` (or `npx hyperframes auth login`)",
+      "HeyGen OAuth token expired — refresh the token in ~/.heygen/credentials or set $HEYGEN_API_KEY",
     );
   throw new Error(
-    "no HeyGen credentials — set $HEYGEN_API_KEY, or run `npx hyperframes auth login` (writes ~/.heygen/credentials)",
+    "no HeyGen credentials — set $HEYGEN_API_KEY or $HYPERFRAMES_API_KEY, or place a key in ~/.heygen/credentials",
   );
 }
 

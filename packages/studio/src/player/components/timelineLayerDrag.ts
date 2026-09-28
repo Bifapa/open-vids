@@ -267,7 +267,6 @@ export function resolveTimelineLayerZIndexChanges(input: {
     : null;
 }
 
-// fallow-ignore-next-line complexity
 function resolveDragPlacement(
   layers: readonly StackingTimelineLayer[],
   targetPosition: number,

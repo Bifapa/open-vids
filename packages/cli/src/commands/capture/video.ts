@@ -8,7 +8,6 @@ import { CAPTURE_USER_AGENT } from "../../capture/userAgent.js";
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_CONTENT_TYPE_RE = /^(video\/|application\/(mp4|octet-stream|x-mpegurl))/i;
 
-// fallow-ignore-next-line complexity
 async function streamToFile(url: string, destPath: string): Promise<number> {
   // safeFetch re-validates redirect hops; bare redirect:"follow" leaks to private hosts.
   const r = await safeFetch(url, {
@@ -185,7 +184,6 @@ export interface VideoModeArgs {
   list?: boolean;
 }
 
-// fallow-ignore-next-line complexity
 export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   const projectDir = resolve(args.project);
   // standalone capture writes `<dir>/extracted/…`; W2H project nests under `<dir>/capture/extracted/…`.

@@ -107,7 +107,6 @@ describe("declareVariable", () => {
     expect(comp.getVariableDeclarations()).toEqual([TITLE_DECL]);
   });
 
-  // fallow-ignore-next-line code-duplication
   it("supports fragment compositions with a root element (schema on the root div)", async () => {
     // A fragment (no <html>) still has a composition root; declarations live on
     // that root div, which survives serialize — so template/sub-comp files are

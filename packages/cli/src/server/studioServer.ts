@@ -638,7 +638,6 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           }
           state.status = "failed";
           state.error = err instanceof Error ? err.message : String(err);
-          // fallow-ignore-next-line code-duplication
           refreshTelemetryPosture();
           emitStudioRenderError(opts, Date.now() - startTime, state.stage, err, renderJob);
           try {

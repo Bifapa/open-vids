@@ -48,7 +48,6 @@ function safeRemoveListener(t: EventTarget | null, type: string, h: EventListene
 // timestamp. Undo steps to the NEWER op (beatAt >= fileAt); redo replays the
 // inverse, stepping to the OLDER op (beatAt <= fileAt). Returns true when it
 // handled the keystroke (so the file-history path is skipped).
-// fallow-ignore-next-line complexity
 function tryApplyBeatHistory(
   direction: "undo" | "redo",
   fileState: {

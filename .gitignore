@@ -10,18 +10,9 @@ dist/
 .env.local
 .env.*.local
 
-# Lefthook per-developer overrides (not shared; see lefthook.yml for shared hooks)
-lefthook-local.yml
-
 # OS
 .DS_Store
 Thumbs.db
-
-# Docs media — served from CDN, not committed.
-# Regenerate with scripts/generate-{catalog,template}-previews.ts then upload
-# with `bun run upload:docs-images`. Add explicit negations below for any
-# non-generated assets (logos, svgs) that should stay in the repo.
-docs/images/
 
 videos/
 
@@ -77,9 +68,6 @@ packages/core/src/generated/*
 !packages/core/src/generated/position-edits-render-inline.test.ts
 packages/producer/src/services/fontData.generated.ts
 
-# Plan documents (working artifacts, not committed)
-docs/plans/
-
 # Local proof / test artifacts
 qa-artifacts/
 my-video/
@@ -89,18 +77,6 @@ my-video/
 .hyperframes/
 # Studio authoring proxies are generated locally and can grow to multiple GB.
 .transcode-cache/
-examples/*
-# Tracked OSS examples — negations override the blanket `examples/*` ignore.
-!examples/aws-lambda
-!examples/aws-lambda/**
-!examples/k8s-jobs
-!examples/k8s-jobs/**
-!examples/gcp-cloud-run
-!examples/gcp-cloud-run/**
-!examples/docs-reference-project
-!examples/docs-reference-project/**
-# …but never the local smoke run's build/render artifacts.
-examples/gcp-cloud-run/scripts/gcp-smoke-artifacts/
 packages/studio/data/
 
 .desloppify/
@@ -153,9 +129,6 @@ raycast-*/
 test-runs/
 test-outputs/
 
-# Superpowers docs (Claude Code worktrees + local state are handled above by
-# the blanket .claude/ rule)
-docs/superpowers/
 .worktrees
 hyperframes-bench/
 tmp/
@@ -168,6 +141,7 @@ tmp/
 # Local Chrome-for-Testing downloads (large binaries, never commit)
 chrome/
 
-# Hosted catalog item files are generated output the docs host serves; the rules above match their folder names
-!docs/public/catalog/items/**/compositions/
-!docs/public/catalog/items/*-ad/
+
+# Python bytecode (test runs generate these alongside skill scripts)
+__pycache__/
+*.pyc

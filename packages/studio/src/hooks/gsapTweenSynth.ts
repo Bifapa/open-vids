@@ -84,7 +84,6 @@ export function deduplicateKeyframes<T extends MergeableKeyframe>(keyframes: T[]
   return Array.from(byPct.values()).sort((a, b) => a.percentage - b.percentage);
 }
 
-// fallow-ignore-next-line complexity
 export function synthesizeFlatTweenKeyframes(anim: GsapAnimation): GsapKeyframesData | null {
   // Both parsers store extras as raw source text (`__raw:${code}`) so
   // non-editable config like `stagger: {...}` survives verbatim — a literal

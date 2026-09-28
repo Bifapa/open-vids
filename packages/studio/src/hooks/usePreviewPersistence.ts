@@ -74,7 +74,6 @@ export async function drainStudioSaveQueues(
   return waitForDomQueue();
 }
 
-// fallow-ignore-next-line complexity
 async function clearLegacyStudioMotionFile(
   readOptionalProjectFile: (path: string) => Promise<string>,
   writeProjectFile: (path: string, content: string) => Promise<void>,

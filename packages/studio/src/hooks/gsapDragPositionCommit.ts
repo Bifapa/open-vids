@@ -84,7 +84,6 @@ async function extendTweenAndAddKeyframe(
   );
 }
 
-// fallow-ignore-next-line complexity
 async function commitKeyframedPosition(
   selection: DomEditSelection,
   anim: GsapAnimation,
@@ -156,7 +155,6 @@ function resolveDragRuntime(
   };
 }
 
-// fallow-ignore-next-line complexity
 async function commitFlatViaKeyframes(
   selection: DomEditSelection,
   anim: GsapAnimation,
@@ -233,7 +231,6 @@ async function commitFlatViaKeyframes(
   }
 
   const coalesceKey = `gsap:convert-drag:${anim.id}`;
-  // fallow-ignore-next-line code-duplication
   await callbacks.commitMutation(
     selection,
     {
@@ -261,8 +258,6 @@ async function commitFlatViaKeyframes(
   if (editedSelected) parkPlayheadOnKeyframe(anim, pct);
 }
 
-// fallow-ignore-next-line code-duplication
-// fallow-ignore-next-line complexity
 export async function commitGsapPositionFromDrag(
   selection: DomEditSelection,
   anim: GsapAnimation,
@@ -273,7 +268,6 @@ export async function commitGsapPositionFromDrag(
   callbacks: GsapDragCommitCallbacks,
 ): Promise<void> {
   const el = selection.element;
-  // fallow-ignore-next-line code-duplication
   const { newX, newY, baseGsapX, baseGsapY } = computeDraggedGsapPosition(
     el,
     studioOffset,

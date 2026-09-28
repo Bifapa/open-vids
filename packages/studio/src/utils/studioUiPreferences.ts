@@ -64,7 +64,6 @@ function storageKeyFor(projectId: string | null): string {
   return projectId ? `${STUDIO_UI_PREFERENCES_KEY}:${projectId}` : STUDIO_UI_PREFERENCES_KEY;
 }
 
-// fallow-ignore-next-line complexity
 function readStorage(storage: Storage | null, key: string): StudioUiPreferences {
   if (!storage) return {};
   try {

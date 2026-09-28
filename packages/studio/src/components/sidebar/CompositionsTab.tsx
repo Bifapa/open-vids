@@ -82,7 +82,6 @@ function parsePositiveNumber(value: string | null): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-// fallow-ignore-next-line complexity
 function resolveIframeDuration(iframe: HTMLIFrameElement | null): number | null {
   try {
     const win = iframe?.contentWindow as PreviewWindow | null;

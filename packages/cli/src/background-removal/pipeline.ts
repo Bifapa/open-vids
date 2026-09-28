@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity
 /**
  * Background-removal rendering pipeline.
  *

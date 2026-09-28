@@ -333,7 +333,6 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
       selectedElementId: "clip-490",
       selectedElementIds: new Set(["clip-490"]),
       // Repeated fixture shape intentionally contrasts row and clip windowing scales.
-      // fallow-ignore-next-line code-duplication
       elements: Array.from({ length: 500 }, (_, index) => ({
         id: `clip-${index}`,
         tag: "div",

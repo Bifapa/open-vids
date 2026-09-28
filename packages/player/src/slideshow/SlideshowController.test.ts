@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { describe, it, expect, vi } from "vitest";
 import { SlideshowController } from "./SlideshowController";
 import type { ResolvedSlideshow } from "@hyperframes/core/slideshow";

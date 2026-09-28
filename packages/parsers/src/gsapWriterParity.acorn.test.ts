@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * Differential parity test: acorn writer vs recast writer for addKeyframeToScript.
  *

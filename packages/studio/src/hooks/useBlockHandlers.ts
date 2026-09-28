@@ -110,7 +110,6 @@ export function useBlockHandlers({
   const handleAddBlock = useCallback(
     (blockName: string) => {
       if (!projectId) return;
-      // fallow-ignore-next-line complexity
       void (async () => {
         const result = await runBlockInstall(blockName, () =>
           addBlockToProject({

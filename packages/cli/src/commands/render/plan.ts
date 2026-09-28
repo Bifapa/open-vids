@@ -222,7 +222,6 @@ function resolveHfEnvOverrides(): readonly string[] {
 }
 
 /** Parse and validate command input into an immutable execution plan. */
-// fallow-ignore-next-line complexity
 export function createRenderPlan(args: RenderCommandArgs, now = new Date()): RenderPlan {
   const hfEnvOverrides = resolveHfEnvOverrides();
   const hasExplicitComposition = hasExplicitCompositionArg(args.composition);

@@ -93,7 +93,6 @@ function tweenUsesScaleLonghands(anim: GsapAnimation | null): boolean {
 
 // ── Resize intercept ──────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 export async function tryGsapResizeIntercept(
   selection: DomEditSelection,
   size: { width: number; height: number },
@@ -319,7 +318,6 @@ export async function tryGsapResizeIntercept(
   // it needs none of this.
   // ponytail: for a 3D-rotated element the rects are AABBs, so the anchor is
   // approximate rather than corner-exact.
-  // fallow-ignore-next-line complexity
   const finalizeScaleResizeCommit = async (): Promise<boolean> => {
     // Only the scale route captures the element, so a null draft means this
     // resize took the size route and never moved anything: the drop point is
@@ -453,7 +451,6 @@ export async function tryGsapResizeIntercept(
   const outsideRange = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01); // Convert flat tweens to keyframes only for in-range resizes.
   // Outside-range uses the extend path which handles everything atomically.
   if (!outsideRange) {
-    // fallow-ignore-next-line code-duplication
     if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
       const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
       if (newId) anim = { ...anim, id: newId };

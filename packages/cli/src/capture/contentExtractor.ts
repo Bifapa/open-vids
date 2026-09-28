@@ -248,7 +248,6 @@ export async function extractVisibleText(page: Page): Promise<string> {
  * Batches requests to stay under free-tier rate limits.
  * Returns a map of filename -> caption string.
  */
-// fallow-ignore-next-line complexity
 export async function captionImagesWithGemini(
   outputDir: string,
   progress: (stage: string, detail?: string) => void,

@@ -332,7 +332,6 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // root_missing_composition_id + root_missing_dimensions
-  // fallow-ignore-next-line complexity
   ({ rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
     if (!rootTag || !readDecodedAttr(rootTag.raw, "data-composition-id")) {
@@ -441,7 +440,6 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // missing_timeline_registry
-  // fallow-ignore-next-line complexity
   ({ source, rawSource, rootTag, options }) => {
     // Sub-compositions inherit window.__timelines from the host composition
     if (options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template")) {

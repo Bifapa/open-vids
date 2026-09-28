@@ -144,7 +144,6 @@ export interface SlideInspectorProps {
   onRemoveFragment: (time: number) => void;
 }
 
-// fallow-ignore-next-line complexity
 export function SlideInspector({
   sceneId,
   slide,
@@ -443,7 +442,6 @@ export interface HotspotToolProps {
   onRemoveHotspot: (sceneId: string, hotspotId: string) => void;
 }
 
-// fallow-ignore-next-line complexity
 export function HotspotTool({
   selectedSceneId,
   slide,
@@ -460,7 +458,6 @@ export function HotspotTool({
   const selectedHfId = domEditSelection?.hfId ?? null;
   const elementKey = selectedElementId || selectedHfId;
 
-  // fallow-ignore-next-line complexity
   const handleMakeHotspot = useCallback(() => {
     if (!selectedSceneId || !targetSequenceId || !elementKey) return;
     const id = `hotspot-${elementKey}-${generateId()}`;

@@ -42,10 +42,10 @@ export type HyperframeLinterOptions = {
   isSubComposition?: boolean;
   externalStyles?: Array<{ href: string; content: string; file?: string }>;
   /**
-   * Set to `true` when linting compositions destined for distributed / Lambda
-   * rendering, where system-font capture (`allowSystemFontCapture`) is
-   * disabled.  When `true`, the `system_font_will_alias` rule is elevated from
-   * `"info"` to `"warning"` because the alias substitution will NOT happen at
+   * Set to `true` when linting compositions destined for renders where
+   * system-font capture (`allowSystemFontCapture`) is disabled.  When `true`,
+   * the `system_font_will_alias` rule is elevated from `"info"` to
+   * `"warning"` because the alias substitution will NOT happen at
    * render time — the font will silently fall back to whatever the OS provides.
    */
   distributed?: boolean;

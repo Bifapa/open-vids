@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-type circular-dependency code-duplication complexity
 /**
  * Render Orchestrator Service
  *
@@ -242,7 +241,6 @@ export function sampleDirectoryBytes(dir: string): number {
   return total;
 }
 
-// fallow-ignore-next-line complexity
 function summarizeExtractionObservability(
   extractionResult: ExtractionResult | null,
   videoCount: number,
@@ -353,7 +351,7 @@ export interface RenderConfig {
    *   and every one starts on an IDR frame, because the encoder's GOP is
    *   locked to `hlsSegmentSeconds × fps`. Like `"png-sequence"`,
    *   `outputPath` is treated as a directory. SDR only, software encoder
-   *   only, and not available in distributed / Lambda / Cloud Run mode.
+   *   only.
    *
    * Alpha output (`"webm"`, `"mov"`, `"png-sequence"`, `"gif"`) automatically
    * forces screenshot capture (Chrome's BeginFrame compositor does not

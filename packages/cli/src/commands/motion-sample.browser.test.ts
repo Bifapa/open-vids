@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-// fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

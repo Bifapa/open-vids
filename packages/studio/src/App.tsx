@@ -73,7 +73,6 @@ export interface StudioAppProps {
   readOnlyPreviewReason?: string;
 }
 
-// fallow-ignore-next-line complexity
 export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: StudioAppProps = {}) {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());

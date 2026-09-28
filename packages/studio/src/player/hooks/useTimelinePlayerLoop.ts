@@ -42,7 +42,6 @@ export function useTimelinePlayerLoop({
   }, [reverseRafRef]);
 
   const startRAFLoop = useCallback(() => {
-    // fallow-ignore-next-line complexity
     const tick = () => {
       const adapter = getAdapter();
       if (adapter) {

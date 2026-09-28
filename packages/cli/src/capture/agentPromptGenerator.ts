@@ -21,7 +21,6 @@ import type { CatalogedAsset } from "./assetCataloger.js";
  * Infer a human-readable role hint from a hex color based on luminance and saturation.
  * Not a substitute for DESIGN.md — just helps orient agents scanning the brand summary.
  */
-// fallow-ignore-next-line complexity
 function inferColorRole(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -58,7 +57,6 @@ export function generateAgentPrompt(
   writeCaptureFileSync(join(outputDir, ".cursorrules"), prompt, "utf-8");
 }
 
-// fallow-ignore-next-line complexity
 function buildPrompt(
   outputDir: string,
   url: string,

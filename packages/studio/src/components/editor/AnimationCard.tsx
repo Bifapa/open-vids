@@ -31,7 +31,6 @@ interface AnimationCardProps extends GsapAnimationEditCallbacks {
   onFocusSegmentConsumed?: () => void;
 }
 
-// fallow-ignore-next-line complexity
 export const AnimationCard = memo(function AnimationCard({
   animation,
   defaultExpanded,

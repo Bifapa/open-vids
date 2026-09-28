@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 // Regression: `lint --json` used process.exit() right after console.log(JSON).
 // process.exit() terminates before Node flushes an async (non-TTY / piped)
 // stdout, so piping `hyperframes lint --json` on Windows silently lost the whole

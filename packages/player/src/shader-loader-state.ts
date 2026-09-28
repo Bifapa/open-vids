@@ -77,7 +77,6 @@ export class ShaderLoaderState {
     setRowValue(this._el.frameRow, this._el.frameValue, "");
   }
 
-  // fallow-ignore-next-line unused-class-member, complexity
   update(status: ShaderTransitionState, loadingMode: string): void {
     const draws = loadingMode === "player" && status.loading && !status.ready;
     // A shader message that draws nothing leaves the Loading assets card to its own owner.
@@ -117,7 +116,6 @@ export class ShaderLoaderState {
 
     this._el.fill.style.transform = `scaleX(${ratio})`;
 
-    // fallow-ignore-next-line code-duplication
     const transitionValue =
       status.currentTransition !== undefined && status.transitionTotal !== undefined
         ? `${status.currentTransition}/${status.transitionTotal}`
@@ -159,7 +157,6 @@ export class ShaderLoaderState {
     if (this._drawingAssets) this.hide();
   }
 
-  // fallow-ignore-next-line unused-class-member
   get hideTimeout(): ReturnType<typeof setTimeout> | null {
     return this._hideTimeout;
   }

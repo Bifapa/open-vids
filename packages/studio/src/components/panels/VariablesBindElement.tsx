@@ -57,7 +57,6 @@ function firstFontFamily(value: string): string {
   return first.trim().replace(/^["']|["']$/g, "") || "sans-serif";
 }
 
-// fallow-ignore-next-line complexity
 export function buildBindActions(
   selection: DomEditSelection,
   sdkSession: Composition,

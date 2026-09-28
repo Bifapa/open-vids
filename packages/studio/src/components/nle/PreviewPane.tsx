@@ -20,7 +20,6 @@ function getFullscreenElement() {
 
 // Clear the timeline selection when a pointer lands outside the composition
 // frame (clicks *inside* the frame are handled by the DOM-edit overlay).
-// fallow-ignore-next-line complexity
 function deselectIfPointerOutsideFrame(
   e: React.PointerEvent,
   iframe: HTMLIFrameElement | null,
@@ -48,7 +47,6 @@ export interface PreviewPaneProps {
   ) => Promise<void> | void;
 }
 
-// fallow-ignore-next-line complexity
 export function PreviewPane({
   portrait,
   previewOverlay,

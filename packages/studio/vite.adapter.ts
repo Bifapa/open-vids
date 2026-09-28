@@ -181,7 +181,6 @@ export function createViteAdapter(
     // behavior when the child environment is absent.
     autoProxy: resolveViteAutoProxy(process.env.HYPERFRAMES_AUTO_PROXY),
 
-    // fallow-ignore-next-line complexity
     listProjects() {
       if (!existsSync(dataDir)) return [];
       const sessionsDir = resolve(dataDir, "../sessions");
@@ -227,7 +226,6 @@ export function createViteAdapter(
       return histories.get(project.dir);
     },
 
-    // fallow-ignore-next-line complexity
     resolveProject(id: string) {
       if (!isValidProjectId(id)) return null;
       let projectDir = resolve(dataDir, id);
@@ -323,7 +321,6 @@ export function createViteAdapter(
           }
         }
       };
-      // fallow-ignore-next-line complexity
       (async () => {
         try {
           if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
@@ -411,7 +408,6 @@ export function createViteAdapter(
       return null;
     },
 
-    // fallow-ignore-next-line complexity
     async listRegistryCatalog(): Promise<RegistryItem[]> {
       const registryRoot = resolve(__dirname, "../../registry");
       const items: RegistryItem[] = [];

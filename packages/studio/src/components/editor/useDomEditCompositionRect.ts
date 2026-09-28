@@ -40,7 +40,6 @@ export function useDomEditCompositionRect({
   });
 
   useMountEffect(() => {
-    // fallow-ignore-next-line complexity
     const update = () => {
       const iframe = iframeRef.current;
       const overlayEl = overlayRef.current;

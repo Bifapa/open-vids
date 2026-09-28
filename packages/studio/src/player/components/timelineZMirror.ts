@@ -218,7 +218,6 @@ export interface ZRepositionInput {
  * the set (a z-only decoration shuffle), or the clip already sits where the
  * drop puts it.
  */
-// fallow-ignore-next-line complexity
 export function resolveRepositionLaneMove(input: ZRepositionInput): ZMirrorLaneMove {
   const { element, elements, desiredOrderKeys } = input;
   if (classifyZone(element) === "audio") return null;

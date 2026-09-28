@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication complexity
 import { preloadMedia } from "./preloadMedia";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
@@ -1800,7 +1799,6 @@ export function initSandboxRuntimeModular(): void {
       }
     }
   };
-  // fallow-ignore-next-line complexity
   const bindRootTimelineIfAvailable = (): boolean => {
     // Custom eases (hold/spring/wiggle/custom) must be registered in GSAP's
     // internal ease map BEFORE this function's prime render (progress/totalTime
@@ -2423,7 +2421,6 @@ export function initSandboxRuntimeModular(): void {
     );
   };
 
-  // fallow-ignore-next-line complexity
   // Whether a timed clip participates in normal flow (static/relative/sticky).
   // In-flow clips must leave the flow when hidden — `visibility:hidden` reserves
   // their layout box, so a split sibling would stack below the active half

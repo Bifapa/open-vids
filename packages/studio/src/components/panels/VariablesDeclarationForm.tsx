@@ -43,7 +43,6 @@ export const EMPTY_DRAFT: DeclarationDraft = {
 };
 
 // Per-type field mapping — one ternary per optional field.
-// fallow-ignore-next-line complexity
 export function draftFromDeclaration(decl: CompositionVariable): DeclarationDraft {
   const numeric = decl.type === "number" ? decl : null;
   return {
@@ -83,7 +82,6 @@ function numberDeclFromDraft(
   };
 }
 
-// fallow-ignore-next-line complexity
 function enumDeclFromDraft(
   base: { id: string; label: string; description?: string },
   draft: DeclarationDraft,
@@ -139,7 +137,6 @@ export function mergeDeclarationEdit(
 }
 
 /** Build a typed declaration from the form draft; string on validation error. */
-// fallow-ignore-next-line complexity
 export function declarationFromDraft(draft: DeclarationDraft): CompositionVariable | string {
   const id = draft.id.trim();
   if (!id) return "Variable id is required.";

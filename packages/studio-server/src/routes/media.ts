@@ -163,101 +163,95 @@ export function registerMediaRoutes(
     return c.json({ path: assetPath, metadata: await readMediaMetadata(filePath) });
   });
 
-  api.post(
-    "/projects/:id/media/remove-background",
-    // fallow-ignore-next-line complexity
-    async (c) => {
-      cleanupFinishedJobs();
-      if (!adapter.startBackgroundRemoval) {
-        return c.json({ error: "background removal is not available in this Studio server" }, 501);
+  api.post("/projects/:id/media/remove-background", async (c) => {
+    cleanupFinishedJobs();
+    if (!adapter.startBackgroundRemoval) {
+      return c.json({ error: "background removal is not available in this Studio server" }, 501);
+    }
+
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+
+    const body = (await c.req.json().catch(() => ({}))) as BackgroundRemovalBody;
+    const inputAssetPath = body.inputPath ? normalizeProjectAssetPath(body.inputPath) : "";
+    if (!inputAssetPath) return c.json({ error: "inputPath required" }, 400);
+    if (containsNullByte(inputAssetPath)) return c.json({ error: "forbidden" }, 403);
+    if (/^(?:https?:|data:|blob:)/i.test(inputAssetPath)) {
+      return c.json({ error: "background removal requires a project-local media asset" }, 400);
+    }
+
+    const inputPath = resolveWithinProject(project.dir, inputAssetPath);
+    if (!inputPath) return c.json({ error: "forbidden" }, 403);
+    if (!existsSync(inputPath)) return c.json({ error: "input media not found" }, 404);
+
+    const inputIsVideo = isVideoPath(inputAssetPath);
+    const inputIsImage = isImagePath(inputAssetPath);
+    if (!inputIsVideo && !inputIsImage) {
+      return c.json({ error: "background removal supports video or image assets only" }, 400);
+    }
+
+    const requestedOutput = body.outputPath
+      ? posix.normalize(normalizeProjectAssetPath(body.outputPath))
+      : "";
+    if (requestedOutput && containsNullByte(requestedOutput)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    if (requestedOutput && !resolveWithinProject(project.dir, requestedOutput)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    const taken = outputsInFlight(mediaJobs);
+    const outputAssetPath = requestedOutput
+      ? uniqueAssetPath(project.dir, requestedOutput, taken)
+      : defaultOutputPath(project.dir, inputAssetPath, taken);
+    const outputPath = pinWithinProject(project.dir, outputAssetPath);
+    if (!outputPath) return c.json({ error: "forbidden" }, 403);
+    if (inputIsVideo && !VIDEO_OUTPUT_EXTENSIONS.has(extname(outputAssetPath).toLowerCase())) {
+      return c.json({ error: "video background removal output must be .webm or .mov" }, 400);
+    }
+    if (inputIsImage && extname(outputAssetPath).toLowerCase() !== ".png") {
+      return c.json({ error: "image background removal output must be .png" }, 400);
+    }
+
+    let backgroundOutputAssetPath: string | undefined;
+    let backgroundOutputPath: string | undefined;
+    if (body.createBackgroundPlate) {
+      if (!inputIsVideo) {
+        return c.json({ error: "background plates are only supported for video inputs" }, 400);
       }
-
-      // fallow-ignore-next-line code-duplication
-      const project = await adapter.resolveProject(c.req.param("id"));
-      if (!project) return c.json({ error: "not found" }, 404);
-
-      const body = (await c.req.json().catch(() => ({}))) as BackgroundRemovalBody;
-      const inputAssetPath = body.inputPath ? normalizeProjectAssetPath(body.inputPath) : "";
-      if (!inputAssetPath) return c.json({ error: "inputPath required" }, 400);
-      if (containsNullByte(inputAssetPath)) return c.json({ error: "forbidden" }, 403);
-      if (/^(?:https?:|data:|blob:)/i.test(inputAssetPath)) {
-        return c.json({ error: "background removal requires a project-local media asset" }, 400);
-      }
-
-      const inputPath = resolveWithinProject(project.dir, inputAssetPath);
-      if (!inputPath) return c.json({ error: "forbidden" }, 403);
-      if (!existsSync(inputPath)) return c.json({ error: "input media not found" }, 404);
-
-      const inputIsVideo = isVideoPath(inputAssetPath);
-      const inputIsImage = isImagePath(inputAssetPath);
-      if (!inputIsVideo && !inputIsImage) {
-        return c.json({ error: "background removal supports video or image assets only" }, 400);
-      }
-
-      const requestedOutput = body.outputPath
-        ? posix.normalize(normalizeProjectAssetPath(body.outputPath))
-        : "";
-      if (requestedOutput && containsNullByte(requestedOutput)) {
+      taken.add(outputAssetPath);
+      backgroundOutputAssetPath = defaultPlatePath(project.dir, inputAssetPath, taken);
+      backgroundOutputPath = pinWithinProject(project.dir, backgroundOutputAssetPath) ?? undefined;
+      if (!backgroundOutputPath) {
         return c.json({ error: "forbidden" }, 403);
       }
-      if (requestedOutput && !resolveWithinProject(project.dir, requestedOutput)) {
-        return c.json({ error: "forbidden" }, 403);
-      }
-      const taken = outputsInFlight(mediaJobs);
-      const outputAssetPath = requestedOutput
-        ? uniqueAssetPath(project.dir, requestedOutput, taken)
-        : defaultOutputPath(project.dir, inputAssetPath, taken);
-      const outputPath = pinWithinProject(project.dir, outputAssetPath);
-      if (!outputPath) return c.json({ error: "forbidden" }, 403);
-      if (inputIsVideo && !VIDEO_OUTPUT_EXTENSIONS.has(extname(outputAssetPath).toLowerCase())) {
-        return c.json({ error: "video background removal output must be .webm or .mov" }, 400);
-      }
-      if (inputIsImage && extname(outputAssetPath).toLowerCase() !== ".png") {
-        return c.json({ error: "image background removal output must be .png" }, 400);
-      }
+    }
 
-      let backgroundOutputAssetPath: string | undefined;
-      let backgroundOutputPath: string | undefined;
-      if (body.createBackgroundPlate) {
-        if (!inputIsVideo) {
-          return c.json({ error: "background plates are only supported for video inputs" }, 400);
-        }
-        taken.add(outputAssetPath);
-        backgroundOutputAssetPath = defaultPlatePath(project.dir, inputAssetPath, taken);
-        backgroundOutputPath =
-          pinWithinProject(project.dir, backgroundOutputAssetPath) ?? undefined;
-        if (!backgroundOutputPath) {
-          return c.json({ error: "forbidden" }, 403);
-        }
-      }
+    mkdirSync(dirname(outputPath), { recursive: true });
+    if (backgroundOutputPath) mkdirSync(dirname(backgroundOutputPath), { recursive: true });
 
-      mkdirSync(dirname(outputPath), { recursive: true });
-      if (backgroundOutputPath) mkdirSync(dirname(backgroundOutputPath), { recursive: true });
+    const jobId = makeJobId(project.id, mediaJobs);
+    const state = adapter.startBackgroundRemoval({
+      project,
+      inputPath,
+      inputAssetPath,
+      outputPath,
+      outputAssetPath,
+      backgroundOutputPath,
+      backgroundOutputAssetPath,
+      quality: normalizeQuality(body.quality),
+      device: normalizeDevice(body.device),
+      jobId,
+    }) as JobWithCreatedAt;
+    state.createdAt = Date.now();
+    mediaJobs.set(jobId, state);
 
-      const jobId = makeJobId(project.id, mediaJobs);
-      const state = adapter.startBackgroundRemoval({
-        project,
-        inputPath,
-        inputAssetPath,
-        outputPath,
-        outputAssetPath,
-        backgroundOutputPath,
-        backgroundOutputAssetPath,
-        quality: normalizeQuality(body.quality),
-        device: normalizeDevice(body.device),
-        jobId,
-      }) as JobWithCreatedAt;
-      state.createdAt = Date.now();
-      mediaJobs.set(jobId, state);
-
-      return c.json({
-        jobId,
-        status: state.status,
-        outputPath: outputAssetPath,
-        backgroundOutputPath: backgroundOutputAssetPath,
-      });
-    },
-  );
+    return c.json({
+      jobId,
+      status: state.status,
+      outputPath: outputAssetPath,
+      backgroundOutputPath: backgroundOutputAssetPath,
+    });
+  });
 
   api.get("/media-jobs/:jobId/progress", (c) => {
     cleanupFinishedJobs();

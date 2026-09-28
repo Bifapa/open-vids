@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 // executeGsapMutationRecast and executeGsapMutationAcorn are intentionally
 // parallel — two writers, same switch-case interface. Structural duplication
 // is load-bearing (both paths must remain testable in isolation).

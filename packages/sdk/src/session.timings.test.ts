@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * WS-C — getElementTimings / setElementTiming / setHold tests.
  *

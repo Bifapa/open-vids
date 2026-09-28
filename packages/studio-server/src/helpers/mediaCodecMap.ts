@@ -314,7 +314,6 @@ function resolveExistingLocalAsset(
  * Collects local `<video src>` references, resolved to their absolute path
  * and deduped by that path, keyed by the pinned root-relative URL pathname.
  */
-// fallow-ignore-next-line complexity
 function collectLocalVideoAssets(
   projectDir: string,
   htmlSources: HtmlSourceLike[],

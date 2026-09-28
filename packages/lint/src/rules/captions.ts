@@ -70,7 +70,6 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
   },
 
   // caption_transcript_not_inline
-  // fallow-ignore-next-line complexity
   ({ scripts, styles, options }) => {
     const findings: HyperframeLintFinding[] = [];
     // Only check files that look like caption compositions
@@ -184,7 +183,6 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
   },
 
   // caption_fittext_scale_mismatch
-  // fallow-ignore-next-line complexity
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {

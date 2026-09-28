@@ -7,7 +7,6 @@ function formatPropValue(prop: string, v: number | string): string {
   return `${v}${unit}`;
 }
 
-// fallow-ignore-next-line complexity
 export function buildTweenSummary(animation: GsapAnimation): string {
   const easeName = animation.ease ?? "none";
   const ease = EASE_LABELS[easeName] ?? easeName;

@@ -36,7 +36,6 @@ interface FrameBounds {
 }
 
 /** Locate every frame's line range, using the same boundary rules as the parser. */
-// fallow-ignore-next-line complexity
 function frameBounds(lines: string[]): FrameBounds[] {
   const bounds: FrameBounds[] = [];
   let current: FrameBounds | null = null;

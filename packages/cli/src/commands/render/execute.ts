@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { mkdirSync, readFileSync } from "node:fs";
 import type { CanvasResolution, OutputResolutionIssueKind } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
@@ -221,7 +220,6 @@ async function ensureRenderBrowser(plan: RenderPlan, signal?: AbortSignal): Prom
   }
 }
 
-// fallow-ignore-next-line complexity
 export async function runRenderLint(
   plan: RenderPlan,
   runLint: (projectDir: string, entryFile?: string) => Promise<ProjectLintResult> = lintProject,
@@ -364,7 +362,6 @@ async function executeBatchRender(
     bestEffort: plan.bestEffort,
     exitAfterComplete: false,
     throwOnError: true,
-    skipFeedback: true,
     manageDeParallelRouterBreaker: plan.batchConcurrency <= 1,
   };
   const manifest = await batchModule.runBatchRender({

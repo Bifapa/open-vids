@@ -449,7 +449,6 @@ async function waitForStudioTestHookSettle(page) {
   await page.evaluate(
     // The callback must poll the window-scoped hook across two animation frames:
     // both identity stability and function readiness are part of the browser contract.
-    // fallow-ignore-next-line complexity
     async () => {
       const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
       for (;;) {

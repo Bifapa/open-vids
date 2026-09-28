@@ -329,7 +329,7 @@ describe("drop counts — why a referenced asset is not in the capture", () => {
               new Uint8Array(
                 readFileSync(
                   new URL(
-                    "../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2",
+                    "./__fixtures__/test-font-a.woff2",
                     import.meta.url,
                   ),
                 ),
@@ -616,10 +616,10 @@ describe("capture download security boundaries", () => {
   it("preserves two different fonts whose URL extensions canonicalize to the same name", async () => {
     await withTempDir(async (dir) => {
       const first = readFileSync(
-        new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),
+        new URL("./__fixtures__/test-font-a.woff2", import.meta.url),
       );
       const second = readFileSync(
-        new URL("../../../../docs/public/catalog/assets/8963f64fa28dc4ae.woff2", import.meta.url),
+        new URL("./__fixtures__/test-font-b.woff2", import.meta.url),
       );
       expect(first.equals(second)).toBe(false);
       vi.stubGlobal(
@@ -642,7 +642,7 @@ describe("capture download security boundaries", () => {
   it("shares the capture byte budget between fonts and icons", async () => {
     await withTempDir(async (dir) => {
       const bytes = readFileSync(
-        new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),
+        new URL("./__fixtures__/test-font-a.woff2", import.meta.url),
       );
       const fetchMock = vi.fn(async () => new Response(new Uint8Array(bytes)));
       vi.stubGlobal("fetch", fetchMock);
@@ -710,7 +710,7 @@ describe("capture download security boundaries", () => {
     async (name) => {
       await withTempDir(async (dir) => {
         const bytes = readFileSync(
-          new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),
+          new URL("./__fixtures__/test-font-a.woff2", import.meta.url),
         );
         vi.stubGlobal(
           "fetch",

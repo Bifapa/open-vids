@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity
 import { useCallback, useMemo } from "react";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";

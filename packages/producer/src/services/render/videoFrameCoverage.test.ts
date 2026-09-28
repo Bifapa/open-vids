@@ -1,5 +1,3 @@
-// fallow-ignore-file code-duplication
-
 import type { ExtractedFrames, VideoElement, VideoMetadata } from "@hyperframes/engine";
 import { describe, expect, it } from "vitest";
 import {

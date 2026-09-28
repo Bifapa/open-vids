@@ -80,7 +80,6 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
           throw await createStudioSaveHttpError(preflight, `Failed to read ${path} before save`);
         }
       }
-      // fallow-ignore-next-line complexity
       await retryStudioSave(async () => {
         // Each request gets its own receipt identity. If a committed request loses its response,
         // the retry can produce a second filesystem receipt that must be suppressed independently.

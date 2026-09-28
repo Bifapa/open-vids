@@ -100,7 +100,6 @@ export function useElementPicker(
   // Listen for picker messages from the iframe
   useMountEffect(() => {
     // One guard per message field, then one branch per message type.
-    // fallow-ignore-next-line complexity
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
       if (data?.source !== "hf-preview") return;
@@ -304,7 +303,6 @@ function recordPendingWrite(
 }
 
 // A default per field of the runtime's element info.
-// fallow-ignore-next-line complexity
 function toPickedElement(el: PickedElementInfo, iframe: HTMLIFrameElement): PickedElement {
   return {
     id: el.id ?? null,

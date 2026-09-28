@@ -30,21 +30,14 @@ import {
 
 // Re-export helpers that were previously public from this module so that
 // existing import sites (hook + tests) don't need to change.
-// fallow-ignore-next-line unused-exports
 export {
   readTimelineDurationFromDocument,
-  // fallow-ignore-next-line unused-exports
   resolveMediaElement,
-  // fallow-ignore-next-line unused-exports
   applyMediaMetadataFromElement,
   getTimelineElementSelector,
-  // fallow-ignore-next-line unused-exports
   getTimelineElementSourceFile,
-  // fallow-ignore-next-line unused-exports
   getTimelineElementSelectorIndex,
-  // fallow-ignore-next-line unused-exports
   buildTimelineElementIdentity,
-  // fallow-ignore-next-line unused-exports
   getTimelineElementIdentity,
   findTimelineDomNodeForClip,
 } from "./timelineElementHelpers";
@@ -67,7 +60,6 @@ function resolveClipTag(clip: ClipManifestClip): string {
   return clip.tagName || clip.kind || "div";
 }
 
-// fallow-ignore-next-line complexity
 export function createTimelineElementFromManifestClip(params: {
   clip: ClipManifestClip;
   fallbackIndex: number;
@@ -233,7 +225,6 @@ export function parseTimelineFromDOM(
     timelines ?? (doc.defaultView as IframeWindow | null)?.__timelines,
   );
 
-  // fallow-ignore-next-line complexity
   nodes.forEach((node) => {
     if (node === rootComp) return;
     if (isTimelineIgnoredElement(node)) return;
@@ -252,7 +243,6 @@ export function parseTimelineFromDOM(
     if (!Number.isFinite(dur) || dur <= 0) return;
 
     const track = timing.trackSource === "default" ? trackCounter++ : timing.trackIndex;
-    // fallow-ignore-next-line code-duplication
     const compId = el.getAttribute("data-composition-id");
     const selector = getTimelineElementSelector(el);
     const sourceFile = getTimelineElementSourceFile(el);

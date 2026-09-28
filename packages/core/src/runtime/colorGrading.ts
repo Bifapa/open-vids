@@ -2358,7 +2358,6 @@ function prepareEffectTextures(
   return { ...blurAndBloom, ...kuwahara };
 }
 
-// fallow-ignore-next-line complexity
 function ensureEntryLut(entry: ColorGradingEntry): RuntimeLutTexture | null {
   const src = entry.grading.lut?.src.trim() ?? "";
   const intensity = entry.grading.lut?.intensity ?? 1;
@@ -2408,7 +2407,6 @@ function ensureEntryLut(entry: ColorGradingEntry): RuntimeLutTexture | null {
   return null;
 }
 
-// fallow-ignore-next-line complexity
 function resolveTarget(
   target: HfColorGradingTarget | string | null | undefined,
 ): ColorGradingMediaElement | null {
@@ -2520,7 +2518,6 @@ function parseObjectPositionPart(value: string, axis: "x" | "y"): number | null 
   return null;
 }
 
-// fallow-ignore-next-line complexity
 function parseObjectPosition(value: string): { x: number; y: number } {
   const tokens = value.trim().split(/\s+/).filter(Boolean);
   let x = 0.5;
@@ -2547,7 +2544,6 @@ function parseObjectPosition(value: string): { x: number; y: number } {
   return { x, y };
 }
 
-// fallow-ignore-next-line complexity
 function calculateObjectFitUv(
   boxWidth: number,
   boxHeight: number,
@@ -2821,7 +2817,6 @@ function setWheelUniform(
   gl.uniform3f(location, wheel.hue / 360, wheel.amount, wheel.level);
 }
 
-// fallow-ignore-next-line complexity
 function applyUniforms(
   gl: WebGLRenderingContext,
   program: ProgramInfo,
@@ -3049,7 +3044,6 @@ function bindProgramTextures(
   }
 }
 
-// fallow-ignore-next-line complexity
 function drawEntry(entry: ColorGradingEntry): boolean {
   if (entry.destroyed || entry.contextLost) return false;
   const source = getDrawableSource(entry.element);
@@ -3712,7 +3706,6 @@ export function createColorGradingRuntime(pausedMediaLease?: {
   const isGraded = (target: Element): boolean =>
     isColorGradingMediaElement(target) && entries.has(target);
 
-  // fallow-ignore-next-line complexity
   const getStatus = (
     target: HfColorGradingTarget | string | null | undefined,
   ): RuntimeColorGradingStatus => {

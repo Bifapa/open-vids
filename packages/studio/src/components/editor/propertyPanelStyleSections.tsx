@@ -38,7 +38,6 @@ import { ColorField } from "./propertyPanelColor";
 import { GradientField, ImageFillField } from "./propertyPanelFill";
 import { BorderRadiusEditor } from "./BorderRadiusEditor";
 
-// fallow-ignore-next-line complexity
 export function StyleSections({
   projectId,
   element,

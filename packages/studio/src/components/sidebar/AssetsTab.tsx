@@ -1,5 +1,4 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
-// fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { SearchInput } from "../ui/SearchInput";
 import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";

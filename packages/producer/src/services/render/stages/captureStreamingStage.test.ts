@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { afterAll, describe, expect, it, mock, setSystemTime } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

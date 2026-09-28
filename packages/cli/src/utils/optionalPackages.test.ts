@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { spawnSync } from "node:child_process";
 import {
   existsSync,

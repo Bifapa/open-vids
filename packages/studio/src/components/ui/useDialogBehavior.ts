@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file
 // (consumers land in the shell/sidebar PRs later in this stack)
 import { useEffect, useCallback, useRef, type RefObject } from "react";
 

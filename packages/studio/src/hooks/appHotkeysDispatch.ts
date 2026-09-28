@@ -154,7 +154,6 @@ export function dispatchModifierKey(
   return false;
 }
 
-// fallow-ignore-next-line complexity
 /** Exported for tests: the unmodified-key half of the dispatcher, so the
  *  Delete arbitration between keyframes, an automation range and the clip can
  *  be asserted without standing up the whole hook. */

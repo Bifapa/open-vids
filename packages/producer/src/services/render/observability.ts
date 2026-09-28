@@ -394,7 +394,6 @@ function summarizeInitObservability(
   return { initDurationMs, tweenCount, elementCount };
 }
 
-// fallow-ignore-next-line complexity
 export function summarizeBrowserDiagnostics(lines: string[]): BrowserDiagnosticSummary {
   let errors = 0;
   let pageErrors = 0;

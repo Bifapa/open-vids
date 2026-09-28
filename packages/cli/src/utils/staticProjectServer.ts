@@ -170,7 +170,6 @@ export async function serveStaticProjectHtml(
   const autoProxy = resolveAutoProxy(projectDir, autoProxyOverride);
   const servedHtml = autoProxy ? await injectMediaCodecMap(html, projectDir, [{ html }]) : html;
 
-  // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {

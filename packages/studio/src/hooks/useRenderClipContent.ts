@@ -123,7 +123,6 @@ export function useRenderClipContent({
   const elements = usePlayerStore((s) => s.elements);
   return useCallback(
     // Pre-existing clip-content dispatcher; reduced by extracting renderAudioClip.
-    // fallow-ignore-next-line complexity
     (
       el: TimelineElement,
       style: { clip: string; label: string },

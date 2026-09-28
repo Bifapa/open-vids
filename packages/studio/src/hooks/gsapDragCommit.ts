@@ -422,8 +422,6 @@ export async function commitKeyframedSizeFromResize(
  * shifts together so the animation shape is preserved and the element can't
  * dart off-screen. For flat tweens (no keyframes), convert first then shift.
  */
-// fallow-ignore-next-line code-duplication
-// fallow-ignore-next-line complexity
 export async function commitWholePathOffset(
   selection: DomEditSelection,
   anim: GsapAnimation,
@@ -440,7 +438,6 @@ export async function commitWholePathOffset(
     gsapPos,
   );
   const deltaX = newX - baseGsapX;
-  // fallow-ignore-next-line code-duplication
   const deltaY = newY - baseGsapY;
   const origX = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-x") ?? "") || 0;
   const origY = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-y") ?? "") || 0;
@@ -451,7 +448,6 @@ export async function commitWholePathOffset(
     el.removeAttribute("data-hf-drag-initial-offset-y");
   };
 
-  // fallow-ignore-next-line code-duplication
   let effectiveAnim = anim;
   if (anim.keyframes) {
     const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);

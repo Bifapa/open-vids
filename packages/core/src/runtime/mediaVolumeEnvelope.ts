@@ -67,7 +67,6 @@ export function interpolateVolumeGain(envelope: VolumeKeyframe[], t: number): nu
   let segment = 0;
   // The PCM baker intentionally inlines this lookup with a monotonic cursor
   // because calling this preview-oriented helper per sample would be O(N×M).
-  // fallow-ignore-next-line code-duplication
   while (segment < envelope.length - 2 && t >= envelope[segment + 1]!.time) {
     segment += 1;
   }

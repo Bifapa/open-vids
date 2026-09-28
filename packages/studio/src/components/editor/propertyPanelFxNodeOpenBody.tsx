@@ -150,7 +150,6 @@ function FxNodePrimaryKnob({
  * is five independent conditionals deciding which pieces of the open face to
  * show, which is the section's actual job rather than an avoidable branch.
  */
-// fallow-ignore-next-line complexity
 export function FxNodeOpenBody({
   node,
   registryDef,

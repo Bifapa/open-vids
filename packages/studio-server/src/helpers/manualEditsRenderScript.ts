@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 export interface StudioManualEditsRenderScriptOptions {
   activeCompositionPath?: string | null;
 }

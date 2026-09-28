@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * Browser-binary resolution tests for `findBrowser()`.
  *
@@ -865,9 +864,8 @@ describe("findBrowser — cache resolution", () => {
   // Sibling env-var alias for the CLI resolver. The engine layer already
   // honors `PRODUCER_HEADLESS_SHELL_PATH` (see
   // `packages/engine/src/services/browserManager.ts`), and docs
-  // (skills/hyperframes-animation/adapters/typegpu.md,
-  // packages/gcp-cloud-run/Dockerfile, examples/k8s-jobs/Dockerfile.example)
-  // all instruct users to set that name. Before this alias, `hyperframes
+  // (skills/hyperframes-animation/adapters/typegpu.md) instruct users to set
+  // that name. Before this alias, `hyperframes
   // check`/`snapshot`/`compare` — which all route through `openSettledCompositionPage`
   // → `ensureBrowser` → `findFromEnv` — silently ignored a documented escape
   // hatch that `render` had honored, so a user with a broken pinned build

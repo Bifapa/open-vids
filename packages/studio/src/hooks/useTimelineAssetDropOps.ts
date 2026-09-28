@@ -83,9 +83,7 @@ export function useTimelineAssetDropOps({
   observeProjectFileVersion,
   checkEditable,
 }: UseTimelineAssetDropOpsOptions) {
-  // fallow-ignore-next-line complexity
   const dropAssetAt = useCallback(
-    // fallow-ignore-next-line complexity
     async (
       assetPath: string,
       placement: TimelineDropPlacement,
@@ -207,9 +205,7 @@ export function useTimelineAssetDropOps({
     [dropAssetAt],
   );
 
-  // fallow-ignore-next-line complexity
   const handleTimelineFileDrop = useCallback(
-    // fallow-ignore-next-line complexity
     async (files: File[], placement?: TimelineDropPlacement) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");

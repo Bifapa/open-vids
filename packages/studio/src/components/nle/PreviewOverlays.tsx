@@ -128,7 +128,6 @@ export function resolveZIndexEntries(
   return { entries, dropped };
 }
 
-// fallow-ignore-next-line complexity
 export function PreviewOverlays({
   shouldShowMotionPath,
   shouldShowSelectedDomBounds,

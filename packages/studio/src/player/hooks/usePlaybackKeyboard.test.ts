@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-// fallow-ignore-file code-duplication
 
 import React, { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";

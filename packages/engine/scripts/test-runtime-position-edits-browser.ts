@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file code-duplication complexity
 /**
  * Browser acceptance test: SDK moveElement edits survive GSAP animation
  * per-axis (the AI Studio embedded-editor per-axis loss bug).

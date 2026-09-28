@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { SearchInput } from "../ui/SearchInput";
@@ -24,7 +23,6 @@ interface BlocksTabProps {
   onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
 }
 
-// fallow-ignore-next-line complexity
 export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }: BlocksTabProps) {
   const { loading, error, search, setSearch, category, setCategory, filteredBlocks } =
     useBlockCatalog();

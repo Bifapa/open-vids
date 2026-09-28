@@ -124,7 +124,6 @@ async function cachedExtractGsapWindows(scriptContent: string): Promise<GsapWind
   return windows;
 }
 
-// fallow-ignore-next-line complexity
 async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
   if (!/gsap\.timeline/.test(script)) return [];
   const parseGsapScript = await loadParseGsapScript();
@@ -412,7 +411,6 @@ function combinedTagStyle(tag: OpenTag, styleRules: Map<string, string>): string
   return styles.filter(Boolean).join(";");
 }
 
-// fallow-ignore-next-line complexity
 function cssTransformToGsapProps(cssTransform: string): string | null {
   const parts: string[] = [];
 
@@ -1008,7 +1006,6 @@ function collectCssOpacityZeroSelectors(
 
 // ── GSAP rules ─────────────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 export const gsapRules: LintRule<LintContext>[] = [
   // gsap_undefined_css_variable
   async ({ tags, styles, scripts }) => {
@@ -1042,7 +1039,6 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // overlapping_gsap_tweens + gsap_animates_clip_element
-  // fallow-ignore-next-line complexity
   async ({ tags, scripts, styles }) => {
     const findings: HyperframeLintFinding[] = [];
     const authoredHiddenSelectors = new Set(
@@ -1262,7 +1258,6 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // gsap_css_transform_conflict
-  // fallow-ignore-next-line complexity
   async ({ styles, scripts, tags }) => {
     const findings: HyperframeLintFinding[] = [];
     const cssTranslateSelectors = new Map<string, string>();
@@ -1494,7 +1489,6 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // audio_reactive_single_tween_per_group
-  // fallow-ignore-next-line complexity
   ({ scripts, styles }) => {
     const findings: HyperframeLintFinding[] = [];
     if (!hasCaptionStyles(styles)) return findings;
@@ -1698,7 +1692,6 @@ export const gsapRules: LintRule<LintContext>[] = [
   // visible but whose destination omits opacity works during sequential seeks,
   // yet cold render workers restore the authored hidden state and encode it
   // permanently invisible.
-  // fallow-ignore-next-line complexity
   async ({ styles, scripts, tags }) => {
     const findings: HyperframeLintFinding[] = [];
     const cssOpacityZeroSelectors = collectCssOpacityZeroSelectors(styles, tags);
@@ -2258,7 +2251,6 @@ export const gsapRules: LintRule<LintContext>[] = [
   // "641.4px, 10px" — the gap stays 10px and the hide-then-draw-on trick silently
   // fails: the line is visible the whole scene. A static two-component GSAP value is
   // the explicit fix form and is not flagged.
-  // fallow-ignore-next-line complexity
   ({ scripts, styles, tags }) => {
     const findings: HyperframeLintFinding[] = [];
     const tagsByToken = indexTagsByToken(tags);
@@ -2420,7 +2412,6 @@ export const gsapRules: LintRule<LintContext>[] = [
   // undecidable — WARNING; if NO d assignment exists anywhere — ERROR. Element
   // identity is resolved conservatively (literal / template getElementById,
   // querySelector); createElementNS-built paths and unresolved variables are skipped.
-  // fallow-ignore-next-line complexity
   ({ scripts, styles, tags }) => {
     const findings: HyperframeLintFinding[] = [];
     const tagsByToken = indexTagsByToken(tags);

@@ -98,7 +98,6 @@ async function requestParsedAnimations(
  * Read one composition file's tweens into the keyframe cache. Split out of the
  * hook so the effect can run it per file without re-nesting the whole body.
  */
-// fallow-ignore-next-line complexity
 export async function populateKeyframeCacheFromAst(
   projectId: string,
   sf: string,

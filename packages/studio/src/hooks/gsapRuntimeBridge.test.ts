@@ -264,7 +264,6 @@ describe("tryGsapRotationIntercept — instant holds", () => {
   });
 
   // Mirrors resize by design: both geometry routes must reuse one ownership parse.
-  // fallow-ignore-next-line code-duplication
   it("reuses the ownership parse instead of fetching a resolved rotation group twice", async () => {
     const rotationHold = {
       id: "#puck-b-set-rotation",

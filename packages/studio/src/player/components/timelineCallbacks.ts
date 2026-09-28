@@ -1,5 +1,3 @@
-// fallow-ignore-file code-duplication
-// fallow-ignore-file dead-code
 import type { TimelineEditOutcome } from "../../hooks/timelineEditPermission";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";

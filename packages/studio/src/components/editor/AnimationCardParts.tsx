@@ -64,7 +64,6 @@ function RemoveButton({ onClick, title }: { onClick: () => void; title: string }
   );
 }
 
-// fallow-ignore-next-line complexity
 export function PropertyRow({
   prop,
   val,

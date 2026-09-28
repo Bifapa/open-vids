@@ -1,4 +1,3 @@
-// fallow-ignore-file dead-code
 import { expect } from "vitest";
 import {
   parseGsapScript,

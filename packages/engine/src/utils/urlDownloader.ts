@@ -366,7 +366,6 @@ async function waitForCacheLock(signal?: AbortSignal): Promise<void> {
 }
 
 // The lock loop keeps filesystem races, stale-lock recovery, cancellation, and timeout together.
-// fallow-ignore-next-line complexity
 async function acquireCachePathLock(
   localPath: string,
   timeoutMs: number,
@@ -530,7 +529,6 @@ async function fetchWithValidatedRedirects(
 }
 
 /** Fetch bounded UTF-8 text while applying the downloader's redirect and SSRF policy to every hop. */
-// fallow-ignore-next-line complexity
 export async function fetchPublicHttpsText(
   url: string,
   options: PublicHttpsTextOptions,
@@ -668,7 +666,6 @@ function parseDeclaredLength(response: Response): number | undefined {
 
 // Keep every Content-Range invariant in one parser so malformed and unsolicited
 // partial responses cannot drift into different retry classifications.
-// fallow-ignore-next-line complexity
 function classifyRangeDisposition(response: Response): UrlDownloadTelemetry["rangeDisposition"] {
   const contentRange = response.headers.get("content-range");
   if (response.status === 206) {
@@ -780,7 +777,6 @@ function checksumMismatchError(
 
 // Response protocol, streamed byte accounting, hashes, and payload validation
 // share one lifecycle so no validation can happen after publication.
-// fallow-ignore-next-line complexity
 async function fetchToPartial(
   url: string,
   partialPath: string,
@@ -1004,7 +1000,6 @@ function emitDownloadTelemetry(options: UrlDownloadOptions, event: UrlDownloadTe
 
 // Attempt-scoped cancellation, cleanup, publication, and telemetry deliberately
 // remain under one try/finally so every exit removes the unique partial directory.
-// fallow-ignore-next-line complexity
 async function runDownloadAttempt(
   url: string,
   localPath: string,
@@ -1214,7 +1209,6 @@ function sameCacheEntry(before: Stats, after: Stats): boolean {
 }
 
 // Cache identity checks must remain adjacent to invalidation to avoid widening the TOCTOU window.
-// fallow-ignore-next-line complexity
 async function reuseOrInvalidateCachedFile(
   url: string,
   localPath: string,

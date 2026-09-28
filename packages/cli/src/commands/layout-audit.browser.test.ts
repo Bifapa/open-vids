@@ -3573,7 +3573,6 @@ function installGeometry(
 ): void {
   // Style-fixture branching mirrors the audit's per-property reads; splitting
   // it would scatter one mock across helpers.
-  // fallow-ignore-next-line complexity
   vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
     const el = element as Element;
     const isBubble = el.id === "bubble";

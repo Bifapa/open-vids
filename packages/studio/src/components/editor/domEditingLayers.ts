@@ -85,7 +85,6 @@ function buildTextField(
   };
 }
 
-// fallow-ignore-next-line complexity
 export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
   const childElements = Array.from(el.children).filter(isHtmlElement).filter(isEditableTextLeaf);
 
@@ -283,7 +282,6 @@ export function resolveDomEditCapabilities(args: {
   ).capabilities;
 }
 
-// fallow-ignore-next-line complexity
 export async function resolveDomEditSelection(
   startEl: HTMLElement | null,
   options: DomEditContextOptions & {
@@ -449,7 +447,6 @@ export function collectDomEditLayerItems(
   cache?.beginWalk(options.activeCompositionPath);
 
   const items: DomEditLayerItem[] = [];
-  // fallow-ignore-next-line complexity
   const visit = (el: HTMLElement, depth: number) => {
     if (items.length >= maxItems) return;
 

@@ -48,7 +48,6 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
   };
 
   useMountEffect(() => {
-    // fallow-ignore-next-line complexity
     const update = () => {
       const state = snapGuidesRef.current;
       const guides = state?.guides ?? [];

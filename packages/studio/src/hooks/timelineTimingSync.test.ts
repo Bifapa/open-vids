@@ -563,7 +563,6 @@ function installOwnedFileServer(
     "fetch",
     // One in-memory server fixture owns capability, file, and CAS rollback
     // routes so each transaction test observes a coherent content map.
-    // fallow-ignore-next-line complexity
     vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const url = requestUrl(input);
       if (url.includes("/gsap-mutation-capabilities")) {

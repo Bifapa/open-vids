@@ -1,8 +1,8 @@
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
 import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
-import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
 import type { CatalogUsage } from "../utils/catalogUsage.js";
+import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
 import { flush, shouldTrack, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 import { getPowerState } from "./system.js";
@@ -997,17 +997,9 @@ export function trackRenderFeedback(props: {
   renderDurationMs?: number;
   comment?: string;
   doctorSummary?: string;
-  /**
-   * Join key shared with the forwarded feedback report (Slack/backend): the
-   * same uuid rides in the report's env string as `fid=…`, so a wild report
-   * resolves to exactly one PostHog `cli_render_feedback` event and vice versa.
-   */
   feedbackId?: string;
-  /** render_job_id values of this install's recent renders (newest last). */
   recentRenderIds?: string[];
 }): void {
-  // Plain product event, not a PostHog survey response: nothing here is served
-  // by the surveys product (no survey definition, no targeting, no popover).
   trackEvent("cli_render_feedback", {
     rating: props.rating,
     rating_scale: FEEDBACK_RATING_SCALE,
@@ -1015,22 +1007,12 @@ export function trackRenderFeedback(props: {
     ...(props.renderDurationMs !== undefined ? { render_duration_ms: props.renderDurationMs } : {}),
     ...(props.doctorSummary ? { doctor_summary: props.doctorSummary } : {}),
     ...(props.feedbackId ? { feedback_id: props.feedbackId } : {}),
-    // Comma-joined: EventProperties values are scalars only.
     ...(props.recentRenderIds?.length
       ? { recent_render_ids: props.recentRenderIds.join(",") }
       : {}),
   });
 }
 
-/**
- * A catalog search that found nothing worth installing.
- *
- * This is the only path that ever sends a query anywhere, and it is a separate
- * deliberate command rather than something `catalog --query` does on its own:
- * plain search stays entirely local, which is what the CLI promises. The query
- * is the point of the report — it names a move the catalog does not have yet,
- * so the gaps can be read directly rather than guessed from install counts.
- */
 export function trackCatalogSearchMiss(props: {
   query: string;
   wanted?: string;

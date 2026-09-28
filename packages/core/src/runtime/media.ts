@@ -273,7 +273,6 @@ function steeredVideoRate(el: HTMLMediaElement, offset: number, baseRate: number
   return baseRate * (1 + direction * VIDEO_STEER);
 }
 
-// fallow-ignore-next-line complexity
 export function syncRuntimeMedia(params: {
   clips: RuntimeMediaClip[];
   timeSeconds: number;

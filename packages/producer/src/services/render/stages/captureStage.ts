@@ -478,7 +478,6 @@ async function runSequentialDiskCapture(
       break;
       // This must mirror streaming capture: catch wraps the original failure with
       // browser diagnostics, finally only handles cleanup.
-      // fallow-ignore-next-line code-duplication
     } catch (error) {
       lastBrowserConsole = session.browserConsoleBuffer;
       const resume = planTransientResume(error, {
@@ -571,7 +570,6 @@ async function captureSessionFrames(
     // Keep status cadence identical to the streaming sequential path; the
     // capture error wrapper below must remain separate from finally so it
     // can throw with the browser console before cleanup overwrites flow.
-    // fallow-ignore-next-line code-duplication
     reportFrameProgress(
       job,
       `Capturing frame ${fileIndex + 1}/${rangeFrames}`,

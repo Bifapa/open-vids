@@ -80,7 +80,6 @@ export function createHistory(session: Composition, opts: HistoryOptions = {}): 
     return now - entry.timestamp <= coalesceMs;
   }
 
-  // fallow-ignore-next-line complexity
   const unsubscribe = session.on("patch", (event: PatchEvent) => {
     if (!isTracked(event.origin)) return;
 

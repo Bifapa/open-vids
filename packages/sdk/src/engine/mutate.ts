@@ -147,7 +147,6 @@ function validateSetAttribute(name: string, value: string | null): void {
 export class UnsupportedOpError extends Error {
   // Stable error code — part of the public API contract (F7); hosts switch on
   // err.code rather than the message.
-  // fallow-ignore-next-line unused-class-member
   readonly code = "E_UNSUPPORTED_OP";
   constructor(opType: string) {
     super(
@@ -445,7 +444,6 @@ function handleSetAttribute(
   return result;
 }
 
-// fallow-ignore-next-line complexity
 function handleSetTiming(
   parsed: ParsedDocument,
   ids: HfId[],
@@ -595,7 +593,6 @@ function handleSetTiming(
   }
 
   // Flush accumulated GSAP script changes as a single patch pair.
-  // fallow-ignore-next-line code-duplication
   if (origScript && currentScript && currentScript !== origScript) {
     setGsapScript(parsed.document, currentScript);
     const gsapResult = gsapScriptChange(origScript, currentScript);
@@ -665,7 +662,6 @@ function handleRemoveElement(parsed: ParsedDocument, ids: HfId[]): MutationResul
     }
   }
 
-  // fallow-ignore-next-line code-duplication
   if (origScript && currentScript && currentScript !== origScript) {
     setGsapScript(parsed.document, currentScript);
     const gsapResult = gsapScriptChange(origScript, currentScript);
@@ -792,7 +788,6 @@ function handleReorderElements(
   return result;
 }
 
-// fallow-ignore-next-line complexity
 function handleSetCompositionMetadata(
   parsed: ParsedDocument,
   op: { width?: number; height?: number; duration?: number },
@@ -1223,7 +1218,6 @@ function gsapTargetSelector(
   return `[data-hf-id="${escapeHfId(bareTarget)}"]`;
 }
 
-// fallow-ignore-next-line complexity
 function handleAddGsapTween(
   parsed: ParsedDocument,
   target: HfId,
@@ -1265,7 +1259,6 @@ function handleAddGsapTween(
   return { ...gsapScriptChange(script, newScript), meta: { animationId } };
 }
 
-// fallow-ignore-next-line complexity
 function handleSetGsapTween(
   parsed: ParsedDocument,
   animationId: string,
@@ -1441,7 +1434,6 @@ function resolveKeyframe(parsed: ParsedDocument, animationId: string, keyframeIn
   return { script, kf, kfs };
 }
 
-// fallow-ignore-next-line complexity
 function handleSetGsapKeyframe(
   parsed: ParsedDocument,
   animationId: string,
@@ -1609,7 +1601,6 @@ function validateArcSegment(
 }
 
 /** Dry-run validation — returns CanResult for the given op against current document state. */
-// fallow-ignore-next-line complexity
 export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
   switch (op.type) {
     case "setStyle":
@@ -1621,7 +1612,6 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "removeElement": {
       const ids = targets(op.target);
       if (ids.length === 0) return canErr("E_TARGET_NOT_FOUND", "No target ids provided.");
-      // fallow-ignore-next-line code-duplication
       const missing = ids.filter((id) => resolveScoped(parsed.document, id) === null);
       if (missing.length > 0)
         return canErr(
@@ -1657,7 +1647,6 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     }
     case "reorderElements": {
       if (op.entries.length === 0) return CAN_OK;
-      // fallow-ignore-next-line code-duplication
       const missing = op.entries
         .map((e) => e.target)
         .filter((id) => resolveScoped(parsed.document, id) === null);

@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity code-duplication
 /**
  * 3D-context projection for drawElementImage fast capture.
  *
@@ -341,7 +340,6 @@ export async function initThreeDProjectionInPage(): Promise<ThreeDProjectionResu
     const at = (i: number): number => nums[i] ?? 0;
     if (value.startsWith("matrix3d") && nums.length === 16) {
       // CSS matrix3d is column-major; convert to row-major
-      // fallow-ignore-next-line code-duplication
       return [
         at(0),
         at(4),
@@ -373,7 +371,6 @@ export async function initThreeDProjectionInPage(): Promise<ThreeDProjectionResu
   // WebGL1 requires transpose=false in uniformMatrix4fv — convert here.
   const colMajor = (m: Mat4): Float32Array => {
     const at = (i: number): number => m[i] ?? 0;
-    // fallow-ignore-next-line code-duplication
     return new Float32Array([
       at(0),
       at(4),

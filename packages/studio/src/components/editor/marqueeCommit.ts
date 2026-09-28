@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { useCallback, useRef, useState } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { collectDomEditLayerItems, resolveDomEditSelection } from "./domEditingLayers";
@@ -34,7 +33,6 @@ interface MarqueeHit {
  * doing it 60 times a second stalls the tab. The iframe DOM does not mutate
  * mid-drag, so the rects it returns stay true for the whole gesture.
  */
-// fallow-ignore-next-line complexity
 function collectMarqueeCandidates(
   iframe: HTMLIFrameElement,
   overlayEl: HTMLDivElement,
@@ -113,7 +111,6 @@ interface MarqueeGesturesDeps {
   };
 }
 
-// fallow-ignore-next-line complexity
 export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
   const marqueeRef = useRef<MarqueeState | null>(null);
   const [marqueeRect, setMarqueeRect] = useState<Rect | null>(null);

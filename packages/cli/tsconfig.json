@@ -5,10 +5,9 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@hyperframes/producer": ["../producer/src/index.ts"],
-      "@hyperframes/producer/distributed": ["../producer/src/distributed.ts"],
-      "@hyperframes/aws-lambda/sdk": ["../aws-lambda/src/sdk/index.ts"],
-      "@hyperframes/gcp-cloud-run/sdk": ["../gcp-cloud-run/src/sdk/index.ts"]
+      "@hyperframes/producer": [
+        "../producer/src/index.ts"
+      ]
     },
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -18,6 +17,11 @@
     "declaration": true,
     "ignoreDeprecations": "5.0"
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

@@ -10,7 +10,6 @@ interface KeyframeDiamondProps {
   isHold?: boolean;
 }
 
-// fallow-ignore-next-line complexity
 export const KeyframeDiamond = memo(function KeyframeDiamond({
   state,
   onClick,

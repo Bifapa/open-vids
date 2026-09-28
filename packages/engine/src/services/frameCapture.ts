@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity code-duplication
 /**
  * Frame Capture Service
  *
@@ -1194,7 +1193,6 @@ export async function completeDeferredDrawElementInit(session: CaptureSession): 
   session.deInitDeferred = false;
 }
 
-// fallow-ignore-next-line unit-size
 export async function createCaptureSession(
   serverUrl: string,
   outputDir: string,
@@ -1615,7 +1613,6 @@ export interface HfDiagnostic {
   rejectedBuildReadyKeys: string[];
 }
 
-// fallow-ignore-next-line complexity
 export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
   const hints: string[] = [];
   if (diag.pendingBuildReadyKeys.length > 0) {
@@ -2108,7 +2105,6 @@ async function applyVideoMetadataHints(
 ): Promise<void> {
   if (!hints || hints.length === 0) return;
 
-  // fallow-ignore-next-line complexity
   await page.evaluate(
     (metadataHints: CaptureVideoMetadataHint[]) => {
       for (const hint of metadataHints) {
@@ -2188,7 +2184,6 @@ export function classifyConsoleScriptFailure(type: string, text: string): string
   return null;
 }
 
-// fallow-ignore-next-line unit-size
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
 

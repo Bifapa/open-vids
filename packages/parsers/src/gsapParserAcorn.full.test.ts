@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * T6d: parse-parity suite — runs the full gsapParser.test.ts parse scenarios
  * against parseGsapScriptAcorn.  Write-path tests are it.skip'd; those live

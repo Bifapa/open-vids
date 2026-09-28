@@ -117,7 +117,6 @@ function ColorControl({
   );
 }
 
-// fallow-ignore-next-line complexity
 function NumberControl({
   decl,
   current,
@@ -171,7 +170,6 @@ function NumberControl({
 }
 
 // Per-type dispatcher — one branch per variable type, same shape as BlockParamsPanel.
-// fallow-ignore-next-line complexity
 export function PreviewValueControl({
   decl,
   value,

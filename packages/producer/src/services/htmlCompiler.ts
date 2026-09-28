@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication complexity
 /**
  * HTML Compiler for Producer
  *
@@ -185,7 +184,6 @@ class EmptyCompositionError extends Error {
  * exchange for failing in milliseconds instead of after the browser has
  * already launched and waited out a capture timeout.
  */
-// fallow-ignore-next-line complexity
 function assertSubCompositionsUsable(
   html: string,
   projectDir: string,
@@ -1623,7 +1621,6 @@ function extractFontFaceBlocks(css: string): string[] {
  * handles those. If a fetch fails or the CSS has no `@font-face` blocks,
  * the original `<link>` tag is preserved (graceful degradation).
  */
-// fallow-ignore-next-line complexity
 async function inlineExternalFontStylesheets(html: string): Promise<string> {
   const linkRe = /<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi;
   const hrefRe = /\bhref=["']([^"']+)["']/i;
@@ -1676,7 +1673,6 @@ async function inlineExternalFontStylesheets(html: string): Promise<string> {
  * Collect all remote `url(https://...)` references inside `@font-face` blocks
  * found in `<style>` tags.
  */
-// fallow-ignore-next-line complexity
 function collectFontFaceUrls(html: string): Set<string> {
   const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
   const urlSet = new Set<string>();
@@ -1771,7 +1767,6 @@ async function readLocalFont(absPath: string): Promise<LocalFontRead> {
   return { kind: "inline", buffer: Buffer.concat(chunks, totalBytes) };
 }
 
-// fallow-ignore-next-line complexity
 async function embedLocalFontFaces(html: string, projectDir: string): Promise<string> {
   const { fontToDataUri: toDataUri } = await import("./fontCompression.js");
   const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
@@ -1942,7 +1937,6 @@ function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath:
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
  */
-// fallow-ignore-next-line complexity
 export async function compileForRender(
   projectDir: string,
   htmlPath: string,

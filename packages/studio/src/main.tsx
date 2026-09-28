@@ -27,7 +27,6 @@ function errorProps(value: unknown): {
   return { error_message: String(value), error_name: null, stack_trace: null };
 }
 
-// fallow-ignore-next-line complexity
 function isCompositionAssetError(msg: string, name: string | null): boolean {
   if (msg.includes("Error fetching") && (msg.includes("404") || msg.includes("Not Found")))
     return true;
@@ -73,7 +72,6 @@ let filteredAbortCount = 0;
 const seenAbortMessages = new Set<string>();
 const MAX_SEEN_ABORT_MESSAGES = 20;
 
-// fallow-ignore-next-line complexity
 window.addEventListener("unhandledrejection", (event) => {
   const props = errorProps(event.reason);
   if (isCompositionAssetError(props.error_message, props.error_name)) {

@@ -54,7 +54,7 @@ type ControlHandler = (data: BridgeControlData, deps: BridgeDeps) => void;
 
 // Per-action dispatchers. Splitting the handler into a lookup table keeps the
 // top-level message listener trivial (one map lookup), and each action's logic
-// becomes individually testable / inheritable for fallow's CRAP analysis.
+// becomes individually testable / inheritable.
 const CONTROL_HANDLERS = new Map<string, ControlHandler>(
   Object.entries({
     play: (_d, deps) => deps.onPlay(),

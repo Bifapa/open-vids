@@ -656,7 +656,6 @@ export class WebAudioTransport {
   // the remainder is inherently sequential graph-wiring, not a nested
   // decision tree, and further splitting would cost more readability than it
   // buys. Same call the B2 step took on `TimelineLogicalRow`.
-  // fallow-ignore-next-line complexity
   async schedulePlayback(
     el: HTMLMediaElement,
     buffer: AudioBuffer,

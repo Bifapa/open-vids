@@ -141,40 +141,8 @@ Constraints:
   segments and HEVC. Use `format: "mp4"` for HDR.
 - **Software encoder only.** `useGpu: true` is rejected — GPU encoders ignore
   the forced-keyframe lock that fixed-length segments depend on.
-- **Not available in distributed rendering**, including Lambda and Cloud Run.
 - MPEG-TS carries no mov-family metadata, so the render provenance tags written
   into MP4 output are absent.
-
-## Distributed rendering
-
-For renders too large for a single machine, the producer ships a public set of distributed-render primitives. They are pure functions over local file paths — networking and orchestration live in adapter packages (Temporal, AWS Lambda + Step Functions, Cloud Run Jobs, K8s Jobs).
-
-Plan v2 is recommended for new integrations. It publishes an immutable
-manifest plus content-addressed artifacts and materializes only each worker's
-declared dependencies:
-
-```typescript
-import { planV2, renderChunkV2, assembleV2 } from "@hyperframes/producer/distributed";
-
-// Controller-side: produce a v2 manifest + local content-addressed store.
-const planResult = await planV2(
-  projectDir,
-  { fps: 30, width: 1920, height: 1080, format: "mp4" },
-  "/tmp/plan-v2",
-);
-
-const chunk = await renderChunkV2("/tmp/plan-v2", 0, "/tmp/chunks/0.mp4");
-
-// Controller-side: stitch chunks into the final deliverable.
-await assembleV2("/tmp/plan-v2", ["/tmp/chunks/0.mp4", "/tmp/chunks/1.mp4"], "/tmp/output.mp4");
-```
-
-Cloud adapters should use `planV2WithPublisher()` so artifacts publish
-directly to object storage. The legacy `plan()` / `renderChunk()` /
-`assemble()` v1 layout remains supported, and cloud SDKs still interpret an
-omitted protocol as v1 for backwards compatibility.
-
-The activity functions plus their result types are also re-exported from `@hyperframes/producer` so callers that pin the main package don't need a separate subpath import. Supported formats: `mp4` SDR, `mov` ProRes 4444, and `png-sequence`. webm and HDR mp4 trip a typed `FormatNotSupportedInDistributedError` — use the in-process renderer (`executeRenderJob`) for those.
 
 ## How it works
 

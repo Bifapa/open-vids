@@ -77,7 +77,6 @@ const DRAG_THRESHOLD_PX = 3;
  * statically editable. Nothing renders when the selection has no positional
  * motion.
  */
-// fallow-ignore-next-line complexity
 export const MotionPathOverlay = memo(function MotionPathOverlay({
   iframeRef,
   selection,
@@ -164,7 +163,6 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   // pointerdown, so it fires before the selection/drag handler underneath — a
   // press on empty canvas would otherwise deselect (and disarm) before a later
   // click could land. stopPropagation keeps that handler from also running.
-  // fallow-ignore-next-line complexity
   useEffect(() => {
     if (!armed || !createSelector || !compW) return;
     const surface =
@@ -174,7 +172,6 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     if (!surface) return;
     const prevCursor = surface.style.cursor;
     surface.style.cursor = "crosshair";
-    // fallow-ignore-next-line complexity
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return; // primary press only
       const frame = iframeRef.current;
@@ -326,7 +323,6 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       y: d.initY + (e.clientY - d.startY) / d.scale / d.pScale,
     });
   };
-  // fallow-ignore-next-line complexity
   const onUp = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;

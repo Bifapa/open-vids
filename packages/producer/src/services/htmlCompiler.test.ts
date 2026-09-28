@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { describe, expect, it, mock, beforeAll } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";

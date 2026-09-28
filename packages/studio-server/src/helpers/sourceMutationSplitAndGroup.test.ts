@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";

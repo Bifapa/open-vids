@@ -7,7 +7,6 @@ interface CollapsedState {
 
 // ── Pure helpers ──────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 export function sortLayersByZIndex(layers: DomEditLayerItem[]): DomEditLayerItem[] {
   if (layers.length <= 1) return layers;
 

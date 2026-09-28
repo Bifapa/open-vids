@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * Browser-safe GSAP read path — acorn + acorn-walk.
  *
@@ -106,7 +105,6 @@ const MATH_CONSTS: Record<string, number> = { PI: Math.PI, E: Math.E, SQRT2: Mat
  * against the const-node side-table. Returns undefined when not statically
  * resolvable (genuinely runtime-dynamic) so the caller falls back to __raw.
  */
-// fallow-ignore-next-line complexity
 function resolveMemberNode(
   node: any,
   scope: ReadonlyMap<string, number | string | boolean>,
@@ -170,7 +168,6 @@ function resolveConstNode(node: any, scope: ReadonlyMap<string, number | string 
 
 // ── Value resolution ─────────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 function resolveNode(
   node: any,
   scope: ReadonlyMap<string, number | string | boolean>,
@@ -238,7 +235,6 @@ function extractLiteralValue(node: any, scope: ScopeBindings): unknown {
 
 // ── DOM selector resolution ───────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 function selectorFromQueryCall(node: any, scope: ScopeBindings): string | null {
   if (node?.type !== "CallExpression") return null;
   const callee = node.callee;
@@ -494,7 +490,6 @@ function collectTargetBindings(
 
   // Pass 2: forEach/map callback params take the collection's selector.
   acornWalk.ancestor(ast, {
-    // fallow-ignore-next-line complexity
     CallExpression(node: any, _: unknown, ancestors: any[]) {
       const callee = node.callee;
       if (
@@ -524,7 +519,6 @@ function collectTargetBindings(
   // collection), but the selector + stagger should not read as __unresolved__.
   const COLLECTION_ALIAS_METHODS = new Set(["slice", "filter", "concat", "reverse"]);
   acornWalk.ancestor(ast, {
-    // fallow-ignore-next-line complexity
     VariableDeclarator(node: any, _: unknown, ancestors: any[]) {
       const name = node.id?.name;
       const init = node.init;
@@ -554,7 +548,6 @@ function collectTargetBindings(
   return bindings;
 }
 
-// fallow-ignore-next-line complexity
 function resolveTargetSelector(
   node: any,
   ancestors: any[],
@@ -620,7 +613,6 @@ function isStyleAssignmentTarget(left: any): boolean {
 }
 
 /** Best-effort: find the DOM attribute/style channel an onUpdate body writes. */
-// fallow-ignore-next-line complexity
 function drivenDomChannel(fnNode: any): string | undefined {
   let found: string | undefined;
   acornWalk.simple(fnNode, {
@@ -675,7 +667,6 @@ function extractRawPropertySource(
   return node ? source.slice(node.start, node.end) : undefined;
 }
 
-// fallow-ignore-next-line complexity
 function objectExpressionToRecord(
   node: any,
   scope: ScopeBindings,
@@ -776,7 +767,6 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// fallow-ignore-next-line complexity
 function extractTimelineDefaults(
   callNode: any,
   scope: ScopeBindings,
@@ -896,7 +886,6 @@ function findAllTweenCalls(
 ): TweenCallInfo[] {
   const results: TweenCallInfo[] = [];
 
-  // fallow-ignore-next-line complexity
   function visit(node: any, ancestors: readonly any[]): void {
     if (!node || typeof node !== "object") return;
     const nodeAncestors = [...ancestors, node];
@@ -982,7 +971,6 @@ function tryResolveStringProp(propValue: any, scope: ScopeBindings): string | un
   return typeof val === "string" ? val : undefined;
 }
 
-// fallow-ignore-next-line complexity
 function parsePercentageKeyframes(
   node: any,
   scope: ScopeBindings,
@@ -1036,7 +1024,6 @@ function parsePercentageKeyframes(
   };
 }
 
-// fallow-ignore-next-line complexity
 function computeKeyframesTotalDuration(
   varsNode: any,
   scope: ScopeBindings,
@@ -1055,7 +1042,6 @@ function computeKeyframesTotalDuration(
   return getObjectArrayKeyframeTiming(durations)?.totalDuration;
 }
 
-// fallow-ignore-next-line complexity
 function parseObjectArrayKeyframes(
   node: any,
   scope: ScopeBindings,
@@ -1097,7 +1083,6 @@ function parseObjectArrayKeyframes(
   return { format: "object-array", keyframes };
 }
 
-// fallow-ignore-next-line complexity
 function parseSimpleArrayKeyframes(node: any, scope: ScopeBindings): GsapKeyframesData {
   const arrayProps: Map<string, (number | string)[]> = new Map();
   let ease: string | undefined;
@@ -1144,7 +1129,6 @@ function parseSimpleArrayKeyframes(node: any, scope: ScopeBindings): GsapKeyfram
   };
 }
 
-// fallow-ignore-next-line complexity
 function parseKeyframesNode(
   node: any,
   scope: ScopeBindings,
@@ -1187,7 +1171,6 @@ interface MotionPathParseResult {
   waypoints: Array<{ x: number; y: number }>;
 }
 
-// fallow-ignore-next-line complexity
 function parseMotionPathNode(
   node: any,
   scope: ScopeBindings,
@@ -1237,7 +1220,6 @@ function parseMotionPathNode(
 
 // ── Animation assembly ────────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 function tweenCallToAnimation(
   call: TweenCallInfo,
   scope: ScopeBindings,
@@ -1487,7 +1469,6 @@ function annotateStaggeredCollections(anims: Omit<GsapAnimation, "id">[]): void 
 
 const GSAP_DEFAULT_DURATION = 0.5;
 
-// fallow-ignore-next-line complexity
 function resolvePositionString(pos: string, cursor: number, prevStart: number): number | null {
   const trimmed = pos.trim();
   if (trimmed === "") return cursor;
@@ -1529,7 +1510,6 @@ function collectGsapSetStates(
 ): Map<string, Record<string, number | string>> {
   const states = new Map<string, Record<string, number | string>>();
   acornWalk.ancestor(ast, {
-    // fallow-ignore-next-line complexity
     CallExpression(node: any, _: unknown, ancestors: any[]) {
       const callee = node.callee;
       if (
@@ -1768,7 +1748,6 @@ function collectAddLabelDefs(
   };
   const defs: AddLabelDef[] = [];
   acornWalk.simple(ast, {
-    // fallow-ignore-next-line complexity
     CallExpression(node: any) {
       const callee = node.callee;
       const objMatches =
@@ -2090,7 +2069,6 @@ export function extractGsapLabels(script: string): GsapLabelEntry[] {
     const labels: GsapLabelEntry[] = [];
 
     acornWalk.simple(ast, {
-      // fallow-ignore-next-line complexity
       ExpressionStatement(node: any) {
         const expr = node.expression;
         if (!expr || expr.type !== "CallExpression") return;

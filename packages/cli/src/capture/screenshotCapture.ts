@@ -111,7 +111,6 @@ export async function captureFullPagePlate(
   }
 }
 
-// fallow-ignore-next-line complexity
 export async function captureScrollScreenshots(
   page: Page,
   outputDir: string,

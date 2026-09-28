@@ -56,7 +56,6 @@ export function selectElementAnimationsOrRetry(
 }
 
 // Retry policy deliberately distinguishes cold parses from hard fetch errors.
-// fallow-ignore-next-line complexity
 async function fetchElementAnimationsWithRetry(
   projectId: string,
   gsapSourceFile: string,

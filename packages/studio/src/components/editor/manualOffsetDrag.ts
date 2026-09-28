@@ -326,7 +326,6 @@ export function resolveManualOffsetForPointerDelta(input: {
 }
 
 // Pre-existing complexity — surfaced by this branch touching the file, not by new logic.
-// fallow-ignore-next-line complexity
 export function createManualOffsetDragMember(input: {
   key: string;
   selection: DomEditSelection;

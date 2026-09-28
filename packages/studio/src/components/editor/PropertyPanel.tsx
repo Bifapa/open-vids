@@ -53,7 +53,6 @@ export {
   setCssFilterFunctionPx,
 } from "./propertyPanelHelpers";
 
-// fallow-ignore-next-line complexity
 export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelProps) {
   const {
     projectId,

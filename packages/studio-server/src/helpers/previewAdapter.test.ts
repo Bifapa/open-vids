@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * T10 — PreviewAdapter contract (spec for R7).
  *

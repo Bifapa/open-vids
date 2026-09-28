@@ -114,9 +114,7 @@ export function useGsapAnimationOps({
     [commitMutation, activeCompPath, sdkSession, sdkDeps],
   );
 
-  // fallow-ignore-next-line complexity
   const addGsapAnimation = useCallback(
-    // fallow-ignore-next-line complexity
     async (
       selection: DomEditSelection,
       method: "to" | "from" | "set" | "fromTo",

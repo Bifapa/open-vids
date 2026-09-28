@@ -19,7 +19,6 @@ interface CssRule {
 
 // ─── Parsing ──────────────────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 function parseCssRules(css: string): CssRule[] {
   const rules: CssRule[] = [];
   let i = 0;
@@ -57,7 +56,6 @@ function parseCssRules(css: string): CssRule[] {
   return rules;
 }
 
-// fallow-ignore-next-line complexity
 function parseDeclarations(body: string): Record<string, string> {
   const decls: Record<string, string> = {};
   let depth = 0;

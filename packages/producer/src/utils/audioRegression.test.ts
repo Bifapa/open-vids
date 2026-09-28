@@ -24,9 +24,8 @@ describe("compareAudioEnvelopes", () => {
 });
 
 // Skip the spawn-based tests entirely on hosts without ffmpeg. The
-// regression harness only runs in environments where ffmpeg is present
-// (`Dockerfile.test`, dev boxes with apt's ffmpeg), so an absent ffmpeg
-// is a developer-laptop fact, not a producer regression.
+// regression harness only runs in environments where ffmpeg is present,
+// so an absent ffmpeg is a developer-laptop fact, not a producer regression.
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"], { encoding: "utf-8" }).status === 0;
 
 describe.skipIf(!HAS_FFMPEG)("computeAudioResidualRmsDb", () => {

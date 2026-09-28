@@ -4,7 +4,7 @@ import { createReadStream, mkdirSync, renameSync, rmSync, statSync } from "node:
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { downloadToFile } from "../cloud/download.js";
+import { downloadToFile } from "../utils/httpsDownload.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import {
   CACHE_DIR,

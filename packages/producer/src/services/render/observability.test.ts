@@ -161,7 +161,6 @@ describe("RenderObservabilityRecorder", () => {
     resolveStage?.();
     await stage;
     const endCall = log.info.mock.calls.find(
-      // fallow-ignore-next-line complexity
       ([message, meta]) =>
         message === "[Render:trace]" &&
         meta?.phase === "capture_streaming" &&
@@ -338,7 +337,6 @@ describe("RenderObservabilityRecorder", () => {
       ),
     ).rejects.toThrow("capture failed");
     const errorCall = log.info.mock.calls.find(
-      // fallow-ignore-next-line complexity
       ([message, meta]) =>
         message === "[Render:trace]" && meta?.phase === "capture_disk" && meta?.status === "error",
     );
@@ -362,7 +360,6 @@ describe("RenderObservabilityRecorder", () => {
     vi.useRealTimers();
   });
 
-  // fallow-ignore-next-line complexity
   it("records bounded phase events and summarizes browser diagnostics", () => {
     const log = makeLog();
     const recorder = new RenderObservabilityRecorder({

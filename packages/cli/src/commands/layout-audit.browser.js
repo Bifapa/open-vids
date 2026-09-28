@@ -1015,7 +1015,6 @@
   // The opaque element painted over (x, y), or null when the topmost element
   // there is related to the text, non-opaque, sharing a 3D context with it, or
   // part of a transient crossfade overlap.
-  // fallow-ignore-next-line complexity
   function occluderAt(element, x, y) {
     // Walk the paint-ordered stack: a transparent layer on top must not mask an opaque one below it.
     const stack =

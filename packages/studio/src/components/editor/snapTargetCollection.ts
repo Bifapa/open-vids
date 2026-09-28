@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import type { DomEditSelection } from "./domEditing";
 import {
   isElementVisibleForOverlay,
@@ -39,7 +38,6 @@ function collectVisibleElements(
   maxItems: number,
 ): HTMLElement[] {
   const result: HTMLElement[] = [];
-  // fallow-ignore-next-line complexity
   const visit = (el: HTMLElement) => {
     if (result.length >= maxItems) return;
     for (const child of Array.from(el.children)) {
@@ -56,7 +54,6 @@ function collectVisibleElements(
   return result;
 }
 
-// fallow-ignore-next-line complexity
 export function collectSnapContext(input: {
   overlayEl: HTMLDivElement;
   iframe: HTMLIFrameElement;
@@ -121,7 +118,6 @@ export function collectSnapContext(input: {
   return { targets, compositionTarget, gridEdges, snapEnabled };
 }
 
-// fallow-ignore-next-line complexity
 export function buildExcludeElements(input: {
   iframe: HTMLIFrameElement;
   selection?: DomEditSelection | null;

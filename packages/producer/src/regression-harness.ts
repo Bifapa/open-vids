@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity
 import {
   existsSync,
   mkdirSync,
@@ -26,43 +25,7 @@ import {
   computeAudioResidualRmsDb,
 } from "./utils/audioRegression.js";
 import { parseFps, fpsToNumber } from "@hyperframes/core";
-import {
-  checkDistributedSupport,
-  type HarnessMode,
-  parseHarnessModeFlag,
-  resolveMinPsnrForMode,
-  runDistributedSimulatedRender,
-} from "./regression-harness-distributed.js";
-
-// `regression-harness-lambda-local` statically imports
-// `@hyperframes/aws-lambda`, which depends on @aws-sdk + @sparticuz/chromium.
-// In Dockerfile.test the workspace copy of aws-lambda's src isn't present,
-// so a static import here would fail at module-load time even when
-// running `--mode=in-process`. Load it on demand instead.
-//
-// The signature is typed via `RunLambdaLocalRender` (in its own types-only
-// file) instead of `typeof import(...)` so producer's tsc doesn't have to
-// type-check the implementation. The implementation imports
-// `@hyperframes/aws-lambda`, whose types come from `dist/index.d.ts` after
-// aws-lambda's build runs — a chicken-and-egg with producer's tsc that
-// would otherwise fail the whole-repo build.
-//
-// The dynamic import path is indirected through a variable so tsc can't
-// statically resolve the target file. Without this indirection tsc still
-// pulls `regression-harness-lambda-local.ts` (and its `@hyperframes/aws-lambda`
-// imports) into the program even though the tsconfig `exclude` list
-// nominally hides it. `tsx` resolves the path normally at runtime.
-import type { RunLambdaLocalRender } from "./regression-harness-lambda-local-types.js";
-import type { DistributedFormat } from "./services/distributed/shared.js";
-
-const LAMBDA_LOCAL_MODULE = "./regression-harness-lambda-local.js";
-
-async function loadLambdaLocalRender(): Promise<RunLambdaLocalRender> {
-  const mod = (await import(LAMBDA_LOCAL_MODULE)) as {
-    runLambdaLocalRender: RunLambdaLocalRender;
-  };
-  return mod.runLambdaLocalRender;
-}
+type DistributedFormat = "mp4" | "mov" | "png-sequence" | "webm";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,57 +60,19 @@ type TestMetadata = {
      * single video file — the harness branches its comparison logic
      * accordingly (per-frame byte equality instead of PSNR). `"mov"` and
      * `"webm"` are encoded video containers that share the PSNR path with
-     * `"mp4"`. Distributed mode supports all four — webm goes through
-     * libvpx-vp9 with closed-GOP concat-copy.
+     * `"mp4"`.
      */
     format?: DistributedFormat;
     /**
-     * Codec selection for `format: "mp4"`, forwarded to
-     * `DistributedRenderConfig.codec`. The in-process renderer doesn't take
-     * a codec hint — for the baseline it always picks the format's default
-     * (h264 for mp4 SDR), so `codec: "h265"` is exercised exclusively in
-     * `--mode=distributed-simulated`. The PSNR comparison against the
-     * baseline therefore measures "h265 chunked + concat" ≈ "h264 single-
-     * pass" rather than byte equality. Fixtures asserting a tighter
-     * contract should explicitly pin a higher `minPsnr`.
+     * Codec selection for `format: "mp4"`. The in-process renderer always
+     * picks the format's default (h264 for mp4 SDR).
      */
     codec?: "h264" | "h265";
-    workers?: number; // Optional: auto-calculates if omitted
-    /** Force HDR in the harness; omitted/false preserves historical SDR-only test behavior. */
+    workers?: number;
     hdr?: boolean;
-    /**
-     * Render this suite with the experimental fast-capture path
-     * (drawElementImage, `--experimental-fast-capture`). The golden must be
-     * regenerated with the flag on. Used by the `fast-capture` regression
-     * guard; omit for the default screenshot/BeginFrame capture.
-     */
     experimentalFastCapture?: boolean;
-    /**
-     * Pin the browser capture path for a regression fixture. The producer's
-     * software-GPU default normally prefers screenshots, so BeginFrame-only
-     * compositor regressions must opt out explicitly to exercise that path.
-     */
     captureMode?: "screenshot" | "beginframe";
-    /**
-     * Render-time variable overrides, equivalent to `hyperframes render
-     * --variables '<json>'`. Injected as `window.__hfVariables` before any
-     * page script runs so the runtime helper `getVariables()` returns the
-     * merged result of declared defaults (`data-composition-variables`)
-     * and these overrides. Omit when the test doesn't exercise variables.
-     */
     variables?: Record<string, unknown>;
-    /**
-     * Chunk size in frames for `--mode=distributed-simulated`. Forwarded
-     * to `DistributedRenderConfig.chunkSize`. Ignored in `--mode=in-process`.
-     * Default is the plan's own default (240 frames).
-     */
-    chunkSize?: number;
-    /**
-     * Cap on parallel chunks for `--mode=distributed-simulated`. Forwarded
-     * to `DistributedRenderConfig.maxParallelChunks`. Ignored in
-     * `--mode=in-process`. Default is the plan's own default (16).
-     */
-    maxParallelChunks?: number;
   };
 };
 
@@ -164,26 +89,11 @@ type CliOptions = {
   update: boolean;
   sequential: boolean;
   keepTemp: boolean;
-  /**
-   * Which render path to exercise. `in-process` (default) calls
-   * `executeRenderJob`; `distributed-simulated` calls
-   * `plan() → renderChunk() × N → assemble()` from
-   * `@hyperframes/producer/distributed`. See
-   * `regression-harness-distributed.ts`.
-   */
-  mode: HarnessMode;
 };
 
 type TestResult = {
   suite: TestSuite;
   passed: boolean;
-  /**
-   * Set when `--mode=distributed-simulated` skips a fixture that the
-   * distributed pipeline can't run (HDR, NTSC fps, fps∉{24,30,60}).
-   * `passed` is `true` for skipped fixtures — skipping is a clean outcome,
-   * not a failure — but the summary distinguishes them.
-   */
-  skipped?: { reason: string };
   compilation?: {
     passed: boolean;
     errors: string[];
@@ -249,15 +159,14 @@ function formatResidualSuffix(residualRmsDb: number | null, error: string | unde
 }
 
 // Exported for unit testing (pinning `--exclude-tags` comma-parsing so the
-// values baked into `Dockerfile.test` and `packages/producer/package.json`
-// scripts keep matching the parser's contract).
+// values baked into `packages/producer/package.json` scripts keep matching
+// the parser's contract).
 export function parseArgs(argv: string[]): CliOptions {
   const testNames: string[] = [];
   const excludeTags: string[] = [];
   let update = false;
   let sequential = false;
   let keepTemp = false;
-  let mode: HarnessMode = "in-process";
 
   for (let i = 2; i < argv.length; i += 1) {
     const token = argv[i];
@@ -272,29 +181,16 @@ export function parseArgs(argv: string[]): CliOptions {
       i += 1;
       const tagArg = argv[i];
       if (tagArg) excludeTags.push(...tagArg.split(","));
-    } else {
-      const parsedMode = parseHarnessModeFlag(token);
-      if (parsedMode !== null) {
-        mode = parsedMode;
-      } else if (!token.startsWith("--")) {
-        testNames.push(token);
-      }
+    } else if (token.startsWith("--mode=")) {
+      throw new Error(
+        "regression-harness: distributed modes were removed; the harness always runs in-process.",
+      );
+    } else if (!token.startsWith("--")) {
+      testNames.push(token);
     }
   }
 
-  if (update && (mode === "distributed-simulated" || mode === "lambda-local")) {
-    // The in-process renderer is the source of truth for golden baselines —
-    // the other two modes verify the contract against the same baseline,
-    // not author their own. Surfacing this at parse time saves a multi-
-    // minute render before the user notices.
-    throw new Error(
-      `regression-harness: --update is incompatible with --mode=${mode}. ` +
-        "Generate baselines with the in-process renderer (the default mode), then re-run " +
-        "without --update to verify both modes match.",
-    );
-  }
-
-  return { testNames, excludeTags, update, sequential, keepTemp, mode };
+  return { testNames, excludeTags, update, sequential, keepTemp };
 }
 
 function validateMetadata(meta: unknown): TestMetadata {
@@ -490,29 +386,12 @@ export function discoverTestSuites(
     if (!statSync(dir).isDirectory()) continue;
     if (entry === "node_modules" || entry.startsWith(".")) continue;
 
-    // `tests/distributed/<name>/` holds fixtures authored for the
-    // distributed pipeline. Recurse one level deeper so each `<name>`
-    // becomes a first-class fixture ID the user can target on the CLI
-    // without a namespace prefix.
-    if (entry === "distributed") {
-      for (const sub of readdirSync(dir)) {
-        const subDir = join(dir, sub);
-        if (!statSync(subDir).isDirectory()) continue;
-        if (sub === "node_modules" || sub.startsWith(".")) continue;
-        tryAddSuite(sub, subDir);
-      }
-      continue;
-    }
-
     tryAddSuite(entry, dir);
   }
 
   // CLI filter, failures/ output, baselines, and the suite summary all key
-  // off `suite.id`. If a future fixture lands at `tests/distributed/<x>/`
-  // while a top-level `tests/<x>/` already exists they would silently
-  // collide: both pushed with the same `id`, both running under one name,
-  // and the second to write `failures/` overwrites the first. Fail fast
-  // here naming both source dirs so the conflict is fixable at author time.
+  // off `suite.id`. Fail fast on duplicates so the conflict is fixable at
+  // author time.
   const seen = new Map<string, string>();
   for (const suite of suites) {
     const prior = seen.get(suite.id);
@@ -972,7 +851,6 @@ async function runTestSuite(
   options: {
     update: boolean;
     keepTemp: boolean;
-    mode: HarnessMode;
   },
 ): Promise<TestResult> {
   const tempRoot = createRegressionTempRoot(suite.id);
@@ -1080,94 +958,44 @@ async function runTestSuite(
     }
 
     // STEP 2: Render video
-    console.log(JSON.stringify({ event: "rendering_start", suite: suite.id, mode: options.mode }));
-    logPretty(`Rendering video (mode=${options.mode})...`, "🎬");
+    console.log(JSON.stringify({ event: "rendering_start", suite: suite.id }));
+    logPretty("Rendering video...", "🎬");
 
     const tempSrcDir = join(tempRoot, "src");
     copyFixtureSupportFiles(suite, tempRoot);
     cpSync(suite.srcDir, tempSrcDir, { recursive: true });
 
-    if (options.mode === "distributed-simulated" || options.mode === "lambda-local") {
-      const support = checkDistributedSupport(suite.meta.renderConfig);
-      if (!support.supported) {
-        // Skipping is a clean outcome — the distributed pipeline (which
-        // both modes go through) can't run this fixture, but in-process
-        // mode already covers it. Mark passed so the suite summary
-        // doesn't trip CI; the `skipped` field is what distinguishes a
-        // real pass from a skip.
-        console.log(
-          JSON.stringify({
-            event: "test_skipped",
-            suite: suite.id,
-            mode: options.mode,
-            reason: support.reason,
-          }),
-        );
-        logPretty(`Skipping ${suite.meta.name} (mode=${options.mode}): ${support.reason}`, "⏭️");
-        result.passed = true;
-        result.skipped = { reason: support.reason };
-        return result;
-      }
-      // `checkDistributedSupport` already narrowed fps to {24,30,60}; the
-      // cast surfaces that guarantee to TS. webm is now distributed-
-      // supported via closed-GOP concat-copy, so the format passes through.
-      const fpsNum = suite.meta.renderConfig.fps.num as 24 | 30 | 60;
-      const distributedInput = {
-        projectDir: tempSrcDir,
-        tempRoot,
-        renderedOutputPath,
-        fps: fpsNum,
+    // Opt-in fast capture (drawElementImage): drives resolveConfig via the env
+    // var, scoped to this suite's render so it never leaks to other suites.
+    const useFast = suite.meta.renderConfig.experimentalFastCapture === true;
+    const prevFast = process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE;
+    const captureMode = suite.meta.renderConfig.captureMode;
+    const prevForceScreenshot = process.env.PRODUCER_FORCE_SCREENSHOT;
+    if (useFast) process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = "true";
+    if (captureMode) {
+      process.env.PRODUCER_FORCE_SCREENSHOT = captureMode === "screenshot" ? "true" : "false";
+    }
+    try {
+      const job = createRenderJob({
+        fps: suite.meta.renderConfig.fps,
+        quality: "high", // Always use max quality for tests
         format: outputFormat,
-        codec: suite.meta.renderConfig.codec,
-        chunkSize: suite.meta.renderConfig.chunkSize,
-        maxParallelChunks: suite.meta.renderConfig.maxParallelChunks,
+        workers: suite.meta.renderConfig.workers,
+        useGpu: false,
+        debug: false,
+        hdrMode: suite.meta.renderConfig.hdr ? "force-hdr" : "force-sdr",
         variables: suite.meta.renderConfig.variables,
-      };
-      if (options.mode === "lambda-local") {
-        const runLambdaLocalRender = await loadLambdaLocalRender();
-        // The fixture's authored dimensions live in the composition's
-        // `data-width`/`data-height` attributes, not in `meta.json`'s
-        // renderConfig. Until the harness compiles the HTML up-front
-        // to surface them here, pass 1920×1080 — the same placeholder
-        // `runDistributedSimulatedRender` uses internally. The
-        // composition attrs override at plan time.
-        await runLambdaLocalRender({ ...distributedInput, width: 1920, height: 1080 });
-      } else {
-        await runDistributedSimulatedRender(distributedInput);
-      }
-    } else {
-      // Opt-in fast capture (drawElementImage): drives resolveConfig via the env
-      // var, scoped to this suite's render so it never leaks to other suites.
-      const useFast = suite.meta.renderConfig.experimentalFastCapture === true;
-      const prevFast = process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE;
-      const captureMode = suite.meta.renderConfig.captureMode;
-      const prevForceScreenshot = process.env.PRODUCER_FORCE_SCREENSHOT;
-      if (useFast) process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = "true";
-      if (captureMode) {
-        process.env.PRODUCER_FORCE_SCREENSHOT = captureMode === "screenshot" ? "true" : "false";
-      }
-      try {
-        const job = createRenderJob({
-          fps: suite.meta.renderConfig.fps,
-          quality: "high", // Always use max quality for tests
-          format: outputFormat,
-          workers: suite.meta.renderConfig.workers,
-          useGpu: false,
-          debug: false,
-          hdrMode: suite.meta.renderConfig.hdr ? "force-hdr" : "force-sdr",
-          variables: suite.meta.renderConfig.variables,
-        });
+      });
 
-        await executeRenderJob(job, tempSrcDir, renderedOutputPath);
-      } finally {
-        if (useFast) {
-          if (prevFast === undefined) delete process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE;
-          else process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = prevFast;
-        }
-        if (captureMode) {
-          if (prevForceScreenshot === undefined) delete process.env.PRODUCER_FORCE_SCREENSHOT;
-          else process.env.PRODUCER_FORCE_SCREENSHOT = prevForceScreenshot;
-        }
+      await executeRenderJob(job, tempSrcDir, renderedOutputPath);
+    } finally {
+      if (useFast) {
+        if (prevFast === undefined) delete process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE;
+        else process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = prevFast;
+      }
+      if (captureMode) {
+        if (prevForceScreenshot === undefined) delete process.env.PRODUCER_FORCE_SCREENSHOT;
+        else process.env.PRODUCER_FORCE_SCREENSHOT = prevForceScreenshot;
       }
     }
 
@@ -1298,7 +1126,7 @@ async function runTestSuite(
       const fps = fpsToNumber(suite.meta.renderConfig.fps);
       const sampleDuration = Math.max(0, videoDuration - 1 / fps);
 
-      const minPsnrForMode = resolveMinPsnrForMode(options.mode, suite.meta.minPsnr);
+      const minPsnr = suite.meta.minPsnr;
       const checkpointTimes = Array.from({ length: 100 }, (_, i) => (sampleDuration * i) / 100);
       const psnrByFrame = psnrAtFrames(
         renderedOutputPath,
@@ -1311,7 +1139,7 @@ async function runTestSuite(
         visualCheckpoints.push({
           time,
           psnr,
-          passed: psnr >= minPsnrForMode,
+          passed: psnr >= minPsnr,
         });
 
         // Progress indicator every 20 checkpoints
@@ -1467,7 +1295,7 @@ async function runTestSuite(
           result,
           renderedOutputPath,
           snapshotVideoPath,
-          resolveMinPsnrForMode(options.mode, suite.meta.minPsnr),
+          suite.meta.minPsnr,
           compiledHtml,
           snapshotHtml,
         );
@@ -1510,13 +1338,11 @@ async function run(): Promise<void> {
       event: "test_suite_start",
       totalSuites: suites.length,
       parallel: !options.sequential,
-      mode: options.mode,
     }),
   );
 
   logPretty(
-    `Starting ${suites.length} test suite(s) - ${options.sequential ? "sequential" : "parallel"} mode, ` +
-      `harness mode=${options.mode}`,
+    `Starting ${suites.length} test suite(s) - ${options.sequential ? "sequential" : "parallel"} mode`,
     "🚀",
   );
 
@@ -1580,8 +1406,7 @@ async function run(): Promise<void> {
     );
     logPretty(`Updated ${results.length} snapshot(s)`, "📸");
   } else {
-    const skipped = results.filter((r) => r.skipped).length;
-    const passed = results.filter((r) => r.passed && !r.skipped).length;
+    const passed = results.filter((r) => r.passed).length;
     const failed = results.filter((r) => !r.passed).length;
     const failedAtCompilation = results.filter(
       (r) => r.compilation && !r.compilation.passed,
@@ -1595,8 +1420,6 @@ async function run(): Promise<void> {
         total: results.length,
         passed,
         failed,
-        skipped,
-        mode: options.mode,
         failedAtCompilation,
         failedAtVisual,
         failedAtAudio,
@@ -1604,7 +1427,6 @@ async function run(): Promise<void> {
           suite: r.suite.id,
           name: r.suite.meta.name,
           passed: r.passed,
-          skipped: r.skipped?.reason,
           compilation: r.compilation?.passed,
           visual: r.visual?.passed,
           audio: r.audio?.passed,
@@ -1614,11 +1436,8 @@ async function run(): Promise<void> {
 
     // Pretty summary
     logPretty("═══════════════════════════════════════", "");
-    logPretty(`Test Suite Summary (mode=${options.mode})`, "📊");
-    logPretty(
-      `Total: ${results.length} | Passed: ${passed} | Failed: ${failed} | Skipped: ${skipped}`,
-      "",
-    );
+    logPretty("Test Suite Summary", "📊");
+    logPretty(`Total: ${results.length} | Passed: ${passed} | Failed: ${failed}`, "");
     if (failed > 0) {
       logPretty(`  Failed at compilation: ${failedAtCompilation}`, "");
       logPretty(`  Failed at visual: ${failedAtVisual}`, "");

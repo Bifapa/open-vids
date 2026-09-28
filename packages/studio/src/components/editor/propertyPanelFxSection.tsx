@@ -77,7 +77,6 @@ function withJob(base: HfAudioFxChain, job: HfAudioFxJob): HfAudioFxChain {
 
 // The preset-run card, the add shelf and the audition machinery are already
 // their own files; what is left is the section deciding which of them to show.
-// fallow-ignore-next-line complexity
 export function FxSection({
   chain,
   automatedTargets,

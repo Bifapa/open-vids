@@ -292,7 +292,6 @@ async function openStudio(url) {
   await waitFor("!!window.__qa.frame()", { timeout: 15000 });
 }
 
-// fallow-ignore-next-line complexity
 async function main() {
   await openStudio(`${STUDIO_URL}/?v=e2e${Date.now()}`);
   abEval("window.__qa.enableInspector()");

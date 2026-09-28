@@ -10,7 +10,6 @@ export interface ContextOrderItem extends StackingContextDescriptor {
   zIndex: number;
 }
 
-// fallow-ignore-next-line complexity
 export function getElementZIndex(element: HTMLElement): number {
   try {
     // An active Layers-panel reveal lift reports the element's TRUE z.

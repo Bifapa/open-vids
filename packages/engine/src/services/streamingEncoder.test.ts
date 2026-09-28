@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * buildStreamingArgs unit tests.
  *

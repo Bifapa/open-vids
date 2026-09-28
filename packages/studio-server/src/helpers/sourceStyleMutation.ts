@@ -1,4 +1,3 @@
-// fallow-ignore-next-line complexity
 export function parseStyleDecls(style: string): { props: Map<string, string>; order: string[] } {
   const props = new Map<string, string>();
   const order: string[] = [];

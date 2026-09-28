@@ -29,7 +29,6 @@ export function listRuntimePackageCycles(packages) {
   const edges = new Map(
     // Collecting three dependency classes in one expression keeps the graph
     // construction declarative; focused tests cover runtime versus dev edges.
-    // fallow-ignore-next-line complexity
     packages.map((pkg) => {
       const targets = new Set();
       for (const field of RUNTIME_DEPENDENCY_FIELDS) {
@@ -50,7 +49,6 @@ export function listRuntimePackageCycles(packages) {
 
   // Tarjan's strongly-connected-component walk is intentionally branchy; the
   // state transitions mirror the algorithm and are covered by focused tests.
-  // fallow-ignore-next-line complexity
   function visit(name) {
     indexes.set(name, nextIndex);
     lowLinks.set(name, nextIndex);

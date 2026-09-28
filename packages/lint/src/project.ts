@@ -396,7 +396,6 @@ function lintAudioSrcNotFound(
   return findings;
 }
 
-// fallow-ignore-next-line complexity
 function lintMissingLocalAsset(
   projectDir: string,
   htmlSources: HtmlSource[],
@@ -618,7 +617,6 @@ function lintMissingOrEmptySubComposition(
   const checked = new Map<string, { srcPath: string; problem: string }>();
   const visited = new Set<string>();
 
-  // fallow-ignore-next-line complexity
   const walk = (html: string): void => {
     // Shared scanner — see collectSubCompositionSrcs for why this must be a
     // text scan rather than a DOM query (template content is inert).

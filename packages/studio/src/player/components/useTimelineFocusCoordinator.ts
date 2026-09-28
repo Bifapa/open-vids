@@ -70,7 +70,6 @@ function focusElement(container: HTMLDivElement, targetId: string): boolean {
 }
 
 // This is one atomic two-axis reveal calculation; each branch selects target geometry only.
-// fallow-ignore-next-line complexity
 function scrollToTarget(
   container: HTMLDivElement,
   resolution: ResolvedFocus,
@@ -128,7 +127,6 @@ const UNRESOLVED_FOCUS_TIMEOUT_MS = 4000;
 
 /** Model-first focus actor; mounting is a consequence of its returned pins. */
 // Resolution, fallback, reveal, and focus form one ordered state machine.
-// fallow-ignore-next-line complexity
 export function useTimelineFocusCoordinator({
   scrollRef,
   logicalRows,
@@ -179,7 +177,6 @@ export function useTimelineFocusCoordinator({
   }, [logicalRows]);
 
   // Apply a request exactly once after its logical target and DOM node are both ready.
-  // fallow-ignore-next-line complexity
   useEffect(() => {
     if (!isCurrentRequest(request, projectId, sessionEpoch)) return;
     if (!resolution) {

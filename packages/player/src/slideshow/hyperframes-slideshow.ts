@@ -432,7 +432,6 @@ export class HyperframesSlideshow extends HTMLElement {
     }
   }
 
-  // fallow-ignore-next-line complexity
   private async init(): Promise<void> {
     if (this.initInFlight) return;
     this.initInFlight = true;
@@ -861,7 +860,6 @@ export class HyperframesSlideshow extends HTMLElement {
     this.audienceMediaUnlockButton = null;
   }
 
-  // fallow-ignore-next-line complexity
   private onKey = (e: KeyboardEvent): void => {
     // Duck-typed (not instanceof): this handler also receives keydowns forwarded
     // from the composition iframe, whose elements are instances of the IFRAME
@@ -912,7 +910,6 @@ export class HyperframesSlideshow extends HTMLElement {
     }
   };
 
-  // fallow-ignore-next-line complexity
   private onMessage = (e: MessageEvent): void => {
     if (e.source !== window.parent && e.source !== window) return;
     // Audience mode is driven by BroadcastChannel; ignore embed postMessage nav.
@@ -954,7 +951,6 @@ export class HyperframesSlideshow extends HTMLElement {
     }
   };
 
-  // fallow-ignore-next-line complexity
   private render(): void {
     if (!this.controller) return;
 
@@ -1013,7 +1009,6 @@ export class HyperframesSlideshow extends HTMLElement {
   // Builds the nav cluster ([mute?] [prev] counter [next] | [present?] [fullscreen]) as a
   // floating capsule. `bottomCss` positions it (normal view: "28px"; presenter
   // view: above the notes panel). Reused by render() and renderPresenter().
-  // fallow-ignore-next-line complexity
   private buildNavCluster(
     counter: { index: number; total: number },
     bottomCss: string,

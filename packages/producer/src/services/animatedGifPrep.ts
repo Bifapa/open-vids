@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity
 import { createHash } from "node:crypto";
 import {
   copyFileSync,

@@ -27,7 +27,6 @@ export interface StudioOverlaysProps {
  * ask-agent modal, and the toast. Extracted from
  * `App.tsx` to keep the shell within the studio's 600-line decomposition budget.
  */
-// fallow-ignore-next-line complexity
 export function StudioOverlays({
   projectId,
   projectDir,

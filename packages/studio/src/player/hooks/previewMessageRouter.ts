@@ -2,8 +2,7 @@
  * The `window.message` router for the preview iframe.
  *
  * Extracted from `useTimelinePlayer`, which had grown past the studio's 600-line
- * file cap and carried a `fallow-ignore-next-line complexity` on this function
- * admitting the same thing. Nothing here is new logic — it is the same three
+ * file cap. Nothing here is new logic — it is the same three
  * branches (accept-gate, state, timeline) against the same refs, with the
  * suppression retired rather than moved. The group-levels branch went with the
  * level meter it fed (see the group volume/meter removal).

@@ -127,7 +127,6 @@ export function groupElementsByTargetPath(
   return byPath;
 }
 
-// fallow-ignore-next-line complexity
 async function setElementsHidden({
   projectId,
   activeCompPath,

@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 // (splitTopLevelWhitespace intentionally mirrors the studio-side copies in
 // manualEditsDom.ts / manualEditsRenderScript.ts — this module ships inside
 // the self-contained runtime bundle and cannot import studio code.)

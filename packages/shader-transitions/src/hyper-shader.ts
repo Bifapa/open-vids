@@ -249,7 +249,6 @@ function getDocumentStyleSignature(doc: Document): string {
   return stableHash(`${styleText}\n${linkedStyles}`);
 }
 
-// fallow-ignore-next-line complexity
 function isGsapAnimationOnlyScript(text: string): boolean {
   const hasGsap =
     text.includes("gsap.timeline") ||

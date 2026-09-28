@@ -165,7 +165,6 @@ interface CreateAudioGroupAndAssignMembersInput {
  * element, which every later group-level write addresses by DOM id. No naming
  * dialog: the id is the default name, the way `resolveAudioGroups` reads it.
  */
-// fallow-ignore-next-line complexity
 export async function createAudioGroupAndAssignMembers({
   projectId,
   activeCompPath,

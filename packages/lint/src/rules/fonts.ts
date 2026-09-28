@@ -165,7 +165,7 @@ function collectGoogleFontFamilies(
 }
 
 export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
-  // system_font_will_alias — only for distributed / Lambda renders, where
+  // system_font_will_alias — only for renders with system-font capture disabled, where
   // system-font capture is disabled and the alias substitution does NOT happen,
   // so the font silently falls back to whatever the OS provides. Under a local
   // render the substitution is the renderer working as designed, not a defect,
@@ -182,7 +182,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         severity: "warning",
         message:
           `Font ${aliased.length === 1 ? "family" : "families"} will be substituted at render time: ${aliased.join(", ")}. ` +
-          "In distributed/Lambda rendering system-font capture is disabled — these fonts will fall " +
+          "When system-font capture is disabled these fonts will fall " +
           "back to OS defaults. Embed explicit @font-face declarations instead.",
       },
     ];

@@ -100,7 +100,6 @@ export default defineCommand({
       default: false,
     },
   },
-  // fallow-ignore-next-line complexity
   async run({ args }) {
     if (args.video) {
       const { runVideoMode } = await import("./capture/video.js");

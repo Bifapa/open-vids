@@ -63,7 +63,6 @@ async function settleAfterScroll(
   }
 }
 
-// fallow-ignore-next-line complexity
 export async function lazyScrollForCapture(
   page: LazyScrollPage,
   budgetMs: number,

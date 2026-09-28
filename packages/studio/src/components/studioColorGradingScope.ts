@@ -40,7 +40,6 @@ function colorGradingScopePaths(
   return scope === "source-file" ? [selectedSourceFile] : compositionPaths;
 }
 
-// fallow-ignore-next-line complexity
 export async function applyColorGradingScopeUpdate({
   scope,
   value,

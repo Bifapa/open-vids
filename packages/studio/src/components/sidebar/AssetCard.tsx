@@ -122,7 +122,6 @@ export interface AssetCardProps {
  * Drag behaviour is preserved: a pointer movement exceeding DRAG_THRESHOLD_PX
  * before pointerup is treated as drag-start, not a click.
  */
-// fallow-ignore-next-line complexity
 export function AssetCard({
   projectId,
   asset,

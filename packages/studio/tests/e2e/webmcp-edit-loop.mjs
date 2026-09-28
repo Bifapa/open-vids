@@ -81,7 +81,6 @@ function findAvailablePort() {
 }
 
 // Bounded polling is the contract here: startup failure must include the child logs.
-// fallow-ignore-next-line complexity
 async function waitForServer(child, logs) {
   const deadline = Date.now() + NAVIGATION_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -220,7 +219,6 @@ async function waitForToolSurface(page, expectedCount = TOOL_COUNT) {
 }
 
 // The tool may truthfully refuse while the preview is replacing its document.
-// fallow-ignore-next-line complexity
 async function waitForReadyLook(page) {
   const deadline = Date.now() + NAVIGATION_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -370,7 +368,6 @@ function targetForSource(look, sourceFile) {
 }
 
 // An agent follows the refusal hint with a fresh look, but never retries forever.
-// fallow-ignore-next-line complexity
 async function selectWithBoundedReacquire(page, initialTarget, sourceFile) {
   let target = initialTarget;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -391,7 +388,6 @@ async function selectWithBoundedReacquire(page, initialTarget, sourceFile) {
 
 // Linear browser acceptance scenario. Splitting it would hide the causal chain
 // between the write receipt, source bytes, overlay, thumbnail, frame, and reload.
-// fallow-ignore-next-line complexity
 async function runBrowserProof(page) {
   const mutationResponses = [];
   await page.evaluateOnNewDocument(installModelContextHarness, false);

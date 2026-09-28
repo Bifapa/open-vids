@@ -18,16 +18,15 @@
 import type { Page } from "puppeteer-core";
 
 /**
- * Error code classifying this failure as non-retryable for distributed
- * workflow adapters — a downgraded GPU on a worker will not heal on retry.
+ * Error code classifying this failure as non-retryable for render workers — a downgraded GPU will not heal on retry.
  */
 export const BROWSER_GPU_NOT_SOFTWARE = "BROWSER_GPU_NOT_SOFTWARE";
 
 /**
  * Error thrown when chrome://gpu reports a non-SwiftShader WebGL backend.
  *
- * Carries a `code` property so the adapter can match on it without parsing
- * the message string — Temporal/Step Functions retry policies key off the
+ * Carries a `code` property so callers can match on it without parsing
+ * the message string — retry policies key off the
  * code, not the message.
  */
 export class SwiftShaderAssertionError extends Error {

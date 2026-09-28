@@ -102,7 +102,6 @@ export function usePreviewBlockDrop({
     if (dragDepthRef.current === 0) setIsDragOver(false);
   }, []);
 
-  // fallow-ignore-next-line complexity
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       dragDepthRef.current = 0;

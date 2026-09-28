@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +10,6 @@ export function listDirectProcessTermination(source, filename = "source.ts") {
   const issues = [];
 
   // AST traversal mirrors the small set of process-termination spellings.
-  // fallow-ignore-next-line complexity
   function visit(node) {
     if (
       ts.isPropertyAccessExpression(node) &&
@@ -32,7 +30,6 @@ export function listDirectProcessTermination(source, filename = "source.ts") {
 }
 
 function listTypeScriptFiles(directory, rootCliPath) {
-  // fallow-ignore-next-line complexity
   return readdirSync(directory).flatMap((name) => {
     const path = join(directory, name);
     if (statSync(path).isDirectory()) return listTypeScriptFiles(path, rootCliPath);

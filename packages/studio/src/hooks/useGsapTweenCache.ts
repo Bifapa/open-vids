@@ -168,7 +168,6 @@ export function useGsapAnimationsForElement(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allAnimations, target, version, iframeRef]);
 
-  // fallow-ignore-next-line complexity
   const animations = useMemo(() => {
     const iframe = iframeRef?.current;
     let result = rawAnimations;
@@ -236,7 +235,6 @@ export function useGsapAnimationsForElement(
   // Merges keyframes from ALL animations targeting this element and synthesizes
   // flat tweens so the cache is never downgraded vs the bulk populate.
   const elementId = target?.id ?? null;
-  // fallow-ignore-next-line complexity
   useEffect(() => {
     if (!elementId) return;
     // Same admission rule as the keyframe cache below (hold skip included) and
@@ -403,7 +401,6 @@ export function usePopulateKeyframeCacheForFile(
     let attempts = 0;
     const maxAttempts = 10;
 
-    // fallow-ignore-next-line complexity
     const tryRuntimeScan = () => {
       if (runtimeScanDoneRef.current === `kf-cache:${projectId}:${sf}:${version}`) return true;
       const iframe =

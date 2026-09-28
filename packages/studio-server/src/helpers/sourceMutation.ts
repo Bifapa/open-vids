@@ -218,7 +218,6 @@ function stampNewChildIds(parent: Element): void {
   }
 }
 
-// fallow-ignore-next-line complexity
 export function patchElementInHtml(
   source: string,
   target: SourceMutationTarget,
@@ -329,7 +328,6 @@ function setElementDuration(
   });
 }
 
-// fallow-ignore-next-line complexity
 export function splitElementInHtml(
   source: string,
   target: SourceMutationTarget,
@@ -518,7 +516,6 @@ function uniqueGroupDomId(document: Document, groupId: string): string {
   return id;
 }
 
-// fallow-ignore-next-line complexity
 export function wrapElementsInHtml(
   source: string,
   targets: SourceMutationTarget[],

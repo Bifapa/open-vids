@@ -56,7 +56,6 @@ interface ParsedPath {
   field?: string;
 }
 
-// fallow-ignore-next-line complexity
 function parsePath(path: string): ParsedPath | null {
   const styleM = /^\/elements\/([^/]+)\/inlineStyles\/(.+)$/.exec(path);
   if (styleM) return { type: "style", id: styleM[1], prop: styleM[2] };
@@ -172,7 +171,6 @@ export function applyPatchesToDocument(
   }
 }
 
-// fallow-ignore-next-line complexity
 function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): void {
   switch (p.type) {
     case "style": {

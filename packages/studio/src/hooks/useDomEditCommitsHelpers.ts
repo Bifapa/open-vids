@@ -73,7 +73,6 @@ export class AtomicElementPatchConvergenceError extends Error {
 }
 
 // Keep the atomic response contract in one guard so callers do not compose validity.
-// fallow-ignore-next-line complexity
 function isAtomicElementPatchFile(value: unknown): value is AtomicElementPatchFile {
   return (
     typeof value === "object" &&
@@ -95,7 +94,6 @@ function isAtomicElementPatchFile(value: unknown): value is AtomicElementPatchFi
 
 // This is the single client owner for dispatching and validating the aggregate
 // atomic endpoint. Splitting validation from the request would weaken that wire contract.
-// fallow-ignore-next-line complexity
 export async function patchElementBatches(projectId: string, batches: DomEditPatchBatch[]) {
   const body = JSON.stringify({ batches });
   try {

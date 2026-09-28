@@ -200,7 +200,6 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   }
 
   // Serve render inline (for in-browser playback — opens in a new tab)
-  // fallow-ignore-next-line code-duplication
   api.get("/render/:jobId/view", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
@@ -221,7 +220,6 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   });
 
   // Download render
-  // fallow-ignore-next-line code-duplication
   api.get("/render/:jobId/download", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);

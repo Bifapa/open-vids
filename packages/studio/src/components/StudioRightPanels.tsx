@@ -28,7 +28,6 @@ import { canHideSelections } from "../utils/timelineInspector";
 import { useRemoveBackground } from "../hooks/useRemoveBackground";
 import { useApplyColorGradingScope } from "../hooks/useApplyColorGradingScope";
 
-// fallow-ignore-next-line complexity
 export function StudioRightPanels({
   activeBlockParams,
   onCloseBlockParams,

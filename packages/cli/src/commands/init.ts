@@ -2,7 +2,6 @@
 // handleVideoFile, and applyResolutionPreset carry its interactive branching.
 // This branch only repointed the scaffolded npm scripts; the refactor is its
 // own task.
-// fallow-ignore-file complexity
 import { failCommand, finishCommand } from "../utils/commandResult.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { defineCommand, runCommand } from "citty";

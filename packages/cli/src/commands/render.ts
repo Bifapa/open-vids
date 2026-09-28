@@ -79,7 +79,6 @@ import {
   type RenderOutputShapeTelemetryPayload,
   type RenderEnvironmentTelemetryPayload,
 } from "../telemetry/events.js";
-import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
 import {
   readConfigFresh,
   recordRecentRender,
@@ -107,11 +106,7 @@ import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.j
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { killOrphanedProcessesForRender } from "../utils/orphanCleanup.js";
 import { createRenderCancellationScope } from "../utils/renderCancellation.js";
-import {
-  markRenderSucceeded,
-  runPostRenderStep,
-  runPostRenderStepAsync,
-} from "../utils/render-success-state.js";
+import { markRenderSucceeded, runPostRenderStep } from "../utils/render-success-state.js";
 import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
 import { EXTRACT_CACHE_DIR_DISABLED_ALIASES, type VideoFrameFormat } from "@hyperframes/engine";
 import {
@@ -522,8 +517,6 @@ export interface RenderOptions {
   playerReadyTimeout?: number;
   /** Throw render failures to the caller instead of printing and exiting. */
   throwOnError?: boolean;
-  /** Skip the interactive feedback prompt after a successful render. */
-  skipFeedback?: boolean;
   /**
    * OPT IN to managing the DE parallel-router circuit breaker
    * (`applyDeParallelRouterCircuitBreaker`) for this render. Default OFF —
@@ -534,7 +527,7 @@ export interface RenderOptions {
    * batch rows) but not for genuinely concurrent ones — racing invocations
    * could tear down or misattribute each other's outcome. Programmatic
    * consumers importing `renderLocal` (a future studio-server path, test
-   * harnesses, distributed runners) therefore do not manage the breaker
+   * harnesses) therefore do not manage the breaker
    * unless they explicitly opt in AND guarantee sequential invocation. The
    * CLI sets this for single renders and for `--batch` at concurrency 1; it
    * leaves it unset for `--batch-concurrency N>=2`.
@@ -758,7 +751,6 @@ function resolveDockerHostPlatform(options: RenderOptions): string {
 
 // Inherited minor finding (CRAP 37.1, cyclomatic 11). This PR only added
 // `pageNavigationTimeoutMs` to the options forwarded to `buildDockerRunArgs`.
-// fallow-ignore-next-line complexity
 async function renderDocker(
   projectDir: string,
   outputPath: string,
@@ -912,7 +904,6 @@ export async function renderLocal(
   }
 }
 
-// fallow-ignore-next-line complexity
 async function executeLocalRender(
   projectDir: string,
   outputPath: string,
@@ -1060,33 +1051,29 @@ async function executeLocalRender(
     ...(options.playerReadyTimeout != null && { playerReadyTimeout: options.playerReadyTimeout }),
     ...(options.vp9CpuUsed != null ? { vp9CpuUsed: options.vp9CpuUsed } : {}),
   });
-  const request = producer.createRenderRequest({
-    projectDir,
-    outputPath,
-    engineConfig,
-    options: {
-      fps: options.fps,
-      quality: options.quality,
-      format: options.format,
-      gifLoop: options.gifLoop,
-      hlsSegmentSeconds: options.hlsSegmentSeconds,
-      workers: options.workers,
-      useGpu: options.gpu,
-      hdrMode: options.hdrMode,
-      crf: options.crf,
-      videoBitrate: options.videoBitrate,
-      videoFrameFormat: options.videoFrameFormat,
-      variables: options.variables,
-      entryFile: options.entryFile,
-      outputResolution: options.outputResolution,
-      outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
-      debug: options.debug,
-      resumeSegments: options.resumeSegments,
-      keepSegments: options.keepSegments,
-      strictness: options.bestEffort === false ? "strict" : "best-effort",
-    },
+  const job = producer.createRenderJob({
+    producerConfig: engineConfig,
+    logger,
+    fps: options.fps,
+    quality: options.quality,
+    format: options.format,
+    gifLoop: options.gifLoop,
+    hlsSegmentSeconds: options.hlsSegmentSeconds,
+    workers: options.workers,
+    useGpu: options.gpu,
+    hdrMode: options.hdrMode,
+    crf: options.crf,
+    videoBitrate: options.videoBitrate,
+    videoFrameFormat: options.videoFrameFormat,
+    variables: options.variables,
+    entryFile: options.entryFile,
+    outputResolution: options.outputResolution,
+    outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
+    debug: options.debug,
+    resumeSegments: options.resumeSegments,
+    keepSegments: options.keepSegments,
+    strictness: options.bestEffort === false ? "strict" : "best-effort",
   });
-  const job = producer.createRenderJob(producer.renderConfigFromRequest(request, { logger }));
 
   const onProgress = options.quiet
     ? undefined
@@ -1148,14 +1135,6 @@ async function executeLocalRender(
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
     warnIfWebmAlphaDropped(outputPath, options.format, options.quiet),
   );
-  if (!options.skipFeedback) {
-    await runPostRenderStepAsync("maybePromptRenderFeedback", () =>
-      maybePromptRenderFeedback({
-        renderDurationMs: elapsed,
-        quiet: options.quiet,
-      }),
-    );
-  }
   if (options.exitAfterComplete) scheduleRenderProcessExit();
   const durationMs = job.perfSummary
     ? Math.round(job.perfSummary.compositionDurationSeconds * 1000)
@@ -1745,7 +1724,6 @@ function handleRenderError(
  */
 // Inherited CRITICAL (CRAP 148.4, cyclomatic 24): exhaustive nullish-fallback
 // chain across 30+ telemetry fields. Not touched by this PR.
-// fallow-ignore-next-line complexity
 function trackRenderMetrics(
   job: RenderJob,
   elapsedMs: number,

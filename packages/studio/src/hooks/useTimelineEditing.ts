@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
@@ -176,7 +175,6 @@ export function useTimelineEditing({
     writeProjectFile,
   });
   const handleTimelineElementMove = useCallback(
-    // fallow-ignore-next-line complexity
     (element: TimelineElement, updates: TimelineMoveUpdates) => {
       const commitMove = () => {
         const targetPath = element.sourceFile || activeCompPath || "index.html";
@@ -304,7 +302,6 @@ export function useTimelineEditing({
   );
 
   const handleTimelineElementResize = useCallback(
-    // fallow-ignore-next-line complexity
     (
       element: TimelineElement,
       updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,

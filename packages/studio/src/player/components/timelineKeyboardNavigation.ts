@@ -377,7 +377,6 @@ function nearestTarget(row: TimelineLogicalRow, time: number): TimelineLogicalTa
  * are wired to the rendered timeline.
  */
 // The branching is the keyboard contract: four key classes intentionally share one actor.
-// fallow-ignore-next-line complexity
 export function resolveTimelineNavigationTarget(
   rows: readonly TimelineLogicalRow[],
   currentId: string,
@@ -425,7 +424,6 @@ export function resolveTimelineNavigationTarget(
  * consumes this fallback when virtualization unmounts a logical target.
  */
 // The ordered fallback chain is the invariant; splitting it would duplicate traversal state.
-// fallow-ignore-next-line complexity
 export function resolveTimelineFocusFallback(
   previousRows: readonly TimelineLogicalRow[],
   nextRows: readonly TimelineLogicalRow[],

@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { runRenderSetupWorker } from "./cancellableProcess.js";

@@ -22,9 +22,9 @@ export function trackCommandFailures(
  * here:
  *   1. `assertKnownFlags` runs in the wrapped command, so an unknown-flag
  *      throw reaches the executable boundary like every other failure.
- *   2. Recursion covers nested command groups (`cloud/*`, `auth/*`, `figma/*`,
- *      `lambda/*`, `capture/*`, `skills`). Without it, a nested command's
- *      unknown flags would bypass the leaf's guard.
+ *   2. Recursion covers nested command groups (`figma/*`, `capture/*`,
+ *      `skills`). Without it, a nested command's unknown flags would bypass
+ *      the leaf's guard.
  */
 function wrapCommand(cmd: AnyCommandDef): AnyCommandDef {
   const run = cmd.run;

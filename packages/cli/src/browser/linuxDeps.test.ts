@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { describe, it, expect } from "vitest";
 import {
   chromeDepsInstallCommand,

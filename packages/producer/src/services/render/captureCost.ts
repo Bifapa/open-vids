@@ -354,7 +354,6 @@ export interface CaptureCalibrationOutcome {
  * the fallback fires (BeginFrame is no longer the active capture mode,
  * so the probe session is no longer reusable).
  */
-// fallow-ignore-next-line complexity
 export async function runCaptureCalibration(input: {
   cfg: EngineConfig;
   fileServer: FileServerHandle;

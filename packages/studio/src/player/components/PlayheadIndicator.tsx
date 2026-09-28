@@ -1,4 +1,3 @@
-// fallow-ignore-file dead-code
 /**
  * Shared playhead visual used by TimelineCanvas (real playhead) and
  * TimelineEditorNotice (animated illustration).

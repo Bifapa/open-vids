@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-class-member code-duplication complexity
 /**
  * Video Frame Extractor Service
  *

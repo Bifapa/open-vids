@@ -255,7 +255,6 @@ const SAFE_DEFAULT_NODES = new Set([
  */
 function isSafeDefaultExpression(node: Node, earlierParams: ReadonlySet<string>): boolean {
   let safe = true;
-  // fallow-ignore-next-line complexity
   const visit = (current: Node, parent?: Node, key?: string): void => {
     if (!isNode(current) || !safe) return;
     if (!SAFE_DEFAULT_NODES.has(current.type)) {

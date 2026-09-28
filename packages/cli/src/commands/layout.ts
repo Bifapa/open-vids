@@ -78,7 +78,6 @@ function buildMotionSampleTimes(duration: number): number[] {
 
 async function getCompositionDuration(page: import("puppeteer-core").Page): Promise<number> {
   // Serialized into the page; the duration-source cascade cannot be split.
-  // fallow-ignore-next-line complexity
   return page.evaluate(() => {
     const win = window as unknown as {
       __hf?: { duration?: number };
@@ -498,7 +497,6 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
       },
     },
     // Pre-existing command-run branching; U1 only swapped the seek internals.
-    // fallow-ignore-next-line complexity
     async run({ args }) {
       printDeprecationNotice(commandName);
       const project = resolveProject(args.dir);

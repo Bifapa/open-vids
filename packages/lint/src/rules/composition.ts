@@ -169,7 +169,6 @@ function leftmostCompoundId(selector: string): string | null {
 // are scanned — the flat `[^{}]*` body class naturally skips @keyframes
 // bodies (which contain nested `{...}` stops) and other @-rules, so keyframe
 // selectors like `0%`/`100%` don't leak in.
-// fallow-ignore-next-line complexity
 function collectHeavyOverlayHooks(styles: ExtractedBlock[]): {
   classes: Set<string>;
   ids: Set<string>;
@@ -384,7 +383,6 @@ function collectDeclaredVariableIds(htmlTagRaw: string): Set<string> | null {
  * template/fragment sub-comps hold it on their composition root div. Returns
  * null if any occurrence has unparseable JSON.
  */
-// fallow-ignore-next-line complexity
 function variablesDeclarationFindings(
   tag: OpenTag,
   tags: readonly OpenTag[],
@@ -616,7 +614,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // Skips absolute URLs (http(s)://, //, data:, /-prefixed root-relative),
   // hash anchors, and plain relative paths (`assets/x.mp4`) — only `../`
   // traversal is flagged. Subsumes the older `../capture/`-specific rule.
-  // fallow-ignore-next-line complexity
   ({ tags, styles, rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
 
@@ -691,7 +688,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   },
 
   // timeline_track_too_dense
-  // fallow-ignore-next-line complexity
   ({ tags, options }) => {
     const trackCounts = new Map<string, number>();
     for (const tag of tags) {
@@ -723,7 +719,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   },
 
   // deprecated_data_layer + deprecated_data_end
-  // fallow-ignore-next-line complexity
   ({ tags }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const tag of tags) {
@@ -822,7 +817,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   },
 
   // timed_element_missing_clip_class
-  // fallow-ignore-next-line complexity
   ({ tags }) => {
     const findings: HyperframeLintFinding[] = [];
     // `img` sits here for the same reason `video` and `audio` already did: the
@@ -1029,7 +1023,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // `data-variable-values`. The runtime swallows JSON errors silently and
   // falls back to declared defaults, which masks typos. This rule surfaces
   // the parse failure so authors notice before render time.
-  // fallow-ignore-next-line complexity
   ({ tags }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const tag of tags) {
@@ -1148,7 +1141,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // the high-signal shape — a sole/dominant external mount starting at ~0 — so it
   // stays silent on intentional short clips (an intro followed by other clips that
   // carry the timeline forward).
-  // fallow-ignore-next-line complexity
   ({ tags, rootTag }) => {
     if (!rootTag) return [];
     const rootDuration = Number(readAttr(rootTag.raw, "data-duration"));
@@ -1275,7 +1267,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // advisory by default (see shouldBlockRender) — it only blocks render under
   // --strict/--strict-all — so a strict flag here nudges toward an explicit,
   // guaranteed-correct value without failing renders that would succeed.
-  // fallow-ignore-next-line complexity
   ({ rootTag, scripts, styles, tags, options }) => {
     if (options.isSubComposition) return [];
     if (!rootTag) return [];
@@ -1426,7 +1417,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // only escape hatch is `display: none` — an element removed from the render
   // tree can't feed the compositor. Warn at 25, well below the observed
   // 40-element repro, to give authors lead time before hitting the bug.
-  // fallow-ignore-next-line complexity
   ({ tags, styles, rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
 

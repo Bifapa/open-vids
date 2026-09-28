@@ -23,7 +23,6 @@ import {
   audioGainToText,
 } from "@hyperframes/core/audio-gain";
 
-// fallow-ignore-next-line complexity
 export function MediaSection({
   projectDir,
   element,

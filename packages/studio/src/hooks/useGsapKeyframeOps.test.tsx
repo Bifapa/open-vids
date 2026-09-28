@@ -45,7 +45,6 @@ function renderKeyframeOps(over: {
   const captured: { api: HookApi | null } = { api: null };
   // This hook harness intentionally mirrors the separate script-commit harness.
   function Probe() {
-    // fallow-ignore-next-line code-duplication
     captured.api = useGsapKeyframeOps({
       activeCompPath: "index.html",
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test doubles

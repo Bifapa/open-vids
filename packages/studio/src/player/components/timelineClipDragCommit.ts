@@ -218,7 +218,6 @@ function resolveMultiSelection(
  *   the new lane and the clips at/below the insert are renumbered by +1 (the ONLY
  *   permitted multi-clip write) via a whole-set re-normalize; persisted atomically.
  */
-// fallow-ignore-next-line complexity
 export function commitDraggedClipMove(rawDrag: DraggedClipState, deps: DragCommitDeps): void {
   const drag = { ...rawDrag, previewStart: resolveDragLandingStart(rawDrag, deps) };
   const hostAlias = resolveExpandedHostAlias(drag, deps);
@@ -331,7 +330,6 @@ export function commitDraggedClipMove(rawDrag: DraggedClipState, deps: DragCommi
 
 /** Build the one sanctioned multi-clip write: atomically insert and compact a
  * source-file zone, then let the caller sync the deliberate vertical stacking. */
-// fallow-ignore-next-line complexity
 function buildTrackInsertEdits(
   element: TimelineElement,
   previewStart: number,

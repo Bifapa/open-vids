@@ -4,9 +4,8 @@
  * drawElementImage draws a snapshot taken at the paint event; capturing video
  * needs a fresh per-frame paint. On Linux headless-shell that paint comes from
  * the per-frame HeadlessExperimental.beginFrame — so video should capture
- * correctly there (see docs/fast-capture-limitations.md, Limitation 2). This
- * could not be validated under Docker-on-rosetta (renders hung); this script is
- * meant to run on a native amd64 Linux runner inside Dockerfile.test.
+ * correctly there. This could not be validated under Docker-on-rosetta
+ * (renders hung); this script is meant to run on a native amd64 Linux runner.
  *
  * Renders a video composition twice — baseline (screenshot) and fast
  * (drawElement) — and asserts the fast output matches the baseline (PSNR above

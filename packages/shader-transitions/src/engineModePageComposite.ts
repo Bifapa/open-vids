@@ -143,7 +143,6 @@ export function isPageSideCompositingSupported(): boolean {
   return true;
 }
 
-// fallow-ignore-next-line complexity
 export function installPageSideCompositor(options: PageCompositorInstallOptions): boolean {
   if (typeof window === "undefined") return false;
   (window as unknown as { __HF_PAGE_COMPOSITOR_CANARY__?: string }).__HF_PAGE_COMPOSITOR_CANARY__ =
@@ -267,7 +266,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
   // injection so cloneNode picks up <img> replacements for <video> elements.
   // Awaits decode on cloned data-URI images so drawElementImage reads
   // the current frame, not a stale paint cache entry.
-  // fallow-ignore-next-line complexity
   async function prepareComposite(): Promise<boolean> {
     const active = currentActive;
     if (!active) {
@@ -326,7 +324,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
 
   // Phase 2b: drawElementImage from painted clones + shader composite.
   // Called after micro-screenshot forces the browser to paint the clones.
-  // fallow-ignore-next-line complexity
   function resolveComposite(): boolean {
     const active = currentActive;
     if (!active) {

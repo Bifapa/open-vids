@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { execSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
@@ -157,7 +156,6 @@ function touchInstallLock(): void {
   }
 }
 
-// fallow-ignore-next-line complexity
 export async function withInstallLock<T>(
   fn: () => Promise<T>,
   timings: InstallLockTimings = INSTALL_LOCK_TIMINGS,
@@ -340,9 +338,8 @@ function whichBinary(name: string): string | undefined {
 // engine-side name that per-worker render launches already honor (see
 // `packages/engine/src/services/browserManager.ts` and `render.ts` which even
 // propagates the CLI-resolved executable into it). Docs in
-// `skills/hyperframes-animation/adapters/typegpu.md`,
-// `packages/gcp-cloud-run/Dockerfile`, and `examples/k8s-jobs/Dockerfile.example`
-// all instruct users to set `PRODUCER_HEADLESS_SHELL_PATH`, so field reports
+// `skills/hyperframes-animation/adapters/typegpu.md` instruct users to set
+// `PRODUCER_HEADLESS_SHELL_PATH`, so field reports
 // (e.g. `#hyperframes-cli-feedback` ts=1784095034 on win32/x64) hit the case
 // where `render` completes via that env var while `check`, `snapshot`, and
 // `compare` all ignore it and crash on the cached headless-shell instead.
@@ -668,7 +665,6 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
   return ensureBrowserInCurrentProcess(options);
 }
 
-// fallow-ignore-next-line complexity
 async function ensureBrowserInCurrentProcess(
   options?: EnsureBrowserOptions,
 ): Promise<BrowserResult> {

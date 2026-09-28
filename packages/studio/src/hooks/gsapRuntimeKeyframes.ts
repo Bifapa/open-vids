@@ -230,14 +230,12 @@ function keyframeVarsCarryChannel(
  * on a rotation-only set). With no channel-matching set, it falls back to the
  * first matching set (back-compat). `channels` is ignored for `kind: "keyframe"`.
  */
-// fallow-ignore-next-line complexity
 export function resolveRuntimeTween(
   iframe: HTMLIFrameElement | null,
   selector: string,
   kind: "keyframe" | "set",
   compositionId?: string,
   channels?: string[],
-  // fallow-ignore-next-line code-duplication
 ): ResolvedRuntimeTween | null {
   const timelines = timelinesOf(iframe);
   if (!timelines) return null;
@@ -262,7 +260,6 @@ export function resolveRuntimeTween(
   const wantChannels = channels && channels.length > 0 ? channels : null;
 
   let first: ResolvedRuntimeTween | null = null;
-  // fallow-ignore-next-line code-duplication
   let channelMatch: ResolvedRuntimeTween | null = null;
   for (const tlId of tlIds) {
     const timeline = timelines[tlId];
@@ -312,13 +309,11 @@ function readCarriesChannel(read: ReadTween, channels: string[]): boolean {
  * whenever the playhead sits in that tween's range but outside the position
  * tween's). Omitted → any keyframed tween qualifies (back-compat).
  */
-// fallow-ignore-next-line complexity
 export function readRuntimeKeyframes(
   iframe: HTMLIFrameElement | null,
   selector: string,
   compositionId?: string,
   requireChannels?: string[],
-  // fallow-ignore-next-line code-duplication
 ): ReadTween | null {
   const timelines = timelinesOf(iframe);
   if (!timelines) return null;
@@ -347,13 +342,11 @@ export function readRuntimeKeyframes(
   // (e.g. two non-overlapping gesture recordings → two separate `to()`s). The
   // overlay must draw the segment under the PLAYHEAD, not blindly the first one
   // — otherwise recording a second gesture leaves the path stuck on the first.
-  // fallow-ignore-next-line code-duplication
   let firstRead: ReadTween | null = null;
   for (const tlId of tlIds) {
     const timeline = timelines[tlId];
     if (!timeline?.getChildren) continue;
     const now = typeof timeline.time === "function" ? timeline.time() : null;
-    // fallow-ignore-next-line code-duplication
     for (const tween of timeline.getChildren(true)) {
       if (!tween.vars || !matchesElement(tween, targetEl)) continue;
       const dur = typeof tween.duration === "function" ? tween.duration() : 0;
@@ -387,7 +380,6 @@ export function readRuntimeKeyframes(
  * rotation/scale tween doesn't make a static position hold enter the keyframe
  * branch.
  */
-// fallow-ignore-next-line complexity
 export function hasNonHoldTweenForElement(
   iframe: HTMLIFrameElement | null,
   selector: string,
@@ -411,7 +403,6 @@ export function hasNonHoldTweenForElement(
   }
   if (!targetEl) return false;
 
-  // fallow-ignore-next-line code-duplication
   for (const tween of timeline.getChildren(true)) {
     if (!tween.vars || !matchesElement(tween, targetEl)) continue;
     const dur = typeof tween.duration === "function" ? tween.duration() : 0;

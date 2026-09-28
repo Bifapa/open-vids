@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 /**
  * Detection + remediation for macOS-below-13 chrome-headless-shell dyld
  * launch crashes.

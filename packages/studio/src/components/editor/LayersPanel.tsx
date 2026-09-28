@@ -93,7 +93,6 @@ interface CollapsedState {
   [key: string]: boolean;
 }
 
-// fallow-ignore-next-line complexity
 export const LayersPanel = memo(function LayersPanel() {
   const { previewIframeRef, activeCompPath, showToast } = useStudioShellContext();
   const { refreshKey, compositionLoading, timelineElements, isPlaying } =
@@ -281,7 +280,6 @@ export const LayersPanel = memo(function LayersPanel() {
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
-  // fallow-ignore-next-line complexity
   const handleReorder = useCallback(
     (event: LayerReorderEvent) => {
       const { siblingLayers, fromIndex, toIndex } = event;

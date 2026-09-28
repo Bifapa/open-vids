@@ -78,7 +78,6 @@ type Step = "rating" | "comment" | "thanks";
  * A failed render skips the 0-10 scale: scoring an export you never got is a
  * question with no useful answer, and the free-text reply is the whole point.
  */
-// fallow-ignore-next-line complexity
 export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
   const [request, setRequest] = useState<FeedbackRequest | null>(null);
   const [step, setStep] = useState<Step>("rating");

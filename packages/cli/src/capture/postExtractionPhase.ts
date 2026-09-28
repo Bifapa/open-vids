@@ -243,7 +243,7 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
       // Join in-section media URLs → downloaded local paths, then re-write
       // tokens.json. Downstream page recreation MUST reference local files:
       // remote URLs fail at render time (hotlink/CORS 403, no egress in
-      // Docker/Lambda, frame-timing blanks for not-yet-loaded images).
+      // Docker/offline, frame-timing blanks for not-yet-loaded images).
       const base = (u: string): string => u.split(/[#?]/)[0] ?? u;
       const localByUrl = new Map<string, string>();
       const collectLocalAssetPaths = (): void => {

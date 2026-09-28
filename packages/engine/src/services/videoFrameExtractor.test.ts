@@ -1,4 +1,3 @@
-// fallow-ignore-file code-duplication
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   existsSync,
@@ -62,11 +61,10 @@ import { compileTimingAttrs, sourceTimeAt } from "@hyperframes/core";
 import { RATE_RANGE } from "@hyperframes/core/audio-automation";
 
 // ffmpeg is not preinstalled on GitHub's ubuntu-24.04 runners. The producer
-// regression test at packages/producer/tests/vfr-screen-recording/ runs inside
-// Dockerfile.test (which does include ffmpeg) and is the primary CI signal
-// for this bug. Locally and in any CI job with ffmpeg on PATH, the tests
-// below run too — they exercise the extractor in isolation against a
-// synthesized VFR fixture.
+// regression test at packages/producer/tests/vfr-screen-recording/ includes
+// ffmpeg and is the primary CI signal for this bug. Locally and in any CI
+// job with ffmpeg on PATH, the tests below run too — they exercise the
+// extractor in isolation against a synthesized VFR fixture.
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 
 describe("resolveVideoExtractionDuration", () => {
