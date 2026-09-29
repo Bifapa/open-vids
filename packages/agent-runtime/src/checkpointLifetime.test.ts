@@ -196,9 +196,14 @@ describe("crash recovery of a turn's transaction", () => {
 
       fixture.checkpoints.nextEntryIds = ["before-crash-1", "before-crash-2"];
       const reloaded = await ChatService.open(fixture.scope, fixture.store, { now: fixture.now });
-      restarted = new TurnRunner(reloaded, fixture.backend, fixture.checkpoints, fixture.store, {
-        now: fixture.now,
-      });
+      restarted = new TurnRunner(
+        reloaded,
+        fixture.backend,
+        fixture.checkpoints,
+        fixture.store,
+        fixture.settings,
+        { now: fixture.now },
+      );
       await restarted.recoverCheckpoints();
 
       const window = fixture.checkpoints.windows.find((w) => w.id === orphan.transactionId);

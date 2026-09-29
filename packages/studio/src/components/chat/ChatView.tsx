@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ChatState } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { describeTurnError } from "../../agent/agentErrors";
-import { runningTurn } from "../../agent/agentSelectors";
+import { activeThread, runningTurn } from "../../agent/agentSelectors";
 import { Button } from "../ui/Button";
 import { ChatHeader } from "./ChatHeader";
 import { Composer } from "./Composer";
@@ -80,6 +80,7 @@ export function ChatView() {
   const loading = useAgentStore((state) => state.chatLoading);
   const error = useAgentStore((state) => state.chatError);
   const streamStatus = useAgentStore((state) => state.streamStatus);
+  const thread = useAgentStore((state) => activeThread(state.threads, state.chat));
   const openChat = useAgentStore((state) => state.openChat);
   const closeChat = useAgentStore((state) => state.closeChat);
 
@@ -107,7 +108,8 @@ export function ChatView() {
               Reconnecting to the agent…
             </p>
           )}
-          <MessageList chat={chat} />
+          {/* A new thread is a new page: it starts at its newest content. */}
+          <MessageList key={thread} chat={chat} thread={thread} />
           <Composer />
         </>
       )}

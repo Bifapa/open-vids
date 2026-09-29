@@ -15,10 +15,16 @@ import {
   type RevertMode,
   type ThinkingEffort,
   type TurnSummary,
+  type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import { AgentApiError, isActiveTurn, type AgentClient } from "./agentClient";
 import { describeAgentError, describeAgentFailure } from "./agentErrors";
 import { findModel, runningTurn } from "./agentSelectors";
+import {
+  createAgentSettingsSlice,
+  type ActionResult,
+  type AgentSettingsSlice,
+} from "./agentSettingsSlice";
 import {
   openStream,
   type EventSourceFactory,
@@ -42,7 +48,7 @@ export interface RevertUi {
   message?: string;
 }
 
-export interface AgentState {
+export interface AgentState extends AgentSettingsSlice {
   availability: AgentAvailability;
   unavailableMessage: string | null;
   chats: ChatSummary[];
@@ -245,7 +251,30 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       fail(error, message);
     };
 
+    /** A config edit from a settings surface: the surface shows the failure itself, not the composer. */
+    const updateOpenChat = async (request: UpdateChatRequest): Promise<ActionResult> => {
+      const chatId = get().chatId;
+      if (!chatId) return { ok: false, message: "Open a chat first." };
+      try {
+        applySummary(await client.updateChat(chatId, request));
+        return { ok: true };
+      } catch (error) {
+        if (error instanceof AgentApiError && error.code === "chat_busy") {
+          await resync(chatId);
+          return { ok: false, message: "The chat is working. Change its agents once it finishes." };
+        }
+        return { ok: false, message: describeAgentError(error) };
+      }
+    };
+
     return {
+      ...createAgentSettingsSlice({
+        client,
+        set,
+        get,
+        isDisposed: () => disposed,
+        updateOpenChat,
+      }),
       availability: "loading",
       unavailableMessage: null,
       chats: [],
@@ -265,7 +294,11 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
 
       async init() {
         set({ availability: "loading", unavailableMessage: null });
-        const [list, models] = await Promise.allSettled([client.listChats(), client.listModels()]);
+        const [list, models] = await Promise.allSettled([
+          client.listChats(),
+          client.listModels(),
+          get().loadSettings(),
+        ]);
         if (disposed) return;
         if (list.status === "rejected") return markUnavailable(list.reason);
         set({

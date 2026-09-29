@@ -6,9 +6,10 @@ import type {
   ChatSummary,
   CreateChatRequest,
   ProjectEvent,
+  SpecialistId,
   UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
-import { applyChatEvent, emptyChatState } from "@hyperframes/agent-protocol";
+import { SPECIALIST_IDS, applyChatEvent, emptyChatState } from "@hyperframes/agent-protocol";
 import type { ProjectScope } from "./checkpointHost.js";
 import { FileChatStore } from "./store/index.js";
 
@@ -58,7 +59,8 @@ export class ChatService {
     return service;
   }
 
-  async create(input: CreateChatRequest): Promise<ChatSummary> {
+  /** `enabledAgents`: the specialists a new chat starts with (the global defaults). */
+  async create(input: CreateChatRequest, enabledAgents: SpecialistId[] = []): Promise<ChatSummary> {
     const createdAt = this.now();
     const chat: ChatSummary = {
       id: this.ids(),
@@ -71,7 +73,8 @@ export class ChatService {
       activeMode: "normal",
       mainAgentModel: input.model ?? null,
       thinking: input.thinking ?? null,
-      enabledAgents: [],
+      enabledAgents: [...enabledAgents],
+      agentOverrides: {},
     };
     this.chats.set(chat.id, { events: [], state: emptyChatState(chat) });
     try {
@@ -101,11 +104,22 @@ export class ChatService {
     const record = this.chats.get(chatId);
     if (!record) return null;
     const current = record.state.chat;
+    let agentOverrides = current.agentOverrides ?? {};
+    if (input.agentOverrides) {
+      agentOverrides = { ...agentOverrides };
+      for (const id of SPECIALIST_IDS) {
+        const override = input.agentOverrides[id];
+        if (override === null) delete agentOverrides[id];
+        else if (override) agentOverrides[id] = override;
+      }
+    }
     const chat: ChatSummary = {
       ...current,
       ...(input.title !== undefined && { title: input.title }),
       ...(input.model !== undefined && { mainAgentModel: input.model }),
       ...(input.thinking !== undefined && { thinking: input.thinking }),
+      ...(input.enabledAgents !== undefined && { enabledAgents: [...input.enabledAgents] }),
+      agentOverrides,
       updatedAt: this.now(),
     };
     await this.emit(chatId, { type: "chat.updated", chat });

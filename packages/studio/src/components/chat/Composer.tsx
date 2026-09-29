@@ -1,7 +1,8 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { ArrowUp, Stop, X } from "@phosphor-icons/react";
+import { AGENT_DISPLAY_NAMES } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
-import { runningTurn } from "../../agent/agentSelectors";
+import { activeThread, runningTurn } from "../../agent/agentSelectors";
 import { IconButton } from "../ui/IconButton";
 
 const MAX_HEIGHT_PX = 160;
@@ -9,6 +10,7 @@ const MAX_HEIGHT_PX = 160;
 /**
  * The prompt box. Idle, Enter starts a run. While the chat's run is live, Enter steers it and
  * the button is Stop. While another chat holds the project, it explains and stays out of the way.
+ * It always talks to the Director, even from an agent's thread, and says so there.
  */
 export function Composer() {
   const chatId = useAgentStore((state) => state.chatId);
@@ -23,6 +25,7 @@ export function Composer() {
   const dismissNotice = useAgentStore((state) => state.dismissNotice);
   const openChat = useAgentStore((state) => state.openChat);
   const chats = useAgentStore((state) => state.chats);
+  const thread = useAgentStore((state) => activeThread(state.threads, state.chat));
 
   const areaRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -44,7 +47,13 @@ export function Composer() {
     if (canSubmit) void send();
   };
 
-  const placeholder = running ? "Steer the agent…" : "Ask the agent…";
+  // In an agent's thread the addressee is not obvious, so it is named.
+  const who = thread === "main" ? "the agent" : "the Director";
+  const placeholder = running
+    ? `Steer ${who}…`
+    : thread === "main"
+      ? "Ask the agent…"
+      : `Message ${who}…`;
 
   return (
     <div className="shrink-0 border-t border-border bg-bg-1 p-2">
@@ -77,9 +86,14 @@ export function Composer() {
           </button>
         </p>
       )}
+      {thread !== "main" && !blockedBy && (
+        <p className="mb-1 text-step-10 text-text-3" data-testid="composer-thread-hint">
+          Viewing {AGENT_DISPLAY_NAMES[thread]}. Messages go to the Director.
+        </p>
+      )}
       {running && !blockedBy && (
         <p className="mb-1 text-step-10 uppercase tracking-wide text-accent">
-          Agent is working · your message steers the run
+          {thread === "main" ? "Agent" : "Director"} is working · your message steers the run
         </p>
       )}
       <div className="flex items-end gap-1.5 rounded-lg border border-border-input bg-input p-1.5 focus-within:border-border-strong">
@@ -89,7 +103,7 @@ export function Composer() {
           value={draft}
           disabled={blockedBy !== null || chat === null}
           placeholder={blockedBy ? "Waiting for the other chat…" : placeholder}
-          aria-label={running ? "Steer the agent" : "Message the agent"}
+          aria-label={running ? `Steer ${who}` : `Message ${who}`}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
           className="max-h-40 min-h-6 flex-1 resize-none bg-transparent px-1 py-0.5 text-step-12 text-text-0 outline-hidden placeholder:text-text-4 disabled:cursor-not-allowed disabled:opacity-50"

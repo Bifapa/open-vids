@@ -156,14 +156,14 @@ describe("OMP event translation", () => {
       terminalEventResult({
         type: "agent_end",
         messages: [
-          { type: "assistant", stopReason: "error", errorMessage: "Provider denied access" },
+          { role: "assistant", stopReason: "error", errorMessage: "Provider denied access" },
         ],
       }),
     ).toEqual({ aborted: false, error: "Provider denied access" });
     expect(
       terminalEventResult({
         type: "agent_end",
-        messages: [{ type: "assistant", stopReason: "aborted" }],
+        messages: [{ role: "assistant", stopReason: "aborted" }],
       }),
     ).toEqual({ aborted: true, error: null });
   });

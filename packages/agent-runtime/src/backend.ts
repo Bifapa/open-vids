@@ -1,17 +1,21 @@
 import type {
+  AgentId,
   AgentModelCatalog,
+  AgentModelInfo,
   ModelSelection,
+  ProviderInfo,
   ThinkingEffort,
 } from "@hyperframes/agent-protocol";
 
 /**
  * The OpenVids-owned boundary in front of the harness that actually runs the
- * Director (OMP today). Everything above this file (chat store, turn runner,
- * HTTP server, Studio) is harness-agnostic; everything that names OMP lives in
- * `./omp/` and is imported only by `main.ts`.
+ * agents — Director, specialists, Jev (OMP today). Everything above this file
+ * (chat store, turn runner, orchestrator, HTTP server, Studio) is
+ * harness-agnostic; everything that names OMP lives in `./omp/` and is imported
+ * only by `main.ts`.
  *
  * A backend reports what happened as normalized {@link BackendEvent}s. It never
- * decides message/part ids, activity folding, checkpoints or persistence.
+ * decides message/part ids, activity folding, delegation, checkpoints or persistence.
  */
 
 /** What kind of project work a tool call was; the adapter maps raw tool names onto this. */
@@ -32,6 +36,25 @@ export type BackendEvent =
       targets: string[];
     }
   | { type: "tool.end"; toolCallId: string; ok: boolean };
+
+/** What a runtime-provided tool returns to the model. */
+export interface HostToolResult {
+  text: string;
+  isError?: boolean;
+}
+
+/**
+ * A tool the runtime (not the harness) implements: delegation, plan updates, Jev. The backend exposes it to the model
+ * next to its own project-file tools and does not report its calls as activity — the runtime emits its own
+ * product-level events for them.
+ */
+export interface HostTool {
+  name: string;
+  description: string;
+  /** JSON Schema of the arguments object. */
+  parameters: Record<string, unknown>;
+  execute(args: unknown, signal: AbortSignal): Promise<HostToolResult>;
+}
 
 export interface BackendPromptInput {
   /** The fully rendered user text (editor context and references already folded in by the runtime). */
@@ -62,16 +85,30 @@ export interface BackendSession {
 
 export interface OpenBackendSessionInput {
   chatId: string;
-  /** Absolute project directory: the only tree the Director may read or change. */
+  /** Which agent this session runs; informational for the harness (naming, logs). */
+  agent: AgentId;
+  /** Absolute project directory: the only tree the agent may read or change. */
   projectDir: string;
-  /** Absolute directory reserved for this chat's harness-private state; created on demand. Reopening it resumes the conversation. */
-  stateDir: string;
+  /**
+   * Absolute directory reserved for this session's harness-private state; created on demand. Reopening it resumes
+   * the conversation. Null: an ephemeral session that keeps nothing on disk.
+   */
+  stateDir: string | null;
+  /** The agent's role instructions (system prompt), owned by the runtime. */
+  instructions: string;
+  hostTools: HostTool[];
+  /** Explicit credentials for this session only (Jev's API-key mode); never shared with other sessions. */
+  credentials?: { provider: string; apiKey: string };
 }
 
 export interface AgentBackend {
   /** Informational name reported by /health. */
   readonly name: string;
   listModels(): Promise<AgentModelCatalog>;
+  /** Providers the harness knows, with whether it already holds credentials for them. */
+  listProviders(): Promise<ProviderInfo[]>;
+  /** Every model of one provider, with or without credentials. */
+  listProviderModels(provider: string): Promise<AgentModelInfo[]>;
   openSession(input: OpenBackendSessionInput): Promise<BackendSession>;
   dispose(): Promise<void>;
 }

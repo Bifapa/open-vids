@@ -2,9 +2,13 @@ import type {
   ActiveTurnInfo,
   Activity,
   AgentError,
+  AgentRun,
+  AssistantMessage,
   AssistantMessageStatus,
   ChatMessage,
   ChatSummary,
+  ExecutionPlan,
+  TaskMessage,
   TurnCheckpoint,
   TurnSummary,
 } from "./types.js";
@@ -39,6 +43,23 @@ export type ChatEventPayload =
   | { type: "activity.updated"; messageId: string; activity: Activity }
   | { type: "message.completed"; messageId: string; status: AssistantMessageStatus }
   | { type: "checkpoint.updated"; turnId: string; checkpoint: TurnCheckpoint }
+  /** The Director published or revised the turn's compact plan. */
+  | { type: "plan.updated"; turnId: string; plan: ExecutionPlan }
+  /**
+   * A delegated run began: its task message and empty reply open the agent's thread, and a delegation part is added
+   * to `parentMessageId` (the Director's reply, or the specialist reply that called Jev).
+   */
+  | {
+      type: "agent.started";
+      run: AgentRun;
+      parentMessageId: string;
+      taskMessage: TaskMessage;
+      assistantMessage: AssistantMessage;
+    }
+  /** A run changed while still in flight (queued → running, model resolved). */
+  | { type: "agent.updated"; run: AgentRun }
+  /** A run ended; `run.status` says how (completed, failed, aborted, cancelled, interrupted). */
+  | { type: "agent.completed"; run: AgentRun }
   | { type: "turn.completed"; turn: TurnSummary }
   | { type: "turn.failed"; turn: TurnSummary; error: AgentError }
   | { type: "turn.aborted"; turn: TurnSummary };

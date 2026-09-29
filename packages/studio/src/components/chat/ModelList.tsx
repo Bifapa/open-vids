@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check } from "@phosphor-icons/react";
 import type { AgentModelInfo, ModelSelection } from "@hyperframes/agent-protocol";
+import { sameModel } from "../../agent/agentSelectors";
 import { cn } from "../ui/cn";
 import { buildModelRows, type ModelRow } from "./modelRows";
 
@@ -13,10 +14,7 @@ const isSelectable = (row: ModelRow | undefined) => row !== undefined && row.kin
 
 function isChosen(row: ModelRow, explicit: ModelSelection | null): boolean {
   if (row.kind === "default") return explicit === null;
-  if (row.kind === "model" && explicit) {
-    return row.model.provider === explicit.provider && row.model.modelId === explicit.modelId;
-  }
-  return false;
+  return row.kind === "model" && sameModel(row.model, explicit);
 }
 
 function nextSelectable(rows: ModelRow[], from: number, step: 1 | -1): number {
@@ -33,12 +31,26 @@ interface ModelListProps {
   /** Name of the model the default resolves to, shown on the "use default" row. */
   defaultName: string | null;
   onSelect: (model: ModelSelection | null) => void;
+  /** Offer the "use default" row. Off for lists where only a concrete model makes sense. */
+  includeDefault?: boolean;
+  /** Multi-select: these rows are checked instead of `explicit`, and picking one toggles it. */
+  selected?: readonly ModelSelection[];
 }
 
 /** Searchable, provider-grouped model list. ~1200 rows: only the visible ones are in the DOM. */
-export function ModelList({ models, explicit, defaultName, onSelect }: ModelListProps) {
+export function ModelList({
+  models,
+  explicit,
+  defaultName,
+  onSelect,
+  includeDefault = true,
+  selected,
+}: ModelListProps) {
   const [query, setQuery] = useState("");
-  const rows = useMemo(() => buildModelRows(models, query), [models, query]);
+  const rows = useMemo(
+    () => buildModelRows(models, query, includeDefault),
+    [models, query, includeDefault],
+  );
   const [active, setActive] = useState(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const listId = useId();
@@ -99,6 +111,7 @@ export function ModelList({ models, explicit, defaultName, onSelect }: ModelList
         id={listId}
         role="listbox"
         aria-label="Models"
+        aria-multiselectable={selected ? true : undefined}
         className="overflow-y-auto"
         style={{ height: VIEWPORT_HEIGHT }}
       >
@@ -122,7 +135,10 @@ export function ModelList({ models, explicit, defaultName, onSelect }: ModelList
                   </div>
                 );
               }
-              const chosen = isChosen(row, explicit);
+              const chosen =
+                selected && row.kind === "model"
+                  ? selected.some((model) => sameModel(model, row.model))
+                  : isChosen(row, explicit);
               return (
                 <div
                   key={

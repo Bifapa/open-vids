@@ -14,19 +14,28 @@ interface ModelPickerProps {
   /** Locked while a turn runs: the runtime refuses changes mid-run. */
   disabled: boolean;
   onSelect: (model: ModelSelection | null) => void;
+  /** What "Default" resolves to for this agent; the runtime default when omitted. */
+  fallback?: ModelSelection | null;
+  /** Who the model is for, as assistive tech hears it: "<name>: <model>". */
+  name?: string;
+  /** Why the picker is disabled, as a tooltip. */
+  disabledReason?: string;
 }
 
-/** The chat's model: shows the resolved default when nothing was chosen explicitly. */
+/** An agent's model: shows the resolved default when nothing was chosen explicitly. */
 export function ModelPicker({
   catalog,
   catalogFailed,
   explicit,
   disabled,
   onSelect,
+  fallback,
+  name = "Model",
+  disabledReason = "The model can't change while the agent is working.",
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
-  const resolved = resolveModel(explicit, catalog);
-  const defaultInfo = resolveModel(null, catalog);
+  const resolved = resolveModel(explicit, catalog, fallback);
+  const defaultInfo = resolveModel(null, catalog, fallback);
   const unavailable = catalog === null;
 
   let label = displayModelName(resolved.selection, resolved.info);
@@ -36,10 +45,10 @@ export function ModelPicker({
   const trigger = (
     <button
       type="button"
-      aria-label={`Model: ${label}`}
+      aria-label={`${name}: ${label}`}
       aria-haspopup="listbox"
       disabled={disabled || catalog === null || catalog.models.length === 0}
-      title={disabled ? "The model can't change while the agent is working." : undefined}
+      title={disabled ? disabledReason : undefined}
       className={cn(
         "flex h-ctl-sm min-w-0 max-w-full items-center gap-1 rounded-sm border border-border-input bg-input px-2 text-step-11 text-text-1",
         "outline-hidden transition-colors duration-hover hover:border-border-strong",

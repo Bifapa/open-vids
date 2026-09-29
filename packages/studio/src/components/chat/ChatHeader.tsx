@@ -1,22 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, PencilSimple } from "@phosphor-icons/react";
-import { isThinkingEffort, type ThinkingEffort } from "@hyperframes/agent-protocol";
+import { isThinkingEffort } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
-import { effortChoices, resolveModel, runningTurn } from "../../agent/agentSelectors";
+import { activeThread, effortChoices, resolveModel, runningTurn } from "../../agent/agentSelectors";
 import { cn } from "../ui/cn";
 import { IconButton } from "../ui/IconButton";
 import { Select, type SelectOption } from "../ui/Select";
+import { AgentCrumbs } from "./AgentCrumbs";
+import { AgentsMenu } from "./AgentsMenu";
+import { EFFORT_LABELS } from "./agentLabels";
 import { ModelPicker } from "./ModelPicker";
-
-const EFFORT_LABELS: Record<ThinkingEffort, string> = {
-  off: "Off",
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-  max: "Max",
-};
 
 function EditableTitle({
   title,
@@ -88,13 +81,14 @@ function EditableTitle({
 
 function EffortControl({ locked }: { locked: boolean }) {
   const models = useAgentStore((state) => state.models);
+  const director = useAgentStore((state) => state.settings?.director ?? null);
   const explicit = useAgentStore((state) => state.chat?.chat.mainAgentModel ?? null);
   const thinking = useAgentStore((state) => state.chat?.chat.thinking ?? null);
   const setThinking = useAgentStore((state) => state.setThinking);
 
-  const { info } = resolveModel(explicit, models);
+  const { info } = resolveModel(explicit, models, director?.model ?? models?.defaultModel ?? null);
   const choices = effortChoices(info);
-  const defaultEffort = models?.defaultThinking ?? null;
+  const defaultEffort = director?.thinking ?? models?.defaultThinking ?? null;
 
   const options: SelectOption[] = [
     {
@@ -128,14 +122,17 @@ function EffortControl({ locked }: { locked: boolean }) {
   );
 }
 
-/** Back to history, the chat's title, and its two model controls. */
+/** Back to history, the chat's title and agents, the Director's two model controls, and the threads. */
 export function ChatHeader() {
   const chat = useAgentStore((state) => state.chat);
   const models = useAgentStore((state) => state.models);
   const modelsFailed = useAgentStore((state) => state.modelsFailed);
+  const directorDefault = useAgentStore((state) => state.settings?.director.model ?? null);
+  const thread = useAgentStore((state) => activeThread(state.threads, state.chat));
   const closeChat = useAgentStore((state) => state.closeChat);
   const renameChat = useAgentStore((state) => state.renameChat);
   const setModel = useAgentStore((state) => state.setModel);
+  const selectThread = useAgentStore((state) => state.selectThread);
   const locked = runningTurn(chat) !== null;
 
   return (
@@ -153,6 +150,7 @@ export function ChatHeader() {
           disabled={locked || chat === null}
           onCommit={(title) => void renameChat(title)}
         />
+        {chat && <AgentsMenu chat={chat.chat} />}
       </div>
       <div className="flex items-center gap-1.5">
         <div className="min-w-0 flex-1">
@@ -160,12 +158,14 @@ export function ChatHeader() {
             catalog={models}
             catalogFailed={modelsFailed}
             explicit={chat?.chat.mainAgentModel ?? null}
+            fallback={directorDefault ?? models?.defaultModel ?? null}
             disabled={locked || chat === null}
             onSelect={(model) => void setModel(model)}
           />
         </div>
         <EffortControl locked={locked || chat === null} />
       </div>
+      {chat && <AgentCrumbs runs={chat.runs} active={thread} onSelect={selectThread} />}
     </header>
   );
 }

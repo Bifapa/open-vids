@@ -8,8 +8,12 @@ import {
   isNextEvent,
   parseReference,
   parseRevertTurn,
+  parseSetJevApiKey,
   parseStartTurn,
   parseSteerTurn,
+  parseUpdateAgentSettings,
+  parseUpdateChat,
+  type AgentRun,
   type AssistantMessage,
   type ChatEvent,
   type ChatSummary,
@@ -208,5 +212,157 @@ describe("SSE codec", () => {
     const out = [];
     for (let i = 0; i < wire.length; i += 3) out.push(...parser.push(wire.slice(i, i + 3)));
     expect(out).toEqual([{ id: "3", event: "chat", data: "a\nb" }, { data: "{}" }]);
+  });
+});
+
+describe("multi-agent events", () => {
+  const run: AgentRun = {
+    id: "r1",
+    turnId: "t1",
+    agent: "editor",
+    parentRunId: null,
+    title: "Trim intro",
+    status: "running",
+    model: null,
+    thinking: null,
+    routedByDirector: false,
+    taskMessageId: "k1",
+    assistantMessageId: "e1",
+    startedAt: 4,
+    summary: null,
+  };
+
+  function multiAgentLog(end: ChatEvent["type"]): ChatEvent[] {
+    const base = log().slice(0, 2);
+    const events: Omit<ChatEvent, "seq" | "chatId" | "ts">[] = [
+      {
+        type: "plan.updated",
+        turnId: "t1",
+        plan: {
+          steps: [{ id: "s1", title: "Trim intro", status: "running", agent: "editor" }],
+          updatedAt: 3,
+        },
+      },
+      {
+        type: "agent.started",
+        run,
+        parentMessageId: "m2",
+        taskMessage: {
+          id: "k1",
+          chatId: "c1",
+          turnId: "t1",
+          createdAt: 4,
+          role: "task",
+          runId: "r1",
+          agent: "editor",
+          from: "director",
+          parts: [{ type: "text", id: "kt", text: "Trim the intro" }],
+          steering: false,
+        },
+        assistantMessage: { ...assistant, id: "e1", runId: "r1", agent: "editor", createdAt: 4 },
+      },
+      { type: "assistant.text.delta", messageId: "e1", partId: "et", delta: "Trimmed." },
+      ...(end === "agent.completed"
+        ? [
+            {
+              type: "agent.completed" as const,
+              run: { ...run, status: "completed" as const, endedAt: 6, summary: "Trimmed." },
+            },
+            {
+              type: "turn.completed" as const,
+              turn: { ...turn, status: "completed" as const, endedAt: 9 },
+            },
+          ]
+        : [
+            {
+              type: "turn.aborted" as const,
+              turn: { ...turn, status: "interrupted" as const, endedAt: 9 },
+            },
+          ]),
+    ];
+    return [
+      ...base,
+      ...events.map((event, index) => ({
+        ...event,
+        seq: base.length + index + 1,
+        chatId: "c1",
+        ts: 20 + index,
+      })),
+    ];
+  }
+
+  it("opens a run thread, marks the delegation point and keeps the plan when the turn ends", () => {
+    const state = foldChatEvents(multiAgentLog("agent.completed"));
+    const director = state?.messages.find((message) => message.id === "m2");
+    expect(director?.role === "assistant" ? director.parts : []).toEqual([
+      { type: "delegation", id: "r1", runId: "r1" },
+    ]);
+    expect(state?.messages.filter((message) => message.runId === "r1").map((m) => m.role)).toEqual([
+      "task",
+      "assistant",
+    ]);
+    expect(state?.messages.find((message) => message.id === "e1")).toMatchObject({
+      status: "complete",
+    });
+    expect(state?.runs).toMatchObject([{ id: "r1", status: "completed", summary: "Trimmed." }]);
+    // turn.completed does not repeat the plan; the folded turn keeps it
+    expect(state?.turns[0]?.plan?.steps[0]?.title).toBe("Trim intro");
+  });
+
+  it("a turn that ends with runs still open settles them (no orphan runs)", () => {
+    const state = foldChatEvents(multiAgentLog("turn.aborted"));
+    expect(state?.runs[0]?.status).toBe("interrupted");
+    expect(state?.turns[0]?.plan?.steps.map((step) => step.status)).toEqual(["skipped"]);
+    expect(state?.messages.find((message) => message.id === "e1")).toMatchObject({
+      status: "aborted",
+    });
+  });
+});
+
+describe("agent configuration validators", () => {
+  it("accepts known specialists in canonical order and rejects unknown ones", () => {
+    expect(parseUpdateChat({ enabledAgents: ["vision", "editor"] })).toEqual({
+      ok: true,
+      value: { enabledAgents: ["editor", "vision"] },
+    });
+    expect(parseUpdateChat({ enabledAgents: ["editor", "jev"] }).ok).toBe(false);
+    expect(parseUpdateChat({ agentOverrides: { director: null } }).ok).toBe(false);
+    expect(
+      parseUpdateChat({
+        agentOverrides: {
+          vision: { model: { provider: "p", modelId: "m" }, thinking: "low", allowedModels: [] },
+          audio: null,
+        },
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        agentOverrides: {
+          vision: { model: { provider: "p", modelId: "m" }, thinking: "low", allowedModels: [] },
+          audio: null,
+        },
+      },
+    });
+  });
+
+  it("validates global settings and the Jev key", () => {
+    expect(
+      parseUpdateAgentSettings({
+        jev: { enabled: true, credentials: "api-key", provider: "openrouter" },
+      }),
+    ).toEqual({
+      ok: true,
+      value: { jev: { enabled: true, credentials: "api-key", provider: "openrouter" } },
+    });
+    expect(parseUpdateAgentSettings({ jev: { credentials: "oauth" } }).ok).toBe(false);
+    expect(
+      parseUpdateAgentSettings({ specialists: { editor: { model: null, thinking: null } } }).ok,
+    ).toBe(false);
+    expect(parseSetJevApiKey({ apiKey: "sk-123" })).toEqual({
+      ok: true,
+      value: { apiKey: "sk-123" },
+    });
+    expect(parseSetJevApiKey({ apiKey: "sk 123" }).ok).toBe(false);
+    expect(parseSetJevApiKey({ apiKey: null })).toEqual({ ok: true, value: { apiKey: null } });
   });
 });

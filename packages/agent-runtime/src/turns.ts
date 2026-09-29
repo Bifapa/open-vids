@@ -1,24 +1,33 @@
 import { randomUUID } from "node:crypto";
-import type {
-  ActiveTurnInfo,
-  AssistantMessage,
-  AssistantMessageStatus,
-  UserPart,
-  UserMessage,
-  ChatSummary,
-  RevertMode,
-  RevertTurnResponse,
-  StartTurnRequest,
-  SteerTurnRequest,
-  TurnCheckpoint,
-  TurnSummary,
+import {
+  isAgentRunTerminal,
+  type ActiveTurnInfo,
+  type AgentId,
+  type AgentModelCatalog,
+  type AssistantMessage,
+  type AssistantMessageStatus,
+  type UserPart,
+  type UserMessage,
+  type ChatSummary,
+  type RevertMode,
+  type RevertTurnResponse,
+  type SpecialistId,
+  type StartTurnRequest,
+  type SteerTurnRequest,
+  type TurnCheckpoint,
+  type TurnSummary,
 } from "@hyperframes/agent-protocol";
-import type { AgentBackend, BackendSession } from "./backend.js";
+import type { AgentBackend, BackendSession, HostToolResult } from "./backend.js";
+import { Orchestrator, type TurnAgentSetup } from "./agents/orchestrator.js";
+import { directorInstructions, jevInstructions, specialistInstructions } from "./agents/roles.js";
+import { renderTeam, resolveTurnSetup } from "./agents/setup.js";
+import { buildHostTools, type ToolAvailability } from "./agents/tools.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import type { CheckpointHandle, CheckpointHost } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
 import { renderPromptContext } from "./promptContext.js";
 import { SessionManager } from "./sessionManager.js";
+import type { AgentSettingsStore } from "./settings.js";
 import { FileChatStore } from "./store/index.js";
 import { TurnEventWriter, type StreamTimerApi, type StreamTimerHandle } from "./turnStream.js";
 import {
@@ -32,6 +41,8 @@ export type { TurnRunnerOptions } from "./turnSupport.js";
 
 const DEFAULT_IDLE_MS = 15 * 60_000;
 const DEFAULT_RENEW_MS = 20_000;
+/** How many times the Director is re-prompted with results of runs it finished without collecting. */
+const MAX_FOLLOW_UPS = 3;
 
 interface ActiveRun {
   chatId: string;
@@ -40,6 +51,12 @@ interface ActiveRun {
   controller: AbortController;
   checkpoint: CheckpointHandle | null;
   session: BackendSession | null;
+  setup: TurnAgentSetup | null;
+  orchestrator: Orchestrator | null;
+  /** The Director's prompt has ended but the turn is still collecting delegated work. */
+  directorIdle: boolean;
+  /** Steering received while the Director was idle; it opens the next Director prompt. */
+  pendingSteering: string[];
   promptStarted: Promise<void>;
   markPromptStarted: () => void;
   task: Promise<void> | null;
@@ -48,12 +65,13 @@ interface ActiveRun {
   heartbeat: StreamTimerHandle | null;
 }
 
-/** Serializes all project mutations while keeping one resumable backend session per chat. */
+/** Serializes all project mutations: one Director turn at a time, with its delegated runs, per project. */
 export class TurnRunner {
   private readonly now: () => number;
   private readonly ids: () => string;
   private readonly idleMs: number;
   private readonly renewIntervalMs: number;
+  private readonly stopGraceMs: number | undefined;
   private readonly timers: StreamTimerApi;
   private readonly sessionManager: SessionManager;
   private active: ActiveRun | null = null;
@@ -64,20 +82,20 @@ export class TurnRunner {
     private readonly backend: AgentBackend,
     private readonly checkpoints: CheckpointHost,
     private readonly store: FileChatStore,
+    private readonly settings: AgentSettingsStore,
     options: TurnRunnerOptions = {},
   ) {
     this.now = options.now ?? Date.now;
     this.ids = options.ids ?? randomUUID;
     this.idleMs = options.sessionIdleMs ?? DEFAULT_IDLE_MS;
     this.renewIntervalMs = options.renewIntervalMs ?? DEFAULT_RENEW_MS;
+    this.stopGraceMs = options.stopGraceMs;
     this.timers = options.timers ?? {
       setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
       clearTimeout: (timer) => globalThis.clearTimeout(timer),
     };
     this.sessionManager = new SessionManager(
       backend,
-      store,
-      chats.scope.projectDir,
       this.idleMs,
       this.timers,
       (chatId) => this.active?.chatId === chatId,
@@ -158,6 +176,10 @@ export class TurnRunner {
       controller: new AbortController(),
       checkpoint: null,
       session: null,
+      setup: null,
+      orchestrator: null,
+      directorIdle: false,
+      pendingSteering: [],
       promptStarted: started.promise,
       markPromptStarted: () => started.resolve(),
       task: null,
@@ -166,6 +188,15 @@ export class TurnRunner {
       heartbeat: null,
     };
     this.active = reservation;
+
+    // The team and the Director's model are fixed for the whole turn, from the chat and the global defaults.
+    const prepared = await this.prepareTurn(chatState.chat, input);
+    reservation.setup = prepared.setup;
+    turn.model = prepared.model;
+    turn.thinking = prepared.thinking;
+    reservation.turn.model = prepared.model;
+    reservation.turn.thinking = prepared.thinking;
+    assistantMessage.model = prepared.model;
 
     try {
       await this.recoverCheckpoints();
@@ -225,8 +256,17 @@ export class TurnRunner {
     if (this.active !== run || run.finalizing || !run.session) {
       throw new RuntimeError("turn_not_active", "Turn is no longer active", 409);
     }
+    const text = renderPromptContext(input.text, input.editorContext);
+    if (run.directorIdle) {
+      // The Director is between prompts, waiting for delegated runs: the instruction opens its next prompt.
+      run.pendingSteering.push(text);
+      run.orchestrator?.notifySteer();
+      return messageId;
+    }
     try {
-      await run.session.steer(renderPromptContext(input.text, input.editorContext));
+      await run.session.steer(text);
+      // A Director blocked in wait_for_agents returns now, so the instruction reaches it promptly.
+      run.orchestrator?.notifySteer();
       return messageId;
     } catch (error) {
       run.forcedError = error;
@@ -321,10 +361,22 @@ export class TurnRunner {
   /**
    * Closes every transaction a previous run could not: turns still "running" in the log (the runtime died mid-turn)
    * become "interrupted", and checkpoints still "active" (a turn ended while Studio was unreachable) are closed and
-   * given their entries. Runs on project load and before each new turn.
+   * given their entries. Delegated runs left open by a dead runtime are closed as "interrupted" first, so no run
+   * outlives its turn. Runs on project load and before each new turn.
    */
   async recoverCheckpoints(): Promise<void> {
     for (const chat of this.chats.list()) {
+      const orphans = this.chats
+        .get(chat.id)
+        ?.runs.filter(
+          (run) => !isAgentRunTerminal(run.status) && run.turnId !== this.active?.turn.id,
+        );
+      for (const orphan of orphans ?? []) {
+        await this.chats.emit(chat.id, {
+          type: "agent.completed",
+          run: { ...orphan, status: "interrupted", endedAt: this.now() },
+        });
+      }
       const state = this.chats.get(chat.id);
       if (!state) continue;
       for (const previous of state.turns) {
@@ -412,10 +464,28 @@ export class TurnRunner {
   private async runTurn(run: ActiveRun, input: StartTurnRequest): Promise<void> {
     let writer: TurnEventWriter | null = null;
     try {
-      const session = await this.sessionManager.get(run.chatId);
+      const setup = run.setup;
+      if (!setup) throw new Error("The turn has no agent setup.");
+      const availability: ToolAvailability = { enabled: setup.enabled, jev: setup.jev !== null };
+      const session = await this.agentSession(run.chatId, "director", availability);
       if (run.finalizing) return;
       run.session = session;
-      writer = new TurnEventWriter({
+      run.orchestrator = new Orchestrator({
+        chats: this.chats,
+        chatId: run.chatId,
+        turn: run.turn,
+        directorMessageId: run.assistantMessage.id,
+        setup,
+        signal: run.controller.signal,
+        now: this.now,
+        ids: this.ids,
+        timers: this.timers,
+        ...(this.stopGraceMs !== undefined && { stopGraceMs: this.stopGraceMs }),
+        specialistSession: (agent) => this.agentSession(run.chatId, agent, availability),
+        jevSession: () => this.jevSession(run.chatId, setup),
+        closeSpecialist: (agent) => this.sessionManager.disposeAgent(run.chatId, agent),
+      });
+      const activeWriter = new TurnEventWriter({
         chats: this.chats,
         chatId: run.chatId,
         messageId: run.assistantMessage.id,
@@ -428,23 +498,57 @@ export class TurnRunner {
           run.turn.thinking = event.thinking;
         },
       });
-      const promptPromise = session.prompt({
-        text: renderPromptContext(input.prompt, input.editorContext, input.references),
-        model: run.turn.model,
-        thinking: run.turn.thinking,
-        signal: run.controller.signal,
-        onEvent: (event) => writer?.accept(event),
-      });
+      writer = activeWriter;
+      const promptDirector = (text: string) =>
+        session.prompt({
+          text,
+          model: run.turn.model,
+          thinking: run.turn.thinking,
+          signal: run.controller.signal,
+          onEvent: (event) => activeWriter.accept(event),
+        });
+      const promptPromise = promptDirector(
+        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references)}`,
+      );
       run.markPromptStarted();
-      const outcome = await promptPromise;
+      let outcome = await promptPromise;
+      run.directorIdle = true;
+
+      // The Director must hear back from every run it started, and from steering sent while it was idle.
+      let followUps = 0;
+      while (
+        outcome === "completed" &&
+        !run.forcedError &&
+        !run.controller.signal.aborted &&
+        followUps < MAX_FOLLOW_UPS &&
+        (run.pendingSteering.length > 0 || run.orchestrator.hasUnreported())
+      ) {
+        const results =
+          run.pendingSteering.length > 0
+            ? ""
+            : await run.orchestrator.collectUnreported(run.controller.signal);
+        if (run.controller.signal.aborted) break;
+        const steering = run.pendingSteering.splice(0);
+        if (steering.length === 0) followUps += 1;
+        const blocks = [
+          results &&
+            `<delegated-results>\n${results}\n</delegated-results>\nThese delegated runs reported after your last reply.`,
+          ...steering.map((text) => `<user-steering>\n${text}\n</user-steering>`),
+          "Continue: adjust the plan and delegated work if needed, wait for any runs still working, then finish the user's request with a short reply.",
+        ].filter(Boolean);
+        run.directorIdle = false;
+        outcome = await promptDirector(blocks.join("\n\n"));
+        run.directorIdle = true;
+      }
+
       if (run.forcedError) {
-        await writer.finish("failed");
+        await activeWriter.finish("failed");
         await this.finalize(run, "failed", run.forcedError);
       } else if (outcome === "aborted" || run.controller.signal.aborted) {
-        await writer.finish("aborted");
+        await activeWriter.finish("aborted");
         await this.finalize(run, "aborted");
       } else {
-        await writer.finish("complete");
+        await activeWriter.finish("complete");
         await this.finalize(run, "completed");
       }
     } catch (error) {
@@ -455,6 +559,95 @@ export class TurnRunner {
     }
   }
 
+  /** Resolves the Director's model and the team for a new turn. Never throws: missing data means defaults. */
+  private async prepareTurn(
+    chat: ChatSummary,
+    input: StartTurnRequest,
+  ): Promise<{
+    setup: TurnAgentSetup;
+    model: TurnSummary["model"];
+    thinking: TurnSummary["thinking"];
+  }> {
+    const settings = await this.settings.get();
+    const jevApiKey = await this.settings.jevApiKey();
+    let catalog: AgentModelCatalog = { models: [], defaultModel: null, defaultThinking: null };
+    try {
+      catalog = await this.backend.listModels();
+    } catch {
+      // No catalog: routing to other models and provider-login Jev are unavailable this turn; defaults still run.
+    }
+    return {
+      setup: resolveTurnSetup({
+        chat,
+        settings,
+        jevApiKey,
+        catalog,
+        ...(input.editorContext && { editorContext: input.editorContext }),
+      }),
+      model: chat.mainAgentModel ?? settings.director.model,
+      thinking: chat.thinking ?? settings.director.thinking,
+    };
+  }
+
+  /** The chat's resumable session for the Director or a specialist, with the tools this turn allows it. */
+  private agentSession(
+    chatId: string,
+    agent: "director" | SpecialistId,
+    availability: ToolAvailability,
+  ): Promise<BackendSession> {
+    const hostTools = buildHostTools(agent, availability, (name, args, signal) =>
+      this.dispatchTool(chatId, agent, name, args, signal),
+    );
+    const instructions =
+      agent === "director" ? directorInstructions() : specialistInstructions(agent);
+    return this.sessionManager.get({
+      chatId,
+      agent,
+      signature: JSON.stringify([
+        instructions,
+        hostTools.map((tool) => [tool.name, tool.description, tool.parameters]),
+      ]),
+      open: async () => ({
+        chatId,
+        agent,
+        projectDir: this.chats.scope.projectDir,
+        stateDir:
+          agent === "director"
+            ? await this.store.stateDir(chatId)
+            : await this.store.agentStateDir(chatId, agent),
+        instructions,
+        hostTools,
+      }),
+    });
+  }
+
+  private jevSession(chatId: string, setup: TurnAgentSetup): Promise<BackendSession> {
+    const credentials = setup.jev?.credentials;
+    return this.backend.openSession({
+      chatId,
+      agent: "jev",
+      projectDir: this.chats.scope.projectDir,
+      stateDir: null,
+      instructions: jevInstructions(),
+      hostTools: [],
+      ...(credentials && { credentials }),
+    });
+  }
+
+  /** Host tools are bound to a session for many turns; each call goes to the orchestrator of the running turn. */
+  private async dispatchTool(
+    chatId: string,
+    caller: AgentId,
+    name: string,
+    args: unknown,
+    signal: AbortSignal,
+  ): Promise<HostToolResult> {
+    const run = this.active;
+    if (!run || run.chatId !== chatId || !run.orchestrator || run.finalizing)
+      return { text: "There is no running turn for this tool call.", isError: true };
+    return run.orchestrator.execute(caller, name, args, signal);
+  }
+
   private async finalize(
     run: ActiveRun,
     status: TurnSummary["status"],
@@ -462,6 +655,8 @@ export class TurnRunner {
   ): Promise<void> {
     if (run.finalizing) return;
     run.finalizing = true;
+    // Every delegated run must be over before the checkpoint closes, or its later writes would escape Revert.
+    await run.orchestrator?.shutdown(status === "completed").catch(() => undefined);
     if (run.heartbeat) this.timers.clearTimeout(run.heartbeat);
     const createdAt = run.turn.checkpoint?.createdAt ?? run.turn.startedAt;
     const closedAt = this.now();

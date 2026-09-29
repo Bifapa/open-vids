@@ -1,19 +1,28 @@
 import type {
   CreateChatRequest,
   RevertTurnRequest,
+  SetJevApiKeyRequest,
   StartTurnRequest,
   SteerTurnRequest,
+  UpdateAgentSettingsRequest,
   UpdateChatRequest,
 } from "./api.js";
 import { REVERT_MODES } from "./api.js";
 import {
+  JEV_CREDENTIAL_MODES,
+  SPECIALIST_IDS,
   THINKING_EFFORTS,
+  isSpecialistId,
   type EditorClipSummary,
   type EditorContext,
   type EditorPreviewElement,
   type MediaSource,
   type MessageReference,
+  type ModelConfig,
   type ModelSelection,
+  type SpecialistConfig,
+  type SpecialistDefaults,
+  type SpecialistId,
   type ThinkingEffort,
 } from "./types.js";
 
@@ -25,6 +34,9 @@ export const LIMITS = {
   references: 32,
   contextElements: 200,
   contextSelectedClips: 64,
+  allowedModels: 32,
+  providerChars: 200,
+  apiKeyChars: 4_096,
 } as const;
 
 const fail = (message: string): { ok: false; message: string } => ({ ok: false, message });
@@ -300,8 +312,133 @@ export function parseCreateChat(body: unknown): Parsed<CreateChatRequest> {
 
 export function parseUpdateChat(body: unknown): Parsed<UpdateChatRequest> {
   const parsed = parseCreateChat(body);
-  if (!parsed.ok) return parsed;
-  return Object.keys(parsed.value).length > 0 ? parsed : fail("nothing to update");
+  if (!parsed.ok || !isRecord(body)) return parsed;
+  const value: UpdateChatRequest = { ...parsed.value };
+  const enabled = body.enabledAgents;
+  if (enabled !== undefined) {
+    if (!Array.isArray(enabled) || !enabled.every(isSpecialistId))
+      return fail(`enabledAgents must list specialists from: ${SPECIALIST_IDS.join(", ")}`);
+    value.enabledAgents = SPECIALIST_IDS.filter((id) => enabled.includes(id));
+  }
+  if (body.agentOverrides !== undefined) {
+    if (!isRecord(body.agentOverrides)) return fail("agentOverrides must be an object");
+    const overrides: Partial<Record<SpecialistId, SpecialistConfig | null>> = {};
+    for (const [id, raw] of Object.entries(body.agentOverrides)) {
+      if (!isSpecialistId(id)) return fail(`unknown specialist: ${id}`);
+      if (raw === null) {
+        overrides[id] = null;
+        continue;
+      }
+      const config = parseSpecialistConfig(raw, `agentOverrides.${id}`);
+      if (!config.ok) return config;
+      overrides[id] = config.value;
+    }
+    value.agentOverrides = overrides;
+  }
+  return Object.keys(value).length > 0 ? { ok: true, value } : fail("nothing to update");
+}
+
+// ── Agent settings ───────────────────────────────────────────────────────────
+
+function parseModelConfig(value: unknown, field: string): Parsed<ModelConfig> {
+  if (!isRecord(value)) return fail(`${field} must be an object`);
+  const model = parseOptionalModel(value.model);
+  if (!model.ok) return fail(`${field}.${model.message}`);
+  const thinking = parseOptionalThinking(value.thinking);
+  if (!thinking.ok) return fail(`${field}: ${thinking.message}`);
+  return { ok: true, value: { model: model.value ?? null, thinking: thinking.value ?? null } };
+}
+
+function parseSpecialistConfig(value: unknown, field: string): Parsed<SpecialistConfig> {
+  const base = parseModelConfig(value, field);
+  if (!base.ok) return base;
+  const rawAllowed = isRecord(value) ? (value.allowedModels ?? []) : [];
+  if (!Array.isArray(rawAllowed) || rawAllowed.length > LIMITS.allowedModels)
+    return fail(
+      `${field}.allowedModels must be an array of at most ${LIMITS.allowedModels} models`,
+    );
+  const allowedModels: ModelSelection[] = [];
+  for (const item of rawAllowed) {
+    const model = parseModelSelection(item);
+    if (!model) return fail(`${field}.allowedModels entries must be {provider, modelId}`);
+    const duplicate = allowedModels.some(
+      (known) => known.provider === model.provider && known.modelId === model.modelId,
+    );
+    if (!duplicate) allowedModels.push(model);
+  }
+  return { ok: true, value: { ...base.value, allowedModels } };
+}
+
+function parseSpecialistDefaults(value: unknown, field: string): Parsed<SpecialistDefaults> {
+  const config = parseSpecialistConfig(value, field);
+  if (!config.ok) return config;
+  const enabledByDefault = isRecord(value) ? value.enabledByDefault : undefined;
+  if (typeof enabledByDefault !== "boolean")
+    return fail(`${field}.enabledByDefault must be a boolean`);
+  return { ok: true, value: { ...config.value, enabledByDefault } };
+}
+
+function parseOptionalName(value: unknown, field: string): Parsed<string | null | undefined> {
+  if (value === undefined || value === null) return { ok: true, value };
+  const text = nonEmpty(value)?.trim();
+  if (!text || text.length > LIMITS.providerChars)
+    return fail(`${field} must be a non-empty string or null`);
+  return { ok: true, value: text };
+}
+
+export function parseUpdateAgentSettings(body: unknown): Parsed<UpdateAgentSettingsRequest> {
+  if (!isRecord(body)) return fail("body must be an object");
+  const value: UpdateAgentSettingsRequest = {};
+  if (body.director !== undefined) {
+    const director = parseModelConfig(body.director, "director");
+    if (!director.ok) return director;
+    value.director = director.value;
+  }
+  if (body.specialists !== undefined) {
+    if (!isRecord(body.specialists)) return fail("specialists must be an object");
+    const specialists: Partial<Record<SpecialistId, SpecialistDefaults>> = {};
+    for (const [id, raw] of Object.entries(body.specialists)) {
+      if (!isSpecialistId(id)) return fail(`unknown specialist: ${id}`);
+      const defaults = parseSpecialistDefaults(raw, `specialists.${id}`);
+      if (!defaults.ok) return defaults;
+      specialists[id] = defaults.value;
+    }
+    value.specialists = specialists;
+  }
+  if (body.jev !== undefined) {
+    const raw = body.jev;
+    if (!isRecord(raw)) return fail("jev must be an object");
+    const jev: NonNullable<UpdateAgentSettingsRequest["jev"]> = {};
+    if (raw.enabled !== undefined) {
+      if (typeof raw.enabled !== "boolean") return fail("jev.enabled must be a boolean");
+      jev.enabled = raw.enabled;
+    }
+    const provider = parseOptionalName(raw.provider, "jev.provider");
+    if (!provider.ok) return provider;
+    if (provider.value !== undefined) jev.provider = provider.value;
+    const modelId = parseOptionalName(raw.modelId, "jev.modelId");
+    if (!modelId.ok) return modelId;
+    if (modelId.value !== undefined) jev.modelId = modelId.value;
+    const thinking = parseOptionalThinking(raw.thinking);
+    if (!thinking.ok) return fail(`jev: ${thinking.message}`);
+    if (thinking.value !== undefined) jev.thinking = thinking.value;
+    if (raw.credentials !== undefined) {
+      const mode = JEV_CREDENTIAL_MODES.find((known) => known === raw.credentials);
+      if (!mode) return fail(`jev.credentials must be one of: ${JEV_CREDENTIAL_MODES.join(", ")}`);
+      jev.credentials = mode;
+    }
+    value.jev = jev;
+  }
+  return Object.keys(value).length > 0 ? { ok: true, value } : fail("nothing to update");
+}
+
+export function parseSetJevApiKey(body: unknown): Parsed<SetJevApiKeyRequest> {
+  if (!isRecord(body)) return fail("body must be an object");
+  if (body.apiKey === null) return { ok: true, value: { apiKey: null } };
+  const key = nonEmpty(body.apiKey)?.trim();
+  if (!key || key.length > LIMITS.apiKeyChars || /\s/.test(key))
+    return fail("apiKey must be a non-empty string without whitespace, or null");
+  return { ok: true, value: { apiKey: key } };
 }
 
 function parseReferences(value: unknown): Parsed<MessageReference[] | undefined> {

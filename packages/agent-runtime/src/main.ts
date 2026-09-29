@@ -1,7 +1,9 @@
 import { serve } from "@hono/node-server";
+import { AGENT_PROTOCOL_VERSION } from "@hyperframes/agent-protocol";
 import { createOmpBackend } from "./omp/index.ts";
 import { HttpCheckpointHost } from "./checkpointHost.http.js";
 import { createRuntimeApp } from "./server.js";
+import { AgentSettingsStore } from "./settings.js";
 
 const token = process.env.OPENVIDS_AGENT_TOKEN;
 if (!token) throw new Error("OPENVIDS_AGENT_TOKEN is required");
@@ -10,6 +12,7 @@ const parentPid = parseParentPid(process.env.OPENVIDS_AGENT_PARENT_PID);
 const app = createRuntimeApp({
   backend: createOmpBackend(),
   checkpoints: new HttpCheckpointHost(),
+  settings: new AgentSettingsStore(),
   token,
 });
 
@@ -21,7 +24,7 @@ const server = serve(
   },
   (address) => {
     process.stdout.write(
-      `${JSON.stringify({ "openvids-agent": "listening", port: address.port, protocolVersion: 1 })}\n`,
+      `${JSON.stringify({ "openvids-agent": "listening", port: address.port, protocolVersion: AGENT_PROTOCOL_VERSION })}\n`,
     );
   },
 );

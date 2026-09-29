@@ -3,7 +3,12 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { realpath, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { Hono } from "hono";
-import type { AgentErrorCode, ChatEvent, ProjectEvent } from "@hyperframes/agent-protocol";
+import type {
+  AgentErrorCode,
+  AgentModelCatalog,
+  ChatEvent,
+  ProjectEvent,
+} from "@hyperframes/agent-protocol";
 import {
   AGENT_HEADERS,
   AGENT_PROTOCOL_VERSION,
@@ -12,20 +17,26 @@ import {
   encodeSseMessage,
   parseCreateChat,
   parseRevertTurn,
+  parseSetJevApiKey,
   parseStartTurn,
   parseSteerTurn,
+  parseUpdateAgentSettings,
   parseUpdateChat,
 } from "@hyperframes/agent-protocol";
 import type { AgentBackend } from "./backend.js";
+import { resolveJev, testJev } from "./agents/setup.js";
 import type { CheckpointHost, ProjectScope } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
 import { RuntimeError, errorMessage } from "./errors.js";
+import { defaultEnabledAgents, type AgentSettingsStore } from "./settings.js";
 import { FileChatStore } from "./store/index.js";
 import { TurnRunner, type TurnRunnerOptions } from "./turns.js";
 
 export interface RuntimeAppOptions {
   backend: AgentBackend;
   checkpoints: CheckpointHost;
+  /** Global (per-user) agent settings shared by every project. */
+  settings: AgentSettingsStore;
   token: string;
   now?: () => number;
   ids?: () => string;
@@ -92,6 +103,46 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
     context.json(await options.backend.listModels()),
   );
 
+  app.get(`${AGENT_RUNTIME_PREFIX}/providers`, async (context) =>
+    context.json({ providers: await options.backend.listProviders() }),
+  );
+
+  app.get(`${AGENT_RUNTIME_PREFIX}/providers/:provider/models`, async (context) =>
+    context.json({
+      models: await options.backend.listProviderModels(context.req.param("provider")),
+    }),
+  );
+
+  app.get(`${AGENT_RUNTIME_PREFIX}/settings`, async (context) =>
+    context.json(await options.settings.get()),
+  );
+
+  app.patch(`${AGENT_RUNTIME_PREFIX}/settings`, async (context) => {
+    const parsed = parseUpdateAgentSettings(await readBody(context));
+    if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+    return context.json(await options.settings.update(parsed.value));
+  });
+
+  app.post(`${AGENT_RUNTIME_PREFIX}/settings/jev/api-key`, async (context) => {
+    const parsed = parseSetJevApiKey(await readBody(context));
+    if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+    return context.json(await options.settings.setJevApiKey(parsed.value.apiKey));
+  });
+
+  app.post(`${AGENT_RUNTIME_PREFIX}/settings/jev/test`, async (context) => {
+    const settings = await options.settings.get();
+    let catalog: AgentModelCatalog = { models: [], defaultModel: null, defaultThinking: null };
+    try {
+      catalog = await options.backend.listModels();
+    } catch {
+      // Without a catalog only API-key mode can be tested; resolveJev reports the rest.
+    }
+    const jev = resolveJev(settings, await options.settings.jevApiKey(), catalog);
+    return context.json(
+      await testJev(options.backend, context.get("project").scope.projectDir, jev, now),
+    );
+  });
+
   app.get(`${AGENT_RUNTIME_PREFIX}/chats`, (context) => {
     const { chats, turns } = context.get("project");
     return context.json({ chats: chats.list(), activeTurn: turns.activeTurn });
@@ -100,7 +151,8 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
   app.post(`${AGENT_RUNTIME_PREFIX}/chats`, async (context) => {
     const parsed = parseCreateChat(await readBody(context));
     if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
-    const chat = await context.get("project").chats.create(parsed.value);
+    const defaults = defaultEnabledAgents(await options.settings.get());
+    const chat = await context.get("project").chats.create(parsed.value, defaults);
     return context.json(chat, 201);
   });
 
@@ -263,7 +315,14 @@ async function getProjectRuntime(
     project = (async () => {
       const store = new FileChatStore(scope.projectDir);
       const chats = await ChatService.open(scope, store, { now, ...(ids && { ids }) });
-      const turns = new TurnRunner(chats, options.backend, options.checkpoints, store, turnOptions);
+      const turns = new TurnRunner(
+        chats,
+        options.backend,
+        options.checkpoints,
+        store,
+        options.settings,
+        turnOptions,
+      );
       await turns.recoverCheckpoints();
       return { scope, store, chats, turns };
     })();

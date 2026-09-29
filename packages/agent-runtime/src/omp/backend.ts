@@ -8,14 +8,15 @@ import {
 } from "@oh-my-pi/pi-catalog/model-thinking";
 import {
   AgentRegistry,
+  AuthStorage,
   ModelRegistry,
   Settings,
   SessionManager,
   createAgentSession,
   discoverAuthStorage,
   type AgentSession,
-  type AuthStorage,
   type CreateAgentSessionOptions,
+  type CustomTool,
   type ExtensionFactory,
 } from "@oh-my-pi/pi-coding-agent";
 import { cfgDefaultThinkingLevel } from "@oh-my-pi/pi-coding-agent/session/settings";
@@ -24,18 +25,22 @@ import type {
   BackendPromptInput,
   BackendPromptOutcome,
   BackendSession,
+  HostTool,
   OpenBackendSessionInput,
 } from "../backend.ts";
-import { isRecord } from "@hyperframes/agent-protocol";
+import { AGENT_DISPLAY_NAMES, isRecord } from "@hyperframes/agent-protocol";
 import type {
   AgentModelCatalog,
+  AgentModelInfo,
   ModelSelection,
+  ProviderInfo,
   ThinkingEffort,
 } from "@hyperframes/agent-protocol";
 import { humanReadableError, terminalEventResult, translateOmpEvent } from "./events.ts";
 import {
   createModelCatalog,
   isThinkingEffort,
+  mapModelInfo,
   parseModelRole,
   sameModel,
   type ModelCatalogSource,
@@ -43,17 +48,12 @@ import {
 import { guardToolCallPaths } from "./path-guard.ts";
 
 const MODEL_CATALOG_TTL_MS = 60_000;
-const ALLOWED_TOOLS = ["read", "grep", "glob", "find", "edit", "write"];
+const PROJECT_FILE_TOOLS = ["read", "grep", "glob", "find", "edit", "write"];
 const EMPTY_CATALOG: AgentModelCatalog = {
   models: [],
   defaultModel: null,
   defaultThinking: null,
 };
-const DIRECTOR_SYSTEM_PROMPT = `You are the OpenVids Director, an autonomous video-editing Director working directly in the user's project files. Project files are the single source of truth. Read the existing project before editing and preserve its conventions.
-
-For HyperFrames compositions, use data-* timing attributes and class="clip" for clips. Register the GSAP root timeline on window.__timelines. Never use Date.now(), unseeded Math.random(), or render-time network access; rendered output must be deterministic and self-contained.
-
-Use only the provided project file tools: read files, search with grep/glob/find, and make focused changes with edit/write. Keep every path inside the project and never access .hyperframes. Be autonomous; ask a question only when a missing decision would materially change the result. Keep replies short and product-level. The user may steer you while a run is in progress; follow the latest direction.`;
 
 type OmpModel = NonNullable<CreateAgentSessionOptions["model"]>;
 type UserThinkingSetting = "auto" | Effort;
@@ -209,6 +209,24 @@ function createCatalog(registry: ModelRegistry, settings: Settings): CatalogServ
   return createModelCatalog(catalogSources(models), defaultRole, roleDefault.thinking);
 }
 
+/** Exposes a runtime host tool to OMP. It is essential (always loaded), and the runtime reports its effects. */
+function toOmpTool(tool: HostTool): CustomTool {
+  return {
+    name: tool.name,
+    label: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+    loadMode: "essential",
+    async execute(_toolCallId, params, _onUpdate, _context, signal) {
+      const result = await tool.execute(params, signal ?? new AbortController().signal);
+      return {
+        content: [{ type: "text", text: result.text }],
+        ...(result.isError && { isError: true }),
+      };
+    },
+  };
+}
+
 class OmpBackendSession implements BackendSession {
   private activeTurn: {
     onEvent: BackendPromptInput["onEvent"];
@@ -228,6 +246,9 @@ class OmpBackendSession implements BackendSession {
     private readonly session: AgentSession,
     private readonly projectDir: string,
     private readonly services: CatalogServices,
+    /** The shared registry, or a session-private one when the session has its own credentials. */
+    private readonly registry: ModelRegistry,
+    private readonly hostToolNames: ReadonlySet<string>,
     private readonly onDispose: () => void,
   ) {
     this.unsubscribe = session.subscribe((event) => this.handleEvent(event));
@@ -237,7 +258,7 @@ class OmpBackendSession implements BackendSession {
     const active = this.activeTurn;
     if (!active || active.settled) return;
 
-    const translated = translateOmpEvent(event, this.projectDir);
+    const translated = translateOmpEvent(event, this.projectDir, this.hostToolNames);
     if (translated) {
       try {
         active.onEvent(translated);
@@ -269,9 +290,9 @@ class OmpBackendSession implements BackendSession {
 
   private resolveModel(selection: BackendPromptInput["model"]): OmpModel {
     const model = selection
-      ? this.services.registry.find(selection.provider, selection.modelId)
-      : chooseBackendModel(this.services.registry, this.services.catalog);
-    if (!model || !this.services.registry.hasConfiguredAuth(model)) {
+      ? this.registry.find(selection.provider, selection.modelId)
+      : chooseBackendModel(this.registry, this.services.catalog);
+    if (!model || !this.registry.hasConfiguredAuth(model)) {
       if (selection) {
         throw new Error(
           `The selected model ${selection.provider}/${selection.modelId} is not available or has no configured credentials.`,
@@ -524,28 +545,63 @@ class OmpBackend implements AgentBackend {
     };
   }
 
+  async listProviders(): Promise<ProviderInfo[]> {
+    const { registry } = await this.ensureServices();
+    const providers = new Map<string, boolean>();
+    for (const model of registry.getAll()) {
+      const authenticated = providers.get(model.provider) ?? false;
+      providers.set(model.provider, authenticated || registry.hasConfiguredAuth(model));
+    }
+    return [...providers]
+      .map(([id, authenticated]) => ({ id, authenticated }))
+      .sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  async listProviderModels(provider: string): Promise<AgentModelInfo[]> {
+    const { registry } = await this.ensureServices();
+    return catalogSources(registry.getAll().filter((model) => model.provider === provider)).map(
+      mapModelInfo,
+    );
+  }
+
   async openSession(input: OpenBackendSessionInput): Promise<BackendSession> {
     const services = await this.ensureServices();
     if (this.disposed) throw new Error("The OMP backend has been disposed.");
-    await mkdir(input.stateDir, { recursive: true });
 
-    const existing = await SessionManager.list(input.projectDir, input.stateDir);
-    let newest = existing[0];
-    for (const candidate of existing) {
-      if (!newest || candidate.modified.getTime() > newest.modified.getTime()) {
-        newest = candidate;
+    let sessionManager: SessionManager;
+    if (input.stateDir === null) {
+      sessionManager = SessionManager.inMemory(input.projectDir);
+    } else {
+      await mkdir(input.stateDir, { recursive: true });
+      const existing = await SessionManager.list(input.projectDir, input.stateDir);
+      let newest = existing[0];
+      for (const candidate of existing) {
+        if (!newest || candidate.modified.getTime() > newest.modified.getTime()) {
+          newest = candidate;
+        }
       }
+      sessionManager = newest
+        ? await SessionManager.open(newest.path, input.stateDir, undefined, {
+            initialCwd: input.projectDir,
+            throwIfMissing: true,
+          })
+        : SessionManager.create(input.projectDir, input.stateDir);
     }
-    const sessionManager = newest
-      ? await SessionManager.open(newest.path, input.stateDir, undefined, {
-          initialCwd: input.projectDir,
-          throwIfMissing: true,
-        })
-      : SessionManager.create(input.projectDir, input.stateDir);
 
+    // Explicit credentials (Jev's API key) live in a private in-memory store for this session only, so they never
+    // replace the credentials other agents use for the same provider.
+    let privateAuth: AuthStorage | null = null;
     try {
-      const defaultModel = chooseBackendModel(services.registry, services.catalog);
-      const roleDefault = resolveRoleDefault(services.registry, services.defaultRole);
+      let authStorage = services.authStorage;
+      let registry = services.registry;
+      if (input.credentials) {
+        privateAuth = await AuthStorage.create(":memory:");
+        privateAuth.keys.setRuntime(input.credentials.provider, input.credentials.apiKey);
+        authStorage = privateAuth;
+        registry = new ModelRegistry(privateAuth, undefined, { settings: services.settings });
+      }
+      const defaultModel = chooseBackendModel(registry, services.catalog);
+      const roleDefault = resolveRoleDefault(registry, services.defaultRole);
       const initialThinking =
         roleDefault.model &&
         sameOmpModel(defaultModel, roleDefault.model) &&
@@ -563,20 +619,25 @@ class OmpBackend implements AgentBackend {
         // forms hide their target files inside free text, which the project-boundary guard cannot check.
         "edit.mode": "replace",
       });
+      const hostToolNames = new Set(input.hostTools.map((tool) => tool.name));
       const { session } = await createAgentSession({
         cwd: input.projectDir,
         sessionManager,
         agentDir: this.agentDir,
-        authStorage: services.authStorage,
-        modelRegistry: services.registry,
+        authStorage,
+        modelRegistry: registry,
         model: defaultModel,
         thinkingLevel: initialThinking,
         settings: sessionSettings,
         agentRegistry: new AgentRegistry(),
-        agentName: "main",
-        agentDisplayName: "OpenVids Director",
-        toolNames: ALLOWED_TOOLS,
+        agentName: input.agent === "director" ? "main" : input.agent,
+        agentDisplayName: `OpenVids ${AGENT_DISPLAY_NAMES[input.agent]}`,
+        // Only project file tools plus the runtime's own host tools (delegation, plan, Jev) — never OMP's
+        // task/subagent tools: the runtime owns the one-level agent hierarchy.
+        toolNames: [...PROJECT_FILE_TOOLS, ...hostToolNames],
         restrictToolNames: true,
+        customTools: input.hostTools.map(toOmpTool),
+        allowRestrictedCustomTools: true,
         autoApprove: true,
         enableMCP: false,
         enableLsp: false,
@@ -597,7 +658,7 @@ class OmpBackend implements AgentBackend {
         contextFiles: await projectContextFiles(input.projectDir),
         promptTemplates: [],
         slashCommands: [],
-        customSystemPrompt: DIRECTOR_SYSTEM_PROMPT,
+        customSystemPrompt: input.instructions,
         hasUI: false,
         settingsApproval: false,
         bindProcessState: false,
@@ -608,13 +669,23 @@ class OmpBackend implements AgentBackend {
         await session.dispose().catch(() => undefined);
         throw new Error("The project boundary guard is not active; refusing to start the agent.");
       }
+      const ownAuth = privateAuth;
       let adapter: OmpBackendSession;
-      adapter = new OmpBackendSession(session, input.projectDir, services, () =>
-        this.sessions.delete(adapter),
+      adapter = new OmpBackendSession(
+        session,
+        input.projectDir,
+        services,
+        registry,
+        hostToolNames,
+        () => {
+          this.sessions.delete(adapter);
+          ownAuth?.close();
+        },
       );
       this.sessions.add(adapter);
       return adapter;
     } catch (error) {
+      privateAuth?.close();
       await sessionManager.close().catch(() => undefined);
       throw new Error(humanReadableError(error), { cause: error });
     }

@@ -1,8 +1,11 @@
 import { useMemo } from "react";
 import { ArrowDown } from "@phosphor-icons/react";
-import type { ChatMessage, ChatState, TurnSummary } from "@hyperframes/agent-protocol";
+import { AGENT_DISPLAY_NAMES, type ChatState } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
+import { mainThreadMessages, type ThreadId } from "../../agent/agentSelectors";
+import { AgentThread } from "./AgentThread";
 import { AssistantBlock, UserBubble } from "./Messages";
+import { PlanView } from "./PlanView";
 import { TurnFooter } from "./TurnFooter";
 import { useAutoScroll } from "./useAutoScroll";
 
@@ -17,13 +20,8 @@ function EmptyChat() {
   );
 }
 
-function turnFor(turns: TurnSummary[], message: ChatMessage): TurnSummary | undefined {
-  return turns.find((turn) => turn.id === message.turnId);
-}
-
-export function MessageList({ chat }: { chat: ChatState }) {
-  // Every folded event bumps `lastSeq`, so it is the one signal for "the content grew".
-  const { ref, onScroll, detached, jumpToLatest } = useAutoScroll(chat.lastSeq);
+/** The clean conversation: prompts, the Director's replies (with their plan and delegations), turn footers. */
+function MainThread({ chat }: { chat: ChatState }) {
   const reverts = useAgentStore((state) => state.reverts);
   const activeTurn = useAgentStore((state) => state.activeTurn);
   const revert = useAgentStore((state) => state.revert);
@@ -32,12 +30,46 @@ export function MessageList({ chat }: { chat: ChatState }) {
 
   const rows = useMemo(
     () =>
-      chat.messages.map((message) => {
-        const turn = turnFor(chat.turns, message);
-        return { message, turn };
-      }),
-    [chat.messages, chat.turns],
+      mainThreadMessages(chat).map((message) => ({
+        message,
+        turn: chat.turns.find((turn) => turn.id === message.turnId),
+      })),
+    [chat],
   );
+
+  if (rows.length === 0) return <EmptyChat />;
+  return (
+    <>
+      {rows.map(({ message, turn }) => (
+        <div key={message.id} className="flex flex-col gap-2">
+          {message.role === "user" ? (
+            <UserBubble message={message} />
+          ) : (
+            <>
+              {turn?.plan && turn.assistantMessageId === message.id && (
+                <PlanView plan={turn.plan} live={turn.status === "running"} />
+              )}
+              <AssistantBlock message={message} />
+              {turn && turn.status !== "running" && turn.assistantMessageId === message.id && (
+                <TurnFooter
+                  turn={turn}
+                  revert={reverts[turn.id]}
+                  blockedReason={blockedReason}
+                  onRevert={(mode) => void revert(turn.id, mode)}
+                  onDismissRevert={() => dismissRevert(turn.id)}
+                />
+              )}
+            </>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
+export function MessageList({ chat, thread }: { chat: ChatState; thread: ThreadId }) {
+  // Every folded event bumps `lastSeq`, so it is the one signal for "the content grew".
+  const { ref, onScroll, detached, jumpToLatest } = useAutoScroll(chat.lastSeq);
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -46,32 +78,16 @@ export function MessageList({ chat }: { chat: ChatState }) {
         onScroll={onScroll}
         role="log"
         aria-live="off"
-        aria-label="Conversation"
+        aria-label={
+          thread === "main" ? "Conversation" : `${AGENT_DISPLAY_NAMES[thread]}'s work in this chat`
+        }
+        data-thread={thread}
         className="flex h-full flex-col gap-3 overflow-y-auto px-3 py-3"
       >
-        {rows.length === 0 ? (
-          <EmptyChat />
+        {thread === "main" ? (
+          <MainThread chat={chat} />
         ) : (
-          rows.map(({ message, turn }) => (
-            <div key={message.id} className="flex flex-col gap-2">
-              {message.role === "user" ? (
-                <UserBubble message={message} />
-              ) : (
-                <>
-                  <AssistantBlock message={message} />
-                  {turn && turn.status !== "running" && turn.assistantMessageId === message.id && (
-                    <TurnFooter
-                      turn={turn}
-                      revert={reverts[turn.id]}
-                      blockedReason={blockedReason}
-                      onRevert={(mode) => void revert(turn.id, mode)}
-                      onDismissRevert={() => dismissRevert(turn.id)}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          ))
+          <AgentThread chat={chat} agent={thread} />
         )}
       </div>
       {detached && (

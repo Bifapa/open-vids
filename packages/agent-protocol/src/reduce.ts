@@ -1,16 +1,19 @@
 import type { ChatEvent } from "./events.js";
-import type {
-  AssistantMessage,
-  AssistantPart,
-  ChatMessage,
-  ChatState,
-  ChatSummary,
-  TurnSummary,
+import {
+  isAgentRunTerminal,
+  type AgentRun,
+  type AssistantMessage,
+  type AssistantPart,
+  type ChatMessage,
+  type ChatState,
+  type ChatSummary,
+  type PlanStep,
+  type TurnSummary,
 } from "./types.js";
 
 /** A chat before its first event: the state `chat.created` is folded into. */
 export function emptyChatState(chat: ChatSummary): ChatState {
-  return { chat, messages: [], turns: [], lastSeq: 0 };
+  return { chat, messages: [], turns: [], runs: [], lastSeq: 0 };
 }
 
 /** True when `event` is the next event the state expects (no gap, no replay). */
@@ -43,12 +46,48 @@ function upsertPart(parts: AssistantPart[], part: AssistantPart): AssistantPart[
   return next;
 }
 
+/**
+ * Replaces a turn by id. Terminal turn events do not repeat the plan, so a known plan is kept; once the turn has
+ * ended no step can still be running or pending: a completed turn finished its running steps and skipped the rest,
+ * any other end skipped both.
+ */
 function upsertTurn(turns: TurnSummary[], turn: TurnSummary): TurnSummary[] {
   const index = turns.findIndex((existing) => existing.id === turn.id);
   if (index < 0) return [...turns, turn];
+  const known = turn.plan ?? turns[index]?.plan;
+  const plan =
+    known && turn.status !== "running"
+      ? {
+          ...known,
+          steps: known.steps.map((step): PlanStep => {
+            if (step.status === "running")
+              return { ...step, status: turn.status === "completed" ? "done" : "skipped" };
+            if (step.status === "pending") return { ...step, status: "skipped" };
+            return step;
+          }),
+        }
+      : known;
   const next = turns.slice();
-  next[index] = turn;
+  next[index] = plan ? { ...turn, plan } : turn;
   return next;
+}
+
+function upsertRun(runs: AgentRun[], run: AgentRun): AgentRun[] {
+  const index = runs.findIndex((existing) => existing.id === run.id);
+  if (index < 0) return [...runs, run];
+  const next = runs.slice();
+  next[index] = run;
+  return next;
+}
+
+/** A turn ended without closing some of its runs (only a crashed runtime does that): they cannot still be running. */
+function settleTurnRuns(runs: AgentRun[], turn: TurnSummary): AgentRun[] {
+  const status = turn.status === "interrupted" ? "interrupted" : "aborted";
+  return runs.map((run) =>
+    run.turnId === turn.id && !isAgentRunTerminal(run.status)
+      ? { ...run, status, endedAt: turn.endedAt ?? run.startedAt }
+      : run,
+  );
 }
 
 /** Marks every still-streaming assistant message of a turn as ended. */
@@ -163,10 +202,55 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
       return { ...base, turns };
     }
 
+    case "plan.updated": {
+      const turns = state.turns.map((turn) =>
+        turn.id === event.turnId ? { ...turn, plan: event.plan } : turn,
+      );
+      return { ...base, turns };
+    }
+
+    case "agent.started": {
+      const withDelegation = mapAssistant(state.messages, event.parentMessageId, (message) => ({
+        ...message,
+        parts: upsertPart(message.parts, {
+          type: "delegation",
+          id: event.run.id,
+          runId: event.run.id,
+        }),
+      }));
+      return {
+        ...base,
+        runs: upsertRun(state.runs, event.run),
+        messages: [...withDelegation, event.taskMessage, event.assistantMessage],
+      };
+    }
+
+    case "agent.updated":
+      return { ...base, runs: upsertRun(state.runs, event.run) };
+
+    case "agent.completed": {
+      const status =
+        event.run.status === "completed"
+          ? "complete"
+          : event.run.status === "failed"
+            ? "failed"
+            : "aborted";
+      return {
+        ...base,
+        runs: upsertRun(state.runs, event.run),
+        messages: mapAssistant(state.messages, event.run.assistantMessageId, (message) =>
+          message.status === "streaming"
+            ? { ...message, status, parts: message.parts.map(settleOpenPart) }
+            : message,
+        ),
+      };
+    }
+
     case "turn.completed":
       return {
         ...base,
         turns: upsertTurn(state.turns, event.turn),
+        runs: settleTurnRuns(state.runs, event.turn),
         messages: settleTurnMessages(state.messages, event.turn, "complete"),
       };
 
@@ -174,6 +258,7 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
       return {
         ...base,
         turns: upsertTurn(state.turns, event.turn),
+        runs: settleTurnRuns(state.runs, event.turn),
         messages: settleTurnMessages(state.messages, event.turn, "failed"),
       };
 
@@ -181,6 +266,7 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
       return {
         ...base,
         turns: upsertTurn(state.turns, event.turn),
+        runs: settleTurnRuns(state.runs, event.turn),
         messages: settleTurnMessages(state.messages, event.turn, "aborted"),
       };
   }

@@ -1,10 +1,14 @@
-import type {
-  AssistantMessage,
-  AssistantPart,
-  MessageReference,
-  UserMessage,
+import {
+  AGENT_DISPLAY_NAMES,
+  type AssistantMessage,
+  type AssistantPart,
+  type MessageReference,
+  type TaskMessage,
+  type UserMessage,
 } from "@hyperframes/agent-protocol";
+import { cn } from "../ui/cn";
 import { ActivityRow } from "./ActivityRow";
+import { DelegationRow } from "./DelegationRow";
 import { MarkdownLite } from "./MarkdownLite";
 import { ThinkingBlock } from "./ThinkingBlock";
 
@@ -67,6 +71,29 @@ export function UserBubble({ message }: { message: UserMessage }) {
   );
 }
 
+/** The instruction a delegated agent works from: the Director's task, or a follow-up to it. */
+export function TaskBubble({ message }: { message: TaskMessage }) {
+  const from = AGENT_DISPLAY_NAMES[message.from];
+  return (
+    <div
+      data-role="task"
+      className="flex flex-col gap-1 rounded-md border border-l-2 border-hairline border-l-accent/60 bg-surface/40 px-3 py-2"
+    >
+      <span
+        className={cn(
+          "text-step-10 uppercase tracking-wide",
+          message.steering ? "text-accent" : "text-text-3",
+        )}
+      >
+        {message.steering ? `Follow-up from ${from}` : `Task from ${from}`}
+      </span>
+      {message.parts.map((part) => (
+        <MarkdownLite key={part.id} text={part.text} />
+      ))}
+    </div>
+  );
+}
+
 function StreamingCaret() {
   return (
     <span
@@ -90,6 +117,8 @@ function PartView({ part, live, caret }: { part: AssistantPart; live: boolean; c
       return <ThinkingBlock part={part} live={live} />;
     case "activity":
       return <ActivityRow activity={part.activity} />;
+    case "delegation":
+      return <DelegationRow runId={part.runId} />;
   }
 }
 

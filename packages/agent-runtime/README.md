@@ -32,11 +32,41 @@ The wire model (chats, turns, messages, events, editor context, references) is o
 ## Persistence
 
 `<projectDir>/.hyperframes/agent/chats/<chatId>/events.jsonl` is an append-only log of protocol
-events; chat state is `foldChatEvents(log)`. `backend/` beside it is the OMP session directory
-(resume keeps model context). `.hyperframes/` is already excluded from project history, the file
-watcher and the project signature, so chat files are never part of a checkpoint; the Director's path
-guard also forbids it. A crash leaves a running turn in the log; on load it is closed as
-`interrupted` and its checkpoint is recovered from project history.
+events; chat state is `foldChatEvents(log)`. It holds the main conversation and every delegated
+run's thread (task message + reply, keyed by `runId`), so specialist views reopen after a restart.
+`backend/` beside it is the Director's OMP session directory and `agents/<specialist>/` each
+specialist's (resume keeps model context per agent); Jev sessions are ephemeral. `.hyperframes/` is
+already excluded from project history, the file watcher and the project signature, so chat files are
+never part of a checkpoint; the path guard also forbids it. A crash leaves a running turn (and its
+runs) in the log; on load the runs and the turn are closed as `interrupted` and the checkpoint is
+recovered from project history.
+
+Global (per-user) agent settings — Director defaults, per-specialist defaults, Jev — live in
+`OPENVIDS_AGENT_SETTINGS_DIR` (default `~/.openvids/agent`): `settings.json` and
+`jev-credentials.json`, both mode 0600. The Jev API key is never returned by the API
+(`apiKeyConfigured` only) and is handed to one ephemeral backend session at a time, in a private
+in-memory credential store, so it never replaces the credentials other agents use.
+
+## Multi-agent orchestration
+
+- Fixed specialists (`editor`, `vision`, `motion`, `research`, `audio`), enabled per chat
+  (`enabledAgents`, seeded from the global `enabledByDefault`). Per-chat `agentOverrides` replace the
+  global model/thinking/allowed-models of one specialist.
+- The Director gets runtime-implemented host tools (`src/agents/tools.ts`): `update_plan`
+  (`plan.updated`), `delegate` / `wait_for_agents` / `message_agent` / `cancel_agent` (only when at
+  least one specialist is enabled; `agent` is an enum of the enabled ones and is re-checked), and
+  `jev` when Jev is usable. Specialists get only `jev`; Jev gets none — the hierarchy is one level
+  and OMP's own task/subagent tools are never enabled.
+- Routing (`src/agents/routing.ts`): a delegated task runs on the specialist's model unless the
+  Director names one of its `allowedModels` (and it is authenticated); thinking may be lowered for a
+  task, never raised. Violations are returned to the Director as tool errors.
+- `src/agents/orchestrator.ts` runs one turn's delegated work: specialist runs are async (parallel
+  across specialists, queued per specialist), Jev calls are synchronous for the caller. Every run
+  shares the turn's abort signal and checkpoint. Steering goes to the Director; a pending
+  `wait_for_agents` returns early so it can react. If the Director stops without collecting its
+  runs it is re-prompted with their reports (at most 3 times). Before the checkpoint closes,
+  `shutdown()` aborts unfinished runs and force-closes a session that does not stop within the grace
+  period, so no run outlives its turn.
 
 ## Turns, checkpoints, concurrency
 
@@ -58,17 +88,20 @@ guard also forbids it. A crash leaves a running turn in the log; on load it is c
 - Tests import `@hyperframes/studio-server` through its `node` (dist) condition: rebuild it
   (`bun run build`) before running this package's tests after history-engine changes.
 
-## Director (OMP adapter)
+## Agents (OMP adapter)
 
-Predictable, not the user's personal OMP environment: tools `read`, `grep`, `glob`/`find`, `edit`,
-`write` only (no bash/eval/web/MCP/LSP/task); edit mode pinned to path-based `replace`; skills and
-rules empty; only `<project>/AGENTS.md` (or `CLAUDE.md`) is loaded as context. Providers, auth and
-model catalog come from the user's existing OMP setup (`~/.omp/agent`); the runtime never writes to
-it. A `tool_call` guard (`src/omp/path-guard.ts`) blocks every path outside the project or inside
-`.hyperframes/`, checks each target of OMP's `a;b` / `a,b` / `a b` / brace path fan-out, and fails
-closed for `edit`/`write` calls whose target it cannot read. The guard is bound through
-`preloadedPreparedExtensions`: OMP silently drops `extensions` when `restrictToolNames` is set, so
-an inline `extensions` hook would not run.
+Every agent (Director, specialists, Jev) is a restricted OMP session, not the user's personal OMP
+environment: project file tools `read`, `grep`, `glob`/`find`, `edit`, `write` plus the runtime's
+host tools for that agent (no bash/eval/web/MCP/LSP/task); host tools are passed as SDK custom tools
+(`allowRestrictedCustomTools`) and their calls are not reported as project activity. Role
+instructions (system prompts) come from the runtime (`src/agents/roles.ts`). Edit mode is pinned to
+path-based `replace`; skills and rules are empty; only `<project>/AGENTS.md` (or `CLAUDE.md`) is
+loaded as context. Providers, auth and model catalog come from the user's existing OMP setup
+(`~/.omp/agent`); the runtime never writes to it. A `tool_call` guard (`src/omp/path-guard.ts`)
+blocks every path outside the project or inside `.hyperframes/`, checks each target of OMP's `a;b` /
+`a,b` / `a b` / brace path fan-out, and fails closed for `edit`/`write` calls whose target it cannot
+read. The guard is bound through `preloadedPreparedExtensions`: OMP silently drops `extensions` when
+`restrictToolNames` is set, so an inline `extensions` hook would not run.
 
 ## Develop
 

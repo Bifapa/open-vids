@@ -63,6 +63,7 @@ describe("runtime crash recovery", () => {
         fixture.backend,
         fixture.checkpoints,
         fixture.store,
+        fixture.settings,
         { now: fixture.now },
       );
       await restartedRunner.recoverCheckpoints();

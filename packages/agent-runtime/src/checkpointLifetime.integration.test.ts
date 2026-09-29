@@ -15,6 +15,7 @@ import type { BackendPromptOutcome } from "./backend.js";
 import { ChatService } from "./chats.js";
 import { HttpCheckpointHost } from "./checkpointHost.http.js";
 import type { ProjectScope } from "./checkpointHost.js";
+import { AgentSettingsStore } from "./settings.js";
 import { FileChatStore } from "./store/index.js";
 import { ScriptedAgentBackend } from "./testing/backend.js";
 import { HeartbeatClock, RENEW_MS } from "./testing/heartbeatClock.js";
@@ -92,7 +93,8 @@ async function turnAcrossLongPause(heartbeats: boolean) {
   const chats = await ChatService.open(studio.scope, store);
   const backend = new ScriptedAgentBackend();
   const clock = new HeartbeatClock();
-  const runner = new TurnRunner(chats, backend, new HttpCheckpointHost(), store, {
+  const settings = new AgentSettingsStore(join(studio.scope.projectDir, "..", "settings"));
+  const runner = new TurnRunner(chats, backend, new HttpCheckpointHost(), store, settings, {
     timers: clock,
     renewIntervalMs: RENEW_MS,
   });
@@ -153,5 +155,84 @@ describe("Revert this turn across a long pause (real history engine + routes + H
     expect(entries.flatMap((entry) => entry.files.map((file) => file.path))).toEqual(["a.html"]);
     await runner.revert(chat.id, turnId);
     expect([await studio.read("a.html"), await studio.read("b.html")]).toEqual(["A0", "B1"]);
+  });
+});
+
+describe("Delegated runs share the Director turn's checkpoint (real history engine)", () => {
+  async function multiAgentRunner() {
+    const studio = await studioWithProject();
+    const store = new FileChatStore(studio.scope.projectDir);
+    const chats = await ChatService.open(studio.scope, store);
+    const backend = new ScriptedAgentBackend();
+    const settings = new AgentSettingsStore(join(studio.scope.projectDir, "..", "settings"));
+    const runner = new TurnRunner(chats, backend, new HttpCheckpointHost(), store, settings, {
+      stopGraceMs: 50,
+    });
+    cleanup.push(() => runner.dispose());
+    const chat = await chats.create({}, ["editor", "vision"]);
+    return { studio, chats, backend, runner, chat };
+  }
+
+  it("reverts the Director's and every specialist's writes as one turn", async () => {
+    const { studio, chats, backend, runner, chat } = await multiAgentRunner();
+    backend.promptScript = async (input, session) => {
+      const now = Date.now();
+      if (session.input.agent === "editor") await studio.writeAt("b.html", "B-editor", now);
+      if (session.input.agent === "vision")
+        input.onEvent({ type: "text.delta", delta: "Looks fine." });
+      if (session.input.agent !== "director") return "completed";
+      await studio.writeAt("a.html", "A-director", now);
+      await session.callTool("delegate", {
+        agent: "editor",
+        title: "Edit b",
+        task: "Write b.html",
+      });
+      await session.callTool("delegate", { agent: "vision", title: "Look", task: "Review" });
+      await session.callTool("wait_for_agents", {});
+      return "completed";
+    };
+    const turn = await runner.start(chat.id, { prompt: "Rework the scenes" });
+    await waitUntil(() => chats.get(chat.id)?.turns[0]?.status === "completed", "the turn");
+
+    const checkpoint = chats.get(chat.id)?.turns[0]?.checkpoint;
+    const files = studio.history
+      .list()
+      .filter((entry) => checkpoint?.entryIds.includes(entry.id))
+      .flatMap((entry) => entry.files.map((file) => file.path))
+      .sort();
+    expect(files).toEqual(["a.html", "b.html"]);
+
+    expect(await runner.revert(chat.id, turn.id)).toMatchObject({ ok: true });
+    expect([await studio.read("a.html"), await studio.read("b.html")]).toEqual(["A0", "B0"]);
+  });
+
+  it("an aborted turn stops its specialists first, and reverting it undoes their writes", async () => {
+    const { studio, chats, backend, runner, chat } = await multiAgentRunner();
+    const editorWrote = Promise.withResolvers<void>();
+    backend.promptScript = async (input, session) => {
+      if (session.input.agent === "editor") {
+        await studio.writeAt("b.html", "B-editor", Date.now());
+        editorWrote.resolve();
+        const stopped = Promise.withResolvers<void>();
+        input.signal.addEventListener("abort", () => stopped.resolve(), { once: true });
+        await stopped.promise;
+        return "aborted";
+      }
+      await session.callTool("delegate", {
+        agent: "editor",
+        title: "Edit b",
+        task: "Write b.html",
+      });
+      await session.callTool("wait_for_agents", {}, input.signal);
+      return "aborted";
+    };
+    const turn = await runner.start(chat.id, { prompt: "Rework the scenes" });
+    await editorWrote.promise;
+    runner.abort(chat.id, turn.id);
+    await waitUntil(() => chats.get(chat.id)?.turns[0]?.status === "aborted", "the abort");
+
+    expect(chats.get(chat.id)?.runs.map((run) => run.status)).toEqual(["aborted"]);
+    expect(await runner.revert(chat.id, turn.id)).toMatchObject({ ok: true });
+    expect(await studio.read("b.html")).toBe("B0");
   });
 });

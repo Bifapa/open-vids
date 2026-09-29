@@ -8,6 +8,8 @@ export interface TurnRunnerOptions {
   timers?: StreamTimerApi;
   /** How often a running turn renews its project transaction (default 20 s; must stay well under the host's lease). */
   renewIntervalMs?: number;
+  /** How long aborted delegated runs may take to stop before their sessions are force-closed (default 10 s). */
+  stopGraceMs?: number;
 }
 
 /** The history label of a turn's transaction; recovery rebuilds it from the persisted prompt, so it must be pure. */

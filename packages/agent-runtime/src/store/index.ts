@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile, readdir, truncate } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import type { ChatEvent } from "@hyperframes/agent-protocol";
+import type { ChatEvent, SpecialistId } from "@hyperframes/agent-protocol";
 import { foldChatEvents, isRecord } from "@hyperframes/agent-protocol";
 
 const agentRoot = (projectDir: string) => join(projectDir, ".hyperframes", "agent", "chats");
@@ -83,9 +83,16 @@ export class FileChatStore {
     }
   }
 
-  /** Creates and returns the private backend state directory for a chat. */
+  /** Creates and returns the private backend state directory for a chat's Director. */
   async stateDir(chatId: string): Promise<string> {
     const directory = resolve(chatDirectory(this.projectDir, chatId), "backend");
+    await mkdir(directory, { recursive: true });
+    return directory;
+  }
+
+  /** The private backend state directory of one specialist in a chat, beside (not inside) the Director's. */
+  async agentStateDir(chatId: string, agent: SpecialistId): Promise<string> {
+    const directory = resolve(chatDirectory(this.projectDir, chatId), "agents", agent);
     await mkdir(directory, { recursive: true });
     return directory;
   }
@@ -138,6 +145,18 @@ function isChatEvent(value: unknown): value is ChatEvent {
       return typeof value.messageId === "string" && typeof value.status === "string";
     case "checkpoint.updated":
       return typeof value.turnId === "string" && isRecord(value.checkpoint);
+    case "plan.updated":
+      return typeof value.turnId === "string" && isRecord(value.plan);
+    case "agent.started":
+      return (
+        isRecord(value.run) &&
+        typeof value.parentMessageId === "string" &&
+        isRecord(value.taskMessage) &&
+        isRecord(value.assistantMessage)
+      );
+    case "agent.updated":
+    case "agent.completed":
+      return isRecord(value.run);
     case "turn.completed":
     case "turn.aborted":
       return isRecord(value.turn);

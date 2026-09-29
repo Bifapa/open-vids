@@ -25,7 +25,15 @@ function getToolKind(name: string): BackendToolKind {
   }
 }
 
-export function translateOmpEvent(event: unknown, projectDir: string): BackendEvent | null {
+/**
+ * `hostTools`: names of runtime-implemented tools (delegation, plan, Jev). Their calls are not project activity; the
+ * runtime reports them as its own events, and an unmatched `tool.end` is ignored downstream.
+ */
+export function translateOmpEvent(
+  event: unknown,
+  projectDir: string,
+  hostTools: ReadonlySet<string> = new Set(),
+): BackendEvent | null {
   if (!isRecord(event)) return null;
 
   if (event.type === "message_update" && isRecord(event.assistantMessageEvent)) {
@@ -45,7 +53,7 @@ export function translateOmpEvent(event: unknown, projectDir: string): BackendEv
   if (event.type === "tool_execution_start") {
     const toolCallId = getString(event, "toolCallId");
     const toolName = getString(event, "toolName");
-    if (!toolCallId || !toolName) return null;
+    if (!toolCallId || !toolName || hostTools.has(toolName)) return null;
     return {
       type: "tool.start",
       toolCallId,
@@ -79,7 +87,8 @@ export function terminalEventResult(event: unknown): TerminalEventResult | null 
   const messages = Array.isArray(event.messages) ? event.messages : [];
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (!isRecord(message) || message.type !== "assistant") continue;
+    // OMP agent messages carry `role`, not `type`; a provider failure is an assistant message with stopReason "error".
+    if (!isRecord(message) || message.role !== "assistant") continue;
     if (message.stopReason === "aborted") return { aborted: true, error: null };
     if (message.stopReason !== "error") continue;
 

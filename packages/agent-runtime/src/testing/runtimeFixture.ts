@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ProjectScope } from "../checkpointHost.js";
 import { ChatService } from "../chats.js";
+import { AgentSettingsStore } from "../settings.js";
 import { FileChatStore } from "../store/index.js";
 import { TurnRunner, type TurnRunnerOptions } from "../turns.js";
 import { FakeCheckpointHost } from "./index.js";
@@ -12,6 +13,7 @@ export interface RuntimeFixture {
   root: string;
   scope: ProjectScope;
   store: FileChatStore;
+  settings: AgentSettingsStore;
   chats: ChatService;
   turns: TurnRunner;
   backend: ScriptedAgentBackend;
@@ -37,14 +39,20 @@ export async function createRuntimeFixture(
     studioOrigin: "http://127.0.0.1:4173",
   };
   const store = new FileChatStore(projectDir);
+  const settings = new AgentSettingsStore(join(root, "settings"));
   const backend = new ScriptedAgentBackend();
   const checkpoints = new FakeCheckpointHost(now);
   const chats = await ChatService.open(scope, store, { now, ids });
-  const turns = new TurnRunner(chats, backend, checkpoints, store, { ...options, now, ids });
+  const turns = new TurnRunner(chats, backend, checkpoints, store, settings, {
+    ...options,
+    now,
+    ids,
+  });
   return {
     root,
     scope,
     store,
+    settings,
     chats,
     turns,
     backend,

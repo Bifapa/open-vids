@@ -5,6 +5,8 @@ export type {
   BackendPromptOutcome,
   BackendSession,
   BackendToolKind,
+  HostTool,
+  HostToolResult,
   OpenBackendSessionInput,
 } from "./backend.js";
 export type {
@@ -18,6 +20,7 @@ export { ChatService } from "./chats.js";
 export type { ChatServiceOptions, ChatEventSubscription } from "./chats.js";
 export { RuntimeError } from "./errors.js";
 export { renderPromptContext } from "./promptContext.js";
+export { AgentSettingsStore, defaultAgentSettings, defaultEnabledAgents } from "./settings.js";
 export { createRuntimeApp } from "./server.js";
 export type { RuntimeApp, RuntimeAppOptions } from "./server.js";
 export { FileChatStore } from "./store/index.js";

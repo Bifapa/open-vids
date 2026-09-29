@@ -14,10 +14,14 @@ export function modelMatches(model: AgentModelInfo, query: string): boolean {
 }
 
 /**
- * The picker's flat row list: a "use default" row first (only when not searching), then models
- * grouped by provider, providers and models alphabetical. Flat so the list can be virtualized.
+ * The picker's flat row list: a "use default" row first (only when `includeDefault` and not searching), then
+ * models grouped by provider, providers and models alphabetical. Flat so the list can be virtualized.
  */
-export function buildModelRows(models: readonly AgentModelInfo[], query: string): ModelRow[] {
+export function buildModelRows(
+  models: readonly AgentModelInfo[],
+  query: string,
+  includeDefault = true,
+): ModelRow[] {
   const byProvider = new Map<string, AgentModelInfo[]>();
   for (const model of models) {
     if (!modelMatches(model, query)) continue;
@@ -25,7 +29,7 @@ export function buildModelRows(models: readonly AgentModelInfo[], query: string)
     if (group) group.push(model);
     else byProvider.set(model.provider, [model]);
   }
-  const rows: ModelRow[] = query.trim() === "" ? [{ kind: "default" }] : [];
+  const rows: ModelRow[] = includeDefault && query.trim() === "" ? [{ kind: "default" }] : [];
   const providers = [...byProvider.keys()].sort((a, b) => a.localeCompare(b));
   for (const provider of providers) {
     const group = (byProvider.get(provider) ?? []).sort((a, b) => a.name.localeCompare(b.name));

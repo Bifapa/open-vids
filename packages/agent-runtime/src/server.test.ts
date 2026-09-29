@@ -1,9 +1,10 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { AGENT_HEADERS, isRecord } from "@hyperframes/agent-protocol";
+import { AGENT_HEADERS, AGENT_PROTOCOL_VERSION, isRecord } from "@hyperframes/agent-protocol";
 import { createRuntimeApp } from "./server.js";
+import { AgentSettingsStore } from "./settings.js";
 import { FakeCheckpointHost } from "./testing/index.js";
 import { ScriptedAgentBackend } from "./testing/backend.js";
 
@@ -22,6 +23,7 @@ describe("runtime HTTP server", () => {
     const app = createRuntimeApp({
       backend,
       checkpoints: new FakeCheckpointHost(),
+      settings: new AgentSettingsStore(join(root, "settings")),
       token: "runtime-secret",
     });
     const headers = {
@@ -39,7 +41,7 @@ describe("runtime HTTP server", () => {
       expect(health.status).toBe(200);
       expect(await responseObject(health)).toMatchObject({
         ok: true,
-        protocolVersion: 1,
+        protocolVersion: AGENT_PROTOCOL_VERSION,
         backend: "scripted",
       });
       const wrongToken = await app.request("/v1/health", {
@@ -82,6 +84,7 @@ describe("runtime HTTP server", () => {
     const app = createRuntimeApp({
       backend: new ScriptedAgentBackend(),
       checkpoints: new FakeCheckpointHost(),
+      settings: new AgentSettingsStore(join(root, "settings")),
       token: "runtime-secret",
     });
     const headers = {
@@ -136,6 +139,69 @@ describe("runtime HTTP server", () => {
       await replayReader?.cancel();
       await liveReader?.cancel();
       await projectReader?.cancel();
+      await app.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("serves global agent settings, seeds new chats from them and never returns the Jev key", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openvids-agent-settings-"));
+    const projectDir = join(root, "project");
+    await mkdir(projectDir);
+    const settingsDir = join(root, "settings");
+    const app = createRuntimeApp({
+      backend: new ScriptedAgentBackend(),
+      checkpoints: new FakeCheckpointHost(),
+      settings: new AgentSettingsStore(settingsDir),
+      token: "runtime-secret",
+    });
+    const headers = {
+      [AGENT_HEADERS.token]: "Bearer runtime-secret",
+      [AGENT_HEADERS.projectId]: "project-one",
+      [AGENT_HEADERS.projectDir]: projectDir,
+      [AGENT_HEADERS.studioOrigin]: "http://127.0.0.1:4173",
+    };
+    const call = (path: string, method = "GET", body?: unknown) =>
+      app.request(path, {
+        method,
+        headers: { ...headers, "content-type": "application/json" },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+      });
+    try {
+      const disabled = await call("/v1/settings", "PATCH", {
+        specialists: {
+          audio: { model: null, thinking: null, allowedModels: [], enabledByDefault: false },
+        },
+      });
+      expect(disabled.status).toBe(200);
+      const created = await responseObject(await call("/v1/chats", "POST", {}));
+      expect(created.enabledAgents).toEqual(["editor", "vision", "motion", "research"]);
+
+      const patched = await call(`/v1/chats/${String(created.id)}`, "PATCH", {
+        enabledAgents: ["vision"],
+      });
+      expect((await responseObject(patched)).enabledAgents).toEqual(["vision"]);
+      expect(
+        (await call(`/v1/chats/${String(created.id)}`, "PATCH", { enabledAgents: ["jev"] })).status,
+      ).toBe(400);
+
+      const keyed = await call("/v1/settings/jev/api-key", "POST", { apiKey: "sk-very-secret" });
+      const keyedText = await keyed.text();
+      expect(keyedText).not.toContain("sk-very-secret");
+      expect(JSON.parse(keyedText)).toMatchObject({ jev: { apiKeyConfigured: true } });
+      expect(await (await call("/v1/settings")).text()).not.toContain("sk-very-secret");
+      expect((await stat(join(settingsDir, "jev-credentials.json"))).mode & 0o777).toBe(0o600);
+
+      // Jev is still disabled: the test reports what is missing instead of calling a model.
+      expect(await responseObject(await call("/v1/settings/jev/test", "POST", {}))).toMatchObject({
+        ok: false,
+      });
+
+      const removed = await responseObject(
+        await call("/v1/settings/jev/api-key", "POST", { apiKey: null }),
+      );
+      expect(removed.jev).toMatchObject({ apiKeyConfigured: false });
+    } finally {
       await app.dispose();
       await rm(root, { recursive: true, force: true });
     }

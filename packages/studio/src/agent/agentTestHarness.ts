@@ -1,6 +1,8 @@
 import { vi, type Mock } from "vitest";
 import type {
   ActiveTurnInfo,
+  AgentRun,
+  AgentSettings,
   ChatEvent,
   ChatEventPayload,
   AssistantMessage,
@@ -10,6 +12,9 @@ import type {
   ListChatsResponse,
   AgentModelCatalog,
   RevertTurnResponse,
+  SpecialistDefaults,
+  TaskMessage,
+  TestJevResponse,
   TurnSummary,
 } from "@hyperframes/agent-protocol";
 import type { AgentClient } from "./agentClient";
@@ -131,7 +136,55 @@ export function assistantMessage(overrides: Partial<AssistantMessage> = {}): Ass
 }
 
 export function chatState(overrides: Partial<ChatState> = {}): ChatState {
-  return { chat: summary(), messages: [], turns: [], lastSeq: 0, ...overrides };
+  return { chat: summary(), messages: [], turns: [], runs: [], lastSeq: 0, ...overrides };
+}
+
+/** A delegated run the Director started in turn t1; its task and reply ids derive from its id. */
+export function agentRun(overrides: Partial<AgentRun> = {}): AgentRun {
+  const id = overrides.id ?? "r1";
+  return {
+    id,
+    turnId: "t1",
+    agent: "editor",
+    parentRunId: null,
+    title: "Trim the intro",
+    status: "running",
+    model: null,
+    thinking: null,
+    routedByDirector: false,
+    taskMessageId: `${id}-task`,
+    assistantMessageId: `${id}-reply`,
+    startedAt: 3100,
+    summary: null,
+    ...overrides,
+  };
+}
+
+export function taskMessage(run: AgentRun, text: string, steering = false): TaskMessage {
+  return {
+    id: steering ? `${run.id}-follow-up` : run.taskMessageId,
+    chatId: "c1",
+    turnId: run.turnId,
+    createdAt: run.startedAt,
+    runId: run.id,
+    role: "task",
+    agent: run.agent,
+    from: "director",
+    steering,
+    parts: [{ type: "text", id: `${run.id}-task-p`, text }],
+  };
+}
+
+/** The reply that streams under a run's task, in the run's own thread. */
+export function runReply(run: AgentRun, overrides: Partial<AssistantMessage> = {}) {
+  return assistantMessage({
+    id: run.assistantMessageId,
+    turnId: run.turnId,
+    createdAt: run.startedAt + 1,
+    runId: run.id,
+    agent: run.agent,
+    ...overrides,
+  });
 }
 
 /** A chat with a live turn: prompt sent, assistant message streaming. */
@@ -159,6 +212,7 @@ export interface FakeClientData {
   models?: AgentModelCatalog;
   chat?: ChatState;
   revert?: RevertTurnResponse;
+  settings?: AgentSettings;
 }
 
 export const EMPTY_LIST: ListChatsResponse = { chats: [], activeTurn: null };
@@ -177,6 +231,29 @@ export const CATALOG: AgentModelCatalog = {
   defaultThinking: "low",
 };
 
+function specialistDefaults(enabledByDefault: boolean): SpecialistDefaults {
+  return { model: null, thinking: null, allowedModels: [], enabledByDefault };
+}
+
+export const SETTINGS: AgentSettings = {
+  director: { model: null, thinking: null },
+  specialists: {
+    editor: specialistDefaults(true),
+    vision: specialistDefaults(true),
+    motion: specialistDefaults(false),
+    research: specialistDefaults(false),
+    audio: specialistDefaults(false),
+  },
+  jev: {
+    enabled: false,
+    provider: null,
+    modelId: null,
+    thinking: null,
+    credentials: "provider-login",
+    apiKeyConfigured: false,
+  },
+};
+
 export function createFakeClient(data: FakeClientData = {}): FakeClient {
   const state = data.chat ?? chatState();
   const client: FakeClient = {
@@ -189,6 +266,7 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
       ...(request.title !== undefined ? { title: request.title } : {}),
       ...(request.model !== undefined ? { mainAgentModel: request.model } : {}),
       ...(request.thinking !== undefined ? { thinking: request.thinking } : {}),
+      ...(request.enabledAgents !== undefined ? { enabledAgents: request.enabledAgents } : {}),
     })),
     startTurn: vi.fn(async () => ({ turn: turn() })),
     steerTurn: vi.fn(async () => ({ messageId: "m9" })),
@@ -196,6 +274,12 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
     revertTurn: vi.fn(async () => data.revert ?? { ok: true, turn: turn({ status: "completed" }) }),
     chatEventsUrl: vi.fn((chatId, after) => `/agent/chats/${chatId}/events?after=${after}`),
     projectEventsUrl: vi.fn(() => "/agent/events"),
+    getSettings: vi.fn(async () => data.settings ?? SETTINGS),
+    updateSettings: vi.fn(async () => data.settings ?? SETTINGS),
+    setJevApiKey: vi.fn(async () => data.settings ?? SETTINGS),
+    testJev: vi.fn(async (): Promise<TestJevResponse> => ({ ok: false, message: "Jev is off." })),
+    listProviders: vi.fn(async () => ({ providers: [] })),
+    listProviderModels: vi.fn(async () => ({ models: [] })),
   };
   return client;
 }

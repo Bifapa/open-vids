@@ -1,21 +1,29 @@
 import {
   AGENT_ERROR_CODES,
+  SPECIALIST_IDS,
   isRecord,
   type ActiveTurnInfo,
   type AgentErrorBody,
   type AgentErrorCode,
   type AgentModelCatalog,
+  type AgentSettings,
   type ChatState,
   type ChatSummary,
   type CreateChatRequest,
   type ListChatsResponse,
+  type ListProviderModelsResponse,
+  type ListProvidersResponse,
+  type ModelConfig,
   type RevertTurnRequest,
   type RevertTurnResponse,
+  type SetJevApiKeyRequest,
   type StartTurnRequest,
   type StartTurnResponse,
   type SteerTurnRequest,
   type SteerTurnResponse,
+  type TestJevResponse,
   type TurnSummary,
+  type UpdateAgentSettingsRequest,
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import { buildProjectApiPath } from "../utils/projectRouting";
@@ -71,6 +79,15 @@ export interface AgentClient {
   /** Same-origin URL for the chat event stream, resuming after `afterSeq`. */
   chatEventsUrl(chatId: string, afterSeq: number): string;
   projectEventsUrl(): string;
+  /** Global (per-user) agent settings: Director and specialist defaults, and Jev. */
+  getSettings(): Promise<AgentSettings>;
+  updateSettings(request: UpdateAgentSettingsRequest): Promise<AgentSettings>;
+  /** Stores (string) or removes (null) Jev's API key; the key never comes back. */
+  setJevApiKey(request: SetJevApiKeyRequest): Promise<AgentSettings>;
+  testJev(): Promise<TestJevResponse>;
+  listProviders(): Promise<ListProvidersResponse>;
+  /** Every model of one provider, signed in or not (Jev can bring its own key). */
+  listProviderModels(provider: string): Promise<ListProviderModelsResponse>;
 }
 
 // ── Response guards ──────────────────────────────────────────────────────────
@@ -113,6 +130,7 @@ export function isChatState(value: unknown): value is ChatState {
     isChatSummary(value.chat) &&
     Array.isArray(value.messages) &&
     Array.isArray(value.turns) &&
+    Array.isArray(value.runs) &&
     isNumber(value.lastSeq)
   );
 }
@@ -138,6 +156,58 @@ function isRevertTurnResponse(value: unknown): value is RevertTurnResponse {
     Array.isArray(value.conflict.files) &&
     value.conflict.files.every(isString)
   );
+}
+
+function isModelConfig(value: unknown): value is ModelConfig {
+  return (
+    isRecord(value) &&
+    (value.model === null || isRecord(value.model)) &&
+    (value.thinking === null || isString(value.thinking))
+  );
+}
+
+export function isAgentSettings(value: unknown): value is AgentSettings {
+  if (!isRecord(value) || !isModelConfig(value.director)) return false;
+  const { specialists, jev } = value;
+  return (
+    isRecord(specialists) &&
+    SPECIALIST_IDS.every((id) => {
+      const entry = specialists[id];
+      return (
+        isModelConfig(entry) &&
+        isRecord(entry) &&
+        Array.isArray(entry.allowedModels) &&
+        typeof entry.enabledByDefault === "boolean"
+      );
+    }) &&
+    isRecord(jev) &&
+    typeof jev.enabled === "boolean" &&
+    typeof jev.apiKeyConfigured === "boolean" &&
+    isString(jev.credentials)
+  );
+}
+
+function isTestJevResponse(value: unknown): value is TestJevResponse {
+  if (!isRecord(value)) return false;
+  if (value.ok === true) {
+    return isRecord(value.model) && isString(value.reply) && isNumber(value.elapsedMs);
+  }
+  return value.ok === false && isString(value.message);
+}
+
+function isProvidersResponse(value: unknown): value is ListProvidersResponse {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.providers) &&
+    value.providers.every(
+      (provider) =>
+        isRecord(provider) && isString(provider.id) && typeof provider.authenticated === "boolean",
+    )
+  );
+}
+
+function isProviderModelsResponse(value: unknown): value is ListProviderModelsResponse {
+  return isRecord(value) && Array.isArray(value.models);
 }
 
 function isErrorBody(value: unknown): value is AgentErrorBody {
@@ -244,5 +314,12 @@ export function createAgentClient(
     chatEventsUrl: (chatId, afterSeq) =>
       `${base(`/chats/${enc(chatId)}/events`)}?after=${afterSeq}`,
     projectEventsUrl: () => base("/events"),
+    getSettings: () => call("GET", "/settings", isAgentSettings),
+    updateSettings: (request) => call("PATCH", "/settings", isAgentSettings, request),
+    setJevApiKey: (request) => call("POST", "/settings/jev/api-key", isAgentSettings, request),
+    testJev: () => call("POST", "/settings/jev/test", isTestJevResponse, {}),
+    listProviders: () => call("GET", "/providers", isProvidersResponse),
+    listProviderModels: (provider) =>
+      call("GET", `/providers/${enc(provider)}/models`, isProviderModelsResponse),
   };
 }

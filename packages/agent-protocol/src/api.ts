@@ -1,11 +1,19 @@
 import type {
   ActiveTurnInfo,
   AgentErrorCode,
+  AgentModelInfo,
+  AgentSettings,
   ChatState,
   ChatSummary,
   EditorContext,
+  JevCredentialMode,
   MessageReference,
+  ModelConfig,
   ModelSelection,
+  ProviderInfo,
+  SpecialistConfig,
+  SpecialistDefaults,
+  SpecialistId,
   ThinkingEffort,
   TurnSummary,
 } from "./types.js";
@@ -58,6 +66,10 @@ export interface UpdateChatRequest {
   title?: string;
   model?: ModelSelection | null;
   thinking?: ThinkingEffort | null;
+  /** Replaces the chat's enabled specialists. */
+  enabledAgents?: SpecialistId[];
+  /** Per-specialist overrides to set; null removes an override (back to the global default). */
+  agentOverrides?: Partial<Record<SpecialistId, SpecialistConfig | null>>;
 }
 
 export interface StartTurnRequest {
@@ -95,3 +107,38 @@ export type RevertTurnResponse =
   | { ok: false; conflict: { files: string[] } };
 
 export type GetChatResponse = ChatState;
+
+// ── Global agent settings ────────────────────────────────────────────────────
+
+export type GetAgentSettingsResponse = AgentSettings;
+
+/** Partial update of the global settings; omitted fields keep their value. */
+export interface UpdateAgentSettingsRequest {
+  director?: ModelConfig;
+  specialists?: Partial<Record<SpecialistId, SpecialistDefaults>>;
+  jev?: {
+    enabled?: boolean;
+    provider?: string | null;
+    modelId?: string | null;
+    thinking?: ThinkingEffort | null;
+    credentials?: JevCredentialMode;
+  };
+}
+
+/** Stores (string) or removes (null) the Jev API key. The response never contains the key. */
+export interface SetJevApiKeyRequest {
+  apiKey: string | null;
+}
+
+export interface ListProvidersResponse {
+  providers: ProviderInfo[];
+}
+
+/** Every model the runtime knows for one provider, with or without credentials (for Jev's API-key mode). */
+export interface ListProviderModelsResponse {
+  models: AgentModelInfo[];
+}
+
+export type TestJevResponse =
+  | { ok: true; model: ModelSelection; reply: string; elapsedMs: number }
+  | { ok: false; message: string };
