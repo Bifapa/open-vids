@@ -1,5 +1,5 @@
 import { isRecord } from "@hyperframes/agent-protocol";
-import type { BackendEvent, BackendToolKind } from "../backend.ts";
+import type { BackendEvent, BackendToolKind, HostTool } from "../backend.ts";
 import { projectRelativeTargets } from "./path-guard.ts";
 
 type UnknownRecord = Record<string, unknown>;
@@ -26,13 +26,14 @@ function getToolKind(name: string): BackendToolKind {
 }
 
 /**
- * `hostTools`: names of runtime-implemented tools (delegation, plan, Jev). Their calls are not project activity; the
- * runtime reports them as its own events, and an unmatched `tool.end` is ignored downstream.
+ * `hostTools`: the runtime-implemented tools of the session (delegation, plan, Jev, editing), by name. Their calls are
+ * not file activity: the runtime reports orchestration itself, and a host tool that declares an `activity` gets one
+ * labelled row per call. An unmatched `tool.end` is ignored downstream.
  */
 export function translateOmpEvent(
   event: unknown,
   projectDir: string,
-  hostTools: ReadonlySet<string> = new Set(),
+  hostTools: ReadonlyMap<string, HostTool> = new Map(),
 ): BackendEvent | null {
   if (!isRecord(event)) return null;
 
@@ -53,7 +54,19 @@ export function translateOmpEvent(
   if (event.type === "tool_execution_start") {
     const toolCallId = getString(event, "toolCallId");
     const toolName = getString(event, "toolName");
-    if (!toolCallId || !toolName || hostTools.has(toolName)) return null;
+    if (!toolCallId || !toolName) return null;
+    const hostTool = hostTools.get(toolName);
+    if (hostTool) {
+      const activity = hostTool.activity?.(event.args);
+      if (!activity) return null;
+      return {
+        type: "tool.start",
+        toolCallId,
+        kind: activity.category,
+        targets: [],
+        label: activity.label,
+      };
+    }
     return {
       type: "tool.start",
       toolCallId,

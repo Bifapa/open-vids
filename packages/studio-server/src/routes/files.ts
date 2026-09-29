@@ -82,14 +82,13 @@ import {
   type PatchOperation,
   type ElementRebase,
 } from "../helpers/sourceMutation.js";
-import { parseHTML } from "linkedom";
-import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
   CompositionInsertionError,
   insertCompositionIntoSource,
 } from "../helpers/compositionInsertion.js";
 import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
+import { extractGsapScriptBlock, type GsapScriptBlock } from "../helpers/gsapScript.js";
 import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
@@ -662,45 +661,6 @@ function updateReferences(projectDir: string, oldPath: string, newPath: string):
   return updatedCount;
 }
 
-// ── GSAP script extraction ──────────────────────────────────────────────────
-
-/**
- * Mint the HTML's ids (so a tween saved on a served id writes that id too), parse it with
- * linkedom, locate the inline `<script>` holding GSAP timeline code, and return its text and
- * a function that replaces that script block and serialises back to HTML.
- */
-function extractGsapScriptBlock(html: string): {
-  scriptText: string;
-  document: Document;
-  replaceScript: (newText: string) => string;
-} | null {
-  const { document } = parseHTML(ensureHfIds(html));
-  const scripts = [
-    ...document.querySelectorAll("script:not([src])"),
-    ...Array.from(document.querySelectorAll("template")).flatMap((tmpl) =>
-      Array.from(tmpl.querySelectorAll("script:not([src])")),
-    ),
-  ];
-  for (const script of scripts) {
-    const content = script.textContent || "";
-    if (
-      content.includes("gsap.timeline") ||
-      content.includes(".set(") ||
-      content.includes(".to(")
-    ) {
-      return {
-        scriptText: content,
-        document,
-        replaceScript(newText: string): string {
-          script.textContent = newText;
-          return document.toString();
-        },
-      };
-    }
-  }
-  return null;
-}
-
 /**
  * Remove every GSAP animation that targets `selector` from an HTML string's
  * inline script. Used after unwrapping a group so its leftover `gsap.set("#id")`
@@ -1230,7 +1190,7 @@ const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
 
 async function executeGsapMutation(
   body: GsapMutationRequest,
-  block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
+  block: GsapScriptBlock,
   respond: (data: unknown, status?: number) => Response,
   writer: "recast" | "acorn",
 ): Promise<GsapMutationResult | Response> {
@@ -1279,7 +1239,7 @@ async function prepareGsapMutationScript(
   | {
       html: string;
       beforeHtml: string;
-      block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>;
+      block: GsapScriptBlock;
     }
 > {
   const beforeHtml = readFileSync(res.absPath, "utf-8");
@@ -1402,7 +1362,7 @@ async function applyGsapMutations(
 
 function executeGsapMutationAcorn(
   body: GsapMutationRequest,
-  block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
+  block: GsapScriptBlock,
   respond: (data: unknown, status?: number) => Response,
 ): GsapMutationResult | Response {
   function requireAnimation(
@@ -1742,7 +1702,7 @@ function executeGsapMutationAcorn(
 
 async function executeGsapMutationRecast(
   body: GsapMutationRequest,
-  block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
+  block: GsapScriptBlock,
   respond: (data: unknown, status?: number) => Response,
 ): Promise<GsapMutationResult | Response> {
   const parser = await loadGsapParser();

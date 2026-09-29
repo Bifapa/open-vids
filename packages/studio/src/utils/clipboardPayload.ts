@@ -1,4 +1,4 @@
-import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
+import { COMPOSITION_ROOT_OPEN_TAG_RE } from "@hyperframes/core/editing/timeline-asset";
 
 const CLIPBOARD_MARKER = "hyperframes-clipboard:v1";
 

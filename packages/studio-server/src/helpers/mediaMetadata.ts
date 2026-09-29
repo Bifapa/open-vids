@@ -68,6 +68,11 @@ export interface MediaMetadata {
   color: MediaColorMetadata;
   /** Video audio stream, when probed. Absent means the drop path stays muted. */
   hasAudio?: boolean;
+  /** Video/audio container duration in seconds, when ffprobe reports one. */
+  durationSeconds?: number;
+  /** Pixel size of the first video stream / image, when ffprobe reports one. */
+  width?: number;
+  height?: number;
   probeError?: string;
 }
 
@@ -81,6 +86,8 @@ interface FfprobeStream {
   color_primaries?: string;
   bits_per_raw_sample?: string;
   disposition?: { attached_pic?: number };
+  width?: number;
+  height?: number;
 }
 
 const VIDEO_EXT = new Set([
@@ -182,7 +189,7 @@ export async function probeMediaMetadata(
   runner: FfprobeRunner = execFileRunner,
 ): Promise<MediaMetadata> {
   const kind = inferKindFromPath(filePath);
-  if (kind === "audio" || kind === "unknown") {
+  if (kind === "unknown") {
     return { kind, color: classifyMediaColor(null) };
   }
 
@@ -201,7 +208,7 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height:format=duration:stream_disposition=attached_pic",
       "-of",
       "json",
       "--",
@@ -218,14 +225,28 @@ export async function probeMediaMetadata(
   }
 
   try {
-    const parsed = JSON.parse(String(result.stdout || "{}")) as { streams?: FfprobeStream[] };
+    const parsed = JSON.parse(String(result.stdout || "{}")) as {
+      streams?: FfprobeStream[];
+      format?: { duration?: string };
+    };
     const stream = parsed.streams?.find((item) => {
       if (kind === "image") return item.codec_type === "video";
       return item.codec_type === kind && item.disposition?.attached_pic !== 1;
     });
-    const metadata: MediaMetadata = { kind, color: classifyMediaColor(stream) };
+    const metadata: MediaMetadata = {
+      kind,
+      color: classifyMediaColor(kind === "audio" ? null : stream),
+    };
     if (kind === "video") {
       metadata.hasAudio = (parsed.streams ?? []).some((item) => item.codec_type === "audio");
+    }
+    if (kind !== "image") {
+      const duration = Number.parseFloat(parsed.format?.duration ?? "");
+      if (Number.isFinite(duration) && duration > 0) metadata.durationSeconds = duration;
+    }
+    if (kind !== "audio") {
+      if (stream?.width && stream.width > 0) metadata.width = stream.width;
+      if (stream?.height && stream.height > 0) metadata.height = stream.height;
     }
     return metadata;
   } catch {

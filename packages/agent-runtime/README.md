@@ -55,8 +55,8 @@ in-memory credential store, so it never replaces the credentials other agents us
 - The Director gets runtime-implemented host tools (`src/agents/tools.ts`): `update_plan`
   (`plan.updated`), `delegate` / `wait_for_agents` / `message_agent` / `cancel_agent` (only when at
   least one specialist is enabled; `agent` is an enum of the enabled ones and is re-checked), and
-  `jev` when Jev is usable. Specialists get only `jev`; Jev gets none — the hierarchy is one level
-  and OMP's own task/subagent tools are never enabled.
+  `jev` when Jev is usable. Specialists get only the tools below plus `jev`; Jev gets none — the
+  hierarchy is one level and OMP's own task/subagent tools are never enabled.
 - Routing (`src/agents/routing.ts`): a delegated task runs on the specialist's model unless the
   Director names one of its `allowedModels` (and it is authenticated); thinking may be lowered for a
   task, never raised. Violations are returned to the Director as tool errors.
@@ -67,6 +67,39 @@ in-memory credential store, so it never replaces the credentials other agents us
   runs it is re-prompted with their reports (at most 3 times). Before the checkpoint closes,
   `shutdown()` aborts unfinished runs and force-closes a session that does not stop within the grace
   period, so no run outlives its turn.
+
+## Editing tools
+
+Agents assemble and change videos through an OpenVids-owned capability layer, not by hand-editing
+composition HTML. The runtime talks to Studio's editing service over loopback HTTP
+(`src/editing/host.http.ts`, base `${studioOrigin}/api/projects/:id`): `editing/project`,
+`editing/timeline`, `editing/apply` (atomic batch of `EditOperation`s), `editing/presets`,
+`editing/probe`, plus the existing render routes (POST render → progress SSE → renders list →
+probe). The wire contract is `packages/agent-protocol/src/editing.ts`. The service writes project
+files; Studio's watcher reloads the timeline/preview live, and because the write happens while the
+Director's transaction is open the history engine attributes it to the turn.
+
+| Tool               | Director                     | Editor | Motion | Audio | Vision / Research | Jev |
+| ------------------ | ---------------------------- | ------ | ------ | ----- | ----------------- | --- |
+| `inspect_project`  | yes                          | yes    | yes    | yes   | yes               | no  |
+| `inspect_timeline` | yes                          | yes    | yes    | yes   | yes               | no  |
+| `browse_presets`   | yes                          | yes    | yes    | no    | yes               | no  |
+| `edit_timeline`    | only if no Editor is enabled | yes    | yes    | yes   | no                | no  |
+| `render_video`     | yes                          | yes    | no     | no    | no                | no  |
+
+- `inspect_timeline` also reports the playhead, selection and active composition from the turn's
+  `EditorContext` (captured when the user sent the message). A service refusal (`EditError`) or a
+  malformed batch comes back as a tool error with its code, message and `operations[N]`.
+- Each editing tool declares an `activity` label ("Inspecting the timeline", "Editing the timeline ·
+  4 changes (add clip ×3, split)", "Browsing caption presets", "Rendering video"); the OMP adapter
+  reports these as `tool.start` with a `label`, and `TurnEventWriter` shows each as its own row.
+- Lifecycle guarantee (`src/editing/executor.ts`, `TurnRunner.finalize`): editing calls go to a
+  per-turn executor bound to the turn's scope, editor context and abort signal. They are refused when
+  no turn is running or it is finalizing. Before the checkpoint closes, the turn stops accepting
+  calls, cancels running renders (`POST /render/:jobId/cancel`) and awaits every started call — an
+  `apply` already sent is atomic on the service and is awaited, not cut off — so no editing write can
+  land after the checkpoint transaction ends. Aborting the turn aborts in-flight edits and renders.
+- `FakeEditingHost` (`src/testing`) is the in-memory host for tests; the runtime fixture wires it.
 
 ## Turns, checkpoints, concurrency
 
@@ -93,7 +126,8 @@ in-memory credential store, so it never replaces the credentials other agents us
 Every agent (Director, specialists, Jev) is a restricted OMP session, not the user's personal OMP
 environment: project file tools `read`, `grep`, `glob`/`find`, `edit`, `write` plus the runtime's
 host tools for that agent (no bash/eval/web/MCP/LSP/task); host tools are passed as SDK custom tools
-(`allowRestrictedCustomTools`) and their calls are not reported as project activity. Role
+(`allowRestrictedCustomTools`); orchestration calls are not reported as project activity (the runtime
+emits its own events), editing tools report labelled activity rows. Role
 instructions (system prompts) come from the runtime (`src/agents/roles.ts`). Edit mode is pinned to
 path-based `replace`; skills and rules are empty; only `<project>/AGENTS.md` (or `CLAUDE.md`) is
 loaded as context. Providers, auth and model catalog come from the user's existing OMP setup

@@ -1,10 +1,8 @@
 import { buildProjectApiPath } from "./projectRouting";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
-import {
-  insertTimelineAssetIntoSource,
-  resolveTimelineAssetCompositionSize,
-} from "./timelineAssetDrop";
+import { insertTimelineAssetIntoSource } from "@hyperframes/core/editing/timeline-asset";
+import { resolveTimelineAssetCompositionSize } from "./timelineAssetDrop";
 import { collectHtmlIds } from "./studioHelpers";
 import { generateId } from "./generateId";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";

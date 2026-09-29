@@ -34,6 +34,11 @@ export type BackendEvent =
       kind: BackendToolKind;
       /** Project-relative paths or short display targets; never raw tool arguments. */
       targets: string[];
+      /**
+       * A product-level row label ("Editing the timeline · 3 changes"), set only for runtime tools that declare an
+       * activity. A labelled call is shown as its own row and never folds into a file-activity group.
+       */
+      label?: string;
     }
   | { type: "tool.end"; toolCallId: string; ok: boolean };
 
@@ -44,9 +49,10 @@ export interface HostToolResult {
 }
 
 /**
- * A tool the runtime (not the harness) implements: delegation, plan updates, Jev. The backend exposes it to the model
- * next to its own project-file tools and does not report its calls as activity — the runtime emits its own
- * product-level events for them.
+ * A tool the runtime (not the harness) implements: delegation, plan updates, Jev, editing. The backend exposes it to
+ * the model next to its own project-file tools. Its calls are not reported as file activity: the runtime emits its own
+ * product-level events for orchestration tools, and a tool that declares {@link HostTool.activity} gets one labelled
+ * activity row per call.
  */
 export interface HostTool {
   name: string;
@@ -54,6 +60,8 @@ export interface HostTool {
   /** JSON Schema of the arguments object. */
   parameters: Record<string, unknown>;
   execute(args: unknown, signal: AbortSignal): Promise<HostToolResult>;
+  /** The activity row this call shows, from its (untrusted) arguments; null or absent keeps the call hidden. */
+  activity?(args: unknown): { category: BackendToolKind; label: string } | null;
 }
 
 export interface BackendPromptInput {

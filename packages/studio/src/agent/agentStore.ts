@@ -94,6 +94,8 @@ export interface AgentStoreDeps {
   captureEditorContext?: () => EditorContext | null;
   /** Called once a revert returned `{ok:true}`: the project files were rewritten, refresh the editor. */
   onTurnReverted?: () => void | Promise<void>;
+  /** Called when a turn of the open chat ends (completed, failed or aborted): pick up renders it produced. */
+  onTurnEnded?: () => void;
 }
 
 export type AgentStore = StoreApi<AgentState>;
@@ -182,6 +184,17 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       const next = applyChatEvent(state, event);
       set({ chat: next });
       if (event.type === "chat.created" || event.type === "chat.updated") applySummary(event.chat);
+      if (
+        event.type === "turn.completed" ||
+        event.type === "turn.failed" ||
+        event.type === "turn.aborted"
+      ) {
+        try {
+          deps.onTurnEnded?.();
+        } catch {
+          // A failed editor refresh must not break the chat stream.
+        }
+      }
     };
 
     const openChatStream = (chatId: string) => {

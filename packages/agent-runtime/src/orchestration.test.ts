@@ -13,6 +13,15 @@ import type { ScriptedSession } from "./testing/backend.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "./testing/runtimeFixture.js";
 import { TurnRunner } from "./turns.js";
 
+/** The editing tools the Editor (and a Director without an Editor) gets, in registration order. */
+const EDITOR_TOOLS = [
+  "inspect_project",
+  "inspect_timeline",
+  "browse_presets",
+  "render_video",
+  "edit_timeline",
+];
+
 type AgentScript = (
   input: BackendPromptInput,
   session: ScriptedSession,
@@ -139,7 +148,7 @@ describe("multi-agent orchestration", () => {
       // Each specialist keeps its own resumable session beside the Director's, without delegation tools.
       const editorSession = fixture.backend.sessionsOf("editor")[0];
       expect(editorSession?.input.stateDir).toMatch(/agents[/\\]editor$/);
-      expect(editorSession?.input.hostTools.map((tool) => tool.name)).toEqual([]);
+      expect(editorSession?.input.hostTools.map((tool) => tool.name)).toEqual(EDITOR_TOOLS);
     } finally {
       await fixture.cleanup();
     }
@@ -190,7 +199,10 @@ describe("multi-agent orchestration", () => {
       await fixture.turns.start(solo.id, { prompt: "Just do it" });
       await settled(fixture, solo.id);
       const soloDirector = fixture.backend.sessionsOf("director").at(-1);
-      expect(soloDirector?.input.hostTools.map((tool) => tool.name)).toEqual(["update_plan"]);
+      expect(soloDirector?.input.hostTools.map((tool) => tool.name)).toEqual([
+        "update_plan",
+        ...EDITOR_TOOLS,
+      ]);
     } finally {
       await fixture.cleanup();
     }

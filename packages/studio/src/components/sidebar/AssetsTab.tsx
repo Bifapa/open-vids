@@ -1,7 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { SearchInput } from "../ui/SearchInput";
-import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
+import { MEDIA_EXT, FONT_EXT } from "@hyperframes/core/media-types";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
 import {

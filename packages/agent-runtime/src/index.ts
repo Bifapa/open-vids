@@ -16,6 +16,15 @@ export type {
   RevertOutcome,
 } from "./checkpointHost.js";
 export { HttpCheckpointHost, createHttpCheckpointHost } from "./checkpointHost.http.js";
+export { HttpEditingHost } from "./editing/host.http.js";
+export { EditingError } from "./editing/host.js";
+export type {
+  EditingHost,
+  RenderOutput,
+  RenderProgress,
+  RenderQuality,
+  RenderRequest,
+} from "./editing/host.js";
 export { ChatService } from "./chats.js";
 export type { ChatServiceOptions, ChatEventSubscription } from "./chats.js";
 export { RuntimeError } from "./errors.js";

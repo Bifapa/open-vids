@@ -93,13 +93,16 @@ export function AgentChatBody() {
 export function AgentChatPanel({
   projectId,
   onReverted,
+  onTurnEnded,
 }: {
   projectId: string;
   /** Refreshes the editor once a revert has rewritten project files. */
   onReverted: () => void | Promise<void>;
+  /** A turn ended: pick up what it produced outside the watched project files (renders). */
+  onTurnEnded?: () => void;
 }) {
   const editorContext = useEditorContextSource(projectId);
-  const store = useProjectAgentStore(projectId, editorContext, onReverted);
+  const store = useProjectAgentStore(projectId, editorContext, onReverted, onTurnEnded);
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg-1 text-text-1">
       <PanelBoundary>

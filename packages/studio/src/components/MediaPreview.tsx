@@ -1,6 +1,6 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
 import { useState } from "react";
-import { IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from "../utils/mediaTypes";
+import { IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from "@hyperframes/core/media-types";
 
 function MediaErrorPanel({ name, filePath }: { name: string; filePath: string }) {
   return (

@@ -62,6 +62,18 @@
       "import": "./src/editing/affordances.ts",
       "types": "./src/editing/affordances.ts"
     },
+    "./editing/timeline-asset": {
+      "bun": "./src/editing/timelineAsset.ts",
+      "node": "./dist/editing/timelineAsset.js",
+      "import": "./src/editing/timelineAsset.ts",
+      "types": "./src/editing/timelineAsset.ts"
+    },
+    "./media-types": {
+      "bun": "./src/mediaTypes.ts",
+      "node": "./dist/mediaTypes.js",
+      "import": "./src/mediaTypes.ts",
+      "types": "./src/mediaTypes.ts"
+    },
     "./editing/draft-markers": {
       "bun": "./src/editing/draftMarkers.ts",
       "node": "./dist/editing/draftMarkers.js",

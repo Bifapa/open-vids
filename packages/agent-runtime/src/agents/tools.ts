@@ -11,6 +11,7 @@ import {
   type ThinkingEffort,
 } from "@hyperframes/agent-protocol";
 import type { HostTool, HostToolResult } from "../backend.js";
+import { buildEditingTools } from "../editing/tools.js";
 
 export const TOOL_NAMES = {
   plan: "update_plan",
@@ -38,6 +39,8 @@ export type ToolExecutor = (
 export interface ToolAvailability {
   enabled: SpecialistId[];
   jev: boolean;
+  /** The runtime has an editing host: agents get the editing tools their role allows. */
+  editing: boolean;
 }
 
 const stringProperty = (description: string, maxLength?: number) => ({
@@ -74,7 +77,10 @@ export function buildHostTools(
   execute: ToolExecutor,
 ): HostTool[] {
   if (agent === "jev") return [];
-  if (agent !== "director") return availability.jev ? [jevTool(execute)] : [];
+  const editing = availability.editing
+    ? buildEditingTools(agent, availability.enabled, execute)
+    : [];
+  if (agent !== "director") return [...editing, ...(availability.jev ? [jevTool(execute)] : [])];
 
   const planAgents: AgentId[] = ["director", ...availability.enabled];
   if (availability.jev) planAgents.push("jev");
@@ -185,6 +191,7 @@ export function buildHostTools(
       },
     );
   }
+  tools.push(...editing);
   if (availability.jev) tools.push(jevTool(execute));
   return tools;
 }

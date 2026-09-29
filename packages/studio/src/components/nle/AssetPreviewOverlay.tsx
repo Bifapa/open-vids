@@ -12,7 +12,7 @@
  * Switching to another not-added asset replaces the current preview.
  */
 import { useEffect, useCallback } from "react";
-import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
+import { VIDEO_EXT, IMAGE_EXT } from "@hyperframes/core/media-types";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { shouldDismissAssetPreview } from "../../utils/assetPreviewDismiss";

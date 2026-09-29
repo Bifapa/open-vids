@@ -8,7 +8,7 @@ import {
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { Plus, Settings } from "../../icons/SystemIcons";
-import { LUT_EXT } from "../../utils/mediaTypes";
+import { LUT_EXT } from "@hyperframes/core/media-types";
 import { FLAT_PREVIEW_GRID, FlatSlider } from "./propertyPanelFlatPrimitives";
 import type {
   ColorGradingControllerState,

@@ -1,7 +1,7 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback } from "react";
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
-import { FONT_EXT } from "../utils/mediaTypes";
+import { FONT_EXT } from "@hyperframes/core/media-types";
 
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";

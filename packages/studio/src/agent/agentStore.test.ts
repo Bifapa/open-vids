@@ -193,6 +193,32 @@ describe("chat stream", () => {
     expect(assistant?.parts.map((part) => part.type)).toEqual(["thinking", "activity", "text"]);
   });
 
+  it("reports each ended turn once, and nothing for events inside a turn", async () => {
+    const onTurnEnded = vi.fn();
+    log = createSourceLog();
+    store = createAgentStore({
+      client: createFakeClient({ chat: chatState({ lastSeq: 1 }) }),
+      openEventSource: log.open,
+      onTurnEnded,
+    });
+    await store.getState().init();
+    await store.getState().openChat("c1");
+    const source = log.latest("/chats/");
+    source.open();
+    source.emit("chat", chatEvent(2, { type: "chat.updated", chat: summary({ title: "Two" }) }));
+    expect(onTurnEnded).not.toHaveBeenCalled();
+    source.emit(
+      "chat",
+      chatEvent(3, { type: "turn.aborted", turn: turn({ status: "aborted", endedAt: 9 }) }),
+    );
+    // A replayed terminal event is not a second ending.
+    source.emit(
+      "chat",
+      chatEvent(3, { type: "turn.aborted", turn: turn({ status: "aborted", endedAt: 9 }) }),
+    );
+    expect(onTurnEnded).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores replayed events and events for another chat", async () => {
     const created = await openChat(createFakeClient({ chat: chatState({ lastSeq: 4 }) }));
     const source = log.latest("/chats/");

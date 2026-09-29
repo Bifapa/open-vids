@@ -4,3 +4,4 @@ export * from "./api.js";
 export * from "./reduce.js";
 export * from "./validate.js";
 export * from "./sse.js";
+export * from "./editing.js";

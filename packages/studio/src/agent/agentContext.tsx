@@ -35,12 +35,13 @@ export function useProjectAgentStore(
   projectId: string,
   editorContext: EditorContextSource,
   onReverted: () => void | Promise<void>,
+  onTurnEnded: () => void = () => {},
   openEventSource: EventSourceFactory = browserEventSource,
 ): AgentStore | null {
   const [store, setStore] = useState<AgentStore | null>(null);
-  const live = useRef({ editorContext, onReverted });
+  const live = useRef({ editorContext, onReverted, onTurnEnded });
   useEffect(() => {
-    live.current = { editorContext, onReverted };
+    live.current = { editorContext, onReverted, onTurnEnded };
   });
 
   useEffect(() => {
@@ -49,6 +50,7 @@ export function useProjectAgentStore(
       openEventSource,
       captureEditorContext: () => live.current.editorContext.capture(),
       onTurnReverted: () => live.current.onReverted(),
+      onTurnEnded: () => live.current.onTurnEnded(),
     });
     setStore(next);
     void next.getState().init();

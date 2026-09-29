@@ -1,4 +1,4 @@
-import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT } from "../../utils/mediaTypes";
+import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT } from "@hyperframes/core/media-types";
 
 export type MediaCategory = "audio" | "images" | "video" | "fonts";
 

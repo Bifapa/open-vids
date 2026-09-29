@@ -7,6 +7,7 @@ import { AgentSettingsStore } from "../settings.js";
 import { FileChatStore } from "../store/index.js";
 import { TurnRunner, type TurnRunnerOptions } from "../turns.js";
 import { FakeCheckpointHost } from "./index.js";
+import { FakeEditingHost } from "./editing.js";
 import { ScriptedAgentBackend } from "./backend.js";
 
 export interface RuntimeFixture {
@@ -18,6 +19,7 @@ export interface RuntimeFixture {
   turns: TurnRunner;
   backend: ScriptedAgentBackend;
   checkpoints: FakeCheckpointHost;
+  editing: FakeEditingHost;
   now: () => number;
   setNow: (value: number) => void;
   cleanup: () => Promise<void>;
@@ -42,8 +44,10 @@ export async function createRuntimeFixture(
   const settings = new AgentSettingsStore(join(root, "settings"));
   const backend = new ScriptedAgentBackend();
   const checkpoints = new FakeCheckpointHost(now);
+  const editing = new FakeEditingHost();
   const chats = await ChatService.open(scope, store, { now, ids });
   const turns = new TurnRunner(chats, backend, checkpoints, store, settings, {
+    editing: () => editing,
     ...options,
     now,
     ids,
@@ -57,6 +61,7 @@ export async function createRuntimeFixture(
     turns,
     backend,
     checkpoints,
+    editing,
     now,
     setNow: (value) => {
       timestamp = value;
@@ -69,9 +74,16 @@ export async function createRuntimeFixture(
   };
 }
 
-export async function waitUntil(predicate: () => boolean, description: string): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+/** Polls `predicate`; `timeoutMs` bounds tests that cross real I/O (HTTP, ffprobe) instead of in-memory fakes. */
+export async function waitUntil(
+  predicate: () => boolean,
+  description: string,
+  timeoutMs?: number,
+): Promise<void> {
+  const deadline = timeoutMs === undefined ? null : Date.now() + timeoutMs;
+  for (let attempt = 0; deadline !== null || attempt < 200; attempt += 1) {
     if (predicate()) return;
+    if (deadline !== null && Date.now() > deadline) break;
     await new Promise((resolve) => setTimeout(resolve, 1));
   }
   throw new Error(`Timed out waiting for ${description}`);

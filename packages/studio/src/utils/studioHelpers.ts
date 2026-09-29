@@ -2,7 +2,7 @@ import { buildProjectApiPath } from "./projectRouting";
 import { isTypingTarget } from "./typingTarget";
 import type { TimelineElement } from "../player/store/playerStore";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import type { TimelineAssetKind } from "./timelineAssetDrop";
+import type { TimelineAssetKind } from "@hyperframes/core/editing/timeline-asset";
 import { roundToCenti } from "./rounding";
 
 export interface EditingFile {
@@ -323,8 +323,6 @@ export function clampNumber(value: number, min: number, max: number): number {
   if (max < min) return min;
   return Math.min(Math.max(value, min), max);
 }
-
-export { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 
 export function collectHtmlIds(source: string): string[] {
   return Array.from(source.matchAll(/\bid="([^"]+)"/g), (match) => match[1] ?? "");

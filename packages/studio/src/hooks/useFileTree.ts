@@ -1,6 +1,6 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { FONT_EXT } from "../utils/mediaTypes";
+import { FONT_EXT } from "@hyperframes/core/media-types";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 
 interface UseFileTreeOptions {

@@ -62,8 +62,10 @@ export class TurnEventWriter {
     if (event.type === "tool.start" || event.type === "tool.end") {
       this.finishThinkingSegment();
       this.segment = null;
-      if (event.type === "tool.start") this.startTool(event.toolCallId, event.kind, event.targets);
-      else this.endTool(event.toolCallId, event.ok);
+      if (event.type === "tool.start") {
+        if (event.label) this.startLabelledTool(event.toolCallId, event.kind, event.label);
+        else this.startTool(event.toolCallId, event.kind, event.targets);
+      } else this.endTool(event.toolCallId, event.ok);
       return;
     }
     this.closeCurrentActivity();
@@ -157,6 +159,34 @@ export class TurnEventWriter {
         })
         .then(() => undefined),
     );
+  }
+
+  /** A runtime tool with its own product-level label: always its own row, never folded into a file group. */
+  private startLabelledTool(
+    toolCallId: string,
+    category: Activity["category"],
+    label: string,
+  ): void {
+    if (this.toolGroups.has(toolCallId)) return;
+    this.closeCurrentActivity();
+    const activity: Activity = {
+      id: this.options.ids(),
+      category,
+      status: "running",
+      label,
+      count: 1,
+      targets: [],
+      startedAt: this.options.now(),
+    };
+    const group: ActivityGroup = {
+      activity,
+      pending: new Set([toolCallId]),
+      failed: false,
+      closed: true,
+    };
+    this.activityGroups.set(activity.id, group);
+    this.toolGroups.set(toolCallId, group);
+    this.publishActivity(activity);
   }
   private startTool(toolCallId: string, category: Activity["category"], targets: string[]): void {
     if (this.toolGroups.has(toolCallId)) return;

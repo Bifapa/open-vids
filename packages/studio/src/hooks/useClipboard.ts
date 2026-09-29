@@ -11,7 +11,7 @@ import {
   insertAsSibling,
 } from "../utils/clipboardPayload";
 import { collectHtmlIds } from "../utils/studioHelpers";
-import { insertTimelineAssetIntoSource } from "../utils/timelineAssetDrop";
+import { insertTimelineAssetIntoSource } from "@hyperframes/core/editing/timeline-asset";
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";

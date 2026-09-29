@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { AGENT_HEADERS, AGENT_PROTOCOL_VERSION, isRecord } from "@hyperframes/agent-protocol";
 import { createRuntimeApp } from "./server.js";
 import { AgentSettingsStore } from "./settings.js";
-import { FakeCheckpointHost } from "./testing/index.js";
+import { FakeCheckpointHost, FakeEditingHost } from "./testing/index.js";
 import { ScriptedAgentBackend } from "./testing/backend.js";
 
 async function responseObject(response: Response): Promise<Record<string, unknown>> {
@@ -23,6 +23,7 @@ describe("runtime HTTP server", () => {
     const app = createRuntimeApp({
       backend,
       checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
       settings: new AgentSettingsStore(join(root, "settings")),
       token: "runtime-secret",
     });
@@ -84,6 +85,7 @@ describe("runtime HTTP server", () => {
     const app = createRuntimeApp({
       backend: new ScriptedAgentBackend(),
       checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
       settings: new AgentSettingsStore(join(root, "settings")),
       token: "runtime-secret",
     });
@@ -152,6 +154,7 @@ describe("runtime HTTP server", () => {
     const app = createRuntimeApp({
       backend: new ScriptedAgentBackend(),
       checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
       settings: new AgentSettingsStore(settingsDir),
       token: "runtime-secret",
     });

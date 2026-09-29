@@ -9,7 +9,7 @@ import {
   type GradientModel,
 } from "./gradientValue";
 import { ReverseGradientIcon } from "../icons/ReverseGradientIcon";
-import { IMAGE_EXT } from "../../utils/mediaTypes";
+import { IMAGE_EXT } from "@hyperframes/core/media-types";
 import { FIELD, LABEL, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import {
   DetailField,

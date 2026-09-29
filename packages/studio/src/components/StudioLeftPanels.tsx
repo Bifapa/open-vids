@@ -8,7 +8,7 @@ import { CompositionsPanel } from "./sidebar/CompositionsPanel";
 import { SidebarLintButton } from "./sidebar/SidebarLintButton";
 import { Dock } from "./dock/Dock";
 import { useDockLayoutStore } from "./dock/dockLayoutStore";
-import { isMediaFile } from "../utils/mediaTypes";
+import { isMediaFile } from "@hyperframes/core/media-types";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { getPersistedRenderSettings } from "./renders/renderSettings";

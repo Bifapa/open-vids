@@ -62,6 +62,18 @@
       "types": "./dist/editing/affordances.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./editing/timeline-asset": {
+      "source": "./src/editing/timelineAsset.ts",
+      "runtime": "./dist/editing/timelineAsset.js",
+      "types": "./dist/editing/timelineAsset.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./media-types": {
+      "source": "./src/mediaTypes.ts",
+      "runtime": "./dist/mediaTypes.js",
+      "types": "./dist/mediaTypes.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./editing/draft-markers": {
       "source": "./src/editing/draftMarkers.ts",
       "runtime": "./dist/editing/draftMarkers.js",

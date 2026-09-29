@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { AGENT_PROTOCOL_VERSION } from "@hyperframes/agent-protocol";
 import { createOmpBackend } from "./omp/index.ts";
 import { HttpCheckpointHost } from "./checkpointHost.http.js";
+import { HttpEditingHost } from "./editing/host.http.js";
 import { createRuntimeApp } from "./server.js";
 import { AgentSettingsStore } from "./settings.js";
 
@@ -12,6 +13,7 @@ const parentPid = parseParentPid(process.env.OPENVIDS_AGENT_PARENT_PID);
 const app = createRuntimeApp({
   backend: createOmpBackend(),
   checkpoints: new HttpCheckpointHost(),
+  editing: (scope) => new HttpEditingHost(scope),
   settings: new AgentSettingsStore(),
   token,
 });

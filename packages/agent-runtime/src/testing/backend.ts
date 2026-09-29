@@ -56,6 +56,7 @@ export class ScriptedSession implements BackendSession {
   readonly prompts: BackendPromptInput[] = [];
   readonly steering: string[] = [];
   disposed = false;
+  private toolCalls = 0;
 
   constructor(
     readonly input: OpenBackendSessionInput,
@@ -67,11 +68,33 @@ export class ScriptedSession implements BackendSession {
     return this.backend.promptScript(input, this);
   }
 
-  /** Calls one of the session's host tools the way the model would. */
+  /**
+   * Calls one of the session's host tools the way the model would; a tool that declares an activity also reports
+   * tool.start/tool.end on the running prompt, exactly like a real backend adapter.
+   */
   async callTool(name: string, args: unknown, signal?: AbortSignal): Promise<HostToolResult> {
     const tool = this.input.hostTools.find((candidate) => candidate.name === name);
     if (!tool) throw new Error(`${this.input.agent} has no ${name} tool`);
-    return tool.execute(args, signal ?? new AbortController().signal);
+    const activity = tool.activity?.(args) ?? null;
+    const onEvent = this.prompts.at(-1)?.onEvent;
+    const toolCallId = `scripted-call-${(this.toolCalls += 1)}`;
+    if (activity && onEvent) {
+      onEvent({
+        type: "tool.start",
+        toolCallId,
+        kind: activity.category,
+        targets: [],
+        label: activity.label,
+      });
+    }
+    let ok = false;
+    try {
+      const result = await tool.execute(args, signal ?? new AbortController().signal);
+      ok = !result.isError;
+      return result;
+    } finally {
+      if (activity && onEvent) onEvent({ type: "tool.end", toolCallId, ok });
+    }
   }
 
   async steer(text: string): Promise<void> {

@@ -248,7 +248,7 @@ class OmpBackendSession implements BackendSession {
     private readonly services: CatalogServices,
     /** The shared registry, or a session-private one when the session has its own credentials. */
     private readonly registry: ModelRegistry,
-    private readonly hostToolNames: ReadonlySet<string>,
+    private readonly hostTools: ReadonlyMap<string, HostTool>,
     private readonly onDispose: () => void,
   ) {
     this.unsubscribe = session.subscribe((event) => this.handleEvent(event));
@@ -258,7 +258,7 @@ class OmpBackendSession implements BackendSession {
     const active = this.activeTurn;
     if (!active || active.settled) return;
 
-    const translated = translateOmpEvent(event, this.projectDir, this.hostToolNames);
+    const translated = translateOmpEvent(event, this.projectDir, this.hostTools);
     if (translated) {
       try {
         active.onEvent(translated);
@@ -619,7 +619,8 @@ class OmpBackend implements AgentBackend {
         // forms hide their target files inside free text, which the project-boundary guard cannot check.
         "edit.mode": "replace",
       });
-      const hostToolNames = new Set(input.hostTools.map((tool) => tool.name));
+      const hostToolMap = new Map(input.hostTools.map((tool) => [tool.name, tool]));
+      const hostToolNames = [...hostToolMap.keys()];
       const { session } = await createAgentSession({
         cwd: input.projectDir,
         sessionManager,
@@ -672,7 +673,7 @@ class OmpBackend implements AgentBackend {
       // Restricted sessions silently drop custom tools unless explicitly allowed and named; without them the
       // Director could not delegate and nobody would notice. Refuse to run a session that lost any.
       const active = new Set(session.getActiveToolNames());
-      const missing = [...hostToolNames].filter((name) => !active.has(name));
+      const missing = hostToolNames.filter((name) => !active.has(name));
       if (missing.length > 0) {
         await session.dispose().catch(() => undefined);
         throw new Error(
@@ -686,7 +687,7 @@ class OmpBackend implements AgentBackend {
         input.projectDir,
         services,
         registry,
-        hostToolNames,
+        hostToolMap,
         () => {
           this.sessions.delete(adapter);
           ownAuth?.close();

@@ -22,6 +22,8 @@ import { Orchestrator, type TurnAgentSetup } from "./agents/orchestrator.js";
 import { directorInstructions, jevInstructions, specialistInstructions } from "./agents/roles.js";
 import { renderTeam, resolveTurnSetup } from "./agents/setup.js";
 import { buildHostTools, type ToolAvailability } from "./agents/tools.js";
+import { TurnEditing } from "./editing/executor.js";
+import { isEditingToolName } from "./editing/tools.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import type { CheckpointHandle, CheckpointHost } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
@@ -53,6 +55,8 @@ interface ActiveRun {
   session: BackendSession | null;
   setup: TurnAgentSetup | null;
   orchestrator: Orchestrator | null;
+  /** The turn's editing tools; closed and awaited before the checkpoint ends. */
+  editing: TurnEditing | null;
   /** The Director's prompt has ended but the turn is still collecting delegated work. */
   directorIdle: boolean;
   /** Steering received while the Director was idle; it opens the next Director prompt. */
@@ -72,6 +76,7 @@ export class TurnRunner {
   private readonly idleMs: number;
   private readonly renewIntervalMs: number;
   private readonly stopGraceMs: number | undefined;
+  private readonly editingFactory: TurnRunnerOptions["editing"];
   private readonly timers: StreamTimerApi;
   private readonly sessionManager: SessionManager;
   private active: ActiveRun | null = null;
@@ -90,6 +95,7 @@ export class TurnRunner {
     this.idleMs = options.sessionIdleMs ?? DEFAULT_IDLE_MS;
     this.renewIntervalMs = options.renewIntervalMs ?? DEFAULT_RENEW_MS;
     this.stopGraceMs = options.stopGraceMs;
+    this.editingFactory = options.editing;
     this.timers = options.timers ?? {
       setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
       clearTimeout: (timer) => globalThis.clearTimeout(timer),
@@ -178,6 +184,7 @@ export class TurnRunner {
       session: null,
       setup: null,
       orchestrator: null,
+      editing: null,
       directorIdle: false,
       pendingSteering: [],
       promptStarted: started.promise,
@@ -466,7 +473,19 @@ export class TurnRunner {
     try {
       const setup = run.setup;
       if (!setup) throw new Error("The turn has no agent setup.");
-      const availability: ToolAvailability = { enabled: setup.enabled, jev: setup.jev !== null };
+      const editingFactory = this.editingFactory;
+      run.editing = editingFactory
+        ? new TurnEditing({
+            host: editingFactory(this.chats.scope),
+            editorContext: setup.editorContext,
+            turnSignal: run.controller.signal,
+          })
+        : null;
+      const availability: ToolAvailability = {
+        enabled: setup.enabled,
+        jev: setup.jev !== null,
+        editing: run.editing !== null,
+      };
       const session = await this.agentSession(run.chatId, "director", availability);
       if (run.finalizing) return;
       run.session = session;
@@ -644,7 +663,13 @@ export class TurnRunner {
     signal: AbortSignal,
   ): Promise<HostToolResult> {
     const run = this.active;
-    if (!run || run.chatId !== chatId || !run.orchestrator || run.finalizing)
+    if (!run || run.chatId !== chatId || run.finalizing)
+      return { text: "There is no running turn for this tool call.", isError: true };
+    if (isEditingToolName(name)) {
+      if (!run.editing) return { text: "Editing is not available in this runtime.", isError: true };
+      return run.editing.execute(name, args, signal);
+    }
+    if (!run.orchestrator)
       return { text: "There is no running turn for this tool call.", isError: true };
     return run.orchestrator.execute(caller, name, args, signal);
   }
@@ -658,6 +683,8 @@ export class TurnRunner {
     run.finalizing = true;
     // Every delegated run must be over before the checkpoint closes, or its later writes would escape Revert.
     await run.orchestrator?.shutdown(status === "completed").catch(() => undefined);
+    // Editing calls still running (or a render) end here too: no editing write may land after the checkpoint closes.
+    await run.editing?.shutdown().catch(() => undefined);
     if (run.heartbeat) this.timers.clearTimeout(run.heartbeat);
     const createdAt = run.turn.checkpoint?.createdAt ?? run.turn.startedAt;
     const closedAt = this.now();

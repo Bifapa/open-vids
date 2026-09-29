@@ -310,7 +310,11 @@ export function StudioRightPanels({
         />
       </Dock.Panel>
       <Dock.Panel id="chat">
-        <AgentChatPanel projectId={projectId} onReverted={refreshAfterAgentRevert} />
+        <AgentChatPanel
+          projectId={projectId}
+          onReverted={refreshAfterAgentRevert}
+          onTurnEnded={renderQueue.reloadRenders}
+        />
       </Dock.Panel>
     </>
   );

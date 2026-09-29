@@ -227,9 +227,18 @@ export interface StudioApiAdapter {
   /** Optional: list all registry items (blocks + components) for the catalog. */
   listRegistryCatalog?(): Promise<RegistryItem[]>;
 
-  /** Optional: install a registry item into a project directory. */
+  /**
+   * Optional: install a registry item into a project directory. `primary` is the project-relative path of the
+   * item's own file, whether it was just written or kept because the project had changed it.
+   */
   installRegistryBlock?(opts: {
     project: ResolvedProject;
     blockName: string;
-  }): Promise<{ written: string[]; block: RegistryItem }>;
+  }): Promise<{ written: string[]; block: RegistryItem; primary?: string }>;
+
+  /**
+   * Optional: the directory of the bundled caption skins, one folder per preset holding a `caption-skin.html`.
+   * Null when the skins are not installed. The editing service's captions need it.
+   */
+  captionSkinsDir?(): string | null;
 }

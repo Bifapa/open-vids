@@ -139,6 +139,43 @@ describe("probeMediaMetadata", () => {
     });
   });
 
+  it("reports duration and pixel size for video, duration for audio, size for images", async () => {
+    const run = (stdout: unknown) => () => ({
+      status: 0,
+      stdout: JSON.stringify(stdout),
+      stderr: "",
+    });
+    const video = await probeMediaMetadata(
+      "/tmp/clip.mp4",
+      run({
+        streams: [{ codec_type: "video", codec_name: "h264", width: 1920, height: 1080 }],
+        format: { duration: "12.480000" },
+      }),
+    );
+    expect(video).toMatchObject({ durationSeconds: 12.48, width: 1920, height: 1080 });
+
+    const audio = await probeMediaMetadata(
+      "/tmp/music.mp3",
+      run({ streams: [{ codec_type: "audio", codec_name: "mp3" }], format: { duration: "30.1" } }),
+    );
+    expect(audio).toMatchObject({
+      kind: "audio",
+      durationSeconds: 30.1,
+      color: { dynamicRange: "unknown" },
+    });
+    expect(audio).not.toHaveProperty("width");
+
+    const image = await probeMediaMetadata(
+      "/tmp/photo.png",
+      run({
+        streams: [{ codec_type: "video", codec_name: "png", width: 800, height: 600 }],
+        format: { duration: "0.040000" },
+      }),
+    );
+    expect(image).toMatchObject({ kind: "image", width: 800, height: 600 });
+    expect(image).not.toHaveProperty("durationSeconds");
+  });
+
   it("returns unknown metadata when ffprobe is unavailable", async () => {
     await expect(
       probeMediaMetadata("/tmp/clip.mp4", () => ({

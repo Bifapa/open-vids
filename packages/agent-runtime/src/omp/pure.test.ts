@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { HostTool } from "../backend.ts";
 import { terminalEventResult, translateOmpEvent } from "./events.ts";
 import { createModelCatalog, mapModelInfo, parseModelRole } from "./model-mapping.ts";
 import { guardToolCallPaths } from "./path-guard.ts";
@@ -148,6 +149,38 @@ describe("OMP event translation", () => {
       ),
     ).toEqual({ type: "tool.end", toolCallId: "call-3", ok: false });
     expect(translateOmpEvent({ type: "raw_omp_internal_event" }, projectDir)).toBeNull();
+  });
+
+  it("reports host tools only when they declare an activity, with their own label", () => {
+    const projectDir = path.resolve("/project");
+    const execute = async () => ({ text: "" });
+    const hostTools = new Map<string, HostTool>([
+      [
+        "edit_timeline",
+        {
+          name: "edit_timeline",
+          description: "",
+          parameters: {},
+          execute,
+          activity: () => ({ category: "edit", label: "Editing the timeline · 1 change (trim)" }),
+        },
+      ],
+      ["delegate", { name: "delegate", description: "", parameters: {}, execute }],
+    ]);
+    const start = (toolName: string) => ({
+      type: "tool_execution_start",
+      toolCallId: `call-${toolName}`,
+      toolName,
+      args: { path: "src/index.html" },
+    });
+    expect(translateOmpEvent(start("edit_timeline"), projectDir, hostTools)).toEqual({
+      type: "tool.start",
+      toolCallId: "call-edit_timeline",
+      kind: "edit",
+      targets: [],
+      label: "Editing the timeline · 1 change (trim)",
+    });
+    expect(translateOmpEvent(start("delegate"), projectDir, hostTools)).toBeNull();
   });
 
   it("waits for terminal completion and extracts provider errors", () => {

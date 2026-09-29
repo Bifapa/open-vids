@@ -58,6 +58,7 @@ import {
   historyCache,
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
+import { bundledSkillsRoot } from "../utils/skillsManifest.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
@@ -775,7 +776,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       return {
         written: written.includes(primaryPath) ? [primary, ...others] : others,
         block: item,
+        primary: relative(root, primaryPath).split(sep).join("/"),
       };
+    },
+
+    captionSkinsDir() {
+      const skills = bundledSkillsRoot();
+      const dir = skills ? join(skills, "hyperframes-creative", "frame-presets") : null;
+      return dir && existsSync(dir) ? dir : null;
     },
   };
 

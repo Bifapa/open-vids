@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import type { EditingFile } from "../utils/studioHelpers";
-import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
+import { FONT_EXT, isMediaFile } from "@hyperframes/core/media-types";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
 import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";

@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
-import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
+import { VIDEO_EXT, IMAGE_EXT } from "@hyperframes/core/media-types";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";

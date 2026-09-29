@@ -9,12 +9,14 @@ import { resolveDropTrack } from "../utils/timelineDropTrackInsert";
 import {
   buildTimelineAssetId,
   buildTimelineAssetInsertHtml,
-  buildTimelineFileDropPlacements,
   fitTimelineAssetGeometry,
   getTimelineAssetKind,
   insertTimelineAssetIntoSource,
-  resolveTimelineAssetCompositionSize,
   resolveTimelineAssetSrc,
+} from "@hyperframes/core/editing/timeline-asset";
+import {
+  buildTimelineFileDropPlacements,
+  resolveTimelineAssetCompositionSize,
 } from "../utils/timelineAssetDrop";
 import { generateId } from "../utils/generateId";
 import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
