@@ -403,6 +403,13 @@ describe("multi-agent orchestration", () => {
       expect(director?.prompts).toHaveLength(2);
       expect(director?.prompts[1]?.text).toContain("<delegated-results>");
       expect(director?.prompts[1]?.text).toContain("Trimmed to 3 s.");
+      const reply = fixture.chats
+        .get(chat.id)
+        ?.messages.find((message) => message.role === "assistant" && !message.runId);
+      expect(reply?.parts.flatMap((part) => (part.type === "text" ? [part.text] : []))).toEqual([
+        "Started the editor.",
+        " Done: trimmed.",
+      ]);
       expect(fixture.chats.get(chat.id)?.turns[0]?.status).toBe("completed");
     } finally {
       await fixture.cleanup();

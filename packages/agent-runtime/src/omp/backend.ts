@@ -669,6 +669,16 @@ class OmpBackend implements AgentBackend {
         await session.dispose().catch(() => undefined);
         throw new Error("The project boundary guard is not active; refusing to start the agent.");
       }
+      // Restricted sessions silently drop custom tools unless explicitly allowed and named; without them the
+      // Director could not delegate and nobody would notice. Refuse to run a session that lost any.
+      const active = new Set(session.getActiveToolNames());
+      const missing = [...hostToolNames].filter((name) => !active.has(name));
+      if (missing.length > 0) {
+        await session.dispose().catch(() => undefined);
+        throw new Error(
+          `Agent tools are not active (${missing.join(", ")}); refusing to start the agent.`,
+        );
+      }
       const ownAuth = privateAuth;
       let adapter: OmpBackendSession;
       adapter = new OmpBackendSession(

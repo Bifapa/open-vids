@@ -193,6 +193,12 @@ it with back-off if it dies, and kills it on shutdown; the runtime also exits wh
 disappears. If the runtime is missing or crashes the editor keeps working and the Chat panel shows
 "Agent unavailable". See `packages/agent-runtime/README.md` for the process contract.
 
+The runtime runs the Director, the per-chat specialists (Editor, Vision, Motion Designer, Research,
+Audio) and the Jev worker. Chat state stays in each project (`.hyperframes/agent/`); per-user agent
+settings live outside the app bundle in `~/.openvids/agent/` (override with
+`OPENVIDS_AGENT_SETTINGS_DIR`): `settings.json` and `jev-credentials.json`, which holds a user secret
+(Jev API key). Both are mode 0600, are never staged or bundled, and survive app updates.
+
 `stage-runtime.mjs` stages it as `runtime/agent-runtime/` (sources, the vendored protocol package and
 its own `bun install` of the OMP SDK), bundled through `tauri.prod.conf.json`. **Size:** the OMP SDK
 brings native and onnx packages; unused voice/memory engines are pruned at staging, leaving about 500 MB

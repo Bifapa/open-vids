@@ -312,7 +312,8 @@ export function parseCreateChat(body: unknown): Parsed<CreateChatRequest> {
 
 export function parseUpdateChat(body: unknown): Parsed<UpdateChatRequest> {
   const parsed = parseCreateChat(body);
-  if (!parsed.ok || !isRecord(body)) return parsed;
+  if (!parsed.ok) return parsed;
+  if (!isRecord(body)) return fail("nothing to update");
   const value: UpdateChatRequest = { ...parsed.value };
   const enabled = body.enabledAgents;
   if (enabled !== undefined) {

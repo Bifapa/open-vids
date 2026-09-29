@@ -66,65 +66,54 @@ function applyUpdate(current: AgentSettings, update: UpdateAgentSettingsRequest)
 
 /**
  * Global agent settings (defaults for new chats and the Jev worker) plus Jev's API key. Both files are private to the
- * user (mode 0600); the key is kept in its own file and never returned through {@link get}.
+ * user (mode 0600); the key is kept in its own file and never returned through {@link get}. The files are tiny and
+ * are read from disk on every access, so several runtimes on one machine (desktop app, dev shell) never overwrite
+ * each other's changes with a stale copy.
  */
 export class AgentSettingsStore {
-  private settings: AgentSettings = defaultAgentSettings();
-  private apiKey: string | null = null;
-  private loaded: Promise<void> | null = null;
   private tail: Promise<unknown> = Promise.resolve();
 
   constructor(readonly dir: string = resolveSettingsDir()) {}
 
   async get(): Promise<AgentSettings> {
-    await this.load();
-    return structuredClone({
-      ...this.settings,
-      jev: { ...this.settings.jev, apiKeyConfigured: this.apiKey !== null },
-    });
+    const [settings, apiKey] = await Promise.all([this.readSettings(), this.jevApiKey()]);
+    return { ...settings, jev: { ...settings.jev, apiKeyConfigured: apiKey !== null } };
   }
 
   /** The stored Jev key, for the runtime only. */
   async jevApiKey(): Promise<string | null> {
-    await this.load();
-    return this.apiKey;
+    const credentials = await readJson(join(this.dir, CREDENTIALS_FILE));
+    const key =
+      typeof credentials === "object" && credentials !== null && "apiKey" in credentials
+        ? credentials.apiKey
+        : null;
+    return typeof key === "string" && key.length > 0 ? key : null;
   }
 
   async update(update: UpdateAgentSettingsRequest): Promise<AgentSettings> {
     await this.serialize(async () => {
-      await this.load();
-      this.settings = applyUpdate(this.settings, update);
-      await this.writePrivate(SETTINGS_FILE, JSON.stringify(this.settings, null, 2));
+      const next = applyUpdate(await this.readSettings(), update);
+      await this.writePrivate(SETTINGS_FILE, JSON.stringify(next, null, 2));
     });
     return this.get();
   }
 
   async setJevApiKey(apiKey: string | null): Promise<AgentSettings> {
     await this.serialize(async () => {
-      await this.load();
       if (apiKey === null) await rm(join(this.dir, CREDENTIALS_FILE), { force: true });
       else await this.writePrivate(CREDENTIALS_FILE, JSON.stringify({ apiKey }));
-      this.apiKey = apiKey;
     });
     return this.get();
   }
 
-  private load(): Promise<void> {
-    this.loaded ??= (async () => {
-      const stored = await readJson(join(this.dir, SETTINGS_FILE));
-      if (stored !== undefined) {
-        // Re-validate through the public request parser so a hand-edited or older file cannot inject bad values.
-        const parsed = parseUpdateAgentSettings(stored);
-        if (parsed.ok) this.settings = applyUpdate(defaultAgentSettings(), parsed.value);
-      }
-      const credentials = await readJson(join(this.dir, CREDENTIALS_FILE));
-      const key =
-        typeof credentials === "object" && credentials !== null && "apiKey" in credentials
-          ? credentials.apiKey
-          : null;
-      this.apiKey = typeof key === "string" && key.length > 0 ? key : null;
-    })();
-    return this.loaded;
+  private async readSettings(): Promise<AgentSettings> {
+    const stored = await readJson(join(this.dir, SETTINGS_FILE));
+    if (stored === undefined) return defaultAgentSettings();
+    // Re-validate through the public request parser so a hand-edited or older file cannot inject bad values.
+    const parsed = parseUpdateAgentSettings(stored);
+    if (parsed.ok) return applyUpdate(defaultAgentSettings(), parsed.value);
+    console.error(`[openvids-agent] ignoring invalid ${SETTINGS_FILE}: ${parsed.message}`);
+    return defaultAgentSettings();
   }
 
   private serialize(operation: () => Promise<void>): Promise<void> {

@@ -326,6 +326,11 @@ describe("agent configuration validators", () => {
       value: { enabledAgents: ["editor", "vision"] },
     });
     expect(parseUpdateChat({ enabledAgents: ["editor", "jev"] }).ok).toBe(false);
+    expect([null, undefined, {}].map((body) => parseUpdateChat(body).ok)).toEqual([
+      false,
+      false,
+      false,
+    ]);
     expect(parseUpdateChat({ agentOverrides: { director: null } }).ok).toBe(false);
     expect(
       parseUpdateChat({

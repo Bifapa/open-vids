@@ -70,6 +70,14 @@ export class TurnEventWriter {
     this.options.onModel(event);
   }
 
+  /** A new prompt of the same agent begins: its text starts a new part instead of continuing the previous reply. */
+  startPrompt(): void {
+    this.flushPending();
+    this.finishThinkingSegment();
+    this.closeCurrentActivity();
+    this.segment = null;
+  }
+
   async finish(status: AssistantMessageStatus): Promise<void> {
     this.flushPending();
     this.finishThinkingSegment();

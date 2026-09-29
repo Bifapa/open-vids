@@ -537,6 +537,7 @@ export class TurnRunner {
           "Continue: adjust the plan and delegated work if needed, wait for any runs still working, then finish the user's request with a short reply.",
         ].filter(Boolean);
         run.directorIdle = false;
+        activeWriter.startPrompt();
         outcome = await promptDirector(blocks.join("\n\n"));
         run.directorIdle = true;
       }
