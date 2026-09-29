@@ -35,12 +35,12 @@ bunx oxfmt --check <files> # Check formatting
 ## Packages & Directories
 
 ### Packages (`packages/`)
-- `core`: Types, parsers, generators, linter, runtime, frame adapters, and HTML bundler.
+- `core`: Types, parsers, generators, linter, runtime, frame adapters, HTML bundler, and the shared timeline-asset markup builder (`@hyperframes/core/editing/timeline-asset`) used by Studio drops and the agent editing service.
 - `parsers`: HTML/CSS parser utilities and subcomposition path rewriters.
 - `lint`: Static analysis and HTML composition lint rules.
-- `studio-server`: Local HTTP loopback server powering preview, state, file observation, and undo/redo history.
-- `agent-protocol`: OpenVids-owned Agent Runtime protocol (chats, turns, messages, events, agents/runs, plans, settings, editor context, references) shared by Studio, the gateway and the runtime. Browser-safe, no runtime deps.
-- `agent-runtime`: Separate local Bun process for Agent Chat (chat store, turns, checkpoints, Director → specialist orchestration, Jev, global agent settings, HTTP API). The OMP SDK is imported only under `src/omp/`; never from Studio, `studio-server` or `cli`. Read `packages/agent-runtime/README.md`.
+- `studio-server`: Local HTTP loopback server powering preview, state, file observation, undo/redo history, the agent gateway, and the agent editing service (`src/editing/`, `/api/projects/:id/editing/*`). Editing-service writes are unclaimed outside edits: Studio live-reloads them and history attributes them to the running agent turn.
+- `agent-protocol`: OpenVids-owned Agent Runtime protocol (chats, turns, messages, events, agents/runs, plans, settings, editor context, references) plus the editing contract (`editing.ts`: inventory, timeline snapshot, edit operations, errors, `parseApplyEditsRequest`) shared by Studio, the Studio server and the runtime. Browser-safe, no runtime deps.
+- `agent-runtime`: Separate local Bun process for Agent Chat (chat store, turns, checkpoints, Director → specialist orchestration, Jev, global agent settings, editing tools under `src/editing/` that call the Studio server over loopback, HTTP API). The OMP SDK is imported only under `src/omp/`; never from Studio, `studio-server` or `cli`. Read `packages/agent-runtime/README.md`.
 - `player`: Embeddable web component player for compositions.
 - `studio`: Browser-based video composition editor UI (read `packages/studio/AGENTS.md` before making changes to Studio).
 - `sdk`: Headless, framework-neutral composition editing engine.
