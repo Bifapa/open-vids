@@ -155,6 +155,19 @@ if (agentRuntimeStaged) {
     cwd: AGENT_DIR,
     stdio: ["ignore", "inherit", "inherit"],
   });
+  // The Director enables no memory/voice features, but the OMP SDK declares their engines as hard
+  // dependencies (~500 MB: onnxruntime, sherpa-onnx, huggingface tokenizers, an icon set). They are
+  // loaded lazily, so the runtime starts and runs sessions without them (verified with the staged bun).
+  for (const unused of [
+    "onnxruntime-node",
+    "onnxruntime-web",
+    "sherpa-onnx-darwin-arm64",
+    "sherpa-onnx-node",
+    "@huggingface",
+    "lucide-react",
+  ]) {
+    rmSync(join(AGENT_DIR, "node_modules", unused), { recursive: true, force: true });
+  }
 } else {
   mkdirSync(AGENT_DIR, { recursive: true });
   cpSync(join(AGENT_RUNTIME_SOURCE, "package.json"), join(AGENT_DIR, "package.json"));

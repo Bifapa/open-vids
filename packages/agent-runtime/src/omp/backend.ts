@@ -553,6 +553,10 @@ class OmpBackend implements AgentBackend {
         roleDefault.thinking !== "off"
           ? toOmpEffort(roleDefault.thinking)
           : toOmpEffort(services.defaultThinking);
+      // The user's environment may pin another edit variant (its targets live in free text the guard
+      // cannot read); the session's own pinned mode must win.
+      delete process.env.PI_EDIT_VARIANT;
+      delete process.env.PI_STRICT_EDIT_MODE;
       const sessionSettings = Settings.isolated({
         defaultThinkingLevel: initialThinking,
         // A path-based edit form: `{path, old_string, new_string}`. The default hashline/apply_patch
@@ -598,6 +602,12 @@ class OmpBackend implements AgentBackend {
         settingsApproval: false,
         bindProcessState: false,
       });
+      // OMP drops inline extensions without a warning under `restrictToolNames`. The boundary guard is
+      // the only thing between the model and the rest of the disk, so never run a session without it.
+      if (!session.extensionRunner?.hasHandlers("tool_call")) {
+        await session.dispose().catch(() => undefined);
+        throw new Error("The project boundary guard is not active; refusing to start the agent.");
+      }
       let adapter: OmpBackendSession;
       adapter = new OmpBackendSession(session, input.projectDir, services, () =>
         this.sessions.delete(adapter),

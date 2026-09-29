@@ -195,11 +195,11 @@ disappears. If the runtime is missing or crashes the editor keeps working and th
 
 `stage-runtime.mjs` stages it as `runtime/agent-runtime/` (sources, the vendored protocol package and
 its own `bun install` of the OMP SDK), bundled through `tauri.prod.conf.json`. **Size:** the OMP SDK
-brings native and onnx packages; the staged directory measured about 1.0 GB
-(`onnxruntime-node` 292 MB, `@oh-my-pi/*` 277 MB, `onnxruntime-web` 142 MB) against 194 MB for the
-Studio runtime. Override discovery with `OPENVIDS_AGENT_RUNTIME_ENTRY` (absolute path to `main.ts`)
-and `OPENVIDS_AGENT_BUN`. `OPENVIDS_SKIP_AGENT_RUNTIME=1` skips staging it, but then `tauri build`
-must also drop the `agent-runtime` resource entry.
+brings native and onnx packages; unused voice/memory engines are pruned at staging, leaving about 500 MB
+(mostly `@oh-my-pi/*` natives, 277 MB; before pruning `onnxruntime-node` and `onnxruntime-web` added
+434 MB) against 194 MB for the Studio runtime. Override discovery with `OPENVIDS_AGENT_RUNTIME_ENTRY` (absolute path to `main.ts`)
+and `OPENVIDS_AGENT_BUN`. `OPENVIDS_SKIP_AGENT_RUNTIME=1` stages an empty `agent-runtime/` (so the
+Tauri resource mapping still resolves) without sources or dependencies; Chat then reports "Agent unavailable".
 
 ## Security
 

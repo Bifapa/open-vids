@@ -363,12 +363,20 @@ describe("history routes and the host's cached project signature", () => {
     });
     cleanup.push(() => history.close());
     const invalidated: string[] = [];
-    const api = createStudioApi({
+    const adapter: StudioApiAdapter = {
       listProjects: () => [],
-      resolveProject: (id: string) => (id === "demo" ? { id, dir: projectDir } : null),
+      resolveProject: (id) => (id === "demo" ? { id, dir: projectDir } : null),
       history: () => history,
-      invalidateProjectSignature: (dir: string) => invalidated.push(dir),
-    } as unknown as StudioApiAdapter);
+      invalidateProjectSignature: (dir) => void invalidated.push(dir),
+      bundle: async () => null,
+      lint: () => ({ findings: [] }),
+      runtimeUrl: "/runtime.js",
+      rendersDir: () => join(projectDir, "renders"),
+      startRender: () => {
+        throw new Error("not used");
+      },
+    };
+    const api = createStudioApi(adapter);
     const post = (path: string, body: object) =>
       api.request(`/projects/demo/history${path}`, { method: "POST", body: JSON.stringify(body) });
 
@@ -386,11 +394,15 @@ describe("history routes and the host's cached project signature", () => {
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("A");
     expect(invalidated).toEqual([projectDir]);
 
-    await post("/step", { direction: "forward" });
-    await post("/restore", { point: entry?.id });
+    expect((await post("/step", { direction: "forward" })).status).toBe(200);
+    expect((await post("/restore", { point: entry?.id })).status).toBe(200);
     expect(invalidated).toHaveLength(3);
 
+    // a refused restore may still have written files, so it drops the signature too
+    expect((await post("/restore", { point: "no-such-point" })).status).toBe(409);
+    expect(invalidated).toHaveLength(4);
+
     await post("/pin", { entryId: entry?.id, pinned: true });
-    expect(invalidated).toHaveLength(3);
+    expect(invalidated).toHaveLength(4);
   });
 });

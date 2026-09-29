@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 /** Build-dependency order: each package only depends on ones before it. */
 export const STUDIO_WORKSPACE_BUILD_ORDER = [
+  "agent-protocol",
   "parsers",
   "lint",
   "studio-server",
@@ -159,7 +160,9 @@ export function formatWorkspaceBuildProblems(problems: WorkspaceBuildProblem[]):
   lines.push(
     "  Or build every package in order (core depends on the first three, player on core):",
   );
-  lines.push("    bun run --filter '@hyperframes/{parsers,lint,studio-server}' build \\");
+  lines.push(
+    "    bun run --filter '@hyperframes/{agent-protocol,parsers,lint,studio-server}' build \\",
+  );
   lines.push("      && bun run --filter @hyperframes/core build \\");
   lines.push("      && bun run --filter @hyperframes/player build");
   return lines.join("\n");

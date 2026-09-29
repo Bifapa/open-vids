@@ -76,14 +76,15 @@ async function withHistory(
   const history = await historyOf(adapter, c);
   if (!history) return c.json({ error: "This project has no history here." }, 404);
   try {
-    const result = await task(history, await bodyOf(c));
+    return c.json((await task(history, await bodyOf(c))) ?? null);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 409);
+  } finally {
+    // Also after a refusal: a restore that wrote some files before it threw still changed the project.
     if (options.rewritesFiles) {
       const project = await adapter.resolveProject(c.req.param("id") ?? "");
       if (project) adapter.invalidateProjectSignature?.(project.dir);
     }
-    return c.json(result ?? null);
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : String(error) }, 409);
   }
 }
 
