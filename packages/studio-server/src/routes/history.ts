@@ -61,16 +61,27 @@ function nextStep(history: ProjectHistory, direction: "back" | "forward") {
   return { id: target.id, label: target.label, endedAt: target.endedAt, paths };
 }
 
-/** Runs `task` on the project's history; no history is a 404, an engine refusal ("no longer kept") a 409. */
+/**
+ * Runs `task` on the project's history; no history is a 404, an engine refusal ("no longer kept") a 409.
+ * A task that rewrites project files drops the host's cached project signature first: the engine
+ * replaces files atomically, which a file watcher can report late (or, on macOS, not at all), and a
+ * preview asked for right after would otherwise be served from the pre-restore signature.
+ */
 async function withHistory(
   adapter: StudioApiAdapter,
   c: Context,
   task: (history: ProjectHistory, body: Record<string, unknown>) => Promise<unknown> | unknown,
+  options: { rewritesFiles?: boolean } = {},
 ) {
   const history = await historyOf(adapter, c);
   if (!history) return c.json({ error: "This project has no history here." }, 404);
   try {
-    return c.json((await task(history, await bodyOf(c))) ?? null);
+    const result = await task(history, await bodyOf(c));
+    if (options.rewritesFiles) {
+      const project = await adapter.resolveProject(c.req.param("id") ?? "");
+      if (project) adapter.invalidateProjectSignature?.(project.dir);
+    }
+    return c.json(result ?? null);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 409);
   }
@@ -89,19 +100,31 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
     }),
   );
   api.post(`${base}/step`, (c) =>
-    withHistory(adapter, c, (history, body) =>
-      history.step(body.direction === "forward" ? "forward" : "back", YOU, writing(c)),
+    withHistory(
+      adapter,
+      c,
+      (history, body) =>
+        history.step(body.direction === "forward" ? "forward" : "back", YOU, writing(c)),
+      { rewritesFiles: true },
     ),
   );
   api.post(`${base}/undo`, (c) =>
-    withHistory(adapter, c, (history, body) => {
-      const mode = UNDO_MODES.find((known) => known === body.mode);
-      return history.undo(text(body.entryId) ?? "", { who: whoOf(body), mode, ...writing(c) });
-    }),
+    withHistory(
+      adapter,
+      c,
+      (history, body) => {
+        const mode = UNDO_MODES.find((known) => known === body.mode);
+        return history.undo(text(body.entryId) ?? "", { who: whoOf(body), mode, ...writing(c) });
+      },
+      { rewritesFiles: true },
+    ),
   );
   api.post(`${base}/restore`, (c) =>
-    withHistory(adapter, c, (history, body) =>
-      history.restore(text(body.point) ?? "", whoOf(body), writing(c)),
+    withHistory(
+      adapter,
+      c,
+      (history, body) => history.restore(text(body.point) ?? "", whoOf(body), writing(c)),
+      { rewritesFiles: true },
     ),
   );
   api.get(`${base}/peek/:point`, (c) =>

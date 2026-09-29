@@ -89,7 +89,7 @@ export function buildEditLayout(api: DockviewApi, viewportWidth: number) {
   addRegisteredPanel(api, "preview");
   addRegisteredPanel(api, "timeline", { referencePanel: "preview", direction: "below" });
   addRegisteredPanel(api, "compositions", { referencePanel: "preview", direction: "left" });
-  for (const id of ["assets", "code", "catalog"] as const) {
+  for (const id of ["assets", "code", "catalog", "chat"] as const) {
     addRegisteredPanel(api, id, { referencePanel: "compositions", direction: "within" });
   }
   addRegisteredPanel(api, "design", { referencePanel: "preview", direction: "right" });

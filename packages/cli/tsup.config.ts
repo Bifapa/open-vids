@@ -54,6 +54,7 @@ var __dirname = __hf_dirname(__filename);`,
   noExternal: [
     "@hyperframes/core",
     "@hyperframes/parsers",
+    "@hyperframes/agent-protocol",
     "@hyperframes/studio-server",
     "@hyperframes/lint",
     "@hyperframes/producer",
@@ -75,6 +76,19 @@ var __dirname = __hf_dirname(__filename);`,
       // Exact subpaths are generated from the same contracts as package
       // exports, avoiding esbuild's root-alias prefix substitution trap.
       ...sourceAliases(resolve(__dirname, "../producer"), ["."]),
+      ...sourceAliases(resolve(__dirname, "../studio-server"), [
+        ".",
+        "./screenshot-clip",
+        "./manual-edits-render-script",
+        "./studio-motion-render-script",
+        "./draft-markers",
+        "./finite-mutation",
+        "./source-mutation",
+        "./media-codec-map",
+        "./proxy-transcoder",
+        "./media-proxy-preview",
+      ]),
+      ...sourceAliases(resolve(__dirname, "../agent-protocol"), ["."]),
       ...sourceAliases(resolve(__dirname, "../engine"), [
         ".",
         "./chrome-host-ceiling",

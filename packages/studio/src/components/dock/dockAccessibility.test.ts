@@ -109,15 +109,16 @@ describe("dock tab strips", () => {
 
   it("keep dockview's tablist, tab and selected roles with one tab stop", () => {
     const tabs = tabsOf("compositions");
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(5);
     expect(tabs[0]?.closest('[role="tablist"]')).not.toBeNull();
     expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual([
       "true",
       "false",
       "false",
       "false",
+      "false",
     ]);
-    expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1]);
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1, -1]);
   });
 
   it("leave browser shortcuts alone when Alt, Ctrl or Meta is held", () => {
@@ -149,9 +150,9 @@ describe("dock tab strips", () => {
     expect(document.activeElement).toBe(tabs[1]);
     press(tabs[1] as HTMLElement, "ArrowLeft");
     press(tabs[0] as HTMLElement, "ArrowLeft");
-    expect(active()).toBe("catalog");
-    expect(document.activeElement).toBe(tabs[3]);
-    press(tabs[3] as HTMLElement, "ArrowRight");
+    expect(active()).toBe("chat");
+    expect(document.activeElement).toBe(tabs[4]);
+    press(tabs[4] as HTMLElement, "ArrowRight");
     expect(active()).toBe("compositions");
   });
 

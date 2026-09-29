@@ -1,0 +1,248 @@
+import {
+  AGENT_ERROR_CODES,
+  isRecord,
+  type ActiveTurnInfo,
+  type AgentErrorBody,
+  type AgentErrorCode,
+  type AgentModelCatalog,
+  type ChatState,
+  type ChatSummary,
+  type CreateChatRequest,
+  type ListChatsResponse,
+  type RevertTurnRequest,
+  type RevertTurnResponse,
+  type StartTurnRequest,
+  type StartTurnResponse,
+  type SteerTurnRequest,
+  type SteerTurnResponse,
+  type TurnSummary,
+  type UpdateChatRequest,
+} from "@hyperframes/agent-protocol";
+import { buildProjectApiPath } from "../utils/projectRouting";
+
+/** Why a gateway call failed, reduced to what the UI can act on. */
+export type AgentFailureCode = AgentErrorCode | "network" | "bad_response";
+
+export class AgentApiError extends Error {
+  readonly code: AgentFailureCode;
+  readonly status: number;
+  readonly details: Record<string, unknown> | undefined;
+
+  constructor(
+    code: AgentFailureCode,
+    message: string,
+    status = 0,
+    details?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = "AgentApiError";
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+
+  /** The agent runtime cannot be reached (or the host has no gateway); the editor is unaffected. */
+  get isUnavailable(): boolean {
+    return (
+      this.code === "network" ||
+      this.code === "runtime_unavailable" ||
+      this.status === 404 ||
+      this.status === 502 ||
+      this.status === 503
+    );
+  }
+}
+
+/** The gateway API as the store sees it. `createAgentClient` is the network implementation. */
+export interface AgentClient {
+  listChats(): Promise<ListChatsResponse>;
+  listModels(): Promise<AgentModelCatalog>;
+  createChat(request: CreateChatRequest): Promise<ChatSummary>;
+  getChat(chatId: string): Promise<ChatState>;
+  updateChat(chatId: string, request: UpdateChatRequest): Promise<ChatSummary>;
+  startTurn(chatId: string, request: StartTurnRequest): Promise<StartTurnResponse>;
+  steerTurn(chatId: string, turnId: string, request: SteerTurnRequest): Promise<SteerTurnResponse>;
+  abortTurn(chatId: string, turnId: string): Promise<void>;
+  revertTurn(
+    chatId: string,
+    turnId: string,
+    request: RevertTurnRequest,
+  ): Promise<RevertTurnResponse>;
+  /** Same-origin URL for the chat event stream, resuming after `afterSeq`. */
+  chatEventsUrl(chatId: string, afterSeq: number): string;
+  projectEventsUrl(): string;
+}
+
+// ── Response guards ──────────────────────────────────────────────────────────
+// The gateway is OpenVids' own; these check the envelope a consumer dereferences,
+// not every leaf, so a broken response fails here instead of deep inside render.
+
+const isString = (value: unknown): value is string => typeof value === "string";
+const isNumber = (value: unknown): value is number => typeof value === "number";
+
+export function isChatSummary(value: unknown): value is ChatSummary {
+  return (
+    isRecord(value) &&
+    isString(value.id) &&
+    isString(value.title) &&
+    isString(value.status) &&
+    isNumber(value.updatedAt)
+  );
+}
+
+export function isActiveTurn(value: unknown): value is ActiveTurnInfo {
+  return isRecord(value) && isString(value.chatId) && isString(value.turnId);
+}
+
+function isListChatsResponse(value: unknown): value is ListChatsResponse {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.chats) &&
+    value.chats.every(isChatSummary) &&
+    (value.activeTurn === null || isActiveTurn(value.activeTurn))
+  );
+}
+
+function isModelCatalog(value: unknown): value is AgentModelCatalog {
+  return isRecord(value) && Array.isArray(value.models);
+}
+
+export function isChatState(value: unknown): value is ChatState {
+  return (
+    isRecord(value) &&
+    isChatSummary(value.chat) &&
+    Array.isArray(value.messages) &&
+    Array.isArray(value.turns) &&
+    isNumber(value.lastSeq)
+  );
+}
+
+function isTurnSummary(value: unknown): value is TurnSummary {
+  return isRecord(value) && isString(value.id) && isString(value.chatId) && isString(value.status);
+}
+
+function isStartTurnResponse(value: unknown): value is StartTurnResponse {
+  return isRecord(value) && isTurnSummary(value.turn);
+}
+
+function isSteerTurnResponse(value: unknown): value is SteerTurnResponse {
+  return isRecord(value) && isString(value.messageId);
+}
+
+function isRevertTurnResponse(value: unknown): value is RevertTurnResponse {
+  if (!isRecord(value)) return false;
+  if (value.ok === true) return isTurnSummary(value.turn);
+  return (
+    value.ok === false &&
+    isRecord(value.conflict) &&
+    Array.isArray(value.conflict.files) &&
+    value.conflict.files.every(isString)
+  );
+}
+
+function isErrorBody(value: unknown): value is AgentErrorBody {
+  return isRecord(value) && isRecord(value.error) && isString(value.error.message);
+}
+
+function isAgentErrorCode(value: unknown): value is AgentErrorCode {
+  return isString(value) && (AGENT_ERROR_CODES as readonly string[]).includes(value);
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function failureFor(response: Response, body: unknown): AgentApiError {
+  if (isErrorBody(body)) {
+    const { code, message, details } = body.error;
+    return new AgentApiError(
+      isAgentErrorCode(code) ? code : "internal",
+      message,
+      response.status,
+      details,
+    );
+  }
+  const code: AgentFailureCode = response.status === 503 ? "runtime_unavailable" : "internal";
+  return new AgentApiError(code, `Request failed (${response.status})`, response.status);
+}
+
+export interface AgentClientOptions {
+  fetchImpl?: typeof fetch;
+}
+
+export function createAgentClient(
+  projectId: string,
+  { fetchImpl }: AgentClientOptions = {},
+): AgentClient {
+  const base = (suffix: string) => buildProjectApiPath(projectId, `/agent${suffix}`);
+
+  async function call<T>(
+    method: string,
+    suffix: string,
+    guard: (value: unknown) => value is T,
+    body?: unknown,
+  ): Promise<T> {
+    let response: Response;
+    try {
+      const doFetch = fetchImpl ?? globalThis.fetch.bind(globalThis);
+      response = await doFetch(base(suffix), {
+        method,
+        headers: body === undefined ? undefined : { "content-type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (error) {
+      throw new AgentApiError(
+        "network",
+        error instanceof Error ? error.message : "Network request failed",
+      );
+    }
+    const payload = await readJson(response);
+    if (!response.ok) throw failureFor(response, payload);
+    if (!guard(payload)) {
+      throw new AgentApiError(
+        "bad_response",
+        "Unexpected response from the agent",
+        response.status,
+      );
+    }
+    return payload;
+  }
+
+  const enc = encodeURIComponent;
+
+  return {
+    listChats: () => call("GET", "/chats", isListChatsResponse),
+    listModels: () => call("GET", "/models", isModelCatalog),
+    createChat: (request) => call("POST", "/chats", isChatSummary, request),
+    getChat: (chatId) => call("GET", `/chats/${enc(chatId)}`, isChatState),
+    updateChat: (chatId, request) => call("PATCH", `/chats/${enc(chatId)}`, isChatSummary, request),
+    startTurn: (chatId, request) =>
+      call("POST", `/chats/${enc(chatId)}/turns`, isStartTurnResponse, request),
+    steerTurn: (chatId, turnId, request) =>
+      call(
+        "POST",
+        `/chats/${enc(chatId)}/turns/${enc(turnId)}/steer`,
+        isSteerTurnResponse,
+        request,
+      ),
+    abortTurn: async (chatId, turnId) => {
+      await call("POST", `/chats/${enc(chatId)}/turns/${enc(turnId)}/abort`, isRecord, {});
+    },
+    revertTurn: (chatId, turnId, request) =>
+      call(
+        "POST",
+        `/chats/${enc(chatId)}/turns/${enc(turnId)}/revert`,
+        isRevertTurnResponse,
+        request,
+      ),
+    chatEventsUrl: (chatId, afterSeq) =>
+      `${base(`/chats/${enc(chatId)}/events`)}?after=${afterSeq}`,
+    projectEventsUrl: () => base("/events"),
+  };
+}

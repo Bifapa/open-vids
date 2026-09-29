@@ -9,14 +9,58 @@ import {
   lstatSync,
   realpathSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 import { previewConfigPayload } from "./vite.preview-config";
 import { loadStudioServerDevModule } from "./vite.studio-server-module";
-import type { openProjectHistory } from "@hyperframes/studio-server";
+import type {
+  AgentGateway,
+  AgentRuntimeLaunch,
+  StudioApiAdapter,
+  openProjectHistory,
+} from "@hyperframes/studio-server";
 import { previewChangeOwner } from "./vite.preview-watch";
+interface StudioApiFetch {
+  fetch(request: Request): Promise<Response>;
+}
+
+interface StudioServerDevModule {
+  createStudioApi(adapter: StudioApiAdapter): StudioApiFetch;
+  createAgentGateway(options: { launch: () => AgentRuntimeLaunch | null }): AgentGateway;
+  resolveAgentRuntimeLaunch(cliFileDir?: string): AgentRuntimeLaunch | null;
+  identifyFileWrite(
+    path: string,
+    expectedVersion: string,
+  ): { path: string; version: string; writeToken: string } | null;
+  fileContentVersion(content: string): string;
+  affectsPreview(projectDir: string, changedPath: string): boolean;
+  DELETED_VERSION: string;
+  openProjectHistory: typeof openProjectHistory;
+}
+
+function isStudioServerDevModule(value: unknown): value is StudioServerDevModule {
+  if (typeof value !== "object" || value === null) return false;
+  return (
+    "createStudioApi" in value &&
+    typeof value.createStudioApi === "function" &&
+    "createAgentGateway" in value &&
+    typeof value.createAgentGateway === "function" &&
+    "resolveAgentRuntimeLaunch" in value &&
+    typeof value.resolveAgentRuntimeLaunch === "function" &&
+    "identifyFileWrite" in value &&
+    typeof value.identifyFileWrite === "function" &&
+    "fileContentVersion" in value &&
+    typeof value.fileContentVersion === "function" &&
+    "affectsPreview" in value &&
+    typeof value.affectsPreview === "function" &&
+    "DELETED_VERSION" in value &&
+    typeof value.DELETED_VERSION === "string" &&
+    "openProjectHistory" in value &&
+    typeof value.openProjectHistory === "function"
+  );
+}
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -76,8 +120,12 @@ async function bridgeHonoResponse(
     res.end();
     return;
   }
-
   const reader = honoResponse.body.getReader();
+
+  const onClientClose = (): void => {
+    if (!res.writableEnded) void reader.cancel().catch(() => {});
+  };
+  res.on("close", onClientClose);
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -86,8 +134,10 @@ async function bridgeHonoResponse(
     }
   } catch {
     /* client disconnected */
+  } finally {
+    res.off("close", onClientClose);
+    if (!res.destroyed && !res.writableEnded) res.end();
   }
-  res.end();
 }
 
 // ── Vite plugin ──────────────────────────────────────────────────────────────
@@ -140,51 +190,49 @@ function devProjectApi(): Plugin {
         projectWatcher.on(event, (filePath: string) => signatureCache.invalidate(filePath));
       }
 
-      let _api: { fetch: (req: Request) => Promise<Response> } | null = null;
-      let _studioServerModule: {
-        createStudioApi: (adapter: ReturnType<typeof createViteAdapter>) => {
-          fetch: (req: Request) => Promise<Response>;
-        };
-        identifyFileWrite: (
-          path: string,
-          expectedVersion: string,
-        ) => { path: string; version: string; writeToken: string } | null;
-        fileContentVersion: (content: string) => string;
-        affectsPreview: (projectDir: string, changedPath: string) => boolean;
-        DELETED_VERSION: string;
-        openProjectHistory: typeof openProjectHistory;
-      } | null = null;
-      const getApi = async () => {
-        if (!_api) {
-          // The package's `node` condition resolves to ignored dist output,
-          // which may predate the source under test. Studio dev owns a source
-          // workspace, so load that producer explicitly.
-          const mod = (await loadStudioServerDevModule(server, __dirname)) as NonNullable<
-            typeof _studioServerModule
-          >;
-          // The cast above is the only thing standing between a renamed export and
-          // a dev server that silently reports every Studio write as external.
-          for (const name of [
-            "identifyFileWrite",
-            "fileContentVersion",
-            "affectsPreview",
-            "openProjectHistory",
-          ] as const) {
-            if (typeof mod[name] !== "function") {
-              throw new Error(`@hyperframes/studio-server dev module is missing ${name}()`);
+      let _api: StudioApiFetch | null = null;
+      let _apiPromise: Promise<StudioApiFetch> | null = null;
+      let _studioServerModule: StudioServerDevModule | null = null;
+      const getApi = async (): Promise<StudioApiFetch> => {
+        if (_api) return _api;
+        const pending =
+          _apiPromise ??
+          (_apiPromise = (async (): Promise<StudioApiFetch> => {
+            // The package's `node` condition resolves to ignored dist output,
+            // which may predate the source under test. Studio dev owns a source
+            // workspace, so load that producer explicitly.
+            const loaded = await loadStudioServerDevModule(server, __dirname);
+            if (!isStudioServerDevModule(loaded)) {
+              throw new Error("@hyperframes/studio-server dev module is missing required exports");
             }
-          }
-          _studioServerModule = mod;
-          // The engine records its write receipts in this module, where the watcher below reads them.
-          const adapter = createViteAdapter(dataDir, server, signatureCache, {
-            openHistory: mod.openProjectHistory,
-            // Projects can be created or imported after startup. Keep the canonical
-            // id and real root before the signature cache starts watching them.
-            onResolveProject: (project) => watchedProjects.set(project.dir, project.id),
-          });
-          _api = mod.createStudioApi(adapter);
+            const mod = loaded;
+            _studioServerModule = mod;
+            const agentGateway = mod.createAgentGateway({
+              launch: () =>
+                mod.resolveAgentRuntimeLaunch(
+                  process.argv[1] ? dirname(process.argv[1]) : process.cwd(),
+                ),
+            });
+            const adapter = createViteAdapter(dataDir, server, signatureCache, {
+              openHistory: mod.openProjectHistory,
+              // Projects can be created or imported after startup. Keep the canonical
+              // id and real root before the signature cache starts watching them.
+              onResolveProject: (project) => watchedProjects.set(project.dir, project.id),
+            });
+            adapter.agent = agentGateway;
+            server.httpServer?.once("close", () => {
+              void agentGateway.dispose().catch((error: unknown) => {
+                console.error("[Studio] Failed to stop Agent Runtime", error);
+              });
+            });
+            return mod.createStudioApi(adapter);
+          })());
+        try {
+          _api = await pending;
+          return _api;
+        } finally {
+          if (_apiPromise === pending) _apiPromise = null;
         }
-        return _api;
       };
 
       server.middlewares.use((req, res, next) => {

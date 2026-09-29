@@ -39,6 +39,8 @@ bunx oxfmt --check <files> # Check formatting
 - `parsers`: HTML/CSS parser utilities and subcomposition path rewriters.
 - `lint`: Static analysis and HTML composition lint rules.
 - `studio-server`: Local HTTP loopback server powering preview, state, file observation, and undo/redo history.
+- `agent-protocol`: OpenVids-owned Agent Runtime protocol (chats, turns, messages, events, editor context, references) shared by Studio, the gateway and the runtime. Browser-safe, no runtime deps.
+- `agent-runtime`: Separate local Bun process for Agent Chat (chat store, turns, checkpoints, HTTP API). The OMP SDK is imported only under `src/omp/`; never from Studio, `studio-server` or `cli`. Read `packages/agent-runtime/README.md`.
 - `player`: Embeddable web component player for compositions.
 - `studio`: Browser-based video composition editor UI (read `packages/studio/AGENTS.md` before making changes to Studio).
 - `sdk`: Headless, framework-neutral composition editing engine.

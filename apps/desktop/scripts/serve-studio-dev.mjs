@@ -39,7 +39,7 @@ function log(message) {
 /** Build what the Studio's Node-loaded vite.config.ts resolves via dist. */
 function buildWorkspaceDeps() {
   const steps = [
-    ["--filter", "@hyperframes/{parsers,lint,studio-server}", "build"],
+    ["--filter", "@hyperframes/{agent-protocol,parsers,lint,studio-server}", "build"],
     ["--cwd", "packages/core", "build"],
   ];
   for (const args of steps) {

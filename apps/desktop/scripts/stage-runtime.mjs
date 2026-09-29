@@ -2,7 +2,7 @@
 /**
  * Assemble the production sidecar payload under `apps/desktop/runtime/`.
  *
- * Tauri bundles this directory as app resources. Two pieces end up inside the
+ * Tauri bundles this directory as app resources. Three pieces end up inside the
  * shipped .app:
  *
  *   runtime/hyperframes/
@@ -17,6 +17,11 @@
  *     bundles every `@hyperframes/*` workspace package (tsup `noExternal`), so
  *     only its npm dependencies stay external at runtime. The list is derived
  *     from that package.json rather than hand-written so it cannot drift.
+ *
+ *   runtime/agent-runtime/
+ *     The OpenVids Agent Runtime sources, its copied protocol package, and its
+ *     published OMP-backed dependencies. Set OPENVIDS_SKIP_AGENT_RUNTIME=1 to
+ *     omit this optional chat feature from a staging run.
  *
  * The JS runtime is `bun`, not Node: it is a single self-contained Mach-O that
  * links only against stock macOS system libraries, so it copies into a .app
@@ -44,6 +49,9 @@ const REPO_ROOT = resolve(DESKTOP, "..", "..");
 const RUNTIME = join(DESKTOP, "runtime");
 const HF_DIR = join(RUNTIME, "hyperframes");
 const CLI_DIST = join(REPO_ROOT, "packages", "cli", "dist");
+const AGENT_RUNTIME_SOURCE = join(REPO_ROOT, "packages", "agent-runtime");
+const AGENT_PROTOCOL_SOURCE = join(REPO_ROOT, "packages", "agent-protocol");
+const AGENT_DIR = join(RUNTIME, "agent-runtime");
 
 function log(message) {
   process.stderr.write(`[openvids:stage] ${message}\n`);
@@ -104,7 +112,56 @@ log(`installing ${Object.keys(runtimeDeps).length} runtime dependencies`);
 // CLI manifest rather than hand-written.
 execFileSync("bun", ["install"], { cwd: HF_DIR, stdio: ["ignore", "inherit", "inherit"] });
 
-// ── 3. The JS runtime ───────────────────────────────────────────────────────
+// ── 3. The separate, optional local Agent Runtime ────────────────────────────
+
+const agentRuntimeStaged = process.env.OPENVIDS_SKIP_AGENT_RUNTIME !== "1";
+if (agentRuntimeStaged) {
+  const agentRuntimePackage = JSON.parse(
+    readFileSync(join(AGENT_RUNTIME_SOURCE, "package.json"), "utf8"),
+  );
+  const agentRuntimeDependencies = Object.fromEntries(
+    Object.entries(agentRuntimePackage.dependencies ?? {}).filter(
+      ([, range]) => !String(range).startsWith("workspace:"),
+    ),
+  );
+  const protocolVendor = join(AGENT_DIR, "vendor", "agent-protocol");
+  mkdirSync(AGENT_DIR, { recursive: true });
+  cpSync(join(AGENT_RUNTIME_SOURCE, "src"), join(AGENT_DIR, "src"), {
+    recursive: true,
+    dereference: true,
+  });
+  writeFileSync(join(AGENT_DIR, "main.ts"), 'import "./src/main.ts";\n');
+  mkdirSync(protocolVendor, { recursive: true });
+  cpSync(join(AGENT_PROTOCOL_SOURCE, "package.json"), join(protocolVendor, "package.json"));
+  cpSync(join(AGENT_PROTOCOL_SOURCE, "src"), join(protocolVendor, "src"), {
+    recursive: true,
+    dereference: true,
+  });
+  agentRuntimeDependencies["@hyperframes/agent-protocol"] = "file:./vendor/agent-protocol";
+  writeFileSync(
+    join(AGENT_DIR, "package.json"),
+    `${JSON.stringify(
+      {
+        ...agentRuntimePackage,
+        dependencies: agentRuntimeDependencies,
+        devDependencies: undefined,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  log(`installing ${Object.keys(agentRuntimeDependencies).length} Agent Runtime dependencies`);
+  execFileSync("bun", ["install"], {
+    cwd: AGENT_DIR,
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+} else {
+  mkdirSync(AGENT_DIR, { recursive: true });
+  cpSync(join(AGENT_RUNTIME_SOURCE, "package.json"), join(AGENT_DIR, "package.json"));
+  log("skipping Agent Runtime sources and dependencies (OPENVIDS_SKIP_AGENT_RUNTIME=1)");
+}
+
+// ── 4. The JS runtime ───────────────────────────────────────────────────────
 
 function resolveBun() {
   if (process.versions.bun && process.execPath) return realpathSync(process.execPath);
@@ -127,7 +184,7 @@ log(`staged bun runtime from ${bunPath}`);
 // why the parent-death watch has to live in the child.
 cpSync(join(DESKTOP, "sidecar", "serve.mjs"), join(RUNTIME, "serve.mjs"), { dereference: true });
 
-// ── 4. Manifest the Rust side reads at startup ──────────────────────────────
+// ── 5. Manifest the Rust side reads at startup ──────────────────────────────
 
 writeFileSync(
   join(RUNTIME, "runtime.json"),
@@ -137,6 +194,7 @@ writeFileSync(
       hyperframes: "hyperframes",
       cli: join("hyperframes", "cli.js"),
       studioIndex: join("hyperframes", "studio", "index.html"),
+      agentRuntime: agentRuntimeStaged ? "agent-runtime" : null,
       version: cliPkg.version,
     },
     null,

@@ -8,7 +8,7 @@ import * as dockLayout from "./dockLayout";
 import { Dock } from "./Dock";
 import { parseDockLayout } from "./dockLayoutSchema";
 import { useDockLayoutStore } from "./dockLayoutStore";
-import { PANEL_IDS } from "./panelRegistry";
+import { PANEL_DEFINITIONS, PANEL_IDS } from "./panelRegistry";
 import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -103,15 +103,19 @@ afterEach(() => {
 // default build — StudioRightPanels opens it itself when the file is one.
 const DEFAULT_OPEN = PANEL_IDS.filter((id) => id !== "slideshow");
 const DEFAULT_VISIBLE = ["preview", "timeline", "compositions", "design"];
+// keepMounted panels (preview, timeline, chat) keep their content mounted behind a hidden tab.
+const KEPT_MOUNTED = PANEL_IDS.filter((id) => "keepMounted" in PANEL_DEFINITIONS[id]);
 
 describe("Dock on React 19", () => {
-  it("mounts the default layout's ten panels, showing only each group's active tab", () => {
+  it("mounts the default layout's eleven panels, showing only each group's active tab", () => {
     const host = mount("p1");
     for (const id of DEFAULT_VISIBLE) {
       expect(host.querySelector(`[data-testid="content-${id}"]`)).not.toBeNull();
     }
-    for (const id of DEFAULT_OPEN.filter((id) => !DEFAULT_VISIBLE.includes(id))) {
-      expect(host.querySelector(`[data-testid="content-${id}"]`)).toBeNull();
+    const hidden = DEFAULT_OPEN.filter((id) => !DEFAULT_VISIBLE.includes(id));
+    for (const id of hidden) {
+      const mounted = host.querySelector(`[data-testid="content-${id}"]`) !== null;
+      expect(mounted).toBe(KEPT_MOUNTED.includes(id));
     }
     expect(host.querySelector('[data-testid="content-slideshow"]')).toBeNull();
     expect(useDockLayoutStore.getState().openPanels).toEqual(new Set(DEFAULT_OPEN));
@@ -166,7 +170,7 @@ describe("Dock on React 19", () => {
   it("reopens a side panel next to the preview when its whole column was closed", () => {
     mount("p1");
     const { closePanel, togglePanel } = useDockLayoutStore.getState();
-    for (const id of ["compositions", "assets", "code", "catalog"] as const)
+    for (const id of ["compositions", "assets", "code", "catalog", "chat"] as const)
       act(() => closePanel(id));
     act(() => togglePanel("compositions"));
     expect(useDockLayoutStore.getState().openPanels.has("compositions")).toBe(true);
@@ -192,6 +196,26 @@ describe("Dock on React 19", () => {
 
     mount("p1");
     expect(useDockLayoutStore.getState().openPanels.has("renders")).toBe(false);
+  });
+
+  it("loads a layout saved before Chat existed, and Window > Chat opens it beside Compositions", () => {
+    mount("p1");
+    act(() => useDockLayoutStore.getState().closePanel("chat"));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    const legacy = readStudioUiPreferences(undefined, "p1").dockLayout;
+    expect(Object.keys(legacy?.panels ?? {})).not.toContain("chat");
+    act(() => root?.unmount());
+    root = null;
+    document.body.innerHTML = "";
+
+    mount("p1");
+    expect(useDockLayoutStore.getState().openPanels.has("chat")).toBe(false);
+    expect(useDockLayoutStore.getState().openPanels.has("compositions")).toBe(true);
+    act(() => useDockLayoutStore.getState().togglePanel("chat"));
+    expect(useDockLayoutStore.getState().openPanels.has("chat")).toBe(true);
+    expect(persistedGroupOf("chat")).toContain('"compositions"');
   });
 
   it("falls back to the default layout when the stored one names an unknown panel", () => {

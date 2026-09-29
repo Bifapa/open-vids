@@ -352,3 +352,45 @@ describe("history routes", () => {
     expect((await call("")).status).toBe(404);
   });
 });
+
+describe("history routes and the host's cached project signature", () => {
+  it("drop it after every operation that rewrites project files, and only then", async () => {
+    const projectDir = tempDir("hf-history-signature-");
+    writeFileSync(join(projectDir, "index.html"), "A");
+    const history = await openProjectHistory({
+      projectDir,
+      historyRoot: tempDir("hf-history-signature-root-"),
+    });
+    cleanup.push(() => history.close());
+    const invalidated: string[] = [];
+    const api = createStudioApi({
+      listProjects: () => [],
+      resolveProject: (id: string) => (id === "demo" ? { id, dir: projectDir } : null),
+      history: () => history,
+      invalidateProjectSignature: (dir: string) => invalidated.push(dir),
+    } as unknown as StudioApiAdapter);
+    const post = (path: string, body: object) =>
+      api.request(`/projects/demo/history${path}`, { method: "POST", body: JSON.stringify(body) });
+
+    const turn = await history.beginWindow({ kind: "agent", name: "Director" }, "Turn");
+    writeFileSync(join(projectDir, "index.html"), "B");
+    const entry = await turn.close();
+    expect((await api.request("/projects/demo/history")).status).toBe(200);
+    expect(invalidated).toEqual([]);
+
+    const undone = await post("/undo", {
+      entryId: entry?.id,
+      who: { kind: "agent", name: "Director" },
+    });
+    expect((await undone.json()).ok).toBe(true);
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("A");
+    expect(invalidated).toEqual([projectDir]);
+
+    await post("/step", { direction: "forward" });
+    await post("/restore", { point: entry?.id });
+    expect(invalidated).toHaveLength(3);
+
+    await post("/pin", { entryId: entry?.id, pinned: true });
+    expect(invalidated).toHaveLength(3);
+  });
+});

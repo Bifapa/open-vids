@@ -120,7 +120,15 @@ describe("dock tabs", () => {
       expect(shows(id, "icon")).toBe(true);
       expect(shows(id, "close")).toBe(true);
     }
-    for (const id of ["layers", "renders", "variables", "assets", "code", "catalog"] as const) {
+    for (const id of [
+      "layers",
+      "renders",
+      "variables",
+      "chat",
+      "assets",
+      "code",
+      "catalog",
+    ] as const) {
       expect(shows(id, "icon")).toBe(false);
       expect(shows(id, "close")).toBe(false);
     }

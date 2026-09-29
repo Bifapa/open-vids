@@ -183,6 +183,24 @@ with `fs::copy`, which propagates the mode and then re-copies on the next
 build; overwriting a `0555` destination fails with `EACCES` on macOS and
 surfaces as an opaque `Permission denied` from the build script.
 
+## Agent runtime
+
+Agent Chat is backed by a **separate local Bun process**, not the Studio sidecar and not the
+browser bundle. `packages/studio-server` (inside the Studio sidecar) owns a gateway at
+`/api/projects/:id/agent/*` that lazily spawns `runtime/agent-runtime/main.ts` with the staged `bun`,
+proxies to it over loopback with a per-launch bearer token (never exposed to the webview), restarts
+it with back-off if it dies, and kills it on shutdown; the runtime also exits when its parent pid
+disappears. If the runtime is missing or crashes the editor keeps working and the Chat panel shows
+"Agent unavailable". See `packages/agent-runtime/README.md` for the process contract.
+
+`stage-runtime.mjs` stages it as `runtime/agent-runtime/` (sources, the vendored protocol package and
+its own `bun install` of the OMP SDK), bundled through `tauri.prod.conf.json`. **Size:** the OMP SDK
+brings native and onnx packages; the staged directory measured about 1.0 GB
+(`onnxruntime-node` 292 MB, `@oh-my-pi/*` 277 MB, `onnxruntime-web` 142 MB) against 194 MB for the
+Studio runtime. Override discovery with `OPENVIDS_AGENT_RUNTIME_ENTRY` (absolute path to `main.ts`)
+and `OPENVIDS_AGENT_BUN`. `OPENVIDS_SKIP_AGENT_RUNTIME=1` skips staging it, but then `tauri build`
+must also drop the `agent-runtime` resource entry.
+
 ## Security
 
 The webview gets no native access at all.

@@ -7,6 +7,7 @@
  */
 
 import type { StudioEditPersistenceProps } from "./panels/VariablesPanel";
+import type { UseEditHistoryActionsOptions } from "../hooks/useEditHistoryActions";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { Composition } from "@hyperframes/sdk";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
@@ -42,6 +43,8 @@ export interface StudioRightPanelsProps extends StudioEditPersistenceProps {
    * explicitly after such a write.
    */
   forceReloadSdkSession?: () => void;
+  /** Studio's own post-undo preview refresh; the Chat panel reuses it after a revert. */
+  syncHistoryPreviewAfterApply: UseEditHistoryActionsOptions["syncHistoryPreviewAfterApply"];
   reloadPreview: () => void;
   recordEdit: (entry: {
     label: string;

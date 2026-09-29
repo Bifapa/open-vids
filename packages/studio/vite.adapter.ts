@@ -281,6 +281,11 @@ export function createViteAdapter(
       return signatureCache.get(projectDir);
     },
 
+    invalidateProjectSignature(projectDir: string): void {
+      // `index.html` always counts toward the signature, so this drops the project's entry.
+      signatureCache.invalidate(resolve(projectDir, "index.html"));
+    },
+
     async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
       const mod = await server.ssrLoadModule("@hyperframes/core/lint");
       return await mod.lintHyperframeHtml(html, { ...opts, host: "studio" });

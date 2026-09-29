@@ -1,0 +1,21 @@
+{
+  "package": "@hyperframes/agent-protocol",
+  "localNodeRuntime": true,
+  "subpaths": {
+    ".": {
+      "source": "./src/index.ts",
+      "runtime": {
+        "node": "./dist/index.js",
+        "import": "./src/index.ts"
+      },
+      "types": "./src/index.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./package.json": {
+      "source": "./package.json",
+      "runtime": "./package.json",
+      "types": null,
+      "environments": ["browser", "bun", "node"]
+    }
+  }
+}

@@ -11,7 +11,7 @@ import { realpath } from "@hyperframes/core";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { resolve, join, basename, relative, sep } from "node:path";
+import { resolve, join, basename, dirname, relative, sep } from "node:path";
 import { readBundleFile } from "./readBundleFile.js";
 import {
   createProjectWatcher,
@@ -32,6 +32,8 @@ import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
+  createAgentGateway,
+  resolveAgentRuntimeLaunch,
   createProjectSignature,
   createBackgroundRemovalJob,
   identifyFileWrite,
@@ -509,6 +511,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     getProjectSignature: projectSignature,
 
+    invalidateProjectSignature: () => {
+      cachedProjectSignature = null;
+    },
+
     async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
       const { lintHyperframeHtml } = await import("@hyperframes/lint");
       return await lintHyperframeHtml(html, { ...opts, host: "studio" });
@@ -772,6 +778,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       };
     },
   };
+
+  const agentGateway = createAgentGateway({
+    launch: () =>
+      resolveAgentRuntimeLaunch(process.argv[1] ? dirname(process.argv[1]) : process.cwd()),
+  });
+  adapter.agent = agentGateway;
 
   // ── Build the Hono app ─────────────────────────────────────────────────
 
@@ -1047,6 +1059,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   const shutdown = async (): Promise<void> => {
     shuttingDown = true;
+    const closeAgent = agentGateway.dispose().catch(() => {});
     // Commits any open edit window; bounded with the renders below, so a history still opening cannot hold exit.
     const closeHistory = histories.closeAll().catch(() => {});
     const renders = [...inFlightRenders];
@@ -1064,7 +1077,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       Promise.allSettled([...renders.map(([, done]) => done), closeHistory]),
       new Promise<void>((resolve) => setTimeout(resolve, RENDER_SHUTDOWN_WAIT_MS).unref()),
     ]);
-    await closeBrowsers;
+    await Promise.all([closeBrowsers, closeAgent]);
   };
 
   return { app, watcher, adapter, shutdown };

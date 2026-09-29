@@ -2,6 +2,7 @@ import type { CanvasResolution } from "@hyperframes/parsers";
 import type { RegistryItem } from "@hyperframes/core";
 import type { BundleOptions } from "@hyperframes/core/compiler";
 import type { ProjectHistory } from "./history/projectHistory.js";
+import type { AgentGateway } from "./agent/gateway.js";
 
 /** Resolved info about a single project. */
 export interface ResolvedProject {
@@ -108,6 +109,9 @@ export interface StudioApiAdapter {
   /** Resolve a project ID (or session ID) to its directory. Returns null if not found. */
   resolveProject(id: string): Promise<ResolvedProject | null> | ResolvedProject | null;
 
+  /** Optional: project-scoped local agent runtime gateway. */
+  agent?: AgentGateway;
+
   /**
    * Optional: the project's current history. A history refuses every call once its folder is replaced (a
    * deleted `.hyperframes`, a new project there), so keep them in `historyCache`, which reopens. Else routes 404.
@@ -122,6 +126,9 @@ export interface StudioApiAdapter {
 
   /** Optional: cached signature for project files that should invalidate preview frame caches. */
   getProjectSignature?: (projectDir: string) => string;
+
+  /** Optional: drop the cached signature after the server itself rewrote project files (history restore). */
+  invalidateProjectSignature?: (projectDir: string) => void;
 
   /** Lint a single HTML string. */
   lint(

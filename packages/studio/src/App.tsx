@@ -517,6 +517,9 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                         sdkSession={sdkHandle.session}
                         publishSdkSession={sdkHandle.publish}
                         forceReloadSdkSession={sdkHandle.forceReload}
+                        syncHistoryPreviewAfterApply={
+                          previewPersistence.syncHistoryPreviewAfterApply
+                        }
                         reloadPreview={reloadPreview}
                         recordEdit={editHistory.recordEdit}
                         onToggleElementHidden={timelineEditing.handleToggleElementHidden}

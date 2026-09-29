@@ -7,6 +7,8 @@ import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPane
 import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueuePanel } from "./renders/RenderQueuePanel";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
+import { AgentChatPanel } from "./chat/AgentChatPanel";
+import { useEditorRefreshAfterRevert } from "../agent/revertRefresh";
 import { VariablesPanel } from "./panels/VariablesPanel";
 import { Dock } from "./dock/Dock";
 import { useDockLayoutStore } from "./dock/dockLayoutStore";
@@ -38,6 +40,7 @@ export function StudioRightPanels({
   sdkSession,
   publishSdkSession,
   forceReloadSdkSession,
+  syncHistoryPreviewAfterApply,
   reloadPreview,
   recordEdit,
   onToggleElementHidden,
@@ -149,6 +152,10 @@ export function StudioRightPanels({
   const handleApplyColorGradingScope = useApplyColorGradingScope(recordEdit, reloadPreview);
 
   const handleRemoveBackground = useRemoveBackground(projectId, refreshFileTree, showToast);
+  const refreshAfterAgentRevert = useEditorRefreshAfterRevert({
+    forceReloadSdkSession,
+    syncHistoryPreviewAfterApply,
+  });
 
   /**
    * A dial being dragged writes to the preview and stops there.
@@ -301,6 +308,9 @@ export function StudioRightPanels({
           onPersist={onPersistSlideshow}
           onPersistNotes={onPersistSlideshowNotes}
         />
+      </Dock.Panel>
+      <Dock.Panel id="chat">
+        <AgentChatPanel projectId={projectId} onReverted={refreshAfterAgentRevert} />
       </Dock.Panel>
     </>
   );
