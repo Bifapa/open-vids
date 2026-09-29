@@ -59,7 +59,7 @@ export interface AudioStageResult {
    * both when there was no audio to mix and when the mix succeeded.
    */
   audioError?: string;
-  /** Bounded typed causes for policy, telemetry, and caller classification. */
+  /** Bounded typed causes for policy, diagnostics, and caller classification. */
   audioFailures?: AudioProcessingFailure[];
 }
 

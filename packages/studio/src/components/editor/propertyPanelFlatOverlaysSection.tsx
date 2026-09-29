@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import { useBlockCatalog } from "../../hooks/useBlockCatalog";
 import { Film, Plus } from "../../icons/SystemIcons";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import type { DomEditSelection } from "./domEditing";
 import { FLAT_PREVIEW_GRID } from "./propertyPanelFlatPrimitives";
 import type { ElementTiming } from "./propertyPanelFlatTimingDerivation";
@@ -35,7 +34,6 @@ export function FlatOverlaysSection({
 }: {
   onAddOverlay: (name: string) => Promise<void>;
 }) {
-  const track = useTrackDesignInput();
   const { blocks, loading, error } = useBlockCatalog();
   const overlays = filterMediaTreatmentOverlays(blocks);
   const [adding, setAdding] = useState<string | null>(null);
@@ -64,7 +62,6 @@ export function FlatOverlaysSection({
           onFocus={() => setPreviewing(overlay.name)}
           onBlur={() => setPreviewing(null)}
           onClick={() => {
-            track("button", `Add ${overlay.title}`);
             setAdding(overlay.name);
             void onAddOverlay(overlay.name).finally(() => setAdding(null));
           }}

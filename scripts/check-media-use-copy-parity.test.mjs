@@ -21,7 +21,6 @@ export const MEDIA_USE_COPY_NAMES = [
   "parakeet-words.mjs",
   "prefs-store.mjs",
   "recipe-store.mjs",
-  "telemetry.mjs",
   "transcriptCutFade.mjs",
   "words.mjs",
 ];

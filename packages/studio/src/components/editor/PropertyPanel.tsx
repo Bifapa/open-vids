@@ -35,7 +35,6 @@ import { TimingSection } from "./propertyPanelTimingSection";
 import { type PropertyPanelProps } from "./propertyPanelHelpers";
 import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
-import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { isAudioDomElement } from "../../utils/timelineInspector";
 import { useManualEditDisabledFlags } from "./previewReadOnlyContext";
 
@@ -305,38 +304,34 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
 
   const classicPanel = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
-      <DesignPanelInputProvider section="header">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <div className="truncate text-[13px] font-semibold text-neutral-100">
-                {element.label}
-              </div>
-              <div className="mt-0.5 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold text-neutral-100">
+              {element.label}
             </div>
-            <InspectorHeaderActions
-              element={element}
-              copied={clipboardCopied}
-              onCopy={handleCopyElementInfo}
-              onClear={onClearSelection}
-              onUngroup={onUngroup}
-              selectedElementId={selectedElementId}
-              selectedElementHidden={selectedElementHidden}
-              visibilityLabel={visibilityToggleLabel}
-              onToggleHidden={audioSelection ? undefined : onToggleElementHidden}
-            />
+            <div className="mt-0.5 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
           </div>
+          <InspectorHeaderActions
+            element={element}
+            copied={clipboardCopied}
+            onCopy={handleCopyElementInfo}
+            onClear={onClearSelection}
+            onUngroup={onUngroup}
+            selectedElementId={selectedElementId}
+            selectedElementHidden={selectedElementHidden}
+            visibilityLabel={visibilityToggleLabel}
+            onToggleHidden={audioSelection ? undefined : onToggleElementHidden}
+          />
         </div>
-      </DesignPanelInputProvider>
+      </div>
       <div className="flex-1 overflow-y-auto">
         {onToggleRecording && (
-          <DesignPanelInputProvider section="footer">
-            <GestureRecordPanelButton
-              recordingState={recordingState}
-              recordingDuration={recordingDuration}
-              onToggleRecording={onToggleRecording}
-            />
-          </DesignPanelInputProvider>
+          <GestureRecordPanelButton
+            recordingState={recordingState}
+            recordingDuration={recordingDuration}
+            onToggleRecording={onToggleRecording}
+          />
         )}
 
         <TextSection
@@ -595,5 +590,5 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
       </div>
     </div>
   );
-  return <DesignPanelInputProvider ui="classic">{classicPanel}</DesignPanelInputProvider>;
+  return classicPanel;
 });

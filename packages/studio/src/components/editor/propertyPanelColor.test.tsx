@@ -2,25 +2,12 @@
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { __resetDesignInputThrottle } from "../../utils/designInputTracking";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ColorField } from "./propertyPanelColor";
-
-const trackStudioEvent = vi.hoisted(() => vi.fn());
-
-vi.mock("../../utils/studioTelemetry", () => ({
-  trackStudioEvent: (...args: unknown[]) => trackStudioEvent(...args),
-}));
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const roots: Root[] = [];
-
-beforeEach(() => {
-  trackStudioEvent.mockReset();
-  __resetDesignInputThrottle();
-});
-
 afterEach(() => {
   for (const root of roots) act(() => root.unmount());
   roots.length = 0;
@@ -213,16 +200,5 @@ describe("ColorField hex editing", () => {
     act(() => changeInput(input, "#333"));
     expect(onPreview).toHaveBeenCalledTimes(2);
     expect(onPreview).toHaveBeenLastCalledWith("rgb(51, 51, 51)");
-  });
-
-  it("tracks exactly once per completed edit, not once per keystroke", () => {
-    const input = openHexInput(renderColorField());
-
-    for (const value of ["#", "#1", "#12", "#12A", "#12AB", "#12AB3", "#12AB34"]) {
-      act(() => changeInput(input, value));
-    }
-    act(clickOutside);
-
-    expect(trackStudioEvent).toHaveBeenCalledOnce();
   });
 });

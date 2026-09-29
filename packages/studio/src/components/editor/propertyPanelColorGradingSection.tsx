@@ -9,7 +9,6 @@ import {
   type MediaMetadata,
   type RuntimeColorGradingStatus,
 } from "./useColorGradingController";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 function StatusPill({ status }: { status: RuntimeColorGradingStatus }) {
   const dotClass =
@@ -69,12 +68,10 @@ function HoldBeforeButton({
   disabled: boolean;
   onHoldChange: (holding: boolean) => void;
 }) {
-  const track = useTrackDesignInput();
   const startHold = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (disabled) return;
     event.preventDefault();
     event.stopPropagation();
-    track("toggle", "Compare original");
     onHoldChange(true);
     const release = () => {
       onHoldChange(false);
@@ -109,7 +106,6 @@ function HoldBeforeButton({
         if (disabled || (event.key !== " " && event.key !== "Enter")) return;
         event.preventDefault();
         if (!active) {
-          track("toggle", "Compare original");
           onHoldChange(true);
         }
       }}
@@ -154,7 +150,6 @@ export function ColorGradingSection({
     value: string | null,
   ) => Promise<{ changedFiles: number; changedElements: number }>;
 }) {
-  const track = useTrackDesignInput();
   const {
     grading,
     compareEnabled,
@@ -191,7 +186,6 @@ export function ColorGradingSection({
             type="button"
             onClick={(event) => {
               event.stopPropagation();
-              track("button", "Reset color grading");
               resetGrading();
             }}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-panel-text-4 transition-colors hover:bg-panel-hover hover:text-panel-text-1"
@@ -214,7 +208,6 @@ export function ColorGradingSection({
           <select
             value={applyScope}
             onChange={(event) => {
-              track("select", "Apply scope");
               setApplyScope(event.currentTarget.value as typeof applyScope);
             }}
             disabled={applyBusy}
@@ -229,7 +222,6 @@ export function ColorGradingSection({
             disabled={applyBusy}
             onClick={(event) => {
               event.stopPropagation();
-              track("button", "Apply color grading scope");
               void applyToScope();
             }}
             className="h-8 rounded-md bg-panel-input px-3 text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-50"

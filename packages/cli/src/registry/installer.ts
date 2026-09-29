@@ -1,6 +1,6 @@
 import { validRegistryItem } from "./validation.js";
 import { registryRoot, registryTargetPath, publishRegistryFile } from "./publication.js";
-import type { DownloadByteBudget } from "../capture/readBoundedResponse.js";
+import { localRegistryRoot, readLocalItemFile } from "./local.js";
 /**
  * Registry installer — copies item files into a destination project.
  *
@@ -13,7 +13,6 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { FileTarget, RegistryItem } from "@hyperframes/core";
-import { fetchItemFile, DEFAULT_REGISTRY_URL } from "./remote.js";
 import {
   applyVariableDefaults,
   InvalidVariableValuesError,
@@ -23,8 +22,11 @@ import {
 export interface InstallOptions {
   /** Project root where files land. Every target resolves relative to this. */
   destDir: string;
-  /** Base URL of the registry. Defaults to the official public registry. */
-  baseUrl?: string;
+  /**
+   * Local registry directory override (tests, custom layouts). Defaults to
+   * the bundled `registry/` tree resolved by `localRegistryRoot()`.
+   */
+  registryDir?: string;
   /** Overwrite files the project has changed since they were installed. */
   force?: boolean;
   /**
@@ -204,31 +206,44 @@ function bakeVariables(
   return { bytes: rewrite ? Buffer.from(vars.html) : bytes, vars };
 }
 
-/** Fetch and post-process one file; publishItem writes it once the whole plan is ready. */
+/** Read and post-process one file; publishItem writes it once the whole plan is ready. */
 async function prepareOneFile(
   item: RegistryItem,
   file: FileTarget,
   destDir: string,
-  baseUrl: string,
+  registryRootDir: string | null,
   record: InstallRecord,
   options: InstallOptions,
-  budget: DownloadByteBudget,
 ): Promise<FileOutcome> {
   const destPath = registryTargetPath(destDir, file.target);
 
-  // Decided before fetching rather than after: a file we are going to keep
+  // Decided before reading rather than after: a file we are going to keep
   // should never be overwritten and then put back, because a crash in
   // between would lose it for real.
   if (keptByProject(record, destPath, file.target, options.force)) {
     return { destPath, target: file.target, preserved: true, hash: null, vars: null, bytes: null };
   }
 
-  let bytes = await fetchItemFile(item, file, baseUrl, budget);
-  if (isInstalledRegistryBlockComposition(item, file)) {
-    bytes = Buffer.from(addRegistryItemMarker(bytes.toString("utf8"), item));
+  if (file.url !== undefined) {
+    throw new Error(
+      `Item "${item.name}" file "${file.path}" is hosted remotely (${file.url}) and cannot be installed offline.`,
+    );
   }
-  const baked = bakeVariables(item, file, bytes, options.variableValues);
-  bytes = baked.bytes;
+  if (!registryRootDir) {
+    throw new Error(
+      `Local registry not found — cannot install "${item.name}". Set OPENVIDS_REGISTRY_DIR to the registry/ directory.`,
+    );
+  }
+  const bytes = readLocalItemFile(registryRootDir, item.name, item.type, file.path);
+  if (!bytes) {
+    throw new Error(`Item "${item.name}" file "${file.path}" is missing from the local registry.`);
+  }
+  let out = bytes;
+  if (isInstalledRegistryBlockComposition(item, file)) {
+    out = Buffer.from(addRegistryItemMarker(bytes.toString("utf8"), item));
+  }
+  const baked = bakeVariables(item, file, out, options.variableValues);
+  out = baked.bytes;
   const vars = baked.vars;
   // Hash what will land, marker and baked defaults included, or the next
   // install reads its own output as the project's edit.
@@ -236,15 +251,15 @@ async function prepareOneFile(
     destPath,
     target: file.target,
     preserved: false,
-    hash: digest(bytes),
+    hash: digest(out),
     vars,
-    bytes,
+    bytes: out,
   };
 }
 
 /**
- * Install a resolved `RegistryItem` into `destDir` by fetching each file in
- * parallel and writing it to its validated target path.
+ * Install a resolved `RegistryItem` into `destDir` by reading each file from
+ * the local registry and writing it to its validated target path.
  */
 export async function installItem(
   item: RegistryItem,
@@ -260,13 +275,13 @@ export interface PreparedItem {
   force: boolean;
 }
 
-/** Fetch and check every file of an item without writing, so a caller can refuse a whole plan. */
+/** Read and check every file of an item without writing, so a caller can refuse a whole plan. */
 export async function prepareItem(
   item: RegistryItem,
   options: InstallOptions,
 ): Promise<PreparedItem> {
   if (!validRegistryItem(item, item.name, item.type)) throw new Error("Invalid registry item");
-  const baseUrl = options.baseUrl ?? DEFAULT_REGISTRY_URL;
+  const registryRootDir = options.registryDir ?? localRegistryRoot();
   const destDir = resolve(options.destDir);
 
   // Validate all targets up-front so a malformed item fails before any write.
@@ -277,10 +292,9 @@ export async function prepareItem(
   const root = registryRoot(destDir);
   validatePhysicalTargets(root, item.files);
   const record = readInstallRecord(root);
-  const budget = { remainingBytes: 512 * 1024 * 1024 };
 
   const outcomes = await installFileBatches(item.files, (file) =>
-    prepareOneFile(item, file, root, baseUrl, record, options, budget),
+    prepareOneFile(item, file, root, registryRootDir, record, options),
   );
   const invalid = outcomes.flatMap((o) => o.vars?.invalid ?? []);
   if (invalid.length > 0) throw new InvalidVariableValuesError(invalid);

@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mockTelemetry } from "./cliDispatchTestUtils.js";
 
 const originalArgv = [...process.argv];
 const originalExitCode = process.exitCode;
@@ -10,8 +9,6 @@ afterEach(() => {
   vi.doUnmock("./commands/preview.js");
   vi.doUnmock("./utils/env.js");
   vi.doUnmock("./utils/workspaceBuildCheck.js");
-  vi.doUnmock("./telemetry/index.js");
-  vi.doUnmock("./telemetry/events.js");
   vi.resetModules();
 });
 
@@ -27,7 +24,6 @@ function mockPreviewGate(problems: Array<Record<string, string>>): () => boolean
     formatWorkspaceBuildProblems: () =>
       problems.map((p) => `  - ${p.package}: ${p.detail}`).join("\n"),
   }));
-  mockTelemetry();
   return () => previewImported;
 }
 

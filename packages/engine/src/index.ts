@@ -102,7 +102,6 @@ export {
 export {
   augmentPageNavigationTimeoutError,
   isPageNavigationTimeoutError,
-  type NavigationTimeoutHintContext,
 } from "./services/pageNavigationTimeoutErrorHint.js";
 
 // ── Frame capture pipeline ──────────────────────────────────────────────────────
@@ -326,10 +325,10 @@ export {
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,
-  writeUrlDownloadTelemetry,
+  writeUrlDownloadDiagnostics,
   type SafeDownloadUrlIdentity,
   type UrlDownloadOptions,
-  type UrlDownloadTelemetry,
+  type UrlDownloadDiagnostics,
   type PublicHttpsTextOptions,
 } from "./utils/urlDownloader.js";
 export {

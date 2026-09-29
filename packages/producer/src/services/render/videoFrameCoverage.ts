@@ -33,7 +33,7 @@
  *     at runtime and is NOT source-video-frame-shaped; the coverage
  *     gate cannot directly observe it. We surface an
  *     `authoredTimedClipCount` gauge so a 147-clip composition is
- *     visible in telemetry, and leave the per-tick visibility parity
+ *     visible in diagnostics, and leave the per-tick visibility parity
  *     check as follow-up work (a separate runtime observability
  *     channel is required — the extractor doesn't see div visibility).
  *
@@ -241,7 +241,7 @@ export function assertVideoFrameCoverage(
   );
   if (failed.length === 0) return;
   // Sort ascending by ratio so the "worst" is first — that's what we cite
-  // in the message and pin on the error details for telemetry.
+  // in the message and pin on the error details for diagnostics.
   const sorted = [...failed].sort((a, b) => a.ratio - b.ratio);
   const worst = sorted[0]!;
   const pct = (worst.ratio * 100).toFixed(1);
@@ -262,7 +262,7 @@ export function assertVideoFrameCoverage(
  *
  * Not a fail-loud gate — a raw counter that lands in
  * `RenderExtractionObservability.authoredTimedClipCount` so a 147-clip
- * composition is queryable in telemetry (the ts=1784144554 field signal
+ * composition is queryable in diagnostics (the ts=1784144554 field signal
  * shape). Runtime `syncTimedElementVisibility` iterates the same set at
  * render time; counting statically here is a coarse proxy — dynamic
  * script-inserted `[data-start]` divs land in `hasRuntimeMediaChanges`'s

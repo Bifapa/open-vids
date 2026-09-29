@@ -9,7 +9,7 @@ import { resolveProject } from "../utils/project.js";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
-import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
+import { printDeprecationNotice, withMeta } from "../utils/jsonMeta.js";
 import {
   buildLayoutSampleTimes,
   buildTransitionSampleTimes,

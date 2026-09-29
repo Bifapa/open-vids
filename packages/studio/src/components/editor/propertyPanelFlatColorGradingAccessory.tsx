@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { isHfColorGradingActive } from "@hyperframes/core/color-grading";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { Compare, RotateCcw } from "../../icons/SystemIcons";
 import type { ColorGradingControllerState } from "./useColorGradingController";
 
@@ -20,7 +19,6 @@ export function FlatColorGradingAccessory({
     "grading" | "compareEnabled" | "runtimeStatus" | "commitCompare" | "resetGrading"
   >;
 }) {
-  const track = useTrackDesignInput();
   const { grading, compareEnabled, runtimeStatus, commitCompare, resetGrading } = state;
   const gradingActive = isHfColorGradingActive(grading);
   const releaseRef = useRef<(() => void) | null>(null);
@@ -43,7 +41,6 @@ export function FlatColorGradingAccessory({
           if (!gradingActive) return;
           e.preventDefault();
           e.stopPropagation();
-          track("button", "Compare original");
           commitCompare(true);
           const release = () => {
             commitCompare(false);
@@ -64,7 +61,6 @@ export function FlatColorGradingAccessory({
           if (!gradingActive || (e.key !== " " && e.key !== "Enter")) return;
           e.preventDefault();
           if (!compareEnabled) {
-            track("button", "Compare original");
             commitCompare(true);
           }
         }}
@@ -97,7 +93,6 @@ export function FlatColorGradingAccessory({
         title="Reset color grading"
         onClick={(e) => {
           e.stopPropagation();
-          track("button", "Reset color grading");
           resetGrading();
         }}
         className="shrink-0 text-panel-text-3 hover:text-panel-text-1"

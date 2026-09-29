@@ -1,6 +1,5 @@
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
@@ -25,7 +24,6 @@ export function FlatTimingRow({
    *  documented below) when the caller doesn't wire it up. */
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
 }) {
-  const track = useTrackDesignInput();
   const { start, duration, inferred: derived } = deriveElementTiming(element, animations);
   const end = start + duration;
 
@@ -85,7 +83,6 @@ export function FlatTimingRow({
         <CommitField
           value={value}
           onCommit={(next) => {
-            track("metric", label);
             onCommit(next);
           }}
         />

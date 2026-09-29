@@ -8,7 +8,7 @@ describe("roundDb", () => {
     expect(roundDb(28.45)).toBe(28.5);
   });
 
-  it("clamps at 999 (an Infinity PSNR must never ship literally to telemetry)", () => {
+  it("clamps at 999 (an Infinity PSNR must never ship literally to diagnostics)", () => {
     expect(roundDb(Infinity)).toBe(999);
     expect(roundDb(50000)).toBe(999);
   });
@@ -45,7 +45,7 @@ const baseInput = {
   dedupPerfs: [],
 };
 
-describe("buildRenderPerfSummary host telemetry", () => {
+describe("buildRenderPerfSummary host diagnostics", () => {
   it("captures host facts and threads gpuDisabled through", () => {
     const summary = buildRenderPerfSummary({ ...baseInput, gpuDisabled: true });
     expect(summary.host).toBeDefined();

@@ -1,5 +1,5 @@
 /**
- * Slider: `onPreview` fires while the thumb moves and writes nothing durable; `onCommit` (with `onTrack`, once)
+ * Slider: `onPreview` fires while the thumb moves and writes nothing durable; `onCommit`
  * fires at a boundary. Right-click or Escape aborts a drag via `eventDetails.cancel()` and restores the start value.
  */
 
@@ -20,8 +20,6 @@ export interface SliderProps {
   onPreview?: (next: number) => void;
   /** Called at a commit boundary when the value really changed. */
   onCommit: (next: number) => void;
-  /** Called once per commit boundary, for design-input telemetry. */
-  onTrack?: () => void;
   disabled?: boolean;
   className?: string;
   "data-preview-state"?: PreviewState;
@@ -37,7 +35,6 @@ export function Slider({
   step,
   onPreview,
   onCommit,
-  onTrack,
   disabled,
   className,
   "data-preview-state": previewState,
@@ -102,7 +99,6 @@ export function Slider({
           return;
         }
         commit(first(next));
-        onTrack?.();
       }}
       className={cn("flex min-w-0 items-center", className)}
       data-preview-state={previewState}

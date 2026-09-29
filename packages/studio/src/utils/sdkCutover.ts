@@ -2,11 +2,8 @@ import type { Composition, GsapTweenSpec } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { PatchOperation } from "./sourcePatcher";
 import * as studioAvailability from "../components/editor/manualEditingAvailability";
-import { trackStudioEvent } from "./studioTelemetry";
 import { patchOpsToSdkEditOps } from "./sdkOpMapping";
-import { recordResolverParity, recordAnimationResolverParity } from "./sdkResolverShadow";
 import {
-  isResolverDisagreement,
   sdkCutoverIneligibleReason,
   shouldDeclineTextCutoverForTarget,
 } from "./sdkCutoverEligibility";
@@ -43,36 +40,11 @@ function sdkFamilyEnabled(family: StudioSdkOperationFamily): boolean {
   return isSdkFamilyEnabled(studioAvailability.STUDIO_SDK_CUTOVER_ENABLED, configured, family);
 }
 
-function trackCutoverResult(
-  result: CutoverResult,
-  family: StudioSdkOperationFamily,
-  context: { hfId?: string | null; opCount: number },
-): void {
-  if (result.status === "committed") {
-    trackStudioEvent("sdk_cutover_success", { ...context, family });
-  } else if (result.status === "failed") {
-    failedCutover(result.error, family, context);
-  }
-}
-
 /** True when targetPath isn't the composition the SDK session models. */
 function wrongCompositionFile(deps: CutoverDeps, targetPath: string): boolean {
   return deps.compositionPath != null && targetPath !== deps.compositionPath;
 }
 
-/**
- * Reader for the animation-resolver tripwire's disk-truth check: on an
- * animationId miss it re-parses the CURRENT file to distinguish a stale
- * session (panel ids re-derive from disk every render; session ids date from
- * the last reload) from a genuine resolver divergence.
- */
-function gsapReadSource(
-  deps: CutoverDeps,
-  targetPath: string,
-): (() => Promise<string | undefined>) | undefined {
-  const read = deps.readProjectFile;
-  return read ? () => read(targetPath) : undefined;
-}
 export async function sdkCutoverPersist(
   selection: DomEditSelection,
   ops: PatchOperation[],
@@ -84,19 +56,17 @@ export async function sdkCutoverPersist(
 ): Promise<CutoverResult> {
   // Name WHICH eligibility check failed: on v0.8.47 this one string covered 26 of
   // 30 dom declines. The two below aren't properties of the batch, so they differ.
-  if (!sdkFamilyEnabled("dom")) return declinedCutover("feature_disabled", "dom");
-  if (!sdkSession) return declinedCutover("session_unavailable", "dom");
+  if (!sdkFamilyEnabled("dom")) return declinedCutover("feature_disabled");
+  if (!sdkSession) return declinedCutover("session_unavailable");
   const hfId = selection.hfId;
   const ineligible = sdkCutoverIneligibleReason(hfId, ops);
   // `!hfId` is already a reason; testing it again narrows the type for the rest.
-  if (ineligible || !hfId) return declinedCutover(ineligible ?? "target_unaddressable", "dom");
+  if (ineligible || !hfId) return declinedCutover(ineligible ?? "target_unaddressable");
   const target = sdkSession.getElement(hfId);
-  if (!target)
-    return declinedCutover("target_not_found", "dom", isResolverDisagreement(sdkSession, hfId));
+  if (!target) return declinedCutover("target_not_found");
   if (shouldDeclineTextCutoverForTarget(target, ops))
-    return declinedCutover("unsupported_text_target", "dom");
-  if (wrongCompositionFile(deps, targetPath))
-    return declinedCutover("wrong_composition_file", "dom");
+    return declinedCutover("unsupported_text_target");
+  if (wrongCompositionFile(deps, targetPath)) return declinedCutover("wrong_composition_file");
   const result = await persistSdkCandidateMutation(
     sdkSession,
     targetPath,
@@ -107,7 +77,6 @@ export async function sdkCutoverPersist(
     },
     options,
   );
-  trackCutoverResult(result, "dom", { hfId, opCount: ops.length });
   return result;
 }
 
@@ -119,25 +88,13 @@ export async function sdkTimingPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<CutoverResult> {
-  // Resolver tripwire — runs BEFORE the cutover gate (decoupled): records when
-  // the SDK can't resolve a target the server timing path is addressing.
-  const timingSrc = deps.readProjectFile;
-  void recordResolverParity(
-    sdkSession,
-    hfId,
-    "setTiming",
-    timingSrc ? () => timingSrc(targetPath) : undefined,
-    { targetPath, compositionPath: deps.compositionPath },
-  );
   // Dark-launch gate: without this, timing cutover runs whenever an SDK session
   // exists (it always does, for shadow/selection) — flipping the flag OFF would
   // NOT disable it. Gate here so flag-off routes back to the legacy server path.
-  if (!sdkFamilyEnabled("timing")) return declinedCutover("feature_disabled", "timing");
-  if (!sdkSession) return declinedCutover("session_unavailable", "timing");
-  if (!sdkSession.getElement(hfId))
-    return declinedCutover("target_not_found", "timing", isResolverDisagreement(sdkSession, hfId));
-  if (wrongCompositionFile(deps, targetPath))
-    return declinedCutover("wrong_composition_file", "timing");
+  if (!sdkFamilyEnabled("timing")) return declinedCutover("feature_disabled");
+  if (!sdkSession) return declinedCutover("session_unavailable");
+  if (!sdkSession.getElement(hfId)) return declinedCutover("target_not_found");
+  if (wrongCompositionFile(deps, targetPath)) return declinedCutover("wrong_composition_file");
   try {
     const serializedBefore = sdkSession.serialize();
     const result = await persistSdkCandidateMutation(
@@ -149,10 +106,9 @@ export async function sdkTimingPersist(
       options,
       serializedBefore,
     );
-    trackCutoverResult(result, "timing", { hfId, opCount: 1 });
     return result;
   } catch (error) {
-    return failedCutover(error, "timing", { hfId, opCount: 1 });
+    return failedCutover(error);
   }
 }
 
@@ -166,27 +122,11 @@ export async function sdkTimingBatchPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<CutoverResult> {
-  const timingSrc = deps.readProjectFile;
-  for (const change of changes) {
-    void recordResolverParity(
-      sdkSession,
-      change.hfId,
-      "setTiming",
-      timingSrc ? () => timingSrc(targetPath) : undefined,
-      { targetPath, compositionPath: deps.compositionPath },
-    );
-  }
-  if (!sdkFamilyEnabled("timing")) return declinedCutover("feature_disabled", "timing");
-  if (!sdkSession) return declinedCutover("session_unavailable", "timing");
-  if (wrongCompositionFile(deps, targetPath))
-    return declinedCutover("wrong_composition_file", "timing");
+  if (!sdkFamilyEnabled("timing")) return declinedCutover("feature_disabled");
+  if (!sdkSession) return declinedCutover("session_unavailable");
+  if (wrongCompositionFile(deps, targetPath)) return declinedCutover("wrong_composition_file");
   const unresolved = changes.find((change) => !sdkSession.getElement(change.hfId));
-  if (unresolved)
-    return declinedCutover(
-      "target_not_found",
-      "timing",
-      isResolverDisagreement(sdkSession, unresolved.hfId),
-    );
+  if (unresolved) return declinedCutover("target_not_found");
   try {
     const serializedBefore = sdkSession.serialize();
     const result = await persistSdkCandidateMutation(
@@ -201,22 +141,11 @@ export async function sdkTimingBatchPersist(
       serializedBefore,
     );
     if (result.status === "failed") {
-      return failedCutover(result.error, "timing", {
-        hfId: changes[0]?.hfId ?? null,
-        opCount: changes.length,
-      });
+      return failedCutover(result.error);
     }
-    trackStudioEvent("sdk_cutover_success", {
-      hfId: changes[0]?.hfId ?? null,
-      opCount: changes.length,
-      family: "timing",
-    });
     return result;
   } catch (error) {
-    return failedCutover(error, "timing", {
-      hfId: changes[0]?.hfId ?? null,
-      opCount: changes.length,
-    });
+    return failedCutover(error);
   }
 }
 
@@ -232,35 +161,12 @@ export function sdkGsapTweenPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<CutoverResult> {
-  // Resolver tripwire — runs BEFORE this function's own cutover gate (decoupled).
-  // add targets an element (element-resolution parity); set/remove target an
-  // animationId (animation-resolution parity). Done here, not via
-  // dispatchGsapOpAndPersist's resolverTarget, because the gate below returns
-  // before that call when cutover is off.
-  if (op.kind === "add") {
-    const gsapSrc = deps.readProjectFile;
-    void recordResolverParity(
-      sdkSession,
-      op.target,
-      "addGsapTween",
-      gsapSrc ? () => gsapSrc(targetPath) : undefined,
-      { targetPath, compositionPath: deps.compositionPath },
-    );
-  } else {
-    void recordAnimationResolverParity(
-      sdkSession,
-      op.animationId,
-      op.kind === "set" ? "setGsapTween" : "removeGsapTween",
-      gsapReadSource(deps, targetPath),
-      { targetPath, compositionPath: deps.compositionPath },
-    );
-  }
   // Leading dark-launch gate so flag-off does no SDK touch (getElement) at all —
   // matches the other three chokepoints' discipline.
   if (!sdkFamilyEnabled("gsap-animation"))
-    return Promise.resolve(declinedCutover("feature_disabled", "gsap-animation"));
+    return Promise.resolve(declinedCutover("feature_disabled"));
   if (op.kind === "add" && sdkSession && !sdkSession.getElement(op.target))
-    return Promise.resolve(declinedCutover("target_not_found", "gsap-animation"));
+    return Promise.resolve(declinedCutover("target_not_found"));
   // dispatchGsapOpAndPersist declines on before===after — that catches stale
   // animationIds and unsupported shapes (e.g. from-prop on a plain tween), falling
   // back to the server path. This subsumes explicit existence guards for set/remove.
@@ -284,25 +190,12 @@ async function dispatchGsapOpAndPersist(
   deps: CutoverDeps,
   options: CutoverOptions | undefined,
   dispatch: (s: Composition) => void,
-  resolverTarget?: { animationId: string; opLabel: string },
 ): Promise<CutoverResult> {
-  // Resolver tripwire — runs BEFORE the cutover gate (decoupled): records when
-  // the SDK can't resolve the animationId the server GSAP path is addressing.
-  if (resolverTarget) {
-    void recordAnimationResolverParity(
-      sdkSession,
-      resolverTarget.animationId,
-      resolverTarget.opLabel,
-      gsapReadSource(deps, targetPath),
-      { targetPath, compositionPath: deps.compositionPath },
-    );
-  }
   // Dark-launch gate (shared chokepoint for every GSAP-op cutover persist):
   // flag OFF → explicit decline → caller falls back to the legacy server path.
-  if (!sdkFamilyEnabled(family)) return declinedCutover("feature_disabled", family);
-  if (!sdkSession) return declinedCutover("session_unavailable", family);
-  if (wrongCompositionFile(deps, targetPath))
-    return declinedCutover("wrong_composition_file", family);
+  if (!sdkFamilyEnabled(family)) return declinedCutover("feature_disabled");
+  if (!sdkSession) return declinedCutover("session_unavailable");
+  if (wrongCompositionFile(deps, targetPath)) return declinedCutover("wrong_composition_file");
   const session = sdkSession;
   // persistSdkCandidateMutation owns the shared per-project/file transaction
   // coordinator used by both SDK and legacy GSAP writes.
@@ -317,14 +210,12 @@ async function dispatchGsapOpAndPersist(
       options,
       serializedBefore,
     );
-    if (result.status === "committed") {
-      trackStudioEvent("sdk_cutover_success", { opCount: 1, family });
-    } else if (result.status === "failed") {
-      return failedCutover(result.error, family, { opCount: 1 });
+    if (result.status === "failed") {
+      return failedCutover(result.error);
     }
     return result;
   } catch (error) {
-    return failedCutover(error, family, { opCount: 1 });
+    return failedCutover(error);
   }
 }
 
@@ -337,14 +228,8 @@ export function sdkGsapKeyframePersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<CutoverResult> {
-  return dispatchGsapOpAndPersist(
-    "gsap-keyframe",
-    targetPath,
-    sdkSession,
-    deps,
-    options,
-    (s) => s.batch(() => s.dispatch({ type: "addGsapKeyframe", animationId, position, value })),
-    { animationId, opLabel: "addGsapKeyframe" },
+  return dispatchGsapOpAndPersist("gsap-keyframe", targetPath, sdkSession, deps, options, (s) =>
+    s.batch(() => s.dispatch({ type: "addGsapKeyframe", animationId, position, value })),
   );
 }
 
@@ -356,14 +241,8 @@ export function sdkGsapRemoveKeyframePersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<CutoverResult> {
-  return dispatchGsapOpAndPersist(
-    "gsap-keyframe",
-    targetPath,
-    sdkSession,
-    deps,
-    options,
-    (s) => s.dispatch({ type: "removeGsapKeyframe", animationId, percentage }),
-    { animationId, opLabel: "removeGsapKeyframe" },
+  return dispatchGsapOpAndPersist("gsap-keyframe", targetPath, sdkSession, deps, options, (s) =>
+    s.dispatch({ type: "removeGsapKeyframe", animationId, percentage }),
   );
 }
 
@@ -376,14 +255,8 @@ export function sdkGsapRemovePropertyPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<CutoverResult> {
-  return dispatchGsapOpAndPersist(
-    "gsap-animation",
-    targetPath,
-    sdkSession,
-    deps,
-    options,
-    (s) => s.dispatch({ type: "removeGsapProperty", animationId, property, from }),
-    { animationId, opLabel: "removeGsapProperty" },
+  return dispatchGsapOpAndPersist("gsap-animation", targetPath, sdkSession, deps, options, (s) =>
+    s.dispatch({ type: "removeGsapProperty", animationId, property, from }),
   );
 }
 
@@ -406,14 +279,8 @@ export function sdkGsapRemoveAllKeyframesPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<CutoverResult> {
-  return dispatchGsapOpAndPersist(
-    "gsap-keyframe",
-    targetPath,
-    sdkSession,
-    deps,
-    options,
-    (s) => s.dispatch({ type: "removeAllKeyframes", animationId }),
-    { animationId, opLabel: "removeAllKeyframes" },
+  return dispatchGsapOpAndPersist("gsap-keyframe", targetPath, sdkSession, deps, options, (s) =>
+    s.dispatch({ type: "removeAllKeyframes", animationId }),
   );
 }
 
@@ -425,14 +292,8 @@ export function sdkGsapConvertToKeyframesPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<CutoverResult> {
-  return dispatchGsapOpAndPersist(
-    "gsap-keyframe",
-    targetPath,
-    sdkSession,
-    deps,
-    options,
-    (s) => s.dispatch({ type: "convertToKeyframes", animationId, resolvedFromValues }),
-    { animationId, opLabel: "convertToKeyframes" },
+  return dispatchGsapOpAndPersist("gsap-keyframe", targetPath, sdkSession, deps, options, (s) =>
+    s.dispatch({ type: "convertToKeyframes", animationId, resolvedFromValues }),
   );
 }
 
@@ -500,9 +361,6 @@ function persistKeyframesOperation(input: {
     input.deps,
     input.options,
     (session) => dispatchWithKeyframes(session, payload, input.animationId),
-    input.animationId
-      ? { animationId: input.animationId, opLabel: "replaceWithKeyframes" }
-      : undefined,
   );
 }
 
@@ -563,25 +421,11 @@ export async function sdkDeletePersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
 ): Promise<CutoverResult> {
-  // Resolver tripwire — runs BEFORE the cutover gate (decoupled).
-  void recordResolverParity(
-    sdkSession,
-    hfId,
-    "removeElement",
-    () => Promise.resolve(originalContent),
-    { targetPath, compositionPath: deps.compositionPath },
-  );
   // Dark-launch gate: flag OFF → legacy server delete path.
-  if (!sdkFamilyEnabled("lifecycle")) return declinedCutover("feature_disabled", "lifecycle");
-  if (!sdkSession) return declinedCutover("session_unavailable", "lifecycle");
-  if (!sdkSession.getElement(hfId))
-    return declinedCutover(
-      "target_not_found",
-      "lifecycle",
-      isResolverDisagreement(sdkSession, hfId),
-    );
-  if (wrongCompositionFile(deps, targetPath))
-    return declinedCutover("wrong_composition_file", "lifecycle");
+  if (!sdkFamilyEnabled("lifecycle")) return declinedCutover("feature_disabled");
+  if (!sdkSession) return declinedCutover("session_unavailable");
+  if (!sdkSession.getElement(hfId)) return declinedCutover("target_not_found");
+  if (wrongCompositionFile(deps, targetPath)) return declinedCutover("wrong_composition_file");
   const result = await persistSdkCandidateMutation(
     sdkSession,
     targetPath,
@@ -590,6 +434,5 @@ export async function sdkDeletePersist(
     (session) => session.removeElement(hfId),
     { label: "Delete element" },
   );
-  trackCutoverResult(result, "lifecycle", { hfId, opCount: 1 });
   return result;
 }

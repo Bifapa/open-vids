@@ -3,7 +3,6 @@ import { liveTime, usePlayerStore } from "../player";
 import { pauseStudioPreviewPlayback } from "../utils/studioPreviewHelpers";
 import { type DomEditSelection } from "../components/editor/domEditing";
 import type { ApplyDomSelectionOptions, ResolveDomSelectionOptions } from "./useDomSelection";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 
 // ── Types ──
 
@@ -121,7 +120,6 @@ export function usePreviewInteraction({
           e.preventDefault();
           e.stopPropagation();
           cycleRef.current = null;
-          trackStudioEvent("group", { action: "drill_in" });
           setActiveGroupElement(hit.element);
           const child = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
             activeGroupElement: hit.element,

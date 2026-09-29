@@ -326,7 +326,7 @@ export interface PatchEvent {
   readonly inversePatches: readonly JsonPatchOp[];
   /** Re-emitted verbatim from the mutation entry. Use ORIGIN_APPLY_PATCHES to detect undo loops. */
   readonly origin: unknown;
-  /** Semantic op names ('setStyle') — for analytics/history labels. Not versioned. */
+  /** Semantic op names ('setStyle') — for history labels. Not versioned. */
   readonly opTypes: readonly string[];
 }
 

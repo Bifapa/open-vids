@@ -2,12 +2,6 @@ import { runCommand } from "citty";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const trackCheckReport = vi.fn();
-vi.mock("../telemetry/events.js", () => ({
-  trackCheckReport: (...args: unknown[]) => trackCheckReport(...args),
-  trackCommandFailure: vi.fn(),
-}));
-
 import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
 import { createCheckCommand } from "./check.js";
 import {
@@ -50,7 +44,6 @@ const PROJECT: ProjectDir = {
 const PNG_BASE64 = Buffer.from("png-bytes").toString("base64");
 afterEach(() => {
   consumeCommandResult();
-  trackCheckReport.mockClear();
   vi.restoreAllMocks();
 });
 
@@ -1669,7 +1662,7 @@ describe("contrast persistence", () => {
   });
 });
 
-describe("check report telemetry", () => {
+describe("check report", () => {
   it("reports one clean run with every gate and sampled-point count", async () => {
     const motion: MotionSpecResolution = {
       kind: "valid",
@@ -1696,21 +1689,11 @@ describe("check report telemetry", () => {
       { motion },
     );
 
-    expect(trackCheckReport).toHaveBeenCalledTimes(1);
-    expect(trackCheckReport).toHaveBeenCalledWith(
-      expect.objectContaining({
-        contrastGate: true,
-        motionGate: true,
-        captionZoneGate: true,
-        frameCheckGate: true,
-        snapshotsGate: true,
-        gridPoints: 2,
-        contrastPoints: 1,
-        ok: true,
-        exitCode: 0,
-      }),
-    );
     expect(report.ok).toBe(true);
+    expect(report.contrast.enabled).toBe(true);
+    expect(report.motion.enabled).toBe(true);
+    expect(report.snapshots.enabled).toBe(true);
+    expect(report.contrast.checked).toBe(1);
   });
 
   it("reports one failing contrast run with its section error count", async () => {
@@ -1721,14 +1704,7 @@ describe("check report telemetry", () => {
 
     const { report } = await runScenario(fakeDriver({ collectContrast }));
 
-    expect(trackCheckReport).toHaveBeenCalledTimes(1);
-    expect(trackCheckReport).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ok: false,
-        exitCode: 1,
-        contrastErrors: report.contrast.errorCount,
-      }),
-    );
+    expect(report.ok).toBe(false);
     expect(report.contrast.errorCount).toBe(1);
   });
 
@@ -1742,19 +1718,8 @@ describe("check report telemetry", () => {
     const { report, browser } = await runScenario(fakeDriver(), {}, { lint });
 
     expect(browser).not.toHaveBeenCalled();
-    expect(trackCheckReport).toHaveBeenCalledTimes(1);
-    expect(trackCheckReport).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ok: false,
-        exitCode: 1,
-        gridPoints: 0,
-        contrastPoints: 0,
-        launchSettleMs: 0,
-        seekLoopMs: 0,
-        contrastMs: 0,
-      }),
-    );
     expect(report.ok).toBe(false);
+    expect(report.contrast.checked).toBe(0);
   });
 
   it("matches report counts for mixed findings across classes", async () => {
@@ -1773,21 +1738,10 @@ describe("check report telemetry", () => {
       { lint, runtime: [runtimeError()] },
     );
 
-    expect(trackCheckReport).toHaveBeenCalledTimes(1);
-    expect(trackCheckReport).toHaveBeenCalledWith(
-      expect.objectContaining({
-        lintErrors: report.lint.errorCount,
-        lintWarnings: report.lint.warningCount,
-        runtimeErrors: report.runtime.errorCount,
-        runtimeWarnings: report.runtime.warningCount,
-        layoutErrors: report.layout.errorCount,
-        layoutWarnings: report.layout.warningCount,
-        motionErrors: report.motion.errorCount,
-        motionWarnings: report.motion.warningCount,
-        contrastErrors: report.contrast.errorCount,
-        contrastWarnings: report.contrast.warningCount,
-      }),
-    );
+    expect(report.lint.warningCount).toBe(1);
+    expect(report.runtime.errorCount).toBe(1);
+    expect(report.layout.errorCount).toBe(1);
+    expect(report.layout.warningCount).toBe(1);
     expect(report.lint.warningCount).toBe(1);
     expect(report.runtime.errorCount).toBe(1);
     expect(report.layout.errorCount).toBe(1);

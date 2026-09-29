@@ -68,7 +68,7 @@ function runResolve(args, opts = {}) {
   return execFileSync(process.execPath, [RESOLVE_CLI, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf8",
-    env: { ...process.env, DO_NOT_TRACK: "1", ...env },
+    env: { ...process.env, ...env },
     ...rest,
   });
 }
@@ -78,7 +78,7 @@ function spawnResolve(args, opts = {}) {
   return spawnSync(process.execPath, [RESOLVE_CLI, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf8",
-    env: { ...process.env, DO_NOT_TRACK: "1", ...env },
+    env: { ...process.env, ...env },
     ...rest,
   });
 }
@@ -88,7 +88,7 @@ function spawnResolveAsync(args, opts = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [RESOLVE_CLI, ...args], {
       cwd: REPO_ROOT,
-      env: { ...process.env, DO_NOT_TRACK: "1", ...env },
+      env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"],
       ...rest,
     });
@@ -1075,150 +1075,6 @@ test("identical grade resolve hits the project cache without re-freezing", () =>
   assert.equal(readManifest(tmp).length, 1);
   cleanup();
 });
-
-// --- telemetry isolation (U7) ---
-
-// Every other test relies on runResolve/spawnResolve's default DO_NOT_TRACK:
-// "1" to keep track() a no-op. That default is fragile on its own (a future
-// call site or test could forget to set it), so telemetry.mjs also exposes a
-// MEDIA_USE_TELEMETRY_HOST override read at the point the POST URL is built.
-// This test proves that seam actually intercepts a real event end to end: a
-// resolve that reaches track("media_use_resolve", ...) with tracking allowed
-// posts to a local HTTP server instead of production, and the server actually
-// receives it (not just "nothing happened because nothing was listening").
-// Spawns a real resolve that hits the manifest for `provider`, intercepts the
-// telemetry POST it makes, and hands back the media_use_resolve event actually
-// sent. Nothing is stubbed: the CLI runs as its own process, telemetry.mjs builds
-// the URL, and a local server reads the payload off the wire.
-async function captureResolveEvent({ provider, type = "bgm", intent }) {
-  const received = [];
-  const server = createServer((req, res) => {
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => {
-      try {
-        received.push(JSON.parse(body));
-      } catch {
-        // ignore malformed body; callers assert on empty `received`
-      }
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end("{}");
-    });
-  });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = server.address().port;
-  const sandboxHome = mkdtempSync(join(tmpdir(), "mu-resolve-telemetry-home-"));
-
-  try {
-    // The record's type must match the --type below, otherwise the manifest
-    // never matches, the cascade calls a live provider, and the run fails for
-    // reasons that have nothing to do with the tier.
-    const record = makeRecord({
-      id: `${type}_tier_001`,
-      type,
-      path: `.media/audio/${type}/${type}_tier_001.wav`,
-      provenance: { prompt: intent, provider },
-    });
-    appendRecord(tmp, record);
-    const filePath = join(tmp, record.path);
-    mkdirSync(join(filePath, ".."), { recursive: true });
-    writeFileSync(filePath, "telemetry seam audio");
-
-    // Override this one invocation's env only: allow tracking (DO_NOT_TRACK
-    // default flipped off), sandbox HOME so anonymousId()/showTelemetryNotice()
-    // never touch the real developer machine, and point the host at the local
-    // server. HEYGEN_CONFIG_DIR is sandboxed too -- runResolve's env is
-    // {...process.env, ...env}, so a developer with that var set to a real
-    // credentials dir would otherwise have heygenAccountDistinctId() read
-    // their real email into this test's local-server payload despite HOME
-    // being sandboxed (HEYGEN_CONFIG_DIR, not HOME, resolves the credentials
-    // path). Every other test in this file keeps its untouched default env.
-    runResolve(["--type", type, "--intent", intent, "--project", tmp, "--json"], {
-      env: {
-        DO_NOT_TRACK: "0",
-        HYPERFRAMES_NO_TELEMETRY: "0",
-        CI: "",
-        NODE_ENV: "test",
-        HOME: sandboxHome,
-        HEYGEN_CONFIG_DIR: join(sandboxHome, ".heygen"),
-        MEDIA_USE_TELEMETRY_HOST: `http://127.0.0.1:${port}`,
-      },
-    });
-
-    // runResolve blocks synchronously (execFileSync) until the child exits, which
-    // pauses this process's own event loop for that whole span -- the child's
-    // request to our local server sits accepted-but-unprocessed in the kernel
-    // backlog until control returns here. Poll briefly to let the event loop
-    // drain it rather than asserting before the server has had a turn to run.
-    for (let i = 0; i < 100 && received.length === 0; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-  } finally {
-    await new Promise((resolve) => server.close(resolve));
-    rmSync(sandboxHome, { recursive: true, force: true });
-  }
-
-  assert.ok(received.length > 0, "expected the local telemetry server to receive a POST");
-  const event = received[0].batch.find((e) => e.event === "media_use_resolve");
-  assert.ok(event, "expected a media_use_resolve event in the intercepted batch");
-  return event;
-}
-
-test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real interception", async () => {
-  setup();
-  try {
-    const event = await captureResolveEvent({ provider: "test", intent: "telemetry seam test" });
-    assert.equal(event.properties.provider, "test");
-    assert.equal(event.properties.type, "bgm");
-    // "test" is not a declared registry provider, so the tier is absent rather
-    // than guessed, the same sparseness rule auth_method follows.
-    assert.equal(
-      "provider_tier" in event.properties && event.properties.provider_tier !== undefined,
-      false,
-      "an undeclared provider must not be assigned a cost tier",
-    );
-  } finally {
-    cleanup();
-  }
-});
-
-// The registry-derived tier has to survive the whole path -- registry lookup,
-// result(), track(), JSON body -- not just a unit call to providerTierFor. Each
-// case names a provider the registry declares at a different tier and asserts the
-// tier that actually reaches the wire.
-for (const [provider, type, expected] of [
-  ["heygen.tts", "voice", "network_paid"],
-  ["heygen.audio.sounds", "bgm", "network_free"],
-  ["bundled.sfx", "sfx", "local"],
-]) {
-  test(`a resolve won by ${provider} sends provider_tier: ${expected}`, async () => {
-    setup();
-    try {
-      const event = await captureResolveEvent({
-        provider,
-        type,
-        intent: `tier seam ${provider}`,
-      });
-      assert.equal(event.properties.provider, provider);
-      assert.equal(
-        event.properties.provider_tier,
-        expected,
-        `${provider} must reach the wire as ${expected}`,
-      );
-      // The tier is derived from the registry and the auth method from the
-      // credential state; they must not become entangled. A non-heygen provider
-      // carries a tier and no auth method, whatever credentials exist locally.
-      if (!provider.startsWith("heygen."))
-        assert.equal(
-          event.properties.auth_method,
-          undefined,
-          "a non-heygen provider must carry a tier without an auth method",
-        );
-    } finally {
-      cleanup();
-    }
-  });
-}
 
 // --- run ---
 

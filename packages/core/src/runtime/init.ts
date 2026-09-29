@@ -4,7 +4,6 @@ import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
 import { revealTimedClipsAfterFirstPass, SKIPPED_CLIP, skipsHiddenImages } from "./timedClipHide";
 import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_UPCOMING_ATTR } from "../studioPreviewMark";
-import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
 import { createGsapAdapter } from "./adapters/gsap";
@@ -132,17 +131,11 @@ import {
  * compositions render fine (the render path only seeks and never pauses), so
  * timeline resolution stays permissive by design; the interactive transport
  * must not crash on the missing method (top recurring studio:unhandled_error:
- * "E.pause is not a function"). One analytics event per page so the
- * composition author can find the partial timeline.
+ * "E.pause is not a function").
  */
-let warnedTimelineMissingPause = false;
 function pauseTimelineIfPossible(tl: RuntimeTimelineLike | null | undefined): void {
   if (!tl) return;
   if (typeof tl.pause !== "function") {
-    if (!warnedTimelineMissingPause) {
-      warnedTimelineMissingPause = true;
-      emitAnalyticsEvent("timeline_missing_pause", {});
-    }
     return;
   }
   try {
@@ -274,9 +267,6 @@ export function initSandboxRuntimeModular(): void {
   // the timeline resolver/binder is declared below. Delivery cannot complete
   // until after init has installed the final callback.
   let reconcileTimelineAfterRuntimeData: () => void = () => undefined;
-  // Own the analytics bridge before any best-effort runtime installation so
-  // early failures are observable instead of disappearing before player setup.
-  initRuntimeAnalytics(postRuntimeMessage as (payload: unknown) => void);
   setRuntimeDataErrorReporter((channel, requestId, error) => {
     postRuntimeMessage({
       source: "hf-preview",
@@ -339,16 +329,6 @@ export function initSandboxRuntimeModular(): void {
   const runtimeCleanupCallbacks: Array<() => void> = [];
   const postedDiagnosticKeys = new Set<string>();
   let rootStageDiagnosticRafId: number | null = null;
-  const reportedRuntimeIssues = new Set<string>();
-  const reportRuntimeIssueOnce = (
-    key: string,
-    event: "auto_marker_install_failed" | "custom_ease_install_failed",
-    properties: Record<string, string>,
-  ): void => {
-    if (reportedRuntimeIssues.has(key)) return;
-    reportedRuntimeIssues.add(key);
-    emitAnalyticsEvent(event, properties);
-  };
   if (typeof window.__hfRuntimeTeardown === "function") {
     try {
       window.__hfRuntimeTeardown();
@@ -386,31 +366,16 @@ export function initSandboxRuntimeModular(): void {
       g.registerPlugin({ name: "_auto", init: () => false });
       w.__hfAutoNoopRegistered = true;
     } catch (err) {
-      reportRuntimeIssueOnce("auto_marker_install_failed", "auto_marker_install_failed", {
-        reason: "threw",
-      });
       swallow("runtime.autoMarker.install", err);
       // a stray warning is preferable to a broken runtime
     }
   };
   const ensureStudioCustomEase = (): void => {
     const g = window.gsap;
-    if (!g) {
-      reportRuntimeIssueOnce("custom_ease_missing_gsap", "custom_ease_install_failed", {
-        reason: "missing_gsap",
-      });
-      return;
-    }
+    if (!g) return;
     try {
-      if (!installStudioCustomEase(g)) {
-        reportRuntimeIssueOnce("custom_ease_no_parse_ease", "custom_ease_install_failed", {
-          reason: "no_parseEase",
-        });
-      }
+      installStudioCustomEase(g);
     } catch (err) {
-      reportRuntimeIssueOnce("custom_ease_install_threw", "custom_ease_install_failed", {
-        reason: "threw",
-      });
       swallow("runtime.customEase.install", err);
       // falling back to GSAP's default ease is preferable to a broken runtime
     }
@@ -1033,7 +998,7 @@ export function initSandboxRuntimeModular(): void {
     return contentDerivedCache.result;
   };
 
-  /** Carries how a length that no timeline supplied was found, for render telemetry. */
+  /** Carries how a length that no timeline supplied was found, for the render path. */
   const publishDerivedDuration = (result: ReturnType<typeof resolveCompositionDuration>) => {
     window.__hf = window.__hf || {};
     window.__hf.durationSource = {
@@ -1792,9 +1757,6 @@ export function initSandboxRuntimeModular(): void {
         const resolved = g.parseEase(ease);
         if (typeof resolved === "function") inner._ease = resolved;
       } catch (err) {
-        emitAnalyticsEvent("keyframe_ease_repair_failed", {
-          ease: typeof ease === "string" ? ease : String(ease),
-        });
         swallow("runtime.keyframeEase.repair", err);
       }
     }
@@ -3657,11 +3619,6 @@ export function initSandboxRuntimeModular(): void {
   window.__player = createPlayerApiCompat(player);
   window.__playerReady = true;
 
-  emitAnalyticsEvent("composition_loaded", {
-    duration: player.getDuration(),
-    compositionId: findRootCompositionElement()?.getAttribute("data-composition-id") ?? null,
-  });
-
   state.deterministicAdapters = [
     createWaapiAdapter(),
     createCssAdapter({
@@ -4578,11 +4535,9 @@ export function initSandboxRuntimeModular(): void {
   state.controlBridgeHandler = installRuntimeControlBridge({
     onPlay: () => {
       player.play();
-      emitAnalyticsEvent("composition_played", { time: player.getTime() });
     },
     onPause: () => {
       player.pause();
-      emitAnalyticsEvent("composition_paused", { time: player.getTime() });
     },
     onStopMedia: () => {
       webAudio.stopAll();
@@ -4593,7 +4548,6 @@ export function initSandboxRuntimeModular(): void {
     },
     onSeek: (timeSeconds, _seekMode) => {
       player.seek(timeSeconds);
-      emitAnalyticsEvent("composition_seeked", { time: timeSeconds });
     },
     onSetMuted: (muted) => {
       state.bridgeMuted = muted;

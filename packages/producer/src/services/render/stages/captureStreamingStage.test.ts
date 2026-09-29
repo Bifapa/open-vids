@@ -198,7 +198,6 @@ mock.module("@hyperframes/core", () => ({
   CANVAS_DIMENSIONS: {},
   checkOutputResolutionCompatibility: () => ({ ok: true }),
   fpsToNumber: () => 30,
-  redactTelemetryString: (value: string) => value,
 }));
 
 mock.module("../../renderOrchestrator.js", () => ({

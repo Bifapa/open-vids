@@ -28,7 +28,7 @@ import {
   resolveCompositionEntryArg,
   resolveDefaultFpsArg,
 } from "../../utils/renderArgs.js";
-import { normalizeSkillSlug } from "../../telemetry/skill.js";
+import { normalizeSkillSlug } from "../../utils/skillSlug.js";
 import { loadProjectConfig } from "../../utils/projectConfig.js";
 import { type CatalogUsage, summarizeCatalogUsage } from "../../utils/catalogUsage.js";
 
@@ -74,7 +74,6 @@ export interface RenderCommandArgs {
   "hls-segment-seconds"?: string;
   "video-frame-format"?: string;
   workers?: string;
-  docker?: boolean;
   hdr?: boolean;
   sdr?: boolean;
   crf?: string;
@@ -128,7 +127,6 @@ export interface RenderPlan {
   videoFrameFormat: VideoFrameFormat;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic: boolean;
-  outputResolutionRaw?: string;
   workers?: number;
   protocolTimeout?: number;
   playerReadyTimeout?: number;
@@ -138,7 +136,6 @@ export interface RenderPlan {
   batchFailFast: boolean;
   batchOutputTemplate: string;
   outputPath: string;
-  useDocker: boolean;
   useGpu: boolean;
   browserGpuMode: BrowserGpuMode;
   quiet: boolean;
@@ -259,7 +256,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
       ? args.skill
       : undefined;
   // Same flag-then-project-config resolution as authoringSkill above, named
-  // for telemetry (which attribution actually won, not just its value).
+  // for local attribution (which attribution actually won, not just its value).
   const authoringSkillSource = flagSkill
     ? "flag"
     : projectConfigSkill
@@ -448,17 +445,8 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     ? resolve(args.output)
     : join(rendersDir, `${project.name}_${timestamp}${ext}`);
 
-  const useDocker = args.docker ?? false;
   const useGpu = args.gpu ?? false;
-  const browserGpuMode = resolveBrowserGpuForCli(useDocker, args["browser-gpu"]);
-  if (useDocker && args["browser-gpu"] === true) {
-    errorBox(
-      "Browser GPU is local-only",
-      "--browser-gpu uses the host Chrome GPU backend. Docker mode keeps browser rendering deterministic and does not expose a cross-platform Chrome GPU backend.",
-      "Run without --docker, or use --gpu for Docker GPU encoding where your Docker host supports GPU passthrough.",
-    );
-    failUsage();
-  }
+  const browserGpuMode = resolveBrowserGpuForCli(args["browser-gpu"]);
 
   const videoBitrate = args["video-bitrate"]?.trim();
   if (args.crf != null && videoBitrate) {
@@ -526,7 +514,6 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     videoFrameFormat: videoFrameFormatRaw,
     outputResolution,
     outputResolutionAspectAgnostic,
-    outputResolutionRaw: args.resolution,
     workers,
     protocolTimeout,
     playerReadyTimeout,
@@ -536,7 +523,6 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     batchFailFast: args["batch-fail-fast"] ?? false,
     batchOutputTemplate,
     outputPath,
-    useDocker,
     useGpu,
     browserGpuMode,
     quiet,
@@ -571,14 +557,12 @@ export function renderOutputDirectory(plan: RenderPlan): string {
   return dirname(plan.outputPath);
 }
 
-/** Resolve browser GPU mode from Docker, CLI, env, then the auto default. */
+/** Resolve browser GPU mode from CLI, env, then the auto default. */
 // Re-exported by render.ts to preserve its tested public seam.
 export function resolveBrowserGpuForCli(
-  useDocker: boolean,
   browserGpuArg: boolean | undefined,
   envMode = process.env.PRODUCER_BROWSER_GPU_MODE,
 ): BrowserGpuMode {
-  if (useDocker) return "software";
   if (browserGpuArg === true) return "hardware";
   if (browserGpuArg === false) return "software";
   if (envMode === "hardware" || envMode === "software" || envMode === "auto") return envMode;

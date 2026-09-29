@@ -33,7 +33,6 @@ These paths are configurable in `hyperframes.json`:
 
 ```json
 {
-  "registry": "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry",
   "paths": {
     "blocks": "compositions",
     "components": "compositions/components",
@@ -41,6 +40,10 @@ These paths are configurable in `hyperframes.json`:
   }
 }
 ```
+
+The `registry` field is not needed: the CLI reads the bundled `registry/` tree
+offline. A custom `registryDir` directory (not a URL) lets a project pin or
+extend the catalog.
 
 See [install-locations.md](./references/install-locations.md) for full details.
 
@@ -126,15 +129,15 @@ describe the gap in chat: the query you ran, the move you needed, and which tier
 
 This is the whole demand signal for the catalog. Skipping it means the gap you hit gets guessed at from install counts instead, which cannot see a move nobody could install.
 
-If the CLI cannot reach the configured registry, inspect the raw manifest as a fallback:
+If the CLI cannot find the bundled registry, read the local manifest directly:
 
 ```bash
-curl -s https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/registry.json
+cat registry/registry.json | head -c 2000
 ```
 
-A registry the CLI cannot reach does **not** empty the catalog for **discovery**: a previously fetched manifest keeps serving past its 24h refresh window whenever revalidation fails, so `catalog` and `catalog --query` still list and rank against the last copy on disk.
-
-**`add` still needs the network, even for an item you installed yesterday.** Only manifests are cached; the item's actual files are fetched on every install. So offline you can search, and you can see what an item is, but installing it fails at the file fetch. Do not promise a user an offline install.
+The bundled `registry/` tree is the source of truth — no network, no cache.
+`catalog` and `catalog --query` list and rank from local files, and `add`
+installs from local files too.
 
 Each item's `registry-item.json` contains: name, type, title, description, tags, dimensions (blocks only), duration (blocks only), and file list.
 

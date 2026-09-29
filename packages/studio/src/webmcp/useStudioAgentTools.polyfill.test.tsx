@@ -26,8 +26,6 @@ import { mintElementHandle } from "./handles";
 import { useStudioAgentTools, type StudioAgentToolsDeps } from "./useStudioAgentTools";
 import { previewDoc, selectionFor, studioAgentToolsDeps } from "./webmcpTestUtils";
 
-vi.mock("../telemetry/client", () => ({ trackEvent: vi.fn() }));
-
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 /** What a browser's own `registerTool` receives from the bridge. */

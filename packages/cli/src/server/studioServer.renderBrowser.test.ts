@@ -27,11 +27,6 @@ vi.mock("@hyperframes/producer", () => ({
   executeRenderJob: mocks.executeRenderJob,
 }));
 
-vi.mock("./studioRenderTelemetry.js", () => ({
-  emitStudioRenderComplete: vi.fn(),
-  emitStudioRenderError: vi.fn(),
-}));
-
 const dirs: string[] = [];
 let server: StudioServer | undefined;
 

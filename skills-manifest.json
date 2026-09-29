@@ -1,5 +1,4 @@
 {
-  "source": "heygen-com/hyperframes",
   "skills": {
     "embedded-captions": {
       "hash": "ecb89b7f8273bf8c",
@@ -10,7 +9,7 @@
       "files": 27
     },
     "figma": {
-      "hash": "642cce1b5e211182",
+      "hash": "c049cd2d8d9deb3c",
       "files": 2
     },
     "general-video": {
@@ -18,7 +17,7 @@
       "files": 5
     },
     "hyperframes": {
-      "hash": "9e77cddfb81e679e",
+      "hash": "31e03dad6e83e652",
       "files": 28
     },
     "hyperframes-animation": {
@@ -30,7 +29,7 @@
       "files": 7
     },
     "hyperframes-cli": {
-      "hash": "fa8e0b1d68d5c5f2",
+      "hash": "30a2a49dca626196",
       "files": 8
     },
     "hyperframes-core": {
@@ -46,7 +45,7 @@
       "files": 3
     },
     "hyperframes-registry": {
-      "hash": "fa232d340c3ffb05",
+      "hash": "49844a2d6ff006fa",
       "files": 12
     },
     "hyperframes-studio": {
@@ -54,8 +53,8 @@
       "files": 1
     },
     "media-use": {
-      "hash": "551be4410a75aa75",
-      "files": 103
+      "hash": "ba702e63fafacda4",
+      "files": 101
     },
     "motion-graphics": {
       "hash": "f97cfeb9362cd7ef",

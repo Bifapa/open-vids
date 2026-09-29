@@ -1,6 +1,5 @@
 import { memo } from "react";
 import { Tooltip } from "../../components/ui";
-import { trackStudioEvent } from "../../utils/studioTelemetry";
 
 interface VolumeControlProps {
   audioMuted: boolean;
@@ -85,7 +84,6 @@ export const VolumeControl = memo(function VolumeControl({
         <button
           type="button"
           onClick={() => {
-            trackStudioEvent("playback", { action: "mute_toggle", muted: !silent });
             if (silent && audioVolume === 0) setAudioVolume(1);
             setAudioMuted(!silent);
           }}

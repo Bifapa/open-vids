@@ -20,8 +20,6 @@ Created automatically by `hyperframes init`. If it doesn't exist when you run `a
 
 ```json
 {
-  "$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
-  "registry": "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry",
   "paths": {
     "blocks": "compositions",
     "components": "compositions/components",
@@ -29,6 +27,9 @@ Created automatically by `hyperframes init`. If it doesn't exist when you run `a
   }
 }
 ```
+
+The CLI reads the bundled `registry/` tree offline. A custom `registryDir`
+directory (not a URL) lets a project pin or extend the catalog.
 
 ## Custom layouts
 

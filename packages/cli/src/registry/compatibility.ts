@@ -39,7 +39,7 @@ export function checkRegistryItemCompatibility(
     error:
       `Registry item "${item.name}" requires hyperframes >= ${minCliVersion} ` +
       `(current: ${currentCliVersion}). Run \`npx hyperframes@latest add ${item.name}\` ` +
-      "or upgrade your installed hyperframes CLI.",
+      "or update your installed OpenVids sidecar/CLI build.",
   };
 }
 

@@ -1,5 +1,4 @@
 import { useState, useCallback, memo } from "react";
-import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 
@@ -53,7 +52,6 @@ export const SpeedMenu = memo(function SpeedMenu({
                 role="menuitemradio"
                 aria-checked={isCurrent}
                 onClick={() => {
-                  trackStudioEvent("playback", { action: "speed_change", rate });
                   setPlaybackRate(rate);
                   setShowSpeedMenu(false);
                 }}

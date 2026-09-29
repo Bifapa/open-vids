@@ -154,7 +154,7 @@ Constraints:
 
 ## Documentation
 
-Full documentation: [hyperframes.heygen.com/packages/producer](https://hyperframes.heygen.com/packages/producer)
+Full documentation: see `packages/producer` in this repo (no hosted docs site).
 
 ## Related packages
 

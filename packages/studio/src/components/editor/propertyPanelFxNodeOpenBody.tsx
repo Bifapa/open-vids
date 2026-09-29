@@ -19,7 +19,6 @@ import type {
   HfAudioFxParamValues,
 } from "@hyperframes/core/audio-fx";
 import type { EFFECT_COPY } from "@hyperframes/core/audio-fx-copy";
-import { trackProfileCommitted } from "./audioFxTelemetry.js";
 import { FxParamRow } from "./propertyPanelFxControls.js";
 import { FxBandRuler } from "./propertyPanelFxBandRuler.js";
 import { FxNodeParams, type FxNodeControlHandlers } from "./propertyPanelFxNodeParams.js";
@@ -41,7 +40,6 @@ function FxNodeDerivedKnob({
   index,
   onPreview,
   onUpdate,
-  trackKind,
 }: {
   node: HfAudioFxNode;
   derived: HfAudioFxParam | null;
@@ -52,7 +50,6 @@ function FxNodeDerivedKnob({
   index: number;
   onPreview(index: number, params: HfAudioFxParamValues): void;
   onUpdate(index: number, patch: Partial<HfAudioFxNode>): void;
-  trackKind?: string;
 }) {
   if (!derived) return null;
   return (
@@ -64,7 +61,6 @@ function FxNodeDerivedKnob({
           disabled={Boolean(disabled) || bypassed}
           onChange={(_k, v) => onPreview(index, applyAudioFxProfile(node.type, Number(v), params))}
           onCommit={(_k, v) => {
-            trackProfileCommitted(node.type, Number(v), { trackKind });
             onUpdate(index, { params: applyAudioFxProfile(node.type, Number(v), params) });
           }}
         />
@@ -98,7 +94,6 @@ function FxNodePrimaryKnob({
   onPreview,
   onAutomateParam,
   onRemoveParamAutomation,
-  trackKind,
 }: FxNodeControlHandlers & {
   node: HfAudioFxNode;
   onlyPrimary: HfAudioFxDef;
@@ -123,7 +118,6 @@ function FxNodePrimaryKnob({
         onPreview={onPreview}
         onAutomateParam={onAutomateParam}
         onRemoveParamAutomation={onRemoveParamAutomation}
-        trackKind={trackKind}
       />
       {/* What the two ends of that knob sound like. A number tells an author
           where the control is; this tells them which way to move it, which is
@@ -172,7 +166,6 @@ export function FxNodeOpenBody({
   onPreview,
   onAutomateParam,
   onRemoveParamAutomation,
-  trackKind,
 }: FxNodeControlHandlers & {
   node: HfAudioFxNode;
   registryDef: HfAudioFxDef;
@@ -209,7 +202,6 @@ export function FxNodeOpenBody({
           index={index}
           onPreview={onPreview}
           onUpdate={onUpdate}
-          trackKind={trackKind}
         />
       ) : null}
       {!details ? (
@@ -228,7 +220,6 @@ export function FxNodeOpenBody({
           onPreview={onPreview}
           onAutomateParam={onAutomateParam}
           onRemoveParamAutomation={onRemoveParamAutomation}
-          trackKind={trackKind}
         />
       ) : null}
       {/* The DSP name lives on the disclosure, so it is read at the moment
@@ -260,7 +251,6 @@ export function FxNodeOpenBody({
           onPreview={onPreview}
           onAutomateParam={onAutomateParam}
           onRemoveParamAutomation={onRemoveParamAutomation}
-          trackKind={trackKind}
         />
       ) : null}
     </>

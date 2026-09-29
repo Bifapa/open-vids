@@ -119,7 +119,7 @@ export interface CaptureSession {
   lastFrameBuffer?: Buffer;
   /** Absolute index represented by lastFrameBuffer; reuse requires direct adjacency. */
   lastFrameAbsoluteIndex?: number;
-  /** Count of frames served from a reused buffer (dedup telemetry). */
+  /** Count of frames served from a reused buffer (dedup diagnostics). */
   staticDedupCount?: number;
   /** Live Chrome memory sampler; started in initializeSession, stopped in closeCaptureSession. */
   chromeMemory?: ChromeMemorySampler;
@@ -175,10 +175,10 @@ export interface CaptureSession {
   pendingTimelineIds?: string[];
   /** Structured readiness warnings surfaced to the producer's render policy. */
   warnings: CaptureWarning[];
-  initTelemetry?: {
+  initDiagnostics?: {
     initDurationMs: number;
     tweenCount: number;
-    /** Live DOM element count at end of init; undefined when the measurement itself failed. Observational — see collectSessionInitTelemetry. */
+    /** Live DOM element count at end of init; undefined when the measurement itself failed. Observational — see collectSessionInitDiagnostics. */
     elementCount?: number;
   };
   capturePerf: {
@@ -211,7 +211,7 @@ export interface CaptureSession {
   /**
    * Low-cardinality GPU bucket (`<backend>/<vendor>`, e.g. `d3d11/nvidia`)
    * derived from the WebGL renderer at DE session init. Surfaces in
-   * CapturePerfSummary → render telemetry so backend-specific drawElement
+   * CapturePerfSummary → render diagnostics so backend-specific drawElement
    * damage (Metal vs D3D11 vs GL) clusters attributably. The raw
    * driver-supplied string is deliberately NOT retained — see
    * classifyGpuRenderer.
@@ -254,7 +254,7 @@ export interface CaptureSession {
    * DrawElementVerificationError and the orchestrator re-renders via the
    * screenshot path. */
   deVerifyFrames?: Map<number, Buffer>;
-  /** Low-cardinality init-gate reason when drawElement routed to baseline (telemetry). */
+  /** Low-cardinality init-gate reason when drawElement routed to baseline (diagnostics). */
   deGateReason?: string;
   /**
    * Full trigger string when drawElement gated off to the screenshot fallback
@@ -267,9 +267,9 @@ export interface CaptureSession {
    * `packages/producer/src/services/render/fallbackCaptureProfile.ts`.
    */
   deFallbackTrigger?: string;
-  /** Wall-clock ms spent capturing self-verification ground truth at init (telemetry). */
+  /** Wall-clock ms spent capturing self-verification ground truth at init (diagnostics). */
   deVerifyInitMs?: number;
-  /** Count of paint-record/canvas failures requiring fresh screenshot capture (telemetry). */
+  /** Count of paint-record/canvas failures requiring fresh screenshot capture (diagnostics). */
   deNcprFallbacks?: number;
   /**
    * Count of drawElement frame captures that blew `HF_DE_FRAME_TIMEOUT_MS`
@@ -298,7 +298,7 @@ export interface CaptureSession {
  */
 /**
  * Structured detail carried alongside the human-readable message — lets
- * telemetry report the actual failure kind / failing dB / frame index
+ * diagnostics report the actual failure kind / failing dB / frame index
  * instead of the orchestrator having to regex them back out of formatted
  * text (a message-text dependency is exactly the failure mode this shape
  * exists to close — review finding: message wording, translation, or a
@@ -471,7 +471,7 @@ function appendBrowserDiagnostic(session: CaptureSession, text: string): void {
   }
 }
 
-async function collectSessionInitTelemetry(
+async function collectSessionInitDiagnostics(
   page: Page,
   initStart: number,
 ): Promise<{ initDurationMs: number; tweenCount: number; elementCount?: number }> {
@@ -534,18 +534,18 @@ async function collectSessionInitTelemetry(
   return { initDurationMs, tweenCount, elementCount };
 }
 
-async function recordSessionInitTelemetry(
+async function recordSessionInitDiagnostics(
   session: CaptureSession,
   initStart: number,
 ): Promise<void> {
-  const telemetry = await collectSessionInitTelemetry(session.page, initStart);
-  session.initTelemetry = telemetry;
+  const diagnostics = await collectSessionInitDiagnostics(session.page, initStart);
+  session.initDiagnostics = diagnostics;
   appendBrowserDiagnostic(
     session,
-    `[FrameCapture:INIT] complete initDurationMs=${telemetry.initDurationMs} tweenCount=${telemetry.tweenCount}` +
+    `[FrameCapture:INIT] complete initDurationMs=${diagnostics.initDurationMs} tweenCount=${diagnostics.tweenCount}` +
       // Omitted rather than zeroed when unmeasured, so the parser reports
       // absent instead of inventing an empty DOM.
-      (telemetry.elementCount === undefined ? "" : ` elementCount=${telemetry.elementCount}`),
+      (diagnostics.elementCount === undefined ? "" : ` elementCount=${diagnostics.elementCount}`),
   );
 }
 
@@ -2378,7 +2378,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     );
     await recordLiveMapWarning(session, page);
 
-    await recordSessionInitTelemetry(session, initStart);
+    await recordSessionInitDiagnostics(session, initStart);
 
     // Ground-truth-check the upstream captureBeyondViewport request (see
     // pageContentExceedsCaptureHeight) now that the page is fully settled —
@@ -2545,7 +2545,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   );
   await recordLiveMapWarning(session, page);
 
-  await recordSessionInitTelemetry(session, initStart);
+  await recordSessionInitDiagnostics(session, initStart);
 
   // Stop warmup, then drain the loop in BOTH modes before any further
   // BeginFrame on this session (drawElement init, the render-frame commit tick
@@ -2876,7 +2876,7 @@ export async function computeStaticFrameSet(
     // corruption can leak into a LATER, unrelated static run's real capture
     // (the verifier's mismatch check only catches drift within the run being
     // checked, not contamination from a run checked afterward). No reliable
-    // way to tell a DOM-mutating call() from a harmless one (analytics ping,
+    // way to tell a DOM-mutating call() from a harmless one (tracking ping,
     // class toggle with no visual effect) without executing it, so disqualify
     // the whole comp on ANY call() rather than risk shipping wrong pixels.
     let hasTimelineCall = false;
@@ -3423,7 +3423,7 @@ async function armStaticDedup(
   // calls this again unconditionally afterwards. Once staticFrames is
   // populated, re-running would overwrite the armed state with
   // skipReason="capture_mode" (captureMode is "drawelement" by then) —
-  // contradictory telemetry — and re-run the verification seeks. No-op instead.
+  // contradictory diagnostics — and re-run the verification seeks. No-op instead.
   if (session.staticFrames || session.staticDedupSkipReason) return;
   // Default ON for everyone; opt out via HF_STATIC_DEDUP in {false,0,off} (resolved into
   // EngineConfig.staticFrameDedup by resolveConfig). Verification is the safety net at scale.
@@ -4091,7 +4091,7 @@ async function captureFrameCore(
   // `time` is always the absolute composition time for the frame. Each session captures
   // its range in ascending order, so lastFrameBuffer is the correct in-range anchor (and
   // since a static run is verified identical, reusing the run's first in-range capture
-  // equals reusing the global anchor). Telemetry: count reuses separately; do NOT bump
+  // equals reusing the global anchor). Diagnostics: count reuses separately; do NOT bump
   // capturePerf.frames (that would dilute the per-frame timing averages).
   // Use the SAME floor+epsilon idiom as quantizeTimeToFrame so the dedup lookup agrees
   // with the frame the seek actually lands on, even if `time` ever isn't exactly i/fps.
@@ -4573,7 +4573,7 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
     // point up to `intervalMs` earlier. Best effort; the page may be gone.
     await session.chromeMemory.sampleOnce();
   }
-  // Realized static-dedup telemetry: how much the cache actually helped this
+  // Realized static-dedup diagnostics: how much the cache actually helped this
   // render (vs the prediction logged at arm time). Both capture paths
   // (sequential orchestrator + parallel workers) close their session here, so
   // this is the one uniform emit point. Zero the count afterward so the
@@ -4829,7 +4829,7 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
   const frames = Math.max(1, session.capturePerf.frames);
   const ncprFallbacks = session.deNcprFallbacks ?? 0;
   // These now reject capture and require a fresh screenshot page. Keep the
-  // counter for failed-session telemetry; it no longer represents usable
+  // counter for failed-session diagnostics; it no longer represents usable
   // per-frame screenshots from the injected canvas page.
   if (frames > 0 && ncprFallbacks / frames > DE_FALLBACK_RATIO_WARN_THRESHOLD) {
     const pct = Math.round((ncprFallbacks / frames) * 100);
@@ -4848,9 +4848,9 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     p95TotalMs: percentileOf(session.capturePerf.frameMs, 0.95),
     p99TotalMs: percentileOf(session.capturePerf.frameMs, 0.99),
     subTimelineWaitOutcome: session.subTimelineWaitOutcome,
-    initDurationMs: session.initTelemetry?.initDurationMs,
-    initTweenCount: session.initTelemetry?.tweenCount,
-    initElementCount: session.initTelemetry?.elementCount,
+    initDurationMs: session.initDiagnostics?.initDurationMs,
+    initTweenCount: session.initDiagnostics?.tweenCount,
+    initElementCount: session.initDiagnostics?.elementCount,
     warnings: cloneCaptureWarnings(session.warnings),
     staticDedupReused: session.staticDedupCount ?? 0,
     staticDedupEnabled: session.staticDedupEnabled ?? false,

@@ -7,7 +7,7 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { formatLayoutIssue } from "../utils/layoutAudit.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 import {
   DEFAULT_CHECK_OPTIONS,
   checkExitCode,

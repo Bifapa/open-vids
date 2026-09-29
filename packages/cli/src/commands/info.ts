@@ -12,7 +12,7 @@ import { c } from "../ui/colors.js";
 import { formatBytes, label } from "../ui/format.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 
 /** Derive orientation label from actual pixel dimensions. */
 export function orientation(width: number, height: number): "landscape" | "portrait" | "square" {

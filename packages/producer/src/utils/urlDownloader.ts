@@ -7,6 +7,6 @@ export {
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,
-  writeUrlDownloadTelemetry,
-  type UrlDownloadTelemetry,
+  writeUrlDownloadDiagnostics,
+  type UrlDownloadDiagnostics,
 } from "@hyperframes/engine";

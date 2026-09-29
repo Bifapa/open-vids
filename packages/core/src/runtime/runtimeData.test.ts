@@ -24,7 +24,7 @@ describe("runtime data registry", () => {
     const other = vi.fn();
     registerRuntimeDataHandler("captions", oldHandler);
     registerRuntimeDataHandler("captions", newHandler);
-    registerRuntimeDataHandler("telemetry", other);
+    registerRuntimeDataHandler("diagnostics", other);
     setRuntimeData("captions", { words: ["latest"] });
     expect(oldHandler).not.toHaveBeenCalled();
     expect(newHandler).toHaveBeenCalledOnce();

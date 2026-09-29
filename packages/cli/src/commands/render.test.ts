@@ -18,42 +18,19 @@ const producerState = vi.hoisted(() => ({
   ): Promise<void> => undefined,
 }));
 
-// Defaults to "trial already fired" so the pre-existing renderLocal tests
-// below (which predate the DE-parallel-router trial and don't expect
-// HF_DE_PARALLEL_ROUTER to be touched) keep their exact prior behavior.
-//
-// `disk` is the authoritative "file"; `cache` models config.ts's real
-// process-lifetime cachedConfig. Modeling them SEPARATELY matters: a mock
-// where readConfig/readConfigFresh both read one live object hides exactly
-// the class of bug where production code reads the stale cache when it
-// needed a fresh disk read (review finding). `failWrites` simulates the
-// real writeConfig's silent fs-error swallowing (unwritable ~/.hyperframes):
-// the next N writes are recorded but never reach `disk`.
-const configState = vi.hoisted(
+// Defaults to "breaker already tripped" so the pre-existing renderLocal tests
+// below keep their exact prior behavior.
+const breakerState = vi.hoisted(
   (): {
-    disk: Record<string, unknown>;
-    cache: Record<string, unknown> | null;
-    writeConfigCalls: Array<Record<string, unknown>>;
-    failWrites: number;
-    /** Config write lands but the install-state mirror does not. */
-    failMirrors: number;
+    tripped: boolean;
+    tripCalls: number;
+    failTrips: number;
   } => ({
-    disk: { telemetryEnabled: true, deParallelRouterTrialFired: true },
-    cache: null,
-    writeConfigCalls: [],
-    failWrites: 0,
-    failMirrors: 0,
+    tripped: true,
+    tripCalls: 0,
+    failTrips: 0,
   }),
 );
-
-const trackingState = vi.hoisted(() => ({
-  // maybeEnableDeParallelRouterTrial gates on the real shouldTrack(), which
-  // (via isDevMode()) always returns false when this file itself runs as
-  // `.ts` source under vitest — mocked here so the CLI-trial tests can
-  // control it directly instead of inheriting that environment quirk.
-  shouldTrack: true,
-  renderObservations: [] as Array<Record<string, unknown>>,
-}));
 
 const preflightState = vi.hoisted(() => ({
   onRun: undefined as (() => void) | undefined,
@@ -123,66 +100,16 @@ vi.mock("../utils/producer.js", () => ({
   })),
 }));
 
-vi.mock("../telemetry/config.js", () => ({
-  readConfig: vi.fn(() => {
-    if (!configState.cache) configState.cache = { ...configState.disk };
-    return { ...configState.cache };
-  }),
-  readConfigFresh: vi.fn(() => {
-    configState.cache = { ...configState.disk };
-    return { ...configState.disk };
-  }),
-  recordRecentRender: vi.fn((id: string, ok: boolean) => {
-    // Mirrors the real ring update (readConfigFresh → append, cap 5 → write)
-    // against the mock's disk state, so a render's recent-renders write is
-    // modeled like every other config mutation here. Fixed timestamp keeps it
-    // deterministic (tests never assert on `at`).
-    const disk = configState.disk as Record<string, unknown>;
-    const ring = [
-      ...((disk.recentRenders as unknown[]) ?? []),
-      { id, at: "2026-01-01T00:00:00Z", ok },
-    ];
-    const next = { ...disk, recentRenders: ring.slice(-5) };
-    configState.disk = next;
-    configState.cache = { ...next };
-  }),
-  writeConfig: vi.fn((config: Record<string, unknown>) => {
-    configState.writeConfigCalls.push({ ...config });
-    if (configState.failWrites > 0) {
-      configState.failWrites--;
-      return false; // swallowed silently, like the real writeConfig's catch {}
+vi.mock("../utils/parallelRouterBreaker.js", () => ({
+  isParallelRouterBreakerTripped: vi.fn(() => breakerState.tripped),
+  tripParallelRouterBreaker: vi.fn(() => {
+    breakerState.tripCalls += 1;
+    if (breakerState.failTrips > 0) {
+      breakerState.failTrips -= 1;
+      return false;
     }
-    configState.disk = { ...config };
-    configState.cache = { ...config };
+    breakerState.tripped = true;
     return true;
-  }),
-  // The breaker's safety path uses this rather than writeConfig, so it can
-  // see a mirror failure instead of having it collapsed into `true`.
-  writeConfigWithResult: vi.fn((config: Record<string, unknown>) => {
-    configState.writeConfigCalls.push({ ...config });
-    if (configState.failWrites > 0) {
-      configState.failWrites--;
-      return { ok: false, error: "mock write failure" };
-    }
-    configState.disk = { ...config };
-    configState.cache = { ...config };
-    if (configState.failMirrors > 0) {
-      configState.failMirrors--;
-      return { ok: true, mirrored: false };
-    }
-    return { ok: true };
-  }),
-}));
-
-vi.mock("../telemetry/client.js", () => ({
-  shouldTrack: vi.fn(() => trackingState.shouldTrack),
-}));
-
-vi.mock("../telemetry/events.js", () => ({
-  trackRenderComplete: vi.fn(),
-  trackRenderError: vi.fn(),
-  trackRenderObservation: vi.fn((props: Record<string, unknown>) => {
-    trackingState.renderObservations.push(props);
   }),
 }));
 
@@ -424,13 +351,9 @@ describe("renderLocal browser GPU config", () => {
     producerState.loggerLevels = [];
     producerState.executeImpl = async () => undefined;
     preflightState.onRun = undefined;
-    configState.disk = { telemetryEnabled: true, deParallelRouterTrialFired: true };
-    configState.cache = null;
-    configState.failWrites = 0;
-    configState.failMirrors = 0;
-    configState.writeConfigCalls = [];
-    trackingState.shouldTrack = true;
-    trackingState.renderObservations = [];
+    breakerState.tripped = true;
+    breakerState.tripCalls = 0;
+    breakerState.failTrips = 0;
     ffmpegEncoderState.mode = "software";
     ffmpegEncoderState.error = null;
     ffmpegEncoderState.encoders = null;
@@ -633,58 +556,6 @@ describe("renderLocal browser GPU config", () => {
     });
   }, 15_000);
 
-  it("forwards render stage start and end lifecycle events to telemetry", async () => {
-    producerState.executeImpl = async (job) => {
-      const logger = (job.config as { logger: { info: (message: string, meta: object) => void } })
-        .logger;
-      logger.info("[Render:trace]", {
-        renderJobId: "render-lifecycle",
-        phase: "capture_streaming",
-        status: "start",
-        elapsedMs: 100,
-        workerCount: 1,
-        captureMode: "screenshot",
-        captureOperation: "captureScreenshot",
-        framesCompleted: 12,
-        totalFrames: 900,
-      });
-      logger.info("[Render:trace]", {
-        renderJobId: "render-lifecycle",
-        phase: "capture_streaming",
-        status: "end",
-        elapsedMs: 250,
-        durationMs: 150,
-      });
-    };
-
-    await renderLocal("/tmp/project", "/tmp/out.mp4", {
-      fps: { num: 30, den: 1 },
-      quality: "standard",
-      format: "mp4",
-      gpu: false,
-      browserGpuMode: "software",
-      hdrMode: "auto",
-      quiet: true,
-    });
-
-    expect(trackingState.renderObservations).toEqual([
-      expect.objectContaining({
-        renderJobId: "render-lifecycle",
-        phase: "capture_streaming",
-        status: "start",
-        captureOperation: "captureScreenshot",
-        framesCompleted: 12,
-        totalFrames: 900,
-      }),
-      expect.objectContaining({
-        renderJobId: "render-lifecycle",
-        phase: "capture_streaming",
-        status: "end",
-        durationMs: 150,
-      }),
-    ]);
-  });
-
   it("forwards browserGpuMode='auto' into producer config (probe-then-choose)", async () => {
     await renderLocal("/tmp/project", "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -886,19 +757,16 @@ describe("renderLocal browser GPU config", () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("encoder probe timed out"));
   });
 
-  it("resolves browser GPU from CLI flags, Docker mode, and env fallback", () => {
+  it("resolves browser GPU from CLI flags and env fallback", () => {
     // Default (no flag, no env): auto — engine probes and chooses.
-    expect(resolveBrowserGpuForCli(false, undefined, undefined)).toBe("auto");
+    expect(resolveBrowserGpuForCli(undefined, undefined)).toBe("auto");
     // Env override
-    expect(resolveBrowserGpuForCli(false, undefined, "hardware")).toBe("hardware");
-    expect(resolveBrowserGpuForCli(false, undefined, "software")).toBe("software");
-    expect(resolveBrowserGpuForCli(false, undefined, "auto")).toBe("auto");
+    expect(resolveBrowserGpuForCli(undefined, "hardware")).toBe("hardware");
+    expect(resolveBrowserGpuForCli(undefined, "software")).toBe("software");
+    expect(resolveBrowserGpuForCli(undefined, "auto")).toBe("auto");
     // Explicit CLI flag wins over env
-    expect(resolveBrowserGpuForCli(false, true, "software")).toBe("hardware");
-    expect(resolveBrowserGpuForCli(false, false, "hardware")).toBe("software");
-    // Docker forces software regardless of flags/env
-    expect(resolveBrowserGpuForCli(true, undefined, "hardware")).toBe("software");
-    expect(resolveBrowserGpuForCli(true, undefined, "auto")).toBe("software");
+    expect(resolveBrowserGpuForCli(true, "software")).toBe("hardware");
+    expect(resolveBrowserGpuForCli(false, "hardware")).toBe("software");
   });
 
   it("forwards parsed --variables payload to createRenderJob", async () => {
@@ -1199,10 +1067,9 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
   beforeEach(() => {
     producerState.createdJobs = [];
     producerState.executeImpl = async () => undefined;
-    configState.cache = null;
-    configState.failWrites = 0;
-    configState.writeConfigCalls = [];
-    trackingState.shouldTrack = true;
+    breakerState.tripped = false;
+    breakerState.tripCalls = 0;
+    breakerState.failTrips = 0;
     // The "managed by us" flag lives at module scope in render.ts (real CLI
     // processes only ever run one --batch sequence, so it never needs
     // resetting there) — reset explicitly here so tests don't leak arm/
@@ -1247,11 +1114,7 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
   // default-ON applies. Writing "false" here would silently disarm the fleet —
   // that is exactly what gating at 5% did.
   it("leaves the var unset for an ordinary install so the producer default applies", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     delete process.env.HF_DE_PARALLEL_ROUTER;
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
@@ -1260,11 +1123,7 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
   // An explicit user choice outranks enrolment in both directions — the
   // documented escalation path for anyone who wants the router regardless.
   it("never overrides an explicit user value", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     process.env.HF_DE_PARALLEL_ROUTER = "true";
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("true");
@@ -1274,21 +1133,13 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     // Under the old opt-in trial this armed HF_DE_PARALLEL_ROUTER="true".
     // The router now ships on, so the breaker's job is to stay out of the
     // way until something actually fails.
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
   });
 
   it("does not override an env var the user already set themselves", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     process.env.HF_DE_PARALLEL_ROUTER = "false";
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("false");
@@ -1299,11 +1150,7 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     // router by DELETING the var. With a default-ON router, absent means ON,
     // so deleting would silently re-enable it on the very host that just
     // failed. Only an explicit "false" is a real off-switch.
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: true,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = true;
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("false");
   });
@@ -1315,11 +1162,7 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
       // user choice, the breaker would no-op and this install would keep
       // retrying a failing router forever — losing the first-fallback
       // protection that is the point of the breaker.
-      configState.disk = {
-        telemetryEnabled: true,
-        deParallelRouterTrialFired: false,
-        telemetryNoticeShown: true,
-      };
+      breakerState.tripped = false;
       process.env.HF_DE_PARALLEL_ROUTER = emptyish;
       producerState.executeImpl = async (job) => {
         job.perfSummary = {
@@ -1329,19 +1172,14 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
       };
       await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
       expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("false");
-      expect(configState.writeConfigCalls).toContainEqual(
-        expect.objectContaining({ deParallelRouterTrialFired: true }),
-      );
+      expect(breakerState.tripCalls).toBeGreaterThan(0);
+      expect(breakerState.tripped).toBe(true);
     });
   }
 
   it("does not override an explicit user opt-in even after a fallback", async () => {
     // "Explicit user choice wins in both directions" — the opt-in half.
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     process.env.HF_DE_PARALLEL_ROUTER = "true";
     producerState.executeImpl = async (job) => {
       job.perfSummary = {
@@ -1353,26 +1191,14 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("true");
   });
 
-  it("keeps the router on for a telemetry opt-out — analytics choice must not cost performance", async () => {
-    // The old trial refused to arm without recordable telemetry (no point
-    // running an experiment you can't measure). Now that the router is a
-    // shipped default, gating it on telemetry would punish a privacy choice
-    // with a slower renderer.
-    configState.disk = {
-      telemetryEnabled: false,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+  it("keeps the router on for an ordinary install — the router is default-ON", async () => {
+    breakerState.tripped = false;
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
   });
 
   it("does NOT persist the trial as fired on a clean 'routed' success — keeps trying on future renders", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     producerState.executeImpl = async (job) => {
       job.perfSummary = {
         resolution: { width: 100, height: 100 },
@@ -1380,22 +1206,13 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
       };
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    // A write DOES happen — the render-count backstop is tracked on every
-    // engaged render — but it must not flip deParallelRouterTrialFired.
-    expect(configState.writeConfigCalls).toContainEqual(
-      expect.objectContaining({
-        deParallelRouterTrialFired: false,
-        deParallelRouterTrialRenderCount: 1,
-      }),
-    );
+    // A clean "routed" trips nothing and persists nothing.
+    expect(breakerState.tripCalls).toBe(0);
+    expect(breakerState.tripped).toBe(false);
   });
 
   it("persists the trial as fired when the router's own safety net actually reverted", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     producerState.executeImpl = async (job) => {
       job.perfSummary = {
         resolution: { width: 100, height: 100 },
@@ -1403,17 +1220,12 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
       };
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(configState.writeConfigCalls).toContainEqual(
-      expect.objectContaining({ deParallelRouterTrialFired: true }),
-    );
+    expect(breakerState.tripCalls).toBeGreaterThan(0);
+    expect(breakerState.tripped).toBe(true);
   });
 
   it("does not persist the trial as fired or increment the render count when the router never became eligible for this render", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     producerState.executeImpl = async (job) => {
       // aggregateDrawElement (perfSummary.ts) ALWAYS defaults parallelRouter
       // to the string "none" for every render, whether or not drawElement
@@ -1426,15 +1238,11 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
       };
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(configState.writeConfigCalls).toHaveLength(0);
+    expect(breakerState.tripCalls).toBe(0);
   });
 
   it("does NOT persist the trial as fired when a render merely 'routed' crashes for an unrelated reason (e.g. cancellation) — not a router failure", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     producerState.executeImpl = async (job) => {
       job.errorDetails = { observability: { capture: { deParallelRouter: "routed" } } };
       throw new Error("render cancelled");
@@ -1442,23 +1250,14 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     await renderLocal("/tmp/project", "/tmp/out.mp4", { ...baseOptions, throwOnError: true }).catch(
       () => {},
     );
-    // Still counts toward the render-count backstop (the router DID engage),
-    // but must not flip deParallelRouterTrialFired — the crash wasn't the
-    // router's own safety net firing.
-    expect(configState.writeConfigCalls).toContainEqual(
-      expect.objectContaining({
-        deParallelRouterTrialFired: false,
-        deParallelRouterTrialRenderCount: 1,
-      }),
-    );
+    // A crash that wasn't the router's own safety net firing must not trip
+    // the breaker.
+    expect(breakerState.tripCalls).toBe(0);
+    expect(breakerState.tripped).toBe(false);
   });
 
   it("persists the trial as fired from the failure path when the router's safety net reverted but the retry still failed", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     producerState.executeImpl = async (job) => {
       job.errorDetails = { observability: { capture: { deParallelRouter: "reverted" } } };
       throw new Error("worker crashed even after fallback");
@@ -1466,20 +1265,15 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     await renderLocal("/tmp/project", "/tmp/out.mp4", { ...baseOptions, throwOnError: true }).catch(
       () => {},
     );
-    expect(configState.writeConfigCalls).toContainEqual(
-      expect.objectContaining({ deParallelRouterTrialFired: true }),
-    );
+    expect(breakerState.tripCalls).toBeGreaterThan(0);
+    expect(breakerState.tripped).toBe(true);
   });
 
   it("persists a later --batch row's revert even though this process already armed the trial on an earlier row", async () => {
     // The --batch scenario: multiple renderLocal calls in one process. Row 1
     // succeeds (breaker stays out of the way, env untouched); row 2 reverts
     // and must still be recorded and trip the breaker.
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
 
     producerState.executeImpl = async (job) => {
       job.perfSummary = {
@@ -1489,7 +1283,7 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
-    expect(configState.disk.deParallelRouterTrialFired).toBe(false);
+    expect(breakerState.tripped).toBe(false);
 
     producerState.executeImpl = async (job) => {
       job.perfSummary = {
@@ -1499,9 +1293,8 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
 
-    expect(configState.writeConfigCalls).toContainEqual(
-      expect.objectContaining({ deParallelRouterTrialFired: true }),
-    );
+    expect(breakerState.tripCalls).toBeGreaterThan(0);
+    expect(breakerState.tripped).toBe(true);
     // Explicit "false", not deleted: with a default-ON router, unsetting the
     // var would re-enable it on the host that just reverted.
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("false");
@@ -1513,23 +1306,15 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     // (review): a programmatic renderLocal consumer that doesn't know about
     // the trial must get no trial. The CLI's concurrent-batch path relies on
     // the same default by leaving the option unset.
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     const { manageDeParallelRouterBreaker: _omitted, ...programmaticOptions } = baseOptions;
     await renderLocal("/tmp/project", "/tmp/out.mp4", programmaticOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
-    expect(configState.writeConfigCalls).toHaveLength(0);
+    expect(breakerState.tripCalls).toBe(0);
   });
 
   it("does not override an env var the user set between two renders in the same process", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     producerState.executeImpl = async (job) => {
       job.perfSummary = {
         resolution: { width: 100, height: 100 },
@@ -1551,11 +1336,7 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     // The cap was sampling logic for an opt-in experiment. Under a shipped
     // default it would switch the feature off behind the user's back after
     // 25 good renders.
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
+    breakerState.tripped = false;
     producerState.executeImpl = async (job) => {
       job.perfSummary = {
         resolution: { width: 100, height: 100 },
@@ -1568,67 +1349,18 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     }
 
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
-    expect(
-      configState.writeConfigCalls.some((call) => call.deParallelRouterTrialFired === true),
-    ).toBe(false);
+    expect(breakerState.tripped).toBe(false);
+    expect(breakerState.tripCalls).toBe(0);
   });
 
   // The config write landing is NOT enough: config.json is the copy a stale
   // writer or a re-mint can erase, so a run that mirrored nothing has left the
   // safety fact on the erasable store only. writeConfig() collapsed
   // {ok:true, mirrored:false} to success and the loop stopped there.
-  it("retries when the install-state mirror fails even though config.json landed", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
-    configState.failMirrors = 1; // first attempt mirrors nothing
-    producerState.executeImpl = async (job) => {
-      job.perfSummary = {
-        resolution: { width: 100, height: 100 },
-        drawElement: { parallelRouter: "reverted" },
-      };
-    };
-    await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-
-    expect(configState.disk.deParallelRouterTrialFired).toBe(true);
-    // Two writes: the one whose mirror failed, then the retry that mirrored.
-    const firedWrites = configState.writeConfigCalls.filter(
-      (c) => c.deParallelRouterTrialFired === true,
-    );
-    expect(firedWrites.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("re-asserts the fired flag when the write is lost (concurrent clobber / transient failure), without re-counting the render", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
-    configState.failWrites = 1; // the consume's main write is silently dropped
-    producerState.executeImpl = async (job) => {
-      job.perfSummary = {
-        resolution: { width: 100, height: 100 },
-        drawElement: { parallelRouter: "reverted" },
-      };
-    };
-    await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    // The fired flag was verified and re-asserted (idempotent)...
-    expect(configState.disk.deParallelRouterTrialFired).toBe(true);
-    // ...but the render counter is deliberately NOT re-applied — a lost
-    // increment under a race is benign, a re-applied one double-counts the
-    // render and trips the exposure cap early (review finding).
-    expect(configState.disk.deParallelRouterTrialRenderCount).toBeUndefined();
-  });
 
   it("blocks re-arming for the rest of the process when the fired flag can never persist (unwritable config)", async () => {
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: true,
-    };
-    configState.failWrites = Number.MAX_SAFE_INTEGER; // ~/.hyperframes is unwritable
+    breakerState.tripped = false;
+    breakerState.failTrips = Number.MAX_SAFE_INTEGER; // ~/.hyperframes is unwritable
     producerState.executeImpl = async (job) => {
       job.perfSummary = {
         resolution: { width: 100, height: 100 },
@@ -1637,7 +1369,8 @@ describe("renderLocal — DE parallel-router circuit breaker", () => {
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     // Nothing could persist...
-    expect(configState.disk.deParallelRouterTrialFired).toBe(false);
+    expect(breakerState.tripped).toBe(false);
+    expect(breakerState.tripCalls).toBeGreaterThan(0);
     // ...but the in-process latch still blocks the next render from
     // re-running the path that just failed (review finding) — and now does
     // it by writing an explicit "false", since absent means ON.
@@ -1702,7 +1435,7 @@ describe("checkRenderResolutionPreflight", () => {
   });
 
   // The remaining kinds share the same rejection sink (→ one emit each);
-  // guard their classification so the telemetry dimension stays accurate.
+  // guard their classification so the diagnostics dimension stays accurate.
   it("classifies an HDR + outputResolution combination as hdr-incompatible", async () => {
     const result = await checkRenderResolutionPreflight(landscapeHtml, "landscape", {
       alphaRequested: false,

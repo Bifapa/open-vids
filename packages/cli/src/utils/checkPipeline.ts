@@ -1,8 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { trackCheckReport, trackCommandFailure } from "../telemetry/events.js";
-import { trackLintRun } from "../telemetry/lintRun.js";
-import { getRunId } from "../telemetry/runId.js";
 import type { ProjectDir } from "./project.js";
 import { lintProject, shouldBlockRender, type ProjectLintResult } from "./lintProject.js";
 import {
@@ -1136,7 +1133,6 @@ export async function runCheckPipeline(
   dependencies: CheckDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<CheckReport> {
   let lintResult: ProjectLintResult;
-  const lintStartedAt = Date.now();
   try {
     lintResult = await dependencies.lintProject(project.dir);
   } catch (error) {
@@ -1145,11 +1141,6 @@ export async function runCheckPipeline(
     // for a script problem that doesn't exist.
     return failureReport(options, runtimeFailure(error, "check_lint_failure"));
   }
-  trackLintRun(project.dir, lintResult, {
-    command: "check",
-    durationMs: Date.now() - lintStartedAt,
-    ...(getRunId() !== undefined ? { runId: getRunId() } : {}),
-  });
 
   const lint = buildLintSection(lintResult);
   let hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null;
@@ -1246,11 +1237,10 @@ async function withFindingCrops(
   try {
     const findingFiles = await dependencies.captureFindingCrops(project, options, cropRequests);
     return { ...report, snapshots: { ...report.snapshots, findingFiles } };
-  } catch (error) {
-    // Still non-gating, but observable: rollouts need the crop-failure rate
-    // (a second Chrome launch failing/timing out) without failing the run.
-    console.error("   finding crops skipped: " + normalizeErrorMessage(error));
-    trackCommandFailure("check-finding-crops", error);
+  } catch {
+    // Still non-gating: a second Chrome launch failing/timing out must not
+    // fail the run.
+    console.error("   finding crops skipped");
     return report;
   }
 }
@@ -1433,31 +1423,6 @@ function buildReport(
       findingFiles: [],
     },
   };
-  trackCheckReport({
-    contrastGate: options.contrast,
-    motionGate: motion.kind !== "none",
-    captionZoneGate: options.captionZone !== undefined,
-    frameCheckGate: options.frameCheck !== undefined,
-    snapshotsGate: options.snapshots,
-    lintErrors: lint.errorCount,
-    lintWarnings: lint.warningCount,
-    runtimeErrors: runtime.errorCount,
-    runtimeWarnings: runtime.warningCount,
-    layoutErrors: layout.errorCount,
-    layoutWarnings: layout.warningCount,
-    motionErrors: motionSection.errorCount,
-    motionWarnings: motionSection.warningCount,
-    contrastErrors: contrastSection.errorCount,
-    contrastWarnings: contrastSection.warningCount,
-    launchSettleMs: browser.timings.launchSettleMs,
-    seekLoopMs: browser.timings.seekLoopMs,
-    contrastMs: browser.timings.contrastMs,
-    gridPoints: browser.layoutSamples.length,
-    contrastPoints: browser.contrastChecked,
-    ok: report.ok,
-    exitCode: checkExitCode(report),
-    runId: getRunId(),
-  });
   return report;
 }
 

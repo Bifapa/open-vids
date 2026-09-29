@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { runInThisContext } from "node:vm";
 import { parseHTML } from "linkedom";
 import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
-import { redactTelemetryString } from "@hyperframes/core";
+import { scrubErrorMessage } from "../utils/errorScrub.js";
 import { defaultLogger } from "../logger.js";
 import { NotMediaPayloadError } from "@hyperframes/engine";
 import {
@@ -3058,12 +3058,12 @@ describe("STUDIO-5433 — ffprobe failure includes src URL for attribution", () 
   });
 
   // The STUDIO-5433 case is a remote src, and that is the shape whose
-  // attribution has to survive redaction: host + path kept, query dropped so a
-  // pre-signed signature never reaches telemetry. Pinned on the redactor
+  // attribution has to survive scrubbing: host + path kept, query dropped so a
+  // pre-signed signature never reaches logs. Pinned on the scrubber
   // directly — driving a remote src through `compileForRender` would need a
   // download stub, and the wrapper's only transform IS this call.
-  it("keeps host and path but drops the query when redacting a remote src", () => {
-    expect(redactTelemetryString("https://cdn.example.com/renders/clip.mp4?sig=abc123&exp=1")).toBe(
+  it("keeps host and path but drops the query when scrubbing a remote src", () => {
+    expect(scrubErrorMessage("https://cdn.example.com/renders/clip.mp4?sig=abc123&exp=1")).toBe(
       "https://cdn.example.com/renders/clip.mp4?\u2026",
     );
   });

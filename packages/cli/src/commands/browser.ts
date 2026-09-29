@@ -19,7 +19,6 @@ import {
   CACHE_DIR,
   isLinuxArm,
 } from "../browser/manager.js";
-import { trackBrowserInstall } from "../telemetry/events.js";
 
 async function runEnsure(options?: { force?: boolean }): Promise<void> {
   clack.intro(c.bold("hyperframes browser ensure"));
@@ -83,7 +82,6 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
       },
     });
 
-    if (existing.source === "download") trackBrowserInstall();
     s.stop(c.success(existing.source === "download" ? "Download complete" : "Browser found"));
     console.log();
     console.log(`   ${c.dim("Source:")}  ${c.bold(existing.source)}`);
@@ -116,7 +114,6 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
   });
 
   downloadSpinner.stop(c.success("Download complete"));
-  trackBrowserInstall();
 
   console.log();
   console.log(`   ${c.dim("Source:")}  ${c.bold(result.source)}`);

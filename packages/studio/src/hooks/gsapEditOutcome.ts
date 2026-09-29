@@ -5,12 +5,9 @@ export type GsapEditBlockReason = "no-selector" | "unroll-required" | "source-un
 /**
  * Which of the nine situations produced a block. The user-facing `reason` stays
  * coarse — three messages — but "source-uneditable" alone covers nine distinct
- * causes, and `edit_blocked` telemetry could not tell them apart. That matters
- * because the copy ("This animation is computed at runtime") is only literally
- * true for `provenance-runtime-dynamic`; the others are parser or source-match
- * limits, where the animation may well be plain authored source.
- *
- * Telemetry only. Nothing branches on it.
+ * causes. That matters because the copy ("This animation is computed at runtime")
+ * is only literally true for `provenance-runtime-dynamic`; the others are parser
+ * or source-match limits, where the animation may well be plain authored source.
  */
 export type GsapEditBlockDetail =
   | "provenance-runtime-dynamic"

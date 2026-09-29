@@ -19,7 +19,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { downloadFile } from "../utils/download.js";
-import { readConfig, updateLocalModelConsent } from "../telemetry/config.js";
+import {
+  localModelConsent,
+  updateLocalModelConsent,
+  type LocalModelDecision,
+} from "../utils/modelConsent.js";
 
 /**
  * bge-small-en-v1.5: 62.17 MTEB average against 62.3 for text-embedding-3-small,
@@ -76,11 +80,9 @@ export const LOCAL_MODEL_ARTIFACTS: ReadonlyArray<ModelFile> = [
   },
 ];
 
-export type LocalModelDecision = boolean | undefined;
+export type { LocalModelDecision };
 
-export function localModelConsent(): LocalModelDecision {
-  return readConfig().localEmbeddingEnabled;
-}
+export { localModelConsent };
 
 export function recordLocalModelConsent(enabled: boolean): LocalModelDecision {
   return updateLocalModelConsent(() => enabled);

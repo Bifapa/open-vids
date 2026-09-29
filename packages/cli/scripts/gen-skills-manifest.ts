@@ -1,12 +1,13 @@
-// Generate (or verify) skills-manifest.json (repo root) — the published
-// "latest" fingerprint of the HyperFrames skill bundle.
+// Generate (or verify) skills-manifest.json (repo root) — the fingerprint of
+// the bundled skill set.
 //
 //   bun run --cwd packages/cli gen:skills-manifest          # write/update
 //   bun run --cwd packages/cli gen:skills-manifest --check  # verify only (CI)
 //
-// The manifest is just per-skill content hashes (no version / timestamp), so it
-// is fully deterministic: same skill content ⇒ byte-identical manifest. `--check`
-// exits non-zero when the committed manifest doesn't match current skill content.
+// The manifest is just per-skill content hashes (no source / version /
+// timestamp), so it is fully deterministic: same skill content ⇒
+// byte-identical manifest. `--check` exits non-zero when the committed
+// manifest doesn't match current skill content.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -47,7 +48,7 @@ function reportDrift(fresh: SkillsManifest, committed: SkillsManifest | null): v
   }
 }
 
-const fresh = buildManifest(skillsRoot, { source: "heygen-com/hyperframes" });
+const fresh = buildManifest(skillsRoot);
 
 // Read the committed manifest directly (no existsSync precheck) so there's no
 // check-then-write race on outPath — a missing or unreadable file just means

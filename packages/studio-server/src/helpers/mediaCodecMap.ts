@@ -80,7 +80,7 @@ export function shouldPrewarmProxy(facts: AssetCodecFacts): boolean {
 
 // Per process, and deliberately in one unit — a call to `resolveProxy` — so
 // the pair reads as a ratio. Summarised at exit on stderr, in the same
-// `[hyperframes:<area>] {json}` shape as `writeUrlDownloadTelemetry`.
+// `[hyperframes:<area>] {json}` shape as the engine download diagnostics sink.
 const proxyDemand = { prewarmsRequested: 0, proxyRequests: 0 };
 
 /** Snapshot of this process's pre-warm demand counters. */

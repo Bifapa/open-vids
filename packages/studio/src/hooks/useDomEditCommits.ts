@@ -1,11 +1,10 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import { FONT_EXT } from "../utils/mediaTypes";
 
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
-import { StudioSaveHttpError, trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
+import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { buildDomEditPatchTarget, type DomEditSelection } from "../components/editor/domEditing";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { CommitDomEditPatchBatches, PersistDomEditOperations } from "./domEditCommitTypes";
@@ -81,8 +80,6 @@ export interface UseDomEditCommitsParams {
     originalContent: string,
     targetPath: string,
   ) => Promise<CutoverResult>;
-  /** Resolver-shadow tripwire for z-index reorder targets (telemetry-only, decoupled from cutover). */
-  onReorderShadow?: (targets: string[]) => void;
   readOnlyPreview: boolean;
 }
 
@@ -106,7 +103,6 @@ export function useDomEditCommits({
   forceReloadSdkSession,
   onTrySdkPersist,
   onTrySdkDelete,
-  onReorderShadow,
   readOnlyPreview,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
@@ -131,8 +127,6 @@ export function useDomEditCommits({
     },
     [fileTree, projectId, importedFontAssetsRef],
   );
-
-  const reportedUnresolvableRef = useRef(new Set<string>());
 
   const performPersistDomEditOperations = useCallback(
     async (
@@ -235,16 +229,6 @@ export function useDomEditCommits({
 
       if (finalContent === null) {
         if (patchData.matched === false) {
-          const targetKey = selection.selector ?? selection.id ?? "selection";
-          if (!reportedUnresolvableRef.current.has(targetKey)) {
-            reportedUnresolvableRef.current.add(targetKey);
-            trackStudioEvent("save_skipped_unresolvable", {
-              target_id: selection.id ?? undefined,
-              target_selector: selection.selector ?? undefined,
-              target_source_file: selection.sourceFile ?? undefined,
-              composition: activeCompPath ?? undefined,
-            });
-          }
           throw new DomEditPersistUnresolvableError(targetPath);
         }
         warnDomEditPersistNoOp(selection, operations);
@@ -369,13 +353,6 @@ export function useDomEditCommits({
         if (!alreadyToasted) {
           showToast(error instanceof Error ? error.message : "Failed to reorder layers", "error");
         }
-        trackStudioSaveFailure({
-          source: "dom_edit",
-          error,
-          filePath: batches.map((batch) => batch.sourceFile).join(","),
-          mutationType: "z-reorder",
-          label: options.label,
-        });
         throw error;
       });
     },
@@ -422,7 +399,6 @@ export function useDomEditCommits({
   // ── Position patch helper (shared by geometry + lifecycle hooks) ──
 
   const commitPositionPatchToHtml = useDomEditPositionPatchCommit({
-    activeCompPath,
     persistDomEditOperations,
     showToast,
   });
@@ -452,7 +428,6 @@ export function useDomEditCommits({
     reloadPreview,
     clearDomSelection,
     onTrySdkDelete,
-    onReorderShadow,
     forceReloadSdkSession,
     commitDomEditPatchBatches,
   });

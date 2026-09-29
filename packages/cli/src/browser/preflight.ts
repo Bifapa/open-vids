@@ -10,7 +10,7 @@ import {
   distroLabel,
   parseLddMissingLibs,
 } from "./linuxDeps.js";
-import { getFreeDiskMb } from "../telemetry/system.js";
+import { getFreeDiskMb } from "../utils/hostInfo.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
 export type EnvironmentCheckLevel = "ok" | "warn" | "error";

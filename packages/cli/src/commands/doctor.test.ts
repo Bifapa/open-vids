@@ -24,10 +24,10 @@ const OUTCOMES_ALL_OK: CheckOutcome[] = [
 const OUTCOMES_WITH_FAILURE: CheckOutcome[] = [
   { name: "Version", ok: true, detail: "0.4.4 (latest)" },
   {
-    name: "Docker",
+    name: "Disk",
     ok: false,
-    detail: "Not found",
-    hint: "https://docs.docker.com/get-docker/",
+    detail: "0.1 GB free",
+    hint: "Low disk space — renders produce large temp files.",
   },
 ];
 
@@ -141,13 +141,20 @@ describe("buildDoctorReport", () => {
       checks: expect.any(Array),
       _meta: expect.objectContaining({
         version: expect.any(String),
-        updateAvailable: expect.any(Boolean),
       }),
     });
 
     // Top-level keys are exactly these — any accidental addition or rename
     // should force an explicit update to this test + PR review.
-    expect(Object.keys(report).sort()).toEqual(["_meta", "arch", "checks", "ok", "platform"]);
+    expect(Object.keys(report).sort()).toEqual([
+      "_meta",
+      "arch",
+      "checks",
+      "ok",
+      "platform",
+      "version",
+    ]);
+    expect(report._meta.version).toBe(report.version);
   });
 
   it("reports ok=true when all checks pass", () => {
@@ -171,8 +178,8 @@ describe("buildDoctorReport", () => {
 
   it("preserves hint when provided", () => {
     const report = buildDoctorReport(OUTCOMES_WITH_FAILURE);
-    const docker = report.checks.find((c) => c.name === "Docker");
-    expect(docker?.hint).toBe("https://docs.docker.com/get-docker/");
+    const disk = report.checks.find((c) => c.name === "Disk");
+    expect(disk?.hint).toBe("Low disk space — renders produce large temp files.");
   });
 
   describe("redact option", () => {

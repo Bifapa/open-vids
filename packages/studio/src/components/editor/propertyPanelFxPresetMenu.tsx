@@ -13,7 +13,6 @@ import {
   type HfAudioFxPresetFamily,
 } from "@hyperframes/core/audio-fx-presets";
 import { PRESET_PROBLEM } from "@hyperframes/core/audio-fx-copy";
-import { useRef } from "react";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 
 /**
@@ -43,13 +42,6 @@ export interface FxPresetMenuProps {
   trackKind?: HfAudioNameKind;
   onPick(id: string): void;
   /**
-   * Report that a preset was auditioned. Called at most once per preset for as
-   * long as this shelf stays mounted — a pointer crossing the column passes a
-   * dozen items in a second, and counting every crossing would describe mouse
-   * travel rather than interest, while drowning every other event in the rack.
-   */
-  onAuditionTracked?(id: string): void;
-  /**
    * Play this preset on the running audio without persisting it, and revert on
    * `null`. Absent when there is no preview channel to hear it through.
    */
@@ -66,21 +58,7 @@ export interface FxPresetMenuProps {
  * in a column is a wall, and they are already the author's grouping rather than
  * the registry's. See `plans/audio-fx-ux/README.md` §Decided.
  */
-export function FxPresetMenu({
-  trackKind,
-  onPick,
-  onAudition,
-  onAuditionTracked,
-}: FxPresetMenuProps) {
-  // Mounted when the shelf opens and thrown away when it closes, so "once per
-  // preset" resets each time the author comes back — a second visit is a second
-  // look, not a duplicate of the first.
-  const auditioned = useRef(new Set<string>());
-  const reportAudition = (id: string) => {
-    if (auditioned.current.has(id)) return;
-    auditioned.current.add(id);
-    onAuditionTracked?.(id);
-  };
+export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProps) {
   // The voice presets all begin by cutting rumble out of a human voice and end
   // in a compressor set for speech. On a music bed that is not a mild mismatch,
   // it is the wrong instrument — and the shelf leads with the complaint, so it
@@ -119,16 +97,10 @@ export function FxPresetMenu({
                 preset.nodes.length === 1 ? "" : "s"
               })`}
               onClick={() => onPick(preset.id)}
-              onMouseEnter={() => {
-                reportAudition(preset.id);
-                onAudition?.(preset.id);
-              }}
+              onMouseEnter={() => onAudition?.(preset.id)}
               // Keyboard reaches this too: arrowing down the shelf auditions the
               // same way hovering does, or the whole affordance is mouse-only.
-              onFocus={() => {
-                reportAudition(preset.id);
-                onAudition?.(preset.id);
-              }}
+              onFocus={() => onAudition?.(preset.id)}
             >
               <span className="hf-fx-preset-problem block truncate text-[10px]">
                 {PRESET_PROBLEM[preset.id] ?? preset.description}

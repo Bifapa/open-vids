@@ -14,16 +14,9 @@ import {
 } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { cacheGet, cacheGetByEntity, importFromCache, cachePut } from "./lib/cache.mjs";
-import {
-  runCapability,
-  listTypes,
-  providerMatches,
-  providerNamesFor,
-  providerTierFor,
-} from "./lib/registry.mjs";
+import { runCapability, listTypes, providerMatches, providerNamesFor } from "./lib/registry.mjs";
 import { freezeUrl, freezeLocalFile, isDirectMediaUrl } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
-import { track } from "./lib/telemetry.mjs";
 import { recordMiss } from "./lib/misses.mjs";
 import { buildStats } from "./lib/stats.mjs";
 import { typesMatch } from "./lib/match.mjs";
@@ -46,15 +39,9 @@ import {
   HEYGEN_UPDATE_COMMAND,
   consumeHeygenRemediation,
   firstSemver,
-  flushHeygenFailureTracking,
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
 import { BundledSfxAssetsError, inspectBundledSfxAssets } from "./lib/bundled-sfx-provider.mjs";
-import {
-  fetchMediaVectors,
-  mediaVectorRows,
-  rankMediaRowsWithVectors,
-} from "./lib/local-media-search.mjs";
 
 const INGEST_TYPES = listTypes();
 const DEFAULT_EXT = {
@@ -172,15 +159,6 @@ if (args.candidates || args["dry-run"]) {
 
 if (args.doctor) {
   const doctor = runDoctor();
-  const failed = doctor.checks.filter((check) => !check.ok);
-  // Non-PII: instrument the exact question the feature exists to answer — how
-  // often is --doctor run and which check fails most. Awaited so a short-lived
-  // run flushes before exit.
-  await track("media_use_doctor_run", {
-    ok: doctor.ok,
-    checks_failed: failed.length,
-    failed: failed.map((check) => check.name),
-  });
   if (args.json) {
     console.log(JSON.stringify({ ok: doctor.ok, checks: doctor.checks }));
   } else {
@@ -309,8 +287,8 @@ function recordAvailable(projectDir, record) {
 }
 
 // Sparse `{ authMethod }` for a heygen-family provider name (e.g. "heygen.tts"),
-// else `{}` — keeps auth_method telemetry absent for every non-heygen resolve
-// instead of implying an auth method that doesn't apply.
+// else `{}` — records which credential path a HeyGen resolve used (oauth vs
+// api_key) without implying an auth method that doesn't apply.
 function heygenAuthMethodFor(provider) {
   if (!provider || !provider.startsWith("heygen.")) return {};
   const authMethod = heygenAuthMethod();
@@ -426,48 +404,15 @@ async function run() {
     return resolveColor(type, intent, { projectDir });
   }
 
-  // SFX search is bundled, local-index, then HeyGen.
+  // SFX search is bundled, then HeyGen.
   let searchResult = null;
   let providerFailure = null;
-  let localIndexFailure = null;
   try {
     if (type === "sfx" && !args.provider) {
       searchResult = await runCapability(type, "search", intent, {
         ...ctx,
         provider: "bundled.sfx",
       });
-      if (!searchResult && !localOnly) {
-        const registry =
-          process.env.HYPERFRAMES_REGISTRY ||
-          "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
-        try {
-          await fetchMediaVectors(registry);
-          const ranked = await rankMediaRowsWithVectors(
-            intent,
-            mediaVectorRows().filter((row) => row.kind === "sfx"),
-          );
-          const row = ranked.rows[0];
-          const candidates = row
-            ? [resolve(row.file), join(import.meta.dirname, "..", "..", "..", row.file)]
-            : [];
-          const localPath = candidates.find((candidate) => existsSync(candidate));
-          if (row && localPath) {
-            searchResult = {
-              localPath,
-              ext: extname(localPath),
-              source: "local-index",
-              metadata: {
-                description: row.description,
-                duration: row.duration ?? null,
-                provider: "catalog.local",
-                provenance: { library_key: row.id, tier: ranked.tier },
-              },
-            };
-          }
-        } catch (error) {
-          localIndexFailure = error;
-        }
-      }
       if (!searchResult) searchResult = await runCapability(type, "search", intent, ctx);
       // Keep HeyGen remediation diagnostics while bundled remains authoritative.
       else if (!localOnly)
@@ -483,12 +428,6 @@ async function run() {
     // search failed, try generate
   }
 
-  if (localIndexFailure) {
-    throw new Error(`local SFX index unavailable: ${localIndexFailure.message}`, {
-      cause: localIndexFailure,
-    });
-  }
-
   // 4. generate fallback — same ordered cascade for the generate capability
   if (!searchResult) {
     try {
@@ -499,23 +438,13 @@ async function run() {
     }
   }
 
-  // Flush provider failure telemetry before the process can exit.
-  await flushHeygenFailureTracking();
-
   if (!searchResult) {
-    await track("media_use_resolve_miss", {
-      type,
-      local_only: !!localOnly,
-      provider_override: !!args.provider,
-    });
     recordMiss({
       type,
       intent,
       provider_override: !!args.provider,
       local_only: !!args["local-only"],
     });
-    // brand stays local: no frame.md/design.md -> upsell the HyperFrames design
-    // flow rather than reporting a generic miss (B5).
     const msg =
       providerFailure instanceof BundledSfxAssetsError ||
       providerFailure instanceof FfBinarySettingError
@@ -721,11 +650,6 @@ async function finalizeColorRecord(record, source, fullPath = null) {
 }
 
 async function colorMiss(type, intent) {
-  await track("media_use_resolve_miss", {
-    type,
-    local_only: !!args["local-only"],
-    provider_override: !!args.provider,
-  });
   recordMiss({
     type,
     intent,
@@ -955,12 +879,6 @@ async function showCandidates() {
     type,
     intent,
     cap: CANDIDATE_CAP,
-  });
-  await track("media_use_candidates", {
-    type,
-    project_n: total.project,
-    global_n: total.global,
-    local_only: !!args["local-only"],
   });
   if (args.json) {
     console.log(JSON.stringify({ ok: true, candidates, truncated, total, similar }));
@@ -1243,25 +1161,6 @@ async function reuseGlobal(shaArg) {
 }
 
 async function result(record, source) {
-  // Non-PII usage event: which media type, how it resolved, which provider won.
-  // Never the intent text or paths. Awaited so a short-lived run flushes it.
-  await track("media_use_resolve", {
-    type: record.type,
-    source,
-    provider: record.provenance?.provider,
-    // How a library LUT resolved: "url" (CDN), "params-fallback" (CDN failed →
-    // parametric), or "params" (offline). Surfaces silent CDN→params downgrades
-    // in prod, which --doctor can't (it only answers "reachable now?").
-    via: record.provenance?.via,
-    // OAuth vs. API-key HeyGen paths are sparse for non-HeyGen providers.
-    // signal about the fetch that actually consumed a heygen credit, not
-    // about the (free, no-credential) act of copying a cached file.
-    auth_method: record.provenance?.authMethod,
-    // Provider tiers stay sparse and follow the registry's A/N/P declaration.
-    provider_tier: providerTierFor(record.provenance?.provider),
-    local_only: !!args["local-only"],
-    provider_override: !!args.provider,
-  });
   if (args.json) {
     const grading = record.type === "grade" && record.grading ? record.grading : null;
     console.log(

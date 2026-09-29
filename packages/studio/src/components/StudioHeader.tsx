@@ -2,7 +2,6 @@ import { useMemo, type MouseEvent } from "react";
 import { ArrowLeft, Camera } from "../icons/SystemIcons";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import { readOpenvidsHomeOrigin } from "../utils/openvidsHost";
 import { Button, buttonBase, buttonSizes, buttonVariants, cn, Tooltip } from "./ui";
 import { Dock } from "./dock/Dock";
@@ -173,7 +172,6 @@ function OpenvidsBackOrLogo() {
         data-testid="openvids-back"
         icon={<ArrowLeft size={14} weight="bold" />}
         onClick={() => {
-          trackStudioEvent("navigation", { action: "back_to_projects" });
           window.location.href = homeOrigin;
         }}
       >
@@ -224,7 +222,6 @@ export function StudioHeader({
                   e.preventDefault();
                   return;
                 }
-                trackStudioEvent("toolbar_action", { action: "capture_frame" });
                 handleCaptureFrameClick(e);
               }}
               onFocus={refreshCaptureFrameTime}
@@ -280,12 +277,10 @@ export function StudioHeader({
               icon={<InspectorIcon size={16} />}
               onClick={() => {
                 if (shouldOpenInspector(rightCollapsed, inspectorPanelActive)) {
-                  trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: false });
                   setRightPanelTab("design");
                   setRightCollapsed(false);
                   return;
                 }
-                trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: true });
                 // Keep the current selection when collapsing the Inspector — closing
                 // the panel shouldn't deselect the element.
                 setRightCollapsed(true);

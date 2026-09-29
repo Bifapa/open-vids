@@ -1,8 +1,4 @@
-import {
-  createStudioSaveHttpError,
-  StudioSaveHttpError,
-  trackStudioSaveFailure,
-} from "../utils/studioSaveDiagnostics";
+import { createStudioSaveHttpError, StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { buildProjectApiPath } from "../utils/projectRouting";
 import type { DomEditPatchBatch } from "./domEditCommitTypes";
 import { formatFieldsSuffix } from "./gsapScriptCommitHelpers";
@@ -49,12 +45,6 @@ function reportUnmatchedBatchPatches(batch: DomEditPatchBatch, matched: boolean[
       `${batch.sourceFile} (the whole z-order gesture will revert on reload):`,
     unmatchedIds.join(", "),
   );
-  trackStudioSaveFailure({
-    source: "dom_edit",
-    error: new Error(`Batch patch target(s) unmatched: ${unmatchedIds.join(", ")}`),
-    filePath: batch.sourceFile,
-    mutationType: "z-reorder-unmatched",
-  });
 }
 
 interface AtomicElementPatchFile {

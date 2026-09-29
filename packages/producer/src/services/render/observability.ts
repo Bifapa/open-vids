@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { redactTelemetryString } from "@hyperframes/core";
+import { scrubErrorMessage } from "../../utils/errorScrub.js";
 import type { ProducerLogger } from "../../logger.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 
@@ -32,7 +32,7 @@ export interface BrowserDiagnosticSummary {
 
 /**
  * Which capture stage produced the frames. Maps 1:1 from `CapturePlan.kind`
- * (see `capturePathForPlanKind`); named in render telemetry as `capture_path`.
+ * (see `capturePathForPlanKind`); named in render diagnostics as `capture_path`.
  */
 export type CapturePath = "streaming" | "disk" | "segmented" | "hdr_layered";
 
@@ -64,7 +64,7 @@ export interface RenderCaptureObservability {
    * whenever a fallback is attempted, independent of whether that retry
    * itself later succeeds — so a render that fails AFTER a fallback attempt
    * (perfSummary never built) is still distinguishable in failure-path
-   * telemetry from one that never attempted any fallback.
+   * diagnostics from one that never attempted any fallback.
    */
   deFallbackReason?: string;
   /** The failing PSNR (dB) when `deFallbackReason === "psnr"`; undefined for every other reason (no score exists). */
@@ -182,11 +182,11 @@ export interface RenderCaptureObservability {
   pageNavigationTimeoutMs?: number;
   playerReadyTimeoutMs?: number;
   /**
-   * Render-reliability counters (see PostHog dashboard 1783183). Emitted so the
-   * capture-hardening in #1842 is measurable from a metric, not just logs:
-   * how often the bounded transient-tab-death retry fired on a render that
-   * ultimately succeeded, and whether the failure was classified as an
-   * out-of-memory exhaustion (`Set maximum size exceeded` and friends).
+   * Render-reliability counters. Recorded so the capture-hardening in #1842
+   * is measurable from local logs, not just prose: how often the bounded
+   * transient-tab-death retry fired on a render that ultimately succeeded,
+   * and whether the failure was classified as an out-of-memory exhaustion
+   * (`Set maximum size exceeded` and friends).
    */
   transientRetries?: number;
   memoryExhaustionDetected?: boolean;
@@ -322,7 +322,7 @@ const RESERVED_LOG_KEYS = new Set([
 ]);
 
 export function sanitizeObservationMessage(value: string): string {
-  return redactTelemetryString(value);
+  return scrubErrorMessage(value);
 }
 
 export function computeCompositionObservabilityHash(compiledHtml: string): string {
@@ -376,7 +376,7 @@ function summarizeInitObservability(
   fallback?: RenderInitObservability,
 ): RenderInitObservability | undefined {
   // Console parsing only sees THIS process's session buffer, so parallel
-  // workers' INIT lines never reach it — their init telemetry arrives
+  // workers' INIT lines never reach it — their init diagnostics arrive
   // structured via the per-worker perf summaries instead. Seed with that and
   // let the console parse (same max semantics) refine it.
   let initDurationMs: number | undefined = fallback?.initDurationMs;
@@ -506,7 +506,7 @@ export class RenderObservabilityRecorder {
   summary(input: {
     lastBrowserConsole: string[];
     capture: RenderCaptureObservability;
-    /** Structured init telemetry from per-worker perf summaries — the only success-path channel parallel workers have (their console buffers propagate on failure only). */
+    /** Structured init diagnostics from per-worker perf summaries — the only success-path channel parallel workers have (their console buffers propagate on failure only). */
     initFallback?: RenderInitObservability;
     extraction?: RenderExtractionObservability;
     compositionHash?: string;

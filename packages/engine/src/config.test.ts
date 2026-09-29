@@ -248,7 +248,7 @@ describe("resolveConfig", () => {
   });
 
   // Every resolveDefaultDrawElement branch returns a bare `false`, so a render
-  // that never became a DE candidate reached telemetry with no reason at all
+  // that never became a DE candidate reached diagnostics with no reason at all
   // and landed in the dashboard's `other` bucket. These pin that each silent
   // refusal now has a name, and that the names stay in the same ORDER as the
   // resolver's branches — if the two drift, the reason is a plausible lie,
@@ -576,14 +576,14 @@ describe("resolveConfig", () => {
   describe("applyConcreteGpuScreenshotClamp (caller-level contract)", () => {
     // This is the helper both frameCapture.ts and renderOrchestrator.ts call
     // to compute the value the AUTHORITATIVE `forceScreenshot` local should
-    // hold after the concrete GPU is resolved. Routing AND telemetry read
+    // hold after the concrete GPU is resolved. Routing AND diagnostics read
     // from that one value, so this contract must hold across default and
     // opt-out combinations.
     type OptOutCfg = Pick<EngineConfig, "forceScreenshotExplicitlyOptedOut">;
     const cleanEnv = {} as NodeJS.ProcessEnv;
 
     it("resolved software + default false → promotes to true (screenshot route)", () => {
-      // The core auto→software fix: routing AND downstream telemetry read
+      // The core auto→software fix: routing AND downstream diagnostics read
       // the promoted value, so `updateCaptureObservability({ forceScreenshot:
       // captureForceScreenshot })` at the capture_strategy site reports
       // screenshot instead of overwriting back to beginframe.
@@ -595,7 +595,7 @@ describe("resolveConfig", () => {
     it("resolved software + programmatic opt-out → stays false (BeginFrame preserved)", () => {
       // The programmatic escape hatch caller-level contract: setting
       // overrides.forceScreenshot=false must keep BeginFrame across BOTH
-      // routing (frameCapture) and telemetry (renderOrchestrator) — since
+      // routing (frameCapture) and diagnostics (renderOrchestrator) — since
       // resolveConfig lifts the flag onto the config, both callers converge.
       expect(
         applyConcreteGpuScreenshotClamp(

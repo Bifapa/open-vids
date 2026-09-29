@@ -17,7 +17,6 @@ import { resolve, relative } from "node:path";
 import { ITEM_TYPE_DIRS, realpath, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import {
-  DEFAULT_REGISTRY_URL,
   prepareItem,
   publishItem,
   resolveItemsByTag,
@@ -37,7 +36,6 @@ import {
   createProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
-import { trackRegistryItemAdded } from "../telemetry/events.js";
 
 // ── Target-path resolution ──────────────────────────────────────────────────
 // `registry-item.json` files specify `target` paths relative to the project
@@ -235,7 +233,7 @@ function assertCompatibleOrThrow(items: RegistryItem[], cliVersion?: string): st
 async function installAll(
   installPlan: RegistryItem[],
   destDir: string,
-  baseUrl: string | undefined,
+  registryDir: string | undefined,
   force: boolean,
   requestedName: string,
   variableValues: Record<string, unknown> | null,
@@ -255,7 +253,7 @@ async function installAll(
       prepared.push(
         await prepareItem(planItem, {
           destDir,
-          baseUrl,
+          registryDir,
           force,
           // Only the item the user named. A dependency dragged in behind it never
           // declared these variables and must not be rewritten by them.
@@ -274,42 +272,25 @@ async function installAll(
     }
   } catch (err) {
     if (err instanceof InvalidVariableValuesError) throw new AddError(err.message, "invalid-vars");
-    throw new AddError(describeInstallFailure(err, baseUrl), "install-failed");
+    throw new AddError(describeInstallFailure(err, registryDir), "install-failed");
   }
   return { written, preserved, variablesApplied, variablesUnknown };
 }
 
 /**
- * Turn a transport failure into something a reader can act on.
+ * Turn a local-registry failure into something a reader can act on.
  *
- * Item FILES are not cached (only manifests are), so a network blip surfaces
- * here as node's bare `fetch failed` with no URL, no cause and no suggestion.
- * That is what a user sees after copying a command off the catalog page, and
- * it reads like the command was wrong rather than the network.
+ * Item files now come from the bundled registry tree, so a failure here is a
+ * missing/corrupt local copy or a remotely-hosted asset (`file.url`) that has
+ * no offline source — never the network.
  */
 export function describeInstallFailure(err: unknown, registry?: string): string {
   const message = err instanceof Error ? err.message : String(err);
-  const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : "";
-  const transport =
-    /fetch failed|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|aborted/i;
-  if (!transport.test(`${message} ${cause}`)) return `Install failed: ${message}`;
-
-  // Name the registry first. A project that set `registry` in hyperframes.json
-  // points at a private host, and when that host is down the failure has
-  // nothing to do with the user's connection -- telling them to check their
-  // network sends them to debug the one thing that is working.
-  const custom =
-    registry && !registry.startsWith(DEFAULT_REGISTRY_URL)
-      ? `\n  This project's hyperframes.json sets registry to ${registry}, so that is the host ` +
-        "being contacted, not the public registry. If it is down or private, that is the failure."
-      : "";
-  return (
-    `Install failed: could not download the item's files.\n  ${message}` +
-    "\n  Item files are not cached, so every install fetches them. This is usually the " +
-    "registry host or the network rather than a bad command." +
-    custom +
-    "\n  Retry, or set HTTPS_PROXY if you are behind a proxy."
-  );
+  const custom = registry
+    ? `\n  This project's hyperframes.json sets registry to ${registry}, so that is the directory ` +
+      "being read, not the bundled registry. If it moved or is incomplete, that is the failure."
+    : "";
+  return `Install failed: could not read the item's files.\n  ${message}${custom}`;
 }
 
 export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
@@ -335,7 +316,7 @@ export async function addToProject(
   //    requested item last.
   let resolved: RegistryItem[];
   try {
-    resolved = await resolveItemWithDependencies(opts.name, { baseUrl: config.registry });
+    resolved = await resolveItemWithDependencies(opts.name, { registryDir: config.registryDir });
   } catch (err) {
     throw new AddError(err instanceof Error ? err.message : String(err), "unknown-item");
   }
@@ -368,23 +349,11 @@ export async function addToProject(
   const { written, preserved, variablesApplied, variablesUnknown } = await installAll(
     installPlan,
     projectDir,
-    config.registry,
+    config.registryDir,
     opts.force ?? false,
     item.name,
     variableValues,
   );
-
-  // Report what landed, not what was asked for: a failed install throws above,
-  // and the bulk `add <tag>` path re-enters here per item, so this one place
-  // covers every way an item reaches a project.
-  for (const planItem of installPlan) {
-    trackRegistryItemAdded({
-      item: planItem.name,
-      itemType: planItem.type,
-      requested: planItem.name === item.name,
-      source: opts.source ?? "cli",
-    });
-  }
 
   // Persist what came from the registry. Installed files are plain composition
   // HTML with no provenance marker, so without this a later render cannot tell
@@ -477,7 +446,7 @@ export default defineCommand({
   },
   // `run` is 28 cyclomatic and predates this change, which touches only
   // `runAdd`. Splitting the tag-fallback branch out would fix it honestly
-  // and is worth doing, but not inside a telemetry change.
+  // and is worth doing, but not inside a usage-attribution change.
   async run({ args }) {
     const projectDir = resolve(args.dir ?? process.cwd());
     const json = args.json === true;
@@ -555,7 +524,7 @@ export default defineCommand({
 
       let items: Awaited<ReturnType<typeof resolveItemsByTag>>;
       try {
-        items = await resolveItemsByTag(args.name, { baseUrl: config.registry, skipCache: true });
+        items = await resolveItemsByTag(args.name, { registryDir: config.registryDir });
       } catch {
         items = [];
       }

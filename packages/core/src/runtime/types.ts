@@ -1,5 +1,4 @@
 import type { HfColorGradingTarget } from "../colorGrading";
-import type { RuntimeAnalyticsEvent } from "./analytics";
 
 export type RuntimeJson =
   | string
@@ -204,24 +203,10 @@ export type RuntimeDataAppliedMessage = {
 };
 
 /**
- * Analytics events emitted by the runtime.
- *
- * The host app receives these via postMessage and forwards to its analytics
- * provider (PostHog, Mixpanel, Amplitude, custom logging, etc.).
- * No analytics SDK runs inside this iframe.
- */
-export type RuntimeAnalyticsMessage = {
-  source: "hf-preview";
-  type: "analytics";
-  event: RuntimeAnalyticsEvent;
-  properties: Record<string, string | number | boolean | null>;
-};
-
-/**
  * Numeric performance metrics emitted by the runtime — scrub latency, sustained
  * fps, dropped frames, decoder count, composition load time, media sync drift.
  * The host aggregates per-session values (p50/p95) and forwards to its
- * observability pipeline. Distinct from `analytics` events because perf data
+ * observability pipeline. Distinct from discrete event messages because perf data
  * is continuous and numeric, not discrete.
  */
 export type RuntimePerformanceMessage = {
@@ -256,7 +241,6 @@ export type RuntimeOutboundMessage =
   | RuntimeAssetsReadyMessage
   | RuntimeDataErrorMessage
   | RuntimeDataAppliedMessage
-  | RuntimeAnalyticsMessage
   | RuntimePerformanceMessage
   | RuntimeGroupLevelsMessage;
 

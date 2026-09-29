@@ -6,7 +6,7 @@ import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 
 export const examples: Example[] = [
   ["Surface every keyframe + motion path in the project", "hyperframes keyframes"],

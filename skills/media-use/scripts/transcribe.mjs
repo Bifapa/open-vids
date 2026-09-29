@@ -14,7 +14,6 @@ import { homedir, tmpdir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
 import { parseArgs, stripVTControlCharacters } from "node:util";
 import { mergeTokensToWords } from "./lib/parakeet-words.mjs";
-import { track } from "./lib/telemetry.mjs";
 import { resolveNpxInvocation } from "./lib/npx-sync.mjs";
 
 // The DEFAULT local transcription path. Prefers NVIDIA Parakeet-TDT via
@@ -183,10 +182,8 @@ try {
   const parakeetBin = resolveParakeet();
   const asked = args.engine === "parakeet" || args.engine === "whisper" ? args.engine : "auto";
   // Without parakeet-mlx, the CLI's own Parakeet (any OS, `hyperframes models install parakeet`).
-  let engine = "parakeet";
   if (asked !== "whisper" && parakeetBin) runParakeet(parakeetBin);
-  else engine = runCli(asked);
-  await track("media_use_transcribe", { engine });
+  else runCli(asked);
 } catch (err) {
   if (args.json) console.log(JSON.stringify({ ok: false, error: err.message }));
   else console.error(`error: transcription failed: ${err.message}`);

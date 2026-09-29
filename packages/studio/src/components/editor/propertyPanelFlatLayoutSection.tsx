@@ -1,4 +1,3 @@
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
@@ -68,7 +67,6 @@ function KeyframeGutter({
   | "onRemoveKeyframe"
   | "onConvertToKeyframes"
 >) {
-  const track = useTrackDesignInput();
   if (!gsapAnimId) return null;
   const hasKeyframesOnProp = Boolean(navKeyframes?.some((kf) => property in kf.properties));
   return (
@@ -80,17 +78,14 @@ function KeyframeGutter({
         onSeek={seekFromKfPct}
         onAddKeyframe={() => {
           if (!onCommitAnimatedProperty) return;
-          track("button", `Add ${property} keyframe`);
           void onCommitAnimatedProperty(element, property, displayValue);
         }}
         onRemoveKeyframe={(pct, animationId) => {
           if (!onRemoveKeyframe) return;
-          track("button", `Remove ${property} keyframe`);
           onRemoveKeyframe(animationId ?? animIdForProp(property), pct);
         }}
         onConvertToKeyframes={() => {
           if (!onConvertToKeyframes) return;
-          track("button", `Convert ${property} to keyframes`);
           onConvertToKeyframes(animIdForProp(property));
         }}
       />

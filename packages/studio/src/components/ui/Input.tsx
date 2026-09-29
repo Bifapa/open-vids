@@ -1,6 +1,6 @@
 /**
  * Input: a boxed text field. Typing edits a local draft; Enter and blur commit it,
- * Escape abandons it. `onTrack` fires once per commit, never per keystroke.
+ * Escape abandons it.
  */
 
 import { Input as BaseInput } from "@base-ui/react/input";
@@ -41,8 +41,6 @@ export interface InputProps extends Omit<
   value: string;
   /** Called with the draft on Enter and on blur, only when it really changed. */
   onCommit: (next: string) => void;
-  /** Called once per committed change, for design-input telemetry. */
-  onTrack?: () => void;
   /** Marks the field invalid: red boundary and `aria-invalid`. */
   invalid?: boolean;
   className?: string;
@@ -52,7 +50,6 @@ export interface InputProps extends Omit<
 export function Input({
   value,
   onCommit,
-  onTrack,
   invalid,
   disabled,
   className,
@@ -74,7 +71,6 @@ export function Input({
     dirtyRef.current = false;
     if (next === valueRef.current) return;
     onCommit(next);
-    onTrack?.();
   };
 
   return (

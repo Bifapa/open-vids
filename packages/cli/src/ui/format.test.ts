@@ -71,7 +71,7 @@ describe("formatScreenshotFallbackHint", () => {
     expect(formatScreenshotFallbackHint({ ...slow, captureMode: "beginframe" })).toBeUndefined();
   });
 
-  it("stays silent when software gpu was requested, as --docker and --no-browser-gpu do", () => {
+  it("stays silent when software gpu was requested, as --no-browser-gpu does", () => {
     expect(formatScreenshotFallbackHint({ ...slow, requestedGpuMode: "software" })).toBeUndefined();
     expect(formatScreenshotFallbackHint({ ...slow, requestedGpuMode: undefined })).toBeUndefined();
   });

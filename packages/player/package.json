@@ -1,15 +1,8 @@
 {
   "name": "@hyperframes/player",
   "version": "0.8.81",
+  "private": true,
   "description": "Embeddable web component for HyperFrames compositions",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/heygen-com/hyperframes",
-    "directory": "packages/player"
-  },
-  "files": [
-    "dist"
-  ],
   "type": "module",
   "main": "./dist/hyperframes-player.js",
   "types": "./dist/hyperframes-player.d.ts",

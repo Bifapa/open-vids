@@ -19,13 +19,11 @@ export function GsapAddAnimationControl({
   open,
   setOpen,
   onAddAnimation,
-  track,
   variant,
 }: {
   open: boolean;
   setOpen: (open: boolean) => void;
   onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
-  track: (control: string, name: string) => void;
   variant: keyof typeof STYLES;
 }) {
   const styles = STYLES[variant];
@@ -40,7 +38,6 @@ export function GsapAddAnimationControl({
               type="button"
               title={METHOD_TOOLTIPS[method]}
               onClick={() => {
-                track("button", `Add ${method} animation`);
                 onAddAnimation(method);
                 setOpen(false);
               }}

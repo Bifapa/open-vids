@@ -5,8 +5,6 @@
  * cap; it reads only its arguments, which is what makes it separable.
  */
 
-import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
-import { slugifyDesignInput } from "../../utils/designInputTracking";
 import { FlatGroupHeader } from "./propertyPanelFlatPrimitives";
 import type { FlatGroupDescriptor } from "./propertyPanelFlatDescriptors";
 
@@ -18,15 +16,13 @@ export function closedGroupHeader(
   justToggledIds: readonly string[],
 ) {
   return (
-    <DesignPanelInputProvider key={group.id} section={slugifyDesignInput(group.title)}>
-      <FlatGroupHeader
-        title={group.title}
-        isOpen={false}
-        onToggleOpen={() => toggleOpen(group.id)}
-        summary={group.summary}
-        animateEntrance={justToggledIds.includes(group.id)}
-      />
-    </DesignPanelInputProvider>
+    <FlatGroupHeader
+      title={group.title}
+      isOpen={false}
+      onToggleOpen={() => toggleOpen(group.id)}
+      summary={group.summary}
+      animateEntrance={justToggledIds.includes(group.id)}
+    />
   );
 }
 

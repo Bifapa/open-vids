@@ -7,7 +7,6 @@ import { isTypingTarget } from "../utils/typingTarget";
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import { STUDIO_PLAIN_KEYS } from "../player/components/studioShortcuts";
 
 // Extracted from useAppHotkeys.ts to keep it under the studio 600-line cap,
@@ -75,11 +74,9 @@ export function dispatchModifierKey(
     handleUndoRedoKey(
       event,
       () => {
-        trackStudioEvent("keyboard_shortcut", { action: "undo" });
         void cb.handleUndo();
       },
       () => {
-        trackStudioEvent("keyboard_shortcut", { action: "redo" });
         void cb.handleRedo();
       },
     )
@@ -88,13 +85,11 @@ export function dispatchModifierKey(
 
   if (event.key === "1") {
     event.preventDefault();
-    trackStudioEvent("keyboard_shortcut", { action: "tab_compositions" });
     useDockLayoutStore.getState().activatePanel("compositions");
     return true;
   }
   if (event.key === "2") {
     event.preventDefault();
-    trackStudioEvent("keyboard_shortcut", { action: "tab_assets" });
     useDockLayoutStore.getState().activatePanel("assets");
     return true;
   }
@@ -116,7 +111,6 @@ export function dispatchModifierKey(
     if (key === "c") {
       if (cb.handleCopy()) {
         event.preventDefault();
-        trackStudioEvent("keyboard_shortcut", { action: "copy" });
       }
       return true;
     }
@@ -128,14 +122,12 @@ export function dispatchModifierKey(
     }
     if (key === "v") {
       event.preventDefault();
-      trackStudioEvent("keyboard_shortcut", { action: "paste" });
       void cb.handlePaste();
       return true;
     }
     if (key === "x") {
       if (usePlayerStore.getState().selectedElementId || cb.domEditSelectionRef.current) {
         event.preventDefault();
-        trackStudioEvent("keyboard_shortcut", { action: "cut" });
         void cb.handleCut();
       }
       return true;
@@ -145,7 +137,6 @@ export function dispatchModifierKey(
       // browser's own Cmd+D (bookmark this page) fires over the editor.
       event.preventDefault();
       if (usePlayerStore.getState().selectedElementId) {
-        trackStudioEvent("keyboard_shortcut", { action: "duplicate" });
         void cb.handleDuplicate();
       }
       return true;

@@ -108,7 +108,7 @@ export interface ExtractVideosStageResult {
   videoExtractMs: number;
   /**
    * Candidate-only typed failure gate. Callers throw this only after their
-   * extraction telemetry checkpoint has been emitted.
+   * extraction diagnostics checkpoint has been emitted.
    */
   failureToEnforce: VideoExtractionStageError | null;
 }

@@ -68,7 +68,7 @@ Most users should use `@hyperframes/producer` or the `hyperframes` CLI instead o
 
 ## Documentation
 
-Full documentation: [hyperframes.heygen.com/packages/engine](https://hyperframes.heygen.com/packages/engine)
+Full documentation: see `packages/engine` in this repo (no hosted docs site).
 
 ## Related packages
 

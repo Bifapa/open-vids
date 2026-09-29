@@ -2,7 +2,6 @@ import { useEffect, useRef, type MutableRefObject } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 import { buildStudioSelectionSnapshot } from "../utils/studioSelectionSnapshot";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 
 interface UseStudioSelectionPublisherParams {
   projectId: string | null;
@@ -15,12 +14,6 @@ interface UseStudioSelectionPublisherParams {
 
 function reportSelectionPublishError(error: unknown): void {
   if (error instanceof Error && error.name === "AbortError") return;
-  const errorName = error instanceof Error ? error.name : typeof error;
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  trackStudioEvent("studio_selection_publish_failed", {
-    error_name: errorName,
-    error_message: errorMessage.slice(0, 500),
-  });
   // eslint-disable-next-line no-console
   console.warn("[Studio] Failed to update agent selection context", error);
 }

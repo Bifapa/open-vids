@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { RightPanelTab } from "../utils/studioHelpers";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import { useDockLayoutStore, visiblePanelInZone } from "../components/dock/dockLayoutStore";
 import { PANEL_DEFINITIONS, type PanelId } from "../components/dock/panelRegistry";
 
@@ -52,9 +51,7 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
 
   const setRightPanelTab = useCallback((tab: RightPanelTab) => {
     const store = useDockLayoutStore.getState();
-    const shown = visiblePanelInZone("right", store.lastActive, store.visiblePanels);
     store.activatePanel(panelForTab(tab));
-    if (tabForPanel(shown) !== tab) trackStudioEvent("tab_switch", { panel: "right_panel", tab });
   }, []);
 
   const setRightCollapsed = useCallback((collapsed: boolean) => {

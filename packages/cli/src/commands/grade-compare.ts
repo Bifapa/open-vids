@@ -25,9 +25,8 @@ import { findFFmpeg } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
-import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 
 const COMPOSITION_ID = "grade-compare";
 const COMPOSITION_DURATION = "1";
@@ -662,19 +661,12 @@ export default defineCommand({
       });
       preparedDir = prepared.tempDir;
 
-      const { sheetPath: tempSheet, renderReadyTimedOut } = await captureGradeCompareSheet(
+      const { sheetPath: tempSheet } = await captureGradeCompareSheet(
         prepared.tempDir,
         parsed.timeoutMs,
       );
       mkdirSync(dirname(parsed.outPath), { recursive: true });
       copyFileSync(tempSheet, parsed.outPath);
-      trackCompareSheet({
-        command: "grade-compare",
-        cells: prepared.cells.length,
-        truncated: capResult.truncated,
-        total: capResult.total,
-        renderReadyTimedOut,
-      });
 
       const sheet = displayPathFromBase(parsed.projectDir, parsed.outPath);
       if (parsed.json) {

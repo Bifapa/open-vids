@@ -27,7 +27,6 @@ import {
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
 import { PreviewZoomOverlay, usePreviewNavigator } from "./PreviewZoomOverlay";
-import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
 interface NLEPreviewProps {
   projectId: string;
@@ -141,9 +140,7 @@ export const NLEPreview = memo(function NLEPreview({
     previousActiveKeyRef.current = activeKey;
     resetPreviewSlots();
   }, [activeKey, resetPreviewSlots]);
-
   const liveGenRef = useRef<number | null>(null);
-  const reportPreviewFirstFrame = usePreviewFirstFrameTelemetry(previewSlots);
   const [compositionSize, setCompositionSize] = useState<PreviewCompositionSize | null>(null);
   const poster = usePreviewPoster(projectId, activeKey, directUrl);
   const gutterPx = usePreviewGuidesStore((s) => (s.rulerVisible ? RULER_GUTTER_PX : 0));
@@ -533,7 +530,6 @@ export const NLEPreview = memo(function NLEPreview({
                   onCompositionLoadingChange={onCompositionLoadingChange}
                   onReadyToShowChange={poster.onLiveReadyToShowChange}
                   onPreviewError={poster.onPreviewError}
-                  onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
                   style={
@@ -550,7 +546,6 @@ export const NLEPreview = memo(function NLEPreview({
                   directUrl={slot.url}
                   onLoad={() => onShadowIframeLoad(slot.gen)}
                   onReadyToShowChange={(ready) => onShadowReadyChange(slot.gen, ready)}
-                  onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   onPreviewError={(message) => onShadowError(slot.gen, message)}
                   portrait={portrait}
                   suppressLoadingOverlay

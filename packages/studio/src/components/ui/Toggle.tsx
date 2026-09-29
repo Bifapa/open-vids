@@ -13,8 +13,6 @@ export interface ToggleProps {
   checked: boolean;
   /** Called on every flip. */
   onCommit: (next: boolean) => void;
-  /** Called once per flip, for design-input telemetry. */
-  onTrack?: () => void;
   disabled?: boolean;
   className?: string;
   "data-preview-state"?: PreviewState;
@@ -24,7 +22,6 @@ export function Toggle({
   label,
   checked,
   onCommit,
-  onTrack,
   disabled,
   className,
   "data-preview-state": previewState,
@@ -34,10 +31,7 @@ export function Toggle({
       aria-label={label}
       checked={checked}
       disabled={disabled}
-      onCheckedChange={(next) => {
-        onCommit(next);
-        onTrack?.();
-      }}
+      onCheckedChange={onCommit}
       data-preview-state={previewState}
       className={cn(
         "relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full p-0.5",

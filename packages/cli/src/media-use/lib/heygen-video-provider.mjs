@@ -51,7 +51,7 @@ export async function heygenVideoGenerate(intent, ctx) {
 
   // Short-circuit: once one discovery call fails, the result is null either
   // way, so don't attempt the second -- that would double-fire the onboarding
-  // message and the provider-error telemetry ping for what's really one failure.
+  // message for what's really one failure.
   const avatarId = ctx?.avatarId || defaultAvatarId(captureReason);
   if (!avatarId) {
     if (discoveryFailureReason === "not_authenticated") console.error(AVATAR_VIDEO_SIGNIN_MESSAGE);

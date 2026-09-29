@@ -117,7 +117,7 @@ function combineCaptureCostEstimates(
  *   failure was auto sizing, and an explicit `--workers N` is the operator's
  *   own call.
  * - Not enforced as a cap yet — the per-worker budget constant is derived
- *   from one field report; the `workers_heap_*` telemetry emitted with the
+ *   from one field report; the `workers_heap_*` diagnostics emitted with the
  *   sizing decides whether to enforce (see the TODO on HEAP_PER_WORKER_MB in
  *   @hyperframes/engine's parallelCoordinator). The message gives the
  *   operator the actionable knobs today.
@@ -145,7 +145,7 @@ export function resolveRenderWorkerCount(
   compiled: Pick<CompiledComposition, "hasShaderTransitions" | "renderModeHints">,
   log: ProducerLogger = defaultLogger,
   measuredCaptureCost?: CaptureCostEstimate,
-  /** Sink for the sizing provenance so the orchestrator can thread it into telemetry. */
+  /** Sink for the sizing provenance so the orchestrator can thread it into diagnostics. */
   onSizing?: (sizing: WorkerSizing) => void,
 ): number {
   // TODO(htmlInCanvas): workaround — Chrome's experimental drawElementImage

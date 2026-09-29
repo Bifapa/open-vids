@@ -30,7 +30,7 @@ function runScript(engine, cliEngine) {
       [script, "--input", input, "--engine", engine, "--json"],
       {
         encoding: "utf8",
-        env: { ...env, HYPERFRAMES_MEDIA_HOME: join(root, "home"), HYPERFRAMES_NO_TELEMETRY: "1" },
+        env: { ...env, HYPERFRAMES_MEDIA_HOME: join(root, "home") },
       },
     );
     return { result: JSON.parse(out.trim()), args: readFileSync(join(root, "args"), "utf8") };
@@ -99,7 +99,6 @@ test(
             PATH: `${bin}:${process.env.PATH}`,
             HOME: root,
             HYPERFRAMES_MEDIA_HOME: join(root, "home"),
-            HYPERFRAMES_NO_TELEMETRY: "1",
           },
         },
       );

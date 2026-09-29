@@ -39,7 +39,7 @@ describe("shouldUseSdkCutover child-scoped operations", () => {
 
 describe("sdkCutoverIneligibleReason", () => {
   // `ineligible_operation` was one string covering four distinct causes, which
-  // made the post-flip decline telemetry unactionable: 26 of 30 declines on
+  // made post-flip declines unactionable: 26 of 30 declines on
   // v0.8.47 landed there, with no way to separate a structural edit the SDK has
   // no vocabulary for (expected, permanent) from a reserved-attribute or
   // unsafe-attribute decline (narrower, and possibly fixable).

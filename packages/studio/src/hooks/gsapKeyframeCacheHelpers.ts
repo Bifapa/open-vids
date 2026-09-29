@@ -4,7 +4,6 @@
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import { resolveClipTimingBasis, resolveSelectorElementIds, toClipKeyframes } from "./gsapShared";
 import {
   deduplicateKeyframes,
@@ -236,29 +235,12 @@ export function scopedElementKey(element: {
  * bare-id key was passed through raw, so a non-string `elementId` reaching here
  * put a non-string key in both maps — and `pruneKeyframeCacheToFiles` then threw
  * `s.indexOf is not a function` on it, taking Studio to the crash boundary.
- *
- * Which caller supplies a non-string id is still unknown: every writer traced
- * from here produces a string. So this coerces rather than guesses, and reports
- * the offending value's shape instead of swallowing it — the next occurrence
- * names its own producer.
  */
 export function elementCacheKeys(sourceFile: string, elementId: string): string[] {
-  const id = typeof elementId === "string" ? elementId : coerceCacheKeyId(elementId, sourceFile);
+  const id = String(elementId);
   return sourceFile === "index.html"
     ? [`index.html#${id}`, id]
     : [`${sourceFile}#${id}`, `index.html#${id}`, id];
-}
-
-function coerceCacheKeyId(elementId: unknown, sourceFile: string): string {
-  trackStudioEvent("cache_key_non_string", {
-    value_type: typeof elementId,
-    // An Element lands here as "HTMLDivElement", a boxed id as "Number" — enough
-    // to name the producer without shipping user content to telemetry.
-    constructor_name: (elementId as { constructor?: { name?: string } })?.constructor?.name ?? null,
-    is_array: Array.isArray(elementId),
-    source_file: sourceFile,
-  });
-  return String(elementId);
 }
 
 /** Replace one file's complete cache snapshot with one atomic store publish. */

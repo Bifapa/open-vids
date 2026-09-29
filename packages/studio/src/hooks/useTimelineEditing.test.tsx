@@ -16,7 +16,6 @@ vi.mock("../components/editor/manualEditingAvailability", async (importOriginal)
     ...actual,
     STUDIO_SDK_CUTOVER_ENABLED: true,
     STUDIO_SDK_CUTOVER_FAMILIES: new Set(["timing"]),
-    STUDIO_SDK_RESOLVER_SHADOW_ENABLED: false,
   };
 });
 

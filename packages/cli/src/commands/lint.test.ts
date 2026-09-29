@@ -17,7 +17,7 @@ vi.mock("../utils/lintProject.js", () => ({
   lintProject: (...args: unknown[]) => lintProjectMock(...args),
 }));
 // withMeta just annotates the object; identity keeps the assertions simple.
-vi.mock("../utils/updateCheck.js", () => ({ withMeta: (o: unknown) => o }));
+vi.mock("../utils/jsonMeta.js", () => ({ withMeta: (o: unknown) => o }));
 
 import lintCommand from "./lint.js";
 

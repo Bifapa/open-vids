@@ -11,7 +11,7 @@ import { resolveRef } from "./resolveRef.js";
 import { parseTimeExpression } from "./timeExpr.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 import {
   allRows,
   decideMutation,

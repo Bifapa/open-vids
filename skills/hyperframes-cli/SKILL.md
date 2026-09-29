@@ -3,8 +3,8 @@ name: hyperframes-cli
 description: >
   Use the HyperFrames CLI development loop: init, add, catalog, capture, lint, check, snapshot,
   compare, grade-compare, preview, play, present, beats, keyframes, single or batch render,
-  doctor, browser, info, upgrade, skills, compositions, timeline, history, docs,
-  benchmark, telemetry, transcribe, tts, and remove-background. Also use when diagnosing build
+  doctor, browser, info, skills, compositions, timeline, history, docs,
+  benchmark, transcribe, tts, and remove-background. Also use when diagnosing build
   or render failures. validate, inspect, and layout are deprecated aliases; use check. Covers local
   rendering (headless Chrome + FFmpeg on your machine).
 ---
@@ -87,7 +87,7 @@ Treat tiny unstyled content, canvas-sized icons, missing hero elements, or timel
 - **Read which tier answered; never infer it from results appearing.** With `--json` the envelope carries `query`, `tier` (`on-device` or `words`), `tier_detail`, `dropped`, `unindexed`, `shown`, `total` and `results`, plus `top_score` when the answering tier produces one and `warnings` when a tier was asked for and could not run, or when a search returned nothing and a better tier is still waiting on someone's consent. A weak result on `words` is expected; the same result on `on-device` is a bug. `top_score` is on-device only and has no threshold behind it: the ranker returns the whole catalog in some order for every query, so read it as evidence rather than as a pass or fail.
 - **`dropped` and `unindexed` are opposite skews between the registry and the on-device index, and rewording the query fixes neither.** `dropped` counts ranked names this registry cannot install, so the strongest matches are the ones being lost. `unindexed` counts registry moves the index cannot see at all, which no query can ever return. Refreshing the registry is not the answer to either: its manifest carries a 24h TTL and heals itself, while the vectors are a separately published artifact fetched into `~/.hyperframes/catalog/`. Re-running with `--on-device` refetches that index when `unindexed` is above zero, so that is the remedy to hand the user. A pure over-coverage skew (`dropped` above zero while `unindexed` is zero) does not trigger the refetch; clearing `~/.hyperframes/catalog/` is the only way out of that one. Both counts are of names rather than of results, so either can exceed `total`.
 - **When a search comes back with nothing worth installing, say so in chat.** Describe the query you ran, the move you needed, and which tier answered. Do not hold out for the on-device tier, which needs a consented 33 MB download and is therefore off in most agent runs.
-- **Offer the offline tier; never enable it silently.** A one-time ~33 MB download (a quantized ONNX build of `bge-small-en-v1.5` plus its tokenizer, pinned to a fixed revision) and the catalog vectors from the registry, both cached under `~/.hyperframes/`, neither added to the project or any package. Once cached it ranks by meaning with nothing sent. Say the size out loud and let the person decide, then pass `--on-device` (with `-y` to skip the prompt) once they agree. The interactive offer only fires on a TTY. Under `--json` there is no prompt, but a search that found nothing puts the same ask in `warnings`, so read that array and put the decision to the user yourself. When the person asks what the download is, why this model, or what leaves the machine, point them to https://hyperframes.heygen.com/developers/catalog-search.
+- **Offer the offline tier; never enable it silently.** A one-time ~33 MB download (a quantized ONNX build of `bge-small-en-v1.5` plus its tokenizer, pinned to a fixed revision) and the catalog vectors from the registry, both cached under `~/.hyperframes/`, neither added to the project or any package. Once cached it ranks by meaning with nothing sent. Say the size out loud and let the person decide, then pass `--on-device` (with `-y` to skip the prompt) once they agree. The interactive offer only fires on a TTY. Under `--json` there is no prompt, but a search that found nothing puts the same ask in `warnings`, so read that array and put the decision to the user yourself. When the person asks what the download is, why this model, or what leaves the machine, explain the local tiers above (no hosted docs site).
 
 - Prefer `--json` for agent and CI calls. Server-mode `render`, `preview`, and `play` do not provide ordinary JSON output; `preview --selection --json` and `preview --context --json` are query-mode exceptions.
 - `doctor --json` always exits zero. Gate on its payload:
@@ -114,15 +114,14 @@ Use `selection.target.hfId` when available, otherwise its selector and source fi
 
 ## Render choices
 
-| Need                                     | Command                                                                       |
-| ---------------------------------------- | ----------------------------------------------------------------------------- |
-| Fast local iteration                     | `npx hyperframes render --quality draft`                                      |
-| First real encode                        | `npx hyperframes render --quality looks --output out.mp4`                     |
-| Final local delivery                     | `npx hyperframes render --quality delivery --output out.mp4`                  |
-| Reproducible container render            | `npx hyperframes render --docker --strict --output out.mp4`                   |
-| Local variable-driven batch render       | `npx hyperframes render --batch rows.json --output "renders/{name}.mp4"`      |
+| Need                               | Command                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| Fast local iteration               | `npx hyperframes render --quality draft`                                 |
+| First real encode                  | `npx hyperframes render --quality looks --output out.mp4`                |
+| Final local delivery               | `npx hyperframes render --quality delivery --output out.mp4`             |
+| Local variable-driven batch render | `npx hyperframes render --batch rows.json --output "renders/{name}.mp4"` |
 
-Skill attribution is automatic — the examples above need no `--skill`. A project scaffolded by a workflow (`hyperframes init --skill=<workflow>`) records its owning skill in `hyperframes.json`, and every later render inherits it on anonymous telemetry: re-renders, `npm run render`, and `--batch` alike. Pass `--skill=<slug>` explicitly only to stamp a project that was not created through a workflow (its first render then persists it).
+Skill attribution is automatic — the examples above need no `--skill`. A project scaffolded by a workflow (`hyperframes init --skill=<workflow>`) records its owning skill in `hyperframes.json`, and every later render inherits it for local attribution: re-renders, `npm run render`, and `--batch` alike. Pass `--skill=<slug>` explicitly only to stamp a project that was not created through a workflow (its first render then persists it).
 
 After verifying a successful render, report the result in chat with the exact command, expected vs actual behavior, and the verbatim error for any bug or friction. Do not send only a symptom summary. Include the rerunnable command (relative to the project directory — do **not** paste absolute paths, home-directory prefixes, or user/machine identifiers), expected versus actual behavior, exact error (also strip absolute paths from stack traces — keep basename + line, drop the leading directory), whether output completed/fell back/failed, workaround, and repro-project status. For a visual defect (black frame, flicker, corrupt output, wrong frame, blank output, other visual anomaly), also include a `COMPOSITION_STRUCTURE:` block — a privacy-preserving structural anatomy (element census + attribute presence + timeline shape) so maintainers can pattern-match against known bug families without the composition ZIP. Agents auto-fill this via the composition-census helper; the human user does not fill it by hand. If the issue did not reproduce again, say so and still include the last failing command and logs. Use `--file-issue` only with consent: it publishes a minimal reproduction to a public URL. Keep paths relative and identifiers out, as above.
 
@@ -130,15 +129,15 @@ After verifying a successful render, report the result in chat with the exact co
 
 The following references and owning skills are mandatory command contracts, not optional background reading. Before running a command in the table, read its matching row.
 
-| Need                                                                                               | Reference                             |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `init`, `capture`, `skills`                                                                        | `references/init-and-scaffold.md`     |
-| `lint`, `check`, motion sidecars, `snapshot`                                                       | `references/lint-validate-inspect.md` |
-| `compare`, `grade-compare`, variable-driven `render --batch`                                       | `references/compare-and-batch.md`     |
-| `beats` for an existing project's Studio beat grid                                                 | `references/beats.md`                 |
-| `preview`, `play`, `render`, Studio context                                                                    | `references/preview-render.md`        |
-| `doctor`, browser management                                                                       | `references/doctor-browser.md`        |
-| `info`, `upgrade`, `compositions`, `timeline`, `docs`, `benchmark`, telemetry, media preprocessing | `references/upgrade-info-misc.md`     |
+| Need                                                                         | Reference                             |
+| ---------------------------------------------------------------------------- | ------------------------------------- |
+| `init`, `capture`, `skills`                                                  | `references/init-and-scaffold.md`     |
+| `lint`, `check`, motion sidecars, `snapshot`                                 | `references/lint-validate-inspect.md` |
+| `compare`, `grade-compare`, variable-driven `render --batch`                 | `references/compare-and-batch.md`     |
+| `beats` for an existing project's Studio beat grid                           | `references/beats.md`                 |
+| `preview`, `play`, `render`, Studio context                                  | `references/preview-render.md`        |
+| `doctor`, browser management                                                 | `references/doctor-browser.md`        |
+| `info`, `compositions`, `timeline`, `docs`, `benchmark`, media preprocessing | `references/upgrade-info-misc.md`     |
 
 For composition variables, also read `/hyperframes-core` → `references/variables-and-media.md`. For `hyperframes add` and `hyperframes catalog`, use `/hyperframes-registry`. Before `hyperframes present`, read `/slideshow`; before `hyperframes keyframes`, read `/hyperframes-keyframes`. For TTS, transcription, captions, or background removal choices, use `/media-use`.
 
@@ -156,7 +155,6 @@ npx hyperframes figma asset KEY:10-20
 
 ## Commands you should not run
 
-Two entries in `hyperframes --help` are not part of the authoring loop, and reaching for them wastes a turn:
+One entry in `hyperframes --help` is not part of the authoring loop, and reaching for it wastes a turn:
 
-- `events` is the telemetry endpoint skills use to report their **own** invocation, ideally from a bundled script. It emits an anonymous event and exits 0 no matter what you pass it. It is not a way to read telemetry back, and an agent has no reason to call it by hand.
 - `validate`, `inspect`, and `layout` are deprecated aliases kept for old scripts. `check` is the one that is maintained, and it is what every reference in this skill assumes.

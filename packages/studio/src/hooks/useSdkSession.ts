@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { openComposition } from "@hyperframes/sdk";
 import type { Composition } from "@hyperframes/sdk";
 import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { PublishSdkSession } from "../utils/sdkCutover";
 import { addExternalFileReloadListener } from "./externalFileReloadBus";
 import { whenPreviewBooted } from "../player/store/playerStore";
@@ -35,7 +34,7 @@ import { whenPreviewBooted } from "../player/store/playerStore";
  * delay, `hidden` often true by the time it lands) versus a request blocked
  * before it left the browser — CSP `connect-src`, Private Network Access, an
  * extension rewriting `fetch` (rejects near-instantly, tab stays visible and
- * alive). Telemetry before this change could not tell the two apart.
+ * alive).
  *
  * `absent` and `empty_file` split what `absent_or_empty` could not: the route
  * answers `content: ""` both for a file it cannot find (the `optional=1` shim)
@@ -69,21 +68,12 @@ type ProjectFileReadFailure =
 
 type ProjectFileReadResult = { ok: true; content: string } | ProjectFileReadFailure;
 
-/** The three ways a 200 can carry no composition — old combined label plus its split. */
-const EMPTY_READ_REASONS = new Set<ProjectFileReadFailure["reason"]>([
-  "absent_or_empty",
-  "absent",
-  "empty_file",
-]);
-
 /**
- * Record a read that produced no usable content, and answer which project — if
- * any — the failure identifies as unreachable.
+ * Answer which project — if any — a failed read identifies as unreachable.
  *
  * No SDK session follows a failed read, so EVERY cutover chokepoint takes the
- * server path and emits nothing — the shadow never runs either. A broken read
- * would otherwise be a silent, total SDK bypass, which is why this is recorded
- * at all.
+ * server path and the shadow never runs either. A broken read would otherwise
+ * be a silent, total SDK bypass, which is why this is surfaced at all.
  *
  * Only a 404 identifies the *project*: the server answered, and its answer was
  * that it does not serve this id. A 5xx, a dropped request, an unexpected body
@@ -94,43 +84,21 @@ const EMPTY_READ_REASONS = new Set<ProjectFileReadFailure["reason"]>([
  * called from is a long pre-existing async body already near the complexity
  * threshold, and this branch is one coherent unit.
  */
-function reportReadFailure(
-  read: ProjectFileReadFailure,
-  projectId: string,
-  pathInTree: boolean | null,
-): string | null {
-  trackStudioEvent("sdk_session_unavailable", {
-    stage: "read",
-    reason: read.reason,
-    ...(read.reason === "http_error" ? { status: read.status, why: read.why } : {}),
-    ...(read.reason === "network" ? { elapsed_ms: read.elapsedMs, hidden: read.hidden } : {}),
-    ...(read.reason === "invalid_json" ? { content_type: read.contentType } : {}),
-    // Only meaningful for the empty-read reasons — the graveyard-refuted "clear
-    // activeCompPath when it's not in the tree" fix's proposed next step,
-    // scoped to instrumentation only. `null` while the tree hasn't loaded
-    // yet: a false-negative there would read as "genuinely absent" when it is
-    // really "haven't looked". Carried on all three so the split keeps the
-    // signal that made it worth splitting: every measured case so far is
-    // `path_in_tree: true`, a file the tree lists and this read cannot get.
-    ...(EMPTY_READ_REASONS.has(read.reason) ? { path_in_tree: pathInTree } : {}),
-  });
+function reportReadFailure(read: ProjectFileReadFailure, projectId: string): string | null {
   if (read.reason !== "http_error") return null;
   return read.status === 404 ? projectId : null;
 }
 
 // The request never produced a response: offline, the dev server gone, a
-// CSP/Private-Network-Access block, or an extension rewriting fetch. Called
-// from the fetch's own catch so it is reported as a READ failure — left to
-// propagate, the effect's outer catch reported it as `stage: "open"`, which
-// claims the composition failed to parse. Every `stage: open` event before
-// this change was this branch, so the label made the largest class
-// unaddressable.
+// CSP/Private-Network-Access block, or an extension rewriting fetch. Answered
+// as a READ failure — left to propagate, the effect's outer catch would treat
+// it as a composition parse failure, which blames the user's composition for
+// a response the composition had nothing to do with.
 //
 // `elapsedMs` and `hidden` (read synchronously, right at the moment of
-// rejection, so they survive whenever the event itself does) are the
-// discriminator between "blocked before send" (near-zero elapsed) and "the
-// tab/server went away mid-flight" (real elapsed, often already hidden) —
-// see the type's doc comment.
+// rejection) discriminate "blocked before send" (near-zero elapsed) from "the
+// tab/server went away mid-flight" (real elapsed, often already hidden) — see
+// the type's doc comment.
 function networkReadFailure(
   fetchStarted: number,
 ): Extract<ProjectFileReadFailure, { reason: "network" }> {
@@ -263,11 +231,10 @@ export interface SdkSessionHandle {
   forceReload: () => void;
   /**
    * Set when this server answered the composition read with a 404 for the
-   * project it was asked to open. In the CLI-embedded host — the only host
-   * that reports telemetry at all (`telemetry/policy.ts` suppresses Vite dev)
-   * — that does not mean the project is gone. It means this Studio is serving
-   * a *different* one; the project is untouched on disk. Either way every edit
-   * in this tab fails, and until now it failed silently.
+   * project it was asked to open. That does not mean the project is gone. It
+   * usually means this Studio is serving a *different* one; the project is
+   * untouched on disk. Either way every edit in this tab fails, and until now
+   * it failed silently.
    *
    * `null` for every other failure: a 500 or a dropped request says nothing
    * about which project the server serves, and `absent_or_empty` /
@@ -339,23 +306,20 @@ function ownsExpectedSession(
 function disposeSdkSession(session: Composition): void {
   try {
     session.dispose();
-  } catch (error) {
-    trackStudioEvent("sdk_session_dispose_failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+  } catch {
+    // A failed dispose leaves nothing actionable: the session is already gone
+    // and the effect cleanup that called here has nothing to retry against.
   }
 }
 
 export function useSdkSession(
   projectId: string | null,
   activeCompPath: string | null,
-  // Optional: only the app's primary session (App.tsx, wired to
-  // useFileManager's tree) can answer `path_in_tree` on an `absent_or_empty`
-  // read. A secondary session opened for a promote/bind target
-  // (DesignPanelPromoteProvider) has no tree of its own to check against and
-  // reports `null`, same as before the tree loads.
-  fileTree: readonly string[] = [],
-  fileTreeLoaded = false,
+  // Kept so existing callers (App.tsx via useStudioSdkSessions, and the tests
+  // below passing explicit trees) do not need to change: the failure
+  // classification no longer consults the tree, so these are ignored.
+  _fileTree: readonly string[] = [],
+  _fileTreeLoaded = false,
   // Fallback for the SSE-driven refresh in useExternalFileChangeCoordinator:
   // called at most once per (projectId, path) so the tree self-corrects even
   // when that delivery is missed (server restart, a watcher event the SSE
@@ -395,8 +359,7 @@ export function useSdkSession(
     forProjectId: string,
     forPath: string,
   ): void {
-    const pathInTree = fileTreeLoaded ? fileTree.includes(forPath) : null;
-    setUnreachableProject(reportReadFailure(read, forProjectId, pathInTree));
+    setUnreachableProject(reportReadFailure(read, forProjectId));
     setCompositionMissing(read.reason === "absent");
     if (read.reason !== "absent") return;
     const key = `${forProjectId}:${forPath}`;
@@ -481,9 +444,7 @@ export function useSdkSession(
           disposeSdkSession(comp);
           // Not a failure: project/path/reloadToken moved on while this open was
           // in flight, and the effect that owns the new identity already opened
-          // (or is opening) its own session. Emitting this as `sdk_session_unavailable`
-          // counted a benign race as a broken precondition on the cutover dashboard.
-          trackStudioEvent("sdk_session_superseded", {});
+          // (or is opening) its own session.
           return;
         }
         const displaced = ownedSessionRef.current;
@@ -493,21 +454,18 @@ export function useSdkSession(
         setOwnedSession(installed);
         if (displaced && displaced.session !== comp) disposeSdkSession(displaced.session);
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!cancelled && generationRef.current === generation) {
           setOwnedSession(null);
           // openComposition threw (unparseable composition, OOM) — same total
           // bypass as the read failure above, but this one is a real defect
-          // rather than a missing file. Carry the message; it is the only clue.
+          // rather than a missing file.
           //
           // A rejected read no longer reaches here: `readProjectFileOptional`
           // catches its own fetch rejection and answers `reason: "network"`, so
-          // this stage now means what it says. Before that, every event in this
-          // bucket was a network error wearing a parser's label.
-          trackStudioEvent("sdk_session_unavailable", {
-            stage: "open",
-            error: error instanceof Error ? error.message : String(error),
-          });
+          // this kind of failure now means what it says.
+          setUnreachableProject(null);
+          setCompositionMissing(false);
         }
       });
 

@@ -7,10 +7,6 @@ import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { AnimationCard } from "./AnimationCard";
 import { EASE_PRESETS } from "./easePresetLibrary";
 import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
-
-const trackStudioSegmentEaseEdit = vi.hoisted(() => vi.fn());
-vi.mock("../../telemetry/events", () => ({ trackStudioSegmentEaseEdit }));
-
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const ANIMATION: GsapAnimation = {
@@ -39,7 +35,6 @@ const FLAT_ANIMATION: GsapAnimation = {
 
 afterEach(() => {
   document.body.innerHTML = "";
-  trackStudioSegmentEaseEdit.mockClear();
 });
 
 function renderFocusCard(
@@ -176,14 +171,13 @@ describe("AnimationCard", () => {
     }
   });
 
-  it("tracks a committed segment ease alongside the existing update", () => {
+  it("commits a segment ease alongside the existing update", () => {
     const onEaseCommit = vi.fn();
     const view = renderFocusCard(null, onEaseCommit, true);
     openSegment(view.host, "0% → 50%");
     const ease = selectPreset(view.host, "quad-out");
 
     expect(onEaseCommit).toHaveBeenCalledWith(ANIMATION.id, 50, ease);
-    expect(trackStudioSegmentEaseEdit).toHaveBeenCalledWith({ action: "commit", ease });
     act(() => view.root.unmount());
   });
 
@@ -312,10 +306,6 @@ describe("AnimationCard ease editing", () => {
     const ease = selectPreset(view.host, "quad-out");
 
     expect(onUpdateKeyframeEase).toHaveBeenCalledExactlyOnceWith(animation.id, 50, ease);
-    expect(trackStudioSegmentEaseEdit).toHaveBeenCalledExactlyOnceWith({
-      action: "commit",
-      ease,
-    });
     act(() => view.root.unmount());
   });
 
@@ -334,7 +324,6 @@ describe("AnimationCard ease editing", () => {
 
     expect(onUpdateMeta).toHaveBeenCalledExactlyOnceWith(animation.id, { ease });
     expect(onUpdateKeyframeEase).not.toHaveBeenCalled();
-    expect(trackStudioSegmentEaseEdit).not.toHaveBeenCalled();
     act(() => view.root.unmount());
   });
 });

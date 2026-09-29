@@ -3,7 +3,6 @@ import gsap from "gsap";
 import { MorphSVGPlugin } from "gsap/MorphSVGPlugin";
 import { formatFrameTime, formatTime } from "../lib/time";
 import { liveTime, usePlayerStore } from "../store/playerStore";
-import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { ShortcutsPanel } from "./ShortcutsPanel";
@@ -71,7 +70,6 @@ const LoopButton = memo(function LoopButton({
       <button
         type="button"
         onClick={() => {
-          trackStudioEvent("playback", { action: "loop_toggle", enabled: !loopEnabled });
           setLoopEnabled(!loopEnabled);
         }}
         disabled={disabled}
@@ -114,7 +112,6 @@ const FullscreenButton = memo(function FullscreenButton({
       <button
         type="button"
         onClick={() => {
-          trackStudioEvent("playback", { action: "fullscreen_toggle", active: !isFullscreen });
           onToggleFullscreen();
         }}
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
@@ -257,7 +254,6 @@ export const PlayerControls = memo(function PlayerControls({
             type="button"
             aria-label={isPlaying ? "Pause" : "Play"}
             onClick={() => {
-              trackStudioEvent("playback", { action: isPlaying ? "pause" : "play" });
               onTogglePlay();
             }}
             disabled={controlsDisabled}

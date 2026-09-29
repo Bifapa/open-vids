@@ -14,7 +14,7 @@
  * resolver shadow does not run either, so it was invisible until
  * `studio:sdk_session_unavailable` shipped in v0.8.47.
  *
- * Production telemetry over the 72h after the flip: 1065 of 1544 session-open
+ * Production diagnostics over the 72h after the flip: 1065 of 1544 session-open
  * failures were this crash, across a large share of 197 users. Canvas is common
  * in compositions (Three.js, shaders, particle effects, charts).
  *

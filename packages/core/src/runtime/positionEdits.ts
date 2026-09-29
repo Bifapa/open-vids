@@ -19,11 +19,10 @@
  * parse is primed (gsap.getProperty) so tweens and positioned set()s that
  * first RENDER later reuse the cache instead of folding the edit. Known
  * limitation: if GSAP itself loads only after the apply ran, a later tween's
- * first parse still folds the edit (the fold guard then skips re-apply and
- * emits position_edit_fold_skipped instead of double-applying).
+ * first parse still folds the edit (the fold guard then skips re-apply
+ * instead of double-applying).
  */
 
-import { emitAnalyticsEvent } from "./analytics";
 import { isStylableElement } from "./domRealm";
 
 export const EDIT_BASE_X_ATTR = "data-hf-edit-base-x";
@@ -139,11 +138,8 @@ export function applyPositionEditToElement(el: StylableElement, opts?: { force?:
     previous !== undefined &&
     el.style.getPropertyValue("translate") !== previous
   ) {
-    // Observable signal for the documented degradation — without it, a
-    // fold-loss surfaces to users only as "my edit didn't stick".
-    emitAnalyticsEvent("position_edit_fold_skipped", {
-      hfId: el.getAttribute("data-hf-id"),
-    });
+    // Fold-loss degrades silently by design: skip the re-apply instead of
+    // double-applying the offset.
     return;
   }
   const dx = num(el.getAttribute("data-x")) - num(el.getAttribute(EDIT_BASE_X_ATTR));

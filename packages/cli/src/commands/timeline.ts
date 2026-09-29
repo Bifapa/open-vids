@@ -4,7 +4,7 @@ import { describeProject } from "../timeline/describeProject.js";
 import { formatTimeline } from "../timeline/formatTimeline.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 import { runApply, runIds, runUndo } from "../timeline/a2Commands.js";
 import { runMutation } from "../timeline/a2MutationCommand.js";
 import type { MutationVerb } from "../timeline/a2Shared.js";

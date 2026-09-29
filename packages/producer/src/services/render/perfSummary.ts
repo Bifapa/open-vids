@@ -67,11 +67,10 @@ export function pushWorkerDedupPerfs(
  */
 /**
  * Round a dB value to 1 decimal and clamp at 999 (an `Infinity` PSNR — a
- * bit-exact frame match — must not ship literally to telemetry). Single
+ * bit-exact frame match — must not serialize literally downstream). Single
  * source of truth for every dB field crossing into `RenderPerfSummary` or
- * `RenderCaptureObservability` — both must agree byte-for-byte so PostHog
- * consumers joining `render_complete` against the crash-survival
- * `render_error` mirror never see the same underlying score reported at two
+ * `RenderCaptureObservability` — both must agree byte-for-byte so local
+ * log/SSE consumers never see the same underlying score reported at two
  * different precisions (review finding).
  */
 export function roundDb(value: number | undefined): number | undefined {
@@ -338,7 +337,7 @@ export function buildRenderPerfSummary(input: {
     renderId: input.job.id,
     totalElapsedMs: input.totalElapsedMs,
     // RenderPerfSummary surfaces fps as a decimal because it lands in JSON
-    // payloads (CLI telemetry, regression-harness reports) where a single
+    // payloads (CLI diagnostics, regression-harness reports) where a single
     // number is friendlier than `{num,den}`. Callers needing the rational
     // back can read `job.config.fps`.
     fps: fpsToNumber(input.job.config.fps),

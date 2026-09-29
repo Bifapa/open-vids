@@ -60,7 +60,6 @@ import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
 import { useServerConnection } from "./hooks/useServerConnection";
-import { useStudioSessionStart } from "./hooks/useStudioSessionStart";
 import { useTimelineAddAtPlayhead } from "./hooks/useTimelineAddAtPlayhead";
 import { readStudioUrlStateFromWindow, resolveMasterCompositionPath } from "./utils/studioUrlState";
 import { useActiveComposition } from "./hooks/useActiveComposition";
@@ -76,7 +75,6 @@ export interface StudioAppProps {
 export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: StudioAppProps = {}) {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
-  useStudioSessionStart(projectId, resolving, waitingForServer);
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const previewIframe = useOwnPreviewIframe();
   const [compositionLoading, setCompositionLoading] = useState(true);

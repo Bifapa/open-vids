@@ -11,7 +11,6 @@ import {
 } from "./colorValue";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useInspectorGestureTransaction } from "./useInspectorGestureTransaction";
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
@@ -164,7 +163,6 @@ export function ColorField({
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
 }) {
-  const track = useTrackDesignInput();
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -208,10 +206,9 @@ export function ColorField({
   }, []);
   const persistColorValue = useCallback(
     (nextValue: string) => {
-      if (nextValue !== value) track("color", label);
       onCommit(nextValue);
     },
-    [label, onCommit, track, value],
+    [onCommit],
   );
   const {
     begin: beginColorGesture,

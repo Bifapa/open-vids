@@ -95,7 +95,7 @@ export function formatRenderPipelineDetail(input: {
 
 /**
  * Why a Linux auto render stayed on screenshot after BeginFrame was requested.
- * Silent when software was requested (--docker, --no-browser-gpu) or off Linux.
+ * Silent when software was requested (--no-browser-gpu) or off Linux.
  */
 export function formatScreenshotFallbackHint(input: {
   captureMode?: string;

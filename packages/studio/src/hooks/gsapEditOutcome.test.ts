@@ -1,14 +1,14 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { describe, expect, it } from "vitest";
-import { buildStudioSaveFailureProperties } from "../utils/studioSaveDiagnostics";
 import {
   GsapEditBlockedError,
   assertGsapEditPersisted,
   directEditOutcomeForProperties,
+  isGsapEditBlockedError,
 } from "./gsapEditOutcome";
 
 function blockDetailFor(error: unknown): unknown {
-  return buildStudioSaveFailureProperties({ source: "gsap_commit", error }).block_detail;
+  return isGsapEditBlockedError(error) ? error.detail : undefined;
 }
 
 /** Minimal animation that writes `x`, so the editability check actually runs. */
@@ -93,7 +93,7 @@ describe("a blocked GSAP edit names which of the nine causes it hit", () => {
     );
   });
 
-  it("surfaces the detail on the telemetry payload", () => {
+  it("surfaces the detail on the blocked error", () => {
     expect(
       blockDetailFor(
         new GsapEditBlockedError("source-uneditable", "live-rotation-no-source-tween"),

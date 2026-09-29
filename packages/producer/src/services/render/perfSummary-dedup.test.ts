@@ -82,7 +82,7 @@ describe("buildRenderPerfSummary static-dedup aggregation", () => {
     });
   });
 
-  it("keeps predicted and verified counts distinct and aggregates bounded verifier telemetry", () => {
+  it("keeps predicted and verified counts distinct and aggregates bounded verifier diagnostics", () => {
     const s = buildRenderPerfSummary(
       baseInput([
         perf({

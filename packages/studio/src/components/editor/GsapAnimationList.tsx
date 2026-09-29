@@ -1,15 +1,11 @@
 import { useCallback, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { useShallow } from "zustand/react/shallow";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { usePlayerStore } from "../../player";
 import { isFocusedEaseRequestCurrent } from "../../player/store/keyframeSlice";
 import { AnimationCard } from "./AnimationCard";
 import { GsapAddAnimationControl } from "./GsapAddAnimationControl";
-import {
-  type GsapAnimationEditCallbacks,
-  withTrackedGsapAnimationCallbacks,
-} from "./gsapAnimationCallbacks";
+import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
 
 interface GsapAnimationListProps extends GsapAnimationEditCallbacks {
   elementId: string;
@@ -18,7 +14,7 @@ interface GsapAnimationListProps extends GsapAnimationEditCallbacks {
   variant: "classic" | "flat";
 }
 
-/** Shared animation cards, telemetry, and timeline-ease focus ownership for both inspectors. */
+/** Shared animation cards and timeline-ease focus ownership for both inspectors. */
 export function GsapAnimationList({
   elementId,
   animations,
@@ -26,9 +22,7 @@ export function GsapAnimationList({
   variant,
   ...callbacks
 }: GsapAnimationListProps) {
-  const track = useTrackDesignInput();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const trackedCallbacks = withTrackedGsapAnimationCallbacks(callbacks, track);
   const { focusedEaseSegment, timelineProjectId, timelineSessionEpoch, selectedElementId } =
     usePlayerStore(
       useShallow((state) => ({
@@ -68,7 +62,7 @@ export function GsapAnimationList({
       )}
       {animations.map((animation, index) => (
         <AnimationCard
-          {...trackedCallbacks}
+          {...callbacks}
           key={animation.id}
           animation={animation}
           defaultExpanded={index === 0}
@@ -81,7 +75,6 @@ export function GsapAnimationList({
         open={addMenuOpen}
         setOpen={setAddMenuOpen}
         onAddAnimation={onAddAnimation}
-        track={track}
         variant={variant}
       />
     </div>

@@ -5,9 +5,7 @@ import type { ModelContext } from "./types";
 // The real package defines `document.modelContext` as an import side effect.
 // A mock cannot do that, so tests stand the object up themselves to represent
 // the import having happened.
-const trackEvent = vi.hoisted(() => vi.fn());
 vi.mock("@mcp-b/global", () => ({}));
-vi.mock("../telemetry/client", () => ({ trackEvent }));
 
 let loadModelContextPolyfill: typeof import("./polyfill").loadModelContextPolyfill;
 
@@ -24,7 +22,6 @@ function installModelContext(): ModelContext {
 beforeEach(async () => {
   vi.resetModules();
   ({ loadModelContextPolyfill } = await import("./polyfill"));
-  trackEvent.mockReset();
 });
 
 afterEach(() => {
@@ -37,7 +34,6 @@ describe("loadModelContextPolyfill", () => {
     const modelContext = installModelContext();
 
     await expect(loadModelContextPolyfill()).resolves.toBe(modelContext);
-    expect(trackEvent).toHaveBeenCalledWith("webmcp.polyfill_loaded");
   });
 
   it("shares one load between callers that race", async () => {
@@ -66,9 +62,6 @@ describe("loadModelContextPolyfill", () => {
     const first = loadModelContextPolyfill();
     await expect(first).resolves.toBeNull();
 
-    expect(trackEvent).toHaveBeenCalledWith("webmcp.polyfill_failed", {
-      error_name: "ModelContextMissingError",
-    });
     const retry = loadModelContextPolyfill();
     expect(retry).not.toBe(first);
     await expect(retry).resolves.toBeNull();
@@ -85,9 +78,6 @@ describe("loadModelContextPolyfill", () => {
 
     const first = loadModelContextPolyfill();
     await expect(first).resolves.toBeNull();
-    expect(trackEvent).toHaveBeenCalledWith("webmcp.polyfill_failed", {
-      error_name: "TypeError",
-    });
 
     Reflect.deleteProperty(document, "modelContext");
     const modelContext = installModelContext();

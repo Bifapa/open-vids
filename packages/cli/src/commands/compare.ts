@@ -11,9 +11,8 @@ import {
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { displayPathFromInput, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
-import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 import type { Example } from "./_examples.js";
 
 const MAX_COMPARE_VARIANTS = 16;
@@ -310,7 +309,6 @@ async function renderCompareSheet(parsed: ParsedCompareArgs): Promise<CompareSuc
   const framePaths: string[] = [];
 
   try {
-    let renderReadyTimedOut = false;
     for (let i = 0; i < prepared.length; i++) {
       const variant = prepared[i]!;
       const framePath = join(frameDir, `variant-${String(i + 1).padStart(2, "0")}.png`);
@@ -320,7 +318,6 @@ async function renderCompareSheet(parsed: ParsedCompareArgs): Promise<CompareSuc
         timeoutMs: parsed.timeoutMs,
       });
       framePaths.push(rendered.framePath);
-      renderReadyTimedOut = renderReadyTimedOut || rendered.renderReadyTimedOut;
     }
 
     mkdirSync(dirname(parsed.outPath), { recursive: true });
@@ -331,13 +328,6 @@ async function renderCompareSheet(parsed: ParsedCompareArgs): Promise<CompareSuc
       labels: variants.map((variant) => variant.label),
     });
 
-    trackCompareSheet({
-      command: "compare",
-      cells: variants.length,
-      truncated: capResult.truncated,
-      total: capResult.total,
-      renderReadyTimedOut,
-    });
     return buildCompareSuccessPayload(parsed.outPath, variants, capResult);
   } finally {
     cleanupPreparedCompareVariants(prepared);

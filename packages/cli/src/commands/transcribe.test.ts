@@ -33,11 +33,6 @@ vi.mock("node:child_process", async (importOriginal) => ({
   execFile: (...a: unknown[]) => execFileMock(...a),
 }));
 
-const trackTranscribeUnavailable = vi.fn();
-vi.mock("../telemetry/events.js", () => ({
-  trackTranscribeUnavailable: (...a: unknown[]) => trackTranscribeUnavailable(...a),
-}));
-
 import transcribeCmd from "./transcribe.js";
 
 /** Makes each runner write a one-word transcript naming itself. */
@@ -65,7 +60,6 @@ describe("transcribe command", () => {
     consumeCommandResult();
     transcribeMock.mockReset();
     prepareWavMock.mockReset().mockImplementation((input: string) => input);
-    trackTranscribeUnavailable.mockReset();
     mlxMock.mockReset();
     Object.assign(runners, { sherpa: false, mlx: false });
     transcribeMock.mockRejectedValue(
@@ -95,7 +89,6 @@ describe("transcribe command", () => {
 
     expect(transcribeMock).toHaveBeenCalled();
     expect(consumeCommandResult().exitCode).toBe(1);
-    expect(trackTranscribeUnavailable).toHaveBeenCalledWith({ optional: false });
   });
 
   it("--optional skips cleanly with exit 0", async () => {
@@ -111,7 +104,6 @@ describe("transcribe command", () => {
     expect(transcribeMock).toHaveBeenCalled();
     expect(prepareWavMock).not.toHaveBeenCalled();
     expect(consumeCommandResult().exitCode).toBe(0);
-    expect(trackTranscribeUnavailable).toHaveBeenCalledWith({ optional: true });
   });
 
   describe("engine selection", () => {

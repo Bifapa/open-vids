@@ -1,20 +1,20 @@
 /**
  * Read and write `hyperframes.json` — the per-project config that tells
- * `hyperframes add` which registry to pull items from and where to drop them
- * in the user's project tree.
+ * `hyperframes add` which local registry tree to read items from and where to
+ * drop them in the user's project tree.
  *
  * The file is created by `hyperframes init` and optionally edited by users to
- * point at custom registries or reshape their project layout.
+ * point at a custom registry directory or reshape their project layout. An
+ * absent `registry` field means "the bundled registry" — resolved at runtime
+ * by `localRegistryRoot()`, never a network URL.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
-import { normalizeSkillSlug } from "../telemetry/skill.js";
+import { normalizeSkillSlug } from "./skillSlug.js";
 import { writeNewFileSync } from "./writeNewFile.js";
 
 export const PROJECT_CONFIG_FILENAME = "hyperframes.json";
-const PROJECT_CONFIG_SCHEMA_URL = "https://hyperframes.heygen.com/schema/hyperframes.json";
 
 export interface ProjectConfigPaths {
   /** Where `hyperframes:block` items land, relative to project root. */
@@ -53,8 +53,12 @@ export interface RegistryItemRecord {
 
 export interface ProjectConfig {
   $schema?: string;
-  /** Base URL of the registry to pull items from. */
-  registry: string;
+  /**
+   * Local registry directory to read items from. Optional — absent means the
+   * bundled `registry/` tree. A custom directory (not a URL) lets a project
+   * pin or extend the catalog without touching the install.
+   */
+  registryDir?: string;
   /** Target paths for each item type. */
   paths: ProjectConfigPaths;
   /** Media handling options (e.g. auto-proxying of browser-hostile codecs). */
@@ -63,8 +67,8 @@ export interface ProjectConfig {
    * Owning authoring-workflow skill slug (e.g. "product-launch-video"). Stamped
    * by `hyperframes init --skill` or seeded from the first `hyperframes render
    * --skill`, then read back so every later render of this project — re-render,
-   * `npm run render`, `--batch`, preview — is attributed to it on anonymous
-   * telemetry without the caller re-passing the flag.
+   * `npm run render`, `--batch`, preview — is attributed to it in local usage
+   * attribution without the caller re-passing the flag.
    */
   authoringSkill?: string;
   /**
@@ -77,8 +81,6 @@ export interface ProjectConfig {
 }
 
 export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
-  $schema: PROJECT_CONFIG_SCHEMA_URL,
-  registry: DEFAULT_REGISTRY_URL,
   paths: {
     blocks: "compositions",
     components: "compositions/components",
@@ -137,9 +139,7 @@ export function readProjectConfig(projectDir: string): ProjectConfig | undefined
  * `registry` and rely on default paths).
  */
 export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig {
-  return {
-    $schema: partial.$schema ?? DEFAULT_PROJECT_CONFIG.$schema,
-    registry: partial.registry ?? DEFAULT_PROJECT_CONFIG.registry,
+  const normalized: ProjectConfig = {
     paths: {
       blocks: partial.paths?.blocks ?? DEFAULT_PROJECT_CONFIG.paths.blocks,
       components: partial.paths?.components ?? DEFAULT_PROJECT_CONFIG.paths.components,
@@ -151,14 +151,21 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
           ? partial.media.autoProxy
           : DEFAULT_PROJECT_CONFIG.media?.autoProxy,
     },
-    // Slug-gate on read so a hand-edited or corrupt value never reaches the
-    // telemetry stream; an invalid slug simply drops the attribution.
+    // Slug-gate on read so a hand-edited or corrupt value never reaches usage
+    // attribution; an invalid slug simply drops the attribution.
     authoringSkill: normalizeSkillSlug(partial.authoringSkill),
     // Whitelist rebuild - an omission here silently drops the manifest on
     // every config round-trip, which would read as "this project never
     // installed a catalog item".
     registryItems: normalizeRegistryItems(partial.registryItems),
   };
+  if (typeof partial.$schema === "string") normalized.$schema = partial.$schema;
+  // A legacy `registry` URL (remote HyperFrames registry) is ignored: the
+  // resolver only reads local directories. A local `registryDir` string is
+  // kept so custom layouts keep working. Dropping the URL is safe for old
+  // files — every read falls back to the bundled tree.
+  if (typeof partial.registryDir === "string") normalized.registryDir = partial.registryDir;
+  return normalized;
 }
 
 /**
@@ -238,9 +245,9 @@ function isFileNotFound(error: unknown): boolean {
  *
  * Seed-once: an existing stamp is never overwritten (the creating workflow owns
  * the identity; a one-off `--skill` on a later render still governs that
- * render's telemetry but does not rewrite the project's owner). An invalid or
- * empty slug is ignored. Best effort: a read-only or missing project directory
- * never fails the render it rode in on.
+ * render's local attribution but does not rewrite the project's owner). An
+ * invalid or empty slug is ignored. Best effort: a read-only or missing
+ * project directory never fails the render it rode in on.
  *
  * One of two writers that touch an ALREADY EXISTING `hyperframes.json` (the
  * other is {@link recordProjectRegistryItems}; absent-only callers use
@@ -281,13 +288,13 @@ export function seedProjectAuthoringSkill(projectDir: string, rawSkill: unknown)
     // A malformed config is left untouched rather than clobbered by a render.
     if (!isJsonObject(parsed)) return;
     // Seed-once. Normalized so a hand-edited garbage slug neither reaches
-    // telemetry nor wedges the seed — the next `--skill` render heals it.
+    // local attribution nor wedges the seed — the next `--skill` render heals it.
     if (normalizeSkillSlug(parsed.authoringSkill)) return;
     parsed.authoringSkill = skill;
     const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
     writeFileSync(path, JSON.stringify(parsed, null, indent) + "\n", "utf-8");
   } catch {
-    // Corrupt JSON, or a read-only file: attribution is best-effort telemetry,
+    // Corrupt JSON, or a read-only file: attribution is best-effort local metadata,
     // never a render blocker.
   }
 }
@@ -348,7 +355,7 @@ export function recordProjectRegistryItems(
     const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
     writeFileSync(path, JSON.stringify(parsed, null, indent) + "\n", "utf-8");
   } catch {
-    // Corrupt JSON or a read-only file: the manifest is telemetry provenance,
+    // Corrupt JSON or a read-only file: the manifest is usage-attribution provenance,
     // never an install blocker.
   }
 }

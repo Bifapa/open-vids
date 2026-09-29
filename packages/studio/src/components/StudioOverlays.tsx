@@ -2,7 +2,6 @@ import type { ComponentProps } from "react";
 import { LintModal } from "./LintModal";
 import { AskAgentModal } from "./AskAgentModal";
 import { StudioToast } from "./StudioToast";
-import { StudioFeedbackCard } from "./feedback/StudioFeedbackCard";
 import { buildAgentContextPreview } from "./editor/domEditingAgentPrompt";
 import type { useDomEditSession } from "../hooks/useDomEditSession";
 import type { useToast } from "../hooks/useToast";
@@ -74,8 +73,7 @@ export function StudioOverlays({
           }}
         />
       )}
-      {/* One bottom-right stack so the feedback card and toasts queue instead
-          of covering each other. Empty when nothing is showing. */}
+      {/* Bottom-right stack for toasts. Empty when nothing is showing. */}
       <div className="absolute bottom-6 right-6 z-91 flex flex-col items-end gap-2">
         {toasts.map((toast) => (
           <StudioToast
@@ -86,7 +84,6 @@ export function StudioOverlays({
             onDismiss={() => dismissToast(toast.id)}
           />
         ))}
-        <StudioFeedbackCard />
       </div>
     </>
   );

@@ -71,8 +71,8 @@ describe("classifyCaptureFailure", () => {
 
   it("classifies a broken encoder pipe as io, not authoring", () => {
     // The streaming encoder's stdin write fails this way when ffmpeg dies
-    // first. Bucketed as authoring, PostHog blamed the composition for a host
-    // event and the cohort could not be root-caused.
+    // first. Previously bucketed as authoring, which blamed the composition
+    // for a host event and left the cohort un-root-causeable.
     for (const code of ["EPIPE", "EOF", "ECONNRESET"]) {
       const withCode = Object.assign(new Error(`write ${code}`), { code });
       expect(classifyCaptureFailure(withCode).kind).toBe("io");

@@ -56,7 +56,7 @@ const COMPOSITION_SRC_ATTR = /\bdata-composition-src\s*=\s*["']([^"']+)["']/i;
 /**
  * Every `data-composition-src` reference in one composition file's raw text, in
  * document order, deduped. The single owner of "which sub-compositions does
- * this file mount", so lint, telemetry, and any future scanner cannot drift
+ * this file mount", so lint, diagnostics, and any future scanner cannot drift
  * apart on the answer.
  *
  * Text-scanning rather than DOM-walking, and that is the load-bearing choice.
@@ -111,7 +111,7 @@ export function collectSubCompositionSrcs(html: string): string[] {
     // these against the project root, so letting one through produces a
     // nonsense path (`<projectDir>/https:/host/a.html`) that then reads as a
     // missing local file: a false "does not exist" for lint, and a wasted
-    // visit against the telemetry walk's file budget.
+    // visit against the diagnostics walk's file budget.
     if (isRemoteOrInlineUrl(src)) continue;
     seen.add(src);
     srcs.push(src);

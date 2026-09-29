@@ -13,7 +13,6 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   STUDIO_SDK_CUTOVER_ENABLED: false,
 }));
-vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 const selection = { sourceFile: "index.html" } as unknown as DomEditSelection;
 

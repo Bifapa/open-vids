@@ -13,7 +13,6 @@ import {
   type HistoryWho,
 } from "@hyperframes/studio-server";
 import type { Example } from "./_examples.js";
-import { trackHistoryAction } from "../telemetry/events.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import {
   Refusal,
@@ -26,7 +25,7 @@ import {
   type UndoMode,
 } from "../utils/historyOwner.js";
 import { AmbiguousPreviewServerError } from "../utils/studioSelectionClient.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 
 export const examples: Example[] = [
   [
@@ -42,16 +41,15 @@ export const examples: Example[] = [
 
 const YOU: HistoryWho = { kind: "person", name: "You" };
 
-/** The project's history for one subcommand, counted by action and by who kept it (preview or this process). */
+/** The project's history for one subcommand. */
 const withOwner = <T>(
   action: string,
   dir: string | undefined,
   task: (owner: Owner, turn: Turn | null, projectDir: string) => Promise<T>,
-) =>
-  withHistoryOwner(dir, (owner, turn, projectDir) => {
-    trackHistoryAction({ action, via: owner.via });
-    return task(owner, turn, projectDir);
-  });
+) => {
+  void action;
+  return withHistoryOwner(dir, (owner, turn, projectDir) => task(owner, turn, projectDir));
+};
 
 /** An agent names itself with --who; without it the caller is the person, even during an agent's turn. */
 const whoOf = (name: string | undefined): HistoryWho => (name ? { kind: "agent", name } : YOU);

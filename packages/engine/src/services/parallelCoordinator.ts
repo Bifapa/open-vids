@@ -142,7 +142,7 @@ const HEAP_RESERVED_MB = 1024;
 // Parent-process V8 heap consumed per worker (protocol buffers + in-flight
 // frame buffers). Derived from the field OOM: 6 workers exhausted a ~4GB
 // default heap ⇒ >~500MB/worker + base. ponytail: advisory-only until the
-// workers_heap_* telemetry added alongside this constant validates the figure
+// workers_heap_* diagnostics added alongside this constant validates the figure
 // — enforcing a guessed budget could silently cut worker counts fleet-wide.
 // TODO(PRINFRA-341): decide enforcement after ~2 weeks of fleet soak.
 const HEAP_PER_WORKER_MB = 640;
@@ -220,7 +220,7 @@ export function expectedFramesForTask(task: {
  * Field signal ts=1784042064: a 1292s Windows render hard-exited during
  * capture with no final error string, leaving the operator with no
  * actionable trace. This message surfaces the shortfall + reruns hint
- * so downstream telemetry (and operators grepping logs) can classify the
+ * so downstream diagnostics (and operators grepping logs) can classify the
  * failure instead of it disappearing silently.
  */
 export function synthesizeSilentWorkerExitError(
@@ -279,7 +279,7 @@ export type WorkerSizingBound =
 
 /**
  * Full provenance of a worker-sizing decision. Threaded into render
- * observability/telemetry so fleet data can answer "why N workers?" and
+ * observability/diagnostics so fleet data can answer "why N workers?" and
  * "would the heap budget have prevented this OOM?" without a repro.
  */
 export interface WorkerSizing {
@@ -292,7 +292,7 @@ export interface WorkerSizing {
   /**
    * ADVISORY, not enforced (see HEAP_PER_WORKER_MB): how many workers the
    * parent process's V8 heap could feed. Compare against `workers` in
-   * telemetry to validate the budget before enforcement.
+   * diagnostics to validate the budget before enforcement.
    */
   heapBasedWorkers: number;
   /** V8 `heap_size_limit` for the parent process, MB. */
@@ -473,7 +473,7 @@ export function distributeFramesInterleaved(
  * Decide whether a parallel worker should run the per-worker SwiftShader
  * assertion. Gated to worker 0 only: workers within a chunk share the same
  * Chrome binary, flags, and OS/driver state, so one verification per chunk
- * is sufficient. See `heygen-com/hyperframes#955`.
+ * is sufficient. See #955 (upstream HyperFrames reference).
  */
 export function shouldVerifyWorkerGpu(workerId: number, config?: Partial<EngineConfig>): boolean {
   return config?.browserGpuMode === "software" && workerId === 0;
@@ -485,7 +485,7 @@ export function shouldVerifyWorkerGpu(workerId: number, config?: Partial<EngineC
  * `captureFrame`/`captureFrameToBuffer`/`captureFrameToBufferPipelined` take
  * no abort signal of their own — a native browser call wedged inside one of
  * them (WSL2 hangs the very first drawElement/BeginFrame capture at frame 0
- * with no error, heygen-com/hyperframes#3441) cannot be cancelled, only
+ * with no error, #3441 upstream HyperFrames reference) cannot be cancelled, only
  * raced. Without this, the `signal?.aborted` checks at the top of the
  * `captureFrameRange` loop are a no-op the moment a worker is already
  * awaiting a hung call: nothing revisits that check until the await settles,

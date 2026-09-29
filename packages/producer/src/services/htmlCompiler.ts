@@ -23,7 +23,6 @@ import {
   isNonRelativeUrl,
   parseStrictFiniteTimingNumber,
   readMediaStart,
-  redactTelemetryString,
   resolveNaturalMediaTimelineDurationFromValues,
   rewriteAssetPaths,
   rewriteCssAssetUrls,
@@ -72,7 +71,7 @@ import {
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,
-  type UrlDownloadTelemetry,
+  type UrlDownloadDiagnostics,
 } from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
 import {
@@ -83,10 +82,11 @@ import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
 import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-server/manual-edits-render-script";
 import { getPositionEditsRenderScript } from "@hyperframes/core/runtime/position-edits-render";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
+import { scrubErrorMessage } from "../utils/errorScrub.js";
 import { assertAssetMediaTypeProfile } from "./assetMediaType.js";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
 
-function logRemoteDownloadTelemetry(event: UrlDownloadTelemetry): void {
+function logRemoteDownloadDiagnostics(event: UrlDownloadDiagnostics): void {
   defaultLogger.info("[Compiler] Remote asset download integrity", { ...event });
 }
 
@@ -132,7 +132,7 @@ export function injectSdkPositionEditsRenderScript(html: string): string {
  * Thrown by {@link assertSubCompositionsUsable} when one or more
  * `data-composition-src` references resolve to a missing, empty, or
  * unparsable file. This is the render-path enforcement of the #1 render
- * failure bucket in production telemetry: a scene-authoring step (most
+ * failure bucket in production diagnostics: a scene-authoring step (most
  * commonly an AI agent) writes the `data-composition-src` reference before,
  * or without ever, writing valid content into the scene file.
  *
@@ -437,7 +437,7 @@ async function resolveMediaDuration(
     if (!existsSync(downloadDir)) mkdirSync(downloadDir, { recursive: true });
     try {
       filePath = await downloadToTemp(src, downloadDir, undefined, undefined, undefined, {
-        onTelemetry: logRemoteDownloadTelemetry,
+        onDiagnostics: logRemoteDownloadDiagnostics,
       });
     } catch {
       // Download failed (e.g. 404 placeholder URL) — skip gracefully.
@@ -458,8 +458,8 @@ async function resolveMediaDuration(
   // engine/utils/ffprobe.ts::redactFfprobeInput), so a bare `moov atom not
   // found` in Datadog carries no attribution and requires a Temporal history
   // dump to identify the offending source. Re-throwing with the `src`
-  // (query-string redacted via `redactTelemetryString` so pre-signed URL
-  // signatures never reach telemetry) makes the next occurrence diagnosable
+  // (query-string scrubbed via `scrubErrorMessage` so pre-signed URL
+  // signatures never reach logs) makes the next occurrence diagnosable
   // directly from the render error. Fail-fast semantics for the video branch
   // are preserved — only the message is enriched.
   const withSrcContext = (error: unknown): Error => {
@@ -471,7 +471,7 @@ async function resolveMediaDuration(
     // through untouched.
     if (error instanceof NotMediaPayloadError) return error;
     const originalMessage = error instanceof Error ? error.message : String(error);
-    const safeSrc = redactTelemetryString(src);
+    const safeSrc = scrubErrorMessage(src);
     const wrapped = new Error(`${originalMessage} [src=${safeSrc}]`);
     if (error instanceof Error && error.stack) wrapped.stack = error.stack;
     return wrapped;
@@ -1376,7 +1376,7 @@ async function downloadAndRewriteUrls(
     [...urlSet].map(async (url) => {
       try {
         const localPath = await downloadToTemp(url, remoteDir, undefined, undefined, undefined, {
-          onTelemetry: logRemoteDownloadTelemetry,
+          onDiagnostics: logRemoteDownloadDiagnostics,
         });
         urlToLocal.set(url, localPath);
       } catch (err) {

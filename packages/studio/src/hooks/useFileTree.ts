@@ -2,7 +2,6 @@ import { buildProjectApiPath } from "../utils/projectRouting";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { FONT_EXT } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
-import { captureProjectProvenance } from "../components/feedback/projectProvenance";
 
 interface UseFileTreeOptions {
   projectId: string | null;
@@ -41,8 +40,8 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
     fetch(buildProjectApiPath(projectId))
       // An unresolvable project answers 404 with a JSON body, so without this
       // the error path parsed cleanly and the success branch below recorded an
-      // empty tree — and an empty provenance snapshot — for a project that was
-      // never read. Throwing hands it to the catch instead.
+      // empty tree for a project that was never read. Throwing hands it to the
+      // catch instead.
       .then((r) => {
         if (!r.ok) throw new Error(`tree fetch failed: ${r.status}`);
         return r.json();
@@ -56,9 +55,6 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
           compositionPaths: data.compositions ?? [],
           projectDir: typeof data.dir === "string" ? data.dir : null,
         });
-        // Snapshot how this project was made, while the listing is in hand and
-        // the app is still alive. A crash later has no other way to learn it.
-        void captureProjectProvenance(projectId, data.files ?? [], data.compositions ?? []);
       })
       .catch(() => {
         if (!cancelled) {

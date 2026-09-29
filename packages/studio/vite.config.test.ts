@@ -4,9 +4,6 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import config, { stableStylesCssPlugin } from "./vite.config";
 
-const packageJson = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf8")) as {
-  publishConfig: { exports: Record<string, string> };
-};
 const subpaths = JSON.parse(readFileSync(resolve(__dirname, "package-subpaths.json"), "utf8")) as {
   subpaths: Record<string, { runtime: string }>;
 };
@@ -40,13 +37,11 @@ describe("build.rollupOptions", () => {
 
 describe("./styles.css export path", () => {
   it("resolves outside dist/assets, so it never inherits the immutable cache header", () => {
-    const publishedPath = packageJson.publishConfig.exports["./styles.css"];
+    // Studio is private (desktop app, never published to npm), so there is no
+    // publishConfig to assert — the shipped path is the runtime one below.
     const runtimePath = subpaths.subpaths["./styles.css"]?.runtime;
-    expect(publishedPath).toBe("./dist/styles.css");
     expect(runtimePath).toBe("./dist/styles.css");
-    for (const path of [publishedPath, runtimePath]) {
-      expect(path?.startsWith("./dist/assets/")).toBe(false);
-    }
+    expect(runtimePath?.startsWith("./dist/assets/")).toBe(false);
   });
 });
 

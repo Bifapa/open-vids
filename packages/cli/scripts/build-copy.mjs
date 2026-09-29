@@ -1,7 +1,7 @@
 // Cross-platform replacement for the previous `mkdir -p … && cp -r …` shell
 // chain, which failed on Windows because `cp` doesn't accept `-r` there.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -55,7 +55,7 @@ function copyMdFiles(srcDir, destDir) {
 }
 
 async function main() {
-  for (const sub of ["studio", "docs", "templates", "skills", "docker"]) {
+  for (const sub of ["studio", "docs", "templates", "skills"]) {
     mkdirSync(join(DIST, sub), { recursive: true });
   }
   mkdirSync(join(DIST, "commands"), { recursive: true });
@@ -75,39 +75,77 @@ async function main() {
     copyDir(warmGrainSrc, join(DIST, "templates", "warm-grain"));
   }
 
-  // Skills bundled into the published CLI. Branches don't all carry the same
-  // skills/ tree (it gets restructured), so each entry is existsSync-guarded:
-  // a missing skill dir warns + skips instead of crashing the build.
-  for (const skill of ["hyperframes", "hyperframes-cli", "gsap", "media-use"]) {
-    const src = join(REPO_ROOT, "skills", skill);
-    if (!existsSync(src)) {
-      console.warn(`[build-copy] skill not found, skipping: skills/${skill}`);
-      continue;
-    }
-    const destination = join(DIST, "skills", skill);
-    rmSync(destination, { recursive: true, force: true });
-    copyDir(src, destination);
+  // Bundle the local registry tree (manifests + item files + vector
+  // artifacts) so the built CLI resolves everything offline via
+  // localRegistryRoot(): dist/registry sits beside cli.js, which is exactly
+  // where the resolver looks. Text-only: remotely-hosted `file.url` assets
+  // have no local bytes by definition and fail at install with a clear error.
+  {
+    const src = join(REPO_ROOT, "registry");
+    const dest = join(DIST, "registry");
+    rmSync(dest, { recursive: true, force: true });
+    mkdirSync(dest, { recursive: true });
+    copyDirContents(src, dest);
   }
 
-  // The media-use engine lives with the CLI source, but keeps its published
-  // skill-relative layout so the moved .mjs tree can run without a rewrite.
-  const mediaEngine = join(CLI_ROOT, "src", "media-use");
-  const publishedMediaLib = join(DIST, "skills", "media-use", "scripts", "lib");
-  rmSync(publishedMediaLib, { recursive: true, force: true });
-  mkdirSync(publishedMediaLib, { recursive: true });
-  copyDirContents(join(mediaEngine, "lib"), publishedMediaLib);
-  cpSync(
-    join(mediaEngine, "resolve.mjs"),
-    join(DIST, "skills", "media-use", "scripts", "resolve.mjs"),
-  );
-  mkdirSync(join(DIST, "skills", "registry"), { recursive: true });
-  copyDirContents(join(DIST, "registry"), join(DIST, "skills", "registry"));
-  mkdirSync(join(DIST, "skills", "media-use", "registry"), { recursive: true });
-  copyDirContents(join(DIST, "registry"), join(DIST, "skills", "media-use", "registry"));
+  // Skills bundled into the built CLI. The whole `skills/` tree is the source
+  // of truth (see skills-manifest.json + bundledSkillsRoot()), so copy it in
+  // full: the previous allowlist (hyperframes, hyperframes-cli, media-use,
+  // …) silently dropped every workflow skill and broke `skills list` offline.
+  // Directory entries that are not skill bundles (e.g. stray test files at
+  // the tree root) are skipped. `skills-manifest.json` rides alongside so the
+  // staged desktop runtime (which copies dist wholesale) resolves the same
+  // manifest without a repo checkout.
+  {
+    const skillsSrc = join(REPO_ROOT, "skills");
+    const skillsDest = join(DIST, "skills");
+    rmSync(skillsDest, { recursive: true, force: true });
+    mkdirSync(skillsDest, { recursive: true });
+    for (const entry of readdirSync(skillsSrc)) {
+      const src = join(skillsSrc, entry);
+      if (!existsSync(join(src, "SKILL.md"))) continue;
+      copyDir(src, join(skillsDest, entry));
+    }
+    const manifestSrc = join(REPO_ROOT, "skills-manifest.json");
+    if (existsSync(manifestSrc)) {
+      cpSync(manifestSrc, join(DIST, "skills-manifest.json"));
+    } else {
+      console.warn("[build-copy] skills-manifest.json not found, skipping");
+    }
+  }
 
-  const dockerfile = join(CLI_ROOT, "src", "docker", "Dockerfile.render");
-  if (existsSync(dockerfile)) {
-    cpSync(dockerfile, join(DIST, "docker", "Dockerfile.render"));
+  // The media-use engine runs from source (`src/media-use/`) in dev, but the
+  // bundled CLI is flat (`dist/cli.js`) so `dist/media-use/` does not exist.
+  // Ship the full engine tree at `dist/media-use/` — the first candidate
+  // resolveMediaUseEnginePath() probes — so `media-use resolve` works from
+  // the staged desktop runtime without a repo checkout. The engine imports
+  // `../audio/scripts/lib/*`, so ship that tree too (same relative layout).
+  {
+    const mediaSrc = join(CLI_ROOT, "src", "media-use");
+    const mediaDest = join(DIST, "media-use");
+    rmSync(mediaDest, { recursive: true, force: true });
+    mkdirSync(mediaDest, { recursive: true });
+    copyDirContents(mediaSrc, mediaDest);
+    // `src/audio/scripts` is a symlink into `skills/media-use/audio/scripts`
+    // and cpSync copies the link itself — so copy the real trees explicitly
+    // (top-level files via the src dir, scripts via realpath), otherwise
+    // `dist/audio/scripts/lib/*.mjs` never lands.
+    const audioSrc = join(CLI_ROOT, "src", "audio");
+    const audioDest = join(DIST, "audio");
+    rmSync(audioDest, { recursive: true, force: true });
+    mkdirSync(audioDest, { recursive: true });
+    copyDirContents(audioSrc, audioDest);
+    rmSync(join(audioDest, "scripts"), { recursive: true, force: true });
+    copyDir(realpathSync(join(audioSrc, "scripts")), join(audioDest, "scripts"));
+    // The audio helpers import `../../../scripts/lib/*` — resolved from the
+    // real skill tree (`skills/media-use/audio/scripts/lib` → up three to
+    // `skills/media-use/scripts/lib`). Mirror that layout in dist so the
+    // same relative import resolves without a repo checkout.
+    const skillScriptsSrc = join(REPO_ROOT, "skills", "media-use", "scripts");
+    const skillScriptsDest = join(DIST, "scripts");
+    rmSync(skillScriptsDest, { recursive: true, force: true });
+    mkdirSync(skillScriptsDest, { recursive: true });
+    copyDirContents(skillScriptsSrc, skillScriptsDest);
   }
 
   const layoutAuditScript = join(CLI_ROOT, "src", "commands", "layout-audit.browser.js");

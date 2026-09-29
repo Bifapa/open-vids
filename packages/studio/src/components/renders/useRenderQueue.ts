@@ -1,13 +1,9 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { CanvasResolution } from "@hyperframes/parsers";
-import { trackStudioRenderStart } from "../../telemetry/events";
-import { getAnonymousId } from "../../telemetry/config";
-import { browserTelemetryAllowed } from "../../telemetry/policy";
 import { generateId } from "../../utils/generateId";
 import { readServerError } from "./serverError";
 import { ffmpegInstallMessage, useFfmpegStatus } from "./useFfmpegStatus";
-import { requestStudioFeedback, type FeedbackContext } from "../feedback/feedbackTrigger";
 
 export interface RenderJob {
   id: string;
@@ -97,21 +93,7 @@ export function useRenderQueue(
   const ffmpegMissing = ffmpeg !== null && !ffmpeg.ok;
   const eventSourceRef = useRef<EventSource | null>(null);
   const activeJobRef = useRef<string | null>(null);
-  // Renders started in THIS tab, mapped to the settings they ran with.
-  // `loadRenders` also injects finished jobs from disk history, and those must
-  // never trigger a feedback prompt — the user did not just watch them happen.
-  const sessionJobs = useRef(new Map<string, FeedbackContext>());
-  const promptedJobIds = useRef(new Set<string>());
-
-  /**
-   * The one way a render started here enters the list. Every start path — the
-   * happy one and all three failure shortcuts — goes through here, so both
-   * "this render belongs to this session" and "these are the settings it ran
-   * with" have a single owner. A report about a render is only actionable if
-   * it arrives with the settings that produced it.
-   */
-  const addSessionJob = useCallback((job: RenderJob, settings: FeedbackContext) => {
-    sessionJobs.current.set(job.id, settings);
+  const addSessionJob = useCallback((job: RenderJob) => {
     setJobs((prev) => [...prev, job]);
   }, []);
 
@@ -177,17 +159,14 @@ export function useRenderQueue(
       // the reason and the fix in the message, and keeps a control that
       // forgot to disable itself from producing a mystery failure.
       if (ffmpegMissing) {
-        addSessionJob(
-          {
-            id: generateId(),
-            status: "failed",
-            progress: 0,
-            error: ffmpegInstallMessage(ffmpeg),
-            filename: "Export blocked",
-            createdAt: Date.now(),
-          },
-          {},
-        );
+        addSessionJob({
+          id: generateId(),
+          status: "failed",
+          progress: 0,
+          error: ffmpegInstallMessage(ffmpeg),
+          filename: "Export blocked",
+          createdAt: Date.now(),
+        });
         return;
       }
 
@@ -203,25 +182,7 @@ export function useRenderQueue(
       // index.html no matter which composition was selected (#3549).
       const composition = opts.composition ?? activeCompPathRef.current ?? undefined;
 
-      trackStudioRenderStart({
-        fps,
-        quality,
-        format,
-        resolution,
-        composition,
-      });
-
       const startTime = Date.now();
-      // Travels with any feedback about this render. Settings only: the
-      // composition path is a name the user chose, not file contents.
-      const settings: FeedbackContext = {
-        render_format: format,
-        render_quality: quality,
-        render_fps: fps,
-        render_resolution: resolution ?? "auto",
-        render_composition: composition ?? "index.html",
-        render_has_variables: Boolean(opts.variables && Object.keys(opts.variables).length > 0),
-      };
       // "auto" / undefined means "render at the composition's authored size".
       // Omit the field entirely — sending "auto" would trip the route's
       // enum validation set.
@@ -232,28 +193,11 @@ export function useRenderQueue(
         resolution?: string;
         composition?: string;
         variables?: Record<string, unknown>;
-        telemetryDistinctId?: string;
-        telemetryOptOut?: boolean;
       } = {
         fps,
         quality,
         format,
       };
-      // The id is MINTED by getAnonymousId(), so calling it unconditionally
-      // created a telemetry identity for a profile that had opted out — and
-      // then shipped it to the server. The server's own policy cannot see this
-      // browser's localStorage or DoNotTrack, so it has to be told: an
-      // explicit `telemetryOptOut` suppresses the render outcome, which
-      // omitting the id alone does NOT (an old client omits it too, and that
-      // falls back to the install id).
-      if (browserTelemetryAllowed()) {
-        // So the server-emitted render_complete/render_error is attributed to
-        // this browser user (same id studio_* events use), making the render
-        // funnel joinable. Matches studio_render_start fired just above.
-        body.telemetryDistinctId = getAnonymousId();
-      } else {
-        body.telemetryOptOut = true;
-      }
       if (resolution && resolution !== "auto") body.resolution = resolution;
       if (composition) body.composition = composition;
       if (opts.variables && Object.keys(opts.variables).length > 0) {
@@ -269,10 +213,7 @@ export function useRenderQueue(
       } catch (err) {
         // The cause used to be discarded. Every failure — a dead server, an
         // aborted request, a DNS error, a mid-render crash — surfaced as the
-        // same sentence, and this string is what travels into the feedback
-        // report too, so field reports of a render that fails *every time*
-        // still carried nothing to act on. Keep the CLI guidance, name the
-        // cause after it.
+        // same sentence. Keep the CLI guidance, name the cause after it.
         const cause = err instanceof Error ? err.message : String(err);
         const failedJob: RenderJob = {
           id: generateId(),
@@ -282,7 +223,7 @@ export function useRenderQueue(
           filename: "Export failed",
           createdAt: startTime,
         };
-        addSessionJob(failedJob, settings);
+        addSessionJob(failedJob);
         return;
       }
       if (!res.ok) {
@@ -294,7 +235,7 @@ export function useRenderQueue(
           filename: "Export failed",
           createdAt: startTime,
         };
-        addSessionJob(failedJob, settings);
+        addSessionJob(failedJob);
         return;
       }
       const { jobId } = await res.json();
@@ -308,7 +249,7 @@ export function useRenderQueue(
         filename: `${jobId}${ext}`,
         createdAt: startTime,
       };
-      addSessionJob(job, settings);
+      addSessionJob(job);
       activeJobRef.current = jobId;
 
       // Track progress via SSE
@@ -432,36 +373,6 @@ export function useRenderQueue(
   }, [projectId]);
 
   const dismissActionError = useCallback(() => setActionError(null), []);
-
-  // Ask for feedback the moment a render this tab started reaches its outcome.
-  // Watching the list (rather than each of the four places a job can finish)
-  // keeps one trigger for every path, including SSE drops and cancels-that-
-  // finished-anyway. `requestStudioFeedback` decides whether to actually ask.
-  useEffect(() => {
-    for (const job of jobs) {
-      if (job.status === "rendering" || job.status === "cancelled") continue;
-      const settings = sessionJobs.current.get(job.id);
-      if (!settings || promptedJobIds.current.has(job.id)) continue;
-      promptedJobIds.current.add(job.id);
-      requestStudioFeedback({
-        reason: job.status === "complete" ? "render_complete" : "render_failed",
-        renderId: job.id,
-        detail: job.error,
-        context: {
-          ...settings,
-          // How far it got and how long it took separate "died on frame one"
-          // from "died during encode", which need different fixes.
-          render_progress: job.progress,
-          render_duration_ms: job.durationMs ?? Date.now() - job.createdAt,
-          render_stage: job.stage,
-          render_error: job.error,
-          // Earlier renders this session: a first-render failure and a
-          // failure after nine successes are different bugs.
-          renders_this_session: sessionJobs.current.size,
-        },
-      });
-    }
-  }, [jobs]);
 
   // Clean up EventSource on unmount or projectId change
   useEffect(() => {

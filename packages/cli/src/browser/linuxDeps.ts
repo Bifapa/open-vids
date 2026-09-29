@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { detectWSL } from "../telemetry/platform.js";
+import { detectWSL } from "../utils/hostInfo.js";
 
 /**
  * Linux/WSL Chrome & ffmpeg dependency detection and remediation.

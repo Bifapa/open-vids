@@ -12,7 +12,6 @@
 import type { HfAudioFxChain, HfAudioFxNode } from "@hyperframes/core/audio-fx";
 import { readAudioEqBands } from "@hyperframes/core/audio-fx-eq";
 import { DEFAULT_CARVE, type HfCarveSettings } from "@hyperframes/core/audio-carve";
-import { trackEqChanged, trackPresetAmount } from "./audioFxTelemetry.js";
 import { FxCarveModule, type AudioTrackOption } from "./propertyPanelFxCarveModule.js";
 import { FxEqModule } from "./propertyPanelFxEqModule.js";
 import { FxPresetRun } from "./propertyPanelFxPresetRun.js";
@@ -52,7 +51,6 @@ export interface FxRackChainProps {
     index: number,
     params: import("@hyperframes/core/audio-fx").HfAudioFxParamValues,
   ): void;
-  trackKind?: string;
   collapsedRuns: ReadonlySet<string>;
   onToggleCollapse(runKey: string): void;
   onSetRunAmount(
@@ -97,7 +95,6 @@ export function FxRackChain({
   onMoveNode,
   onRemoveNode,
   onPreviewNode,
-  trackKind,
   collapsedRuns,
   onToggleCollapse,
   onSetRunAmount,
@@ -148,7 +145,6 @@ export function FxRackChain({
           onToggleOpen={() => onToggleEq(eqId)}
           onPreview={(band, gain) => onPreviewEqBand(eqId, band, gain)}
           onCommit={(band, gain) => {
-            trackEqChanged(band, gain);
             onCommitEqBand(eqId, band, gain);
           }}
           onRemove={() => onRemoveEq(eqId)}
@@ -184,12 +180,10 @@ export function FxRackChain({
               onMoveNode={onMoveNode}
               onRemoveNode={onRemoveNode}
               onPreviewNode={onPreviewNode}
-              trackKind={trackKind}
               collapsed={collapsedRuns.has(runKey)}
               onToggleCollapse={() => onToggleCollapse(runKey)}
               amount={amount}
               onSetAmount={(v, persist = true) => {
-                if (persist && run.preset) trackPresetAmount(run.preset, v, { trackKind });
                 onSetRunAmount(run.items, v, persist);
               }}
               onRemoveRun={() => onRemoveRun(run.items, run.preset)}

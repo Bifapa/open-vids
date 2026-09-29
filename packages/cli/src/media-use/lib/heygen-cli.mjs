@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { track } from "./telemetry.mjs";
 
 // v0.3.0 is the first CLI that can use an OAuth session; v0.1.x/0.2.x reject it
 // ("heygen-cli can't use OAuth yet"), and OAuth is what the free-usage path
@@ -87,15 +86,9 @@ function classifyHeygenErrorResult(err) {
 }
 
 // reportHeygenFailure's callers (voice-provider.mjs, heygen-search.mjs) are
-// synchronous and several layers below the CLI's process.exit() calls, so
-// they can't await this tracking call themselves. Stash each attempt's
-// promise here so a caller closer to exit (resolve.mjs) can join it first —
-// same "awaited so a short-lived run flushes it" discipline telemetry.mjs's
-// track() already documents, just reachable from a sync call site.
-const pendingFailureTracking = new Set();
-// resolve.mjs is a single-shot CLI (one resolve per process), so one shared
-// consume-once slot is sufficient. If resolve becomes an in-process/concurrent
-// API, move this state into a per-resolve context before reusing that path.
+// synchronous, so the reporter stays synchronous: classify, stash the
+// install/update remediation for the bundled-SFX advisory path, print the
+// actionable message.
 let pendingRemediation = null;
 
 export function consumeHeygenRemediation() {
@@ -104,7 +97,7 @@ export function consumeHeygenRemediation() {
   return remediation;
 }
 
-export function reportHeygenFailure(err, context, trackEvent = track) {
+export function reportHeygenFailure(err, context) {
   const { code, message } = classifyHeygenErrorResult(err);
   if (code === "not_found" || code === "outdated") {
     pendingRemediation = { code, message };
@@ -114,26 +107,6 @@ export function reportHeygenFailure(err, context, trackEvent = track) {
   } else {
     console.error(`media-use: \`${context}\` failed: ${message}`);
   }
-  try {
-    const tracked = Promise.resolve(
-      trackEvent("media_use_provider_error", { provider: "heygen", reason: code }),
-    ).catch(() => {});
-    pendingFailureTracking.add(tracked);
-    void tracked.finally(() => pendingFailureTracking.delete(tracked));
-    return tracked;
-  } catch {
-    // Telemetry must never affect the provider failure path.
-    return Promise.resolve();
-  }
-}
-
-// Awaits every provider-error track fired since the last flush, so a caller
-// about to process.exit() doesn't orphan one mid-request (both are separate,
-// non-keepalive HTTP connections with no ordering guarantee otherwise).
-// Never rejects: each tracked promise already swallows its own failure.
-export async function flushHeygenFailureTracking() {
-  if (pendingFailureTracking.size === 0) return;
-  await Promise.all(pendingFailureTracking);
 }
 
 // Shared discovery/generation helper for the CLI-shelling providers (voice,

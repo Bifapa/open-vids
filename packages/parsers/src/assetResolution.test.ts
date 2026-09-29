@@ -93,7 +93,7 @@ describe("collectSubCompositionSrcs", () => {
   // A remote mount names no file on disk, and every caller resolves what comes
   // back against the project root. Letting one through yields a nonsense path
   // (`<projectDir>/https:/host/a.html`): a false "does not exist" for lint, and
-  // a wasted slot against the telemetry walk's file budget.
+  // a wasted slot against the diagnostics walk's file budget.
   it("drops remote and inline mounts, keeping local ones", () => {
     const html =
       '<div data-composition-src="https://host/remote.html"></div>' +

@@ -15,7 +15,7 @@ export class FigmaClientError extends Error {
   readonly code: FigmaClientErrorCode;
   readonly status?: number;
   /** Low-cardinality REST call label (e.g. "images", "files_nodes") for
-   *  telemetry attribution — never the raw fileKey/nodeId path. */
+   *  diagnostics attribution — never the raw fileKey/nodeId path. */
   readonly endpoint?: string;
 
   constructor(code: FigmaClientErrorCode, message: string, status?: number, endpoint?: string) {

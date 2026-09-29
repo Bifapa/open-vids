@@ -16,10 +16,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-
+import { localRegistryRoot } from "./local.js";
 import { cosine, loadLocalEmbedder } from "./localEmbedder.js";
 import { LOCAL_MODEL_DIMENSIONS, isLocalModelReady } from "./localModel.js";
-
 interface LocalVectorSet {
   names: string[];
   dimensions: number;
@@ -70,10 +69,23 @@ export function isMediaVectorRow(value: unknown): value is MediaVectorRow {
 export interface FetchLocalVectorOptions {
   directory?: string;
   expectedRevision?: string;
+  /** Local registry directory holding `catalog-artifact/`. Defaults to the bundled tree. */
+  registryDir?: string;
   artifactBasename?: "local-vectors" | "media-vectors";
 }
 
-const CATALOG_ARTIFACT_TIMEOUT_MS = 30_000;
+/** Revision stamped into `registry/registry.json` by the artifact build. */
+export function readLocalArtifactRevision(registryRootDir: string): string | undefined {
+  try {
+    const manifest = JSON.parse(readFileSync(join(registryRootDir, "registry.json"), "utf8")) as {
+      catalogArtifact?: { revision?: unknown };
+    };
+    const revision = manifest.catalogArtifact?.revision;
+    return typeof revision === "string" ? revision : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Where the bundled vector set lives, overridable for development. */
 function localVectorDirectory(): string {
@@ -81,18 +93,6 @@ function localVectorDirectory(): string {
     process.env["HYPERFRAMES_CATALOG_ARTIFACT_DIR"] ?? join(homedir(), ".hyperframes", "catalog")
   );
 }
-
-/**
- * Put the catalog vectors in the user's cache, once.
- *
- * They are fetched rather than bundled: every install would otherwise carry a
- * copy of a file only people who opt into offline ranking will ever read, and
- * the vectors have to track the registry anyway, so shipping them inside the
- * package would freeze them to the release instead.
- *
- * Returns false rather than throwing. A download that fails costs the offline
- * tier, never the command, and the caller says so.
- */
 /**
  * Do a freshly fetched metadata/matrix pair describe the same index?
  *
@@ -147,26 +147,20 @@ function vectorRevisionAgrees(
   }
 }
 
-export async function fetchLocalVectors(
-  registryBaseUrl: string,
-  options: FetchLocalVectorOptions = {},
-): Promise<boolean> {
+export async function fetchLocalVectors(options: FetchLocalVectorOptions = {}): Promise<boolean> {
   const directory = options.directory ?? localVectorDirectory();
   const artifactBasename = options.artifactBasename ?? "local-vectors";
-  const base = registryBaseUrl.replace(/\/+$/, "");
+  const sourceDir = options.registryDir ?? localRegistryRoot();
+  if (!sourceDir) return false;
   try {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
-    // Downloaded in full before anything is written. The two files have to
-    // agree on how many rows there are, so a fetch that fails halfway through
+    // Copied in full before anything is written. The two files have to
+    // agree on how many rows there are, so a copy that fails halfway through
     // must leave the previous pair intact rather than pairing a new name list
     // with an old matrix, which loads as an error instead of as stale data.
     const fetched: Array<[string, Buffer]> = [];
     for (const file of [`${artifactBasename}.json`, `${artifactBasename}.bin`] as const) {
-      const response = await fetch(`${base}/catalog-artifact/${file}`, {
-        signal: AbortSignal.timeout(CATALOG_ARTIFACT_TIMEOUT_MS),
-      });
-      if (!response.ok) return false;
-      fetched.push([file, Buffer.from(await response.arrayBuffer())]);
+      fetched.push([file, readFileSync(join(sourceDir, "catalog-artifact", file))]);
     }
     // Check the pair agrees BEFORE either file lands. Writing first and
     // discovering the mismatch at load time leaves a cache that fails every

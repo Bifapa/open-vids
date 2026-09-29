@@ -9,11 +9,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { trackRegistryItemAdded } from "../telemetry/events.js";
+import { dirname, join } from "node:path";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
-
-vi.mock("../telemetry/events.js", () => ({ trackRegistryItemAdded: vi.fn() }));
 
 const SCHEMA = "https://hyperframes.heygen.com/schema/registry-item.json";
 // Names no other test uses: the registry cache is shared by every test in a run.
@@ -60,41 +57,44 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A project behind a symlink whose hyperframes.json points at a stubbed registry; `fetched` logs every URL. */
+/** A project behind a symlink whose hyperframes.json points at a local fixture registry tree. */
+function writeFixtureTree(root: string): string {
+  const registry = join(root, "fixture-registry");
+  const writeJson = (rel: string, value: unknown): void => {
+    const path = join(registry, rel);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(value), "utf-8");
+  };
+  writeJson("registry.json", {
+    $schema: "https://hyperframes.heygen.com/schema/registry.json",
+    name: "t",
+    homepage: "https://example.com",
+    items: ITEMS.map(({ name, type }) => ({ name, type })),
+  });
+  const writeText = (rel: string, value: string): void => {
+    const path = join(registry, rel);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, value, "utf-8");
+  };
+  for (const item of ITEMS) {
+    const dirName = item.type === "hyperframes:component" ? "components" : "blocks";
+    writeJson(`${dirName}/${item.name}/registry-item.json`, item);
+    writeText(
+      `${dirName}/${item.name}/${item.name}.html`,
+      `<meta name="viewport" content="width=1920, height=1080"><div data-composition-id="${item.name}"></div>`,
+    );
+  }
+  return registry;
+}
+
 function projectWithRegistry(): {
   link: string;
   real: string;
   registry: string;
-  fetched: string[];
 } {
-  const fetched: string[] = [];
-  const registry = `https://test.invalid/${crypto.randomUUID()}`;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: string | URL) => {
-      const url = String(input);
-      fetched.push(url);
-      // Only the project's own registry answers, so nothing is cached for the public registry.
-      if (!url.startsWith(registry)) return new Response("not found", { status: 404 });
-      if (url.endsWith("/registry.json")) {
-        const items = ITEMS.map(({ name, type }) => ({ name, type }));
-        const $schema = "https://hyperframes.heygen.com/schema/registry.json";
-        return new Response(
-          JSON.stringify({ $schema, name: "t", homepage: "https://example.com", items }),
-        );
-      }
-      const item = ITEMS.find((candidate) => url.includes(`/${candidate.name}/`));
-      if (item && url.endsWith("/registry-item.json")) return new Response(JSON.stringify(item));
-      if (item && url.endsWith(".html")) {
-        return new Response(
-          `<meta name="viewport" content="width=1080, height=1350"><div data-composition-id="${item.name}"></div>`,
-        );
-      }
-      return new Response("not found", { status: 404 });
-    }),
-  );
   const root = mkdtempSync(join(tmpdir(), "hf-studio-install-"));
   dirs.push(root);
+  const registry = writeFixtureTree(root);
   const real = join(root, "real");
   mkdirSync(real);
   const link = join(root, "link");
@@ -102,10 +102,10 @@ function projectWithRegistry(): {
   writeFileSync(join(real, "index.html"), '<div data-width="1920" data-height="1080"></div>');
   writeFileSync(
     join(real, "hyperframes.json"),
-    JSON.stringify({ registry, paths: { blocks: "scenes" } }),
+    JSON.stringify({ registryDir: registry, paths: { blocks: "scenes" } }),
   );
   server = createStudioServer({ projectDir: link });
-  return { link, real, registry, fetched };
+  return { link, real, registry };
 }
 
 function installer(link: string) {
@@ -124,9 +124,6 @@ describe("Studio catalog install", () => {
 
     expect(result.written).toEqual(["scenes/studio-drop-block.html"]);
     expect(result.block.name).toBe("studio-drop-block");
-    expect(trackRegistryItemAdded).toHaveBeenCalledWith(
-      expect.objectContaining({ item: "studio-drop-block", source: "studio" }),
-    );
     expect(existsSync(join(real, "compositions/studio-drop-block.html"))).toBe(false);
     const config = JSON.parse(readFileSync(join(real, "hyperframes.json"), "utf-8"));
     expect(config.registryItems).toEqual([
@@ -139,13 +136,11 @@ describe("Studio catalog install", () => {
   });
 
   it("lists the catalog from the registry install uses", async () => {
-    const { registry, fetched } = projectWithRegistry();
+    projectWithRegistry();
 
     const items = await server!.adapter.listRegistryCatalog!();
 
     expect(items.map((item) => item.name).sort()).toEqual(ITEMS.map((item) => item.name).sort());
-    expect(fetched.length).toBeGreaterThan(0);
-    expect(fetched.every((url) => url.startsWith(registry))).toBe(true);
   });
 
   it("installs a block sized unlike the project twice, and leaves a real edit alone", async () => {

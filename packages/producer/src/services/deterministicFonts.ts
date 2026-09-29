@@ -822,9 +822,9 @@ function warnUnresolvedFonts(unresolved: string[]): void {
       `  To fix, pick one:\n` +
       `    1. Use a mapped font name instead (see list above)\n` +
       `    2. Add a @font-face block in your HTML with a local or hosted font file\n` +
-      `    3. Install the font locally on the render machine (Docker: add to Dockerfile)\n` +
+      `    3. Install the font locally on the render machine (container: bake into the image)\n` +
       `    4. Add an alias to FONT_ALIAS_MAP in packages/core/src/fonts/aliases.ts (for contributors)\n` +
-      `  Docs: https://hyperframes.heygen.com/docs/fonts`,
+      `  Docs: run \`hyperframes doctor\` for font diagnostics`,
   );
 }
 
@@ -832,19 +832,10 @@ function warnUnresolvedFonts(unresolved: string[]): void {
 // Google Fonts on-demand fetch + local cache
 // ---------------------------------------------------------------------------
 
-let serverlessFontCacheRoot: string | undefined;
-
-// On serverless workers (e.g. AWS Lambda) `$HOME` may resolve to a read-only tree;
-// only `/tmp` is writable. Create one private, unguessable cache directory per
-// warm process and reuse it across invocations. Honor HYPERFRAMES_FONT_CACHE_DIR
-// as an explicit override for any environment.
+// Honor HYPERFRAMES_FONT_CACHE_DIR as an explicit override for any environment.
 function resolveFontCacheRoot(): string {
   if (process.env.HYPERFRAMES_FONT_CACHE_DIR) {
     return process.env.HYPERFRAMES_FONT_CACHE_DIR;
-  }
-  if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    serverlessFontCacheRoot ??= mkdtempSync(join(tmpdir(), "hyperframes-fonts-"));
-    return serverlessFontCacheRoot;
   }
   return join(homedir(), ".cache", "hyperframes", "fonts");
 }
@@ -1440,7 +1431,7 @@ export interface InjectDeterministicFontFacesOptions {
    * When `true` (default for local renders), fonts that aren't resolved by
    * the bundled alias map or Google Fonts are located on the local filesystem,
    * compressed to woff2, and embedded as data URIs. Set to `false` for
-   * distributed/Lambda renders where the host filesystem is not guaranteed
+   * distributed renders where the render filesystem is not guaranteed
    * to contain the same fonts as the authoring machine.
    */
   allowSystemFontCapture?: boolean;

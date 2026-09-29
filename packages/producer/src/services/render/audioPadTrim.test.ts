@@ -390,7 +390,7 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
 // not this module actually CALLS them: deleting the wiring in
 // padOrTrimAudioToVideoFrameCount left every one of them green. These drive
 // the public entry point and assert on the public `PadTrimAudioResult.error`,
-// which is what reaches logs, telemetry, and the caller.
+// which is what reaches logs, diagnostics, and the caller.
 describe("PadTrimAudioResult.error never carries the input path", () => {
   const cases: Array<{ name: string; videoPath: string; secret: string }> = [
     {

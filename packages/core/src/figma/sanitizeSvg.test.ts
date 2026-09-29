@@ -148,7 +148,7 @@ const HOSTILE_CASES: Array<[label: string, input: string, mustNotContain: string
   ],
   [
     "unquoted attribute value containing '='",
-    `<svg><rect style=x=y;fill:url(https://evil.example/beacon)>r</rect></svg>`,
+    `<svg><rect style=x=y;fill:url(https://evil.example/pixel)>r</rect></svg>`,
     ["evil.example"],
   ],
   [

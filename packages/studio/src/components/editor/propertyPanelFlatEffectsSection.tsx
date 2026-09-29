@@ -9,7 +9,6 @@ import {
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { Plus, RotateCcw, X } from "../../icons/SystemIcons";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { FLAT_PREVIEW_GRID, FlatSlider } from "./propertyPanelFlatPrimitives";
 import type {
   ColorGradingPresetPreviews,
@@ -36,7 +35,6 @@ export function FlatEffectsAccessory({
   grading: NormalizedHfColorGrading;
   onCommitColorGrading: (next: NormalizedHfColorGrading) => void;
 }) {
-  const track = useTrackDesignInput();
   if (!activeColorGradingEffectCount(grading)) return null;
   return (
     <button
@@ -45,7 +43,6 @@ export function FlatEffectsAccessory({
       title="Reset effects"
       onClick={(event) => {
         event.stopPropagation();
-        track("button", "Reset effects");
         onCommitColorGrading({ ...grading, effects: { ...DEFAULT_EFFECTS }, palette: null });
       }}
       className="shrink-0 text-panel-text-3 hover:text-panel-text-1"
@@ -75,7 +72,6 @@ export function FlatEffectsSection({
   onRequestEffectPreviews: (effects: readonly HfColorGradingActiveEffectKey[]) => void;
   onRequestPresetPreviews: () => void;
 }) {
-  const track = useTrackDesignInput();
   const activeEffects = EFFECT_SPECS.filter((effect) => grading.effects[effect.key] > 0.0001);
   const [catalogOpen, setCatalogOpen] = useState(activeEffects.length === 0);
   const [catalogGroup, setCatalogGroup] = useState(EFFECT_GROUPS[0].label);
@@ -128,7 +124,6 @@ export function FlatEffectsSection({
     },
   });
   const applyEffect = (effect: EffectSpec) => {
-    track("button", `Add ${effect.label}`);
     onCommitColorGrading(resolveEffect(effect));
     setSelectedKey(effect.key);
     setCatalogOpen(false);
@@ -136,7 +131,6 @@ export function FlatEffectsSection({
   const resolvePreset = (presetId: string) =>
     normalizeHfColorGrading({ preset: presetId, lut: grading.lut }) ?? grading;
   const removeEffect = (effect: EffectSpec) => {
-    track("button", `Remove ${effect.label}`);
     commitEffect(effect.key, 0);
     setSelectedKey(null);
   };
@@ -159,7 +153,6 @@ export function FlatEffectsSection({
                 data-flat-effects-palette-preset={preset.id}
                 aria-pressed={selected}
                 onClick={() => {
-                  track("button", `Use ${preset.label} palette`);
                   onCommitColorGrading({ ...grading, palette: [...preset.colors] });
                 }}
                 className={`min-w-0 border p-1 text-left ${
@@ -183,7 +176,6 @@ export function FlatEffectsSection({
             type="button"
             data-flat-effects-add-palette="true"
             onClick={() => {
-              track("button", "Customize effect palette");
               onCommitColorGrading({ ...grading, palette: fallback });
             }}
             className="flex min-h-[28px] items-center gap-1 text-[10px] font-medium text-panel-accent hover:text-panel-accent/80"
@@ -404,7 +396,6 @@ export function FlatEffectsSection({
                         resolve: () => resolvePreset(preset.id),
                         onPreview: onPreviewColorGrading,
                         onCommit: onCommitColorGrading,
-                        onTrack: (name) => track("button", `Apply ${name}`),
                       })}
                       className={`min-w-0 overflow-hidden border text-left text-[10px] transition-colors ${
                         selected

@@ -10,7 +10,6 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("../../telemetry/canary", () => ({ isCanaryEnabled: () => true }));
 const domEditMocks = vi.hoisted(() => ({
   handleTimelineElementSelect: vi.fn(async () => undefined),
 }));

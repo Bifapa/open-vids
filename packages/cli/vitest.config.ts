@@ -49,7 +49,7 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts"],
     // Many CLI tests cold-import a heavy command module graph via dynamic
-    // `import()` (e.g. render.js, auth/status.js, telemetry/system.js). Under
+    // `import()` (e.g. render.js). Under
     // the full parallel monorepo run (`bun run --filter '!@hyperframes/producer'
     // test`) that cold load contends for CPU and routinely blows vitest's 5s
     // default test timeout / 10s hook timeout on CI runners — a recurring

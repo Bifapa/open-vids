@@ -2,8 +2,6 @@ import { useCallback, useRef } from "react";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import {
   StudioFileConflictError,
-  buildStudioSaveFailureProperties,
-  trackStudioSaveFailure,
   type StudioSaveDrainResult,
 } from "../utils/studioSaveDiagnostics";
 
@@ -58,35 +56,13 @@ export function useEditorSave({
   // One error toast per burst of failures — every keystroke retries the save,
   // and error toasts persist until dismissed, so don't stack duplicates.
   const lastFailureToastAtRef = useRef<number | null>(null);
-  const lastFailureReportRef = useRef<{ fingerprint: string; emittedAt: number } | null>(null);
   const pendingCandidateRef = useRef<EditorSaveCandidate | null>(null);
   const inFlightRef = useRef<Promise<EditorSaveDrainResult> | null>(null);
   const inFlightCandidateRef = useRef<EditorSaveCandidate | null>(null);
 
   const reportFailure = useCallback(
-    (path: string, error: unknown) => {
+    (path: string) => {
       const now = Date.now();
-      const properties = buildStudioSaveFailureProperties({
-        source: "code_editor",
-        error,
-        filePath: path,
-      });
-      const errorName = error instanceof Error ? error.name : typeof error;
-      const fingerprint = JSON.stringify([
-        path,
-        errorName,
-        properties.error_message,
-        properties.status_code,
-      ]);
-      const previous = lastFailureReportRef.current;
-      if (
-        previous === null ||
-        previous.fingerprint !== fingerprint ||
-        now - previous.emittedAt >= FAILURE_BURST_MS
-      ) {
-        trackStudioSaveFailure({ source: "code_editor", error, filePath: path });
-        lastFailureReportRef.current = { fingerprint, emittedAt: now };
-      }
       if (
         lastFailureToastAtRef.current === null ||
         now - lastFailureToastAtRef.current >= FAILURE_BURST_MS
@@ -114,13 +90,15 @@ export function useEditorSave({
       })
         .then<EditorSaveDrainResult>(() => {
           if (pendingCandidateRef.current === candidate) pendingCandidateRef.current = null;
-          lastFailureReportRef.current = null;
+          // A success ends the failure burst: the next failure is new
+          // information even if it reads the same.
+          lastFailureToastAtRef.current = null;
           if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
           refreshRafRef.current = requestAnimationFrame(() => setRefreshKey((k) => k + 1));
           return { status: "clean" };
         })
         .catch<EditorSaveDrainResult>((error: unknown) => {
-          reportFailure(candidate.path, error);
+          reportFailure(candidate.path);
           return error instanceof StudioFileConflictError
             ? { status: "conflict", error }
             : { status: "failed", error };

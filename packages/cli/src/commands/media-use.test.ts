@@ -15,7 +15,7 @@ function tempCommandDir(): string {
 }
 
 describe("media-use command wiring", () => {
-  it("uses the bundled engine when the first candidate exists", () => {
+  it("uses the source-tree engine when the first candidate exists", () => {
     const here = tempCommandDir();
     const engine = join(here, "..", "media-use", "resolve.mjs");
     try {
@@ -25,7 +25,20 @@ describe("media-use command wiring", () => {
     }
   });
 
-  it("falls back to the source-tree skill engine", () => {
+  it("prefers the dist engine over the skill-tree shim", () => {
+    const here = tempCommandDir();
+    const engine = join(here, "media-use", "resolve.mjs");
+    const shim = join(here, "skills", "media-use", "scripts", "resolve.mjs");
+    try {
+      expect(
+        resolveMediaUseEnginePath(here, (candidate) => candidate === engine || candidate === shim),
+      ).toBe(engine);
+    } finally {
+      rmSync(here, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to the skill-tree shim", () => {
     const here = tempCommandDir();
     const engine = join(here, "skills", "media-use", "scripts", "resolve.mjs");
     try {

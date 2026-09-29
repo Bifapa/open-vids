@@ -1,20 +1,4 @@
-import { trackStudioEvent } from "./studioTelemetry";
-
-type StudioTelemetryValue = string | number | boolean | null | undefined;
 const STUDIO_SAVE_ATTEMPT_PROPERTY = "__studioSaveAttempt";
-
-export interface StudioSaveFailureInput {
-  source: string;
-  error: unknown;
-  statusCode?: number | null;
-  filePath?: string | null;
-  mutationType?: string | null;
-  attempt?: number | null;
-  label?: string | null;
-  targetId?: string | null;
-  targetSelector?: string | null;
-  targetSourceFile?: string | null;
-}
 
 export class StudioSaveHttpError extends Error {
   readonly statusCode: number;
@@ -127,16 +111,6 @@ export function getStudioSaveStatusCode(error: unknown): number | undefined {
   return undefined;
 }
 
-function getStudioSaveAttempt(error: unknown): number | undefined {
-  if (!error || typeof error !== "object") return undefined;
-  const direct = readNumericProperty(error, STUDIO_SAVE_ATTEMPT_PROPERTY);
-  if (direct != null) return direct;
-
-  const cause = (error as { cause?: unknown }).cause;
-  if (cause && cause !== error) return getStudioSaveAttempt(cause);
-  return undefined;
-}
-
 function isStudioSaveAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
@@ -147,45 +121,6 @@ function isRetryableStudioSaveError(error: unknown): boolean {
   const statusCode = getStudioSaveStatusCode(error);
   if (statusCode == null) return false;
   return statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode >= 500;
-}
-
-export function buildStudioSaveFailureProperties(
-  input: StudioSaveFailureInput,
-): Record<string, StudioTelemetryValue> {
-  const statusCode = input.statusCode ?? getStudioSaveStatusCode(input.error) ?? null;
-  const attempt = input.attempt ?? getStudioSaveAttempt(input.error) ?? undefined;
-  return {
-    source: input.source,
-    error_message: getStudioSaveErrorMessage(input.error),
-    status_code: statusCode,
-    file_path: input.filePath ?? input.targetSourceFile ?? undefined,
-    mutation_type: input.mutationType ?? undefined,
-    attempt,
-    label: input.label ?? undefined,
-    target_id: input.targetId ?? undefined,
-    target_selector: input.targetSelector ?? undefined,
-    target_source_file: input.targetSourceFile ?? undefined,
-    block_detail: gsapBlockDetail(input.error),
-  };
-}
-
-/**
- * The specific cause behind a blocked GSAP edit. `error_message` only carries
- * the coarse copy, and one of those strings covers six different situations,
- * so the message alone cannot say which one a user hit.
- */
-function gsapBlockDetail(error: unknown): string | undefined {
-  if (!(error instanceof Error) || error.name !== "GsapEditBlockedError") return undefined;
-  const detail = (error as { detail?: unknown }).detail;
-  return typeof detail === "string" ? detail : undefined;
-}
-
-export function trackStudioSaveFailure(input: StudioSaveFailureInput): void {
-  trackStudioEvent("save_failure", buildStudioSaveFailureProperties(input));
-}
-
-export function trackStudioEditBlocked(input: StudioSaveFailureInput): void {
-  trackStudioEvent("edit_blocked", buildStudioSaveFailureProperties(input));
 }
 
 export async function createStudioSaveHttpError(

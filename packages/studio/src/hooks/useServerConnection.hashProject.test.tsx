@@ -2,10 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import { useServerConnection } from "./useServerConnection";
-
-vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -26,8 +23,7 @@ async function flush(): Promise<void> {
  * The hash project id outlives the project it names — a renamed folder, or a
  * bookmark from a project that is gone. It used to be trusted unconditionally,
  * so every later /api/projects/<id>/... request 404'd for the life of the tab,
- * including the composition read that opens the SDK session. Telemetry after
- * the read-reason split: 120 http_error/404 reads across 5 users in 24h.
+ * including the composition read that opens the SDK session.
  */
 function stubFetch(projectRoute: { status: number } | "reject") {
   vi.stubGlobal(
@@ -58,7 +54,6 @@ describe("useServerConnection hash project id", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.mocked(trackStudioEvent).mockClear();
   });
 
   it("keeps a hash id the server can resolve", async () => {
@@ -148,7 +143,6 @@ describe("useServerConnection hashchange validation", () => {
   beforeEach(() => {
     captured.projectId = null;
     window.location.hash = "";
-    vi.mocked(trackStudioEvent).mockClear();
   });
 
   afterEach(() => {
@@ -184,21 +178,6 @@ describe("useServerConnection hashchange validation", () => {
 
     await changeHash("#project/flaky");
     expect(captured.projectId).toBe("flaky");
-    await act(async () => root.unmount());
-  });
-
-  it("reports the hashchange verdict with its stage", async () => {
-    stubFetchByProject({ first: 200, deleted: 404 });
-    const root = await renderWithHash("#project/first");
-    vi.mocked(trackStudioEvent).mockClear();
-
-    await changeHash("#project/deleted");
-    const verdicts = vi
-      .mocked(trackStudioEvent)
-      .mock.calls.filter(([name]) => name === "project_hash_validated");
-    expect(verdicts).toEqual([
-      ["project_hash_validated", { stage: "hashchange", outcome: "missing", status: 404 }],
-    ]);
     await act(async () => root.unmount());
   });
 
@@ -318,80 +297,6 @@ describe("useServerConnection hashchange validation", () => {
     const root = await renderWithHash("#project/deleted");
     expect(captured.projectId).toBe("real-project");
     expect(window.history.length).toBe(before);
-    await act(async () => root.unmount());
-  });
-});
-
-/**
- * The verdict event. Until it existed, a tab that kept its hash because the
- * check itself failed was indistinguishable in production from one that never
- * ran the check — different causes, different fixes, one silent bucket.
- */
-describe("project_hash_validated", () => {
-  // Mount only: assigning window.location.hash is what happy-dom turns into a
-  // hashchange, so the listener reports too. This describe is about the mount
-  // path; the hashchange verdicts have their own.
-  const verdictCalls = () =>
-    vi
-      .mocked(trackStudioEvent)
-      .mock.calls.filter(
-        ([name, props]) =>
-          name === "project_hash_validated" &&
-          (props as { stage?: string } | undefined)?.stage === "mount",
-      );
-
-  beforeEach(() => {
-    captured.projectId = null;
-    window.location.hash = "";
-    vi.mocked(trackStudioEvent).mockClear();
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("reports an ok verdict with its status", async () => {
-    stubFetch({ status: 200 });
-    const root = await renderWithHash("#project/stale-or-not");
-    expect(verdictCalls()).toEqual([
-      ["project_hash_validated", { stage: "mount", outcome: "ok", status: 200 }],
-    ]);
-    await act(async () => root.unmount());
-  });
-
-  it("reports a missing verdict with the 404", async () => {
-    stubFetch({ status: 404 });
-    const root = await renderWithHash("#project/deleted-project");
-    expect(verdictCalls()).toEqual([
-      ["project_hash_validated", { stage: "mount", outcome: "missing", status: 404 }],
-    ]);
-    await act(async () => root.unmount());
-  });
-
-  it("reports unknown with no status when the check is rejected", async () => {
-    // The point of the event: this case LOOKS like success from outside (the
-    // hash is kept) but is a failed check. Only the verdict says so.
-    stubFetch("reject");
-    const root = await renderWithHash("#project/unreachable-check");
-    expect(verdictCalls()).toEqual([
-      ["project_hash_validated", { stage: "mount", outcome: "unknown" }],
-    ]);
-    await act(async () => root.unmount());
-  });
-
-  it("reports unknown — not missing — for a 5xx", async () => {
-    stubFetch({ status: 500 });
-    const root = await renderWithHash("#project/server-erroring");
-    expect(verdictCalls()).toEqual([
-      ["project_hash_validated", { stage: "mount", outcome: "unknown", status: 500 }],
-    ]);
-    await act(async () => root.unmount());
-  });
-
-  it("emits nothing when there is no hash id to validate", async () => {
-    stubFetch({ status: 200 });
-    const root = await renderWithHash("");
-    expect(verdictCalls()).toEqual([]);
     await act(async () => root.unmount());
   });
 });

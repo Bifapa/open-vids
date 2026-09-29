@@ -53,8 +53,6 @@ export interface FxPresetRunProps {
   onMoveNode(index: number, delta: number): void;
   onRemoveNode(index: number): void;
   onPreviewNode(index: number, params: HfAudioFxParamValues): void;
-  /** What the track reads as, carried onto each row's own telemetry events. */
-  trackKind?: string;
   /** Whether this run's card is folded shut. Meaningless when there is no preset. */
   collapsed: boolean;
   onToggleCollapse(): void;
@@ -83,7 +81,6 @@ export function FxPresetRun({
   onMoveNode,
   onRemoveNode,
   onPreviewNode,
-  trackKind,
   collapsed,
   onToggleCollapse,
   amount,
@@ -116,7 +113,6 @@ export function FxPresetRun({
       onMove={onMoveNode}
       onRemove={onRemoveNode}
       onPreview={onPreviewNode}
-      trackKind={trackKind}
     />
   ));
 

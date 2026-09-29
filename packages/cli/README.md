@@ -134,18 +134,9 @@ Open the documentation in your browser:
 npx hyperframes docs
 ```
 
-### `upgrade`
-
-Check for updates and show upgrade instructions:
-
-```bash
-npx hyperframes upgrade
-npx hyperframes upgrade --check --json  # machine-readable for agents
-```
-
 ## Documentation
 
-Full documentation: [hyperframes.heygen.com/packages/cli](https://hyperframes.heygen.com/packages/cli)
+Full documentation: see `packages/cli` in this repo (no hosted docs site).
 
 ## Related packages
 

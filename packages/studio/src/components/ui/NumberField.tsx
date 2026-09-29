@@ -16,8 +16,6 @@ export interface NumberFieldProps {
   value: number;
   /** Called when a commit boundary produces a value different from `value`. */
   onCommit: (next: number) => void;
-  /** Called once per committed change, for design-input telemetry. */
-  onTrack?: () => void;
   /** Rendered beside the number: "px", "%", "deg". Never part of the text. */
   unit?: string;
   min?: number;
@@ -32,7 +30,6 @@ export function NumberField({
   label,
   value,
   onCommit,
-  onTrack,
   unit,
   min,
   max,
@@ -66,7 +63,6 @@ export function NumberField({
     if (next === committedRef.current) return;
     committedRef.current = next;
     onCommit(next);
-    onTrack?.();
   };
 
   /** Enter commits what is on screen, which Base UI has not parsed for us yet. */

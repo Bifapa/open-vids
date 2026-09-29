@@ -39,8 +39,6 @@ vi.mock("../contexts/PanelLayoutContext", () => ({
   }),
 }));
 
-vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
-
 const { StudioHeader } = await import("./StudioHeader");
 
 let mounted: { root: Root; host: HTMLElement } | null = null;

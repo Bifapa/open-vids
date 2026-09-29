@@ -46,8 +46,13 @@ export function resolveMediaUseEnginePath(
   here: string,
   fileExists: (path: string) => boolean = existsSync,
 ): string {
+  // Prefer the real engine (`dist/media-use/` in the built CLI,
+  // `src/media-use/` in dev) over the skill-tree shim
+  // (`skills/media-use/scripts/resolve.mjs`), which just re-spawns the CLI
+  // and breaks out of dist (it resolves the repo root, not the CLI root).
   const candidates = [
     join(here, "..", "media-use", "resolve.mjs"),
+    join(here, "media-use", "resolve.mjs"),
     join(here, "skills", "media-use", "scripts", "resolve.mjs"),
   ];
   const engine = candidates.find((candidate) => fileExists(candidate));

@@ -544,8 +544,8 @@ function buildRenderModeScript(fps: Fps | undefined): string {
 /**
  * Early stub: ensures `window.__hf` exists *before* any user `<script>` in
  * `<body>` executes, and batches GSAP timeline construction via
- * requestAnimationFrame to prevent the main-thread hang described in
- * https://github.com/heygen-com/hyperframes/issues/1231.
+ * requestAnimationFrame to prevent the main-thread hang seen with very large
+ * tween counts (upstream HyperFrames reference #1231).
  *
  * Source: packages/producer/stubs/hf-early-stub.ts
  * Generated: packages/producer/src/generated/hf-early-stub-inline.ts

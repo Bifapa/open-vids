@@ -166,7 +166,7 @@ describe("frame source cache eviction", () => {
   });
 
   // Suppress unused-import warning when the SHARED_STATS sentinel is dropped.
-  it("stats() exposes counters used by telemetry", async () => {
+  it("stats() exposes counters used by diagnostics", async () => {
     const cache = createFrameSourceCache(1, Number.MAX_SAFE_INTEGER);
     expect(cache.stats()).toMatchObject({ ...SHARED_STATS, entries: 0, bytes: 0 });
   });

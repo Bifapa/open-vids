@@ -13,7 +13,6 @@ import {
   stripQueryAndHash,
 } from "./propertyPanelHelpers";
 import { Section, SegmentedControl, SelectField, SliderControl } from "./propertyPanelPrimitives";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import {
   AUDIO_GAIN_FADER_MAX,
   AUDIO_GAIN_FADER_MIN,
@@ -47,7 +46,6 @@ export function MediaSection({
     },
   ) => Promise<BackgroundRemovalResult>;
 }) {
-  const track = useTrackDesignInput();
   const isVideo = element.tagName === "video";
   const isAudio = element.tagName === "audio";
   const isImage = element.tagName === "img";
@@ -105,7 +103,6 @@ export function MediaSection({
 
   const runBackgroundRemoval = async () => {
     if (!onRemoveBackground || !projectSrc || removeBusy) return;
-    track("button", "Remove background");
     setRemoveBusy(true);
     setRemoveProgress({ status: "processing", progress: 0, stage: "Preparing" });
     try {

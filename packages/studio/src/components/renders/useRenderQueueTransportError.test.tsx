@@ -12,7 +12,6 @@ vi.mock("./useFfmpegStatus", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./useFfmpegStatus")>()),
   useFfmpegStatus: () => ({ status: { ok: true }, checking: false, recheck: vi.fn() }),
 }));
-vi.mock("../../telemetry/events", () => ({ trackStudioRenderStart: vi.fn() }));
 
 const { useRenderQueue } = await import("./useRenderQueue");
 

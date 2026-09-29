@@ -1,6 +1,5 @@
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { X } from "../../icons/SystemIcons";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import type { DomEditSelection } from "./domEditingTypes";
 
 /** The action buttons in the inspector header: visibility, Ungroup (groups only), copy, clear. */
@@ -25,7 +24,6 @@ export function InspectorHeaderActions({
   visibilityLabel?: string;
   onToggleHidden?: (id: string, hidden: boolean) => void;
 }) {
-  const track = useTrackDesignInput();
   return (
     <div className="flex items-center gap-1">
       {selectedElementId && onToggleHidden && (
@@ -34,7 +32,6 @@ export function InspectorHeaderActions({
           aria-label={visibilityLabel}
           title={visibilityLabel}
           onClick={() => {
-            track("toggle", "Element visibility");
             void onToggleHidden(selectedElementId, !selectedElementHidden);
           }}
           className="flex h-6 w-6 items-center justify-center rounded-sm text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
@@ -50,7 +47,6 @@ export function InspectorHeaderActions({
         <button
           type="button"
           onClick={() => {
-            track("button", "Ungroup");
             onUngroup();
           }}
           title="Ungroup (⌘⇧G)"
@@ -62,7 +58,6 @@ export function InspectorHeaderActions({
       <button
         type="button"
         onClick={() => {
-          track("button", "Copy element info");
           onCopy();
         }}
         className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
@@ -88,7 +83,6 @@ export function InspectorHeaderActions({
         type="button"
         aria-label="Clear selection"
         onClick={() => {
-          track("button", "Clear selection");
           onClear();
         }}
         className="flex h-6 w-6 items-center justify-center rounded-sm text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"

@@ -1,12 +1,11 @@
 import { defineCommand } from "citty";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import { existsSync } from "node:fs";
-import { platform } from "node:os";
-import { dirname } from "node:path";
+import { homedir, platform } from "node:os";
+import { dirname, join } from "node:path";
 import { resolveExtractCacheDir } from "@hyperframes/engine";
 import type { Example } from "./_examples.js";
-import { CONFIG_PATH } from "../telemetry/config.js";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { c } from "../ui/colors.js";
@@ -14,18 +13,18 @@ import { parseToolVersion, runEnvironmentChecks } from "../browser/preflight.js"
 import { KOKORO_MODULES, KOKORO_PIP, MUSICGEN_MODULES, MUSICGEN_PIP } from "../audio/providers.js";
 import { hasPythonModules, describeRejectedPythonOverride } from "../tts/python.js";
 import { VERSION } from "../version.js";
-import { getUpdateMeta, withMeta } from "../utils/updateCheck.js";
 import {
   OPTIONAL_PACKAGES,
   installedOptionalPackageVersion,
   type OptionalPackage,
 } from "../utils/optionalPackages.js";
 import {
-  getSystemMeta,
+  getHostInfo,
   getShmSizeMb,
   getFreeDiskMb,
   getAvailableMemoryMb,
-} from "../telemetry/system.js";
+} from "../utils/hostInfo.js";
+import { withMeta } from "../utils/jsonMeta.js";
 
 export const examples: Example[] = [
   ["Check system dependencies", "hyperframes doctor"],
@@ -45,42 +44,8 @@ interface CheckResult {
 
 export { parseToolVersion };
 
-function checkDocker(): CheckResult {
-  try {
-    const version = execSync("docker --version", { encoding: "utf-8", timeout: 5000 }).trim();
-    return { ok: true, detail: version };
-  } catch {
-    return {
-      ok: false,
-      detail: "Not found",
-      hint: "https://docs.docker.com/get-docker/",
-    };
-  }
-}
-
-function checkDockerRunning(): CheckResult {
-  try {
-    execSync("docker info", { stdio: "pipe", timeout: 5000 });
-    return { ok: true, detail: "Running" };
-  } catch {
-    return {
-      ok: false,
-      detail: "Not running",
-      hint: "Start Docker Desktop or run: sudo systemctl start docker",
-    };
-  }
-}
-
 function checkVersion(): CheckResult {
-  const meta = getUpdateMeta();
-  if (meta.updateAvailable && meta.latestVersion) {
-    return {
-      ok: false,
-      detail: `${VERSION} \u2192 ${meta.latestVersion} available`,
-      hint: "Run: hyperframes upgrade",
-    };
-  }
-  return { ok: true, detail: `${VERSION} (latest)` };
+  return { ok: true, detail: `v${VERSION}` };
 }
 
 function checkNode(): CheckResult {
@@ -90,14 +55,14 @@ function checkNode(): CheckResult {
 // ── Hardware & Environment Checks ──────────────────────────────────────────
 
 function checkCPU(): CheckResult {
-  const sys = getSystemMeta();
+  const sys = getHostInfo();
   const model = sys.cpu_model ?? "Unknown";
   const speedStr = sys.cpu_speed ? ` @ ${sys.cpu_speed}MHz` : "";
   return { ok: true, detail: `${sys.cpu_count} cores \u00B7 ${model}${speedStr}` };
 }
 
 function checkMemory(): CheckResult {
-  const sys = getSystemMeta();
+  const sys = getHostInfo();
   const availMb = getAvailableMemoryMb();
   const totalGb = (sys.memory_total_mb / 1024).toFixed(1);
   const availGb = (availMb / 1024).toFixed(1);
@@ -117,12 +82,12 @@ function checkShm(): CheckResult {
   if (shmMb === null) {
     return { ok: true, detail: "N/A (non-Linux)" };
   }
-  // Docker default is 64MB which causes Chrome crashes
+  // Small /dev/shm (commonly a 64MB container default) crashes Chrome.
   if (shmMb < 256) {
     return {
       ok: false,
       detail: `${shmMb} MB`,
-      hint: "Chrome needs \u2265256 MB. Use: docker run --shm-size=512m",
+      hint: "Chrome needs \u2265256 MB of /dev/shm.",
     };
   }
   return { ok: true, detail: `${shmMb} MB` };
@@ -240,7 +205,9 @@ export function checkArchiveExtractor(
 }
 
 /** A lock left by a hyperframes process that stopped mid-write blocks settings writes until a person removes it. */
-export function checkSettingsLock(lockPath = `${CONFIG_PATH}.lock`): CheckResult {
+export function checkSettingsLock(
+  lockPath = join(homedir(), ".hyperframes", "config.json.lock"),
+): CheckResult {
   if (!existsSync(lockPath)) return { ok: true, detail: "Not locked" };
   try {
     withFileLock(lockPath, fs, () => undefined);
@@ -251,7 +218,7 @@ export function checkSettingsLock(lockPath = `${CONFIG_PATH}.lock`): CheckResult
 }
 
 function checkEnvironment(): CheckResult {
-  const sys = getSystemMeta();
+  const sys = getHostInfo();
   const parts: string[] = [];
   if (sys.is_docker) parts.push("Docker");
   if (sys.is_wsl) parts.push("WSL");
@@ -354,6 +321,7 @@ export function buildDoctorReport(outcomes: CheckOutcome[], options: { redact?: 
   const checks = options.redact ? outcomes.map(redactOutcome) : outcomes;
   return withMeta({
     ok: checks.every((o) => o.ok),
+    version: VERSION,
     platform: process.platform,
     arch: process.arch,
     checks,
@@ -378,7 +346,7 @@ export default defineCommand({
       { name: "Settings lock", run: () => checkSettingsLock() },
     ];
 
-    // /dev/shm is only relevant on Linux (especially Docker)
+    // /dev/shm is only relevant on Linux
     if (platform() === "linux") {
       checks.push({ name: "/dev/shm", run: checkShm });
     }
@@ -409,26 +377,11 @@ export default defineCommand({
         ...(result.hint ? { hint: result.hint } : {}),
       });
     }
-    for (const check of [
-      { name: "Docker", run: checkDocker },
-      { name: "Docker running", run: checkDockerRunning },
-    ]) {
-      const result = await check.run();
-      outcomes.push({
-        name: check.name,
-        ok: result.ok,
-        detail: result.detail,
-        ...(result.hint ? { hint: result.hint } : {}),
-      });
-    }
     const allOk = outcomes.every((o) => o.ok);
 
     if (args.json) {
       // Exit code intentionally reflects command success, not environment
-      // health — `checkVersion` returns ok:false when an npm update is
-      // available, which would poison any CI pipeline doing
-      // `hyperframes doctor --json || fail` the next time a new version is
-      // published. Consumers who want a gate can do:
+      // health. Consumers who want a gate can do:
       //   hyperframes doctor --json | jq -e '.ok' > /dev/null || handle_failure
       console.log(JSON.stringify(buildDoctorReport(outcomes, { redact: true }), null, 2));
       return;

@@ -13,7 +13,7 @@ const MODULE_RELATIVE_MANIFEST_PATH = resolve(
 // packaged module; dev runs reach it via monorepo-relative paths. Listed
 // once here so the resolver and the missing-manifest error share the same
 // owner — printing only the fallback candidate misdirects the user
-// (heygen-com/hyperframes#3370).
+// (#3370, upstream HyperFrames reference).
 const MANIFEST_CANDIDATES: readonly string[] = [
   SIBLING_MANIFEST_PATH,
   resolve(process.cwd(), "packages/core/dist/hyperframe.manifest.json"),

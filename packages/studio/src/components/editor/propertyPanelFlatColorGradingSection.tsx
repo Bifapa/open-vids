@@ -8,7 +8,6 @@ import {
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { Plus, Settings } from "../../icons/SystemIcons";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { LUT_EXT } from "../../utils/mediaTypes";
 import { FLAT_PREVIEW_GRID, FlatSlider } from "./propertyPanelFlatPrimitives";
 import type {
@@ -128,7 +127,6 @@ export function FlatColorGradingSection({
   onRequestPresetPreviews: () => void;
   captureGradedFrame: ColorGradingControllerState["captureGradedFrame"];
 }) {
-  const track = useTrackDesignInput();
   const lutInputRef = useRef<HTMLInputElement>(null);
   const [lutOpen, setLutOpen] = useState(false);
   const [detailSettingsOpen, setDetailSettingsOpen] = useState<"vignette" | "grain" | null>(null);
@@ -235,7 +233,6 @@ export function FlatColorGradingSection({
                   resolve: () => resolvePreset(preset.id),
                   onPreview: onPreviewColorGrading,
                   onCommit: onCommitColorGrading,
-                  onTrack: (name) => track("button", `Apply ${name}`),
                 })}
                 className={`min-w-0 overflow-hidden border text-left text-[10px] transition-colors ${
                   selected
@@ -405,7 +402,6 @@ export function FlatColorGradingSection({
                 value={lut?.src ?? ""}
                 onChange={(e) => {
                   const src = e.target.value;
-                  track("select", "Custom LUT");
                   actions.applyLut(src || null, src && lut?.src === src ? lut.intensity : 1);
                 }}
                 className="border-b border-panel-border-input/50 bg-transparent font-mono text-[10px] text-panel-text-3 outline-hidden hover:border-panel-border-input"
@@ -432,9 +428,7 @@ export function FlatColorGradingSection({
                 accept=".cube"
                 className="hidden"
                 onChange={(e) => {
-                  void actions.importLut(e.currentTarget.files, onImportAssets, () =>
-                    track("button", "Import LUT"),
-                  );
+                  void actions.importLut(e.currentTarget.files, onImportAssets);
                   e.currentTarget.value = "";
                 }}
               />
@@ -500,7 +494,6 @@ export function FlatColorGradingSection({
               aria-label="Copy grade to"
               value={applyScope}
               onChange={(e) => {
-                track("select", "Copy grade scope");
                 onSetApplyScope(e.target.value as "source-file" | "project");
               }}
               disabled={applyBusy}
@@ -515,7 +508,6 @@ export function FlatColorGradingSection({
             data-flat-grade-apply="true"
             disabled={applyBusy}
             onClick={() => {
-              track("button", "Apply grade to scope");
               onApplyToScope();
             }}
             className="text-[11px] font-medium text-panel-accent hover:text-panel-accent/80 disabled:cursor-not-allowed disabled:opacity-50"

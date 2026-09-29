@@ -11,8 +11,8 @@
  * at their system Chrome; the render then used the screenshot fallback and
  * produced a complete MP4.
  *
- * The generic "Try --docker" hint the CLI already emits doesn't name that env
- * var, so the workaround is undiscoverable unaided. Sibling failure mode to
+ * The former generic container hint the CLI used to emit didn't name that env
+ * var, so the workaround was undiscoverable unaided. Sibling failure mode to
  * the download-time hint added in #2443 and the closed-with-invite #2078
  * (SIGTRAP at launch on macOS arm64); same `HYPERFRAMES_BROWSER_PATH`
  * remediation, different trigger + platform.

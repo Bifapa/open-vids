@@ -2,7 +2,6 @@ import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useCallback, useRef } from "react";
 import { useCaptionStore } from "../store";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { trackEvent } from "../../telemetry/client";
 import type { CaptionStyle } from "../types";
 import { studioWriteHeaders } from "../../utils/studioFileVersion";
 
@@ -106,10 +105,9 @@ export function useCaptionSync(projectId: string | null) {
         const s = useCaptionStore.getState();
         if (s.syncError) s.setSyncError(null);
       })
-      .catch((error: unknown) => {
-        // Caption auto-save is a data-loss path: surface it to the user, not
-        // just telemetry. pendingRef stays true so beforeunload still warns.
-        trackEvent("studio_caption_autosave_failed", { error: String(error) });
+      .catch(() => {
+        // Caption auto-save is a data-loss path: surface it to the user.
+        // pendingRef stays true so beforeunload still warns.
         useCaptionStore.getState().setSyncError("Caption changes couldn't be saved");
       });
   }, []);

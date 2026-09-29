@@ -51,19 +51,19 @@ export type UrlDownloadFailureKind =
   | "invalid_payload"
   | "filesystem";
 
-export type UrlDownloadTelemetryOutcome =
+export type UrlDownloadDiagnosticsOutcome =
   | "attempt_failed"
   | "cache_hit"
   | "published"
   | "race_reused"
   | "retrying";
 
-export interface UrlDownloadTelemetry {
+export interface UrlDownloadDiagnostics {
   urlFingerprint: string;
   initialHost?: string;
   finalHost?: string;
   attempt: number;
-  outcome: UrlDownloadTelemetryOutcome;
+  outcome: UrlDownloadDiagnosticsOutcome;
   status?: number;
   expectedBytes?: number;
   receivedBytes?: number;
@@ -83,7 +83,7 @@ export interface UrlDownloadTelemetry {
 export interface UrlDownloadOptions {
   /** Optional strong checksum supplied by a trusted caller. */
   expectedSha256?: string;
-  onTelemetry?: (event: UrlDownloadTelemetry) => void;
+  onDiagnostics?: (event: UrlDownloadDiagnostics) => void;
 }
 
 export interface PublicHttpsTextOptions {
@@ -116,7 +116,7 @@ export function safeDownloadUrlIdentity(url: string): SafeDownloadUrlIdentity {
 }
 
 /** Default safe structured sink for engine media call sites without a logger. */
-export function writeUrlDownloadTelemetry(event: UrlDownloadTelemetry): void {
+export function writeUrlDownloadDiagnostics(event: UrlDownloadDiagnostics): void {
   try {
     process.stderr.write(`[hyperframes:download] ${JSON.stringify(event)}\n`);
   } catch {
@@ -130,7 +130,7 @@ export class UrlDownloadError extends Error {
     readonly retryable: boolean,
     message: string,
     readonly status?: number,
-    readonly telemetry?: Partial<UrlDownloadTelemetry>,
+    readonly diagnostics?: Partial<UrlDownloadDiagnostics>,
     /** A bounded in-call refetch can be safe even when upstream retry is not. */
     readonly locallyRetryable: boolean = retryable,
   ) {
@@ -632,7 +632,7 @@ interface PartialIntegrity {
   status: number;
   expectedBytes?: number;
   receivedBytes: number;
-  rangeDisposition: UrlDownloadTelemetry["rangeDisposition"];
+  rangeDisposition: UrlDownloadDiagnostics["rangeDisposition"];
   etagFingerprint?: string;
   etagWeak?: boolean;
   localSize: number;
@@ -666,7 +666,7 @@ function parseDeclaredLength(response: Response): number | undefined {
 
 // Keep every Content-Range invariant in one parser so malformed and unsolicited
 // partial responses cannot drift into different retry classifications.
-function classifyRangeDisposition(response: Response): UrlDownloadTelemetry["rangeDisposition"] {
+function classifyRangeDisposition(response: Response): UrlDownloadDiagnostics["rangeDisposition"] {
   const contentRange = response.headers.get("content-range");
   if (response.status === 206) {
     const match = contentRange?.match(/^bytes (\d+)-(\d+)\/(\d+|\*)$/i);
@@ -763,14 +763,14 @@ function expectedResponseSha256(
 function checksumMismatchError(
   source: "caller" | "server",
   status: number | undefined,
-  telemetry: Partial<UrlDownloadTelemetry>,
+  diagnostics: Partial<UrlDownloadDiagnostics>,
 ): UrlDownloadError {
   return new UrlDownloadError(
     "hash_mismatch",
     source === "server",
     "Download payload checksum did not match",
     status,
-    telemetry,
+    diagnostics,
     true,
   );
 }
@@ -839,7 +839,7 @@ async function fetchToPartial(
     await cancelResponseBody(response);
     if (error instanceof UrlDownloadError) {
       throw new UrlDownloadError(error.kind, error.retryable, error.message, error.status, {
-        ...error.telemetry,
+        ...error.diagnostics,
         finalHost: finalIdentity.host,
         rangeDisposition,
       });
@@ -883,7 +883,7 @@ async function fetchToPartial(
   const sha256Bytes = sha256.digest();
   const localSha256 = sha256Bytes.toString("hex");
   const md5Base64 = md5.digest("base64");
-  const telemetry = {
+  const diagnostics = {
     finalHost: finalIdentity.host,
     status: response.status,
     expectedBytes,
@@ -891,14 +891,14 @@ async function fetchToPartial(
     rangeDisposition,
     localSize,
     localSha256,
-  } satisfies Partial<UrlDownloadTelemetry>;
+  } satisfies Partial<UrlDownloadDiagnostics>;
   if (receivedBytes === 0 || localSize === 0) {
     throw new UrlDownloadError(
       "empty_body",
       true,
       "Download response body contained zero bytes",
       response.status,
-      telemetry,
+      diagnostics,
     );
   }
   if (
@@ -910,7 +910,7 @@ async function fetchToPartial(
       true,
       "Download response byte count did not match its declared length",
       response.status,
-      telemetry,
+      diagnostics,
     );
   }
   const prefix = Buffer.concat(prefixChunks);
@@ -920,7 +920,7 @@ async function fetchToPartial(
       false,
       "Download returned an HTML or JSON error document",
       response.status,
-      telemetry,
+      diagnostics,
     );
   }
 
@@ -932,10 +932,10 @@ async function fetchToPartial(
       : localSha256 === expectedSha256.value);
   const contentMd5 = response.headers.get("content-md5")?.trim();
   if (!checksumMatches) {
-    throw checksumMismatchError(expectedSha256?.source ?? "server", response.status, telemetry);
+    throw checksumMismatchError(expectedSha256?.source ?? "server", response.status, diagnostics);
   }
   if (expectedSha256 === null && contentMd5 && md5Base64 !== contentMd5) {
-    throw checksumMismatchError("server", response.status, telemetry);
+    throw checksumMismatchError("server", response.status, diagnostics);
   }
 
   const etag = response.headers.get("etag")?.trim();
@@ -955,7 +955,7 @@ async function fetchToPartial(
 function syncAndPublishPartial(
   partialPath: string,
   localPath: string,
-): Extract<UrlDownloadTelemetryOutcome, "published" | "race_reused"> {
+): Extract<UrlDownloadDiagnosticsOutcome, "published" | "race_reused"> {
   // Windows rejects fsync on a read-only handle (EPERM); the partial is ours
   // and writable, so r+ preserves the same flush semantics cross-platform.
   const fd = openSync(partialPath, "r+");
@@ -990,15 +990,15 @@ function syncAndPublishPartial(
   }
 }
 
-function emitDownloadTelemetry(options: UrlDownloadOptions, event: UrlDownloadTelemetry): void {
+function emitDownloadDiagnostics(options: UrlDownloadOptions, event: UrlDownloadDiagnostics): void {
   try {
-    options.onTelemetry?.(event);
+    options.onDiagnostics?.(event);
   } catch {
     // Metrics/logging callbacks cannot affect publication or retry policy.
   }
 }
 
-// Attempt-scoped cancellation, cleanup, publication, and telemetry deliberately
+// Attempt-scoped cancellation, cleanup, publication, and diagnostics deliberately
 // remain under one try/finally so every exit removes the unique partial directory.
 async function runDownloadAttempt(
   url: string,
@@ -1065,7 +1065,7 @@ async function runDownloadAttempt(
         throw checksumMismatchError("caller", integrity.status, publishedIntegrity);
       }
     }
-    emitDownloadTelemetry(options, {
+    emitDownloadDiagnostics(options, {
       urlFingerprint: identity.urlFingerprint,
       initialHost: identity.host,
       attempt,
@@ -1076,7 +1076,7 @@ async function runDownloadAttempt(
   } catch (error) {
     if (callerAborted) {
       const classified = new UrlDownloadError("cancelled", false, "Download cancelled");
-      emitDownloadTelemetry(options, {
+      emitDownloadDiagnostics(options, {
         urlFingerprint: identity.urlFingerprint,
         initialHost: identity.host,
         attempt,
@@ -1091,7 +1091,7 @@ async function runDownloadAttempt(
         true,
         `Download timeout after ${timeoutMs / 1000}s`,
       );
-      emitDownloadTelemetry(options, {
+      emitDownloadDiagnostics(options, {
         urlFingerprint: identity.urlFingerprint,
         initialHost: identity.host,
         attempt,
@@ -1101,13 +1101,13 @@ async function runDownloadAttempt(
       throw classified;
     }
     const classified = classifyDownloadFailure(error);
-    emitDownloadTelemetry(options, {
+    emitDownloadDiagnostics(options, {
       urlFingerprint: identity.urlFingerprint,
       initialHost: identity.host,
       attempt,
       outcome: "attempt_failed",
       failureKind: classified.kind,
-      ...classified.telemetry,
+      ...classified.diagnostics,
     });
     throw classified;
   } finally {
@@ -1140,7 +1140,7 @@ async function downloadWithRetry(
           classified.message,
           classified.status,
           {
-            ...classified.telemetry,
+            ...classified.diagnostics,
             urlFingerprint: identity.urlFingerprint,
             initialHost: identity.host,
             attempt: attempt + 1,
@@ -1150,13 +1150,13 @@ async function downloadWithRetry(
       }
       if (classified.retryable) onTransientRetry?.(classified);
       const identity = safeDownloadUrlIdentity(url);
-      emitDownloadTelemetry(options, {
+      emitDownloadDiagnostics(options, {
         urlFingerprint: identity.urlFingerprint,
         initialHost: identity.host,
         attempt: attempt + 1,
         outcome: "retrying",
         failureKind: classified.kind,
-        ...classified.telemetry,
+        ...classified.diagnostics,
       });
     }
   }
@@ -1250,7 +1250,7 @@ async function reuseOrInvalidateCachedFile(
 
       if (localInspectionMatchesOptions(inspection, options)) {
         const identity = safeDownloadUrlIdentity(url);
-        emitDownloadTelemetry(options, {
+        emitDownloadDiagnostics(options, {
           urlFingerprint: identity.urlFingerprint,
           initialHost: identity.host,
           attempt: 0,

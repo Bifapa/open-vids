@@ -6,9 +6,7 @@ import type { CutoverDeps } from "./sdkCutover";
 // Fix 3: vi.mock must be at module top level so Vitest can hoist them.
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   STUDIO_SDK_CUTOVER_ENABLED: true,
-  STUDIO_SDK_RESOLVER_SHADOW_ENABLED: false,
 }));
-vi.mock("./studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 describe("buildSlideshowIslandHtml", () => {
   it("serializes a manifest into a script island", () => {

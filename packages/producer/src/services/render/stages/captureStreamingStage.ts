@@ -150,7 +150,7 @@ export function resolveCaptureStallTimeoutMs(): number {
  * `signal` is read only at trip time to label the rejection, never to cancel
  * the race early — a parent abort during a wedge still has to wait out the
  * same deadline (nothing can unstick the underlying call), but the message
- * must say "aborted", not "stalled", so downstream logs/telemetry don't
+ * must say "aborted", not "stalled", so downstream logs/diagnostics don't
  * misreport a deliberate cancellation as a capture failure.
  */
 function captureModeLabel(mode: CaptureSession["captureMode"]): string {
@@ -270,7 +270,7 @@ export interface CaptureStreamingStageInput {
   dedupPerfs: CapturePerfSummary[];
 }
 
-/** Drain-side safety-net counters for the worker-encode loop (telemetry). */
+/** Drain-side safety-net counters for the worker-encode loop (diagnostics). */
 export interface DeDrainStats {
   verifyChecked: number;
   verifyMinDb?: number;

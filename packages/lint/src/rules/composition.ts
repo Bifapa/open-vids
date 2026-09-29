@@ -946,7 +946,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // negative_z_index
   // An element at a negative z-index is silently absent from both `snapshot`
   // and `render`, while siblings differing only in the sign of z-index render
-  // exactly (heygen-com/hyperframes#4366). lint, validate and render all exit 0
+  // exactly (#4366, upstream HyperFrames reference). lint, validate and render all exit 0
   // and report nothing, so the first suspicion falls on the author's own CSS.
   // NOT A RENDERER DEFECT -- ORDINARY CSS PAINTING ORDER, measured at 0.8.72.
   // The element is PAINTED; it is simply painted beneath something opaque. Remove

@@ -14,18 +14,6 @@
       "types": null,
       "environments": ["browser", "bun", "node"]
     },
-    "./canary": {
-      "source": "./src/canary.ts",
-      "runtime": "./dist/canary.js",
-      "types": "./dist/canary.d.ts",
-      "environments": ["browser", "bun", "node"]
-    },
-    "./canary-registry": {
-      "source": "./src/canaryRegistry.ts",
-      "runtime": "./dist/canaryRegistry.js",
-      "types": "./dist/canaryRegistry.d.ts",
-      "environments": ["browser", "bun", "node"]
-    },
     "./beats": {
       "source": "./src/beats/index.ts",
       "runtime": "./dist/beats/index.js",

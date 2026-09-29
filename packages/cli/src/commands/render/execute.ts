@@ -16,7 +16,6 @@ import {
   resolveVariablesArg,
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
-import { trackRenderPreflightRejected } from "../../telemetry/events.js";
 import { applyRenderEnvironment, renderOutputDirectory, type RenderPlan } from "./plan.js";
 import type { RenderOptions, SingleRenderResult } from "../render.js";
 import type { RenderCancellationScope } from "../../utils/renderCancellation.js";
@@ -36,7 +35,6 @@ type ResolutionPreflight = (
 ) => Promise<{ message: string; kind: OutputResolutionIssueKind } | undefined>;
 
 export interface RenderExecutionDependencies {
-  renderDocker: RenderExecutor;
   renderLocal: RenderExecutor;
   checkResolution: ResolutionPreflight;
 }
@@ -88,9 +86,7 @@ export async function executeRenderPlan(
     }
   }
 
-  const browserPath = plan.useDocker
-    ? undefined
-    : await ensureRenderBrowser(plan, cancellation?.signal);
+  const browserPath = await ensureRenderBrowser(plan, cancellation?.signal);
   assertRenderActive(cancellation);
   await runRenderLint(plan, lintProject, cancellation?.signal);
   assertRenderActive(cancellation);
@@ -116,8 +112,7 @@ export async function executeRenderPlan(
   }
 
   const options = renderOptionsFromPlan(plan, browserPath, variables);
-  const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
-  await execute(plan.project.dir, plan.outputPath, options, cancellation);
+  await dependencies.renderLocal(plan.project.dir, plan.outputPath, options, cancellation);
 }
 
 /**
@@ -160,17 +155,14 @@ export function renderOptionsFromPlan(
     entryFile: plan.entryFile,
     outputResolution: plan.outputResolution,
     outputResolutionAspectAgnostic: plan.outputResolutionAspectAgnostic,
-    outputResolutionRaw: plan.outputResolutionRaw,
     pageNavigationTimeoutMs: plan.pageNavigationTimeoutMs,
     protocolTimeout: plan.protocolTimeout,
     playerReadyTimeout: plan.playerReadyTimeout,
     exitAfterComplete: true,
     manageDeParallelRouterBreaker: true,
+    pageSideCompositing: plan.pageSideCompositing,
+    experimentalFastCapture: plan.experimentalFastCapture,
   };
-  if (plan.useDocker) {
-    options.pageSideCompositing = plan.pageSideCompositing;
-    options.experimentalFastCapture = plan.experimentalFastCapture;
-  }
   return options;
 }
 
@@ -313,7 +305,6 @@ async function runResolutionPreflight(
     // Unreadable input is surfaced by the render pipeline with full context.
   }
   if (!issue) return;
-  trackRenderPreflightRejected({ kind: issue.kind });
   errorBox("Output resolution incompatible", issue.message);
   failCommand();
 }
@@ -352,7 +343,6 @@ async function executeBatchRender(
     entryFile: plan.entryFile,
     outputResolution: plan.outputResolution,
     outputResolutionAspectAgnostic: plan.outputResolutionAspectAgnostic,
-    outputResolutionRaw: plan.outputResolutionRaw,
     pageNavigationTimeoutMs: plan.pageNavigationTimeoutMs,
     protocolTimeout: plan.protocolTimeout,
     playerReadyTimeout: plan.playerReadyTimeout,
@@ -372,10 +362,12 @@ async function executeBatchRender(
     json: plan.batchJson,
     renderOne: (row) => {
       assertRenderActive(cancellation);
-      const options: RenderOptions = { ...renderOptionsBase, variables: row.variables };
-      if (plan.useDocker) options.pageSideCompositing = plan.pageSideCompositing;
-      const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
-      return execute(plan.project.dir, row.outputPath, options, cancellation);
+      const options: RenderOptions = {
+        ...renderOptionsBase,
+        variables: row.variables,
+        pageSideCompositing: plan.pageSideCompositing,
+      };
+      return dependencies.renderLocal(plan.project.dir, row.outputPath, options, cancellation);
     },
   });
   if (manifest.failed > 0) setCommandExitCode(1);

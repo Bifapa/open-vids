@@ -171,13 +171,6 @@ export interface StudioApiAdapter {
     quality: string;
     jobId: string;
     /**
-     * The triggering browser profile has telemetry disabled (localStorage
-     * opt-out, DNT, dev build...). The CLI cannot observe any of that, so the
-     * browser has to say so — without it the server emitted render outcomes
-     * for a user who had opted out, under the CLI's own policy.
-     */
-    telemetryOptOut?: boolean;
-    /**
      * Optional output resolution preset. See `resolveDeviceScaleFactor` in
      * the producer for the integer-scale + aspect + HDR constraints.
      */
@@ -190,13 +183,6 @@ export interface StudioApiAdapter {
      * the same channel `hyperframes render --variables` uses.
      */
     variables?: Record<string, unknown>;
-    /**
-     * Telemetry id of the browser user who triggered the render. Lets the
-     * adapter attribute the server-emitted render_complete/render_error to
-     * that user so the studio render funnel is joinable. Undefined for older
-     * clients → falls back to the install's anonymous id.
-     */
-    distinctId?: string;
   }): RenderJobState;
 
   startBackgroundRemoval?: (opts: {

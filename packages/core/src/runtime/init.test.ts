@@ -544,8 +544,6 @@ describe("initSandboxRuntimeModular", () => {
       );
     expect(sizes.length).toBeGreaterThan(1);
     expect(new Set(sizes)).toEqual(new Set(["1920x1080"]));
-    const loaded = outbound.find((m) => m.event === "composition_loaded");
-    expect(loaded?.properties).toMatchObject({ compositionId: "main" });
   });
 
   it("reports a collapsed stage for a px-suffixed root size", () => {
@@ -564,7 +562,7 @@ describe("initSandboxRuntimeModular", () => {
     expect(collapsed?.details).toMatchObject({ declaredWidth: 1080, declaredHeight: 1920 });
   });
 
-  it("isolates a failed keyframe ease repair and reports it without skipping siblings", () => {
+  it("isolates a failed keyframe ease repair without skipping siblings", () => {
     const outbound: Array<{ type?: string; event?: string }> = [];
     vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
       if (typeof message === "object" && message !== null) {
@@ -601,12 +599,7 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(failedInner._ease).toBeUndefined();
     expect(repairedInner._ease).toBeTypeOf("function");
-    expect(outbound).toContainEqual(
-      expect.objectContaining({
-        type: "analytics",
-        event: "keyframe_ease_repair_failed",
-      }),
-    );
+    expect(outbound.some((message) => message.type === "analytics")).toBe(false);
   });
 
   it("posts the exact time a pause on the last frame lands on, next to its rounded frame", () => {
@@ -4141,11 +4134,6 @@ describe("initSandboxRuntimeModular", () => {
     expect(timeline.time()).toBe(2);
     expect(timeline.timeScale).toHaveBeenLastCalledWith(2);
     expect(outbound.filter((message) => message.type === "ready")).toHaveLength(2);
-    expect(
-      outbound.filter(
-        (message) => message.type === "analytics" && message.event === "composition_seeked",
-      ),
-    ).toHaveLength(2);
   });
 
   it("restores timed element visibility after a forced timeline rebind", () => {

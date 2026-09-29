@@ -38,7 +38,6 @@ import { DEFAULT_MODEL, isWhisperUnavailable } from "../whisper/manager.js";
 // entering the sync-import graph. Below this floor the whisper spawn has no
 // realistic chance of completing even on the fastest hardware for the shortest clip.
 const CLI_TIMEOUT_MIN_MS = 5000;
-import { trackTranscribeUnavailable } from "../telemetry/events.js";
 
 export default defineCommand({
   meta: {
@@ -443,10 +442,8 @@ async function transcribeAudio(
 
     // whisper-cpp is an optional prerequisite, not part of the CLI. When it is
     // simply unavailable (no binary, no toolchain to build one), that is a setup
-    // condition, not a command crash — report it on its own metric so it does
-    // not inflate the cli_error budget, and let `--optional` callers continue.
+    // condition, not a command crash — and `--optional` callers continue.
     if (isWhisperUnavailable(err)) {
-      trackTranscribeUnavailable({ optional: opts.optional === true });
       if (opts.json) {
         console.log(JSON.stringify({ ok: false, skipped: true, reason: "whisper_unavailable" }));
       } else {

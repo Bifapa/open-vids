@@ -248,7 +248,7 @@ describe("worker failure diagnostics", () => {
   // Field signal ts=1784042064: a Windows render hard-exited during video
   // frame extraction without emitting a terminal error string; the parent
   // treated the result as success because `error` was falsy. The synthesized
-  // string surfaces the shortfall so downstream telemetry can classify the
+  // string surfaces the shortfall so downstream diagnostics can classify the
   // failure instead of it disappearing silently.
   it("synthesizes a terminal error when a worker exits with no error string", () => {
     const message = formatWorkerFailure({

@@ -5,7 +5,6 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { applySoftReload, extractGsapScriptText } from "../utils/gsapSoftReload";
 import type { SoftReloadResult } from "../utils/gsapSoftReload";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import { serializeStudioFileMutation } from "../utils/studioFileMutationCoordinator";
 import {
   getStudioSaveErrorMessage,
@@ -32,10 +31,7 @@ import { useGsapAnimationOps } from "./useGsapAnimationOps";
 import { useGsapArcPathOps } from "./useGsapArcPathOps";
 import { useGsapKeyframeOps } from "./useGsapKeyframeOps";
 import { useGsapPropertyDebounce } from "./useGsapPropertyDebounce";
-import {
-  useGsapSaveFailureTelemetry,
-  useSafeGsapCommitMutation,
-} from "./useSafeGsapCommitMutation";
+import { useSafeGsapCommitMutation } from "./useSafeGsapCommitMutation";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 
 async function mutateGsapScript(
@@ -200,8 +196,7 @@ function syncCommittedGsapMutation({
 
 /**
  * Apply a soft reload and enforce the U4 invariant via the richer
- * `SoftReloadResult`, with telemetry on every non-success path so the invariant
- * is observable in production, not just asserted in tests:
+ * `SoftReloadResult`:
  *
  * - `"cannot-soft-reload"` (PERMANENT/STRUCTURAL: no gsap runtime, no rebind
  *   hook, no scopable key, no script element, or the sync re-run threw) →
@@ -229,11 +224,6 @@ function softReloadOrEscalate(
     authoredHtml,
   });
   if (result === "applied") return;
-  trackStudioEvent("gsap_soft_reload_outcome", {
-    origin,
-    result,
-    escalated: result === "cannot-soft-reload",
-  });
   // PERMANENT failure: the preview can't be soft-updated → full reload. TRANSIENT
   // "verify-failed" is suppressed (live state is correct).
   if (result === "cannot-soft-reload") reloadPreview();
@@ -267,9 +257,6 @@ export function applyPreviewSync(
         ),
     );
     if (missed) {
-      // The instant path couldn't patch in place — record the fallback so we can
-      // track how often the fast path misses before the soft/full reload below.
-      trackStudioEvent("gsap_instant_patch_fallback", { selector: missed.selector });
       needsFallback = true;
     }
     // Patched in place — elements are already correct on screen; no reload needed
@@ -431,20 +418,13 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     };
     return commit;
   }, [runCommit, runBatchCommit, activeCompPath, activeProjectId, writeProjectFile]);
-  const trackGsapSaveFailure = useGsapSaveFailureTelemetry(activeCompPath);
   const handleGsapSaveFailure = useCallback(
-    (
-      error: unknown,
-      selection: DomEditSelection,
-      mutation: Record<string, unknown>,
-      label?: string,
-    ) => {
-      trackGsapSaveFailure(error, selection, mutation, label);
+    (error: unknown) => {
       if (!isStudioSaveErrorAlreadyToasted(error)) {
         showToast?.(`Couldn't save animation: ${getStudioSaveErrorMessage(error)}`, "error");
       }
     },
-    [showToast, trackGsapSaveFailure],
+    [showToast],
   );
   const commitMutationSafely = useSafeGsapCommitMutation(commitMutation, handleGsapSaveFailure);
 

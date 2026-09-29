@@ -31,7 +31,7 @@ export function toFps(input: FpsInput): Fps {
 
 /**
  * Decimal value of an {@link Fps} rational. Used at sites that need a
- * `number` for arithmetic (frame-index → time, frame intervals, telemetry
+ * `number` for arithmetic (frame-index → time, frame intervals, diagnostics
  * payloads) where the small precision loss of the decimal is acceptable.
  */
 export function fpsToNumber(fps: Fps): number {

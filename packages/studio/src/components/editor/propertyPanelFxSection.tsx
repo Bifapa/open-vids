@@ -29,15 +29,6 @@ import { FxRackChain } from "./propertyPanelFxRackChain.js";
 import { CLIP_SIGNAL_PATH } from "./audioFxSignalPath.js";
 import { FxAddMenu } from "./propertyPanelFxAddMenu.js";
 import { useFxAudition } from "./useFxAudition.js";
-import {
-  nodeOrigin,
-  trackNodeAdded,
-  trackNodeMoved,
-  trackNodeRemoved,
-  trackPresetAuditioned,
-  trackPresetAutomated,
-  trackPresetRemoved,
-} from "./audioFxTelemetry.js";
 import type { FxSectionProps } from "./propertyPanelFxSectionTypes.js";
 
 export type { FxSectionProps } from "./propertyPanelFxSectionTypes.js";
@@ -149,7 +140,7 @@ export function FxSection({
       // The stored chain, not whatever is being auditioned on top of it — see
       // `storedChain`. Clicking preset B while hovering preset A used to save
       // both, which is heard as the effect running twice.
-      const next = applyPresetToChain(storedChain(), id, trackKind);
+      const next = applyPresetToChain(storedChain(), id);
       if (!next) return;
       // The audition WAS this, so there is nothing to put back — and putting the
       // old chain back over the write that just landed is a race the author
@@ -161,29 +152,27 @@ export function FxSection({
       setOpenNode(next.nodes.findIndex((n) => n.fromPreset === id));
       setPicking(false);
     },
-    [storedChain, mutate, clearAudition, trackKind],
+    [storedChain, mutate, clearAudition],
   );
 
   const addJob = useCallback(
     (job: HfAudioFxJob) => {
       clearAudition();
-      trackNodeAdded(job.type, "job", job.id, { trackKind });
       mutate(withJob(chain, job).nodes);
       setOpenNode(chain.nodes.length);
       setAdding(false);
     },
-    [chain, mutate, clearAudition, trackKind],
+    [chain, mutate, clearAudition],
   );
 
   const addEffect = useCallback(
     (type: string) => {
       clearAudition();
-      trackNodeAdded(type, "effect", null, { trackKind });
       mutate(withEffect(chain, type).nodes);
       setOpenNode(chain.nodes.length);
       setAdding(false);
     },
-    [chain, mutate, clearAudition, trackKind],
+    [chain, mutate, clearAudition],
   );
 
   const updateNode = useCallback(
@@ -234,12 +223,11 @@ export function FxSection({
       // resurrected the old ramp.
       const ids = items.map(({ node }) => node.id).filter((id): id is string => Boolean(id));
       if (ids.length > 0 || presetId) onRemoveNodesAutomation?.(ids, presetId);
-      if (presetId) trackPresetRemoved(presetId, { trackKind });
       const slots = new Set(items.map((item) => item.i));
       mutate(chain.nodes.filter((_, i) => !slots.has(i)));
       setOpenNode(null);
     },
-    [chain.nodes, mutate, onRemoveNodesAutomation, trackKind],
+    [chain.nodes, mutate, onRemoveNodesAutomation],
   );
 
   const removeNode = useCallback(
@@ -252,11 +240,10 @@ export function FxSection({
       const removed = chain.nodes[index];
       const removedId = removed?.id;
       if (removedId) onRemoveNodeAutomation?.(removedId);
-      if (removed) trackNodeRemoved(removed.type, nodeOrigin(removed), { trackKind });
       mutate(chain.nodes.filter((_, i) => i !== index));
       setOpenNode(null);
     },
-    [chain.nodes, mutate, onRemoveNodeAutomation, trackKind],
+    [chain.nodes, mutate, onRemoveNodeAutomation],
   );
 
   // Open by default: the module is the carve's whole control surface now, and a
@@ -370,14 +357,12 @@ export function FxSection({
   const addEq = useCallback(() => {
     clearAudition();
     const { chain: next, eqId } = addAudioEq(chain);
-    trackNodeAdded("eq", "eq", null, { trackKind });
     mutate(next.nodes);
     setOpenEq(eqId);
     setAdding(false);
-  }, [chain, mutate, clearAudition, trackKind]);
+  }, [chain, mutate, clearAudition]);
 
   // Dragging a fader is heard immediately and written once on release, the same
-  // split every other control in the rack uses.
   const previewEqBand = useCallback(
     (eqId: string, band: string, gain: number) =>
       onChainPreview?.(setAudioEqBandGain(chain, eqId, band, gain)),
@@ -410,11 +395,10 @@ export function FxSection({
       const next = [...chain.nodes];
       const [moved] = next.splice(index, 1);
       next.splice(target, 0, moved!);
-      if (moved) trackNodeMoved(moved.type, delta < 0 ? "up" : "down", { trackKind });
       mutate(next);
       setOpenNode(target);
     },
-    [chain.nodes, mutate, trackKind],
+    [chain.nodes, mutate],
   );
 
   /**
@@ -445,7 +429,6 @@ export function FxSection({
   ): (() => void) | undefined => {
     if (!presetId || !onAutomatePreset || presetAutomated.has(presetId)) return undefined;
     return () => {
-      trackPresetAutomated(presetId, true, { trackKind });
       onAutomatePreset(presetId, amount);
     };
   };
@@ -496,7 +479,6 @@ export function FxSection({
         onMoveNode={moveNode}
         onRemoveNode={removeNode}
         onPreviewNode={previewNode}
-        trackKind={trackKind}
         collapsedRuns={collapsedRuns}
         onToggleCollapse={(runKey) =>
           setCollapsedRuns((was) => {
@@ -538,7 +520,6 @@ export function FxSection({
         <FxPresetMenu
           trackKind={trackKind}
           onPick={applyPreset}
-          onAuditionTracked={(id) => trackPresetAuditioned(id, { trackKind })}
           onAudition={
             onChainPreview
               ? (id) => {

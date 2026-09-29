@@ -35,7 +35,6 @@ vi.mock("./useAnimatedPropertyCommit", () => ({
   }),
 }));
 vi.mock("./useSafeGsapCommitMutation", () => ({
-  useGsapSaveFailureTelemetry: () => vi.fn(),
   useSafeGsapCommitMutation: (commit: unknown) => commit,
 }));
 
@@ -354,12 +353,7 @@ describe("useGsapAwareEditing anchored resize", () => {
 
     await expect(groupCommit(updates)).rejects.toBe(failures[0]);
     expect(trackGsapInteractionFailure).toHaveBeenCalledOnce();
-    expect(trackGsapInteractionFailure).toHaveBeenCalledWith(
-      failures[0],
-      updates[0]?.selection,
-      "drag",
-      "Move animated layer (group)",
-    );
+    expect(trackGsapInteractionFailure).toHaveBeenCalledWith(failures[0]);
     mocks.drag.mockReset();
     if (priorDragImplementation) mocks.drag.mockImplementation(priorDragImplementation);
     act(() => root.unmount());

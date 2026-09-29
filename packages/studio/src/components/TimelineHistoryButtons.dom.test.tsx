@@ -14,14 +14,12 @@ const editHistory = {
 };
 const handleUndo = vi.fn();
 const handleRedo = vi.fn();
-const trackStudioEvent = vi.fn();
 
 const studioShell = { editHistory, handleUndo, handleRedo };
 let shell: typeof studioShell | null = studioShell;
 vi.mock("../contexts/StudioContext", () => ({
   useStudioShellContextOptional: () => shell,
 }));
-vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent }));
 
 const { TimelineHistoryButtons } = await import("./TimelineHistoryButtons");
 const { TimelineToolbar } = await import("./TimelineToolbar");
@@ -53,7 +51,7 @@ function click(el: HTMLElement): void {
   });
 }
 
-it("calls handleUndo once and tracks the event when Undo is enabled", () => {
+it("calls handleUndo once when Undo is enabled", () => {
   editHistory.canUndo = true;
   const host = mount(<TimelineHistoryButtons />);
 
@@ -61,17 +59,15 @@ it("calls handleUndo once and tracks the event when Undo is enabled", () => {
 
   expect(handleUndo).toHaveBeenCalledTimes(1);
   expect(handleRedo).not.toHaveBeenCalled();
-  expect(trackStudioEvent).toHaveBeenCalledWith("toolbar_action", { action: "undo" });
 });
 
-it("calls handleRedo once and tracks the event when Redo is enabled", () => {
+it("calls handleRedo once when Redo is enabled", () => {
   editHistory.canRedo = true;
   const host = mount(<TimelineHistoryButtons />);
 
   click(button(host, "Redo"));
 
   expect(handleRedo).toHaveBeenCalledTimes(1);
-  expect(trackStudioEvent).toHaveBeenCalledWith("toolbar_action", { action: "redo" });
 });
 
 it("disables both buttons and ignores clicks on an empty history", () => {
@@ -85,7 +81,6 @@ it("disables both buttons and ignores clicks on an empty history", () => {
   }
   expect(handleUndo).not.toHaveBeenCalled();
   expect(handleRedo).not.toHaveBeenCalled();
-  expect(trackStudioEvent).not.toHaveBeenCalled();
 });
 
 it("leaves enabled buttons without the disabled attribute", () => {

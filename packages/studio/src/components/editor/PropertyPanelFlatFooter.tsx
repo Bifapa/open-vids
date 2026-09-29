@@ -1,5 +1,3 @@
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
-
 export function PropertyPanelFlatFooter({
   onAskAgent,
   recordingState,
@@ -11,7 +9,6 @@ export function PropertyPanelFlatFooter({
   recordingDuration?: number;
   onToggleRecording?: () => void;
 }) {
-  const track = useTrackDesignInput();
   const recording = recordingState === "recording";
   const recordTitle = recording
     ? `Stop recording ${(recordingDuration ?? 0).toFixed(1)}s`
@@ -29,7 +26,6 @@ export function PropertyPanelFlatFooter({
         type="button"
         data-flat-footer-ask="true"
         onClick={() => {
-          track("button", "Ask agent");
           onAskAgent?.();
         }}
         disabled={!onAskAgent}
@@ -54,7 +50,6 @@ export function PropertyPanelFlatFooter({
           title={recordTitle}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
-            track("button", "Gesture recording");
             onToggleRecording();
           }}
           className={recording ? "text-panel-danger animate-pulse" : "text-panel-danger"}

@@ -1,8 +1,6 @@
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
-import { slugifyDesignInput } from "../../utils/designInputTracking";
 import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
@@ -522,78 +520,70 @@ export function PropertyPanelFlat({
     closedGroupHeader(group, toggleOpen, justToggledIds);
 
   return (
-    <DesignPanelInputProvider ui="flat">
-      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
-        <DesignPanelInputProvider section="header">
-          <PropertyPanelFlatHeader
-            name={element.label}
-            meta={`${sourceLabel} · ${element.tagName}`}
-            elementKind={elementKind}
-            hidden={hiddenNow}
-            // Audio gets no hide control here. On an audio track "hidden" and
-            // "muted" are not similar operations, they are the SAME operation
-            // with two names (groups doc §2.1) — which is why the timeline's eye
-            // BECAME the mute rather than growing a sibling. A second copy in
-            // the panel, still called "Hide element", is exactly what that step
-            // set out to remove: "Two controls that silence a track, sitting
-            // next to each other, differing only in a distinction the author
-            // cannot see." An `<hf-audio-group>` has no visual to hide at all.
-            //
-            // EXCEPT while it is already hidden — the same door-from-the-inside
-            // the timeline's eye keeps for an audio track
-            // (`TimelineTrackPlainHeader`). Withholding it unconditionally
-            // withheld the only way back: a `data-hidden` group is silent in
-            // preview (the bus's mute gain) and absent from the render (every
-            // member dropped), and the group header carries no visibility
-            // control of its own now that mute and solo are gone. Only
-            // hand-editing the HTML brought the audio back.
-            onToggleHidden={
-              selectedElementId && onToggleElementHidden && (!audioSelection || hiddenNow)
-                ? () => void onToggleElementHidden(selectedElementId, !hiddenNow)
-                : undefined
-            }
-            copied={clipboardCopied}
-            onCopy={onCopyElementInfo}
-            onClear={onClearSelection}
-            onUngroup={onUngroup}
-            showUngroup={Boolean(onUngroup && element.dataAttributes["hf-group"] != null)}
-          />
-        </DesignPanelInputProvider>
-        <div
-          ref={panelBodyRef}
-          data-flat-panel-body="true"
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-        >
-          {beforeOpen.map(renderClosedGroup)}
-          {openGroup && (
-            <DesignPanelInputProvider section={slugifyDesignInput(openGroup.title)}>
-              <div data-flat-group-open="true" className="flex min-h-[180px] flex-none flex-col">
-                <FlatGroupHeader
-                  title={openGroup.title}
-                  isOpen
-                  onToggleOpen={() => toggleOpen(openGroup.id)}
-                  accessory={openGroup.accessory}
-                  animateEntrance={justToggledIds.includes(openGroup.id)}
-                />
-                <div
-                  className={`${justToggledIds.includes(openGroup.id) ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline bg-panel-bg-inset px-4 py-3 shadow-[inset_0_2px_4px_-1px_rgba(0,0,0,0.5)]`}
-                >
-                  {openGroup.content}
-                </div>
-              </div>
-            </DesignPanelInputProvider>
-          )}
-          {afterOpen.map(renderClosedGroup)}
-        </div>
-        <DesignPanelInputProvider section="footer">
-          <PropertyPanelFlatFooter
-            onAskAgent={onAskAgent}
-            recordingState={recordingState}
-            recordingDuration={recordingDuration}
-            onToggleRecording={onToggleRecording}
-          />
-        </DesignPanelInputProvider>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
+      <PropertyPanelFlatHeader
+        name={element.label}
+        meta={`${sourceLabel} · ${element.tagName}`}
+        elementKind={elementKind}
+        hidden={hiddenNow}
+        // Audio gets no hide control here. On an audio track "hidden" and
+        // "muted" are not similar operations, they are the SAME operation
+        // with two names (groups doc §2.1) — which is why the timeline's eye
+        // BECAME the mute rather than growing a sibling. A second copy in
+        // the panel, still called "Hide element", is exactly what that step
+        // set out to remove: "Two controls that silence a track, sitting
+        // next to each other, differing only in a distinction the author
+        // cannot see." An `<hf-audio-group>` has no visual to hide at all.
+        //
+        // EXCEPT while it is already hidden — the same door-from-the-inside
+        // the timeline's eye keeps for an audio track
+        // (`TimelineTrackPlainHeader`). Withholding it unconditionally
+        // withheld the only way back: a `data-hidden` group is silent in
+        // preview (the bus's mute gain) and absent from the render (every
+        // member dropped), and the group header carries no visibility
+        // control of its own now that mute and solo are gone. Only
+        // hand-editing the HTML brought the audio back.
+        onToggleHidden={
+          selectedElementId && onToggleElementHidden && (!audioSelection || hiddenNow)
+            ? () => void onToggleElementHidden(selectedElementId, !hiddenNow)
+            : undefined
+        }
+        copied={clipboardCopied}
+        onCopy={onCopyElementInfo}
+        onClear={onClearSelection}
+        onUngroup={onUngroup}
+        showUngroup={Boolean(onUngroup && element.dataAttributes["hf-group"] != null)}
+      />
+      <div
+        ref={panelBodyRef}
+        data-flat-panel-body="true"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+      >
+        {beforeOpen.map(renderClosedGroup)}
+        {openGroup && (
+          <div data-flat-group-open="true" className="flex min-h-[180px] flex-none flex-col">
+            <FlatGroupHeader
+              title={openGroup.title}
+              isOpen
+              onToggleOpen={() => toggleOpen(openGroup.id)}
+              accessory={openGroup.accessory}
+              animateEntrance={justToggledIds.includes(openGroup.id)}
+            />
+            <div
+              className={`${justToggledIds.includes(openGroup.id) ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline bg-panel-bg-inset px-4 py-3 shadow-[inset_0_2px_4px_-1px_rgba(0,0,0,0.5)]`}
+            >
+              {openGroup.content}
+            </div>
+          </div>
+        )}
+        {afterOpen.map(renderClosedGroup)}
       </div>
-    </DesignPanelInputProvider>
+      <PropertyPanelFlatFooter
+        onAskAgent={onAskAgent}
+        recordingState={recordingState}
+        recordingDuration={recordingDuration}
+        onToggleRecording={onToggleRecording}
+      />
+    </div>
   );
 }

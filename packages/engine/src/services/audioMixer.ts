@@ -15,7 +15,7 @@ import {
   downloadToTemp,
   isHttpUrl,
   UrlDownloadError,
-  writeUrlDownloadTelemetry,
+  writeUrlDownloadDiagnostics,
 } from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { formatFfmpegError, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
@@ -1201,7 +1201,7 @@ export async function processCompositionAudio(
               effectiveSignal,
               undefined,
               {
-                onTelemetry: writeUrlDownloadTelemetry,
+                onDiagnostics: writeUrlDownloadDiagnostics,
               },
             );
           } catch (err: unknown) {

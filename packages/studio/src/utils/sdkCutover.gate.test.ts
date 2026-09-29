@@ -3,15 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 // Kill-switch contract: with VITE_STUDIO_SDK_CUTOVER_ENABLED=false, EVERY cutover
 // persist chokepoint must explicitly decline so the caller takes the legacy server
 // path — even when a valid SDK session exists (one always does, for
-// shadow/selection). Default is ON (manualEditingAvailability.test.ts pins that);
+// selection). Default is ON (manualEditingAvailability.test.ts pins that);
 // this file pins that the env override still turns it fully off. A future
 // refactor of the gate guards that ignores the flag turns these red.
 // (sdkCutover.test.ts mocks the flag TRUE; this is its sibling.)
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   STUDIO_SDK_CUTOVER_ENABLED: false,
-  STUDIO_SDK_RESOLVER_SHADOW_ENABLED: false,
 }));
-vi.mock("./studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 import { sdkTimingPersist, sdkGsapTweenPersist, sdkDeletePersist } from "./sdkCutover";
 

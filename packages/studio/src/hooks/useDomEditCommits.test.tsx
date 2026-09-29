@@ -8,15 +8,8 @@ import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import { usePlayerStore } from "../player";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { CutoverResult } from "../utils/sdkCutover";
 import { useDomEditCommits } from "./useDomEditCommits";
-
-Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-
-vi.mock("../utils/studioTelemetry", () => ({
-  trackStudioEvent: vi.fn(),
-}));
 
 interface PatchResponseBody {
   ok?: boolean;
@@ -389,7 +382,7 @@ describe("useDomEditCommits z-index reorder persistence", () => {
     }
   });
 
-  it("warns and reports telemetry for unmatched batch patches without throwing", async () => {
+  it("warns for unmatched batch patches without throwing", async () => {
     // The server reports per-patch matched[]: #b was not found in the source,
     // so it atomically refuses the whole multi-file gesture. The reload
     // reconverges the preview with disk while the lifecycle owner rolls back
@@ -438,14 +431,6 @@ describe("useDomEditCommits z-index reorder persistence", () => {
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining("could not match 1 patch target(s) in index.html"),
         "b",
-      );
-      expect(trackStudioEvent).toHaveBeenCalledWith(
-        "save_failure",
-        expect.objectContaining({
-          mutation_type: "z-reorder-unmatched",
-          file_path: "index.html",
-          error_message: expect.stringContaining("b"),
-        }),
       );
     } finally {
       warnSpy.mockRestore();
@@ -941,10 +926,6 @@ describe("useDomEditCommits style persist handling", () => {
         "error",
       );
       expect(element.style.getPropertyValue("color")).toBe("red");
-      expect(trackStudioEvent).toHaveBeenCalledWith(
-        "save_skipped_unresolvable",
-        expect.objectContaining({ target_source_file: "index.html" }),
-      );
     } finally {
       cleanup();
     }

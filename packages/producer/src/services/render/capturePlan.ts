@@ -68,7 +68,7 @@ export type CapturePlan =
   | SdrSegmentedCapturePlan;
 
 /**
- * Telemetry name for the stage a plan runs on. Exhaustive over `CapturePlan`,
+ * Diagnostics name for the stage a plan runs on. Exhaustive over `CapturePlan`,
  * so a new plan kind fails to compile until it declares its capture path
  * rather than silently reporting the wrong one.
  */

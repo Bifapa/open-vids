@@ -10,16 +10,21 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi, beforeEach } from "vitest";
 import type { RegistryItem } from "@hyperframes/core";
 
-// The installer fetches over the network; the point of these tests is what it
-// does to files on disk, so the fetch returns controlled bytes.
-const remote = vi.hoisted(() => ({ contents: "REGISTRY VERSION\n" }));
-vi.mock("./remote.js", () => ({
-  DEFAULT_REGISTRY_URL: "https://example.test/r",
-  fetchItemFile: vi.fn(async () => Buffer.from(remote.contents)),
-}));
+// The installer reads from the local registry tree; the point of these tests
+// is what it does to files on disk, so each test stages a scratch registry
+// holding the item under test. `staged` carries the file bytes the next
+// install reads (a "REGISTRY VERSION 2" write = upstream changed the file).
+const staged = vi.hoisted(() => ({ contents: "REGISTRY VERSION\n", root: "" }));
+vi.mock("./local.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./local.js")>();
+  return {
+    ...actual,
+    localRegistryRoot: () => staged.root,
+  };
+});
 
 const { hasLocalEdits, installItem, prepareItem, publishItem } = await import("./installer.js");
 
@@ -27,6 +32,17 @@ function project(): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-installer-"));
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
+}
+
+/** Stage `staged.contents` as the item's source bytes in a scratch registry. */
+function stageRegistry(itemName: string, filePath: string): void {
+  const registryDir = mkdtempSync(join(tmpdir(), "hf-installer-reg-"));
+  onTestFinished(() => rmSync(registryDir, { recursive: true, force: true }));
+  const itemDir = join(registryDir, "components", itemName);
+  mkdirSync(itemDir, { recursive: true });
+  writeFileSync(join(itemDir, "registry-item.json"), JSON.stringify({ name: itemName }));
+  writeFileSync(join(itemDir, filePath), staged.contents);
+  staged.root = registryDir;
 }
 
 const item = {
@@ -41,6 +57,11 @@ const item = {
 
 const target = "components/data-chart.html";
 
+beforeEach(() => {
+  staged.contents = "REGISTRY VERSION\n";
+  stageRegistry("data-chart", "data-chart.html");
+});
+
 describe("hasLocalEdits", () => {
   it("treats a file with no record as edited", () => {
     // Covers a project that wrote the file itself, and one that installed
@@ -49,14 +70,13 @@ describe("hasLocalEdits", () => {
   });
 
   it("treats a file matching its record as untouched", () => {
-    const contents = "exactly what we installed";
-    const record = { [target]: createHash("sha256").update(contents).digest("hex") };
-    expect(hasLocalEdits(record, target, contents)).toBe(false);
+    const hash = createHash("sha256").update("REGISTRY VERSION\n").digest("hex");
+    expect(hasLocalEdits({ [target]: hash }, target, "REGISTRY VERSION\n")).toBe(false);
   });
 
   it("treats a file that no longer matches its record as edited", () => {
-    const record = { [target]: createHash("sha256").update("original").digest("hex") };
-    expect(hasLocalEdits(record, target, "changed")).toBe(true);
+    const hash = createHash("sha256").update("REGISTRY VERSION\n").digest("hex");
+    expect(hasLocalEdits({ [target]: hash }, target, "MY OWN COLOURS\n")).toBe(true);
   });
 });
 
@@ -82,7 +102,7 @@ describe("installItem", () => {
       try {
         for (const names of [
           ["Foo.html", "foo.html"],
-          ["Café.html", "Cafe\u0301.html"],
+          ["Café.html", "Café.html"],
         ]) {
           const dir = project();
           const conflicting = {
@@ -113,9 +133,9 @@ describe("installItem", () => {
     const dir = project();
     await installItem(item, { destDir: dir });
 
-    remote.contents = "REGISTRY VERSION 2\n";
+    staged.contents = "REGISTRY VERSION 2\n";
+    stageRegistry("data-chart", "data-chart.html");
     const again = await installItem(item, { destDir: dir });
-    remote.contents = "REGISTRY VERSION\n";
 
     expect(again.preserved).toEqual([]);
     expect(readFileSync(join(dir, target), "utf-8")).toBe("REGISTRY VERSION 2\n");
@@ -133,12 +153,12 @@ describe("installItem", () => {
     expect(readFileSync(join(dir, target), "utf-8")).toBe("MY OWN COLOURS\n");
   });
 
-  it("keeps an edit saved while the rest of the plan was still downloading", async () => {
+  it("keeps an edit saved while the rest of the plan was still being read", async () => {
     const dir = project();
     await installItem(item, { destDir: dir });
-    remote.contents = "REGISTRY VERSION 2\n";
+    staged.contents = "REGISTRY VERSION 2\n";
+    stageRegistry("data-chart", "data-chart.html");
     const prepared = await prepareItem(item, { destDir: dir });
-    remote.contents = "REGISTRY VERSION\n";
     writeFileSync(join(dir, target), "MY OWN COLOURS\n", "utf-8");
 
     const result = publishItem(prepared);
@@ -171,8 +191,11 @@ describe("installItem", () => {
   });
 
   it("does not read its own edit back as the project's", async () => {
-    // A block composition gets a marker comment added after fetching. Recording
+    // A block composition gets a marker comment added after reading. Recording
     // the pre-marker bytes would make every reinstall look like an edit.
+    const blockDir = join(staged.root, "blocks", "hero");
+    mkdirSync(blockDir, { recursive: true });
+    writeFileSync(join(blockDir, "hero.html"), "<div>hero</div>");
     const block = {
       name: "hero",
       title: "Hero",
@@ -208,6 +231,12 @@ describe("installing several items, as a dependency plan does", () => {
   } as unknown as RegistryItem;
 
   const otherTarget = "components/shared-caption.html";
+
+  beforeEach(() => {
+    const itemDir = join(staged.root, "components", "shared-caption");
+    mkdirSync(itemDir, { recursive: true });
+    writeFileSync(join(itemDir, "shared-caption.html"), staged.contents);
+  });
 
   it("keeps a record for every item, not just the last one installed", () => {
     // `add` installs dependencies first and the requested item last. A record
@@ -255,6 +284,15 @@ describe("installing with --vars the item cannot take", () => {
     ],
   } as unknown as RegistryItem;
 
+  beforeEach(() => {
+    staged.contents = declaration;
+    const itemDir = join(staged.root, "blocks", "demo-block");
+    mkdirSync(itemDir, { recursive: true });
+    writeFileSync(join(itemDir, "demo-block.html"), declaration);
+    const compDir = join(staged.root, "components", "data-chart");
+    writeFileSync(join(compDir, "data-chart.html"), declaration);
+  });
+
   it.each([
     ["block", block, "compositions/demo-block.html"],
     ["component", item, target],
@@ -262,15 +300,10 @@ describe("installing with --vars the item cannot take", () => {
     "refuses a wrong-typed value for a %s and writes nothing",
     async (_kind, installable, file) => {
       const dir = project();
-      remote.contents = declaration;
-      try {
-        await expect(
-          installItem(installable, { destDir: dir, variableValues: { maths: 1 } }),
-        ).rejects.toThrow(/maths: expected boolean, got number/);
-        expect(existsSync(join(dir, file))).toBe(false);
-      } finally {
-        remote.contents = "REGISTRY VERSION\n";
-      }
+      await expect(
+        installItem(installable, { destDir: dir, variableValues: { maths: 1 } }),
+      ).rejects.toThrow(/maths: expected boolean, got number/);
+      expect(existsSync(join(dir, file))).toBe(false);
     },
   );
 });

@@ -41,22 +41,8 @@ describe("CLI command registration", () => {
     expect(loaders).not.toContain('"color-grading"');
   });
 
-  // A command actively reconciling skills (`skills check`/`skills update`)
-  // must not also nudge the user to go reconcile skills — that nudge is
-  // either redundant (it just ran) or misleading (a stale cached count from
-  // the 24h background check, contradicting whatever it just reported).
-  it("excludes 'skills' from the background skills-nudge gate, alongside 'upgrade' and 'events'", () => {
-    const match = cliSource.match(/if \(([\s\S]*?)\) \{\s*\/\/ Report any completed auto-install/);
-    expect(match, "expected to find the background nudge gate's if-condition").toBeTruthy();
-    const condition = match![1]!;
-    expect(condition).toContain('command !== "upgrade"');
-    expect(condition).toContain('command !== "events"');
-    expect(condition).toContain('command !== "skills"');
-  });
-
-  it("reports each command failure only at the executable boundary", () => {
-    expect(cliSource).toContain("trackCommandFailures(load)");
-    expect(cliSource).not.toContain("trackCommandFailures(load,");
-    expect(cliSource.match(/reportCommandFailure\(command, error\)/g)).toHaveLength(1);
+  it("guards every command loader against unknown flags", () => {
+    expect(cliSource).toContain("guardUnknownFlags(load)");
+    expect(cliSource).not.toContain("guardUnknownFlags(load,");
   });
 });

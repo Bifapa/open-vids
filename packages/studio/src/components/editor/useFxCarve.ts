@@ -30,29 +30,11 @@ import {
 } from "./useFxCarveGrouping.js";
 import { type HfAutomation } from "@hyperframes/core/audio-automation";
 import { automationAttrValue, HF_AUDIO_AUTOMATION_ATTR } from "./propertyPanelAutomation";
-import { trackCarveChanged } from "./audioFxTelemetry.js";
 import type { DomEditSelection } from "./domEditingTypes";
 import { usePlayerStore } from "../../player";
 import { carveLanes, measureCarve, mintCarveNodes } from "./useFxCarveNodes.js";
 import { spanOf } from "./propertyPanelAudioFxGroupUtils.js";
 import type { AudioTrackOption } from "./propertyPanelFxCarveModule.js";
-
-/**
- * Which carve setting actually moved, by comparing the two snapshots.
- *
- * On/off is checked before the rest: switching a carve off also strands its
- * sources and strength, and reporting that as a "strength" change would be
- * describing the wreckage instead of the decision.
- */
-function carveAction(
-  before: HfCarveSettings | null,
-  after: HfCarveSettings | null,
-): "enabled" | "disabled" | "strength" | "sources" {
-  if (!after?.enabled) return "disabled";
-  if (!before?.enabled) return "enabled";
-  if (before.sources.length !== after.sources.length) return "sources";
-  return "strength";
-}
 
 /** Lanes belonging to nodes the carve generated, which a re-run replaces. */
 function withoutCarveLanes(automation: HfAutomation, chain: HfAudioFxChain): HfAutomation {
@@ -268,14 +250,6 @@ export function useFxCarve(
     const resolved = resolveNextCarveSettings(nextRaw, doc, onAutoGroupCarveSources);
     const next = isPromiseLike(resolved) ? await resolved : resolved;
     if (next === CARVE_ABORTED) return;
-    // Which of the carve's settings moved. One event per change with the action
-    // named, rather than a single "carve touched" — enabling a carve and nudging
-    // its strength are different decisions and the interesting question (do
-    // people leave it at the default?) needs them apart.
-    trackCarveChanged(carveAction(carve, next), {
-      strength: next?.strength,
-      sourceCount: next?.sources.length,
-    });
     const generatedOutputStands = Boolean(next?.enabled) && (next?.sources.length ?? 0) > 0;
     if (!generatedOutputStands) await dropCarveOutput(chain, automation, onSetAttributeQuiet);
     await onSetAttributeQuiet(HF_AUDIO_CARVE_ATTR, next ? JSON.stringify(next) : null);

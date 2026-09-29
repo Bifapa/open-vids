@@ -36,13 +36,8 @@ import { execFileSync, spawn } from "node:child_process";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { printBanner } from "../ui/banner.js";
-import {
-  BUNDLED_TEMPLATES,
-  resolveTemplateList,
-  type TemplateOption,
-} from "../templates/generators.js";
-import { fetchRemoteTemplate } from "../templates/remote.js";
-import { trackInitTemplate } from "../telemetry/events.js";
+import { resolveTemplateList, type TemplateOption } from "../templates/generators.js";
+import { fetchLocalTemplate } from "../templates/local.js";
 import { DEFAULT_MODEL, hasFFmpeg } from "../whisper/manager.js";
 import { initialModelForLanguage } from "../whisper/transcribe.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
@@ -566,14 +561,13 @@ async function scaffoldProject(
 ): Promise<void> {
   mkdirSync(destDir, { recursive: true });
 
-  // Use bundled template if available, otherwise fetch from GitHub.
-  // Check for index.html inside the dir — an empty directory left by the
-  // build toolchain should not prevent the remote fetch fallback.
+  // Bundled template first (blank/from-file ship in the CLI package); anything
+  // else installs from the bundled local registry — fully offline.
   const templateDir = getStaticTemplateDir(templateId);
   if (existsSync(join(templateDir, "index.html"))) {
     cpSync(templateDir, destDir, { recursive: true });
   } else {
-    await fetchRemoteTemplate(templateId, destDir);
+    await fetchLocalTemplate(templateId, destDir);
   }
   patchVideoSrc(destDir, localVideoName, durationSeconds);
   if (tailwind) writeTailwindSupport(destDir);
@@ -600,7 +594,7 @@ async function scaffoldProject(
   if (!existsSync(resolve(destDir, "hyperframes.json"))) {
     const { createProjectConfig, DEFAULT_PROJECT_CONFIG } =
       await import("../utils/projectConfig.js");
-    const { normalizeSkillSlug } = await import("../telemetry/skill.js");
+    const { normalizeSkillSlug } = await import("../utils/skillSlug.js");
     const skill = normalizeSkillSlug(authoringSkill);
     createProjectConfig(
       destDir,
@@ -631,29 +625,21 @@ async function scaffoldProject(
  * workflow is triggered (`hyperframes skills update <name>`, which the router
  * runs before entering a workflow). Re-running `init` on an up-to-date machine
  * is a no-op, and `init` never expands a deliberate partial install.
- * Best-effort: offline, it degrades to a presence check and never breaks init.
- * The install itself lands once GLOBALLY (~/.claude/skills + ~/.agents/skills)
- * and mirrors into every other installed agent, so it is project-independent —
- * the check is global-first to match.
+ * Best-effort: a skills-install failure never breaks init. The install itself
+ * lands once GLOBALLY (~/.claude/skills + ~/.agents/skills) and mirrors into
+ * every other installed agent, so it is project-independent — the check is
+ * global-first to match.
  */
 async function keepSkillsCurrent(destDir: string): Promise<void> {
   const { updateSkills } = await import("./skills.js");
 
   console.log();
-  console.log(c.bold("Checking AI coding skills against GitHub..."));
-  // Wrap defensively (non-strict already swallows most failures): a
-  // skills-install failure can never break `init` itself — it warns and
-  // proceeds, since --skip-skills no longer escapes this path.
+  console.log(c.bold("Checking AI coding skills against the bundled set..."));
+  // Wrap defensively: a skills-install failure can never break `init` itself
+  // — it warns and proceeds, since --skip-skills no longer escapes this path.
   try {
-    const result = await updateSkills({ refreshInstalled: true, cwd: destDir });
-    if (result.presenceOnly) {
-      // Freshness never got checked (GitHub unreachable) — don't claim
-      // "up to date"; the engine already reported what it could verify or
-      // blind-install. Point at the recovery command instead.
-      console.log(
-        c.dim("Skills freshness unverified — run `npx hyperframes skills update` when online."),
-      );
-    } else if (result.installed.length === 0) {
+    const result = updateSkills({ refreshInstalled: true, cwd: destDir });
+    if (result.installed.length === 0) {
       console.log(c.success("AI coding skills are already up to date."));
     } else {
       console.log(
@@ -751,8 +737,8 @@ export default defineCommand({
       type: "string",
       description:
         "Owning authoring workflow slug (e.g. product-launch-video). Stamped into " +
-        "hyperframes.json so every render of this project is attributed to it on " +
-        "anonymous telemetry, without re-passing --skill on each render. Ignored unless it is a slug.",
+        "hyperframes.json so every render of this project is attributed to it in " +
+        "local usage attribution, without re-passing --skill on each render. Ignored unless it is a slug.",
     },
   },
   async run({ args }) {
@@ -925,7 +911,6 @@ export default defineCommand({
         console.error(c.dim("Use --example blank for offline use."));
         failCommand();
       }
-      trackInitTemplate(templateId, { tailwind });
       const transcriptFile = resolve(destDir, "transcript.json");
       if (existsSync(transcriptFile)) {
         await patchTranscript(destDir, transcriptFile);
@@ -963,7 +948,6 @@ export default defineCommand({
       console.log(
         `     ${c.dim('"Using /hyperframes, create a 15-second intro about [your topic]"')}`,
       );
-      console.log(`     ${c.dim("More patterns: hyperframes.heygen.com/prompting/overview")}`);
       console.log();
       console.log(`  ${c.accent("4.")} Preview in the browser:`);
       console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run dev")}`);
@@ -973,8 +957,6 @@ export default defineCommand({
       console.log();
       console.log(`  ${c.accent("6.")} Render to MP4 when ready:`);
       console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run render")}`);
-      console.log();
-      console.log(`  ${c.dim("Full docs: hyperframes.heygen.com")}`);
       return;
     }
 
@@ -1097,7 +1079,7 @@ export default defineCommand({
     if (exampleFlag || videoFlag || audioFlag) {
       templateId = resolveScaffoldTemplateId(exampleFlag, Boolean(videoFlag || audioFlag));
     } else {
-      // Resolve full template list (bundled + remote)
+      // Resolve the full template list (bundled + local registry examples).
       const allTemplates = await resolveTemplateList();
       const defaultTemplate = "blank";
       const templateResult = await clack.select({
@@ -1105,7 +1087,7 @@ export default defineCommand({
         options: allTemplates.map((t: TemplateOption) => ({
           value: t.id,
           label: t.label,
-          hint: t.source === "remote" ? `${t.hint} (download)` : t.hint,
+          hint: t.hint,
         })),
         initialValue: defaultTemplate,
       });
@@ -1116,12 +1098,7 @@ export default defineCommand({
       templateId = templateResult;
     }
 
-    // 4. Scaffold project (bundled templates are instant, remote templates download from GitHub)
-    const spin = clack.spinner();
-    const isBundled = BUNDLED_TEMPLATES.some((t) => t.id === templateId);
-    if (!isBundled) {
-      spin.start(`Downloading example ${c.accent(templateId)}...`);
-    }
+    // 4. Scaffold project — everything installs from the local tree, offline.
     try {
       await scaffoldProject(
         destDir,
@@ -1133,19 +1110,12 @@ export default defineCommand({
         resolutionPreset,
         args.skill,
       );
-      if (!isBundled) {
-        spin.stop(c.success(`Downloaded ${templateId}`));
-      }
     } catch (err) {
-      if (!isBundled) {
-        spin.stop(c.error("Download failed"));
-      }
       clack.log.error(
         `${err instanceof Error ? err.message : err}\n${c.dim("Use --example blank for offline use.")}`,
       );
       failCommand();
     }
-    trackInitTemplate(templateId, { tailwind });
 
     // 4b. Patch captions with transcript if available
     const transcriptFile = resolve(destDir, "transcript.json");

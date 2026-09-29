@@ -10,7 +10,6 @@ import {
   flushStudioPendingEdits,
   type StudioPendingEditsDrainResult,
 } from "../utils/studioPendingEdits";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapUndoRestore";
 import { usePlayerStore } from "../player";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
@@ -123,12 +122,6 @@ export function usePreviewPersistence({
             : "Auto-save is paused. Check your connection.";
         setDomEditSaveQueuePaused(message);
         showToastRef.current(message, "error");
-        trackStudioEvent("save_queue_paused", {
-          source: "dom_edit",
-          error_message: event.errorMessage,
-          status_code: event.statusCode,
-          consecutive_failures: event.consecutiveFailures,
-        });
       },
       onReset: () => {
         setDomEditSaveQueuePaused(null);

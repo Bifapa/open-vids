@@ -35,7 +35,7 @@ describe("shouldWatchProjectFile", () => {
     expect(shouldWatchProjectFile("index.html")).toBe(true);
     expect(shouldWatchProjectFile("src/scene.tsx")).toBe(true);
     expect(shouldWatchProjectFile("assets/hero.png")).toBe(true);
-    expect(shouldWatchProjectFile("Dockerfile")).toBe(true);
+    expect(shouldWatchProjectFile("font.woff2")).toBe(true);
   });
 
   it("skips generated and dependency directories", () => {

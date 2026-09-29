@@ -1,15 +1,7 @@
 {
   "name": "@hyperframes/lint",
   "version": "0.8.81",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/heygen-com/hyperframes",
-    "directory": "packages/lint"
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
+  "private": true,
   "type": "module",
   "sideEffects": false,
   "main": "./src/index.ts",
@@ -29,28 +21,11 @@
     },
     "./package.json": "./package.json"
   },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": {
-        "import": "./dist/index.js",
-        "types": "./dist/index.d.ts"
-      },
-      "./browser": {
-        "import": "./dist/browser.js",
-        "types": "./dist/browser.d.ts"
-      },
-      "./package.json": "./package.json"
-    },
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts"
-  },
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "echo skip"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hyperframes/parsers": "workspace:*",

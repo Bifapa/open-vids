@@ -543,7 +543,7 @@ describe("countAuthoredTimedClips", () => {
   it("counts every [data-start] element in the compiled HTML", () => {
     // Field signal ts=1784144554: 147-clip composition with 130 word-level
     // caption divs. Static scan gives a coarse proxy — enough to make a
-    // 147-clip render distinguishable in telemetry from a 3-clip render.
+    // 147-clip render distinguishable in diagnostics from a 3-clip render.
     const html = `<html><body>
       <div data-start="0" data-duration="1">a</div>
       <div data-start="1" data-duration="1">b</div>

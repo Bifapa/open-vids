@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyPatchByTarget, applyPatch } from "./sourcePatcher";
 
 /**
- * Reproduction tests for https://github.com/heygen-com/hyperframes/issues/958
+ * Reproduction tests for upstream HyperFrames reference #958
  *
  * The bug: dragging a clip in the Studio timeline rewrites index.html with
  * inline style="z-index: N" on EVERY clip, overriding the author's CSS z-index.

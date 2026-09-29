@@ -127,11 +127,10 @@ export function isResolverDisagreement(session: Composition, hfId: string): bool
  * Why a batch cannot take the SDK cutover path, or null when it can.
  *
  * `ineligible_operation` used to be a single decline reason covering all of
- * these, which made the post-flip telemetry unactionable — a structural edit the
- * SDK has no vocabulary for (expected and permanent) was indistinguishable from
- * a reserved-attribute decline (narrow, and possibly worth fixing). The order
- * mirrors `shouldUseSdkCutover`'s conjunction, so the first failing check names
- * the reason.
+ * these — a structural edit the SDK has no vocabulary for (expected and
+ * permanent) was indistinguishable from a reserved-attribute decline (narrow,
+ * and possibly worth fixing). The order mirrors `shouldUseSdkCutover`'s
+ * conjunction, so the first failing check names the reason.
  */
 export type SdkCutoverIneligibleReason =
   | "target_unaddressable"

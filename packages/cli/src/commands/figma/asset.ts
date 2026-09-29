@@ -286,7 +286,6 @@ export default defineCommand({
   },
   async run({ args }) {
     await withFigmaErrors("figma:asset", async () => {
-      const t0 = Date.now();
       const token = process.env.FIGMA_TOKEN ?? "";
       const client = createFigmaClient({ token });
       // citty puts ALL positionals in `args._` (including the one bound to the
@@ -320,12 +319,6 @@ export default defineCommand({
             : `(${results.length} nodes, all reused from cache — no figma request)`,
         );
       }
-      const { trackFigmaImport } = await import("../../telemetry/index.js");
-      trackFigmaImport({
-        phase: "asset",
-        reused: results.every((r) => r.reused),
-        durationMs: Date.now() - t0,
-      });
     });
   },
 });

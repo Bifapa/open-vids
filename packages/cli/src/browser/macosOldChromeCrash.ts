@@ -15,9 +15,8 @@
  * `PRODUCER_HEADLESS_SHELL_PATH` at it. Their check/snapshot commands
  * accepted that older cached shell (they don't force the pinned build),
  * but the render command required v152 via `preferManagedChrome: true`
- * and therefore could not fall back on its own. The generic
- * "Try --docker for containerized rendering" hint didn't name any of
- * the browser-path env vars, so the workaround is undiscoverable
+ * and therefore could not fall back on its own. The former generic container hint
+ * didn't name any of the browser-path env vars, so the workaround is undiscoverable
  * unaided.
  *
  * Same discoverability class as #2443 (download failure), #2078 (arm64

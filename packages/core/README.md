@@ -84,7 +84,7 @@ const result = lintHyperframeHtml(htmlString);
 
 ## Documentation
 
-Full documentation: [hyperframes.heygen.com/packages/core](https://hyperframes.heygen.com/packages/core)
+Full documentation: see `packages/core` in this repo (no hosted docs site).
 
 ## Related packages
 

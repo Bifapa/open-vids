@@ -2,15 +2,10 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useDockLayoutStore, type DockController } from "../components/dock/dockLayoutStore";
 import { PANEL_IDS, type PanelId } from "../components/dock/panelRegistry";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import { usePanelLayout, type InitialPanelLayoutState } from "./usePanelLayout";
-
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 function fakeController(): DockController {
   return {
@@ -53,7 +48,6 @@ function renderLayout(initial?: InitialPanelLayoutState) {
   };
 }
 
-beforeEach(() => vi.mocked(trackStudioEvent).mockClear());
 afterEach(() => {
   document.body.innerHTML = "";
   useDockLayoutStore.setState({ controller: null });
@@ -74,29 +68,19 @@ describe("usePanelLayout over the dock", () => {
     expect(view.layout.rightPanelTab).toBe("design");
   });
 
-  it("opens the Design panel for the legacy block-params tab and reports the tab switch", () => {
+  it("opens the Design panel for the legacy block-params tab", () => {
     const controller = showDock(["preview"]);
     const view = renderLayout();
     act(() => view.layout.setRightPanelTab("block-params"));
     expect(controller.setGroupVisible).toHaveBeenCalledWith("design", true);
     expect(controller.activate).toHaveBeenCalledWith("design");
-    expect(trackStudioEvent).toHaveBeenCalledWith("tab_switch", {
-      panel: "right_panel",
-      tab: "block-params",
-    });
   });
 
-  it("reports a tab switch only when the tab actually changes", () => {
-    showDock(["preview", "design"]);
+  it("activates the newly selected tab", () => {
+    const controller = showDock(["preview", "design"]);
     const view = renderLayout();
-    vi.mocked(trackStudioEvent).mockClear();
-    act(() => view.layout.setRightPanelTab("design"));
-    expect(trackStudioEvent).not.toHaveBeenCalled();
     act(() => view.layout.setRightPanelTab("layers"));
-    expect(trackStudioEvent).toHaveBeenCalledWith("tab_switch", {
-      panel: "right_panel",
-      tab: "layers",
-    });
+    expect(controller.activate).toHaveBeenCalledWith("layers");
   });
 
   it("collapses every open right-zone panel group and leaves the other zones alone", () => {

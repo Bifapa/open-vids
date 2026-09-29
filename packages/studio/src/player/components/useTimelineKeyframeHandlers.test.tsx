@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
-import * as telemetry from "../../telemetry/events";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
 import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
 
@@ -75,18 +74,17 @@ function mountHandlers(options: Partial<Parameters<typeof useTimelineKeyframeHan
 }
 
 describe("useTimelineKeyframeHandlers", () => {
-  it("tracks opening the segment ease editor when a timeline segment is selected", () => {
-    const trackStudioSegmentEaseEdit = vi
-      .spyOn(telemetry, "trackStudioSegmentEaseEdit")
-      .mockImplementation(() => {});
+  it("focuses the ease segment when a timeline segment is selected", () => {
     const { root, handlers } = mountHandlers();
     act(() => handlers.onSelectSegment?.(ELEMENT.id, TARGET));
 
-    expect(trackStudioSegmentEaseEdit).toHaveBeenCalledOnce();
-    expect(trackStudioSegmentEaseEdit).toHaveBeenCalledWith({ action: "open" });
+    expect(usePlayerStore.getState().focusedEaseSegment).toMatchObject({
+      animationId: "position-tween",
+      tweenPercentage: 50,
+      elementId: ELEMENT.id,
+    });
     act(() => root.unmount());
   });
-
   it("focuses a merged segment with its colliding animation targets", () => {
     const { root, handlers } = mountHandlers();
     act(() => handlers.onSelectSegment?.(ELEMENT.id, COLLIDING_TARGET));

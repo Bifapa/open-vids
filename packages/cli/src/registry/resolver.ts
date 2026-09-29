@@ -1,16 +1,16 @@
 /**
- * Registry resolver — loads the top-level manifest and per-item manifests.
- * No transitive dependency resolution yet (examples don't have any); added
- * when blocks/components need it for the `add` command.
+ * Registry resolver — loads the top-level manifest and per-item manifests
+ * from the local bundled registry tree. No transitive dependency resolution
+ * yet (examples don't have any); added when blocks/components need it for
+ * the `add` command.
  */
 
 import type { ItemType, RegistryItem, RegistryManifestEntry } from "@hyperframes/core";
-import { fetchItemManifest, fetchRegistryManifest, DEFAULT_REGISTRY_URL } from "./remote.js";
+import { listLocalItems, localRegistryRoot, readLocalItem } from "./local.js";
 
 export interface ResolveOptions {
-  baseUrl?: string;
-  /** Bypass the 24h manifest cache and fetch fresh data from the registry. */
-  skipCache?: boolean;
+  /** Local registry directory override (tests, custom layouts). */
+  registryDir?: string;
   /**
    * Called once per item that fails to load inside `loadAllItems`. Defaults
    * to writing a diagnostic line to stderr. Pass a quieter implementation
@@ -23,19 +23,22 @@ function defaultWarn(message: string): void {
   process.stderr.write(`hyperframes:registry ${message}\n`);
 }
 
+function resolveRoot(registryDir: string | undefined): string | null {
+  return registryDir ?? localRegistryRoot();
+}
+
 /**
- * List all items in the registry, optionally filtered by type. Returns empty
- * if the registry is unreachable — callers should fall back to bundled items.
+ * List all items in the local registry, optionally filtered by type. Returns
+ * empty when the registry tree cannot be found — callers fall back to bundled
+ * items.
  */
 export async function listRegistryItems(
   filter?: { type?: ItemType },
   options: ResolveOptions = {},
 ): Promise<RegistryManifestEntry[]> {
-  const baseUrl = options.baseUrl ?? DEFAULT_REGISTRY_URL;
-  const manifest = await fetchRegistryManifest(baseUrl, { skipCache: options.skipCache });
-  if (!manifest) return [];
-  if (!filter?.type) return manifest.items;
-  return manifest.items.filter((item) => item.type === filter.type);
+  const root = resolveRoot(options.registryDir);
+  if (!root) return [];
+  return listLocalItems(root, filter);
 }
 
 /**
@@ -48,20 +51,14 @@ export async function loadAllItems(
   entries: RegistryManifestEntry[],
   options: ResolveOptions = {},
 ): Promise<RegistryItem[]> {
-  const baseUrl = options.baseUrl ?? DEFAULT_REGISTRY_URL;
+  const root = resolveRoot(options.registryDir);
   const warn = options.onWarn ?? defaultWarn;
-  const results = await Promise.allSettled(
-    entries.map((e) => fetchItemManifest(e.name, e.type, baseUrl)),
-  );
   const items: RegistryItem[] = [];
-  results.forEach((r, i) => {
-    if (r.status === "fulfilled") {
-      items.push(r.value);
-    } else {
-      const name = entries[i]?.name ?? "<unknown>";
-      warn(`skipped item "${name}": ${String(r.reason)}`);
-    }
-  });
+  for (const e of entries) {
+    const item = root ? readLocalItem(root, e.name, e.type) : null;
+    if (item) items.push(item);
+    else warn(`skipped item "${e.name}": not found in the local registry`);
+  }
   return items;
 }
 
@@ -91,22 +88,21 @@ export async function resolveItem(
   }
   const item = items[items.length - 1];
   if (!item) {
-    throw new Error(unreachableRegistryMessage(name, options.baseUrl));
+    throw new Error(unreachableRegistryMessage(name, options.registryDir));
   }
   return item;
 }
 
 /**
- * "registry unreachable or empty" without saying WHICH registry is the same
- * dead end the item-file failure used to be: a project that sets `registry` in
- * hyperframes.json reads it as the public catalog having lost the item, and
- * goes looking in the wrong place. Naming the host is the diagnosis.
+ * "registry not found or empty" without saying WHICH registry is the same dead
+ * end the item-file failure used to be: a project that sets `registry` in
+ * hyperframes.json reads it as the bundled catalog having lost the item, and
+ * goes looking in the wrong place. Naming the path is the diagnosis.
  */
-export function unreachableRegistryMessage(name: string, baseUrl?: string): string {
-  const where =
-    baseUrl && !baseUrl.startsWith(DEFAULT_REGISTRY_URL)
-      ? ` Contacted ${baseUrl}, set by this project's hyperframes.json, not the public registry.`
-      : "";
+export function unreachableRegistryMessage(name: string, registryDir?: string): string {
+  const where = registryDir
+    ? ` Looked in ${registryDir}, set by this project's hyperframes.json, not the bundled registry.`
+    : "";
   return `Item "${name}" not found — registry unreachable or empty.${where}`;
 }
 
@@ -136,7 +132,7 @@ export async function resolveItemWithDependencies(
     throw new Error(
       available.length > 0
         ? `Item "${name}" not found in registry. Available: ${available}`
-        : unreachableRegistryMessage(name, options.baseUrl),
+        : unreachableRegistryMessage(name, options.registryDir),
     );
   }
 
@@ -146,10 +142,7 @@ export async function resolveItemWithDependencies(
   const ordered: RegistryItem[] = [];
   const itemCache = new Map<string, Promise<RegistryItem>>();
 
-  // `async` so the missing-dependency path surfaces as a promise rejection
-  // rather than a synchronous throw, keeping the control flow consistent with
-  // the `Promise<RegistryItem>` return type. The body has no `await`, so the
-  // cache is still populated synchronously on first request (dedup intact).
+  const root = resolveRoot(options.registryDir);
   const getItem = async (itemName: string): Promise<RegistryItem> => {
     const existing = itemCache.get(itemName);
     if (existing) return existing;
@@ -160,11 +153,13 @@ export async function resolveItemWithDependencies(
       throw new Error(
         available.length > 0
           ? `Dependency "${itemName}" not found in registry. Available: ${available}`
-          : unreachableRegistryMessage(itemName, options.baseUrl),
+          : unreachableRegistryMessage(itemName, options.registryDir),
       );
     }
 
-    const pending = fetchItemManifest(registryEntry.name, registryEntry.type, options.baseUrl);
+    const local = root ? readLocalItem(root, registryEntry.name, registryEntry.type) : null;
+    if (!local) throw new Error(unreachableRegistryMessage(itemName, options.registryDir));
+    const pending = Promise.resolve(local);
     itemCache.set(itemName, pending);
     return pending;
   };

@@ -510,7 +510,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     ).rejects.toMatchObject({
       kind: "length_mismatch",
       retryable: true,
-      telemetry: expect.objectContaining({ attempt: 2 }),
+      diagnostics: expect.objectContaining({ attempt: 2 }),
     } satisfies Partial<UrlDownloadError>);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(readdirSync(dir).filter((name) => name.startsWith("download_"))).toEqual([]);
@@ -552,14 +552,14 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     ).rejects.toMatchObject({
       kind: "range_protocol",
       retryable: true,
-      telemetry: expect.objectContaining({ rangeDisposition: "malformed_206" }),
+      diagnostics: expect.objectContaining({ rangeDisposition: "malformed_206" }),
     } satisfies Partial<UrlDownloadError>);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(temporaryDownloadEntries(dir)).toEqual([]);
   });
 
   it("accepts a complete identity-encoded object with a noncompliant Content-Range on 200", async () => {
-    const onTelemetry = vi.fn();
+    const onDiagnostics = vi.fn();
     const fetchMock = vi.fn().mockResolvedValue(
       new Response("complete", {
         status: 200,
@@ -575,12 +575,12 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       1_000,
       undefined,
       undefined,
-      { onTelemetry },
+      { onDiagnostics },
     );
 
     expect(readFileSync(path, "utf8")).toBe("complete");
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(onTelemetry).toHaveBeenCalledWith(
+    expect(onDiagnostics).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "published", rangeDisposition: "full_object_200" }),
     );
   });
@@ -621,7 +621,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     ).rejects.toMatchObject({
       kind: "length_mismatch",
       retryable: true,
-      telemetry: expect.objectContaining({ rangeDisposition: "full_object_200" }),
+      diagnostics: expect.objectContaining({ rangeDisposition: "full_object_200" }),
     } satisfies Partial<UrlDownloadError>);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(temporaryDownloadEntries(dir)).toEqual([]);
@@ -653,7 +653,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     ).rejects.toMatchObject({
       kind: "range_protocol",
       retryable: true,
-      telemetry: expect.objectContaining({ rangeDisposition: "content_range_on_200" }),
+      diagnostics: expect.objectContaining({ rangeDisposition: "content_range_on_200" }),
     } satisfies Partial<UrlDownloadError>);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -866,7 +866,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     ).rejects.toMatchObject({
       kind: "invalid_payload",
       retryable: false,
-      telemetry: expect.objectContaining({ attempt: 1 }),
+      diagnostics: expect.objectContaining({ attempt: 1 }),
     } satisfies Partial<UrlDownloadError>);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(temporaryDownloadEntries(dir)).toEqual([]);
@@ -955,7 +955,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("accepts extensionless media and emits safe complete integrity telemetry", async () => {
+  it("accepts extensionless media and emits safe complete integrity diagnostics", async () => {
     const mediaBytes = isoBmffMediaBytes("extensionless");
     const etag = '"customer-secret-etag"';
     const fetchMock = vi.fn().mockResolvedValue(
@@ -970,7 +970,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       "https://cdn.example/private/customer-video?X-Amz-Signature=super-secret-signature";
 
     const path = await downloadToTemp(signedUrl, dir, 1_000, undefined, undefined, {
-      onTelemetry: (event) => events.push(event),
+      onDiagnostics: (event) => events.push(event),
     });
 
     expect(readFileSync(path)).toEqual(mediaBytes);
@@ -1529,19 +1529,19 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const cachePath = join(dir, cacheName);
     fsRaceControls.injectRaceAtLinkPath = cachePath;
     fsRaceControls.deleteBeforeReadPath = cachePath;
-    const onTelemetry = vi.fn();
+    const onDiagnostics = vi.fn();
     const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response("complete")));
     vi.stubGlobal("fetch", fetchMock);
 
-    const path = await downloadToTemp(url, dir, 1_000, undefined, undefined, { onTelemetry });
+    const path = await downloadToTemp(url, dir, 1_000, undefined, undefined, { onDiagnostics });
 
     expect(path).toBe(cachePath);
     expect(readFileSync(path, "utf8")).toBe("complete");
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(onTelemetry).toHaveBeenCalledWith(
+    expect(onDiagnostics).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "attempt_failed", failureKind: "filesystem" }),
     );
-    expect(onTelemetry).toHaveBeenCalledWith(
+    expect(onDiagnostics).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "retrying", failureKind: "filesystem" }),
     );
     expect(temporaryDownloadEntries(dir)).toEqual([]);
@@ -1554,19 +1554,19 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const cachePath = join(dir, cacheName);
     fsRaceControls.injectRaceAtLinkPath = cachePath;
     fsRaceControls.deleteInjectedWinnerBeforeLstatPath = cachePath;
-    const onTelemetry = vi.fn();
+    const onDiagnostics = vi.fn();
     const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response("complete")));
     vi.stubGlobal("fetch", fetchMock);
 
-    const path = await downloadToTemp(url, dir, 1_000, undefined, undefined, { onTelemetry });
+    const path = await downloadToTemp(url, dir, 1_000, undefined, undefined, { onDiagnostics });
 
     expect(path).toBe(cachePath);
     expect(readFileSync(path, "utf8")).toBe("complete");
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(onTelemetry).toHaveBeenCalledWith(
+    expect(onDiagnostics).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "attempt_failed", failureKind: "filesystem" }),
     );
-    expect(onTelemetry).toHaveBeenCalledWith(
+    expect(onDiagnostics).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "retrying", failureKind: "filesystem" }),
     );
     expect(temporaryDownloadEntries(dir)).toEqual([]);

@@ -11,7 +11,6 @@ import { ChevronDown, ChevronRight, Plus, X } from "../../icons/SystemIcons";
 import { LUT_EXT } from "../../utils/mediaTypes";
 import { LABEL } from "./propertyPanelHelpers";
 import { ColorGradingSliderControl } from "./propertyPanelColorGradingSlider";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const LUT_UPLOAD_DIR = "assets/luts";
 
@@ -238,11 +237,9 @@ export function createColorGradingActions(
     async importLut(
       files: FileList | null,
       onImportAssets: ((files: FileList, dir?: string) => Promise<string[]>) | undefined,
-      onImported: () => void,
     ) {
       const src = await importFirstLut(files, onImportAssets);
       if (!src) return;
-      onImported();
       applyLut(src);
     },
   };
@@ -259,7 +256,6 @@ export function ColorGradingControls({
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
   onCommitColorGrading: (nextGrading: NormalizedHfColorGrading) => void;
 }) {
-  const track = useTrackDesignInput();
   const lutInputRef = useRef<HTMLInputElement>(null);
   const [lutOpen, setLutOpen] = useState(false);
   const [detailSettings, setDetailSettings] = useState<"vignette" | "grain" | null>(null);
@@ -289,7 +285,6 @@ export function ColorGradingControls({
     // which was the bug this PR originally fixed).
     const next = normalizeHfColorGrading({ preset, intensity: 1, lut: grading.lut });
     if (next) {
-      track("select", "Preset");
       onCommitColorGrading(next);
     }
   };
@@ -372,7 +367,6 @@ export function ColorGradingControls({
                 value={selectedLut}
                 onChange={(event) => {
                   const nextSrc = event.target.value;
-                  track("select", "Custom LUT");
                   actions.applyLut(
                     nextSrc || null,
                     nextSrc && grading.lut?.src === nextSrc ? grading.lut.intensity : 1,
@@ -421,7 +415,7 @@ export function ColorGradingControls({
                   setLutImporting(true);
                   setLutImportError(null);
                   void actions
-                    .importLut(files, onImportAssets, () => track("button", "Import LUT"))
+                    .importLut(files, onImportAssets)
                     .catch(() =>
                       setLutImportError("LUT import failed — check the .cube file and try again."),
                     )

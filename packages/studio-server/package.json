@@ -1,15 +1,7 @@
 {
   "name": "@hyperframes/studio-server",
   "version": "0.8.81",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/heygen-com/hyperframes",
-    "directory": "packages/studio-server"
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
+  "private": true,
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -76,62 +68,13 @@
       "types": "./src/helpers/mediaProxyPreview.ts"
     }
   },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": {
-        "import": "./dist/index.js",
-        "types": "./dist/index.d.ts"
-      },
-      "./package.json": "./package.json",
-      "./screenshot-clip": {
-        "import": "./dist/helpers/screenshotClip.js",
-        "types": "./dist/helpers/screenshotClip.d.ts"
-      },
-      "./manual-edits-render-script": {
-        "import": "./dist/helpers/manualEditsRenderScript.js",
-        "types": "./dist/helpers/manualEditsRenderScript.d.ts"
-      },
-      "./studio-motion-render-script": {
-        "import": "./dist/helpers/studioMotionRenderScript.js",
-        "types": "./dist/helpers/studioMotionRenderScript.d.ts"
-      },
-      "./draft-markers": {
-        "import": "./dist/helpers/draftMarkers.js",
-        "types": "./dist/helpers/draftMarkers.d.ts"
-      },
-      "./finite-mutation": {
-        "import": "./dist/helpers/finiteMutation.js",
-        "types": "./dist/helpers/finiteMutation.d.ts"
-      },
-      "./source-mutation": {
-        "import": "./dist/helpers/sourceMutation.js",
-        "types": "./dist/helpers/sourceMutation.d.ts"
-      },
-      "./media-codec-map": {
-        "import": "./dist/helpers/mediaCodecMap.js",
-        "types": "./dist/helpers/mediaCodecMap.d.ts"
-      },
-      "./proxy-transcoder": {
-        "import": "./dist/helpers/proxyTranscoder.js",
-        "types": "./dist/helpers/proxyTranscoder.d.ts"
-      },
-      "./media-proxy-preview": {
-        "import": "./dist/helpers/mediaProxyPreview.js",
-        "types": "./dist/helpers/mediaProxyPreview.d.ts"
-      }
-    },
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts"
-  },
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
     "test:acorn-writer": "bun scripts/run-acorn-writer-tests.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "report:gsap-writers": "bun src/routes/gsapMutationCapabilities.report.ts",
-    "prepublishOnly": "echo skip"
+    "report:gsap-writers": "bun src/routes/gsapMutationCapabilities.report.ts"
   },
   "dependencies": {
     "@hyperframes/core": "workspace:*",

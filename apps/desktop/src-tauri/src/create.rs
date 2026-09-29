@@ -18,7 +18,7 @@
 //!   the stock `dev`/`check`/`render` scripts are stamped beside it.
 //!
 //! What the CLI's interactive `init` does that this deliberately skips:
-//! video/audio ingest + whisper transcription, remote example download,
+//! video/audio ingest + whisper transcription, registry example install,
 //! Tailwind injection, and the global AI-skills freshness check — none of
 //! them fit a local folder-picker form, and none affect validity.
 
@@ -132,8 +132,6 @@ pub fn scaffold(template_index: &Path, params: &CreateParams) -> Result<PathBuf,
             dest.join("hyperframes.json"),
             concat!(
                 "{\n",
-                "  \"$schema\": \"https://hyperframes.heygen.com/schema/hyperframes.json\",\n",
-                "  \"registry\": \"https://hyperframes.heygen.com/registry\",\n",
                 "  \"paths\": {\n",
                 "    \"blocks\": \"compositions\",\n",
                 "    \"components\": \"compositions/components\",\n",

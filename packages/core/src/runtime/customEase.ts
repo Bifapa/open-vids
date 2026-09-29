@@ -1,5 +1,4 @@
 import { evaluateSpringEase, parseSpringBounce } from "../parsers/springEase";
-import { emitAnalyticsEvent } from "./analytics";
 import { resolveWiggleEase } from "./wiggleEase";
 
 type RuntimeEase = (progress: number) => number;
@@ -117,9 +116,6 @@ export function installStudioCustomEase(gsap: GsapEaseApi): boolean {
   ): RuntimeEase => {
     const resolved = resolveHyperframesEase(ease);
     if (resolved) return resolved;
-    if (typeof ease === "string" && /^(?:hold|spring|wiggle|custom)(?:\(|$)/.test(ease.trim())) {
-      emitAnalyticsEvent("custom_ease_parse_failed", { ease });
-    }
     return originalParseEase.call(context, ease, ...args) ?? IDENTITY_EASE;
   };
 

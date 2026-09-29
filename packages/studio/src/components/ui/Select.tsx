@@ -23,8 +23,6 @@ export interface SelectProps {
   options: SelectOption[];
   /** Called when a different option is chosen. */
   onCommit: (next: string) => void;
-  /** Called once per committed change, for design-input telemetry. */
-  onTrack?: () => void;
   disabled?: boolean;
   className?: string;
   "data-preview-state"?: PreviewState;
@@ -35,7 +33,6 @@ export function Select({
   value,
   options,
   onCommit,
-  onTrack,
   disabled,
   className,
   "data-preview-state": previewState,
@@ -49,7 +46,6 @@ export function Select({
         const chosen = String(next);
         if (chosen === value) return;
         onCommit(chosen);
-        onTrack?.();
       }}
     >
       <BaseSelect.Trigger

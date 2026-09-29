@@ -37,7 +37,7 @@ describe("projectConfig", () => {
       try {
         const custom = {
           $schema: DEFAULT_PROJECT_CONFIG.$schema,
-          registry: "https://example.com/my-registry",
+          registryDir: "/custom/registry",
           paths: { blocks: "src/blocks", components: "src/fx", assets: "media" },
           media: { autoProxy: true },
         };
@@ -51,11 +51,17 @@ describe("projectConfig", () => {
   });
 
   describe("normalizeConfig", () => {
+    it("ignores a legacy registry URL and falls back to the bundled tree", () => {
+      const result = normalizeConfig({ registry: "https://example.com/r" } as never);
+      expect(result.registryDir).toBeUndefined();
+      expect("registry" in result).toBe(false);
+    });
+
     it("fills in defaults for missing fields", () => {
-      const result = normalizeConfig({ registry: "https://alt.example.com" });
-      expect(result.registry).toBe("https://alt.example.com");
+      const result = normalizeConfig({ registryDir: "/alt/registry" });
+      expect(result.registryDir).toBe("/alt/registry");
       expect(result.paths).toEqual(DEFAULT_PROJECT_CONFIG.paths);
-      expect(result.$schema).toBe(DEFAULT_PROJECT_CONFIG.$schema);
+      expect(result.$schema).toBeUndefined();
     });
 
     it("preserves partial paths objects", () => {
@@ -66,7 +72,7 @@ describe("projectConfig", () => {
     });
 
     it("defaults media.autoProxy to true when media is absent", () => {
-      const result = normalizeConfig({ registry: "https://alt.example.com" });
+      const result = normalizeConfig({ registryDir: "/alt/registry" });
       expect(result.media).toEqual({ autoProxy: true });
     });
 
@@ -92,7 +98,7 @@ describe("projectConfig", () => {
       expect(result.authoringSkill).toBe("product-launch-video");
     });
 
-    it("drops an invalid authoringSkill (never reaches telemetry)", () => {
+    it("drops an invalid authoringSkill", () => {
       const result = normalizeConfig({
         authoringSkill: "Not A Slug!" as unknown as never,
       });
@@ -125,11 +131,11 @@ describe("projectConfig", () => {
       try {
         writeFileSync(
           projectConfigPath(dir),
-          JSON.stringify({ registry: "https://only-this.example.com" }),
+          JSON.stringify({ registryDir: "/only-this/registry" }),
           "utf-8",
         );
         const read = readProjectConfig(dir);
-        expect(read?.registry).toBe("https://only-this.example.com");
+        expect(read?.registryDir).toBe("/only-this/registry");
         expect(read?.paths).toEqual(DEFAULT_PROJECT_CONFIG.paths);
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -155,7 +161,7 @@ describe("projectConfig", () => {
         writeProjectConfig(dir);
         const path = join(dir, PROJECT_CONFIG_FILENAME);
         const parsed = JSON.parse(readFileSync(path, "utf-8"));
-        expect(parsed.registry).toBe(DEFAULT_PROJECT_CONFIG.registry);
+        expect(parsed.registryDir).toBeUndefined();
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -191,7 +197,7 @@ describe("projectConfig", () => {
       try {
         writeFileSync(
           projectConfigPath(dir),
-          JSON.stringify({ registry: "https://only-this.example.com" }),
+          JSON.stringify({ registryDir: "/only-this/registry" }),
           "utf-8",
         );
         expect(resolveAutoProxy(dir, undefined)).toBe(true);
@@ -259,12 +265,12 @@ describe("projectConfig", () => {
       try {
         writeProjectConfig(dir, {
           ...DEFAULT_PROJECT_CONFIG,
-          registry: "https://custom.example.com",
+          registryDir: "/custom/registry",
         });
         seedProjectAuthoringSkill(dir, "pr-to-video");
         const read = readProjectConfig(dir);
         expect(read?.authoringSkill).toBe("pr-to-video");
-        expect(read?.registry).toBe("https://custom.example.com");
+        expect(read?.registryDir).toBe("/custom/registry");
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -301,7 +307,7 @@ describe("projectConfig", () => {
           projectConfigPath(dir),
           JSON.stringify(
             {
-              registry: "https://example.com/my-registry",
+              registryDir: "/custom/registry",
               myTeamSetting: { reviewer: "wenbo", keep: true },
               futureSchemaKey: 42,
             },
@@ -315,7 +321,7 @@ describe("projectConfig", () => {
         expect(raw.authoringSkill).toBe("product-launch-video");
         expect(raw.myTeamSetting).toEqual({ reviewer: "wenbo", keep: true });
         expect(raw.futureSchemaKey).toBe(42);
-        expect(raw.registry).toBe("https://example.com/my-registry");
+        expect(raw.registryDir).toBe("/custom/registry");
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -326,14 +332,14 @@ describe("projectConfig", () => {
       try {
         writeFileSync(
           projectConfigPath(dir),
-          JSON.stringify({ registry: "https://example.com/r" }, null, 2),
+          JSON.stringify({ registryDir: "/r" }, null, 2),
           "utf-8",
         );
         seedProjectAuthoringSkill(dir, "motion-graphics");
         const raw = JSON.parse(readFileSync(projectConfigPath(dir), "utf-8"));
         expect(raw.media).toBeUndefined();
         expect(raw.$schema).toBeUndefined();
-        expect(Object.keys(raw)).toEqual(["registry", "authoringSkill"]);
+        expect(Object.keys(raw)).toEqual(["registryDir", "authoringSkill"]);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -344,11 +350,11 @@ describe("projectConfig", () => {
       try {
         writeFileSync(
           projectConfigPath(dir),
-          JSON.stringify({ registry: "https://example.com/r" }, null, 4),
+          JSON.stringify({ registryDir: "/r" }, null, 4),
           "utf-8",
         );
         seedProjectAuthoringSkill(dir, "pr-to-video");
-        expect(readFileSync(projectConfigPath(dir), "utf-8")).toContain('\n    "registry"');
+        expect(readFileSync(projectConfigPath(dir), "utf-8")).toContain('\n    "registryDir"');
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -404,7 +410,7 @@ describe("projectConfig", () => {
     it("does not rewrite the file when every item is already recorded", () => {
       const dir = tmp();
       try {
-        const text = `{\n\t"registry": "https://example.com/r",\n\t"registryItems": [\n\t\t{ "name": "data-chart", "type": "hyperframes:block", "target": "compositions/data-chart.html" }\n\t]\n}\n`;
+        const text = `{\n\t"registryDir": "/r",\n\t"registryItems": [\n\t\t{ "name": "data-chart", "type": "hyperframes:block", "target": "compositions/data-chart.html" }\n\t]\n}\n`;
         writeFileSync(projectConfigPath(dir), text, "utf-8");
         recordProjectRegistryItems(dir, [{ ...BLOCK }]);
         expect(readFileSync(projectConfigPath(dir), "utf-8")).toBe(text);
@@ -420,13 +426,13 @@ describe("projectConfig", () => {
       try {
         writeFileSync(
           projectConfigPath(dir),
-          JSON.stringify({ registry: "https://example.com/r", customKey: 42 }, null, 4),
+          JSON.stringify({ registryDir: "/r", customKey: 42 }, null, 4),
           "utf-8",
         );
         recordProjectRegistryItems(dir, [BLOCK]);
         const text = readFileSync(projectConfigPath(dir), "utf-8");
         expect(text).toContain('"customKey": 42');
-        expect(text).toContain('\n    "registry"');
+        expect(text).toContain('\n    "registryDir"');
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

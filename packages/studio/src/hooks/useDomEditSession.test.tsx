@@ -4,7 +4,6 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import { shouldUseSdkCutover } from "../utils/sdkCutover";
 import type { PatchOperation } from "../utils/sourcePatcher";
-import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { TimelineElement } from "../player";
 import type { UseDomEditSessionParams } from "./useDomEditSession";
@@ -47,17 +46,13 @@ describe("shouldUseSdkCutover", () => {
   });
 });
 
-// ── onReorderShadow source filter (Fix 3) ────────────────────────────────────
+// ── useDomEditCommits composition ────────────────────────────────────────────
 //
-// useDomEditSession composes ~9 sub-hooks; the only one relevant to this fix is
-// useDomEditCommits, which receives the onReorderShadow callback built inline.
-// Every other sub-hook is stubbed to a minimal shape so the hook under test can
-// render without pulling in unrelated preview/GSAP/selection machinery.
+// useDomEditSession composes ~9 sub-hooks; the only one relevant here is
+// useDomEditCommits. Every other sub-hook is stubbed to a minimal shape so the
+// hook under test can render without pulling in unrelated preview/GSAP/selection
+// machinery.
 
-const recordResolverParity = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
-const capturedOnReorderShadow: { fn: ((targets: string[]) => void) | undefined } = {
-  fn: undefined,
-};
 const domEditSelectionRef: { current: DomEditSelection | null } = { current: null };
 const domEditGroupSelectionsRef: { current: DomEditSelection[] } = { current: [] };
 const groupSelectionSpy = vi.fn();
@@ -104,14 +99,9 @@ function createSessionParams(
   };
 }
 
-vi.mock("../utils/sdkResolverShadow", () => ({
-  runResolverShadow: vi.fn(),
-  recordResolverParity: (...args: unknown[]) => recordResolverParity(...args),
-}));
 const handleDomEditElementsDeleteMock = vi.fn(async () => ({ ok: true }) as const);
 vi.mock("./useDomEditCommits", () => ({
-  useDomEditCommits: (params: { onReorderShadow?: (targets: string[]) => void }) => {
-    capturedOnReorderShadow.fn = params.onReorderShadow;
+  useDomEditCommits: () => {
     return {
       resolveImportedFontAsset: vi.fn(),
       handleDomStyleCommit: vi.fn(),
@@ -254,50 +244,6 @@ vi.mock("./useGsapAwareEditing", () => ({
 
 // Tell React this is an act-capable environment so act(...) flushes effects.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-describe("onReorderShadow source filter", () => {
-  it("passes a readSource function as the 4th recordResolverParity argument when sdkSession and activeCompPath are set", async () => {
-    const { useDomEditSession } = await import("./useDomEditSession");
-    const readProjectFile = vi.fn(async (path: string) => `content of ${path}`);
-    // Minimal opaque test double: no sub-hook under test actually calls into the
-    // session (useDomEditCommits and recordResolverParity are both mocked above),
-    // so it only needs to flow through as a reference.
-    const sdkSession = {} as unknown as Composition;
-
-    function Probe() {
-      const params = createSessionParams({
-        queueDomEditSave: vi.fn(async <T,>(save: () => Promise<T>) => save()) as <T>(
-          save: () => Promise<T>,
-        ) => Promise<T>,
-        readProjectFile,
-        writeProjectFile: vi.fn(async () => {}),
-        editHistory: { recordEdit: vi.fn(async () => {}) },
-        sdkSession,
-        forceReloadSdkSession: vi.fn(),
-      });
-      useDomEditSession(params);
-      return null;
-    }
-
-    const container = document.createElement("div");
-    const root = createRoot(container);
-    act(() => {
-      root.render(<Probe />);
-    });
-    try {
-      expect(capturedOnReorderShadow.fn).toBeTypeOf("function");
-      capturedOnReorderShadow.fn?.(["hf-target"]);
-      expect(recordResolverParity).toHaveBeenCalledWith(
-        sdkSession,
-        "hf-target",
-        "reorderElements",
-        expect.any(Function),
-      );
-    } finally {
-      act(() => root.unmount());
-    }
-  });
-});
 
 describe("bulk segment ease commits", () => {
   it("uses one ordered batch for many ids and sane paths for one or no ids", async () => {

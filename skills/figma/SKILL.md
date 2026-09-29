@@ -86,8 +86,6 @@ Node tree → editable HTML at exact figma geometry, packaged as a registry item
 
 ## Motion (Phase 4 — connector-assisted)
 
-**Usage beacon:** Connector-assisted phases have no CLI touchpoint, so fire the skill beacon at start and finish (anonymous, consent-gated, never fails): `npx hyperframes events --skill=figma-motion` when you begin, `npx hyperframes events --skill=figma-motion --event=skill_completed --outcome=success|error` when done. Same for shaders (`figma-shaders`) and storyboards (`figma-storyboard`).
-
 No REST equivalent exists. When a compatible connector is available, use it and hand its output to the pure helpers in `@hyperframes/core/figma`; otherwise ask for a native export:
 
 1. Retrieve motion context for the parent frame in one recursive request, not one request per element. Save the raw JSON next to the project (`.media/figma-cache/`) so retranslation is free.

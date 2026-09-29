@@ -70,12 +70,7 @@ const GROUPS: Group[] = [
       ],
       ["browser", "Manage the Chrome browser used for rendering"],
       ["doctor", "Check system dependencies and environment"],
-      ["upgrade", "Check for updates and show upgrade instructions"],
     ],
-  },
-  {
-    title: "Settings",
-    commands: [["telemetry", "Manage anonymous usage telemetry"]],
   },
 ];
 

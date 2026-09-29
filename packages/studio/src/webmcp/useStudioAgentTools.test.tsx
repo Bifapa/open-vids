@@ -8,9 +8,6 @@ import { useStudioAgentTools, type StudioAgentToolsDeps } from "./useStudioAgent
 import type { ModelContext, ModelContextRegisterToolOptions, ModelContextTool } from "./types";
 import { lookSnapshot, previewDoc, selectionFor, studioAgentToolsDeps } from "./webmcpTestUtils";
 
-const trackEvent = vi.hoisted(() => vi.fn());
-vi.mock("../telemetry/client", () => ({ trackEvent }));
-
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 let cleanup: (() => void) | null = null;
@@ -103,7 +100,6 @@ function mountTools(initial: StudioAgentToolsDeps) {
 
 beforeEach(() => {
   window.localStorage.clear();
-  trackEvent.mockReset();
 });
 
 afterEach(() => {
@@ -136,7 +132,6 @@ describe("useStudioAgentTools", () => {
       "studio_add_keyframe",
       "studio_delete_animation",
     ]);
-    expect(trackEvent).toHaveBeenCalledWith("webmcp.native_present");
   });
 
   it("does not re-register when the deps object changes identity", async () => {
@@ -238,17 +233,14 @@ describe("useStudioAgentTools", () => {
     expect(registerTool).toHaveBeenCalledTimes(12);
   });
 
-  it("reports a non-abort registration failure through production telemetry", async () => {
+  it("stays mounted when registration fails with a non-abort error", async () => {
     const { registerTool } = installModelContext();
     registerTool.mockRejectedValue(new DOMException("blocked", "NotAllowedError"));
 
+    // The assertion is that mounting did not throw: a rejected registration
+    // surfaces through the debug log, not a crash.
     await act(async () => {
       mountTools(studioAgentToolsDeps({ getSnapshot: () => lookSnapshot() }));
-    });
-
-    expect(trackEvent).toHaveBeenCalledWith("webmcp_registration_failed", {
-      error_name: "NotAllowedError",
-      tool_name: "studio_look",
     });
   });
 

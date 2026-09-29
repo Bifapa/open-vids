@@ -33,7 +33,7 @@ describe("augmentPageNavigationTimeoutError", () => {
   it("preserves err.cause on the augmented error", () => {
     const original = new Error("Navigation timeout of 60000 ms exceeded");
     const result = augmentPageNavigationTimeoutError(original, 60_000);
-    expect((result as Error & { cause?: unknown }).cause).toBe(original);
+    expect(result.cause).toBe(original);
   });
 
   it("augments net::ERR_TIMED_OUT errors as well", () => {
@@ -51,92 +51,72 @@ describe("augmentPageNavigationTimeoutError", () => {
     expect(result.message).not.toContain("HyperFrames effective page.goto navigation timeout");
   });
 
-  it("fires the darwin/arm64 + CSS 3D + audio Docker hint only when all three match", () => {
+  it("fires the generic augmentation on the former darwin/arm64 + CSS 3D + audio compound (container hint removed)", () => {
     const original = new Error("Navigation timeout of 60000 ms exceeded");
-    const result = augmentPageNavigationTimeoutError(original, 60_000, {
-      platform: "darwin",
-      arch: "arm64",
-      hasCss3D: true,
-      hasAudio: true,
-    });
-    expect(result.message).toContain("ts=1784146416");
-    expect(result.message).toContain("--docker");
-    expect(result.message).toContain("CSS 3D rendering context");
+    const result = augmentPageNavigationTimeoutError(original, 60_000);
+    expect(result.message).toContain("HYPERFRAMES_BROWSER_PATH");
+    expect(result.message).toContain("--browser-timeout");
+    expect(result.message).not.toContain("docker");
   });
 
-  it("does not surface the Docker hint on non-darwin platforms even when CSS 3D + audio are true", () => {
-    const original = new Error("Navigation timeout of 60000 ms exceeded");
-    const result = augmentPageNavigationTimeoutError(original, 60_000, {
-      platform: "linux",
-      arch: "x64",
-      hasCss3D: true,
-      hasAudio: true,
-    });
-    expect(result.message).not.toContain("ts=1784146416");
-    expect(result.message).not.toContain("--docker");
+  it("fires the generic augmentation for a linux composition with CSS 3D + audio signals present", () => {
+    const original = new Error("Navigation timeout of 90000 ms exceeded");
+    const result = augmentPageNavigationTimeoutError(original, 90_000);
+    expect(result.message).toContain(
+      "HyperFrames effective page.goto navigation timeout: 90000 ms",
+    );
+    expect(result.message).not.toContain("docker");
     // Generic hints still fire.
     expect(result.message).toContain("PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS");
     expect(result.message).toContain("HYPERFRAMES_BROWSER_PATH");
   });
 
-  it("does not surface the Docker hint on darwin/x64 (Intel Macs)", () => {
-    const original = new Error("Navigation timeout of 60000 ms exceeded");
-    const result = augmentPageNavigationTimeoutError(original, 60_000, {
-      platform: "darwin",
-      arch: "x64",
-      hasCss3D: true,
-      hasAudio: true,
-    });
-    expect(result.message).not.toContain("ts=1784146416");
-    expect(result.message).not.toContain("--docker");
+  it("fires the generic augmentation for an Intel-mac composition with CSS 3D + audio signals present", () => {
+    const original = new Error("net::ERR_TIMED_OUT at http://127.0.0.1:4173/index.html");
+    const result = augmentPageNavigationTimeoutError(original, 120_000);
+    expect(result.message).toContain("PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS");
+    expect(result.message).toContain("--browser-timeout");
+    expect(result.message).not.toContain("docker");
   });
 
-  it("does not surface the Docker hint on darwin/arm64 without CSS 3D", () => {
-    const original = new Error("Navigation timeout of 60000 ms exceeded");
-    const result = augmentPageNavigationTimeoutError(original, 60_000, {
-      platform: "darwin",
-      arch: "arm64",
-      hasCss3D: false,
-      hasAudio: true,
-    });
-    expect(result.message).not.toContain("ts=1784146416");
-    expect(result.message).not.toContain("--docker");
+  it("fires the generic augmentation for a darwin/arm64 composition without CSS 3D", () => {
+    const original = new Error("Navigation timeout of 30000 ms exceeded");
+    const result = augmentPageNavigationTimeoutError(original, 30_000);
+    expect(result.message).toContain(
+      "HyperFrames effective page.goto navigation timeout: 30000 ms",
+    );
+    expect(result.message).toContain("HYPERFRAMES_BROWSER_PATH");
+    expect(result.message).toContain("--browser-timeout");
+    expect(result.message).not.toContain("docker");
   });
 
-  it("does not surface the Docker hint on darwin/arm64 without audio", () => {
+  it("fires the generic augmentation for a darwin/arm64 composition without audio", () => {
     const original = new Error("Navigation timeout of 60000 ms exceeded");
-    const result = augmentPageNavigationTimeoutError(original, 60_000, {
-      platform: "darwin",
-      arch: "arm64",
-      hasCss3D: true,
-      hasAudio: false,
-    });
-    expect(result.message).not.toContain("ts=1784146416");
-    expect(result.message).not.toContain("--docker");
+    const result = augmentPageNavigationTimeoutError(original, 180_000);
+    expect(result.message).toContain(
+      "HyperFrames effective page.goto navigation timeout: 180000 ms",
+    );
+    expect(result.message).toContain("HYPERFRAMES_BROWSER_PATH");
+    expect(result.message).toContain("--browser-timeout");
+    expect(result.message).not.toContain("docker");
   });
 
-  it("does not surface the Docker hint when CSS 3D / audio inputs are unknown (fallback documented)", () => {
-    // Current wire-up in renderOrchestrator passes hasCss3D: undefined because
-    // no compile-time CSS-3D signal is threaded through the pipeline. The
-    // Docker hint is intentionally strict about `=== true` — this test locks
-    // that behaviour so a future compile-time hasCss3D scan can flip it on
-    // by supplying the flag, without accidentally firing before then.
-    const original = new Error("Navigation timeout of 60000 ms exceeded");
-    const result = augmentPageNavigationTimeoutError(original, 60_000, {
-      platform: "darwin",
-      arch: "arm64",
-      // hasCss3D + hasAudio omitted (undefined).
-    });
-    expect(result.message).not.toContain("ts=1784146416");
-    expect(result.message).not.toContain("--docker");
+  it("fires the generic augmentation when composition signals are unknown (compound fallback removed)", () => {
+    // The renderOrchestrator wire-up never threaded compile-time CSS-3D /
+    // audio signals into this helper; with the container render mode deleted
+    // there is no compound gate left, so every matching error receives the
+    // generic env/flag/browser-path augmentation.
+    const original = new Error("net::ERR_TIMED_OUT at http://127.0.0.1:4173/index.html");
+    const result = augmentPageNavigationTimeoutError(original, 60_000);
+    expect(result.message).not.toContain("docker");
     // Generic hints still fire.
     expect(result.message).toContain("PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS");
     expect(result.message).toContain("HYPERFRAMES_BROWSER_PATH");
   });
 
-  it("defaults platform/arch to the current process when context omits them", () => {
-    // Regression: earlier draft required an explicit platform. Make sure the
-    // helper still augments (with generic hints) when no context is passed.
+  it("augments with generic hints when no context is passed", () => {
+    // Regression: earlier drafts required an explicit platform/arch context.
+    // Make sure the helper still augments (with generic hints) with defaults.
     const original = new Error("Navigation timeout of 60000 ms exceeded");
     const result = augmentPageNavigationTimeoutError(original, 60_000);
     expect(result).not.toBe(original);

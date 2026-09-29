@@ -138,7 +138,7 @@ async function seekAndInject(
  * Seek the page to `time`, run the optional before-capture hook, then
  * query element stacking order. Each phase is individually timed via the
  * caller-provided perf keys so the sequential loop, hybrid worker, and
- * per-scene transition capture each emit the correct telemetry label
+ * per-scene transition capture each emit the correct diagnostics label
  * (`frameSeekMs` vs. `domLayerSeekMs`, etc.).
  */
 export async function seekInjectAndQueryStacking(

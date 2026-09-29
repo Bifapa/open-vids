@@ -7,7 +7,6 @@ export function FlatSliderReadout({
   tier,
   disabled,
   onCommitText,
-  onCommitted,
 }: {
   label: string;
   displayValue: string;
@@ -15,8 +14,6 @@ export function FlatSliderReadout({
   disabled?: boolean;
   /** Receives the raw text; return false to refuse it and keep the field open. */
   onCommitText?: (text: string) => boolean | void;
-  /** Fires after an accepted commit, for telemetry. */
-  onCommitted?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
@@ -47,7 +44,6 @@ export function FlatSliderReadout({
       return;
     }
     setEditing(false);
-    if (accepted !== false) onCommitted?.();
   };
 
   if (editing) {

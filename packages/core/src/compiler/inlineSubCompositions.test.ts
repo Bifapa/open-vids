@@ -50,7 +50,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     // Any code that then touches .head/.body (as linkedom's own internals do)
     // throws "Cannot destructure property 'firstElementChild' of
     // 'documentElement' as it is null" — the #1 raw crash in production
-    // telemetry. Must be skipped gracefully, not crash.
+    // diagnostics. Must be skipped gracefully, not crash.
     { label: "malformed non-HTML text", html: "just some plain text, no tags at all" },
   ])("skips $label sub-composition files gracefully", ({ html }) => {
     const document = makeHostDocument("intro");

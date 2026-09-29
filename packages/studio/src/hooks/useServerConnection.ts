@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { buildProjectHash, parseProjectIdFromHash } from "../utils/projectRouting";
 import { useMountEffect } from "./useMountEffect";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 
 interface ServerConnectionState {
   projectId: string | null;
@@ -45,12 +44,16 @@ async function resolveHashProject(id: string): Promise<ProjectHashVerdict> {
   }
 }
 
-/**
- * What the hash validation decided. Without this, a tab that kept a hash
- * because the check itself failed ("unknown") is indistinguishable from one
- * that never ran the check — the two have different fixes and, until this
- * event, no way to tell them apart in production.
- */
+async function firstProjectId(): Promise<string | null> {
+  try {
+    const res = await fetch("/api/projects");
+    const data = (await res.json()) as { projects?: Array<{ id?: string }> };
+    return data.projects?.[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Rewrite the project hash WITHOUT pushing a history entry.
  *
@@ -70,24 +73,6 @@ function replaceProjectHash(projectId: string): void {
  * and the scenario this exists for is exactly the one where the project list
  * changed underneath a long-lived tab.
  */
-async function firstProjectId(): Promise<string | null> {
-  try {
-    const res = await fetch("/api/projects");
-    const data = (await res.json()) as { projects?: Array<{ id?: string }> };
-    return data.projects?.[0]?.id ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function reportHashVerdict(stage: "mount" | "hashchange", verdict: ProjectHashVerdict): void {
-  trackStudioEvent("project_hash_validated", {
-    stage,
-    outcome: verdict.outcome,
-    ...(verdict.status === undefined ? {} : { status: verdict.status }),
-  });
-}
-
 export function useServerConnection(): ServerConnectionState {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [resolving, setResolving] = useState(true);
@@ -116,12 +101,9 @@ export function useServerConnection(): ServerConnectionState {
           // every later /api/projects/<id>/... request 404 for the life of the
           // tab, including the composition read that opens the SDK session, so
           // every edit fell back to the server path with nothing to show why.
-          // Telemetry after the read-reason split: 120 http_error/404 reads
-          // across 5 users in 24h, ~24 each, never recovering.
           if (hashProjectId) {
             const verdict = await resolveHashProject(hashProjectId);
             if (cancelled) return;
-            reportHashVerdict("mount", verdict);
             // "unknown" keeps the old behaviour: a transient failure must not
             // rewrite the user's hash out from under a valid project.
             if (verdict.outcome !== "missing") {
@@ -170,7 +152,6 @@ export function useServerConnection(): ServerConnectionState {
         // current — adopting a project the user has already navigated away from.
         // The hash itself cannot go stale.
         if (parseProjectIdFromHash(window.location.hash) !== next) return;
-        reportHashVerdict("hashchange", verdict);
         if (verdict.outcome !== "missing") {
           setProjectId(next);
           return;

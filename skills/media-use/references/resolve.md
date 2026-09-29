@@ -113,8 +113,8 @@ manifest record has `provenance.provider === "heygen.video"` (check
 `.media/manifest.jsonl` or the one-line resolve output for the provider name),
 add `data-media-source="heygen"` to that `<video>` tag. Leave the attribute off
 entirely for every other provider (`ltx.local`, an adopted/local file, etc.) —
-this is not a general provider taxonomy, just the one signal render telemetry
-tracks today.
+this is not a general provider taxonomy, just the one signal the render plan
+records today.
 
 ## Adopt existing projects
 

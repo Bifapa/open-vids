@@ -12,8 +12,9 @@ export const examples: Example[] = [
 import * as clack from "@clack/prompts";
 import { realpath, type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
-import { loadAllItems } from "../registry/resolver.js";
-import { fetchRegistryManifest } from "../registry/remote.js";
+import { listRegistryItems, loadAllItems } from "../registry/resolver.js";
+import { localRegistryRoot } from "../registry/local.js";
+import { readLocalArtifactRevision } from "../registry/localSemantic.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { relative, resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
@@ -53,7 +54,7 @@ async function prepareOnDeviceTier(opts: {
   assumedYes: boolean;
   artifactRevision?: string;
   canPrompt: boolean;
-  registry: string;
+  registryDir?: string;
   registryNames: ReadonlySet<string>;
   status: LocalModelStatus;
 }): Promise<string[]> {
@@ -135,7 +136,10 @@ async function prepareOnDeviceTier(opts: {
     revisionStale ||
     countUnindexed(opts.registryNames, localVectorNames()) > 0
   ) {
-    await fetchLocalVectors(opts.registry, { expectedRevision: opts.artifactRevision });
+    await fetchLocalVectors({
+      registryDir: opts.registryDir,
+      expectedRevision: opts.artifactRevision,
+    });
   }
   // Deliberately not the fetch's own answer. A refresh that fails still leaves
   // the previous vectors on disk, and those still rank: reporting the tier
@@ -202,6 +206,7 @@ export default defineCommand({
     const interactive = args["human-friendly"] === true;
     const dir = resolve(process.cwd());
     const config = loadProjectConfig(dir) ?? DEFAULT_PROJECT_CONFIG;
+    const registryRoot = config.registryDir ?? localRegistryRoot();
 
     let typeFilter: ItemType | undefined;
     if (args.type === "block") typeFilter = "hyperframes:block";
@@ -211,11 +216,10 @@ export default defineCommand({
       finishCommand(1);
     }
 
-    // Asked for the whole manifest on purpose: its item list defines coverage,
-    // and its artifact revision is the one owner of vector freshness.
-    const manifest = await fetchRegistryManifest(config.registry);
-    const entries = manifest?.items ?? [];
-    const artifactRevision = manifest?.catalogArtifact?.revision;
+    // The local item list defines coverage, and the bundled artifact revision
+    // is the one owner of vector freshness.
+    const entries = await listRegistryItems(undefined, { registryDir: registryRoot ?? undefined });
+    const artifactRevision = registryRoot ? readLocalArtifactRevision(registryRoot) : undefined;
     const catalog = entries.filter((e) => e.type !== "hyperframes:example");
     const registryNames = new Set(catalog.map((e) => e.name));
     const filtered = typeFilter ? catalog.filter((e) => e.type === typeFilter) : catalog;
@@ -226,8 +230,7 @@ export default defineCommand({
       return;
     }
 
-    const items = await loadAllItems(filtered, { baseUrl: config.registry });
-
+    const items = await loadAllItems(filtered, { registryDir: registryRoot ?? undefined });
     const tagFilter = args.tag?.toLowerCase();
     const tagged = tagFilter
       ? items.filter((item) => item.tags?.some((t) => t.toLowerCase() === tagFilter))
@@ -251,7 +254,7 @@ export default defineCommand({
         assumedYes: args.yes === true,
         artifactRevision,
         canPrompt: isAttendedTerminal() && !json,
-        registry: config.registry,
+        registryDir: registryRoot ?? undefined,
         registryNames,
         status: searchContext.status,
       });
@@ -348,7 +351,7 @@ export default defineCommand({
           }
         }
       }
-      if (query) await offerLocalModel(0, json, config.registry, artifactRevision);
+      if (query) await offerLocalModel(0, json, registryRoot ?? undefined, artifactRevision);
       // A query with no searchable words is bad input, not an empty shelf, so it
       // exits non-zero like an invalid --type does. An agent that only checks the
       // exit code would otherwise read "searched successfully, catalog has
@@ -424,7 +427,7 @@ export default defineCommand({
         if (warnings.length === 0) {
           const hint = localModelHint(json, effectiveStatus);
           if (hint) console.error(hint);
-          await offerLocalModel(matching.length, json, config.registry, artifactRevision);
+          await offerLocalModel(matching.length, json, registryRoot ?? undefined, artifactRevision);
         }
       }
       if (query) {
@@ -717,7 +720,7 @@ function localModelHint(json: boolean, status: LocalModelStatus | undefined): st
 async function offerLocalModel(
   matchCount: number,
   json: boolean,
-  registryBaseUrl: string,
+  registryDir?: string,
   artifactRevision?: string,
 ): Promise<void> {
   if (json || !isAttendedTerminal()) return;
@@ -738,12 +741,12 @@ async function offerLocalModel(
   }
   if (answer !== true) return;
 
-  // The vectors come from the registry rather than the package, so consent is
-  // also the moment to fetch them. A failure here is reported: the alternative
+  // The vectors ship with the registry tree, so consent is also the moment to
+  // copy them into the cache. A failure here is reported: the alternative
   // is an offline tier the user turned on that silently never ranks anything.
   const vectors =
     hasLocalVectors() ||
-    (await fetchLocalVectors(registryBaseUrl, { expectedRevision: artifactRevision }));
+    (await fetchLocalVectors({ registryDir, expectedRevision: artifactRevision }));
   console.log(
     c.dim(
       vectors

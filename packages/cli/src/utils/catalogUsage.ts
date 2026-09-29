@@ -59,7 +59,7 @@ const UNREADABLE: CatalogUsage = Object.freeze({
 /**
  * Cap on files visited while walking the sub-composition tree. A composition
  * nests a handful of blocks; anything past this is a pathological or cyclic
- * project, and telemetry must not turn into an unbounded filesystem crawl.
+ * project, and the usage scan must not turn into an unbounded filesystem crawl.
  */
 const MAX_VISITED_FILES = 250;
 
@@ -67,11 +67,11 @@ const MAX_VISITED_FILES = 250;
 const MAX_HTML_BYTES = 20 * 1024 * 1024;
 
 /**
- * Item names are slug-gated before they reach the anonymous event stream, the
+ * Item names are slug-gated before they reach the usage report, the
  * same guard `normalizeSkillSlug` applies to authoring skills: a custom or
  * hand-edited registry must not be able to push paths, PII, or unbounded
- * cardinality into telemetry. The two rules share a shape but not an owner —
- * a registry name and a skill slug are free to diverge.
+ * cardinality into the usage report. The two rules share a shape but not an
+ * owner — a registry name and a skill slug are free to diverge.
  */
 const REGISTRY_ITEM_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
@@ -86,7 +86,7 @@ const REGISTRY_ITEM_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
  * against the PROJECT ROOT at every nesting level, never the referencing
  * file's directory. Both mirror the renderer's `parseSubCompositions`.
  *
- * Unreadable files are skipped rather than thrown: this feeds a telemetry
+ * Unreadable files are skipped rather than thrown: this feeds a usage-report
  * property, and a render that produced a video must never fail on the way to
  * reporting it.
  */

@@ -8,7 +8,6 @@ import { buildTimelineMoveTimingPatch, persistTimelineEdit } from "./timelineEdi
 import { useDomEditCommits } from "./useDomEditCommits";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 const SOURCE =
   '<!doctype html><html><head></head><body><div data-hf-id="hf-card" style="color: red">Card</div>' +

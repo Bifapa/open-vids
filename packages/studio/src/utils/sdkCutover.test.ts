@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   shouldUseSdkCutover,
   sdkCutoverPersist,
@@ -17,13 +17,7 @@ import { StudioSaveNetworkError } from "./studioSaveDiagnostics";
 
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   STUDIO_SDK_CUTOVER_ENABLED: true,
-  STUDIO_SDK_RESOLVER_SHADOW_ENABLED: false,
 }));
-vi.mock("./studioTelemetry", () => ({
-  trackStudioEvent: vi.fn(),
-}));
-
-import { trackStudioEvent } from "./studioTelemetry";
 
 const styleOp = (property: string, value: string): PatchOperation => ({
   type: "inline-style",
@@ -216,12 +210,16 @@ describe("sdkCutoverPersist", () => {
     ];
     const sel = { hfId: "hf-abc" } as never;
 
-    await sdkCutoverPersist(sel, [styleOp("color", "red")], "before", "/path.html", session, deps);
-
-    expect(trackStudioEvent).toHaveBeenCalledWith(
-      "sdk_cutover_declined",
-      expect.objectContaining({ reason: "target_not_found", resolverDisagreement: true }),
+    const result = await sdkCutoverPersist(
+      sel,
+      [styleOp("color", "red")],
+      "before",
+      "/path.html",
+      session,
+      deps,
     );
+
+    expect(result).toEqual({ status: "declined", reason: "target_not_found" });
   });
 
   it("does not tag resolverDisagreement when the element is genuinely absent", async () => {
@@ -231,17 +229,16 @@ describe("sdkCutoverPersist", () => {
       { id: "hf-other", scopedId: "hf-other" },
     ];
     const sel = { hfId: "hf-abc" } as never;
-    vi.mocked(trackStudioEvent).mockClear();
-
-    await sdkCutoverPersist(sel, [styleOp("color", "red")], "before", "/path.html", session, deps);
-
-    expect(trackStudioEvent).toHaveBeenLastCalledWith(
-      "sdk_cutover_declined",
-      expect.objectContaining({ reason: "target_not_found" }),
+    const result = await sdkCutoverPersist(
+      sel,
+      [styleOp("color", "red")],
+      "before",
+      "/path.html",
+      session,
+      deps,
     );
-    expect(vi.mocked(trackStudioEvent).mock.lastCall?.[1]).not.toHaveProperty(
-      "resolverDisagreement",
-    );
+
+    expect(result).toEqual({ status: "declined", reason: "target_not_found" });
   });
 
   it("dispatches setStyle for inline-style ops", async () => {
@@ -1405,7 +1402,7 @@ gsap.timeline().to('[data-hf-id="hf-layer"]', { duration: 1, x: 100 });
   });
 });
 
-describe("sdk_cutover_failed classification (error_kind)", () => {
+describe("sdk cutover failure results", () => {
   const makeDeps = (overrides: Partial<Parameters<typeof sdkCutoverPersist>[5]> = {}) => ({
     editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
     writeProjectFile: vi.fn().mockResolvedValue(undefined),
@@ -1425,17 +1422,7 @@ describe("sdk_cutover_failed classification (error_kind)", () => {
       batch: vi.fn((fn: () => void) => fn()),
     }) as unknown as Parameters<typeof sdkCutoverPersist>[4];
 
-  beforeEach(() => {
-    vi.mocked(trackStudioEvent).mockClear();
-  });
-
-  // The production gate event this fix exists for: a bare `TypeError` from an
-  // UNWRAPPED raw fetch (`readProjectFile`'s implementation in
-  // useProjectFileWriter.ts, or writeProjectFile's own preflight — neither
-  // wraps as StudioSaveNetworkError). Without the message-based fallback in
-  // `cutoverErrorKind`, this files as `error_kind: "sdk"` and trips the
-  // cutover-failure rollback gate on a network blip the SDK never owned.
-  it("classifies a bare fetch TypeError from readProjectFile as network", async () => {
+  it("returns failed when readProjectFile rejects with a fetch TypeError", async () => {
     const deps = makeDeps({
       readProjectFile: vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
     });
@@ -1452,13 +1439,9 @@ describe("sdk_cutover_failed classification (error_kind)", () => {
     );
 
     expect(result.status).toBe("failed");
-    expect(trackStudioEvent).toHaveBeenCalledWith(
-      "sdk_cutover_failed",
-      expect.objectContaining({ family: "dom", error_kind: "network" }),
-    );
   });
 
-  it("classifies StudioSaveNetworkError from writeProjectFile as network", async () => {
+  it("returns failed when writeProjectFile rejects with a network error", async () => {
     const deps = makeDeps({
       writeProjectFile: vi.fn().mockRejectedValue(new StudioSaveNetworkError("Failed to save")),
     });
@@ -1475,13 +1458,9 @@ describe("sdk_cutover_failed classification (error_kind)", () => {
     );
 
     expect(result.status).toBe("failed");
-    expect(trackStudioEvent).toHaveBeenCalledWith(
-      "sdk_cutover_failed",
-      expect.objectContaining({ family: "dom", error_kind: "network" }),
-    );
   });
 
-  it("classifies a plain error as an sdk defect, not network", async () => {
+  it("returns failed when writeProjectFile rejects with a plain error", async () => {
     const deps = makeDeps({
       writeProjectFile: vi.fn().mockRejectedValue(new Error("disk full")),
     });
@@ -1498,9 +1477,5 @@ describe("sdk_cutover_failed classification (error_kind)", () => {
     );
 
     expect(result.status).toBe("failed");
-    expect(trackStudioEvent).toHaveBeenCalledWith(
-      "sdk_cutover_failed",
-      expect.objectContaining({ family: "dom", error_kind: "sdk" }),
-    );
   });
 });

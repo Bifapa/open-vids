@@ -589,7 +589,7 @@ function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFind
 /**
  * Error if a `data-composition-src` reference points at a file that is
  * missing, empty, or does not parse to usable HTML. This is the #1 render
- * failure bucket in production telemetry: a scene-authoring step (an AI
+ * failure bucket in production diagnostics: a scene-authoring step (an AI
  * agent, most commonly) writes the reference before — or without ever —
  * writing valid content into the scene file.
  *

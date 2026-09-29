@@ -4,7 +4,6 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { GsapAnimationSection } from "./GsapAnimationSection";
 
@@ -71,13 +70,11 @@ function renderSection(elementId: string) {
   const render = (nextElementId: string) => {
     act(() => {
       root.render(
-        <DesignPanelInputProvider section="test">
-          <GsapAnimationSection
-            {...requiredCallbacks}
-            elementId={nextElementId}
-            animations={[sharedAnimation]}
-          />
-        </DesignPanelInputProvider>,
+        <GsapAnimationSection
+          {...requiredCallbacks}
+          elementId={nextElementId}
+          animations={[sharedAnimation]}
+        />,
       );
     });
   };

@@ -7,8 +7,8 @@
 // the process. This is a normal lifecycle event — suppress it.
 //
 // commandFailed must be declared here (before the handlers) so the EPIPE
-// stream-error path can set it before process.exit(0). The telemetry exit
-// handler reads this flag to determine success/failure — an EPIPE that
+// stream-error path can set it before process.exit(0). The root exit handler
+// reads this flag to determine success/failure — an EPIPE that
 // interrupts a command should NOT score as success:true, but one that
 // arrives after the render artifact was validated is the normal agent-pipe
 // teardown and must stay success:true (see handleStreamEpipe).
@@ -97,13 +97,11 @@ try {
 }
 
 // ── Lazy imports ────────────────────────────────────────────────────────────
-// Telemetry, update checks, and heavy modules are imported only when needed.
-// For --help we skip telemetry entirely.
+// Heavy modules are imported only when needed.
 
 import { defineCommand, runCommand } from "citty";
 import type { ArgsDef, CommandDef } from "citty";
-import { getRunId } from "./telemetry/runId.js";
-import { reportCommandFailure, trackCommandFailures } from "./utils/command-failure-tracking.js";
+import { guardUnknownFlags } from "./utils/flagGuard.js";
 import { isRenderSucceeded } from "./utils/render-success-state.js";
 import { resolveCommandUsage } from "./utils/commandUsageResolution.js";
 import { isDevMode } from "./utils/env.js";
@@ -168,10 +166,7 @@ const commandLoaders = {
   tts: () => import("./commands/tts.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
-  upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
   skills: () => import("./commands/skills.js").then((m) => m.default),
-  telemetry: () => import("./commands/telemetry.js").then((m) => m.default),
-  events: () => import("./commands/events.js").then((m) => m.default),
   validate: () => import("./commands/validate.js").then((m) => m.default),
   snapshot: () => import("./commands/snapshot.js").then((m) => m.default),
   "media-treatment": () =>
@@ -183,7 +178,7 @@ const commandLoaders = {
 };
 
 const subCommands = Object.fromEntries(
-  Object.entries(commandLoaders).map(([name, load]) => [name, trackCommandFailures(load)]),
+  Object.entries(commandLoaders).map(([name, load]) => [name, guardUnknownFlags(load)]),
 );
 
 const main = defineCommand({
@@ -196,7 +191,8 @@ const main = defineCommand({
 });
 
 // ---------------------------------------------------------------------------
-// Telemetry — lazy-loaded, captured references for exit handlers
+// Root lifecycle — exit code only. The CLI is fully local and
+// offline-capable, so every invocation runs exactly the requested command.
 // ---------------------------------------------------------------------------
 
 const cliCommandArg = process.argv[2];
@@ -204,96 +200,10 @@ const cliCommandArg = process.argv[2];
 // (in the failure reporter) and `command` references `subCommands` (the `in`
 // check), so its type can't be inferred from its own initializer.
 const command: string = cliCommandArg && cliCommandArg in subCommands ? cliCommandArg : "unknown";
-const hasJsonFlag = process.argv.includes("--json");
 
-// Captured references — populated when the lazy imports resolve.
-// Used in exit handlers where dynamic import() is unsafe (beforeExit loops,
-// exit handler is synchronous-only).
-let _flushSync: (() => void) | undefined;
-let _trackCliError:
-  | ((props: {
-      error_name: string;
-      error_message: string;
-      stack_trace?: string;
-      command?: string;
-      kind: "uncaught_exception" | "unhandled_rejection" | "command_error";
-    }) => void)
-  | undefined;
-let _trackCommandResult:
-  | ((props: {
-      command: string;
-      success: boolean;
-      exitCode: number;
-      durationMs: number;
-      runId?: string;
-    }) => void)
-  | undefined;
-let _printUpdateNotice: (() => void) | undefined;
-let _printStalePinNotice: (() => void) | undefined;
-let _printSkillsUpdateNotice: (() => void) | undefined;
-let telemetryReady: Promise<void> = Promise.resolve();
-
-// `events` is a telemetry-internal beacon: it self-tracks + self-flushes, so it
-// skips the per-command wrapper (no duplicate cli_command, no first-run notice
-// printed into a skill's captured output).
-if (!isHelp && command !== "telemetry" && command !== "events" && command !== "unknown") {
-  telemetryReady = import("./telemetry/index.js").then((mod) => {
-    _flushSync = mod.flushSync;
-    _trackCliError = mod.trackCliError;
-    _trackCommandResult = mod.trackCommandResult;
-    mod.showTelemetryNotice();
-    mod.trackCommand(command, runId);
-    if (mod.shouldTrack()) mod.incrementCommandCount();
-  });
-}
-
-// `events` skips the update check too — a skill-usage beacon must not add
-// network latency or trigger a background self-upgrade on the calling skill.
-// `telemetry` skips it because update metadata must never race the command
-// that changes the user's telemetry preference.
-// `skills` is excluded from the SKILLS nudge for the same reason `upgrade` is
-// excluded from the self-update notice: a command that is itself actively
-// checking/reconciling skills (`skills check`, `skills update`) must not also
-// tell the user to go run `skills update` — that's either redundant (it just
-// did) or, worse, misleading (it printed a stale nudge count from the last
-// cached check while reporting fresh results of its own).
-if (
-  !isHelp &&
-  !hasJsonFlag &&
-  command !== "upgrade" &&
-  command !== "events" &&
-  command !== "telemetry" &&
-  command !== "skills"
-) {
-  // Report any completed auto-install from the previous run first, before
-  // kicking off the next check — so the user sees "updated to vX" once and
-  // we don't over-print.
-  import("./utils/autoUpdate.js").then((mod) => mod.reportCompletedUpdate()).catch(() => {});
-
-  import("./utils/updateCheck.js").then(async (mod) => {
-    _printUpdateNotice = mod.printUpdateNotice;
-    _printStalePinNotice = mod.printStalePinNotice;
-    const result = mod.cachedUpdateCheck();
-    if (result.updateAvailable) {
-      const auto = await import("./utils/autoUpdate.js").catch(() => null);
-      auto?.scheduleBackgroundInstall(result.latest, result.current);
-    }
-  });
-
-  // Skills freshness nudge — same gating as the CLI self-update notice.
-  import("./utils/skillsUpdateCheck.js").then((mod) => {
-    _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
-  });
-
-  // The notices read the caches; a detached child refreshes them for the next run.
-  import("./utils/backgroundChecks.js").then((mod) => mod.launchBackgroundChecks()).catch(() => {});
-}
-
-const commandStart = Date.now();
-const runId = getRunId();
 let finalized = false;
 
-// Root-only lifecycle fan-in: telemetry, notices, flushing, then exit code.
+// Root-only lifecycle fan-in: exit code, then done.
 async function finalizeCli(result: CommandResult): Promise<void> {
   if (finalized) return;
   finalized = true;
@@ -303,24 +213,9 @@ async function finalizeCli(result: CommandResult): Promise<void> {
   // isRenderSucceeded(), but a post-render throw that the command wrapper
   // CATCHES never reaches them: it becomes an ordinary non-zero
   // CommandResult, and a valid render is reported as a failure. Sanitizing
-  // here, once, is what those handlers cannot cover, and it keeps the exit
-  // code and the telemetry record from disagreeing about the same run.
+  // here, once, is what those handlers cannot cover.
   const exitCode = isRenderSucceeded() ? 0 : result.exitCode;
   commandFailed ||= exitCode !== 0;
-  await telemetryReady.catch(() => {});
-  _trackCommandResult?.({
-    command,
-    success: exitCode === 0 && commandSucceededForTelemetry(),
-    exitCode,
-    durationMs: Date.now() - commandStart,
-    runId,
-  });
-  // No network wait: the exit handler's flushSync() delivers what is still queued.
-  if (!hasJsonFlag) {
-    _printUpdateNotice?.();
-    _printStalePinNotice?.();
-    _printSkillsUpdateNotice?.();
-  }
   process.exitCode = exitCode;
 }
 
@@ -338,66 +233,18 @@ registerRootExitCodeSanitizer(() => {
   }
 });
 
-// Sync-only: exit handlers cannot await promises or drain microtasks.
-// _trackCommandResult / _trackCliError are captured references resolved
-// at init time, so they're callable synchronously here.
-process.on("exit", (code) => {
-  if (!finalized) {
-    _trackCommandResult?.({
-      command,
-      success: code === 0 && commandSucceededForTelemetry(),
-      exitCode: code,
-      durationMs: Date.now() - commandStart,
-      runId,
-    });
-  }
-  // Unconditional: this is the exit-time delivery for every command (gating it on `finalized`
-  // was the 0.7.65 render_complete loss). Empty queue is a no-op; uuids make re-sends idempotent.
-  _flushSync?.();
-});
-
-// Report a CLI error event to telemetry. Extracted from the process-error
-// handlers so their bodies stay simple linear branches
-// scoring — arrow handlers with inline telemetry calls tip past threshold).
-function emitCliErrorEvent(kind: "uncaught_exception" | "unhandled_rejection", error: Error): void {
-  _trackCliError?.({
-    error_name: error.name,
-    error_message: error.message,
-    stack_trace: error.stack,
-    command,
-    kind,
-  });
-}
-
-// Handle a post-artifact-validated throw: record the diagnostic, emit the
-// telemetry event, but do NOT mark the run as failed. Field signals:
-//   ts=1784169760, ts=1784171150, ts=1784172467 (all win32/x64, CLI 0.7.58,
-//   ffmpeg=no, 1080x1920, valid MP4s on disk).
-// The render is valid — a worker teardown / browser shutdown / stray
-// subprocess stream error after `renderSucceeded` was set must not flip
-// exit code or telemetry success to failure.
-function reportPostRenderTerminationEvent(
-  label: "uncaughtException" | "unhandledRejection",
-  kind: "uncaught_exception" | "unhandled_rejection",
-  error: Error,
-): void {
-  process.stderr.write(
-    `  [hyperframes] Post-render ${label} (render already succeeded): ${error.message}\n`,
-  );
-  emitCliErrorEvent(kind, error);
+// Handle a post-artifact-validated throw: record the diagnostic, but do NOT
+// mark the run as failed. The render is valid — a worker teardown / browser
+// shutdown / stray subprocess stream error after `renderSucceeded` was set
+// must not flip the exit code to failure.
+function reportPostRenderTerminationEvent(label: "uncaughtException" | "unhandledRejection"): void {
+  process.stderr.write(`  [hyperframes] Post-render ${label} (render already succeeded)\n`);
 }
 
 // Terminate the process after a post-artifact-validated throw. Wraps
-// report + flush + exit(0) so the caller arrow handler doesn't accumulate
-// optional-chain branches on the arrow tips past
-// threshold otherwise).
-function exitAfterPostRenderTermination(
-  label: "uncaughtException" | "unhandledRejection",
-  kind: "uncaught_exception" | "unhandled_rejection",
-  error: Error,
-): never {
-  reportPostRenderTerminationEvent(label, kind, error);
-  _flushSync?.();
+// report + exit(0) so the caller arrow handler stays linear.
+function exitAfterPostRenderTermination(label: "uncaughtException" | "unhandledRejection"): never {
+  reportPostRenderTerminationEvent(label);
   process.exit(0);
 }
 
@@ -406,35 +253,16 @@ function exitAfterPostRenderTermination(
 // soon as it has what it needs. Exit cleanly, but only score the run as a
 // failure when the pipe died BEFORE the render artifact was validated:
 // unconditionally setting `commandFailed = true` here marked every piped
-// successful render as success:false (0.7.65–0.7.90). Delivery of anything
-// still queued (render_complete's eager flush() dies with the process) is
-// owned by the unconditional flushSync() in the `exit` handler below.
+// successful render as a failure (0.7.65–0.7.90).
 function handleStreamEpipe(): never {
   if (!isRenderSucceeded()) commandFailed = true;
   process.exit(0);
 }
 
-// Success gate for the cli_command_result telemetry field. `commandFailed`
-// can be set by pre-artifact noise — a stray unhandledRejection mid-render,
-// or an EPIPE that fires before validation on a run that still completes.
-// Once the render artifact has been validated (`isRenderSucceeded()`), that
-// earlier noise must not score the run as a failure: the run delivered.
-// Genuine failures keep a non-zero exit code and are caught by the
-// `exitCode === 0 &&` half of the expression at both call sites.
-function commandSucceededForTelemetry(): boolean {
-  return !commandFailed || isRenderSucceeded();
-}
-
 // Terminate the process after a genuine CLI failure — mark commandFailed,
-// emit telemetry, flush, exit(1). Same rationale as above: keeps the arrow
-// handler linear and easy to follow.
-function exitAfterCliFailure(
-  kind: "uncaught_exception" | "unhandled_rejection",
-  error: Error,
-): never {
+// exit(1). Same rationale as above: keeps the arrow handler linear.
+function exitAfterCliFailure(): never {
   commandFailed = true;
-  emitCliErrorEvent(kind, error);
-  _flushSync?.();
   process.exit(1);
 }
 
@@ -447,27 +275,26 @@ process.on("uncaughtException", (error) => {
   // sets `renderSucceeded` right after the producer resolves and the
   // artifact is committed.
   if (isRenderSucceeded()) {
-    exitAfterPostRenderTermination("uncaughtException", "uncaught_exception", error);
+    exitAfterPostRenderTermination("uncaughtException");
   }
-  exitAfterCliFailure("uncaught_exception", error);
+  exitAfterCliFailure();
 });
 
 // unhandledRejection does not call process.exit() — Node may continue
 // running if the rejection is non-fatal (e.g. a fire-and-forget promise).
-// The exit handler above will still fire with the real exit code.
 process.on("unhandledRejection", (reason) => {
   const error = reason instanceof Error ? reason : new Error(String(reason));
+  void error;
   // Same rationale as the uncaughtException branch above: a stray promise
   // rejection during post-artifact-validated cleanup must not mark a valid
-  // render as failed. `commandFailed` gates the success:true telemetry
-  // field — keep it false when the render actually succeeded.
+  // render as failed. `commandFailed` only scores the exit code — keep it
+  // false when the render actually succeeded.
   if (isRenderSucceeded()) {
-    reportPostRenderTerminationEvent("unhandledRejection", "unhandled_rejection", error);
+    reportPostRenderTerminationEvent("unhandledRejection");
     return;
   }
   commandFailed = true;
   process.exitCode = 1;
-  emitCliErrorEvent("unhandled_rejection", error);
 });
 
 // Lazy-load help renderer — avoids allocating help data on non-help invocations
@@ -491,7 +318,7 @@ function commandResultForError(error: unknown): CommandResult {
 }
 
 // Root-only command boundary; keeping every result path here prevents modules
-// from bypassing output, telemetry, or finalizers.
+// from bypassing output or finalizers.
 async function executeCli(): Promise<void> {
   let result: CommandResult = { exitCode: 0, kind: "success" };
   try {
@@ -501,7 +328,7 @@ async function executeCli(): Promise<void> {
     result = commandResultForError(error);
     if (!(error instanceof CliResultSignal)) {
       commandFailed = true;
-      await reportCommandFailure(command, error);
+      void command;
       const typed = error instanceof CliUsageError || error instanceof CliRuntimeError;
       if (error instanceof CliUsageError && !error.result.presented) await showRequestedUsage();
       if (!typed || !error.result.presented) {

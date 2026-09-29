@@ -361,7 +361,7 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
       // Both attempts ran at the same worker count (transient retry doesn't halve).
       expect(attempts.map((a) => a.workers)).toEqual([1, 1]);
       // The retry attempt is tagged `transient-retry` (vs the worker-halving
-      // `retry`) so it's countable for telemetry (dashboard 1783183).
+      // `retry`) so it's countable in diagnostics.
       expect(attempts.map((a) => a.reason)).toEqual(["initial", "transient-retry"]);
       expect(log.warn).toHaveBeenCalledWith(
         expect.stringContaining("Transient browser failure"),
@@ -3684,7 +3684,7 @@ describe("resolveObservedCaptureMode", () => {
   });
 
   // The case the old code got right, kept so a future simplification back to
-  // a bare boolean fails here rather than in production telemetry.
+  // a bare boolean fails here rather than in production diagnostics.
   it("reports screenshot whenever screenshot was forced, linux included", () => {
     expect(resolveObservedCaptureMode(true, "linux")).toBe("screenshot");
     expect(resolveObservedCaptureMode(true, "win32")).toBe("screenshot");
@@ -3695,7 +3695,7 @@ describe("resolveObservedCaptureMode", () => {
 // enough. `updateCaptureObservability` fires at 23 sites, and the post-compile
 // `{ forceScreenshot }` patch runs on EVERY render — the old closure re-derived
 // from `forceScreenshot` alone and put `beginframe` back before capture began,
-// so both telemetry emits read the reverted value. These go through the closure
+// so both diagnostics emits read the reverted value. These go through the closure
 // rather than the helper, which is the only way to catch that.
 describe("createCaptureObservabilityUpdater", () => {
   const seed = (platform: NodeJS.Platform, forceScreenshot: boolean) => {

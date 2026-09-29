@@ -1,15 +1,7 @@
 {
   "name": "@hyperframes/parsers",
   "version": "0.8.81",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/heygen-com/hyperframes",
-    "directory": "packages/parsers"
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
+  "private": true,
   "type": "module",
   "sideEffects": false,
   "main": "./src/index.ts",
@@ -137,100 +129,11 @@
       "types": "./src/compositionDuration.ts"
     }
   },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": {
-        "import": "./dist/index.js",
-        "types": "./dist/index.d.ts"
-      },
-      "./package.json": "./package.json",
-      "./gsap-parser": {
-        "import": "./dist/gsapParserExports.js",
-        "types": "./dist/gsapParserExports.d.ts"
-      },
-      "./gsap-parser-acorn": {
-        "import": "./dist/gsapParserAcorn.js",
-        "types": "./dist/gsapParserAcorn.d.ts"
-      },
-      "./gsap-writer-acorn": {
-        "import": "./dist/gsapWriterAcorn.js",
-        "types": "./dist/gsapWriterAcorn.d.ts"
-      },
-      "./gsap-constants": {
-        "import": "./dist/gsapConstants.js",
-        "types": "./dist/gsapConstants.d.ts"
-      },
-      "./spring-ease": {
-        "import": "./dist/springEase.js",
-        "types": "./dist/springEase.d.ts"
-      },
-      "./hf-ids": {
-        "import": "./dist/hfIds.js",
-        "types": "./dist/hfIds.d.ts"
-      },
-      "./gsap-parser-recast": {
-        "import": "./dist/gsapParser.js",
-        "types": "./dist/gsapParser.d.ts"
-      },
-      "./slideshow": {
-        "import": "./dist/slideshow.js",
-        "types": "./dist/slideshow.d.ts"
-      },
-      "./asset-paths": {
-        "import": "./dist/assets.js",
-        "types": "./dist/assets.d.ts"
-      },
-      "./composition": {
-        "import": "./dist/composition.js",
-        "types": "./dist/composition.d.ts"
-      },
-      "./composition-contract": {
-        "import": "./dist/compositionContract.js",
-        "types": "./dist/compositionContract.d.ts"
-      },
-      "./media-duration": {
-        "import": "./dist/mediaDuration.js",
-        "types": "./dist/mediaDuration.d.ts"
-      },
-      "./media-duration-fixtures": {
-        "import": "./dist/mediaDurationFixtures.js",
-        "types": "./dist/mediaDurationFixtures.d.ts"
-      },
-      "./top-level-elements": {
-        "import": "./dist/topLevelElements.js",
-        "types": "./dist/topLevelElements.d.ts"
-      },
-      "./color-grading-contract": {
-        "import": "./dist/colorGradingContract.js",
-        "types": "./dist/colorGradingContract.d.ts"
-      },
-      "./sub-composition-validity": {
-        "import": "./dist/subCompositionValidity.js",
-        "types": "./dist/subCompositionValidity.d.ts"
-      },
-      "./ff-binaries": {
-        "import": "./dist/ffBinaries.js",
-        "types": "./dist/ffBinaries.d.ts"
-      },
-      "./asset-resolution": {
-        "import": "./dist/assetResolution.js",
-        "types": "./dist/assetResolution.d.ts"
-      },
-      "./composition-duration": {
-        "import": "./dist/compositionDuration.js",
-        "types": "./dist/compositionDuration.d.ts"
-      }
-    },
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts"
-  },
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "echo skip"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@babel/parser": "^7.27.0",

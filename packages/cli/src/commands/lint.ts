@@ -12,9 +12,7 @@ export const examples: Example[] = [
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { lintProject } from "../utils/lintProject.js";
 import { resolveProject } from "../utils/project.js";
-import { trackLintRun } from "../telemetry/lintRun.js";
-import { getRunId } from "../telemetry/runId.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 
 export default defineCommand({
   meta: {
@@ -44,16 +42,10 @@ export default defineCommand({
     // `hyperframes lint --json | ...` on Windows silently loses the entire JSON
     // payload written just above the exit. Letting run() return drains stdout
     // first, then Node exits with the set code — the pattern the other commands
-    // (publish/transcribe/upgrade/play/present) already use.
+    // (publish/transcribe/play/present) already use.
     try {
       const project = resolveProject(args.dir);
-      const startedAt = Date.now();
       const lintResult = await lintProject(project.dir);
-      trackLintRun(project.dir, lintResult, {
-        command: "lint",
-        durationMs: Date.now() - startedAt,
-        ...(getRunId() !== undefined ? { runId: getRunId() } : {}),
-      });
 
       if (args.json) {
         const allFindings = lintResult.results.flatMap((r) => r.result.findings);

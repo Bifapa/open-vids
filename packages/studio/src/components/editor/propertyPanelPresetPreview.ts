@@ -7,7 +7,6 @@ export function presetPreviewHandlers({
   resolve,
   onPreview,
   onCommit,
-  onTrack,
 }: {
   id: string;
   label: string;
@@ -17,7 +16,6 @@ export function presetPreviewHandlers({
     options?: ColorGradingPreviewOptions,
   ) => void;
   onCommit: (grading: NormalizedHfColorGrading) => void;
-  onTrack: (label: string) => void;
 }) {
   return {
     title: `Preview ${label}`,
@@ -29,7 +27,6 @@ export function presetPreviewHandlers({
     onFocus: () => onPreview(resolve()),
     onBlur: () => onPreview(null),
     onClick: () => {
-      onTrack(label);
       onCommit(resolve());
     },
   };

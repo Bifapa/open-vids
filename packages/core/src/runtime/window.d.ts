@@ -48,7 +48,7 @@ declare global {
       onSwallowed?: (label: string, err: unknown) => void;
       seek?: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
       duration?: number;
-      /** How a length that no timeline supplied was found: the render telemetry reads this. */
+      /** How a length that no timeline supplied was found: the render path reads this. */
       durationSource?: {
         source: "authored" | "derived" | "unresolved";
         seconds: number | null;

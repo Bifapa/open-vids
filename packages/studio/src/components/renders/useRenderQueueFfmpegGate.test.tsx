@@ -17,9 +17,8 @@ vi.mock("./useFfmpegStatus", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./useFfmpegStatus")>()),
   useFfmpegStatus: () => ({ status: ffmpegStatus, checking: false, recheck: vi.fn() }),
 }));
-// Only the analytics call is stubbed. The identity and policy modules read
+// Only the ffmpeg-status call is stubbed. The identity and policy modules read
 // localStorage, which happy-dom provides, so faking them would only be faking.
-vi.mock("../../telemetry/events", () => ({ trackStudioRenderStart: vi.fn() }));
 
 const { useRenderQueue } = await import("./useRenderQueue");
 

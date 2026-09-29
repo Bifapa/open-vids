@@ -26,4 +26,4 @@ Make sure you're editing the `index.html` in the project directory. The preview 
 
 ## Render looks different from preview
 
-Use `--docker` mode for deterministic output. Local renders may differ due to font availability and Chrome version.
+Renders may differ from preview due to font availability and Chrome version. Use `npx hyperframes doctor` to check the local toolchain.

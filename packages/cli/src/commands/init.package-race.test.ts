@@ -9,7 +9,6 @@ vi.mock("node:fs", async (importOriginal) => {
   const original = await importOriginal<typeof fs>();
   return { ...original, existsSync: vi.fn(original.existsSync) };
 });
-vi.mock("../telemetry/events.js", () => ({ trackInitTemplate: vi.fn() }));
 
 afterEach(() => {
   vi.restoreAllMocks();

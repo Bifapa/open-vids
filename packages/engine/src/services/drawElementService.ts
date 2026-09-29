@@ -138,7 +138,7 @@ export interface GpuBackendInfo {
    * Renderer: Apple M4 Pro, ...)", "ANGLE (NVIDIA, GeForce RTX 3080 Direct3D11
    * vs_5_0 ps_5_0, D3D11)"), or null when WebGL / the debug extension is
    * unavailable. LOCAL USE ONLY — this is unbounded driver-supplied text and
-   * must not be shipped to telemetry verbatim; send
+   * must not be shipped to diagnostics verbatim; send
    * {@link classifyGpuRenderer}'s bucket instead.
    */
   renderer: string | null;
@@ -150,7 +150,7 @@ export interface GpuBackendInfo {
  *
  * drawElement failure modes proved compositor-backend-specific during the
  * macOS rollout, so the win32/D3D11 cohort needs damage attributable to an
- * ANGLE backend + GPU vendor. The raw string can't do that job in telemetry:
+ * ANGLE backend + GPU vendor. The raw string can't do that job in diagnostics:
  * it is unbounded, driver-authored, carries specific GPU model names, and is
  * joined across parallel sessions — high cardinality by construction. The
  * bucket keeps the analytic signal (which backend, which vendor) and drops
@@ -189,7 +189,7 @@ export function classifyGpuRenderer(renderer: string | null | undefined): string
 
 /**
  * Detect the page's WebGL backend: SwiftShader vs a real GPU, plus the raw
- * renderer string for telemetry.
+ * renderer string for diagnostics.
  *
  * `isSwiftShader` is true inside Docker headless-shell with
  * --use-angle=swiftshader. Call once after window.__hf is ready; cache the

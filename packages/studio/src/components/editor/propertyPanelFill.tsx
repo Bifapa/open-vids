@@ -18,7 +18,6 @@ import {
   SliderControl,
 } from "./propertyPanelPrimitives";
 import { ColorField } from "./propertyPanelColor";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 /* ------------------------------------------------------------------ */
 /*  Asset path helpers                                                 */
@@ -90,7 +89,6 @@ export function ImageFillField({
   onCommit: (nextValue: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
-  const track = useTrackDesignInput();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -109,7 +107,6 @@ export function ImageFillField({
       const uploaded = await onImportAssets(files);
       const nextImage = uploaded.find((a) => IMAGE_EXT.test(a));
       if (nextImage) {
-        track("button", "Upload image");
         onCommit(`url("${toProjectRootAssetPath(nextImage)}")`);
       }
     } catch {
@@ -172,7 +169,6 @@ export function ImageFillField({
                 disabled={disabled}
                 onChange={(e) => {
                   const next = e.target.value;
-                  track("select", "Project asset");
                   if (!next) {
                     onCommit("none");
                     return;
@@ -222,7 +218,6 @@ export function GradientField({
   disabled?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
-  const track = useTrackDesignInput();
   const previewRef = useRef<HTMLDivElement | null>(null);
   const parsed = parseGradient(value) ?? buildDefaultGradientModel(fallbackColor);
 
@@ -244,13 +239,11 @@ export function GradientField({
               ? Math.min(100, (parsed.stops.at(-1)?.position ?? 90) + 10)
               : 100,
           );
-    track("button", "Add gradient stop");
     commit(nextGradient);
   };
 
   const removeStop = (index: number) => {
     if (parsed.stops.length <= 2) return;
-    track("button", `Remove gradient stop ${index + 1}`);
     commit({ ...parsed, stops: parsed.stops.filter((_, i) => i !== index) });
   };
 
@@ -337,7 +330,6 @@ export function GradientField({
               checked={parsed.repeating}
               disabled={disabled}
               onChange={(e) => {
-                track("toggle", "Repeat gradient");
                 patch({ repeating: e.target.checked });
               }}
               className="h-4 w-4 rounded-sm border-neutral-700 bg-neutral-950 text-panel-accent focus:ring-panel-accent"
@@ -348,7 +340,6 @@ export function GradientField({
             type="button"
             disabled={disabled}
             onClick={() => {
-              track("button", "Reverse gradient");
               commit({
                 ...parsed,
                 stops: [...parsed.stops].reverse().map((stop) => ({

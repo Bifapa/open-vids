@@ -4,7 +4,7 @@ Reference for generating and editing HyperFrames HTML compositions. This is your
 
 **New to HyperFrames?** Start with the [quickstart template](./quickstart-template.html) — a copy-paste composition with inline comments explaining every required piece. See [common mistakes](./common-mistakes.md) for pitfalls that break compositions.
 
-For frame adapters and deterministic frame rendering direction, see the [frame adapters](https://hyperframes.heygen.com/concepts/frame-adapters) and [determinism](https://hyperframes.heygen.com/concepts/determinism) concept docs.
+For frame adapters and deterministic frame rendering direction, see the frame-adapter and determinism sources in this repo (`packages/core/src`).
 
 Producer-canonical parity note:
 

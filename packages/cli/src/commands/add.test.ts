@@ -1,7 +1,7 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
 import { lintHyperframeHtml } from "@hyperframes/lint";
 import type { RunAddResult } from "./add.js";
@@ -15,12 +15,6 @@ import {
   runAdd,
   tagAddJson,
 } from "./add.js";
-import { trackRegistryItemAdded } from "../telemetry/events.js";
-
-// Assert the emitted payload rather than the transport: `shouldTrack()` is
-// already false under test (dev mode / no PostHog key), so a real call would
-// be indistinguishable from no call at all.
-vi.mock("../telemetry/events.js", () => ({ trackRegistryItemAdded: vi.fn() }));
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -162,41 +156,37 @@ const ITEM_BY_NAME: Record<string, RegistryItem> = {
 
 const DEP_BLOCK_HTML = `<div data-composition-variables='[{ "id": "maths", "type": "boolean", "label": "Maths", "default": false }]'></div>`;
 
+import { ITEM_TYPE_DIRS } from "@hyperframes/core";
+
 const FILE_BODIES: Record<string, string> = {
   "dep-block.html": DEP_BLOCK_HTML,
   "deprecated-block.html": `<div data-composition-id="deprecated-block"></div>`,
   "my-block.html": `<div data-composition-id="my-block-root" data-width="1080" data-height="1350"></div>`,
 };
 
-function mockFetch(): void {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: string | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.endsWith("/registry.json")) {
-        return new Response(JSON.stringify(MANIFEST), { status: 200 });
-      }
-      const m = /\/(examples|blocks|components)\/([^/]+)\/registry-item\.json$/.exec(url);
-      if (m) {
-        const item = ITEM_BY_NAME[m[2]!];
-        if (item) return new Response(JSON.stringify(item), { status: 200 });
-      }
-      // File fetch — match `/<type-dir>/<name>/<rest>` and serve synthetic content.
-      const f = /\/(examples|blocks|components)\/([^/]+)\/(.+)$/.exec(url);
-      if (f) {
-        return new Response(FILE_BODIES[f[3]!] ?? `/* ${f[3]} */\n`, { status: 200 });
-      }
-      return new Response("not found", { status: 404 });
-    }),
-  );
-}
-
 function tmp(): string {
   return mkdtempSync(join(tmpdir(), "hf-add-test-"));
 }
 
-function uniqueBase(): string {
-  return `https://test.invalid/${crypto.randomUUID()}`;
+function writeRegistryTree(dir: string): string {
+  const root = join(dir, "test-registry");
+  const writeJson = (rel: string, value: unknown): void => {
+    const path = join(root, rel);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(value), "utf-8");
+  };
+  writeJson("registry.json", MANIFEST);
+  for (const [name, item] of Object.entries(ITEM_BY_NAME)) {
+    const dirName = ITEM_TYPE_DIRS[item.type];
+    writeJson(`${dirName}/${name}/registry-item.json`, item);
+    for (const file of item.files ?? []) {
+      const body = FILE_BODIES[file.path] ?? `/* ${file.path} */\n`;
+      const path = join(root, dirName, name, file.path);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, body, "utf-8");
+    }
+  }
+  return root;
 }
 
 const DEFAULT_TEST_PATHS = {
@@ -212,8 +202,7 @@ function writeRegistryConfig(
   writeFileSync(
     join(dir, "hyperframes.json"),
     JSON.stringify({
-      $schema: "https://hyperframes.heygen.com/schema/hyperframes.json",
-      registry: uniqueBase(),
+      registryDir: writeRegistryTree(dir),
       paths,
     }),
     "utf-8",
@@ -295,18 +284,10 @@ describe("add command pure helpers", () => {
 });
 
 describe("runAdd (integration, mocked registry)", () => {
-  beforeEach(() => {
-    vi.mocked(trackRegistryItemAdded).mockClear();
-    mockFetch();
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it("installs a block into the default compositions/ path and returns the snippet", async () => {
     const dir = tmp();
     try {
-      // Write hyperframes.json so runAdd uses our unique baseUrl.
+      // Write hyperframes.json so runAdd uses our fixture registry tree.
       writeRegistryConfig(dir);
 
       const result = await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
@@ -362,9 +343,6 @@ describe("runAdd (integration, mocked registry)", () => {
         code: "incompatible-cli",
       });
       expect(existsSync(join(dir, "compositions/future-block.html"))).toBe(false);
-      // Nothing was written, so nothing may be counted: an install count that
-      // also counts refused installs is not a download count.
-      expect(trackRegistryItemAdded).not.toHaveBeenCalled();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -434,22 +412,6 @@ describe("runAdd (integration, mocked registry)", () => {
       writeRegistryConfig(dir);
 
       await runAdd({ name: "dep-block", projectDir: dir, skipClipboard: true });
-
-      // A dependency dragged in behind the request must not read as a vote for
-      // itself, or a popular dependency outranks everything that depends on it.
-      expect(trackRegistryItemAdded).toHaveBeenCalledTimes(2);
-      expect(trackRegistryItemAdded).toHaveBeenCalledWith({
-        item: "base-component",
-        itemType: "hyperframes:component",
-        requested: false,
-        source: "cli",
-      });
-      expect(trackRegistryItemAdded).toHaveBeenCalledWith({
-        item: "dep-block",
-        itemType: "hyperframes:block",
-        requested: true,
-        source: "cli",
-      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -523,45 +485,32 @@ describe("variable values in the snippet", () => {
 });
 
 describe("describeInstallFailure", () => {
-  it("explains a bare transport failure instead of echoing it", () => {
-    // What the user actually sees after copying a command off the catalog page.
-    // Item FILES are not cached, so a blip surfaces as node's `fetch failed`
-    // with no URL and no cause, and reads like the command was wrong.
+  it("names the failing file read instead of echoing it", () => {
     const message = describeInstallFailure(new Error("fetch failed"));
 
-    expect(message).toContain("could not download the item's files");
-    expect(message).toContain("rather than a bad command");
-    expect(message).toContain("HTTPS_PROXY");
+    expect(message).toContain("could not read the item's files");
+    expect(message).toContain("fetch failed");
   });
 
-  it("names the project's own registry when it is not the public one", () => {
-    // The reported failure: hyperframes.json pointed at a private host with a
-    // self-signed certificate. Telling that reader to check their connection
-    // sends them to debug the one thing that was working.
-    const message = describeInstallFailure(
-      new Error("fetch failed"),
-      "https://private.example/registry",
-    );
+  it("names the project's own registry directory when one is set", () => {
+    const message = describeInstallFailure(new Error("fetch failed"), "/private/registry");
 
-    expect(message).toContain("https://private.example/registry");
-    expect(message).toContain("not the public registry");
+    expect(message).toContain("/private/registry");
+    expect(message).toContain("not the bundled registry");
   });
 
-  it("stays quiet about the registry when it is the default one", () => {
-    const message = describeInstallFailure(
-      new Error("fetch failed"),
-      "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry",
-    );
+  it("stays quiet about the registry when none is set", () => {
+    const message = describeInstallFailure(new Error("fetch failed"));
 
-    expect(message).not.toContain("not the public registry");
+    expect(message).not.toContain("not the bundled registry");
   });
 
-  it("leaves a non-transport failure exactly as it was", () => {
-    // An unsafe target or a malformed item is the caller's problem to read; a
-    // connectivity lecture there would send them to fix the wrong thing.
+  it("wraps any failure with the install context", () => {
     const message = describeInstallFailure(new Error('Unsafe target "../x"'));
 
-    expect(message).toBe('Install failed: Unsafe target "../x"');
+    expect(message).toBe(
+      'Install failed: could not read the item\'s files.\n  Unsafe target "../x"',
+    );
   });
 });
 

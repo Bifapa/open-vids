@@ -22,21 +22,12 @@ import {
 } from "@hyperframes/studio-server";
 import { runCommand } from "citty";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
 import { historyDeps, withOwner } from "../utils/historyOwner.js";
 import historyCommand from "./history.js";
 
 const pause = (ms: number) => new Promise((settle) => setTimeout(settle, ms));
-
-const tracked = vi.hoisted(() => [] as Array<{ action: string; via: string }>);
-vi.mock("../telemetry/events.js", () => ({
-  trackHistoryAction: (props: { action: string; via: string }) => tracked.push(props),
-}));
-
-afterEach(() => {
-  tracked.length = 0;
-});
 
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -162,10 +153,6 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     const undo = await hf("undo", "--who", "claude");
     expect(undo.code, undo.err).toBe(0);
     expect(files()).toEqual(["A", "N2"]);
-    expect(tracked.map((event) => event.via)).toContain(mode);
-    expect(tracked.map((event) => event.action)).toEqual(
-      expect.arrayContaining(["begin", "end", "list", "undo"]),
-    );
   });
 
   it("a turn left open ends after the idle limit: a person's later edit stays theirs through undo of the turn", async () => {
@@ -427,8 +414,6 @@ describe("hyperframes history, one owner", () => {
         ...process.env,
         HOME: home,
         USERPROFILE: home,
-        HYPERFRAMES_SKIP_UPDATE_CHECK: "1",
-        HYPERFRAMES_NO_TELEMETRY: "1",
       },
     });
     const exited = new Promise<number | null>((done) => child.on("exit", done));

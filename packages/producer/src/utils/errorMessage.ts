@@ -2,7 +2,7 @@
  * Normalize an unknown thrown value into a human-readable string.
  *
  * The default `String(error)` pattern produces `[object Object]` when the
- * thrown value is a plain object — masking the real error in telemetry.
+ * thrown value is a plain object — masking the real error in diagnostics.
  * This utility tries, in order:
  *   1. `Error.message`
  *   2. Raw string pass-through

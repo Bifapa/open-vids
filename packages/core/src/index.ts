@@ -279,7 +279,6 @@ export {
   quantizeTimeToFrame,
   type MediaVisualStyleProperty,
 } from "./inline-scripts/parityContract";
-export { redactKnownPaths, redactTelemetryString } from "./telemetryRedaction";
 export { isSafePath, realpath, resolveWithinProject } from "./safePath";
 export { isHyperframesProject, PROJECT_MARKER_FILES } from "./projectRule";
 export type {
@@ -370,22 +369,6 @@ export {
   isBlockItem,
   isComponentItem,
 } from "./registry/index.js";
-
-export {
-  canaryBucket,
-  evaluateCanary,
-  parseCanaryOverride,
-  type CanaryDecision,
-  type CanaryInput,
-  type CanaryReason,
-} from "./canary.js";
-export {
-  CANARIES,
-  canaryEnvVar,
-  findCanary,
-  overdueCanaries,
-  type CanaryDefinition,
-} from "./canaryRegistry.js";
 
 // VFX chain (data-vfx-chain) — defs, chain parse/serialize/normalize
 export {

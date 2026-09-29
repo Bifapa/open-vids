@@ -13,7 +13,7 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { c } from "../ui/colors.js";
-import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
+import { printDeprecationNotice, withMeta } from "../utils/jsonMeta.js";
 import {
   installPageFunctionGuard,
   resolveCliChromeGpuMode,

@@ -8,7 +8,7 @@ export function isDevMode(): boolean {
     return url.pathname.endsWith(".ts");
   } catch {
     // Fail-safe: if URL parsing fails for any reason, assume production.
-    // This ensures telemetry is never accidentally disabled in production builds.
+    // Fail closed so dev-only behavior stays off unless positively detected.
     return false;
   }
 }

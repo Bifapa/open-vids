@@ -5,8 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VolumeControl } from "./VolumeControl";
 
-vi.mock("../../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
-
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 let host: HTMLDivElement;

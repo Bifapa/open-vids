@@ -108,7 +108,7 @@ export function sanitizeSuccessfulExitCode(): void {
   rootExitCodeSanitizer?.();
 }
 
-/** Ask cli.ts to finalize telemetry/output and then terminate the process. */
+/** Ask cli.ts to finalize output and then terminate the process. */
 export function requestCliExit(exitCode = 0): void {
   if (!rootExitRequester) {
     setCommandResult({

@@ -32,8 +32,6 @@ interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
     originalContent: string,
     targetPath: string,
   ) => Promise<CutoverResult>;
-  /** Resolver-shadow tripwire for the reordered targets (telemetry-only, decoupled from cutover). */
-  onReorderShadow?: (targets: string[]) => void;
   /** Resync the SDK session after a server-fallback delete. */
   forceReloadSdkSession?: () => void;
   commitDomEditPatchBatches: CommitDomEditPatchBatches;
@@ -80,7 +78,6 @@ export function useElementLifecycleOps({
   reloadPreview,
   clearDomSelection,
   onTrySdkDelete,
-  onReorderShadow,
   forceReloadSdkSession,
   commitDomEditPatchBatches,
   onElementDeleted,
@@ -250,11 +247,6 @@ export function useElementLifecycleOps({
       return (async () => {
         const releaseZPersists = entries.map((entry) => beginLayerZPersist(entry.element));
         try {
-          // Resolver shadow (telemetry-only, decoupled from cutover): record whether
-          // the SDK resolves each reordered element — the reorderElements op's targets.
-          onReorderShadow?.(
-            entries.map((e) => readHfId(e.element)).filter((id): id is string => id != null),
-          );
           // The default key carries the action kind so two DIFFERENT actions on the
           // same element set (e.g. "bring-forward" then "send-backward" within the
           // coalesce window) never merge into one undo step. Callers that share a
@@ -381,7 +373,7 @@ export function useElementLifecycleOps({
         }
       })();
     },
-    [commitDomEditPatchBatches, onReorderShadow],
+    [commitDomEditPatchBatches],
   );
 
   return {

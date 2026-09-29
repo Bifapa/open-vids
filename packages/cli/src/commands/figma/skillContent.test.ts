@@ -4,44 +4,43 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Semantic pin for the /figma skill's telemetry instructions: the MCP-only
-// phases (motion/shaders/storyboards) have NO CLI touchpoint, so the beacon
-// wording in SKILL.md is the only thing that produces their usage signal. The
-// manifest hash proves the skill changed; this proves a future prompt edit
-// didn't silently drop the beacon slugs or the completion event.
+// Semantic pin for the /figma skill's MCP-only phases: motion, shaders, and
+// storyboards have NO CLI touchpoint, so the SKILL.md phase names are the only
+// thing that routes them. The manifest hash proves the skill changed; this
+// proves a future prompt edit didn't silently drop the phase names.
 const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..", "..");
 const read = (...parts: string[]): string => readFileSync(join(REPO_ROOT, ...parts), "utf8");
 const SKILL_MD = read("skills", "figma", "SKILL.md");
 
-describe("figma SKILL.md telemetry beacons", () => {
-  it("instructs the beacon for every MCP-only phase", () => {
-    expect(SKILL_MD).toContain("figma-motion");
-    expect(SKILL_MD).toContain("figma-shaders");
-    expect(SKILL_MD).toContain("figma-storyboard");
-    expect(SKILL_MD).toContain("hyperframes events");
+describe("figma SKILL.md MCP-only phases", () => {
+  it("documents the connector-assisted motion/shader/storyboard phases", () => {
+    expect(SKILL_MD).toContain("## Motion (Phase 4 — connector-assisted)");
+    expect(SKILL_MD).toContain("## Shaders (Phase 5 — mostly manual)");
+    expect(SKILL_MD).toContain("storyboard");
   });
 
-  it("instructs the completion beacon with an outcome", () => {
-    expect(SKILL_MD).toContain("--event=skill_completed");
-    expect(SKILL_MD).toMatch(/--outcome=success\|error/);
+  it("does not instruct agents to call deleted CLI commands", () => {
+    expect(SKILL_MD).not.toContain("hyperframes events");
+    expect(SKILL_MD).not.toContain("hyperframes upgrade");
+    expect(SKILL_MD).not.toContain("hyperframes telemetry");
   });
 });
 
-// Routing pin: the catalog blurb once said "storyboard sections → animatics",
+// Routing pin: a catalog blurb once said "storyboard sections → animatics",
 // which encodes the frames-as-pictures slideshow the skill's own cardinal rule
 // forbids — a field agent routed by that word and concluded the shipped
 // behavior was the PNG-sequence architecture. These assertions keep the
-// frames-are-states framing on every discovery surface and keep the doctrine
-// in the skill body, so a future sync can't silently reintroduce the old word.
+// frames-are-states framing in the skill surfaces that still exist (the root
+// README table was removed with the upstream cleanup), so a future sync can't
+// silently reintroduce the old word.
 describe("figma storyboard doctrine pins", () => {
-  const CATALOG_SURFACES: Array<[string, string[]]> = [
+  const SKILL_SURFACES: Array<[string, string[]]> = [
     ["skills/figma/SKILL.md", ["skills", "figma", "SKILL.md"]],
-    ["README.md", ["README.md"]],
     ["skills/hyperframes/SKILL.md", ["skills", "hyperframes", "SKILL.md"]],
   ];
 
-  it("every catalog surface says reconstructed motion, never animatics", () => {
-    for (const [label, parts] of CATALOG_SURFACES) {
+  it("every skill surface says reconstructed motion, never animatics", () => {
+    for (const [label, parts] of SKILL_SURFACES) {
       const content = read(...parts);
       expect(content, label).toContain("reconstructed motion");
       expect(content, label).not.toContain("animatics");

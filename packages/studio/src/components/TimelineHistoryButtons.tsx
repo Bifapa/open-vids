@@ -1,6 +1,5 @@
 import { useStudioShellContextOptional } from "../contexts/StudioContext";
 import { RotateCcw, RotateCw } from "../icons/SystemIcons";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import { historyTooltipLabel } from "../utils/studioHelpers";
 import { flatDisabled, flatIdle } from "./timelineToolbarStyles";
 import { Tooltip } from "./ui";
@@ -23,7 +22,6 @@ function HistoryButton({ action, can, label, onClick }: HistoryButtonProps) {
         disabled={!enabled}
         className={enabled ? flatIdle : flatDisabled}
         onClick={() => {
-          trackStudioEvent("toolbar_action", { action });
           void onClick?.();
         }}
       >

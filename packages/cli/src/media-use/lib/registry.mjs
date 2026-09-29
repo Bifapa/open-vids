@@ -129,7 +129,7 @@ export function providerNamesFor(type) {
  *
  * A name declared under two media types must carry the same tier in both. If it
  * didn't, "did this resolve cost credit" would depend on which type happened to
- * serve it, and the telemetry property would mean nothing — so this throws at
+ * serve it, and the cost-tier signal would mean nothing — so this throws at
  * import rather than silently picking one.
  */
 export function buildProviderTierIndex(providerLists) {
@@ -153,7 +153,7 @@ const PROVIDER_TIERS = buildProviderTierIndex(Object.values(REGISTRY));
 /**
  * Cost tier of a provider by name, or undefined for a name the registry doesn't
  * declare. The registry stays the single owner of "does this cost credit", so
- * dashboards and callers never re-derive it from provider-name string matching.
+ * callers never re-derive it from provider-name string matching.
  */
 export function providerTierFor(name) {
   return PROVIDER_TIERS.get(name);

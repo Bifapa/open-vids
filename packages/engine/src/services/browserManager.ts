@@ -244,7 +244,7 @@ function stripBeginFrameFlags(args: string[]): string[] {
  * Domain registration alone is insufficient: BeginFrame control must be
  * enabled at launch and a renderer-ready target must return a real PNG.
  * Every operation shares one short deadline so a wedged CDP call cannot hold
- * a serverless cold start until Puppeteer's much longer protocol timeout.
+ * the caller until Puppeteer's much longer protocol timeout.
  */
 interface BeginFrameProbeResult {
   supported: boolean;
@@ -327,11 +327,11 @@ async function probeBeginFrameSupport(
   try {
     page = await awaitBeforeDeadline(browser.newPage(), deadline, "newPage");
     // `browser.newPage()` resolves before a cold renderer has necessarily
-    // submitted its first surface. Cloud Run exposed this as a false
-    // "unsupported Chromium" result: probing the untouched about:blank
-    // target raced renderer initialization, while the same binary passed
-    // once a real document was ready. Navigate first so this tests protocol
-    // capability rather than target-startup timing.
+    // submitted its first surface: probing the untouched about:blank target
+    // can report a false "unsupported Chromium" because it races renderer
+    // initialization, while the same binary passes once a real document is
+    // ready. Navigate first so this tests protocol capability rather than
+    // target-startup timing.
     await awaitBeforeDeadline(
       page.goto(
         "data:text/html,<style>html,body{margin:0;background:%23173}</style><div>hf-beginframe-probe</div>",
@@ -540,7 +540,7 @@ async function probeAutoBrowserGpuMode(options: {
  * runtime, missing EGL/driver libraries) Chrome silently falls back to
  * software WebGL and the render just runs at CPU speed. Without this check
  * the only trace is a buried `Automatic fallback to software WebGL` browser
- * warning — heygen-com/hyperframes#2967 rendered 19186 frames on CPU while
+ * warning — #2967 (upstream HyperFrames reference) rendered 19186 frames on CPU while
  * `--browser-gpu` was set and nothing said so. The probe result never
  * changes the returned mode; it only makes the fallback loud.
  *

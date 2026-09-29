@@ -144,7 +144,7 @@ npx hyperframes add caption-highlight         # install a specific one
 
 Related: `caption-blend-difference` (tagged `text` / `blend-mode`, not `caption-style`, so it won't appear under the filter above) auto-inverts text against any background via `mix-blend-mode: difference` — useful when the background is busy or unpredictable.
 
-Browse all with previews: [hyperframes.heygen.com/catalog](https://hyperframes.heygen.com/catalog)
+Browse all with previews: `hyperframes catalog --query "<the beat, in plain English>"`
 
 Caption components ship with transparent backgrounds — they're pure overlays. If the underlying video is bright or busy, add a contrast layer (e.g. a semi-transparent dark div) in the host composition beneath the caption sub-composition, not inside the component itself.
 

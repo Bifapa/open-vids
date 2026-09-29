@@ -40,7 +40,7 @@ describe("createRenderPlan", () => {
   // GIF's Netscape frame-delay field is stored in centiseconds, so fps above
   // 30 rounds to visually-indistinguishable delay values. createRenderPlan
   // clamps and flags it so both the CLI console warning (present.ts) and
-  // render telemetry (gif_fps_capped) can report the same decision.
+  // the JSON output (gif_fps_capped) reports the same decision.
   it("caps fps to 30 and flags it for --format gif above the ceiling", () => {
     const plan = createRenderPlan({
       dir: projectDir,
@@ -119,7 +119,6 @@ describe("createRenderPlan", () => {
     const plan = createRenderPlan({ dir: projectDir, resolution: "1080p" });
     expect(plan.outputResolution).toBe("landscape");
     expect(plan.outputResolutionAspectAgnostic).toBe(true);
-    expect(plan.outputResolutionRaw).toBe("1080p");
   });
 
   it("classifies malformed command input as a usage error", () => {
@@ -266,7 +265,7 @@ describe("createRenderPlan", () => {
     expect(plan.authoringSkillSource).toBeUndefined();
   });
 
-  it("preserves a malformed --skill value for telemetry without adopting it as authoringSkill", () => {
+  it("preserves a malformed --skill value without adopting it as authoringSkill", () => {
     writeFileSync(
       join(projectDir, "hyperframes.json"),
       JSON.stringify({ authoringSkill: "product-launch-video" }),

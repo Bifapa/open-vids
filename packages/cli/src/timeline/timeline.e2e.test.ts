@@ -25,7 +25,7 @@ function run(dir: string, ...args: string[]) {
       cwd: dir,
       encoding: "utf8",
       timeout: 30_000,
-      env: { ...process.env, HYPERFRAMES_SKIP_UPDATE_CHECK: "1" },
+      env: { ...process.env },
     },
   );
 }

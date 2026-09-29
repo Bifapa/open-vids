@@ -41,7 +41,7 @@ describe("readChromePids", () => {
   // Chrome answers SystemInfo.getProcessInfo ONLY on the browser target; a
   // page-target session rejects with "is only supported on the browser
   // target". A page session here yields zero samples for the whole render and
-  // the telemetry is silently always-null, so the fake refuses it the way
+  // the diagnostics is silently always-null, so the fake refuses it the way
   // Chrome does.
   function fakeCdp(target: "page" | "browser") {
     let detached = false;

@@ -14,7 +14,7 @@ import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
 import * as clack from "@clack/prompts";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 import { fpsToFfmpegArg } from "@hyperframes/core";
 
 interface BenchmarkConfig {

@@ -42,7 +42,7 @@ interface FrameSourceCacheStats {
 
 interface FrameSourceCache {
   get: (framePath: string) => Promise<string>;
-  /** Exposed for tests + telemetry; reflects current cache occupancy. */
+  /** Exposed for tests + diagnostics; reflects current cache occupancy. */
   stats: () => FrameSourceCacheStats;
 }
 

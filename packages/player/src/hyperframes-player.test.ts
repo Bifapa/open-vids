@@ -697,8 +697,8 @@ describe("HyperframesPlayer adoptedStyleSheets", () => {
 //
 // The observer that catches late-attached `<audio data-start>` from
 // sub-composition activation used to watch `iframe.contentDocument.body`
-// wholesale. That fired on every body-level mutation — analytics scripts,
-// runtime telemetry markers, dev-only overlays — even though only
+// wholesale. That fired on every body-level mutation — tracking scripts,
+// runtime diagnostics markers, dev-only overlays — even though only
 // composition-tree changes can introduce new timed media. The fix is to
 // scope per top-level composition host (see `selectMediaObserverTargets`);
 // these tests verify the player honors that scoping.
@@ -733,7 +733,7 @@ describe("HyperframesPlayer media MutationObserver scoping", () => {
     fakeDoc.body.innerHTML = `
       <div data-composition-id="root-a"></div>
       <div data-composition-id="root-b"></div>
-      <script>// runtime telemetry — body-level, must NOT be observed</script>
+      <script>// runtime diagnostics — body-level, must NOT be observed</script>
     `;
 
     player._observeDynamicMedia?.(fakeDoc);

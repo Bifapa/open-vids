@@ -1,16 +1,8 @@
 {
   "name": "@hyperframes/studio",
   "version": "0.8.81",
+  "private": true,
   "description": "",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/heygen-com/hyperframes",
-    "directory": "packages/studio"
-  },
-  "files": [
-    "src",
-    "dist"
-  ],
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -30,25 +22,6 @@
     "./components.css": "./src/styles/components.css",
     "./styles.css": "./src/styles/studio.css",
     "./package.json": "./package.json"
-  },
-  "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": {
-        "import": "./dist/index.js",
-        "types": "./dist/index.d.ts"
-      },
-      "./tailwind-preset": {
-        "import": "./dist/styles/tailwind-preset.js",
-        "types": "./dist/styles/tailwind-preset.d.ts"
-      },
-      "./theme.css": "./src/styles/theme.css",
-      "./components.css": "./src/styles/components.css",
-      "./styles.css": "./dist/styles.css",
-      "./package.json": "./package.json"
-    },
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts"
   },
   "scripts": {
     "dev": "bun --bun ./node_modules/.bin/vite --host 127.0.0.1",

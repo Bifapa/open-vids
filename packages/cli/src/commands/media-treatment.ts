@@ -27,7 +27,7 @@ import { failCommand } from "../utils/commandResult.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { readOptionalString } from "../utils/pathArgs.js";
 import { resolveProject } from "../utils/project.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 import { analyzeMediaTreatment } from "./media-treatment-analysis.js";
 
 export function getMediaTreatmentCapabilityOverview() {

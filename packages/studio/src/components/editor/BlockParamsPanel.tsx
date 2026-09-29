@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { BlockParam } from "@hyperframes/core/registry";
 import { useFileManagerContextOptional } from "../../contexts/FileManagerContext";
 import { useStudioPlaybackContext } from "../../contexts/StudioContext";
-import { trackBlockParamCommit } from "../../telemetry/events";
 import { serializeStudioFileMutation } from "../../utils/studioFileMutationCoordinator";
 
 interface BlockParamsPanelProps {
@@ -16,7 +15,6 @@ interface BlockParamsPanelProps {
 type CommitState = { tone: "idle" | "saving" | "saved" | "error"; message?: string };
 
 export const BlockParamsPanel = memo(function BlockParamsPanel({
-  blockName,
   blockTitle,
   params,
   compositionPath,
@@ -60,7 +58,6 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
             tone: "error",
             message: `Couldn't find the current value in ${compositionPath} — it may have been edited by hand.`,
           });
-          trackBlockParamCommit({ tone: "error", blockName, key });
           return;
         }
         // The panel maps a param to a bare literal, with no per-occurrence
@@ -75,7 +72,6 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
             tone: "error",
             message: `"${previous}" appears ${matches}× in ${compositionPath} — the panel can't tell which one belongs to this parameter, so it won't risk changing unrelated content. Edit the file directly to disambiguate.`,
           });
-          trackBlockParamCommit({ tone: "error", blockName, key });
           return;
         }
         await fileManager.writeProjectFile(
@@ -85,14 +81,12 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         );
         appliedRef.current[key] = nextValue;
         setCommitState({ tone: "saved" });
-        trackBlockParamCommit({ tone: "saved", blockName, key });
         setRefreshKey((k) => k + 1);
       } catch {
         setCommitState({ tone: "error", message: "Couldn't save the block file. Retry?" });
-        trackBlockParamCommit({ tone: "error", blockName, key });
       }
     },
-    [fileManager, compositionPath, setRefreshKey, blockName],
+    [fileManager, compositionPath, setRefreshKey],
   );
 
   // Commits join the file's queue: two read-modify-writes of one file must not interleave.

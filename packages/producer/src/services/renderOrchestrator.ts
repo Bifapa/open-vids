@@ -54,7 +54,6 @@ import {
   HF_COLOR_GRADING_ATTR,
   HF_VFX_ATTR,
   parseVfxChain,
-  redactTelemetryString,
   toFps,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
@@ -160,6 +159,7 @@ import {
   type SegmentManifest,
 } from "./render/segmentManifest.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { scrubErrorMessage } from "../utils/errorScrub.js";
 import { formatCaptureFrameName } from "../utils/paths.js";
 import { findRenderHdrAutoPromotionTrigger, resolveEffectiveHdrMode } from "./render/hdrMode.js";
 import {
@@ -306,7 +306,7 @@ export interface RenderConfig {
    * without a decimal round-trip — see `fpsToFfmpegArg` in @hyperframes/core.
    *
    * Use `fpsToNumber(config.fps)` at any site that needs a `number` for
-   * arithmetic (frame-index → time, telemetry, frame-interval ms). Decimal
+   * arithmetic (frame-index → time, diagnostics, frame-interval ms). Decimal
    * precision at our scales is more than sufficient.
    */
   fps: Fps;
@@ -454,7 +454,7 @@ export interface RenderPerfSummary {
    * Provenance of the auto worker-sizing decision (undefined when the
    * htmlInCanvas / low-memory pins short-circuited sizing). `boundBy` names
    * the binding constraint; the heap fields are the advisory budget being
-   * validated by fleet telemetry before enforcement — see
+   * validated by fleet diagnostics before enforcement — see
    * `computeWorkerSizing` in @hyperframes/engine.
    */
   workerSizing?: WorkerSizing;
@@ -662,7 +662,7 @@ export interface RenderPerfSummary {
   };
   /**
    * Render-host facts, captured from the orchestrator process. Lets fleet-wide
-   * telemetry correlate render performance with the machine it ran on — most
+   * diagnostics correlate render performance with the machine it ran on — most
    * importantly `cpuCount` vs the top-level `workers` (are we under-/over-
    * subscribing cores?) and `totalMemMb` (does `lowMemoryMode` / single-worker
    * collapse track real memory pressure?). `gpuDisabled` completes the GPU
@@ -701,7 +701,7 @@ export interface CaptureAttemptSummary {
    * `"transient-retry"` is a same-worker-count retry after a transient browser
    * death (Target closed / tab crash); `"retry"` is the worker-halving retry
    * after a recoverable timeout. Distinguished so transient-retry burn is
-   * countable for telemetry (dashboard 1783183).
+   * countable in diagnostics (dashboard 1783183).
    */
   reason: "initial" | "retry" | "transient-retry";
 }
@@ -745,7 +745,7 @@ export class RenderQualityError extends Error {
     super(
       `Render blocked by ${warnings.length} correctness warning${warnings.length === 1 ? "" : "s"}:\n` +
         warnings
-          .map((warning) => `- ${warning.code}: ${redactTelemetryString(warning.message)}`)
+          .map((warning) => `- ${warning.code}: ${scrubErrorMessage(warning.message)}`)
           .join("\n"),
     );
     this.name = "RenderQualityError";
@@ -1018,7 +1018,7 @@ export function fallbackCaptureModeLabel(args: {
  * straight after compile — runs unconditionally on every render. The old body
  * re-derived from `forceScreenshot` alone, so the seeded value was overwritten
  * with `beginframe` again before capture began, and both the success and error
- * telemetry emits read the reverted object. A helper-only test cannot catch
+ * diagnostics emits read the reverted object. A helper-only test cannot catch
  * that: it never round-trips through this closure. Hence the export.
  */
 export function createCaptureObservabilityUpdater(
@@ -1176,7 +1176,7 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
   let initializationRetriesUsed = 0;
   // Set when the *previous* iteration retried after a transient browser death,
   // so the attempt it spawns is tagged `"transient-retry"` (vs the worker-halving
-  // `"retry"`) for telemetry. Reset after each attempt is recorded.
+  // `"retry"`) for diagnostics. Reset after each attempt is recorded.
   let pendingTransientRetry = false;
   const rangeStart = options.frameRangeStart ?? 0;
 
@@ -1488,7 +1488,7 @@ type StreamingGateConfig = Pick<
 /**
  * Decide whether captured frames stream into ffmpeg (bounded scratch) or land
  * on disk as raw RGBA (`frames × w × h × 4` bytes). Every `false` names the
- * gate that fired so the log line and telemetry can attribute disk-path
+ * gate that fired so the log line and diagnostics can attribute disk-path
  * renders. Order matters and mirrors the historical predicate:
  * config → format → duration validity → duration cap → parallel override →
  * worker count.
@@ -1573,7 +1573,7 @@ export function envInt(name: string, fallback: number): number {
 
 /**
  * `scanElementTags`'s per-tag breakdown, capped so a pathological composition
- * with thousands of distinct tag names can't inflate the telemetry payload:
+ * with thousands of distinct tag names can't inflate the diagnostics payload:
  * the top `MAX_REPORTED_ELEMENT_TAGS` tags by count survive as named keys,
  * everything past the cap folds into `other`. `total` is unaffected by the
  * cap — it is the sum of every match, capped or not.
@@ -1766,7 +1766,7 @@ export function scanElementTags(html: string): ElementTagScan {
     vfxHostCount++;
     // A chain the runtime would refuse (bad JSON, unknown type, wrong
     // version) is skipped rather than thrown here: this scan is
-    // observational telemetry, and the runtime already reports the bad
+    // observational diagnostics, and the runtime already reports the bad
     // chain loudly at paint time (interface spec's failure modes).
     try {
       const chain = parseVfxChain(decodeHtmlAttrJson(m[1] ?? m[2] ?? ""));
@@ -2028,13 +2028,13 @@ export async function resolveAdaptersUsed(
   } catch {
     // Probe page evaluate can fail (navigation mid-flight, detached frame,
     // page crash), so fall back to the static-only signal rather than block
-    // the render on a purely observational telemetry probe.
+    // the render on a purely observational diagnostics probe.
     return staticAdapters;
   }
 }
 
 /**
- * Max-merge init telemetry across per-worker capture perf summaries — the
+ * Max-merge init diagnostics across per-worker capture perf summaries — the
  * success-path channel for PARALLEL renders, whose worker console buffers
  * (and so the `[FrameCapture:INIT]` line) only propagate on failure. Max
  * matches summarizeInitObservability's own multi-session semantics: keep the
@@ -2151,7 +2151,7 @@ export function shouldPreferSingleWorkerDrawElement(args: {
    * Comp routes to the layered-composite / page-side-compositing paths
    * (HDR content or shader transitions) — those force screenshots and never
    * run drawElement or streaming, so an inversion would only mislabel
-   * telemetry and keep the probe session alive through the heaviest stage.
+   * diagnostics and keep the probe session alive through the heaviest stage.
    */
   layeredOrEffectRoute: boolean;
   /** deviceScaleFactor > 1 — the engine's supersampling gate blocks DE. */
@@ -2582,7 +2582,7 @@ export async function closeOrphanedProbeForRetry(
  * default. One case remains that this cannot see: the engine's concrete
  * software-GPU clamp can still move a Linux headless-shell render to
  * screenshot. Those renders are inside the cohort the default was measured
- * on, since the telemetry label uses the looser predicate.
+ * on, since the diagnostics label uses the looser predicate.
  */
 export function resolveParallelCaptureMode(args: {
   platform: NodeJS.Platform;
@@ -2624,7 +2624,7 @@ export function isCaptureParallelStreamRouterEnabled(
  * Whether this render distributes frames interleaved across its workers. The
  * two routers set their flags; `HF_DE_PARALLEL_STREAM=true` is the manual
  * opt-in the streaming stage also honours on its own. Folding all three into
- * the plan is what keeps the plan, and so the retry target and telemetry, in
+ * the plan is what keeps the plan, and so the retry target and diagnostics, in
  * agreement with the distribution the stage actually picks: before this, an
  * env-opt-in render below the DE router's frame floor carried
  * `forceParallelStream: false`, so its retry kept N workers, which the env
@@ -2801,14 +2801,14 @@ export function extractStandaloneEntryFromIndex(
 }
 
 /**
- * Telemetry fields a drawElement self-verify failure contributes to the
+ * Diagnostics fields a drawElement self-verify failure contributes to the
  * fallback record. Shared by the streaming and parallel-disk verify catches
  * so the `verifyDetails` → `de_fallback_*` mapping lives in one place — a new
  * field is added once, not once per capture path. `kind` is read structurally
  * off the error (never from message text), so a reworded/translated/
  * cross-module-serialized error can't flip "blank" into "psnr".
  */
-function deVerifyFallbackTelemetry(err: unknown): {
+function deVerifyFallbackDiagnostics(err: unknown): {
   reason: "psnr" | "blank";
   failedDb?: number;
   frameIndex?: number;
@@ -3127,13 +3127,13 @@ async function executeRenderPipeline(input: {
     // via the explicit `forceScreenshot` parameter rather than reading
     // `cfg.forceScreenshot` directly.
     let captureForceScreenshot = compileResult.forceScreenshot;
-    // drawElement release telemetry: why default DE disengaged (if it did),
+    // drawElement release diagnostics: why default DE disengaged (if it did),
     // whether self-verify fell back, and the drain-side counters.
     const deCompileGate = compileResult.deCompileGate;
     // Seed with the CONFIG-TIME refusal, if there was one. The clamp further
     // down only runs `if (cfg.useDrawElement && ...)`, so a render that never
     // became a drawElement candidate at all could never acquire a reason —
-    // it reached telemetry with every DE field empty and landed in the
+    // it reached diagnostics with every DE field empty and landed in the
     // dashboard's `other` bucket (56,507 renders / 14d, second-largest bar on
     // "Why not drawElement", explaining nothing). Re-derived from the same
     // inputs `resolveConfig` used, so it cannot disagree with the decision.
@@ -3171,7 +3171,7 @@ async function executeRenderPipeline(input: {
     let deFallbackReason: string | undefined;
     // Structured detail behind deFallbackReason's "blank"/"psnr" bucket — the
     // failing dB and frame index otherwise only exist as text inside the
-    // thrown error's message, unavailable to telemetry. Rounded once here
+    // thrown error's message, unavailable to diagnostics. Rounded once here
     // (roundDb) so both downstream consumers — the render_complete
     // perfSummary path and the crash-survival RenderCaptureObservability
     // mirror — report the identical dB, not two different precisions for
@@ -3196,7 +3196,7 @@ async function executeRenderPipeline(input: {
     // shape (probe Chrome + a throwaway calibration Chrome + N capture
     // workers) thrashes — concurrent Chrome instances drive memory pressure
     // that slows every CDP call and spikes V8 GC, surfacing as the slow/stuck
-    // renders in heygen-com/hyperframes#1218 / #1219. Collapse to the cheapest
+    // renders in #1218 / #1219 (upstream HyperFrames reference). Collapse to the cheapest
     // shape: skip auto-worker calibration (the gate below), pin to a single
     // worker (resolved below), and prefer screenshot capture over BeginFrame
     // (which avoids the BeginFrame protocol-timeout → relaunch churn on slow
@@ -3376,7 +3376,7 @@ async function executeRenderPipeline(input: {
     });
     if (failureToEnforce) throw failureToEnforce;
     // Gate AFTER the checkpoint so a coverage-failed render still emits
-    // the observability row (partial telemetry is still worth having).
+    // the observability row (partial diagnostics is still worth having).
     // `assertVideoFrameCoverage` no-ops on an empty report list AND on a
     // null threshold, so the gate is inert for no-video + opted-out
     // renders alike.
@@ -3499,12 +3499,12 @@ async function executeRenderPipeline(input: {
     });
     // Apply the software-GPU→screenshot clamp to the AUTHORITATIVE local
     // `captureForceScreenshot` (not just the observability copy) so all
-    // downstream strategy + telemetry code reads the corrected value.
+    // downstream strategy + diagnostics code reads the corrected value.
     // Otherwise: `frameCapture.ts` clamps its own local and routes
     // screenshot, but the still-`false` orchestrator local (a) mislabels the
     // parallel-stream logging as "beginframe" below and (b) overwrites the
     // earlier observability correction back to BeginFrame at the
-    // capture_strategy telemetry site. `resolveConfig` couldn't see
+    // capture_strategy diagnostics site. `resolveConfig` couldn't see
     // `browserGpuMode:"auto"` resolving to software at config time, so
     // `captureForceScreenshot` was still `compileResult.forceScreenshot === false`
     // on that path. Both env and programmatic opt-outs preserved via
@@ -3562,7 +3562,7 @@ async function executeRenderPipeline(input: {
       requiresWebGpu: compositionRequiresWebGpu(compiled.html),
       // Live route for Chrome memory (spec §5 Phase −1). The aggregate route
       // through CapturePerfSummary only exists on success; a mid-capture
-      // target loss never builds one, and that is the case this telemetry is
+      // target loss never builds one, and that is the case these diagnostics are
       // for. With parallel workers each session reports through the same
       // callback, so the record holds the most recent session's stats.
       onMemorySample: (stats) => {
@@ -3793,7 +3793,7 @@ async function executeRenderPipeline(input: {
       ? deParallelMinFramesNum
       : 700;
     // RAM floor default 24 GB: the wild black-slab report was a 16 GB
-    // machine; every clean routed cohort in telemetry so far is >=24 GB.
+    // machine; every clean routed cohort in diagnostics so far is >=24 GB.
     // HF_DE_PARALLEL_MIN_MEM_MB overrides (0 disables the guard).
     const deParallelMinMemRaw = process.env.HF_DE_PARALLEL_MIN_MEM_MB;
     const deParallelMinMemNum =
@@ -4133,7 +4133,7 @@ async function executeRenderPipeline(input: {
     if (captureParallelStreamEligible) {
       captureParallelStreamForced = true;
       // Which mode will stream — the same value the enablement decision used,
-      // so the routed cohort in telemetry cannot disagree with the predicate
+      // so the routed cohort in diagnostics cannot disagree with the predicate
       // that routed it.
       const captureParallelStream = parallelCaptureMode;
       log.info(
@@ -4742,7 +4742,7 @@ async function executeRenderPipeline(input: {
           const isMemoryExhaustion = !isVerifyError && isMemoryExhaustionError(err);
           deSelfVerifyFallback = isVerifyError;
           if (isVerifyError) {
-            const t = deVerifyFallbackTelemetry(err);
+            const t = deVerifyFallbackDiagnostics(err);
             deFallbackReason = t.reason;
             deFallbackFailedDb = t.failedDb;
             deFallbackFrameIndex = t.frameIndex;
@@ -4824,7 +4824,7 @@ async function executeRenderPipeline(input: {
             // screenshot stream when that disk route lacks storage headroom
             // (OOM takes the same target for RAM; other capture failures
             // revert unconditionally). Routing stays "reverted" (not
-            // cleared) so telemetry keeps the lost-bet cohort distinguishable
+            // cleared) so diagnostics keeps the lost-bet cohort distinguishable
             // from renders that never routed.
             const route =
               failedRouting === "worker_inversion" ? "worker inversion" : "parallel router";
@@ -4847,7 +4847,7 @@ async function executeRenderPipeline(input: {
           }
           // The first attempt's error marked the phase failed; the retry
           // recovered it (or was rerouted to disk) — don't brand the render
-          // as failed in telemetry.
+          // as failed in diagnostics.
           observability.clearFailure("capture_streaming");
         }
         const captureFrameMs = Date.now() - captureFrameStart;
@@ -4948,7 +4948,7 @@ async function executeRenderPipeline(input: {
             throw err;
           }
           deSelfVerifyFallback = isDrawElementVerificationError(err);
-          const t = deVerifyFallbackTelemetry(err);
+          const t = deVerifyFallbackDiagnostics(err);
           deFallbackReason = deSelfVerifyFallback ? t.reason : "capture_error";
           deFallbackFailedDb = t.failedDb;
           deFallbackFrameIndex = t.frameIndex;
@@ -4998,7 +4998,7 @@ async function executeRenderPipeline(input: {
           }
           captureRes = await invokeDiskCapture(capturePlan);
           // The first attempt's error marked the phase failed; the retry
-          // recovered it — don't brand the render as failed in telemetry.
+          // recovered it — don't brand the render as failed in diagnostics.
           observability.clearFailure("capture_disk");
         }
         const captureFrameMs = Date.now() - captureFrameStart;
@@ -5273,21 +5273,9 @@ async function executeRenderPipeline(input: {
     // --browser-timeout CLI + HYPERFRAMES_BROWSER_PATH escape hatch in
     // Puppeteer `page.goto` navigation-timeout errors. Puppeteer's stock
     // "Navigation timeout of 60000 ms exceeded" text names none of these
-    // levers. Field signal ts=1784146416 (darwin/arm64, CLI 0.7.58): host
-    // page.goto hit Navigation timeout twice on a CSS 3D + audio composition;
-    // Docker rendered the same composition successfully. Mirrors #2443's
-    // HYPERFRAMES_BROWSER_PATH surfacing at the runtime-navigation layer
-    // (vs download-time). `augmentPageNavigationTimeoutError` returns the
-    // input unchanged when the message doesn't match the Nav-timeout regex,
-    // so protocol-timeout / memory / other CDP errors flow through unchanged.
-    // hasCss3D + hasAudio are both left undefined here — no compile-time
-    // CSS-3D signal is currently threaded through the render pipeline, and
-    // `hasAudio` from the audio_process stage is block-scoped inside the
-    // try. Per the helper's fallback docs, unknown flags route to the
-    // generic env + browser-path hints (Docker compound hint suppressed).
-    // A future compile-time CSS-3D scan (e.g. htmlCompiler.ts pass over
-    // `transform-style: preserve-3d`, `perspective:`, `rotateX(`, etc.) can
-    // thread both flags here to enable the full compound Docker hint.
+    // levers. `augmentPageNavigationTimeoutError` returns the input
+    // unchanged when the message doesn't match the Nav-timeout regex, so
+    // protocol-timeout / memory / other CDP errors flow through unchanged.
     const navigationTimeoutError = augmentPageNavigationTimeoutError(
       protocolTimeoutError,
       cfg.pageNavigationTimeout,

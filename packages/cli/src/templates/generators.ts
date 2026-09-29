@@ -1,12 +1,10 @@
-// Compat shim — the registry resolver (packages/cli/src/registry/) is the
-// canonical implementation. Kept so init.ts and any external imports that
-// reference this path keep working. Converts new RegistryItem manifests back
-// into the TemplateOption shape the init wizard still uses. Deletable once
-// init.ts is fully ported to call the resolver directly.
+// The registry resolver (packages/cli/src/registry/) is the canonical
+// implementation. Converts RegistryItem manifests back into the TemplateOption
+// shape the init wizard uses.
 
 import { listRegistryItems, loadAllItems } from "../registry/index.js";
 
-export type TemplateSource = "bundled" | "remote";
+export type TemplateSource = "bundled" | "local";
 
 export interface TemplateOption {
   id: string;
@@ -26,8 +24,8 @@ export const BUNDLED_TEMPLATES: TemplateOption[] = [
 ];
 
 /**
- * Resolve the full template list by merging bundled templates with remote
- * examples fetched from the registry. Offline / unreachable → bundled only.
+ * Resolve the full template list by merging bundled templates with local
+ * registry examples. Fully offline — no network.
  */
 export async function resolveTemplateList(): Promise<TemplateOption[]> {
   const bundled = [...BUNDLED_TEMPLATES];
@@ -36,14 +34,14 @@ export async function resolveTemplateList(): Promise<TemplateOption[]> {
   const entries = await listRegistryItems({ type: "hyperframes:example" });
   const items = await loadAllItems(entries);
 
-  const remoteOptions: TemplateOption[] = items
+  const localOptions: TemplateOption[] = items
     .filter((item) => !bundledIds.has(item.name))
     .map((item) => ({
       id: item.name,
       label: item.title,
       hint: item.description,
-      source: "remote" as const,
+      source: "local" as const,
     }));
 
-  return [...bundled, ...remoteOptions];
+  return [...bundled, ...localOptions];
 }

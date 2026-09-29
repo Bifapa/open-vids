@@ -157,7 +157,7 @@ describe("useAnimatedPropertyCommit — ownership and rejection propagation", ()
     act(() => root.unmount());
   });
 
-  it("rethrows a persistence failure to the telemetry wrapper", async () => {
+  it("rethrows a persistence failure to the toast wrapper", async () => {
     const failure = new Error("save failed");
     const bumpGsapCache = vi.fn();
     let commit!: Commit;

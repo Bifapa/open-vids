@@ -11,13 +11,13 @@ npx hyperframes doctor --json     # CI / agent output (always exit 0; gate on pa
 
 Runs independent checks and reports each as ok/warn/fail:
 
-- **Version** — installed CLI vs latest on npm (hints upgrade when stale)
+- **Version** — installed CLI version (local only; no update check)
 - **Node.js** — ≥ 22 required
 - **CPU**, **Memory**, **Disk** — host resources
 - **Environment** — env vars that affect the renderer
 - **FFmpeg** / **FFprobe** — found, version, codecs
 - **Chrome** — bundled or system, version, path
-- **Docker** / **Docker running** — required only for `render --docker`
+- **Docker** / **Docker running** — environment detection only (sandbox fingerprint); there is no `render --docker` mode.
 - **/dev/shm** — inside containers only
 
 Run `doctor` first when:
@@ -37,10 +37,10 @@ Common issues:
   headless shell — dies at startup. This is a host-level block, not a HyperFrames or
   Chrome install problem: compile checks and audio still pass, only rendering is
   unavailable. State the blocker and deliver the checked composition; render outside the
-  sandbox or via `render --docker` / cloud rendering where available. **Do not build a
+  sandbox or via cloud rendering where available. **Do not build a
   substitute rasterizer** (magick/PIL/SVG frame pipelines) — on a blocked-browser host
   the deliverable IS the checked composition plus this blocker note, and rendering is
-  handed to `--docker`, cloud, or the user. Write your final summary the moment the
+  handed to cloud or the user. Write your final summary the moment the
   blocker is identified, BEFORE any optional fallback work: a later session failure must
   not erase the report of work already done.
 

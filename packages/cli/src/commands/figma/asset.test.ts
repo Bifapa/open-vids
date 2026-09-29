@@ -179,7 +179,7 @@ describe("runAssetImport", () => {
     expect(new Set(results.map((r) => r.record.id)).size).toBe(3);
   });
 
-  it("labels a batch-miss RENDER_FAILED with the images endpoint (telemetry parity with client.ts)", async () => {
+  it("labels a batch-miss RENDER_FAILED with the images endpoint", async () => {
     const dir = scratch();
     const missClient = fakeClient({
       renderNodes: (fileKey, nodeIds) =>

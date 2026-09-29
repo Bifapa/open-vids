@@ -32,7 +32,6 @@ import {
 import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { TimelineRazorGuideOverlay, useTimelineRazorInteraction } from "./TimelineRazorInteraction";
-import { useTimelinePerformanceTelemetry } from "./useTimelinePerformanceTelemetry";
 import {
   getEffectiveTimelineDuration,
   getTimelinePreviewElement,
@@ -225,11 +224,6 @@ export function useTimelineProviderState({
   });
   const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowGeometry);
   const resizingElementIds = resolveResizingElementIds(resizingClip);
-  const { recordTimelineScroll } = useTimelinePerformanceTelemetry({
-    totalClipCount: timelineElements.length,
-    totalRowCount: displayLayout.displayTrackOrder.length,
-    zoomMode,
-  });
   const { viewport, showShortcutHint, setScrollRef, syncScrollViewport } =
     useTimelineScrollViewport(scrollRef, [
       timelineReady,
@@ -551,7 +545,6 @@ export function useTimelineProviderState({
       zoomMode,
       onScroll: (e) => {
         lastScrollLeftRef.current = e.currentTarget.scrollLeft;
-        recordTimelineScroll(e.currentTarget);
         syncScrollViewport(e.currentTarget, true);
       },
       ...timelineFocus.timelineFocusProps,

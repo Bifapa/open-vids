@@ -94,23 +94,25 @@ const state = vi.hoisted(() => ({
   runtimeOnDisk: true,
 }));
 
-vi.mock("../registry/resolver.js", () => ({
-  loadAllItems: async (entries: Array<{ name: string; type: string; tags?: string[] }>) =>
-    entries.map((entry) => ({
-      name: entry.name,
-      type: entry.type,
-      title: entry.name,
-      description: `${entry.name} description`,
-      tags: entry.tags ?? [],
-    })),
-}));
-
-vi.mock("../registry/remote.js", () => ({
-  fetchRegistryManifest: async () => ({
-    items: state.registry,
-    catalogArtifact: { revision: state.artifactRevision },
-  }),
-}));
+vi.mock("../registry/resolver.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../registry/resolver.js")>();
+  return {
+    ...actual,
+    listRegistryItems: async (filter?: { type?: string }, _options?: unknown) => {
+      const items = state.registry as Array<{ name: string; type: string; tags?: string[] }>;
+      const type = filter?.type;
+      return type ? items.filter((e) => e.type === type) : items;
+    },
+    loadAllItems: async (entries: Array<{ name: string; type: string; tags?: string[] }>) =>
+      entries.map((entry) => ({
+        name: entry.name,
+        type: entry.type,
+        title: entry.name,
+        description: `${entry.name} description`,
+        tags: entry.tags ?? [],
+      })),
+  };
+});
 
 vi.mock("@clack/prompts", () => ({
   confirm: async () => state.confirmAnswer,
@@ -168,6 +170,7 @@ vi.mock("../registry/localEmbedder.js", () => ({
 }));
 
 vi.mock("../registry/localSemantic.js", () => ({
+  readLocalArtifactRevision: () => state.artifactRevision,
   mediaSemanticRanking: async () => null,
   localSemanticRanking: async () => {
     if (state.rankingError) throw state.rankingError;
@@ -176,7 +179,7 @@ vi.mock("../registry/localSemantic.js", () => ({
   localVectorNames: () => state.indexed,
   cachedLocalVectorRevision: () => state.cachedVectorRevision,
   hasLocalVectors: () => state.vectorsOnDisk,
-  fetchLocalVectors: async (_registry: string, options: { expectedRevision?: string } = {}) => {
+  fetchLocalVectors: async (options: { expectedRevision?: string } = {}) => {
     state.vectorFetches += 1;
     if (state.vectorFetchSucceeds && options.expectedRevision !== undefined) {
       state.cachedVectorRevision = options.expectedRevision;

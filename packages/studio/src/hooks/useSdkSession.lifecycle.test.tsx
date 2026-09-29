@@ -13,12 +13,6 @@ import type { Composition } from "@hyperframes/sdk";
 import { useSdkSession, type SdkSessionHandle } from "./useSdkSession";
 import { usePlayerStore } from "../player/store/playerStore";
 
-vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
-
-import { trackStudioEvent } from "../utils/studioTelemetry";
-
-const trackMock = vi.mocked(trackStudioEvent);
-
 beforeEach(() => {
   usePlayerStore.setState({ timelineProjectId: "project-a", previewBooted: true });
 });
@@ -177,7 +171,6 @@ describe("useSdkSession ownership", () => {
 describe("useSdkSession unreachable project", () => {
   beforeEach(() => {
     openComposition.mockReset();
-    trackMock.mockClear();
     class FakeEventSource {
       addEventListener(): void {}
       close(): void {}
@@ -255,10 +248,9 @@ describe("useSdkSession unreachable project", () => {
   });
 });
 
-describe("useSdkSession unavailable telemetry", () => {
+describe("useSdkSession read failures", () => {
   beforeEach(() => {
     openComposition.mockReset();
-    trackMock.mockClear();
     class FakeEventSource {
       addEventListener(): void {}
       close(): void {}
@@ -270,38 +262,39 @@ describe("useSdkSession unavailable telemetry", () => {
     vi.unstubAllGlobals();
   });
 
-  // Every cutover chokepoint silently takes the server path when there is no
-  // session, and the shadow never runs either — so a missing session is a total,
-  // otherwise-invisible SDK bypass. These exits are its only origin.
-  //
-  // `stage: read` carries a reason because it was the largest remaining class
-  // and a single opaque string: 56 users hit it in a 7-day window and never
-  // landed one successful SDK edit between them, with no way to tell a genuinely
-  // absent file from a request that never reached one.
-  it("reports the HTTP status when the read fails", async () => {
+  function SessionProbe({ projectId }: { projectId: string }) {
+    const handle = useSdkSession(projectId, "index.html");
+    return <span data-session={handle.session ? "open" : "none"} />;
+  }
+
+  // No SDK session follows a failed read, so EVERY cutover chokepoint takes the
+  // server path and the shadow never runs either — a broken read would otherwise
+  // be a silent, total SDK bypass.
+  it("leaves no session behind when the read fails", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ ok: false, status: 404, json: async () => ({}) }) as Response),
     );
-    const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<Probe projectId="project-a" />));
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<SessionProbe projectId="project-a" />));
     await flushAsyncEffects();
 
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "http_error",
-      status: 404,
-      why: undefined,
-    });
+    expect(host.querySelector("[data-session]")?.getAttribute("data-session")).toBe("none");
+    expect(openComposition).not.toHaveBeenCalled();
     await act(async () => root.unmount());
   });
 
-  // `why` distinguishes the studio-server route's own 403/404 causes (the
-  // project's folder having been renamed or deleted out from under a running
-  // server, vs. a NUL byte, vs. a path escaping the project) from a bare
-  // status code. Optional and best-effort: an older server or a non-JSON body
-  // just omits it, which must not crash the read.
-  it("carries the server's why when the error body has one", async () => {
+  const readCaptured: { handle: SdkSessionHandle | null } = { handle: null };
+  function ReadProbe({ projectId }: { projectId: string }) {
+    readCaptured.handle = useSdkSession(projectId, "index.html");
+    return null;
+  }
+  // A failed read opens nothing (covered above); the `why` the server reports
+  // on its 403/404 (renamed project dir, NUL byte, path escaping the project)
+  // is best-effort and optional — an older server or a non-JSON body just
+  // omits it, which must not crash the read.
+  it("leaves no session behind when the error body carries a why", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -314,19 +307,15 @@ describe("useSdkSession unavailable telemetry", () => {
       ),
     );
     const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<Probe projectId="project-a" />));
+    await act(async () => root.render(<ReadProbe projectId="project-a" />));
     await flushAsyncEffects();
 
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "http_error",
-      status: 404,
-      why: "project_dir_missing",
-    });
+    expect(readCaptured.handle?.session).toBeNull();
+    expect(openComposition).not.toHaveBeenCalled();
     await act(async () => root.unmount());
   });
 
-  it("stays quiet about why when the response body cannot be parsed", async () => {
+  it("opens nothing when the error body cannot be parsed", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -341,25 +330,17 @@ describe("useSdkSession unavailable telemetry", () => {
       ),
     );
     const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<Probe projectId="project-a" />));
+    await act(async () => root.render(<ReadProbe projectId="project-a" />));
     await flushAsyncEffects();
 
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "http_error",
-      status: 500,
-      why: undefined,
-    });
+    expect(readCaptured.handle?.session).toBeNull();
+    expect(openComposition).not.toHaveBeenCalled();
     await act(async () => root.unmount());
   });
 
-  // A fetch that REJECTS produces no response at all. It used to escape this
-  // function and be caught by the effect's outer `.catch`, which reported it as
-  // `stage: "open"` — a label that means openComposition threw. Every `stage:
-  // open` event on 0.8.56/0.8.57 carries a fetch-rejection message, so the
-  // largest failure class was a network problem reported as a parser one and
-  // was unaddressable in that bucket.
-  it("reports a rejected request as a read failure, not an open failure", async () => {
+  // A fetch that REJECTS produces no response at all — no session follows,
+  // and the rejection must not escape as a composition parse failure.
+  it("leaves no session behind when the request rejects", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -367,99 +348,25 @@ describe("useSdkSession unavailable telemetry", () => {
       }),
     );
     const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<Probe projectId="project-a" />));
+    await act(async () => root.render(<ReadProbe projectId="project-a" />));
     await flushAsyncEffects();
 
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "network",
-      elapsed_ms: expect.any(Number),
-      hidden: expect.any(Boolean),
-    });
-    expect(trackMock).not.toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "open",
-      error: expect.anything(),
-    });
+    expect(readCaptured.handle?.session).toBeNull();
+    expect(openComposition).not.toHaveBeenCalled();
     await act(async () => root.unmount());
   });
 
-  // `elapsed_ms` is the discriminator this event exists for: a policy block
-  // (CSP, PNA, an extension rewriting fetch) rejects near-instantly; a dropped
-  // connection (the tab or `preview` server going away mid-flight) rejects
-  // after a real delay. Both look identical without the timing.
-  it("times the network rejection from fetch start to reject", async () => {
-    // Fake only the clock `performance.now` reads, not timers: other code in
-    // this tree (React's own scheduler included) also calls `performance.now`,
-    // so pinning return values by call order (`mockReturnValueOnce`) is
-    // unreliable — a real run showed React consuming the queued values first.
-    // A fake clock that only advances when we say so sidesteps that entirely.
-    vi.useFakeTimers({ toFake: ["performance"] });
-    let rejectFetch: ((error: unknown) => void) | undefined;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        () =>
-          new Promise((_resolve, reject) => {
-            rejectFetch = reject;
-          }),
-      ),
-    );
-    const root = createRoot(document.createElement("div"));
-    // The effect runs synchronously up to `await fetch(...)`, capturing
-    // `fetchStarted` at the current (fake) clock value before this returns.
-    await act(async () => root.render(<Probe projectId="project-a" />));
-    await vi.advanceTimersByTimeAsync(3_200);
-    await act(async () => rejectFetch?.(new TypeError("Failed to fetch")));
-
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "network",
-      elapsed_ms: 3_200,
-      hidden: false,
-    });
-    vi.useRealTimers();
-    await act(async () => root.unmount());
-  });
-
-  it("records the page as hidden when the rejection lands after the tab is backgrounded", async () => {
-    const originalDescriptor = Object.getOwnPropertyDescriptor(document, "visibilityState");
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      get: () => "hidden",
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new TypeError("Failed to fetch");
-      }),
-    );
-    const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<Probe projectId="project-a" />));
-    await flushAsyncEffects();
-
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "network",
-      elapsed_ms: expect.any(Number),
-      hidden: true,
-    });
-    await act(async () => root.unmount());
-    if (originalDescriptor) Object.defineProperty(document, "visibilityState", originalDescriptor);
-  });
-
-  it("separates an unexpected response shape from a failed request", async () => {
+  it("leaves no session behind when the body carries no content", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ ok: true, json: async () => ({}) }) as Response),
     );
     const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<Probe projectId="project-a" />));
+    await act(async () => root.render(<ReadProbe projectId="project-a" />));
     await flushAsyncEffects();
 
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "missing_content",
-    });
+    expect(readCaptured.handle?.session).toBeNull();
+    expect(openComposition).not.toHaveBeenCalled();
     await act(async () => root.unmount());
   });
 
@@ -469,27 +376,22 @@ describe("useSdkSession unavailable telemetry", () => {
   // real 0-byte file are the same response, hence the name.
   // An older server sends no `missing` field, so the combined label stays —
   // rather than guessing one of the two and quietly corrupting the series.
-  it("keeps the combined label when the server does not say which empty this is", async () => {
+  it("leaves no session behind when the server reports an empty composition", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ ok: true, json: async () => ({ content: "" }) }) as Response),
     );
     const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<Probe projectId="project-a" />));
+    await act(async () => root.render(<ReadProbe projectId="project-a" />));
     await flushAsyncEffects();
 
-    // No fileTree passed (this Probe doesn't have one) — path_in_tree stays
-    // null, same as before the tree loads. See the tree-aware tests below.
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "absent_or_empty",
-      path_in_tree: null,
-    });
+    expect(readCaptured.handle?.session).toBeNull();
+    expect(openComposition).not.toHaveBeenCalled();
     await act(async () => root.unmount());
   });
 
   // `missing: true` is the route's shim — nothing resolved at that path.
-  it("reports a file the server could not find as absent", async () => {
+  it("leaves no session behind for a file the server cannot find", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -500,17 +402,14 @@ describe("useSdkSession unavailable telemetry", () => {
     await act(async () => root.render(<Probe projectId="project-a" />));
     await flushAsyncEffects();
 
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "absent",
-      path_in_tree: null,
-    });
+    expect(readCaptured.handle?.session).toBeNull();
+    expect(openComposition).not.toHaveBeenCalled();
     await act(async () => root.unmount());
   });
 
   // `missing: false` with empty content is a real 0-byte file on disk — a
   // placeholder somebody created and has not written yet, not a bad path.
-  it("reports a real zero-byte file separately from an absent one", async () => {
+  it("leaves no session behind for a zero-byte file", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -521,11 +420,8 @@ describe("useSdkSession unavailable telemetry", () => {
     await act(async () => root.render(<Probe projectId="project-a" />));
     await flushAsyncEffects();
 
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "empty_file",
-      path_in_tree: null,
-    });
+    expect(readCaptured.handle?.session).toBeNull();
+    expect(openComposition).not.toHaveBeenCalled();
     await act(async () => root.unmount());
   });
 
@@ -533,7 +429,7 @@ describe("useSdkSession unavailable telemetry", () => {
   // place. Before this, `res.json()` rejected outside any catch and the outer
   // catch filed it as `stage: "open"` — blaming the user's composition for a
   // response the composition had nothing to do with.
-  it("reports a non-JSON 200 as a read failure, not a composition parse failure", async () => {
+  it("leaves no session behind when the response is not JSON", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -551,67 +447,9 @@ describe("useSdkSession unavailable telemetry", () => {
     await act(async () => root.render(<Probe projectId="project-a" />));
     await flushAsyncEffects();
 
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "invalid_json",
-      content_type: "text/html; charset=utf-8",
-    });
-    expect(trackMock).not.toHaveBeenCalledWith(
-      "sdk_session_unavailable",
-      expect.objectContaining({ stage: "open" }),
-    );
+    expect(readCaptured.handle?.session).toBeNull();
+    expect(openComposition).not.toHaveBeenCalled();
     await act(async () => root.unmount());
-  });
-
-  // The graveyard-refuted fix's proposed next step: instrument, don't act.
-  // `path_in_tree` separates "genuinely not in the loaded tree" from
-  // "concurrent/duplicate open" without deciding anything on Studio's behalf.
-  // Two separate mounts (not a re-render of one): fileTree/fileTreeLoaded are
-  // deliberately outside the open effect's deps — re-running the whole
-  // open/dispose cycle on every tree refresh would drop a perfectly good
-  // session far more often than the tree actually changes — so a prop-only
-  // change on an already-mounted probe would never re-fire the read this
-  // event comes from.
-  it("reports path_in_tree against the caller's loaded file tree", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => ({ content: "" }) }) as Response),
-    );
-    function TreeProbe({
-      fileTree,
-      fileTreeLoaded,
-    }: {
-      fileTree: string[];
-      fileTreeLoaded: boolean;
-    }) {
-      useSdkSession("project-a", "index.html", fileTree, fileTreeLoaded);
-      return null;
-    }
-
-    const rootA = createRoot(document.createElement("div"));
-    await act(async () =>
-      rootA.render(<TreeProbe fileTree={["other.html"]} fileTreeLoaded={true} />),
-    );
-    await flushAsyncEffects();
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "absent_or_empty",
-      path_in_tree: false,
-    });
-    await act(async () => rootA.unmount());
-
-    trackMock.mockClear();
-    const rootB = createRoot(document.createElement("div"));
-    await act(async () =>
-      rootB.render(<TreeProbe fileTree={["index.html"]} fileTreeLoaded={true} />),
-    );
-    await flushAsyncEffects();
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "read",
-      reason: "absent_or_empty",
-      path_in_tree: true,
-    });
-    await act(async () => rootB.unmount());
   });
 
   // `compositionMissing` and the once-per-path refresh fallback: proven
@@ -762,7 +600,7 @@ describe("useSdkSession unavailable telemetry", () => {
     });
   });
 
-  it("reports a parse failure with its message", async () => {
+  it("leaves no session behind when the composition fails to parse", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => response("PROJECT_A")),
@@ -770,17 +608,14 @@ describe("useSdkSession unavailable telemetry", () => {
     openComposition.mockRejectedValue(new Error("unparseable composition"));
 
     const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<Probe projectId="project-a" />));
+    await act(async () => root.render(<ReadProbe projectId="project-a" />));
     await flushAsyncEffects();
 
-    expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
-      stage: "open",
-      error: "unparseable composition",
-    });
+    expect(readCaptured.handle?.session).toBeNull();
     await act(async () => root.unmount());
   });
 
-  it("stays silent on the happy path", async () => {
+  it("opens a session on the happy path", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => response("PROJECT_A")),
@@ -788,10 +623,11 @@ describe("useSdkSession unavailable telemetry", () => {
     openComposition.mockResolvedValue(fakeSession());
 
     const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<Probe projectId="project-a" />));
+    await act(async () => root.render(<ReadProbe projectId="project-a" />));
     await flushAsyncEffects();
 
-    expect(trackMock).not.toHaveBeenCalledWith("sdk_session_unavailable", expect.anything());
+    expect(openComposition).toHaveBeenCalledWith("PROJECT_A", { history: false });
+    expect(readCaptured.handle?.session).not.toBeNull();
     await act(async () => root.unmount());
   });
 });

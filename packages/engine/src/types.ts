@@ -11,7 +11,7 @@ import type { MotionBlurOptions } from "./services/motionBlur.js";
 /**
  * Outcome of waiting for a sub-composition's GSAP timelines to register.
  * Threaded string-typed through `CapturePerfSummary` / `RenderPerfSummary` /
- * telemetry so a single alias keeps the values in sync end-to-end.
+ * diagnostics so a single alias keeps the values in sync end-to-end.
  */
 export type SubTimelineWaitOutcome = "ready" | "timeout" | "script_failure";
 
@@ -272,12 +272,12 @@ export interface CapturePerfSummary {
   /** Sub-composition timeline wait outcome (absent pre-init). */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
   /**
-   * Session init telemetry, mirrored from the `[FrameCapture:INIT]` console
+   * Session init diagnostics, mirrored from the `[FrameCapture:INIT]` console
    * line so PARALLEL workers report it too: worker sessions' console buffers
    * only propagate to the orchestrator on failure, which left the
    * multi-worker path — the short-comp band's entire population — with 0%
-   * coverage of the motion axis (`observability_init_tween_count`) in fleet
-   * telemetry. Riding the perf summary reuses the one channel that already
+   * coverage of the motion axis (`observability_init_tween_count`) in
+   * diagnostics. Riding the perf summary reuses the one channel that already
    * flows back per worker on success.
    */
   initDurationMs?: number;
@@ -285,7 +285,7 @@ export interface CapturePerfSummary {
   initTweenCount?: number;
   /**
    * Live DOM element count at end of init; undefined when the measurement
-   * failed (never 0 — see collectSessionInitTelemetry).
+   * failed (never 0 — see collectSessionInitDiagnostics).
    *
    * WHICH FIELD TO QUERY — two element counts exist and they answer
    * different questions:
@@ -357,7 +357,7 @@ export interface CapturePerfSummary {
   /**
    * Low-cardinality GPU bucket from DE session init: `<backend>/<vendor>`
    * (e.g. `metal/apple`, `d3d11/nvidia`). Undefined when drawElement was
-   * never attempted. Lets telemetry cluster backend-specific damage now that
+   * never attempted. Lets diagnostics cluster backend-specific damage now that
    * DE engages on both Metal (darwin) and D3D11 (win32). Bucketed, not raw —
    * see `classifyGpuRenderer`.
    */

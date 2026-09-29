@@ -3,7 +3,7 @@ import { createReadStream, readFileSync, statSync } from "fs";
 import { chunkCrc32 } from "./crc32.js";
 import { StringDecoder } from "node:string_decoder";
 import { basename } from "path";
-import { redactTelemetryString } from "@hyperframes/core";
+import { scrubErrorMessage } from "./errorScrub.js";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
 import { trackChildProcess } from "./processTracker.js";
@@ -41,9 +41,9 @@ function redactFfprobeInput(stderr: string, filePath: string): string {
 
 function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
   const stderrWithoutInput = redactFfprobeInput(stderr, filePath);
-  const redacted = redactTelemetryString(stderrWithoutInput, FFPROBE_STDERR_MAX_BYTES);
-  if (redacted.length <= FFPROBE_ERROR_MAX_CHARS) return redacted;
-  return `…${redacted.slice(-(FFPROBE_ERROR_MAX_CHARS - 1))}`;
+  const scrubbed = scrubErrorMessage(stderrWithoutInput, FFPROBE_STDERR_MAX_BYTES);
+  if (scrubbed.length <= FFPROBE_ERROR_MAX_CHARS) return scrubbed;
+  return `…${scrubbed.slice(-(FFPROBE_ERROR_MAX_CHARS - 1))}`;
 }
 
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */

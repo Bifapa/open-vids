@@ -1,6 +1,4 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { trackStudioEvent } from "../utils/studioTelemetry";
-import { CrashFeedbackPrompt } from "./feedback/CrashFeedbackPrompt";
 
 interface Props {
   children: ReactNode;
@@ -19,12 +17,6 @@ export class StudioErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("[Studio] Uncaught error:", error, info.componentStack);
-    trackStudioEvent("crash", {
-      error_message: error.message,
-      error_name: error.name,
-      stack_trace: error.stack?.slice(0, 4000) ?? null,
-      component_stack: info.componentStack?.slice(0, 2000) ?? null,
-    });
   }
 
   render() {
@@ -51,12 +43,6 @@ export class StudioErrorBoundary extends Component<Props, State> {
           >
             Reload Studio
           </button>
-        </div>
-        {/* The crash report tells us what broke; only the user can tell us what
-            they were doing when it did. This is also the one screen where they
-            have nothing else to get on with. */}
-        <div className="mt-6">
-          <CrashFeedbackPrompt />
         </div>
       </div>
     );

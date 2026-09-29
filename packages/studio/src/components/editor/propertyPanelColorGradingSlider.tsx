@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
 import { LABEL } from "./propertyPanelHelpers";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const SLIDER_THUMB_SIZE = 10;
 const SLIDER_THUMB_RADIUS = SLIDER_THUMB_SIZE / 2;
@@ -60,7 +59,6 @@ export function ColorGradingSliderControl({
     onClick: () => void;
   };
 }) {
-  const track = useTrackDesignInput();
   const [draftState, setDraftState] = useState<{ value: number; source: number } | null>(null);
   const [inputDraft, setInputDraft] = useState<{ value: string; source: number } | null>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,11 +95,10 @@ export function ColorGradingSliderControl({
       if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
       if (interactionChangedRef.current) {
         interactionChangedRef.current = false;
-        track("slider", label);
       }
       if (clamped !== valueRef.current) onCommit(clamped);
     },
-    [label, onCommit, setLocalDraft, track],
+    [onCommit, setLocalDraft],
   );
 
   const scheduleCommit = useCallback(
@@ -175,7 +172,6 @@ export function ColorGradingSliderControl({
             aria-label={`Reset ${label}`}
             onClick={(event) => {
               event.stopPropagation();
-              track("button", `Reset ${label}`);
               onReset();
             }}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-panel-text-5 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"

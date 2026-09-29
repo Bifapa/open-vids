@@ -11,7 +11,7 @@ import { c } from "../ui/colors.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
 import { resolveReferencedStart } from "@hyperframes/engine";
-import { withMeta } from "../utils/updateCheck.js";
+import { withMeta } from "../utils/jsonMeta.js";
 
 interface CompositionInfo {
   id: string;

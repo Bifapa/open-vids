@@ -8,10 +8,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startRenderAndReadBody, type MountedQueue } from "./renderQueueTestHarness";
 
-vi.mock("../../telemetry/policy", () => ({ browserTelemetryAllowed: () => false }));
-vi.mock("../../telemetry/config", () => ({ getAnonymousId: () => "unused" }));
-vi.mock("../../telemetry/events", () => ({ trackStudioRenderStart: vi.fn() }));
-
 const { useRenderQueue } = await import("./useRenderQueue");
 
 let queue: MountedQueue | null = null;

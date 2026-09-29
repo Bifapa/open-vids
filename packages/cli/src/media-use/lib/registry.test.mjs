@@ -188,7 +188,7 @@ test("runCapability('bgm','process') is null — process slot is graceful when u
   assert.equal(await runCapability("bgm", "process", "x", {}), null);
 });
 
-// --- provider cost tier (telemetry) ---------------------------------------
+// --- provider cost tier ---------------------------------------
 
 test("providerTierFor reports the registry's own A/N/P declaration", () => {
   assert.equal(providerTierFor("heygen.tts"), "network_paid");
@@ -203,7 +203,7 @@ test("providerTierFor reports the registry's own A/N/P declaration", () => {
 test("providerTierFor agrees across every type that declares the same name", () => {
   // heygen.audio.sounds serves both bgm and sfx; heygen.asset.search serves both
   // image and icon. A name whose tier depended on the media type would make the
-  // telemetry property meaningless.
+  // cost-tier signal meaningless.
   const byName = new Map();
   for (const type of listTypes()) {
     for (const name of providerNamesFor(type)) {

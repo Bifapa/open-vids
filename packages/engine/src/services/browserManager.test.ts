@@ -333,7 +333,7 @@ describe("resolveBrowserGpuMode", () => {
   });
 
   it("warns when explicit 'hardware' probes to software, but still honours it", async () => {
-    // heygen-com/hyperframes#2967: `--browser-gpu` inside a container with no
+    // #2967 (upstream HyperFrames reference): `--browser-gpu` inside a container with no
     // GPU passthrough rendered 19186 frames on CPU with no diagnostic.
     setMockWebGlProbe({
       hasWebGL: true,

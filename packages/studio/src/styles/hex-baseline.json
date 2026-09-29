@@ -1,5 +1,5 @@
 {
-  "total": 297,
+  "total": 286,
   "files": {
     "packages/studio/src/captions/components/CaptionOverlay.tsx": 5,
     "packages/studio/src/captions/components/CaptionTimeline.tsx": 11,
@@ -43,7 +43,6 @@
     "packages/studio/src/components/editor/propertyPanelSections.tsx": 1,
     "packages/studio/src/components/editor/propertyPanelStyleSections.tsx": 3,
     "packages/studio/src/components/editor/transform3dProjection.ts": 3,
-    "packages/studio/src/components/feedback/StudioFeedbackCard.tsx": 10,
     "packages/studio/src/components/panels/VariablesBindElement.tsx": 2,
     "packages/studio/src/components/panels/VariablesValueControls.tsx": 2,
     "packages/studio/src/components/sidebar/AudioRow.tsx": 2,
@@ -58,7 +57,6 @@
     "packages/studio/src/player/components/SpeedMenu.tsx": 2,
     "packages/studio/src/player/components/trackHeaderLabelRows.tsx": 6,
     "packages/studio/src/styles/components.css": 48,
-    "packages/studio/src/telemetry/client.ts": 1,
     "packages/studio/src/webmcp/webmcpTestUtils.ts": 1
   }
 }

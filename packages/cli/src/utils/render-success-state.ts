@@ -5,12 +5,11 @@
  * unhandledRejection) to sanitize the exit code when a post-artifact-validated
  * cleanup step throws.
  *
- * Set by the render command AFTER `executeRenderJob` (or the Docker child
- * render) resolves cleanly — the point at which the artifact has been
- * validated AND committed to disk. Any throw after this point (worker
- * teardown, browser shutdown, telemetry flush, feedback prompt, stray
- * promise rejection) must not turn a valid render into an exit-1
- * "no final error message" failure.
+ * Set by the render command AFTER `executeRenderJob` resolves cleanly — the
+ * point at which the artifact has been validated AND committed to disk. Any
+ * throw after this point (worker teardown, browser shutdown, stray promise
+ * rejection) must not turn a valid render into an exit-1 "no final error
+ * message" failure.
  *
  * Field signal (all win32/x64, CLI 0.7.58, ffmpeg=no, 1080x1920 renders):
  *   - ts=1784169760 — 6-worker capture retried down after Runtime.evaluate
@@ -27,9 +26,9 @@ import { sanitizeSuccessfulExitCode } from "./commandResult.js";
 let renderSucceeded = false;
 
 /**
- * Called by the render command after the producer's `executeRenderJob` (or
- * the Docker child) resolves cleanly. From this point on, any thrown
- * teardown error must not be allowed to override the exit code.
+ * Called by the render command after the producer's `executeRenderJob`
+ * resolves cleanly. From this point on, any thrown teardown error must not
+ * be allowed to override the exit code.
  */
 export function markRenderSucceeded(): void {
   renderSucceeded = true;

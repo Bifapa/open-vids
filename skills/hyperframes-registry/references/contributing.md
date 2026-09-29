@@ -123,7 +123,7 @@ hyperframes snapshot --at "1.0,3.0,5.0,7.0"
 # Render a preview MP4 and attach it to your PR for review
 ```
 
-**Catalog preview image** — For the default PNG preview, save your snapshot at `docs/images/catalog/{kind}/{name}.png` in the repository checkout (`{kind}` is `blocks` or `components`). After upload, the catalog serves it from `https://static.heygen.ai/hyperframes-oss/docs/images/catalog/{kind}/{name}.png`. If `registry-item.json` declares `preview`, the card uses its `poster` URL; a `preview` without `poster` has no image fallback.
+**Catalog preview image** — For the default PNG preview, save your snapshot at `docs/images/catalog/{kind}/{name}.png` in the repository checkout (`{kind}` is `blocks` or `components`). After upload, the catalog card uses the local `preview`/`poster` URLs declared in `registry-item.json`. If `registry-item.json` declares `preview`, the card uses its `poster` URL; a `preview` without `poster` has no image fallback.
 
 - **HeyGen internal contributors:** run `scripts/upload-docs-images.sh` from the repository root (requires AWS profile `engineering-767398024897`)
 - **External contributors:** attach the preview MP4 to your PR description. A maintainer will generate and upload the catalog image before merging.

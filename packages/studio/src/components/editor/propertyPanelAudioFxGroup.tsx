@@ -44,7 +44,6 @@ import { usePlayerStore } from "../../player/store/playerStore";
 import { isRevealedAudioFxRequestCurrent } from "../../player/store/keyframeSlice";
 import { FxSection } from "./propertyPanelFxSection.js";
 import { clipStart } from "./propertyPanelAudioFxGroupUtils.js";
-import { useFxChainObserved } from "./useFxChainObserved.js";
 import { useFxCarve } from "./useFxCarve.js";
 import { audioFxSignalPath } from "./audioFxSignalPath.js";
 import type { AuditionSpan } from "./useAuditionTransport.js";
@@ -170,19 +169,7 @@ export function AudioFxGroup({
       return null;
     }
   })();
-
-  /**
-   * Every persisting write this panel makes, counted — see `useFxChainObserved`,
-   * which reports a chain that changed without one of these behind it as work
-   * something outside the studio did.
-   */
-  const onSetAttributeQuiet = useFxChainObserved(
-    element,
-    chain,
-    carve,
-    automation,
-    onSetAttributeQuietRaw,
-  );
+  const onSetAttributeQuiet = onSetAttributeQuietRaw;
 
   // Written through the live path on purpose. It persists to the source just
   // like the refreshing one, but skips the preview reload — and a reload

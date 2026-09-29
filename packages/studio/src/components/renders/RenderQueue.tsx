@@ -11,7 +11,6 @@ import { Tooltip } from "../ui/Tooltip";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "../editor/floatingPanel";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
-import { trackStudioEvent } from "../../utils/studioTelemetry";
 
 export interface CompositionDimensions {
   width: number;
@@ -397,7 +396,6 @@ function FormatExportButton({
           // double-click in the same frame from enqueueing two renders.
           if (isRendering || missingFfmpeg) return;
           const outputResolution = resolveResolution(resolution, compositionDimensions);
-          trackStudioEvent("render_start", { format, quality, resolution: outputResolution, fps });
           void onStartRender(format, quality, outputResolution, fps);
         }}
         // Width only. A type size or a weight here would win the merge against

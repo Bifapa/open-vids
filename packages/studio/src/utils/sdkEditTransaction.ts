@@ -1,13 +1,6 @@
 import { openComposition, type Composition } from "@hyperframes/sdk";
 import { hashContent, markSelfWrite } from "../hooks/sdkSelfWriteRegistry";
-import { trackStudioEvent } from "./studioTelemetry";
 import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
-import type { StudioSdkOperationFamily } from "./sdkCutoverPolicy";
-import {
-  StudioFileConflictError,
-  StudioSaveHttpError,
-  StudioSaveNetworkError,
-} from "./studioSaveDiagnostics";
 
 export type CutoverResult =
   | { status: "declined"; reason: string }
@@ -71,26 +64,10 @@ interface CandidateEdit {
 }
 
 /**
- * Explicit fall-back to the legacy server path. Emits `sdk_cutover_declined` so
- * post-flip we can distinguish "SDK took the edit" from "SDK bowed out"; payload
- * is reason + family only (no hfId / path / content).
- *
- * `resolverDisagreement` is the one extra field with diagnostic value beyond the
- * reason itself: on a `target_not_found`, the shadow's `resolveSnapshot` (what
- * dispatch resolves) found the element that `getElement` could not. The shadow
- * event stays silent in that case, so without this flag the case is invisible —
- * and it is an adoption loss (a dispatchable edit refused), not a missing node.
+ * Explicit fall-back to the legacy server path. Returns the decline reason so
+ * callers can route to the legacy mutation backend; pure (no reporting).
  */
-export function declinedCutover(
-  reason: string,
-  family?: StudioSdkOperationFamily,
-  resolverDisagreement?: boolean,
-): CutoverResult {
-  trackStudioEvent("sdk_cutover_declined", {
-    reason,
-    family: family ?? null,
-    ...(resolverDisagreement ? { resolverDisagreement: true } : {}),
-  });
+export function declinedCutover(reason: string): CutoverResult {
   return { status: "declined", reason };
 }
 
@@ -98,48 +75,12 @@ function asCutoverError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-// Browser rejection strings for a fetch that never produced a response (offline,
-// the dev server gone, a CSP/PNA block, an extension rewriting fetch). See
-// `useSdkSession.ts`'s `readProjectFileOptional` catch for the same list.
-const FETCH_REJECTION_MESSAGE = /Failed to fetch|Load failed|NetworkError when attempting to fetch/;
-
 /**
- * Classify a cutover failure for the gate dashboard. `writeProjectFile`'s own
- * fetch wraps a rejection as `StudioSaveNetworkError`, but two raw fetches in
- * this same transaction — `readProjectFile` (via `captureOnDiskBefore`) and
- * `writeProjectFile`'s own read-before-write preflight — throw an unwrapped
- * `TypeError` that reaches here undecorated. Without the message fallback,
- * those file as `"sdk"` and trip the cutover-failure rollback gate on a
- * network blip the SDK never had a chance to own.
+ * A cutover that could not commit. Pure: wraps the error so the caller can
+ * throw it via `cutoverCommittedOrThrow`; no reporting.
  */
-function cutoverErrorKind(error: Error): "network" | "conflict" | "http" | "sdk" {
-  if (error instanceof StudioSaveNetworkError) return "network";
-  if (error instanceof StudioFileConflictError) return "conflict";
-  if (error instanceof StudioSaveHttpError) return "http";
-  if (error.name === "TypeError" && FETCH_REJECTION_MESSAGE.test(error.message)) return "network";
-  return "sdk";
-}
-
-/**
- * Record a cutover that could not commit. Replaces ad hoc `trackStudioEvent("sdk_cutover_failed", ...)`
- * calls so every gate event carries `family` and `error_kind` — without them the
- * dashboard's rollback gate (any `sdk_cutover_failed` on a flipped version) cannot
- * distinguish a real SDK defect from a rejected fetch it doesn't own.
- */
-export function failedCutover(
-  error: unknown,
-  family: StudioSdkOperationFamily,
-  context: { hfId?: string | null; opCount?: number } = {},
-): CutoverResult {
-  const err = asCutoverError(error);
-  trackStudioEvent("sdk_cutover_failed", {
-    ...context,
-    family,
-    error_kind: cutoverErrorKind(err),
-    ...(err instanceof StudioSaveHttpError ? { status: err.statusCode } : {}),
-    error: err.message,
-  });
-  return { status: "failed", error: err };
+export function failedCutover(error: unknown): CutoverResult {
+  return { status: "failed", error: asCutoverError(error) };
 }
 
 /** Only an explicit decline may enter the legacy mutation backend. */
@@ -260,8 +201,8 @@ function refreshCommittedEdit(after: string, deps: CutoverDeps, options?: Cutove
   try {
     if (deps.refresh) deps.refresh(after);
     else if (!options?.skipRefresh) deps.reloadPreview();
-  } catch (error) {
-    trackStudioEvent("sdk_cutover_refresh_failed", { error: asCutoverError(error).message });
+  } catch {
+    // A refresh fault must not fail an already-committed edit.
   }
 }
 
@@ -288,16 +229,12 @@ async function commitCandidateEdit(
       if (publication !== "published") edit.candidate.dispose();
       if (publication === "rejected-inactive-target") refreshTarget = false;
     }
-  } catch (error) {
+  } catch {
     // Persistence and history are already committed. A publisher can throw
     // after installing the candidate, so rolling back disk or disposing the
     // candidate here can make all three authorities disagree (or dispose the
     // now-live session). Production publishers are non-throwing; keep the
     // durable commit authoritative and surface this post-commit fault.
-    trackStudioEvent("sdk_cutover_publish_failed", {
-      path: targetPath,
-      error: asCutoverError(error).message,
-    });
   }
   if (refreshTarget) refreshCommittedEdit(edit.after, deps, options);
   return { status: "committed", version: hashContent(edit.after) };

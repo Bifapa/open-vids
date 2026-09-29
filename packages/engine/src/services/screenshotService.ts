@@ -130,7 +130,7 @@ async function sendBeginFrame(
       if (isPending) {
         throw new Error(
           `[BeginFrame] Frame still pending after ${PENDING_FRAME_RETRIES} retries — CPU overloaded by parallel renders. ` +
-            `Reduce concurrent renders or use --docker for isolation.`,
+            `Reduce concurrent renders or lower render concurrency.`,
         );
       }
       throw err;

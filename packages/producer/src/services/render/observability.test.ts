@@ -72,7 +72,7 @@ describe("summarizeBrowserDiagnostics", () => {
 });
 
 describe("sanitizeObservationMessage", () => {
-  it("redacts local paths and URL query strings before telemetry/log forwarding", () => {
+  it("redacts local paths and URL query strings before diagnostics/log forwarding", () => {
     expect(
       sanitizeObservationMessage(
         "ENOENT: open '/home/ubuntu/project/media/video.mp4' https://example.com/video.mp4?X-Amz-Signature=secret",

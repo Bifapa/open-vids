@@ -96,7 +96,6 @@ async function withFakeHeygen(options, run) {
     HEYGEN_VIDEO_MODE: process.env.HEYGEN_VIDEO_MODE,
     HEYGEN_VIDEO_RESPONSE: process.env.HEYGEN_VIDEO_RESPONSE,
     HEYGEN_DISCOVERY_MODE: process.env.HEYGEN_DISCOVERY_MODE,
-    HYPERFRAMES_NO_TELEMETRY: process.env.HYPERFRAMES_NO_TELEMETRY,
   };
 
   writeFileSync(
@@ -132,7 +131,6 @@ esac
   process.env.HEYGEN_VIDEO_MODE = options.mode ?? "success";
   process.env.HEYGEN_VIDEO_RESPONSE = options.response ?? "";
   process.env.HEYGEN_DISCOVERY_MODE = options.discoveryMode ?? "";
-  process.env.HYPERFRAMES_NO_TELEMETRY = "1";
 
   try {
     return await run({
@@ -341,8 +339,8 @@ test("onboards and returns null when avatar/voice discovery itself is unauthenti
   // Both avatar list AND voice list would fail unauthenticated (discoveryMode
   // "auth" applies to both in the fake CLI) -- the short-circuit after the
   // first failure must mean only one is ever attempted, so the onboarding
-  // message and the provider-error telemetry ping each fire exactly once
-  // instead of double-firing for what's really one auth failure.
+  // message fires exactly once instead of double-firing for what's really one
+  // auth failure.
   await withFakeHeygen({ discoveryMode: "auth" }, async ({ invocations }) => {
     const heygenVideoGenerate = await freshGenerate();
     const result = await heygenVideoGenerate("Discovery auth failure", {});

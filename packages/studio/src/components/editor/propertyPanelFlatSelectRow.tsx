@@ -1,5 +1,4 @@
 import { RotateCcw } from "../../icons/SystemIcons";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import {
   VALUE_TIER_LABEL_CLASS,
   VALUE_TIER_VALUE_CLASS,
@@ -33,8 +32,6 @@ export function FlatSelectRow({
   onChange: (nextValue: string) => void;
   onReset?: () => void;
 }) {
-  const track = useTrackDesignInput();
-  const trackName = ariaLabel || label;
   const normalizedOptions = options.map((option) =>
     typeof option === "string" ? { value: option, label: option } : option,
   );
@@ -65,7 +62,6 @@ export function FlatSelectRow({
             disabled={disabled}
             aria-label={ariaLabel || label || undefined}
             onChange={(e) => {
-              track("select", trackName);
               onChange(e.target.value);
             }}
             className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-hidden disabled:cursor-not-allowed ${VALUE_TIER_VALUE_CLASS[tier]}`}
@@ -93,7 +89,6 @@ export function FlatSelectRow({
             title="Remove — fall back to default"
             disabled={disabled}
             onClick={() => {
-              track("button", `Reset ${trackName}`);
               onReset();
             }}
             className="shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"

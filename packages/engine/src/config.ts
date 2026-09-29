@@ -156,7 +156,7 @@ export interface EngineConfig {
    * heuristic (`shouldAutoDisableStreamingEncodeOnWin32Compound`) turned
    * `enableStreamingEncode` off on the caller's behalf. Not intended to be
    * set by callers; surfaces the auto-decision for downstream observability
-   * (log lines, telemetry) so operators can tell an auto-disable apart from
+   * (log lines, diagnostics) so operators can tell an auto-disable apart from
    * an explicit user opt-out.
    */
   streamingEncodeAutoDisabledOnWin32Compound?: boolean;
@@ -761,7 +761,7 @@ export function resolveDefaultDrawElement(args: {
  * `useDrawElement` is false — the branches mirror that resolver's, in order.
  *
  * Every branch there returns a bare `false` and records nothing, so a render
- * that never became a drawElement candidate reaches telemetry with no
+ * that never became a drawElement candidate reaches diagnostics with no
  * `de_compile_gate`, no `de_clamp_reason` and no `de_gate_reason`. Those land
  * in the "Why not drawElement" dashboard's catch-all `other` bucket, which
  * measured 56,507 renders over 14 days — its second-largest bar, explaining
@@ -955,7 +955,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   // old semantics — attempt DE, let the init-time gates route away — which
   // debugging relies on.
   //
-  // win32 opened 2026-07-27: telemetry showed ~206k non-CI hardware-GPU
+  // win32 opened 2026-07-27: diagnostics showed ~206k non-CI hardware-GPU
   // Windows renders / 30d (~78% of the win32 fleet) held on the slow
   // screenshot path by the darwin-only clamp — the second-largest perf
   // population after macOS. The mechanism is platform-neutral (the Chrome
@@ -963,7 +963,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   // architectural limit. Opening it rides the same per-render safety
   // contract macOS shipped with in v0.7.38: compile/init gates +
   // worker-encode self-verify + screenshot fallback catch damage per
-  // render, and `gpu_renderer` telemetry (captured at DE session init)
+  // render, and `gpu_renderer` diagnostics (captured at DE session init)
   // segments the D3D11/ANGLE cohort by GPU vendor so backend-specific
   // damage clusters are attributable. Kill switches unchanged
   // (PRODUCER_EXPERIMENTAL_FAST_CAPTURE=false; per-render --workers).
@@ -1125,7 +1125,7 @@ export function shouldClampToScreenshotForConcreteGpu(
  * value the *authoritative* `forceScreenshot` local should hold after the
  * concrete-resolved-GPU decision fires. Returns the (possibly-promoted) new
  * boolean, so the caller can assign it back to its local — driving both
- * routing AND telemetry from one source of truth.
+ * routing AND diagnostics from one source of truth.
  *
  * Reads the programmatic opt-out from `cfg.forceScreenshotExplicitlyOptedOut`
  * (set by `resolveConfig` when EITHER env `PRODUCER_FORCE_SCREENSHOT=false`

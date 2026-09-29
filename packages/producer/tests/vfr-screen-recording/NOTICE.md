@@ -9,7 +9,7 @@ freeze bug fixed in PR #360.
 - **Excerpt**: 16s–21s of the original, downscaled from 2746×1902 to 480×332,
   re-encoded with `ffmpeg -fps_mode passthrough -c:v libx264 -preset slow
   -crf 28 -an` to preserve the original VFR timestamps.
-- **Recorded content**: the public `heygen-com/hyperframes` GitHub repo root
+- **Recorded content**: a public open-source repo root
   page. No private, proprietary, or user-identifying content.
 
 ## Properties preserved from the original

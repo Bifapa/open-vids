@@ -13,7 +13,6 @@
  */
 
 import { makeStudioDebugLogger } from "../utils/studioDebug";
-import { trackEvent } from "../telemetry/client";
 import { getModelContext, type ModelContext } from "./types";
 
 const log = makeStudioDebugLogger("webmcp");
@@ -28,20 +27,11 @@ async function importPolyfill(): Promise<ModelContext | null> {
   try {
     await import("@mcp-b/global");
     const modelContext = getModelContext();
-    if (!modelContext) {
-      // The package loaded but did not define what it promises to define.
-      log("polyfill", { loaded: true, modelContext: false });
-      trackEvent("webmcp.polyfill_failed", { error_name: "ModelContextMissingError" });
-    } else {
-      trackEvent("webmcp.polyfill_loaded");
-    }
+    log("polyfill", { loaded: true, modelContext: modelContext !== null });
     return modelContext;
   } catch (error) {
     // A missing agent surface must never break Studio's boot.
     log("polyfill", { failed: error instanceof Error ? error.message : String(error) });
-    trackEvent("webmcp.polyfill_failed", {
-      error_name: error instanceof Error ? error.name : "NonError",
-    });
     return null;
   }
 }

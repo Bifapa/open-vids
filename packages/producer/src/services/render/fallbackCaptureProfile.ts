@@ -15,7 +15,7 @@ import type { RenderObservabilityRecorder } from "./observability.js";
  * fallback path's per-frame perf is currently *untimed* end-to-end. Session
  * state carries `capturePerf.frameMs` and `getCapturePerfSummary()` emits a
  * `p50TotalMs`, but no tail (p95/p99) and no per-render summary keyed on the
- * specific trigger reaches downstream telemetry. Without that we can't
+ * specific trigger reaches downstream diagnostics. Without that we can't
  * characterize whether the fallback is a 10% tax or a 10× cliff — every
  * future perf discussion is guesswork.
  *
@@ -32,7 +32,7 @@ import type { RenderObservabilityRecorder } from "./observability.js";
  *
  * Uses the SAME `RenderObservabilityRecorder.checkpoint()` primitive that
  * `observeRenderStage` heartbeats and `stageStart`/`stageEnd` use (introduced
- * in PR #2510). No new telemetry channel, no new sink.
+ * in PR #2510). No new diagnostics channel, no new sink.
  *
  * ── Why opt-in ────────────────────────────────────────────────────────────
  * The percentile computation itself is trivially cheap (one sort per
@@ -41,7 +41,7 @@ import type { RenderObservabilityRecorder } from "./observability.js";
  * `capture_fallback_profile` events shouldn't see unfamiliar phase names in
  * their trace pipeline. `HF_PROFILE_FALLBACK_CAPTURE=true` lets operators
  * opt into the diagnostic surface. Default off preserves current-shape
- * telemetry for every caller that hasn't asked for the new signal.
+ * diagnostics for every caller that hasn't asked for the new signal.
  *
  * ── What this ISN'T ────────────────────────────────────────────────────────
  * A perf fix. A behavior change on healthy paths. A new metric pipeline. It

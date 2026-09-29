@@ -1,18 +1,12 @@
 // @vitest-environment happy-dom
-/** Value controls: one drag is one commit and one telemetry event; classes resolve; hotkey roles match. */
+/** Value controls: one drag is one commit; classes resolve; hotkey roles match. */
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { compile } from "tailwindcss";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-
-const trackStudioEvent = vi.fn();
-vi.mock("../../utils/studioTelemetry", () => ({
-  trackStudioEvent: (...args: unknown[]) => trackStudioEvent(...args),
-}));
-
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { Input } from "./Input";
 import { NumberField } from "./NumberField";
 import { Select } from "./Select";
@@ -20,9 +14,6 @@ import { Slider } from "./Slider";
 import { Toggle } from "./Toggle";
 import { isTypingTarget } from "../../utils/typingTarget";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
-import { __resetDesignInputThrottle, trackDesignInput } from "../../utils/designInputTracking";
-
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let mounted: { root: Root; host: HTMLElement } | null = null;
 
@@ -43,10 +34,6 @@ function unmount() {
   host.remove();
 }
 
-beforeEach(() => {
-  trackStudioEvent.mockReset();
-  __resetDesignInputThrottle();
-});
 afterEach(unmount);
 
 /** Base UI moves focus a task later than React renders; happy-dom is no faster. */
@@ -70,13 +57,6 @@ function type(input: HTMLInputElement, text: string) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
-
-/** One design-input telemetry call, through the real coalescing sink. */
-const track = (control: string) => () =>
-  trackDesignInput({ ui: "flat", section: "style", control, name: "Opacity" });
-
-const designInputCalls = () =>
-  trackStudioEvent.mock.calls.filter(([event]) => event === "design_input");
 
 // -- the compiled stylesheet, built once for the whole file --
 
@@ -210,15 +190,9 @@ describe("Slider", () => {
       ({ x: 0, y: 0, top: 0, left: 0, right: width, bottom: 10, width, height: 10 }) as DOMRect;
   }
 
-  it("commits once and tracks once for a drag across five moves", () => {
+  it("commits once for a drag across five moves", () => {
     const commits: number[] = [];
     const previews: number[] = [];
-    // Counted at the wrapper as well as at the sink. The sink's 600 ms window
-    // would collapse a per-move `track()` into one event on its own, so
-    // asserting only the event count would pass even if the call moved to
-    // `onValueChange`. The raw count is what pins KTD11.
-    let trackCalls = 0;
-    const trackOnce = track("slider");
     const host = render(
       <Slider
         label="Opacity"
@@ -227,10 +201,6 @@ describe("Slider", () => {
         max={100}
         onPreview={(n) => previews.push(n)}
         onCommit={(n) => commits.push(n)}
-        onTrack={() => {
-          trackCalls += 1;
-          trackOnce();
-        }}
       />,
     );
     const control = host.querySelector("[data-slider-control]")!;
@@ -255,8 +225,6 @@ describe("Slider", () => {
 
     expect(previews.length).toBeGreaterThan(1);
     expect(commits).toEqual([40]);
-    expect(trackCalls).toBe(1);
-    expect(designInputCalls()).toHaveLength(1);
   });
 
   it("puts the value back when a drag is aborted with the right button", () => {
@@ -264,14 +232,7 @@ describe("Slider", () => {
     // any further move, not merely reset the number once.
     const commits: number[] = [];
     const host = render(
-      <Slider
-        label="Opacity"
-        value={10}
-        min={0}
-        max={100}
-        onCommit={(n) => commits.push(n)}
-        onTrack={track("slider")}
-      />,
+      <Slider label="Opacity" value={10} min={0} max={100} onCommit={(n) => commits.push(n)} />,
     );
     const control = host.querySelector("[data-slider-control]")!;
     stubRect(control);
@@ -291,20 +252,12 @@ describe("Slider", () => {
     const input = host.querySelector<HTMLInputElement>('input[type="range"]')!;
     expect(input.value).toBe("10");
     expect(commits.at(-1) ?? 10).toBe(10);
-    expect(designInputCalls()).toHaveLength(0);
   });
 
-  it("steps by one on ArrowRight and coalesces three fast presses into one event", () => {
+  it("steps by one on ArrowRight", () => {
     const commits: number[] = [];
     const host = render(
-      <Slider
-        label="Opacity"
-        value={10}
-        min={0}
-        max={100}
-        onCommit={(n) => commits.push(n)}
-        onTrack={track("slider")}
-      />,
+      <Slider label="Opacity" value={10} min={0} max={100} onCommit={(n) => commits.push(n)} />,
     );
     const input = host.querySelector<HTMLInputElement>('input[type="range"]')!;
 
@@ -313,9 +266,6 @@ describe("Slider", () => {
     fire(input, "keydown", { key: "ArrowRight" });
 
     expect(commits).toEqual([11, 12, 13]);
-    // Three commits, one event: the sink's 600 ms window is what turns a burst
-    // of keyboard steps into one "the user worked this control".
-    expect(designInputCalls()).toHaveLength(1);
   });
 });
 
@@ -323,13 +273,7 @@ describe("NumberField", () => {
   it("commits a typed number on Enter and keeps the unit", () => {
     const commits: number[] = [];
     const host = render(
-      <NumberField
-        label="Size"
-        value={24}
-        unit="px"
-        onCommit={(n) => commits.push(n)}
-        onTrack={track("metric")}
-      />,
+      <NumberField label="Size" value={24} unit="px" onCommit={(n) => commits.push(n)} />,
     );
     const input = host.querySelector("input")!;
 
@@ -339,7 +283,6 @@ describe("NumberField", () => {
     fire(input, "keydown", { key: "Enter" });
 
     expect(commits).toEqual([48]);
-    expect(designInputCalls()).toHaveLength(1);
     expect(host.textContent).toContain("px");
   });
 
@@ -384,12 +327,7 @@ describe("Input", () => {
   it("commits a typed value on Enter, once, and not per keystroke", () => {
     const commits: string[] = [];
     const host = render(
-      <Input
-        value="hello"
-        aria-label="Name"
-        onCommit={(v) => commits.push(v)}
-        onTrack={track("text")}
-      />,
+      <Input value="hello" aria-label="Name" onCommit={(v) => commits.push(v)} />,
     );
     const input = host.querySelector("input")!;
 
@@ -399,7 +337,6 @@ describe("Input", () => {
     fire(input, "keydown", { key: "Enter" });
 
     expect(commits).toEqual(["world"]);
-    expect(designInputCalls()).toHaveLength(1);
   });
 
   it("abandons the draft on Escape", () => {
@@ -429,7 +366,6 @@ describe("Select", () => {
           { label: "Semibold", value: "600" },
         ]}
         onCommit={(v) => commits.push(v)}
-        onTrack={track("select")}
       />,
     );
     const trigger = host.querySelector('[role="combobox"]')!;
@@ -452,7 +388,6 @@ describe("Select", () => {
     await settle();
 
     expect(commits).toEqual(["600"]);
-    expect(designInputCalls()).toHaveLength(1);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
 });
@@ -460,14 +395,7 @@ describe("Select", () => {
 describe("Toggle", () => {
   it("flips on click and on Space, and reports aria-checked", () => {
     const flips: boolean[] = [];
-    const host = render(
-      <Toggle
-        label="Visible"
-        checked={false}
-        onCommit={(v) => flips.push(v)}
-        onTrack={track("toggle")}
-      />,
-    );
+    const host = render(<Toggle label="Visible" checked={false} onCommit={(v) => flips.push(v)} />);
     const control = host.querySelector('[role="switch"]') as HTMLElement;
 
     expect(control.getAttribute("aria-checked")).toBe("false");
@@ -477,7 +405,6 @@ describe("Toggle", () => {
     fire(control, "keyup", { key: " " });
 
     expect(flips).toEqual([true, true]);
-    expect(designInputCalls()).toHaveLength(1); // coalesced, same control
   });
 });
 

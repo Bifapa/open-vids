@@ -15,7 +15,7 @@
  * runtime root and any sub-composition hosts that `compositionLoader` writes
  * into them. Watching only those hosts (with `subtree: true`) catches every
  * late-arriving timed media element from sub-composition activation, while
- * filtering out churn from analytics tags, runtime telemetry markers, and
+ * filtering out churn from tracking tags, runtime diagnostics markers, and
  * other out-of-host nodes that the runtime appends straight to `<body>`
  * during bootstrap.
  *

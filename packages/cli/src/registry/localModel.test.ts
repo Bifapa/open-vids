@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const readConfig = vi.fn();
 const disk = { consent: undefined as boolean | undefined };
 const existsSync = vi.fn();
 const readFileSync = vi.fn();
@@ -8,8 +7,8 @@ const unlinkSync = vi.fn();
 const downloadFile = vi.fn();
 const digest = vi.fn();
 
-vi.mock("../telemetry/config.js", () => ({
-  readConfig: () => readConfig(),
+vi.mock("../utils/modelConsent.js", () => ({
+  localModelConsent: () => disk.consent,
   updateLocalModelConsent: (decide: (onDisk: boolean | undefined) => boolean | undefined) =>
     (disk.consent = decide(disk.consent)),
 }));
@@ -64,7 +63,6 @@ function makeDownloadsAppearOnDisk(): void {
 }
 
 beforeEach(() => {
-  readConfig.mockReturnValue({});
   existsSync.mockReturnValue(false);
   disk.consent = undefined;
   readFileSync.mockReturnValue(Buffer.from("artifact"));
@@ -148,13 +146,13 @@ describe("readiness", () => {
 
 describe("status", () => {
   it("is declined when the user said no, even if files somehow exist", () => {
-    readConfig.mockReturnValue({ localEmbeddingEnabled: false });
+    disk.consent = false;
     existsSync.mockReturnValue(true);
     expect(localModelStatus()).toEqual({ status: "declined" });
   });
 
   it("is ready when consented and downloaded", () => {
-    readConfig.mockReturnValue({ localEmbeddingEnabled: true });
+    disk.consent = true;
     existsSync.mockReturnValue(true);
     returnMatchingDigests();
     expect(localModelStatus()).toEqual({ status: "ready" });
@@ -165,7 +163,7 @@ describe("status", () => {
   });
 
   it("is unavailable when consented but not yet downloaded", () => {
-    readConfig.mockReturnValue({ localEmbeddingEnabled: true });
+    disk.consent = true;
     expect(localModelStatus().status).toBe("unavailable");
   });
 

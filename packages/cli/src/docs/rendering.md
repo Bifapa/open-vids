@@ -2,15 +2,8 @@
 
 Render compositions to MP4 with `npx hyperframes render`.
 
-## Local Mode (default)
-
-Uses Puppeteer (bundled Chromium) + system FFmpeg. Fast for iteration.
+Renders locally with Puppeteer (bundled Chromium) + system FFmpeg.
 Requires: FFmpeg installed (`brew install ffmpeg` or `apt install ffmpeg`).
-
-## Docker Mode (--docker)
-
-Deterministic output with exact Chrome version and fonts. For production.
-Requires: Docker installed and running.
 
 ## Options
 
@@ -22,7 +15,7 @@ Requires: Docker installed and running.
 - `--vp9-cpu-used` — WebM VP9 speed/quality tradeoff (`-8` to `8`, default: `4`). Higher values encode faster with larger output / quality tradeoff.
 - `--video-frame-format` — Source video frame extraction format: `auto`, `jpg`, or `png` (default: `auto`). Use `png` for UI recordings, screen captures, and color-sensitive source videos.
 - `--gpu` — Use GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)
-- `--browser-gpu` / `--no-browser-gpu` — Force host GPU or software (SwiftShader) for Chrome/WebGL capture. Default for local renders is `auto` — probe WebGL availability on first launch and fall back to software if no GPU is reachable. Docker mode always uses software.
+- `--browser-gpu` / `--no-browser-gpu` — Force host GPU or software (SwiftShader) for Chrome/WebGL capture. Default is `auto` — probe WebGL availability on first launch and fall back to software if no GPU is reachable.
 - `-o, --output` — Custom output path
 
 ## Tips

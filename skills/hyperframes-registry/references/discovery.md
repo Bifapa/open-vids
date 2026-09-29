@@ -18,12 +18,12 @@ npx hyperframes catalog --human-friendly
 - `--json` is the deterministic agent and CI surface. Select a name, then run `npx hyperframes add <name>`.
 - `--human-friendly` opens a picker and installs the selected item immediately.
 
-## Read the registry manifest as a fallback
+## Read the registry manifest directly
 
-When the CLI is unavailable, the top-level `registry.json` lists all available items:
+The top-level `registry.json` in the bundled `registry/` tree lists all available items:
 
 ```bash
-curl -s https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/registry.json
+cat registry/registry.json | head -c 2000
 ```
 
 Each entry has `name` and `type` (`hyperframes:example`, `hyperframes:block`, or `hyperframes:component`).

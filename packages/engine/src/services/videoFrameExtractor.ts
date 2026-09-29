@@ -45,7 +45,7 @@ import {
   isHttpUrl,
   safeDownloadUrlIdentity,
   UrlDownloadError,
-  writeUrlDownloadTelemetry,
+  writeUrlDownloadDiagnostics,
 } from "../utils/urlDownloader.js";
 import { runFfmpeg, runFfmpegPipeline, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
@@ -345,7 +345,7 @@ export function safeVideoExtractionSourceIdentity(
 }
 
 function downloadStatusClass(error: UrlDownloadError): VideoExtractionFailureStatusClass {
-  const status = error.status ?? error.telemetry?.status;
+  const status = error.status ?? error.diagnostics?.status;
   if (typeof status === "number" && status >= 400 && status < 500) return "http_4xx";
   if (typeof status === "number" && status >= 500 && status < 600) return "http_5xx";
   if (error.kind === "timeout") return "timeout";
@@ -358,8 +358,8 @@ function downloadFailureGroup(
   error: UrlDownloadError,
 ): VideoExtractionFailureGroupDetails {
   const sourceIdentity = safeVideoExtractionSourceIdentity(source);
-  const failureHost = error.telemetry?.finalHost ?? error.telemetry?.initialHost;
-  const attempt = error.telemetry?.attempt;
+  const failureHost = error.diagnostics?.finalHost ?? error.diagnostics?.initialHost;
+  const attempt = error.diagnostics?.attempt;
   return {
     ...(sourceIdentity ? { sourceFingerprint: sourceIdentity.sourceFingerprint } : {}),
     ...((failureHost ?? sourceIdentity?.host) ? { host: failureHost ?? sourceIdentity?.host } : {}),
@@ -1689,7 +1689,7 @@ export async function extractAllVideoFrames(
           undefined,
           signal,
           () => recordTransientRetries(1),
-          { onTelemetry: writeUrlDownloadTelemetry },
+          { onDiagnostics: writeUrlDownloadDiagnostics },
         );
       }
 

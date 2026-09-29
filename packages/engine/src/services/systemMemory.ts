@@ -154,7 +154,7 @@ export function getSystemTotalMb(): number {
 /**
  * Total-RAM ceiling (MiB) at or below which the host is treated as
  * memory-constrained. Tuned to the 8 GB laptops in
- * heygen-com/hyperframes#1218 / #1219: on those boxes the default render
+ * #1218 / #1219 (upstream HyperFrames reference): on those boxes the default render
  * shape (probe Chrome + a throwaway calibration Chrome + N capture
  * workers) thrashes, so the pipeline collapses to its cheapest form.
  *
@@ -175,12 +175,11 @@ export const LOW_MEMORY_TOTAL_MB_THRESHOLD = 8192;
  * a known value instead of re-probing.
  *
  * Caveat: Linux cgroup v1/v2 memory limits are consulted when readable, so
- * Docker and serverless runtimes, including Lambda tiers with readable cgroup
- * ceilings, inherit the tighter container limit instead of the host's physical
- * RAM. Environments that hide cgroup files should set
- * `PRODUCER_LOW_MEMORY_MODE` explicitly rather than relying on auto-detection.
- * Hosts whose *effective* total RAM is genuinely <= the threshold (laptops,
- * small VMs, small Lambda tiers, small containers) are detected correctly.
+ * container runtimes with readable cgroup ceilings inherit the tighter
+ * container limit instead of the host's physical RAM. Environments that hide
+ * cgroup files should set `PRODUCER_LOW_MEMORY_MODE` explicitly rather than
+ * relying on auto-detection. Hosts whose *effective* total RAM is genuinely
+ * <= the threshold (laptops, small VMs, small containers) are detected correctly.
  */
 export function isLowMemorySystem(totalMb: number = getSystemTotalMb()): boolean {
   return totalMb <= LOW_MEMORY_TOTAL_MB_THRESHOLD;
