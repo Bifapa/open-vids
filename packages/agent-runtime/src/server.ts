@@ -264,7 +264,7 @@ async function getProjectRuntime(
       const store = new FileChatStore(scope.projectDir);
       const chats = await ChatService.open(scope, store, { now, ...(ids && { ids }) });
       const turns = new TurnRunner(chats, options.backend, options.checkpoints, store, turnOptions);
-      await turns.recoverInterruptedTurns();
+      await turns.recoverCheckpoints();
       return { scope, store, chats, turns };
     })();
     projects.set(scope.projectDir, project);

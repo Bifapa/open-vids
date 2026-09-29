@@ -121,6 +121,12 @@ export interface HistoryWindow {
   /** Records everything written since the window opened as one entry (null when nothing changed); after the window
    * ended by itself or by flush, returns the entry it became. */
   close(): Promise<HistoryEntry | null>;
+  /**
+   * Keeps the window open without a write: its idle limit counts from now. False once it has ended (idle, flush,
+   * close), after which the owner's writes are no longer the window's. A long agent turn renews on a heartbeat, so it
+   * stays one entry across any pause and still ends by itself if its owner dies.
+   */
+  renew(): boolean;
 }
 
 export interface ProjectHistory {
@@ -184,6 +190,9 @@ interface Group {
   /** Windows only: the idle lifetime, its timer, the last write's time, and the entry it became once ended. */
   idleMs?: number;
   lastWriteAt?: number;
+  /** Windows only: when its owner last said it is still at work (renew), and whether its idle limit ran out. */
+  renewedAt?: number;
+  expired?: boolean;
   idleTimer?: NodeJS.Timeout;
   entry?: HistoryEntry | null;
   parts?: Set<string>;
@@ -256,9 +265,14 @@ function ignoresCase(dir: string): boolean {
 const blocks = (removed: string, added: string) =>
   added.startsWith(`${removed}/`) || removed.startsWith(`${added}/`);
 
-/** A window takes a write within idleMs of its last one; past that it has ended, even before its timer commits it. */
+/**
+ * A window takes a write within idleMs of its last write or renewal; past that it has ended, even before its timer
+ * commits it.
+ */
 const takesWrite = (window: Group, at: number) =>
-  window.idleMs === undefined || at - (window.lastWriteAt ?? at) <= window.idleMs;
+  window.idleMs === undefined ||
+  at - Math.max(window.lastWriteAt ?? at, window.renewedAt ?? Number.NEGATIVE_INFINITY) <=
+    window.idleMs;
 
 /** Files one change to a group; a later change to the same path keeps the group's first "before". */
 function addChange(group: Group, path: string, before: string | null, after: string | null): void {
@@ -758,19 +772,35 @@ class Engine {
       this.windows.push(window);
       this.touch(window, Date.now());
       const close = () => this.queue(() => this.sweepAndEnd(window));
-      return { id: window.id, startedAt: window.startedAt, close };
+      const renew = () => this.renew(window);
+      return { id: window.id, startedAt: window.startedAt, close, renew };
     });
   }
 
   /** A window with no write for its idleMs ends, so a close that never comes cannot hold every later write. */
   touch(window: Group, at: number): void {
     window.lastWriteAt = Math.max(window.lastWriteAt ?? at, at);
+    this.armIdle(window);
+  }
+
+  /**
+   * Its owner is still at work: the idle limit counts from now, without a write. False once the window ended (or is
+   * ending), so an owner that renews learns its later writes would no longer be its own.
+   */
+  renew(window: Group): boolean {
+    if (window.expired || !this.windows.includes(window)) return false;
+    window.renewedAt = Date.now();
+    this.armIdle(window);
+    return true;
+  }
+
+  armIdle(window: Group): void {
     clearTimeout(window.idleTimer);
     if (window.idleMs === undefined || !Number.isFinite(window.idleMs)) return;
-    window.idleTimer = setTimeout(
-      () => this.background(() => this.sweepAndEnd(window)),
-      window.idleMs,
-    );
+    window.idleTimer = setTimeout(() => {
+      window.expired = true;
+      this.background(() => this.sweepAndEnd(window));
+    }, window.idleMs);
     window.idleTimer.unref?.();
   }
 

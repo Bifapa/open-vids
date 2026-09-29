@@ -44,8 +44,19 @@ guard also forbids it. A crash leaves a running turn in the log; on load it is c
 - One prompt = one turn = one checkpoint. A checkpoint is a project-history window attributed to the
   `Director` agent (existing engine behind Undo); revert undoes the turn's entries newest first with
   `keep-later-edits` or `just-this`. If no checkpoint can be opened the turn does not start.
-- Limitation: a history window auto-closes after 10 minutes without a project write; writes after
-  that are not part of the turn.
+- Checkpoint lifecycle: the transaction opens before the prompt reaches the Director and stays open
+  for the whole turn. The runtime renews its lease (`POST …/history/window/:id/renew`) every 20 s;
+  the lease is 2 min, so pauses of any length between writes stay in the same transaction, while a
+  dead runtime's transaction ends by itself within 2 min instead of absorbing later edits. It closes
+  only when the turn completes, fails, is aborted or is found interrupted. If a renewal reports the
+  transaction gone, the turn is stopped (failed) so no write escapes Revert. If closing fails (Studio
+  unreachable), the checkpoint stays `active` with its `transactionId`, and `recoverCheckpoints()`
+  closes it and collects its entries before the next turn or on the next project load; a turn left
+  `running` by a crash becomes `interrupted` the same way.
+- Edits Studio itself makes during a turn stay the user's own history entries; edits from other
+  apps during a turn are attributed to the turn (existing history-engine semantics).
+- Tests import `@hyperframes/studio-server` through its `node` (dist) condition: rebuild it
+  (`bun run build`) before running this package's tests after history-engine changes.
 
 ## Director (OMP adapter)
 

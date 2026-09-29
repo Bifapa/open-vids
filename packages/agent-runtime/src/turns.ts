@@ -20,11 +20,18 @@ import { ChatService } from "./chats.js";
 import { renderPromptContext } from "./promptContext.js";
 import { SessionManager } from "./sessionManager.js";
 import { FileChatStore } from "./store/index.js";
-import { TurnEventWriter, type StreamTimerApi } from "./turnStream.js";
-import { cloneTurn, createDeferredVoid, sameIds, type TurnRunnerOptions } from "./turnSupport.js";
+import { TurnEventWriter, type StreamTimerApi, type StreamTimerHandle } from "./turnStream.js";
+import {
+  checkpointLabel as labelFor,
+  cloneTurn,
+  createDeferredVoid,
+  sameIds,
+  type TurnRunnerOptions,
+} from "./turnSupport.js";
 export type { TurnRunnerOptions } from "./turnSupport.js";
 
 const DEFAULT_IDLE_MS = 15 * 60_000;
+const DEFAULT_RENEW_MS = 20_000;
 
 interface ActiveRun {
   chatId: string;
@@ -38,6 +45,7 @@ interface ActiveRun {
   task: Promise<void> | null;
   forcedError: unknown | null;
   finalizing: boolean;
+  heartbeat: StreamTimerHandle | null;
 }
 
 /** Serializes all project mutations while keeping one resumable backend session per chat. */
@@ -45,6 +53,7 @@ export class TurnRunner {
   private readonly now: () => number;
   private readonly ids: () => string;
   private readonly idleMs: number;
+  private readonly renewIntervalMs: number;
   private readonly timers: StreamTimerApi;
   private readonly sessionManager: SessionManager;
   private active: ActiveRun | null = null;
@@ -60,6 +69,7 @@ export class TurnRunner {
     this.now = options.now ?? Date.now;
     this.ids = options.ids ?? randomUUID;
     this.idleMs = options.sessionIdleMs ?? DEFAULT_IDLE_MS;
+    this.renewIntervalMs = options.renewIntervalMs ?? DEFAULT_RENEW_MS;
     this.timers = options.timers ?? {
       setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
       clearTimeout: (timer) => globalThis.clearTimeout(timer),
@@ -139,7 +149,7 @@ export class TurnRunner {
       status: "streaming",
       model: turn.model,
     };
-    const checkpointLabel = `Director: ${input.prompt.slice(0, 60)}`;
+    const checkpointLabel = labelFor(input.prompt);
     const started = createDeferredVoid();
     const reservation: ActiveRun = {
       chatId,
@@ -153,18 +163,22 @@ export class TurnRunner {
       task: null,
       forcedError: null,
       finalizing: false,
+      heartbeat: null,
     };
     this.active = reservation;
 
     try {
+      await this.recoverCheckpoints();
       reservation.checkpoint = await this.checkpoints.begin(this.chats.scope, checkpointLabel);
       const checkpoint: TurnCheckpoint = {
         status: "active",
         entryIds: [],
         createdAt: reservation.checkpoint.startedAt,
+        transactionId: reservation.checkpoint.transactionId,
       };
       turn.checkpoint = checkpoint;
       reservation.turn.checkpoint = { ...checkpoint, entryIds: [] };
+      this.scheduleRenew(reservation);
     } catch (error) {
       if (this.active === reservation) this.active = null;
       throw new RuntimeError(
@@ -304,38 +318,57 @@ export class TurnRunner {
     }
   }
 
-  async recoverInterruptedTurns(): Promise<void> {
+  /**
+   * Closes every transaction a previous run could not: turns still "running" in the log (the runtime died mid-turn)
+   * become "interrupted", and checkpoints still "active" (a turn ended while Studio was unreachable) are closed and
+   * given their entries. Runs on project load and before each new turn.
+   */
+  async recoverCheckpoints(): Promise<void> {
     for (const chat of this.chats.list()) {
       const state = this.chats.get(chat.id);
       if (!state) continue;
-      for (const previous of state.turns.filter((turn) => turn.status === "running")) {
+      for (const previous of state.turns) {
+        if (this.active?.turn.id === previous.id) continue;
+        const crashed = previous.status === "running";
+        if (!crashed && previous.checkpoint?.status !== "active") continue;
         const promptMessage = state.messages.find(
           (message) =>
             message.role === "user" && message.turnId === previous.id && !message.steering,
         );
         const prompt = promptMessage?.parts.find((part) => part.type === "text")?.text ?? "";
-        const label = `Director: ${prompt.slice(0, 60)}`;
-        let entryIds: string[] = [];
+        const createdAt = previous.checkpoint?.createdAt ?? previous.startedAt;
+        let entryIds: string[];
         try {
-          entryIds = await this.checkpoints.recover(
-            this.chats.scope,
-            label,
-            previous.checkpoint?.createdAt ?? previous.startedAt,
-          );
-        } catch {}
+          entryIds = await this.checkpoints.recover(this.chats.scope, {
+            label: labelFor(prompt),
+            startedAt: createdAt,
+            ...(previous.checkpoint?.transactionId && {
+              transactionId: previous.checkpoint.transactionId,
+            }),
+          });
+        } catch {
+          // Studio is unreachable: leave it pending for the next attempt rather than record "no changes".
+          if (!crashed) continue;
+          entryIds = [];
+        }
         const checkpoint: TurnCheckpoint = {
           status: "ready",
           entryIds,
-          createdAt: previous.checkpoint?.createdAt ?? previous.startedAt,
+          createdAt,
           closedAt: this.now(),
         };
+        await this.chats.emit(chat.id, {
+          type: "checkpoint.updated",
+          turnId: previous.id,
+          checkpoint,
+        });
+        if (!crashed) continue;
         const turn: TurnSummary = {
           ...previous,
           status: "interrupted",
           endedAt: this.now(),
           checkpoint,
         };
-        await this.chats.emit(chat.id, { type: "checkpoint.updated", turnId: turn.id, checkpoint });
         await this.chats.markStatus(chat.id, "interrupted");
         await this.chats.emit(chat.id, { type: "turn.aborted", turn });
       }
@@ -349,6 +382,31 @@ export class TurnRunner {
       await active.task?.catch(() => undefined);
     }
     await this.sessionManager.dispose();
+  }
+
+  /** Heartbeat: keeps the turn's transaction open for the whole turn, however long it pauses between writes. */
+  private scheduleRenew(run: ActiveRun): void {
+    run.heartbeat = this.timers.setTimeout(() => void this.renew(run), this.renewIntervalMs);
+  }
+
+  private async renew(run: ActiveRun): Promise<void> {
+    if (!run.checkpoint || run.finalizing) return;
+    let open = true;
+    try {
+      open = await run.checkpoint.renew();
+    } catch {
+      // Studio did not answer this beat; the next one retries well within the host's lease.
+    }
+    if (run.finalizing) return;
+    if (!open) {
+      // Its later writes would no longer be this turn's, so Revert this turn could not undo them: stop here.
+      run.forcedError ??= new Error(
+        "The project checkpoint for this turn ended unexpectedly, so the agent was stopped to keep every change of this turn revertable.",
+      );
+      run.controller.abort();
+      return;
+    }
+    this.scheduleRenew(run);
   }
 
   private async runTurn(run: ActiveRun, input: StartTurnRequest): Promise<void> {
@@ -404,21 +462,24 @@ export class TurnRunner {
   ): Promise<void> {
     if (run.finalizing) return;
     run.finalizing = true;
-    let entryIds: string[] = [];
+    if (run.heartbeat) this.timers.clearTimeout(run.heartbeat);
+    const createdAt = run.turn.checkpoint?.createdAt ?? run.turn.startedAt;
+    const closedAt = this.now();
+    let checkpoint: TurnCheckpoint = { status: "ready", entryIds: [], createdAt, closedAt };
     if (run.checkpoint) {
       try {
-        entryIds = await run.checkpoint.end();
+        checkpoint = { ...checkpoint, entryIds: await run.checkpoint.end() };
       } catch {
-        entryIds = [];
+        // Studio could not be reached (shutting down, restarting). The transaction is not lost: it stays "active"
+        // with its id, and recoverCheckpoints() closes it and collects its entries on the next turn or project load.
+        checkpoint = {
+          status: "active",
+          entryIds: [],
+          createdAt,
+          transactionId: run.checkpoint.transactionId,
+        };
       }
     }
-    const closedAt = this.now();
-    const checkpoint: TurnCheckpoint = {
-      status: "ready",
-      entryIds,
-      createdAt: run.turn.checkpoint?.createdAt ?? run.turn.startedAt,
-      closedAt,
-    };
     run.turn.checkpoint = checkpoint;
     run.turn.status = status;
     run.turn.endedAt = closedAt;

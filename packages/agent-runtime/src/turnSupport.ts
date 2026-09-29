@@ -6,6 +6,13 @@ export interface TurnRunnerOptions {
   ids?: () => string;
   sessionIdleMs?: number;
   timers?: StreamTimerApi;
+  /** How often a running turn renews its project transaction (default 20 s; must stay well under the host's lease). */
+  renewIntervalMs?: number;
+}
+
+/** The history label of a turn's transaction; recovery rebuilds it from the persisted prompt, so it must be pure. */
+export function checkpointLabel(prompt: string): string {
+  return `Director: ${prompt.slice(0, 60)}`;
 }
 
 export function cloneTurn(turn: TurnSummary): TurnSummary {

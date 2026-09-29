@@ -13,14 +13,20 @@ interface FakeWindow {
   id: string;
   entryIds: string[];
   ended: boolean;
+  renewals: number;
 }
 
-/** Deterministic in-memory checkpoint host for runtime tests and embedding harnesses. */
+/**
+ * Deterministic in-memory checkpoint host for runtime tests and embedding harnesses. A window stays open until it is
+ * ended through its handle, through recover(), or by {@link expire} (the host-side lease lapsing).
+ */
 export class FakeCheckpointHost implements CheckpointHost {
   readonly windows: FakeWindow[] = [];
   readonly revertCalls: Array<{ entryIds: string[]; mode: RevertMode }> = [];
-  readonly recoveryCalls: Array<{ label: string; startedAt: number }> = [];
+  readonly recoveryCalls: Array<{ label: string; startedAt: number; transactionId?: string }> = [];
   nextBeginError: Error | null = null;
+  nextEndError: Error | null = null;
+  nextRenewError: Error | null = null;
   nextRevertError: Error | null = null;
   nextRevertOutcome: RevertOutcome | null = null;
   nextEntryIds: string[] = [];
@@ -41,17 +47,38 @@ export class FakeCheckpointHost implements CheckpointHost {
       id: `fake-window-${++this.sequence}`,
       entryIds: [],
       ended: false,
+      renewals: 0,
     };
     this.windows.push(window);
     return {
       startedAt: window.startedAt,
+      transactionId: window.id,
+      renew: async () => {
+        if (this.nextRenewError) {
+          const error = this.nextRenewError;
+          this.nextRenewError = null;
+          throw error;
+        }
+        if (window.ended) return false;
+        window.renewals += 1;
+        return true;
+      },
       end: async () => {
-        window.ended = true;
-        window.entryIds = this.nextEntryIds;
-        this.nextEntryIds = [];
+        if (this.nextEndError) {
+          const error = this.nextEndError;
+          this.nextEndError = null;
+          throw error;
+        }
+        this.close(window);
         return [...window.entryIds];
       },
     };
+  }
+
+  /** The host ended the window on its own (its lease lapsed): later renewals report it gone. */
+  expire(id: string): void {
+    const window = this.windows.find((candidate) => candidate.id === id);
+    if (window) this.close(window);
   }
 
   async revert(
@@ -70,15 +97,29 @@ export class FakeCheckpointHost implements CheckpointHost {
     return outcome ?? { ok: true };
   }
 
-  async recover(_scope: ProjectScope, label: string, startedAt: number): Promise<string[]> {
-    this.recoveryCalls.push({ label, startedAt });
+  async recover(
+    _scope: ProjectScope,
+    checkpoint: { label: string; startedAt: number; transactionId?: string },
+  ): Promise<string[]> {
+    this.recoveryCalls.push({ ...checkpoint });
+    const open = this.windows.find((window) => window.id === checkpoint.transactionId);
+    if (open && !open.ended) this.close(open);
     return this.windows
-      .filter((entry) => entry.label === label && entry.startedAt === startedAt)
+      .filter(
+        (entry) => entry.label === checkpoint.label && entry.startedAt === checkpoint.startedAt,
+      )
       .flatMap((entry) => entry.entryIds);
   }
 
   addRecoveredEntry(scope: ProjectScope, label: string, startedAt: number, id: string): void {
-    this.windows.push({ scope, label, startedAt, id, entryIds: [id], ended: true });
+    this.windows.push({ scope, label, startedAt, id, entryIds: [id], ended: true, renewals: 0 });
+  }
+
+  private close(window: FakeWindow): void {
+    if (window.ended) return;
+    window.ended = true;
+    window.entryIds = this.nextEntryIds;
+    this.nextEntryIds = [];
   }
 }
 

@@ -84,6 +84,11 @@ export interface TurnCheckpoint {
   revertedAt?: number;
   /** Why a checkpoint could not be taken. */
   reason?: string;
+  /**
+   * The project-history transaction behind the checkpoint while it is open. Persisted so a restarted runtime can
+   * close a transaction a crashed turn left open.
+   */
+  transactionId?: string;
 }
 
 export interface AgentError {

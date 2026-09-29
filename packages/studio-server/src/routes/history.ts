@@ -181,4 +181,17 @@ export function registerHistoryRoutes(api: Hono, adapter: StudioApiAdapter): voi
       return { entry: await held.window.close() };
     }),
   );
+  // A long-running writer (an agent turn) holds its window open across pauses by renewing it; 409 once it ended.
+  api.post(`${base}/window/:windowId/renew`, (c) =>
+    withHistory(adapter, c, (history) => {
+      const id = c.req.param("windowId") ?? "";
+      const held = windows.get(id);
+      if (held?.history !== history) throw new Error("That window is not open in this project.");
+      if (!held.window.renew()) {
+        windows.delete(id);
+        throw new Error("That window has already ended.");
+      }
+      return { ok: true };
+    }),
+  );
 }

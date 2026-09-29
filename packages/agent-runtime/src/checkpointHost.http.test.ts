@@ -95,13 +95,15 @@ describe("HttpCheckpointHost", () => {
       body: {
         who: { kind: "agent", name: "Director" },
         label: "Director: render",
-        idleMs: 600_000,
+        idleMs: 120_000,
       },
     });
     expect(
       fixture.requests.some((request) => request.path.endsWith("/window/window-1/close")),
     ).toBe(true);
-    expect(await host.recover(fixture.scope, "Director: render", 500)).toEqual(["older", "newer"]);
+    expect(
+      await host.recover(fixture.scope, { label: "Director: render", startedAt: 500 }),
+    ).toEqual(["older", "newer"]);
   });
 
   it("passes the selected mode for every newest-first undo and reports partial conflicts", async () => {

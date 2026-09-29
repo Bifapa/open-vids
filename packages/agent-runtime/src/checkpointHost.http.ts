@@ -8,7 +8,15 @@ import type {
 } from "./checkpointHost.js";
 
 const DIRECTOR = { kind: "agent", name: "Director" } as const;
-const IDLE_MS = 600_000;
+/**
+ * The transaction's lease on the history engine. The turn renews it every 20 s (TurnRunner's `renewIntervalMs`)
+ * TurnRunner), so it never lapses while the runtime is alive, however long the agent pauses between writes; if the
+ * runtime dies, the engine ends the transaction by itself within this time instead of absorbing later writes.
+ */
+export const TRANSACTION_LEASE_MS = 120_000;
+
+const windowPath = (windowId: string, action: "close" | "renew") =>
+  `/window/${encodeURIComponent(windowId)}/${action}`;
 
 interface HistoryEntryMatch {
   id: string;
@@ -24,7 +32,7 @@ export class HttpCheckpointHost implements CheckpointHost {
     const response = await this.request(scope, "POST", "/window", {
       who: DIRECTOR,
       label,
-      idleMs: IDLE_MS,
+      idleMs: TRANSACTION_LEASE_MS,
     });
     if (!isRecord(response)) throw new Error("Studio returned an invalid history window");
     const windowId = response.windowId;
@@ -35,10 +43,21 @@ export class HttpCheckpointHost implements CheckpointHost {
     let closed = false;
     return {
       startedAt,
+      transactionId: windowId,
+      renew: async () => {
+        if (closed) return false;
+        try {
+          await this.request(scope, "POST", windowPath(windowId, "renew"), {});
+          return true;
+        } catch (error) {
+          if (error instanceof HistoryRequestError && error.status === 409) return false;
+          throw error;
+        }
+      },
       end: async () => {
         if (closed) return [];
         closed = true;
-        await this.request(scope, "POST", `/window/${encodeURIComponent(windowId)}/close`, {});
+        await closeIfOpen(() => this.request(scope, "POST", windowPath(windowId, "close"), {}));
         return this.findEntries(scope, label, startedAt);
       },
     };
@@ -75,8 +94,15 @@ export class HttpCheckpointHost implements CheckpointHost {
     return { ok: true };
   }
 
-  async recover(scope: ProjectScope, label: string, startedAt: number): Promise<string[]> {
-    return this.findEntries(scope, label, startedAt);
+  async recover(
+    scope: ProjectScope,
+    checkpoint: { label: string; startedAt: number; transactionId?: string },
+  ): Promise<string[]> {
+    const { transactionId } = checkpoint;
+    if (transactionId) {
+      await closeIfOpen(() => this.request(scope, "POST", windowPath(transactionId, "close"), {}));
+    }
+    return this.findEntries(scope, checkpoint.label, checkpoint.startedAt);
   }
 
   private async findEntries(
@@ -137,9 +163,29 @@ export class HttpCheckpointHost implements CheckpointHost {
         isRecord(payload) && typeof payload.error === "string"
           ? payload.error
           : `Studio history request failed (${response.status})`;
-      throw new Error(message);
+      throw new HistoryRequestError(message, response.status);
     }
     return payload;
+  }
+}
+
+/** A refusal from Studio's history routes (a 409 means the engine refused: e.g. the window is no longer open). */
+class HistoryRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "HistoryRequestError";
+  }
+}
+
+/** Closes a window that may already be gone; a refusal (409: not open here any more) is not an error. */
+async function closeIfOpen(close: () => Promise<unknown>): Promise<void> {
+  try {
+    await close();
+  } catch (error) {
+    if (!(error instanceof HistoryRequestError && error.status === 409)) throw error;
   }
 }
 

@@ -9,9 +9,20 @@ export interface ProjectScope {
   studioOrigin: string;
 }
 
+/**
+ * One open project transaction. It lives for the whole turn: it does not end on its own while its owner keeps
+ * renewing it, however long the pauses between project writes, and ends only through {@link end}.
+ */
 export interface CheckpointHandle {
   /** History engine's exact window start time, used to recover this group after a runtime crash. */
   startedAt: number;
+  /** The engine's id for the open transaction; persisted so a restarted runtime can close it. */
+  transactionId: string;
+  /**
+   * Heartbeat: keeps the transaction open. Resolves false once it has ended on the host side (its later writes would
+   * no longer belong to the turn); rejects on a transport failure, which the caller may retry.
+   */
+  renew(): Promise<boolean>;
   /**
    * Closes the transaction. Returns the project-history entry ids the turn
    * produced, oldest first; empty when nothing changed.
@@ -39,9 +50,11 @@ export interface CheckpointHost {
     mode: RevertMode,
   ): Promise<RevertOutcome>;
   /**
-   * After a runtime restart: the entry ids a previous, interrupted transaction
-   * left behind, identified by the label/startedAt the runtime persisted. Empty
-   * when none can be found.
+   * After a runtime restart or a failed close: closes the transaction if it is still open, then returns the entry ids
+   * it left behind, identified by the label/startedAt the runtime persisted. Empty when none can be found.
    */
-  recover(scope: ProjectScope, label: string, startedAt: number): Promise<string[]>;
+  recover(
+    scope: ProjectScope,
+    checkpoint: { label: string; startedAt: number; transactionId?: string },
+  ): Promise<string[]>;
 }

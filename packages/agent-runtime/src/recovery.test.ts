@@ -65,7 +65,7 @@ describe("runtime crash recovery", () => {
         fixture.store,
         { now: fixture.now },
       );
-      await restartedRunner.recoverInterruptedTurns();
+      await restartedRunner.recoverCheckpoints();
 
       expect(reloaded.get(chat.id)?.chat.status).toBe("interrupted");
       expect(reloaded.get(chat.id)?.turns[0]).toMatchObject({

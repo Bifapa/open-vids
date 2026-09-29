@@ -43,6 +43,7 @@
         "hono": "^4.0.0",
       },
       "devDependencies": {
+        "@hyperframes/studio-server": "workspace:*",
         "@types/node": "^25.0.10",
         "tsx": "^4.21.0",
         "typescript": "^5.0.0",
@@ -80,7 +81,6 @@
         "@hyperframes/agent-protocol": "workspace:*",
         "@hyperframes/core": "workspace:*",
         "@hyperframes/engine": "workspace:*",
-        "@hyperframes/lint": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
         "@hyperframes/producer": "workspace:*",
         "@hyperframes/studio": "workspace:*",

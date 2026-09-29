@@ -126,9 +126,13 @@ if (agentRuntimeStaged) {
   );
   const protocolVendor = join(AGENT_DIR, "vendor", "agent-protocol");
   mkdirSync(AGENT_DIR, { recursive: true });
+  // Tests and test fixtures import dev-only packages (vitest, studio-server) that are not staged.
+  const runtimeSourceOnly = (path) =>
+    !/\.test\.ts$/.test(path) && !/[\\/]testing([\\/]|$)/.test(path);
   cpSync(join(AGENT_RUNTIME_SOURCE, "src"), join(AGENT_DIR, "src"), {
     recursive: true,
     dereference: true,
+    filter: runtimeSourceOnly,
   });
   writeFileSync(join(AGENT_DIR, "main.ts"), 'import "./src/main.ts";\n');
   mkdirSync(protocolVendor, { recursive: true });

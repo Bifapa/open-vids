@@ -347,6 +347,18 @@ describe("history routes", () => {
     expect((await post("demo", `/window/${windowId}/close`, {})).status).toBe(200);
   });
 
+  it("renew an open window of this project until it closes, then refuse (409)", async () => {
+    const { call } = await demoProject();
+    const { windowId } = await (
+      await call("/window", { label: "Director: turn", idleMs: 60_000 })
+    ).json();
+    expect((await call(`/window/${windowId}/renew`, {})).status).toBe(200);
+    expect((await call(`/window/${windowId}/renew`, {})).status).toBe(200);
+    expect((await call(`/window/${windowId}/close`, {})).status).toBe(200);
+    expect((await call(`/window/${windowId}/renew`, {})).status).toBe(409);
+    expect((await call("/window/unknown/renew", {})).status).toBe(409);
+  });
+
   it("answer 404 when the host keeps no history for the project", async () => {
     const call = apiFor(tempDir("hf-history-routes-none-"));
     expect((await call("")).status).toBe(404);
