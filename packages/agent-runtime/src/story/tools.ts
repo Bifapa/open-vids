@@ -46,7 +46,9 @@ export function timelineWritesAllowed({ mode, action }: StoryTurnMode): boolean 
  * Which story tools an agent gets. Everyone on the team can read the story, in any mode. The Director edits it in
  * story-mode turns that plan or review it; the turn that builds it gives `build_story` to the Editor, or to the
  * Director when there is no Editor, and freezes the graph while it compiles. A rebuild turn gives `rebuild_story` to the
- * Director alone (the user's scope and policy are fixed by the turn) and freezes the graph too. Jev gets none.
+ * Director alone (the user's scope and policy are fixed by the turn) and freezes the graph too. A resolve turn is
+ * Research's (see research/tools.ts): everyone may read the story but nobody edits it, builds it or rebuilds it there.
+ * Jev gets none.
  */
 export function storyToolsFor(
   agent: AgentId,
@@ -60,7 +62,8 @@ export function storyToolsFor(
     agent === "director" &&
     turn.mode === "story" &&
     turn.action !== "build" &&
-    turn.action !== "rebuild"
+    turn.action !== "rebuild" &&
+    turn.action !== "resolve"
   )
     tools.push(edit);
   if (agent === "director" && turn.action === "rebuild") tools.push(rebuild);
@@ -89,6 +92,7 @@ Operations (each has "op" plus):
 - connect: from, to (chapters), optional transition — adds a sequence link, or changes the transition text of an existing one. disconnect: from, to.
 - set_order: chapters [every chapter id, once, in play order] — rewires the whole sequence.
 - attach: node, chapter, optional placement, offset (seconds from the chapter start; overrides placement), duration. detach: node, chapter.
+- resolve_missing: id (a Missing Asset node), asset (an existing project media file), optional title, usageIntent, sourceIn, sourceOut — replaces the Missing Asset node with a video/picture/music node for that file, keeping its attachments and remembering what it resolved. To find material outside the project delegate Research instead (import_asset resolves the node itself).
 - set_story: title, brief, captionPreset, composition, reviewSummary (records the result of a review).`,
   build_story: `Build the Story Graph into the real timeline as ONE atomic edit — the FULL build: every chapter's section is regenerated. Chapters are laid back to back in play order; each chapter's A-roll is its source ranges cleaned like a rough cut (bad takes, fillers and long pauses removed), B-roll/pictures/graphics/music attached to it are placed on their own tracks, captions are written for chapters that want them, and every created clip remembers the story node it was built for. Earlier story clips and the raw A-roll of the story's sources are replaced, and so are the user's manual edits to clips the story generated (trims, moves, volume, ...) — they are listed in the result as replaced edits. The built sections of locked chapters are kept as they are unless the user allowed them for this turn (you cannot allow them yourself); every other clip (manual additions, cutaways) is kept and reported. Returns the span of each chapter, what was replaced/kept, the replaced edits, the locked chapters that were kept, and warnings (missing material, unanalyzed sources). Pass baseVersion (from read_story) to refuse the build when the graph changed since you read it. The change belongs to this turn's checkpoint, so the user can revert it. Verify afterwards with inspect_timeline. Pass dryRun true to see the result without writing anything.`,
   rebuild_story: `Rebuild affected sections: bring the timeline in line with the Story Graph after the graph changed since it was built, touching only what changed. It regenerates only the units (a chapter's A-roll, one attached B-roll/picture/motion, a music bed, captions) whose intent the graph changed, adds the sections of new chapters and removes the sections of deleted ones, moves sections that only moved (new order, or an earlier section changed length) with their content untouched, and keeps everything else byte-identical. Manual edits the user or an AI made to generated clips are kept in a unit that has to change unless the user chose to replace them for this turn; clips no chapter owns (manual additions, cutaways) are never removed and move with the section they sit in. Locked chapters are never regenerated unless the user allowed them from the Story workspace (you cannot allow them yourself); they may still move in time as a whole and are reported as pending. The scope (chapters), the manual-edit policy and the locked permissions come from the user's choices for this turn and cannot be widened. If the timeline already matches the graph nothing is written. Returns what was rebuilt, removed and moved by chapter, the kept and replaced manual edits, the locked chapters left pending and warnings. Pass baseVersion (from read_story) to refuse the rebuild when the graph changed since you read it. The change belongs to this turn's checkpoint, so the user can revert it. Pass dryRun true to see the result without writing anything.`,
@@ -359,6 +363,22 @@ const OPERATION_SCHEMAS: Record<StoryOperationName, Record<string, unknown>> = {
     },
     [],
   ),
+  resolve_missing: operationSchema(
+    "resolve_missing",
+    "Replace a Missing Asset node with a concrete node for a media file that is already in the project.",
+    {
+      id: nodeId,
+      asset: str("Project-relative path of the media file.", STORY_LIMITS.pathChars),
+      title: str(
+        "Title of the new node (default: the missing node's title).",
+        STORY_LIMITS.titleChars,
+      ),
+      usageIntent: text("What the material is used for."),
+      sourceIn: seconds("video: in-point in the file, seconds."),
+      sourceOut: nullable(positive("video: out-point in the file; null = to the end.")),
+    },
+    ["id", "asset"],
+  ),
 };
 
 const PARAMETERS: Record<StoryToolName, Record<string, unknown>> = {
@@ -417,6 +437,7 @@ const OP_SUMMARY: Record<StoryOperationName, string> = {
   attach: "attach",
   detach: "detach",
   set_story: "story settings",
+  resolve_missing: "resolve missing asset",
 };
 
 const isOperationName = (value: unknown): value is StoryOperationName =>

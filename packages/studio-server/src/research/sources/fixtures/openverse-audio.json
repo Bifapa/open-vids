@@ -1,0 +1,273 @@
+{
+  "result_count": 10,
+  "page_count": 5,
+  "page_size": 6,
+  "page": 1,
+  "results": [
+    {
+      "id": "8bee509f-b566-4b57-9251-9adf44e55728",
+      "title": "Thunder God",
+      "indexed_on": "2022-08-01T21:56:38.264750Z",
+      "foreign_landing_url": "https://www.jamendo.com/track/8bee50",
+      "url": "https://prod-1.storage.jamendo.com/?trackid=1465419&format=mp32",
+      "creator": "Ivan Tregub (BER)",
+      "creator_url": "https://www.jamendo.com/artist/501822/Ivan_Tregub",
+      "license": "by",
+      "license_version": "3.0",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/",
+      "provider": "jamendo",
+      "source": "jamendo",
+      "category": "music",
+      "genres": ["ambient"],
+      "filesize": null,
+      "filetype": "mp32",
+      "tags": [
+        {
+          "name": "thundering",
+          "accuracy": null,
+          "unstable__provider": "jamendo"
+        }
+      ],
+      "alt_files": null,
+      "attribution": "\"Thunder God\"",
+      "fields_matched": ["title"],
+      "mature": false,
+      "audio_set": {
+        "title": "Nordic Folk",
+        "foreign_landing_url": "https://www.jamendo.com/album/169947/nordic-folk",
+        "creator": "Ivan Tregub (BER)",
+        "creator_url": "https://www.jamendo.com/artist/501822/Ivan_Tregub",
+        "url": null,
+        "filesize": null,
+        "filetype": null
+      },
+      "duration": 368000,
+      "bit_rate": null,
+      "sample_rate": null,
+      "thumbnail": "https://api.openverse.org/v1/audio/8bee509f-b566-4b57-9251-9adf44e55728/thumb/",
+      "detail_url": "https://api.openverse.org/v1/audio/8bee509f-b566-4b57-9251-9adf44e55728/",
+      "waveform": "https://api.openverse.org/v1/audio/8bee509f-b566-4b57-9251-9adf44e55728/waveform/"
+    },
+    {
+      "id": "77458cc2-4dc2-4343-8960-8536a83dd7bb",
+      "title": "Heart Thunder (C.Rizzo)",
+      "indexed_on": "2022-08-01T21:56:38.264750Z",
+      "foreign_landing_url": "https://www.jamendo.com/track/77458c",
+      "url": "https://prod-1.storage.jamendo.com/?trackid=675498&format=mp32",
+      "creator": "Mistery",
+      "creator_url": "https://www.jamendo.com/artist/347881/Mistery_(2)",
+      "license": "by-nc-nd",
+      "license_version": "3.0",
+      "license_url": "https://creativecommons.org/licenses/by-nc-nd/3.0/",
+      "provider": "jamendo",
+      "source": "jamendo",
+      "category": "music",
+      "genres": ["ambient"],
+      "filesize": null,
+      "filetype": "mp32",
+      "tags": [
+        {
+          "name": "thundering",
+          "accuracy": null,
+          "unstable__provider": "jamendo"
+        }
+      ],
+      "alt_files": null,
+      "attribution": "\"Heart Thunder (C.Rizzo)\"",
+      "fields_matched": ["title"],
+      "mature": false,
+      "audio_set": {
+        "title": "Nordic Folk",
+        "foreign_landing_url": "https://www.jamendo.com/album/169947/nordic-folk",
+        "creator": "Mistery",
+        "creator_url": "https://www.jamendo.com/artist/347881/Mistery_(2)",
+        "url": null,
+        "filesize": null,
+        "filetype": null
+      },
+      "duration": 212000,
+      "bit_rate": null,
+      "sample_rate": null,
+      "thumbnail": "https://api.openverse.org/v1/audio/77458cc2-4dc2-4343-8960-8536a83dd7bb/thumb/",
+      "detail_url": "https://api.openverse.org/v1/audio/77458cc2-4dc2-4343-8960-8536a83dd7bb/",
+      "waveform": "https://api.openverse.org/v1/audio/77458cc2-4dc2-4343-8960-8536a83dd7bb/waveform/"
+    },
+    {
+      "id": "22222222-0000-4000-8000-000000000001",
+      "title": "Rolling storm field recording",
+      "indexed_on": "2022-08-01T21:56:38.264750Z",
+      "foreign_landing_url": "https://www.jamendo.com/track/222222",
+      "url": "https://cdn.freesound.example/previews/storm.ogg",
+      "creator": "fieldrec",
+      "creator_url": null,
+      "license": "by",
+      "license_version": "4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "provider": "jamendo",
+      "source": "jamendo",
+      "category": "music",
+      "genres": ["ambient"],
+      "filesize": 411421,
+      "filetype": "ogg",
+      "tags": [
+        {
+          "name": "thundering",
+          "accuracy": null,
+          "unstable__provider": "jamendo"
+        }
+      ],
+      "alt_files": null,
+      "attribution": "\"Rolling storm field recording\"",
+      "fields_matched": ["title"],
+      "mature": false,
+      "audio_set": {
+        "title": "Nordic Folk",
+        "foreign_landing_url": "https://www.jamendo.com/album/169947/nordic-folk",
+        "creator": "fieldrec",
+        "creator_url": null,
+        "url": null,
+        "filesize": null,
+        "filetype": null
+      },
+      "duration": 9044,
+      "bit_rate": null,
+      "sample_rate": null,
+      "thumbnail": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000001/thumb/",
+      "detail_url": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000001/",
+      "waveform": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000001/waveform/"
+    },
+    {
+      "id": "22222222-0000-4000-8000-000000000002",
+      "title": "Wave capture",
+      "indexed_on": "2022-08-01T21:56:38.264750Z",
+      "foreign_landing_url": "https://www.jamendo.com/track/222222",
+      "url": "https://cdn.freesound.example/previews/capture.wav",
+      "creator": "artist",
+      "creator_url": null,
+      "license": "by-sa",
+      "license_version": "4.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "provider": "jamendo",
+      "source": "jamendo",
+      "category": "music",
+      "genres": ["ambient"],
+      "filesize": 6190364,
+      "filetype": "wav",
+      "tags": [
+        {
+          "name": "thundering",
+          "accuracy": null,
+          "unstable__provider": "jamendo"
+        }
+      ],
+      "alt_files": null,
+      "attribution": "\"Wave capture\"",
+      "fields_matched": ["title"],
+      "mature": false,
+      "audio_set": {
+        "title": "Nordic Folk",
+        "foreign_landing_url": "https://www.jamendo.com/album/169947/nordic-folk",
+        "creator": "artist",
+        "creator_url": null,
+        "url": null,
+        "filesize": null,
+        "filetype": null
+      },
+      "duration": null,
+      "bit_rate": null,
+      "sample_rate": null,
+      "thumbnail": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000002/thumb/",
+      "detail_url": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000002/",
+      "waveform": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000002/waveform/"
+    },
+    {
+      "id": "22222222-0000-4000-8000-000000000003",
+      "title": "Live stream of a storm",
+      "indexed_on": "2022-08-01T21:56:38.264750Z",
+      "foreign_landing_url": "https://www.jamendo.com/track/222222",
+      "url": "https://cdn.example.org/live/storm.m3u8",
+      "creator": "artist",
+      "creator_url": null,
+      "license": "by",
+      "license_version": "4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "provider": "jamendo",
+      "source": "jamendo",
+      "category": "music",
+      "genres": ["ambient"],
+      "filesize": null,
+      "filetype": "m3u8",
+      "tags": [
+        {
+          "name": "thundering",
+          "accuracy": null,
+          "unstable__provider": "jamendo"
+        }
+      ],
+      "alt_files": null,
+      "attribution": "\"Live stream of a storm\"",
+      "fields_matched": ["title"],
+      "mature": false,
+      "audio_set": {
+        "title": "Nordic Folk",
+        "foreign_landing_url": "https://www.jamendo.com/album/169947/nordic-folk",
+        "creator": "artist",
+        "creator_url": null,
+        "url": null,
+        "filesize": null,
+        "filetype": null
+      },
+      "duration": null,
+      "bit_rate": null,
+      "sample_rate": null,
+      "thumbnail": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000003/thumb/",
+      "detail_url": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000003/",
+      "waveform": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000003/waveform/"
+    },
+    {
+      "id": "22222222-0000-4000-8000-000000000004",
+      "title": "Playlist entry without a file",
+      "indexed_on": "2022-08-01T21:56:38.264750Z",
+      "foreign_landing_url": "https://www.jamendo.com/track/222222",
+      "url": null,
+      "creator": "artist",
+      "creator_url": null,
+      "license": "by",
+      "license_version": "4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "provider": "jamendo",
+      "source": "jamendo",
+      "category": "music",
+      "genres": ["ambient"],
+      "filesize": null,
+      "filetype": null,
+      "tags": [
+        {
+          "name": "thundering",
+          "accuracy": null,
+          "unstable__provider": "jamendo"
+        }
+      ],
+      "alt_files": null,
+      "attribution": "\"Playlist entry without a file\"",
+      "fields_matched": ["title"],
+      "mature": false,
+      "audio_set": {
+        "title": "Nordic Folk",
+        "foreign_landing_url": "https://www.jamendo.com/album/169947/nordic-folk",
+        "creator": "artist",
+        "creator_url": null,
+        "url": null,
+        "filesize": null,
+        "filetype": null
+      },
+      "duration": 1000,
+      "bit_rate": null,
+      "sample_rate": null,
+      "thumbnail": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000004/thumb/",
+      "detail_url": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000004/",
+      "waveform": "https://api.openverse.org/v1/audio/22222222-0000-4000-8000-000000000004/waveform/",
+      "detail": "Only a landing page."
+    }
+  ]
+}

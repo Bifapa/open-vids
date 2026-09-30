@@ -1,0 +1,63 @@
+{
+  "created": 1700000000,
+  "d1": "ia800000.us.archive.org",
+  "dir": "/0/items/Popeye_forPresident",
+  "files": [
+    {
+      "name": "Popeye_forPresident.gif",
+      "source": "derivative",
+      "format": "Animated GIF",
+      "size": "182548"
+    },
+    {
+      "name": "Popeye_forPresident.mpeg",
+      "source": "original",
+      "format": "MPEG2",
+      "size": "179044352",
+      "length": "370.2",
+      "height": "480",
+      "width": "640"
+    },
+    {
+      "name": "Popeye_forPresident.ogv",
+      "source": "derivative",
+      "format": "Ogg Video",
+      "size": "26138707",
+      "length": "370.3",
+      "height": "304",
+      "width": "400"
+    },
+    {
+      "name": "Popeye_forPresident.thumbs/Popeye_forPresident_000001.jpg",
+      "source": "derivative",
+      "format": "Thumbnail",
+      "size": "1141"
+    },
+    {
+      "name": "Popeye_forPresident_512kb.mp4",
+      "source": "derivative",
+      "format": "512Kb MPEG4",
+      "size": "30123456",
+      "length": "370.3",
+      "height": "240",
+      "width": "320"
+    },
+    {
+      "name": "Popeye for President.mp4",
+      "source": "derivative",
+      "format": "MPEG4",
+      "size": "60123456",
+      "length": "370.3",
+      "height": "480",
+      "width": "640"
+    }
+  ],
+  "metadata": {
+    "identifier": "Popeye_forPresident",
+    "mediatype": "movies",
+    "title": "Popeye for President",
+    "creator": "Paramount Pictures",
+    "licenseurl": "http://creativecommons.org/licenses/publicdomain/",
+    "description": "<div>Popeye &amp; Bluto run for office.<br />Public domain cartoon.</div>"
+  }
+}

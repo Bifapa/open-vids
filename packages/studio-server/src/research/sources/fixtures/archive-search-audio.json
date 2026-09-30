@@ -1,0 +1,14 @@
+{
+  "response": {
+    "numFound": 1,
+    "start": 0,
+    "docs": [
+      {
+        "identifier": "podcast_one",
+        "title": "Podcast One",
+        "creator": "Host",
+        "licenseurl": "https://creativecommons.org/licenses/by-sa/3.0/"
+      }
+    ]
+  }
+}

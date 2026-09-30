@@ -4,6 +4,7 @@ import {
   ArrowsClockwise,
   CornersOut,
   Hammer,
+  MagnifyingGlass,
   Sparkle,
 } from "@phosphor-icons/react";
 import { isChapter, type StoryAction } from "@hyperframes/agent-protocol";
@@ -13,7 +14,8 @@ import { useStoryStore } from "./storyContext";
 import { formatAge, formatDuration } from "./storyFormat";
 import type { StorySaveState } from "./storyStore";
 import { rebuildTargets, syncBlocker } from "./storySync";
-import { agentBlocker, type StoryAgent } from "./useStoryAgent";
+import { agentBlocker, researchBlocker, type StoryAgent } from "./useStoryAgent";
+import { unlockedMissing } from "./storyResearch";
 import type { StoryLibrary } from "./useStoryLibrary";
 
 const SAVE_LABELS: Record<StorySaveState, string> = {
@@ -43,6 +45,7 @@ export function StoryToolbar({
   onRedo,
   onAction,
   onRebuild,
+  onFindMissing,
 }: {
   library: StoryLibrary;
   agent: StoryAgent;
@@ -53,6 +56,8 @@ export function StoryToolbar({
   onAction: (action: StoryAction) => void;
   /** Opens the impact of Rebuild affected. */
   onRebuild: () => void;
+  /** Starts a resolve turn for every unlocked Missing Asset node. */
+  onFindMissing: () => void;
 }) {
   const graph = useStoryStore((state) => state.graph);
   const canUndo = useStoryStore((state) => state.past.length > 0 && !state.agentBusy);
@@ -65,6 +70,10 @@ export function StoryToolbar({
   const buildBlocker = actionBlocker("build", agent, chapters);
   const rebuildCount = rebuildTargets(sync).length;
   const rebuildBlocker = syncBlocker(sync) ?? agentBlocker(agent);
+  const missingCount = unlockedMissing(graph).length;
+  const findBlocker =
+    researchBlocker(agent) ??
+    (missingCount === 0 ? "No missing material: nothing is waiting for an asset" : null);
   const now = Date.now();
 
   return (
@@ -122,6 +131,29 @@ export function StoryToolbar({
           · Built {formatAge(graph.build.at, now)} ({formatDuration(graph.build.duration)})
         </span>
       )}
+      <Tooltip
+        label={
+          findBlocker ??
+          `Research looks for the material of ${missingCount === 1 ? "the missing asset" : `all ${missingCount} missing assets`} within your Asset Search policy (one revertable turn)`
+        }
+        side="bottom"
+      >
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={findBlocker !== null}
+          icon={<MagnifyingGlass size={12} aria-hidden />}
+          onClick={onFindMissing}
+          data-story-action="resolve"
+        >
+          Find missing material
+          {missingCount > 0 && (
+            <span className="ml-1 rounded-sm bg-danger/20 px-1 text-step-10 font-semibold tabular-nums text-danger">
+              {missingCount}
+            </span>
+          )}
+        </Button>
+      </Tooltip>
       <Tooltip
         label={
           reviewBlocker ??

@@ -136,3 +136,13 @@ export {
   userEditedStory,
   videoNode,
 } from "./story.js";
+export {
+  FakeResearchHost,
+  ccBy,
+  researchPolicy,
+  sampleCandidate,
+  sampleProvenance,
+  sampleSearchResult,
+  sampleSourcesView,
+  trustedSource,
+} from "./research.js";

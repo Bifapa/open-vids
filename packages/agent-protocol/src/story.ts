@@ -123,6 +123,21 @@ export interface ChapterNode extends StoryNodeBase {
   previewFrame: StoryFrameRef | null;
 }
 
+/**
+ * The Missing Asset node a material node replaced when it was resolved (Research imported the material, or an agent
+ * resolved it with a project asset). The Missing Asset node itself is gone; its attachments now point here.
+ */
+export interface MissingResolution {
+  /** Id of the Missing Asset node (never reused). */
+  missing: string;
+  mediaKind: MissingMediaKind;
+  /** What was needed, as the Missing Asset node said. */
+  need: string;
+  at: number;
+  /** Agent turn that resolved it; null when the user did. */
+  turnId: string | null;
+}
+
 export interface VideoNode extends StoryNodeBase {
   kind: "video";
   /** Project-relative video path. */
@@ -133,6 +148,8 @@ export interface VideoNode extends StoryNodeBase {
   sourceOut: number | null;
   usageIntent: string;
   previewFrame: StoryFrameRef | null;
+  /** Set when this node resolved a Missing Asset node. */
+  resolvedFrom?: MissingResolution;
 }
 
 export interface PictureNode extends StoryNodeBase {
@@ -140,6 +157,8 @@ export interface PictureNode extends StoryNodeBase {
   /** Project-relative image path. */
   asset: string;
   usageIntent: string;
+  /** Set when this node resolved a Missing Asset node. */
+  resolvedFrom?: MissingResolution;
 }
 
 export interface MusicNode extends StoryNodeBase {
@@ -150,6 +169,8 @@ export interface MusicNode extends StoryNodeBase {
   /** Gain under speech (0–1). */
   volume: number;
   usageIntent: string;
+  /** Set when this node resolved a Missing Asset node. */
+  resolvedFrom?: MissingResolution;
 }
 
 export interface MotionNode extends StoryNodeBase {
@@ -392,17 +413,26 @@ export interface StoryView {
 
 /**
  * What a built unit is: a chapter's A-roll, the clip of one attached material (B-roll video, picture, motion
- * graphic), a music bed (spanning the chapters it is attached to), or the story's captions.
+ * graphic, sound effect), a music bed (spanning the chapters it is attached to), or the story's captions.
  */
 export const STORY_SYNC_ROLES = [
   "a_roll",
   "b_roll",
   "picture",
   "motion",
+  "sfx",
   "music",
   "captions",
 ] as const;
 export type StorySyncRole = (typeof STORY_SYNC_ROLES)[number];
+
+/**
+ * A music node that resolved a Missing Asset node of kind `sfx` is a sound effect: placed inside each chapter it is
+ * attached to (placement, offset, duration) like a picture, instead of a bed spanning the chapters.
+ */
+export function isSoundEffect(node: StoryNode): boolean {
+  return node.kind === "music" && node.resolvedFrom?.mediaKind === "sfx";
+}
 
 /** How the graph's intent for a unit/section compares with what was built. */
 export const STORY_SYNC_CHANGES = ["unchanged", "changed", "added", "removed"] as const;
@@ -648,6 +678,22 @@ export type StoryOperation =
       composition?: string | null;
       /** Records the result of an AI review on the graph. */
       reviewSummary?: string;
+    }
+  /**
+   * Replace a Missing Asset node with a concrete material node for `asset` (a project media file): video → video,
+   * picture/graphics → picture (or video for a video file), music/sfx → music. The new node takes over the missing
+   * node's attachments (same attachment ids, placement, offset and duration) and records `resolvedFrom`. Refused for
+   * a locked Missing Asset node. A user-created Missing Asset node may be resolved: that is what the user asked for.
+   */
+  | {
+      op: "resolve_missing";
+      id: string;
+      asset: string;
+      title?: string;
+      usageIntent?: string;
+      /** video: source in/out points. */
+      sourceIn?: number;
+      sourceOut?: number | null;
     };
 
 export type StoryOperationName = StoryOperation["op"];
@@ -662,6 +708,7 @@ export const STORY_OPERATION_NAMES = [
   "attach",
   "detach",
   "set_story",
+  "resolve_missing",
 ] as const satisfies readonly StoryOperationName[];
 
 /** `POST /api/projects/:id/story/edit` — an agent's atomic batch. Creates the graph when none exists. */
@@ -1017,12 +1064,44 @@ function contentFields(kind: StoryNodeKind, raw: Record<string, unknown>, field:
   );
 }
 
+/** `resolvedFrom` on material nodes that replaced a Missing Asset node (not a content field: never edited by hand). */
+function resolution(value: unknown, field: string): MissingResolution {
+  const raw = record(value, field);
+  onlyKeys(raw, ["missing", "mediaKind", "need", "at", "turnId"], `${field}: `);
+  return {
+    missing: id(raw.missing, `${field}.missing`),
+    mediaKind: pick(raw.mediaKind, MISSING_MEDIA_KINDS, `${field}.mediaKind`),
+    need: text(raw.need, `${field}.need`),
+    at: timestamp(raw.at, `${field}.at`),
+    turnId: nullable(raw.turnId, (v) => text(v, `${field}.turnId`, STORY_LIMITS.idChars * 2)),
+  };
+}
+
+function resolvedFrom(
+  raw: Record<string, unknown>,
+  field: string,
+): { resolvedFrom?: MissingResolution } {
+  return raw.resolvedFrom === undefined
+    ? {}
+    : { resolvedFrom: resolution(raw.resolvedFrom, `${field}.resolvedFrom`) };
+}
+
+const RESOLVABLE_KINDS: readonly StoryNodeKind[] = ["video", "picture", "music"];
+
 const NODE_BASE_KEYS = ["id", "kind", "title", "position", "locked", "createdBy", "userEdited"];
 
 function storedNode(value: unknown, field: string): StoryNode {
   const raw = record(value, field);
   const kind = pick(raw.kind, STORY_NODE_KINDS, `${field}.kind`);
-  onlyKeys(raw, [...NODE_BASE_KEYS, ...STORY_CONTENT_FIELDS[kind]], `${field}: `);
+  onlyKeys(
+    raw,
+    [
+      ...NODE_BASE_KEYS,
+      ...STORY_CONTENT_FIELDS[kind],
+      ...(RESOLVABLE_KINDS.includes(kind) ? ["resolvedFrom"] : []),
+    ],
+    `${field}: `,
+  );
   const base = {
     id: id(raw.id, `${field}.id`),
     title: title(raw.title, `${field}.title`),
@@ -1067,6 +1146,7 @@ function storedNode(value: unknown, field: string): StoryNode {
         sourceOut,
         usageIntent: text(raw.usageIntent, `${field}.usageIntent`),
         previewFrame: nullable(raw.previewFrame, (v) => frameRef(v, `${field}.previewFrame`)),
+        ...resolvedFrom(raw, field),
       };
     }
     case "picture":
@@ -1075,6 +1155,7 @@ function storedNode(value: unknown, field: string): StoryNode {
         kind,
         asset: path(raw.asset, `${field}.asset`),
         usageIntent: text(raw.usageIntent, `${field}.usageIntent`),
+        ...resolvedFrom(raw, field),
       };
     case "music":
       return {
@@ -1084,6 +1165,7 @@ function storedNode(value: unknown, field: string): StoryNode {
         bpm: nullable(raw.bpm, (v) => bpm(v, `${field}.bpm`)),
         volume: volume(raw.volume, `${field}.volume`),
         usageIntent: text(raw.usageIntent, `${field}.usageIntent`),
+        ...resolvedFrom(raw, field),
       };
     case "motion":
       return {
@@ -1652,6 +1734,28 @@ function operation(value: unknown, index: number): StoryOperation {
         set.reviewSummary = text(raw.reviewSummary, `${where}.reviewSummary`);
       if (Object.keys(set).length === 1) fail(`${where} must set at least one field`);
       return set;
+    }
+    case "resolve_missing": {
+      keys(["id", "asset", "title", "usageIntent", "sourceIn", "sourceOut"]);
+      const sourceIn =
+        raw.sourceIn === undefined ? undefined : seconds(raw.sourceIn, `${where}.sourceIn`);
+      const sourceOut =
+        raw.sourceOut === undefined
+          ? undefined
+          : nullable(raw.sourceOut, (v) => seconds(v, `${where}.sourceOut`));
+      if (sourceOut != null && sourceOut <= (sourceIn ?? 0))
+        fail(`${where}.sourceOut must be after sourceIn`);
+      return {
+        op,
+        id: nodeRef(raw.id, `${where}.id`),
+        asset: path(raw.asset, `${where}.asset`),
+        ...(raw.title !== undefined && { title: title(raw.title, `${where}.title`) }),
+        ...(raw.usageIntent !== undefined && {
+          usageIntent: text(raw.usageIntent, `${where}.usageIntent`),
+        }),
+        ...(sourceIn !== undefined && { sourceIn }),
+        ...(sourceOut !== undefined && { sourceOut }),
+      };
     }
   }
 }

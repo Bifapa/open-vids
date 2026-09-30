@@ -2,6 +2,7 @@ import type { ComponentProps } from "react";
 import { LintModal } from "./LintModal";
 import { AskAgentModal } from "./AskAgentModal";
 import { StudioToast } from "./StudioToast";
+import { ExportLicenseDialog } from "../research/ExportLicenseDialog";
 import { buildAgentContextPreview } from "./editor/domEditingAgentPrompt";
 import type { useDomEditSession } from "../hooks/useDomEditSession";
 import type { useToast } from "../hooks/useToast";
@@ -23,7 +24,7 @@ export interface StudioOverlaysProps {
 
 /**
  * Floating overlays for the studio shell: lint / console-error modals, the
- * ask-agent modal, and the toast. Extracted from
+ * ask-agent modal, the export license check and the toast. Extracted from
  * `App.tsx` to keep the shell within the studio's 600-line decomposition budget.
  */
 export function StudioOverlays({
@@ -73,6 +74,7 @@ export function StudioOverlays({
           }}
         />
       )}
+      <ExportLicenseDialog />
       {/* Bottom-right stack for toasts. Empty when nothing is showing. */}
       <div className="absolute bottom-6 right-6 z-91 flex flex-col items-end gap-2">
         {toasts.map((toast) => (

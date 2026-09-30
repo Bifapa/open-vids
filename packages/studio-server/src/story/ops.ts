@@ -12,6 +12,8 @@ import {
   type StoryGraph,
   type StoryNode,
   type StoryNodeInput,
+  type MissingMediaKind,
+  type MissingResolution,
   type StoryNodeKind,
   type StoryOperation,
   type StoryOperationResult,
@@ -666,6 +668,126 @@ async function setStory(
   return { op: op.op, id: graph.id };
 }
 
+// ── resolve_missing ──────────────────────────────────────────────────────────
+
+/** Which project media kinds can stand in for a Missing Asset node of a media kind. */
+const RESOLVING_KINDS: Record<MissingMediaKind, readonly MediaKind[]> = {
+  video: ["video"],
+  picture: ["image", "video"],
+  graphics: ["image", "video"],
+  music: ["audio"],
+  sfx: ["audio"],
+};
+
+/**
+ * Replaces a Missing Asset node with the concrete material node for `asset`: same position, a new never-reused id,
+ * every attachment re-pointed (ids, placement, offset and duration kept). The Missing Asset node is removed without a
+ * tombstone: it was not the user's decision to drop it. A chapter that only waited for this material stops needing it.
+ */
+async function resolveMissing(
+  env: OpsEnv,
+  state: State,
+  op: Extract<StoryOperation, { op: "resolve_missing" }>,
+): Promise<StoryOperationResult> {
+  const { graph } = state;
+  const missing = nodeOf(state, op.id);
+  if (missing.kind !== "missing") {
+    throw new StoryFailure(
+      "invalid_request",
+      `${describe(missing)} is not a Missing Asset node; resolve_missing replaces only those`,
+    );
+  }
+  if (missing.locked) throw locked(missing);
+  const attachments = graph.attachments.filter((item) => item.node === missing.id);
+  for (const item of attachments) {
+    const chapter = graph.nodes.find((candidate) => candidate.id === item.chapter);
+    if (chapter?.locked) throw locked(chapter);
+  }
+  const file = await env.mediaFile(op.asset);
+  if (!file) {
+    throw new StoryFailure("unknown_asset", `asset: no file "${op.asset}" in this project`);
+  }
+  const accepted = RESOLVING_KINDS[missing.mediaKind];
+  if (!accepted.includes(file.kind)) {
+    throw new StoryFailure(
+      "invalid_request",
+      `asset: ${file.path} is ${file.kind === "image" ? "a picture" : `a ${file.kind} file`}, but ${describe(missing)} needs ${accepted.map((kind) => (kind === "image" ? "a picture" : kind)).join(" or ")}`,
+    );
+  }
+  const id = newId(
+    file.kind === "audio" ? "music" : file.kind === "image" ? "picture" : "video",
+    state.taken,
+  );
+  const base = {
+    id,
+    title: op.title ?? missing.title,
+    position: { ...missing.position },
+    locked: false,
+    createdBy: "ai" as const,
+    userEdited: [] as string[],
+  };
+  const resolvedFrom: MissingResolution = {
+    missing: missing.id,
+    mediaKind: missing.mediaKind,
+    need: missing.need,
+    at: env.now,
+    turnId: env.turnId,
+  };
+  const usageIntent = op.usageIntent ?? missing.need;
+  let node: StoryNode;
+  switch (file.kind) {
+    case "video": {
+      const sourceIn = op.sourceIn ?? 0;
+      const sourceOut = op.sourceOut ?? null;
+      if (sourceOut !== null && sourceOut <= sourceIn) {
+        throw new StoryFailure("invalid_request", "sourceOut must be after sourceIn");
+      }
+      node = {
+        ...base,
+        kind: "video",
+        asset: file.path,
+        sourceIn,
+        sourceOut,
+        usageIntent,
+        previewFrame: { source: file.path, time: sourceIn },
+        resolvedFrom,
+      };
+      break;
+    }
+    case "image":
+      node = { ...base, kind: "picture", asset: file.path, usageIntent, resolvedFrom };
+      break;
+    case "audio":
+      node = {
+        ...base,
+        kind: "music",
+        asset: file.path,
+        bpm: null,
+        volume: 1,
+        usageIntent,
+        resolvedFrom,
+      };
+      break;
+  }
+  state.taken.add(id);
+  graph.nodes = graph.nodes.map((candidate) => (candidate === missing ? node : candidate));
+  for (const item of attachments) item.node = id;
+  graph.removedByUser = graph.removedByUser.filter(
+    (removal) => removal.kind !== "attachment" || removal.node !== missing.id,
+  );
+  for (const chapterId of new Set(attachments.map((item) => item.chapter))) {
+    const chapter = graph.nodes.find((candidate) => candidate.id === chapterId);
+    if (!chapter || !isChapter(chapter) || chapter.status !== "needs_material") continue;
+    if (chapter.userEdited.includes("status")) continue;
+    const stillWaiting = graph.attachments.some((item) => {
+      if (item.chapter !== chapter.id) return false;
+      return graph.nodes.find((candidate) => candidate.id === item.node)?.kind === "missing";
+    });
+    if (!stillWaiting) chapter.status = "proposed";
+  }
+  return { op: op.op, id };
+}
+
 // ── batch ────────────────────────────────────────────────────────────────────
 
 async function applyOne(
@@ -692,6 +814,8 @@ async function applyOne(
       return detach(state, op);
     case "set_story":
       return setStory(env, state, op);
+    case "resolve_missing":
+      return resolveMissing(env, state, op);
   }
 }
 

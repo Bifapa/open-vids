@@ -32,6 +32,8 @@ import { isAnalysisToolName } from "./analysis/tools.js";
 import { TurnStory } from "./story/executor.js";
 import { renderStoryBlocks } from "./story/prompt.js";
 import { isStoryToolName, storyToolsFor, timelineWritesAllowed } from "./story/tools.js";
+import { TurnResearch } from "./research/executor.js";
+import { isResearchToolName } from "./research/tools.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import type { CheckpointHandle, CheckpointHost } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
@@ -71,6 +73,8 @@ interface ActiveRun {
   analysis: TurnAnalysis | null;
   /** The turn's story tools; closed (in-flight edits/builds awaited) before the checkpoint ends. */
   story: TurnStory | null;
+  /** The turn's research tools; closed (in-flight imports and resolutions awaited) before the checkpoint ends. */
+  research: TurnResearch | null;
   /** The mode the turn runs in (a story action implies `story`). */
   mode: ChatMode;
   /** The Story workspace action the turn runs, if any. */
@@ -99,6 +103,7 @@ export class TurnRunner {
   private readonly editingFactory: TurnRunnerOptions["editing"];
   private readonly analysisFactory: TurnRunnerOptions["analysis"];
   private readonly storyFactory: TurnRunnerOptions["story"];
+  private readonly researchFactory: TurnRunnerOptions["research"];
   private readonly analysisPollMs: number | undefined;
   private readonly timers: StreamTimerApi;
   private readonly sessionManager: SessionManager;
@@ -121,6 +126,7 @@ export class TurnRunner {
     this.editingFactory = options.editing;
     this.analysisFactory = options.analysis;
     this.storyFactory = options.story;
+    this.researchFactory = options.research;
     this.analysisPollMs = options.analysisPollMs;
     this.timers = options.timers ?? {
       setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
@@ -220,6 +226,7 @@ export class TurnRunner {
       editing: null,
       analysis: null,
       story: null,
+      research: null,
       mode,
       storyAction: input.storyAction ?? null,
       storyOptions: input.storyOptions ?? null,
@@ -514,6 +521,8 @@ export class TurnRunner {
       if (!setup) throw new Error("The turn has no agent setup.");
       const editingFactory = this.editingFactory;
       const editingHost = editingFactory ? editingFactory(this.chats.scope) : null;
+      const researchFactory = this.researchFactory;
+      const researchHost = researchFactory ? researchFactory(this.chats.scope) : null;
       run.editing =
         editingFactory && editingHost
           ? new TurnEditing({
@@ -522,6 +531,7 @@ export class TurnRunner {
               turnSignal: run.controller.signal,
               userRequests: [input.prompt],
               turnId: run.turn.id,
+              ...(researchHost && { research: researchHost }),
             })
           : null;
       const analysisFactory = this.analysisFactory;
@@ -543,12 +553,36 @@ export class TurnRunner {
             storyOptions: run.storyOptions,
           })
         : null;
+      run.research = researchHost
+        ? new TurnResearch({
+            host: researchHost,
+            turnId: run.turn.id,
+            turnSignal: run.controller.signal,
+            enabled: setup.enabled,
+            turn: { mode: run.mode, action: run.storyAction },
+            storyOptions: run.storyOptions,
+            model: () => this.researchModel(run, setup),
+          })
+        : null;
+      // The user's Asset Search policy decides what Research may do; when Studio cannot say, research fails closed.
+      if (run.research && setup.enabled.includes("research")) {
+        const policy = await run.research.policy(run.controller.signal);
+        setup.research = policy
+          ? { status: "ready", policy }
+          : { status: "unavailable", reason: "Studio's research service did not answer" };
+      }
       const availability: ToolAvailability = {
         enabled: setup.enabled,
         jev: setup.jev !== null,
         editing: run.editing !== null,
         analysis: run.analysis !== null,
         story: run.story !== null,
+        research: run.research !== null && setup.research?.status === "ready",
+        researchCandidate: (id) => this.active?.research?.candidate(id),
+        researchSourceName: (id) =>
+          setup.research?.status === "ready"
+            ? setup.research.policy.sources.find((source) => source.id === id)?.name
+            : undefined,
         mode: run.mode,
         storyAction: run.storyAction,
         planClips: (plan) => this.active?.analysis?.planClips(plan),
@@ -595,12 +629,7 @@ export class TurnRunner {
         });
       const storyBlocks =
         run.mode === "story" && run.story
-          ? `\n\n${renderStoryBlocks({
-              action: run.storyAction,
-              editorEnabled: setup.enabled.includes("editor"),
-              storyOptions: run.storyOptions,
-              graph: await run.story.snapshot(run.controller.signal),
-            })}`
+          ? `\n\n${renderStoryBlocks(await this.storyBlockInput(run, setup, run.story))}`
           : "";
       const promptPromise = promptDirector(
         `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references)}${storyBlocks}`,
@@ -685,6 +714,27 @@ export class TurnRunner {
     };
   }
 
+  /** What the story-mode blocks of the turn's prompt are made from. */
+  private async storyBlockInput(run: ActiveRun, setup: TurnAgentSetup, story: TurnStory) {
+    const snapshot = await story.snapshot(run.controller.signal);
+    return {
+      action: run.storyAction,
+      editorEnabled: setup.enabled.includes("editor"),
+      storyOptions: run.storyOptions,
+      graph: snapshot.graph,
+      view: snapshot.view,
+      researchReady: run.research !== null && setup.research?.status === "ready",
+    };
+  }
+
+  /** The model the Research run uses now (`provider/modelId`), recorded in the provenance of what it imports. */
+  private researchModel(run: ActiveRun, setup: TurnAgentSetup): string | null {
+    const running = run.orchestrator?.modelOf("research");
+    if (running) return running;
+    const configured = setup.specialists.research.model;
+    return configured ? `${configured.provider}/${configured.modelId}` : null;
+  }
+
   /** The chat's resumable session for the Director or a specialist, with the tools this turn allows it. */
   private agentSession(
     chatId: string,
@@ -741,6 +791,11 @@ export class TurnRunner {
     const run = this.active;
     if (!run || run.chatId !== chatId || run.finalizing)
       return { text: "There is no running turn for this tool call.", isError: true };
+    if (isResearchToolName(name)) {
+      if (!run.research)
+        return { text: "Research is not available in this runtime.", isError: true };
+      return run.research.execute(caller, name, args, signal);
+    }
     if (isStoryToolName(name)) {
       if (!run.story)
         return { text: "Story Mode is not available in this runtime.", isError: true };
@@ -780,6 +835,7 @@ export class TurnRunner {
     // Editing calls still running (or a render) end here too: no editing write may land after the checkpoint closes.
     // Analysis jobs are cancelled and a rough cut already sent to the editing service is awaited for the same reason;
     // a story edit or build already sent to the story service is awaited too (it is atomic there).
+    await run.research?.shutdown().catch(() => undefined);
     await run.story?.shutdown().catch(() => undefined);
     await run.analysis?.shutdown().catch(() => undefined);
     await run.editing?.shutdown().catch(() => undefined);

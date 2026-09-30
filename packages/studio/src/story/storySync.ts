@@ -33,6 +33,7 @@ export const SYNC_ROLE_LABELS: Record<StorySyncRole, string> = {
   b_roll: "B-roll",
   picture: "Picture",
   motion: "Motion",
+  sfx: "Sound effect",
   music: "Music",
   captions: "Captions",
 };

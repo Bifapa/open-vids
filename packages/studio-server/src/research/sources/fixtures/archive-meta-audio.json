@@ -1,0 +1,45 @@
+{
+  "files": [
+    {
+      "name": "ep1.wav",
+      "source": "original",
+      "format": "WAVE",
+      "size": "90000000",
+      "length": "1800.5"
+    },
+    {
+      "name": "ep1_64kb.mp3",
+      "source": "derivative",
+      "format": "64Kbps MP3",
+      "size": "14000000",
+      "length": "1800.5"
+    },
+    {
+      "name": "ep 1.mp3",
+      "source": "derivative",
+      "format": "VBR MP3",
+      "size": "28000000",
+      "length": "1800.5"
+    },
+    {
+      "name": "ep1_spectrogram.png",
+      "source": "derivative",
+      "format": "Spectrogram",
+      "size": "100000"
+    },
+    {
+      "name": "ep1.ogg",
+      "source": "derivative",
+      "format": "Ogg Vorbis",
+      "size": "20000000",
+      "length": "1800.5"
+    }
+  ],
+  "metadata": {
+    "identifier": "podcast_one",
+    "mediatype": "audio",
+    "title": "Podcast One",
+    "creator": "Host",
+    "licenseurl": "https://creativecommons.org/licenses/by-sa/3.0/"
+  }
+}

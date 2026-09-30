@@ -1,0 +1,38 @@
+{
+  "files": [
+    {
+      "name": "clip_two.mp4",
+      "source": "original",
+      "format": "MPEG4",
+      "size": "524288000",
+      "length": "90.0",
+      "height": "1080",
+      "width": "1920"
+    },
+    {
+      "name": "clip_two.ia.mp4",
+      "source": "derivative",
+      "format": "h.264",
+      "size": "12582912",
+      "length": "00:01:30",
+      "height": "360",
+      "width": "640"
+    },
+    {
+      "name": "clip_two_512kb.mp4",
+      "source": "derivative",
+      "format": "512Kb MPEG4",
+      "size": "5000000",
+      "length": "90.0",
+      "height": "240",
+      "width": "320"
+    }
+  ],
+  "metadata": {
+    "identifier": "clip_two",
+    "mediatype": "movies",
+    "title": "Clip Two",
+    "creator": ["Jane Doe", "John Roe"],
+    "description": ["<div>A <b>short</b> clip&nbsp;&amp; more</div>"]
+  }
+}

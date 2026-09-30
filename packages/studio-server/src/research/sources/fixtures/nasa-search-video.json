@@ -1,0 +1,47 @@
+{
+  "collection": {
+    "version": "1.1",
+    "items": [
+      {
+        "href": "https://images-assets.nasa.gov/video/KSC-1985-Apollo_11/collection.json",
+        "data": [
+          {
+            "center": "KSC",
+            "date_created": "1985-01-01T00:00:00Z",
+            "description": "Productions \"Apollo 11 Moon Landing\"",
+            "media_type": "video",
+            "nasa_id": "KSC-1985-Apollo_11",
+            "secondary_creator": "Kennedy Space Center",
+            "title": "Apollo 11 Productions"
+          }
+        ],
+        "links": [
+          {
+            "href": "https://images-assets.nasa.gov/video/KSC-1985-Apollo_11/KSC-1985-Apollo_11~thumb.jpg",
+            "rel": "preview",
+            "render": "image",
+            "width": 300,
+            "size": 9000,
+            "height": 168
+          },
+          {
+            "href": "https://images-assets.nasa.gov/video/KSC-1985-Apollo_11/KSC-1985-Apollo_11.srt",
+            "rel": "captions"
+          }
+        ]
+      },
+      {
+        "href": "https://images-assets.nasa.gov/video/MOBILE-ONLY/collection.json",
+        "data": [
+          { "media_type": "video", "nasa_id": "MOBILE-ONLY", "title": "Only a mobile rendering" }
+        ],
+        "links": []
+      },
+      {
+        "href": "https://images-assets.nasa.gov/video/SUBS-ONLY/collection.json",
+        "data": [{ "media_type": "video", "nasa_id": "SUBS-ONLY", "title": "No video file" }],
+        "links": []
+      }
+    ]
+  }
+}

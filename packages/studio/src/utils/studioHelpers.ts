@@ -19,6 +19,7 @@ export type RightPanelTab =
   | "layers"
   | "design"
   | "renders"
+  | "sources"
   | "block-params"
   | "slideshow"
   | "variables";

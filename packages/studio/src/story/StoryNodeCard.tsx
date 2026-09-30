@@ -13,6 +13,12 @@ import {
   STORY_KIND_STYLES,
 } from "./storyKinds";
 import { SyncBadges } from "./SyncBadges";
+import {
+  FindWithResearchButton,
+  ResolvedCardLine,
+  resolutionOf,
+  useStoryResearch,
+} from "./storyResearch";
 
 /** The frame a card shows: the node's own pick, else the middle of its first range / its in-point. */
 function cardFrame(node: StoryNode): StoryFrameRef | null {
@@ -196,7 +202,9 @@ function materialLine(node: StoryNode): string {
 
 function MaterialCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
   const { node, projectId } = data;
+  const research = useStoryResearch();
   if (node.kind === "chapter") return null;
+  const resolution = resolutionOf(node);
   const style = STORY_KIND_STYLES[node.kind];
   const KindIcon = style.icon;
   const visual = node.kind === "video" || node.kind === "picture";
@@ -241,6 +249,10 @@ function MaterialCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
           <span className={cn("font-medium", style.text)}>{style.label}</span> ·{" "}
           {materialLine(node)}
         </p>
+        {resolution && <ResolvedCardLine node={node} resolution={resolution} research={research} />}
+        {node.kind === "missing" && research && (
+          <FindWithResearchButton node={node} research={research} className="mt-1" />
+        )}
         <SyncBadges badges={data.sync} className="pt-0.5" />
       </div>
     </div>

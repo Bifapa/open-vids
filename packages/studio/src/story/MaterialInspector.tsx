@@ -31,6 +31,7 @@ import {
   STORY_KIND_STYLES,
 } from "./storyKinds";
 import type { StoryLibrary } from "./useStoryLibrary";
+import { MissingResearchSection, ResolutionSection } from "./StoryProvenance";
 
 export interface MaterialInspectorProps {
   node: StoryMaterialNode;
@@ -391,6 +392,11 @@ export function MaterialInspector(props: MaterialInspectorProps) {
           </Field>
         )}
       </Section>
+      {node.kind === "missing" ? (
+        <MissingResearchSection node={node} />
+      ) : (
+        <ResolutionSection node={node} />
+      )}
       <UsedIn graph={graph} nodeId={node.id} onSelect={onSelect} />
     </>
   );

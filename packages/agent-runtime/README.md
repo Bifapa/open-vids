@@ -166,17 +166,19 @@ to it over loopback HTTP (`src/story/host.http.ts`, base `${studioOrigin}/api/pr
 sync ledger).
 
 - **Modes.** A chat has a persisted `activeMode` (`normal` | `story`, `PATCH` chat). A turn's mode is `story` when it
-  runs a `storyAction` (`review`, `build`, `rebuild`; sent by Studio's "Review with AI" / "Build Story" / "Rebuild
-  affected"), else the request's `mode`, else the chat's `activeMode`. `TurnSummary.mode` / `storyAction` /
+  runs a `storyAction` (`review`, `build`, `rebuild`, `resolve`; sent by Studio's "Review with AI" / "Build Story" /
+  "Rebuild affected" / "Find missing material"), else the request's `mode`, else the chat's `activeMode`.
+  `TurnSummary.mode` / `storyAction` /
   `storyOptions` record it. All are ordinary checkpointed turns, so "Revert this turn" restores the graph, the sync
   ledger and the timeline together.
 - **User options.** `StartTurnRequest.storyOptions` carries the user's choices from the Story workspace: for `rebuild`
   `chapters` (scope), `manualEdits` (`keep` | `replace`) and `allowLocked`; for `build` only `allowLocked`. The executor
   merges them into the service request; the model passes only `baseVersion` / `dryRun`, so it can never unlock a
-  chapter or replace the user's edited material on its own.
+  chapter or replace the user's edited material on its own. For `resolve`, `missing` limits the Missing Asset nodes the
+  turn may resolve (enforced by the research executor, see Research).
 - **Prompt.** Every story-mode turn prompt carries a `<story-graph>` block (the `read_story` rendering as of the
   turn's start, including "User decisions", locks and the "Timeline sync" section) and a
-  `<story-mode action="plan|review|build|rebuild">` block with the rules of the action and the user's options
+  `<story-mode action="plan|review|build|rebuild|resolve">` block with the rules of the action and the user's options
   (`src/story/prompt.ts`). The Director's role text holds the standing rules (user decisions outrank the AI's earlier
   plan, locked nodes never change, never restore the previous variant on review).
 - **Tools** (`src/story/tools.ts`): `read_story` (Director and every specialist, any mode), `edit_story` (Director, story
@@ -193,6 +195,57 @@ sync ledger).
   when no turn is running or it is finalizing; `TurnRunner.finalize` awaits every started edit/build (atomic on the
   service) before the checkpoint closes, so no story write can escape Revert.
 - `FakeStoryHost` (`src/testing`) is the in-memory host for tests (gates to hold an edit/build in flight, recorded
+  requests and signals); the runtime fixture wires it.
+
+## Research
+
+Research is the only specialist that can look for material outside the project. The Studio server (Milestone 7; contract
+in `packages/agent-protocol/src/research.ts`) performs every search, page read and download, keeps the user's global
+Asset Search policy (`trusted` = only the enabled trusted sources, `any` = any public page, trusted sources first) and
+records a provenance entry for every import; the runtime reaches it over loopback HTTP (`src/research/host.http.ts`:
+`${studioOrigin}/api/research/policy` for the global policy and `${studioOrigin}/api/projects/:id/research/{search,
+inspect,import,resolve,sources,export-check}` for the project). Agents have no network tools of their own (the OMP path
+guard rejects URLs), so the **policy enforcement point is the Studio server**: a request the policy does not allow is
+refused there with `blocked_by_policy`, and no request the runtime sends carries a policy mode. Provenance fields
+(URL, source, author, license and its confidence, retrieval time, agent, model) come from the source and the server,
+never from model-supplied text.
+
+| Tool                                                      | Who                | What                                                                                                                                                                                           |
+| --------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_assets {query, mediaKind, sources?, limit?}`      | Research           | Candidates from the allowed sources: id, title, source (trusted or web), license name + status + confidence, author, size, page URL, `inProject`; per-source errors and `blocked` entries.     |
+| `inspect_url {url, mediaKind?}`                           | Research           | Reads one page or media URL and lists the media it offers (HLS/DASH and protected streams are refused by the server).                                                                          |
+| `import_asset {candidate \| url, name?, resolveMissing?}` | Research           | Downloads into `assets/research/`, records provenance, detects duplicates (same URL or same content: reused, not downloaded again), optionally resolves a Missing Asset node in the same step. |
+| `resolve_missing_asset {missing, asset}`                  | Research           | Resolves a Missing Asset node with a file already in the project.                                                                                                                              |
+| `read_sources {}`                                         | Research, Director | The project's Sources/Licenses: records, where they are used, issues, credits owed.                                                                                                            |
+
+- **Availability** (`researchToolsFor`, `src/research/tools.ts`): nobody gets a research tool when Research is not
+  enabled in the chat or when the policy could not be read at the start of the turn (the runtime then fails closed and
+  the Director says so); a Story build or rebuild turn offers none; Jev and the other specialists never do; the Director
+  only has `read_sources`. `TurnResearch.execute` re-checks the caller against the same function, so the Director
+  cannot reach the search/import tools under any name.
+- **What the runtime owns.** `turnId`, `agent: "research"` and `model` (the model of the Research run, `provider/modelId`)
+  are set by `src/research/executor.ts` on every import; whatever the model sends for them, or for a policy mode, is
+  dropped. In a `resolve` turn with `storyOptions.missing`, `resolveMissing` / `resolve_missing_asset.missing` outside
+  that list are refused by the executor.
+- **Prompt.** At the start of a turn (when Research is enabled) the runtime reads the policy: the Director's `<team>` block
+  states the mode and the number of enabled trusted sources (or that Research is disabled/unavailable and the user has to
+  enable it), and every task delegated to Research carries an `<asset-search-policy>` block with the mode, the enabled
+  sources (id, name, kinds, license note) and the rules (stay within the policy, prefer clear > attribution > unknown
+  licenses, match the node's need/kind/`neededDuration`, import only what will be used, resolve with `resolveMissing`,
+  report source + license per asset, never invent license information) (`src/research/prompt.ts`).
+- **Resolve turns** (`storyAction: "resolve"`, Studio's "Find missing material"; `storyOptions.missing` limits the nodes):
+  a checkpointed story-mode turn whose `<story-mode action="resolve">` block lists the unlocked Missing Asset nodes in
+  scope. The Director delegates Research (batches of up to 4 nodes), nobody edits the story, builds or writes the
+  timeline; Research has `read_story` plus the research tools. Without Research the Director does nothing and says why.
+  Afterwards the Director tells the user to Build Story / Rebuild affected sections.
+- **Export licenses.** After a successful `render_video`, `TurnEditing` calls `export-check` for the composition and appends
+  the license warnings and credits to the tool result; the check never blocks, and a failed check is only noted.
+- **Lifecycle.** Like the other executors, research calls go to a per-turn `TurnResearch` (refused when no turn is running
+  or it is finalizing); `TurnRunner.finalize` aborts in-flight HTTP and awaits every started import/resolution (they
+  write project files) before the checkpoint closes, so a turn's asset, provenance record and Story resolution are one
+  revertable unit. The download cache sits outside history, so re-importing after a revert does not hit the network.
+  Imports may take long (download + transcode): the HTTP host waits up to 15 minutes, honoring the turn's abort signal.
+- `FakeResearchHost` (`src/testing`) is the in-memory host for tests (`importGate` holds an import in flight, recorded
   requests and signals); the runtime fixture wires it.
 
 ## Turns, checkpoints, concurrency

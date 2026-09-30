@@ -57,6 +57,22 @@ function nonDefaultFields(node: StoryNode): string[] {
   );
 }
 
+/**
+ * `resolvedFrom` is the service's record of a resolved Missing Asset node, not authored content: a save keeps what is
+ * stored for an existing node and drops whatever the client sent for a new one.
+ */
+function keepResolution(node: StoryNode, before: StoryNode | undefined): StoryNode {
+  if (node.kind !== "video" && node.kind !== "picture" && node.kind !== "music") return node;
+  const kept =
+    before && (before.kind === "video" || before.kind === "picture" || before.kind === "music")
+      ? before.resolvedFrom
+      : undefined;
+  const copy = { ...node };
+  delete copy.resolvedFrom;
+  if (kept) copy.resolvedFrom = kept;
+  return copy;
+}
+
 const edgeKey = (edge: { from: string; to: string }) => `${edge.from}\0${edge.to}`;
 const attachmentKey = (item: { node: string; chapter: string }) => `${item.node}\0${item.chapter}`;
 const removalKey = (removal: StoryRemoval) =>
@@ -84,7 +100,12 @@ export function applyUserAuthorship(
   const storedNodes = new Map((stored?.nodes ?? []).map((node) => [node.id, node]));
   const nodes = incoming.nodes.map((node): StoryNode => {
     const before = storedNodes.get(node.id);
-    if (!before) return { ...node, createdBy: USER, userEdited: nonDefaultFields(node) };
+    if (!before) {
+      return keepResolution(
+        { ...node, createdBy: USER, userEdited: nonDefaultFields(node) },
+        undefined,
+      );
+    }
     if (before.kind !== node.kind) {
       throw new StoryFailure("invalid_request", `Node ${node.id} cannot change its kind`);
     }
@@ -94,11 +115,10 @@ export function applyUserAuthorship(
     for (const field of STORY_CONTENT_FIELDS[node.kind]) {
       if (!sameJson(was[field], after[field])) names.add(field);
     }
-    return {
-      ...node,
-      createdBy: before.createdBy,
-      userEdited: inContractOrder(node.kind, names),
-    };
+    return keepResolution(
+      { ...node, createdBy: before.createdBy, userEdited: inContractOrder(node.kind, names) },
+      before,
+    );
   });
   const nodeIds = new Set(nodes.map((node) => node.id));
 

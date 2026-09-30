@@ -15,6 +15,7 @@ import type { AgentBackend } from "../backend.js";
 import { errorMessage } from "../errors.js";
 import type { JevRuntime, TurnAgentSetup } from "./orchestrator.js";
 import { jevInstructions } from "./roles.js";
+import { researchTeamLine } from "../research/prompt.js";
 
 const JEV_TEST_TIMEOUT_MS = 60_000;
 
@@ -92,6 +93,7 @@ export function renderTeam(setup: TurnAgentSetup): string {
         `Disabled (never delegate): ${disabled.map((id) => AGENT_DISPLAY_NAMES[id]).join(", ")}.`,
       );
   }
+  lines.push(researchTeamLine(setup.enabled.includes("research"), setup.research));
   lines.push(
     setup.jev
       ? `Jev fast worker: available (${describeModel(setup.jev.model)}).`

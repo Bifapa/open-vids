@@ -1,0 +1,15 @@
+{
+  "response": {
+    "numFound": 2,
+    "start": 0,
+    "docs": [
+      {
+        "identifier": "ogv_only",
+        "title": "Ogv only",
+        "creator": "Someone",
+        "licenseurl": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      { "identifier": "mpeg_only", "title": "Mpeg only" }
+    ]
+  }
+}

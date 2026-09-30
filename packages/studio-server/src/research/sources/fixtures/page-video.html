@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <base href="https://cdn.example.org/media/" />
+    <title>Fallback title | Example</title>
+    <meta property="og:title" content="Sunrise over the bay" />
+    <meta property="og:description" content="Timelapse of a   sunrise" />
+    <meta property="og:image" content="/img/poster.jpg" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="720" />
+    <meta property="og:video" content="https://cdn.example.org/v/sunrise.mp4" />
+    <meta property="og:video:type" content="video/mp4" />
+    <meta property="og:video:width" content="1920" />
+    <meta property="og:video:height" content="1080" />
+    <meta property="video:duration" content="42" />
+    <link rel="license" href="https://creativecommons.org/licenses/by/4.0/" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "VideoObject",
+            "author": { "@type": "Person", "name": "Ada Lovelace" },
+            "license": "https://creativecommons.org/licenses/by-sa/4.0/"
+          }
+        ]
+      }
+    </script>
+    <script>
+      var tracker = "public domain";
+    </script>
+  </head>
+  <body>
+    <video poster="poster2.jpg" width="640" height="360" controls>
+      <source src="sunrise.webm" type="video/webm" />
+      <source src="stream/master.m3u8" type="application/x-mpegURL" />
+    </video>
+    <audio src="/a/birds.mp3"></audio>
+    <p>
+      <a href="files/sunrise.mov">Download the clip</a> · <a href="/about">About</a> ·
+      <a href="mailto:a@b.c">Mail</a>
+    </p>
+    <img src="/photos/not-used-when-other-media-exists.jpg" width="900" />
+  </body>
+</html>

@@ -1,0 +1,101 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 150000001,
+        "ns": 6,
+        "title": "File:Lava flow Kilauea.webm",
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 88000000,
+            "width": 2560,
+            "height": 1440,
+            "duration": 41.2,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Lava_flow_Kilauea.webm/640px-Lava_flow_Kilauea.webm.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo",
+            "thumbwidth": 640,
+            "thumbheight": 360,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Lava_flow_Kilauea.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Lava_flow_Kilauea.webm",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000001",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates"
+              },
+              "Artist": {
+                "value": "<bdi>U.S. Geological Survey</bdi>",
+                "source": "commons-desc-page"
+              },
+              "ObjectName": {
+                "value": "Lava flow Kilauea",
+                "source": "mediawiki-metadata"
+              }
+            },
+            "mime": "video/webm",
+            "mediatype": "VIDEO"
+          }
+        ],
+        "videoinfo": [
+          {
+            "size": 88000000,
+            "width": 2560,
+            "height": 1440,
+            "duration": 41.2,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Lava_flow_Kilauea.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Lava_flow_Kilauea.webm",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000001",
+            "mime": "video/webm",
+            "mediatype": "VIDEO",
+            "derivatives": [
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Lava_flow_Kilauea.webm?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+                "type": "video/webm",
+                "width": 2560,
+                "height": 1440,
+                "bandwidth": 9000000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/ab/Lava_flow_Kilauea.webm.720p.h264.mp4",
+                "type": "video/mp4; codecs=\"avc1.640028, mp4a.40.2\"",
+                "transcodekey": "720p.h264.mp4",
+                "width": 1280,
+                "height": 720,
+                "bandwidth": 1500000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/ab/Lava_flow_Kilauea.webm.1080p.h264.mp4",
+                "type": "video/mp4; codecs=\"avc1.640028, mp4a.40.2\"",
+                "transcodekey": "1080p.h264.mp4",
+                "width": 1920,
+                "height": 1080,
+                "bandwidth": 3000000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/ab/Lava_flow_Kilauea.webm.1440p.h264.mp4",
+                "type": "video/mp4; codecs=\"avc1.640028, mp4a.40.2\"",
+                "transcodekey": "1440p.h264.mp4",
+                "width": 2560,
+                "height": 1440,
+                "bandwidth": 6000000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/ab/Lava_flow_Kilauea.webm.1080p.vp9.webm",
+                "type": "video/webm; codecs=\"vp9, opus\"",
+                "transcodekey": "1080p.vp9.webm",
+                "width": 1920,
+                "height": 1080,
+                "bandwidth": 2300000
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

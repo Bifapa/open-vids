@@ -468,3 +468,217 @@ describe("what the user decided", () => {
     ).toMatchObject({ code: "user_decision" });
   });
 });
+
+describe("resolve_missing", () => {
+  /** Chapter A (needs_material) with a Missing Asset node attached at its end for 2 s. */
+  async function withMissing(
+    f: StoryFixture,
+    mediaKind: "video" | "picture" | "graphics" | "music" | "sfx" = "video",
+  ) {
+    const made = await f.edit([
+      {
+        op: "add_node",
+        ref: "a",
+        node: { kind: "chapter", title: "Intro", status: "needs_material" },
+      },
+      {
+        op: "add_node",
+        ref: "m",
+        node: { kind: "missing", title: "Ocean", mediaKind, need: "Ocean waves at dusk" },
+      },
+      { op: "attach", node: "@m", chapter: "@a", placement: "end", duration: 2 },
+    ]);
+    return { chapter: created(made, 0), missing: created(made, 1), attachment: created(made, 2) };
+  }
+
+  it("replaces the Missing Asset node with a material node that takes over its attachments and position", async () => {
+    const f = story();
+    const { chapter, missing, attachment } = await withMissing(f);
+    const before = await f.graph();
+    const position = node(before, missing).position;
+
+    const response = await f.edit(
+      [{ op: "resolve_missing", id: missing, asset: "assets/b.mp4", sourceIn: 1 }],
+      { turnId: "turn-7" },
+    );
+    const graph = await f.graph();
+    const replacement = node(graph, response.results[0]?.id ?? "");
+    expect(replacement).toMatchObject({
+      kind: "video",
+      title: "Ocean",
+      asset: "assets/b.mp4",
+      sourceIn: 1,
+      sourceOut: null,
+      usageIntent: "Ocean waves at dusk",
+      createdBy: "ai",
+      locked: false,
+      userEdited: [],
+      position,
+      resolvedFrom: {
+        missing,
+        mediaKind: "video",
+        need: "Ocean waves at dusk",
+        turnId: "turn-7",
+      },
+    });
+    expect(replacement.id).not.toBe(missing);
+    expect(graph.nodes.some((candidate) => candidate.id === missing)).toBe(false);
+    // The attachment keeps its id, placement and duration, and now points at the new node; nothing is tombstoned.
+    expect(graph.attachments).toEqual([
+      {
+        id: attachment,
+        node: replacement.id,
+        chapter,
+        placement: "end",
+        offset: null,
+        duration: 2,
+        createdBy: "ai",
+      },
+    ]);
+    expect(graph.removedByUser).toEqual([]);
+    // The chapter only waited for this material.
+    expect(node(graph, chapter)).toMatchObject({ status: "proposed" });
+  });
+
+  it("keeps the chapter waiting while another Missing Asset node is attached, and the user's own status decision", async () => {
+    const f = story();
+    const { chapter, missing } = await withMissing(f);
+    const other = await f.edit([
+      {
+        op: "add_node",
+        node: { kind: "missing", title: "Drone", mediaKind: "video", need: "Drone shot" },
+      },
+    ]);
+    await f.edit([{ op: "attach", node: created(other, 0), chapter }]);
+    await f.edit([{ op: "resolve_missing", id: missing, asset: "assets/b.mp4" }]);
+    expect(node(await f.graph(), chapter)).toMatchObject({ status: "needs_material" });
+
+    const g = story();
+    const again = await withMissing(g);
+    // The user flips the status away and back: it is now their decision, an agent leaves it.
+    for (const status of ["approved", "needs_material"] as const) {
+      await userEdit(g, (graph) => {
+        const chapterNode = node(graph, again.chapter);
+        if (isChapter(chapterNode)) chapterNode.status = status;
+      });
+    }
+    expect(node(await g.graph(), again.chapter)).toMatchObject({
+      status: "needs_material",
+      userEdited: ["status"],
+    });
+    await g.edit([{ op: "resolve_missing", id: again.missing, asset: "assets/b.mp4" }]);
+    expect(node(await g.graph(), again.chapter)).toMatchObject({ status: "needs_material" });
+  });
+
+  it("maps the missing kind to the node kind and refuses a file of the wrong kind", async () => {
+    const f = story();
+    const picture = await withMissing(f, "picture");
+    expect(
+      await f.refusal([{ op: "resolve_missing", id: picture.missing, asset: "assets/music.mp3" }]),
+    ).toMatchObject({
+      code: "invalid_request",
+    });
+    expect(
+      await f.refusal([{ op: "resolve_missing", id: picture.missing, asset: "assets/none.png" }]),
+    ).toMatchObject({
+      code: "unknown_asset",
+    });
+    // A picture slot accepts a video file too (it becomes a video node).
+    const video = await f.edit([
+      { op: "resolve_missing", id: picture.missing, asset: "assets/b.mp4" },
+    ]);
+    expect(node(await f.graph(), video.results[0]?.id ?? "")).toMatchObject({ kind: "video" });
+
+    const g = story();
+    const sfx = await withMissing(g, "sfx");
+    expect(
+      await g.refusal([{ op: "resolve_missing", id: sfx.missing, asset: "assets/photo.png" }]),
+    ).toMatchObject({
+      code: "invalid_request",
+    });
+    const music = await g.edit([
+      { op: "resolve_missing", id: sfx.missing, asset: "assets/music.mp3" },
+    ]);
+    expect(node(await g.graph(), music.results[0]?.id ?? "")).toMatchObject({
+      kind: "music",
+      asset: "assets/music.mp3",
+      volume: 1,
+      resolvedFrom: { mediaKind: "sfx" },
+    });
+
+    const h = story();
+    const graphics = await withMissing(h, "graphics");
+    const image = await h.edit([
+      { op: "resolve_missing", id: graphics.missing, asset: "assets/photo.png" },
+    ]);
+    expect(node(await h.graph(), image.results[0]?.id ?? "")).toMatchObject({ kind: "picture" });
+  });
+
+  it("refuses nodes that are not Missing Asset nodes, locked ones and locked chapters, leaving the graph untouched", async () => {
+    const f = story();
+    const { chapter, missing } = await withMissing(f);
+    expect(
+      await f.refusal([{ op: "resolve_missing", id: chapter, asset: "assets/b.mp4" }]),
+    ).toMatchObject({
+      code: "invalid_request",
+    });
+    expect(
+      await f.refusal([{ op: "resolve_missing", id: "missing-zzz", asset: "assets/b.mp4" }]),
+    ).toMatchObject({
+      code: "unknown_node",
+    });
+    await userEdit(f, (graph) => {
+      node(graph, missing).locked = true;
+    });
+    expect(
+      await f.refusal([{ op: "resolve_missing", id: missing, asset: "assets/b.mp4" }]),
+    ).toMatchObject({
+      code: "locked",
+    });
+    await userEdit(f, (graph) => {
+      node(graph, missing).locked = false;
+      node(graph, chapter).locked = true;
+    });
+    expect(
+      await f.refusal([{ op: "resolve_missing", id: missing, asset: "assets/b.mp4" }]),
+    ).toMatchObject({
+      code: "locked",
+    });
+    expect(node(await f.graph(), missing).kind).toBe("missing");
+  });
+
+  it("keeps resolvedFrom through the user's saves, even when the client drops or forges it", async () => {
+    const f = story();
+    const { missing } = await withMissing(f);
+    const resolved = await f.edit([{ op: "resolve_missing", id: missing, asset: "assets/b.mp4" }]);
+    const id = resolved.results[0]?.id ?? "";
+    const saved = await userEdit(f, (graph) => {
+      const material = node(graph, id);
+      if (material.kind === "video") {
+        delete material.resolvedFrom;
+        material.title = "Waves";
+      }
+    });
+    expect(node(saved, id)).toMatchObject({
+      title: "Waves",
+      userEdited: ["title"],
+      resolvedFrom: { missing, need: "Ocean waves at dusk" },
+    });
+    // A node the user creates cannot claim a resolution.
+    const forged = await userEdit(f, (graph) => {
+      graph.nodes.push({
+        id: "picture-mine",
+        kind: "picture",
+        title: "Mine",
+        position: { x: 1, y: 1 },
+        locked: false,
+        createdBy: "user",
+        userEdited: [],
+        asset: "assets/photo.png",
+        usageIntent: "",
+        resolvedFrom: { missing, mediaKind: "picture", need: "x", at: 1, turnId: null },
+      });
+    });
+    expect(node(forged, "picture-mine")).not.toHaveProperty("resolvedFrom");
+  });
+});

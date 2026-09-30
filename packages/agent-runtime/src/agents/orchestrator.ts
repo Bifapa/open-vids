@@ -22,6 +22,7 @@ import type { BackendSession, HostToolResult } from "../backend.js";
 import type { ChatService } from "../chats.js";
 import { errorMessage } from "../errors.js";
 import { renderPromptContext } from "../promptContext.js";
+import { renderResearchBlock, type ResearchTurnState } from "../research/prompt.js";
 import { TurnEventWriter, type StreamTimerApi, type StreamTimerHandle } from "../turnStream.js";
 import { parseModelArgument, routeDelegation } from "./routing.js";
 import {
@@ -47,6 +48,8 @@ export interface TurnAgentSetup {
   jev: JevRuntime | null;
   catalog: AgentModelCatalog;
   editorContext?: EditorContext;
+  /** The user's Asset Search policy as the turn started (see research/prompt.ts); unset without a research host. */
+  research?: ResearchTurnState;
 }
 
 export interface OrchestratorDeps {
@@ -130,6 +133,12 @@ export class Orchestrator {
   private assembled: PlanStepStatus | null = null;
 
   constructor(private readonly deps: OrchestratorDeps) {}
+
+  /** The model a specialist's current run actually uses (`provider/modelId`), or null when it is not running. */
+  modelOf(agent: SpecialistId): string | null {
+    const model = this.currentRun.get(agent)?.run.model;
+    return model ? `${model.provider}/${model.modelId}` : null;
+  }
 
   /** Dispatches a host tool call made by `caller` (the Director or a specialist). */
   async execute(
@@ -465,10 +474,15 @@ export class Orchestrator {
     const onTurnAbort = () => controller.abort();
     if (this.deps.signal.aborted) controller.abort();
     else this.deps.signal.addEventListener("abort", onTurnAbort, { once: true });
-    const text = renderPromptContext(
+    const taskText = renderPromptContext(
       `<task title=${JSON.stringify(input.title)} from=${JSON.stringify(AGENT_DISPLAY_NAMES[input.from])}>\n${input.task}\n</task>`,
       this.deps.setup.editorContext,
     );
+    // Research works under the user's Asset Search policy; it is stated with every task it gets.
+    const text =
+      input.agent === "research"
+        ? `${taskText}\n\n${renderResearchBlock(this.deps.setup.research)}`
+        : taskText;
 
     // Queue the run before the first await, so concurrent delegations to one specialist line up in call order.
     const announced = Promise.withResolvers<boolean>();

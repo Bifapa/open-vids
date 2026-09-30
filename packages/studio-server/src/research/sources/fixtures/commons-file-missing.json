@@ -1,0 +1,13 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "title": "File:Nope.jpg",
+        "ns": 6,
+        "missing": true,
+        "known": false
+      }
+    ]
+  }
+}

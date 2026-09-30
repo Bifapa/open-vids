@@ -10,6 +10,7 @@ const STORY_ACTION_PROMPTS: Record<StoryAction, string> = {
   review: "Review the story",
   build: "Build the story",
   rebuild: "Rebuild the affected story sections",
+  resolve: "Find the missing material",
 };
 
 /** The options without empty lists; null when nothing is left, so the request carries no `storyOptions`. */
@@ -20,6 +21,7 @@ function compactOptions(options: StoryActionOptions | undefined): StoryActionOpt
   if (options.manualEdits) compact.manualEdits = options.manualEdits;
   if (options.allowLocked && options.allowLocked.length > 0)
     compact.allowLocked = options.allowLocked;
+  if (options.missing && options.missing.length > 0) compact.missing = options.missing;
   return Object.keys(compact).length > 0 ? compact : null;
 }
 

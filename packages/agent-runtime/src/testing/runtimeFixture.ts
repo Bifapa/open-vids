@@ -10,6 +10,7 @@ import { FakeCheckpointHost } from "./index.js";
 import { FakeAnalysisHost } from "./analysis.js";
 import { FakeEditingHost } from "./editing.js";
 import { FakeStoryHost } from "./story.js";
+import { FakeResearchHost } from "./research.js";
 import { ScriptedAgentBackend } from "./backend.js";
 
 export interface RuntimeFixture {
@@ -24,6 +25,7 @@ export interface RuntimeFixture {
   editing: FakeEditingHost;
   analysis: FakeAnalysisHost;
   story: FakeStoryHost;
+  research: FakeResearchHost;
   now: () => number;
   setNow: (value: number) => void;
   cleanup: () => Promise<void>;
@@ -51,11 +53,13 @@ export async function createRuntimeFixture(
   const editing = new FakeEditingHost();
   const analysis = new FakeAnalysisHost();
   const story = new FakeStoryHost();
+  const research = new FakeResearchHost();
   const chats = await ChatService.open(scope, store, { now, ids });
   const turns = new TurnRunner(chats, backend, checkpoints, store, settings, {
     editing: () => editing,
     analysis: () => analysis,
     story: () => story,
+    research: () => research,
     analysisPollMs: 1,
     ...options,
     now,
@@ -73,6 +77,7 @@ export async function createRuntimeFixture(
     editing,
     analysis,
     story,
+    research,
     now,
     setNow: (value) => {
       timestamp = value;

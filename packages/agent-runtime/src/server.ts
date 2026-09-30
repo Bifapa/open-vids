@@ -30,6 +30,7 @@ import { ChatService } from "./chats.js";
 import type { AnalysisHost } from "./analysis/host.js";
 import type { EditingHost } from "./editing/host.js";
 import type { StoryHost } from "./story/host.js";
+import type { ResearchHost } from "./research/host.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import { defaultEnabledAgents, type AgentSettingsStore } from "./settings.js";
 import { FileChatStore } from "./store/index.js";
@@ -44,6 +45,8 @@ export interface RuntimeAppOptions {
   analysis: (scope: ProjectScope) => AnalysisHost;
   /** Opens the story host (the Story Graph, story edits, Build Story) of the project a request is scoped to. */
   story: (scope: ProjectScope) => StoryHost;
+  /** Opens the research host (Asset Search policy, outside material, the project's sources) of a request's project. */
+  research: (scope: ProjectScope) => ResearchHost;
   /** Global (per-user) agent settings shared by every project. */
   settings: AgentSettingsStore;
   token: string;
@@ -78,6 +81,7 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
     editing: options.editing,
     analysis: options.analysis,
     story: options.story,
+    research: options.research,
     now,
     ...(ids && { ids }),
     ...(options.sessionIdleMs !== undefined && { sessionIdleMs: options.sessionIdleMs }),

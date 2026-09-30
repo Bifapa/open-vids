@@ -5,6 +5,7 @@ import type { EditingHost } from "./editing/host.js";
 import { EDITING_TOOL_NAMES } from "./editing/tools.js";
 import { ANALYSIS_TOOL_NAMES } from "./analysis/tools.js";
 import type { StoryHost } from "./story/host.js";
+import type { ResearchHost } from "./research/host.js";
 import type { StreamTimerApi } from "./turnStream.js";
 
 export interface TurnRunnerOptions {
@@ -33,6 +34,12 @@ export interface TurnRunnerOptions {
    * story tools; the production runtime always provides it.
    */
   story?: (scope: ProjectScope) => StoryHost;
+  /**
+   * Opens the research host (the Asset Search policy, finding and importing outside material, the project's sources)
+   * of a project. Without it the agents get no research tools and renders report no license check; the production
+   * runtime always provides it.
+   */
+  research?: (scope: ProjectScope) => ResearchHost;
 }
 
 /** What a story-mode turn (plan/review) says when an agent tries to write the timeline anyway. */

@@ -1,0 +1,187 @@
+{
+  "batchcomplete": true,
+  "continue": {
+    "gsroffset": 5,
+    "continue": "gsroffset||"
+  },
+  "query": {
+    "pages": [
+      {
+        "pageid": 6113476,
+        "ns": 6,
+        "title": "File:Tavurvur volcano edit.jpg",
+        "index": 1,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 3262652,
+            "width": 3844,
+            "height": 2544,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e6/Tavurvur_volcano_edit.jpg/1920px-Tavurvur_volcano_edit.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+            "thumbwidth": 1920,
+            "thumbheight": 1271,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/e/e6/Tavurvur_volcano_edit.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Tavurvur_volcano_edit.jpg",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=6113476",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC BY 2.0",
+                "source": "commons-desc-page"
+              },
+              "License": {
+                "value": "cc-by-2.0",
+                "source": "commons-templates"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by/2.0",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.flickr.com/photos/30674396@N00\">Taro Taylor</a>  edit by <a href=\"//commons.wikimedia.org/wiki/User:Richard_Bartz\" title=\"User:Richard Bartz\">Richard Bartz</a>",
+                "source": "commons-desc-page"
+              },
+              "ObjectName": {
+                "value": "Tavurvur volcano edit",
+                "source": "mediawiki-metadata"
+              }
+            },
+            "mime": "image/jpeg",
+            "mediatype": "BITMAP"
+          }
+        ]
+      },
+      {
+        "pageid": 47635625,
+        "ns": 6,
+        "title": "File:Volcán de Ollagüe, Bolivia, 2016-02-03, DD 80-88 PAN.JPG",
+        "index": 2,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 29138693,
+            "width": 39653,
+            "height": 4407,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/65/Volcán_de_Ollagüe,_Bolivia,_2016-02-03,_DD_80-88_PAN.JPG/1920px-Volcán_de_Ollagüe,_Bolivia,_2016-02-03,_DD_80-88_PAN.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+            "thumbwidth": 1920,
+            "thumbheight": 213,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/6/65/Volcán_de_Ollagüe,_Bolivia,_2016-02-03,_DD_80-88_PAN.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Volcán_de_Ollagüe,_Bolivia,_2016-02-03,_DD_80-88_PAN.JPG",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=47635625",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<bdi><a href=\"https://www.wikidata.org/wiki/Q28147777\" class=\"extiw\" title=\"d:Q28147777\"><span title=\"Spanish photographer\">Diego Delso</span></a></bdi>",
+                "source": "commons-desc-page"
+              },
+              "ObjectName": {
+                "value": "Volcán de Ollagüe, Bolivia, 2016-02-03, DD 80-88 PAN",
+                "source": "mediawiki-metadata"
+              }
+            },
+            "mime": "image/jpeg",
+            "mediatype": "BITMAP"
+          }
+        ]
+      },
+      {
+        "pageid": 150000010,
+        "ns": 6,
+        "title": "File:Krakatoa 1883 lithograph.tif",
+        "index": 3,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 53000000,
+            "width": 5200,
+            "height": 3400,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1f/Krakatoa_1883_lithograph.tif/lossy-page1-1920px-Krakatoa_1883_lithograph.tif.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+            "thumbwidth": 1920,
+            "thumbheight": 1255,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/1/1f/Krakatoa_1883_lithograph.tif?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Krakatoa_1883_lithograph.tif",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000010",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates"
+              },
+              "Artist": {
+                "value": "Parker &amp; Coward",
+                "source": "commons-desc-page"
+              },
+              "ImageDescription": {
+                "value": "<div class=\"description en\" style=\"display:inline\">Lithograph of the <i>1883</i> eruption</div>",
+                "source": "commons-desc-page"
+              }
+            },
+            "mime": "image/tiff",
+            "mediatype": "BITMAP"
+          }
+        ]
+      },
+      {
+        "pageid": 150000011,
+        "ns": 6,
+        "title": "File:Etna map.svg",
+        "index": 4,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 12000,
+            "width": 512,
+            "height": 512,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2a/Etna_map.svg/1920px-Etna_map.svg.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+            "thumbwidth": 1920,
+            "thumbheight": 1920,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/2/2a/Etna_map.svg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Etna_map.svg",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000011",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC0",
+                "source": "commons-desc-page"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/publicdomain/zero/1.0/",
+                "source": "commons-desc-page"
+              }
+            },
+            "mime": "image/svg+xml",
+            "mediatype": "DRAWING"
+          }
+        ]
+      },
+      {
+        "pageid": 150000012,
+        "ns": 6,
+        "title": "File:Vesuvius scan.tif",
+        "index": 5,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 9000000,
+            "width": 3000,
+            "height": 2000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/3/3b/Vesuvius_scan.tif?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Vesuvius_scan.tif",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000012",
+            "extmetadata": {},
+            "mime": "image/tiff",
+            "mediatype": "BITMAP"
+          }
+        ]
+      }
+    ]
+  }
+}

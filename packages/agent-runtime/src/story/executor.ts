@@ -5,6 +5,7 @@ import {
   parseStoryRebuildRequest,
   type ParsedStory,
   type StoryActionOptions,
+  type StoryView,
 } from "@hyperframes/agent-protocol";
 import type { HostToolResult } from "../backend.js";
 import { errorMessage } from "../errors.js";
@@ -120,12 +121,16 @@ export class TurnStory {
     return call;
   }
 
-  /** The story as the turn's prompt shows it; never throws (a turn must start even if the story is unreadable). */
-  async snapshot(signal: AbortSignal): Promise<string | null> {
+  /**
+   * The story as the turn's prompt shows it (text plus the view it was made from); never throws (a turn must start
+   * even if the story is unreadable).
+   */
+  async snapshot(signal: AbortSignal): Promise<{ graph: string | null; view: StoryView | null }> {
     try {
-      return formatStory(await this.options.host.view(signal), 10_000);
+      const view = await this.options.host.view(signal);
+      return { graph: formatStory(view, 10_000), view };
     } catch {
-      return null;
+      return { graph: null, view: null };
     }
   }
 

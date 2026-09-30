@@ -1,4 +1,10 @@
-import type { StoryAction, StoryActionOptions } from "@hyperframes/agent-protocol";
+import {
+  researchKindOf,
+  type MissingAssetNode,
+  type StoryAction,
+  type StoryActionOptions,
+  type StoryView,
+} from "@hyperframes/agent-protocol";
 
 const COMMON = `This is a Story Mode turn: the video is planned as the project's Story Graph (read_story), an editable map that the user also reshapes by hand. The user's hand edits are decisions, not mistakes: fields marked "(set by user)", nodes/links/attachments the user created (you may only fill in an empty transition on a link the user made), and links/attachments the user removed outrank your earlier plan; locked nodes are never changed. edit_story refuses a change that would override any of that (locked / user_decision): accept the refusal and plan around it.`;
 
@@ -44,37 +50,112 @@ function optionsText(action: StoryAction | null, options: StoryActionOptions | n
   return `Options for this turn: ${scope}; ${policy}; ${allowed}.`;
 }
 
+/** What a resolve turn is about: the unlocked Missing Asset nodes the user wants filled. */
+export interface ResolveScope {
+  /** One line per node, for the model. */
+  lines: string[];
+  /** Ids the user asked for that are missing from the graph or locked (nothing will be done for them). */
+  skipped: string[];
+}
+
+/** The Missing Asset nodes a resolve turn covers: the user's list (storyOptions.missing), else every unlocked one. */
+export function resolveScope(
+  view: StoryView | null,
+  options: StoryActionOptions | null,
+): ResolveScope {
+  const graph = view?.graph ?? null;
+  if (!graph) return { lines: [], skipped: options?.missing ?? [] };
+  const chosen = options?.missing;
+  const missing = graph.nodes.filter(
+    (node): node is MissingAssetNode => node.kind === "missing" && !node.locked,
+  );
+  const inScope = chosen ? missing.filter((node) => chosen.includes(node.id)) : missing;
+  const titles = new Map(graph.nodes.map((node) => [node.id, node.title]));
+  const lines = inScope.map((node) => {
+    const uses = graph.attachments
+      .filter((attachment) => attachment.node === node.id)
+      .map(
+        (attachment) =>
+          `${attachment.chapter} “${titles.get(attachment.chapter) ?? attachment.chapter}” (${attachment.placement}${attachment.duration !== null ? `, ${attachment.duration} s` : ""})`,
+      );
+    return `- ${node.id} “${node.title}” · search for ${researchKindOf(node.mediaKind)} (${node.mediaKind}) · need: ${node.need.replace(/\s+/g, " ").trim() || "not described"}${node.neededDuration !== null ? ` · about ${node.neededDuration} s` : ""} · used in ${uses.join("; ") || "no chapter yet"}`;
+  });
+  const skipped = chosen ? chosen.filter((id) => !inScope.some((node) => node.id === id)) : [];
+  return { lines, skipped };
+}
+
+const RESOLVE_RESEARCH = `Action: resolve ("Find missing material"). Research looks for the material of the Missing Asset nodes listed below, within the user's Asset Search policy, imports what fits and resolves each node with it. The scope below is the user's choice for this turn.
+- Delegate Research with self-contained tasks: for each node its id, title, media kind, the need text, the needed length and where it is used (the chapters). With more than 4 nodes start several Research tasks of up to 4 nodes each (they queue on Research), then wait_for_agents. Tell Research to import with resolveMissing set to the node id, to report source, author and license for each asset, and to say what it could not find or what the policy blocked.
+- Do not edit the graph (no edit_story), do not build or rebuild it, and do not touch the timeline: this turn only brings material into the project and resolves the nodes. You cannot search or import yourself.
+- Afterwards read_story to confirm which nodes are resolved, then reply per node: the asset and where it came from (source, author, license and its status), flag any license that is unknown or restricted, and list the nodes that stay missing with the reason (nothing suitable, blocked by the policy, locked). Finish by telling the user to run Build Story (or Rebuild affected sections) to put the new material on the timeline.`;
+
+const RESOLVE_NO_RESEARCH = `Action: resolve ("Find missing material"). Research is not available in this turn (it is disabled in this chat, or Studio could not read the Asset Search policy), and nobody else may look for material outside the project. Do nothing: no delegation, no edit_story, no build, no timeline change. Tell the user why nothing was done and that Research has to be enabled in the chat's agent settings (or that Studio's Asset Search policy could not be read) before missing material can be found.`;
+
 /** The rules block of a story-mode turn for the given action. */
 export function storyModeRules(
   action: StoryAction | null,
   editorEnabled: boolean,
   options: StoryActionOptions | null = null,
+  resolve: { researchReady: boolean; scope: ResolveScope | null } | null = null,
 ): string {
   const body =
     action === "review"
       ? REVIEW
       : action === "rebuild"
         ? REBUILD
-        : action === "build"
-          ? editorEnabled
-            ? BUILD_WITH_EDITOR
-            : BUILD_ALONE
-          : PLAN;
+        : action === "resolve"
+          ? resolve?.researchReady
+            ? RESOLVE_RESEARCH
+            : RESOLVE_NO_RESEARCH
+          : action === "build"
+            ? editorEnabled
+              ? BUILD_WITH_EDITOR
+              : BUILD_ALONE
+            : PLAN;
   const chosen = optionsText(action, options);
-  return `<story-mode action="${action ?? "plan"}">\n${COMMON}\n${body}${chosen ? `\n${chosen}` : ""}\n</story-mode>`;
+  const scope =
+    action === "resolve" && resolve?.researchReady
+      ? `\n${resolveScopeText(resolve.scope, options)}`
+      : "";
+  return `<story-mode action="${action ?? "plan"}">\n${COMMON}\n${body}${chosen ? `\n${chosen}` : ""}${scope}\n</story-mode>`;
+}
+
+function resolveScopeText(scope: ResolveScope | null, options: StoryActionOptions | null): string {
+  if (!scope) {
+    return `Missing Asset nodes to resolve: the story could not be read when the turn started; read_story to see them${options?.missing ? ` (only ${options.missing.join(", ")})` : ""}.`;
+  }
+  const { lines, skipped } = scope;
+  const skippedText =
+    skipped.length > 0
+      ? `\nNot in scope (locked, already resolved or not found): ${skipped.join(", ")}.`
+      : "";
+  if (lines.length === 0)
+    return `Missing Asset nodes to resolve: none. Tell the user there is nothing to find and stop.${skippedText}`;
+  return `Missing Asset nodes to resolve (${lines.length}):\n${lines.join("\n")}${skippedText}`;
 }
 
 /** The `<story-graph>` and `<story-mode>` blocks appended to the prompt of a story-mode turn. */
 export function renderStoryBlocks(input: {
   action: StoryAction | null;
   editorEnabled: boolean;
-  /** The user's choices for a build/rebuild turn (the Story workspace's dialog), if any. */
+  /** The user's choices for a build/rebuild/resolve turn (the Story workspace's dialog), if any. */
   storyOptions: StoryActionOptions | null;
   /** The rendered graph as of the turn's start, or null when the story service could not be read. */
   graph: string | null;
+  /** The story as of the turn's start (null when unreadable): a resolve turn lists its Missing Asset nodes. */
+  view: StoryView | null;
+  /** Research is enabled in the chat and the user's Asset Search policy could be read. */
+  researchReady: boolean;
 }): string {
   const graph =
     input.graph ??
     "The story could not be read when the turn started; call read_story before doing anything else.";
-  return `<story-graph>\n${graph}\n</story-graph>\n\n${storyModeRules(input.action, input.editorEnabled, input.storyOptions)}`;
+  const resolve =
+    input.action === "resolve"
+      ? {
+          researchReady: input.researchReady,
+          scope: input.view ? resolveScope(input.view, input.storyOptions) : null,
+        }
+      : null;
+  return `<story-graph>\n${graph}\n</story-graph>\n\n${storyModeRules(input.action, input.editorEnabled, input.storyOptions, resolve)}`;
 }

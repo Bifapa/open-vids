@@ -1,0 +1,33 @@
+{
+  "files": [
+    { "name": "__ia_thumb.jpg", "source": "derivative", "format": "Item Tile", "size": "5000" },
+    {
+      "name": "photo_one_thumb.jpg",
+      "source": "derivative",
+      "format": "JPEG Thumb",
+      "size": "3000"
+    },
+    {
+      "name": "photo_one_small.jpg",
+      "source": "derivative",
+      "format": "JPEG",
+      "size": "200000",
+      "width": "800",
+      "height": "600"
+    },
+    {
+      "name": "photo_one.jpg",
+      "source": "original",
+      "format": "JPEG",
+      "size": "2000000",
+      "width": "4000",
+      "height": "3000"
+    }
+  ],
+  "metadata": {
+    "identifier": "photo_one",
+    "mediatype": "image",
+    "title": "Photo One",
+    "creator": "Photographer"
+  }
+}

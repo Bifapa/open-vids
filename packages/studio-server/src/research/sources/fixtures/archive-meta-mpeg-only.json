@@ -1,0 +1,13 @@
+{
+  "files": [
+    {
+      "name": "clip.mpeg",
+      "source": "original",
+      "format": "MPEG2",
+      "size": "9000000",
+      "length": "12.5"
+    },
+    { "name": "clip.gif", "source": "derivative", "format": "Animated GIF", "size": "9000" }
+  ],
+  "metadata": { "identifier": "mpeg_only", "mediatype": "movies", "title": "Mpeg only" }
+}

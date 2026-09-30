@@ -13,6 +13,8 @@ OpenVids.app
                  ├─ /api (project files, render, media, history — full OS access)
                  ├─ /api/projects/:id/editing/*  editing capabilities for agents
                  ├─ /api/projects/:id/story/*    Story Graph, Review/Build compiler, card frames
+                 ├─ /api/research/*, /api/projects/:id/research/*
+                 │                               Asset Search policy, search/import with provenance
                  ├─ /api/projects/:id/agent/*    gateway ─► agent runtime (separate Bun process,
                  │                                          127.0.0.1 + per-launch token) ─► OMP ─► providers
                  └─ composition iframe, same-origin with the editor
@@ -27,7 +29,8 @@ The Chat panel talks to the OpenVids Agent Runtime (`packages/agent-runtime`), w
 - **Director + specialists** — the Director plans, delegates to enabled specialists (Editor, Vision, Motion Designer, Research, Audio) and can hand micro-tasks to Jev. Models and thinking are set per agent (globally in `~/.openvids/agent`, or per chat).
 - **Editing tools** — agents build the video through OpenVids capabilities served by the Studio server: `inspect_project`, `inspect_timeline`, `edit_timeline` (atomic batches: add/remove/move/trim/split clips, arrange tracks, text, registry components, caption presets, audio levels/fades), `browse_presets`, `render_video`. The Editor owns timeline edits. Edits land in the project files, so the live timeline and preview update while the agent works.
 - **Long-form analysis** — for long recordings the Studio server keeps durable, per-file analysis in `.hyperframes/analysis/`: transcript with word timestamps (local whisper.cpp or Parakeet), speaker map (sherpa-onnx diarization), pauses, shots with black/frozen-picture detection, take issues (retakes, false starts, fillers), draft segments, Vision notes and cut plans. Agents use it through `analyze_media`, `read_analysis`, `read_transcript`, `save_segments`, `inspect_frames` (Vision looks only at selected frames), `save_vision_notes`, `plan_cut` and `build_rough_cut`; the analysis is reused across turns and recomputed only when the source file (or the analysis method) changes.
-- **One prompt = one checkpoint** — every file an agent changes during a turn is recorded in project history as that turn; **Revert this turn**, Stop and crash recovery undo the whole edit. Renders in `renders/` are kept.
+- **Research, sources and licensing** — only the Research specialist searches outside the project (`search_assets`, `inspect_url`, `import_asset`, `resolve_missing_asset`), and only through the Studio server, which enforces the global Asset Search policy (`Trusted sources only` — Wikimedia Commons, Openverse, NASA Image and Video Library, Internet Archive and the user's own websites — or `Any source`). Imports land in `assets/research/` with provenance (original URL, source, author, license, license URL and confidence, retrieval time and agent) in `.hyperframes/research/provenance.json`; the Sources & Licenses panel shows it, unknown or restricted licenses are warned about on export (never blocked), and Story Missing Asset nodes are resolved with what Research imports ("Find missing material").
+- **One prompt = one checkpoint** — every file an agent changes during a turn is recorded in project history as that turn; **Revert this turn**, Stop and crash recovery undo the whole edit (imported assets and their provenance included; the download cache stays). Renders in `renders/` are kept.
 
 Details: `packages/agent-runtime/README.md`; product docs and roadmap live in [aiezq/docs_open_vids](https://github.com/aiezq/docs_open_vids).
 

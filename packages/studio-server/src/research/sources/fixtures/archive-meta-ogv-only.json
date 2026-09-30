@@ -1,0 +1,27 @@
+{
+  "files": [
+    {
+      "name": "clip.mpeg",
+      "source": "original",
+      "format": "MPEG2",
+      "size": "9000000",
+      "length": "12.5"
+    },
+    {
+      "name": "clip.ogv",
+      "source": "derivative",
+      "format": "Ogg Video",
+      "size": "1000000",
+      "length": "12.5",
+      "height": "300",
+      "width": "400"
+    }
+  ],
+  "metadata": {
+    "identifier": "ogv_only",
+    "mediatype": "movies",
+    "title": "Ogv only",
+    "creator": "Someone",
+    "licenseurl": "https://creativecommons.org/licenses/by/4.0/"
+  }
+}

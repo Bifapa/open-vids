@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FocusEvent,
@@ -11,6 +12,7 @@ import { CircleNotch, TreeStructure, X } from "@phosphor-icons/react";
 import type { StoryAction, StoryActionOptions, StoryPoint } from "@hyperframes/agent-protocol";
 import type { AgentStore } from "../agent/agentStore";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
+import { useResearchServices, useSourcesStore } from "../research/researchContext";
 import { Button } from "../components/ui";
 import { isTextFieldTarget } from "../utils/typingTarget";
 import { FullBuildDialog } from "./FullBuildDialog";
@@ -22,7 +24,8 @@ import { StoryInspector } from "./StoryInspector";
 import { StoryToolbar } from "./StoryToolbar";
 import type { NewNodeRequest } from "./AddNodePopover";
 import { fullBuildNeedsConfirm, syncBlocker } from "./storySync";
-import { agentBlocker, useStoryAgent, useStoryAgentSync } from "./useStoryAgent";
+import { agentBlocker, researchBlocker, useStoryAgent, useStoryAgentSync } from "./useStoryAgent";
+import { StoryResearchProvider, type StoryResearch } from "./storyResearch";
 import { useStoryLibrary } from "./useStoryLibrary";
 import { useStoryTimelineSync } from "./useStoryTimelineSync";
 
@@ -141,6 +144,25 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
     }
     useDockLayoutStore.getState().activatePanel("chat");
   };
+
+  // Cards and the inspector ask Research through the context; the ref keeps its value stable across renders.
+  const runActionRef = useRef(runAction);
+  runActionRef.current = runAction;
+  const sources = useResearchServices().store;
+  const sourcesView = useSourcesStore((state) => state.view);
+  const findBlocker = researchBlocker(agent);
+  const research = useMemo<StoryResearch>(() => {
+    const byAsset = new Map((sourcesView?.records ?? []).map((record) => [record.asset, record]));
+    return {
+      blocker: findBlocker,
+      find: (missing) => void runActionRef.current("resolve", missing ? { missing } : undefined),
+      sourceOf: (asset) => (asset ? (byAsset.get(asset) ?? null) : null),
+      showInSources: (asset) => {
+        sources.getState().reveal(asset);
+        useDockLayoutStore.getState().activatePanel("sources");
+      },
+    };
+  }, [findBlocker, sourcesView, sources]);
 
   /** A full build over a story built and then edited on the timeline (or locked) asks first. */
   const requestAction = (action: StoryAction) => {
@@ -261,67 +283,74 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
   }
 
   return (
-    <div
-      ref={rootRef}
-      data-studio-story=""
-      data-keyboard-owner=""
-      tabIndex={-1}
-      onKeyDown={onKeyDown}
-      onPointerDownCapture={onPointerDownCapture}
-      onFocusCapture={() => {
-        focusWithin.current = true;
-      }}
-      onBlurCapture={onBlurCapture}
-      className="relative flex h-full min-h-0 flex-col bg-bg-1 text-text-1 outline-hidden"
-    >
-      <StoryToolbar
-        library={library}
-        agent={agent}
-        onAdd={add}
-        onFit={() => void flow.fitView({ padding: 0.2, maxZoom: 1, duration: 200 })}
-        onUndo={() => store.getState().undo()}
-        onRedo={() => store.getState().redo()}
-        onAction={requestAction}
-        onRebuild={() => setDialog({ kind: "rebuild", chapters: null })}
-      />
-      {agentBusy && (
-        <div
-          role="status"
-          className="flex shrink-0 items-center gap-2 border-b border-border bg-selection/10 px-3 py-1.5 text-step-11 text-selection"
-        >
-          <CircleNotch size={12} className="animate-spin motion-reduce:animate-none" aria-hidden />
-          AI is working on the story… The canvas is read-only until it finishes.
-        </div>
-      )}
-      {notice && (
-        <div
-          role="alert"
-          className="flex shrink-0 items-start justify-between gap-2 border-b border-border bg-container/10 px-3 py-1.5 text-step-11 text-text-1"
-        >
-          <span>{notice}</span>
-          <button
-            type="button"
-            aria-label="Dismiss message"
-            onClick={() => store.getState().setNotice(null)}
-            className="shrink-0 rounded-sm text-text-3 outline-hidden hover:text-text-0 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
+    <StoryResearchProvider value={research}>
+      <div
+        ref={rootRef}
+        data-studio-story=""
+        data-keyboard-owner=""
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        onPointerDownCapture={onPointerDownCapture}
+        onFocusCapture={() => {
+          focusWithin.current = true;
+        }}
+        onBlurCapture={onBlurCapture}
+        className="relative flex h-full min-h-0 flex-col bg-bg-1 text-text-1 outline-hidden"
+      >
+        <StoryToolbar
+          library={library}
+          agent={agent}
+          onAdd={add}
+          onFit={() => void flow.fitView({ padding: 0.2, maxZoom: 1, duration: 200 })}
+          onUndo={() => store.getState().undo()}
+          onRedo={() => store.getState().redo()}
+          onAction={requestAction}
+          onRebuild={() => setDialog({ kind: "rebuild", chapters: null })}
+          onFindMissing={() => research.find(null)}
+        />
+        {agentBusy && (
+          <div
+            role="status"
+            className="flex shrink-0 items-center gap-2 border-b border-border bg-selection/10 px-3 py-1.5 text-step-11 text-selection"
           >
-            <X size={12} aria-hidden />
-          </button>
-        </div>
-      )}
-      <div className="flex min-h-0 flex-1">
-        <div ref={canvasRef} className="relative min-w-0 flex-1">
-          {content}
-        </div>
-        {hasGraph && status === "ready" && (
-          <StoryInspector
-            library={library}
-            onRebuildSection={(chapter) => setDialog({ kind: "rebuild", chapters: [chapter] })}
-          />
+            <CircleNotch
+              size={12}
+              className="animate-spin motion-reduce:animate-none"
+              aria-hidden
+            />
+            AI is working on the story… The canvas is read-only until it finishes.
+          </div>
         )}
+        {notice && (
+          <div
+            role="alert"
+            className="flex shrink-0 items-start justify-between gap-2 border-b border-border bg-container/10 px-3 py-1.5 text-step-11 text-text-1"
+          >
+            <span>{notice}</span>
+            <button
+              type="button"
+              aria-label="Dismiss message"
+              onClick={() => store.getState().setNotice(null)}
+              className="shrink-0 rounded-sm text-text-3 outline-hidden hover:text-text-0 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <X size={12} aria-hidden />
+            </button>
+          </div>
+        )}
+        <div className="flex min-h-0 flex-1">
+          <div ref={canvasRef} className="relative min-w-0 flex-1">
+            {content}
+          </div>
+          {hasGraph && status === "ready" && (
+            <StoryInspector
+              library={library}
+              onRebuildSection={(chapter) => setDialog({ kind: "rebuild", chapters: [chapter] })}
+            />
+          )}
+        </div>
+        {dialogView}
       </div>
-      {dialogView}
-    </div>
+    </StoryResearchProvider>
   );
 }
 

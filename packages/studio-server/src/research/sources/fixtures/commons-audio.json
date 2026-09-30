@@ -1,0 +1,267 @@
+{
+  "batchcomplete": true,
+  "continue": {
+    "gsroffset": 4,
+    "continue": "gsroffset||"
+  },
+  "query": {
+    "pages": [
+      {
+        "pageid": 81069393,
+        "ns": 6,
+        "title": "File:Thunder.wav",
+        "index": 2,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 6190364,
+            "width": 0,
+            "height": 0,
+            "duration": 35.059773242630385,
+            "thumburl": "https://commons.wikimedia.org/w/resources/assets/file-type-icons/fileicon-ogg.png",
+            "thumbwidth": 640,
+            "thumbheight": 640,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/1/1b/Thunder.wav?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Thunder.wav",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=81069393",
+            "mime": "audio/wav",
+            "mediatype": "AUDIO",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC0",
+                "source": "commons-desc-page"
+              },
+              "License": {
+                "value": "cc0",
+                "source": "commons-templates"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/publicdomain/zero/1.0/",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "Dobroide",
+                "source": "commons-desc-page"
+              }
+            }
+          }
+        ],
+        "videoinfo": [
+          {
+            "size": 6190364,
+            "width": 0,
+            "height": 0,
+            "duration": 35.059773242630385,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/1/1b/Thunder.wav?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Thunder.wav",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=81069393",
+            "mime": "audio/wav",
+            "mediatype": "AUDIO",
+            "derivatives": [
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/1/1b/Thunder.wav?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+                "type": "audio/wav",
+                "width": 0,
+                "height": 0,
+                "bandwidth": 1411200
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/1/1b/Thunder.wav.mp3",
+                "type": "audio/mpeg",
+                "transcodekey": "mp3",
+                "width": 0,
+                "height": 0,
+                "bandwidth": 122648
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "pageid": 131349122,
+        "ns": 6,
+        "title": "File:Thunder 01.ogg",
+        "index": 1,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 411421,
+            "width": 0,
+            "height": 0,
+            "duration": 9.044020833333333,
+            "thumburl": "https://commons.wikimedia.org/w/resources/assets/file-type-icons/fileicon-ogg.png",
+            "thumbwidth": 640,
+            "thumbheight": 640,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/f/fa/Thunder_01.ogg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Thunder_01.ogg",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=131349122",
+            "mime": "application/ogg",
+            "mediatype": "AUDIO",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC BY 3.0",
+                "source": "commons-desc-page"
+              },
+              "License": {
+                "value": "cc-by-3.0",
+                "source": "commons-templates"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by/3.0/",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "Jane Doe",
+                "source": "commons-desc-page"
+              }
+            }
+          }
+        ],
+        "videoinfo": [
+          {
+            "size": 411421,
+            "width": 0,
+            "height": 0,
+            "duration": 9.044020833333333,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/f/fa/Thunder_01.ogg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Thunder_01.ogg",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=131349122",
+            "mime": "application/ogg",
+            "mediatype": "AUDIO",
+            "derivatives": [
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/f/fa/Thunder_01.ogg?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+                "type": "audio/ogg; codecs=\"vorbis\"",
+                "width": 0,
+                "height": 0,
+                "bandwidth": 363927
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/f/fa/Thunder_01.ogg.mp3",
+                "type": "audio/mpeg",
+                "transcodekey": "mp3",
+                "width": 0,
+                "height": 0,
+                "bandwidth": 121224
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "pageid": 150000020,
+        "ns": 6,
+        "title": "File:Storm theme.mid",
+        "index": 3,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 4200,
+            "width": 0,
+            "height": 0,
+            "duration": 120.0,
+            "thumburl": "https://commons.wikimedia.org/w/resources/assets/file-type-icons/fileicon-ogg.png",
+            "thumbwidth": 640,
+            "thumbheight": 640,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/9/9a/Storm_theme.mid?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Storm_theme.mid",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000020",
+            "mime": "audio/midi",
+            "mediatype": "AUDIO",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC BY 4.0",
+                "source": "commons-desc-page"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by/4.0/",
+                "source": "commons-desc-page"
+              }
+            }
+          }
+        ],
+        "videoinfo": [
+          {
+            "size": 4200,
+            "width": 0,
+            "height": 0,
+            "duration": 120.0,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/9/9a/Storm_theme.mid?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Storm_theme.mid",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000020",
+            "mime": "audio/midi",
+            "mediatype": "AUDIO",
+            "derivatives": [
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/9/9a/Storm_theme.mid?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+                "type": "audio/midi",
+                "width": 0,
+                "height": 0,
+                "bandwidth": 0
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/9/9a/Storm_theme.mid.mp3",
+                "type": "audio/mpeg",
+                "transcodekey": "mp3",
+                "width": 0,
+                "height": 0,
+                "bandwidth": 128000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "pageid": 150000021,
+        "ns": 6,
+        "title": "File:Broken sound.mid",
+        "index": 4,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 900,
+            "width": 0,
+            "height": 0,
+            "duration": 5.0,
+            "thumburl": "https://commons.wikimedia.org/w/resources/assets/file-type-icons/fileicon-ogg.png",
+            "thumbwidth": 640,
+            "thumbheight": 640,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/8/8a/Broken_sound.mid?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Broken_sound.mid",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000021",
+            "mime": "audio/midi",
+            "mediatype": "AUDIO",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC BY 4.0",
+                "source": "commons-desc-page"
+              }
+            }
+          }
+        ],
+        "videoinfo": [
+          {
+            "size": 900,
+            "width": 0,
+            "height": 0,
+            "duration": 5.0,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/8/8a/Broken_sound.mid?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Broken_sound.mid",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000021",
+            "mime": "audio/midi",
+            "mediatype": "AUDIO",
+            "derivatives": [
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/8/8a/Broken_sound.mid?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+                "type": "audio/midi",
+                "width": 0,
+                "height": 0,
+                "bandwidth": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

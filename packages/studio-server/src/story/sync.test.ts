@@ -807,3 +807,101 @@ describe("revert", () => {
     expect(report.affected).toEqual([ids.main]);
   });
 });
+
+describe("a resolved Missing Asset node", () => {
+  it("is built like any material, and a Rebuild after an earlier build adds exactly that unit", async () => {
+    const f = createStoryFixture({ html: WITH_TITLE });
+    fixture = f;
+    const ids = await referenceStory(f);
+    const made = await f.edit([
+      {
+        op: "add_node",
+        ref: "gap",
+        node: { kind: "missing", title: "Waves", mediaKind: "video", need: "Ocean waves" },
+      },
+      { op: "attach", node: "@gap", chapter: ids.outro, placement: "start", duration: 0.8 },
+    ]);
+    const missing = created(made, 0);
+    const attachment = created(made, 1);
+
+    const first = await f.service.build(f.project, { turnId: "turn-build" });
+    expect(first.warnings.some((warning) => warning.includes("missing Ocean waves"))).toBe(true);
+    expect(sectionClips(f, ids.outro, "b_roll")).toEqual([]);
+    const beforeMarkup = markup(f);
+
+    const resolved = await f.edit([{ op: "resolve_missing", id: missing, asset: "assets/b.mp4" }], {
+      turnId: "turn-resolve",
+    });
+    const node = resolved.results[0]?.id ?? "";
+    const impact = await reportOf(f);
+    const outro = section(impact.sections, ids.outro);
+    expect(outro.units.filter((unit) => unit.change === "added")).toMatchObject([
+      { node, role: "b_roll", action: "add" },
+    ]);
+    expect(
+      impact.sections
+        .flatMap((entry) => entry.units)
+        .filter((unit) => unit.change !== "unchanged")
+        .map((unit) => unit.node),
+    ).toEqual([node]);
+
+    await rebuild(f);
+    const clips = sectionClips(f, ids.outro, "b_roll");
+    expect(clips).toHaveLength(1);
+    const placed = (await states(f)).get(clips[0] ?? "");
+    expect(placed).toMatchObject({ src: "assets/b.mp4" });
+    expect(placed?.duration).toBeCloseTo(0.8, 3);
+    // Everything else stays byte for byte.
+    const after = markup(f);
+    for (const [id, html] of beforeMarkup) expect(after.get(id), id).toBe(html);
+    expect(ledgerOf(f).sections.find((entry) => entry.chapter === ids.outro)?.units).toContainEqual(
+      expect.objectContaining({ node, role: "b_roll" }),
+    );
+    expect((await reportOf(f)).state).toBe("in_sync");
+    // The attachment is the one the Missing Asset node had.
+    expect((await f.graph()).attachments.find((item) => item.id === attachment)?.node).toBe(node);
+  });
+
+  it("places a resolved sound effect inside its chapter instead of scoring the chapters as a bed", async () => {
+    const f = createStoryFixture({ html: WITH_TITLE });
+    fixture = f;
+    const ids = await referenceStory(f);
+    const made = await f.edit([
+      {
+        op: "add_node",
+        ref: "gap",
+        node: { kind: "missing", title: "Ding", mediaKind: "sfx", need: "A bell ding" },
+      },
+      { op: "attach", node: "@gap", chapter: ids.outro, placement: "end", duration: 1 },
+    ]);
+    const missing = created(made, 0);
+    await f.service.build(f.project, { turnId: "turn-build" });
+    const bedsBefore = ledgerOf(f).music;
+
+    const resolved = await f.edit([
+      { op: "resolve_missing", id: missing, asset: "assets/music.mp3" },
+    ]);
+    const node = resolved.results[0]?.id ?? "";
+    const outro = section((await reportOf(f)).sections, ids.outro);
+    expect(outro.units.filter((unit) => unit.change === "added")).toMatchObject([
+      { node, role: "sfx", action: "add" },
+    ]);
+
+    await rebuild(f);
+    const clips = sectionClips(f, ids.outro, "sfx");
+    expect(clips).toHaveLength(1);
+    const placed = (await states(f)).get(clips[0] ?? "");
+    expect(placed).toMatchObject({ src: "assets/music.mp3", track: 5 });
+    expect(placed?.duration).toBeCloseTo(1, 3);
+    const built = ledgerOf(f);
+    const outroEnd = built.sections.find((entry) => entry.chapter === ids.outro);
+    expect(outroEnd).toBeDefined();
+    expect((placed?.start ?? 0) + (placed?.duration ?? 0)).toBeCloseTo(
+      (outroEnd?.start ?? 0) + (outroEnd?.length ?? 0),
+      3,
+    );
+    // Not a bed: the story's music beds are exactly the ones built before.
+    expect(built.music).toEqual(bedsBefore);
+    expect((await reportOf(f)).state).toBe("in_sync");
+  });
+});

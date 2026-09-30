@@ -1,0 +1,437 @@
+{
+  "batchcomplete": true,
+  "continue": {
+    "gsroffset": 5,
+    "continue": "gsroffset||"
+  },
+  "query": {
+    "pages": [
+      {
+        "pageid": 132295995,
+        "ns": 6,
+        "title": "File:Volcan CM1.mpg",
+        "index": 2,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 101974016,
+            "width": 1920,
+            "height": 1080,
+            "duration": 98.76,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ec/Volcan_CM1.mpg/640px-Volcan_CM1.mpg.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo",
+            "thumbwidth": 640,
+            "thumbheight": 360,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/e/ec/Volcan_CM1.mpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Volcan_CM1.mpg",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=132295995",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page"
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/w/index.php?title=User:EEPU.Mademoiselle&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"User:EEPU.Mademoiselle (page does not exist)\">EEPU.Mademoiselle</a>",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+                "source": "commons-desc-page"
+              },
+              "ImageDescription": {
+                "value": "Modelisation d'une eruption volcanique effusive en classe de CM1",
+                "source": "commons-desc-page"
+              },
+              "ObjectName": {
+                "value": "Volcan CM1",
+                "source": "mediawiki-metadata"
+              }
+            },
+            "mime": "video/mpeg",
+            "mediatype": "VIDEO"
+          }
+        ],
+        "videoinfo": [
+          {
+            "size": 101974016,
+            "width": 1920,
+            "height": 1080,
+            "duration": 98.76,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/e/ec/Volcan_CM1.mpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Volcan_CM1.mpg",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=132295995",
+            "mime": "video/mpeg",
+            "mediatype": "VIDEO",
+            "derivatives": [
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/e/ec/Volcan_CM1.mpg?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+                "type": "video/mpeg",
+                "width": 1920,
+                "height": 1080,
+                "bandwidth": 8260349
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/e/ec/Volcan_CM1.mpg.240p.vp9.webm",
+                "type": "video/webm; codecs=\"vp9, opus\"",
+                "transcodekey": "240p.vp9.webm",
+                "width": 426,
+                "height": 240,
+                "bandwidth": 92576
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/e/ec/Volcan_CM1.mpg.360p.mpeg4.mov",
+                "type": "video/quicktime; codecs=\"mp4v\"",
+                "transcodekey": "360p.mpeg4.mov",
+                "width": 640,
+                "height": 360,
+                "bandwidth": 964624
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/e/ec/Volcan_CM1.mpg.480p.vp9.webm",
+                "type": "video/webm; codecs=\"vp9, opus\"",
+                "transcodekey": "480p.vp9.webm",
+                "width": 854,
+                "height": 480,
+                "bandwidth": 364904
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/e/ec/Volcan_CM1.mpg.1080p.vp9.webm",
+                "type": "video/webm; codecs=\"vp9, opus\"",
+                "transcodekey": "1080p.vp9.webm",
+                "width": 1920,
+                "height": 1080,
+                "bandwidth": 2339400
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "pageid": 141379435,
+        "ns": 6,
+        "title": "File:007 Volcano eruption of Litli-Hrútur in Iceland in 2023 Video by Giles Laurent.webm",
+        "index": 1,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 54151912,
+            "width": 3840,
+            "height": 2160,
+            "duration": 23.837,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/53/007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm/640px-007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo",
+            "thumbwidth": 640,
+            "thumbheight": 360,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/5/53/007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=141379435",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page"
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Giles_Laurent\" title=\"User:Giles Laurent\">Giles Laurent</a>",
+                "source": "commons-desc-page"
+              },
+              "Credit": {
+                "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>, from <a rel=\"nofollow\" class=\"external text\" href=\"https://gileslaurent.com\">gileslaurent.com</a>",
+                "source": "commons-desc-page"
+              },
+              "ImageDescription": {
+                "value": "Volcano eruption next to Litli-Hrútur in Iceland in 2023 &amp; drone footage.<br />Video recorded by Giles Laurent",
+                "source": "commons-desc-page"
+              },
+              "ObjectName": {
+                "value": "007 Volcano eruption of Litli-Hrútur in Iceland in 2023 Video by Giles Laurent",
+                "source": "mediawiki-metadata"
+              }
+            },
+            "mime": "video/webm",
+            "mediatype": "VIDEO"
+          }
+        ],
+        "videoinfo": [
+          {
+            "size": 54151912,
+            "width": 3840,
+            "height": 2160,
+            "duration": 23.837,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/5/53/007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=141379435",
+            "mime": "video/webm",
+            "mediatype": "VIDEO",
+            "derivatives": [
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/5/53/007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+                "type": "video/webm",
+                "width": 3840,
+                "height": 2160,
+                "bandwidth": 14000000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/5/53/007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm.240p.vp9.webm",
+                "type": "video/webm; codecs=\"vp9, opus\"",
+                "transcodekey": "240p.vp9.webm",
+                "width": 426,
+                "height": 240,
+                "bandwidth": 90000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/5/53/007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm.360p.mpeg4.mov",
+                "type": "video/quicktime; codecs=\"mp4v\"",
+                "transcodekey": "360p.mpeg4.mov",
+                "width": 640,
+                "height": 360,
+                "bandwidth": 960000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/5/53/007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm.480p.vp9.webm",
+                "type": "video/webm; codecs=\"vp9, opus\"",
+                "transcodekey": "480p.vp9.webm",
+                "width": 854,
+                "height": 480,
+                "bandwidth": 360000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/5/53/007_Volcano_eruption_of_Litli-Hrútur_in_Iceland_in_2023_Video_by_Giles_Laurent.webm.1080p.vp9.webm",
+                "type": "video/webm; codecs=\"vp9, opus\"",
+                "transcodekey": "1080p.vp9.webm",
+                "width": 1920,
+                "height": 1080,
+                "bandwidth": 2300000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "pageid": 150000001,
+        "ns": 6,
+        "title": "File:Lava flow Kilauea.webm",
+        "index": 3,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 88000000,
+            "width": 2560,
+            "height": 1440,
+            "duration": 41.2,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Lava_flow_Kilauea.webm/640px-Lava_flow_Kilauea.webm.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo",
+            "thumbwidth": 640,
+            "thumbheight": 360,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Lava_flow_Kilauea.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Lava_flow_Kilauea.webm",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000001",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "Public domain",
+                "source": "commons-desc-page"
+              },
+              "License": {
+                "value": "pd",
+                "source": "commons-templates"
+              },
+              "Artist": {
+                "value": "<bdi>U.S. Geological Survey</bdi>",
+                "source": "commons-desc-page"
+              },
+              "ObjectName": {
+                "value": "Lava flow Kilauea",
+                "source": "mediawiki-metadata"
+              }
+            },
+            "mime": "video/webm",
+            "mediatype": "VIDEO"
+          }
+        ],
+        "videoinfo": [
+          {
+            "size": 88000000,
+            "width": 2560,
+            "height": 1440,
+            "duration": 41.2,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Lava_flow_Kilauea.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Lava_flow_Kilauea.webm",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000001",
+            "mime": "video/webm",
+            "mediatype": "VIDEO",
+            "derivatives": [
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Lava_flow_Kilauea.webm?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+                "type": "video/webm",
+                "width": 2560,
+                "height": 1440,
+                "bandwidth": 9000000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/ab/Lava_flow_Kilauea.webm.720p.h264.mp4",
+                "type": "video/mp4; codecs=\"avc1.640028, mp4a.40.2\"",
+                "transcodekey": "720p.h264.mp4",
+                "width": 1280,
+                "height": 720,
+                "bandwidth": 1500000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/ab/Lava_flow_Kilauea.webm.1080p.h264.mp4",
+                "type": "video/mp4; codecs=\"avc1.640028, mp4a.40.2\"",
+                "transcodekey": "1080p.h264.mp4",
+                "width": 1920,
+                "height": 1080,
+                "bandwidth": 3000000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/ab/Lava_flow_Kilauea.webm.1440p.h264.mp4",
+                "type": "video/mp4; codecs=\"avc1.640028, mp4a.40.2\"",
+                "transcodekey": "1440p.h264.mp4",
+                "width": 2560,
+                "height": 1440,
+                "bandwidth": 6000000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/ab/Lava_flow_Kilauea.webm.1080p.vp9.webm",
+                "type": "video/webm; codecs=\"vp9, opus\"",
+                "transcodekey": "1080p.vp9.webm",
+                "width": 1920,
+                "height": 1080,
+                "bandwidth": 2300000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "pageid": 150000002,
+        "ns": 6,
+        "title": "File:Eruption 4K.ogv",
+        "index": 4,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 70000000,
+            "width": 3840,
+            "height": 2160,
+            "duration": 12.0,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Eruption_4K.ogv/640px-Eruption_4K.ogv.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo",
+            "thumbwidth": 640,
+            "thumbheight": 360,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/c/cd/Eruption_4K.ogv?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Eruption_4K.ogv",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000002",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC BY-SA 4.0",
+                "source": "commons-desc-page"
+              },
+              "License": {
+                "value": "cc-by-sa-4.0",
+                "source": "commons-templates"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by-sa/4.0",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "Someone",
+                "source": "commons-desc-page"
+              }
+            },
+            "mime": "video/ogg",
+            "mediatype": "VIDEO"
+          }
+        ],
+        "videoinfo": [
+          {
+            "size": 70000000,
+            "width": 3840,
+            "height": 2160,
+            "duration": 12.0,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/c/cd/Eruption_4K.ogv?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Eruption_4K.ogv",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000002",
+            "mime": "video/ogg",
+            "mediatype": "VIDEO",
+            "derivatives": [
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/c/cd/Eruption_4K.ogv?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+                "type": "video/ogg",
+                "width": 3840,
+                "height": 2160,
+                "bandwidth": 9000000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "pageid": 150000003,
+        "ns": 6,
+        "title": "File:Ash cloud 720p.webm",
+        "index": 5,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 9100000,
+            "width": 1280,
+            "height": 720,
+            "duration": 8.5,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/de/Ash_cloud_720p.webm/640px-Ash_cloud_720p.webm.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo",
+            "thumbwidth": 640,
+            "thumbheight": 360,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/de/Ash_cloud_720p.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Ash_cloud_720p.webm",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000003",
+            "extmetadata": {},
+            "mime": "video/webm",
+            "mediatype": "VIDEO"
+          }
+        ],
+        "videoinfo": [
+          {
+            "size": 9100000,
+            "width": 1280,
+            "height": 720,
+            "duration": 8.5,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/de/Ash_cloud_720p.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Ash_cloud_720p.webm",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=150000003",
+            "mime": "video/webm",
+            "mediatype": "VIDEO",
+            "derivatives": [
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/d/de/Ash_cloud_720p.webm?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+                "type": "video/webm",
+                "width": 1280,
+                "height": 720,
+                "bandwidth": 4000000
+              },
+              {
+                "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/d/de/Ash_cloud_720p.webm.480p.vp9.webm",
+                "type": "video/webm; codecs=\"vp9, opus\"",
+                "transcodekey": "480p.vp9.webm",
+                "width": 854,
+                "height": 480,
+                "bandwidth": 364904
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

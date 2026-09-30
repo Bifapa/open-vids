@@ -504,12 +504,19 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
   }
   let storyOptions: StoryActionOptions | undefined;
   if (body.storyOptions !== undefined) {
-    if (storyAction !== "build" && storyAction !== "rebuild")
-      return fail("storyOptions need storyAction build or rebuild");
+    if (storyAction !== "build" && storyAction !== "rebuild" && storyAction !== "resolve")
+      return fail("storyOptions need storyAction build, rebuild or resolve");
     const parsed = parseStoryActionOptions(body.storyOptions);
     if (!parsed.ok) return parsed;
     if (storyAction === "build" && (parsed.value.chapters || parsed.value.manualEdits))
       return fail("a build rebuilds every chapter: only allowLocked applies");
+    if (storyAction !== "resolve" && parsed.value.missing)
+      return fail("storyOptions.missing applies to a resolve action only");
+    if (
+      storyAction === "resolve" &&
+      (parsed.value.chapters || parsed.value.manualEdits || parsed.value.allowLocked)
+    )
+      return fail("a resolve action takes only storyOptions.missing");
     storyOptions = parsed.value;
   }
   return {
@@ -543,7 +550,8 @@ function storyIds(value: unknown, field: string): Parsed<string[]> {
 export function parseStoryActionOptions(value: unknown): Parsed<StoryActionOptions> {
   if (!isRecord(value)) return fail("storyOptions must be an object");
   const extra = Object.keys(value).find(
-    (key) => key !== "chapters" && key !== "manualEdits" && key !== "allowLocked",
+    (key) =>
+      key !== "chapters" && key !== "manualEdits" && key !== "allowLocked" && key !== "missing",
   );
   if (extra) return fail(`storyOptions: unknown field "${extra}"`);
   const options: StoryActionOptions = {};
@@ -562,6 +570,11 @@ export function parseStoryActionOptions(value: unknown): Parsed<StoryActionOptio
     const allowed = storyIds(value.allowLocked, "storyOptions.allowLocked");
     if (!allowed.ok) return allowed;
     options.allowLocked = allowed.value;
+  }
+  if (value.missing !== undefined) {
+    const missing = storyIds(value.missing, "storyOptions.missing");
+    if (!missing.ok) return missing;
+    options.missing = missing.value;
   }
   return { ok: true, value: options };
 }

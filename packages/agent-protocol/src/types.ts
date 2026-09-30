@@ -139,9 +139,11 @@ export type ChatMode = (typeof CHAT_MODES)[number];
 /**
  * A Story workspace action run as a turn: `review` — the Director reviews the current (user-edited) graph;
  * `build` — the whole story is built into the timeline; `rebuild` — only the sections the graph changed since the
- * last build are rebuilt. All are ordinary checkpointed turns.
+ * last build are rebuilt; `resolve` — the Research specialist looks for the material of the story's Missing Asset
+ * nodes (within the global Asset Search policy) and resolves them with what it imports. All are ordinary
+ * checkpointed turns.
  */
-export const STORY_ACTIONS = ["review", "build", "rebuild"] as const;
+export const STORY_ACTIONS = ["review", "build", "rebuild", "resolve"] as const;
 export type StoryAction = (typeof STORY_ACTIONS)[number];
 
 /**
@@ -152,8 +154,8 @@ export const MANUAL_EDIT_POLICIES = ["keep", "replace"] as const;
 export type ManualEditPolicy = (typeof MANUAL_EDIT_POLICIES)[number];
 
 /**
- * The user's choices for a `build` / `rebuild` turn, made in the Story workspace. The turn's story tools apply them;
- * a model cannot widen them (it can never unlock a chapter or replace edited material on its own).
+ * The user's choices for a `build` / `rebuild` / `resolve` turn, made in the Story workspace. The turn's story tools
+ * apply them; a model cannot widen them (it can never unlock a chapter or replace edited material on its own).
  */
 export interface StoryActionOptions {
   /** rebuild: only these chapters' changed sections are regenerated (default: every affected section). */
@@ -162,6 +164,8 @@ export interface StoryActionOptions {
   manualEdits?: ManualEditPolicy;
   /** build/rebuild: locked chapters the user allows to be rebuilt (their built section is otherwise frozen). */
   allowLocked?: string[];
+  /** resolve: only these Missing Asset nodes (default: every unlocked Missing Asset node). */
+  missing?: string[];
 }
 
 export interface ChatSummary {

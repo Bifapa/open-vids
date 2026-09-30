@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import {
+  Books,
   BracketsCurly,
   ChartBarHorizontal,
   ChatCircleDots,
@@ -30,6 +31,7 @@ const TAB_ICONS: Record<PanelId, Icon> = {
   design: SlidersHorizontal,
   layers: Stack,
   renders: FilmSlate,
+  sources: Books,
   variables: BracketsCurly,
   slideshow: Presentation,
   chat: ChatCircleDots,

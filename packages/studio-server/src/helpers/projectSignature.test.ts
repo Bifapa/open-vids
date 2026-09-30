@@ -78,6 +78,12 @@ describe("history-only tracked paths", () => {
     expect(tracksHistory("index.html")).toBe(true);
     expect(tracksHistory(".hyperframes")).toBe(false);
     expect(tracksHistory(".hyperframes/analysis/x.json")).toBe(false);
+    // The research provenance ledger rolls back with a turn; the download cache beside it does not.
+    expect(tracksHistory(".hyperframes/research/provenance.json")).toBe(true);
+    expect(tracksHistory(".hyperframes/research")).toBe(true);
+    expect(affects(".hyperframes/research/provenance.json")).toBe(false);
+    expect(tracksHistory(".hyperframes/research/cache/index.json")).toBe(false);
+    expect(tracksHistory("assets/research/ocean-1a2b3c4d.mp4")).toBe(true);
   });
 
   it("list the graph for project history but leave it out of the signature", () => {

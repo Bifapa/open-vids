@@ -1,6 +1,7 @@
 import {
   isChapter,
   isMaterial,
+  isSoundEffect,
   storyOrder,
   type AttachmentPlacement,
   type ChapterNode,
@@ -16,8 +17,18 @@ import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { cleanChapterAroll, type AnalysisLookup } from "./aroll.js";
 import { StoryFailure } from "./errors.js";
 
-/** Tracks Build Story writes: the A-roll on track 0, then B-roll video, pictures, motion graphics and music. */
-export const STORY_TRACKS = { aRoll: 0, bRoll: 1, picture: 2, motion: 3, music: 4 } as const;
+/**
+ * Tracks Build Story writes: the A-roll on track 0, then B-roll video, pictures, motion graphics, music beds and sound
+ * effects.
+ */
+export const STORY_TRACKS = {
+  aRoll: 0,
+  bRoll: 1,
+  picture: 2,
+  motion: 3,
+  music: 4,
+  sfx: 5,
+} as const;
 
 const DEFAULT_PICTURE_SECONDS = 4;
 /** Motion presets without a declared length are assumed to run this long when placing them. */
@@ -174,10 +185,10 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
         warnings.push(`${chapter.title}: missing ${node.need}`);
         continue;
       }
-      if (node.kind === "music") continue;
+      if (node.kind === "music" && !isSoundEffect(node)) continue;
       const unit: IntentUnit = {
         node: node.id,
-        role: ROLE_OF[node.kind],
+        role: node.kind === "music" ? "sfx" : ROLE_OF[node.kind],
         title: node.title,
         ops: [],
       };
@@ -284,6 +295,33 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
           });
           break;
         }
+        case "music": {
+          // A sound effect (see isSoundEffect): its own length, placed like a picture, at the node's volume.
+          const asset = node.asset ? await env.facts.read(env.project.dir, node.asset) : null;
+          if (!node.asset || !asset) {
+            warnings.push(
+              `${chapter.title}: sound effect "${node.title}" has no file in the project; it was left out.`,
+            );
+            break;
+          }
+          const natural = asset.duration ?? span.length;
+          const wanted = Math.min(attachment.duration ?? natural, natural);
+          const placed = placeInChapter(span, wanted, attachment.placement, attachment.offset);
+          if (placed.length < MIN_CLIP_SECONDS) {
+            leftOut();
+            break;
+          }
+          unit.ops.push({
+            op: "add_clip",
+            asset: node.asset,
+            start: placed.start,
+            track: STORY_TRACKS.sfx,
+            duration: placed.length,
+            volume: node.volume,
+            fadeOut: round3(Math.min(0.1, placed.length / 2)),
+          });
+          break;
+        }
       }
     }
     sections.push({
@@ -297,7 +335,7 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
   const rank = new Map(chapters.map((chapter, index) => [chapter.id, index]));
   const music: IntentMusic[] = [];
   for (const node of graph.nodes) {
-    if (node.kind !== "music") continue;
+    if (node.kind !== "music" || isSoundEffect(node)) continue;
     const covers = graph.attachments
       .filter((item) => item.node === node.id && rank.has(item.chapter))
       .sort((a, b) => (rank.get(a.chapter) ?? 0) - (rank.get(b.chapter) ?? 0))

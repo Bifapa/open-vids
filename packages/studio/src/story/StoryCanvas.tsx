@@ -157,6 +157,8 @@ export function StoryCanvas({ onRefused }: { onRefused: (reason: string) => void
       nodes={nodes}
       edges={edges}
       nodeTypes={STORY_NODE_TYPES}
+      // Controls on a card (Find with Research) take clicks, not drags; `hf-` keeps the hook out of Tailwind.
+      noDragClassName="hf-story-nodrag"
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}

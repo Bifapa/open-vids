@@ -1,0 +1,79 @@
+{
+  "collection": {
+    "version": "1.1",
+    "href": "http://images-api.nasa.gov/search?q=apollo&media_type=image&page_size=3",
+    "items": [
+      {
+        "href": "https://images-assets.nasa.gov/image/AS11-40-5903/collection.json",
+        "data": [
+          {
+            "center": "JSC",
+            "date_created": "1969-07-20T00:00:00Z",
+            "description": "Astronaut Buzz Aldrin on the lunar surface &amp; the <b>Lunar Module</b>.",
+            "keywords": ["Apollo 11"],
+            "media_type": "image",
+            "nasa_id": "AS11-40-5903",
+            "photographer": "Neil Armstrong",
+            "title": "Apollo 11 Buzz Aldrin"
+          }
+        ],
+        "links": [
+          {
+            "href": "https://images-assets.nasa.gov/image/AS11-40-5903/AS11-40-5903~large.jpg",
+            "rel": "alternate",
+            "render": "image",
+            "width": 1920,
+            "size": 143000,
+            "height": 1194
+          },
+          {
+            "href": "https://images-assets.nasa.gov/image/AS11-40-5903/AS11-40-5903~thumb.jpg",
+            "rel": "preview",
+            "render": "image",
+            "width": 640,
+            "size": 29000,
+            "height": 398
+          }
+        ]
+      },
+      {
+        "href": "https://images-assets.nasa.gov/image/APOLLO 50th_FULL COLOR_300DPI/collection.json",
+        "data": [
+          {
+            "center": "HQ",
+            "date_created": "2018-06-18T00:00:00Z",
+            "description_508": "Full color logo for the 50th anniversary of the Apollo program",
+            "media_type": "image",
+            "nasa_id": "APOLLO 50th_FULL COLOR_300DPI",
+            "title": "APOLLO 50th_FULL COLOR_300DPI"
+          }
+        ],
+        "links": [
+          {
+            "href": "https://images-assets.nasa.gov/image/APOLLO 50th_FULL COLOR_300DPI/APOLLO 50th_FULL COLOR_300DPI~medium.jpg",
+            "rel": "alternate",
+            "render": "image",
+            "width": 1280,
+            "size": 81000,
+            "height": 796
+          },
+          {
+            "href": "https://images-assets.nasa.gov/image/APOLLO 50th_FULL COLOR_300DPI/APOLLO 50th_FULL COLOR_300DPI~thumb.jpg",
+            "rel": "preview",
+            "render": "image",
+            "width": 640,
+            "size": 29000,
+            "height": 398
+          }
+        ]
+      },
+      {
+        "href": "https://images-assets.nasa.gov/image/GONE-1/collection.json",
+        "data": [
+          { "media_type": "image", "nasa_id": "GONE-1", "title": "Item whose listing fails" }
+        ],
+        "links": []
+      }
+    ]
+  }
+}

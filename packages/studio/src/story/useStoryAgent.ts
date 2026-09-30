@@ -10,6 +10,8 @@ export interface StoryAgent {
   busy: boolean;
   /** A request of the panel's own (or the chat's) is on its way. */
   pending: boolean;
+  /** Whether the open chat lets the Director delegate to Research; null with no chat open (a new one decides). */
+  researchEnabled: boolean | null;
   runStoryAction: AgentState["runStoryAction"];
   /** Opens the chat in story mode, creating one when none is open. */
   planWithAi(): Promise<ActionResult>;
@@ -23,6 +25,16 @@ export function agentBlocker(agent: StoryAgent): string | null {
   return null;
 }
 
+/** Why Research cannot be asked to find material now, or null when it can. */
+export function researchBlocker(agent: StoryAgent): string | null {
+  const busy = agentBlocker(agent);
+  if (busy) return busy;
+  if (agent.researchEnabled === false) {
+    return "Research is turned off in this chat: turn it on in the chat's Agents menu";
+  }
+  return null;
+}
+
 const noSubscription = () => () => {};
 
 export function useStoryAgent(agentStore: AgentStore | null): StoryAgent {
@@ -33,10 +45,15 @@ export function useStoryAgent(agentStore: AgentStore | null): StoryAgent {
   );
   const busy = useSyncExternalStore(subscribe, () => agentStore?.getState().activeTurn != null);
   const pending = useSyncExternalStore(subscribe, () => agentStore?.getState().pending != null);
+  const researchEnabled = useSyncExternalStore(subscribe, () => {
+    const chat = agentStore?.getState().chat;
+    return chat ? chat.chat.enabledAgents.includes("research") : null;
+  });
   return {
     available: agentStore !== null && available,
     busy,
     pending,
+    researchEnabled,
     runStoryAction: async (action, options) =>
       agentStore
         ? agentStore.getState().runStoryAction(action, options)

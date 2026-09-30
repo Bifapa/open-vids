@@ -1,0 +1,51 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 6113476,
+        "ns": 6,
+        "title": "File:Tavurvur volcano edit.jpg",
+        "index": 1,
+        "imagerepository": "local",
+        "imageinfo": [
+          {
+            "size": 3262652,
+            "width": 3844,
+            "height": 2544,
+            "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e6/Tavurvur_volcano_edit.jpg/1920px-Tavurvur_volcano_edit.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+            "thumbwidth": 1920,
+            "thumbheight": 1271,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/e/e6/Tavurvur_volcano_edit.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Tavurvur_volcano_edit.jpg",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=6113476",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC BY 2.0",
+                "source": "commons-desc-page"
+              },
+              "License": {
+                "value": "cc-by-2.0",
+                "source": "commons-templates"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by/2.0",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.flickr.com/photos/30674396@N00\">Taro Taylor</a>  edit by <a href=\"//commons.wikimedia.org/wiki/User:Richard_Bartz\" title=\"User:Richard Bartz\">Richard Bartz</a>",
+                "source": "commons-desc-page"
+              },
+              "ObjectName": {
+                "value": "Tavurvur volcano edit",
+                "source": "mediawiki-metadata"
+              }
+            },
+            "mime": "image/jpeg",
+            "mediatype": "BITMAP"
+          }
+        ]
+      }
+    ]
+  }
+}

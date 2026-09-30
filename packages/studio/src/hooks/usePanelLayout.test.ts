@@ -89,7 +89,7 @@ describe("usePanelLayout over the dock", () => {
     act(() => view.layout.setRightCollapsed(true));
     const hidden = vi.mocked(controller.setGroupVisible).mock.calls;
     expect(hidden.map(([id]) => id).sort()).toEqual(
-      ["design", "layers", "renders", "slideshow", "variables"].sort(),
+      ["design", "layers", "renders", "sources", "slideshow", "variables"].sort(),
     );
     expect(hidden.every(([, visible]) => visible === false)).toBe(true);
   });

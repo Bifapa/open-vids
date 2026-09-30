@@ -99,9 +99,10 @@ afterEach(() => {
 
 // The default Edit layout tabs [compositions|assets|code|catalog] into one
 // group and [design|layers|renders|variables] into another; dockview shows
-// only the active tab's content per group. `slideshow` is never part of the
-// default build — StudioRightPanels opens it itself when the file is one.
-const DEFAULT_OPEN = PANEL_IDS.filter((id) => id !== "slideshow");
+// only the active tab's content per group. `slideshow` and `sources` are never
+// part of the default build — StudioRightPanels opens the first when the file
+// is one, and Sources & Licenses opens on demand.
+const DEFAULT_OPEN = PANEL_IDS.filter((id) => id !== "slideshow" && id !== "sources");
 const DEFAULT_VISIBLE = ["preview", "timeline", "compositions", "design"];
 // keepMounted panels (preview, timeline, chat) keep their content mounted behind a hidden tab.
 const KEPT_MOUNTED = PANEL_IDS.filter((id) => "keepMounted" in PANEL_DEFINITIONS[id]);

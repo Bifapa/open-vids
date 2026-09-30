@@ -16,6 +16,7 @@ import type { HostTool, HostToolResult } from "../backend.js";
 import { buildAnalysisTools } from "../analysis/tools.js";
 import { buildEditingTools } from "../editing/tools.js";
 import { buildStoryTools, timelineWritesAllowed, type StoryTurnMode } from "../story/tools.js";
+import { buildResearchTools, type KnownCandidate } from "../research/tools.js";
 
 export const TOOL_NAMES = {
   plan: "update_plan",
@@ -55,6 +56,15 @@ export interface ToolAvailability {
   mode?: ChatMode;
   /** The Story workspace action of the turn (`review`, `build`, `rebuild`), if any. */
   storyAction?: StoryAction | null;
+  /**
+   * The runtime has a research host and the user's Asset Search policy could be read: Research gets the search and
+   * import tools and the Director the read-only sources tool (whichever the chat's team and the turn allow).
+   */
+  research?: boolean;
+  /** A candidate the turn's searches returned, for the activity label of an import. */
+  researchCandidate?: (id: string) => KnownCandidate | undefined;
+  /** The display name of a trusted source in the user's policy, for the activity label of a search. */
+  researchSourceName?: (id: string) => string | undefined;
 }
 
 const stringProperty = (description: string, maxLength?: number) => ({
@@ -115,8 +125,20 @@ export function buildHostTools(
   const story = availability.story
     ? buildStoryTools(agent, availability.enabled, turn, execute)
     : [];
+  const research = availability.research
+    ? buildResearchTools(agent, availability.enabled, turn, execute, {
+        ...(availability.researchCandidate && { candidate: availability.researchCandidate }),
+        ...(availability.researchSourceName && { sourceName: availability.researchSourceName }),
+      })
+    : [];
   if (agent !== "director")
-    return [...editing, ...analysis, ...story, ...(availability.jev ? [jevTool(execute)] : [])];
+    return [
+      ...editing,
+      ...analysis,
+      ...story,
+      ...research,
+      ...(availability.jev ? [jevTool(execute)] : []),
+    ];
 
   const planAgents: AgentId[] = ["director", ...availability.enabled];
   if (availability.jev) planAgents.push("jev");
@@ -227,7 +249,7 @@ export function buildHostTools(
       },
     );
   }
-  tools.push(...editing, ...analysis, ...story);
+  tools.push(...editing, ...analysis, ...story, ...research);
   if (availability.jev) tools.push(jevTool(execute));
   return tools;
 }

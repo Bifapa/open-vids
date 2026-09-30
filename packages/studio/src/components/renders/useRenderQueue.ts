@@ -2,6 +2,8 @@ import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { CanvasResolution } from "@hyperframes/parsers";
 import { generateId } from "../../utils/generateId";
+import { confirmExportLicenses } from "../../research/exportLicenseGate";
+import { studioResearchClient } from "../../research/researchContext";
 import { readServerError } from "./serverError";
 import { ffmpegInstallMessage, useFfmpegStatus } from "./useFfmpegStatus";
 
@@ -181,6 +183,11 @@ export function useRenderQueue(
       // passed no options at all, so every render it started went to
       // index.html no matter which composition was selected (#3549).
       const composition = opts.composition ?? activeCompPathRef.current ?? undefined;
+      // Researched assets with an unknown or restricted license are warned about here, for the same
+      // every-caller reason; the user can always export anyway, and a failed check never blocks.
+      if (!(await confirmExportLicenses(studioResearchClient, projectId, composition ?? null))) {
+        return;
+      }
 
       const startTime = Date.now();
       // "auto" / undefined means "render at the composition's authored size".

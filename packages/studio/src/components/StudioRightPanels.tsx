@@ -13,6 +13,9 @@ import { useProjectAgentStore } from "../agent/agentContext";
 import { useEditorContextSource } from "../agent/editorContext";
 import { StoryPanel } from "../story/StoryPanel";
 import { studioStoryStore } from "../story/storyContext";
+import { SourcesPanel } from "../research/SourcesPanel";
+import { studioSourcesStore } from "../research/researchContext";
+import { useSourcesAutoRefresh } from "../research/useSourcesAutoRefresh";
 import { VariablesPanel } from "./panels/VariablesPanel";
 import { Dock } from "./dock/Dock";
 import { useDockLayoutStore } from "./dock/dockLayoutStore";
@@ -105,6 +108,7 @@ export function StudioRightPanels({
     assets,
     fontAssets,
     projectDir,
+    fileTree,
     handleImportFiles,
     handleImportFonts,
     refreshFileTree,
@@ -160,9 +164,10 @@ export function StudioRightPanels({
     forceReloadSdkSession,
     syncHistoryPreviewAfterApply,
   });
-  // A reverted turn may have restored the story graph together with the timeline.
+  // A reverted turn may have restored the story graph and the provenance ledger together with the timeline.
   const onAgentReverted = useCallback(async () => {
     void studioStoryStore.getState().reload();
+    void studioSourcesStore.getState().reload();
     await refreshAfterAgentRevert();
   }, [refreshAfterAgentRevert]);
   // One agent store per project, shared by Chat and the Story panel (which starts Review/Build turns).
@@ -177,6 +182,8 @@ export function StudioRightPanels({
   useEffect(() => {
     void studioStoryStore.getState().open(projectId);
   }, [projectId]);
+  // The project's researched assets, for the Sources panel, the Story's license chips and the export check.
+  useSourcesAutoRefresh(studioSourcesStore, projectId, agentStore, fileTree);
 
   /**
    * A dial being dragged writes to the preview and stops there.
@@ -335,6 +342,9 @@ export function StudioRightPanels({
       </Dock.Panel>
       <Dock.Panel id="story">
         <StoryPanel projectId={projectId} agentStore={agentStore} />
+      </Dock.Panel>
+      <Dock.Panel id="sources">
+        <SourcesPanel />
       </Dock.Panel>
     </>
   );

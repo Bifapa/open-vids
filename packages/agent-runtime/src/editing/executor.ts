@@ -16,6 +16,8 @@ import {
 } from "./format.js";
 import { EditingError, RENDER_QUALITIES, type EditingHost, type RenderQuality } from "./host.js";
 import { EDITING_TOOL_NAMES, isEditingToolName, type EditingToolName } from "./tools.js";
+import { formatExportCheck } from "../research/format.js";
+import type { ResearchHost } from "../research/host.js";
 import { LONG_RENDER_SECONDS, asksForRender, longRenderRefusal } from "./renderGuard.js";
 
 export interface TurnEditingOptions {
@@ -28,6 +30,8 @@ export interface TurnEditingOptions {
   userRequests?: readonly string[];
   /** The running turn: stamped on every `edit_timeline` batch so the service can attribute the edits to it. */
   turnId?: string | undefined;
+  /** The research host: a finished render reports the license warnings and credits of the researched assets it ships. */
+  research?: ResearchHost | undefined;
 }
 
 const refuse = (text: string): HostToolResult => ({ text, isError: true });
@@ -100,6 +104,25 @@ export class TurnEditing {
     await Promise.allSettled([...this.inflight]);
   }
 
+  /**
+   * What the render's composition ships from outside the project: license warnings and credits of the researched
+   * assets it uses. It is a report, never a gate: a check that cannot run is noted and the render stands.
+   */
+  private async licenseReport(
+    composition: string | undefined,
+    signal: AbortSignal,
+  ): Promise<string | null> {
+    const { research, host } = this.options;
+    if (!research) return null;
+    try {
+      const path = composition ?? (await host.timeline(undefined, signal)).composition.path;
+      return formatExportCheck(await research.exportCheck(path, signal)) || null;
+    } catch (error) {
+      if (signal.aborted) return null;
+      return `License check: could not be run (${errorMessage(error, "unknown error")}); tell the user the licenses of imported assets were not checked — the Sources panel shows them.`;
+    }
+  }
+
   private async run(
     name: EditingToolName,
     args: unknown,
@@ -138,17 +161,20 @@ export class TurnEditing {
             : RENDER_QUALITIES.find((candidate) => candidate === record.quality);
         if (!quality) throw invalid(`quality must be one of ${RENDER_QUALITIES.join(", ")}`);
         // A long render is offered, never started unasked (it would tie the machine up for many minutes).
+        let target: string | undefined;
         if (!this.userAskedForRender()) {
-          const { composition: target } = await host.timeline(composition, signal);
-          if (target.duration > LONG_RENDER_SECONDS)
-            return refuse(longRenderRefusal(target.duration));
+          const snapshot = await host.timeline(composition, signal);
+          target = snapshot.composition.path;
+          if (snapshot.composition.duration > LONG_RENDER_SECONDS)
+            return refuse(longRenderRefusal(snapshot.composition.duration));
         }
         const output = await host.render(
           { ...(composition && { composition }), quality },
           signal,
           () => undefined,
         );
-        return { text: formatRender(output) };
+        const licenses = await this.licenseReport(composition ?? target, signal);
+        return { text: licenses ? `${formatRender(output)}\n\n${licenses}` : formatRender(output) };
       }
     }
   }

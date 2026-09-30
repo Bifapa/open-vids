@@ -10,6 +10,7 @@ import {
   FakeAnalysisHost,
   FakeCheckpointHost,
   FakeEditingHost,
+  FakeResearchHost,
   FakeStoryHost,
 } from "./testing/index.js";
 import { ScriptedAgentBackend } from "./testing/backend.js";
@@ -32,6 +33,7 @@ describe("runtime HTTP server", () => {
       editing: () => new FakeEditingHost(),
       analysis: () => new FakeAnalysisHost(),
       story: () => new FakeStoryHost(),
+      research: () => new FakeResearchHost(),
       settings: new AgentSettingsStore(join(root, "settings")),
       token: "runtime-secret",
     });
@@ -96,6 +98,7 @@ describe("runtime HTTP server", () => {
       editing: () => new FakeEditingHost(),
       analysis: () => new FakeAnalysisHost(),
       story: () => new FakeStoryHost(),
+      research: () => new FakeResearchHost(),
       settings: new AgentSettingsStore(join(root, "settings")),
       token: "runtime-secret",
     });
@@ -167,6 +170,7 @@ describe("runtime HTTP server", () => {
       editing: () => new FakeEditingHost(),
       analysis: () => new FakeAnalysisHost(),
       story: () => new FakeStoryHost(),
+      research: () => new FakeResearchHost(),
       settings: new AgentSettingsStore(settingsDir),
       token: "runtime-secret",
     });
@@ -239,6 +243,7 @@ describe("runtime HTTP server", () => {
         editing: () => new FakeEditingHost(),
         analysis: () => new FakeAnalysisHost(),
         story: () => new FakeStoryHost(),
+        research: () => new FakeResearchHost(),
         settings: new AgentSettingsStore(join(root, "settings")),
         token: "runtime-secret",
       });

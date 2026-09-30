@@ -1,6 +1,7 @@
 import {
   STORY_CONTENT_FIELDS,
   isChapter,
+  isSoundEffect,
   type ChapterNode,
   type StoryAttachment,
   type StoryBuildResult,
@@ -136,7 +137,7 @@ function materialLine(node: StoryMaterialNode, graph: StoryGraph): string {
       detail = `${node.asset}${mark("asset")}`;
       break;
     case "music":
-      detail = `${node.asset ? `${node.asset}${mark("asset")}` : "no file chosen yet"} · volume ${num(node.volume)}${mark("volume")}${node.bpm !== null ? ` · ${num(node.bpm)} bpm` : ""}`;
+      detail = `${isSoundEffect(node) ? "sound effect (placed in its chapter) · " : ""}${node.asset ? `${node.asset}${mark("asset")}` : "no file chosen yet"} · volume ${num(node.volume)}${mark("volume")}${node.bpm !== null ? ` · ${num(node.bpm)} bpm` : ""}`;
       break;
     case "motion":
       detail = `preset ${node.preset}${mark("preset")}${node.duration !== null ? ` · ${num(node.duration)} s${mark("duration")}` : ""}${Object.keys(node.inputs).length > 0 ? ` · inputs ${JSON.stringify(node.inputs)}${mark("inputs")}` : ""}`;
@@ -150,7 +151,11 @@ function materialLine(node: StoryMaterialNode, graph: StoryGraph): string {
       ? ` — ${cell(node.usageIntent)}${mark("usageIntent")}`
       : "";
   const title = userSet(node, "title") ? ` title ${SET_BY_USER}` : "";
-  return `- ${node.kind} ${nodeLabel(node)}${title}: ${detail}${intent} [${flags.join(", ")}]`;
+  const resolved =
+    "resolvedFrom" in node && node.resolvedFrom
+      ? ` · resolved Missing Asset ${node.resolvedFrom.missing} (${cell(node.resolvedFrom.need)})`
+      : "";
+  return `- ${node.kind} ${nodeLabel(node)}${title}: ${detail}${intent}${resolved} [${flags.join(", ")}]`;
 }
 
 /** What the user decided by hand, in one place: the AI must build on these, not undo them. */

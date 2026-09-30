@@ -7,3 +7,4 @@ export * from "./sse.js";
 export * from "./editing.js";
 export * from "./analysis.js";
 export * from "./story.js";
+export * from "./research.js";

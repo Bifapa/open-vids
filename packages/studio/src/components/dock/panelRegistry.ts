@@ -11,6 +11,7 @@ export const PANEL_IDS = [
   "design",
   "layers",
   "renders",
+  "sources",
   "variables",
   "slideshow",
   "chat",
@@ -61,6 +62,12 @@ export const PANEL_DEFINITIONS = {
   design: { title: "Design", zone: "right", reopen: { near: "preview", direction: "right" } },
   layers: { title: "Layers", zone: "right", reopen: { near: "design", direction: "within" } },
   renders: { title: "Renders", zone: "right", reopen: { near: "design", direction: "within" } },
+  /** Not in the default layout: Window > Sources & Licenses, the Story workspace and the export check open it. */
+  sources: {
+    title: "Sources & Licenses",
+    zone: "right",
+    reopen: { near: "renders", direction: "within" },
+  },
   variables: { title: "Variables", zone: "right", reopen: { near: "design", direction: "within" } },
   slideshow: { title: "Slideshow", zone: "right", reopen: { near: "design", direction: "within" } },
   chat: {
