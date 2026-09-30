@@ -7,9 +7,11 @@ import type {
   StoryGraph,
   StoryNode,
   StoryNodeFacts,
+  StorySyncReport,
 } from "@hyperframes/agent-protocol";
 import { STORY_KIND_STYLES } from "./storyKinds";
 import type { StorySelection } from "./storyStore";
+import { chapterBadges, materialBadge, type SyncBadge } from "./storySync";
 
 /** Handle ids: sequence in/out on a chapter's sides, materials attach to its bottom from their top. */
 export const HANDLES = {
@@ -26,6 +28,8 @@ export type StoryCardData = {
   /** Chapters: 1-based place in the play order. */
   number: number | null;
   readOnly: boolean;
+  /** How the node's built material relates to the timeline (empty when in sync or never built). */
+  sync: SyncBadge[];
 };
 
 export type StoryFlowNode = Node<StoryCardData, "chapter" | "material">;
@@ -38,6 +42,19 @@ export interface FlowNodeInput {
   readOnly: boolean;
   /** Chapter ids in play order. */
   order: readonly string[];
+  sync: StorySyncReport | null;
+}
+
+function sameBadges(a: readonly SyncBadge[], b: readonly SyncBadge[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((badge, index) => {
+      const other = b[index];
+      return (
+        badge.kind === other.kind && badge.label === other.label && badge.detail === other.detail
+      );
+    })
+  );
 }
 
 /**
@@ -48,19 +65,21 @@ export function toFlowNodes(
   input: FlowNodeInput,
   previous: readonly StoryFlowNode[],
 ): StoryFlowNode[] {
-  const { graph, facts, projectId, selection, readOnly, order } = input;
+  const { graph, facts, projectId, selection, readOnly, order, sync } = input;
   if (!graph) return [];
   const before = new Map(previous.map((node) => [node.id, node]));
   const selected = new Set(selection.nodes);
   const numbers = new Map(order.map((id, index) => [id, index + 1]));
   return graph.nodes.map((node) => {
     const old = before.get(node.id);
+    const material = node.kind === "chapter" ? null : materialBadge(sync, node.id);
     const data: StoryCardData = {
       node,
       facts: facts[node.id],
       projectId,
       number: numbers.get(node.id) ?? null,
       readOnly,
+      sync: node.kind === "chapter" ? chapterBadges(sync, node.id) : material ? [material] : [],
     };
     const isSelected = selected.has(node.id);
     if (
@@ -69,6 +88,7 @@ export function toFlowNodes(
       old.data.facts === data.facts &&
       old.data.number === data.number &&
       old.data.readOnly === readOnly &&
+      sameBadges(old.data.sync, data.sync) &&
       old.data.projectId === projectId &&
       Boolean(old.selected) === isSelected &&
       old.position.x === node.position.x &&

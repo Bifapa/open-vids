@@ -161,22 +161,34 @@ motion preset, missing asset) attached to them, locks, and authorship (what the 
 The user reshapes it in Studio's Story workspace; agents change it only through Studio's story service (validated,
 locks and user decisions enforced), never with file tools (the path guard forbids `.hyperframes/`). The runtime talks
 to it over loopback HTTP (`src/story/host.http.ts`, base `${studioOrigin}/api/projects/:id/story`): `GET` (view),
-`POST edit` (an agent's atomic `StoryOperation` batch), `POST build` (compile the graph into the timeline).
+`POST edit` (an agent's atomic `StoryOperation` batch), `POST build` (compile the whole graph into the timeline),
+`POST rebuild` (Rebuild affected sections: only what the graph changed since the last build, against the service's
+sync ledger).
 
 - **Modes.** A chat has a persisted `activeMode` (`normal` | `story`, `PATCH` chat). A turn's mode is `story` when it
-  runs a `storyAction` (`review`, `build`; sent by Studio's "Review with AI" / "Build Story"), else the request's
-  `mode`, else the chat's `activeMode`. `TurnSummary.mode` / `storyAction` record it. Review and Build are ordinary
-  checkpointed turns, so "Revert this turn" restores the graph file and the timeline together.
+  runs a `storyAction` (`review`, `build`, `rebuild`; sent by Studio's "Review with AI" / "Build Story" / "Rebuild
+  affected"), else the request's `mode`, else the chat's `activeMode`. `TurnSummary.mode` / `storyAction` /
+  `storyOptions` record it. All are ordinary checkpointed turns, so "Revert this turn" restores the graph, the sync
+  ledger and the timeline together.
+- **User options.** `StartTurnRequest.storyOptions` carries the user's choices from the Story workspace: for `rebuild`
+  `chapters` (scope), `manualEdits` (`keep` | `replace`) and `allowLocked`; for `build` only `allowLocked`. The executor
+  merges them into the service request; the model passes only `baseVersion` / `dryRun`, so it can never unlock a
+  chapter or replace the user's edited material on its own.
 - **Prompt.** Every story-mode turn prompt carries a `<story-graph>` block (the `read_story` rendering as of the
-  turn's start, including "User decisions" and locks) and a `<story-mode action="plan|review|build">` block with the
-  rules of the action (`src/story/prompt.ts`). The Director's role text holds the standing rules (user decisions
-  outrank the AI's earlier plan, locked nodes never change, never restore the previous variant on review).
+  turn's start, including "User decisions", locks and the "Timeline sync" section) and a
+  `<story-mode action="plan|review|build|rebuild">` block with the rules of the action and the user's options
+  (`src/story/prompt.ts`). The Director's role text holds the standing rules (user decisions outrank the AI's earlier
+  plan, locked nodes never change, never restore the previous variant on review).
 - **Tools** (`src/story/tools.ts`): `read_story` (Director and every specialist, any mode), `edit_story` (Director, story
-  plan/review turns only), `build_story` (build turns only: the Editor when enabled, else the Director). Service
-  refusals (`locked`, `user_decision`, `conflict`, `unknown_node`, …) come back as tool errors `code (operations[N]): message`.
+  plan/review turns only), `build_story` (build turns only: the Editor when enabled, else the Director),
+  `rebuild_story` (rebuild turns only, the Director). Service refusals (`locked`, `user_decision`, `conflict`,
+  `unknown_node`, `unsupported`, …) come back as tool errors `code (operations[N]): message`.
 - **No timeline writes outside a build.** In a story-mode turn without `build`, nobody gets `edit_timeline`,
-  `render_video` or `build_rough_cut` (analysis tools stay). A build turn keeps the normal editing tools plus `build_story`;
-  the graph is frozen while it compiles (no `edit_story`).
+  `render_video` or `build_rough_cut` (analysis tools stay); a rebuild turn's only write is `rebuild_story`. A build turn
+  keeps the normal editing tools plus `build_story`; the graph is frozen while it compiles (no `edit_story`).
+- **Edit attribution.** `edit_timeline` requests carry the turn id (set by the executor, never the model), so the
+  editing service stamps the clips an agent changes (`data-ov-ai-edit`) and Story sync can tell a later AI edit of
+  generated material from the user's.
 - **Lifecycle.** Like editing and analysis, story calls go to a per-turn executor (`src/story/executor.ts`): refused
   when no turn is running or it is finalizing; `TurnRunner.finalize` awaits every started edit/build (atomic on the
   service) before the checkpoint closes, so no story write can escape Revert.

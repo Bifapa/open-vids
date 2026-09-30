@@ -11,6 +11,7 @@ import { REVERT_MODES } from "./api.js";
 import {
   CHAT_MODES,
   JEV_CREDENTIAL_MODES,
+  MANUAL_EDIT_POLICIES,
   SPECIALIST_IDS,
   STORY_ACTIONS,
   THINKING_EFFORTS,
@@ -25,6 +26,7 @@ import {
   type SpecialistConfig,
   type SpecialistDefaults,
   type SpecialistId,
+  type StoryActionOptions,
   type ThinkingEffort,
 } from "./types.js";
 
@@ -500,6 +502,16 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
     storyAction = STORY_ACTIONS.find((known) => known === body.storyAction);
     if (!storyAction) return fail(`storyAction must be one of: ${STORY_ACTIONS.join(", ")}`);
   }
+  let storyOptions: StoryActionOptions | undefined;
+  if (body.storyOptions !== undefined) {
+    if (storyAction !== "build" && storyAction !== "rebuild")
+      return fail("storyOptions need storyAction build or rebuild");
+    const parsed = parseStoryActionOptions(body.storyOptions);
+    if (!parsed.ok) return parsed;
+    if (storyAction === "build" && (parsed.value.chapters || parsed.value.manualEdits))
+      return fail("a build rebuilds every chapter: only allowLocked applies");
+    storyOptions = parsed.value;
+  }
   return {
     ok: true,
     value: {
@@ -508,8 +520,50 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
       ...(editorContext.value && { editorContext: editorContext.value }),
       ...(mode && { mode }),
       ...(storyAction && { storyAction }),
+      ...(storyOptions && { storyOptions }),
     },
   };
+}
+
+const STORY_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const STORY_OPTION_IDS = 300;
+
+function storyIds(value: unknown, field: string): Parsed<string[]> {
+  if (!Array.isArray(value) || value.length > STORY_OPTION_IDS)
+    return fail(`${field} must be an array of at most ${STORY_OPTION_IDS} node ids`);
+  const ids: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string" || !STORY_ID.test(entry))
+      return fail(`${field} must hold node ids`);
+    if (!ids.includes(entry)) ids.push(entry);
+  }
+  return { ok: true, value: ids };
+}
+
+export function parseStoryActionOptions(value: unknown): Parsed<StoryActionOptions> {
+  if (!isRecord(value)) return fail("storyOptions must be an object");
+  const extra = Object.keys(value).find(
+    (key) => key !== "chapters" && key !== "manualEdits" && key !== "allowLocked",
+  );
+  if (extra) return fail(`storyOptions: unknown field "${extra}"`);
+  const options: StoryActionOptions = {};
+  if (value.chapters !== undefined) {
+    const chapters = storyIds(value.chapters, "storyOptions.chapters");
+    if (!chapters.ok) return chapters;
+    options.chapters = chapters.value;
+  }
+  if (value.manualEdits !== undefined) {
+    const policy = MANUAL_EDIT_POLICIES.find((known) => known === value.manualEdits);
+    if (!policy)
+      return fail(`storyOptions.manualEdits must be one of: ${MANUAL_EDIT_POLICIES.join(", ")}`);
+    options.manualEdits = policy;
+  }
+  if (value.allowLocked !== undefined) {
+    const allowed = storyIds(value.allowLocked, "storyOptions.allowLocked");
+    if (!allowed.ok) return allowed;
+    options.allowLocked = allowed.value;
+  }
+  return { ok: true, value: options };
 }
 
 export function parseSteerTurn(body: unknown): Parsed<SteerTurnRequest> {

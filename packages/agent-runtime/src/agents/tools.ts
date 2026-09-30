@@ -53,7 +53,7 @@ export interface ToolAvailability {
   story?: boolean;
   /** The turn's mode (default `normal`). A story-mode turn without a build action never writes the timeline. */
   mode?: ChatMode;
-  /** The Story workspace action of the turn (`review`, `build`), if any. */
+  /** The Story workspace action of the turn (`review`, `build`, `rebuild`), if any. */
   storyAction?: StoryAction | null;
 }
 

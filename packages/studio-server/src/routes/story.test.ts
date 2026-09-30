@@ -67,6 +67,7 @@ describe("the story routes", () => {
       order: { chapters: [], notes: [] },
       facts: {},
       composition: null,
+      sync: null,
     });
     expect((await send("GET", "", undefined, "nope")).status).toBe(404);
   });
@@ -107,6 +108,9 @@ describe("the story routes", () => {
       ],
       [await send("PUT", "", { baseVersion: null, graph: { nope: true } }), 400, "invalid_request"],
       [await send("POST", "/build", { extra: 1 }), 400, "invalid_request"],
+      [await send("POST", "/rebuild", { manualEdits: "merge" }), 400, "invalid_request"],
+      // Nothing was built yet: there is no section to rebuild.
+      [await send("POST", "/rebuild", { turnId: "turn-2" }), 400, "unsupported"],
       [await send("GET", "/frame?t=1"), 400, "invalid_request"],
       [await send("GET", "/frame?source=assets/a.mp4&t=-1"), 400, "invalid_request"],
     ];

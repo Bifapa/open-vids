@@ -169,9 +169,9 @@ const snapshot = (clips: TimelineClip[]): TimelineSnapshot => ({
   clips,
 });
 
-function editing(host = new FakeEditingHost(), editorContext?: EditorContext) {
+function editing(host = new FakeEditingHost(), editorContext?: EditorContext, turnId?: string) {
   const turn = new AbortController();
-  const executor = new TurnEditing({ host, turnSignal: turn.signal, editorContext });
+  const executor = new TurnEditing({ host, turnSignal: turn.signal, editorContext, turnId });
   const call = (name: string, args: unknown) =>
     executor.execute(name, args, new AbortController().signal);
   return { host, executor, call, turn };
@@ -194,6 +194,15 @@ describe("editing tool results", () => {
     expect(result.text).toContain("2. split_clip: c1 → new clip clip-102b");
     expect(result.text).toContain("id | kind | label | start–end (s) | track | src | notes");
     expect(result.text).toContain("c2 | video | c2.mp4 | 2–4 | 1 | assets/c2.mp4");
+  });
+
+  it("stamps the running turn on every batch, replacing any turn id the model sent", async () => {
+    const { host, call } = editing(new FakeEditingHost(), undefined, "turn-9");
+    const operations = [{ op: "set_composition", duration: 5 }];
+    await call("edit_timeline", { operations });
+    await call("edit_timeline", { operations, turnId: "turn-of-someone-else" });
+    expect(host.applyRequests.map((request) => request.turnId)).toEqual(["turn-9", "turn-9"]);
+    expect(host.applyRequests[0]?.operations).toEqual(operations);
   });
 
   it("reports a service refusal with its code and the failing operation so the model can retry", async () => {

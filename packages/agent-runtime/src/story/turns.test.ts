@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { StoryActionOptions } from "@hyperframes/agent-protocol";
 import type { BackendPromptInput, BackendPromptOutcome, HostToolResult } from "../backend.js";
 import { ChatService } from "../chats.js";
 import { RuntimeError } from "../errors.js";
@@ -213,6 +214,163 @@ describe("build turns", () => {
       expect(toolNames(fixture.backend.sessionsOf("editor")[0])).not.toContain("edit_story");
       expect(fixture.story.buildRequests).toEqual([{ turnId: turn.id }]);
       expect(directorPrompt).toContain("Delegate the Editor: build_story");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+});
+
+describe("rebuild turns", () => {
+  const options: StoryActionOptions = {
+    chapters: ["ch2"],
+    manualEdits: "replace",
+    allowLocked: ["ch1"],
+  };
+
+  it("stores the user's options on the turn, applies them in the Director's rebuild_story and states them in the prompt", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, []);
+      fixture.story.viewResult = userEditedStory();
+      let promptText = "";
+      let result: HostToolResult | null = null;
+      script(fixture, {
+        director: async (input, session) => {
+          promptText = input.text;
+          result = await session.callTool("rebuild_story", {
+            baseVersion: "sha256:story-v1",
+            // A model cannot widen what the user chose.
+            allowLocked: ["ch1", "ch2", "ch3"],
+            manualEdits: "keep",
+          });
+          return "completed";
+        },
+      });
+      const started = await fixture.turns.start(chat.id, {
+        prompt: "Rebuild affected sections",
+        storyAction: "rebuild",
+        storyOptions: options,
+      });
+      await settled(fixture, chat.id);
+
+      expect(started).toMatchObject({
+        mode: "story",
+        storyAction: "rebuild",
+        storyOptions: options,
+      });
+      expect(fixture.chats.get(chat.id)?.turns[0]).toMatchObject({
+        status: "completed",
+        storyAction: "rebuild",
+        storyOptions: options,
+      });
+      expect(fixture.story.rebuildRequests).toEqual([
+        { baseVersion: "sha256:story-v1", turnId: started.id, ...options },
+      ]);
+      expect(result).toMatchObject({
+        text: expect.stringContaining("Rebuilt the affected sections"),
+      });
+
+      const director = toolNames(fixture.backend.sessionsOf("director")[0]);
+      expect(director).toEqual(expect.arrayContaining(["read_story", "rebuild_story"]));
+      for (const absent of [
+        "edit_story",
+        "build_story",
+        "edit_timeline",
+        "build_rough_cut",
+        "render_video",
+      ])
+        expect(director).not.toContain(absent);
+
+      expect(promptText).toContain('<story-mode action="rebuild">');
+      expect(promptText).toContain("Call rebuild_story exactly once");
+      expect(promptText).toContain("only the changed sections of ch2 are regenerated");
+      expect(promptText).toContain(
+        "manual edits to generated clips in a section that must change are REPLACED",
+      );
+      expect(promptText).toContain("the user allowed these locked chapters to be rebuilt: ch1");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("defaults to every affected section, keeping manual edits and leaving locked chapters alone", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, []);
+      fixture.story.viewResult = userEditedStory();
+      let promptText = "";
+      script(fixture, {
+        director: async (input, session) => {
+          promptText = input.text;
+          await session.callTool("rebuild_story", {});
+          return "completed";
+        },
+      });
+      const started = await fixture.turns.start(chat.id, {
+        prompt: "Rebuild affected sections",
+        storyAction: "rebuild",
+      });
+      await settled(fixture, chat.id);
+
+      expect(fixture.chats.get(chat.id)?.turns[0]?.storyOptions).toBeUndefined();
+      expect(fixture.story.rebuildRequests).toEqual([{ turnId: started.id }]);
+      expect(promptText).toContain("every affected section is regenerated");
+      expect(promptText).toContain("are KEPT (policy keep)");
+      expect(promptText).toContain("no locked chapter may be rebuilt");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("gives a build turn only the locked-chapter permission, and stamps it on build_story", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, []);
+      fixture.story.viewResult = userEditedStory();
+      let promptText = "";
+      script(fixture, {
+        director: async (input, session) => {
+          promptText = input.text;
+          await session.callTool("build_story", { allowLocked: ["ch1", "ch3"] });
+          return "completed";
+        },
+      });
+      const started = await fixture.turns.start(chat.id, {
+        prompt: "Build the story",
+        storyAction: "build",
+        storyOptions: { allowLocked: ["ch1"] },
+      });
+      await settled(fixture, chat.id);
+
+      expect(fixture.story.buildRequests).toEqual([{ turnId: started.id, allowLocked: ["ch1"] }]);
+      expect(promptText).toContain(
+        "Options for this turn: the user allowed these locked chapters to be rebuilt: ch1.",
+      );
+      expect(promptText).toContain("manual edits to clips the story generated");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+});
+
+describe("edit_timeline in a turn", () => {
+  it("carries the turn id, so the service can tell which turn made an edit", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, []);
+      script(fixture, {
+        director: async (_input, session) => {
+          await session.callTool("edit_timeline", {
+            operations: [{ op: "set_composition", duration: 5 }],
+          });
+          return "completed";
+        },
+      });
+      const started = await fixture.turns.start(chat.id, { prompt: "Shorten it" });
+      await settled(fixture, chat.id);
+
+      expect(fixture.editing.applyRequests).toHaveLength(1);
+      expect(fixture.editing.applyRequests[0]?.turnId).toBe(started.id);
     } finally {
       await fixture.cleanup();
     }

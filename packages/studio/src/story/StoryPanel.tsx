@@ -1,19 +1,34 @@
-import { useCallback, useEffect, useRef, type FocusEvent, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+} from "react";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { CircleNotch, TreeStructure, X } from "@phosphor-icons/react";
-import type { StoryAction, StoryPoint } from "@hyperframes/agent-protocol";
+import type { StoryAction, StoryActionOptions, StoryPoint } from "@hyperframes/agent-protocol";
 import type { AgentStore } from "../agent/agentStore";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import { Button } from "../components/ui";
 import { isTextFieldTarget } from "../utils/typingTarget";
+import { FullBuildDialog } from "./FullBuildDialog";
+import { RebuildDialog } from "./RebuildDialog";
 import { StoryCanvas } from "./StoryCanvas";
 import { useStoryServices, useStoryStore } from "./storyContext";
 import { addNode, newChapter, newMaterial, newStoryId, removeItems } from "./storyGraphOps";
 import { StoryInspector } from "./StoryInspector";
 import { StoryToolbar } from "./StoryToolbar";
 import type { NewNodeRequest } from "./AddNodePopover";
-import { useStoryAgent, useStoryAgentSync } from "./useStoryAgent";
+import { fullBuildNeedsConfirm, syncBlocker } from "./storySync";
+import { agentBlocker, useStoryAgent, useStoryAgentSync } from "./useStoryAgent";
 import { useStoryLibrary } from "./useStoryLibrary";
+import { useStoryTimelineSync } from "./useStoryTimelineSync";
+
+/** The Story panel's modal: the impact of a rebuild (every affected section, or the chosen ones), or the confirm
+ * of a full build over edits and locked sections. */
+type StoryPanelDialog = { kind: "rebuild"; chapters: string[] | null } | { kind: "build" };
 
 /** Card size used to keep a new node off the ones already there. */
 const CARD = { width: 232, height: 200 };
@@ -72,12 +87,15 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
   const hasGraph = useStoryStore((state) => state.graph !== null);
   const agentBusy = useStoryStore((state) => state.agentBusy);
   const notice = useStoryStore((state) => state.notice);
+  const sync = useStoryStore((state) => state.sync);
+  const [dialog, setDialog] = useState<StoryPanelDialog | null>(null);
   const agent = useStoryAgent(agentStore);
   const library = useStoryLibrary(client, projectId);
   const flow = useReactFlow();
   const canvasRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   useStoryAgentSync(agentStore, store);
+  useStoryTimelineSync(store);
 
   const refuse = useCallback((reason: string) => store.getState().setNotice(reason), [store]);
 
@@ -113,15 +131,49 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
     if (created) store.getState().select({ nodes: [created], edges: [] });
   };
 
-  const runAction = async (action: StoryAction) => {
+  const runAction = async (action: StoryAction, options?: StoryActionOptions) => {
+    setDialog(null);
     if (!(await store.getState().flush())) return;
-    const result = await agent.runStoryAction(action);
+    const result = await agent.runStoryAction(action, options);
     if (!result.ok) {
       store.getState().setNotice(result.message);
       return;
     }
     useDockLayoutStore.getState().activatePanel("chat");
   };
+
+  /** A full build over a story built and then edited on the timeline (or locked) asks first. */
+  const requestAction = (action: StoryAction) => {
+    if (action === "build" && fullBuildNeedsConfirm(store.getState().sync)) {
+      setDialog({ kind: "build" });
+      return;
+    }
+    void runAction(action);
+  };
+
+  const blocker = agentBlocker(agent);
+  let dialogView = null;
+  if (dialog && sync && status === "ready") {
+    dialogView =
+      dialog.kind === "rebuild" ? (
+        <RebuildDialog
+          report={sync}
+          chapters={dialog.chapters}
+          blocker={blocker}
+          onClose={() => setDialog(null)}
+          onStart={(options) => void runAction("rebuild", options)}
+        />
+      ) : (
+        <FullBuildDialog
+          report={sync}
+          rebuildBlocker={syncBlocker(sync) ?? blocker}
+          blocker={blocker}
+          onClose={() => setDialog(null)}
+          onBuild={(options) => void runAction("build", options)}
+          onRebuildInstead={() => setDialog({ kind: "rebuild", chapters: null })}
+        />
+      );
+  }
 
   const planWithAi = async () => {
     const result = await agent.planWithAi();
@@ -133,6 +185,8 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
     // Fields keep their keys; anywhere else in the panel Delete/Backspace deletes the selection.
     if (event.key !== "Delete" && event.key !== "Backspace") return;
     if (event.altKey || event.metaKey || event.ctrlKey || isTextFieldTarget(event.target)) return;
+    // An open dialog owns its keys; the canvas behind it keeps its selection.
+    if (event.target instanceof Element && event.target.closest('[role="dialog"]')) return;
     const { selection } = store.getState();
     const ids = [...selection.nodes, ...selection.edges];
     if (ids.length === 0) return;
@@ -218,7 +272,7 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
         focusWithin.current = true;
       }}
       onBlurCapture={onBlurCapture}
-      className="flex h-full min-h-0 flex-col bg-bg-1 text-text-1 outline-hidden"
+      className="relative flex h-full min-h-0 flex-col bg-bg-1 text-text-1 outline-hidden"
     >
       <StoryToolbar
         library={library}
@@ -227,7 +281,8 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
         onFit={() => void flow.fitView({ padding: 0.2, maxZoom: 1, duration: 200 })}
         onUndo={() => store.getState().undo()}
         onRedo={() => store.getState().redo()}
-        onAction={(action) => void runAction(action)}
+        onAction={requestAction}
+        onRebuild={() => setDialog({ kind: "rebuild", chapters: null })}
       />
       {agentBusy && (
         <div
@@ -258,8 +313,14 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
         <div ref={canvasRef} className="relative min-w-0 flex-1">
           {content}
         </div>
-        {hasGraph && status === "ready" && <StoryInspector library={library} />}
+        {hasGraph && status === "ready" && (
+          <StoryInspector
+            library={library}
+            onRebuildSection={(chapter) => setDialog({ kind: "rebuild", chapters: [chapter] })}
+          />
+        )}
       </div>
+      {dialogView}
     </div>
   );
 }

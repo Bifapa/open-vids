@@ -26,6 +26,8 @@ export interface TurnEditingOptions {
   turnSignal: AbortSignal;
   /** What the user wrote to this turn so far; `render_video` refuses a long composition unless one of these asks for a render. */
   userRequests?: readonly string[];
+  /** The running turn: stamped on every `edit_timeline` batch so the service can attribute the edits to it. */
+  turnId?: string | undefined;
 }
 
 const refuse = (text: string): HostToolResult => ({ text, isError: true });
@@ -115,7 +117,10 @@ export class TurnEditing {
         const request = parseApplyEditsRequest(args);
         if (!request.ok)
           throw new EditingError(request.error.code, request.error.message, request.error.opIndex);
-        return { text: formatEditResult(await host.apply(request.value, signal)) };
+        // The turn is the runtime's to name: whatever id the model sent is replaced.
+        const { turnId } = this.options;
+        const batch = turnId === undefined ? request.value : { ...request.value, turnId };
+        return { text: formatEditResult(await host.apply(batch, signal)) };
       }
       case EDITING_TOOL_NAMES.presets: {
         const record = argsRecord(args);

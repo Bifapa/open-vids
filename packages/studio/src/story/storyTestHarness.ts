@@ -7,6 +7,7 @@ import {
   type StoryEdge,
   type StoryGraph,
   type StoryMaterialNode,
+  type StorySyncReport,
   type StoryView,
 } from "@hyperframes/agent-protocol";
 import { StoryApiError, type StoryClient } from "./storyClient";
@@ -49,20 +50,47 @@ export function sampleGraph(): StoryGraph {
   };
 }
 
-export function viewOf(graph: StoryGraph | null, version: string | null): StoryView {
+export function viewOf(
+  graph: StoryGraph | null,
+  version: string | null,
+  sync: StorySyncReport | null = null,
+): StoryView {
   return {
     graph,
     version,
     order: graph ? storyOrder(graph) : { chapters: [], notes: [] },
     facts: {},
     composition: "index.html",
+    sync,
+  };
+}
+
+/** A sync report with nothing to say; tests override what they need. */
+export function syncReport(overrides: Partial<StorySyncReport> = {}): StorySyncReport {
+  return {
+    state: "in_sync",
+    composition: "index.html",
+    syncedAt: 1000,
+    turnId: null,
+    sections: [],
+    music: [],
+    captions: null,
+    unrelated: [],
+    affected: [],
+    moved: [],
+    lockedPending: [],
+    manualEdits: 0,
+    conflicts: 0,
+    duration: { current: 30, next: 30 },
+    warnings: [],
+    ...overrides,
   };
 }
 
 export interface FakeStoryServer {
   client: StoryClient & { load: Mock<StoryClient["load"]>; save: Mock<StoryClient["save"]> };
   /** The graph and version the "server" holds. */
-  state: { graph: StoryGraph | null; version: number };
+  state: { graph: StoryGraph | null; version: number; sync: StorySyncReport | null };
   /** Saved request bodies, in order. */
   saves: SaveStoryRequest[];
   /** Something else (the agent) writes the graph: the version moves on. */
@@ -76,9 +104,10 @@ const versionOf = (version: number) => `sha256:${String(version).padStart(4, "0"
  * a good one stores the graph and moves the version on.
  */
 export function createFakeStoryServer(initial: StoryGraph | null = sampleGraph()): FakeStoryServer {
-  const state = { graph: initial, version: initial ? 1 : 0 };
+  const state: FakeStoryServer["state"] = { graph: initial, version: initial ? 1 : 0, sync: null };
   const saves: SaveStoryRequest[] = [];
-  const current = () => viewOf(state.graph, state.graph ? versionOf(state.version) : null);
+  const current = () =>
+    viewOf(state.graph, state.graph ? versionOf(state.version) : null, state.sync);
   const client = {
     load: vi.fn<StoryClient["load"]>(async () => current()),
     save: vi.fn<StoryClient["save"]>(async (_projectId, request) => {

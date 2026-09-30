@@ -8,6 +8,7 @@ import {
   type AssistantMessageStatus,
   type ChatMode,
   type StoryAction,
+  type StoryActionOptions,
   type UserPart,
   type UserMessage,
   type ChatSummary,
@@ -74,6 +75,8 @@ interface ActiveRun {
   mode: ChatMode;
   /** The Story workspace action the turn runs, if any. */
   storyAction: StoryAction | null;
+  /** The user's choices for a build/rebuild action (scope, manual-edit policy, locked chapters), if any. */
+  storyOptions: StoryActionOptions | null;
   /** The Director's prompt has ended but the turn is still collecting delegated work. */
   directorIdle: boolean;
   /** Steering received while the Director was idle; it opens the next Director prompt. */
@@ -175,6 +178,7 @@ export class TurnRunner {
       checkpoint: { status: "active", entryIds: [], createdAt: startedAt },
       mode,
       ...(input.storyAction && { storyAction: input.storyAction }),
+      ...(input.storyOptions && { storyOptions: input.storyOptions }),
     };
     const referenceParts = (input.references ?? []).map(
       (reference): UserPart => ({
@@ -218,6 +222,7 @@ export class TurnRunner {
       story: null,
       mode,
       storyAction: input.storyAction ?? null,
+      storyOptions: input.storyOptions ?? null,
       directorIdle: false,
       pendingSteering: [],
       promptStarted: started.promise,
@@ -516,6 +521,7 @@ export class TurnRunner {
               editorContext: setup.editorContext,
               turnSignal: run.controller.signal,
               userRequests: [input.prompt],
+              turnId: run.turn.id,
             })
           : null;
       const analysisFactory = this.analysisFactory;
@@ -534,6 +540,7 @@ export class TurnRunner {
             host: storyFactory(this.chats.scope),
             turnId: run.turn.id,
             turnSignal: run.controller.signal,
+            storyOptions: run.storyOptions,
           })
         : null;
       const availability: ToolAvailability = {
@@ -591,6 +598,7 @@ export class TurnRunner {
           ? `\n\n${renderStoryBlocks({
               action: run.storyAction,
               editorEnabled: setup.enabled.includes("editor"),
+              storyOptions: run.storyOptions,
               graph: await run.story.snapshot(run.controller.signal),
             })}`
           : "";

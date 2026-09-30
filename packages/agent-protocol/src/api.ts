@@ -16,6 +16,7 @@ import type {
   SpecialistDefaults,
   SpecialistId,
   StoryAction,
+  StoryActionOptions,
   ThinkingEffort,
   TurnSummary,
 } from "./types.js";
@@ -82,8 +83,10 @@ export interface StartTurnRequest {
   editorContext?: EditorContext;
   /** Mode of this turn; defaults to the chat's `activeMode`. A story action implies `story`. */
   mode?: ChatMode;
-  /** Run a Story workspace action (Review with AI / Build Story) as this turn. */
+  /** Run a Story workspace action (Review with AI / Build Story / Rebuild affected sections) as this turn. */
   storyAction?: StoryAction;
+  /** The user's choices for a `build` or `rebuild` action; refused with any other action. */
+  storyOptions?: StoryActionOptions;
 }
 
 export interface StartTurnResponse {

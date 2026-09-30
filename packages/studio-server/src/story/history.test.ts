@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { STORY_GRAPH_PATH } from "@hyperframes/agent-protocol";
+import { STORY_GRAPH_PATH, STORY_SYNC_PATH } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import type { HistoryWho } from "../history/historyLog.js";
 import { openProjectHistory, type ProjectHistory } from "../history/projectHistory.js";
@@ -62,11 +62,16 @@ describe("the story graph in project history", () => {
     const entry = await window.close();
 
     expect(entry?.who).toEqual(agent);
-    expect(entry?.files.map((file) => file.path).sort()).toEqual([STORY_GRAPH_PATH, "index.html"]);
+    expect(entry?.files.map((file) => file.path).sort()).toEqual([
+      STORY_GRAPH_PATH,
+      STORY_SYNC_PATH,
+      "index.html",
+    ]);
     const result = await engine.undo(entry?.id ?? "", { who: agent, mode: "keep-later-edits" });
     expect(result.ok).toBe(true);
     expect(readFileSync(graphPath(f), "utf-8")).toBe(graphBefore);
     expect(f.made.read("index.html")).toBe(indexBefore);
+    expect(existsSync(join(f.project.dir, STORY_SYNC_PATH))).toBe(false);
     // After the revert nothing is shown as built.
     const view = await f.view();
     expect(view.graph?.nodes).toHaveLength(1);

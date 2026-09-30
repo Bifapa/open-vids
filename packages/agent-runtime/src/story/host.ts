@@ -4,6 +4,8 @@ import type {
   StoryEditRequest,
   StoryEditResponse,
   StoryErrorCode,
+  StoryRebuildRequest,
+  StoryRebuildResult,
   StoryView,
 } from "@hyperframes/agent-protocol";
 
@@ -19,6 +21,8 @@ export interface StoryHost {
   edit(request: StoryEditRequest, signal: AbortSignal): Promise<StoryEditResponse>;
   /** Compiles the graph into the timeline in one atomic edit (or reports what it would do for a dry run). */
   build(request: StoryBuildRequest, signal: AbortSignal): Promise<StoryBuildResult>;
+  /** Rebuilds only the sections the graph changed since the last build (or reports what it would do for a dry run). */
+  rebuild(request: StoryRebuildRequest, signal: AbortSignal): Promise<StoryRebuildResult>;
 }
 
 /** Failures that do not come from the service's validation: transport and cancellation. */

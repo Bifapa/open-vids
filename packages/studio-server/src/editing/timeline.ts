@@ -219,7 +219,7 @@ export function resolveClipDurations(model: CompositionModel, lookup: SourceLook
   }
 }
 
-function labelOf(clip: ClipNode): string {
+export function clipLabel(clip: ClipNode): string {
   const { element } = clip;
   if (clip.kind === "text") return (element.textContent ?? "").trim().slice(0, LABEL_CHARS);
   if (clip.src) return clip.src.split("/").pop() ?? clip.src;
@@ -281,7 +281,7 @@ function toWireClip(clip: ClipNode, lookup: SourceLookup): TimelineClip {
     id: clip.id,
     domId: clip.domId,
     kind: clip.kind,
-    label: labelOf(clip),
+    label: clipLabel(clip),
     start: clip.start,
     duration: clip.duration,
     end: clip.end,

@@ -258,11 +258,19 @@ function AttachmentInspector({
 }
 
 /** The right side of the Story panel: whatever is selected, else the story itself. */
-export function StoryInspector({ library }: { library: StoryLibrary }) {
+export function StoryInspector({
+  library,
+  onRebuildSection,
+}: {
+  library: StoryLibrary;
+  /** Opens the rebuild impact for one chapter's section. */
+  onRebuildSection: (chapter: string) => void;
+}) {
   const { store } = useStoryServices();
   const graph = useStoryStore((state) => state.graph);
   const selection = useStoryStore((state) => state.selection);
   const facts = useStoryStore((state) => state.facts);
+  const sync = useStoryStore((state) => state.sync);
   const readOnly = useStoryStore((state) => state.agentBusy);
   if (!graph) return null;
 
@@ -296,10 +304,12 @@ export function StoryInspector({ library }: { library: StoryLibrary }) {
             chapter={node}
             graph={graph}
             facts={facts[node.id]}
+            sync={sync}
             library={library}
             readOnly={readOnly}
             onChange={onNode}
             onSelect={select}
+            onRebuild={onRebuildSection}
           />
         ) : (
           <MaterialInspector

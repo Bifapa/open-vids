@@ -19,6 +19,7 @@ export const STORY_TOOL_NAMES = {
   read: "read_story",
   edit: "edit_story",
   build: "build_story",
+  rebuild: "rebuild_story",
 } as const;
 
 export type StoryToolName = (typeof STORY_TOOL_NAMES)[keyof typeof STORY_TOOL_NAMES];
@@ -32,7 +33,7 @@ type Executor = (name: string, args: unknown, signal: AbortSignal) => Promise<Ho
 /** The mode of the turn the tools are built for. */
 export interface StoryTurnMode {
   mode: ChatMode;
-  /** The Story workspace action the turn runs (`review`, `build`), if any. */
+  /** The Story workspace action the turn runs (`review`, `build`, `rebuild`), if any. */
   action: StoryAction | null;
 }
 
@@ -43,18 +44,26 @@ export function timelineWritesAllowed({ mode, action }: StoryTurnMode): boolean 
 
 /**
  * Which story tools an agent gets. Everyone on the team can read the story, in any mode. The Director edits it in
- * story-mode turns (planning and reviewing); the turn that builds it gives `build_story` to the Editor, or to the
- * Director when there is no Editor, and freezes the graph while it compiles. Jev gets none.
+ * story-mode turns that plan or review it; the turn that builds it gives `build_story` to the Editor, or to the
+ * Director when there is no Editor, and freezes the graph while it compiles. A rebuild turn gives `rebuild_story` to the
+ * Director alone (the user's scope and policy are fixed by the turn) and freezes the graph too. Jev gets none.
  */
 export function storyToolsFor(
   agent: AgentId,
   enabled: readonly SpecialistId[],
   turn: StoryTurnMode,
 ): StoryToolName[] {
-  const { read, edit, build } = STORY_TOOL_NAMES;
+  const { read, edit, build, rebuild } = STORY_TOOL_NAMES;
   if (agent === "jev") return [];
   const tools: StoryToolName[] = [read];
-  if (agent === "director" && turn.mode === "story" && turn.action !== "build") tools.push(edit);
+  if (
+    agent === "director" &&
+    turn.mode === "story" &&
+    turn.action !== "build" &&
+    turn.action !== "rebuild"
+  )
+    tools.push(edit);
+  if (agent === "director" && turn.action === "rebuild") tools.push(rebuild);
   if (
     turn.action === "build" &&
     (agent === "editor" || (agent === "director" && !enabled.includes("editor")))
@@ -81,7 +90,8 @@ Operations (each has "op" plus):
 - set_order: chapters [every chapter id, once, in play order] — rewires the whole sequence.
 - attach: node, chapter, optional placement, offset (seconds from the chapter start; overrides placement), duration. detach: node, chapter.
 - set_story: title, brief, captionPreset, composition, reviewSummary (records the result of a review).`,
-  build_story: `Build the Story Graph into the real timeline as ONE atomic edit: chapters are laid back to back in play order; each chapter's A-roll is its source ranges cleaned like a rough cut (bad takes, fillers and long pauses removed), B-roll/pictures/graphics/music attached to it are placed on their own tracks, captions are written for chapters that want them, and every created clip remembers the story node it was built for. Earlier story clips and the raw A-roll of the story's sources are replaced; every other clip (manual additions, cutaways) is kept and reported. Returns the span of each chapter, what was replaced/kept and warnings (missing material, unanalyzed sources). Pass baseVersion (from read_story) to refuse the build when the graph changed since you read it. The change belongs to this turn's checkpoint, so the user can revert it. Verify afterwards with inspect_timeline. Pass dryRun true to see the result without writing anything.`,
+  build_story: `Build the Story Graph into the real timeline as ONE atomic edit — the FULL build: every chapter's section is regenerated. Chapters are laid back to back in play order; each chapter's A-roll is its source ranges cleaned like a rough cut (bad takes, fillers and long pauses removed), B-roll/pictures/graphics/music attached to it are placed on their own tracks, captions are written for chapters that want them, and every created clip remembers the story node it was built for. Earlier story clips and the raw A-roll of the story's sources are replaced, and so are the user's manual edits to clips the story generated (trims, moves, volume, ...) — they are listed in the result as replaced edits. The built sections of locked chapters are kept as they are unless the user allowed them for this turn (you cannot allow them yourself); every other clip (manual additions, cutaways) is kept and reported. Returns the span of each chapter, what was replaced/kept, the replaced edits, the locked chapters that were kept, and warnings (missing material, unanalyzed sources). Pass baseVersion (from read_story) to refuse the build when the graph changed since you read it. The change belongs to this turn's checkpoint, so the user can revert it. Verify afterwards with inspect_timeline. Pass dryRun true to see the result without writing anything.`,
+  rebuild_story: `Rebuild affected sections: bring the timeline in line with the Story Graph after the graph changed since it was built, touching only what changed. It regenerates only the units (a chapter's A-roll, one attached B-roll/picture/motion, a music bed, captions) whose intent the graph changed, adds the sections of new chapters and removes the sections of deleted ones, moves sections that only moved (new order, or an earlier section changed length) with their content untouched, and keeps everything else byte-identical. Manual edits the user or an AI made to generated clips are kept in a unit that has to change unless the user chose to replace them for this turn; clips no chapter owns (manual additions, cutaways) are never removed and move with the section they sit in. Locked chapters are never regenerated unless the user allowed them from the Story workspace (you cannot allow them yourself); they may still move in time as a whole and are reported as pending. The scope (chapters), the manual-edit policy and the locked permissions come from the user's choices for this turn and cannot be widened. If the timeline already matches the graph nothing is written. Returns what was rebuilt, removed and moved by chapter, the kept and replaced manual edits, the locked chapters left pending and warnings. Pass baseVersion (from read_story) to refuse the rebuild when the graph changed since you read it. The change belongs to this turn's checkpoint, so the user can revert it. Pass dryRun true to see the result without writing anything.`,
 };
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
@@ -382,6 +392,17 @@ const PARAMETERS: Record<StoryToolName, Record<string, unknown>> = {
     },
     additionalProperties: false,
   },
+  rebuild_story: {
+    type: "object",
+    properties: {
+      baseVersion: str(
+        "The version from read_story; refused with a conflict if the graph changed.",
+        200,
+      ),
+      dryRun: { type: "boolean", description: "Report what would change without writing." },
+    },
+    additionalProperties: false,
+  },
 };
 
 // ── Activity rows ────────────────────────────────────────────────────────────
@@ -427,6 +448,13 @@ const ACTIVITIES: Record<
     category: "edit",
     label:
       isRecord(args) && args.dryRun === true ? "Checking the story build" : "Building the story",
+  }),
+  rebuild_story: (args) => ({
+    category: "edit",
+    label:
+      isRecord(args) && args.dryRun === true
+        ? "Checking the story rebuild"
+        : "Rebuilding affected sections",
   }),
 };
 

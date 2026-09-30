@@ -7,6 +7,10 @@ import {
   type StoryEditRequest,
   type StoryEditResponse,
   type StoryGraph,
+  type StoryManualEdit,
+  type StoryRebuildRequest,
+  type StoryRebuildResult,
+  type StorySyncReport,
   type StoryView,
   type VideoNode,
 } from "@hyperframes/agent-protocol";
@@ -82,6 +86,7 @@ export function storyView(graph: StoryGraph | null, version = "sha256:story-v1")
     order: graph ? storyOrder(graph) : { chapters: [], notes: [] },
     facts: {},
     composition: graph ? "index.html" : null,
+    sync: null,
   };
 }
 
@@ -148,33 +153,167 @@ export function sampleBuildResult(view: StoryView): StoryBuildResult {
     removedClips: 4,
     keptClips: 2,
     captions: null,
+    replacedEdits: [],
+    keptLocked: [],
     warnings: ["Wrap up: missing Close-up of the product box"],
+    view,
+  };
+}
+
+/** A clip the user trimmed after the build. */
+export function userTrim(clip = "clip-9", label = "Keyboard close-up"): StoryManualEdit {
+  return { clip, label, kind: "modified", by: "user", turn: null, fields: ["start", "duration"] };
+}
+
+/**
+ * A sync report for {@link userEditedStory}: `ch2` changed (its B-roll moved from the middle to the end, and the user
+ * had trimmed that clip), `ch3` only moves, `ch1` is locked with pending changes.
+ */
+export function sampleSyncReport(): StorySyncReport {
+  return {
+    state: "out_of_sync",
+    composition: "index.html",
+    syncedAt: 1_700_000_000_000,
+    turnId: "turn-build",
+    sections: [
+      {
+        chapter: "ch1",
+        title: "Cold open",
+        change: "changed",
+        moved: false,
+        locked: true,
+        reasons: ["source ranges changed"],
+        current: { start: 0, end: 12 },
+        next: { start: 0, end: 14 },
+        units: [
+          {
+            node: "ch1",
+            role: "a_roll",
+            title: "Cold open",
+            change: "changed",
+            reasons: ["source ranges changed"],
+            action: "keep_locked",
+            clips: 3,
+            edits: [],
+          },
+        ],
+      },
+      {
+        chapter: "ch2",
+        title: "The problem",
+        change: "changed",
+        moved: true,
+        locked: false,
+        reasons: ["B-roll placement middle → end"],
+        current: { start: 12, end: 57 },
+        next: { start: 12, end: 57 },
+        units: [
+          {
+            node: "ch2",
+            role: "a_roll",
+            title: "The problem",
+            change: "unchanged",
+            reasons: [],
+            action: "shift",
+            clips: 3,
+            edits: [],
+          },
+          {
+            node: "v1",
+            role: "b_roll",
+            title: "Keyboard close-up",
+            change: "changed",
+            reasons: ["placement middle → end"],
+            action: "keep_edited",
+            clips: 1,
+            edits: [userTrim()],
+          },
+        ],
+      },
+      {
+        chapter: "ch3",
+        title: "Wrap up",
+        change: "unchanged",
+        moved: true,
+        locked: false,
+        reasons: ["an earlier section changed length"],
+        current: { start: 57, end: 70 },
+        next: { start: 59, end: 72 },
+        units: [],
+      },
+    ],
+    music: [],
+    captions: null,
+    unrelated: [
+      {
+        clip: "clip-77",
+        label: "Logo bug",
+        track: 4,
+        start: 60,
+        end: 65,
+        by: "user",
+        turn: null,
+        anchor: "ch3",
+        shift: 2,
+      },
+    ],
+    affected: ["ch2"],
+    moved: ["ch3"],
+    lockedPending: ["ch1"],
+    manualEdits: 1,
+    conflicts: 1,
+    duration: { current: 70, next: 72 },
+    warnings: [],
+  };
+}
+
+export function sampleRebuildResult(view: StoryView): StoryRebuildResult {
+  return {
+    dryRun: false,
+    composition: "index.html",
+    timelineVersion: "sha256:timeline-after-rebuild",
+    changed: true,
+    report: sampleSyncReport(),
+    rebuilt: ["ch2"],
+    removed: [],
+    moved: ["ch3"],
+    keptEdits: [userTrim()],
+    replacedEdits: [],
+    keptLocked: ["ch1"],
+    duration: 72,
+    warnings: [],
     view,
   };
 }
 
 /**
  * Deterministic in-memory story host for runtime tests and embedding harnesses. It records every request and answers
- * from the fields below. It can hold an `edit` or a `build` open (`editGate`, `buildGate`) so tests can finish a turn
- * while a story write is in flight. Like the real host, a started edit or build ignores aborts.
+ * from the fields below. It can hold an `edit`, a `build` or a `rebuild` open (`editGate`, `buildGate`, `rebuildGate`)
+ * so tests can finish a turn while a story write is in flight. Like the real host, a started write ignores aborts.
  */
 export class FakeStoryHost implements StoryHost {
   viewResult: StoryView = storyView(null);
   buildResult: StoryBuildResult | null = null;
+  rebuildResult: StoryRebuildResult | null = null;
   /** The next edit/build rejects with this error. */
   nextError: StoryToolError | null = null;
   /** While set, `edit` records the request and then waits for it before answering. */
   editGate: Promise<void> | null = null;
   /** While set, `build` records the request and then waits for it before answering. */
   buildGate: Promise<void> | null = null;
+  /** While set, `rebuild` records the request and then waits for it before answering. */
+  rebuildGate: Promise<void> | null = null;
 
   readonly editRequests: StoryEditRequest[] = [];
   readonly editFinished: StoryEditRequest[] = [];
   readonly buildRequests: StoryBuildRequest[] = [];
   readonly buildFinished: StoryBuildRequest[] = [];
-  /** The signal each edit/build was given, so tests can see when the turn stopped waiting for it. */
+  readonly rebuildRequests: StoryRebuildRequest[] = [];
+  readonly rebuildFinished: StoryRebuildRequest[] = [];
+  /** The signal each edit/build/rebuild was given, so tests can see when the turn stopped waiting for it. */
   readonly editSignals: AbortSignal[] = [];
   readonly buildSignals: AbortSignal[] = [];
+  readonly rebuildSignals: AbortSignal[] = [];
   viewCalls = 0;
 
   async view(signal: AbortSignal): Promise<StoryView> {
@@ -216,6 +355,23 @@ export class FakeStoryHost implements StoryHost {
     this.buildFinished.push(request);
     return structuredClone({
       ...(this.buildResult ?? sampleBuildResult(this.viewResult)),
+      dryRun: request.dryRun === true,
+    });
+  }
+
+  async rebuild(request: StoryRebuildRequest, signal: AbortSignal): Promise<StoryRebuildResult> {
+    if (signal.aborted) throw new StoryToolError("aborted", "The operation was cancelled.");
+    this.rebuildRequests.push(request);
+    this.rebuildSignals.push(signal);
+    if (this.rebuildGate) await this.rebuildGate;
+    if (this.nextError) {
+      const error = this.nextError;
+      this.nextError = null;
+      throw error;
+    }
+    this.rebuildFinished.push(request);
+    return structuredClone({
+      ...(this.rebuildResult ?? sampleRebuildResult(this.viewResult)),
       dryRun: request.dryRun === true,
     });
   }

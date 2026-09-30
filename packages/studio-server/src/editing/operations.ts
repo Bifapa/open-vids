@@ -19,6 +19,7 @@ import {
   resolveTimelineAssetSrc,
 } from "@hyperframes/core/editing/timeline-asset";
 import { writeClipTiming } from "@hyperframes/core/composition-contract";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { snapshotBeforeWrite } from "../helpers/backupJournal.js";
@@ -39,6 +40,7 @@ import {
   captionSkinPath,
   cuesToGroups,
 } from "./captions.js";
+import { AI_EDIT_ATTRIBUTE, aiEditStamp, clipState } from "./clipState.js";
 import { EditFailure, isEditFailure } from "./errors.js";
 import { scaleClipTweens, shiftClipTweens, splitClipTweens } from "./gsapSync.js";
 import type { MediaFacts } from "./mediaFacts.js";
@@ -77,6 +79,11 @@ export interface EditEnv {
     "listRegistryCatalog" | "installRegistryBlock" | "captionSkinsDir"
   >;
   facts: MediaFacts;
+  /**
+   * The agent turn making the edit: clips the batch changes are stamped with it (`data-ov-ai-edit`), clips it adds
+   * get it as their provenance unless the operation names another. Absent for Studio's own and Story builds.
+   */
+  turnId?: string;
 }
 
 /** The state a batch builds up in memory; nothing reaches disk until every operation has succeeded. */
@@ -88,6 +95,8 @@ interface Batch {
   files: Map<string, string>;
   /** Files the registry install wrote (already on disk). */
   installed: string[];
+  /** Existing clips (hf id or DOM id) the batch changed; stamped with the turn at the end. */
+  touched: Set<string>;
 }
 
 interface Gsap {
@@ -569,15 +578,20 @@ async function applyCaptions(
   }
 
   const canvas = canvasOf(model);
+  // Written with its stable ids already in place: otherwise the host stamps them into the file on the next preview
+  // or project open — a second write outside the turn that made the captions, which `Revert this turn` then treats as
+  // a later edit and keeps.
   batch.files.set(
     CAPTIONS_FILE,
-    buildCaptionsComposition({
-      skin: readFileSync(skinFile, "utf-8"),
-      groups,
-      duration,
-      width: canvas.width,
-      height: canvas.height,
-    }),
+    ensureHfIds(
+      buildCaptionsComposition({
+        skin: readFileSync(skinFile, "utf-8"),
+        groups,
+        duration,
+        width: canvas.width,
+        height: canvas.height,
+      }),
+    ),
   );
 
   if (existing) {
@@ -783,6 +797,7 @@ async function splitClip(
     );
   }
   batch.html = split.html;
+  batch.touched.add(split.newId);
   if (clip.domId) {
     batch.html = splitClipTweens(batch.html, {
       originalId: clip.domId,
@@ -884,7 +899,7 @@ async function setComposition(
   return { op: op.op, clipId: null, newClipId: null };
 }
 
-async function applyOperation(
+async function runOperation(
   env: EditEnv,
   batch: Batch,
   op: EditOperation,
@@ -917,7 +932,46 @@ async function applyOperation(
   }
 }
 
-/** Without an explicit `set_composition`, the length follows the content: the furthest clip end, growing or shrinking. */
+/** An add operation of an agent turn records the turn as its provenance unless it names one itself. */
+function withTurn(op: EditOperation, turnId: string | undefined): EditOperation {
+  if (turnId === undefined) return op;
+  switch (op.op) {
+    case "add_clip":
+    case "add_sequence":
+    case "add_text":
+    case "add_component":
+      return op.provenance?.turn ? op : { ...op, provenance: { ...op.provenance, turn: turnId } };
+    default:
+      return op;
+  }
+}
+
+async function applyOperation(
+  env: EditEnv,
+  batch: Batch,
+  op: EditOperation,
+): Promise<EditOperationResult> {
+  const result = await runOperation(env, batch, withTurn(op, env.turnId));
+  switch (op.op) {
+    case "move_clip":
+    case "trim_clip":
+    case "set_clip":
+    case "split_clip":
+      if (result.clipId) batch.touched.add(result.clipId);
+      break;
+    case "arrange_track":
+      for (const ref of op.clips) batch.touched.add(ref);
+      break;
+    default:
+      break;
+  }
+  return result;
+}
+
+/**
+ * Without an explicit `set_composition`, the length follows the content: the furthest clip end, growing or shrinking.
+ * Clips an agent turn changed get its `data-ov-ai-edit` stamp over their final state.
+ */
 async function followContentLength(env: EditEnv, batch: Batch): Promise<void> {
   const model = await loadModel(env, batch.html);
   if (!batch.explicitDuration && model.clips.length > 0) {
@@ -925,6 +979,13 @@ async function followContentLength(env: EditEnv, batch: Batch): Promise<void> {
       model,
       model.clips.reduce((max, clip) => Math.max(max, clip.end), 0),
     );
+  }
+  if (env.turnId !== undefined) {
+    for (const ref of batch.touched) {
+      const clip = findClip(model, ref);
+      if (clip)
+        clip.element.setAttribute(AI_EDIT_ATTRIBUTE, aiEditStamp(env.turnId, clipState(clip)));
+    }
   }
   // Serialising here also stamps stable ids on anything the batch left without one.
   commit(batch, model);
@@ -973,7 +1034,11 @@ export async function applyEdits(
   request: ApplyEditsRequest,
 ): Promise<ApplyEditsResponse> {
   const path = posix.normalize(env.compositionPath);
-  const scoped = { ...env, compositionPath: path };
+  const scoped: EditEnv = {
+    ...env,
+    compositionPath: path,
+    ...(request.turnId !== undefined && { turnId: request.turnId }),
+  };
   const abs = resolveWithinProject(env.project.dir, path);
   if (!abs || !path.endsWith(".html") || !existsSync(abs) || !statSync(abs).isFile()) {
     throw new EditFailure("unknown_composition", `No composition "${request.composition ?? path}"`);
@@ -995,7 +1060,13 @@ export async function applyEdits(
     );
   }
 
-  const batch: Batch = { html: original, explicitDuration: false, files: new Map(), installed: [] };
+  const batch: Batch = {
+    html: original,
+    explicitDuration: false,
+    files: new Map(),
+    installed: [],
+    touched: new Set(),
+  };
   const results: EditOperationResult[] = [];
   for (const [index, op] of request.operations.entries()) {
     try {

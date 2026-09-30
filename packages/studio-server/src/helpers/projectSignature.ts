@@ -186,9 +186,13 @@ function collectProjectFiles(normalizedProjectDir: string): ProjectSignatureFile
 /**
  * Files project history tracks that the preview never reads: they are left out of the signature and of Studio's
  * file-change reloads, but an undo/revert restores them together with the project's source. Currently the Story
- * Graph (`.hyperframes/story/graph.json`), which agent turns write and "Revert this turn" must roll back.
+ * Graph (`.hyperframes/story/graph.json`) and its timeline sync ledger (`.hyperframes/story/sync.json`), which agent
+ * turns write and "Revert this turn" must roll back together with the composition.
  */
-export const HISTORY_ONLY_TRACKED_PATHS = [".hyperframes/story/graph.json"] as const;
+export const HISTORY_ONLY_TRACKED_PATHS = [
+  ".hyperframes/story/graph.json",
+  ".hyperframes/story/sync.json",
+] as const;
 
 /** Whether a write at `changedPath` can change what project history tracks (the signature's files plus the above). */
 export function affectsProjectHistory(projectDir: string, changedPath: string): boolean {

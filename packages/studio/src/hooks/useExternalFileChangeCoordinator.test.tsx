@@ -93,6 +93,53 @@ describe("external file change coordinator", () => {
     expect(refreshFileTree).toHaveBeenCalledOnce();
   });
 
+  // The SSE rung opens a new /api/events connection per subscribe and the stream has no
+  // replay: re-subscribing because a callback changed identity (the file-tree refresh a
+  // `.tmp` event triggers re-renders its owners) dropped the rename's event that followed.
+  it("keeps one subscription across callback changes and uses the latest callbacks", async () => {
+    let subscriptions = 0;
+    vi.stubGlobal("__HF_STUDIO_HOT_TEST_ADAPTER__", {
+      on: (_event: string, next: HotHandler) => {
+        subscriptions += 1;
+        handler = next;
+      },
+      off: () => {
+        handler = null;
+      },
+    });
+    const first = vi.fn();
+    const latest = vi.fn();
+    const root = createRoot(document.createElement("div"));
+    roots.push(root);
+    const base: CoordinatorOptions = {
+      projectId: "project-a",
+      activeCompPath: "index.html",
+      pendingTimelineEditPathRef: { current: new Set() },
+      drainPendingChanges: async () => ({ status: "clean" }),
+      reloadPreview: first,
+      reloadSdkSession: () => {},
+      persistConflictSnapshot: async () => undefined,
+      discardPendingChanges: () => {},
+      overwriteConflict: async () => undefined,
+      readProjectFile: async () => "external",
+      onAcceptedPersistedFileChange: () => {},
+    };
+    function Probe({ options }: { options: CoordinatorOptions }) {
+      useExternalFileChangeCoordinator(options);
+      return null;
+    }
+    await act(async () => root.render(<Probe options={base} />));
+    await act(async () =>
+      root.render(
+        <Probe options={{ ...base, reloadPreview: latest, refreshFileTree: () => {} }} />,
+      ),
+    );
+    expect(subscriptions).toBe(1);
+    await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
+    expect(latest).toHaveBeenCalledOnce();
+    expect(first).not.toHaveBeenCalled();
+  });
+
   it("refreshes the file tree but not Preview for a file the preview never loaded", async () => {
     const order: string[] = [];
     await mountCoordinator({

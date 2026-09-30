@@ -52,6 +52,7 @@ export function StoryCanvas({ onRefused }: { onRefused: (reason: string) => void
   const facts = useStoryStore((state) => state.facts);
   const selection = useStoryStore((state) => state.selection);
   const readOnly = useStoryStore((state) => state.agentBusy);
+  const sync = useStoryStore((state) => state.sync);
   const order = useMemo(() => (graph ? storyOrder(graph).chapters : []), [graph]);
   // Bumped when a finished drag was refused: the cards go back to where the graph has them.
   const [resync, bumpResync] = useReducer((count: number) => count + 1, 0);
@@ -59,9 +60,9 @@ export function StoryCanvas({ onRefused }: { onRefused: (reason: string) => void
   const [nodes, setNodes] = useState<StoryFlowNode[]>([]);
   useEffect(() => {
     setNodes((previous) =>
-      toFlowNodes({ graph, facts, projectId, selection, readOnly, order }, previous),
+      toFlowNodes({ graph, facts, projectId, selection, readOnly, order, sync }, previous),
     );
-  }, [graph, facts, projectId, selection, readOnly, order, resync]);
+  }, [graph, facts, projectId, selection, readOnly, order, sync, resync]);
   const edges = useMemo(() => toFlowEdges(graph, selection), [graph, selection]);
 
   const onNodesChange = useCallback(

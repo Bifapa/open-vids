@@ -3,6 +3,7 @@ import {
   isStoryView,
   type StoryBuildResult,
   type StoryEditResponse,
+  type StoryRebuildResult,
 } from "@hyperframes/agent-protocol";
 
 export { isStoryView };
@@ -15,6 +16,20 @@ export { isStoryView };
 const isString = (value: unknown): value is string => typeof value === "string";
 const isNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+
+const isStringList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every(isString);
+
+const isManualEdit = (value: unknown): boolean =>
+  isRecord(value) &&
+  isString(value.clip) &&
+  isString(value.label) &&
+  isString(value.kind) &&
+  isString(value.by) &&
+  isStringList(value.fields);
+
+const isManualEditList = (value: unknown): boolean =>
+  Array.isArray(value) && value.every(isManualEdit);
 
 export function isStoryEditResponse(value: unknown): value is StoryEditResponse {
   return (
@@ -49,6 +64,28 @@ export function isStoryBuildResult(value: unknown): value is StoryBuildResult {
     isNumber(value.keptClips) &&
     Array.isArray(value.warnings) &&
     value.warnings.every(isString) &&
+    isManualEditList(value.replacedEdits) &&
+    isStringList(value.keptLocked) &&
+    isStoryView(value.view)
+  );
+}
+
+export function isStoryRebuildResult(value: unknown): value is StoryRebuildResult {
+  return (
+    isRecord(value) &&
+    typeof value.dryRun === "boolean" &&
+    typeof value.changed === "boolean" &&
+    isString(value.composition) &&
+    isString(value.timelineVersion) &&
+    isNumber(value.duration) &&
+    isRecord(value.report) &&
+    isStringList(value.rebuilt) &&
+    isStringList(value.removed) &&
+    isStringList(value.moved) &&
+    isManualEditList(value.keptEdits) &&
+    isManualEditList(value.replacedEdits) &&
+    isStringList(value.keptLocked) &&
+    isStringList(value.warnings) &&
     isStoryView(value.view)
   );
 }

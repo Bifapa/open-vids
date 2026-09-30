@@ -15,6 +15,7 @@ import {
   type ProjectEvent,
   type RevertMode,
   type StoryAction,
+  type StoryActionOptions,
   type ThinkingEffort,
   type TurnSummary,
   type UpdateChatRequest,
@@ -33,6 +34,7 @@ import {
   type StreamHandle,
   type StreamStatus,
 } from "./agentStream";
+import { storyTurnRequest } from "./storyTurn";
 
 export type AgentAvailability = "loading" | "ready" | "unavailable";
 export type AgentView = "history" | "chat";
@@ -82,8 +84,11 @@ export interface AgentState extends AgentSettingsSlice {
   setDraft(text: string): void;
   /** The open chat's mode for its next turns (PATCH `activeMode`). */
   setMode(mode: ChatMode): Promise<void>;
-  /** Runs Review with AI / Build Story as a story-mode turn of the open chat (a new chat when none is open). */
-  runStoryAction(action: StoryAction): Promise<ActionResult>;
+  /**
+   * Runs Review with AI / Build Story / Rebuild affected as a story-mode turn of the open chat (a new chat when
+   * none is open), with the user's choices for a build or rebuild.
+   */
+  runStoryAction(action: StoryAction, options?: StoryActionOptions): Promise<ActionResult>;
   /** Starts a turn, or steers the live one when the chat is running. */
   send(): Promise<void>;
   abort(): Promise<void>;
@@ -495,7 +500,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         }
       },
 
-      async runStoryAction(action) {
+      async runStoryAction(action, options) {
         if (get().pending) return { ok: false, message: "The agent is busy with another request." };
         let chatId = get().chatId;
         set({ pending: "send", notice: null });
@@ -506,13 +511,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
             await get().openChat(created.id);
             chatId = created.id;
           }
-          await client.startTurn(chatId, {
-            // Short on purpose: the story action itself tells the agent what to do.
-            prompt: action === "review" ? "Review the story" : "Build the story",
-            mode: "story",
-            storyAction: action,
-            editorContext: captureContext(),
-          });
+          await client.startTurn(chatId, storyTurnRequest(action, options, captureContext()));
           if (get().streamStatus !== "open") await resync(chatId);
           return { ok: true };
         } catch (error) {

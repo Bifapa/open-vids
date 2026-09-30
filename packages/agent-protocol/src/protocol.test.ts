@@ -213,6 +213,37 @@ describe("validators", () => {
     expect(parseStartTurn({ prompt: "x", storyAction: "publish" }).ok).toBe(false);
   });
 
+  it("accepts the user's rebuild/build options only with those actions, and only what each action uses", () => {
+    expect(
+      parseStartTurn({
+        prompt: "Rebuild",
+        storyAction: "rebuild",
+        storyOptions: { chapters: ["ch1", "ch1"], manualEdits: "replace", allowLocked: ["ch2"] },
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        prompt: "Rebuild",
+        storyAction: "rebuild",
+        storyOptions: { chapters: ["ch1"], manualEdits: "replace", allowLocked: ["ch2"] },
+      },
+    });
+    const refused = [
+      { storyAction: "review", storyOptions: { allowLocked: ["ch2"] } },
+      { storyOptions: { manualEdits: "keep" } },
+      { storyAction: "build", storyOptions: { manualEdits: "replace" } },
+      { storyAction: "build", storyOptions: { chapters: ["ch1"] } },
+      { storyAction: "rebuild", storyOptions: { manualEdits: "merge" } },
+      { storyAction: "rebuild", storyOptions: { allowLocked: ["../x"] } },
+      { storyAction: "rebuild", storyOptions: { force: true } },
+    ];
+    for (const body of refused) expect(parseStartTurn({ prompt: "x", ...body }).ok).toBe(false);
+    expect(
+      parseStartTurn({ prompt: "x", storyAction: "build", storyOptions: { allowLocked: ["ch2"] } })
+        .ok,
+    ).toBe(true);
+  });
+
   it("parses a chat's active mode and refuses unknown ones", () => {
     expect(parseUpdateChat({ activeMode: "story" })).toEqual({
       ok: true,

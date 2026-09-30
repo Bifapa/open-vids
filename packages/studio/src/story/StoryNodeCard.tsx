@@ -12,6 +12,7 @@ import {
   NARRATIVE_ROLE_LABELS,
   STORY_KIND_STYLES,
 } from "./storyKinds";
+import { SyncBadges } from "./SyncBadges";
 
 /** The frame a card shows: the node's own pick, else the middle of its first range / its in-point. */
 function cardFrame(node: StoryNode): StoryFrameRef | null {
@@ -166,6 +167,7 @@ function ChapterCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
         <p className="truncate text-step-11 text-text-2">
           {node.description || node.purpose || "No description yet"}
         </p>
+        <SyncBadges badges={data.sync} className="pt-0.5" />
       </div>
     </div>
   );
@@ -239,6 +241,7 @@ function MaterialCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
           <span className={cn("font-medium", style.text)}>{style.label}</span> ·{" "}
           {materialLine(node)}
         </p>
+        <SyncBadges badges={data.sync} className="pt-0.5" />
       </div>
     </div>
   );

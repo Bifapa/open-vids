@@ -2,11 +2,12 @@
  * The Story workspace's state: the graph as the user sees it, a local undo/redo stack of graph snapshots, and a
  * debounced save. Manual edits never make project checkpoints; each saved state is a PUT the server claims as the
  * user's own history entry. Agent turns change the graph on the server, so the canvas is read-only while one runs
- * and reloads when it ends.
+ * and reloads when it ends. The view also carries the Story ↔ timeline sync report, which timeline edits change
+ * without touching the graph: a reload for it keeps the graph object when its version did not move.
  */
 
 import { createStore, type StoreApi } from "zustand/vanilla";
-import type { StoryGraph, StoryNodeFacts } from "@hyperframes/agent-protocol";
+import type { StoryGraph, StoryNodeFacts, StorySyncReport } from "@hyperframes/agent-protocol";
 import { StoryApiError, type StoryClient } from "./storyClient";
 import { emptyStoryGraph, newStoryId } from "./storyGraphOps";
 
@@ -28,6 +29,8 @@ export interface StoryState {
   version: string | null;
   facts: Record<string, StoryNodeFacts>;
   composition: string | null;
+  /** How the timeline relates to the graph since the last build (null without a graph). */
+  sync: StorySyncReport | null;
   past: StoryGraph[];
   future: StoryGraph[];
   saveState: StorySaveState;
@@ -117,15 +120,18 @@ export function createStoryStore({
       try {
         const view = await client.load(projectId);
         if (from !== epoch || dirty) return;
-        const { version, selection } = get();
+        const { version, selection, graph } = get();
+        // Same version, same graph: keep the object so the canvas does not redraw every card for a sync refresh.
+        const nextGraph = view.version === version && graph ? graph : view.graph;
         set({
           status: "ready",
           loadError: null,
-          graph: view.graph,
+          graph: nextGraph,
           version: view.version,
           facts: view.facts,
           composition: view.composition,
-          selection: pruneSelection(selection, view.graph),
+          sync: view.sync,
+          selection: pruneSelection(selection, nextGraph),
           ...(view.version === version ? {} : { past: [], future: [] }),
         });
       } catch (error) {
@@ -153,6 +159,7 @@ export function createStoryStore({
             version: view.version,
             facts: view.facts,
             composition: view.composition,
+            sync: view.sync,
             // The server's copy carries the authorship it recorded; take it unless the user edited on.
             ...(madeAt === revision && view.graph ? { graph: view.graph } : {}),
             saveState: dirty ? "pending" : "saved",
@@ -193,6 +200,7 @@ export function createStoryStore({
       version: null,
       facts: {},
       composition: null,
+      sync: null,
       past: [],
       future: [],
       saveState: "saved",
@@ -218,6 +226,7 @@ export function createStoryStore({
           version: null,
           facts: {},
           composition: null,
+          sync: null,
           past: [],
           future: [],
           saveState: "saved",

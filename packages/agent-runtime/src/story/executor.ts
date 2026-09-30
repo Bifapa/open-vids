@@ -2,11 +2,19 @@ import {
   isRecord,
   parseStoryBuildRequest,
   parseStoryEditRequest,
+  parseStoryRebuildRequest,
   type ParsedStory,
+  type StoryActionOptions,
 } from "@hyperframes/agent-protocol";
 import type { HostToolResult } from "../backend.js";
 import { errorMessage } from "../errors.js";
-import { formatStory, formatStoryBuild, formatStoryEdit, formatStoryError } from "./format.js";
+import {
+  formatStory,
+  formatStoryBuild,
+  formatStoryEdit,
+  formatStoryError,
+  formatStoryRebuild,
+} from "./format.js";
 import { StoryToolError, type StoryHost } from "./host.js";
 import { STORY_TOOL_NAMES, isStoryToolName, type StoryToolName } from "./tools.js";
 
@@ -16,6 +24,8 @@ export interface TurnStoryOptions {
   turnId: string;
   /** The turn's abort signal: aborting the turn aborts every in-flight read. */
   turnSignal: AbortSignal;
+  /** The user's choices for a build/rebuild turn; the tools apply them and the model cannot widen them. */
+  storyOptions: StoryActionOptions | null;
 }
 
 const refuse = (text: string): HostToolResult => ({ text, isError: true });
@@ -25,6 +35,15 @@ function argsRecord(args: unknown): Record<string, unknown> {
   if (!isRecord(args))
     throw new StoryToolError("invalid_request", "arguments must be a JSON object");
   return args;
+}
+
+/** The user's choices are not the model's to give: whatever it sends for them is dropped. */
+const TURN_POLICY_KEYS = ["chapters", "manualEdits", "allowLocked"] as const;
+
+function modelArgs(args: unknown): Record<string, unknown> {
+  const record = withoutNulls(argsRecord(args), new Set());
+  for (const key of TURN_POLICY_KEYS) delete record[key];
+  return record;
 }
 
 function checked<T>(parsed: ParsedStory<T>): T {
@@ -122,7 +141,7 @@ export class TurnStory {
     args: unknown,
     signal: AbortSignal,
   ): Promise<HostToolResult> {
-    const { host, turnId } = this.options;
+    const { host, turnId, storyOptions } = this.options;
     switch (name) {
       case STORY_TOOL_NAMES.read:
         return { text: formatStory(await host.view(signal)) };
@@ -135,9 +154,21 @@ export class TurnStory {
         return { text: formatStoryEdit(await host.edit(request, signal)) };
       }
       case STORY_TOOL_NAMES.build: {
-        const record = withoutNulls(argsRecord(args), new Set());
-        const request = checked(parseStoryBuildRequest({ ...record, turnId }));
+        const allowLocked = storyOptions?.allowLocked;
+        const request = checked(
+          parseStoryBuildRequest({
+            ...modelArgs(args),
+            turnId,
+            ...(allowLocked && { allowLocked }),
+          }),
+        );
         return { text: formatStoryBuild(await host.build(request, signal)) };
+      }
+      case STORY_TOOL_NAMES.rebuild: {
+        const request = checked(
+          parseStoryRebuildRequest({ ...modelArgs(args), turnId, ...storyOptions }),
+        );
+        return { text: formatStoryRebuild(await host.rebuild(request, signal)) };
       }
     }
   }

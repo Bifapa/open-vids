@@ -243,6 +243,12 @@ export interface ApplyEditsRequest {
   /** Project-relative composition path; defaults to the main composition. */
   composition?: string;
   baseVersion?: string;
+  /**
+   * The agent turn making the edit (set by the runtime, never by a model): clips the batch changes get a
+   * `data-ov-ai-edit` stamp and clips it adds default to that turn's provenance, so Story sync can tell a later AI
+   * edit of generated material from a manual one.
+   */
+  turnId?: string;
   operations: EditOperation[];
 }
 
@@ -388,6 +394,7 @@ function isField(value: unknown): value is Field {
 }
 
 const PROVENANCE_KEYS = ["storyNode", "cut", "turn"] as const;
+const PROVENANCE_ID = /^[A-Za-z0-9_.:-]{1,200}$/;
 
 /** `provenance` of an add operation: any of the three ids, each a plain token that is safe to write as an attribute. */
 function readProvenance(value: unknown): Partial<ClipProvenance> | Field {
@@ -398,7 +405,7 @@ function readProvenance(value: unknown): Partial<ClipProvenance> | Field {
   for (const key of PROVENANCE_KEYS) {
     const entry = value[key];
     if (entry === undefined) continue;
-    if (typeof entry !== "string" || !/^[A-Za-z0-9_.:-]{1,200}$/.test(entry)) {
+    if (typeof entry !== "string" || !PROVENANCE_ID.test(entry)) {
       return { ok: false, message: `provenance.${key} must be an id (letters, digits, _ . : -)` };
     }
     read[key] = entry;
@@ -797,7 +804,8 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
 export function parseApplyEditsRequest(body: unknown): ParsedEdit<ApplyEditsRequest> {
   if (!isRecord(body)) return invalid("body must be a JSON object");
   const unknownKey = Object.keys(body).find(
-    (key) => key !== "composition" && key !== "baseVersion" && key !== "operations",
+    (key) =>
+      key !== "composition" && key !== "baseVersion" && key !== "operations" && key !== "turnId",
   );
   if (unknownKey) return invalid(`unknown field "${unknownKey}"`);
   let composition: string | undefined;
@@ -811,6 +819,12 @@ export function parseApplyEditsRequest(body: unknown): ParsedEdit<ApplyEditsRequ
     const read = readString(body.baseVersion, "baseVersion", 200);
     if (isField(read)) return invalid(read.ok ? "baseVersion is invalid" : read.message);
     baseVersion = read;
+  }
+  let turnId: string | undefined;
+  if (body.turnId !== undefined) {
+    if (typeof body.turnId !== "string" || !PROVENANCE_ID.test(body.turnId))
+      return invalid("turnId must be an id (letters, digits, _ . : -)");
+    turnId = body.turnId;
   }
   if (!Array.isArray(body.operations) || body.operations.length === 0)
     return invalid("operations must be a non-empty array");
@@ -827,6 +841,7 @@ export function parseApplyEditsRequest(body: unknown): ParsedEdit<ApplyEditsRequ
     value: {
       ...(composition !== undefined && { composition }),
       ...(baseVersion !== undefined && { baseVersion }),
+      ...(turnId !== undefined && { turnId }),
       operations,
     },
   };

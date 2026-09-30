@@ -138,10 +138,31 @@ export type ChatMode = (typeof CHAT_MODES)[number];
 
 /**
  * A Story workspace action run as a turn: `review` — the Director reviews the current (user-edited) graph;
- * `build` — the story is built into the timeline. Both are ordinary checkpointed turns.
+ * `build` — the whole story is built into the timeline; `rebuild` — only the sections the graph changed since the
+ * last build are rebuilt. All are ordinary checkpointed turns.
  */
-export const STORY_ACTIONS = ["review", "build"] as const;
+export const STORY_ACTIONS = ["review", "build", "rebuild"] as const;
 export type StoryAction = (typeof STORY_ACTIONS)[number];
+
+/**
+ * What happens to generated clips that were edited after the build when a rebuild would regenerate them: `keep`
+ * leaves the edited material on the timeline (that part of the story change is not applied), `replace` rebuilds it.
+ */
+export const MANUAL_EDIT_POLICIES = ["keep", "replace"] as const;
+export type ManualEditPolicy = (typeof MANUAL_EDIT_POLICIES)[number];
+
+/**
+ * The user's choices for a `build` / `rebuild` turn, made in the Story workspace. The turn's story tools apply them;
+ * a model cannot widen them (it can never unlock a chapter or replace edited material on its own).
+ */
+export interface StoryActionOptions {
+  /** rebuild: only these chapters' changed sections are regenerated (default: every affected section). */
+  chapters?: string[];
+  /** rebuild: edited generated clips in a section that must change (default `keep`). */
+  manualEdits?: ManualEditPolicy;
+  /** build/rebuild: locked chapters the user allows to be rebuilt (their built section is otherwise frozen). */
+  allowLocked?: string[];
+}
 
 export interface ChatSummary {
   id: string;
@@ -216,6 +237,8 @@ export interface TurnSummary {
   mode?: ChatMode;
   /** The Story workspace action the turn ran, if any. */
   storyAction?: StoryAction;
+  /** The user's choices for that action (build/rebuild). */
+  storyOptions?: StoryActionOptions;
   error?: AgentError;
 }
 

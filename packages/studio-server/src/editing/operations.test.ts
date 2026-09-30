@@ -5,6 +5,7 @@ import type { RegistryItem } from "@hyperframes/core";
 import type { ApplyEditsRequest, EditOperation, TimelineClip } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { isEditFailure } from "./errors.js";
+import { stampFileHfIds } from "../helpers/hfIdPersist.js";
 import { applyEdits } from "./operations.js";
 import { FAKE_MEDIA, createTestProject, MAIN_HTML, type TestProject } from "./testProject.js";
 import { readTimeline } from "./service.js";
@@ -624,6 +625,18 @@ describe("add_component", () => {
 });
 
 describe("apply_captions", () => {
+  it("writes the captions file with its stable ids, so the host's id stamping never rewrites it", async () => {
+    withProject();
+    await apply([
+      { op: "apply_captions", preset: "coral", cues: [{ text: "Hi", start: 0, end: 1 }] },
+    ]);
+    const path = join(project?.project.dir ?? "", "compositions/captions.html");
+    const written = readFileSync(path, "utf-8");
+    expect(written).toContain("data-hf-id=");
+    stampFileHfIds(path);
+    expect(readFileSync(path, "utf-8")).toBe(written);
+  });
+
   it("writes the captions composition from a real skin and mounts one host over the whole composition", async () => {
     withProject();
     const { results, timeline, changedFiles } = await apply([
@@ -1185,5 +1198,37 @@ describe("provenance", () => {
     expect(clipOf(timeline.clips, "intro").provenance).toBeNull();
     const moved = await apply([{ op: "move_clip", clip: results[0]?.clipId ?? "", start: 12 }]);
     expect(clipOf(moved.timeline.clips, results[0]?.clipId ?? "").provenance).toEqual(stamp);
+  });
+
+  it("stamps an agent turn on the clips its batch changes and on the clips it adds, but not on Studio's own edits", async () => {
+    withProject();
+    const { timeline, results } = await apply(
+      [
+        { op: "move_clip", clip: "hf-title", start: 2 },
+        { op: "split_clip", clip: "hf-intro", at: 2 },
+        { op: "add_clip", asset: "assets/b.mp4", start: 5, track: 1 },
+        {
+          op: "add_clip",
+          asset: "assets/b.mp4",
+          start: 6,
+          track: 5,
+          provenance: { turn: "other" },
+        },
+      ],
+      { turnId: "turn-7" },
+    );
+    const html = project?.read("index.html") ?? "";
+    const stampOf = (id: string) =>
+      new RegExp(`data-hf-id="${id}"[^>]*data-ov-ai-edit="([^"]+)"`).exec(html)?.[1] ??
+      new RegExp(`data-ov-ai-edit="([^"]+)"[^>]*data-hf-id="${id}"`).exec(html)?.[1];
+    const second = results[1]?.newClipId ?? "";
+    for (const id of ["hf-title", "hf-intro", second]) expect(stampOf(id)).toMatch(/^turn-7@/);
+    expect(stampOf("hf-music")).toBeUndefined();
+    expect(clipOf(timeline.clips, results[2]?.clipId ?? "").provenance?.turn).toBe("turn-7");
+    expect(clipOf(timeline.clips, results[3]?.clipId ?? "").provenance?.turn).toBe("other");
+
+    // A batch without a turn (Studio, Story builds) adds no stamp.
+    await apply([{ op: "move_clip", clip: "hf-music", start: 1 }]);
+    expect(project?.read("index.html")).not.toMatch(/data-hf-id="hf-music"[^>]*data-ov-ai-edit/);
   });
 });

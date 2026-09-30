@@ -15,6 +15,14 @@ export interface StoryAgent {
   planWithAi(): Promise<ActionResult>;
 }
 
+/** Why the agent cannot take a story action now, or null when it can. */
+export function agentBlocker(agent: StoryAgent): string | null {
+  if (!agent.available) return "The agent is unavailable";
+  if (agent.busy) return "The agent is working";
+  if (agent.pending) return "Starting…";
+  return null;
+}
+
 const noSubscription = () => () => {};
 
 export function useStoryAgent(agentStore: AgentStore | null): StoryAgent {
@@ -29,9 +37,9 @@ export function useStoryAgent(agentStore: AgentStore | null): StoryAgent {
     available: agentStore !== null && available,
     busy,
     pending,
-    runStoryAction: async (action) =>
+    runStoryAction: async (action, options) =>
       agentStore
-        ? agentStore.getState().runStoryAction(action)
+        ? agentStore.getState().runStoryAction(action, options)
         : { ok: false, message: "The agent is not ready yet." },
     planWithAi: async () => {
       if (!agentStore) return { ok: false, message: "The agent is not ready yet." };
@@ -50,7 +58,7 @@ export function useStoryAgent(agentStore: AgentStore | null): StoryAgent {
 
 /**
  * Keeps the story in step with agent turns: read-only while any turn runs on the project, reloaded when it ends
- * (the agent may have edited or built the story).
+ * (the agent may have edited, built or rebuilt the story, or edited the timeline its sync report compares).
  */
 export function useStoryAgentSync(agentStore: AgentStore | null, story: StoryStore): void {
   useEffect(() => {

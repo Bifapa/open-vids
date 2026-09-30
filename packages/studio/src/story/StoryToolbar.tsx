@@ -1,6 +1,7 @@
 import {
   ArrowClockwise,
   ArrowCounterClockwise,
+  ArrowsClockwise,
   CornersOut,
   Hammer,
   Sparkle,
@@ -11,7 +12,8 @@ import { AddNodePopover, type NewNodeRequest } from "./AddNodePopover";
 import { useStoryStore } from "./storyContext";
 import { formatAge, formatDuration } from "./storyFormat";
 import type { StorySaveState } from "./storyStore";
-import type { StoryAgent } from "./useStoryAgent";
+import { rebuildTargets, syncBlocker } from "./storySync";
+import { agentBlocker, type StoryAgent } from "./useStoryAgent";
 import type { StoryLibrary } from "./useStoryLibrary";
 
 const SAVE_LABELS: Record<StorySaveState, string> = {
@@ -26,9 +28,8 @@ const MOD = isMac ? "⌘" : "Ctrl+";
 
 /** Why Review/Build cannot run now, or null when they can. */
 function actionBlocker(action: StoryAction, agent: StoryAgent, chapters: number): string | null {
-  if (!agent.available) return "The agent is unavailable";
-  if (agent.busy) return "The agent is working";
-  if (agent.pending) return "Starting…";
+  const busy = agentBlocker(agent);
+  if (busy) return busy;
   if (chapters === 0) return action === "build" ? "Add a chapter first" : "Nothing to review yet";
   return null;
 }
@@ -41,6 +42,7 @@ export function StoryToolbar({
   onUndo,
   onRedo,
   onAction,
+  onRebuild,
 }: {
   library: StoryLibrary;
   agent: StoryAgent;
@@ -49,15 +51,20 @@ export function StoryToolbar({
   onUndo: () => void;
   onRedo: () => void;
   onAction: (action: StoryAction) => void;
+  /** Opens the impact of Rebuild affected. */
+  onRebuild: () => void;
 }) {
   const graph = useStoryStore((state) => state.graph);
   const canUndo = useStoryStore((state) => state.past.length > 0 && !state.agentBusy);
   const canRedo = useStoryStore((state) => state.future.length > 0 && !state.agentBusy);
   const readOnly = useStoryStore((state) => state.agentBusy);
   const saveState = useStoryStore((state) => state.saveState);
+  const sync = useStoryStore((state) => state.sync);
   const chapters = graph?.nodes.filter(isChapter).length ?? 0;
   const reviewBlocker = actionBlocker("review", agent, chapters);
   const buildBlocker = actionBlocker("build", agent, chapters);
+  const rebuildCount = rebuildTargets(sync).length;
+  const rebuildBlocker = syncBlocker(sync) ?? agentBlocker(agent);
   const now = Date.now();
 
   return (
@@ -130,6 +137,29 @@ export function StoryToolbar({
           onClick={() => onAction("review")}
         >
           Review with AI
+        </Button>
+      </Tooltip>
+      <Tooltip
+        label={
+          rebuildBlocker ??
+          `Regenerate only the ${rebuildCount === 1 ? "section" : `${rebuildCount} sections`} the story changed; the rest of the timeline stays`
+        }
+        side="bottom"
+      >
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={rebuildBlocker !== null}
+          icon={<ArrowsClockwise size={12} aria-hidden />}
+          onClick={onRebuild}
+          data-story-action="rebuild"
+        >
+          Rebuild affected
+          {sync?.state === "out_of_sync" && rebuildCount > 0 && (
+            <span className="ml-1 rounded-sm bg-container/20 px-1 text-step-10 font-semibold tabular-nums text-container">
+              {rebuildCount}
+            </span>
+          )}
         </Button>
       </Tooltip>
       <Tooltip

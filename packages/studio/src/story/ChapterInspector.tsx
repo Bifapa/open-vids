@@ -7,8 +7,10 @@ import {
   type StoryMaterialKind,
   type StoryNodeFacts,
   type StorySourceRange,
+  type StorySyncReport,
 } from "@hyperframes/agent-protocol";
 import { Button, IconButton, Input, Select } from "../components/ui";
+import { ChapterTimelineSection } from "./ChapterTimelineSection";
 import {
   EditedChips,
   Field,
@@ -32,10 +34,14 @@ export interface ChapterInspectorProps {
   chapter: ChapterNode;
   graph: StoryGraph;
   facts: StoryNodeFacts | undefined;
+  /** The Story ↔ timeline report the chapter's Timeline block reads. */
+  sync: StorySyncReport | null;
   library: StoryLibrary;
   readOnly: boolean;
   onChange: (next: ChapterNode) => void;
   onSelect: (selection: StorySelection) => void;
+  /** Opens the rebuild impact for this chapter's section only. */
+  onRebuild: (chapter: string) => void;
 }
 
 /** The chapter's attached materials of the given kinds, as clickable rows. */
@@ -161,10 +167,12 @@ export function ChapterInspector({
   chapter,
   graph,
   facts,
+  sync,
   library,
   readOnly,
   onChange,
   onSelect,
+  onRebuild,
 }: ChapterInspectorProps) {
   const edited = new Set(chapter.userEdited);
   const set = <K extends keyof ChapterNode>(key: K, value: ChapterNode[K]) =>
@@ -175,7 +183,6 @@ export function ChapterInspector({
   const ranges = chapter.sourceRanges;
   const setRanges = (next: StorySourceRange[]) => set("sourceRanges", next);
   const material = facts?.materialDuration;
-  const onTimeline = facts?.timeline ?? null;
 
   const addRange = () => {
     const source = ranges.at(-1)?.source ?? sources[0];
@@ -268,13 +275,15 @@ export function ChapterInspector({
             }}
           />
         </Field>
-        {onTimeline && (
-          <p className="text-step-10 text-accent">
-            On the timeline {formatDuration(onTimeline.start)}–{formatDuration(onTimeline.end)} ·{" "}
-            {onTimeline.clips} clips
-          </p>
-        )}
       </Section>
+
+      <ChapterTimelineSection
+        chapter={chapter.id}
+        report={sync}
+        facts={facts}
+        readOnly={readOnly}
+        onRebuild={onRebuild}
+      />
 
       <Section
         title="A-roll"

@@ -5,11 +5,18 @@ import {
   type StoryBuildResult,
   type StoryEditRequest,
   type StoryEditResponse,
+  type StoryRebuildRequest,
+  type StoryRebuildResult,
   type StoryView,
 } from "@hyperframes/agent-protocol";
 import type { ProjectScope } from "../checkpointHost.js";
 import { StoryToolError, type StoryHost } from "./host.js";
-import { isStoryBuildResult, isStoryEditResponse, isStoryView } from "./wire.js";
+import {
+  isStoryBuildResult,
+  isStoryEditResponse,
+  isStoryRebuildResult,
+  isStoryView,
+} from "./wire.js";
 
 /**
  * An edit or build that reached the service is atomic there and is awaited to its end (the turn's checkpoint must not
@@ -55,6 +62,17 @@ export class HttpStoryHost implements StoryHost {
       signal: request.dryRun ? signal : AbortSignal.timeout(BUILD_TIMEOUT_MS),
     });
     if (!isStoryBuildResult(payload)) throw invalidResponse("story build result");
+    return payload;
+  }
+
+  async rebuild(request: StoryRebuildRequest, signal: AbortSignal): Promise<StoryRebuildResult> {
+    if (signal.aborted) throw aborted();
+    const payload = await this.request("POST", "/rebuild", {
+      body: request,
+      // A dry run writes nothing, so it can simply be cancelled.
+      signal: request.dryRun ? signal : AbortSignal.timeout(BUILD_TIMEOUT_MS),
+    });
+    if (!isStoryRebuildResult(payload)) throw invalidResponse("story rebuild result");
     return payload;
   }
 

@@ -12,11 +12,18 @@
  * never changed by an agent. The story service enforces both for agent edits.
  */
 
+import type { ManualEditPolicy } from "./types.js";
 import { isRecord } from "./validate.js";
 
 export const STORY_GRAPH_SCHEMA = 1;
 /** Project-relative location of the graph. Inside `.hyperframes/` (agents cannot hand-edit it) but history-tracked. */
 export const STORY_GRAPH_PATH = ".hyperframes/story/graph.json";
+/**
+ * Project-relative location of the Story ↔ timeline sync ledger: which clips each built section owns and the state
+ * they were generated in. Written by Build Story / Rebuild together with the composition, history-tracked like the
+ * graph (a reverted turn restores both), never edited by hand.
+ */
+export const STORY_SYNC_PATH = ".hyperframes/story/sync.json";
 
 // ── Nodes ────────────────────────────────────────────────────────────────────
 
@@ -377,6 +384,144 @@ export interface StoryView {
   facts: Record<string, StoryNodeFacts>;
   /** The composition the story builds into. */
   composition: string | null;
+  /** How the timeline relates to the graph since the last build (null when there is no graph). */
+  sync: StorySyncReport | null;
+}
+
+// ── Story ↔ timeline synchronization ─────────────────────────────────────────
+
+/**
+ * What a built unit is: a chapter's A-roll, the clip of one attached material (B-roll video, picture, motion
+ * graphic), a music bed (spanning the chapters it is attached to), or the story's captions.
+ */
+export const STORY_SYNC_ROLES = [
+  "a_roll",
+  "b_roll",
+  "picture",
+  "motion",
+  "music",
+  "captions",
+] as const;
+export type StorySyncRole = (typeof STORY_SYNC_ROLES)[number];
+
+/** How the graph's intent for a unit/section compares with what was built. */
+export const STORY_SYNC_CHANGES = ["unchanged", "changed", "added", "removed"] as const;
+export type StorySyncChange = (typeof STORY_SYNC_CHANGES)[number];
+
+/**
+ * What a rebuild does with a unit: `keep` (stays as it is), `shift` (moves with its section, content untouched),
+ * `rebuild` (regenerated), `add` (built for the first time), `remove` (taken off the timeline), `keep_edited` (the
+ * story changed it but it holds manual edits and the policy keeps them), `keep_locked` (a locked node, frozen),
+ * `skip` (outside the chapters the rebuild was asked for).
+ */
+export const STORY_SYNC_ACTIONS = [
+  "keep",
+  "shift",
+  "rebuild",
+  "add",
+  "remove",
+  "keep_edited",
+  "keep_locked",
+  "skip",
+] as const;
+export type StorySyncAction = (typeof STORY_SYNC_ACTIONS)[number];
+
+/**
+ * Who changed a generated clip after it was built: the user (Studio), a later AI turn (stamped by the editing
+ * service), or unknown (a clip that is gone — removal leaves no trace to attribute).
+ */
+export type StoryEditAuthor = "user" | "ai" | "unknown";
+
+/** One manual change to generated material, found by comparing the clip's structured state with its build record. */
+export interface StoryManualEdit {
+  /** The clip (for `removed`: the id it had). */
+  clip: string;
+  label: string;
+  /** `modified`: its properties changed; `removed`: it is gone; `added`: a copy/split of generated material. */
+  kind: "modified" | "removed" | "added";
+  by: StoryEditAuthor;
+  /** For `ai`: the turn that made the edit. */
+  turn: string | null;
+  /** `modified`: what changed (start, duration, track, mediaStart, volume, muted, frame, fit, fades, zIndex, locked, …). */
+  fields: string[];
+}
+
+export interface StorySyncUnit {
+  /** The story node the unit is built for (the chapter itself for its A-roll). */
+  node: string;
+  role: StorySyncRole;
+  title: string;
+  change: StorySyncChange;
+  /** Why it changed, in words ("source ranges changed", "placement start → end", …). */
+  reasons: string[];
+  /** What a rebuild with the given (or default) options does with it. */
+  action: StorySyncAction;
+  /** Clips it owns on the timeline now. */
+  clips: number;
+  edits: StoryManualEdit[];
+}
+
+export interface StorySyncSection {
+  chapter: string;
+  title: string;
+  /** Content change of the section (any unit changed → changed). */
+  change: StorySyncChange;
+  /** A rebuild moves the section on the timeline (new order, or an earlier section changes length). */
+  moved: boolean;
+  locked: boolean;
+  reasons: string[];
+  /** Where it is now / where a rebuild puts it (null: not on the timeline / removed). */
+  current: { start: number; end: number } | null;
+  next: { start: number; end: number } | null;
+  units: StorySyncUnit[];
+}
+
+/** A clip no story section owns (manual additions, cutaways, other agents' work) and how a rebuild treats it. */
+export interface StoryUnrelatedClip {
+  clip: string;
+  label: string;
+  track: number;
+  start: number;
+  end: number;
+  /** `ai`: created by an agent turn (its `data-ov-turn`); otherwise the user's. */
+  by: "user" | "ai";
+  turn: string | null;
+  /** The chapter whose section it sits in (it moves with that section), null before/after the story. */
+  anchor: string | null;
+  /** How far a rebuild moves it (0 = stays). */
+  shift: number;
+}
+
+/**
+ * The Story ↔ timeline impact: for every chapter section and music/caption unit, whether the graph still matches
+ * what was built, which generated clips were edited afterwards, and what a rebuild would do. `not_built`: no sync
+ * record and no story clips; `untracked`: story clips without a sync record (built before synchronization existed —
+ * only a full Build can take them over); `in_sync`: nothing to rebuild; `out_of_sync`: a rebuild would change the
+ * timeline.
+ */
+export interface StorySyncReport {
+  state: "not_built" | "untracked" | "in_sync" | "out_of_sync";
+  composition: string | null;
+  /** Last build or rebuild. */
+  syncedAt: number | null;
+  turnId: string | null;
+  /** In the graph's play order, then sections of chapters that left the story. */
+  sections: StorySyncSection[];
+  music: StorySyncUnit[];
+  captions: StorySyncUnit | null;
+  unrelated: StoryUnrelatedClip[];
+  /** Chapters whose section a rebuild regenerates, adds or removes. */
+  affected: string[];
+  /** Chapters that moved (order or an earlier length) without content changes. */
+  moved: string[];
+  /** Locked chapters with changes that are only rebuilt with explicit permission. */
+  lockedPending: string[];
+  /** Every manual edit to generated material, anywhere in the story. */
+  manualEdits: number;
+  /** Units a rebuild must change that hold manual edits (kept under `keep`, replaced under `replace`). */
+  conflicts: number;
+  duration: { current: number; next: number };
+  warnings: string[];
 }
 
 // ── API: user save ───────────────────────────────────────────────────────────
@@ -540,7 +685,12 @@ export interface StoryEditResponse {
 
 // ── API: build ───────────────────────────────────────────────────────────────
 
-/** `POST /api/projects/:id/story/build` — compile the graph into the timeline in one atomic edit. */
+/**
+ * `POST /api/projects/:id/story/build` — compile the whole graph into the timeline in one atomic edit. Every section
+ * is regenerated (manual edits to generated clips are replaced and reported), except the built sections of locked
+ * chapters, which stay as they are unless `allowLocked` names them. Clips no section owns are kept (and move with the
+ * section they sit in); the raw A-roll of the chapters' sources is replaced only by the first build.
+ */
 export interface StoryBuildRequest {
   /** Graph version the caller read; refused when the graph changed since. */
   baseVersion?: string;
@@ -548,6 +698,8 @@ export interface StoryBuildRequest {
   turnId?: string;
   /** Compile and report without writing anything. */
   dryRun?: boolean;
+  /** Locked chapters the user allows to be rebuilt. */
+  allowLocked?: string[];
 }
 
 export interface StoryBuiltMaterial {
@@ -567,11 +719,61 @@ export interface StoryBuildResult {
   duration: number;
   chapters: Array<StoryBuiltChapter & { title: string; estimatedDuration: number }>;
   materials: StoryBuiltMaterial[];
-  /** Clips replaced by the build: earlier story clips and the raw A-roll of the chapters' sources on the A-roll track. */
+  /** Clips replaced by the build: earlier story clips (and, on the first build, the raw A-roll of the chapters' sources). */
   removedClips: number;
-  /** Clips the build left alone (manual additions, cutaways on other tracks). */
+  /** Clips the build left alone (manual additions, cutaways on other tracks, locked sections). */
   keptClips: number;
   captions: { preset: string; cues: number } | null;
+  /** Manual edits to generated clips that the build replaced. */
+  replacedEdits: StoryManualEdit[];
+  /** Locked chapters whose built section was left as it was. */
+  keptLocked: string[];
+  warnings: string[];
+  view: StoryView;
+}
+
+/**
+ * `POST /api/projects/:id/story/rebuild` — Rebuild affected sections: compares the graph with the sync ledger and
+ * changes only what the graph changed — regenerates the units whose intent changed, adds/removes sections of added/
+ * removed chapters, moves sections that only moved (content untouched, manual edits kept), and leaves everything
+ * else byte-for-byte alone. One atomic edit, plus the ledger and the graph's build record.
+ */
+export interface StoryRebuildRequest {
+  baseVersion?: string;
+  turnId?: string;
+  /** Only regenerate these chapters' changed sections (default: every affected one). Order and removals always apply. */
+  chapters?: string[];
+  /** Generated clips edited after the build in a unit that must change (default `keep`). */
+  manualEdits?: ManualEditPolicy;
+  /** Locked chapters the user allows to be rebuilt. */
+  allowLocked?: string[];
+  dryRun?: boolean;
+}
+
+export interface StoryRebuildResult {
+  dryRun: boolean;
+  composition: string;
+  timelineVersion: string;
+  /**
+   * Whether the rebuild changes the timeline (a dry run: would change it). False when it already matches the graph,
+   * or when every remaining difference is held back (manual edits kept, locked chapters, chapters outside the scope).
+   */
+  changed: boolean;
+  /** The plan as it was carried out (actions per unit). */
+  report: StorySyncReport;
+  /** Chapters whose section was regenerated or built for the first time. */
+  rebuilt: string[];
+  /** Chapters whose section was taken off the timeline. */
+  removed: string[];
+  /** Chapters whose section only moved. */
+  moved: string[];
+  /** Manual edits kept although the story changed that unit (policy `keep`, or a clip locked on the timeline). */
+  keptEdits: StoryManualEdit[];
+  /** Manual edits the rebuild replaced (policy `replace`). */
+  replacedEdits: StoryManualEdit[];
+  /** Locked chapters with changes that were not rebuilt. */
+  keptLocked: string[];
+  duration: number;
   warnings: string[];
   view: StoryView;
 }
@@ -1482,11 +1684,15 @@ export function parseStoryEditRequest(raw: unknown): ParsedStory<StoryEditReques
   });
 }
 
+function nodeIds(value: unknown, field: string): string[] {
+  return [...new Set(list(value, field, STORY_LIMITS.nodes, (entry, where) => id(entry, where)))];
+}
+
 export function parseStoryBuildRequest(raw: unknown): ParsedStory<StoryBuildRequest> {
   return parse(() => {
     if (raw === undefined || raw === null) return {};
     const value = record(raw, "body");
-    onlyKeys(value, ["baseVersion", "turnId", "dryRun"], "");
+    onlyKeys(value, ["baseVersion", "turnId", "dryRun", "allowLocked"], "");
     return {
       ...(value.baseVersion !== undefined && {
         baseVersion: text(value.baseVersion, "baseVersion", 200),
@@ -1495,6 +1701,37 @@ export function parseStoryBuildRequest(raw: unknown): ParsedStory<StoryBuildRequ
         turnId: text(value.turnId, "turnId", STORY_LIMITS.idChars * 2),
       }),
       ...(value.dryRun !== undefined && { dryRun: bool(value.dryRun, "dryRun") }),
+      ...(value.allowLocked !== undefined && {
+        allowLocked: nodeIds(value.allowLocked, "allowLocked"),
+      }),
+    };
+  });
+}
+
+export function parseStoryRebuildRequest(raw: unknown): ParsedStory<StoryRebuildRequest> {
+  return parse(() => {
+    if (raw === undefined || raw === null) return {};
+    const value = record(raw, "body");
+    onlyKeys(
+      value,
+      ["baseVersion", "turnId", "dryRun", "chapters", "manualEdits", "allowLocked"],
+      "",
+    );
+    return {
+      ...(value.baseVersion !== undefined && {
+        baseVersion: text(value.baseVersion, "baseVersion", 200),
+      }),
+      ...(value.turnId !== undefined && {
+        turnId: text(value.turnId, "turnId", STORY_LIMITS.idChars * 2),
+      }),
+      ...(value.dryRun !== undefined && { dryRun: bool(value.dryRun, "dryRun") }),
+      ...(value.chapters !== undefined && { chapters: nodeIds(value.chapters, "chapters") }),
+      ...(value.manualEdits !== undefined && {
+        manualEdits: pick(value.manualEdits, ["keep", "replace"] as const, "manualEdits"),
+      }),
+      ...(value.allowLocked !== undefined && {
+        allowLocked: nodeIds(value.allowLocked, "allowLocked"),
+      }),
     };
   });
 }

@@ -267,19 +267,31 @@ describe("runtime HTTP server", () => {
         (
           await call(first, `/v1/chats/${chatId}/turns`, "POST", {
             prompt: "x",
-            storyAction: "rebuild",
+            storyAction: "deploy",
           })
         ).status,
       ).toBe(400);
+      // Options belong to build/rebuild only; a build takes nothing but the locked chapters the user allowed.
+      for (const body of [
+        { storyAction: "review", storyOptions: { allowLocked: ["ch1"] } },
+        { storyAction: "build", storyOptions: { manualEdits: "replace" } },
+      ]) {
+        expect(
+          (await call(first, `/v1/chats/${chatId}/turns`, "POST", { prompt: "x", ...body })).status,
+        ).toBe(400);
+      }
       const started = await call(first, `/v1/chats/${chatId}/turns`, "POST", {
         prompt: "Build the story",
         mode: "normal",
         storyAction: "build",
+        storyOptions: { allowLocked: ["ch1"] },
       });
       expect(started.status).toBeLessThan(300);
       const turn = await responseObject(started);
       // A story action implies story mode whatever the request said.
-      expect(turn).toMatchObject({ turn: { mode: "story", storyAction: "build" } });
+      expect(turn).toMatchObject({
+        turn: { mode: "story", storyAction: "build", storyOptions: { allowLocked: ["ch1"] } },
+      });
       for (let attempt = 0; attempt < 200; attempt += 1) {
         const state = await responseObject(await call(first, `/v1/chats/${chatId}`));
         const turns = Array.isArray(state.turns) ? state.turns : [];
@@ -293,7 +305,9 @@ describe("runtime HTTP server", () => {
       second = open();
       const reloaded = await responseObject(await call(second, `/v1/chats/${chatId}`));
       expect(reloaded).toMatchObject({ chat: { activeMode: "story" } });
-      expect(reloaded.turns).toMatchObject([{ mode: "story", storyAction: "build" }]);
+      expect(reloaded.turns).toMatchObject([
+        { mode: "story", storyAction: "build", storyOptions: { allowLocked: ["ch1"] } },
+      ]);
     } finally {
       await first.dispose().catch(() => undefined);
       await second?.dispose();

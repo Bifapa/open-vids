@@ -4,6 +4,7 @@ import {
   parseSaveStoryRequest,
   parseStoryBuildRequest,
   parseStoryEditRequest,
+  parseStoryRebuildRequest,
   type ParsedStory,
   type StoryError,
 } from "@hyperframes/agent-protocol";
@@ -116,6 +117,14 @@ export function registerStoryRoutes(
     tooLarge,
     route(async (project, c) =>
       service.build(project, parsed(parseStoryBuildRequest(await body(c)))),
+    ),
+  );
+
+  api.post(
+    "/projects/:id/story/rebuild",
+    tooLarge,
+    route(async (project, c) =>
+      service.rebuild(project, parsed(parseStoryRebuildRequest(await body(c)))),
     ),
   );
 

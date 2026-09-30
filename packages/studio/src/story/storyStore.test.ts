@@ -6,6 +6,7 @@ import {
   createFakeStoryServer,
   sampleGraph,
   settle,
+  syncReport,
   type FakeStoryServer,
 } from "./storyTestHarness";
 
@@ -173,5 +174,17 @@ describe("conflicts and agent turns", () => {
     server.writeElsewhere(removeItems(sampleGraph(), ["b"]));
     await store.getState().reload();
     expect(store.getState().selection).toEqual({ nodes: [], edges: [] });
+  });
+
+  it("a reload for a timeline change takes the new sync report and keeps the unchanged graph object", async () => {
+    await openStore();
+    const graph = store.getState().graph;
+    expect(store.getState().sync).toBeNull();
+
+    server.state.sync = syncReport({ state: "out_of_sync", affected: ["b"] });
+    await store.getState().reload();
+    expect(store.getState().sync).toMatchObject({ state: "out_of_sync", affected: ["b"] });
+    // Same graph version: the canvas keeps its cards.
+    expect(store.getState().graph).toBe(graph);
   });
 });
