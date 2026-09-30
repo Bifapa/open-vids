@@ -45,6 +45,7 @@ import {
   sameModel,
   type ModelCatalogSource,
 } from "./model-mapping.ts";
+import { hostToolContent } from "./tool-content.ts";
 import { guardToolCallPaths } from "./path-guard.ts";
 
 const MODEL_CATALOG_TTL_MS = 60_000;
@@ -220,7 +221,7 @@ function toOmpTool(tool: HostTool): CustomTool {
     async execute(_toolCallId, params, _onUpdate, _context, signal) {
       const result = await tool.execute(params, signal ?? new AbortController().signal);
       return {
-        content: [{ type: "text", text: result.text }],
+        content: hostToolContent(result),
         ...(result.isError && { isError: true }),
       };
     },

@@ -27,6 +27,7 @@ import type { AgentBackend } from "./backend.js";
 import { resolveJev, testJev } from "./agents/setup.js";
 import type { CheckpointHost, ProjectScope } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
+import type { AnalysisHost } from "./analysis/host.js";
 import type { EditingHost } from "./editing/host.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import { defaultEnabledAgents, type AgentSettingsStore } from "./settings.js";
@@ -38,6 +39,8 @@ export interface RuntimeAppOptions {
   checkpoints: CheckpointHost;
   /** Opens the editing host (timeline editing, inspection, rendering) of the project a request is scoped to. */
   editing: (scope: ProjectScope) => EditingHost;
+  /** Opens the analysis host (long-form transcript, speakers, shots, take issues, cut plans) of a request's project. */
+  analysis: (scope: ProjectScope) => AnalysisHost;
   /** Global (per-user) agent settings shared by every project. */
   settings: AgentSettingsStore;
   token: string;
@@ -70,6 +73,7 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
   const ids = options.ids;
   const turnOptions: TurnRunnerOptions = {
     editing: options.editing,
+    analysis: options.analysis,
     now,
     ...(ids && { ids }),
     ...(options.sessionIdleMs !== undefined && { sessionIdleMs: options.sessionIdleMs }),

@@ -241,4 +241,42 @@ export interface StudioApiAdapter {
    * Null when the skins are not installed. The editing service's captions need it.
    */
   captionSkinsDir?(): string | null;
+
+  /**
+   * Optional: local speech recognition with word timestamps (the analysis service's transcript stage). Engine-neutral
+   * output; rejects with an `Error` when recognition failed. Resolves `{ unavailable }` when this machine has no
+   * recognizer and cannot install one. Aborting the signal stops the recognizer.
+   */
+  transcribeMedia?(opts: {
+    /** Absolute path of the audio/video file. */
+    inputPath: string;
+    /** Language hint (`en`, `ru`); detected when absent. */
+    language?: string;
+    signal: AbortSignal;
+    onProgress?: (message: string) => void;
+  }): Promise<SpeechTranscription | { unavailable: string }>;
+
+  /**
+   * Optional: speaker diarization (who speaks when). Resolves `{ unavailable }` when no diarizer can run here; the
+   * analysis then records a single-speaker map.
+   */
+  diarizeMedia?(opts: {
+    inputPath: string;
+    signal: AbortSignal;
+    onProgress?: (message: string) => void;
+  }): Promise<SpeakerDiarization | { unavailable: string }>;
+}
+
+/** Words with timestamps as a recognizer produced them, before OpenVids builds sentences from them. */
+export interface SpeechTranscription {
+  words: Array<{ text: string; start: number; end: number }>;
+  language: string | null;
+  /** Informational (logs, manifest): which local engine ran, e.g. "whisper.cpp small". */
+  producer: string;
+}
+
+export interface SpeakerDiarization {
+  /** Speaker indexes are arbitrary but consistent within one result. */
+  turns: Array<{ speaker: number; start: number; end: number }>;
+  producer: string;
 }

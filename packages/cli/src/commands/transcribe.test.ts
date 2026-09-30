@@ -106,6 +106,45 @@ describe("transcribe command", () => {
     expect(consumeCommandResult().exitCode).toBe(0);
   });
 
+  it("says why the recognizer is unavailable in the --json skip result", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    await transcribeCmd.run!({
+      args: { input, json: true, optional: false, engine: "whisper" },
+    } as never);
+    expect(lastJson()).toEqual({
+      ok: false,
+      skipped: true,
+      reason: "whisper_unavailable",
+      error: "whisper-cpp not found. Install: brew install whisper-cpp",
+    });
+  });
+
+  describe("--json language", () => {
+    async function languageOf(reported: string | null | undefined, hint?: string) {
+      const { dir, input } = dummyAudio();
+      dirs.push(dir);
+      transcribeMock.mockImplementation(async (_in: string, outDir: string) => ({
+        ...fakeTranscript(outDir, "hello"),
+        ...(reported === undefined ? {} : { language: reported }),
+      }));
+      await transcribeCmd.run!({
+        args: { input, json: true, engine: "whisper", language: hint },
+      } as never);
+      return lastJson().language;
+    }
+
+    it("reports the language the engine decoded in, even against a different hint", async () => {
+      expect(await languageOf("ru")).toBe("ru");
+      expect(await languageOf("ru", "en")).toBe("ru");
+    });
+
+    it("falls back to --language, then to null, when the engine does not say", async () => {
+      expect(await languageOf(undefined, "de")).toBe("de");
+      expect(await languageOf(undefined)).toBeNull();
+    });
+  });
+
   describe("engine selection", () => {
     beforeEach(() => {
       transcribeMock.mockImplementation(async (_in: string, dir: string) =>

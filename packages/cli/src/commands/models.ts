@@ -12,6 +12,10 @@ export const examples: Example[] = [
     "Download the Parakeet speech model that transcribe uses",
     "hyperframes models install parakeet",
   ],
+  [
+    "Download the speaker diarization models that diarize uses",
+    "hyperframes models install diarization",
+  ],
 ];
 
 function fail(message: string, json: boolean): never {
@@ -21,8 +25,8 @@ function fail(message: string, json: boolean): never {
 }
 
 /** A cancel is the user's choice, not a command failure: exit 130 without a cli_error. */
-function reportCancel(json: boolean): void {
-  const message = "Parakeet install cancelled; nothing partial was kept.";
+function reportCancel(json: boolean, what = "Parakeet"): void {
+  const message = `${what} install cancelled; nothing partial was kept.`;
   if (json) console.log(JSON.stringify({ ok: false, error: message }));
   else console.error(c.warn(message));
   setCommandExitCode(130);
@@ -88,20 +92,73 @@ async function installParakeet(json: boolean): Promise<void> {
   }
 }
 
+/** Downloads the sherpa-onnx runtime plus the pinned segmentation and speaker-embedding models. */
+async function installDiarizationModels(json: boolean): Promise<void> {
+  // Lazy on purpose: installing Parakeet must not load the diarization module, nor sherpa for a bad argument.
+  const diarize = await import("../whisper/diarize.js");
+  const sherpa = await import("../whisper/sherpa.js");
+  const unsupported = diarize.diarizationUnsupportedReason();
+  if (unsupported) fail(unsupported, json);
+
+  const spin = json ? null : clack.spinner({ output: process.stderr });
+  const cancellation = createRenderCancellationScope();
+  spin?.start("Checking the sherpa-onnx runtime and the diarization models...");
+  try {
+    const changed = await diarize.installDiarization({
+      signal: cancellation.signal,
+      onProgress: (message) => spin?.message(message),
+    });
+    spin?.stop(
+      c.success(
+        changed ? "Speaker diarization installed" : "Speaker diarization is already installed",
+      ),
+    );
+    if (json) {
+      console.log(
+        JSON.stringify({
+          ok: true,
+          model: diarize.DIARIZATION_MODEL_LABEL,
+          changed,
+          modelDir: diarize.DIARIZATION_MODEL_DIR,
+        }),
+      );
+    }
+  } catch (err) {
+    const cancelled = wasCancelled(err, cancellation.signal, sherpa);
+    spin?.stop(
+      cancelled
+        ? c.warn("Speaker diarization install cancelled")
+        : c.error("Speaker diarization install failed"),
+    );
+    if (cancelled) return reportCancel(json, "Speaker diarization");
+    fail(err instanceof Error ? err.message : String(err), json);
+  } finally {
+    cancellation.dispose();
+  }
+}
+
 export default defineCommand({
-  meta: { name: "models", description: "Download on-device models (models install parakeet)" },
+  meta: {
+    name: "models",
+    description: "Download on-device models (models install parakeet | diarization)",
+  },
   args: {
     action: { type: "positional", description: "install", required: true },
-    name: { type: "positional", description: "Model to install: parakeet", required: true },
+    name: {
+      type: "positional",
+      description: "Model to install: parakeet or diarization",
+      required: true,
+    },
     json: { type: "boolean", description: "Print one JSON result, no progress", default: false },
   },
   async run({ args }) {
-    if (args.action !== "install" || args.name !== "parakeet") {
-      fail(
-        `Unknown: models ${args.action} ${args.name}. Try: hyperframes models install parakeet`,
-        args.json,
-      );
+    if (args.action === "install" && args.name === "parakeet") return installParakeet(args.json);
+    if (args.action === "install" && args.name === "diarization") {
+      return installDiarizationModels(args.json);
     }
-    return installParakeet(args.json);
+    fail(
+      `Unknown: models ${args.action} ${args.name}. Try: hyperframes models install parakeet (or diarization)`,
+      args.json,
+    );
   },
 });

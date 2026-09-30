@@ -5,3 +5,4 @@ export * from "./reduce.js";
 export * from "./validate.js";
 export * from "./sse.js";
 export * from "./editing.js";
+export * from "./analysis.js";

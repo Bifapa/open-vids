@@ -16,14 +16,21 @@ import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
 import { registerAgentRoutes } from "./routes/agent.js";
 import { registerEditingRoutes } from "./routes/editing.js";
+import { registerAnalysisRoutes } from "./routes/analysis.js";
 
 /**
  * Create a Hono sub-app with all studio API routes.
  *
  * Both the vite dev server and CLI embedded server mount this app
  * under /api, each providing their own adapter for host-specific behavior.
+ *
+ * `shutdownSignal`: the host's shutdown. Aborting it cancels running analysis jobs, so their ffmpeg and speech
+ * recognizer children do not outlive the server.
  */
-export function createStudioApi(adapter: StudioApiAdapter): Hono {
+export function createStudioApi(
+  adapter: StudioApiAdapter,
+  options: { shutdownSignal?: AbortSignal } = {},
+): Hono {
   const api = new Hono();
 
   registerProjectRoutes(api, adapter);
@@ -42,6 +49,8 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
   registerHistoryRoutes(api, adapter);
   registerAgentRoutes(api, adapter);
   registerEditingRoutes(api, adapter);
+  const analysis = registerAnalysisRoutes(api, adapter);
+  options.shutdownSignal?.addEventListener("abort", () => analysis.shutdown(), { once: true });
 
   return api;
 }

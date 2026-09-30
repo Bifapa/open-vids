@@ -1,6 +1,7 @@
 import type {
   ApplyEditsRequest,
   ApplyEditsResponse,
+  EditOperationResult,
   PresetInfo,
   PresetKind,
   ProjectAsset,
@@ -82,11 +83,23 @@ export class FakeEditingHost implements EditingHost {
     let sequence = this.applyFinished.length * 100;
     return {
       timeline: structuredClone(this.timelineResult),
-      results: request.operations.map((operation) => {
+      results: request.operations.map((operation): EditOperationResult => {
         sequence += 1;
+        if (operation.op === "add_sequence") {
+          const clipIds = operation.ranges.map((_, index) => `clip-${sequence}-${index + 1}`);
+          return { op: operation.op, clipId: clipIds[0] ?? null, newClipId: null, clipIds };
+        }
+        if (operation.op === "remove_clip" && operation.clips) {
+          return {
+            op: operation.op,
+            clipId: operation.clips[0] ?? null,
+            newClipId: null,
+            clipIds: operation.clips,
+          };
+        }
         return {
           op: operation.op,
-          clipId: "clip" in operation ? operation.clip : `clip-${sequence}`,
+          clipId: "clip" in operation ? (operation.clip ?? null) : `clip-${sequence}`,
           newClipId: operation.op === "split_clip" ? `clip-${sequence}b` : null,
         };
       }),

@@ -63,10 +63,11 @@ const CONVENTIONS = `Conventions: all times are seconds on the composition timel
 
 const EDIT_OPERATIONS_GUIDE = `Operations (each has "op" plus):
 - add_clip: asset, start, track; optional duration (default: rest of the media; 3 s for images), mediaStart (in-point in the source), volume (0–${EDIT_LIMITS.maxVolume}), muted, fit ("contain"|"cover"), frame ({x, y, width, height} in composition pixels, e.g. a logo in a corner; default: the media centred inside the frame), fadeIn/fadeOut (seconds of linear audio/video gain ramp at the clip start/end; use 1–2 s on music beds).
+- add_sequence: asset (video/audio), track, ranges [{from, to}] (source in/out points, up to ${EDIT_LIMITS.sequenceRanges}); optional start (default 0), volume, muted, fit, frame, edgeFade (0–${EDIT_LIMITS.maxEdgeFade} s audio ramp at both edges of every clip, e.g. 0.02 against clicks). Places one clip per range back to back with no gaps and returns all their ids; use it for cutting one long recording, not for placing single clips. Refused if a range runs past the end of the source.
 - add_text: text, start, duration, track; optional placement ("top"|"center"|"bottom"), size ("small"|"medium"|"large"), color.
 - add_component: name (a block/component from browse_presets), start, track; optional duration.
 - apply_captions: preset (a caption preset from browse_presets), cues [{text, start, end}] spanning the composition; optional track.
-- remove_clip: clip; optional ripple (close the gap by moving later clips on the track).
+- remove_clip: clip, or clips (many ids at once, up to ${EDIT_LIMITS.removeClips}); optional ripple (close the gap by moving later clips on the track).
 - move_clip: clip; start and/or track.
 - trim_clip: clip; new timeline start and/or end (trimming the head of a video/audio clip advances its media in-point).
 - split_clip: clip, at (timeline time inside the clip). The result reports the new second half's clip id.
@@ -79,7 +80,7 @@ const DESCRIPTIONS: Record<EditingToolName, string> = {
   inspect_timeline: `Show a composition's timeline as a table: clip id, kind, label, start–end, track, source, notes (media in-point, volume, muted, locked), plus the composition's size, length and content version. Also reports the user's playhead, selected clips/asset/time range and active composition as they were when the user sent the message (they may have changed since). Read it before editing and again after a batch to verify the result. Defaults to the main composition. ${CONVENTIONS}`,
   edit_timeline: `Change the timeline of a composition with a batch of operations. The batch is atomic: if any operation is refused, nothing is applied and the error names the failing operation (operations[N]) so you can fix it and retry. Operations run in order; clips they create get ids that are returned in the result (use them in a later call). After edits the Studio timeline and preview update by themselves, and every edit belongs to this turn's checkpoint, so the user can revert it. Pass baseVersion (the version from inspect_timeline) to refuse the batch if the composition changed since you looked. ${CONVENTIONS}\n${EDIT_OPERATIONS_GUIDE}`,
   browse_presets: `Search the built-in presets: caption styles ("caption", used by apply_captions), motion-graphics "block"s and reusable "component"s (both used by add_component). Returns names with a short description and natural length. Optional query filters by text.`,
-  render_video: `Render a composition to an mp4 file in the project's renders folder and wait until it finishes. Returns the project-relative path, length, resolution and size; report the path to the user. Use "draft" quality for a quick check, "standard" (default) or "high" for the final video. Fails if the render fails or is cancelled.`,
+  render_video: `Render a composition to an mp4 file in the project's renders folder and wait until it finishes. Returns the project-relative path, length, resolution and size; report the path to the user. Use "draft" quality for a quick check, "standard" (default) or "high" for the final video. Fails if the render fails or is cancelled. A render takes minutes per minute of video: render only when the user asked for a video file, an export or a render (or for a short draft check), not after every edit of a long timeline — offer it instead.`,
 };
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
@@ -175,6 +176,47 @@ const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
     },
     ["asset", "start", "track"],
   ),
+  add_sequence: operationSchema(
+    "add_sequence",
+    "Place many ranges of ONE video/audio source back to back on a track (a rough cut): one clip per range, no gaps.",
+    {
+      asset: str("Project-relative video or audio asset path.", EDIT_LIMITS.pathChars),
+      track: track("Track: 0 = A-roll."),
+      start: time("Timeline position of the first range; default 0."),
+      ranges: {
+        type: "array",
+        minItems: 1,
+        maxItems: EDIT_LIMITS.sequenceRanges,
+        description: "Source in/out points in seconds, played in this order.",
+        items: {
+          type: "object",
+          properties: {
+            from: time("In-point in the source, seconds."),
+            to: {
+              type: "number",
+              exclusiveMinimum: 0,
+              maximum: EDIT_LIMITS.maxTime,
+              description: "Out-point in the source, seconds; after from.",
+            },
+          },
+          required: ["from", "to"],
+          additionalProperties: false,
+        },
+      },
+      volume,
+      muted: { type: "boolean" },
+      fit,
+      frame,
+      edgeFade: {
+        type: "number",
+        minimum: 0,
+        maximum: EDIT_LIMITS.maxEdgeFade,
+        description:
+          "Short audio gain ramp (seconds) at both edges of every clip, against clicks at cuts; 0.02 is typical.",
+      },
+    },
+    ["asset", "track", "ranges"],
+  ),
   add_text: operationSchema(
     "add_text",
     "Add a text/title clip.",
@@ -230,12 +272,22 @@ const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
   ),
   remove_clip: operationSchema(
     "remove_clip",
-    "Remove a clip.",
+    "Remove one clip (clip) or many at once (clips); give exactly one of the two.",
     {
       clip: clipId,
-      ripple: { type: "boolean", description: "Close the gap by moving later clips on the track." },
+      clips: {
+        type: "array",
+        minItems: 1,
+        maxItems: EDIT_LIMITS.removeClips,
+        items: clipId,
+        description: "Clip ids to remove, all at once (for example a previous rough cut).",
+      },
+      ripple: {
+        type: "boolean",
+        description: "Close the gaps by moving later clips on the track.",
+      },
     },
-    ["clip"],
+    [],
   ),
   move_clip: operationSchema(
     "move_clip",
@@ -360,6 +412,7 @@ const PARAMETERS: Record<EditingToolName, Record<string, unknown>> = {
 
 const OP_SUMMARY: Record<EditOperationName, string> = {
   add_clip: "add clip",
+  add_sequence: "add sequence",
   add_text: "add text",
   add_component: "add component",
   apply_captions: "captions",

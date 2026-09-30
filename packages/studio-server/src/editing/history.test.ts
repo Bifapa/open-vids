@@ -81,4 +81,30 @@ describe("history attribution of editing writes", () => {
     expect(made.read("index.html")).toBe(indexBefore);
     expect(readFileSync(join(made.project.dir, "notes.txt"), "utf-8")).toBe("later, by hand");
   });
+
+  it("attributes a rebuilt rough cut (remove clips + add_sequence) to the window, and undo restores the earlier cut", async () => {
+    const { made, history: engine } = await open();
+    const ranges = [
+      { from: 0, to: 2 },
+      { from: 3, to: 6 },
+    ];
+    const first = await edit(made, [
+      { op: "add_sequence", asset: "assets/a.mp4", track: 5, ranges, edgeFade: 0.02 },
+    ]);
+    const cutBefore = made.read("index.html");
+
+    const window = await engine.beginWindow(director, "Rebuild the cut");
+    const rebuilt = await edit(made, [
+      { op: "remove_clip", clips: first.results[0]?.clipIds ?? [] },
+      { op: "add_sequence", asset: "assets/a.mp4", track: 5, ranges: ranges.slice(1) },
+    ]);
+    expect(rebuilt.timeline.clips.filter((clip) => clip.track === 5)).toHaveLength(1);
+    const entry = await window.close();
+    expect(entry?.who).toEqual(director);
+    expect(entry?.files.map((file) => file.path)).toEqual(["index.html"]);
+
+    const result = await engine.undo(entry?.id ?? "", { who: director, mode: "keep-later-edits" });
+    expect(result.ok).toBe(true);
+    expect(made.read("index.html")).toBe(cutBefore);
+  });
 });

@@ -138,6 +138,28 @@ export type EditOperation =
       fadeIn?: number;
       fadeOut?: number;
     }
+  /**
+   * Place several ranges of one video/audio source back to back on a track (a rough cut). Each range becomes one
+   * clip whose media in-point is `from` and whose length is `to − from`; the clips start at `start` and follow each
+   * other without gaps, in the given order.
+   */
+  | {
+      op: "add_sequence";
+      /** Video or audio asset. */
+      asset: string;
+      track: number;
+      /** Timeline position of the first range (default 0). */
+      start?: number;
+      /** Source in/out points in seconds, played back to back in this order. */
+      ranges: Array<{ from: number; to: number }>;
+      volume?: number;
+      muted?: boolean;
+      fit?: ClipFit;
+      /** Video: position and size; default fits the media inside the frame, centred. */
+      frame?: ClipFrame;
+      /** Short audio gain ramp (seconds, 0–0.1) at both edges of every clip, against clicks at cuts. */
+      edgeFade?: number;
+    }
   /** A simple text/title clip. */
   | {
       op: "add_text";
@@ -159,7 +181,8 @@ export type EditOperation =
     }
   /** Write the project's captions from cues in a caption preset's style, spanning the whole composition. */
   | { op: "apply_captions"; preset: string; cues: CaptionCue[]; track?: number }
-  | { op: "remove_clip"; clip: string; ripple?: boolean }
+  /** Remove one clip (`clip`) or many at once (`clips`); exactly one of the two. */
+  | { op: "remove_clip"; clip?: string; clips?: string[]; ripple?: boolean }
   | { op: "move_clip"; clip: string; start?: number; track?: number }
   /** New timeline in/out points; trimming the head of a video/audio clip advances its media in-point. */
   | { op: "trim_clip"; clip: string; start?: number; end?: number }
@@ -185,6 +208,7 @@ export type EditOperationName = EditOperation["op"];
 
 export const EDIT_OPERATION_NAMES = [
   "add_clip",
+  "add_sequence",
   "add_text",
   "add_component",
   "apply_captions",
@@ -206,10 +230,12 @@ export interface ApplyEditsRequest {
 
 export interface EditOperationResult {
   op: EditOperationName;
-  /** The clip the operation created or changed. */
+  /** The clip the operation created or changed (add_sequence: the first created clip). */
   clipId: string | null;
   /** split_clip: the new second half. */
   newClipId: string | null;
+  /** add_sequence: every created clip, in timeline order; remove_clip with `clips`: every removed clip. */
+  clipIds?: string[];
 }
 
 export interface ApplyEditsResponse {
@@ -263,6 +289,12 @@ export const EDIT_LIMITS = {
   pathChars: 1_024,
   idChars: 200,
   arrangeClips: 100,
+  /** Clips removed by one `remove_clip` with `clips`. */
+  removeClips: 1_000,
+  /** Ranges in one `add_sequence`. */
+  sequenceRanges: 1_000,
+  /** Longest `edgeFade` of `add_sequence`, in seconds. */
+  maxEdgeFade: 0.1,
   maxTime: 24 * 60 * 60,
   maxTrack: 999,
   /** `data-volume` ceiling: +12 dB. */
@@ -361,10 +393,21 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
       "fadeIn",
       "fadeOut",
     ],
+    add_sequence: [
+      "asset",
+      "track",
+      "start",
+      "ranges",
+      "volume",
+      "muted",
+      "fit",
+      "frame",
+      "edgeFade",
+    ],
     add_text: ["text", "start", "duration", "track", "placement", "size", "color"],
     add_component: ["name", "start", "track", "duration"],
     apply_captions: ["preset", "cues", "track"],
-    remove_clip: ["clip", "ripple"],
+    remove_clip: ["clip", "clips", "ripple"],
     move_clip: ["clip", "start", "track"],
     trim_clip: ["clip", "start", "end"],
     split_clip: ["clip", "at"],
@@ -433,6 +476,64 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
           ...(frame !== undefined && { frame }),
           ...(fadeIn !== undefined && { fadeIn }),
           ...(fadeOut !== undefined && { fadeOut }),
+        };
+      break;
+    }
+    case "add_sequence": {
+      const asset = need(readString(raw.asset, "asset", EDIT_LIMITS.pathChars));
+      const onTrack = track();
+      const start = optTime("start");
+      const vol = volume();
+      const muted = bool("muted");
+      const fitting = fit();
+      const frame = maybe("frame", readFrame);
+      const edgeFade = maybe("edgeFade", (value) =>
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        value >= 0 &&
+        value <= EDIT_LIMITS.maxEdgeFade
+          ? value
+          : { ok: false, message: `edgeFade must be between 0 and ${EDIT_LIMITS.maxEdgeFade}` },
+      );
+      const ranges: Array<{ from: number; to: number }> = [];
+      if (!Array.isArray(raw.ranges) || raw.ranges.length === 0) {
+        failures.push("ranges must be a non-empty array of {from, to}");
+      } else if (raw.ranges.length > EDIT_LIMITS.sequenceRanges) {
+        failures.push(`ranges exceeds ${EDIT_LIMITS.sequenceRanges} entries`);
+      } else {
+        for (const [rangeIndex, range] of raw.ranges.entries()) {
+          const label = `ranges[${rangeIndex}]`;
+          if (!isRecord(range)) {
+            failures.push(`${label} must be an object {from, to}`);
+            break;
+          }
+          const extra = Object.keys(range).find((key) => key !== "from" && key !== "to");
+          if (extra) {
+            failures.push(`${label}: unknown field "${extra}"`);
+            break;
+          }
+          const from = need(readTime(range.from, `${label}.from`));
+          const to = need(readTime(range.to, `${label}.to`, true));
+          if (from === undefined || to === undefined) break;
+          if (to <= from) {
+            failures.push(`${label}.to must be after its from`);
+            break;
+          }
+          ranges.push({ from, to });
+        }
+      }
+      if (asset !== undefined && onTrack !== undefined && failures.length === 0)
+        op = {
+          op: name,
+          asset,
+          track: onTrack,
+          ranges,
+          ...(start !== undefined && { start }),
+          ...(vol !== undefined && { volume: vol }),
+          ...(muted !== undefined && { muted }),
+          ...(fitting !== undefined && { fit: fitting }),
+          ...(frame !== undefined && { frame }),
+          ...(edgeFade !== undefined && { edgeFade }),
         };
       break;
     }
@@ -511,9 +612,31 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
       break;
     }
     case "remove_clip": {
-      const clip = clipRef();
       const ripple = bool("ripple");
-      if (clip !== undefined) op = { op: name, clip, ...(ripple !== undefined && { ripple }) };
+      const clips: string[] = [];
+      if ((raw.clip === undefined) === (raw.clips === undefined)) {
+        failures.push("remove_clip needs exactly one of clip or clips");
+      } else if (raw.clips !== undefined) {
+        if (!Array.isArray(raw.clips) || raw.clips.length === 0) {
+          failures.push("clips must be a non-empty array of clip ids");
+        } else if (raw.clips.length > EDIT_LIMITS.removeClips) {
+          failures.push(`clips exceeds ${EDIT_LIMITS.removeClips} entries`);
+        } else {
+          for (const [clipIndex, clip] of raw.clips.entries()) {
+            const id = need(readString(clip, `clips[${clipIndex}]`, EDIT_LIMITS.idChars));
+            if (id !== undefined) clips.push(id);
+          }
+          if (new Set(clips).size !== clips.length) failures.push("clips must not repeat a clip");
+        }
+      }
+      const clip = raw.clip === undefined ? undefined : clipRef();
+      if (failures.length === 0 && (clip !== undefined || raw.clips !== undefined))
+        op = {
+          op: name,
+          ...(clip !== undefined && { clip }),
+          ...(raw.clips !== undefined && { clips }),
+          ...(ripple !== undefined && { ripple }),
+        };
       break;
     }
     case "move_clip": {

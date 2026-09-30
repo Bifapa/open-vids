@@ -71,7 +71,8 @@ const PARAKEET_MODEL_FILES: readonly ModelFile[] = [
 ];
 
 /** At least 30 minutes, and twice the audio length for slow CPUs. */
-const decodeTimeoutMs = (audioSeconds: number) => Math.max(1_800_000, audioSeconds * 2000);
+const decodeTimeoutMs = (audioSeconds: number) =>
+  Math.max(1_800_000, Math.ceil(audioSeconds * 2000));
 
 /** The platforms sherpa-onnx-node publishes a native package for. */
 const SUPPORTED_TARGETS = [
@@ -197,9 +198,11 @@ async function verifies(path: string, file: ModelFile): Promise<boolean> {
   return (await sha256File(path)) === file.sha256;
 }
 
-interface EnsureModelOptions {
-  dir?: string;
-  files?: readonly ModelFile[];
+interface EnsureModelFilesOptions<F extends ModelFile> {
+  dir: string;
+  files: readonly F[];
+  /** Where one pinned file is fetched from. */
+  urlFor: (file: F) => string;
   download?: typeof downloadToFile;
   onBytes?: (done: number, total: number) => void;
   signal?: AbortSignal;
@@ -207,17 +210,18 @@ interface EnsureModelOptions {
 
 /**
  * Fetches each file that does not verify into a pid-named staging dir, checks size and sha256, then
- * renames it into place. False when all already verified.
+ * renames it into place. False when all already verified. File names are flat: `dir/<name>`.
  */
-export async function ensureParakeetModel({
-  dir = PARAKEET_MODEL_DIR,
-  files = PARAKEET_MODEL_FILES,
+export async function ensureModelFiles<F extends ModelFile>({
+  dir,
+  files,
+  urlFor,
   download = downloadToFile,
   onBytes,
   signal,
-}: EnsureModelOptions = {}): Promise<boolean> {
+}: EnsureModelFilesOptions<F>): Promise<boolean> {
   sweepStaleStaging(dir);
-  const missing: ModelFile[] = [];
+  const missing: F[] = [];
   for (const file of files) if (!(await verifies(join(dir, file.name), file))) missing.push(file);
   const total = missing.reduce((sum, f) => sum + f.bytes, 0);
   const staging = `${dir}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -228,7 +232,7 @@ export async function ensureParakeetModel({
       const dest = join(dir, file.name);
       const temp = join(staging, file.name);
       rmSync(dest, { force: true });
-      const url = `https://huggingface.co/${MODEL_REPO}/resolve/${MODEL_REVISION}/${file.name}`;
+      const url = urlFor(file);
       await download(url, temp, {
         signal,
         onProgress: (bytes) => onBytes?.(done + bytes, total),
@@ -236,7 +240,7 @@ export async function ensureParakeetModel({
         if (signal?.aborted) throw err;
         const why = err instanceof Error ? err.message : String(err);
         throw new Error(
-          `Could not download ${file.name} from huggingface.co (${why}). Check your network and re-run.`,
+          `Could not download ${file.name} from ${new URL(url).host} (${why}). Check your network and re-run.`,
           { cause: err },
         );
       });
@@ -253,6 +257,28 @@ export async function ensureParakeetModel({
     rmSync(staging, { recursive: true, force: true });
   }
   return missing.length > 0;
+}
+
+interface EnsureModelOptions {
+  dir?: string;
+  files?: readonly ModelFile[];
+  download?: typeof downloadToFile;
+  onBytes?: (done: number, total: number) => void;
+  signal?: AbortSignal;
+}
+
+/** Parakeet's pinned files from huggingface.co. False when all already verified. */
+export function ensureParakeetModel({
+  dir = PARAKEET_MODEL_DIR,
+  files = PARAKEET_MODEL_FILES,
+  ...rest
+}: EnsureModelOptions = {}): Promise<boolean> {
+  return ensureModelFiles({
+    dir,
+    files,
+    urlFor: (file) => `https://huggingface.co/${MODEL_REPO}/resolve/${MODEL_REVISION}/${file.name}`,
+    ...rest,
+  });
 }
 
 function recognizerConfig(): object {
@@ -280,7 +306,7 @@ const MAX_REASON_CHARS = 600;
 const bounded = (why: string) =>
   why.length > MAX_REASON_CHARS ? `${why.slice(0, MAX_REASON_CHARS)}…` : why;
 
-function failureReason(err: ExecFileException | null, stderr: string): string {
+export function failureReason(err: ExecFileException | null, stderr: string): string {
   const how = !err
     ? "exited without a result"
     : err.killed

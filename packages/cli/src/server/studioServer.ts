@@ -6,6 +6,7 @@
  */
 
 import { Hono, type Context } from "hono";
+import { diarizeMediaViaCli, transcribeMediaViaCli } from "./speechAdapter.js";
 import { streamSSE } from "hono/streaming";
 import { realpath } from "@hyperframes/core";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
@@ -785,6 +786,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const dir = skills ? join(skills, "hyperframes-creative", "frame-presets") : null;
       return dir && existsSync(dir) ? dir : null;
     },
+
+    // The recognizer runs as a `cli transcribe|diarize` child: whisper is synchronous and must not block this server.
+    transcribeMedia: (opts) => transcribeMediaViaCli(opts),
+    diarizeMedia: (opts) => diarizeMediaViaCli(opts),
   };
 
   const agentGateway = createAgentGateway({
@@ -941,7 +946,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Mount the shared studio API at /api.
   // Use fetch() forwarding (not .route()) so the sub-app sees paths without
   // the /api prefix — the shared module's path extraction uses c.req.path.
-  const api = createStudioApi(adapter);
+  const apiShutdown = new AbortController();
+  const api = createStudioApi(adapter, { shutdownSignal: apiShutdown.signal });
   app.all("/api/*", async (c) => {
     const url = new URL(c.req.url);
     url.pathname = url.pathname.slice(4); // Strip "/api" prefix
@@ -1067,6 +1073,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   const shutdown = async (): Promise<void> => {
     shuttingDown = true;
+    // Cancels running analysis jobs: their ffmpeg and recognizer children must not outlive the server.
+    apiShutdown.abort();
     const closeAgent = agentGateway.dispose().catch(() => {});
     // Commits any open edit window; bounded with the renders below, so a history still opening cannot hold exit.
     const closeHistory = histories.closeAll().catch(() => {});

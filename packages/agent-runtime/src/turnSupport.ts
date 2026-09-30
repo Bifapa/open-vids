@@ -1,5 +1,6 @@
 import type { TurnSummary } from "@hyperframes/agent-protocol";
 import type { ProjectScope } from "./checkpointHost.js";
+import type { AnalysisHost } from "./analysis/host.js";
 import type { EditingHost } from "./editing/host.js";
 import type { StreamTimerApi } from "./turnStream.js";
 
@@ -17,6 +18,13 @@ export interface TurnRunnerOptions {
    * production runtime always provides it.
    */
   editing?: (scope: ProjectScope) => EditingHost;
+  /**
+   * Opens the analysis host (long-form transcription, speakers, shots, take issues, cut plans) of a project. Without
+   * it the agents get no analysis tools; the production runtime always provides it.
+   */
+  analysis?: (scope: ProjectScope) => AnalysisHost;
+  /** How often a running analysis job is polled (default 750 ms). */
+  analysisPollMs?: number;
 }
 
 /** The history label of a turn's transaction; recovery rebuilds it from the persisted prompt, so it must be pure. */

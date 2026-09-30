@@ -25,6 +25,7 @@ The Chat panel talks to the OpenVids Agent Runtime (`packages/agent-runtime`), w
 
 - **Director + specialists** — the Director plans, delegates to enabled specialists (Editor, Vision, Motion Designer, Research, Audio) and can hand micro-tasks to Jev. Models and thinking are set per agent (globally in `~/.openvids/agent`, or per chat).
 - **Editing tools** — agents build the video through OpenVids capabilities served by the Studio server: `inspect_project`, `inspect_timeline`, `edit_timeline` (atomic batches: add/remove/move/trim/split clips, arrange tracks, text, registry components, caption presets, audio levels/fades), `browse_presets`, `render_video`. The Editor owns timeline edits. Edits land in the project files, so the live timeline and preview update while the agent works.
+- **Long-form analysis** — for long recordings the Studio server keeps durable, per-file analysis in `.hyperframes/analysis/`: transcript with word timestamps (local whisper.cpp or Parakeet), speaker map (sherpa-onnx diarization), pauses, shots with black/frozen-picture detection, take issues (retakes, false starts, fillers), draft segments, Vision notes and cut plans. Agents use it through `analyze_media`, `read_analysis`, `read_transcript`, `save_segments`, `inspect_frames` (Vision looks only at selected frames), `save_vision_notes`, `plan_cut` and `build_rough_cut`; the analysis is reused across turns and recomputed only when the source file (or the analysis method) changes.
 - **One prompt = one checkpoint** — every file an agent changes during a turn is recorded in project history as that turn; **Revert this turn**, Stop and crash recovery undo the whole edit. Renders in `renders/` are kept.
 
 Details: `packages/agent-runtime/README.md`; product docs and roadmap live in [aiezq/docs_open_vids](https://github.com/aiezq/docs_open_vids).
@@ -34,6 +35,7 @@ Details: `packages/agent-runtime/README.md`; product docs and roadmap live in [a
 - [Bun](https://bun.sh) (package manager and the sidecar JS runtime)
 - Rust stable toolchain (Tauri builds; `desktop:check` runs `cargo check`)
 - Node.js 22+, FFmpeg + ffprobe on PATH, and a Chrome the CLI can drive (`npx hyperframes doctor` reports all of these; see `packages/cli/src/commands/doctor.ts` and `packages/cli/src/browser/preflight.ts`)
+- Long-form analysis: `whisper-cli` (e.g. `brew install whisper-cpp`; the CLI installs it when possible) and its model are fetched on first use; the diarization runtime and models download into `~/.cache/hyperframes/` on first use
 
 ## Commands
 

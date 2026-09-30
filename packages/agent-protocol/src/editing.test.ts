@@ -168,6 +168,153 @@ describe("parseApplyEditsRequest", () => {
   });
 });
 
+describe("remove_clip with clips", () => {
+  it("keeps the ids and ripple, and still accepts a single clip", () => {
+    const parsed = parseApplyEditsRequest({
+      operations: [
+        { op: "remove_clip", clips: ["a", "b", "c"], ripple: true },
+        { op: "remove_clip", clip: "d" },
+      ],
+    });
+    if (!parsed.ok) throw new Error(parsed.error.message);
+    expect(parsed.value.operations).toEqual([
+      { op: "remove_clip", clips: ["a", "b", "c"], ripple: true },
+      { op: "remove_clip", clip: "d" },
+    ]);
+  });
+
+  it.each([
+    ["neither clip nor clips", { op: "remove_clip" }],
+    ["both clip and clips", { op: "remove_clip", clip: "a", clips: ["b"] }],
+    ["an empty list", { op: "remove_clip", clips: [] }],
+    ["a list that is not an array", { op: "remove_clip", clips: "a" }],
+    ["a blank id in the list", { op: "remove_clip", clips: ["a", " "] }],
+    ["a repeated clip", { op: "remove_clip", clips: ["a", "a"] }],
+  ])("refuses %s at the operation's index", (_name, operation) => {
+    const error = refused({ operations: [{ op: "set_composition", duration: 1 }, operation] });
+    expect(error.code).toBe("invalid_request");
+    expect(error.opIndex).toBe(1);
+  });
+
+  it("accepts exactly the limit and refuses one more", () => {
+    const ids = (count: number) => Array.from({ length: count }, (_, index) => `clip-${index}`);
+    expect(
+      parseApplyEditsRequest({
+        operations: [{ op: "remove_clip", clips: ids(EDIT_LIMITS.removeClips) }],
+      }).ok,
+    ).toBe(true);
+    expect(
+      refused({ operations: [{ op: "remove_clip", clips: ids(EDIT_LIMITS.removeClips + 1) }] })
+        .message,
+    ).toContain(String(EDIT_LIMITS.removeClips));
+  });
+});
+
+describe("add_sequence parsing", () => {
+  const sequence = (extra: Record<string, unknown> = {}) => ({
+    op: "add_sequence",
+    asset: "assets/talk.mp4",
+    track: 0,
+    ranges: [{ from: 1, to: 2.5 }],
+    ...extra,
+  });
+
+  it("keeps the ranges, defaults and options it was sent", () => {
+    const parsed = parseApplyEditsRequest({
+      operations: [
+        sequence({
+          start: 4,
+          ranges: [
+            { from: 0, to: 3 },
+            { from: 10, to: 12.5 },
+          ],
+          volume: 0.8,
+          muted: false,
+          fit: "cover",
+          frame: { x: 0, y: 0, width: 640, height: 360 },
+          edgeFade: EDIT_LIMITS.maxEdgeFade,
+        }),
+      ],
+    });
+    if (!parsed.ok) throw new Error(parsed.error.message);
+    expect(parsed.value.operations).toEqual([
+      {
+        op: "add_sequence",
+        asset: "assets/talk.mp4",
+        track: 0,
+        start: 4,
+        ranges: [
+          { from: 0, to: 3 },
+          { from: 10, to: 12.5 },
+        ],
+        volume: 0.8,
+        muted: false,
+        fit: "cover",
+        frame: { x: 0, y: 0, width: 640, height: 360 },
+        edgeFade: EDIT_LIMITS.maxEdgeFade,
+      },
+    ]);
+  });
+
+  it.each([
+    ["no ranges", sequence({ ranges: [] })],
+    ["ranges that are not an array", sequence({ ranges: { from: 0, to: 1 } })],
+    ["a range that ends where it starts", sequence({ ranges: [{ from: 2, to: 2 }] })],
+    ["a range that ends before it starts", sequence({ ranges: [{ from: 3, to: 2 }] })],
+    ["a negative in-point", sequence({ ranges: [{ from: -1, to: 2 }] })],
+    ["a non-finite out-point", sequence({ ranges: [{ from: 0, to: Number.POSITIVE_INFINITY }] })],
+    ["a string in-point", sequence({ ranges: [{ from: "0", to: 1 }] })],
+    [
+      "a range past the time limit",
+      sequence({ ranges: [{ from: 0, to: EDIT_LIMITS.maxTime + 1 }] }),
+    ],
+    ["a range with an unknown field", sequence({ ranges: [{ from: 0, to: 1, label: "intro" }] })],
+    ["a range that is not an object", sequence({ ranges: [[0, 1]] })],
+    ["a missing track", { op: "add_sequence", asset: "a.mp4", ranges: [{ from: 0, to: 1 }] }],
+    ["an unknown field", sequence({ mediaStart: 3 })],
+    ["an edgeFade above the limit", sequence({ edgeFade: EDIT_LIMITS.maxEdgeFade + 0.01 })],
+    ["a negative edgeFade", sequence({ edgeFade: -0.01 })],
+    ["a string edgeFade", sequence({ edgeFade: "0.02" })],
+    ["a volume above the limit", sequence({ volume: 4 })],
+    ["a negative start", sequence({ start: -1 })],
+    ["an unknown fit", sequence({ fit: "stretch" })],
+    ["a frame without a size", sequence({ frame: { x: 0, y: 0 } })],
+  ])("refuses %s at the operation's index", (_name, operation) => {
+    const error = refused({ operations: [{ op: "set_composition", duration: 1 }, operation] });
+    expect(error.code).toBe("invalid_request");
+    expect(error.opIndex).toBe(1);
+  });
+
+  it("names the range that is wrong", () => {
+    const error = refused({
+      operations: [
+        sequence({
+          ranges: [
+            { from: 0, to: 1 },
+            { from: 1, to: 2 },
+            { from: 5, to: 4 },
+          ],
+        }),
+      ],
+    });
+    expect(error.message).toContain("ranges[2]");
+  });
+
+  it("accepts exactly the range limit and refuses one more", () => {
+    const ranges = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({ from: index, to: index + 0.5 }));
+    const atLimit = parseApplyEditsRequest({
+      operations: [sequence({ ranges: ranges(EDIT_LIMITS.sequenceRanges) })],
+    });
+    expect(atLimit.ok).toBe(true);
+    const error = refused({
+      operations: [sequence({ ranges: ranges(EDIT_LIMITS.sequenceRanges + 1) })],
+    });
+    expect(error.message).toContain(String(EDIT_LIMITS.sequenceRanges));
+    expect(error.opIndex).toBe(0);
+  });
+});
+
 describe("isEditError", () => {
   it("recognises the wire error and nothing else", () => {
     expect(isEditError({ code: "conflict", message: "stale" })).toBe(true);

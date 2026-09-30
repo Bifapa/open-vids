@@ -17,7 +17,9 @@ import { EDITING_TOOL_NAMES, isEditingToolName } from "./tools.js";
 const EDITING = Object.values<string>(EDITING_TOOL_NAMES);
 
 function editingToolsOf(agent: AgentId, enabled: SpecialistId[], editing = true): string[] {
-  return buildHostTools(agent, { enabled, jev: true, editing }, async () => ({ text: "" }))
+  return buildHostTools(agent, { enabled, jev: true, editing, analysis: false }, async () => ({
+    text: "",
+  }))
     .map((tool) => tool.name)
     .filter(isEditingToolName);
 }
@@ -69,7 +71,7 @@ describe("editing tool availability", () => {
   it("keeps the orchestration tools of the Director unchanged", () => {
     const names = buildHostTools(
       "director",
-      { enabled: ["editor"], jev: true, editing: true },
+      { enabled: ["editor"], jev: true, editing: true, analysis: false },
       async () => ({ text: "" }),
     ).map((tool) => tool.name);
     expect(names).toEqual([
@@ -88,9 +90,13 @@ describe("editing tool availability", () => {
 });
 
 function tool(name: string): HostTool {
-  const found = buildHostTools("editor", { enabled: [], jev: false, editing: true }, async () => ({
-    text: "",
-  })).find((candidate) => candidate.name === name);
+  const found = buildHostTools(
+    "editor",
+    { enabled: [], jev: false, editing: true, analysis: false },
+    async () => ({
+      text: "",
+    }),
+  ).find((candidate) => candidate.name === name);
   if (!found) throw new Error(`no ${name}`);
   return found;
 }
@@ -115,6 +121,11 @@ describe("editing tool activity rows", () => {
     expect(tool("edit_timeline").activity?.({ operations: [{ op: "trim_clip" }] })?.label).toBe(
       "Editing the timeline · 1 change (trim)",
     );
+    expect(
+      tool("edit_timeline").activity?.({
+        operations: [{ op: "remove_clip" }, { op: "add_sequence" }, { op: "set_composition" }],
+      })?.label,
+    ).toBe("Editing the timeline · 3 changes (remove, add sequence, set length)");
     expect(tool("browse_presets").activity?.({ kind: "caption" })?.label).toBe(
       "Browsing caption presets",
     );
@@ -197,6 +208,55 @@ describe("editing tool results", () => {
       isError: true,
       text: 'unknown_clip (operations[1]): no clip "ghost"',
     });
+  });
+
+  it("accepts an add_sequence batch and reports the clip count instead of a wall of ids", async () => {
+    const { host, call } = editing();
+    const ranges = Array.from({ length: 312 }, (_, index) => ({
+      from: index * 4,
+      to: index * 4 + 3,
+    }));
+    const result = await call("edit_timeline", {
+      operations: [
+        { op: "remove_clip", clips: ["old-1", "old-2"] },
+        { op: "add_sequence", asset: "assets/talk.mp4", track: 0, ranges, edgeFade: 0.02 },
+        { op: "set_composition", duration: 936 },
+      ],
+    });
+    expect(result.isError).toBeUndefined();
+    expect(host.applyRequests[0]?.operations[1]).toMatchObject({
+      op: "add_sequence",
+      edgeFade: 0.02,
+    });
+    expect(result.text).toContain("1. remove_clip: removed 2 clips");
+    expect(result.text).toContain("2. add_sequence → 312 clips (first clip-102-1)");
+    expect(result.text).not.toContain("clip-102-2");
+    expect(result.text).toContain("3. set_composition:");
+  });
+
+  it("refuses a malformed add_sequence itself, naming the range, without calling the service", async () => {
+    const { host, call } = editing();
+    const backwards = await call("edit_timeline", {
+      operations: [
+        {
+          op: "add_sequence",
+          asset: "assets/talk.mp4",
+          track: 0,
+          ranges: [
+            { from: 0, to: 2 },
+            { from: 9, to: 4 },
+          ],
+        },
+      ],
+    });
+    expect(backwards.isError).toBe(true);
+    expect(backwards.text).toContain("invalid_request (operations[0])");
+    expect(backwards.text).toContain("ranges[1]");
+    const bothForms = await call("edit_timeline", {
+      operations: [{ op: "remove_clip", clip: "a", clips: ["b"] }],
+    });
+    expect(bothForms.isError).toBe(true);
+    expect(host.applyRequests).toHaveLength(0);
   });
 
   it("refuses malformed batches itself, naming the operation, without calling the service", async () => {

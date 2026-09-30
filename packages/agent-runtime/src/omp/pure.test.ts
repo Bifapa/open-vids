@@ -6,6 +6,7 @@ import type { HostTool } from "../backend.ts";
 import { terminalEventResult, translateOmpEvent } from "./events.ts";
 import { createModelCatalog, mapModelInfo, parseModelRole } from "./model-mapping.ts";
 import { guardToolCallPaths } from "./path-guard.ts";
+import { hostToolContent } from "./tool-content.ts";
 
 describe("OMP model mapping", () => {
   it("maps model metadata and excludes the non-controllable off effort", () => {
@@ -288,5 +289,30 @@ describe("OMP project path boundary", () => {
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe("OMP tool result content", () => {
+  it("puts the text first and every image after it, as OMP image content", () => {
+    expect(
+      hostToolContent({
+        text: "2 frames attached",
+        images: [
+          { mimeType: "image/jpeg", data: "AAAA" },
+          { mimeType: "image/jpeg", data: "BBBB" },
+        ],
+      }),
+    ).toEqual([
+      { type: "text", text: "2 frames attached" },
+      { type: "image", data: "AAAA", mimeType: "image/jpeg" },
+      { type: "image", data: "BBBB", mimeType: "image/jpeg" },
+    ]);
+  });
+
+  it("has only the text part for a result without images, and keeps an error's text", () => {
+    expect(hostToolContent({ text: "failed: nope", isError: true })).toEqual([
+      { type: "text", text: "failed: nope" },
+    ]);
+    expect(hostToolContent({ text: "none", images: [] })).toEqual([{ type: "text", text: "none" }]);
   });
 });

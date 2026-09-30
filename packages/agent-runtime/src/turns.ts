@@ -24,6 +24,8 @@ import { renderTeam, resolveTurnSetup } from "./agents/setup.js";
 import { buildHostTools, type ToolAvailability } from "./agents/tools.js";
 import { TurnEditing } from "./editing/executor.js";
 import { isEditingToolName } from "./editing/tools.js";
+import { TurnAnalysis } from "./analysis/executor.js";
+import { isAnalysisToolName } from "./analysis/tools.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import type { CheckpointHandle, CheckpointHost } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
@@ -57,6 +59,8 @@ interface ActiveRun {
   orchestrator: Orchestrator | null;
   /** The turn's editing tools; closed and awaited before the checkpoint ends. */
   editing: TurnEditing | null;
+  /** The turn's analysis tools; closed (jobs cancelled, calls awaited) before the checkpoint ends. */
+  analysis: TurnAnalysis | null;
   /** The Director's prompt has ended but the turn is still collecting delegated work. */
   directorIdle: boolean;
   /** Steering received while the Director was idle; it opens the next Director prompt. */
@@ -77,6 +81,8 @@ export class TurnRunner {
   private readonly renewIntervalMs: number;
   private readonly stopGraceMs: number | undefined;
   private readonly editingFactory: TurnRunnerOptions["editing"];
+  private readonly analysisFactory: TurnRunnerOptions["analysis"];
+  private readonly analysisPollMs: number | undefined;
   private readonly timers: StreamTimerApi;
   private readonly sessionManager: SessionManager;
   private active: ActiveRun | null = null;
@@ -96,6 +102,8 @@ export class TurnRunner {
     this.renewIntervalMs = options.renewIntervalMs ?? DEFAULT_RENEW_MS;
     this.stopGraceMs = options.stopGraceMs;
     this.editingFactory = options.editing;
+    this.analysisFactory = options.analysis;
+    this.analysisPollMs = options.analysisPollMs;
     this.timers = options.timers ?? {
       setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
       clearTimeout: (timer) => globalThis.clearTimeout(timer),
@@ -185,6 +193,7 @@ export class TurnRunner {
       setup: null,
       orchestrator: null,
       editing: null,
+      analysis: null,
       directorIdle: false,
       pendingSteering: [],
       promptStarted: started.promise,
@@ -474,17 +483,30 @@ export class TurnRunner {
       const setup = run.setup;
       if (!setup) throw new Error("The turn has no agent setup.");
       const editingFactory = this.editingFactory;
-      run.editing = editingFactory
-        ? new TurnEditing({
-            host: editingFactory(this.chats.scope),
-            editorContext: setup.editorContext,
+      const editingHost = editingFactory ? editingFactory(this.chats.scope) : null;
+      run.editing =
+        editingFactory && editingHost
+          ? new TurnEditing({
+              host: editingHost,
+              editorContext: setup.editorContext,
+              turnSignal: run.controller.signal,
+            })
+          : null;
+      const analysisFactory = this.analysisFactory;
+      run.analysis = analysisFactory
+        ? new TurnAnalysis({
+            host: analysisFactory(this.chats.scope),
+            editing: editingHost,
             turnSignal: run.controller.signal,
+            ...(this.analysisPollMs !== undefined && { pollMs: this.analysisPollMs }),
           })
         : null;
       const availability: ToolAvailability = {
         enabled: setup.enabled,
         jev: setup.jev !== null,
         editing: run.editing !== null,
+        analysis: run.analysis !== null,
+        planClips: (plan) => this.active?.analysis?.planClips(plan),
       };
       const session = await this.agentSession(run.chatId, "director", availability);
       if (run.finalizing) return;
@@ -669,6 +691,11 @@ export class TurnRunner {
       if (!run.editing) return { text: "Editing is not available in this runtime.", isError: true };
       return run.editing.execute(name, args, signal);
     }
+    if (isAnalysisToolName(name)) {
+      if (!run.analysis)
+        return { text: "Analysis is not available in this runtime.", isError: true };
+      return run.analysis.execute(name, args, signal);
+    }
     if (!run.orchestrator)
       return { text: "There is no running turn for this tool call.", isError: true };
     return run.orchestrator.execute(caller, name, args, signal);
@@ -684,6 +711,8 @@ export class TurnRunner {
     // Every delegated run must be over before the checkpoint closes, or its later writes would escape Revert.
     await run.orchestrator?.shutdown(status === "completed").catch(() => undefined);
     // Editing calls still running (or a render) end here too: no editing write may land after the checkpoint closes.
+    // Analysis jobs are cancelled and a rough cut already sent to the editing service is awaited for the same reason.
+    await run.analysis?.shutdown().catch(() => undefined);
     await run.editing?.shutdown().catch(() => undefined);
     if (run.heartbeat) this.timers.clearTimeout(run.heartbeat);
     const createdAt = run.turn.checkpoint?.createdAt ?? run.turn.startedAt;

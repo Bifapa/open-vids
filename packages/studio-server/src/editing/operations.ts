@@ -4,6 +4,8 @@ import { dirname, posix } from "node:path";
 import type {
   ApplyEditsRequest,
   ApplyEditsResponse,
+  ClipFit,
+  ClipFrame,
   EditOperation,
   EditOperationResult,
   TextSize,
@@ -25,7 +27,11 @@ import {
   insertCompositionIntoSource,
 } from "../helpers/compositionInsertion.js";
 import { pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
-import { removeElementFromHtml, splitElementInHtml } from "../helpers/sourceMutation.js";
+import {
+  removeElementFromHtml,
+  removeElementsFromHtml,
+  splitElementInHtml,
+} from "../helpers/sourceMutation.js";
 import { patchStyleAttrString } from "../helpers/sourceStyleMutation.js";
 import {
   CAPTIONS_FILE,
@@ -205,6 +211,25 @@ function applyGsap(batch: Batch, shifts: readonly Gsap[]): void {
 
 // ── add ──────────────────────────────────────────────────────────────────────
 
+/** An explicit frame wins; an explicit fit fills the canvas; otherwise the asset keeps its size, centred. */
+function clipGeometry(
+  op: { frame?: ClipFrame; fit?: ClipFit },
+  facts: { width: number | null; height: number | null },
+  canvas: { width: number; height: number },
+): { left: number; top: number; width: number; height: number } {
+  if (op.frame) {
+    return {
+      left: Math.round(op.frame.x),
+      top: Math.round(op.frame.y),
+      width: Math.round(op.frame.width),
+      height: Math.round(op.frame.height),
+    };
+  }
+  if (op.fit !== undefined) return { left: 0, top: 0, width: canvas.width, height: canvas.height };
+  const natural = facts.width && facts.height ? { width: facts.width, height: facts.height } : null;
+  return fitTimelineAssetGeometry(natural, canvas);
+}
+
 async function addClip(
   env: EditEnv,
   batch: Batch,
@@ -265,19 +290,7 @@ async function addClip(
     throw new EditFailure("unsupported", "frame applies to video and images, not audio");
   }
   const model = await loadModel(env, batch.html);
-  const canvas = canvasOf(model);
-  const natural = facts.width && facts.height ? { width: facts.width, height: facts.height } : null;
-  // An explicit frame wins; an explicit fit fills the frame; otherwise the asset keeps its size, centered.
-  const geometry = op.frame
-    ? {
-        left: Math.round(op.frame.x),
-        top: Math.round(op.frame.y),
-        width: Math.round(op.frame.width),
-        height: Math.round(op.frame.height),
-      }
-    : op.fit === undefined
-      ? fitTimelineAssetGeometry(natural, canvas)
-      : { left: 0, top: 0, width: canvas.width, height: canvas.height };
+  const geometry = clipGeometry(op, facts, canvasOf(model));
   const hfId = `hf-${randomUUID()}`;
   const markup = buildTimelineAssetInsertHtml({
     id: buildTimelineAssetId(assetPath, usedIds(model)),
@@ -299,6 +312,87 @@ async function addClip(
   });
   batch.html = insertTimelineAssetIntoSource(serializeModel(model), markup);
   return { op: op.op, clipId: hfId, newClipId: null };
+}
+
+/**
+ * Places several ranges of one video/audio source back to back: one insertion for the whole sequence, so a 1000-range
+ * cut costs one parse and one serialise like a single `add_clip`. The composition is not parsed per clip.
+ */
+async function addSequence(
+  env: EditEnv,
+  batch: Batch,
+  op: Extract<EditOperation, { op: "add_sequence" }>,
+): Promise<EditOperationResult> {
+  const assetPath = resolveProjectRelative("index.html", op.asset);
+  const kind = assetPath === null ? null : getTimelineAssetKind(assetPath);
+  const facts = assetPath === null ? null : await env.facts.read(env.project.dir, assetPath);
+  if (assetPath === null || kind === null || !facts) {
+    throw new EditFailure(
+      "unknown_asset",
+      `"${op.asset}" is not a video or audio file in this project`,
+    );
+  }
+  if (kind === "image") {
+    throw new EditFailure(
+      "unsupported",
+      `add_sequence cuts video or audio sources, not images ("${op.asset}")`,
+    );
+  }
+  if (op.frame !== undefined && kind === "audio") {
+    throw new EditFailure("unsupported", "frame applies to video and images, not audio");
+  }
+  const source = facts.duration;
+  if (source !== null) {
+    for (const [index, range] of op.ranges.entries()) {
+      if (range.from >= source || range.to > source + MEDIA_OVERRUN_TOLERANCE) {
+        throw new EditFailure(
+          "out_of_bounds",
+          `ranges[${index}] (${fmt(range.from)}–${fmt(range.to)}s) is past the end of ${assetPath} (${fmt(source)}s)`,
+        );
+      }
+    }
+  }
+
+  const model = await loadModel(env, batch.html);
+  const geometry = clipGeometry(op, facts, canvasOf(model));
+  const zIndex = nextZIndex(model);
+  const src = resolveTimelineAssetSrc(env.compositionPath, assetPath);
+  const taken = new Set(usedIds(model));
+  const hfIds: string[] = [];
+  const markup: string[] = [];
+  let cursor = op.start ?? 0;
+  for (const range of op.ranges) {
+    const duration = round3(range.to - range.from);
+    // The ramps of one clip must fit inside it, so a very short range gets shorter ramps.
+    const edge = Math.min(op.edgeFade ?? 0, duration / 2);
+    const id = buildTimelineAssetId(assetPath, taken);
+    taken.add(id);
+    const hfId = `hf-${randomUUID()}`;
+    hfIds.push(hfId);
+    markup.push(
+      buildTimelineAssetInsertHtml({
+        id,
+        hfId,
+        assetPath: src,
+        kind,
+        start: round3(cursor),
+        duration,
+        track: op.track,
+        zIndex,
+        geometry,
+        hasAudio: facts.hasAudio === true,
+        fit: op.fit,
+        mediaStart: range.from > 0 ? round3(range.from) : undefined,
+        volume: op.volume,
+        muted: op.muted,
+        fadeIn: edge > 0 ? round3(edge) : undefined,
+        fadeOut: edge > 0 ? round3(edge) : undefined,
+      }),
+    );
+    cursor += duration;
+  }
+  batch.html = insertTimelineAssetIntoSource(serializeModel(model), markup.join("\n"));
+  return { op: op.op, clipId: hfIds[0] ?? null, newClipId: null, clipIds: hfIds };
 }
 
 function addText(
@@ -520,6 +614,8 @@ async function removeClip(
   batch: Batch,
   op: Extract<EditOperation, { op: "remove_clip" }>,
 ): Promise<EditOperationResult> {
+  if (op.clips !== undefined) return removeClips(env, batch, op, op.clips);
+  if (op.clip === undefined) throw new EditFailure("invalid_request", "remove_clip needs a clip");
   const model = await loadModel(env, batch.html);
   const clip = requireClip(model, op.clip, env);
   const later = op.ripple
@@ -541,6 +637,35 @@ async function removeClip(
   batch.html = removeElementFromHtml(batch.html, { hfId: clip.id });
   applyGsap(batch, shifts);
   return { op: op.op, clipId: clip.id, newClipId: null };
+}
+
+/**
+ * Removes many clips at once. Every clip is resolved (and its lock checked) before anything changes, so one bad id
+ * refuses the whole operation. Without ripple the removal is one parse; with ripple each clip closes its own gap in
+ * the order given, like the single-clip operation.
+ */
+async function removeClips(
+  env: EditEnv,
+  batch: Batch,
+  op: Extract<EditOperation, { op: "remove_clip" }>,
+  refs: string[],
+): Promise<EditOperationResult> {
+  const model = await loadModel(env, batch.html);
+  const clips = refs.map((ref) => requireClip(model, ref, env));
+  const ids = clips.map((clip) => clip.id);
+  if (new Set(ids).size !== ids.length) {
+    throw new EditFailure("invalid_request", "clips must not name the same clip twice");
+  }
+  if (op.ripple) {
+    for (const id of ids)
+      await removeClip(env, batch, { op: "remove_clip", clip: id, ripple: true });
+  } else {
+    batch.html = removeElementsFromHtml(
+      batch.html,
+      ids.map((hfId) => ({ hfId })),
+    );
+  }
+  return { op: op.op, clipId: ids[0] ?? null, newClipId: null, clipIds: ids };
 }
 
 async function moveClip(
@@ -763,6 +888,8 @@ async function applyOperation(
   switch (op.op) {
     case "add_clip":
       return addClip(env, batch, op);
+    case "add_sequence":
+      return addSequence(env, batch, op);
     case "add_text":
       return addText(env, batch, op, await loadModel(env, batch.html));
     case "add_component":

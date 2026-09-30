@@ -11,6 +11,14 @@ const sherpa = {
 };
 vi.mock("../whisper/sherpa.js", () => sherpa);
 
+const diarizeModule = vi.hoisted(() => ({
+  DIARIZATION_MODEL_LABEL: "diarization-test",
+  DIARIZATION_MODEL_DIR: "/cache/diarization",
+  diarizationUnsupportedReason: vi.fn(),
+  installDiarization: vi.fn(),
+}));
+vi.mock("../whisper/diarize.js", () => diarizeModule);
+
 // The command's Ctrl-C scope, driven by the test instead of a real signal.
 let cancel = new AbortController();
 const dispose = vi.fn();
@@ -107,5 +115,66 @@ describe("models install parakeet --json", () => {
     expect(threw).toBe(false);
     expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/) });
     expect(sherpa.installSherpaRuntime).toHaveBeenCalledWith({ signal: cancel.signal });
+  });
+});
+
+describe("models install diarization --json", () => {
+  async function installDiarization() {
+    let exitCode = 0;
+    try {
+      await modelsCmd.run!({
+        args: { action: "install", name: "diarization", json: true },
+      } as never);
+    } catch (err) {
+      if (!(err instanceof CliRuntimeError)) throw err;
+      exitCode = err.result.exitCode;
+    }
+    exitCode ||= consumeCommandResult().exitCode;
+    const out: Record<string, unknown> = JSON.parse(
+      String(vi.mocked(console.log).mock.calls.at(-1)?.[0]),
+    );
+    return { exitCode, out };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cancel = new AbortController();
+    consumeCommandResult();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    diarizeModule.diarizationUnsupportedReason.mockReturnValue(null);
+    diarizeModule.installDiarization.mockResolvedValue(true);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("prints one result naming the models and where they live", async () => {
+    expect(await installDiarization()).toEqual({
+      exitCode: 0,
+      out: { ok: true, model: "diarization-test", changed: true, modelDir: "/cache/diarization" },
+    });
+    expect(diarizeModule.installDiarization).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: cancel.signal }),
+    );
+  });
+
+  it("refuses an unsupported system before downloading anything", async () => {
+    diarizeModule.diarizationUnsupportedReason.mockReturnValue("not on this platform");
+    expect(await installDiarization()).toEqual({
+      exitCode: 1,
+      out: { ok: false, error: "not on this platform" },
+    });
+    expect(diarizeModule.installDiarization).not.toHaveBeenCalled();
+  });
+
+  it("stops with exit 130 and says which install was cancelled", async () => {
+    diarizeModule.installDiarization.mockImplementation(async () => {
+      cancel.abort();
+      throw new Error("aborted");
+    });
+    const { exitCode, out } = await installDiarization();
+    expect(exitCode).toBe(130);
+    expect(out).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Speaker diarization install cancelled"),
+    });
   });
 });

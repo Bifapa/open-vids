@@ -42,10 +42,18 @@ export type BackendEvent =
     }
   | { type: "tool.end"; toolCallId: string; ok: boolean };
 
+/** An image a tool shows to the model (base64, without a data-URL prefix). */
+export interface HostToolImage {
+  mimeType: string;
+  data: string;
+}
+
 /** What a runtime-provided tool returns to the model. */
 export interface HostToolResult {
   text: string;
   isError?: boolean;
+  /** Shown to the model after the text (e.g. video frames); a backend without image input ignores them. */
+  images?: HostToolImage[];
 }
 
 /**

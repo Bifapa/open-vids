@@ -7,7 +7,7 @@ import {
   type ChatMessage,
   type ModelSelection,
 } from "@hyperframes/agent-protocol";
-import type { BackendPromptInput, BackendPromptOutcome } from "./backend.js";
+import type { BackendPromptInput, BackendPromptOutcome, HostToolResult } from "./backend.js";
 import { ChatService } from "./chats.js";
 import type { ScriptedSession } from "./testing/backend.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "./testing/runtimeFixture.js";
@@ -20,6 +20,28 @@ const EDITOR_TOOLS = [
   "browse_presets",
   "render_video",
   "edit_timeline",
+];
+
+/** The analysis tools the Editor gets. */
+const ANALYSIS_TOOLS_EDITOR = [
+  "analyze_media",
+  "read_analysis",
+  "read_transcript",
+  "save_segments",
+  "plan_cut",
+  "build_rough_cut",
+];
+
+/** A Director with neither Vision nor Editor enabled does that work itself. */
+const ANALYSIS_TOOLS_SOLO = [
+  "analyze_media",
+  "read_analysis",
+  "read_transcript",
+  "save_segments",
+  "inspect_frames",
+  "save_vision_notes",
+  "plan_cut",
+  "build_rough_cut",
 ];
 
 type AgentScript = (
@@ -148,7 +170,10 @@ describe("multi-agent orchestration", () => {
       // Each specialist keeps its own resumable session beside the Director's, without delegation tools.
       const editorSession = fixture.backend.sessionsOf("editor")[0];
       expect(editorSession?.input.stateDir).toMatch(/agents[/\\]editor$/);
-      expect(editorSession?.input.hostTools.map((tool) => tool.name)).toEqual(EDITOR_TOOLS);
+      expect(editorSession?.input.hostTools.map((tool) => tool.name)).toEqual([
+        ...EDITOR_TOOLS,
+        ...ANALYSIS_TOOLS_EDITOR,
+      ]);
     } finally {
       await fixture.cleanup();
     }
@@ -202,6 +227,7 @@ describe("multi-agent orchestration", () => {
       expect(soloDirector?.input.hostTools.map((tool) => tool.name)).toEqual([
         "update_plan",
         ...EDITOR_TOOLS,
+        ...ANALYSIS_TOOLS_SOLO,
       ]);
     } finally {
       await fixture.cleanup();
@@ -587,6 +613,160 @@ describe("multi-agent orchestration", () => {
       // The fold of the log on disk agrees with the live state.
       expect(foldChatEvents(restartedChats.events(chat.id))).toEqual(recovered);
       await restarted.dispose();
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+});
+
+const activityRows = (messages: ChatMessage[], match: (message: ChatMessage) => boolean) =>
+  messages
+    .filter((message) => match(message) && message.role === "assistant")
+    .flatMap((message) =>
+      message.parts.flatMap((part) => (part.type === "activity" ? [part.activity] : [])),
+    )
+    .map((activity) => [activity.label, activity.status]);
+
+describe("long-form pipeline orchestration", () => {
+  it("routes analysis tools to the Director, Vision and Editor runs and keeps the rough cut in one edit", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, ["editor", "vision"]);
+      const source = "assets/raw-talk.mp4";
+      let frames: HostToolResult | null = null;
+      let build: HostToolResult | null = null;
+      const toolsOf = (session: ScriptedSession) =>
+        session.input.hostTools.map((tool) => tool.name);
+      script(fixture, {
+        director: async (input, session) => {
+          await session.callTool("analyze_media", { source });
+          const vision = await session.callTool("delegate", {
+            agent: "vision",
+            title: "Look at the flagged frames",
+            task: `Inspect the open vision targets of ${source} and save notes`,
+          });
+          const segmentation = await session.callTool("delegate", {
+            agent: "editor",
+            title: "Segment the talk",
+            task: `Read the transcript of ${source} and save the semantic segments`,
+          });
+          expect([vision.isError, segmentation.isError]).toEqual([undefined, undefined]);
+          await session.callTool("wait_for_agents", {});
+          await session.callTool("delegate", {
+            agent: "editor",
+            title: "Build the rough cut",
+            task: `Plan the cut of ${source} and build it on the timeline`,
+          });
+          await session.callTool("wait_for_agents", {});
+          say(input, "Rough cut is on the timeline.");
+          return "completed";
+        },
+        vision: async (_input, session) => {
+          frames = await session.callTool("inspect_frames", { source, times: [100.5, 101.5] });
+          await session.callTool("save_vision_notes", {
+            source,
+            notes: [
+              {
+                start: 100,
+                end: 102,
+                frames: [100.5, 101.5],
+                quality: "unusable",
+                tags: ["black"],
+                finding: "Black frames.",
+              },
+            ],
+          });
+          return "completed";
+        },
+        editor: async (input, session) => {
+          if (input.text.includes("semantic segments")) {
+            await session.callTool("read_transcript", { source });
+            await session.callTool("save_segments", {
+              source,
+              transcriptVersion: "sha256:aaaa",
+              segments: [
+                {
+                  firstSentence: "s1",
+                  lastSentence: "s3",
+                  title: "The talk",
+                  summary: "All of it.",
+                  role: "main",
+                  priority: "must",
+                },
+              ],
+            });
+          } else {
+            await session.callTool("plan_cut", { source, label: "rough cut" });
+            build = await session.callTool("build_rough_cut", { plan: "cut-1" });
+          }
+          return "completed";
+        },
+      });
+
+      await fixture.turns.start(chat.id, { prompt: "Tighten the raw talk" });
+      await settled(fixture, chat.id);
+
+      const state = fixture.chats.get(chat.id);
+      if (!state) throw new Error("chat missing");
+      expect(state.turns[0]?.status).toBe("completed");
+      expect(state.runs.map((run) => [run.agent, run.status])).toEqual([
+        ["vision", "completed"],
+        ["editor", "completed"],
+        ["editor", "completed"],
+      ]);
+
+      // Each tool ran once, on behalf of the right agent.
+      expect(fixture.analysis.startRequests).toEqual([{ source }]);
+      expect(fixture.analysis.frameRequests).toHaveLength(1);
+      expect(fixture.analysis.visionRequests).toHaveLength(1);
+      expect(fixture.analysis.segmentRequests).toHaveLength(1);
+      expect(fixture.analysis.planRequests).toEqual([{ source, label: "rough cut" }]);
+      expect(fixture.analysis.appliedRequests).toHaveLength(1);
+      expect(fixture.editing.applyRequests).toHaveLength(1);
+      expect(fixture.editing.applyRequests[0]?.operations.map((operation) => operation.op)).toEqual(
+        ["add_sequence", "set_composition"],
+      );
+      expect(fixture.checkpoints.windows).toHaveLength(1);
+
+      // Vision saw the frames as images; the Editor's rough cut reports its clips.
+      expect(frames).toMatchObject({
+        images: [{ mimeType: "image/jpeg" }, { mimeType: "image/jpeg" }],
+      });
+      expect(build).toMatchObject({ text: expect.stringContaining("3 clips") });
+
+      // Who has which tool.
+      const director = fixture.backend.sessionsOf("director")[0];
+      const vision = fixture.backend.sessionsOf("vision")[0];
+      const editor = fixture.backend.sessionsOf("editor")[0];
+      if (!director || !vision || !editor) throw new Error("a session is missing");
+      expect(toolsOf(director)).toContain("analyze_media");
+      expect(toolsOf(director)).not.toContain("inspect_frames");
+      expect(toolsOf(director)).not.toContain("plan_cut");
+      expect(toolsOf(vision)).toContain("inspect_frames");
+      expect(toolsOf(vision)).not.toContain("plan_cut");
+      expect(toolsOf(editor)).toContain("build_rough_cut");
+      expect(toolsOf(editor)).not.toContain("inspect_frames");
+
+      // Activity rows land on the thread of the run that made the call.
+      const [visionRun, segmentRun, buildRun] = state.runs;
+      expect(activityRows(state.messages, (message) => message.runId === visionRun?.id)).toEqual([
+        ["Looking at 2 frames", "done"],
+        ["Saving 1 visual note", "done"],
+      ]);
+      expect(activityRows(state.messages, (message) => message.runId === segmentRun?.id)).toEqual([
+        ["Reading the transcript", "done"],
+        ["Saving 1 segment", "done"],
+      ]);
+      expect(activityRows(state.messages, (message) => message.runId === buildRun?.id)).toEqual([
+        ["Planning the cut · rough cut", "done"],
+        ["Building the rough cut · 3 clips", "done"],
+      ]);
+      expect(
+        activityRows(
+          state.messages,
+          (message) => message.id === state.turns[0]?.assistantMessageId,
+        ),
+      ).toEqual([["Analyzing raw-talk.mp4", "done"]]);
     } finally {
       await fixture.cleanup();
     }

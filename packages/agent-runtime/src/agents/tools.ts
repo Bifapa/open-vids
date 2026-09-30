@@ -11,6 +11,7 @@ import {
   type ThinkingEffort,
 } from "@hyperframes/agent-protocol";
 import type { HostTool, HostToolResult } from "../backend.js";
+import { buildAnalysisTools } from "../analysis/tools.js";
 import { buildEditingTools } from "../editing/tools.js";
 
 export const TOOL_NAMES = {
@@ -41,6 +42,10 @@ export interface ToolAvailability {
   jev: boolean;
   /** The runtime has an editing host: agents get the editing tools their role allows. */
   editing: boolean;
+  /** The runtime has an analysis host: agents get the analysis tools their role allows. */
+  analysis: boolean;
+  /** Ranges of a plan this turn has planned, for the label of build_rough_cut's activity row. */
+  planClips?: (plan: string) => number | undefined;
 }
 
 const stringProperty = (description: string, maxLength?: number) => ({
@@ -80,7 +85,19 @@ export function buildHostTools(
   const editing = availability.editing
     ? buildEditingTools(agent, availability.enabled, execute)
     : [];
-  if (agent !== "director") return [...editing, ...(availability.jev ? [jevTool(execute)] : [])];
+  const analysis = availability.analysis
+    ? buildAnalysisTools(
+        agent,
+        availability.enabled,
+        {
+          editing: availability.editing,
+          ...(availability.planClips && { planClips: availability.planClips }),
+        },
+        execute,
+      )
+    : [];
+  if (agent !== "director")
+    return [...editing, ...analysis, ...(availability.jev ? [jevTool(execute)] : [])];
 
   const planAgents: AgentId[] = ["director", ...availability.enabled];
   if (availability.jev) planAgents.push("jev");
@@ -191,7 +208,7 @@ export function buildHostTools(
       },
     );
   }
-  tools.push(...editing);
+  tools.push(...editing, ...analysis);
   if (availability.jev) tools.push(jevTool(execute));
   return tools;
 }

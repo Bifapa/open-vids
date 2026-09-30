@@ -145,6 +145,20 @@ export function removeElementFromHtml(source: string, target: SourceMutationTarg
   return wrappedFragment ? document.body.innerHTML || "" : document.toString();
 }
 
+/** Removes several elements (and their GSAP tweens) with one parse and one serialisation. */
+export function removeElementsFromHtml(source: string, targets: SourceMutationTarget[]): string {
+  const { document, wrappedFragment } = parseSourceDocument(source);
+  let removed = false;
+  for (const target of targets) {
+    const element = findTargetElement(document, target);
+    if (!element) continue;
+    removeElementWithGsapCascade(document, element);
+    removed = true;
+  }
+  if (!removed) return source;
+  return wrappedFragment ? document.body.innerHTML || "" : document.toString();
+}
+
 export function isHTMLElement(el: Node): el is HTMLElement {
   const HTMLEl = el.ownerDocument?.defaultView?.HTMLElement;
   return HTMLEl ? el instanceof HTMLEl : el.nodeType === 1 && "style" in el;

@@ -403,6 +403,7 @@ async function transcribeAudio(
           wordCount: words.length,
           durationSeconds: result.durationSeconds,
           speechOnsetSeconds: result.speechOnsetSeconds,
+          language: result.language ?? opts.language ?? null,
           transcriptPath: result.transcriptPath,
         }),
       );
@@ -445,7 +446,14 @@ async function transcribeAudio(
     // condition, not a command crash — and `--optional` callers continue.
     if (isWhisperUnavailable(err)) {
       if (opts.json) {
-        console.log(JSON.stringify({ ok: false, skipped: true, reason: "whisper_unavailable" }));
+        console.log(
+          JSON.stringify({
+            ok: false,
+            skipped: true,
+            reason: "whisper_unavailable",
+            error: message,
+          }),
+        );
       } else {
         spin?.stop(c.warn(`Captions skipped — ${message}`));
       }

@@ -101,6 +101,51 @@ Director's transaction is open the history engine attributes it to the turn.
   land after the checkpoint transaction ends. Aborting the turn aborts in-flight edits and renders.
 - `FakeEditingHost` (`src/testing`) is the in-memory host for tests; the runtime fixture wires it.
 
+## Long-form analysis tools
+
+Long raw footage becomes durable, cached analysis artifacts and then a rough cut on the real
+timeline. The runtime talks to Studio's analysis service over loopback HTTP
+(`src/analysis/host.http.ts`, base `${studioOrigin}/api/projects/:id/analysis`): `jobs` (start/join,
+poll, cancel), `overview`, `transcript`, `artifact`, `segments`, `vision`, `frames`, `cuts`
+(plan/list/get/applied). The wire contract is `packages/agent-protocol/src/analysis.ts`; artifacts live
+in `<project>/.hyperframes/analysis` outside project history, so Revert never touches the cache.
+
+| tool                                                                                    | Director                          | Editor | Vision | Motion/Audio/Research |
+| --------------------------------------------------------------------------------------- | --------------------------------- | ------ | ------ | --------------------- |
+| `analyze_media` (starts/joins the job, waits, returns the compact overview)             | yes                               | yes    | yes    | no                    |
+| `read_analysis` (overview or one section), `read_transcript` (paged; marks take issues) | yes                               | yes    | yes    | yes                   |
+| `save_segments`                                                                         | yes                               | yes    | no     | no                    |
+| `inspect_frames` (JPEGs to the model), `save_vision_notes`                              | only if Vision is not enabled     | no     | yes    | no                    |
+| `plan_cut`, `build_rough_cut`                                                           | only if the Editor is not enabled | yes    | no     | no                    |
+
+- `build_rough_cut` reads the plan and the timeline, then sends ONE atomic `editing/apply` batch with
+  `baseVersion`: `remove_clip {clips}` for every clip that plays the plan's source (all tracks),
+  `add_sequence` of the plan's ranges (`edgeFade` 0.02) and `set_composition` to the cut length; it then
+  records the plan as applied (`cuts/:id/applied`) and reports the clip count, the length and the timeline
+  ranges where kept material overlaps black/frozen picture. Because it goes through the editing service
+  inside the turn's transaction, Revert undoes it.
+- `inspect_frames` returns `HostToolResult.images` (base64 JPEG). The OMP adapter maps them to OMP image
+  content after the text part (`src/omp/tool-content.ts`); nothing outside `src/omp/` knows OMP.
+- A job is awaited by polling `GET jobs/:id` (750 ms); aborting the call cancels the job on the service so
+  ffmpeg and the recognizer never outlive the turn. Analysis is cached per file, so a follow-up turn's
+  `analyze_media` returns immediately.
+- Lifecycle guarantee (`src/analysis/executor.ts`, `TurnRunner.finalize`): like editing, analysis calls go
+  to a per-turn executor bound to the turn's abort signal. They are refused when no turn is running or it
+  is finalizing. Before the checkpoint closes, the turn stops accepting calls, cancels running jobs and
+  awaits every started call — a rough-cut batch already sent is awaited and its plan recorded.
+- Failures come back as `code: message` tool errors (`AnalysisToolError`; service codes plus `aborted` and
+  `unavailable` for transport failures). A stage the machine cannot run (no speech recognizer) is reported
+  in the overview as `unavailable` with its reason, not as a failure.
+- Role instructions (`src/agents/roles.ts`) hold the pipeline: the Director runs `analyze_media`, delegates
+  Vision (only the not-yet-inspected targets) and Editor (semantic segmentation) in parallel, then the
+  Editor plans, builds, checks the timeline, runs a pacing pass and rebuilds. Follow-up turns reuse the
+  cached segments, vision notes and cut plans.
+- Each analysis tool declares an `activity` label ("Analyzing raw-talk.mp4", "Reading the transcript",
+  "Saving 14 segments", "Looking at 8 frames", "Saving 3 visual notes", "Planning the cut · rough cut",
+  "Building the rough cut · 143 clips").
+- `FakeAnalysisHost` (`src/testing`) is the in-memory host for tests (jobs that stay running until a gate
+  opens, recorded requests); the runtime fixture wires it.
+
 ## Turns, checkpoints, concurrency
 
 - One project-modifying turn at a time across all chats of a project (`chat_busy` / `project_busy`).

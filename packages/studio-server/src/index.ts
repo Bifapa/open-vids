@@ -32,6 +32,8 @@ export {
 } from "./history/historyLog.js";
 export type {
   StudioApiAdapter,
+  SpeechTranscription,
+  SpeakerDiarization,
   ResolvedProject,
   RenderJobState,
   MediaProcessingJobState,

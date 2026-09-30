@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import {
   dtwPresetForModel,
+  parseDetectedLanguage,
   getPreparedWavDurationSeconds,
   initialModelForLanguage,
   isPcm16kMono,
@@ -14,6 +15,18 @@ import {
   whisperModelSlowdownFactor,
   wrapWhisperTimeoutError,
 } from "./transcribe.js";
+
+describe("parseDetectedLanguage", () => {
+  // whisper.cpp logs this line on stderr; detection read stdout only and silently fell back to English.
+  test.each([
+    ["whisper_full_with_state: auto-detected language: ru (p = 0.993618)\n", "ru"],
+    ["noise\nwhisper_full_with_state: auto-detected language: en (p = 0.5)", "en"],
+    ["", null],
+    ["whisper_init_from_file: loading model", null],
+  ])("reads %j as %j", (output, language) => {
+    expect(parseDetectedLanguage(output)).toBe(language);
+  });
+});
 
 describe("dtwPresetForModel", () => {
   // The large family is the regression: model files are hyphenated but

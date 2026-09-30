@@ -162,6 +162,7 @@ const commandLoaders = {
   browser: () => import("./commands/browser.js").then((m) => m.default),
   "remove-background": () => import("./commands/remove-background.js").then((m) => m.default),
   transcribe: () => import("./commands/transcribe.js").then((m) => m.default),
+  diarize: () => import("./commands/diarize.js").then((m) => m.default),
   models: () => import("./commands/models.js").then((m) => m.default),
   tts: () => import("./commands/tts.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),

@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { join, extname } from "node:path";
 import { tmpdir } from "node:os";
@@ -7,22 +7,24 @@ import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
 
+/** The language whisper.cpp reports on its `--detect-language` run ("auto-detected language: ru (p = 0.99)"). */
+export function parseDetectedLanguage(output: string): string | null {
+  return output.match(/auto-detected language:\s*(\w+)/)?.[1] ?? null;
+}
+
 /**
  * Detect the language of a WAV file using whisper's built-in language detection.
  * Returns an ISO 639-1 code (e.g. "en", "es", "hi") or null if detection fails.
  */
 function detectLanguage(whisperPath: string, modelPath: string, wavPath: string): string | null {
-  try {
-    const output = execFileSync(whisperPath, ["--model", modelPath, "--detect-language", wavPath], {
-      encoding: "utf-8",
-      timeout: 30_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const match = output.match(/auto-detected language:\s*(\w+)/);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
-  }
+  const run = spawnSync(whisperPath, ["--model", modelPath, "--detect-language", wavPath], {
+    encoding: "utf-8",
+    timeout: 30_000,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (run.status !== 0) return null;
+  // whisper.cpp logs the result on stderr, so stdout alone never carries it.
+  return parseDetectedLanguage(`${run.stdout}\n${run.stderr}`);
 }
 
 function findWavDataChunk(buf: Buffer): { offset: number; size: number } | null {
@@ -273,6 +275,8 @@ export interface TranscribeResult {
   wordCount: number;
   durationSeconds: number;
   speechOnsetSeconds: number | null;
+  /** The language the engine decoded in, when it says (whisper.cpp); the command falls back to `--language`. */
+  language?: string | null;
 }
 
 function isAudioFile(filePath: string): boolean {
@@ -554,11 +558,14 @@ export async function transcribe(
     }
   }
 
+  // whisper.cpp's own report of the language it decoded in, before the command overwrites this file.
+  const reported: unknown = transcript.result?.language;
   return {
     transcriptPath,
     wordCount,
     durationSeconds: maxEnd / 1000,
     speechOnsetSeconds,
+    language: typeof reported === "string" && reported ? reported : detectedLanguage,
   };
 }
 

@@ -101,10 +101,18 @@ export function formatTimeline(timeline: TimelineSnapshot, context?: EditorConte
 
 export function formatEditResult(response: ApplyEditsResponse): string {
   const lines = response.results.map((result, index) => {
+    const row = `${index + 1}. ${result.op}`;
+    const many = result.clipIds;
+    if (many !== undefined) {
+      const count = `${many.length} ${many.length === 1 ? "clip" : "clips"}`;
+      return result.op === "remove_clip"
+        ? `${row}: removed ${count}`
+        : `${row} → ${count}${many[0] ? ` (first ${many[0]})` : ""}`;
+    }
     const created = result.newClipId
       ? `${result.clipId ?? "?"} → new clip ${result.newClipId}`
       : (result.clipId ?? "no clip");
-    return `${index + 1}. ${result.op}: ${created}`;
+    return `${row}: ${created}`;
   });
   const files =
     response.changedFiles.length > 0 ? response.changedFiles.join(", ") : "no files changed";

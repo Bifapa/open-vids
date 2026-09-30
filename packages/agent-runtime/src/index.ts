@@ -25,6 +25,9 @@ export type {
   RenderQuality,
   RenderRequest,
 } from "./editing/host.js";
+export { HttpAnalysisHost } from "./analysis/host.http.js";
+export { AnalysisToolError } from "./analysis/host.js";
+export type { AnalysisHost } from "./analysis/host.js";
 export { ChatService } from "./chats.js";
 export type { ChatServiceOptions, ChatEventSubscription } from "./chats.js";
 export { RuntimeError } from "./errors.js";

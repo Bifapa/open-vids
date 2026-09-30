@@ -48,6 +48,7 @@ import {
   writeUrlDownloadDiagnostics,
 } from "../utils/urlDownloader.js";
 import { runFfmpeg, runFfmpegPipeline, type RunFfmpegResult } from "../utils/runFfmpeg.js";
+import { MAX_CONCURRENT_MEDIA_JOBS, Slots } from "../utils/slots.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
@@ -818,6 +819,9 @@ function restoreSourceColourFilter(metadata: VideoMetadata): string[] {
     : [];
 }
 
+/** Every extraction decodes its range with its own ffmpeg; at most this many decode at a time (see Slots). */
+const extractionSlots = new Slots(MAX_CONCURRENT_MEDIA_JOBS);
+
 export async function extractVideoFramesRange(
   videoPath: string,
   videoId: string,
@@ -828,6 +832,32 @@ export async function extractVideoFramesRange(
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
   /** Frames go straight here, with no per-videoId subdir (the cache layer's keyed entry). */
   outputDirOverride?: string,
+): Promise<ExtractedFrames> {
+  return extractionSlots.run(
+    () =>
+      extractVideoFramesRangeNow(
+        videoPath,
+        videoId,
+        startTime,
+        duration,
+        options,
+        signal,
+        config,
+        outputDirOverride,
+      ),
+    signal,
+  );
+}
+
+async function extractVideoFramesRangeNow(
+  videoPath: string,
+  videoId: string,
+  startTime: number,
+  duration: number,
+  options: ExtractionOptions,
+  signal: AbortSignal | undefined,
+  config: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">> | undefined,
+  outputDirOverride: string | undefined,
 ): Promise<ExtractedFrames> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const { outputDir, quality = 95 } = options;
