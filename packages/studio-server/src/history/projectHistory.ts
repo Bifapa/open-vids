@@ -24,7 +24,7 @@ import {
   hashVersion,
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
-import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
+import { affectsProjectHistory, listProjectFiles } from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
 import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
@@ -750,7 +750,7 @@ class Engine {
 
   /** A watcher saw a write: one sweep per burst takes it in (a deleted folder is reported by its name alone). */
   noteChange(path: string): void {
-    if (this.notedTimer || !affectsProjectSignature(this.dir, resolve(this.dir, path))) return;
+    if (this.notedTimer || !affectsProjectHistory(this.dir, resolve(this.dir, path))) return;
     this.notedTimer = setTimeout(() => {
       this.notedTimer = null;
       this.background(() => this.sweep());

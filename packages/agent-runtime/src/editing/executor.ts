@@ -16,6 +16,7 @@ import {
 } from "./format.js";
 import { EditingError, RENDER_QUALITIES, type EditingHost, type RenderQuality } from "./host.js";
 import { EDITING_TOOL_NAMES, isEditingToolName, type EditingToolName } from "./tools.js";
+import { LONG_RENDER_SECONDS, asksForRender, longRenderRefusal } from "./renderGuard.js";
 
 export interface TurnEditingOptions {
   host: EditingHost;
@@ -23,6 +24,8 @@ export interface TurnEditingOptions {
   editorContext?: EditorContext | undefined;
   /** The turn's abort signal: aborting the turn aborts every in-flight edit and render. */
   turnSignal: AbortSignal;
+  /** What the user wrote to this turn so far; `render_video` refuses a long composition unless one of these asks for a render. */
+  userRequests?: readonly string[];
 }
 
 const refuse = (text: string): HostToolResult => ({ text, isError: true });
@@ -59,7 +62,20 @@ export class TurnEditing {
   private readonly stop = new AbortController();
   private readonly inflight = new Set<Promise<unknown>>();
 
-  constructor(private readonly options: TurnEditingOptions) {}
+  private readonly requests: string[];
+
+  constructor(private readonly options: TurnEditingOptions) {
+    this.requests = [...(options.userRequests ?? [])];
+  }
+
+  /** The user sent another message to this turn (steering): it may ask for a render. */
+  noteUserRequest(text: string): void {
+    this.requests.push(text);
+  }
+
+  private userAskedForRender(): boolean {
+    return this.requests.some(asksForRender);
+  }
 
   execute(name: string, args: unknown, callSignal: AbortSignal): Promise<HostToolResult> {
     if (!this.accepting)
@@ -116,6 +132,12 @@ export class TurnEditing {
             ? "standard"
             : RENDER_QUALITIES.find((candidate) => candidate === record.quality);
         if (!quality) throw invalid(`quality must be one of ${RENDER_QUALITIES.join(", ")}`);
+        // A long render is offered, never started unasked (it would tie the machine up for many minutes).
+        if (!this.userAskedForRender()) {
+          const { composition: target } = await host.timeline(composition, signal);
+          if (target.duration > LONG_RENDER_SECONDS)
+            return refuse(longRenderRefusal(target.duration));
+        }
         const output = await host.render(
           { ...(composition && { composition }), quality },
           signal,

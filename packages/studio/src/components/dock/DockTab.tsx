@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   SquaresFour,
   Stack,
+  TreeStructure,
   X,
   type Icon,
 } from "@phosphor-icons/react";
@@ -20,6 +21,7 @@ import { isPanelId, type PanelId } from "./panelRegistry";
 
 const TAB_ICONS: Record<PanelId, Icon> = {
   preview: Monitor,
+  story: TreeStructure,
   timeline: ChartBarHorizontal,
   compositions: Layout,
   assets: Image,

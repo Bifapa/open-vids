@@ -1,9 +1,12 @@
 import {
   EDIT_LIMITS,
+  captionCuesFromWords,
   type ApplyEditsRequest,
+  type CaptionCue,
   type CutPlan,
   type EditOperation,
   type TimelineSnapshot,
+  type TranscriptView,
   type VisualProblem,
 } from "@hyperframes/agent-protocol";
 import { EditingError } from "../editing/host.js";
@@ -23,23 +26,36 @@ export const playsSource = (clipSrc: string | null, source: string): boolean =>
 
 export interface RoughCutBatch {
   request: ApplyEditsRequest;
-  /** Clips of the source that the batch replaces, on every track. */
+  /** Clips the batch replaces: the clips of the target track that play the plan's source. */
   replacedClips: number;
+  /** Clips on other tracks (cutaways, B-roll, captions, manual additions): kept, positioned for the previous cut. */
+  keptClips: number;
   /** Length of the finished cut on the timeline, seconds. */
   length: number;
 }
 
+/** A caption preset with the cues to write in the same batch. */
+export interface RoughCutCaptions {
+  preset: string;
+  cues: CaptionCue[];
+}
+
 /**
- * One atomic batch that turns a cut plan into the timeline: remove the clips that play the plan's source, place the
- * plan's ranges back to back with `add_sequence`, and set the composition to the cut's length.
+ * One atomic batch that turns a cut plan into the timeline: remove the clips of the target track that play the
+ * plan's source (the previous cut; clips on other tracks are kept), place the plan's ranges back to back with
+ * `add_sequence` (stamped with the plan's id and the turn), set the composition to the cut's length and, when asked,
+ * write the captions.
  */
 export function roughCutBatch(input: {
   plan: CutPlan;
   timeline: TimelineSnapshot;
   composition: string | undefined;
   track: number;
+  /** The agent turn building the cut (stamped on the clips). */
+  turnId?: string | undefined;
+  captions?: RoughCutCaptions | undefined;
 }): RoughCutBatch {
-  const { plan, timeline, composition, track } = input;
+  const { plan, timeline, composition, track, turnId, captions } = input;
   if (plan.ranges.length === 0)
     throw new EditingError("invalid_request", `Plan ${plan.id} keeps no material.`);
   if (plan.ranges.length > EDIT_LIMITS.sequenceRanges) {
@@ -49,12 +65,12 @@ export function roughCutBatch(input: {
     );
   }
   const replaced = timeline.clips
-    .filter((clip) => playsSource(clip.src, plan.source))
+    .filter((clip) => clip.track === track && playsSource(clip.src, plan.source))
     .map((clip) => clip.id);
   if (replaced.length > EDIT_LIMITS.removeClips) {
     throw new EditingError(
       "invalid_request",
-      `${replaced.length} clips of ${plan.source} are on the timeline; remove some with edit_timeline first (a batch removes at most ${EDIT_LIMITS.removeClips}).`,
+      `${replaced.length} clips of ${plan.source} are on track ${track}; remove some with edit_timeline first (a batch removes at most ${EDIT_LIMITS.removeClips}).`,
     );
   }
   const length = plan.ranges.reduce(
@@ -72,8 +88,18 @@ export function roughCutBatch(input: {
       start: 0,
       ranges: plan.ranges.map((range) => ({ from: range.from, to: range.to })),
       edgeFade: ROUGH_CUT_EDGE_FADE,
+      provenance: { cut: plan.id, ...(turnId && { turn: turnId }) },
     },
     { op: "set_composition", duration: Number(length.toFixed(3)) },
+    ...(captions
+      ? [
+          {
+            op: "apply_captions",
+            preset: captions.preset,
+            cues: captions.cues,
+          } satisfies EditOperation,
+        ]
+      : []),
   ];
   return {
     request: {
@@ -82,8 +108,42 @@ export function roughCutBatch(input: {
       operations,
     },
     replacedClips: replaced.length,
+    keptClips: timeline.clips.filter((clip) => clip.track !== track).length,
     length,
   };
+}
+
+/**
+ * Word-synced caption cues for a plan: the transcript's words that fall inside the plan's kept ranges, placed at
+ * their timeline time, with cue breaks at sentence ends. The transcript must have been read with its words.
+ */
+export function planCaptionCues(
+  plan: Pick<CutPlan, "ranges" | "id">,
+  transcript: Pick<TranscriptView, "words" | "sentences">,
+): CaptionCue[] {
+  const words = transcript.words ?? [];
+  const indexOfWord = new Map(words.map((word, index) => [word.i, index]));
+  const sentenceEnds = new Set<number>();
+  for (const sentence of transcript.sentences) {
+    const index = indexOfWord.get(sentence.lastWord);
+    if (index !== undefined) sentenceEnds.add(index);
+  }
+  const cues = captionCuesFromWords(
+    words,
+    plan.ranges.map((range) => ({ from: range.from, to: range.to, at: range.at })),
+    { sentenceEnds },
+  );
+  if (cues.length === 0)
+    throw new EditingError(
+      "invalid_request",
+      `Plan ${plan.id} has no transcript words to caption (is the source transcribed?).`,
+    );
+  if (cues.length > EDIT_LIMITS.captionCues)
+    throw new EditingError(
+      "invalid_request",
+      `The cut has ${cues.length} caption cues; one batch writes at most ${EDIT_LIMITS.captionCues}. Caption it with edit_timeline in parts.`,
+    );
+  return cues;
 }
 
 export interface TimelineProblem {

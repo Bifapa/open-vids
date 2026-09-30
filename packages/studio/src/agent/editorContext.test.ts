@@ -30,6 +30,7 @@ function input(overrides: Partial<EditorContextInput> = {}): EditorContextInput 
     outPoint: null,
     rangeSelection: null,
     renderSettings: null,
+    storyGraph: null,
     ...overrides,
   };
 }

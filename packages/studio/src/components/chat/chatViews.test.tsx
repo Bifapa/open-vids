@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import type { AgentModelInfo, ModelSelection } from "@hyperframes/agent-protocol";
 import { ACTIVE, chatState, runningChatState, summary } from "../../agent/agentTestHarness";
 import { cleanupMounted, mountHost } from "../ui/mountHost.testHelpers";
+import { useProjectAgentStore } from "../../agent/agentContext";
 import { AgentChatPanel } from "./AgentChatPanel";
 import { ModelList } from "./ModelList";
 import {
@@ -115,8 +116,16 @@ describe("agent unavailable", () => {
   });
 
   it("shows a calm state with Retry instead of throwing into the editor", async () => {
+    const context = {
+      capture: () => {
+        throw new Error("the editor context is not read in this test");
+      },
+    };
+    function Panel() {
+      return <AgentChatPanel store={useProjectAgentStore("demo", context, () => {})} />;
+    }
     await act(async () => {
-      mountHost(<AgentChatPanel projectId="demo" onReverted={() => {}} />);
+      mountHost(<Panel />);
     });
     await act(async () => {});
     const host = document.body;

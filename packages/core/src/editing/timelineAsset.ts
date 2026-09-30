@@ -90,8 +90,13 @@ export function buildTimelineAssetInsertHtml(input: {
   /** Video/audio: clip-edge fades in seconds (`data-fade-in` / `data-fade-out`); 0 or unset writes nothing. */
   fadeIn?: number;
   fadeOut?: number;
+  /** Extra attributes written on the element (values are escaped); used for provenance stamps. */
+  attributes?: Readonly<Record<string, string>>;
 }): string {
-  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
+  const extraAttributes = Object.entries(input.attributes ?? {})
+    .map(([name, value]) => ` ${name}="${value.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`)
+    .join("");
+  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"${extraAttributes}`;
   const geometry = input.geometry ?? { left: 0, top: 0, width: 640, height: 360 };
   const visualStyles = `position: absolute; left: ${geometry.left}px; top: ${geometry.top}px; width: ${geometry.width}px; height: ${geometry.height}px; object-fit: ${input.fit ?? "contain"}; z-index: ${input.zIndex}`;
   const fadeAttrs = [

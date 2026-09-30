@@ -9,7 +9,6 @@ import type {
   FrameImage,
   FramesRequest,
   FramesResponse,
-  MarkCutAppliedRequest,
   SaveSegmentsRequest,
   SaveVisionNotesRequest,
   SegmentMap,
@@ -17,6 +16,7 @@ import type {
   SilenceMap,
   StageResult,
   TranscriptView,
+  TranscriptWord,
   VisionAnalysis,
   VisionNote,
 } from "@hyperframes/agent-protocol";
@@ -142,6 +142,24 @@ export function sampleTranscript(source: string = SAMPLE_SOURCE): TranscriptView
   };
 }
 
+/** One word per index of every sentence, spread evenly over the sentence. */
+export function sampleWords(sentences: TranscriptView["sentences"]): TranscriptWord[] {
+  return sentences.flatMap((sentence) => {
+    const count = sentence.lastWord - sentence.firstWord + 1;
+    const length = (sentence.end - sentence.start) / count;
+    return Array.from({ length: count }, (_, index): TranscriptWord => {
+      const start = Number((sentence.start + index * length).toFixed(3));
+      return {
+        i: sentence.firstWord + index,
+        text: `w${sentence.firstWord + index}`,
+        start,
+        end: Number((start + length).toFixed(3)),
+        speaker: sentence.speaker,
+      };
+    });
+  });
+}
+
 const SAMPLE_RANGES: CutRange[] = [
   { from: 12.5, to: 15, at: 0, segment: "g1", hook: false },
   { from: 20, to: 30, at: 2.5, segment: "g2", hook: false },
@@ -186,13 +204,17 @@ export class FakeAnalysisHost implements AnalysisHost {
   readonly startSignals: AbortSignal[] = [];
   readonly cancelledJobs: string[] = [];
   readonly overviewRequests: string[] = [];
-  readonly transcriptRequests: Array<{ source: string; from?: number; to?: number }> = [];
+  readonly transcriptRequests: Array<{
+    source: string;
+    from?: number;
+    to?: number;
+    words?: boolean;
+  }> = [];
   readonly artifactRequests: string[] = [];
   readonly segmentRequests: SaveSegmentsRequest[] = [];
   readonly visionRequests: SaveVisionNotesRequest[] = [];
   readonly frameRequests: FramesRequest[] = [];
   readonly planRequests: CutPlanRequest[] = [];
-  readonly appliedRequests: Array<{ planId: string } & MarkCutAppliedRequest> = [];
   readonly cutPlans = new Map<string, CutPlan>();
 
   private jobCount = 0;
@@ -263,12 +285,14 @@ export class FakeAnalysisHost implements AnalysisHost {
 
   async transcript(
     source: string,
-    window: { from?: number; to?: number },
+    window: { from?: number; to?: number; words?: boolean },
     signal: AbortSignal,
   ): Promise<TranscriptView> {
     this.guard(signal);
     this.transcriptRequests.push({ source, ...window });
-    return structuredClone(this.transcriptResult);
+    const view = structuredClone(this.transcriptResult);
+    if (window.words) view.words = sampleWords(view.sentences);
+    return view;
   }
 
   artifact(source: string, stage: "silence", signal: AbortSignal): Promise<SilenceMap>;
@@ -376,19 +400,6 @@ export class FakeAnalysisHost implements AnalysisHost {
     this.guard(signal);
     const plan = this.cutPlans.get(planId);
     if (!plan) throw new AnalysisToolError("unknown_plan", `There is no cut plan ${planId}.`);
-    return structuredClone(plan);
-  }
-
-  async markApplied(
-    planId: string,
-    request: MarkCutAppliedRequest,
-    signal: AbortSignal,
-  ): Promise<CutPlan> {
-    this.guard(signal);
-    const plan = this.cutPlans.get(planId);
-    if (!plan) throw new AnalysisToolError("unknown_plan", `There is no cut plan ${planId}.`);
-    this.appliedRequests.push({ planId, ...request });
-    plan.applied = { composition: request.composition, version: request.version, at: 3 };
     return structuredClone(plan);
   }
 }

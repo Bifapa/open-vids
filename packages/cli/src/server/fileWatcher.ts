@@ -1,6 +1,6 @@
 import { lstatSync, readdirSync, watch, type FSWatcher } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { affectsProjectSignature } from "@hyperframes/studio-server";
+import { affectsProjectHistory } from "@hyperframes/studio-server";
 
 export type FileChangeListener = (relativePath: string) => void;
 
@@ -98,10 +98,17 @@ function watchProjectTree(
     }
     for (const child of entries) descend(child);
   };
-  // `.hyperframes/` itself holds the two manifests the signature reads; nothing below it matters.
+  // `.hyperframes/` itself holds the two manifests the signature reads and `.hyperframes/story/` the history-tracked
+  // Story Graph; nothing else below it matters.
   const descend = (dir: string) => {
     const rel = relative(projectDir, dir);
-    if (shouldWatchProjectFile(rel) || rel === ".hyperframes") watchDirectory(dir);
+    if (
+      shouldWatchProjectFile(rel) ||
+      rel === ".hyperframes" ||
+      rel === join(".hyperframes", "story")
+    ) {
+      watchDirectory(dir);
+    }
   };
 
   watchDirectory(projectDir);
@@ -123,11 +130,12 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
       // The reload filter excludes all of `.hyperframes/`, but two files in
       // there feed the preview signature and Studio writes one of them at
       // runtime — dropping those at ingest left the CLI server's ETag stale
-      // until restart. Admit them here and let the reload listener re-apply
-      // its own filter, so what triggers a browser reload is unchanged.
+      // until restart — and the Story Graph is tracked by project history.
+      // Admit them here and let the reload listener re-apply its own filter,
+      // so what triggers a browser reload is unchanged.
       if (
         !shouldWatchProjectFile(relativePath) &&
-        !affectsProjectSignature(projectDir, join(projectDir, relativePath))
+        !affectsProjectHistory(projectDir, join(projectDir, relativePath))
       ) {
         return;
       }

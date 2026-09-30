@@ -62,7 +62,9 @@ export function applySideMinimums(api: DockviewApi, dockWidth = window.innerWidt
 }
 
 function minimumSize(id: PanelId) {
-  if (id === "preview") return { minimumWidth: MIN_PREVIEW_W, minimumHeight: MIN_PREVIEW_H };
+  if (id === "preview" || id === "story") {
+    return { minimumWidth: MIN_PREVIEW_W, minimumHeight: MIN_PREVIEW_H };
+  }
   if (id === "timeline") return { minimumHeight: MIN_TIMELINE_H };
   return { minimumWidth: MIN_SIDE_W };
 }
@@ -82,12 +84,15 @@ export function addRegisteredPanel(
   });
 }
 
-/** The default Edit layout: [library | preview | inspector] over a full-width timeline. */
+/** The default Edit layout: [library | preview/story | inspector] over a full-width timeline. */
 export function buildEditLayout(api: DockviewApi, viewportWidth: number) {
   api.clear();
   const widths = defaultSideWidths(viewportWidth);
   addRegisteredPanel(api, "preview");
   addRegisteredPanel(api, "timeline", { referencePanel: "preview", direction: "below" });
+  // The Story workspace shares the preview's place: the header's Edit | Story switch flips between them.
+  addRegisteredPanel(api, "story", { referencePanel: "preview", direction: "within" });
+  api.getPanel("preview")?.api.setActive();
   addRegisteredPanel(api, "compositions", { referencePanel: "preview", direction: "left" });
   for (const id of ["assets", "code", "catalog", "chat"] as const) {
     addRegisteredPanel(api, id, { referencePanel: "compositions", direction: "within" });

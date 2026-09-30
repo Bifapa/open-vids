@@ -12,7 +12,6 @@ import {
   type CutPlanSummary,
   type FramesRequest,
   type FramesResponse,
-  type MarkCutAppliedRequest,
   type SaveSegmentsRequest,
   type SaveVisionNotesRequest,
   type SegmentMap,
@@ -22,12 +21,17 @@ import {
   type TranscriptView,
   type VisionAnalysis,
   type VisionNote,
+  type SilenceMap,
+  type TakeAnalysis,
+  type TranscriptArtifact,
 } from "@hyperframes/agent-protocol";
 import { isInHiddenOrVendorDir, resolveWithinProject, walkDir } from "../helpers/safePath.js";
 import { assetKindOf, MediaFacts, type MediaProber } from "../editing/mediaFacts.js";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
+import { readAppliedCuts } from "./appliedCuts.js";
 import { mergeCutRequest, planCut } from "./cutPlan.js";
 import { AnalysisFailure } from "./errors.js";
+import { removeOrphans, type OrphanReport } from "./orphans.js";
 import { checkFingerprint } from "./fingerprint.js";
 import { grabFrame, readFrameBase64 } from "./frames.js";
 import { JobRegistry } from "./jobs.js";
@@ -54,12 +58,16 @@ const END_TOLERANCE = 0.5;
 const LONGEST_SILENCES = 10;
 /** Two vision notes over the same range (within this many seconds at both ends) are one note. */
 const SAME_RANGE = 0.001;
+/** Orphan sweeps of one project run at most this often. */
+const ORPHAN_INTERVAL_MS = 60_000;
 
 export interface AnalysisServiceOptions {
   /** ffprobe reader (tests). */
   probe?: MediaProber;
   /** Overrides the ffmpeg binary lookup (tests). */
   ffmpegPath?: string;
+  /** Minimum time between orphan sweeps of one project, ms (default one minute; tests use 0). */
+  orphanIntervalMs?: number;
 }
 
 /** A project file that is a valid analysis source (video or audio, inside the project, not in `.hyperframes/`). */
@@ -78,6 +86,19 @@ interface SourceView {
   states: StageState[];
 }
 
+/** A source's fresh analysis as the story service reads it (see `AnalysisService.sourceData`). */
+export interface SourceAnalysisData {
+  source: string;
+  kind: "video" | "audio";
+  duration: number | null;
+  transcript: TranscriptArtifact | null;
+  takes: TakeAnalysis | null;
+  silence: SilenceMap | null;
+  segments: SegmentMap | null;
+  /** Changes whenever the file or any of these artifacts changes. */
+  version: string;
+}
+
 /** Version tokens travel through models: accept them bare, quoted like an ETag, or as bare hex. */
 function bareVersion(token: string): string {
   const unquoted = token.trim().replace(/^W\//, "").replace(/^"|"$/g, "");
@@ -94,6 +115,7 @@ function round2(value: number): number {
  */
 export class AnalysisService {
   private readonly stores = new Map<string, AnalysisStore>();
+  private readonly lastOrphanSweep = new Map<string, number>();
   private readonly jobs = new JobRegistry();
   private readonly facts: MediaFacts;
 
@@ -233,6 +255,22 @@ export class AnalysisService {
       : states;
   }
 
+  /**
+   * Removes analysis of files that are gone and cut plans of vanished sources (see `removeOrphans`). Throttled per
+   * project (`orphanIntervalMs`, one minute by default) unless forced; a failure never breaks the caller.
+   */
+  async cleanOrphans(
+    project: ResolvedProject,
+    { force = false }: { force?: boolean } = {},
+  ): Promise<OrphanReport | null> {
+    const interval = this.options.orphanIntervalMs ?? ORPHAN_INTERVAL_MS;
+    const last = this.lastOrphanSweep.get(project.dir);
+    const now = Date.now();
+    if (!force && last !== undefined && now - last < interval) return null;
+    this.lastOrphanSweep.set(project.dir, now);
+    return removeOrphans(this.store(project)).catch(() => null);
+  }
+
   private async status(project: ResolvedProject, view: SourceView): Promise<SourceAnalysisStatus> {
     const asset = await this.facts.read(project.dir, view.ref.path);
     return {
@@ -246,6 +284,7 @@ export class AnalysisService {
 
   /** Every video and audio file of the project with the state of its analysis. */
   async listSources(project: ResolvedProject): Promise<SourceAnalysisStatus[]> {
+    await this.cleanOrphans(project);
     const paths = walkDir(project.dir)
       .filter((file) => !isInHiddenOrVendorDir(file) && !file.startsWith("renders/"))
       .filter((file) => ["video", "audio"].includes(assetKindOf(file)))
@@ -326,6 +365,7 @@ export class AnalysisService {
 
   /** Starts analysing a source, or joins the job already running for it. */
   async startJob(project: ResolvedProject, request: AnalyzeRequest): Promise<AnalysisJob> {
+    await this.cleanOrphans(project);
     const ref = await this.resolveSource(project, request.source);
     const plan = planStages(request.stages);
     const weights: Partial<Record<(typeof COMPUTED_STAGES)[number], number>> = {};
@@ -377,7 +417,9 @@ export class AnalysisService {
       this.freshArtifact(project, view, "vision", isVisionAnalysis),
     ]);
     const duration = status.duration ?? 0;
-    const cuts = (await this.store(project).listCuts()).filter((plan) => plan.source === ref.path);
+    const cuts = (await this.withApplied(project, await this.store(project).listCuts())).filter(
+      (plan) => plan.source === ref.path,
+    );
 
     const counts: Partial<Record<TakeIssueKind, number>> = {};
     for (const issue of takes?.issues ?? []) counts[issue.kind] = (counts[issue.kind] ?? 0) + 1;
@@ -436,6 +478,62 @@ export class AnalysisService {
 
   private stateVersion(view: SourceView, stage: AnalysisStage): string | null {
     return view.states.find((state) => state.stage === stage)?.version ?? null;
+  }
+
+  /**
+   * What Build Story and the story graph need to know about one source: the fresh artifacts (null for a stage that was
+   * not computed or is stale) and a token that changes whenever any of them does. Refuses like `resolveSource` when
+   * the file is not a project media file.
+   */
+  async sourceData(project: ResolvedProject, rawSource: string): Promise<SourceAnalysisData> {
+    const ref = await this.resolveSource(project, rawSource);
+    const view = await this.view(project, ref);
+    const [transcript, takes, silence, segments] = await Promise.all([
+      this.freshArtifact(project, view, "transcript", isTranscript),
+      this.freshArtifact(project, view, "takes", isTakeAnalysis),
+      this.freshArtifact(project, view, "silence", isSilenceMap),
+      this.freshArtifact(project, view, "segments", isSegmentMap),
+    ]);
+    const asset = await this.facts.read(project.dir, ref.path);
+    const duration = view.manifest?.fingerprint.duration ?? asset?.duration ?? null;
+    const stages = ["transcript", "takes", "silence", "segments"] as const;
+    return {
+      source: ref.path,
+      kind: ref.kind,
+      duration,
+      transcript,
+      takes,
+      silence,
+      segments,
+      version: [
+        view.manifest?.fingerprint.hash ?? "unanalyzed",
+        ...stages.map((stage) => this.stateVersion(view, stage) ?? "-"),
+      ].join("|"),
+    };
+  }
+
+  /** One JPEG of a video source for a preview card: cached with the analysis frames, not recorded as inspected. */
+  async framePreview(
+    project: ResolvedProject,
+    rawSource: string,
+    time: number,
+    width: number,
+    signal: AbortSignal,
+  ): Promise<Buffer> {
+    const ref = await this.resolveSource(project, rawSource);
+    if (ref.kind !== "video") {
+      throw new AnalysisFailure("invalid_request", `${ref.path} is not a video file`);
+    }
+    const { source } = await this.prepare(project, ref, false);
+    const grab = await grabFrame({
+      inputPath: ref.abs,
+      framesDir: this.store(project).framesDir(ref.path),
+      timeMs: Math.round(Math.max(0, Math.min(time, source.duration)) * 1000),
+      width,
+      signal,
+      ffmpegPath: this.options.ffmpegPath,
+    });
+    return Buffer.from(await readFrameBase64(grab.file), "base64");
   }
 
   async transcript(
@@ -690,7 +788,7 @@ export class AnalysisService {
     project: ResolvedProject,
     rawSource: string | undefined,
   ): Promise<CutPlanSummary[]> {
-    const plans = await this.store(project).listCuts();
+    const plans = await this.withApplied(project, await this.store(project).listCuts());
     if (rawSource === undefined) return plans;
     const ref = await this.resolveSource(project, rawSource);
     return plans.filter((plan) => plan.source === ref.path);
@@ -701,9 +799,20 @@ export class AnalysisService {
     const plan = await this.store(project).readCut(id);
     if (!plan) throw new AnalysisFailure("unknown_plan", `There is no cut plan "${id}"`);
     const stale = await this.staleReason(project, plan);
+    const [current] = await this.withApplied(project, [plan]);
+    const derived = current ?? plan;
     return stale
-      ? { ...plan, warnings: [...plan.warnings, `This plan is out of date: ${stale}`] }
-      : plan;
+      ? { ...derived, warnings: [...derived.warnings, `This plan is out of date: ${stale}`] }
+      : derived;
+  }
+
+  /** Stamps each plan with where it is on a timeline now (derived from `data-ov-cut` clips; null when nowhere). */
+  private async withApplied<T extends CutPlanSummary>(
+    project: ResolvedProject,
+    plans: T[],
+  ): Promise<T[]> {
+    const applied = await readAppliedCuts(project.dir);
+    return plans.map((plan) => ({ ...plan, applied: applied.get(plan.id) ?? null }));
   }
 
   /** Why the plan no longer fits the source's analysis, or null while it does. */
@@ -718,28 +827,5 @@ export class AnalysisService {
       return `the transcript of ${plan.source} changed after the plan was made; plan again`;
     }
     return null;
-  }
-
-  /** Records that a plan was built on a composition's timeline. Refused for a plan that no longer fits its source. */
-  async markCutApplied(
-    project: ResolvedProject,
-    id: string,
-    request: MarkCutAppliedRequest,
-  ): Promise<CutPlan> {
-    const store = this.store(project);
-    const plan = await store.readCut(id);
-    if (!plan) throw new AnalysisFailure("unknown_plan", `There is no cut plan "${id}"`);
-    const stale = await this.staleReason(project, plan);
-    if (stale) throw new AnalysisFailure("stale", `Cannot mark ${id} applied: ${stale}`);
-    const applied: CutPlan = {
-      ...plan,
-      applied: {
-        composition: request.composition,
-        version: bareVersion(request.version),
-        at: Date.now(),
-      },
-    };
-    await store.replaceCut(applied);
-    return applied;
   }
 }

@@ -5,7 +5,6 @@ import {
   parseAnalyzeRequest,
   parseCutPlanRequest,
   parseFramesRequest,
-  parseMarkCutAppliedRequest,
   parseSaveSegmentsRequest,
   parseSaveVisionNotesRequest,
 } from "./index.js";
@@ -361,20 +360,5 @@ describe("parseCutPlanRequest", () => {
     expect(
       refused(parseCutPlanRequest({ source: "a.mp4", targetDuration: "10 min" })).message,
     ).toContain("targetDuration");
-  });
-});
-
-describe("parseMarkCutAppliedRequest", () => {
-  it("needs a composition and a version and nothing else", () => {
-    expect(
-      accepted(parseMarkCutAppliedRequest({ composition: "index.html", version: "sha256:abc" })),
-    ).toEqual({ composition: "index.html", version: "sha256:abc" });
-    expect(refused(parseMarkCutAppliedRequest({ composition: "index.html" })).message).toContain(
-      "version",
-    );
-    expect(
-      refused(parseMarkCutAppliedRequest({ composition: "index.html", version: "v", extra: 1 }))
-        .message,
-    ).toContain("extra");
   });
 });

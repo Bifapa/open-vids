@@ -383,11 +383,14 @@ export interface CutPlanSummary {
   applied: CutApplication | null;
 }
 
+/**
+ * Where a plan is on the timeline right now: derived on every read from the clips stamped with the plan's id
+ * (`data-ov-cut`), so a reverted or removed rough cut is never reported as applied.
+ */
 export interface CutApplication {
   composition: string;
-  /** Timeline version right after the cut was built. */
-  version: string;
-  at: number;
+  /** Clips of this plan on that composition. */
+  clips: number;
 }
 
 export interface CutPlan extends CutPlanSummary {
@@ -485,11 +488,6 @@ export interface FrameImage {
 export interface FramesResponse {
   source: string;
   frames: FrameImage[];
-}
-
-export interface MarkCutAppliedRequest {
-  composition: string;
-  version: string;
 }
 
 export interface TranscriptView {
@@ -859,16 +857,5 @@ export function parseCutPlanRequest(raw: unknown): ParsedAnalysis<CutPlanRequest
       request.targetDuration = target;
     }
     return request;
-  });
-}
-
-export function parseMarkCutAppliedRequest(raw: unknown): ParsedAnalysis<MarkCutAppliedRequest> {
-  return parse(() => {
-    const value = body(raw);
-    onlyKeys(value, ["composition", "version"], "");
-    return {
-      composition: str(value.composition, "composition", ANALYSIS_LIMITS.pathChars),
-      version: str(value.version, "version", 200),
-    };
   });
 }

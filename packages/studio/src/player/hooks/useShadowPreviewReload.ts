@@ -118,7 +118,14 @@ export function useShadowPreviewReload({
       const liveTime = live?.getTime();
       const playing = usePlayerStore.getState().isPlaying;
       live?.pause();
-      // The store takes the new document's timeline only now that it is the one on screen.
+      // The store takes the new document's timeline only now that it is the one on screen, and only its
+      // timeline: rows the outgoing document put there must not survive the swap. Discovery merges a
+      // shorter scan with the store's composition hosts (a bare re-scan of the same document drops the
+      // hosts the runtime manifest misses), so without this a host the new document no longer has — a
+      // reverted build's captions or motion composition — stayed on the timeline next to the new rows.
+      // The outgoing document keeps writing while the shadow loads (its state ticks refill a store a
+      // history restore just cleared), and that window is long whenever the preview is covered.
+      usePlayerStore.getState().setElements([]);
       pending.commit();
       iframeRef.current = shadow;
       shadowIframeRef.current = null;

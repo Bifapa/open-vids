@@ -6,13 +6,16 @@ import {
   isSpecialistId,
   isThinkingEffort,
   type AgentId,
+  type ChatMode,
   type PlanStepStatus,
   type SpecialistId,
+  type StoryAction,
   type ThinkingEffort,
 } from "@hyperframes/agent-protocol";
 import type { HostTool, HostToolResult } from "../backend.js";
 import { buildAnalysisTools } from "../analysis/tools.js";
 import { buildEditingTools } from "../editing/tools.js";
+import { buildStoryTools, timelineWritesAllowed, type StoryTurnMode } from "../story/tools.js";
 
 export const TOOL_NAMES = {
   plan: "update_plan",
@@ -46,6 +49,12 @@ export interface ToolAvailability {
   analysis: boolean;
   /** Ranges of a plan this turn has planned, for the label of build_rough_cut's activity row. */
   planClips?: (plan: string) => number | undefined;
+  /** The runtime has a story host: agents get the story tools their role and the turn's mode allow. */
+  story?: boolean;
+  /** The turn's mode (default `normal`). A story-mode turn without a build action never writes the timeline. */
+  mode?: ChatMode;
+  /** The Story workspace action of the turn (`review`, `build`), if any. */
+  storyAction?: StoryAction | null;
 }
 
 const stringProperty = (description: string, maxLength?: number) => ({
@@ -82,22 +91,32 @@ export function buildHostTools(
   execute: ToolExecutor,
 ): HostTool[] {
   if (agent === "jev") return [];
+  const turn: StoryTurnMode = {
+    mode: availability.mode ?? "normal",
+    action: availability.storyAction ?? null,
+  };
+  // A story-mode turn that does not build the story never writes the timeline: no edit_timeline, render_video or
+  // build_rough_cut for anyone (analysis and planning tools stay).
+  const timelineWrites = timelineWritesAllowed(turn);
   const editing = availability.editing
-    ? buildEditingTools(agent, availability.enabled, execute)
+    ? buildEditingTools(agent, availability.enabled, execute, { timelineWrites })
     : [];
   const analysis = availability.analysis
     ? buildAnalysisTools(
         agent,
         availability.enabled,
         {
-          editing: availability.editing,
+          editing: availability.editing && timelineWrites,
           ...(availability.planClips && { planClips: availability.planClips }),
         },
         execute,
       )
     : [];
+  const story = availability.story
+    ? buildStoryTools(agent, availability.enabled, turn, execute)
+    : [];
   if (agent !== "director")
-    return [...editing, ...analysis, ...(availability.jev ? [jevTool(execute)] : [])];
+    return [...editing, ...analysis, ...story, ...(availability.jev ? [jevTool(execute)] : [])];
 
   const planAgents: AgentId[] = ["director", ...availability.enabled];
   if (availability.jev) planAgents.push("jev");
@@ -208,7 +227,7 @@ export function buildHostTools(
       },
     );
   }
-  tools.push(...editing, ...analysis);
+  tools.push(...editing, ...analysis, ...story);
   if (availability.jev) tools.push(jevTool(execute));
   return tools;
 }

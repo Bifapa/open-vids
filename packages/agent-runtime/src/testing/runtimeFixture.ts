@@ -9,6 +9,7 @@ import { TurnRunner, type TurnRunnerOptions } from "../turns.js";
 import { FakeCheckpointHost } from "./index.js";
 import { FakeAnalysisHost } from "./analysis.js";
 import { FakeEditingHost } from "./editing.js";
+import { FakeStoryHost } from "./story.js";
 import { ScriptedAgentBackend } from "./backend.js";
 
 export interface RuntimeFixture {
@@ -22,6 +23,7 @@ export interface RuntimeFixture {
   checkpoints: FakeCheckpointHost;
   editing: FakeEditingHost;
   analysis: FakeAnalysisHost;
+  story: FakeStoryHost;
   now: () => number;
   setNow: (value: number) => void;
   cleanup: () => Promise<void>;
@@ -48,10 +50,12 @@ export async function createRuntimeFixture(
   const checkpoints = new FakeCheckpointHost(now);
   const editing = new FakeEditingHost();
   const analysis = new FakeAnalysisHost();
+  const story = new FakeStoryHost();
   const chats = await ChatService.open(scope, store, { now, ids });
   const turns = new TurnRunner(chats, backend, checkpoints, store, settings, {
     editing: () => editing,
     analysis: () => analysis,
+    story: () => story,
     analysisPollMs: 1,
     ...options,
     now,
@@ -68,6 +72,7 @@ export async function createRuntimeFixture(
     checkpoints,
     editing,
     analysis,
+    story,
     now,
     setNow: (value) => {
       timestamp = value;

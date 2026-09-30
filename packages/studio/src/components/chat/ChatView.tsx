@@ -5,6 +5,7 @@ import { describeTurnError } from "../../agent/agentErrors";
 import { activeThread, runningTurn } from "../../agent/agentSelectors";
 import { Button } from "../ui/Button";
 import { ChatHeader } from "./ChatHeader";
+import { StoryModeBanner } from "./ChatModeSwitch";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 
@@ -108,6 +109,7 @@ export function ChatView() {
               Reconnecting to the agent…
             </p>
           )}
+          <StoryModeBanner />
           {/* A new thread is a new page: it starts at its newest content. */}
           <MessageList key={thread} chat={chat} thread={thread} />
           <Composer />

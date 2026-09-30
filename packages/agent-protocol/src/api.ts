@@ -3,6 +3,7 @@ import type {
   AgentErrorCode,
   AgentModelInfo,
   AgentSettings,
+  ChatMode,
   ChatState,
   ChatSummary,
   EditorContext,
@@ -14,6 +15,7 @@ import type {
   SpecialistConfig,
   SpecialistDefaults,
   SpecialistId,
+  StoryAction,
   ThinkingEffort,
   TurnSummary,
 } from "./types.js";
@@ -70,12 +72,18 @@ export interface UpdateChatRequest {
   enabledAgents?: SpecialistId[];
   /** Per-specialist overrides to set; null removes an override (back to the global default). */
   agentOverrides?: Partial<Record<SpecialistId, SpecialistConfig | null>>;
+  /** The chat's mode for its next turns. */
+  activeMode?: ChatMode;
 }
 
 export interface StartTurnRequest {
   prompt: string;
   references?: MessageReference[];
   editorContext?: EditorContext;
+  /** Mode of this turn; defaults to the chat's `activeMode`. A story action implies `story`. */
+  mode?: ChatMode;
+  /** Run a Story workspace action (Review with AI / Build Story) as this turn. */
+  storyAction?: StoryAction;
 }
 
 export interface StartTurnResponse {

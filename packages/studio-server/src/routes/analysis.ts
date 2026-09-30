@@ -4,7 +4,6 @@ import {
   parseAnalyzeRequest,
   parseCutPlanRequest,
   parseFramesRequest,
-  parseMarkCutAppliedRequest,
   parseSaveSegmentsRequest,
   parseSaveVisionNotesRequest,
   type AnalysisError,
@@ -190,18 +189,6 @@ export function registerAnalysisRoutes(
   api.get(
     "/projects/:id/analysis/cuts/:planId",
     route(async (project, c) => service.getCut(project, c.req.param("planId") ?? "")),
-  );
-
-  api.post(
-    "/projects/:id/analysis/cuts/:planId/applied",
-    tooLarge,
-    route(async (project, c) =>
-      service.markCutApplied(
-        project,
-        c.req.param("planId") ?? "",
-        parsed(parseMarkCutAppliedRequest(await body(c))),
-      ),
-    ),
   );
 
   return service;

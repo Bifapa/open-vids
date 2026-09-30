@@ -93,6 +93,9 @@ Director's transaction is open the history engine attributes it to the turn.
 - Each editing tool declares an `activity` label ("Inspecting the timeline", "Editing the timeline ·
   4 changes (add clip ×3, split)", "Browsing caption presets", "Rendering video"); the OMP adapter
   reports these as `tool.start` with a `label`, and `TurnEventWriter` shows each as its own row.
+- `render_video` refuses a composition longer than 180 s unless the turn's user messages (prompt and steering) explicitly
+  ask for a render, an export or a video file (English or Russian; "don't render" does not count): the Director offers
+  the render instead of starting a long one on its own (`src/editing/renderGuard.ts`). Short renders are unchanged.
 - Lifecycle guarantee (`src/editing/executor.ts`, `TurnRunner.finalize`): editing calls go to a
   per-turn executor bound to the turn's scope, editor context and abort signal. They are refused when
   no turn is running or it is finalizing. Before the checkpoint closes, the turn stops accepting
@@ -103,11 +106,11 @@ Director's transaction is open the history engine attributes it to the turn.
 
 ## Long-form analysis tools
 
-Long raw footage becomes durable, cached analysis artifacts and then a rough cut on the real
-timeline. The runtime talks to Studio's analysis service over loopback HTTP
+Long raw footage becomes durable, cached analysis artifacts and then a rough cut on the real timeline. The runtime talks
+to Studio's analysis service over loopback HTTP
 (`src/analysis/host.http.ts`, base `${studioOrigin}/api/projects/:id/analysis`): `jobs` (start/join,
 poll, cancel), `overview`, `transcript`, `artifact`, `segments`, `vision`, `frames`, `cuts`
-(plan/list/get/applied). The wire contract is `packages/agent-protocol/src/analysis.ts`; artifacts live
+(plan/list/get). The wire contract is `packages/agent-protocol/src/analysis.ts`; artifacts live
 in `<project>/.hyperframes/analysis` outside project history, so Revert never touches the cache.
 
 | tool                                                                                    | Director                          | Editor | Vision | Motion/Audio/Research |
@@ -119,11 +122,15 @@ in `<project>/.hyperframes/analysis` outside project history, so Revert never to
 | `plan_cut`, `build_rough_cut`                                                           | only if the Editor is not enabled | yes    | no     | no                    |
 
 - `build_rough_cut` reads the plan and the timeline, then sends ONE atomic `editing/apply` batch with
-  `baseVersion`: `remove_clip {clips}` for every clip that plays the plan's source (all tracks),
-  `add_sequence` of the plan's ranges (`edgeFade` 0.02) and `set_composition` to the cut length; it then
-  records the plan as applied (`cuts/:id/applied`) and reports the clip count, the length and the timeline
-  ranges where kept material overlaps black/frozen picture. Because it goes through the editing service
-  inside the turn's transaction, Revert undoes it.
+  `baseVersion`: `remove_clip {clips}` for the clips **of the target track** that play the plan's source (the previous
+  cut; clips on other tracks — cutaways, B-roll, graphics, manual additions — are kept and reported as "kept N clips on
+  other tracks; their positions refer to the previous cut"), `add_sequence` of the plan's ranges (`edgeFade` 0.02,
+  stamped with provenance `{cut: plan.id, turn}`) and `set_composition` to the cut length. With the optional
+  `captions` (a caption preset name) the cues come from the transcript's words through the plan's placed ranges
+  (`captionCuesFromWords`) and an `apply_captions` joins the same batch. It reports the clip count, the length and the
+  timeline ranges where kept material overlaps black/frozen picture. Whether a plan is on the timeline is derived from
+  the clips stamped with its id (`CutPlanSummary.applied = {composition, clips}`), so a reverted cut is never shown as
+  applied. Because it goes through the editing service inside the turn's transaction, Revert undoes it.
 - `inspect_frames` returns `HostToolResult.images` (base64 JPEG). The OMP adapter maps them to OMP image
   content after the text part (`src/omp/tool-content.ts`); nothing outside `src/omp/` knows OMP.
 - A job is awaited by polling `GET jobs/:id` (750 ms); aborting the call cancels the job on the service so
@@ -132,7 +139,7 @@ in `<project>/.hyperframes/analysis` outside project history, so Revert never to
 - Lifecycle guarantee (`src/analysis/executor.ts`, `TurnRunner.finalize`): like editing, analysis calls go
   to a per-turn executor bound to the turn's abort signal. They are refused when no turn is running or it
   is finalizing. Before the checkpoint closes, the turn stops accepting calls, cancels running jobs and
-  awaits every started call — a rough-cut batch already sent is awaited and its plan recorded.
+  awaits every started call — a rough-cut batch already sent is awaited to its end.
 - Failures come back as `code: message` tool errors (`AnalysisToolError`; service codes plus `aborted` and
   `unavailable` for transport failures). A stage the machine cannot run (no speech recognizer) is reported
   in the overview as `unavailable` with its reason, not as a failure.
@@ -145,6 +152,36 @@ in `<project>/.hyperframes/analysis` outside project history, so Revert never to
   "Building the rough cut · 143 clips").
 - `FakeAnalysisHost` (`src/testing`) is the in-memory host for tests (jobs that stay running until a gate
   opens, recorded requests); the runtime fixture wires it.
+
+## Story Mode
+
+The project's plan of the video is the Story Graph (`<project>/.hyperframes/story/graph.json`; contract in
+`packages/agent-protocol/src/story.ts`): chapters in a narrative sequence, material nodes (video, picture, music,
+motion preset, missing asset) attached to them, locks, and authorship (what the user set by hand, created or removed).
+The user reshapes it in Studio's Story workspace; agents change it only through Studio's story service (validated,
+locks and user decisions enforced), never with file tools (the path guard forbids `.hyperframes/`). The runtime talks
+to it over loopback HTTP (`src/story/host.http.ts`, base `${studioOrigin}/api/projects/:id/story`): `GET` (view),
+`POST edit` (an agent's atomic `StoryOperation` batch), `POST build` (compile the graph into the timeline).
+
+- **Modes.** A chat has a persisted `activeMode` (`normal` | `story`, `PATCH` chat). A turn's mode is `story` when it
+  runs a `storyAction` (`review`, `build`; sent by Studio's "Review with AI" / "Build Story"), else the request's
+  `mode`, else the chat's `activeMode`. `TurnSummary.mode` / `storyAction` record it. Review and Build are ordinary
+  checkpointed turns, so "Revert this turn" restores the graph file and the timeline together.
+- **Prompt.** Every story-mode turn prompt carries a `<story-graph>` block (the `read_story` rendering as of the
+  turn's start, including "User decisions" and locks) and a `<story-mode action="plan|review|build">` block with the
+  rules of the action (`src/story/prompt.ts`). The Director's role text holds the standing rules (user decisions
+  outrank the AI's earlier plan, locked nodes never change, never restore the previous variant on review).
+- **Tools** (`src/story/tools.ts`): `read_story` (Director and every specialist, any mode), `edit_story` (Director, story
+  plan/review turns only), `build_story` (build turns only: the Editor when enabled, else the Director). Service
+  refusals (`locked`, `user_decision`, `conflict`, `unknown_node`, …) come back as tool errors `code (operations[N]): message`.
+- **No timeline writes outside a build.** In a story-mode turn without `build`, nobody gets `edit_timeline`,
+  `render_video` or `build_rough_cut` (analysis tools stay). A build turn keeps the normal editing tools plus `build_story`;
+  the graph is frozen while it compiles (no `edit_story`).
+- **Lifecycle.** Like editing and analysis, story calls go to a per-turn executor (`src/story/executor.ts`): refused
+  when no turn is running or it is finalizing; `TurnRunner.finalize` awaits every started edit/build (atomic on the
+  service) before the checkpoint closes, so no story write can escape Revert.
+- `FakeStoryHost` (`src/testing`) is the in-memory host for tests (gates to hold an edit/build in flight, recorded
+  requests and signals); the runtime fixture wires it.
 
 ## Turns, checkpoints, concurrency
 

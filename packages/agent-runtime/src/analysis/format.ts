@@ -189,7 +189,9 @@ function visionBlock(overview: AnalysisOverview, budget: number, listNotes: bool
 }
 
 function cutSummaryLine(plan: CutPlanSummary): string {
-  const applied = plan.applied ? ` · applied to ${plan.applied.composition}` : " · not applied";
+  const applied = plan.applied
+    ? ` · on the timeline (${plan.applied.clips} ${plan.applied.clips === 1 ? "clip" : "clips"} in ${plan.applied.composition})`
+    : " · not on the timeline";
   const based = plan.basedOn ? ` · based on ${plan.basedOn}` : "";
   return `${plan.id} "${cell(plan.label)}" · ${clock(plan.stats.cutDuration)} from ${clock(plan.stats.sourceDuration)} · ${plan.stats.ranges} ranges${based}${applied}`;
 }
@@ -402,10 +404,12 @@ export function formatBuiltCut(built: {
   clips: number;
   length: number;
   replacedClips: number;
+  /** Clips on other tracks that the cut left alone. */
+  keptClips: number;
+  /** The captions written with the cut, when asked. */
+  captions: { preset: string; cues: number } | null;
   timeline: TimelineSnapshot;
   problems: TimelineProblem[];
-  /** Why the plan could not be recorded as applied, when it could not. */
-  recordFailure: string | null;
 }): string {
   const { plan, timeline } = built;
   const replaced =
@@ -429,10 +433,19 @@ export function formatBuiltCut(built: {
       ...rows,
     );
   }
-  if (built.recordFailure)
+  if (built.captions)
     lines.push(
-      `The cut is on the timeline, but the plan could not be recorded as applied (${built.recordFailure}).`,
+      `Captions: ${built.captions.cues} cues in the ${built.captions.preset} style are on the timeline.`,
     );
+  if (built.keptClips > 0) {
+    const refer =
+      built.replacedClips > 0
+        ? "; their positions refer to the previous cut, so check them against the new timing"
+        : "";
+    lines.push(
+      `Kept ${built.keptClips} ${built.keptClips === 1 ? "clip" : "clips"} on other tracks (cutaways, B-roll, graphics, captions, manual additions)${refer}.`,
+    );
+  }
   lines.push("Verify the result with inspect_timeline.");
   return cap(lines.join("\n"));
 }

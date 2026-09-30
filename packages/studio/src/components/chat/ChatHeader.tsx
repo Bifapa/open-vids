@@ -7,6 +7,7 @@ import { cn } from "../ui/cn";
 import { IconButton } from "../ui/IconButton";
 import { Select, type SelectOption } from "../ui/Select";
 import { AgentCrumbs } from "./AgentCrumbs";
+import { ChatModeSwitch } from "./ChatModeSwitch";
 import { AgentsMenu } from "./AgentsMenu";
 import { EFFORT_LABELS } from "./agentLabels";
 import { ModelPicker } from "./ModelPicker";
@@ -164,6 +165,7 @@ export function ChatHeader() {
           />
         </div>
         <EffortControl locked={locked || chat === null} />
+        <ChatModeSwitch />
       </div>
       {chat && <AgentCrumbs runs={chat.runs} active={thread} onSelect={selectThread} />}
     </header>

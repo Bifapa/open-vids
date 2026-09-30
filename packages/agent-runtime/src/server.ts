@@ -29,6 +29,7 @@ import type { CheckpointHost, ProjectScope } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
 import type { AnalysisHost } from "./analysis/host.js";
 import type { EditingHost } from "./editing/host.js";
+import type { StoryHost } from "./story/host.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import { defaultEnabledAgents, type AgentSettingsStore } from "./settings.js";
 import { FileChatStore } from "./store/index.js";
@@ -41,6 +42,8 @@ export interface RuntimeAppOptions {
   editing: (scope: ProjectScope) => EditingHost;
   /** Opens the analysis host (long-form transcript, speakers, shots, take issues, cut plans) of a request's project. */
   analysis: (scope: ProjectScope) => AnalysisHost;
+  /** Opens the story host (the Story Graph, story edits, Build Story) of the project a request is scoped to. */
+  story: (scope: ProjectScope) => StoryHost;
   /** Global (per-user) agent settings shared by every project. */
   settings: AgentSettingsStore;
   token: string;
@@ -74,6 +77,7 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
   const turnOptions: TurnRunnerOptions = {
     editing: options.editing,
     analysis: options.analysis,
+    story: options.story,
     now,
     ...(ids && { ids }),
     ...(options.sessionIdleMs !== undefined && { sessionIdleMs: options.sessionIdleMs }),

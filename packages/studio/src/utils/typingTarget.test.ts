@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it } from "vitest";
-import { isTypingTarget } from "./typingTarget";
+import { isTextFieldTarget, isTypingTarget } from "./typingTarget";
 import { isEditableTarget } from "./timelineDiscovery";
 
 afterEach(() => {
@@ -50,5 +50,15 @@ describe("isTypingTarget", () => {
   it("says no to nothing at all", () => {
     expect(isTypingTarget(null)).toBe(false);
     expect(isTypingTarget({} as EventTarget)).toBe(false);
+  });
+
+  // The Story canvas handles Delete and arrows itself: a global shortcut
+  // claiming them there would delete a timeline clip behind the canvas.
+  it("keeps global shortcuts out of a panel that owns its keyboard, while the panel still sees its fields", () => {
+    const host = mount("<div data-keyboard-owner><button>card</button><input /></div>");
+    const card = host.querySelector("button");
+    expect(isTypingTarget(card)).toBe(true);
+    expect(isTextFieldTarget(card)).toBe(false);
+    expect(isTextFieldTarget(host.querySelector("input"))).toBe(true);
   });
 });

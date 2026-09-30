@@ -376,15 +376,14 @@ describe("cut plans", () => {
     expect((await store.readCut("cut-1"))?.source).toBe("a.mp4");
   });
 
-  it("replaces a plan and its summary when it is marked applied", async () => {
+  it("drops plans without reusing their ids", async () => {
     const store = new AnalysisStore(tempDir());
-    const made = await store.createCut(async (id) => plan(id, "a.mp4"));
-    await store.replaceCut({
-      ...made,
-      applied: { composition: "index.html", version: "sha256:v", at: 5 },
-    });
-    expect((await store.listCuts())[0]?.applied?.composition).toBe("index.html");
-    expect((await store.readCut("cut-1"))?.applied?.at).toBe(5);
+    await store.createCut(async (id) => plan(id, "a.mp4"));
+    await store.createCut(async (id) => plan(id, "b.mp4"));
+    expect(await store.dropCuts((entry) => entry.source === "b.mp4")).toEqual(["cut-2"]);
+    expect((await store.listCuts()).map((entry) => entry.id)).toEqual(["cut-1"]);
+    expect(await store.readCut("cut-2")).toBeNull();
+    expect((await store.createCut(async (id) => plan(id, "c.mp4"))).id).toBe("cut-3");
   });
 });
 

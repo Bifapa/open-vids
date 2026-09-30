@@ -7,12 +7,14 @@ import {
   type ActiveTurnInfo,
   type AgentModelCatalog,
   type ChatEvent,
+  type ChatMode,
   type ChatState,
   type ChatSummary,
   type EditorContext,
   type ModelSelection,
   type ProjectEvent,
   type RevertMode,
+  type StoryAction,
   type ThinkingEffort,
   type TurnSummary,
   type UpdateChatRequest,
@@ -78,6 +80,10 @@ export interface AgentState extends AgentSettingsSlice {
   setModel(model: ModelSelection | null): Promise<void>;
   setThinking(thinking: ThinkingEffort | null): Promise<void>;
   setDraft(text: string): void;
+  /** The open chat's mode for its next turns (PATCH `activeMode`). */
+  setMode(mode: ChatMode): Promise<void>;
+  /** Runs Review with AI / Build Story as a story-mode turn of the open chat (a new chat when none is open). */
+  runStoryAction(action: StoryAction): Promise<ActionResult>;
   /** Starts a turn, or steers the live one when the chat is running. */
   send(): Promise<void>;
   abort(): Promise<void>;
@@ -280,6 +286,15 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       }
     };
 
+    /** The editor at this moment; a failed capture sends the prompt without context. */
+    const captureContext = (): EditorContext | undefined => {
+      try {
+        return deps.captureEditorContext?.() ?? undefined;
+      } catch {
+        return undefined;
+      }
+    };
+
     return {
       ...createAgentSettingsSlice({
         client,
@@ -449,12 +464,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         if (!chatId || !chat || !text || pending) return;
         const running = runningTurn(chat);
         set({ pending: running ? "steer" : "send", notice: null });
-        let editorContext: EditorContext | undefined;
-        try {
-          editorContext = deps.captureEditorContext?.() ?? undefined;
-        } catch {
-          editorContext = undefined;
-        }
+        const editorContext = captureContext();
         try {
           if (running) await client.steerTurn(chatId, running.id, { text, editorContext });
           else await client.startTurn(chatId, { prompt: text, editorContext });
@@ -470,6 +480,45 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
               ? "The agent had just finished. Your message is still in the box; send it to start a new run."
               : undefined,
           );
+        } finally {
+          set({ pending: null });
+        }
+      },
+
+      async setMode(mode) {
+        const { chatId, chat } = get();
+        if (!chatId || !chat || chat.chat.activeMode === mode) return;
+        try {
+          applySummary(await client.updateChat(chatId, { activeMode: mode }));
+        } catch (error) {
+          await onActionError(error, chatId);
+        }
+      },
+
+      async runStoryAction(action) {
+        if (get().pending) return { ok: false, message: "The agent is busy with another request." };
+        let chatId = get().chatId;
+        set({ pending: "send", notice: null });
+        try {
+          if (!chatId) {
+            const created = await client.createChat({});
+            applySummary(created);
+            await get().openChat(created.id);
+            chatId = created.id;
+          }
+          await client.startTurn(chatId, {
+            // Short on purpose: the story action itself tells the agent what to do.
+            prompt: action === "review" ? "Review the story" : "Build the story",
+            mode: "story",
+            storyAction: action,
+            editorContext: captureContext(),
+          });
+          if (get().streamStatus !== "open") await resync(chatId);
+          return { ok: true };
+        } catch (error) {
+          if (chatId) await onActionError(error, chatId);
+          else fail(error);
+          return { ok: false, message: describeAgentError(error) };
         } finally {
           set({ pending: null });
         }

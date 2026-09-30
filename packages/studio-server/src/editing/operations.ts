@@ -47,9 +47,11 @@ import {
   findClip,
   editingVersion,
   parseComposition,
+  provenanceAttributes,
   resolveClipDurations,
   resolveProjectRelative,
   serializeModel,
+  stampProvenance,
   toSnapshot,
   type ClipNode,
   type CompositionModel,
@@ -309,6 +311,7 @@ async function addClip(
     muted: isMedia ? op.muted : undefined,
     fadeIn: op.fadeIn,
     fadeOut: op.fadeOut,
+    attributes: provenanceAttributes(op.provenance),
   });
   batch.html = insertTimelineAssetIntoSource(serializeModel(model), markup);
   return { op: op.op, clipId: hfId, newClipId: null };
@@ -387,6 +390,7 @@ async function addSequence(
         muted: op.muted,
         fadeIn: edge > 0 ? round3(edge) : undefined,
         fadeOut: edge > 0 ? round3(edge) : undefined,
+        attributes: provenanceAttributes(op.provenance),
       }),
     );
     cursor += duration;
@@ -439,6 +443,7 @@ function addText(
     ].join("; "),
   );
   element.textContent = op.text;
+  stampProvenance(element, op.provenance);
   model.root.appendChild(element);
   commit(batch, model);
   return { op: op.op, clipId: hfId, newClipId: null };
@@ -518,10 +523,9 @@ async function addComponent(
   const model = await loadModel(env, batch.html);
   const host = model.clips.find((clip) => clip.domId === inserted.hostId);
   if (!host) throw new Error(`Mounted host "${inserted.hostId}" is missing from the composition`);
-  if (op.duration !== undefined) {
-    writeClipTiming(host.element, { duration: round3(op.duration) });
-    commit(batch, model);
-  }
+  if (op.duration !== undefined) writeClipTiming(host.element, { duration: round3(op.duration) });
+  stampProvenance(host.element, op.provenance);
+  commit(batch, model);
   return { op: op.op, clipId: host.id, newClipId: null };
 }
 

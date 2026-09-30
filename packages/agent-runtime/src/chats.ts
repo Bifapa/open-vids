@@ -119,6 +119,7 @@ export class ChatService {
       ...(input.model !== undefined && { mainAgentModel: input.model }),
       ...(input.thinking !== undefined && { thinking: input.thinking }),
       ...(input.enabledAgents !== undefined && { enabledAgents: [...input.enabledAgents] }),
+      ...(input.activeMode !== undefined && { activeMode: input.activeMode }),
       agentOverrides,
       updatedAt: this.now(),
     };

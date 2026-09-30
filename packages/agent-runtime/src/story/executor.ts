@@ -1,0 +1,144 @@
+import {
+  isRecord,
+  parseStoryBuildRequest,
+  parseStoryEditRequest,
+  type ParsedStory,
+} from "@hyperframes/agent-protocol";
+import type { HostToolResult } from "../backend.js";
+import { errorMessage } from "../errors.js";
+import { formatStory, formatStoryBuild, formatStoryEdit, formatStoryError } from "./format.js";
+import { StoryToolError, type StoryHost } from "./host.js";
+import { STORY_TOOL_NAMES, isStoryToolName, type StoryToolName } from "./tools.js";
+
+export interface TurnStoryOptions {
+  host: StoryHost;
+  /** The running turn: recorded on review summaries and stamped on the clips a build creates. */
+  turnId: string;
+  /** The turn's abort signal: aborting the turn aborts every in-flight read. */
+  turnSignal: AbortSignal;
+}
+
+const refuse = (text: string): HostToolResult => ({ text, isError: true });
+
+function argsRecord(args: unknown): Record<string, unknown> {
+  if (args === undefined || args === null) return {};
+  if (!isRecord(args))
+    throw new StoryToolError("invalid_request", "arguments must be a JSON object");
+  return args;
+}
+
+function checked<T>(parsed: ParsedStory<T>): T {
+  if (!parsed.ok)
+    throw new StoryToolError(parsed.error.code, parsed.error.message, parsed.error.opIndex);
+  return parsed.value;
+}
+
+/** Fields where `null` is a real value (clear it); everywhere else models send `null` for "not given". */
+const MEANINGFUL_NULL = new Set([
+  "previewFrame",
+  "sourceOut",
+  "asset",
+  "bpm",
+  "skill",
+  "duration",
+  "neededDuration",
+  "offset",
+  "captionPreset",
+  "composition",
+]);
+
+function withoutNulls(record: Record<string, unknown>, keep: ReadonlySet<string>) {
+  return Object.fromEntries(
+    Object.entries(record).filter(([key, value]) => value !== null || keep.has(key)),
+  );
+}
+
+/** One node's or update's fields: nulls for omitted fields go, and so do nulls inside source range inputs. */
+function cleanFields(fields: Record<string, unknown>): Record<string, unknown> {
+  const cleaned = withoutNulls(fields, MEANINGFUL_NULL);
+  if (Array.isArray(cleaned.sourceRanges)) {
+    cleaned.sourceRanges = cleaned.sourceRanges.map((range: unknown) =>
+      isRecord(range) ? withoutNulls(range, new Set()) : range,
+    );
+  }
+  return cleaned;
+}
+
+function cleanOperation(operation: unknown): unknown {
+  if (!isRecord(operation)) return operation;
+  const cleaned = withoutNulls(operation, MEANINGFUL_NULL);
+  for (const key of ["node", "set"]) {
+    const nested = cleaned[key];
+    if (isRecord(nested)) cleaned[key] = cleanFields(nested);
+  }
+  return cleaned;
+}
+
+/**
+ * The story tools of one running turn, bound to that turn's project and abort signal. Like the editing and analysis
+ * executors it tracks its in-flight calls so {@link shutdown} can stop the turn's story work before the checkpoint
+ * transaction closes: an edit or build that already reached the service is awaited to its end, and no new call is
+ * accepted afterwards, so no story write can land after the checkpoint ends.
+ */
+export class TurnStory {
+  private accepting = true;
+  private readonly stop = new AbortController();
+  private readonly inflight = new Set<Promise<unknown>>();
+
+  constructor(private readonly options: TurnStoryOptions) {}
+
+  execute(name: string, args: unknown, callSignal: AbortSignal): Promise<HostToolResult> {
+    if (!this.accepting)
+      return Promise.resolve(refuse("The turn is finishing; the story is closed."));
+    if (!isStoryToolName(name)) return Promise.resolve(refuse(`Unknown story tool ${name}.`));
+    const signal = AbortSignal.any([callSignal, this.options.turnSignal, this.stop.signal]);
+    const call = this.run(name, args, signal).catch((error: unknown): HostToolResult => {
+      if (error instanceof StoryToolError) return refuse(formatStoryError(error));
+      return refuse(`internal: ${errorMessage(error, "The story call failed")}`);
+    });
+    this.inflight.add(call);
+    void call.finally(() => this.inflight.delete(call));
+    return call;
+  }
+
+  /** The story as the turn's prompt shows it; never throws (a turn must start even if the story is unreadable). */
+  async snapshot(signal: AbortSignal): Promise<string | null> {
+    try {
+      return formatStory(await this.options.host.view(signal), 10_000);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Stops accepting calls, cancels running reads, and waits for every started call to end. */
+  async shutdown(): Promise<void> {
+    this.accepting = false;
+    this.stop.abort();
+    await Promise.allSettled([...this.inflight]);
+  }
+
+  private async run(
+    name: StoryToolName,
+    args: unknown,
+    signal: AbortSignal,
+  ): Promise<HostToolResult> {
+    const { host, turnId } = this.options;
+    switch (name) {
+      case STORY_TOOL_NAMES.read:
+        return { text: formatStory(await host.view(signal)) };
+      case STORY_TOOL_NAMES.edit: {
+        const record = withoutNulls(argsRecord(args), new Set());
+        const operations = Array.isArray(record.operations)
+          ? record.operations.map(cleanOperation)
+          : record.operations;
+        const request = checked(parseStoryEditRequest({ ...record, operations, turnId }));
+        return { text: formatStoryEdit(await host.edit(request, signal)) };
+      }
+      case STORY_TOOL_NAMES.build: {
+        const record = withoutNulls(argsRecord(args), new Set());
+        const request = checked(parseStoryBuildRequest({ ...record, turnId }));
+        return { text: formatStoryBuild(await host.build(request, signal)) };
+      }
+    }
+  }
+}

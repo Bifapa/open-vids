@@ -7,6 +7,7 @@ import {
   parseSaveSegmentsRequest,
   parseSaveVisionNotesRequest,
   isRecord,
+  type CutPlan,
   type ParsedAnalysis,
 } from "@hyperframes/agent-protocol";
 import type { HostToolResult } from "../backend.js";
@@ -30,7 +31,12 @@ import {
 } from "./format.js";
 import { AnalysisToolError, type AnalysisHost } from "./host.js";
 import { JOB_POLL_MS, analyzeAndWait } from "./jobs.js";
-import { problemsOnTimeline, roughCutBatch } from "./roughCut.js";
+import {
+  planCaptionCues,
+  problemsOnTimeline,
+  roughCutBatch,
+  type RoughCutCaptions,
+} from "./roughCut.js";
 import { ANALYSIS_TOOL_NAMES, isAnalysisToolName, type AnalysisToolName } from "./tools.js";
 
 export interface TurnAnalysisOptions {
@@ -41,9 +47,9 @@ export interface TurnAnalysisOptions {
   turnSignal: AbortSignal;
   /** How often a running job is polled (default 750 ms). */
   pollMs?: number;
+  /** The running agent turn: stamped on the clips of a rough cut. */
+  turnId?: string;
 }
-
-const MARK_APPLIED_TIMEOUT_MS = 10_000;
 
 const refuse = (text: string): HostToolResult => ({ text, isError: true });
 
@@ -233,11 +239,11 @@ export class TurnAnalysis {
 
   /**
    * Plan → timeline in one atomic batch through the editing path (so it belongs to the turn's checkpoint and Revert
-   * undoes it), then the plan is recorded as applied. Everything that can fail is read before the batch is sent; once
-   * it is on its way it is awaited to its end and the record is written even if the turn is stopping.
+   * undoes it). Everything that can fail is read before the batch is sent; once it is on its way it is awaited to its
+   * end. Whether a plan is on the timeline is derived from the clips it stamped, never recorded separately.
    */
   private async buildRoughCut(args: unknown, signal: AbortSignal): Promise<HostToolResult> {
-    const { host, editing } = this.options;
+    const { host, editing, turnId } = this.options;
     if (!editing)
       throw new AnalysisToolError("unavailable", "Editing is not available in this runtime.");
     const record = argsRecord(withoutNulls(args));
@@ -254,6 +260,14 @@ export class TurnAnalysis {
       track > EDIT_LIMITS.maxTrack
     )
       throw invalid(`track must be an integer from 0 to ${EDIT_LIMITS.maxTrack}`);
+    const captionPreset = record.captions;
+    if (
+      captionPreset !== undefined &&
+      (typeof captionPreset !== "string" ||
+        captionPreset.trim().length === 0 ||
+        captionPreset.length > EDIT_LIMITS.idChars)
+    )
+      throw invalid("captions must be the name of a caption preset from browse_presets");
 
     const plan = await host.getCut(planId, signal);
     this.planRanges.set(plan.id, plan.ranges.length);
@@ -261,23 +275,17 @@ export class TurnAnalysis {
       editing.timeline(composition, signal),
       host.overview(plan.source, signal),
     ]);
-    const batch = roughCutBatch({ plan, timeline, composition, track });
+    const captions =
+      typeof captionPreset === "string"
+        ? await this.captionsFor(plan, captionPreset.trim(), signal)
+        : undefined;
+    const batch = roughCutBatch({ plan, timeline, composition, track, turnId, captions });
     if (signal.aborted)
       throw new AnalysisToolError("aborted", "The turn is stopping; the rough cut was not built.");
     const response = await editing.apply(batch.request, signal);
 
     const built = response.results.find((result) => result.op === "add_sequence");
     const clips = built?.clipIds?.length ?? plan.ranges.length;
-    let recordFailure: string | null = null;
-    try {
-      await host.markApplied(
-        plan.id,
-        { composition: response.timeline.composition.path, version: response.timeline.version },
-        AbortSignal.timeout(MARK_APPLIED_TIMEOUT_MS),
-      );
-    } catch (error) {
-      recordFailure = errorMessage(error, "unknown error");
-    }
     return {
       text: formatBuiltCut({
         plan,
@@ -285,10 +293,27 @@ export class TurnAnalysis {
         clips,
         length: batch.length,
         replacedClips: batch.replacedClips,
+        keptClips: batch.keptClips,
+        captions: captions ? { preset: captions.preset, cues: captions.cues.length } : null,
         timeline: response.timeline,
         problems: problemsOnTimeline(plan, overview.shots?.problems ?? []),
-        recordFailure,
       }),
     };
+  }
+
+  /** The caption cues of a plan, from the transcript's words between the plan's first and last kept range. */
+  private async captionsFor(
+    plan: CutPlan,
+    preset: string,
+    signal: AbortSignal,
+  ): Promise<RoughCutCaptions> {
+    const from = Math.min(...plan.ranges.map((range) => range.from));
+    const to = Math.max(...plan.ranges.map((range) => range.to));
+    const transcript = await this.options.host.transcript(
+      plan.source,
+      { from, to, words: true },
+      signal,
+    );
+    return { preset, cues: planCaptionCues(plan, transcript) };
   }
 }

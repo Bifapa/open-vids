@@ -4,6 +4,7 @@ import { createOmpBackend } from "./omp/index.ts";
 import { HttpCheckpointHost } from "./checkpointHost.http.js";
 import { HttpAnalysisHost } from "./analysis/host.http.js";
 import { HttpEditingHost } from "./editing/host.http.js";
+import { HttpStoryHost } from "./story/host.http.js";
 import { createRuntimeApp } from "./server.js";
 import { AgentSettingsStore } from "./settings.js";
 
@@ -16,6 +17,7 @@ const app = createRuntimeApp({
   checkpoints: new HttpCheckpointHost(),
   editing: (scope) => new HttpEditingHost(scope),
   analysis: (scope) => new HttpAnalysisHost(scope),
+  story: (scope) => new HttpStoryHost(scope),
   settings: new AgentSettingsStore(),
   token,
 });

@@ -17,9 +17,25 @@
 export function isTypingTarget(target: EventTarget | null): boolean {
   const element = asElement(target);
   if (!element) return false;
+  return isTextFieldTarget(element) || element.closest(KEYBOARD_OWNER_SELECTOR) !== null;
+}
+
+/**
+ * A field itself, without the panels that own their keyboard: what such a
+ * panel asks before claiming a key of its own (Delete, ⌘Z).
+ */
+export function isTextFieldTarget(target: EventTarget | null): boolean {
+  const element = asElement(target);
+  if (!element) return false;
   if (element.isContentEditable) return true;
   return element.closest(TYPING_SELECTOR) !== null;
 }
+
+/**
+ * A panel that handles its own keys (the Story canvas: Delete deletes a node,
+ * arrows move one) marks its root with this, and global shortcuts stay out.
+ */
+const KEYBOARD_OWNER_SELECTOR = "[data-keyboard-owner]";
 
 /**
  * Things a keystroke belongs to rather than to a shortcut. `contenteditable` is

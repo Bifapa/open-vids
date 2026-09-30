@@ -2,6 +2,7 @@ import type { Direction } from "dockview-react";
 
 export const PANEL_IDS = [
   "preview",
+  "story",
   "timeline",
   "compositions",
   "assets",
@@ -33,6 +34,11 @@ export const PANEL_DEFINITIONS = {
     zone: "center",
     reopen: { near: "timeline", direction: "above" },
     keepMounted: true,
+  },
+  story: {
+    title: "Story",
+    zone: "center",
+    reopen: { near: "preview", direction: "within" },
   },
   timeline: {
     title: "Timeline",

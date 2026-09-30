@@ -2,6 +2,9 @@ import type { TurnSummary } from "@hyperframes/agent-protocol";
 import type { ProjectScope } from "./checkpointHost.js";
 import type { AnalysisHost } from "./analysis/host.js";
 import type { EditingHost } from "./editing/host.js";
+import { EDITING_TOOL_NAMES } from "./editing/tools.js";
+import { ANALYSIS_TOOL_NAMES } from "./analysis/tools.js";
+import type { StoryHost } from "./story/host.js";
 import type { StreamTimerApi } from "./turnStream.js";
 
 export interface TurnRunnerOptions {
@@ -25,6 +28,24 @@ export interface TurnRunnerOptions {
   analysis?: (scope: ProjectScope) => AnalysisHost;
   /** How often a running analysis job is polled (default 750 ms). */
   analysisPollMs?: number;
+  /**
+   * Opens the story host (the Story Graph, story edits and Build Story) of a project. Without it the agents get no
+   * story tools; the production runtime always provides it.
+   */
+  story?: (scope: ProjectScope) => StoryHost;
+}
+
+/** What a story-mode turn (plan/review) says when an agent tries to write the timeline anyway. */
+export const STORY_TURN_TIMELINE_REFUSAL =
+  "This is a Story Mode turn: the timeline is not changed here. Shape the story with edit_story; the user builds it into the timeline with Build Story.";
+
+/** Tools that write the timeline (or start a render of it): refused in story-mode turns that do not build the story. */
+export function writesTimeline(name: string): boolean {
+  return (
+    name === EDITING_TOOL_NAMES.edit ||
+    name === EDITING_TOOL_NAMES.render ||
+    name === ANALYSIS_TOOL_NAMES.build
+  );
 }
 
 /** The history label of a turn's transaction; recovery rebuilds it from the persisted prompt, so it must be pure. */

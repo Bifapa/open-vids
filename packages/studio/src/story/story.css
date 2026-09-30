@@ -1,0 +1,115 @@
+/* The Story canvas: React Flow in Studio's tokens. Colours come from theme.css only. */
+
+.hf-story-flow.react-flow {
+  --xy-background-color: var(--color-bg-1);
+  --xy-background-pattern-color: var(--color-text-5);
+  --xy-edge-stroke: var(--color-text-3);
+  --xy-edge-stroke-selected: var(--color-selection);
+  --xy-edge-label-background-color: var(--color-bg-2);
+  --xy-edge-label-color: var(--color-text-2);
+  --xy-connectionline-stroke: var(--color-selection);
+  --xy-connectionline-stroke-width: 1.5;
+  --xy-handle-background-color: var(--color-bg-2);
+  --xy-handle-border-color: var(--color-text-3);
+  --xy-controls-button-background-color: var(--color-surface);
+  --xy-controls-button-background-color-hover: var(--color-hover);
+  --xy-controls-button-color: var(--color-text-2);
+  --xy-controls-button-color-hover: var(--color-text-0);
+  --xy-controls-button-border-color: var(--color-border-input);
+  --xy-controls-box-shadow: none;
+  --xy-minimap-background-color: var(--color-bg-2);
+  --xy-minimap-mask-background-color: color-mix(in oklab, var(--color-bg-0) 60%, transparent);
+  --xy-minimap-mask-stroke-color: var(--color-border-input);
+  --xy-attribution-background-color: transparent;
+}
+
+.hf-story-flow .react-flow__controls {
+  border: 1px solid var(--color-border-input);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.hf-story-flow .react-flow__minimap {
+  border: 1px solid var(--color-border-input);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.hf-story-flow .react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+  transition:
+    border-color 120ms ease-out,
+    background-color 120ms ease-out,
+    transform 120ms ease-out;
+}
+
+.hf-story-flow .react-flow__handle.hf-story-handle-sequence {
+  border-color: var(--color-accent);
+}
+
+.hf-story-flow .react-flow__handle.hf-story-handle-material {
+  border-color: var(--color-text-2);
+  border-style: dashed;
+}
+
+.hf-story-flow .react-flow__handle:hover,
+.hf-story-flow .react-flow__handle.connectingto.valid {
+  background: var(--color-selection);
+  border-color: var(--color-selection);
+  transform: translate(var(--hf-handle-shift-x, 0), var(--hf-handle-shift-y, 0)) scale(1.25);
+}
+
+.hf-story-flow .react-flow__handle.connectingto:not(.valid) {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.hf-story-flow .react-flow__handle-left,
+.hf-story-flow .react-flow__handle-right {
+  --hf-handle-shift-y: -50%;
+}
+
+.hf-story-flow .react-flow__handle-left {
+  --hf-handle-shift-x: -50%;
+}
+
+.hf-story-flow .react-flow__handle-right {
+  --hf-handle-shift-x: 50%;
+}
+
+.hf-story-flow .react-flow__handle-top,
+.hf-story-flow .react-flow__handle-bottom {
+  --hf-handle-shift-x: -50%;
+}
+
+.hf-story-flow .react-flow__handle-top {
+  --hf-handle-shift-y: -50%;
+}
+
+.hf-story-flow .react-flow__handle-bottom {
+  --hf-handle-shift-y: 50%;
+}
+
+/* Edge styles are inline (per kind); a selected edge still reads as selected. */
+.hf-story-flow .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--color-selection) !important;
+  stroke-width: 2.25 !important;
+}
+
+.hf-story-flow .react-flow__edge-textbg {
+  rx: 4px;
+}
+
+.hf-story-flow .react-flow__node:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* Nodes are cards: the canvas itself stays a canvas while the agent owns it. */
+.hf-story-flow.hf-story-readonly .react-flow__handle {
+  opacity: 0.35;
+  pointer-events: none;
+}

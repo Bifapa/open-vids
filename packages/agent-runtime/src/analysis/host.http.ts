@@ -9,7 +9,6 @@ import {
   type CutPlanSummary,
   type FramesRequest,
   type FramesResponse,
-  type MarkCutAppliedRequest,
   type SaveSegmentsRequest,
   type SaveVisionNotesRequest,
   type SegmentMap,
@@ -77,12 +76,13 @@ export class HttpAnalysisHost implements AnalysisHost {
 
   async transcript(
     source: string,
-    window: { from?: number; to?: number },
+    window: { from?: number; to?: number; words?: boolean },
     signal: AbortSignal,
   ): Promise<TranscriptView> {
     const params = new URLSearchParams({ source });
     if (window.from !== undefined) params.set("from", String(window.from));
     if (window.to !== undefined) params.set("to", String(window.to));
+    if (window.words) params.set("words", "1");
     const payload = await this.request("GET", `/transcript?${params}`, { signal });
     if (!isTranscriptView(payload)) throw invalidResponse("transcript");
     return payload;
@@ -147,19 +147,6 @@ export class HttpAnalysisHost implements AnalysisHost {
 
   async getCut(planId: string, signal: AbortSignal): Promise<CutPlan> {
     const payload = await this.request("GET", `/cuts/${encodeURIComponent(planId)}`, { signal });
-    if (!isCutPlan(payload)) throw invalidResponse("cut plan");
-    return payload;
-  }
-
-  async markApplied(
-    planId: string,
-    request: MarkCutAppliedRequest,
-    signal: AbortSignal,
-  ): Promise<CutPlan> {
-    const payload = await this.request("POST", `/cuts/${encodeURIComponent(planId)}/applied`, {
-      body: request,
-      signal,
-    });
     if (!isCutPlan(payload)) throw invalidResponse("cut plan");
     return payload;
   }

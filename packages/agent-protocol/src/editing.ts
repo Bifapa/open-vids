@@ -54,6 +54,19 @@ export interface ProjectInventory {
 export const CLIP_KINDS = ["video", "audio", "image", "composition", "text", "element"] as const;
 export type ClipKind = (typeof CLIP_KINDS)[number];
 
+/**
+ * Where a clip came from, stamped by agent operations (`data-ov-story-node`, `data-ov-cut`, `data-ov-turn`) and read
+ * back from the markup. A manual Studio edit keeps the attributes; a clip without any has no provenance (null).
+ */
+export interface ClipProvenance {
+  /** Story node the clip was built for (Build Story). */
+  storyNode: string | null;
+  /** Cut plan the clip was built from (build_rough_cut). */
+  cut: string | null;
+  /** Agent turn that created the clip. */
+  turn: string | null;
+}
+
 export interface TimelineClip {
   /** Stable clip id (`data-hf-id`). */
   id: string;
@@ -79,6 +92,7 @@ export interface TimelineClip {
   compositionSrc: string | null;
   /** Locked clips cannot be edited. */
   locked: boolean;
+  provenance: ClipProvenance | null;
 }
 
 export interface TimelineTrack {
@@ -137,6 +151,7 @@ export type EditOperation =
       /** Audio/video: linear gain ramps (seconds) at the clip's start and end. */
       fadeIn?: number;
       fadeOut?: number;
+      provenance?: Partial<ClipProvenance>;
     }
   /**
    * Place several ranges of one video/audio source back to back on a track (a rough cut). Each range becomes one
@@ -159,6 +174,7 @@ export type EditOperation =
       frame?: ClipFrame;
       /** Short audio gain ramp (seconds, 0–0.1) at both edges of every clip, against clicks at cuts. */
       edgeFade?: number;
+      provenance?: Partial<ClipProvenance>;
     }
   /** A simple text/title clip. */
   | {
@@ -170,6 +186,7 @@ export type EditOperation =
       placement?: TextPlacement;
       size?: TextSize;
       color?: string;
+      provenance?: Partial<ClipProvenance>;
     }
   /** Install a registry block/component (motion graphics) and mount it as a sub-composition clip. */
   | {
@@ -178,6 +195,7 @@ export type EditOperation =
       start: number;
       track: number;
       duration?: number;
+      provenance?: Partial<ClipProvenance>;
     }
   /** Write the project's captions from cues in a caption preset's style, spanning the whole composition. */
   | { op: "apply_captions"; preset: string; cues: CaptionCue[]; track?: number }
@@ -369,6 +387,28 @@ function isField(value: unknown): value is Field {
   return isRecord(value) && "ok" in value;
 }
 
+const PROVENANCE_KEYS = ["storyNode", "cut", "turn"] as const;
+
+/** `provenance` of an add operation: any of the three ids, each a plain token that is safe to write as an attribute. */
+function readProvenance(value: unknown): Partial<ClipProvenance> | Field {
+  if (!isRecord(value)) return { ok: false, message: "provenance must be an object" };
+  const extra = Object.keys(value).find((key) => !PROVENANCE_KEYS.some((known) => known === key));
+  if (extra) return { ok: false, message: `provenance: unknown field "${extra}"` };
+  const read: Partial<ClipProvenance> = {};
+  for (const key of PROVENANCE_KEYS) {
+    const entry = value[key];
+    if (entry === undefined) continue;
+    if (typeof entry !== "string" || !/^[A-Za-z0-9_.:-]{1,200}$/.test(entry)) {
+      return { ok: false, message: `provenance.${key} must be an id (letters, digits, _ . : -)` };
+    }
+    read[key] = entry;
+  }
+  if (Object.keys(read).length === 0) {
+    return { ok: false, message: "provenance must set storyNode, cut or turn" };
+  }
+  return read;
+}
+
 /**
  * Reads the allowed keys of one operation. Every value goes through its reader; the first failure is reported with
  * the field name. Unknown keys are refused so a misspelled option never silently does nothing.
@@ -392,6 +432,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
       "frame",
       "fadeIn",
       "fadeOut",
+      "provenance",
     ],
     add_sequence: [
       "asset",
@@ -403,9 +444,10 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
       "fit",
       "frame",
       "edgeFade",
+      "provenance",
     ],
-    add_text: ["text", "start", "duration", "track", "placement", "size", "color"],
-    add_component: ["name", "start", "track", "duration"],
+    add_text: ["text", "start", "duration", "track", "placement", "size", "color", "provenance"],
+    add_component: ["name", "start", "track", "duration", "provenance"],
     apply_captions: ["preset", "cues", "track"],
     remove_clip: ["clip", "clips", "ripple"],
     move_clip: ["clip", "start", "track"],
@@ -447,6 +489,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
   const optTrack = () => maybe("track", (value) => readTrack(value, "track"));
   const volume = () => maybe("volume", readVolume);
   const fit = () => maybe("fit", (value) => oneOf(value, CLIP_FITS, "fit"));
+  const provenance = () => maybe("provenance", readProvenance);
 
   let op: EditOperation | null = null;
   switch (name) {
@@ -462,6 +505,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
       const frame = maybe("frame", readFrame);
       const fadeIn = optTime("fadeIn");
       const fadeOut = optTime("fadeOut");
+      const stamp = provenance();
       if (asset !== undefined && start !== undefined && onTrack !== undefined)
         op = {
           op: name,
@@ -476,6 +520,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
           ...(frame !== undefined && { frame }),
           ...(fadeIn !== undefined && { fadeIn }),
           ...(fadeOut !== undefined && { fadeOut }),
+          ...(stamp !== undefined && { provenance: stamp }),
         };
       break;
     }
@@ -487,6 +532,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
       const muted = bool("muted");
       const fitting = fit();
       const frame = maybe("frame", readFrame);
+      const stamp = provenance();
       const edgeFade = maybe("edgeFade", (value) =>
         typeof value === "number" &&
         Number.isFinite(value) &&
@@ -534,6 +580,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
           ...(fitting !== undefined && { fit: fitting }),
           ...(frame !== undefined && { frame }),
           ...(edgeFade !== undefined && { edgeFade }),
+          ...(stamp !== undefined && { provenance: stamp }),
         };
       break;
     }
@@ -544,6 +591,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
       const onTrack = track();
       const placement = maybe("placement", (value) => oneOf(value, TEXT_PLACEMENTS, "placement"));
       const size = maybe("size", (value) => oneOf(value, TEXT_SIZES, "size"));
+      const stamp = provenance();
       const color = maybe("color", (value) => {
         const read = readString(value, "color", 40);
         if (isField(read)) return read;
@@ -566,6 +614,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
           ...(placement !== undefined && { placement }),
           ...(size !== undefined && { size }),
           ...(color !== undefined && { color }),
+          ...(stamp !== undefined && { provenance: stamp }),
         };
       break;
     }
@@ -574,6 +623,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
       const start = time("start");
       const onTrack = track();
       const duration = optTime("duration", true);
+      const stamp = provenance();
       if (component !== undefined && start !== undefined && onTrack !== undefined)
         op = {
           op: name,
@@ -581,6 +631,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
           start,
           track: onTrack,
           ...(duration !== undefined && { duration }),
+          ...(stamp !== undefined && { provenance: stamp }),
         };
       break;
     }

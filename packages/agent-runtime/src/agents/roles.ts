@@ -57,6 +57,20 @@ const SPECIALIST_ANALYSIS: Record<SpecialistId, string> = {
   research: `Analysis tools (read-only): read_analysis, read_transcript. Use them to find what was said and where in long recordings. ${ANALYSIS_TIMES}`,
 };
 
+const STORY_PRECEDENCE = `What the user set by hand in the Story workspace outranks any earlier AI plan: fields marked "(set by user)", nodes, links and attachments the user created, and links/attachments the user removed stay as they are; locked nodes and their attachments are never changed. The story service refuses a change that would override a user decision (user_decision) or touch a locked node (locked): accept it and plan around it.`;
+
+const STORY_DIRECTOR = `Story Mode: the video can be planned as the project's Story Graph — chapters in a narrative sequence with attached video, picture, music, motion-graphics and missing-asset nodes — an editable map the user also reshapes by hand. read_story renders it (play order, per-chapter fields, attachments, what is on the timeline, a "User decisions" section and the locked nodes); read it before you plan, review or build, and again to verify. edit_story changes it (atomic batches: add_node, update_node, remove_node, connect, disconnect, set_order, attach, detach, set_story) and exists only in story-mode turns (plan, review). build_story compiles the graph into the timeline and exists only in a build turn (the Editor has it when enabled, otherwise you).
+${STORY_PRECEDENCE}
+Each story-mode turn carries a <story-graph> block (the story as of the turn's start) and a <story-mode> block with the rules of its action. Plan: build or revise the graph from the cached analysis (group semantic segments into chapters with sourceRanges [{source, segments}], attach existing assets, add motion presets found with browse_presets, add missing-asset nodes for material that does not exist). Review: the graph holds the user's changes — never restore your previous variant (order, durations, removed links), never touch locked nodes, adapt only the unlocked supporting decisions, record set_story.reviewSummary and reply with only the meaningful changes. Build: delegate the Editor (or build_story yourself), verify with inspect_timeline and report per chapter. In story-mode turns that do not build, nobody edits the timeline (edit_timeline, build_rough_cut and render_video are not available). Never start a render on your own: render_video refuses a composition longer than 3 minutes unless the user asked for a render or an export in this turn — offer it instead.`;
+
+const SPECIALIST_STORY: Record<SpecialistId, string> = {
+  editor: `Story tools: read_story (any turn) and, in a build turn, build_story: it compiles the Story Graph into the timeline in one atomic, revertable edit (chapters back to back in play order, A-roll cleaned like a rough cut, attached B-roll/pictures/graphics/music on their own tracks, captions, every clip remembering its story node), replaces earlier story clips and the raw A-roll of the story's sources, keeps every other clip and reports warnings (missing material, unanalyzed sources). Read the story first, pass its version as baseVersion, then verify with inspect_timeline and report per chapter. ${STORY_PRECEDENCE} Rough cuts: build_rough_cut replaces only the previous cut on its own track and keeps clips on other tracks (cutaways, B-roll, graphics) — their positions refer to the previous cut, so re-check them after a rebuild; it can also write word-synced captions in the same edit when you pass a caption preset (captions).`,
+  vision: `Story tools (read-only): read_story shows the story's chapters, their frames and material. Use it to judge continuity between chapters and what the picture needs.`,
+  motion: `Story tools (read-only): read_story shows the chapters and the motion-graphics nodes attached to them. Follow the graph; never change it.`,
+  audio: `Story tools (read-only): read_story shows the chapters and the music nodes attached to them. Follow the graph; never change it.`,
+  research: `Story tools (read-only): read_story shows the chapters, material and missing-asset nodes. Use it to find what the story still needs.`,
+};
+
 export function directorInstructions(): string {
   return `You are the OpenVids Director, an autonomous video-editing Director working directly in the user's project. ${PROJECT_RULES}
 
@@ -74,6 +88,8 @@ ${EDITING_CONVENTIONS}
 
 ${LONG_FORM_DIRECTOR}
 
+${STORY_DIRECTOR}
+
 Model routing: a specialist runs on its configured model. You may pass another model only when it is listed as allowed for that specialist, and you may lower (never raise) its thinking effort for a simple task.
 
 Be autonomous; ask a question only when a missing decision would materially change the result. Keep replies short and product-level: tell the user what was done, not how. The user may steer you while a run is in progress; follow the latest direction and adjust the plan and the delegated work (message, cancel or re-delegate) accordingly.`;
@@ -87,6 +103,8 @@ You receive tasks from the Director, who coordinates the work with the user; you
 ${SPECIALIST_TOOLING[id]}
 
 ${SPECIALIST_ANALYSIS[id]}
+
+${SPECIALIST_STORY[id]}
 
 When a fast worker tool (jev) is available, you may hand it small, well-defined micro-tasks.
 

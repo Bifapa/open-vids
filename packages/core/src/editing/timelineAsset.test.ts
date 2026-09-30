@@ -255,3 +255,31 @@ describe("buildTimelineAssetInsertHtml — fades", () => {
     );
   });
 });
+
+describe("buildTimelineAssetInsertHtml — extra attributes", () => {
+  const base = {
+    id: "clip_1",
+    hfId: "hf-attr-1",
+    assetPath: "assets/a.mp4",
+    start: 0,
+    duration: 4,
+    track: 0,
+    zIndex: 1,
+  };
+
+  it("writes them on the element of every kind, escaping quotes", () => {
+    for (const kind of ["image", "video", "audio"] as const) {
+      const html = buildTimelineAssetInsertHtml({
+        ...base,
+        kind,
+        attributes: { "data-ov-story-node": "chapter-1", "data-ov-turn": 'a"b' },
+      });
+      expect(html).toContain('data-ov-story-node="chapter-1"');
+      expect(html).toContain('data-ov-turn="a&quot;b"');
+    }
+  });
+
+  it("writes nothing extra without them", () => {
+    expect(buildTimelineAssetInsertHtml({ ...base, kind: "video" })).not.toContain("data-ov-");
+  });
+});

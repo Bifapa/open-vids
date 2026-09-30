@@ -12,6 +12,7 @@ import {
 } from "@hyperframes/agent-protocol";
 import type { BackendToolKind, HostTool, HostToolResult } from "../backend.js";
 import { RENDER_QUALITIES } from "./host.js";
+import { LONG_RENDER_SECONDS } from "./renderGuard.js";
 
 export const EDITING_TOOL_NAMES = {
   project: "inspect_project",
@@ -31,30 +32,35 @@ type Executor = (name: string, args: unknown, signal: AbortSignal) => Promise<Ho
 
 /**
  * Which editing tools an agent gets. The Director edits the timeline itself only when there is no Editor to delegate
- * to; specialists get what their domain needs. Jev gets none.
+ * to; specialists get what their domain needs. Jev gets none. A story-mode turn that does not build the story never
+ * writes the timeline (`timelineWrites` false): nobody gets `edit_timeline` or `render_video`.
  */
 export function editingToolsFor(
   agent: AgentId,
   enabled: readonly SpecialistId[],
+  { timelineWrites = true }: { timelineWrites?: boolean } = {},
 ): EditingToolName[] {
   const { project, timeline, edit, presets, render } = EDITING_TOOL_NAMES;
-  switch (agent) {
-    case "director":
-      return enabled.includes("editor")
-        ? [project, timeline, presets, render]
-        : [project, timeline, presets, render, edit];
-    case "editor":
-      return [project, timeline, presets, render, edit];
-    case "motion":
-      return [project, timeline, presets, edit];
-    case "audio":
-      return [project, timeline, edit];
-    case "vision":
-    case "research":
-      return [project, timeline, presets];
-    default:
-      return [];
-  }
+  const tools = ((): EditingToolName[] => {
+    switch (agent) {
+      case "director":
+        return enabled.includes("editor")
+          ? [project, timeline, presets, render]
+          : [project, timeline, presets, render, edit];
+      case "editor":
+        return [project, timeline, presets, render, edit];
+      case "motion":
+        return [project, timeline, presets, edit];
+      case "audio":
+        return [project, timeline, edit];
+      case "vision":
+      case "research":
+        return [project, timeline, presets];
+      default:
+        return [];
+    }
+  })();
+  return timelineWrites ? tools : tools.filter((tool) => tool !== edit && tool !== render);
 }
 
 // ── Descriptions ─────────────────────────────────────────────────────────────
@@ -80,7 +86,7 @@ const DESCRIPTIONS: Record<EditingToolName, string> = {
   inspect_timeline: `Show a composition's timeline as a table: clip id, kind, label, start–end, track, source, notes (media in-point, volume, muted, locked), plus the composition's size, length and content version. Also reports the user's playhead, selected clips/asset/time range and active composition as they were when the user sent the message (they may have changed since). Read it before editing and again after a batch to verify the result. Defaults to the main composition. ${CONVENTIONS}`,
   edit_timeline: `Change the timeline of a composition with a batch of operations. The batch is atomic: if any operation is refused, nothing is applied and the error names the failing operation (operations[N]) so you can fix it and retry. Operations run in order; clips they create get ids that are returned in the result (use them in a later call). After edits the Studio timeline and preview update by themselves, and every edit belongs to this turn's checkpoint, so the user can revert it. Pass baseVersion (the version from inspect_timeline) to refuse the batch if the composition changed since you looked. ${CONVENTIONS}\n${EDIT_OPERATIONS_GUIDE}`,
   browse_presets: `Search the built-in presets: caption styles ("caption", used by apply_captions), motion-graphics "block"s and reusable "component"s (both used by add_component). Returns names with a short description and natural length. Optional query filters by text.`,
-  render_video: `Render a composition to an mp4 file in the project's renders folder and wait until it finishes. Returns the project-relative path, length, resolution and size; report the path to the user. Use "draft" quality for a quick check, "standard" (default) or "high" for the final video. Fails if the render fails or is cancelled. A render takes minutes per minute of video: render only when the user asked for a video file, an export or a render (or for a short draft check), not after every edit of a long timeline — offer it instead.`,
+  render_video: `Render a composition to an mp4 file in the project's renders folder and wait until it finishes. Returns the project-relative path, length, resolution and size; report the path to the user. Use "draft" quality for a quick check, "standard" (default) or "high" for the final video. Fails if the render fails or is cancelled. A render takes minutes per minute of video: render only when the user asked for a video file, an export or a render (or for a short draft check), not after every edit of a long timeline — offer it instead. A composition longer than ${LONG_RENDER_SECONDS / 60} minutes is refused unless the user asked for a render or an export in this turn.`,
 };
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
@@ -465,8 +471,9 @@ export function buildEditingTools(
   agent: AgentId,
   enabled: readonly SpecialistId[],
   execute: Executor,
+  options: { timelineWrites?: boolean } = {},
 ): HostTool[] {
-  return editingToolsFor(agent, enabled).map((name) => ({
+  return editingToolsFor(agent, enabled, options).map((name) => ({
     name,
     description: DESCRIPTIONS[name],
     parameters: PARAMETERS[name],

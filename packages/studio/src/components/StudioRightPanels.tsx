@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import type { StudioRightPanelsProps } from "./StudioRightPanels.types";
 
 import { PropertyPanel } from "./editor/PropertyPanel";
@@ -9,6 +9,10 @@ import { RenderQueuePanel } from "./renders/RenderQueuePanel";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
 import { AgentChatPanel } from "./chat/AgentChatPanel";
 import { useEditorRefreshAfterRevert } from "../agent/revertRefresh";
+import { useProjectAgentStore } from "../agent/agentContext";
+import { useEditorContextSource } from "../agent/editorContext";
+import { StoryPanel } from "../story/StoryPanel";
+import { studioStoryStore } from "../story/storyContext";
 import { VariablesPanel } from "./panels/VariablesPanel";
 import { Dock } from "./dock/Dock";
 import { useDockLayoutStore } from "./dock/dockLayoutStore";
@@ -156,6 +160,23 @@ export function StudioRightPanels({
     forceReloadSdkSession,
     syncHistoryPreviewAfterApply,
   });
+  // A reverted turn may have restored the story graph together with the timeline.
+  const onAgentReverted = useCallback(async () => {
+    void studioStoryStore.getState().reload();
+    await refreshAfterAgentRevert();
+  }, [refreshAfterAgentRevert]);
+  // One agent store per project, shared by Chat and the Story panel (which starts Review/Build turns).
+  const editorContext = useEditorContextSource(projectId);
+  const agentStore = useProjectAgentStore(
+    projectId,
+    editorContext,
+    onAgentReverted,
+    renderQueue.reloadRenders,
+  );
+  // The story is loaded with the project so the agent's editor context knows its version from the start.
+  useEffect(() => {
+    void studioStoryStore.getState().open(projectId);
+  }, [projectId]);
 
   /**
    * A dial being dragged writes to the preview and stops there.
@@ -310,11 +331,10 @@ export function StudioRightPanels({
         />
       </Dock.Panel>
       <Dock.Panel id="chat">
-        <AgentChatPanel
-          projectId={projectId}
-          onReverted={refreshAfterAgentRevert}
-          onTurnEnded={renderQueue.reloadRenders}
-        />
+        <AgentChatPanel store={agentStore} />
+      </Dock.Panel>
+      <Dock.Panel id="story">
+        <StoryPanel projectId={projectId} agentStore={agentStore} />
       </Dock.Panel>
     </>
   );

@@ -98,6 +98,7 @@ function clip(id: string, src: string | null, track: number, start: number): Tim
     muted: false,
     compositionSrc: null,
     locked: false,
+    provenance: null,
   };
 }
 
@@ -117,6 +118,7 @@ function setup() {
     host,
     editing,
     turnSignal: new AbortController().signal,
+    turnId: "turn-1",
     pollMs: 1,
   });
   const call = (name: string, args: unknown) =>
@@ -539,8 +541,8 @@ describe("plan_cut", () => {
 });
 
 describe("build_rough_cut", () => {
-  it("composes ONE atomic batch: remove the source's clips, add_sequence, set_composition, and marks the plan applied", async () => {
-    const { host, editing, call } = setup();
+  it("composes ONE atomic batch: replace the previous cut on its track, add_sequence stamped with the plan and turn, set_composition; clips on other tracks stay", async () => {
+    const { editing, call } = setup();
     editing.timelineResult = timelineOf([
       clip("c1", SAMPLE_SOURCE, 0, 0),
       clip("c2", `./${SAMPLE_SOURCE}`, 0, 5),
@@ -556,7 +558,7 @@ describe("build_rough_cut", () => {
     expect(editing.applyRequests[0]).toEqual({
       baseVersion: "sha256:tl1",
       operations: [
-        { op: "remove_clip", clips: ["c1", "c2", "c3"] },
+        { op: "remove_clip", clips: ["c1", "c2"] },
         {
           op: "add_sequence",
           asset: SAMPLE_SOURCE,
@@ -568,18 +570,19 @@ describe("build_rough_cut", () => {
             { from: 100.5, to: 104 },
           ],
           edgeFade: 0.02,
+          provenance: { cut: "cut-1", turn: "turn-1" },
         },
         { op: "set_composition", duration: 16 },
       ],
     });
-    expect(host.appliedRequests).toEqual([
-      { planId: "cut-1", composition: "index.html", version: "sha256:tl1" },
-    ]);
-    expect(host.cutPlans.get("cut-1")?.applied).not.toBeNull();
     expect(result.text).toContain(
       'Built cut-1 "rough cut" on index.html, track 0: 3 clips, 00:16.0 long',
     );
-    expect(result.text).toContain("replaced 3 earlier clips");
+    expect(result.text).toContain("replaced 2 earlier clips");
+    // The cutaway of the same source on track 1, the other source and the title are kept, and the result says so.
+    expect(result.text).toContain(
+      "Kept 3 clips on other tracks (cutaways, B-roll, graphics, captions, manual additions); their positions refer to the previous cut",
+    );
   });
 
   it("maps kept material over black/frozen picture onto timeline times", async () => {
@@ -620,26 +623,59 @@ describe("build_rough_cut", () => {
     ]);
   });
 
-  it("leaves the plan unapplied and reports the edit error when the batch is refused", async () => {
-    const { host, editing, call } = setup();
+  it("reports the edit error when the batch is refused, and writes nothing else", async () => {
+    const { editing, call } = setup();
     await call("plan_cut", { source: SAMPLE_SOURCE });
     editing.nextApplyError = new EditingError("conflict", "the composition changed", 1);
     expect(await call("build_rough_cut", { plan: "cut-1" })).toEqual({
       isError: true,
       text: "conflict (operations[1]): the composition changed",
     });
-    expect(host.appliedRequests).toEqual([]);
+    expect(editing.applyFinished).toEqual([]);
   });
 
-  it("still reports the built cut when recording it as applied fails", async () => {
-    const { host, call } = setup();
+  it("writes word-synced captions for exactly the kept material in the same batch when asked", async () => {
+    const { host, editing, call } = setup();
     await call("plan_cut", { source: SAMPLE_SOURCE });
-    host.markApplied = async () => {
-      throw new AnalysisToolError("stale", "the transcript changed");
-    };
-    const result = await call("build_rough_cut", { plan: "cut-1" });
+    const result = await call("build_rough_cut", { plan: "cut-1", captions: "karaoke" });
+
     expect(result.isError).toBeUndefined();
-    expect(result.text).toContain("could not be recorded as applied (the transcript changed)");
+    expect(host.transcriptRequests.at(-1)).toEqual({
+      source: SAMPLE_SOURCE,
+      from: 12.5,
+      to: 104,
+      words: true,
+    });
+    expect(editing.applyRequests).toHaveLength(1);
+    const operations = editing.applyRequests[0]?.operations ?? [];
+    expect(operations.map((operation) => operation.op)).toEqual([
+      "add_sequence",
+      "set_composition",
+      "apply_captions",
+    ]);
+    const captions = operations[2];
+    if (captions?.op !== "apply_captions") throw new Error("expected apply_captions");
+    expect(captions.preset).toBe("karaoke");
+    // The second sentence plays first (0–2.5 s), the third follows (2.5–12.5 s); the third range has no speech.
+    expect(captions.cues[0]).toMatchObject({ text: "w4 w5 w6 w7 w8 w9", start: 0 });
+    expect(captions.cues.every((cue) => cue.end <= 12.5 + 1e-6)).toBe(true);
+    expect(captions.cues.map((cue) => cue.start)).toEqual(
+      [...captions.cues.map((cue) => cue.start)].sort((a, b) => a - b),
+    );
+    // Cues break at the sentence end: no cue carries words of both sentences.
+    expect(captions.cues.some((cue) => cue.text.includes("w9") && cue.text.includes("w10"))).toBe(
+      false,
+    );
+    expect(result.text).toContain(`Captions: ${captions.cues.length} cues in the karaoke style`);
+  });
+
+  it("refuses a caption argument that is not a preset name before editing", async () => {
+    const { editing, call } = setup();
+    await call("plan_cut", { source: SAMPLE_SOURCE });
+    expect((await call("build_rough_cut", { plan: "cut-1", captions: 3 })).text).toMatch(
+      /^invalid_request: captions must be the name of a caption preset/,
+    );
+    expect(editing.applyRequests).toEqual([]);
   });
 
   it("validates its arguments and refuses unknown plans and oversized plans before editing", async () => {

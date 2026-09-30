@@ -12,6 +12,7 @@ OpenVids.app
                  ├─ Studio SPA (prebuilt packages/studio dist), incl. the Chat panel
                  ├─ /api (project files, render, media, history — full OS access)
                  ├─ /api/projects/:id/editing/*  editing capabilities for agents
+                 ├─ /api/projects/:id/story/*    Story Graph, Review/Build compiler, card frames
                  ├─ /api/projects/:id/agent/*    gateway ─► agent runtime (separate Bun process,
                  │                                          127.0.0.1 + per-launch token) ─► OMP ─► providers
                  └─ composition iframe, same-origin with the editor

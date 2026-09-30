@@ -105,148 +105,33 @@ function stayingInOrder(values: readonly number[]): Set<number> {
   return staying;
 }
 
-/**
- * The deterministic editor: turns a request (segment order, drops, hook, which issues and pauses to remove) plus the
- * analysis into source ranges laid back to back on the cut's timeline. Throws `AnalysisFailure` (`invalid_request`)
- * for unknown ids, for dropping a `must` segment without `allowDropMust`, and for a plan that keeps nothing.
- * Pauses come from the silence map when there is one (every silence longer than maxPause is cut down to pauseKeep,
- * whatever the word timestamps claim), else from word gaps.
- */
-export function planCut(input: {
-  id: string;
-  createdAt: number;
-  request: CutPlanRequest;
-  basedOn: string | null;
-  transcript: TranscriptArtifact;
-  transcriptVersion: string;
-  silence?: SilenceMap | null;
-  takes: TakeAnalysis | null;
-  segments: SegmentMap;
-  segmentsVersion: string;
-  shots: ShotMap | null;
+interface CleanerInput {
+  words: TranscriptArtifact["words"];
+  silence: SilenceMap | null;
+  maxPause: number;
+  pauseKeep: number;
   sourceDuration: number;
-}): CutPlan {
-  const { transcript, takes, segments, shots, sourceDuration } = input;
-  const request = mergeCutRequest(null, input.request);
-  const maxPause = request.maxPause ?? DEFAULT_MAX_PAUSE;
-  const pauseKeep = request.pauseKeep ?? DEFAULT_PAUSE_KEEP;
-  const { words, sentences } = transcript;
-  function invalid(message: string): never {
-    throw new AnalysisFailure("invalid_request", message);
-  }
+  /** Segment each word belongs to (null: none), carried onto the pieces. */
+  wordSegment: ReadonlyArray<string | null>;
+}
 
-  // ── Validate ids ───────────────────────────────────────────────────────────
-  if (segments.segments.length === 0) invalid("There are no segments to plan a cut from.");
-  const segmentIndex = new Map(segments.segments.map((segment, index) => [segment.id, index]));
-  const sentenceIndex = new Map(sentences.map((sentence, index) => [sentence.id, index]));
-  const issueById = new Map((takes?.issues ?? []).map((issue) => [issue.id, issue]));
-  const knownSegment = (field: string, id: string): Segment => {
-    const segment = segments.segments[segmentIndex.get(id) ?? -1];
-    return segment ?? invalid(`${field} lists unknown segment "${id}".`);
-  };
-  for (const [field, list] of [
-    ["order", request.order],
-    ["drop", request.drop],
-    ["allowDropMust", request.allowDropMust],
-  ] as const) {
-    const seen = new Set<string>();
-    for (const id of list ?? []) {
-      knownSegment(field, id);
-      if (seen.has(id)) invalid(`${field} lists segment "${id}" twice.`);
-      seen.add(id);
-    }
-  }
-  const knownIssues = (field: string, ids: readonly string[]): TakeIssue[] =>
-    ids.map((id) => issueById.get(id) ?? invalid(`${field} lists unknown take issue "${id}".`));
-  const listedIssues = Array.isArray(request.removeIssues)
-    ? knownIssues("removeIssues", request.removeIssues)
-    : null;
-  const keptAnyway = new Set(knownIssues("keepIssues", request.keepIssues ?? []).map((i) => i.id));
-  let hookWords: [number, number] | null = null;
-  if (request.hook) {
-    const first = sentenceIndex.get(request.hook.firstSentence);
-    const last = sentenceIndex.get(request.hook.lastSentence);
-    if (first === undefined) invalid(`hook: unknown sentence "${request.hook.firstSentence}".`);
-    if (last === undefined) invalid(`hook: unknown sentence "${request.hook.lastSentence}".`);
-    if (first > last)
-      invalid(
-        `hook: ${request.hook.firstSentence} comes after ${request.hook.lastSentence}; firstSentence must not be later.`,
-      );
-    const head = sentences[first];
-    const tail = sentences[last];
-    if (head && tail) hookWords = [head.firstWord, tail.lastWord];
-  }
-
-  // ── Which segments play, in which order ────────────────────────────────────
-  const explicitDrop = new Set(request.drop ?? []);
-  const sequence: Segment[] = [];
-  if (request.order) {
-    for (const id of request.order)
-      if (!explicitDrop.has(id)) sequence.push(knownSegment("order", id));
-  } else {
-    for (const segment of segments.segments)
-      if (!explicitDrop.has(segment.id) && segment.priority !== "drop") sequence.push(segment);
-  }
-  const playing = new Set(sequence.map((segment) => segment.id));
-  const dropped = segments.segments.filter((segment) => !playing.has(segment.id));
-  const allowed = new Set(request.allowDropMust ?? []);
-  for (const segment of dropped) {
-    if (segment.priority === "must" && !allowed.has(segment.id))
-      invalid(
-        `Segment ${segment.id} "${segment.title}" is marked must; it can only be left out when its id is also in allowDropMust.`,
-      );
-  }
-  const sourceRank = sequence.map((segment) => segmentIndex.get(segment.id) ?? 0);
-  const staying = stayingInOrder(sourceRank);
-  const moved = sequence.filter((_, index) => !staying.has(index)).map((segment) => segment.id);
-
-  // ── Which words are removed ────────────────────────────────────────────────
-  const allIssues = takes?.issues ?? [];
-  const toRemove = new Map<string, TakeIssue>();
-  for (const issue of listedIssues ?? allIssues) {
-    if (listedIssues === null && (issue.action !== "cut" || issue.kind === "filler")) continue;
-    if (listedIssues === null && (issue.kind === "black" || issue.kind === "frozen")) continue;
-    toRemove.set(issue.id, issue);
-  }
-  if (request.removeFillers ?? true)
-    for (const issue of allIssues)
-      if (issue.kind === "filler" && issue.action === "cut") toRemove.set(issue.id, issue);
-  for (const id of keptAnyway) toRemove.delete(id);
-
-  const wordSegment: Array<string | null> = new Array<string | null>(words.length).fill(null);
-  const segmentWords = (segment: Segment): [number, number] => {
-    const head = sentences[sentenceIndex.get(segment.firstSentence) ?? -1];
-    const tail = sentences[sentenceIndex.get(segment.lastSentence) ?? -1];
-    if (!head || !tail)
-      throw new AnalysisFailure(
-        "stale",
-        `Segment ${segment.id} refers to sentences that are not in the transcript any more.`,
-      );
-    return [head.firstWord, tail.lastWord];
-  };
-  for (const segment of segments.segments) {
-    const [from, to] = segmentWords(segment);
-    for (let i = from; i <= to; i++) wordSegment[i] = segment.id;
-  }
-  const removedWord: boolean[] = new Array<boolean>(words.length).fill(false);
-  const effective: TakeIssue[] = [];
-  for (const issue of toRemove.values()) {
-    let touchesPlaying = false;
-    for (const [i, word] of words.entries()) {
-      const middle = (word.start + word.end) / 2;
-      if (middle < issue.start || middle > issue.end) continue;
-      removedWord[i] = true;
-      const owner = wordSegment[i];
-      if (owner !== null && owner !== undefined && playing.has(owner)) touchesPlaying = true;
-    }
-    if (touchesPlaying) effective.push(issue);
-  }
-
+/**
+ * The range cleaner shared by the rough-cut planner and Build Story: lays words down in the given order and cuts
+ * long silences (silence map when there is one, word gaps otherwise), pads to word boundaries and joins fragments.
+ */
+function createCleaner({
+  words,
+  silence,
+  maxPause,
+  pauseKeep,
+  sourceDuration,
+  wordSegment,
+}: CleanerInput) {
   // ── Ranges ─────────────────────────────────────────────────────────────────
   // With a silence map, every silence longer than maxPause is shortened to pauseKeep whatever the word timestamps say
   // (recognizers stretch words over pauses). Word gaps are the fallback when there is no silence map.
-  const silences = input.silence
-    ? input.silence.silences
+  const silences = silence
+    ? silence.silences
         .filter((range) => range.end - range.start - maxPause > PAUSE_TOLERANCE)
         .sort((a, b) => a.start - b.start)
     : null;
@@ -415,16 +300,18 @@ export function planCut(input: {
     return list;
   };
 
-  const keptInOrder: number[] = [];
-  for (const segment of sequence) {
-    const [from, to] = segmentWords(segment);
-    for (let i = from; i <= to; i++) if (!removedWord[i]) keptInOrder.push(i);
-  }
-  const laid = lay(keptInOrder, false);
-  const main = silences ? cutSilences(laid.pieces) : laid;
-  const mainPieces = tidy(main.pieces);
-  // Reordered segments can leave the padding of two ranges overlapping in the source: split the overlap between them.
-  const bySource = [...mainPieces].sort((a, b) => a.from - b.from || a.to - b.to);
+  /** Word indices (played in this order) → cleaned pieces plus the pauses cut out of them. */
+  const clean = (indices: readonly number[], hook: boolean) => {
+    const laid = lay(indices, hook);
+    const cut = silences ? cutSilences(laid.pieces) : laid;
+    return { pieces: tidy(cut.pieces), pauses: cut.pauses };
+  };
+  return { clean };
+}
+
+/** Reordered material can leave the padding of two pieces overlapping in the source: split the overlap between them. */
+function separateOverlaps(pieces: Piece[]): void {
+  const bySource = [...pieces].sort((a, b) => a.from - b.from || a.to - b.to);
   for (let k = 0; k + 1 < bySource.length; k++) {
     const a = bySource[k];
     const b = bySource[k + 1];
@@ -434,13 +321,271 @@ export function planCut(input: {
       b.from = middle;
     }
   }
+}
+
+/** Words whose issues a cut removes by default (bad takes, fillers), as a mask over the transcript words. */
+function defaultRemovedWords(
+  words: TranscriptArtifact["words"],
+  takes: TakeAnalysis | null,
+  removeFillers: boolean,
+): boolean[] {
+  const removed: boolean[] = new Array<boolean>(words.length).fill(false);
+  for (const issue of takes?.issues ?? []) {
+    const removable =
+      issue.action === "cut" &&
+      issue.kind !== "black" &&
+      issue.kind !== "frozen" &&
+      (issue.kind === "filler" ? removeFillers : true);
+    if (!removable) continue;
+    for (const [i, word] of words.entries()) {
+      const middle = (word.start + word.end) / 2;
+      if (middle >= issue.start && middle <= issue.end) removed[i] = true;
+    }
+  }
+  return removed;
+}
+
+export interface CleanRangesInput {
+  /** Source ranges in the order they play. */
+  ranges: ReadonlyArray<{ from: number; to: number; segment: string | null }>;
+  transcript: TranscriptArtifact;
+  takes: TakeAnalysis | null;
+  silence: SilenceMap | null;
+  sourceDuration: number;
+  maxPause?: number;
+  pauseKeep?: number;
+  removeFillers?: boolean;
+}
+
+export interface CleanedRange {
+  from: number;
+  to: number;
+  segment: string | null;
+}
+
+/**
+ * Cleans source ranges exactly the way the rough-cut planner cleans segments: take issues with action `cut` and
+ * fillers are removed, pauses longer than `maxPause` (0.7 s) shrink to `pauseKeep` (0.3 s) using the silence map,
+ * pieces are padded to word boundaries and tidied. A range without any speech is kept as it is. Output is in play
+ * order; `at` positions are the caller's business (lay them back to back).
+ */
+export function cleanRanges(input: CleanRangesInput): CleanedRange[] {
+  const { words } = input.transcript;
+  const maxPause = input.maxPause ?? DEFAULT_MAX_PAUSE;
+  const pauseKeep = input.pauseKeep ?? DEFAULT_PAUSE_KEEP;
+  const removed = defaultRemovedWords(words, input.takes, input.removeFillers ?? true);
+  const wordSegment: Array<string | null> = new Array<string | null>(words.length).fill(null);
+  const perRange: number[][] = input.ranges.map((range) => {
+    const indices: number[] = [];
+    for (const [i, word] of words.entries()) {
+      const middle = (word.start + word.end) / 2;
+      if (middle < range.from || middle >= range.to) continue;
+      wordSegment[i] = range.segment;
+      if (!removed[i]) indices.push(i);
+    }
+    return indices;
+  });
+  const cleaner = createCleaner({
+    words,
+    silence: input.silence,
+    maxPause,
+    pauseKeep,
+    sourceDuration: input.sourceDuration,
+    wordSegment,
+  });
+  const toRanges = (pieces: Piece[]): CleanedRange[] =>
+    pieces
+      .filter((piece) => piece.to > piece.from)
+      .map((piece) => {
+        const from = Math.round(piece.from * 1000);
+        const to = Math.max(from + 1, Math.round(piece.to * 1000));
+        return { from: from / 1000, to: to / 1000, segment: piece.segment };
+      });
+
+  const result: CleanedRange[] = [];
+  let pending: number[] = [];
+  const flush = () => {
+    if (pending.length === 0) return;
+    const { pieces } = cleaner.clean(pending, false);
+    separateOverlaps(pieces);
+    result.push(...toRanges(pieces));
+    pending = [];
+  };
+  for (const [index, range] of input.ranges.entries()) {
+    const indices = perRange[index] ?? [];
+    const speechless = !words.some((word) => {
+      const middle = (word.start + word.end) / 2;
+      return middle >= range.from && middle < range.to;
+    });
+    if (speechless) {
+      flush();
+      const to = Math.min(range.to, input.sourceDuration);
+      if (to > range.from) result.push({ from: range.from, to, segment: range.segment });
+    } else pending.push(...indices);
+  }
+  flush();
+  return result;
+}
+
+/**
+ * The deterministic editor: turns a request (segment order, drops, hook, which issues and pauses to remove) plus the
+ * analysis into source ranges laid back to back on the cut's timeline. Throws `AnalysisFailure` (`invalid_request`)
+ * for unknown ids, for dropping a `must` segment without `allowDropMust`, and for a plan that keeps nothing.
+ * Pauses come from the silence map when there is one (every silence longer than maxPause is cut down to pauseKeep,
+ * whatever the word timestamps claim), else from word gaps.
+ */
+export function planCut(input: {
+  id: string;
+  createdAt: number;
+  request: CutPlanRequest;
+  basedOn: string | null;
+  transcript: TranscriptArtifact;
+  transcriptVersion: string;
+  silence?: SilenceMap | null;
+  takes: TakeAnalysis | null;
+  segments: SegmentMap;
+  segmentsVersion: string;
+  shots: ShotMap | null;
+  sourceDuration: number;
+}): CutPlan {
+  const { transcript, takes, segments, shots, sourceDuration } = input;
+  const request = mergeCutRequest(null, input.request);
+  const maxPause = request.maxPause ?? DEFAULT_MAX_PAUSE;
+  const pauseKeep = request.pauseKeep ?? DEFAULT_PAUSE_KEEP;
+  const { words, sentences } = transcript;
+  function invalid(message: string): never {
+    throw new AnalysisFailure("invalid_request", message);
+  }
+
+  // ── Validate ids ───────────────────────────────────────────────────────────
+  if (segments.segments.length === 0) invalid("There are no segments to plan a cut from.");
+  const segmentIndex = new Map(segments.segments.map((segment, index) => [segment.id, index]));
+  const sentenceIndex = new Map(sentences.map((sentence, index) => [sentence.id, index]));
+  const issueById = new Map((takes?.issues ?? []).map((issue) => [issue.id, issue]));
+  const knownSegment = (field: string, id: string): Segment => {
+    const segment = segments.segments[segmentIndex.get(id) ?? -1];
+    return segment ?? invalid(`${field} lists unknown segment "${id}".`);
+  };
+  for (const [field, list] of [
+    ["order", request.order],
+    ["drop", request.drop],
+    ["allowDropMust", request.allowDropMust],
+  ] as const) {
+    const seen = new Set<string>();
+    for (const id of list ?? []) {
+      knownSegment(field, id);
+      if (seen.has(id)) invalid(`${field} lists segment "${id}" twice.`);
+      seen.add(id);
+    }
+  }
+  const knownIssues = (field: string, ids: readonly string[]): TakeIssue[] =>
+    ids.map((id) => issueById.get(id) ?? invalid(`${field} lists unknown take issue "${id}".`));
+  const listedIssues = Array.isArray(request.removeIssues)
+    ? knownIssues("removeIssues", request.removeIssues)
+    : null;
+  const keptAnyway = new Set(knownIssues("keepIssues", request.keepIssues ?? []).map((i) => i.id));
+  let hookWords: [number, number] | null = null;
+  if (request.hook) {
+    const first = sentenceIndex.get(request.hook.firstSentence);
+    const last = sentenceIndex.get(request.hook.lastSentence);
+    if (first === undefined) invalid(`hook: unknown sentence "${request.hook.firstSentence}".`);
+    if (last === undefined) invalid(`hook: unknown sentence "${request.hook.lastSentence}".`);
+    if (first > last)
+      invalid(
+        `hook: ${request.hook.firstSentence} comes after ${request.hook.lastSentence}; firstSentence must not be later.`,
+      );
+    const head = sentences[first];
+    const tail = sentences[last];
+    if (head && tail) hookWords = [head.firstWord, tail.lastWord];
+  }
+
+  // ── Which segments play, in which order ────────────────────────────────────
+  const explicitDrop = new Set(request.drop ?? []);
+  const sequence: Segment[] = [];
+  if (request.order) {
+    for (const id of request.order)
+      if (!explicitDrop.has(id)) sequence.push(knownSegment("order", id));
+  } else {
+    for (const segment of segments.segments)
+      if (!explicitDrop.has(segment.id) && segment.priority !== "drop") sequence.push(segment);
+  }
+  const playing = new Set(sequence.map((segment) => segment.id));
+  const dropped = segments.segments.filter((segment) => !playing.has(segment.id));
+  const allowed = new Set(request.allowDropMust ?? []);
+  for (const segment of dropped) {
+    if (segment.priority === "must" && !allowed.has(segment.id))
+      invalid(
+        `Segment ${segment.id} "${segment.title}" is marked must; it can only be left out when its id is also in allowDropMust.`,
+      );
+  }
+  const sourceRank = sequence.map((segment) => segmentIndex.get(segment.id) ?? 0);
+  const staying = stayingInOrder(sourceRank);
+  const moved = sequence.filter((_, index) => !staying.has(index)).map((segment) => segment.id);
+
+  // ── Which words are removed ────────────────────────────────────────────────
+  const allIssues = takes?.issues ?? [];
+  const toRemove = new Map<string, TakeIssue>();
+  for (const issue of listedIssues ?? allIssues) {
+    if (listedIssues === null && (issue.action !== "cut" || issue.kind === "filler")) continue;
+    if (listedIssues === null && (issue.kind === "black" || issue.kind === "frozen")) continue;
+    toRemove.set(issue.id, issue);
+  }
+  if (request.removeFillers ?? true)
+    for (const issue of allIssues)
+      if (issue.kind === "filler" && issue.action === "cut") toRemove.set(issue.id, issue);
+  for (const id of keptAnyway) toRemove.delete(id);
+
+  const wordSegment: Array<string | null> = new Array<string | null>(words.length).fill(null);
+  const segmentWords = (segment: Segment): [number, number] => {
+    const head = sentences[sentenceIndex.get(segment.firstSentence) ?? -1];
+    const tail = sentences[sentenceIndex.get(segment.lastSentence) ?? -1];
+    if (!head || !tail)
+      throw new AnalysisFailure(
+        "stale",
+        `Segment ${segment.id} refers to sentences that are not in the transcript any more.`,
+      );
+    return [head.firstWord, tail.lastWord];
+  };
+  for (const segment of segments.segments) {
+    const [from, to] = segmentWords(segment);
+    for (let i = from; i <= to; i++) wordSegment[i] = segment.id;
+  }
+  const removedWord: boolean[] = new Array<boolean>(words.length).fill(false);
+  const effective: TakeIssue[] = [];
+  for (const issue of toRemove.values()) {
+    let touchesPlaying = false;
+    for (const [i, word] of words.entries()) {
+      const middle = (word.start + word.end) / 2;
+      if (middle < issue.start || middle > issue.end) continue;
+      removedWord[i] = true;
+      const owner = wordSegment[i];
+      if (owner !== null && owner !== undefined && playing.has(owner)) touchesPlaying = true;
+    }
+    if (touchesPlaying) effective.push(issue);
+  }
+
+  const cleaner = createCleaner({
+    words,
+    silence: input.silence ?? null,
+    maxPause,
+    pauseKeep,
+    sourceDuration,
+    wordSegment,
+  });
+  const keptInOrder: number[] = [];
+  for (const segment of sequence) {
+    const [from, to] = segmentWords(segment);
+    for (let i = from; i <= to; i++) if (!removedWord[i]) keptInOrder.push(i);
+  }
+  const main = cleaner.clean(keptInOrder, false);
+  const mainPieces = main.pieces;
+  separateOverlaps(mainPieces);
 
   let hookPieces: Piece[] = [];
   if (hookWords) {
     const indices: number[] = [];
     for (let i = hookWords[0]; i <= hookWords[1]; i++) if (!removedWord[i]) indices.push(i);
-    const laidHook = lay(indices, true).pieces;
-    hookPieces = tidy(silences ? cutSilences(laidHook).pieces : laidHook);
+    hookPieces = cleaner.clean(indices, true).pieces;
   }
 
   const all = [...hookPieces, ...mainPieces].filter((piece) => piece.to > piece.from);

@@ -8,7 +8,6 @@ import type {
   CutPlanSummary,
   FramesRequest,
   FramesResponse,
-  MarkCutAppliedRequest,
   SaveSegmentsRequest,
   SaveVisionNotesRequest,
   SegmentMap,
@@ -32,7 +31,8 @@ export interface AnalysisHost {
   overview(source: string, signal: AbortSignal): Promise<AnalysisOverview>;
   transcript(
     source: string,
-    window: { from?: number; to?: number },
+    /** `words`: also return the word list (for captions). */
+    window: { from?: number; to?: number; words?: boolean },
     signal: AbortSignal,
   ): Promise<TranscriptView>;
   /** The complete artifact of a stage the overview only summarises. */
@@ -44,11 +44,6 @@ export interface AnalysisHost {
   planCut(request: CutPlanRequest, signal: AbortSignal): Promise<CutPlan>;
   listCuts(source: string | undefined, signal: AbortSignal): Promise<CutPlanSummary[]>;
   getCut(planId: string, signal: AbortSignal): Promise<CutPlan>;
-  markApplied(
-    planId: string,
-    request: MarkCutAppliedRequest,
-    signal: AbortSignal,
-  ): Promise<CutPlan>;
 }
 
 /** Failures that do not come from the service's validation: transport and cancellation. */

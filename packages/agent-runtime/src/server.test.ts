@@ -1,11 +1,17 @@
 import { mkdtemp, mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import { AGENT_HEADERS, AGENT_PROTOCOL_VERSION, isRecord } from "@hyperframes/agent-protocol";
-import { createRuntimeApp } from "./server.js";
+import { createRuntimeApp, type RuntimeApp } from "./server.js";
 import { AgentSettingsStore } from "./settings.js";
-import { FakeAnalysisHost, FakeCheckpointHost, FakeEditingHost } from "./testing/index.js";
+import {
+  FakeAnalysisHost,
+  FakeCheckpointHost,
+  FakeEditingHost,
+  FakeStoryHost,
+} from "./testing/index.js";
 import { ScriptedAgentBackend } from "./testing/backend.js";
 
 async function responseObject(response: Response): Promise<Record<string, unknown>> {
@@ -25,6 +31,7 @@ describe("runtime HTTP server", () => {
       checkpoints: new FakeCheckpointHost(),
       editing: () => new FakeEditingHost(),
       analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
       settings: new AgentSettingsStore(join(root, "settings")),
       token: "runtime-secret",
     });
@@ -88,6 +95,7 @@ describe("runtime HTTP server", () => {
       checkpoints: new FakeCheckpointHost(),
       editing: () => new FakeEditingHost(),
       analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
       settings: new AgentSettingsStore(join(root, "settings")),
       token: "runtime-secret",
     });
@@ -158,6 +166,7 @@ describe("runtime HTTP server", () => {
       checkpoints: new FakeCheckpointHost(),
       editing: () => new FakeEditingHost(),
       analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
       settings: new AgentSettingsStore(settingsDir),
       token: "runtime-secret",
     });
@@ -209,6 +218,85 @@ describe("runtime HTTP server", () => {
       expect(removed.jev).toMatchObject({ apiKeyConfigured: false });
     } finally {
       await app.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("persists a chat's mode through PATCH across a restart and records a story turn's mode and action", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openvids-agent-mode-"));
+    const projectDir = join(root, "project");
+    await mkdir(projectDir);
+    const headers = {
+      [AGENT_HEADERS.token]: "Bearer runtime-secret",
+      [AGENT_HEADERS.projectId]: "project-one",
+      [AGENT_HEADERS.projectDir]: projectDir,
+      [AGENT_HEADERS.studioOrigin]: "http://127.0.0.1:4173",
+    };
+    const open = () =>
+      createRuntimeApp({
+        backend: new ScriptedAgentBackend(),
+        checkpoints: new FakeCheckpointHost(),
+        editing: () => new FakeEditingHost(),
+        analysis: () => new FakeAnalysisHost(),
+        story: () => new FakeStoryHost(),
+        settings: new AgentSettingsStore(join(root, "settings")),
+        token: "runtime-secret",
+      });
+    const call = (app: RuntimeApp, path: string, method = "GET", body?: unknown) =>
+      app.request(path, {
+        method,
+        headers: { ...headers, "content-type": "application/json" },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+      });
+    const first = open();
+    let second: RuntimeApp | null = null;
+    try {
+      const created = await responseObject(await call(first, "/v1/chats", "POST", {}));
+      const chatId = String(created.id);
+      expect(created.activeMode).toBe("normal");
+
+      expect(
+        (await call(first, `/v1/chats/${chatId}`, "PATCH", { activeMode: "cinema" })).status,
+      ).toBe(400);
+      const patched = await responseObject(
+        await call(first, `/v1/chats/${chatId}`, "PATCH", { activeMode: "story" }),
+      );
+      expect(patched.activeMode).toBe("story");
+
+      expect(
+        (
+          await call(first, `/v1/chats/${chatId}/turns`, "POST", {
+            prompt: "x",
+            storyAction: "rebuild",
+          })
+        ).status,
+      ).toBe(400);
+      const started = await call(first, `/v1/chats/${chatId}/turns`, "POST", {
+        prompt: "Build the story",
+        mode: "normal",
+        storyAction: "build",
+      });
+      expect(started.status).toBeLessThan(300);
+      const turn = await responseObject(started);
+      // A story action implies story mode whatever the request said.
+      expect(turn).toMatchObject({ turn: { mode: "story", storyAction: "build" } });
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const state = await responseObject(await call(first, `/v1/chats/${chatId}`));
+        const turns = Array.isArray(state.turns) ? state.turns : [];
+        if (turns.length === 1 && isRecord(turns[0]) && turns[0].status !== "running") break;
+        // Polling a real HTTP surface backed by file I/O: there is no in-process event to await here.
+        await delay(5);
+      }
+      await first.dispose();
+
+      // After a restart the chat still has its mode and the turn its mode and action.
+      second = open();
+      const reloaded = await responseObject(await call(second, `/v1/chats/${chatId}`));
+      expect(reloaded).toMatchObject({ chat: { activeMode: "story" } });
+      expect(reloaded.turns).toMatchObject([{ mode: "story", storyAction: "build" }]);
+    } finally {
+      await first.dispose().catch(() => undefined);
+      await second?.dispose();
       await rm(root, { recursive: true, force: true });
     }
   });

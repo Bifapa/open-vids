@@ -11,23 +11,11 @@ import { readInventory } from "../editing/inventory.js";
 import { MediaFacts, type MediaProber } from "../editing/mediaFacts.js";
 import { applyEdits } from "../editing/operations.js";
 import { listPresets } from "../editing/presets.js";
+import { serializedEdits } from "../editing/queue.js";
 import { normalizeCompositionPath, probeProjectFile, readTimeline } from "../editing/service.js";
 import type { StudioApiAdapter } from "../types.js";
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-
-/** Batches on one project run one at a time: each is a read-modify-write of the same composition file. */
-const queues = new Map<string, Promise<unknown>>();
-
-function serialized<T>(key: string, task: () => Promise<T>): Promise<T> {
-  const run = (queues.get(key) ?? Promise.resolve()).then(task, task);
-  const settled = run.catch(() => undefined);
-  queues.set(key, settled);
-  void settled.then(() => {
-    if (queues.get(key) === settled) queues.delete(key);
-  });
-  return run;
-}
 
 function statusOf(error: EditError): 400 | 404 | 409 {
   if (error.code === "conflict") return 409;
@@ -119,7 +107,7 @@ export function registerEditingRoutes(
       try {
         const request = parsed.value;
         const compositionPath = normalizeCompositionPath(request.composition);
-        const response = await serialized(project.dir, () =>
+        const response = await serializedEdits(project.dir, () =>
           applyEdits({ project, compositionPath, adapter, facts }, request),
         );
         return c.json(response);

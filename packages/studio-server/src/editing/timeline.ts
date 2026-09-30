@@ -2,6 +2,7 @@ import { posix } from "node:path";
 import type {
   ClipKind,
   ProjectAsset,
+  ClipProvenance,
   TimelineClip,
   TimelineSnapshot,
   TimelineTrack,
@@ -234,6 +235,43 @@ function zIndexOf(element: Element): number | null {
   return match?.[1] ? Number.parseInt(match[1], 10) : null;
 }
 
+/** Markup attributes that carry a clip's provenance. */
+const PROVENANCE_ATTRIBUTES = {
+  storyNode: "data-ov-story-node",
+  cut: "data-ov-cut",
+  turn: "data-ov-turn",
+} as const satisfies Record<keyof ClipProvenance, string>;
+
+/** The attributes to write for a provenance stamp (only the ids that are set). */
+export function provenanceAttributes(
+  provenance: Partial<ClipProvenance> | undefined,
+): Record<string, string> {
+  const attributes: Record<string, string> = {};
+  if (provenance?.storyNode) attributes[PROVENANCE_ATTRIBUTES.storyNode] = provenance.storyNode;
+  if (provenance?.cut) attributes[PROVENANCE_ATTRIBUTES.cut] = provenance.cut;
+  if (provenance?.turn) attributes[PROVENANCE_ATTRIBUTES.turn] = provenance.turn;
+  return attributes;
+}
+
+export function stampProvenance(
+  element: Element,
+  provenance: Partial<ClipProvenance> | undefined,
+): void {
+  for (const [name, value] of Object.entries(provenanceAttributes(provenance))) {
+    element.setAttribute(name, value);
+  }
+}
+
+/** A clip's provenance read back from its markup; null when it carries none. */
+export function readClipProvenance(element: Element): ClipProvenance | null {
+  const read: ClipProvenance = {
+    storyNode: element.getAttribute(PROVENANCE_ATTRIBUTES.storyNode),
+    cut: element.getAttribute(PROVENANCE_ATTRIBUTES.cut),
+    turn: element.getAttribute(PROVENANCE_ATTRIBUTES.turn),
+  };
+  return read.storyNode === null && read.cut === null && read.turn === null ? null : read;
+}
+
 function toWireClip(clip: ClipNode, lookup: SourceLookup): TimelineClip {
   const { element } = clip;
   const isMedia = clip.kind === "video" || clip.kind === "audio";
@@ -256,6 +294,7 @@ function toWireClip(clip: ClipNode, lookup: SourceLookup): TimelineClip {
     muted: isMedia && element.hasAttribute("muted"),
     compositionSrc: clip.compositionSrc,
     locked: clip.locked,
+    provenance: readClipProvenance(element),
   };
 }
 

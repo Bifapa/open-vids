@@ -315,6 +315,44 @@ describe("add_sequence parsing", () => {
   });
 });
 
+describe("provenance on add operations", () => {
+  const provenance = { storyNode: "chapter-a1", cut: "cut-2", turn: "turn-9" };
+
+  it("is accepted on add_clip, add_sequence, add_text and add_component and kept as sent", () => {
+    const parsed = parseApplyEditsRequest({
+      operations: [
+        { op: "add_clip", asset: "a.mp4", start: 0, track: 1, provenance },
+        {
+          op: "add_sequence",
+          asset: "a.mp4",
+          track: 1,
+          ranges: [{ from: 0, to: 1 }],
+          provenance: { cut: "cut-2" },
+        },
+        { op: "add_text", text: "Hi", start: 0, duration: 1, track: 2, provenance: { turn: "t" } },
+        { op: "add_component", name: "pop", start: 0, track: 3, provenance: { storyNode: "n" } },
+      ],
+    });
+    if (!parsed.ok) throw new Error(parsed.error.message);
+    expect(
+      parsed.value.operations.map((op) => ("provenance" in op ? op.provenance : undefined)),
+    ).toEqual([provenance, { cut: "cut-2" }, { turn: "t" }, { storyNode: "n" }]);
+  });
+
+  it("refuses ids that could not be written safely as an attribute, unknown keys and empty stamps", () => {
+    const add = (stamp: unknown) => ({
+      operations: [{ op: "add_clip", asset: "a.mp4", start: 0, track: 1, provenance: stamp }],
+    });
+    expect(refused(add({ turn: 'x" onload="y' })).message).toContain("provenance.turn");
+    expect(refused(add({ story: "n" })).message).toContain("unknown field");
+    expect(refused(add({})).message).toContain("must set");
+    expect(refused(add("chapter-1")).message).toContain("must be an object");
+    expect(refused({ operations: [{ op: "set_clip", clip: "c", provenance }] }).message).toContain(
+      "unknown field",
+    );
+  });
+});
+
 describe("isEditError", () => {
   it("recognises the wire error and nothing else", () => {
     expect(isEditError({ code: "conflict", message: "stale" })).toBe(true);

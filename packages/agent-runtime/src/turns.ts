@@ -6,6 +6,8 @@ import {
   type AgentModelCatalog,
   type AssistantMessage,
   type AssistantMessageStatus,
+  type ChatMode,
+  type StoryAction,
   type UserPart,
   type UserMessage,
   type ChatSummary,
@@ -26,6 +28,9 @@ import { TurnEditing } from "./editing/executor.js";
 import { isEditingToolName } from "./editing/tools.js";
 import { TurnAnalysis } from "./analysis/executor.js";
 import { isAnalysisToolName } from "./analysis/tools.js";
+import { TurnStory } from "./story/executor.js";
+import { renderStoryBlocks } from "./story/prompt.js";
+import { isStoryToolName, storyToolsFor, timelineWritesAllowed } from "./story/tools.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import type { CheckpointHandle, CheckpointHost } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
@@ -35,10 +40,12 @@ import type { AgentSettingsStore } from "./settings.js";
 import { FileChatStore } from "./store/index.js";
 import { TurnEventWriter, type StreamTimerApi, type StreamTimerHandle } from "./turnStream.js";
 import {
+  STORY_TURN_TIMELINE_REFUSAL,
   checkpointLabel as labelFor,
   cloneTurn,
   createDeferredVoid,
   sameIds,
+  writesTimeline,
   type TurnRunnerOptions,
 } from "./turnSupport.js";
 export type { TurnRunnerOptions } from "./turnSupport.js";
@@ -61,6 +68,12 @@ interface ActiveRun {
   editing: TurnEditing | null;
   /** The turn's analysis tools; closed (jobs cancelled, calls awaited) before the checkpoint ends. */
   analysis: TurnAnalysis | null;
+  /** The turn's story tools; closed (in-flight edits/builds awaited) before the checkpoint ends. */
+  story: TurnStory | null;
+  /** The mode the turn runs in (a story action implies `story`). */
+  mode: ChatMode;
+  /** The Story workspace action the turn runs, if any. */
+  storyAction: StoryAction | null;
   /** The Director's prompt has ended but the turn is still collecting delegated work. */
   directorIdle: boolean;
   /** Steering received while the Director was idle; it opens the next Director prompt. */
@@ -82,6 +95,7 @@ export class TurnRunner {
   private readonly stopGraceMs: number | undefined;
   private readonly editingFactory: TurnRunnerOptions["editing"];
   private readonly analysisFactory: TurnRunnerOptions["analysis"];
+  private readonly storyFactory: TurnRunnerOptions["story"];
   private readonly analysisPollMs: number | undefined;
   private readonly timers: StreamTimerApi;
   private readonly sessionManager: SessionManager;
@@ -103,6 +117,7 @@ export class TurnRunner {
     this.stopGraceMs = options.stopGraceMs;
     this.editingFactory = options.editing;
     this.analysisFactory = options.analysis;
+    this.storyFactory = options.story;
     this.analysisPollMs = options.analysisPollMs;
     this.timers = options.timers ?? {
       setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
@@ -123,6 +138,8 @@ export class TurnRunner {
   async start(chatId: string, input: StartTurnRequest): Promise<TurnSummary> {
     if (!input.prompt.trim())
       throw new RuntimeError("invalid_request", "prompt must not be empty", 400);
+    if (input.storyAction && !this.storyFactory)
+      throw new RuntimeError("invalid_request", "Story Mode is not available in this runtime", 400);
     const chatState = this.chats.get(chatId);
     if (!chatState) throw new RuntimeError("chat_not_found", "Chat was not found", 404);
     if (this.active) {
@@ -140,6 +157,8 @@ export class TurnRunner {
         activeTurn: null,
       });
     }
+    // A Story workspace action is always a story-mode turn; otherwise the request's mode, else the chat's.
+    const mode: ChatMode = input.storyAction ? "story" : (input.mode ?? chatState.chat.activeMode);
     const startedAt = this.now();
     const turnId = this.ids();
     const promptMessageId = this.ids();
@@ -154,6 +173,8 @@ export class TurnRunner {
       model: chatState.chat.mainAgentModel,
       thinking: chatState.chat.thinking,
       checkpoint: { status: "active", entryIds: [], createdAt: startedAt },
+      mode,
+      ...(input.storyAction && { storyAction: input.storyAction }),
     };
     const referenceParts = (input.references ?? []).map(
       (reference): UserPart => ({
@@ -194,6 +215,9 @@ export class TurnRunner {
       orchestrator: null,
       editing: null,
       analysis: null,
+      story: null,
+      mode,
+      storyAction: input.storyAction ?? null,
       directorIdle: false,
       pendingSteering: [],
       promptStarted: started.promise,
@@ -269,6 +293,7 @@ export class TurnRunner {
     };
     await this.chats.emit(chatId, { type: "message.appended", message });
     await run.promptStarted;
+    run.editing?.noteUserRequest(input.text);
     if (this.active !== run || run.finalizing || !run.session) {
       throw new RuntimeError("turn_not_active", "Turn is no longer active", 409);
     }
@@ -490,6 +515,7 @@ export class TurnRunner {
               host: editingHost,
               editorContext: setup.editorContext,
               turnSignal: run.controller.signal,
+              userRequests: [input.prompt],
             })
           : null;
       const analysisFactory = this.analysisFactory;
@@ -498,7 +524,16 @@ export class TurnRunner {
             host: analysisFactory(this.chats.scope),
             editing: editingHost,
             turnSignal: run.controller.signal,
+            turnId: run.turn.id,
             ...(this.analysisPollMs !== undefined && { pollMs: this.analysisPollMs }),
+          })
+        : null;
+      const storyFactory = this.storyFactory;
+      run.story = storyFactory
+        ? new TurnStory({
+            host: storyFactory(this.chats.scope),
+            turnId: run.turn.id,
+            turnSignal: run.controller.signal,
           })
         : null;
       const availability: ToolAvailability = {
@@ -506,6 +541,9 @@ export class TurnRunner {
         jev: setup.jev !== null,
         editing: run.editing !== null,
         analysis: run.analysis !== null,
+        story: run.story !== null,
+        mode: run.mode,
+        storyAction: run.storyAction,
         planClips: (plan) => this.active?.analysis?.planClips(plan),
       };
       const session = await this.agentSession(run.chatId, "director", availability);
@@ -548,8 +586,16 @@ export class TurnRunner {
           signal: run.controller.signal,
           onEvent: (event) => activeWriter.accept(event),
         });
+      const storyBlocks =
+        run.mode === "story" && run.story
+          ? `\n\n${renderStoryBlocks({
+              action: run.storyAction,
+              editorEnabled: setup.enabled.includes("editor"),
+              graph: await run.story.snapshot(run.controller.signal),
+            })}`
+          : "";
       const promptPromise = promptDirector(
-        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references)}`,
+        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references)}${storyBlocks}`,
       );
       run.markPromptStarted();
       let outcome = await promptPromise;
@@ -687,6 +733,19 @@ export class TurnRunner {
     const run = this.active;
     if (!run || run.chatId !== chatId || run.finalizing)
       return { text: "There is no running turn for this tool call.", isError: true };
+    if (isStoryToolName(name)) {
+      if (!run.story)
+        return { text: "Story Mode is not available in this runtime.", isError: true };
+      const allowed = storyToolsFor(caller, run.setup?.enabled ?? [], {
+        mode: run.mode,
+        action: run.storyAction,
+      });
+      if (!allowed.some((tool) => tool === name))
+        return { text: `${name} is not available to you in this turn.`, isError: true };
+      return run.story.execute(name, args, signal);
+    }
+    if (!timelineWritesAllowed({ mode: run.mode, action: run.storyAction }) && writesTimeline(name))
+      return { text: STORY_TURN_TIMELINE_REFUSAL, isError: true };
     if (isEditingToolName(name)) {
       if (!run.editing) return { text: "Editing is not available in this runtime.", isError: true };
       return run.editing.execute(name, args, signal);
@@ -711,7 +770,9 @@ export class TurnRunner {
     // Every delegated run must be over before the checkpoint closes, or its later writes would escape Revert.
     await run.orchestrator?.shutdown(status === "completed").catch(() => undefined);
     // Editing calls still running (or a render) end here too: no editing write may land after the checkpoint closes.
-    // Analysis jobs are cancelled and a rough cut already sent to the editing service is awaited for the same reason.
+    // Analysis jobs are cancelled and a rough cut already sent to the editing service is awaited for the same reason;
+    // a story edit or build already sent to the story service is awaited too (it is atomic there).
+    await run.story?.shutdown().catch(() => undefined);
     await run.analysis?.shutdown().catch(() => undefined);
     await run.editing?.shutdown().catch(() => undefined);
     if (run.heartbeat) this.timers.clearTimeout(run.heartbeat);

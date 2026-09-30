@@ -40,6 +40,8 @@ function clipNotes(clip: TimelineClip): string {
   if (clip.muted) notes.push("muted");
   else if (clip.volume !== null && clip.volume !== 1) notes.push(`vol ${seconds(clip.volume)}`);
   if (clip.locked) notes.push("locked");
+  if (clip.provenance?.storyNode) notes.push(`story ${clip.provenance.storyNode}`);
+  if (clip.provenance?.cut) notes.push(`cut ${clip.provenance.cut}`);
   return notes.join(", ");
 }
 

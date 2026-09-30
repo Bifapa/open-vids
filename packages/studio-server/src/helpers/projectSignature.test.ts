@@ -8,10 +8,17 @@ import {
   openSync,
   rmSync,
   writeSync,
+  mkdirSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { affectsProjectSignature, createProjectSignature } from "./projectSignature.js";
+import {
+  affectsProjectHistory,
+  affectsProjectSignature,
+  createProjectSignature,
+  listProjectFiles,
+} from "./projectSignature.js";
 
 const temporaryProjects: string[] = [];
 
@@ -57,6 +64,33 @@ describe("affectsProjectSignature", () => {
   it("rejects a path outside the project", () => {
     expect(affectsProjectSignature(PROJECT, resolve("/projects/other/index.html"))).toBe(false);
     expect(affectsProjectSignature(PROJECT, PROJECT)).toBe(false);
+  });
+});
+
+describe("history-only tracked paths", () => {
+  const tracksHistory = (relativePath: string) =>
+    affectsProjectHistory(PROJECT, resolve(PROJECT, relativePath));
+
+  it("include the story graph and its folder, without touching the preview signature", () => {
+    expect(tracksHistory(".hyperframes/story/graph.json")).toBe(true);
+    expect(tracksHistory(".hyperframes/story")).toBe(true);
+    expect(affects(".hyperframes/story/graph.json")).toBe(false);
+    expect(tracksHistory("index.html")).toBe(true);
+    expect(tracksHistory(".hyperframes")).toBe(false);
+    expect(tracksHistory(".hyperframes/analysis/x.json")).toBe(false);
+  });
+
+  it("list the graph for project history but leave it out of the signature", () => {
+    const project = mkdtempSync(resolve(tmpdir(), "hf-signature-"));
+    temporaryProjects.push(project);
+    writeFileSync(resolve(project, "index.html"), "<html></html>");
+    const before = createProjectSignature(project);
+    mkdirSync(resolve(project, ".hyperframes/story"), { recursive: true });
+    writeFileSync(resolve(project, ".hyperframes/story/graph.json"), "{}");
+    expect(createProjectSignature(project)).toBe(before);
+    expect(listProjectFiles(project).map((file) => file.path)).toContain(
+      ".hyperframes/story/graph.json",
+    );
   });
 });
 

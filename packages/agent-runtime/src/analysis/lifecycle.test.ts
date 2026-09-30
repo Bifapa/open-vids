@@ -99,7 +99,7 @@ describe("analysis inside the turn", () => {
     }
   });
 
-  it("waits for a rough cut whose edit is in flight when the turn ends, records it, and only then closes the checkpoint", async () => {
+  it("waits for a rough cut whose edit is in flight when the turn ends, and only then closes the checkpoint", async () => {
     const fixture = await createRuntimeFixture();
     try {
       const chat = await fixture.chats.create({}, []);
@@ -125,7 +125,6 @@ describe("analysis inside the turn", () => {
       );
       expect(fixture.turns.activeTurn).not.toBeNull();
       expect(fixture.checkpoints.windows[0]?.ended).toBe(false);
-      expect(fixture.analysis.appliedRequests).toEqual([]);
       // While the turn is closing, its tools are already refused.
       const closing = await callDirect(director.session, "plan_cut", { source: SAMPLE_SOURCE });
       expect(closing.text).toContain("no running turn");
@@ -133,7 +132,6 @@ describe("analysis inside the turn", () => {
       gate.resolve();
       await settled(fixture, chat.id);
       expect(fixture.editing.applyFinished).toHaveLength(1);
-      expect(fixture.analysis.appliedRequests).toHaveLength(1);
       expect(fixture.checkpoints.windows[0]?.ended).toBe(true);
       expect(await build).toMatchObject({ text: expect.stringContaining("Built cut-1") });
       expect(fixture.analysis.planRequests).toHaveLength(1);
@@ -160,7 +158,6 @@ describe("analysis inside the turn", () => {
 
       expect(await build).toMatchObject({ isError: true });
       expect(fixture.editing.applyRequests).toEqual([]);
-      expect(fixture.analysis.appliedRequests).toEqual([]);
     } finally {
       await fixture.cleanup();
     }

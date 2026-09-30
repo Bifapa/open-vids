@@ -87,6 +87,7 @@ const timeline: TimelineSnapshot = {
       muted: false,
       compositionSrc: null,
       locked: false,
+      provenance: null,
     },
   ],
 };

@@ -1,0 +1,68 @@
+import { useEffect, useSyncExternalStore } from "react";
+import type { ActionResult } from "../agent/agentSettingsSlice";
+import type { AgentState, AgentStore } from "../agent/agentStore";
+import type { StoryStore } from "./storyStore";
+
+/** What the Story panel needs from the project's agent store (absent while it is being created). */
+export interface StoryAgent {
+  available: boolean;
+  /** A turn runs somewhere in this project. */
+  busy: boolean;
+  /** A request of the panel's own (or the chat's) is on its way. */
+  pending: boolean;
+  runStoryAction: AgentState["runStoryAction"];
+  /** Opens the chat in story mode, creating one when none is open. */
+  planWithAi(): Promise<ActionResult>;
+}
+
+const noSubscription = () => () => {};
+
+export function useStoryAgent(agentStore: AgentStore | null): StoryAgent {
+  const subscribe = agentStore ? agentStore.subscribe : noSubscription;
+  const available = useSyncExternalStore(
+    subscribe,
+    () => agentStore?.getState().availability === "ready",
+  );
+  const busy = useSyncExternalStore(subscribe, () => agentStore?.getState().activeTurn != null);
+  const pending = useSyncExternalStore(subscribe, () => agentStore?.getState().pending != null);
+  return {
+    available: agentStore !== null && available,
+    busy,
+    pending,
+    runStoryAction: async (action) =>
+      agentStore
+        ? agentStore.getState().runStoryAction(action)
+        : { ok: false, message: "The agent is not ready yet." },
+    planWithAi: async () => {
+      if (!agentStore) return { ok: false, message: "The agent is not ready yet." };
+      if (!agentStore.getState().chatId) await agentStore.getState().newChat();
+      if (!agentStore.getState().chatId) {
+        return {
+          ok: false,
+          message: agentStore.getState().notice?.message ?? "Couldn't open a chat.",
+        };
+      }
+      await agentStore.getState().setMode("story");
+      return { ok: true };
+    },
+  };
+}
+
+/**
+ * Keeps the story in step with agent turns: read-only while any turn runs on the project, reloaded when it ends
+ * (the agent may have edited or built the story).
+ */
+export function useStoryAgentSync(agentStore: AgentStore | null, story: StoryStore): void {
+  useEffect(() => {
+    if (!agentStore) return;
+    let busy = agentStore.getState().activeTurn !== null;
+    story.getState().setAgentBusy(busy);
+    return agentStore.subscribe((state) => {
+      const now = state.activeTurn !== null;
+      if (now === busy) return;
+      busy = now;
+      story.getState().setAgentBusy(now);
+      if (!now) void story.getState().reload();
+    });
+  }, [agentStore, story]);
+}

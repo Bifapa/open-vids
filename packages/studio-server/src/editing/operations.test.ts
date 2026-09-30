@@ -1132,3 +1132,58 @@ describe("atomicity", () => {
     expect(existsSync(join(project?.project.dir ?? "", ".hyperframes/backup"))).toBe(true);
   });
 });
+
+describe("provenance", () => {
+  it("is written on every clip an add operation creates and read back on the timeline", async () => {
+    withProject();
+    const stamp = { storyNode: "chapter-1", cut: "cut-2", turn: "turn-3" };
+    const { timeline, results } = await apply([
+      { op: "add_clip", asset: "assets/b.mp4", start: 10, track: 1, provenance: stamp },
+      {
+        op: "add_sequence",
+        asset: "assets/a.mp4",
+        track: 6,
+        ranges: [
+          { from: 0, to: 1 },
+          { from: 2, to: 3 },
+        ],
+        provenance: { cut: "cut-2" },
+      },
+      {
+        op: "add_text",
+        text: "Hi",
+        start: 0,
+        duration: 1,
+        track: 7,
+        provenance: { turn: "turn-3" },
+      },
+      {
+        op: "add_component",
+        name: "sparkle",
+        start: 0,
+        track: 8,
+        provenance: { storyNode: "chapter-9" },
+      },
+    ]);
+    const byId = (id: string | null | undefined) => clipOf(timeline.clips, id ?? "");
+    expect(byId(results[0]?.clipId).provenance).toEqual(stamp);
+    expect(results[1]?.clipIds).toHaveLength(2);
+    for (const id of results[1]?.clipIds ?? []) {
+      expect(byId(id).provenance).toEqual({ storyNode: null, cut: "cut-2", turn: null });
+    }
+    expect(byId(results[2]?.clipId).provenance).toEqual({
+      storyNode: null,
+      cut: null,
+      turn: "turn-3",
+    });
+    expect(byId(results[3]?.clipId).provenance).toEqual({
+      storyNode: "chapter-9",
+      cut: null,
+      turn: null,
+    });
+    // Clips made without a stamp have none, and a manual edit keeps the stamp it finds.
+    expect(clipOf(timeline.clips, "intro").provenance).toBeNull();
+    const moved = await apply([{ op: "move_clip", clip: results[0]?.clipId ?? "", start: 12 }]);
+    expect(clipOf(moved.timeline.clips, results[0]?.clipId ?? "").provenance).toEqual(stamp);
+  });
+});

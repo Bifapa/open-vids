@@ -183,12 +183,50 @@ function collectProjectFiles(normalizedProjectDir: string): ProjectSignatureFile
   return collected;
 }
 
-/** The files a project is made of (the signature's set: source plus Studio's two manifests), paths with `/`. */
+/**
+ * Files project history tracks that the preview never reads: they are left out of the signature and of Studio's
+ * file-change reloads, but an undo/revert restores them together with the project's source. Currently the Story
+ * Graph (`.hyperframes/story/graph.json`), which agent turns write and "Revert this turn" must roll back.
+ */
+export const HISTORY_ONLY_TRACKED_PATHS = [".hyperframes/story/graph.json"] as const;
+
+/** Whether a write at `changedPath` can change what project history tracks (the signature's files plus the above). */
+export function affectsProjectHistory(projectDir: string, changedPath: string): boolean {
+  if (affectsProjectSignature(projectDir, changedPath)) return true;
+  const relativePath = relative(resolve(projectDir), resolve(changedPath)).split(sep).join("/");
+  // A folder event (a removed `.hyperframes/story`) names the directory alone.
+  return HISTORY_ONLY_TRACKED_PATHS.some(
+    (tracked) =>
+      tracked === relativePath ||
+      (relativePath !== ".hyperframes" && tracked.startsWith(`${relativePath}/`)),
+  );
+}
+
+/** The files project history tracks (the signature's set plus {@link HISTORY_ONLY_TRACKED_PATHS}), paths with `/`. */
 export function listProjectFiles(
   projectDir: string,
 ): Array<{ path: string; size: number; mtimeMs: number; ctimeMs: number }> {
   const normalizedProjectDir = resolve(projectDir);
-  return collectProjectFiles(normalizedProjectDir).map((entry) => ({
+  const collected = collectProjectFiles(normalizedProjectDir);
+  const seen = new Set(collected.map((entry) => entry.file));
+  for (const tracked of HISTORY_ONLY_TRACKED_PATHS) {
+    const file = resolve(normalizedProjectDir, tracked);
+    if (seen.has(file) || !isPathWithin(normalizedProjectDir, file)) continue;
+    try {
+      const stat = lstatSync(file);
+      if (stat.isSymbolicLink() || !stat.isFile()) continue;
+      collected.push({
+        file,
+        mtimeMs: stat.mtimeMs,
+        ctimeMs: stat.ctimeMs,
+        size: stat.size,
+        textContentEligible: false,
+      });
+    } catch {
+      // Not written yet.
+    }
+  }
+  return collected.map((entry) => ({
     path: relative(normalizedProjectDir, entry.file).split(sep).join("/"),
     size: entry.size,
     mtimeMs: entry.mtimeMs,

@@ -9,8 +9,10 @@ import type {
 } from "./api.js";
 import { REVERT_MODES } from "./api.js";
 import {
+  CHAT_MODES,
   JEV_CREDENTIAL_MODES,
   SPECIALIST_IDS,
+  STORY_ACTIONS,
   THINKING_EFFORTS,
   isSpecialistId,
   type EditorClipSummary,
@@ -116,6 +118,14 @@ function parsePreviewElement(value: unknown): EditorPreviewElement | null {
   return Object.keys(element).length > 0 ? element : null;
 }
 
+function parseStoryGraphContext(value: unknown): EditorContext["storyGraph"] {
+  if (!isRecord(value)) return null;
+  return {
+    version: nonEmpty(value.version) ?? null,
+    selectedNode: nonEmpty(value.selectedNode) ?? null,
+  };
+}
+
 export function parseEditorContext(value: unknown): Parsed<EditorContext> {
   if (!isRecord(value) || value.schemaVersion !== 1)
     return fail("editorContext: unsupported shape");
@@ -132,7 +142,6 @@ export function parseEditorContext(value: unknown): Parsed<EditorContext> {
   const rangeEnd = num(range?.end);
   const render = isRecord(value.renderSettings) ? value.renderSettings : null;
   const elements = parseClips(timeline.elements, LIMITS.contextElements);
-
   return {
     ok: true,
     value: {
@@ -177,7 +186,7 @@ export function parseEditorContext(value: unknown): Parsed<EditorContext> {
             ...(str(render.resolution) !== undefined && { resolution: str(render.resolution) }),
           }
         : null,
-      storyGraph: null,
+      storyGraph: parseStoryGraphContext(value.storyGraph),
     },
   };
 }
@@ -336,6 +345,11 @@ export function parseUpdateChat(body: unknown): Parsed<UpdateChatRequest> {
     }
     value.agentOverrides = overrides;
   }
+  if (body.activeMode !== undefined) {
+    const activeMode = CHAT_MODES.find((known) => known === body.activeMode);
+    if (!activeMode) return fail(`activeMode must be one of: ${CHAT_MODES.join(", ")}`);
+    value.activeMode = activeMode;
+  }
   return Object.keys(value).length > 0 ? { ok: true, value } : fail("nothing to update");
 }
 
@@ -476,12 +490,24 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
   if (!references.ok) return references;
   const editorContext = parseOptionalContext(body.editorContext);
   if (!editorContext.ok) return editorContext;
+  let mode: StartTurnRequest["mode"];
+  if (body.mode !== undefined) {
+    mode = CHAT_MODES.find((known) => known === body.mode);
+    if (!mode) return fail(`mode must be one of: ${CHAT_MODES.join(", ")}`);
+  }
+  let storyAction: StartTurnRequest["storyAction"];
+  if (body.storyAction !== undefined) {
+    storyAction = STORY_ACTIONS.find((known) => known === body.storyAction);
+    if (!storyAction) return fail(`storyAction must be one of: ${STORY_ACTIONS.join(", ")}`);
+  }
   return {
     ok: true,
     value: {
       prompt: prompt.value,
       ...(references.value && { references: references.value }),
       ...(editorContext.value && { editorContext: editorContext.value }),
+      ...(mode && { mode }),
+      ...(storyAction && { storyAction }),
     },
   };
 }

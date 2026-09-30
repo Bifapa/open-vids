@@ -12,6 +12,7 @@ import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import {
   type HotkeyCallbacks,
   dispatchModifierKey,
+  dispatchStoryHistoryKey,
   dispatchPlainKey,
   handleUndoRedoKey,
 } from "./appHotkeysDispatch";
@@ -214,6 +215,7 @@ export function useAppHotkeys({
     const cb = cbRef.current;
     const key = event.key.toLowerCase();
     if (event.metaKey || event.ctrlKey) {
+      if (dispatchStoryHistoryKey(event)) return;
       dispatchModifierKey(event, key, cb);
       return;
     }

@@ -317,6 +317,60 @@ describe.skipIf(!hasFfmpeg)("invalidation and reuse", () => {
     ]);
   });
 
+  it("sweeps the analysis and cut plans of a deleted file but never reuses their ids", async () => {
+    const { test, project } = setup();
+    const service = new AnalysisService(test.adapter, { orphanIntervalMs: 0 });
+    await analyze(service, project);
+    await service.saveSegments(project, await wholeTranscript(service, project));
+    await service.planCut(project, { source: SOURCE });
+    const store = new AnalysisStore(project.dir);
+    expect((await store.listManifests()).map((manifest) => manifest.path)).toEqual([SOURCE]);
+
+    rmSync(test.path(SOURCE));
+    expect((await service.listSources(project)).map((entry) => entry.source)).toEqual([]);
+    expect(await store.listManifests()).toEqual([]);
+    expect(await store.listCuts()).toEqual([]);
+
+    addClip(test, clip, "assets/other.mp4");
+    await analyze(service, project, { source: "assets/other.mp4" });
+    await service.saveSegments(project, {
+      ...(await wholeTranscript(service, project, "assets/other.mp4")),
+    });
+    expect((await service.planCut(project, { source: "assets/other.mp4" })).id).toBe("cut-2");
+  });
+
+  it("keeps the artifacts of a renamed file for adoption, then drops the old copy once the new name has them", async () => {
+    const { test, project } = setup();
+    const service = new AnalysisService(test.adapter, { orphanIntervalMs: 0 });
+    await analyze(service, project);
+    const store = new AnalysisStore(project.dir);
+
+    renameSync(test.path(SOURCE), test.path("assets/renamed.mp4"));
+    expect((await service.cleanOrphans(project))?.sources).toEqual([]);
+    expect((await store.listManifests()).map((manifest) => manifest.path)).toEqual([SOURCE]);
+
+    const job = await settle(
+      service,
+      project,
+      await service.startJob(project, { source: "assets/renamed.mp4" }),
+    );
+    expect(outcomes(job)).toEqual(ALL.map((stage) => [stage, "cached"]));
+    expect(test.speech.transcribeCalls).toBe(1);
+
+    expect((await service.cleanOrphans(project))?.sources).toEqual([SOURCE]);
+    expect((await store.listManifests()).map((manifest) => manifest.path)).toEqual([
+      "assets/renamed.mp4",
+    ]);
+  });
+
+  it("runs the sweep at most once per interval unless forced", async () => {
+    const { test, project } = setup();
+    const service = new AnalysisService(test.adapter, { orphanIntervalMs: 60_000 });
+    expect(await service.cleanOrphans(project)).not.toBeNull();
+    expect(await service.cleanOrphans(project)).toBeNull();
+    expect(await service.cleanOrphans(project, { force: true })).not.toBeNull();
+  });
+
   it("keeps agent segments while the transcript is unchanged and drops them when it changes", async () => {
     const { test, service, project } = setup();
     await analyze(service, project);
@@ -601,27 +655,26 @@ describe.skipIf(!hasFfmpeg)("cut plans", () => {
     ]);
     expect((await rejection(service.getCut(project, "cut-7"))).code).toBe("unknown_plan");
 
-    const applied = await service.markCutApplied(project, "cut-1", {
+    expect((await service.getCut(project, "cut-1")).applied).toBeNull();
+    const stamped = `<div data-composition-id="main"><video class="clip" data-ov-cut="cut-1"></video><video class="clip" data-ov-cut="cut-1"></video></div>`;
+    writeFileSync(test.path("index.html"), stamped);
+    expect((await service.getCut(project, "cut-1")).applied).toEqual({
       composition: "index.html",
-      version: '"sha256:abc"',
+      clips: 2,
     });
-    expect(applied.applied).toMatchObject({ composition: "index.html", version: "sha256:abc" });
+    expect((await service.listCuts(project, SOURCE)).map((plan) => plan.applied?.clips)).toEqual([
+      2,
+      undefined,
+    ]);
+    // Restoring the composition (Revert) clears it: nothing remembers a stale "applied".
+    writeFileSync(test.path("index.html"), `<div data-composition-id="main"></div>`);
+    expect((await service.getCut(project, "cut-1")).applied).toBeNull();
     expect((await service.getCut(project, "cut-1")).warnings.join(" ")).not.toContain(
       "out of date",
     );
 
     appendFileSync(test.path(SOURCE), Buffer.alloc(32, 2));
     expect((await service.getCut(project, "cut-2")).warnings.join(" ")).toContain("out of date");
-    expect(
-      (
-        await rejection(
-          service.markCutApplied(project, "cut-2", {
-            composition: "index.html",
-            version: "sha256:d",
-          }),
-        )
-      ).code,
-    ).toBe("stale");
     expect((await rejection(service.planCut(project, { source: SOURCE }))).code).toBe("stale");
   });
 });

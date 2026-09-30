@@ -3,7 +3,8 @@ import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
-import { isTypingTarget } from "../utils/typingTarget";
+import { isTextFieldTarget, isTypingTarget } from "../utils/typingTarget";
+import { studioStoryStore } from "../story/storyContext";
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
@@ -32,6 +33,23 @@ export function handleUndoRedoKey(
     return true;
   }
   return false;
+}
+
+/**
+ * ⌘Z / ⌘⇧Z inside the Story panel undo the story's own manual edits, never file history: the canvas keeps
+ * its own stack (like caption edit mode). Fields keep native text undo. True when the key was the story's.
+ */
+export function dispatchStoryHistoryKey(event: KeyboardEvent): boolean {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target?.closest("[data-studio-story]")) return false;
+  if (!useDockLayoutStore.getState().visiblePanels.has("story")) return false;
+  if (isTextFieldTarget(target)) return false;
+  const story = studioStoryStore.getState();
+  return handleUndoRedoKey(
+    event,
+    () => story.undo(),
+    () => story.redo(),
+  );
 }
 
 export interface HotkeyCallbacks {

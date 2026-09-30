@@ -158,6 +158,7 @@ const clip = (id: string, overrides: Partial<TimelineClip> = {}): TimelineClip =
   muted: false,
   compositionSrc: null,
   locked: false,
+  provenance: null,
   ...overrides,
 });
 

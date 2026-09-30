@@ -10,7 +10,7 @@ import type {
   TranscriptArtifact,
 } from "@hyperframes/agent-protocol";
 import { describe, expect, it } from "vitest";
-import { mergeCutRequest, planCut } from "./cutPlan.js";
+import { cleanRanges, mergeCutRequest, planCut } from "./cutPlan.js";
 import { isAnalysisFailure } from "./errors.js";
 import { semanticSegments } from "./segmentation.js";
 import { detectTakeIssues } from "./takes.js";
@@ -768,5 +768,81 @@ describe("mergeCutRequest", () => {
       refusal(() => mergeCutRequest(base, { source: SOURCE, maxPause: 0.2, pauseKeep: 0.5 }))
         .message,
     ).toContain("pauseKeep");
+  });
+});
+
+describe("cleanRanges", () => {
+  const base = fixture();
+  const asRanges = (segments: SegmentMap["segments"]) =>
+    segments.map((segment) => ({ from: segment.start, to: segment.end, segment: segment.id }));
+  const clean = (
+    ranges: Array<{ from: number; to: number; segment: string | null }>,
+    silence: SilenceMap | null,
+  ) =>
+    cleanRanges({
+      ranges,
+      transcript: base.transcript,
+      takes: base.takes,
+      silence,
+      sourceDuration: base.duration,
+    });
+
+  /** The longest gap between two words, as a silence map (what the level analysis would report for it). */
+  const gapSilence = (): SilenceMap => {
+    const { words } = base.transcript;
+    let widest = { start: 0, end: 0 };
+    for (let i = 1; i < words.length; i++) {
+      const start = words[i - 1]?.end ?? 0;
+      const end = words[i]?.start ?? 0;
+      if (end - start > widest.end - widest.start) widest = { start, end };
+    }
+    return {
+      source: SOURCE,
+      thresholdDb: -40,
+      minSilence: 0.3,
+      silences: [widest],
+      silenceSeconds: 0,
+    };
+  };
+
+  it("cuts exactly what the planner cuts when given the planner's segments (word gaps and a silence map)", () => {
+    for (const silence of [null, gapSilence()]) {
+      const cut = planCut({
+        id: "cut-1",
+        createdAt: 1,
+        request: { source: SOURCE },
+        basedOn: null,
+        transcript: base.transcript,
+        transcriptVersion: "sha256:t",
+        silence,
+        takes: base.takes,
+        segments: base.segments,
+        segmentsVersion: "sha256:g",
+        shots: null,
+        sourceDuration: base.duration,
+      });
+      const planned = cut.ranges
+        .filter((range) => !range.hook)
+        .map(({ from, to }) => ({ from, to }));
+      const cleaned = clean(asRanges(base.segments.segments), silence).map(({ from, to }) => ({
+        from,
+        to,
+      }));
+      expect(planned.length).toBeGreaterThan(3);
+      expect(cleaned).toEqual(planned);
+    }
+  });
+
+  it("leaves out bad takes and fillers of a range, and keeps a range with no speech as it is", () => {
+    const all = clean([{ from: 0, to: base.duration, segment: null }], null);
+    const words = base.transcript.words.filter((word) => word.text.toLowerCase().startsWith("um"));
+    expect(words.length).toBeGreaterThan(0);
+    for (const word of words) {
+      expect(all.some((range) => range.from < middle(word) && middle(word) < range.to)).toBe(false);
+    }
+    const tail = base.duration - 0.5;
+    expect(clean([{ from: tail, to: base.duration + 5, segment: "silent" }], null)).toEqual([
+      { from: tail, to: base.duration, segment: "silent" },
+    ]);
   });
 });

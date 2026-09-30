@@ -56,6 +56,26 @@ describe("createProjectWatcher on a real directory", () => {
     await expectReported(seen, join(".hyperframes", "studio-motion.json"));
   });
 
+  it("reports the story graph (which project history tracks), even in a folder created after it started", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-watch-"));
+    const seen = await watchProject();
+
+    mkdirSync(join(dir, ".hyperframes"));
+    await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0), { timeout: 3000, interval: 25 });
+    seen.length = 0;
+    mkdirSync(join(dir, ".hyperframes", "story"));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    seen.length = 0;
+    const graph = join(".hyperframes", "story", "graph.json");
+    replaceByRename(join(dir, graph), "{}");
+    await expectReported(seen, graph);
+    // Other generated files in .hyperframes stay unreported.
+    mkdirSync(join(dir, ".hyperframes", "analysis"));
+    writeFileSync(join(dir, ".hyperframes", "analysis", "x.json"), "{}");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(seen.filter((path) => path.includes("analysis"))).toEqual([]);
+  });
+
   it("keeps watching a sibling whose name starts with a removed directory's", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-watch-"));
     mkdirSync(join(dir, "scene"));

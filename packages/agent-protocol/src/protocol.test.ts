@@ -200,6 +200,42 @@ describe("validators", () => {
     });
     expect(parseRevertTurn({ mode: "back-to-before" }).ok).toBe(false);
   });
+
+  it("parses a turn's mode and Story workspace action, and refuses unknown ones", () => {
+    expect(parseStartTurn({ prompt: "x" })).toEqual({ ok: true, value: { prompt: "x" } });
+    expect(
+      parseStartTurn({ prompt: "Build the story", mode: "story", storyAction: "build" }),
+    ).toEqual({
+      ok: true,
+      value: { prompt: "Build the story", mode: "story", storyAction: "build" },
+    });
+    expect(parseStartTurn({ prompt: "x", mode: "cinema" }).ok).toBe(false);
+    expect(parseStartTurn({ prompt: "x", storyAction: "publish" }).ok).toBe(false);
+  });
+
+  it("parses a chat's active mode and refuses unknown ones", () => {
+    expect(parseUpdateChat({ activeMode: "story" })).toEqual({
+      ok: true,
+      value: { activeMode: "story" },
+    });
+    expect(parseUpdateChat({ activeMode: "normal" }).ok).toBe(true);
+    expect(parseUpdateChat({ activeMode: "cinema" }).ok).toBe(false);
+  });
+
+  it("carries the Story workspace state of the editor context and ignores anything malformed", () => {
+    const parsedWith = (storyGraph: unknown) => {
+      const parsed = parseStartTurn({ prompt: "x", editorContext: { ...context, storyGraph } });
+      if (!parsed.ok) throw new Error(parsed.message);
+      return parsed.value.editorContext?.storyGraph;
+    };
+    expect(parsedWith({ version: "sha256:ab", selectedNode: "ch2" })).toEqual({
+      version: "sha256:ab",
+      selectedNode: "ch2",
+    });
+    expect(parsedWith({ version: null })).toEqual({ version: null, selectedNode: null });
+    expect(parsedWith(null)).toBeNull();
+    expect(parsedWith("ch2")).toBeNull();
+  });
 });
 
 describe("SSE codec", () => {

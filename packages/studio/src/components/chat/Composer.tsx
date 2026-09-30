@@ -49,11 +49,14 @@ export function Composer() {
 
   // In an agent's thread the addressee is not obvious, so it is named.
   const who = thread === "main" ? "the agent" : "the Director";
+  const storyMode = chat?.chat.activeMode === "story";
   const placeholder = running
     ? `Steer ${who}…`
-    : thread === "main"
-      ? "Ask the agent…"
-      : `Message ${who}…`;
+    : thread !== "main"
+      ? `Message ${who}…`
+      : storyMode
+        ? "Describe the story you want, or what to change in it…"
+        : "Ask the agent…";
 
   return (
     <div className="shrink-0 border-t border-border bg-bg-1 p-2">

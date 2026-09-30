@@ -107,19 +107,6 @@ describe("error answers", () => {
       [await send("POST", "frames", { source: "fake.mp4", times: [] }), 400, "invalid_request"],
       [await send("POST", "cuts", { source: "fake.mp4", basedOn: "cut-4" }), 404, "unknown_plan"],
       [await get("cuts/cut-4"), 404, "unknown_plan"],
-      [
-        await send("POST", "cuts/cut-4/applied", {
-          composition: "index.html",
-          version: "sha256:v",
-        }),
-        404,
-        "unknown_plan",
-      ],
-      [
-        await send("POST", "cuts/cut-4/applied", { composition: "index.html" }),
-        400,
-        "invalid_request",
-      ],
     ];
     for (const [response, status, code] of cases) {
       expect([response.status, (await errorOf(response)).code]).toEqual([status, code]);
@@ -237,11 +224,6 @@ describe.skipIf(!hasFfmpeg)("the analysis flow over HTTP", () => {
     ).json();
     expect(list.plans.map((plan) => plan.id)).toEqual(["cut-1", "cut-2"]);
     expect(((await (await get("cuts/cut-2")).json()) as CutPlan).ranges.length).toBeGreaterThan(0);
-
-    const applied: CutPlan = await (
-      await send("POST", "cuts/cut-1/applied", { composition: "index.html", version: "sha256:abc" })
-    ).json();
-    expect(applied.applied).toMatchObject({ composition: "index.html", version: "sha256:abc" });
 
     const finalOverview: AnalysisOverview = await (await get(`overview?source=${source}`)).json();
     expect(finalOverview.cuts.map((plan) => plan.id)).toEqual(["cut-1", "cut-2"]);

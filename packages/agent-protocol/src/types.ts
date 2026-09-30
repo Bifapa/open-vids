@@ -129,8 +129,19 @@ export interface ProviderInfo {
 export const CHAT_STATUSES = ["idle", "working", "interrupted", "completed", "failed"] as const;
 export type ChatStatus = (typeof CHAT_STATUSES)[number];
 
-/** Only "normal" exists in Milestone 1; the field exists so Story/other modes need no schema change. */
-export type ChatMode = "normal";
+/**
+ * `normal`: the Director edits the video. `story`: the Director plans the video as the project's Story Graph and
+ * does not touch the timeline (except when the user asks it to build the story).
+ */
+export const CHAT_MODES = ["normal", "story"] as const;
+export type ChatMode = (typeof CHAT_MODES)[number];
+
+/**
+ * A Story workspace action run as a turn: `review` — the Director reviews the current (user-edited) graph;
+ * `build` — the story is built into the timeline. Both are ordinary checkpointed turns.
+ */
+export const STORY_ACTIONS = ["review", "build"] as const;
+export type StoryAction = (typeof STORY_ACTIONS)[number];
 
 export interface ChatSummary {
   id: string;
@@ -201,6 +212,10 @@ export interface TurnSummary {
   checkpoint: TurnCheckpoint | null;
   /** The Director's compact live plan for this turn; absent until the Director publishes one. */
   plan?: ExecutionPlan;
+  /** The chat mode the turn ran in (absent on turns from before modes existed = `normal`). */
+  mode?: ChatMode;
+  /** The Story workspace action the turn ran, if any. */
+  storyAction?: StoryAction;
   error?: AgentError;
 }
 
@@ -385,8 +400,8 @@ export interface EditorContext {
     quality?: string;
     resolution?: string;
   } | null;
-  /** Reserved for Story Mode; always null until it exists. */
-  storyGraph: null;
+  /** The Story workspace as the user sees it: graph version and the selected node (null: no story yet). */
+  storyGraph: { version: string | null; selectedNode: string | null } | null;
 }
 
 // ── Messages ─────────────────────────────────────────────────────────────────

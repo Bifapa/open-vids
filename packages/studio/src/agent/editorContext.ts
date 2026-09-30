@@ -6,6 +6,7 @@ import { useDomEditSelectionContextOptional } from "../contexts/DomEditContext";
 import { useStudioShellContextOptional } from "../contexts/StudioContext";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { useAssetPreviewStore } from "../utils/assetPreviewStore";
+import { studioStoryStore } from "../story/storyContext";
 
 /** Where the agent panel gets a snapshot of the editor; read at send/steer time, never continuously. */
 export interface EditorContextSource {
@@ -37,6 +38,8 @@ export interface EditorContextInput {
   outPoint: number | null;
   rangeSelection: { t0: number; t1: number } | null;
   renderSettings: { format?: string; fps?: number; quality?: string } | null;
+  /** The Story workspace of this project, or null when it has no story. */
+  storyGraph: EditorContext["storyGraph"];
 }
 
 const MAX_TIMELINE_ELEMENTS = LIMITS.contextElements;
@@ -134,7 +137,7 @@ export function buildEditorContext(input: EditorContextInput): EditorContext {
       range: selectionRange(input),
     },
     renderSettings: input.renderSettings,
-    storyGraph: null,
+    storyGraph: input.storyGraph,
   };
 }
 
@@ -172,8 +175,20 @@ export function useEditorContextSource(projectId?: string): EditorContextSource 
       outPoint: player.outPoint,
       rangeSelection: player.rangeSelection,
       renderSettings: getPersistedRenderSettings(),
+      storyGraph: storyContext(id),
     });
   }, []);
 
   return useMemo(() => ({ capture }), [capture]);
+}
+
+/** The graph version the user is looking at and the node they have selected (a single one). */
+function storyContext(projectId: string): EditorContext["storyGraph"] {
+  const story = studioStoryStore.getState();
+  if (story.projectId !== projectId || !story.graph) return null;
+  const { nodes, edges } = story.selection;
+  return {
+    version: story.version,
+    selectedNode: nodes.length === 1 && edges.length === 0 ? nodes[0] : null,
+  };
 }

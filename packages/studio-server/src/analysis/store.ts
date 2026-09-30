@@ -593,16 +593,33 @@ export class AnalysisStore {
     });
   }
 
-  /** Replaces a stored plan (marking it applied) and its summary in the index. */
-  replaceCut(plan: CutPlan): Promise<void> {
+  /** Deletes the plans `drop` names. The id counter stays where it is: ids are never reused. Returns the ids removed. */
+  dropCuts(drop: (plan: CutPlanSummary) => boolean): Promise<string[]> {
     return serialized(`${this.root}\0cuts`, async () => {
       const index = await this.readCutIndex();
-      await writeJson(this.cutsFile(`${plan.id}.json`), plan);
+      const gone = index.plans.filter(drop);
+      if (gone.length === 0) return [];
       await writeJson(this.cutsFile("index.json"), {
         next: index.next,
-        plans: index.plans.map((entry) => (entry.id === plan.id ? summaryOf(plan) : entry)),
+        plans: index.plans.filter((entry) => !gone.includes(entry)),
       } satisfies CutIndex);
+      await Promise.all(gone.map((plan) => rm(this.cutsFile(`${plan.id}.json`), { force: true })));
+      return gone.map((plan) => plan.id);
     });
+  }
+
+  // Orphans
+
+  /** Every source folder's manifest (unreadable folders are skipped). */
+  async listManifests(): Promise<SourceManifest[]> {
+    const dir = this.inside("sources");
+    const names = await readdir(dir).catch(() => []);
+    const manifests: SourceManifest[] = [];
+    for (const name of names) {
+      const manifest = await readJson(join(dir, name, "manifest.json"));
+      if (isManifest(manifest)) manifests.push(manifest);
+    }
+    return manifests;
   }
 }
 

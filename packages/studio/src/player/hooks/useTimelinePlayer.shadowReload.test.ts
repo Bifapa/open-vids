@@ -635,6 +635,53 @@ describe("NLEProvider iframe ref notifications", () => {
   });
 });
 
+describe("promotion after a history restore", () => {
+  // Revert of a Story build: the history refresh clears the store and reloads, but the outgoing
+  // (built) document stays live until the shadow promotes and re-adds its composition hosts on its
+  // state ticks — for as long as the preview is covered by the Story tab. The reverted document must
+  // then replace them, not be merged with them.
+  it("drops rows of the outgoing document that the promoted document does not have", () => {
+    const { getApi, root } = renderTimelinePlayerHarness();
+    const live = makeAdapterWindow({ duration: 1269.4 });
+    act(() => {
+      getApi().iframeRef.current = makeFakeIframe(live.win);
+      getApi().onIframeLoad();
+    });
+    act(() => getApi().refreshPlayer());
+    const gen = getApi().previewSlots.find((slot) => slot.role === "shadow")!.gen;
+    act(() =>
+      usePlayerStore.getState().setElements([
+        {
+          id: "captions",
+          key: "index.html#captions",
+          tag: "div",
+          start: 0,
+          duration: 809.3,
+          track: 3,
+          compositionSrc: "compositions/captions.html",
+        },
+      ]),
+    );
+
+    const reverted = makeAdapterWindow({ duration: 1269.4 });
+    const shadowIframe = makeFakeIframe(reverted.win);
+    shadowIframe.contentDocument!.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-start="0" data-duration="1269.4">
+        <video id="raw-talk" class="clip" src="assets/raw-talk.mp4" data-start="0"
+          data-duration="1269.4" data-track-index="0"></video>
+      </div>`;
+    act(() => {
+      getApi().setShadowIframeNode(shadowIframe);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+
+    expect(getApi().iframeRef.current).toBe(shadowIframe);
+    expect(usePlayerStore.getState().elements.map((element) => element.id)).toEqual(["raw-talk"]);
+    unmount(root);
+  });
+});
+
 function unmount(root: ReturnType<typeof createRoot>) {
   act(() => {
     root.unmount();

@@ -6,6 +6,7 @@ import { readOpenvidsHomeOrigin } from "../utils/openvidsHost";
 import { Button, buttonBase, buttonSizes, buttonVariants, cn, Tooltip } from "./ui";
 import { Dock } from "./dock/Dock";
 import { InspectorIcon } from "./icons/InspectorIcon";
+import { WorkspaceSwitch } from "../story/WorkspaceSwitch";
 
 export interface StudioHeaderProps {
   captureFrameHref: string;
@@ -205,6 +206,7 @@ export function StudioHeader({
           |
         </span>
         <span className="text-step-11 font-medium text-text-1">{projectId}</span>
+        <WorkspaceSwitch />
       </div>
       {/* Right: toolbar buttons */}
       <div className="flex items-center gap-3">

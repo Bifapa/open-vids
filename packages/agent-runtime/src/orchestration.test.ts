@@ -173,6 +173,7 @@ describe("multi-agent orchestration", () => {
       expect(editorSession?.input.hostTools.map((tool) => tool.name)).toEqual([
         ...EDITOR_TOOLS,
         ...ANALYSIS_TOOLS_EDITOR,
+        "read_story",
       ]);
     } finally {
       await fixture.cleanup();
@@ -228,6 +229,7 @@ describe("multi-agent orchestration", () => {
         "update_plan",
         ...EDITOR_TOOLS,
         ...ANALYSIS_TOOLS_SOLO,
+        "read_story",
       ]);
     } finally {
       await fixture.cleanup();
@@ -721,7 +723,6 @@ describe("long-form pipeline orchestration", () => {
       expect(fixture.analysis.visionRequests).toHaveLength(1);
       expect(fixture.analysis.segmentRequests).toHaveLength(1);
       expect(fixture.analysis.planRequests).toEqual([{ source, label: "rough cut" }]);
-      expect(fixture.analysis.appliedRequests).toHaveLength(1);
       expect(fixture.editing.applyRequests).toHaveLength(1);
       expect(fixture.editing.applyRequests[0]?.operations.map((operation) => operation.op)).toEqual(
         ["add_sequence", "set_composition"],

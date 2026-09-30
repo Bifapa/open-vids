@@ -267,6 +267,7 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
       ...(request.model !== undefined ? { mainAgentModel: request.model } : {}),
       ...(request.thinking !== undefined ? { thinking: request.thinking } : {}),
       ...(request.enabledAgents !== undefined ? { enabledAgents: request.enabledAgents } : {}),
+      ...(request.activeMode !== undefined ? { activeMode: request.activeMode } : {}),
     })),
     startTurn: vi.fn(async () => ({ turn: turn() })),
     steerTurn: vi.fn(async () => ({ messageId: "m9" })),

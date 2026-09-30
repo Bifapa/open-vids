@@ -2,7 +2,11 @@ export { createAgentGateway } from "./agent/gateway.js";
 export type { AgentGateway, AgentGatewayOptions, AgentRuntimeLaunch } from "./agent/gateway.js";
 export { resolveAgentRuntimeLaunch } from "./agent/launch.js";
 export { createStudioApi } from "./createStudioApi.js";
-export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
+export {
+  createProjectSignature,
+  affectsProjectSignature,
+  affectsProjectHistory,
+} from "./helpers/projectSignature.js";
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
 export { affectsPreview } from "./helpers/previewReads.js";
 export {

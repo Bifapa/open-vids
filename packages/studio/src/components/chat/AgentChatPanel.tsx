@@ -1,7 +1,7 @@
 import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from "react";
 import { ChatCircleDots } from "@phosphor-icons/react";
-import { AgentStoreProvider, useAgentStore, useProjectAgentStore } from "../../agent/agentContext";
-import { useEditorContextSource } from "../../agent/editorContext";
+import { AgentStoreProvider, useAgentStore } from "../../agent/agentContext";
+import type { AgentStore } from "../../agent/agentStore";
 import { Button } from "../ui/Button";
 import { ChatView } from "./ChatView";
 import { HistoryView } from "./HistoryView";
@@ -89,20 +89,11 @@ export function AgentChatBody() {
   );
 }
 
-/** The Chat dock panel: a project's saved agent chats and the live conversation. */
-export function AgentChatPanel({
-  projectId,
-  onReverted,
-  onTurnEnded,
-}: {
-  projectId: string;
-  /** Refreshes the editor once a revert has rewritten project files. */
-  onReverted: () => void | Promise<void>;
-  /** A turn ended: pick up what it produced outside the watched project files (renders). */
-  onTurnEnded?: () => void;
-}) {
-  const editorContext = useEditorContextSource(projectId);
-  const store = useProjectAgentStore(projectId, editorContext, onReverted, onTurnEnded);
+/**
+ * The Chat dock panel: a project's saved agent chats and the live conversation. The store is the project's
+ * (created by the dock, shared with the Story panel); null while it is being created.
+ */
+export function AgentChatPanel({ store }: { store: AgentStore | null }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg-1 text-text-1">
       <PanelBoundary>

@@ -189,34 +189,30 @@ describe("HttpAnalysisHost", () => {
         }),
       [`POST ${PREFIX}/cuts`]: (_request, response) => json(response, 200, plan),
       [`GET ${PREFIX}/cuts`]: (_request, response) => json(response, 200, { plans: [summary] }),
-      [`POST ${PREFIX}/cuts/cut-1/applied`]: (_request, response) => json(response, 200, plan),
     });
     const signal = abortSignal();
     await host.startJob({ source: "assets/a b.mp4", language: "en" }, signal);
-    await host.transcript("a b.mp4", { from: 5, to: 9 }, signal);
+    await host.transcript("a b.mp4", { from: 5, to: 9, words: true }, signal);
     await host.artifact("a.mp4", "silence", signal);
     await host.saveSegments({ source: "a.mp4", transcriptVersion: "v", segments: [] }, signal);
     await host.saveVisionNotes({ source: "a.mp4", notes: [] }, signal);
     const frames = await host.frames({ source: "a.mp4", times: [1], width: 320 }, signal);
     await host.planCut({ source: "a.mp4", maxPause: 0.5 }, signal);
     await host.listCuts("a.mp4", signal);
-    await host.markApplied("cut-1", { composition: "index.html", version: "v9" }, signal);
 
     expect(frames.frames[0]?.data).toBe("AAAA");
     expect(seen.map((request) => `${request.method} ${request.path}`)).toEqual([
       `POST ${PREFIX}/jobs`,
-      `GET ${PREFIX}/transcript?source=a+b.mp4&from=5&to=9`,
+      `GET ${PREFIX}/transcript?source=a+b.mp4&from=5&to=9&words=1`,
       `GET ${PREFIX}/artifact?source=a.mp4&stage=silence`,
       `PUT ${PREFIX}/segments`,
       `POST ${PREFIX}/vision`,
       `POST ${PREFIX}/frames`,
       `POST ${PREFIX}/cuts`,
       `GET ${PREFIX}/cuts?source=a.mp4`,
-      `POST ${PREFIX}/cuts/cut-1/applied`,
     ]);
     expect(seen[0]?.body).toEqual({ source: "assets/a b.mp4", language: "en" });
     expect(seen[5]?.body).toEqual({ source: "a.mp4", times: [1], width: 320 });
-    expect(seen[8]?.body).toEqual({ composition: "index.html", version: "v9" });
   });
 });
 
