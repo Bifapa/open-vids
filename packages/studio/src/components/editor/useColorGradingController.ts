@@ -1,3 +1,4 @@
+import { readPreviewMediaSrc } from "@hyperframes/core/studio-preview-mark";
 import { mediaMetadataUrl } from "../../utils/studioHelpers";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
@@ -110,7 +111,7 @@ function resolveProjectAssetPath(
 function selectedMediaAssetPath(element: DomEditSelection, projectId: string): string | null {
   if (element.tagName !== "video" && element.tagName !== "img") return null;
   const media = element.element as HTMLImageElement | HTMLVideoElement;
-  const src = media.getAttribute("src") || media.currentSrc || "";
+  const src = readPreviewMediaSrc(media) || media.currentSrc || "";
   return resolveProjectAssetPath(element.sourceFile || "index.html", src, projectId);
 }
 

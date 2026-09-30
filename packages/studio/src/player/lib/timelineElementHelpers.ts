@@ -14,6 +14,7 @@ import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIn
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { readElementFades } from "@hyperframes/core/audio-fade";
 import { type AttrReader, readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
+import { readPreviewMediaSrc } from "@hyperframes/core/studio-preview-mark";
 
 // ---------------------------------------------------------------------------
 // Layer-reveal lift transparency
@@ -246,7 +247,7 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   if (!mediaEl) return;
 
   entry.tag = mediaEl.tagName.toLowerCase();
-  const src = mediaEl.getAttribute("src");
+  const src = readPreviewMediaSrc(mediaEl);
   if (src) entry.src = src;
 
   const win = mediaEl.ownerDocument.defaultView ?? window;

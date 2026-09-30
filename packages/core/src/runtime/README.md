@@ -48,6 +48,26 @@ Determinism baseline:
 - `renderSeek` is the producer-canonical seek path.
 - 30fps quantization and readiness gates are correctness requirements.
 
+Preview media budget (`previewMediaBudget.ts`):
+
+- Only a page the Studio server marked as a preview (`<meta name="hyperframes-studio-preview">`)
+  and that no render is driving (`__HF_EXPORT_RENDER_SEEK_CONFIG`, `__HF_RENDER_CAPTURE_MODE`)
+  runs it. A render, capture or `check` page never does, so their frames are unchanged.
+- A preview document with many `<video>` clips would keep one decoder per element alive. The budget
+  keeps a source only on videos that are playing, leased (scrub audio, grading preview), hold the
+  last frame of the film, sit inside the playhead's window (`RETAIN_BEHIND_SECONDS` behind,
+  `RETAIN_AHEAD_SECONDS` ahead, the next `RETAIN_UPCOMING_CLIPS`), capped at
+  `MAX_ACTIVE_PREVIEW_MEDIA` by distance from the playhead. Clips playing or under the playhead may
+  exceed the cap.
+- A released video loses its `src` (`load()` with no source; the authored value moves to
+  `data-hf-detached-src`, read back through `readPreviewMediaSrc`) and gets it back, with its
+  muted/volume/rate state, before it is needed. Loaded videos are released in batches of
+  `DETACH_BATCH_SIZE` per `DETACH_INTERVAL_MS`, farthest first, so a scrub never tears down a storm
+  of players; restores for clips that are playing or about to start are never deferred.
+- Only a `<video src>` with an authored `data-duration` is managed: a clip whose window comes from
+  the decoder's `duration`, `<source>` children and `<audio>` (owned by the Web Audio transport)
+  are left alone.
+
 ## Build
 
 ```bash

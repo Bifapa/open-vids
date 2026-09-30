@@ -19,6 +19,7 @@ import { registerEditingRoutes } from "./routes/editing.js";
 import { registerAnalysisRoutes } from "./routes/analysis.js";
 import { registerStoryRoutes } from "./routes/story.js";
 import { registerResearchRoutes } from "./routes/research.js";
+import { registerQaRoutes } from "./routes/qa.js";
 
 /**
  * Create a Hono sub-app with all studio API routes.
@@ -54,7 +55,15 @@ export function createStudioApi(
   const analysis = registerAnalysisRoutes(api, adapter);
   const story = registerStoryRoutes(api, adapter, analysis);
   registerResearchRoutes(api, adapter, story);
-  options.shutdownSignal?.addEventListener("abort", () => analysis.shutdown(), { once: true });
+  const qa = registerQaRoutes(api, adapter, analysis);
+  options.shutdownSignal?.addEventListener(
+    "abort",
+    () => {
+      analysis.shutdown();
+      qa.shutdown();
+    },
+    { once: true },
+  );
 
   return api;
 }

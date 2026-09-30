@@ -3,6 +3,7 @@ import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { swallow } from "./diagnostics";
 import { isElementNode } from "./domRealm";
 import { createDrawnProbe } from "./pickerDrawn";
+import { readPreviewMediaSrc } from "../studioPreviewMark";
 
 type PickerModuleDeps = {
   postMessage: (payload: RuntimeOutboundMessage) => void;
@@ -257,7 +258,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
       label: buildElementLabel(el),
       boundingBox: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
       textContent: el.textContent ? el.textContent.trim().slice(0, 200) : null,
-      src: el.getAttribute("src") || el.getAttribute("data-composition-src") || null,
+      src: readPreviewMediaSrc(el) || el.getAttribute("data-composition-src") || null,
       dataAttributes,
     };
   }

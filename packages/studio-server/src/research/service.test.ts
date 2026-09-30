@@ -6,7 +6,7 @@ import {
   type AssetProvenance,
   type StoryGraph,
 } from "@hyperframes/agent-protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HistoryWho } from "../history/historyLog.js";
 import { openProjectHistory, type ProjectHistory } from "../history/projectHistory.js";
 import { BLANK_HTML, created } from "../story/testSupport.js";
@@ -739,5 +739,171 @@ describe("revert", () => {
       retrievedBy: { turnId: "turn-2" },
       storyNode: again.resolved?.node,
     });
+  });
+});
+
+describe("cancelling a write request", () => {
+  /** A Missing Asset node to resolve (the story edit is the write that follows an import's file commit). */
+  async function missingNode(f: ResearchFixture): Promise<string> {
+    const made = await f.story.edit([
+      { op: "add_node", ref: "a", node: { kind: "chapter", title: "Opening" } },
+      {
+        op: "add_node",
+        ref: "m",
+        node: { kind: "missing", title: "Sea", mediaKind: "video", need: "Waves" },
+      },
+      { op: "attach", node: "@m", chapter: "@a", placement: "end", duration: 2 },
+    ]);
+    return created(made, 1);
+  }
+
+  const ledgerAssets = (f: ResearchFixture) =>
+    readLedger(f.project.dir).records.map((r) => r.asset);
+
+  it("discards a cancelled import before its commit: nothing is written and it answers cancelled", async () => {
+    const f = setup();
+    let state: string | undefined;
+    f.net.when(OCEAN, () => {
+      // The runtime's cancel reaches Studio while the file is on its way.
+      state = f.service.cancel(f.project, "req-1");
+      return new Response("H264 ocean waves", {
+        status: 200,
+        headers: { "content-type": "video/mp4" },
+      });
+    });
+    const error = await failure(importUrl(f, OCEAN, { requestId: "req-1" }));
+    expect(state).toBe("cancelled");
+    expect(error.code).toBe("cancelled");
+    expect(f.researchFiles()).toEqual([]);
+    expect(existsSync(join(f.project.dir, PROVENANCE_PATH))).toBe(false);
+    // The request is over: a repeated cancel only learns that.
+    expect(f.service.cancel(f.project, "req-1")).toBe("finished");
+  });
+
+  it("refuses a request whose cancel arrived first, without touching the network", async () => {
+    const f = setup();
+    serve(f, OCEAN, "H264 ocean waves");
+    expect(f.service.cancel(f.project, "req-early")).toBe("cancelled");
+    expect((await failure(importUrl(f, OCEAN, { requestId: "req-early" }))).code).toBe("cancelled");
+    expect(f.net.calls).toEqual([]);
+    expect(f.researchFiles()).toEqual([]);
+  });
+
+  it("finishes and answers normally when the cancel comes after the commit started", async () => {
+    const f = setup();
+    const missing = await missingNode(f);
+    serve(f, OCEAN, "H264 ocean waves");
+    let state: string | undefined;
+    const edit = f.story.service.edit.bind(f.story.service);
+    // The story edit runs after the asset file and its record landed: the commit is under way.
+    vi.spyOn(f.story.service, "edit").mockImplementation((project, request) => {
+      state = f.service.cancel(f.project, "req-2");
+      return edit(project, request);
+    });
+    const done = await importUrl(f, OCEAN, { requestId: "req-2", resolveMissing: missing });
+    expect(state).toBe("committed");
+    expect(done.resolved?.missing).toBe(missing);
+    expect(f.researchFiles()).toHaveLength(1);
+    expect(ledgerAssets(f)).toEqual([done.asset]);
+    expect(readLedger(f.project.dir).records[0]?.storyNode).toBe(done.resolved?.node);
+  });
+
+  it("does not treat a client that disconnects after the commit as a cancel", async () => {
+    const f = setup();
+    const missing = await missingNode(f);
+    serve(f, OCEAN, "H264 ocean waves");
+    const gone = new AbortController();
+    const edit = f.story.service.edit.bind(f.story.service);
+    vi.spyOn(f.story.service, "edit").mockImplementation((project, request) => {
+      gone.abort();
+      return edit(project, request);
+    });
+    const done = await f.service.import(
+      f.project,
+      { url: OCEAN, resolveMissing: missing },
+      gone.signal,
+    );
+    expect(done.resolved?.missing).toBe(missing);
+    expect(ledgerAssets(f)).toEqual([done.asset]);
+  });
+
+  it("answers cancelled at once for a request still waiting for the project lock, and it never writes", async () => {
+    const f = setup();
+    const first = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    f.net.when(OCEAN, async () => {
+      started.resolve();
+      await first.promise;
+      return new Response("H264 ocean waves", {
+        status: 200,
+        headers: { "content-type": "video/mp4" },
+      });
+    });
+    const other = "https://upload.wikimedia.org/wikipedia/commons/b/bc/Other.mp4";
+    serve(f, other, "H264 other waves");
+    const holding = importUrl(f, OCEAN, { requestId: "req-first" });
+    await started.promise;
+    const queued = importUrl(f, other, { requestId: "req-queued" });
+    expect(f.service.cancel(f.project, "req-queued")).toBe("cancelled");
+    // The queued request answers before the import holding the lock is over.
+    expect((await failure(queued)).code).toBe("cancelled");
+    first.resolve();
+    const done = await holding;
+    // Only the first import wrote; the cancelled one never even reached the network.
+    expect(ledgerAssets(f)).toEqual([done.asset]);
+    expect(f.net.calls).not.toContain(other);
+  });
+
+  it("cancels a resolution that has not started its story edit, and lets one that has finish", async () => {
+    const f = setup();
+    const missing = await missingNode(f);
+    serve(f, OCEAN, "H264 ocean waves");
+    const imported = await importUrl(f, OCEAN);
+    expect(f.service.cancel(f.project, "req-res-early")).toBe("cancelled");
+    const refused = await failure(
+      f.service.resolve(f.project, {
+        missing,
+        asset: imported.asset,
+        requestId: "req-res-early",
+      }),
+    );
+    expect(refused.code).toBe("cancelled");
+    expect((await f.story.graph()).nodes.some((entry) => entry.id === missing)).toBe(true);
+
+    let state: string | undefined;
+    const edit = f.story.service.edit.bind(f.story.service);
+    vi.spyOn(f.story.service, "edit").mockImplementation((project, request) => {
+      state = f.service.cancel(f.project, "req-res");
+      return edit(project, request);
+    });
+    const resolved = await f.service.resolve(f.project, {
+      missing,
+      asset: imported.asset,
+      requestId: "req-res",
+    });
+    expect(state).toBe("committed");
+    expect((await f.story.graph()).nodes.some((entry) => entry.id === missing)).toBe(false);
+    expect(resolved.missing).toBe(missing);
+  });
+
+  it("refuses a second request that reuses an id in flight", async () => {
+    const f = setup();
+    const gate = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    f.net.when(OCEAN, async () => {
+      started.resolve();
+      await gate.promise;
+      return new Response("H264 ocean waves", {
+        status: 200,
+        headers: { "content-type": "video/mp4" },
+      });
+    });
+    const holding = importUrl(f, OCEAN, { requestId: "same" });
+    await started.promise;
+    expect((await failure(importUrl(f, OCEAN, { requestId: "same" }))).code).toBe(
+      "invalid_request",
+    );
+    gate.resolve();
+    await holding;
   });
 });

@@ -126,6 +126,7 @@ export class FakeCheckpointHost implements CheckpointHost {
 export { ScriptedAgentBackend, ScriptedSession } from "./backend.js";
 export type { PromptScript } from "./backend.js";
 export { FakeEditingHost } from "./editing.js";
+export { FakeQaHost, cleanCheck, qaDraft } from "./qa.js";
 export { FakeAnalysisHost, FAKE_JPEG, SAMPLE_SOURCE } from "./analysis.js";
 export {
   FakeStoryHost,

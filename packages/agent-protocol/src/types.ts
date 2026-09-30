@@ -6,6 +6,13 @@
  * depends on this package only.
  */
 
+import type {
+  ExecutionBudget,
+  ExecutionQuality,
+  ExecutionQualityPreset,
+  TurnQaState,
+} from "./qa.js";
+
 export const AGENT_PROTOCOL_VERSION = 2;
 
 // ── Models and thinking ──────────────────────────────────────────────────────
@@ -113,6 +120,8 @@ export interface AgentSettings {
   director: ModelConfig;
   specialists: Record<SpecialistId, SpecialistDefaults>;
   jev: JevSettings;
+  /** Execution Quality of chats that have not chosen their own. */
+  executionQuality: ExecutionQuality;
 }
 
 /** Per-chat specialist overrides; a missing entry means "use the global default". */
@@ -185,6 +194,8 @@ export interface ChatSummary {
   enabledAgents: SpecialistId[];
   /** Per-chat specialist model/thinking overrides. Absent (chats from before specialists existed) = none. */
   agentOverrides?: SpecialistOverrides;
+  /** The chat's own Execution Quality; absent or null = the global default. */
+  executionQuality?: ExecutionQuality | null;
 }
 
 /** The specialist configuration a chat actually uses: its own override, else the global default. */
@@ -243,6 +254,10 @@ export interface TurnSummary {
   storyAction?: StoryAction;
   /** The user's choices for that action (build/rebuild). */
   storyOptions?: StoryActionOptions;
+  /** The Execution Quality the turn ran with (preset and the budget it resolved to). */
+  execution?: { preset: ExecutionQualityPreset; budget: ExecutionBudget };
+  /** Autonomous render QA of the turn; absent when QA never started (nothing changed, or turns before QA existed). */
+  qa?: TurnQaState;
   error?: AgentError;
 }
 

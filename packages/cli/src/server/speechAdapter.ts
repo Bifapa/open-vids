@@ -5,162 +5,18 @@
  * out of the server, and lets Abort stop the whole tree.
  */
 
-import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SpeakerDiarization, SpeechTranscription } from "@hyperframes/studio-server";
+import { failureMessage, runCli, type CliChildDeps, type CliRun } from "./cliChild.js";
 
 /** Multilingual, so the language is detected (the user base speaks more than English). */
 const WHISPER_MODEL = "small";
-const KILL_GRACE_MS = 3000;
 
-export interface CliInvocation {
-  command: string;
-  /** Everything before the subcommand: runtime flags, then the CLI entry. */
-  prefix: string[];
-}
-
-/**
- * This process, run again. The packaged sidecar starts `bun serve.mjs cli.js preview ...`, and serve.mjs spawns
- * `bun cli.js ...`, so execPath is the bundled runtime and argv[1] the CLI entry there too. In source mode the
- * loader flags (`--import tsx`) live in execArgv.
- */
-export function selfInvocation(): CliInvocation {
-  const entry = process.argv[1];
-  if (!entry) throw new Error("cannot locate the CLI entry (process.argv[1] is empty)");
-  const runtimeFlags = process.execArgv.filter((a) => !a.startsWith("--inspect"));
-  return { command: process.execPath, prefix: [...runtimeFlags, entry] };
-}
-
-export interface SpeechAdapterDeps {
-  spawn?: typeof nodeSpawn;
-  invocation?: () => CliInvocation;
+export interface SpeechAdapterDeps extends CliChildDeps {
   /** Where the transcribe command writes; removed afterwards. */
   makeTempDir?: () => string;
-}
-
-interface RunOptions {
-  signal: AbortSignal;
-  onProgress?: (message: string) => void;
-}
-
-interface CliRun {
-  code: number | null;
-  /** The last stdout line that was a JSON object, if any. */
-  json: Record<string, unknown> | null;
-  stderrTail: string;
-}
-
-function abortError(signal: AbortSignal): Error {
-  return signal.reason instanceof Error ? signal.reason : new Error("Aborted");
-}
-
-const running = new Set<ChildProcess>();
-let exitHookInstalled = false;
-
-/** Signals the child's whole process group (the CLI and the whisper/sherpa children it started). */
-function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
-  try {
-    if (process.platform !== "win32" && child.pid !== undefined) process.kill(-child.pid, signal);
-    else child.kill(signal);
-  } catch {
-    // already gone
-  }
-}
-
-/** A dying server must not leave a recognizer running for minutes. */
-function installExitHook(): void {
-  if (exitHookInstalled) return;
-  exitHookInstalled = true;
-  process.once("exit", () => {
-    for (const child of running) killTree(child, "SIGKILL");
-  });
-}
-
-function lastJsonObject(stdout: string): Record<string, unknown> | null {
-  for (const line of stdout.split("\n").reverse()) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("{")) continue;
-    try {
-      const parsed: unknown = JSON.parse(trimmed);
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-        return Object.fromEntries(Object.entries(parsed));
-      }
-    } catch {
-      // not the result line
-    }
-  }
-  return null;
-}
-
-function runCli(
-  args: string[],
-  { signal, onProgress }: RunOptions,
-  deps: SpeechAdapterDeps,
-): Promise<CliRun> {
-  signal.throwIfAborted();
-  const { command, prefix } = (deps.invocation ?? selfInvocation)();
-  const child = (deps.spawn ?? nodeSpawn)(command, [...prefix, ...args], {
-    stdio: ["ignore", "pipe", "pipe"],
-    // Own process group on POSIX so Abort reaches whisper-cli and the sherpa worker too.
-    detached: process.platform !== "win32",
-    env: process.env,
-  });
-  installExitHook();
-  running.add(child);
-
-  return new Promise<CliRun>((resolve, reject) => {
-    let stdout = "";
-    let stderrTail = "";
-    let pending = "";
-    child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk));
-    child.stderr?.on("data", (chunk: Buffer) => {
-      pending += chunk;
-      const lines = pending.split(/\r?\n/);
-      pending = lines.pop() ?? "";
-      for (const line of lines) {
-        const text = line.trim();
-        if (!text) continue;
-        stderrTail = `${stderrTail}\n${text}`.slice(-2000);
-        onProgress?.(text);
-      }
-    });
-
-    let killTimer: NodeJS.Timeout | undefined;
-    const onAbort = () => {
-      killTree(child, "SIGTERM");
-      killTimer = setTimeout(() => killTree(child, "SIGKILL"), KILL_GRACE_MS);
-      killTimer.unref();
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-
-    const settle = () => {
-      running.delete(child);
-      signal.removeEventListener("abort", onAbort);
-      clearTimeout(killTimer);
-    };
-    child.on("error", (err) => {
-      settle();
-      reject(err);
-    });
-    child.on("close", (code) => {
-      settle();
-      if (signal.aborted) {
-        // The CLI is gone; make sure nothing it started (whisper-cli, the sherpa worker) outlives it.
-        killTree(child, "SIGKILL");
-        reject(abortError(signal));
-      } else {
-        resolve({ code, json: lastJsonObject(stdout), stderrTail: stderrTail.trim() });
-      }
-    });
-  });
-}
-
-function failureMessage(what: string, run: CliRun): string {
-  if (typeof run.json?.error === "string") return run.json.error;
-  const how = run.code === null ? "was stopped by a signal" : `exited with code ${run.code}`;
-  return `${what} ${how}${run.stderrTail ? `: ${run.stderrTail.split("\n").at(-1)}` : ""}`;
 }
 
 /** A `{skipped: true}` result: a setup condition (no recognizer, unsupported platform, offline). */

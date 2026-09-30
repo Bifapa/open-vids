@@ -1,4 +1,5 @@
 import {
+  DEFAULT_EXECUTION_QUALITY,
   effectiveSpecialistConfig,
   isAgentRunTerminal,
   type AgentModelCatalog,
@@ -9,6 +10,7 @@ import {
   type ChatMessage,
   type ChatState,
   type ChatSummary,
+  type ExecutionQuality,
   type ModelConfig,
   type ModelSelection,
   type SpecialistConfig,
@@ -121,6 +123,22 @@ export function specialistConfig(
   const override = chat.agentOverrides?.[id];
   if (override) return { config: override, custom: true };
   return settings ? { config: effectiveSpecialistConfig(chat, settings, id), custom: false } : null;
+}
+
+export interface ExecutionQualityView {
+  /** What the chat's next turns run with. */
+  quality: ExecutionQuality;
+  /** True when the chat has its own choice instead of following the global default. */
+  custom: boolean;
+}
+
+/** The chat's own Execution Quality, else the global default (the runtime's default before settings load). */
+export function chatExecutionQuality(
+  chat: Pick<ChatSummary, "executionQuality">,
+  settings: Pick<AgentSettings, "executionQuality"> | null,
+): ExecutionQualityView {
+  if (chat.executionQuality) return { quality: chat.executionQuality, custom: true };
+  return { quality: settings?.executionQuality ?? DEFAULT_EXECUTION_QUALITY, custom: false };
 }
 
 // ── Threads ──────────────────────────────────────────────────────────────────

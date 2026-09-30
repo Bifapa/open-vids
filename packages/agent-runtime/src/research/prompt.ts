@@ -39,8 +39,14 @@ export function researchTeamLine(
   return `Material from outside the project comes only from Research, under the user's Asset Search policy: ${policy.mode === "trusted" ? "trusted sources only" : "any public source"}, ${sources}${policy.mode === "trusted" && enabled.length === 0 ? " (so nothing can be searched until the user enables a source)" : ""}. You never search or import yourself; delegate a self-contained task to Research (what is needed, kind, length, where it is used) and read_sources shows what the project already has and its licenses. The policy is the user's: neither you nor Research can change it.`;
 }
 
-/** The block Research gets with every task: the policy in force and how to work within it. */
-export function renderResearchBlock(state: ResearchTurnState | undefined): string {
+/**
+ * The block Research gets with every task: the policy in force and how to work within it. `candidates` is the turn's
+ * Execution Quality budget: how many candidates Research compares per search (the tool clamps `limit` to it).
+ */
+export function renderResearchBlock(
+  state: ResearchTurnState | undefined,
+  candidates: number,
+): string {
   if (!state || state.status === "unavailable") {
     return `<asset-search-policy status="unavailable">\nStudio could not be asked for the user's Asset Search policy${state ? ` (${state.reason})` : ""}, so you have no search tools this turn. Say so in your report; do not try to look for material any other way.\n</asset-search-policy>`;
   }
@@ -70,6 +76,7 @@ Rules:
 - Stay within the policy. The Studio server enforces it on every search, page read and download and you cannot change it; a blocked call is final — report it instead of looking for a way around it.
 - Match what is needed: the Missing Asset node's need, its media kind (video/picture/audio) and its neededDuration. Check duration, dimensions and the title/description of a candidate before importing.
 - Prefer licenses in this order: clear (public domain/CC0), attribution required (CC BY, CC BY-SA), then unknown or restricted. Take an unknown or restricted one only when nothing better fits, and say so plainly.
+- Compare at most ${candidates} candidates per search: search_assets returns at most ${candidates} results per source (this turn's Execution Quality budget; a larger limit is reduced to it). Refine the query instead of asking for more.
 - Import only what will be used. To fill a Missing Asset node import with "resolveMissing" set to its id (a duplicate is reused, not downloaded twice).
 - Never invent or restate license, author or source facts that the tool results do not state; the Studio server records them from the source itself.
 - Report for every asset: the project path, the source, the author, the license with its status, the credit line to show, and which node it resolved; and list what you could not find or was blocked, with why.

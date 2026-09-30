@@ -27,6 +27,7 @@ import { isSceneLikeCompositionId } from "../slideshow/index.js";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
 import { isElementNode, isMediaElement } from "./domRealm";
+import { readPreviewMediaSrc, STUDIO_PREVIEW_DETACHED_SRC_ATTR } from "../studioPreviewMark";
 
 /** A root timeline this long is an endless loop, not a film: GSAP reports 1e10 s for `repeat: -1`.
  *  Studio's sanitizeDurationSeconds rejects the same length. Animations that simply end past the
@@ -163,13 +164,15 @@ function toAbsoluteAssetUrl(rawValue: string | null | undefined): string | null 
 }
 
 function resolveNodeAssetUrl(node: Element): string | null {
-  const src = node.getAttribute("src") ?? node.getAttribute("data-src");
+  const src = readPreviewMediaSrc(node) ?? node.getAttribute("data-src");
   if (src) return toAbsoluteAssetUrl(src);
   const compositionSrc = node.getAttribute("data-composition-src");
   if (compositionSrc) return toAbsoluteAssetUrl(compositionSrc);
-  const mediaDescendant = node.querySelector("img[src], video[src], audio[src], source[src]");
+  const mediaDescendant = node.querySelector(
+    `img[src], video[src], video[${STUDIO_PREVIEW_DETACHED_SRC_ATTR}], audio[src], source[src]`,
+  );
   if (!mediaDescendant) return null;
-  return toAbsoluteAssetUrl(mediaDescendant.getAttribute("src"));
+  return toAbsoluteAssetUrl(readPreviewMediaSrc(mediaDescendant));
 }
 
 function getFirstClassToken(node: Element): string | null {

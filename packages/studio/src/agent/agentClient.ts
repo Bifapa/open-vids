@@ -1,6 +1,8 @@
 import {
   AGENT_ERROR_CODES,
+  EXECUTION_QUALITY_PRESETS,
   SPECIALIST_IDS,
+  isQaReport,
   isRecord,
   type ActiveTurnInfo,
   type AgentErrorBody,
@@ -14,6 +16,7 @@ import {
   type ListProviderModelsResponse,
   type ListProvidersResponse,
   type ModelConfig,
+  type QaReport,
   type RevertTurnRequest,
   type RevertTurnResponse,
   type SetJevApiKeyRequest,
@@ -88,6 +91,10 @@ export interface AgentClient {
   listProviders(): Promise<ListProvidersResponse>;
   /** Every model of one provider, signed in or not (Jev can bring its own key). */
   listProviderModels(provider: string): Promise<ListProviderModelsResponse>;
+  /** One stored Render QA pass (Studio server, not the agent gateway); `current` is derived when read. */
+  getQaReport(reportId: string): Promise<QaReport>;
+  /** Same-origin URL of a project-relative render (`renders/<file>`). */
+  renderFileUrl(renderPath: string): string;
 }
 
 // ── Response guards ──────────────────────────────────────────────────────────
@@ -166,10 +173,19 @@ function isModelConfig(value: unknown): value is ModelConfig {
   );
 }
 
+function isExecutionQuality(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    EXECUTION_QUALITY_PRESETS.some((preset) => preset === value.preset) &&
+    isRecord(value.custom)
+  );
+}
+
 export function isAgentSettings(value: unknown): value is AgentSettings {
   if (!isRecord(value) || !isModelConfig(value.director)) return false;
   const { specialists, jev } = value;
   return (
+    isExecutionQuality(value.executionQuality) &&
     isRecord(specialists) &&
     SPECIALIST_IDS.every((id) => {
       const entry = specialists[id];
@@ -252,16 +268,16 @@ export function createAgentClient(
 ): AgentClient {
   const base = (suffix: string) => buildProjectApiPath(projectId, `/agent${suffix}`);
 
-  async function call<T>(
+  async function request<T>(
     method: string,
-    suffix: string,
+    url: string,
     guard: (value: unknown) => value is T,
     body?: unknown,
   ): Promise<T> {
     let response: Response;
     try {
       const doFetch = fetchImpl ?? globalThis.fetch.bind(globalThis);
-      response = await doFetch(base(suffix), {
+      response = await doFetch(url, {
         method,
         headers: body === undefined ? undefined : { "content-type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -283,6 +299,13 @@ export function createAgentClient(
     }
     return payload;
   }
+
+  const call = <T>(
+    method: string,
+    suffix: string,
+    guard: (value: unknown) => value is T,
+    body?: unknown,
+  ) => request(method, base(suffix), guard, body);
 
   const enc = encodeURIComponent;
 
@@ -321,5 +344,9 @@ export function createAgentClient(
     listProviders: () => call("GET", "/providers", isProvidersResponse),
     listProviderModels: (provider) =>
       call("GET", `/providers/${enc(provider)}/models`, isProviderModelsResponse),
+    getQaReport: (reportId) =>
+      request("GET", buildProjectApiPath(projectId, `/qa/reports/${enc(reportId)}`), isQaReport),
+    renderFileUrl: (renderPath) =>
+      buildProjectApiPath(projectId, `/renders/file/${enc(renderPath.replace(/^renders\//, ""))}`),
   };
 }

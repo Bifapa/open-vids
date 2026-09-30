@@ -157,4 +157,23 @@ describe("the research routes", () => {
       records: [{ present: true, retrievedBy: { agent: "research" } }],
     });
   });
+
+  it("cancel a request by id: an unknown id is remembered, so the request that follows answers cancelled", async () => {
+    const { f, call } = app();
+    expect(await call("POST", "/projects/demo/research/requests/req-9/cancel")).toMatchObject({
+      status: 200,
+      body: { requestId: "req-9", state: "cancelled" },
+    });
+    f.net.when("https://upload.wikimedia.org/a.mp4", media("H264 a", "video/mp4"));
+    expect(
+      await call("POST", "/projects/demo/research/import", {
+        url: "https://upload.wikimedia.org/a.mp4",
+        requestId: "req-9",
+      }),
+    ).toMatchObject({ status: 409, body: { error: { code: "cancelled" } } });
+    expect(f.researchFiles()).toEqual([]);
+    expect(await call("POST", "/projects/ghost/research/requests/req-9/cancel")).toMatchObject({
+      status: 404,
+    });
+  });
 });

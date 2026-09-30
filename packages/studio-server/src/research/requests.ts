@@ -146,6 +146,7 @@ export function parseImportRequest(raw: unknown): ImportAssetRequest {
     "turnId",
     "agent",
     "model",
+    "requestId",
   ]);
   if ((value.candidate === undefined) === (value.url === undefined)) {
     throw new ResearchFailure("invalid_request", "Give exactly one of candidate or url");
@@ -166,15 +167,26 @@ export function parseImportRequest(raw: unknown): ImportAssetRequest {
     ...(value.model !== undefined && {
       model: value.model === null ? null : text(value.model, "model", 200),
     }),
+    ...(value.requestId !== undefined && {
+      requestId: text(value.requestId, "requestId", ID_CHARS),
+    }),
   };
 }
 
 export function parseResolveRequest(raw: unknown): ResolveMissingRequest {
-  const value = body(raw, ["missing", "asset", "title", "turnId"]);
+  const value = body(raw, ["missing", "asset", "title", "turnId", "requestId"]);
   return {
     missing: text(value.missing, "missing", ID_CHARS),
     asset: text(value.asset, "asset", RESEARCH_LIMITS.urlChars),
     ...(value.title !== undefined && { title: text(value.title, "title", 120) }),
     ...(value.turnId !== undefined && { turnId: text(value.turnId, "turnId", ID_CHARS * 2) }),
+    ...(value.requestId !== undefined && {
+      requestId: text(value.requestId, "requestId", ID_CHARS),
+    }),
   };
+}
+
+/** The `:requestId` of the cancel route. */
+export function parseRequestId(raw: string | undefined): string {
+  return text(raw, "requestId", ID_CHARS);
 }

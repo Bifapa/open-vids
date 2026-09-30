@@ -29,6 +29,7 @@ import {
   type StoryActionOptions,
   type ThinkingEffort,
 } from "./types.js";
+import { parseExecutionQuality } from "./qa.js";
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; message: string };
 
@@ -352,6 +353,14 @@ export function parseUpdateChat(body: unknown): Parsed<UpdateChatRequest> {
     if (!activeMode) return fail(`activeMode must be one of: ${CHAT_MODES.join(", ")}`);
     value.activeMode = activeMode;
   }
+  if (body.executionQuality !== undefined) {
+    if (body.executionQuality === null) value.executionQuality = null;
+    else {
+      const quality = parseExecutionQuality(body.executionQuality);
+      if (!quality.ok) return quality;
+      value.executionQuality = quality.value;
+    }
+  }
   return Object.keys(value).length > 0 ? { ok: true, value } : fail("nothing to update");
 }
 
@@ -445,6 +454,11 @@ export function parseUpdateAgentSettings(body: unknown): Parsed<UpdateAgentSetti
       jev.credentials = mode;
     }
     value.jev = jev;
+  }
+  if (body.executionQuality !== undefined) {
+    const quality = parseExecutionQuality(body.executionQuality);
+    if (!quality.ok) return quality;
+    value.executionQuality = quality.value;
   }
   return Object.keys(value).length > 0 ? { ok: true, value } : fail("nothing to update");
 }

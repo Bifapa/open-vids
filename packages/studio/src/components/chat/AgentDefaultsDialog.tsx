@@ -15,6 +15,7 @@ import { Toggle } from "../ui/Toggle";
 import { AgentConfigFields } from "./AgentConfigFields";
 import { AGENT_BLURBS, describeModelConfig, type ConfigDefaults } from "./agentLabels";
 import { ChatDialog } from "./ChatDialog";
+import { ExecutionQualityDefaults } from "./ExecutionBudgetFields";
 import { JevSettings } from "./JevSettings";
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
@@ -182,6 +183,15 @@ export function AgentDefaultsDialog({
               />
             ))}
           </ul>
+        </Section>
+        <Section
+          title="Execution quality"
+          hint="How hard the agents work in chats that have no choice of their own: render QA, Vision, research and specialist thinking."
+        >
+          <ExecutionQualityDefaults
+            value={settings.executionQuality}
+            onCommit={(executionQuality) => void commit({ executionQuality })}
+          />
         </Section>
         <Section title="Jev">
           <JevSettings jev={settings.jev} onCommit={(jev) => void commit({ jev })} />

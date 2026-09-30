@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { setImmediate as tick } from "node:timers/promises";
+import { isRecord } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ProjectScope } from "../checkpointHost.js";
 import {
@@ -10,7 +12,8 @@ import {
   sampleSourcesView,
 } from "../testing/research.js";
 import { ResearchToolError } from "./host.js";
-import { HttpResearchHost } from "./host.http.js";
+import { TurnResearch } from "./executor.js";
+import { HttpResearchHost, type HttpResearchHostOptions } from "./host.http.js";
 
 interface Seen {
   method: string;
@@ -42,7 +45,7 @@ const json = (response: ServerResponse, status: number, body: unknown) => {
 const PROJECT = "/api/projects/p%201/research";
 
 /** A loopback stand-in for Studio's research routes: `routes` is keyed by "METHOD /path-without-query". */
-async function studio(routes: Record<string, Route>) {
+async function studio(routes: Record<string, Route>, options: HttpResearchHostOptions = {}) {
   const seen: Seen[] = [];
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     let text = "";
@@ -56,7 +59,10 @@ async function studio(routes: Record<string, Route>) {
         body: text ? JSON.parse(text) : null,
       };
       seen.push(record);
-      const route = routes[`${record.method} ${url.split("?")[0]}`];
+      const route =
+        routes[
+          `${record.method} ${url.split("?")[0]?.replace(/\/requests\/[^/]+\/cancel$/, "/requests/:id/cancel")}`
+        ];
       if (route) route(record, response);
       else json(response, 404, { error: `no route ${record.method} ${url}` });
     });
@@ -75,7 +81,7 @@ async function studio(routes: Record<string, Route>) {
       server.closeAllConnections();
       server.close(() => resolve());
     });
-  return { host: new HttpResearchHost(scope), seen, close };
+  return { host: new HttpResearchHost(scope, options), seen, close };
 }
 
 const signal = () => new AbortController().signal;
@@ -166,8 +172,14 @@ describe("HttpResearchHost", () => {
       turnId: "t1",
       agent: "research",
       model: "p/m",
+      requestId: expect.any(String),
     });
-    expect(seen[4]?.body).toEqual({ missing: "m1", asset: "a.mp4", turnId: "t1" });
+    expect(seen[4]?.body).toEqual({
+      missing: "m1",
+      asset: "a.mp4",
+      turnId: "t1",
+      requestId: expect.any(String),
+    });
     // Nothing on the wire carries a policy mode.
     expect(JSON.stringify(seen.map((request) => request.body))).not.toContain('"mode"');
   });
@@ -224,24 +236,273 @@ describe("HttpResearchHost", () => {
     });
   });
 
-  it("stops waiting when the call is aborted, and never sends a request whose signal is already aborted", async () => {
+  it("never sends a request whose signal is already aborted", async () => {
+    const { host, seen } = await studio({});
+    const spent = new AbortController();
+    spent.abort();
+    await expect(host.sources(spent.signal)).rejects.toMatchObject({ code: "aborted" });
+    await expect(host.importAsset({ candidate: "c" }, spent.signal)).rejects.toMatchObject({
+      code: "aborted",
+    });
+    expect(seen).toEqual([]);
+  });
+
+  it("stops waiting for a read when the call is aborted", async () => {
     const received = Promise.withResolvers<void>();
-    const { host, seen } = await studio({
-      [`POST ${PROJECT}/import`]: () => {
+    const { host } = await studio({
+      [`GET ${PROJECT}/sources`]: () => {
         // Never answers: the request stays open until the caller gives up.
         received.resolve();
       },
     });
     const controller = new AbortController();
-    const pending = host.importAsset({ candidate: "c" }, controller.signal);
+    const pending = host.sources(controller.signal);
     await received.promise;
     controller.abort();
     await expect(pending).rejects.toMatchObject({ code: "aborted" });
+  });
+});
 
-    const before = seen.length;
-    const spent = new AbortController();
-    spent.abort();
-    await expect(host.sources(spent.signal)).rejects.toMatchObject({ code: "aborted" });
-    expect(seen.length).toBe(before);
+const CANCEL_ROUTE = `POST ${PROJECT}/requests/:id/cancel`;
+
+/** A write's body carries the request id its cancel will name. */
+function requestIdOf(request: Seen | undefined): string {
+  if (!request || !isRecord(request.body) || typeof request.body.requestId !== "string")
+    throw new Error("no request id");
+  return request.body.requestId;
+}
+
+/** Studio's cancel route, answering with `state` and telling the test the cancel arrived. */
+function cancelRoute(state: string) {
+  const arrived = Promise.withResolvers<void>();
+  const route: Route = (request, response) => {
+    json(response, 200, { requestId: request.path.split("/").at(-2), state });
+    arrived.resolve();
+  };
+  return { route, arrived: arrived.promise };
+}
+
+/** A route that keeps the request open until the test answers it. */
+function heldRoute() {
+  const held = Promise.withResolvers<ServerResponse>();
+  const route: Route = (_request, response) => held.resolve(response);
+  return { route, held: held.promise };
+}
+
+const importResult = {
+  asset: "assets/research/ocean-waves.mp4",
+  provenance: sampleProvenance(),
+  fetch: "network",
+  duplicate: null,
+  resolved: null,
+  resolveError: null,
+  warnings: [],
+};
+
+const cancelledAnswer = { error: { code: "cancelled", message: "cancelled before any write" } };
+
+describe("HttpResearchHost writes: a stopped import or resolution is cancelled, not dropped", () => {
+  it("sends a cancel that names the request, and keeps waiting for the server's answer before it settles", async () => {
+    const import_ = heldRoute();
+    const cancel = cancelRoute("cancelled");
+    const { host, seen } = await studio({
+      [`POST ${PROJECT}/import`]: import_.route,
+      [CANCEL_ROUTE]: cancel.route,
+    });
+    const controller = new AbortController();
+    let settled = false;
+    const outcome = host
+      .importAsset({ candidate: "c" }, controller.signal)
+      .then(
+        () => null,
+        (error: unknown) => error,
+      )
+      .finally(() => {
+        settled = true;
+      });
+    const answer = await import_.held;
+    controller.abort();
+    await cancel.arrived;
+    // The cancel was delivered, but the import has not answered: the turn must not see it settle yet.
+    await tick();
+    expect(settled).toBe(false);
+    expect(seen[1]?.path).toBe(`${PROJECT}/requests/${requestIdOf(seen[0])}/cancel`);
+
+    // Studio answers that it discarded the import before its commit.
+    json(answer, 409, cancelledAnswer);
+    await expect(outcome).resolves.toMatchObject({ code: "aborted" });
+  });
+
+  it("returns the result when the commit had already started: the write happened and is reported", async () => {
+    const import_ = heldRoute();
+    const cancel = cancelRoute("committed");
+    const { host } = await studio({
+      [`POST ${PROJECT}/import`]: import_.route,
+      [CANCEL_ROUTE]: cancel.route,
+    });
+    const controller = new AbortController();
+    const pending = host.importAsset({ candidate: "c" }, controller.signal);
+    const answer = await import_.held;
+    controller.abort();
+    await cancel.arrived;
+    json(answer, 200, importResult);
+    await expect(pending).resolves.toMatchObject({ asset: "assets/research/ocean-waves.mp4" });
+  });
+
+  it("gives up after the settle bound when the cancel was acknowledged: Studio promised never to write, and the connection is closed", async () => {
+    const import_ = heldRoute();
+    const { host } = await studio(
+      {
+        [`POST ${PROJECT}/import`]: import_.route,
+        [CANCEL_ROUTE]: cancelRoute("cancelled").route,
+      },
+      { settleMs: 40 },
+    );
+    const controller = new AbortController();
+    const pending = host.importAsset({ candidate: "c" }, controller.signal);
+    const answer = await import_.held;
+    const closed = Promise.withResolvers<void>();
+    answer.on("close", () => closed.resolve());
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: "aborted" });
+    await closed.promise;
+  });
+
+  it("fails with write_unsettled when nothing answers and a write could still land", async () => {
+    // Cancel acknowledged as committed, or no cancel route at all (Studio answers 404: the write's fate is unknown).
+    for (const cancel of [cancelRoute("committed").route, undefined]) {
+      const import_ = heldRoute();
+      const { host } = await studio(
+        {
+          [`POST ${PROJECT}/import`]: import_.route,
+          ...(cancel && { [CANCEL_ROUTE]: cancel }),
+        },
+        { settleMs: 40 },
+      );
+      const controller = new AbortController();
+      const pending = host.importAsset({ candidate: "c" }, controller.signal);
+      await import_.held;
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({
+        code: "write_unsettled",
+        message: expect.stringContaining("may still appear"),
+      });
+    }
+  });
+
+  it("cancels a call that times out the same way, and says it was cancelled", async () => {
+    const import_ = heldRoute();
+    const { host, seen } = await studio(
+      {
+        [`POST ${PROJECT}/import`]: import_.route,
+        [CANCEL_ROUTE]: (request, response) => {
+          json(response, 200, { requestId: request.path.split("/").at(-2), state: "cancelled" });
+          void import_.held.then((answer) => json(answer, 409, cancelledAnswer));
+        },
+      },
+      { timeoutsMs: { importAsset: 30 } },
+    );
+    await expect(host.importAsset({ candidate: "c" }, signal())).rejects.toMatchObject({
+      code: "studio_unavailable",
+      message: expect.stringContaining("was cancelled"),
+    });
+    expect(seen.map((request) => `${request.method} ${request.path.split("/").at(-1)}`)).toEqual([
+      "POST import",
+      "POST cancel",
+    ]);
+  });
+
+  it("does the same for a resolution", async () => {
+    const resolve = heldRoute();
+    const cancel = cancelRoute("cancelled");
+    const { host, seen } = await studio({
+      [`POST ${PROJECT}/resolve`]: resolve.route,
+      [CANCEL_ROUTE]: cancel.route,
+    });
+    const controller = new AbortController();
+    const pending = host.resolve({ missing: "m1", asset: "a.mp4" }, controller.signal);
+    const answer = await resolve.held;
+    controller.abort();
+    await cancel.arrived;
+    json(answer, 409, cancelledAnswer);
+    await expect(pending).rejects.toMatchObject({ code: "aborted" });
+    expect(seen[1]?.path).toBe(`${PROJECT}/requests/${requestIdOf(seen[0])}/cancel`);
+  });
+});
+
+describe("a stopped turn and its import over HTTP", () => {
+  function turnOver(host: HttpResearchHost, turnSignal: AbortSignal) {
+    return new TurnResearch({
+      host,
+      turnId: "turn-1",
+      turnSignal,
+      enabled: ["research"],
+      turn: { mode: "normal", action: null },
+      storyOptions: null,
+      model: () => null,
+    });
+  }
+
+  it("does not resolve shutdown() until Studio has answered the cancelled import, so its write cannot land after the checkpoint closes", async () => {
+    const import_ = heldRoute();
+    const cancel = cancelRoute("committed");
+    const { host } = await studio({
+      [`POST ${PROJECT}/import`]: import_.route,
+      [CANCEL_ROUTE]: cancel.route,
+    });
+    const stop = new AbortController();
+    const turn = turnOver(host, stop.signal);
+    const call = turn.execute(
+      "research",
+      "import_asset",
+      { candidate: "cand-1" },
+      new AbortController().signal,
+    );
+    const answer = await import_.held;
+
+    // The user stops the turn; the runner closes research before it ends the checkpoint transaction.
+    stop.abort();
+    let closed = false;
+    const closing = turn.shutdown().then((result) => {
+      closed = true;
+      return result;
+    });
+    await cancel.arrived;
+    await tick();
+    // The cancel reached Studio, which says the commit had started: the turn still waits for the write's answer.
+    expect(closed).toBe(false);
+
+    json(answer, 200, importResult);
+    await expect(closing).resolves.toEqual({ unsettledWrites: [] });
+    // The write happened inside the turn: the model is told about the asset rather than about a cancellation.
+    expect(await call).toMatchObject({ text: expect.stringContaining("Imported ") });
+  });
+
+  it("stops waiting after the bound and reports a write it could not settle", async () => {
+    const import_ = heldRoute();
+    const { host } = await studio(
+      {
+        [`POST ${PROJECT}/import`]: import_.route,
+        [CANCEL_ROUTE]: cancelRoute("committed").route,
+      },
+      { settleMs: 40 },
+    );
+    const stop = new AbortController();
+    const turn = turnOver(host, stop.signal);
+    const call = turn.execute(
+      "research",
+      "import_asset",
+      { candidate: "cand-1" },
+      new AbortController().signal,
+    );
+    await import_.held;
+    stop.abort();
+    const { unsettledWrites } = await turn.shutdown();
+    expect(unsettledWrites).toHaveLength(1);
+    expect(unsettledWrites[0]).toContain("import_asset");
+    expect(await call).toMatchObject({
+      isError: true,
+      text: expect.stringContaining("write_unsettled"),
+    });
   });
 });

@@ -6,6 +6,7 @@ import { mainThreadMessages, type ThreadId } from "../../agent/agentSelectors";
 import { AgentThread } from "./AgentThread";
 import { AssistantBlock, UserBubble } from "./Messages";
 import { PlanView } from "./PlanView";
+import { RenderQaCard } from "./RenderQaCard";
 import { TurnFooter } from "./TurnFooter";
 import { useAutoScroll } from "./useAutoScroll";
 
@@ -50,6 +51,7 @@ function MainThread({ chat }: { chat: ChatState }) {
                 <PlanView plan={turn.plan} live={turn.status === "running"} />
               )}
               <AssistantBlock message={message} />
+              {turn?.qa && turn.assistantMessageId === message.id && <RenderQaCard turn={turn} />}
               {turn && turn.status !== "running" && turn.assistantMessageId === message.id && (
                 <TurnFooter
                   turn={turn}

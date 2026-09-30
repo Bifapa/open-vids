@@ -265,6 +265,47 @@ export interface StudioApiAdapter {
     signal: AbortSignal;
     onProgress?: (message: string) => void;
   }): Promise<SpeakerDiarization | { unavailable: string }>;
+
+  /**
+   * Optional: the composition's layout at the given times, measured in headless Chrome (the QA service's layout
+   * check): text that overlaps, captions colliding with other content, content outside the frame. Audits the
+   * project's main composition as it is on disk. Resolves `{ unavailable }` when this machine cannot run it. Aborting
+   * the signal stops the browser.
+   */
+  checkLayout?(opts: {
+    project: ResolvedProject;
+    /** Seconds of the composition to audit. */
+    times: number[];
+    signal: AbortSignal;
+  }): Promise<LayoutCheckResult | { unavailable: string }>;
+}
+
+/** One finding of the layout audit, engine-neutral (the CLI's `check` layout issue codes). */
+export interface LayoutCheckFinding {
+  /** Audit code: `content_overlap`, `text_occluded`, `canvas_overflow`, `frame_out_of_frame`, … */
+  code: string;
+  severity: "error" | "warning" | "info";
+  /** Composition second of the sample that found it. */
+  time: number;
+  /** First and last sampled second it was seen at, when it held across samples. */
+  firstSeen?: number;
+  lastSeen?: number;
+  selector: string;
+  /** The other element (overlap, occlusion) or the box the element leaves. */
+  containerSelector?: string;
+  text?: string;
+  message: string;
+  fixHint?: string;
+  /** Project file the element lives in. */
+  sourceFile?: string;
+  /** The element's `data-*` attributes (`data-hf-id` names its clip). */
+  dataAttributes?: Record<string, string>;
+}
+
+export interface LayoutCheckResult {
+  findings: LayoutCheckFinding[];
+  /** The seconds that were audited. */
+  samples: number[];
 }
 
 /** Words with timestamps as a recognizer produced them, before OpenVids builds sentences from them. */

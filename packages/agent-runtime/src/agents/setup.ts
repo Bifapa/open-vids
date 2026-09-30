@@ -2,6 +2,7 @@ import {
   AGENT_DISPLAY_NAMES,
   SPECIALIST_IDS,
   effectiveSpecialistConfig,
+  resolveExecutionBudget,
   type AgentModelCatalog,
   type AgentSettings,
   type ChatSummary,
@@ -16,6 +17,7 @@ import { errorMessage } from "../errors.js";
 import type { JevRuntime, TurnAgentSetup } from "./orchestrator.js";
 import { jevInstructions } from "./roles.js";
 import { researchTeamLine } from "../research/prompt.js";
+import { executionTeamLine } from "../qa/prompt.js";
 
 const JEV_TEST_TIMEOUT_MS = 60_000;
 
@@ -48,8 +50,11 @@ export function resolveTurnSetup(input: {
   jevApiKey: string | null;
   catalog: AgentModelCatalog;
   editorContext?: EditorContext;
+  /** The runtime can render and check (an editing host and a QA host): the Director is told about Render QA. */
+  qaAvailable: boolean;
 }): TurnAgentSetup {
   const { chat, settings, catalog } = input;
+  const quality = chat.executionQuality ?? settings.executionQuality;
   const specialists: Record<SpecialistId, SpecialistConfig> = {
     editor: effectiveSpecialistConfig(chat, settings, "editor"),
     vision: effectiveSpecialistConfig(chat, settings, "vision"),
@@ -63,6 +68,8 @@ export function resolveTurnSetup(input: {
     jev: resolveJev(settings, input.jevApiKey, catalog),
     catalog,
     ...(input.editorContext && { editorContext: input.editorContext }),
+    execution: { preset: quality.preset, budget: resolveExecutionBudget(quality) },
+    qaAvailable: input.qaAvailable,
   };
 }
 
@@ -94,6 +101,12 @@ export function renderTeam(setup: TurnAgentSetup): string {
       );
   }
   lines.push(researchTeamLine(setup.enabled.includes("research"), setup.research));
+  lines.push(
+    executionTeamLine(setup.execution, {
+      qaAvailable: setup.qaAvailable,
+      visionEnabled: setup.enabled.includes("vision"),
+    }),
+  );
   lines.push(
     setup.jev
       ? `Jev fast worker: available (${describeModel(setup.jev.model)}).`

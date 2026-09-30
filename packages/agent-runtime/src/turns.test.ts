@@ -11,10 +11,10 @@ function deferred<T>() {
 }
 
 async function finishTurn(fixture: RuntimeFixture, chatId: string): Promise<void> {
-  await waitUntil(
-    () => fixture.chats.get(chatId)?.turns.some((turn) => turn.status !== "running") === true,
-    "turn completion",
-  );
+  await waitUntil(() => {
+    const last = fixture.chats.get(chatId)?.turns.at(-1);
+    return last !== undefined && last.status !== "running";
+  }, "turn completion");
 }
 
 describe("TurnRunner", () => {

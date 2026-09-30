@@ -3,13 +3,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
-import { AGENT_HEADERS, AGENT_PROTOCOL_VERSION, isRecord } from "@hyperframes/agent-protocol";
+import {
+  AGENT_HEADERS,
+  AGENT_PROTOCOL_VERSION,
+  EXECUTION_BUDGETS,
+  isRecord,
+} from "@hyperframes/agent-protocol";
 import { createRuntimeApp, type RuntimeApp } from "./server.js";
 import { AgentSettingsStore } from "./settings.js";
 import {
   FakeAnalysisHost,
   FakeCheckpointHost,
   FakeEditingHost,
+  FakeQaHost,
   FakeResearchHost,
   FakeStoryHost,
 } from "./testing/index.js";
@@ -34,6 +40,7 @@ describe("runtime HTTP server", () => {
       analysis: () => new FakeAnalysisHost(),
       story: () => new FakeStoryHost(),
       research: () => new FakeResearchHost(),
+      qa: () => new FakeQaHost(),
       settings: new AgentSettingsStore(join(root, "settings")),
       token: "runtime-secret",
     });
@@ -99,6 +106,7 @@ describe("runtime HTTP server", () => {
       analysis: () => new FakeAnalysisHost(),
       story: () => new FakeStoryHost(),
       research: () => new FakeResearchHost(),
+      qa: () => new FakeQaHost(),
       settings: new AgentSettingsStore(join(root, "settings")),
       token: "runtime-secret",
     });
@@ -171,6 +179,7 @@ describe("runtime HTTP server", () => {
       analysis: () => new FakeAnalysisHost(),
       story: () => new FakeStoryHost(),
       research: () => new FakeResearchHost(),
+      qa: () => new FakeQaHost(),
       settings: new AgentSettingsStore(settingsDir),
       token: "runtime-secret",
     });
@@ -244,6 +253,7 @@ describe("runtime HTTP server", () => {
         analysis: () => new FakeAnalysisHost(),
         story: () => new FakeStoryHost(),
         research: () => new FakeResearchHost(),
+        qa: () => new FakeQaHost(),
         settings: new AgentSettingsStore(join(root, "settings")),
         token: "runtime-secret",
       });
@@ -316,6 +326,107 @@ describe("runtime HTTP server", () => {
     } finally {
       await first.dispose().catch(() => undefined);
       await second?.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("round-trips Execution Quality: the global default, a chat's own choice through PATCH (null clears), validation and the turn's record", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openvids-agent-quality-"));
+    const projectDir = join(root, "project");
+    await mkdir(projectDir);
+    const headers = {
+      [AGENT_HEADERS.token]: "Bearer runtime-secret",
+      [AGENT_HEADERS.projectId]: "project-one",
+      [AGENT_HEADERS.projectDir]: projectDir,
+      [AGENT_HEADERS.studioOrigin]: "http://127.0.0.1:4173",
+    };
+    const app = createRuntimeApp({
+      backend: new ScriptedAgentBackend(),
+      checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
+      analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
+      research: () => new FakeResearchHost(),
+      qa: () => new FakeQaHost(),
+      settings: new AgentSettingsStore(join(root, "settings")),
+      token: "runtime-secret",
+    });
+    const call = (path: string, method = "GET", body?: unknown) =>
+      app.request(path, {
+        method,
+        headers: { ...headers, "content-type": "application/json" },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+      });
+    const runTurn = async (chatId: string, prompt: string) => {
+      const started = await responseObject(
+        await call(`/v1/chats/${chatId}/turns`, "POST", { prompt }),
+      );
+      const turnId = isRecord(started.turn) ? String(started.turn.id) : "";
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const state = await responseObject(await call(`/v1/chats/${chatId}`));
+        const turns = Array.isArray(state.turns) ? state.turns : [];
+        const turn = turns.find((entry) => isRecord(entry) && entry.id === turnId);
+        if (isRecord(turn) && turn.status !== "running") return turn;
+        // Polling a real HTTP surface backed by file I/O: there is no in-process event to await here.
+        await delay(5);
+      }
+      throw new Error("the turn did not end");
+    };
+    try {
+      expect(await responseObject(await call("/v1/settings"))).toMatchObject({
+        executionQuality: { preset: "balanced", custom: EXECUTION_BUDGETS.balanced },
+      });
+      const best = { preset: "best", custom: EXECUTION_BUDGETS.balanced };
+      expect(
+        await responseObject(await call("/v1/settings", "PATCH", { executionQuality: best })),
+      ).toMatchObject({ executionQuality: best });
+
+      const created = await responseObject(await call("/v1/chats", "POST", {}));
+      const chatId = String(created.id);
+      expect(created.executionQuality ?? null).toBeNull();
+      expect(await runTurn(chatId, "one")).toMatchObject({
+        execution: { preset: "best", budget: EXECUTION_BUDGETS.best },
+      });
+
+      const custom = {
+        preset: "custom",
+        custom: { ...EXECUTION_BUDGETS.fast, qaPasses: 3, specialistThinking: "thorough" },
+      };
+      expect(
+        await responseObject(
+          await call(`/v1/chats/${chatId}`, "PATCH", { executionQuality: custom }),
+        ),
+      ).toMatchObject({ executionQuality: custom });
+      expect(await runTurn(chatId, "two")).toMatchObject({
+        execution: { preset: "custom", budget: { qaPasses: 3, specialistThinking: "thorough" } },
+      });
+      expect(await responseObject(await call(`/v1/chats/${chatId}`))).toMatchObject({
+        chat: { executionQuality: custom },
+      });
+
+      for (const bad of [
+        { preset: "turbo", custom: EXECUTION_BUDGETS.fast },
+        { preset: "custom", custom: { ...EXECUTION_BUDGETS.fast, qaPasses: 9 } },
+        { preset: "custom" },
+        "fast",
+      ]) {
+        expect((await call(`/v1/chats/${chatId}`, "PATCH", { executionQuality: bad })).status).toBe(
+          400,
+        );
+      }
+      expect(
+        (await call("/v1/settings", "PATCH", { executionQuality: { preset: "x" } })).status,
+      ).toBe(400);
+
+      const cleared = await responseObject(
+        await call(`/v1/chats/${chatId}`, "PATCH", { executionQuality: null }),
+      );
+      expect(cleared.executionQuality).toBeNull();
+      expect(await runTurn(chatId, "three")).toMatchObject({
+        execution: { preset: "best", budget: EXECUTION_BUDGETS.best },
+      });
+    } finally {
+      await app.dispose();
       await rm(root, { recursive: true, force: true });
     }
   });

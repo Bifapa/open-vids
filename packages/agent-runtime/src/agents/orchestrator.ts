@@ -1,5 +1,6 @@
 import {
   AGENT_DISPLAY_NAMES,
+  applyThinkingPolicy,
   isAgentRunTerminal,
   type AgentId,
   type AgentModelCatalog,
@@ -8,7 +9,9 @@ import {
   type AssistantMessage,
   type AssistantMessageStatus,
   type EditorContext,
+  type ExecutionBudget,
   type ExecutionPlan,
+  type ExecutionQualityPreset,
   type ModelSelection,
   type PlanStepStatus,
   type SpecialistConfig,
@@ -50,6 +53,10 @@ export interface TurnAgentSetup {
   editorContext?: EditorContext;
   /** The user's Asset Search policy as the turn started (see research/prompt.ts); unset without a research host. */
   research?: ResearchTurnState;
+  /** The Execution Quality the turn runs with: the preset and the budget it resolved to (fixed for the turn). */
+  execution: { preset: ExecutionQualityPreset; budget: ExecutionBudget };
+  /** The runtime can run Render QA this turn (it has editing and QA hosts). */
+  qaAvailable: boolean;
 }
 
 export interface OrchestratorDeps {
@@ -72,6 +79,14 @@ export interface OrchestratorDeps {
   closeSpecialist: (agent: SpecialistId) => Promise<void>;
   /** How long an aborted run may take to stop before its session is force-closed. */
   stopGraceMs?: number;
+}
+
+/** How a run the runtime started itself ended: its status, the failure message and the model it ran on. */
+export interface RuntimeRunResult {
+  status: AgentRunStatus;
+  error: string | null;
+  /** `provider/modelId`. */
+  model: string | null;
 }
 
 interface RunRecord {
@@ -201,6 +216,42 @@ export class Orchestrator {
   }
 
   /**
+   * Runs a specialist task the runtime itself starts (the Vision review of a QA pass) to its end and returns how it
+   * ended. It is an ordinary run in the chat — its own thread, model and plan step — but the Director never has to
+   * collect it, so it cannot cause a follow-up prompt. The specialist's model and thinking follow the user's
+   * configuration and the turn's Execution Quality, like any delegated run.
+   */
+  async runInternal(input: {
+    agent: SpecialistId;
+    title: string;
+    task: string;
+  }): Promise<RuntimeRunResult> {
+    if (this.closed) throw new Error("This turn has ended; no new work can start.");
+    const { setup } = this.deps;
+    const routing = routeDelegation(input.agent, setup.specialists[input.agent], {}, setup.catalog);
+    if (!routing.ok) throw new Error(routing.message);
+    const record = await this.startRun({
+      agent: input.agent,
+      title: input.title,
+      task: input.task,
+      from: "director",
+      parentRunId: null,
+      parentMessageId: this.deps.directorMessageId,
+      model: routing.model,
+      thinking: applyThinkingPolicy(routing.thinking, setup.execution.budget.specialistThinking),
+      routed: false,
+      reported: true,
+    });
+    await record.done;
+    const { run } = record;
+    return {
+      status: run.status,
+      error: run.error?.message ?? null,
+      model: run.model ? `${run.model.provider}/${run.model.modelId}` : null,
+    };
+  }
+
+  /**
    * Ends all work of the turn before its checkpoint closes: unfinished runs are aborted, and a run that does not stop
    * within the grace period has its session force-closed and is recorded as aborted. `completed` says whether the
    * turn itself succeeded, which closes the automatic plan's final step.
@@ -282,7 +333,7 @@ export class Orchestrator {
       parentRunId: null,
       parentMessageId: this.deps.directorMessageId,
       model: routing.model,
-      thinking: routing.thinking,
+      thinking: applyThinkingPolicy(routing.thinking, setup.execution.budget.specialistThinking),
       routed: routing.routed,
     });
     const queued =
@@ -416,6 +467,8 @@ export class Orchestrator {
     model: ModelSelection | null;
     thinking: ThinkingEffort | null;
     routed: boolean;
+    /** The Director never has to collect this run (a run the runtime started itself). */
+    reported?: boolean;
   }): Promise<RunRecord> {
     const { chats, chatId, turn, now, ids } = this.deps;
     const startedAt = now();
@@ -466,7 +519,7 @@ export class Orchestrator {
       session: null,
       done: Promise.resolve(),
       report: null,
-      reported: false,
+      reported: input.reported ?? false,
       cancelled: false,
       finished: false,
     };
@@ -481,7 +534,7 @@ export class Orchestrator {
     // Research works under the user's Asset Search policy; it is stated with every task it gets.
     const text =
       input.agent === "research"
-        ? `${taskText}\n\n${renderResearchBlock(this.deps.setup.research)}`
+        ? `${taskText}\n\n${renderResearchBlock(this.deps.setup.research, this.deps.setup.execution.budget.researchCandidates)}`
         : taskText;
 
     // Queue the run before the first await, so concurrent delegations to one specialist line up in call order.

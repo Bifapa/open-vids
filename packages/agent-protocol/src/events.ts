@@ -12,6 +12,7 @@ import type {
   TurnCheckpoint,
   TurnSummary,
 } from "./types.js";
+import type { TurnQaState } from "./qa.js";
 
 /**
  * Product-level chat events. They describe what happened in the conversation,
@@ -45,6 +46,8 @@ export type ChatEventPayload =
   | { type: "checkpoint.updated"; turnId: string; checkpoint: TurnCheckpoint }
   /** The Director published or revised the turn's compact plan. */
   | { type: "plan.updated"; turnId: string; plan: ExecutionPlan }
+  /** The turn's autonomous render QA progressed (a pass started a phase, finished, or the session ended). */
+  | { type: "qa.updated"; turnId: string; qa: TurnQaState }
   /**
    * A delegated run began: its task message and empty reply open the agent's thread, and a delegation part is added
    * to `parentMessageId` (the Director's reply, or the specialist reply that called Jev).

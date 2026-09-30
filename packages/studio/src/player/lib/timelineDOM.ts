@@ -12,6 +12,10 @@ import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip, IframeWindow, TimelineLike } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
+import {
+  readPreviewMediaSrc,
+  STUDIO_PREVIEW_DETACHED_SRC_ATTR,
+} from "@hyperframes/core/studio-preview-mark";
 import { groupInfoFor } from "./timelineGroupInfo";
 import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
 import {
@@ -135,7 +139,7 @@ export function createTimelineElementFromManifestClip(params: {
   if (hostEl) {
     applyMediaMetadataFromElement(entry, hostEl);
     if (!entry.src) {
-      const rawSrc = hostEl.getAttribute("src");
+      const rawSrc = readPreviewMediaSrc(hostEl);
       if (rawSrc) entry.src = new URL(rawSrc, hostEl.baseURI).href;
     }
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
@@ -175,9 +179,11 @@ export function createTimelineElementFromManifestClip(params: {
     if (resolvedSrc) {
       entry.compositionSrc = resolvedSrc;
     } else if (hostEl) {
-      const innerVideo = hostEl.querySelector("video[src]");
+      const innerVideo = hostEl.querySelector(
+        `video[src], video[${STUDIO_PREVIEW_DETACHED_SRC_ATTR}]`,
+      );
       if (innerVideo) {
-        entry.src = innerVideo.getAttribute("src") || undefined;
+        entry.src = readPreviewMediaSrc(innerVideo) || undefined;
         entry.tag = "video";
       }
     }
@@ -337,9 +343,11 @@ export function parseTimelineFromDOM(
       entry.compositionSrc = compSrc;
     } else if (compId && compId !== rootComp?.getAttribute("data-composition-id")) {
       // Inline composition — expose inner video or image for thumbnails
-      const innerMedia = el.querySelector("video[src], img[src]");
+      const innerMedia = el.querySelector(
+        `video[src], video[${STUDIO_PREVIEW_DETACHED_SRC_ATTR}], img[src]`,
+      );
       if (innerMedia) {
-        entry.src = innerMedia.getAttribute("src") || undefined;
+        entry.src = readPreviewMediaSrc(innerMedia) || undefined;
         entry.tag = innerMedia.tagName === "IMG" ? "img" : "video";
       }
     }

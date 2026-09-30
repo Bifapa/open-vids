@@ -47,6 +47,11 @@ export interface TurnAnalysisOptions {
   turnSignal: AbortSignal;
   /** How often a running job is polled (default 750 ms). */
   pollMs?: number;
+  /**
+   * Most distinct frames `inspect_frames` may extract per source in this turn (the turn's Execution Quality
+   * `analysisFramesPerSource`); absent = no cap.
+   */
+  framesPerSource?: number;
   /** The running agent turn: stamped on the clips of a rough cut. */
   turnId?: string;
 }
@@ -124,6 +129,8 @@ export class TurnAnalysis {
   private readonly stop = new AbortController();
   private readonly inflight = new Set<Promise<unknown>>();
   private readonly planRanges = new Map<string, number>();
+  /** The distinct frame times `inspect_frames` has extracted this turn, per source. */
+  private readonly inspectedFrames = new Map<string, Set<number>>();
 
   constructor(private readonly options: TurnAnalysisOptions) {}
 
@@ -208,7 +215,20 @@ export class TurnAnalysis {
       }
       case ANALYSIS_TOOL_NAMES.frames: {
         const request = checked(parseFramesRequest(withoutNulls(args)));
+        const cap = this.options.framesPerSource;
+        const seen = this.inspectedFrames.get(request.source) ?? new Set<number>();
+        if (cap !== undefined) {
+          const fresh = new Set(request.times.filter((time) => !seen.has(time)));
+          if (seen.size + fresh.size > cap) {
+            const left = Math.max(0, cap - seen.size);
+            return refuse(
+              `Frame budget of ${request.source} reached: ${seen.size} of ${cap} frames were already inspected in this turn (the turn's Execution Quality budget) and this call would add ${fresh.size}. ${left > 0 ? `Ask for at most ${left} new ${left === 1 ? "frame" : "frames"}` : "Work from the frames you already saw, the vision notes and the analysis"}; frames at times you already inspected cost nothing.`,
+            );
+          }
+        }
         const { frames } = await host.frames(request, signal);
+        for (const time of request.times) seen.add(time);
+        this.inspectedFrames.set(request.source, seen);
         return {
           text: formatFrames(request.source, frames),
           images: frames.map((frame) => ({ mimeType: frame.mimeType, data: frame.data })),

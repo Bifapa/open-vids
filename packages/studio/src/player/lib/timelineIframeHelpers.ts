@@ -14,6 +14,10 @@ import type { TimelineElement } from "../store/playerStore";
 import type { IframeWindow } from "./playbackTypes";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import {
+  readPreviewMediaSrc,
+  STUDIO_PREVIEW_DETACHED_SRC_ATTR,
+} from "@hyperframes/core/studio-preview-mark";
+import {
   getTimelineElementSelector,
   getTimelineElementSourceFile,
   getTimelineElementSelectorIndex,
@@ -400,9 +404,11 @@ function attachCompositionSource(
   compositionSrc: string | null,
 ): TimelineElement {
   if (compositionSrc) return { ...entry, compositionSrc };
-  const innerVideo = element.querySelector("video[src]");
+  const innerVideo = element.querySelector(
+    `video[src], video[${STUDIO_PREVIEW_DETACHED_SRC_ATTR}]`,
+  );
   if (!innerVideo) return entry;
-  return { ...entry, src: optionalNonEmpty(innerVideo.getAttribute("src")), tag: "video" };
+  return { ...entry, src: optionalNonEmpty(readPreviewMediaSrc(innerVideo)), tag: "video" };
 }
 
 function buildMissingCompositionEntry(params: {
@@ -464,8 +470,8 @@ function buildMissingCompositionEntry(params: {
     selectorIndex,
     sourceFile,
     zIndex: readTimelineElementZIndex(element),
-    src: optionalNonEmpty(element.getAttribute("src"))
-      ? new URL(element.getAttribute("src")!, element.baseURI).href
+    src: optionalNonEmpty(readPreviewMediaSrc(element))
+      ? new URL(readPreviewMediaSrc(element)!, element.baseURI).href
       : undefined,
   };
   return attachCompositionSource(entry, element, compositionSrc);

@@ -1,4 +1,5 @@
 import { vi, type Mock } from "vitest";
+import { DEFAULT_EXECUTION_QUALITY, qaCounts } from "@hyperframes/agent-protocol";
 import type {
   ActiveTurnInfo,
   AgentRun,
@@ -12,12 +13,15 @@ import type {
   ListChatsResponse,
   AgentModelCatalog,
   RevertTurnResponse,
+  QaIssue,
+  QaPassState,
+  QaReport,
   SpecialistDefaults,
   TaskMessage,
   TestJevResponse,
   TurnSummary,
 } from "@hyperframes/agent-protocol";
-import type { AgentClient } from "./agentClient";
+import { AgentApiError, type AgentClient } from "./agentClient";
 import type { EventSourceLike } from "./agentStream";
 
 /** A scriptable `EventSource`: tests decide when it opens, what it says and when it fails. */
@@ -197,6 +201,81 @@ export function runningChatState(assistant: Partial<AssistantMessage> = {}) {
   });
 }
 
+// ── Render QA fixtures ───────────────────────────────────────────────────────
+
+export function qaIssue(overrides: Partial<QaIssue> = {}): QaIssue {
+  return {
+    id: "p1-1",
+    kind: "black_frames",
+    severity: "error",
+    source: "render",
+    check: "blackdetect",
+    start: 12.3,
+    end: 13.1,
+    clipIds: [],
+    subject: null,
+    message: "The picture is black for 0.8 s.",
+    fixable: true,
+    owner: "editor",
+    suggestion: null,
+    status: "new",
+    firstSeenPass: 1,
+    ...overrides,
+  };
+}
+
+/** A stored pass; `counts` follow its issues. */
+export function qaReport(overrides: Partial<QaReport> = {}): QaReport {
+  const issues = overrides.issues ?? [qaIssue()];
+  const resolved = overrides.resolved ?? [];
+  return {
+    id: "qa-1",
+    schemaVersion: 1,
+    createdAt: 7000,
+    sessionId: "t1",
+    turnId: "t1",
+    chatId: "c1",
+    pass: 1,
+    passLimit: 2,
+    preset: "balanced",
+    composition: "index.html",
+    fingerprint: "fp-1",
+    timelineVersion: "tv-1",
+    render: {
+      path: "renders/qa-t1-1.mp4",
+      duration: 30,
+      width: 1920,
+      height: 1080,
+      hasAudio: true,
+      quality: "draft",
+    },
+    renderError: null,
+    checks: [],
+    vision: { status: "ran", reason: null, frames: 12, rounds: 1, model: "anthropic/sonnet" },
+    previousReportId: null,
+    current: true,
+    ...overrides,
+    issues,
+    resolved,
+    counts: qaCounts(issues, resolved),
+  };
+}
+
+export function qaPass(overrides: Partial<QaPassState> = {}): QaPassState {
+  return {
+    pass: 1,
+    phase: "done",
+    reportId: "qa-1",
+    renderPath: "renders/qa-t1-1.mp4",
+    counts: null,
+    vision: "ran",
+    error: null,
+    startedAt: 6000,
+    endedAt: 7000,
+    ...overrides,
+  };
+}
+
 export function chatEvent(seq: number, payload: ChatEventPayload, chatId = "c1"): ChatEvent {
   return { ...payload, seq, chatId, ts: 5000 + seq };
 }
@@ -213,6 +292,8 @@ export interface FakeClientData {
   chat?: ChatState;
   revert?: RevertTurnResponse;
   settings?: AgentSettings;
+  /** Stored QA reports by id; an unknown id answers 404. */
+  qaReports?: Record<string, QaReport>;
 }
 
 export const EMPTY_LIST: ListChatsResponse = { chats: [], activeTurn: null };
@@ -252,6 +333,7 @@ export const SETTINGS: AgentSettings = {
     credentials: "provider-login",
     apiKeyConfigured: false,
   },
+  executionQuality: DEFAULT_EXECUTION_QUALITY,
 };
 
 export function createFakeClient(data: FakeClientData = {}): FakeClient {
@@ -268,6 +350,9 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
       ...(request.thinking !== undefined ? { thinking: request.thinking } : {}),
       ...(request.enabledAgents !== undefined ? { enabledAgents: request.enabledAgents } : {}),
       ...(request.activeMode !== undefined ? { activeMode: request.activeMode } : {}),
+      ...(request.executionQuality !== undefined
+        ? { executionQuality: request.executionQuality }
+        : {}),
     })),
     startTurn: vi.fn(async () => ({ turn: turn() })),
     steerTurn: vi.fn(async () => ({ messageId: "m9" })),
@@ -281,6 +366,14 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
     testJev: vi.fn(async (): Promise<TestJevResponse> => ({ ok: false, message: "Jev is off." })),
     listProviders: vi.fn(async () => ({ providers: [] })),
     listProviderModels: vi.fn(async () => ({ models: [] })),
+    getQaReport: vi.fn(async (reportId) => {
+      const report = data.qaReports?.[reportId];
+      if (!report) throw new AgentApiError("internal", "report not found", 404);
+      return report;
+    }),
+    renderFileUrl: vi.fn(
+      (renderPath) => `/api/projects/p1/renders/file/${renderPath.replace(/^renders\//, "")}`,
+    ),
   };
   return client;
 }

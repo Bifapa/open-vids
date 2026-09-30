@@ -1,3 +1,4 @@
+import { readPreviewMediaSrc } from "@hyperframes/core/studio-preview-mark";
 import { useEffect, useState } from "react";
 import { Check, ClipboardList, Film, Music, Scissors } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
@@ -72,7 +73,7 @@ export function MediaSection({
     0;
   const mediaStartMax = Math.max(30, Math.ceil(sourceDuration || mediaStart + 10));
 
-  const srcAttr = el.getAttribute("src") ?? "";
+  const srcAttr = readPreviewMediaSrc(el) ?? "";
   const [copied, setCopied] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeProgress, setRemoveProgress] = useState<BackgroundRemovalProgress | null>(null);

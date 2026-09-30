@@ -37,6 +37,8 @@ export {
 export type {
   StudioApiAdapter,
   SpeechTranscription,
+  LayoutCheckFinding,
+  LayoutCheckResult,
   SpeakerDiarization,
   ResolvedProject,
   RenderJobState,

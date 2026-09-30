@@ -6,6 +6,7 @@ import { HttpAnalysisHost } from "./analysis/host.http.js";
 import { HttpEditingHost } from "./editing/host.http.js";
 import { HttpStoryHost } from "./story/host.http.js";
 import { HttpResearchHost } from "./research/host.http.js";
+import { HttpQaHost } from "./qa/host.http.js";
 import { createRuntimeApp } from "./server.js";
 import { AgentSettingsStore } from "./settings.js";
 
@@ -20,6 +21,7 @@ const app = createRuntimeApp({
   analysis: (scope) => new HttpAnalysisHost(scope),
   story: (scope) => new HttpStoryHost(scope),
   research: (scope) => new HttpResearchHost(scope),
+  qa: (scope) => new HttpQaHost(scope),
   settings: new AgentSettingsStore(),
   token,
 });

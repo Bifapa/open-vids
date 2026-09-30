@@ -10,6 +10,7 @@ import {
   type PlanStep,
   type TurnSummary,
 } from "./types.js";
+import type { TurnQaState } from "./qa.js";
 
 /** A chat before its first event: the state `chat.created` is folded into. */
 export function emptyChatState(chat: ChatSummary): ChatState {
@@ -49,7 +50,7 @@ function upsertPart(parts: AssistantPart[], part: AssistantPart): AssistantPart[
 /**
  * Replaces a turn by id. Terminal turn events do not repeat the plan, so a known plan is kept; once the turn has
  * ended no step can still be running or pending: a completed turn finished its running steps and skipped the rest,
- * any other end skipped both.
+ * any other end skipped both. The same holds for render QA: a session still running when the turn ended was stopped.
  */
 function upsertTurn(turns: TurnSummary[], turn: TurnSummary): TurnSummary[] {
   const index = turns.findIndex((existing) => existing.id === turn.id);
@@ -67,9 +68,24 @@ function upsertTurn(turns: TurnSummary[], turn: TurnSummary): TurnSummary[] {
           }),
         }
       : known;
+  const knownQa = turn.qa ?? turns[index]?.qa;
+  const qa = knownQa && turn.status !== "running" ? settleQa(knownQa) : knownQa;
   const next = turns.slice();
-  next[index] = plan ? { ...turn, plan } : turn;
+  next[index] = { ...turn, ...(plan && { plan }), ...(qa && { qa }) };
   return next;
+}
+
+function settleQa(qa: TurnQaState): TurnQaState {
+  if (qa.status !== "running") return qa;
+  return {
+    ...qa,
+    status: "aborted",
+    passes: qa.passes.map((pass) =>
+      pass.phase === "done" || pass.phase === "corrected" || pass.phase === "failed"
+        ? pass
+        : { ...pass, phase: "aborted" },
+    ),
+  };
 }
 
 function upsertRun(runs: AgentRun[], run: AgentRun): AgentRun[] {
@@ -205,6 +221,13 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
     case "plan.updated": {
       const turns = state.turns.map((turn) =>
         turn.id === event.turnId ? { ...turn, plan: event.plan } : turn,
+      );
+      return { ...base, turns };
+    }
+
+    case "qa.updated": {
+      const turns = state.turns.map((turn) =>
+        turn.id === event.turnId ? { ...turn, qa: event.qa } : turn,
       );
       return { ...base, turns };
     }

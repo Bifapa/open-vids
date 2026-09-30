@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import {
   isAssetSearchPolicy,
   isAssetSearchResult,
+  isCancelResearchRequestResult,
   isExportLicenseCheck,
   isImportAssetResult,
   isInspectUrlResult,
@@ -11,6 +13,7 @@ import {
   type AssetSearchPolicy,
   type AssetSearchRequest,
   type AssetSearchResult,
+  type CancelRequestState,
   type ExportLicenseCheck,
   type ImportAssetRequest,
   type ImportAssetResult,
@@ -35,6 +38,22 @@ export const RESEARCH_TIMEOUTS_MS = {
   importAsset: 15 * 60_000,
 } as const;
 
+/**
+ * After a write is cancelled (the turn was stopped, or the call timed out) the host keeps waiting this long for the
+ * server's answer. The server checks the cancel right before it commits, so the answer normally comes at once; the
+ * long part of an import (download, conversion) is abandoned as soon as the cancel arrives.
+ */
+export const WRITE_SETTLE_MS = 30_000;
+/** How long the cancel request itself may take. */
+const CANCEL_TIMEOUT_MS = 10_000;
+
+export interface HttpResearchHostOptions {
+  /** Overrides {@link RESEARCH_TIMEOUTS_MS}. */
+  timeoutsMs?: Partial<Record<keyof typeof RESEARCH_TIMEOUTS_MS, number>>;
+  /** Overrides {@link WRITE_SETTLE_MS}. */
+  settleMs?: number;
+}
+
 interface RequestOptions {
   body?: unknown;
   signal: AbortSignal;
@@ -43,20 +62,34 @@ interface RequestOptions {
   onTimeout: string;
 }
 
+/** What the server answered, before it is read as a success or a failure. */
+interface Exchange {
+  ok: boolean;
+  status: number;
+  payload: unknown;
+}
+
+/** The outcome of a request on the wire; never rejects, so a write's answer can be awaited after the caller left. */
+type Outcome = { exchange: Exchange } | { error: unknown };
+
 /** Studio's research HTTP API for one project (and the user's global Asset Search policy). */
 export class HttpResearchHost implements ResearchHost {
   private readonly global: string;
   private readonly project: string;
+  private readonly timeoutsMs: Record<keyof typeof RESEARCH_TIMEOUTS_MS, number>;
+  private readonly settleMs: number;
 
-  constructor(scope: ProjectScope) {
+  constructor(scope: ProjectScope, options: HttpResearchHostOptions = {}) {
     this.global = `${scope.studioOrigin}/api/research`;
     this.project = `${scope.studioOrigin}/api/projects/${encodeURIComponent(scope.projectId)}/research`;
+    this.timeoutsMs = { ...RESEARCH_TIMEOUTS_MS, ...options.timeoutsMs };
+    this.settleMs = options.settleMs ?? WRITE_SETTLE_MS;
   }
 
   async policy(signal: AbortSignal): Promise<AssetSearchPolicy> {
     const payload = await this.request("GET", `${this.global}/policy`, {
       signal,
-      timeoutMs: RESEARCH_TIMEOUTS_MS.read,
+      timeoutMs: this.timeoutsMs.read,
       onTimeout: "Studio did not answer in time.",
     });
     if (!isAssetSearchPolicy(payload)) throw invalidResponse("Asset Search policy");
@@ -67,7 +100,7 @@ export class HttpResearchHost implements ResearchHost {
     const payload = await this.request("POST", `${this.project}/search`, {
       body: request,
       signal,
-      timeoutMs: RESEARCH_TIMEOUTS_MS.search,
+      timeoutMs: this.timeoutsMs.search,
       onTimeout: "The search did not finish in time; try fewer sources or a narrower query.",
     });
     if (!isAssetSearchResult(payload)) throw invalidResponse("search result");
@@ -78,7 +111,7 @@ export class HttpResearchHost implements ResearchHost {
     const payload = await this.request("POST", `${this.project}/inspect`, {
       body: request,
       signal,
-      timeoutMs: RESEARCH_TIMEOUTS_MS.inspect,
+      timeoutMs: this.timeoutsMs.inspect,
       onTimeout: "The page did not answer in time.",
     });
     if (!isInspectUrlResult(payload)) throw invalidResponse("page inspection result");
@@ -86,12 +119,11 @@ export class HttpResearchHost implements ResearchHost {
   }
 
   async importAsset(request: ImportAssetRequest, signal: AbortSignal): Promise<ImportAssetResult> {
-    const payload = await this.request("POST", `${this.project}/import`, {
-      body: request,
+    const payload = await this.write("import", request, {
       signal,
-      timeoutMs: RESEARCH_TIMEOUTS_MS.importAsset,
+      timeoutMs: this.timeoutsMs.importAsset,
       onTimeout:
-        "The import did not finish in time; read_sources shows whether the asset reached the project.",
+        "The import did not finish in time and was cancelled; read_sources shows whether the asset reached the project.",
     });
     if (!isImportAssetResult(payload)) throw invalidResponse("import result");
     return payload;
@@ -101,11 +133,11 @@ export class HttpResearchHost implements ResearchHost {
     request: ResolveMissingRequest,
     signal: AbortSignal,
   ): Promise<ResolveMissingResult> {
-    const payload = await this.request("POST", `${this.project}/resolve`, {
-      body: request,
+    const payload = await this.write("resolve", request, {
       signal,
-      timeoutMs: RESEARCH_TIMEOUTS_MS.resolve,
-      onTimeout: "Studio did not answer in time; read_story shows whether the node was resolved.",
+      timeoutMs: this.timeoutsMs.resolve,
+      onTimeout:
+        "Studio did not answer in time and the resolution was cancelled; read_story shows whether the node was resolved.",
     });
     if (!isResolveMissingResult(payload)) throw invalidResponse("resolution result");
     return payload;
@@ -114,7 +146,7 @@ export class HttpResearchHost implements ResearchHost {
   async sources(signal: AbortSignal): Promise<ProjectSourcesView> {
     const payload = await this.request("GET", `${this.project}/sources`, {
       signal,
-      timeoutMs: RESEARCH_TIMEOUTS_MS.read,
+      timeoutMs: this.timeoutsMs.read,
       onTimeout: "Studio did not answer in time.",
     });
     if (!isProjectSourcesView(payload)) throw invalidResponse("sources view");
@@ -125,12 +157,13 @@ export class HttpResearchHost implements ResearchHost {
     const payload = await this.request(
       "GET",
       `${this.project}/export-check?composition=${encodeURIComponent(composition)}`,
-      { signal, timeoutMs: RESEARCH_TIMEOUTS_MS.read, onTimeout: "Studio did not answer in time." },
+      { signal, timeoutMs: this.timeoutsMs.read, onTimeout: "Studio did not answer in time." },
     );
     if (!isExportLicenseCheck(payload)) throw invalidResponse("export license check");
     return payload;
   }
 
+  /** A read: abandoned (the connection closed) as soon as the caller's signal aborts or the call times out. */
   private async request(
     method: "GET" | "POST",
     url: string,
@@ -138,37 +171,149 @@ export class HttpResearchHost implements ResearchHost {
   ): Promise<unknown> {
     if (signal.aborted) throw aborted();
     const timeout = AbortSignal.timeout(timeoutMs);
-    const combined = AbortSignal.any([signal, timeout]);
-    let response: Response;
+    const outcome = await this.exchange(method, url, body, AbortSignal.any([signal, timeout]));
+    if ("error" in outcome) throw transportError(outcome.error, signal, timeout, onTimeout);
+    return payloadOf(outcome.exchange);
+  }
+
+  /**
+   * An import or a resolution: it writes project files, so stopping it must not end with a write landing after the
+   * turn's checkpoint closed. The call carries a fresh request id; when the caller's signal aborts (the turn was
+   * stopped) or the call times out, the host sends an explicit cancel and keeps waiting for the original request's
+   * answer instead of dropping the connection:
+   *
+   * - the server checks a cancel right before it commits, so it answers `cancelled` (nothing written) or, when the
+   *   commit had started, the normal result — which is then returned, because that write happened;
+   * - if the answer does not come within `settleMs`: when the cancel was acknowledged as `cancelled` the server has
+   *   promised never to write, so the host gives up safely; otherwise a write may still land, and the host fails with
+   *   `write_unsettled` so the turn reports it instead of pretending the checkpoint is clean. Waiting longer is not
+   *   safer: the commit itself is synchronous on the server, so an answer this late means Studio is stuck *after* its
+   *   write, and a stuck Studio must not hold the turn (and the user's Stop) forever.
+   */
+  private async write(
+    path: "import" | "resolve",
+    request: ImportAssetRequest | ResolveMissingRequest,
+    { signal, timeoutMs, onTimeout }: Omit<RequestOptions, "body">,
+  ): Promise<unknown> {
+    if (signal.aborted) throw aborted();
+    const requestId = randomUUID();
+    const timeout = AbortSignal.timeout(timeoutMs);
+    // The connection stays open after the caller is gone; only the host closes it, once the outcome is settled.
+    const wire = new AbortController();
+    const answer = this.exchange(
+      "POST",
+      `${this.project}/${path}`,
+      { ...request, requestId },
+      wire.signal,
+    );
+    const stopped = Promise.withResolvers<"stopped">();
+    const onStop = () => stopped.resolve("stopped");
+    signal.addEventListener("abort", onStop, { once: true });
+    timeout.addEventListener("abort", onStop, { once: true });
     try {
-      response = await fetch(url, {
+      const first = await Promise.race([answer, stopped.promise]);
+      if (first !== "stopped") return this.answered(first, signal, timeout, onTimeout);
+
+      const state = await this.cancel(requestId);
+      const late = await waitFor(answer, this.settleMs);
+      if (late !== "waiting") return this.answered(late, signal, timeout, onTimeout);
+      if (state === "cancelled") throw transportError(null, signal, timeout, onTimeout);
+      throw new ResearchToolError(
+        "write_unsettled",
+        `The ${path} was cancelled but Studio did not say whether it wrote anything` +
+          ` (cancel answered ${state ?? "nothing"}); the asset may still appear in the project.`,
+      );
+    } finally {
+      signal.removeEventListener("abort", onStop);
+      timeout.removeEventListener("abort", onStop);
+      wire.abort();
+    }
+  }
+
+  /** The server's final answer to a write. A `cancelled` answer means the stop reached it before its commit. */
+  private answered(
+    outcome: Outcome,
+    signal: AbortSignal,
+    timeout: AbortSignal,
+    onTimeout: string,
+  ): unknown {
+    if ("error" in outcome) throw transportError(outcome.error, signal, timeout, onTimeout);
+    try {
+      return payloadOf(outcome.exchange);
+    } catch (error) {
+      if (error instanceof ResearchToolError && error.code === "cancelled") {
+        throw transportError(error, signal, timeout, onTimeout);
+      }
+      throw error;
+    }
+  }
+
+  /** Asks Studio to cancel a write; `null` when Studio could not be asked (the write's fate is then unknown). */
+  private async cancel(requestId: string): Promise<CancelRequestState | null> {
+    const outcome = await this.exchange(
+      "POST",
+      `${this.project}/requests/${encodeURIComponent(requestId)}/cancel`,
+      undefined,
+      AbortSignal.timeout(CANCEL_TIMEOUT_MS),
+    );
+    if ("error" in outcome || !outcome.exchange.ok) return null;
+    const { payload } = outcome.exchange;
+    return isCancelResearchRequestResult(payload) ? payload.state : null;
+  }
+
+  private async exchange(
+    method: "GET" | "POST",
+    url: string,
+    body: unknown,
+    signal: AbortSignal,
+  ): Promise<Outcome> {
+    try {
+      const response = await fetch(url, {
         method,
-        signal: combined,
+        signal,
         ...(body !== undefined && {
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         }),
       });
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        // The body may still be streaming when the call is cancelled or times out.
+        if (signal.aborted) throw error;
+        payload = null;
+      }
+      return { exchange: { ok: response.ok, status: response.status, payload } };
     } catch (error) {
-      throw transportError(error, signal, timeout, onTimeout);
+      return { error };
     }
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch (error) {
-      // The body may still be streaming when the call is cancelled or times out.
-      if (combined.aborted) throw transportError(error, signal, timeout, onTimeout);
-      payload = null;
-    }
-    if (response.ok) return payload;
-    const failure = isRecord(payload) ? payload.error : undefined;
-    if (isResearchError(failure)) throw new ResearchToolError(failure.code, failure.message);
-    throw new ResearchToolError(
-      "studio_unavailable",
-      typeof failure === "string"
-        ? failure
-        : `Studio's research service failed the request (${response.status}).`,
-    );
+  }
+}
+
+/** The payload of a successful answer; a failure becomes a {@link ResearchToolError} with the service's code. */
+function payloadOf({ ok, status, payload }: Exchange): unknown {
+  if (ok) return payload;
+  const failure = isRecord(payload) ? payload.error : undefined;
+  if (isResearchError(failure)) throw new ResearchToolError(failure.code, failure.message);
+  throw new ResearchToolError(
+    "studio_unavailable",
+    typeof failure === "string"
+      ? failure
+      : `Studio's research service failed the request (${status}).`,
+  );
+}
+
+/** `promise`'s outcome, or "waiting" once `ms` have passed. */
+async function waitFor<T>(promise: Promise<T>, ms: number): Promise<T | "waiting"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const elapsed = new Promise<"waiting">((resolve) => {
+    timer = setTimeout(() => resolve("waiting"), ms);
+  });
+  try {
+    return await Promise.race([promise, elapsed]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

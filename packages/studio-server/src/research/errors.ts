@@ -31,6 +31,7 @@ export function researchStatus(
     case "no_story":
       return 404;
     case "conflict":
+    case "cancelled":
     case "locked":
       return 409;
     case "unavailable":

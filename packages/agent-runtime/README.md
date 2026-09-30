@@ -45,7 +45,8 @@ Global (per-user) agent settings — Director defaults, per-specialist defaults,
 `OPENVIDS_AGENT_SETTINGS_DIR` (default `~/.openvids/agent`): `settings.json` and
 `jev-credentials.json`, both mode 0600. The Jev API key is never returned by the API
 (`apiKeyConfigured` only) and is handed to one ephemeral backend session at a time, in a private
-in-memory credential store, so it never replaces the credentials other agents use.
+in-memory credential store, so it never replaces the credentials other agents use. The global Execution Quality default
+(see Render QA and Execution Quality) is part of `settings.json`.
 
 ## Multi-agent orchestration
 
@@ -241,12 +242,84 @@ never from model-supplied text.
 - **Export licenses.** After a successful `render_video`, `TurnEditing` calls `export-check` for the composition and appends
   the license warnings and credits to the tool result; the check never blocks, and a failed check is only noted.
 - **Lifecycle.** Like the other executors, research calls go to a per-turn `TurnResearch` (refused when no turn is running
-  or it is finalizing); `TurnRunner.finalize` aborts in-flight HTTP and awaits every started import/resolution (they
-  write project files) before the checkpoint closes, so a turn's asset, provenance record and Story resolution are one
-  revertable unit. The download cache sits outside history, so re-importing after a revert does not hit the network.
-  Imports may take long (download + transcode): the HTTP host waits up to 15 minutes, honoring the turn's abort signal.
+  or it is finalizing); `TurnRunner.finalize` awaits every started import/resolution (they write project files) before the
+  checkpoint closes, so a turn's asset, provenance record and Story resolution are one revertable unit. The download
+  cache sits outside history, so re-importing after a revert does not hit the network. Imports may take long (download +
+  transcode): the HTTP host waits up to 15 minutes.
+- **Stop during a write.** Every import/resolve carries a runtime-generated `requestId`. On abort (Stop, finalize) or
+  timeout the host does not drop the connection: it sends `POST …/research/requests/:requestId/cancel` and keeps
+  awaiting the original answer for up to 30 s. Studio decides at one synchronous commit point — cancelled before it, the
+  request answers `cancelled` and nothing is written; once the commit started it finishes, and the result is returned
+  because the write happened. A write that neither answers nor was acknowledged as cancelled fails `write_unsettled`;
+  `TurnResearch.shutdown()` returns those as `unsettledWrites` and the turn's final message tells the user that such a
+  file is not part of the checkpoint.
 - `FakeResearchHost` (`src/testing`) is the in-memory host for tests (`importGate` holds an import in flight, recorded
   requests and signals); the runtime fixture wires it.
+
+## Render QA and Execution Quality
+
+The agent does not treat a job as done after its first render. When a turn changed the project, the runtime renders a
+preview, checks the **rendered file**, has Vision review frames of it, stores a durable report, and lets the Director
+delegate corrections — within a bounded number of passes. The Studio server (contract in
+`packages/agent-protocol/src/qa.ts`) owns everything that needs the project or the render (the project fingerprint, the
+deterministic checks, frame extraction, the reports in `<project>/.hyperframes/qa/`); the runtime reaches it over loopback
+HTTP (`src/qa/host.http.ts`: `${studioOrigin}/api/projects/:id/qa/{state,check,frames,reports}`) and owns the loop and
+Vision's review.
+
+**Execution Quality** is the orchestration budget of a turn: `fast` | `balanced` (default) | `best` | `custom`
+(`ExecutionBudget`: `qaPasses` 0–5, `qaFramesPerMinute`, `qaMaxFrames`, `critiqueRounds`, `analysisFramesPerSource`,
+`researchCandidates`, `specialistThinking`). The global default lives in `settings.json` (`executionQuality`; a file from
+before it existed reads as Balanced and gains it on the next write), a chat may override it (`PATCH` chat
+`executionQuality`, `null` returns to the global default), and the turn records what it ran with
+(`TurnSummary.execution = {preset, budget}`, resolved once at turn start by `resolveExecutionBudget`, custom budgets
+clamped to their ranges). The Director's `<team>` block states the preset and the QA budget. Every field is **enforced**,
+not suggested:
+
+- `specialistThinking` → `applyThinkingPolicy` on every delegated specialist run (after routing) and on the Vision QA run:
+  `economy` caps at `low`, `thorough` raises to at least `high`, `configured` leaves it alone.
+- `researchCandidates` → `search_assets.limit` defaults to it and is clamped to it (`src/research/tools.ts`); the
+  `<asset-search-policy>` block tells Research.
+- `analysisFramesPerSource` → `TurnAnalysis` refuses `inspect_frames` calls that would extract more distinct frames per
+  source in the turn (the refusal names the budget and what is left; a time already inspected is free).
+- `qaMaxFrames`, `critiqueRounds`, 12 frames per call → `TurnQa` (`src/qa/executor.ts`) on Vision's `inspect_render`;
+  `qaFramesPerMinute` / `qaMaxFrames` also go to the service to plan the frames Vision gets.
+
+**The loop** (`src/qa/loop.ts`, run by `TurnRunner` after the Director and its follow-ups finished). QA runs only when the
+Director's work completed, the project fingerprint differs from the one at turn start (`QaHost.state`), and the turn may
+write the timeline: normal turns and story `build` turns; a story `rebuild` turn is checked but report-only (no
+correction: only `rebuild_story` may write there); story review/resolve turns are never checked. With `qaPasses` 0 the
+turn records `skipped` ("Render QA is off") when the project changed. A composition over 180 s is not rendered unless the
+user asked for a render in this turn (→ `skipped` with the reason). Pass _k_ of _N_:
+
+1. **Render** a preview (`draft`; when the user asked for a render, the quality of the Director's last `render_video`, else
+   `standard`, so the last QA render is the deliverable). Pass 1 reuses the Director's own render when the project had the
+   same fingerprint before that render started as when QA starts (`TurnEditing.lastRender`). A failed render is stored as a
+   report (`renderError` + a fixable `render_failed` issue owned by the Editor) and counts as a pass.
+2. **Check** the render (`QaHost.check`: black/frozen frames, audio gaps, flash clips, missing files, layout) and get the
+   frames to review.
+3. **Vision review**: a runtime-started Vision run "Render QA · pass _k_" (`Orchestrator.runInternal`; an ordinary run in
+   the chat, counted as reported so it never re-prompts the Director) with `inspect_render {times}` and
+   `report_render_findings {findings}` — tools only Vision has, refused outside an open review. Findings are forced to
+   source `vision` and deduplicated against the deterministic issues with `sameQaIssue`. Vision not enabled, the run
+   failed, or no findings reported → `vision.status` `unavailable` / `failed` with a reason; the deterministic result
+   stands and the Director is told.
+4. **Compare** with the previous pass (`compareQaPass`: new / persisting / reappeared / fixed), **store** the report
+   (`QaHost.saveReport`), emit `qa.updated` on every phase change and keep `turn.qa` current.
+5. If fixable issues remain and _k_ < _N_: the Director gets a `<render-qa pass=… limit=…>` prompt (open issues by owner
+   with ids, times, clips and suggestions; what was fixed, persists, reappeared, and what is new after its last correction
+   — a regression; instruction to delegate to Editor/Motion/Audio/Research with self-contained tasks) and its delegated runs
+   are collected like after its first reply. `render_video` is refused during a correction (the runtime re-renders). A
+   correction that leaves the project fingerprint unchanged ends the loop (`issues_remain`); the loop never exceeds _N_
+   renders (at most *N*−1 corrections).
+
+Afterwards the Director gets one `<render-qa-final>` prompt (outcome, last render, fixed vs remaining issues) to report; in
+it `edit_timeline`, `build_rough_cut`, `build_story`, `rebuild_story`, `edit_story`, `render_video`, `delegate`, `jev`,
+`import_asset` and `resolve_missing_asset` are refused (`src/qa/phase.ts`). Steering sent during QA opens the next Director
+prompt. Aborting anywhere in QA cancels the render/check/frames/Vision run, marks the pass `aborted`, stores no report for
+it and finalizes the turn `aborted`; `TurnQa.shutdown` is awaited in `finalize` before the checkpoint closes.
+
+`FakeQaHost` (`src/testing`) is the in-memory host for tests (the project's `fingerprint` and `bump()`, queued check
+results, `checkGate` / `framesGate` / `cancelDelay`, stored `reports`); the runtime fixture wires it.
 
 ## Turns, checkpoints, concurrency
 

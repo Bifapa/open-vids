@@ -6,6 +6,7 @@ import { EDITING_TOOL_NAMES } from "./editing/tools.js";
 import { ANALYSIS_TOOL_NAMES } from "./analysis/tools.js";
 import type { StoryHost } from "./story/host.js";
 import type { ResearchHost } from "./research/host.js";
+import type { QaHost } from "./qa/host.js";
 import type { StreamTimerApi } from "./turnStream.js";
 
 export interface TurnRunnerOptions {
@@ -40,6 +41,11 @@ export interface TurnRunnerOptions {
    * runtime always provides it.
    */
   research?: (scope: ProjectScope) => ResearchHost;
+  /**
+   * Opens the QA host (render checks, frames of a render, the stored reports) of a project. Without it — or without an
+   * editing host, which renders — no turn runs autonomous render QA; the production runtime always provides both.
+   */
+  qa?: (scope: ProjectScope) => QaHost;
 }
 
 /** What a story-mode turn (plan/review) says when an agent tries to write the timeline anyway. */

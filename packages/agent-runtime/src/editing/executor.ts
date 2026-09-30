@@ -32,6 +32,21 @@ export interface TurnEditingOptions {
   turnId?: string | undefined;
   /** The research host: a finished render reports the license warnings and credits of the researched assets it ships. */
   research?: ResearchHost | undefined;
+  /**
+   * The project's fingerprint (see the QA service): read just before a render starts, so render QA can tell whether
+   * the Director's own render still shows the current project. Null when it cannot be read; absent without QA.
+   */
+  fingerprint?: ((signal: AbortSignal) => Promise<string | null>) | undefined;
+}
+
+/** The last render the turn made with `render_video`, and the state of the project it was made from. */
+export interface LastRender {
+  path: string;
+  quality: RenderQuality;
+  /** The composition asked for; undefined = the project's main composition. */
+  composition: string | undefined;
+  /** The project fingerprint before the render started; null when unknown. */
+  fingerprint: string | null;
 }
 
 const refuse = (text: string): HostToolResult => ({ text, isError: true });
@@ -69,6 +84,7 @@ export class TurnEditing {
   private readonly inflight = new Set<Promise<unknown>>();
 
   private readonly requests: string[];
+  private lastRenderOutput: LastRender | null = null;
 
   constructor(private readonly options: TurnEditingOptions) {
     this.requests = [...(options.userRequests ?? [])];
@@ -79,8 +95,14 @@ export class TurnEditing {
     this.requests.push(text);
   }
 
-  private userAskedForRender(): boolean {
+  /** Whether the user asked for a render, an export or a video file in this turn. */
+  userAskedForRender(): boolean {
     return this.requests.some(asksForRender);
+  }
+
+  /** The turn's last successful `render_video`, if any. */
+  lastRender(): LastRender | null {
+    return this.lastRenderOutput;
   }
 
   execute(name: string, args: unknown, callSignal: AbortSignal): Promise<HostToolResult> {
@@ -168,11 +190,18 @@ export class TurnEditing {
           if (snapshot.composition.duration > LONG_RENDER_SECONDS)
             return refuse(longRenderRefusal(snapshot.composition.duration));
         }
+        const fingerprint = await this.options.fingerprint?.(signal).catch(() => null);
         const output = await host.render(
           { ...(composition && { composition }), quality },
           signal,
           () => undefined,
         );
+        this.lastRenderOutput = {
+          path: output.path,
+          quality,
+          composition,
+          fingerprint: fingerprint ?? null,
+        };
         const licenses = await this.licenseReport(composition ?? target, signal);
         return { text: licenses ? `${formatRender(output)}\n\n${licenses}` : formatRender(output) };
       }

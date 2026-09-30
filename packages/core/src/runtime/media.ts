@@ -9,6 +9,7 @@ import { rateAt, sourceTimeAt, timeAtSourceTime, type RateSpec } from "../speedR
 import { clampAudioGain } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
+import { isAwaitingRestoredSource } from "./previewMediaBudget.js";
 import { registerSeekCompletion } from "./adapters/seek-dispatch.js";
 export {
   readElementPlaybackRate,
@@ -30,7 +31,7 @@ const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 function holdSeekBarrierUntilVideoLands(el: HTMLMediaElement): void {
   const loading =
     el.readyState < el.HAVE_CURRENT_DATA &&
-    el.networkState === el.NETWORK_LOADING &&
+    (el.networkState === el.NETWORK_LOADING || isAwaitingRestoredSource(el)) &&
     !(window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
   if (el.tagName !== "VIDEO" || !(el.seeking || loading) || findInjectedRenderFrame(el)) return;
   releaseHeldVideo.get(el)?.();

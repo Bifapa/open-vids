@@ -17,6 +17,7 @@ import { buildAnalysisTools } from "../analysis/tools.js";
 import { buildEditingTools } from "../editing/tools.js";
 import { buildStoryTools, timelineWritesAllowed, type StoryTurnMode } from "../story/tools.js";
 import { buildResearchTools, type KnownCandidate } from "../research/tools.js";
+import { buildQaTools } from "../qa/tools.js";
 
 export const TOOL_NAMES = {
   plan: "update_plan",
@@ -65,6 +66,10 @@ export interface ToolAvailability {
   researchCandidate?: (id: string) => KnownCandidate | undefined;
   /** The display name of a trusted source in the user's policy, for the activity label of a search. */
   researchSourceName?: (id: string) => string | undefined;
+  /** The turn's budget of candidates per search (Execution Quality): the default and the maximum `limit` of search_assets. */
+  researchCandidates?: number;
+  /** The runtime runs Render QA this turn: Vision gets the render-review tools (they work only inside a review). */
+  qa?: boolean;
 }
 
 const stringProperty = (description: string, maxLength?: number) => ({
@@ -129,14 +134,19 @@ export function buildHostTools(
     ? buildResearchTools(agent, availability.enabled, turn, execute, {
         ...(availability.researchCandidate && { candidate: availability.researchCandidate }),
         ...(availability.researchSourceName && { sourceName: availability.researchSourceName }),
+        ...(availability.researchCandidates !== undefined && {
+          candidateLimit: availability.researchCandidates,
+        }),
       })
     : [];
+  const qa = availability.qa ? buildQaTools(agent, execute) : [];
   if (agent !== "director")
     return [
       ...editing,
       ...analysis,
       ...story,
       ...research,
+      ...qa,
       ...(availability.jev ? [jevTool(execute)] : []),
     ];
 

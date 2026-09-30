@@ -3,6 +3,7 @@ import {
   SPECIALIST_IDS,
   type AgentModelInfo,
   type AgentSettings,
+  type ExecutionQuality,
   type ModelConfig,
   type ProviderInfo,
   type SpecialistConfig,
@@ -49,6 +50,8 @@ export interface AgentSettingsSlice {
   setAgentOverride(id: SpecialistId, config: SpecialistConfig | null): Promise<ActionResult>;
   /** The Director's per-chat model and thinking; null fields follow the global default. */
   setDirectorConfig(config: ModelConfig): Promise<ActionResult>;
+  /** The chat's own Execution Quality; null returns it to the global default. */
+  setExecutionQuality(quality: ExecutionQuality | null): Promise<ActionResult>;
 }
 
 export interface AgentSettingsSliceDeps {
@@ -151,5 +154,7 @@ export function createAgentSettingsSlice({
     },
 
     setDirectorConfig: ({ model, thinking }) => updateOpenChat({ model, thinking }),
+
+    setExecutionQuality: (executionQuality) => updateOpenChat({ executionQuality }),
   };
 }

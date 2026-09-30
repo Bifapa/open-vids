@@ -1,5 +1,6 @@
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import {
+  STUDIO_PREVIEW_DETACHED_SRC_ATTR,
   STUDIO_PREVIEW_LAZY_ATTR,
   STUDIO_PREVIEW_UPCOMING_ATTR,
 } from "@hyperframes/core/studio-preview-mark";
@@ -58,6 +59,7 @@ function livePathsOf(live: Element): Set<string> {
   const paths = new Set<string>();
   for (const el of [live, ...Array.from(live.querySelectorAll("*"))]) {
     for (const attr of PATH_ATTRS) paths.add(el.getAttribute(attr) ?? "");
+    paths.add(el.getAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR) ?? "");
     for (const match of (el.getAttribute("style") ?? "").matchAll(CSS_URL)) paths.add(match[2]);
   }
   return paths;
@@ -99,6 +101,13 @@ export function liveMarkupWithoutPreviewMarks(live: Element): string {
   const copy = live.cloneNode(true) as Element;
   for (const el of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
     el.removeAttribute(STUDIO_PREVIEW_UPCOMING_ATTR);
+    // A video whose decoder the preview released: the copy carries its authored source back.
+    const detachedSrc = el.getAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR);
+    if (detachedSrc !== null) {
+      el.setAttribute("src", detachedSrc);
+      el.removeAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR);
+      el.removeAttribute("preload");
+    }
     if (!el.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) continue;
     el.removeAttribute("loading");
     el.removeAttribute(STUDIO_PREVIEW_LAZY_ATTR);

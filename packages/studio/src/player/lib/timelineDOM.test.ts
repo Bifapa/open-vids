@@ -47,6 +47,21 @@ describe("parseTimelineFromDOM — media in-point", () => {
   });
 });
 
+describe("parseTimelineFromDOM — a video whose preview decoder was released", () => {
+  it("keeps the authored src, so thumbnails and media panels still find the clip's file", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <video id="live" class="clip" src="assets/a.mp4" data-start="0" data-duration="2"></video>
+        <video id="released" class="clip" data-hf-detached-src="assets/a.mp4" preload="none" data-start="2" data-duration="2"></video>
+      </div>
+    `);
+    const byId = new Map(parseTimelineFromDOM(doc, 10).map((e) => [e.domId, e]));
+    expect(byId.get("released")?.src).toBe(byId.get("live")?.src);
+    expect(byId.get("released")?.src).toContain("assets/a.mp4");
+    expect(byId.get("released")?.tag).toBe("video");
+  });
+});
+
 describe("parseTimelineFromDOM — in-point read as playback reads it", () => {
   it.each([
     ['data-playback-start="-1" data-media-start="2"', 2, "playback-start"],

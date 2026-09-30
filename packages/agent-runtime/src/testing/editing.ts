@@ -42,6 +42,8 @@ export class FakeEditingHost implements EditingHost {
     hasAudio: true,
   };
   nextApplyError: EditingError | null = null;
+  /** Served by `render` in order before `renderResult`: an output, or an error the render fails with. */
+  renderQueue: Array<RenderOutput | EditingError> = [];
   /** While set, `apply` records the request and then waits for it before answering. */
   applyGate: Promise<void> | null = null;
   /** While set, `render` waits for it (or for an abort) before answering. */
@@ -152,7 +154,9 @@ export class FakeEditingHost implements EditingHost {
         void gate.then(resolve);
       });
     }
+    const queued = this.renderQueue.shift();
+    if (queued instanceof EditingError) throw queued;
     onProgress({ progress: 100, stage: "done" });
-    return structuredClone(this.renderResult);
+    return structuredClone(queued ?? this.renderResult);
   }
 }

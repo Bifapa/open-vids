@@ -8,3 +8,4 @@ export * from "./editing.js";
 export * from "./analysis.js";
 export * from "./story.js";
 export * from "./research.js";
+export * from "./qa.js";

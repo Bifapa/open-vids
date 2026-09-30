@@ -1,3 +1,4 @@
+import { readPreviewMediaSrc } from "@hyperframes/core/studio-preview-mark";
 import { useEffect, useState } from "react";
 import { Check, ClipboardList } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
@@ -105,7 +106,7 @@ export function FlatMediaSection({
   const objectFit = styles["object-fit"] || "contain";
   const objectPosition = styles["object-position"] || "center";
 
-  const srcAttr = el.getAttribute("src") ?? "";
+  const srcAttr = readPreviewMediaSrc(el) ?? "";
   const [copied, setCopied] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeProgress, setRemoveProgress] = useState<BackgroundRemovalProgress | null>(null);

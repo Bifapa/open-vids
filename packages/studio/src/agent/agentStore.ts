@@ -23,6 +23,7 @@ import {
 import { AgentApiError, isActiveTurn, type AgentClient } from "./agentClient";
 import { describeAgentError, describeAgentFailure } from "./agentErrors";
 import { findModel, runningTurn } from "./agentSelectors";
+import { createAgentQaSlice, type AgentQaSlice } from "./agentQaSlice";
 import {
   createAgentSettingsSlice,
   type ActionResult,
@@ -52,7 +53,7 @@ export interface RevertUi {
   message?: string;
 }
 
-export interface AgentState extends AgentSettingsSlice {
+export interface AgentState extends AgentSettingsSlice, AgentQaSlice {
   availability: AgentAvailability;
   unavailableMessage: string | null;
   chats: ChatSummary[];
@@ -308,6 +309,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         isDisposed: () => disposed,
         updateOpenChat,
       }),
+      ...createAgentQaSlice({ client }),
       availability: "loading",
       unavailableMessage: null,
       chats: [],

@@ -8,6 +8,7 @@ import {
   parseImportRequest,
   parseInspectRequest,
   parsePolicyUpdate,
+  parseRequestId,
   parseResolveRequest,
   parseSearchRequest,
   parseUpdateSource,
@@ -127,7 +128,18 @@ export function registerResearchRoutes(
   api.post(
     "/projects/:id/research/resolve",
     tooLarge,
-    inProject(async (project, c) => service.resolve(project, parseResolveRequest(await body(c)))),
+    inProject(async (project, c) =>
+      service.resolve(project, parseResolveRequest(await body(c)), c.req.raw.signal),
+    ),
+  );
+
+  // A cancel answers with a guarantee about writes, see `CancelResearchRequestResult`.
+  api.post(
+    "/projects/:id/research/requests/:requestId/cancel",
+    inProject(async (project, c) => {
+      const requestId = parseRequestId(c.req.param("requestId"));
+      return { requestId, state: service.cancel(project, requestId) };
+    }),
   );
 
   api.get(

@@ -372,6 +372,12 @@ export interface ImportAssetRequest {
   turnId?: string;
   agent?: AgentId | "user";
   model?: string | null;
+  /**
+   * Set by the runtime: an id for this write request, so that it can be cancelled explicitly
+   * (`POST …/research/requests/:requestId/cancel`). Client disconnect cancels too, but only a cancel that is answered
+   * tells the caller whether the request can still write.
+   */
+  requestId?: string;
 }
 
 /** How the bytes were obtained: from the network, from the project's download cache, or not at all (duplicate). */
@@ -396,6 +402,8 @@ export interface ResolveMissingRequest {
   missing: string;
   asset: string;
   title?: string;
+  /** Set by the runtime, see {@link ImportAssetRequest.requestId}. */
+  requestId?: string;
   turnId?: string;
 }
 
@@ -404,6 +412,22 @@ export interface ResolveMissingResult {
   node: string;
   asset: string;
   view: StoryView;
+}
+
+/**
+ * `POST /api/projects/:id/research/requests/:requestId/cancel` — cancel an import or resolution by its `requestId`.
+ * The answer is a guarantee about writes:
+ * - `cancelled`: the request has not committed and never will (an unknown id is remembered, so a request that arrives
+ *   later is refused); it answers `cancelled`.
+ * - `committed`: the commit already started; it finishes and the request answers normally (await its answer).
+ * - `finished`: the request is over; its answer was (or is being) sent.
+ */
+export const CANCEL_REQUEST_STATES = ["cancelled", "committed", "finished"] as const;
+export type CancelRequestState = (typeof CANCEL_REQUEST_STATES)[number];
+
+export interface CancelResearchRequestResult {
+  requestId: string;
+  state: CancelRequestState;
 }
 
 // ── Provenance ───────────────────────────────────────────────────────────────
@@ -522,6 +546,8 @@ export const RESEARCH_ERROR_CODES = [
   "locked",
   "conflict",
   "no_story",
+  /** The request was cancelled before it committed (an explicit cancel or the client went away); nothing was written. */
+  "cancelled",
 ] as const;
 export type ResearchErrorCode = (typeof RESEARCH_ERROR_CODES)[number];
 
@@ -575,4 +601,14 @@ export function isProjectSourcesView(value: unknown): value is ProjectSourcesVie
 
 export function isExportLicenseCheck(value: unknown): value is ExportLicenseCheck {
   return isRecord(value) && typeof value.composition === "string" && Array.isArray(value.warnings);
+}
+
+export function isCancelResearchRequestResult(
+  value: unknown,
+): value is CancelResearchRequestResult {
+  return (
+    isRecord(value) &&
+    typeof value.requestId === "string" &&
+    CANCEL_REQUEST_STATES.some((state) => state === value.state)
+  );
 }

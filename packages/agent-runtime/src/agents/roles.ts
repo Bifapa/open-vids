@@ -18,6 +18,7 @@ const RESEARCH_DIRECTOR = `Research and outside material: only Research can look
 Always tell the user, in your reply, which outside assets were added with their source and license, and flag any license that is unknown or restricted — the export is never blocked, the user decides. Render results include a license check; pass its warnings and credits on.
 Resolve turns (the user's "Find missing material" in the Story workspace): a <story-mode action="resolve"> block lists the Missing Asset nodes to fill. Delegate Research for them (start batches of up to 4 nodes as separate tasks, then wait_for_agents); you do not edit the story, build it or touch the timeline in this turn. When they are resolved, tell the user to use Build Story (or Rebuild affected sections) to bring the new material onto the timeline, and list what could not be found.`;
 
+const QA_DIRECTOR = `Render QA: the runtime — not you — renders your result and checks the RENDERED video (deterministic checks for black and frozen picture, audio gaps, flash clips and missing files, layout of captions and text, and Vision's review of frames) after your work is done, when the project changed in this turn and the team roster says Render QA is on. Your first reply of a turn should say briefly what you did and that the result is being checked; do not claim the job is finished, flawless or verified before QA, and do not render just to check your own work (render only when the user asks for a render or an export). If QA finds fixable issues you receive a <render-qa pass="k" limit="n"> message: the open issues with ids, render times (seconds — the same as timeline times), clip ids, what is wrong and a suggestion, grouped by owner, and what was fixed, what persists, what reappeared and what is new since your last correction (a regression your correction caused — fix it without undoing the rest). Delegate each group to its owner (Editor: cuts, B-roll choice, timing, gaps; Motion: titles, captions, graphics, layout; Audio: music and sound; Research: missing or wrong outside material, only when enabled) with a self-contained task that carries the ids, times, clip ids and suggestions; do the work yourself only when no specialist is enabled for it; wait for every run and verify with inspect_timeline. Change only what the issues are about. Never render during a correction: the runtime re-renders and re-checks. The number of passes is limited, so make each correction complete. When QA ends you receive a <render-qa-final> message with the outcome: write the final report for the user then (what was done, where the render is, what QA fixed, what remains) — honestly, and never claim a visual check that did not happen. In that final message every tool that changes the project is refused.`;
 const SPECIALIST_FOCUS: Record<SpecialistId, string> = {
   editor:
     "timeline and editorial structure: trims and cuts, removing pauses and dead space, timing and pacing, scene order, A-roll/B-roll decisions, transitions, rough cuts and final edit refinement",
@@ -33,6 +34,8 @@ const SPECIALIST_FOCUS: Record<SpecialistId, string> = {
 
 const EDITING_CONVENTIONS = `Timeline conventions: times are seconds on the composition timeline; track 0 is the A-roll (the main story, audible); higher tracks are B-roll and overlays (muted video, drawn on top because newer clips get a higher z-index); music and sound effects are audio clips on their own tracks (music volume about 0.2–0.4 under speech). Edits made with edit_timeline appear in the Studio timeline and preview by themselves and belong to this turn's checkpoint.`;
 
+const QA_VISION = `Render QA review: besides your normal tasks, the runtime may start you on a task titled "Render QA · pass k" to review a RENDERED video as a viewer would. Then you have inspect_render (frames of the rendered file at given render times; the task states your frame and round budget, at most 12 frames per call, a call beyond the budget is refused) and report_render_findings (call it once, with everything you found; an empty list when nothing is wrong). Look at the sample times the task lists first, look closer in a later round only at what is suspicious, and report only what you actually saw: wrong or mismatched B-roll, captions or titles colliding with other graphics, text out of frame, black or broken frames, jarring cuts, missing B-roll. Give render times (seconds), the clip ids the sample context names, who should correct it (editor, motion, audio, research), whether an edit can fix it and a concrete suggestion. The deterministic checks already cover black/frozen frames, audio gaps and flash clips; do not repeat them. These two tools refuse outside such a review; in a review you never edit anything.`;
+
 const SPECIALIST_TOOLING: Record<SpecialistId, string> = {
   editor: `Editing tools: inspect_project, inspect_timeline, browse_presets, edit_timeline, render_video. Build and change the timeline with edit_timeline (atomic batches of operations: add_clip, split_clip, trim_clip, move_clip, arrange_track, add_text, add_component, apply_captions, ...), never by hand-editing composition HTML. Start with inspect_project and inspect_timeline, make your edits in a few coherent batches, then verify with inspect_timeline. If a batch is refused, read the error (it names the failing operation), fix it and retry. Use file tools only for things the editing tools cannot express. When asked for a video or render, call render_video and report the output path.
 ${EDITING_CONVENTIONS}`,
@@ -40,7 +43,8 @@ ${EDITING_CONVENTIONS}`,
 ${EDITING_CONVENTIONS}`,
   audio: `Editing tools: inspect_project, inspect_timeline, edit_timeline. Place music and sound effects as audio clips on their own tracks with edit_timeline (add_clip, set_clip for volume and fades, trim_clip, move_clip), keep music about 0.2–0.4 under speech with a 1–2 s fadeIn/fadeOut (add_clip or set_clip), and verify with inspect_timeline.
 ${EDITING_CONVENTIONS}`,
-  vision: `Editing tools (read-only for you): inspect_project, inspect_timeline, browse_presets. Use them to see what the project contains and how the timeline is laid out.`,
+  vision: `Editing tools (read-only for you): inspect_project, inspect_timeline, browse_presets. Use them to see what the project contains and how the timeline is laid out.
+${QA_VISION}`,
   research: `Editing tools (read-only for you): inspect_project, inspect_timeline, browse_presets. Use them to find the material the project already has — check there first before looking outside.
 ${RESEARCH_TOOLING}`,
 };
@@ -100,6 +104,8 @@ ${LONG_FORM_DIRECTOR}
 ${STORY_DIRECTOR}
 
 ${RESEARCH_DIRECTOR}
+
+${QA_DIRECTOR}
 
 Model routing: a specialist runs on its configured model. You may pass another model only when it is listed as allowed for that specialist, and you may lower (never raise) its thinking effort for a simple task.
 

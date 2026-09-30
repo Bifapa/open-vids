@@ -7,6 +7,7 @@
 
 import { Hono, type Context } from "hono";
 import { diarizeMediaViaCli, transcribeMediaViaCli } from "./speechAdapter.js";
+import { checkLayoutViaCli } from "./layoutAdapter.js";
 import { streamSSE } from "hono/streaming";
 import { realpath } from "@hyperframes/core";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
@@ -790,6 +791,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     // The recognizer runs as a `cli transcribe|diarize` child: whisper is synchronous and must not block this server.
     transcribeMedia: (opts) => transcribeMediaViaCli(opts),
     diarizeMedia: (opts) => diarizeMediaViaCli(opts),
+    // The layout audit is `cli check` in a child: headless Chrome must not run inside this server either.
+    checkLayout: (opts) => checkLayoutViaCli(opts),
   };
 
   const agentGateway = createAgentGateway({
@@ -955,6 +958,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       method: c.req.method,
       headers: c.req.raw.headers,
       body: c.req.raw.body,
+      // A client that disconnects aborts the request's signal; without forwarding it the routes that stop child
+      // processes on abort (QA, analysis, research) never see it.
+      signal: c.req.raw.signal,
       // @ts-expect-error -- Node needs duplex for streaming bodies
       duplex: "half",
     });

@@ -2,6 +2,7 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
+  DEFAULT_EXECUTION_QUALITY,
   SPECIALIST_IDS,
   parseUpdateAgentSettings,
   type AgentSettings,
@@ -37,6 +38,7 @@ export function defaultAgentSettings(): AgentSettings {
       credentials: "provider-login",
       apiKeyConfigured: false,
     },
+    executionQuality: structuredClone(DEFAULT_EXECUTION_QUALITY),
   };
 }
 
@@ -61,6 +63,7 @@ function applyUpdate(current: AgentSettings, update: UpdateAgentSettingsRequest)
     director: update.director ?? current.director,
     specialists,
     jev: { ...current.jev, ...update.jev },
+    executionQuality: update.executionQuality ?? current.executionQuality,
   };
 }
 

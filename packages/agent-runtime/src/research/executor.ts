@@ -112,7 +112,8 @@ function parseSearch(args: unknown): AssetSearchRequest {
  * The research tools of one running turn, bound to that turn's project, abort signal and team. Like the editing and
  * story executors it tracks its in-flight calls so {@link shutdown} can stop the turn's research before the checkpoint
  * transaction closes: an import or resolution already sent to the server writes project files, so it is awaited to its
- * end, and no new call is accepted afterwards.
+ * end (the host cancels it on abort and keeps waiting for the server's answer, see {@link ResearchHost}), and no new
+ * call is accepted afterwards. A write the host could not settle is reported by {@link shutdown} as unsettled.
  *
  * Who may call what is re-checked here with {@link researchToolsFor}, so a Director cannot reach the search or import
  * tools however it names them. The fields of a request that describe the caller (turn, agent, model) are set here and
@@ -123,6 +124,7 @@ export class TurnResearch {
   private accepting = true;
   private readonly stop = new AbortController();
   private readonly inflight = new Set<Promise<unknown>>();
+  private readonly unsettled: string[] = [];
   private readonly candidates = new Map<string, KnownCandidate>();
 
   constructor(private readonly options: TurnResearchOptions) {}
@@ -141,7 +143,10 @@ export class TurnResearch {
       return Promise.resolve(refuse(`${name} is not available to you in this turn.`));
     const signal = AbortSignal.any([callSignal, this.options.turnSignal, this.stop.signal]);
     const call = this.run(name, args, signal).catch((error: unknown): HostToolResult => {
-      if (error instanceof ResearchToolError) return refuse(formatResearchError(error));
+      if (error instanceof ResearchToolError) {
+        if (error.code === "write_unsettled") this.unsettled.push(`${name}: ${error.message}`);
+        return refuse(formatResearchError(error));
+      }
       return refuse(`internal: ${errorMessage(error, "The research call failed")}`);
     });
     this.inflight.add(call);
@@ -163,11 +168,16 @@ export class TurnResearch {
     }
   }
 
-  /** Stops accepting calls, cancels running calls, and waits for every started call to end. */
-  async shutdown(): Promise<void> {
+  /**
+   * Stops accepting calls, cancels running calls, and waits for every started call to end. Resolves with the writes
+   * the host could not settle (cancelled, but Studio never said whether they wrote): those may land after the
+   * checkpoint closed, and the caller should say so.
+   */
+  async shutdown(): Promise<{ unsettledWrites: string[] }> {
     this.accepting = false;
     this.stop.abort();
     await Promise.allSettled([...this.inflight]);
+    return { unsettledWrites: [...this.unsettled] };
   }
 
   private remember(candidates: readonly AssetCandidate[]): void {

@@ -6,6 +6,7 @@ import {
   RESEARCH_LIMITS,
   WEB_SOURCE_ID,
   type AddTrustedSourceRequest,
+  type CancelRequestState,
   type AssetCandidate,
   type AssetProvenance,
   type AssetSearchMode,
@@ -40,6 +41,7 @@ import type { StoryService } from "../story/service.js";
 import type { ResolvedProject } from "../types.js";
 import { CandidateRegistry } from "./candidates.js";
 import { ResearchCache, type CacheEntry } from "./cache.js";
+import { RequestRegistry, type RequestGuard } from "./requestRegistry.js";
 import { ResearchFailure, isResearchFailure } from "./errors.js";
 import { planNormalization, systemToolkit, type MediaToolkit } from "./normalize.js";
 import { readLedger, writeLedger } from "./provenance.js";
@@ -157,11 +159,6 @@ function candidateOfRecord(record: AssetProvenance): RawCandidate {
   };
 }
 
-/** Nothing is committed for a request whose client has gone (the turn was stopped): the checkpoint may be closed. */
-function assertLive(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) throw new ResearchFailure("network", "The import was cancelled");
-}
-
 function fromStory(failure: StoryFailure): ResearchFailure {
   const { code, message } = failure.error;
   switch (code) {
@@ -204,6 +201,7 @@ export class ResearchService {
   private readonly toolkit: MediaToolkit;
   private readonly now: () => number;
   private readonly registry = new CandidateRegistry();
+  private readonly requests: RequestRegistry;
 
   constructor(private readonly options: ResearchServiceOptions) {
     this.store = options.store ?? new PolicyStore();
@@ -211,6 +209,7 @@ export class ResearchService {
     this.webSearch = options.webSearch ?? new DuckDuckGoSearch();
     this.toolkit = options.toolkit ?? systemToolkit;
     this.now = options.now ?? Date.now;
+    this.requests = new RequestRegistry(this.now);
   }
 
   // ── Policy ────────────────────────────────────────────────────────────────
@@ -484,24 +483,41 @@ export class ResearchService {
 
   // ── Import ────────────────────────────────────────────────────────────────
 
-  import(
+  /**
+   * Imports a candidate or URL. `client` is the request's abort signal (the caller went away); with
+   * `request.requestId` the import can also be cancelled by {@link cancel}. A cancel before the commit discards
+   * everything and answers `cancelled`; once the commit started the import finishes and answers normally.
+   */
+  async import(
     project: ResolvedProject,
     request: ImportAssetRequest,
-    signal?: AbortSignal,
+    client?: AbortSignal,
   ): Promise<ImportAssetResult> {
     if ((request.candidate === undefined) === (request.url === undefined)) {
-      return Promise.reject(
-        new ResearchFailure("invalid_request", "Give exactly one of candidate or url"),
-      );
+      throw new ResearchFailure("invalid_request", "Give exactly one of candidate or url");
     }
-    return this.lock(project, () => this.importLocked(project, request, signal));
+    const guard = this.requests.begin(project.dir, request.requestId, client);
+    try {
+      return await guard.race(this.lock(project, () => this.importLocked(project, request, guard)));
+    } catch (error) {
+      throw guard.normalize(error);
+    } finally {
+      this.requests.end(guard);
+    }
+  }
+
+  /** Cancels the import or resolution with this `requestId`; the answer says whether it can still write. */
+  cancel(project: ResolvedProject, requestId: string): CancelRequestState {
+    return this.requests.cancel(project.dir, requestId);
   }
 
   private async importLocked(
     project: ResolvedProject,
     request: ImportAssetRequest,
-    signal: AbortSignal | undefined,
+    guard: RequestGuard,
   ): Promise<ImportAssetResult> {
+    guard.assertLive();
+    const signal = guard.signal;
     if (request.resolveMissing) this.assertResolvable(project, request.resolveMissing);
     const policy = this.store.get();
     const target = await this.importTarget(project, policy, request, signal);
@@ -517,7 +533,9 @@ export class ResearchService {
       fetch: ImportFetch,
       duplicate: ImportAssetResult["duplicate"],
     ): Promise<ImportAssetResult> => {
-      assertLive(signal);
+      // A resolution writes the story: that is the commit of a duplicate (a new file committed below already).
+      if (request.resolveMissing) guard.commit();
+      else guard.assertLive();
       const resolution = request.resolveMissing
         ? await this.resolveWith(project, request.resolveMissing, asset, request.turnId)
         : null;
@@ -594,16 +612,15 @@ export class ResearchService {
         });
       }
 
-      const abortSignal = signal ?? new AbortController().signal;
       const original = `${scratch}/original.${entry.extension ?? "bin"}`;
       cache.copyTo(entry, original);
-      const inspection = await this.toolkit.inspect(original, abortSignal);
+      const inspection = await this.toolkit.inspect(original, signal);
       const plan = planNormalization(inspection, expected, entry.extension);
       let working = original;
       let converted: string | null = null;
       if (plan.action === "convert") {
         working = `${scratch}/converted.${plan.extension}`;
-        await this.toolkit.convert(original, working, plan.kind, abortSignal);
+        await this.toolkit.convert(original, working, plan.kind, signal);
         converted = plan.label;
       }
       const sha256 = await sha256File(working);
@@ -642,14 +659,13 @@ export class ResearchService {
         });
       }
 
-      assertLive(signal);
+      guard.assertLive();
       const dir = resolveWithinProject(project.dir, RESEARCH_ASSET_DIR);
       if (!dir)
         throw new ResearchFailure(
           "invalid_request",
           `${RESEARCH_ASSET_DIR} is outside the project`,
         );
-      mkdirSync(dir, { recursive: true });
       const slug = slugOf(request.name ?? candidate.title ?? basename(originalUrl));
       const asset = posix.join(
         RESEARCH_ASSET_DIR,
@@ -659,8 +675,10 @@ export class ResearchService {
       if (!destination)
         throw new ResearchFailure("invalid_request", `${asset} is outside the project`);
       const present = existsSync(destination) && (await sha256File(destination)) === sha256;
-      // The commit: file and record land together, with no await in between.
-      assertLive(signal);
+      // The commit: file and record land together, with no await in between; from here a cancel is told
+      // `committed` and the import finishes and answers normally.
+      guard.commit();
+      mkdirSync(dir, { recursive: true });
       if (!present) renameSync(working, destination);
 
       const written: AssetProvenance = { ...record, asset };
@@ -888,39 +906,61 @@ export class ResearchService {
     return updated;
   }
 
-  resolve(project: ResolvedProject, request: ResolveMissingRequest): Promise<ResolveMissingResult> {
-    return this.lock(project, async () => {
-      const need = this.missingNeed(project, request.missing);
-      let response;
-      try {
-        response = await this.options.story.edit(project, {
-          ...(request.turnId !== undefined && { turnId: request.turnId }),
-          operations: [
-            {
-              op: "resolve_missing",
-              id: request.missing,
-              asset: request.asset,
-              ...(request.title !== undefined && { title: request.title }),
-            },
-          ],
-        });
-      } catch (error) {
-        throw isStoryFailure(error) ? fromStory(error) : error;
-      }
-      const node = response.results[0]?.id ?? "";
-      const asset = posix.normalize(request.asset.replace(/^\.\//, ""));
-      const ledger = readLedger(project.dir);
-      const record = ledger.records.find((entry) => entry.asset === asset);
-      if (record) {
-        writeLedger(project.dir, {
-          schema: ledger.schema,
-          records: ledger.records.map((entry) =>
-            entry.id === record.id ? { ...entry, storyNode: node, need } : entry,
-          ),
-        });
-      }
-      return { missing: request.missing, node, asset, view: response.view };
-    });
+  /** Resolves a Missing Asset node; cancellable like {@link import} (`cancelled` only before the story edit starts). */
+  async resolve(
+    project: ResolvedProject,
+    request: ResolveMissingRequest,
+    client?: AbortSignal,
+  ): Promise<ResolveMissingResult> {
+    const guard = this.requests.begin(project.dir, request.requestId, client);
+    try {
+      return await guard.race(
+        this.lock(project, () => this.resolveLocked(project, request, guard)),
+      );
+    } catch (error) {
+      throw guard.normalize(error);
+    } finally {
+      this.requests.end(guard);
+    }
+  }
+
+  private async resolveLocked(
+    project: ResolvedProject,
+    request: ResolveMissingRequest,
+    guard: RequestGuard,
+  ): Promise<ResolveMissingResult> {
+    const need = this.missingNeed(project, request.missing);
+    let response;
+    // The commit: the story edit is the write.
+    guard.commit();
+    try {
+      response = await this.options.story.edit(project, {
+        ...(request.turnId !== undefined && { turnId: request.turnId }),
+        operations: [
+          {
+            op: "resolve_missing",
+            id: request.missing,
+            asset: request.asset,
+            ...(request.title !== undefined && { title: request.title }),
+          },
+        ],
+      });
+    } catch (error) {
+      throw isStoryFailure(error) ? fromStory(error) : error;
+    }
+    const node = response.results[0]?.id ?? "";
+    const asset = posix.normalize(request.asset.replace(/^\.\//, ""));
+    const ledger = readLedger(project.dir);
+    const record = ledger.records.find((entry) => entry.asset === asset);
+    if (record) {
+      writeLedger(project.dir, {
+        schema: ledger.schema,
+        records: ledger.records.map((entry) =>
+          entry.id === record.id ? { ...entry, storyNode: node, need } : entry,
+        ),
+      });
+    }
+    return { missing: request.missing, node, asset, view: response.view };
   }
 
   // ── Sources view and export check ─────────────────────────────────────────

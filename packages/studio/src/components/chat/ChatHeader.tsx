@@ -10,6 +10,7 @@ import { AgentCrumbs } from "./AgentCrumbs";
 import { ChatModeSwitch } from "./ChatModeSwitch";
 import { AgentsMenu } from "./AgentsMenu";
 import { EFFORT_LABELS } from "./agentLabels";
+import { ExecutionQualityMenu } from "./ExecutionQualityMenu";
 import { ModelPicker } from "./ModelPicker";
 
 function EditableTitle({
@@ -123,7 +124,7 @@ function EffortControl({ locked }: { locked: boolean }) {
   );
 }
 
-/** Back to history, the chat's title and agents, the Director's two model controls, and the threads. */
+/** Back to history, the chat's title, quality and agents, the Director's two model controls, and the threads. */
 export function ChatHeader() {
   const chat = useAgentStore((state) => state.chat);
   const models = useAgentStore((state) => state.models);
@@ -151,6 +152,7 @@ export function ChatHeader() {
           disabled={locked || chat === null}
           onCommit={(title) => void renameChat(title)}
         />
+        {chat && <ExecutionQualityMenu chat={chat.chat} />}
         {chat && <AgentsMenu chat={chat.chat} />}
       </div>
       <div className="flex items-center gap-1.5">

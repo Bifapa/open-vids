@@ -20,6 +20,7 @@ import type {
   ThinkingEffort,
   TurnSummary,
 } from "./types.js";
+import type { ExecutionQuality } from "./qa.js";
 
 /**
  * The OpenVids Agent Runtime HTTP API.
@@ -75,6 +76,8 @@ export interface UpdateChatRequest {
   agentOverrides?: Partial<Record<SpecialistId, SpecialistConfig | null>>;
   /** The chat's mode for its next turns. */
   activeMode?: ChatMode;
+  /** The chat's own Execution Quality; null returns the chat to the global default. */
+  executionQuality?: ExecutionQuality | null;
 }
 
 export interface StartTurnRequest {
@@ -134,6 +137,7 @@ export interface UpdateAgentSettingsRequest {
     thinking?: ThinkingEffort | null;
     credentials?: JevCredentialMode;
   };
+  executionQuality?: ExecutionQuality;
 }
 
 /** Stores (string) or removes (null) the Jev API key. The response never contains the key. */

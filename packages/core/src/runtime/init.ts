@@ -1,9 +1,19 @@
 import { preloadMedia } from "./preloadMedia";
+import {
+  createPreviewMediaBudget,
+  DETACH_INTERVAL_MS,
+  PLAN_MIN_INTERVAL_MS,
+  PLAN_SEEK_JUMP_SECONDS,
+} from "./previewMediaBudget";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
 import { revealTimedClipsAfterFirstPass, SKIPPED_CLIP, skipsHiddenImages } from "./timedClipHide";
-import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_UPCOMING_ATTR } from "../studioPreviewMark";
+import {
+  STUDIO_PREVIEW_LAZY_ATTR,
+  STUDIO_PREVIEW_MARK_META,
+  STUDIO_PREVIEW_UPCOMING_ATTR,
+} from "../studioPreviewMark";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
 import { createGsapAdapter } from "./adapters/gsap";
@@ -2322,6 +2332,7 @@ export function initSandboxRuntimeModular(): void {
   const bindMediaMetadataListeners = () => {
     if (state.tornDown) return;
     const mediaEls = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[];
+    const toPreload: HTMLMediaElement[] = [];
     for (const mediaEl of mediaEls) {
       if (metadataBoundMedia.has(mediaEl)) continue;
       metadataBoundMedia.add(mediaEl);
@@ -2355,10 +2366,11 @@ export function initSandboxRuntimeModular(): void {
       // Proactive proxy-fallback trigger: consult the codec map and swap
       // BEFORE the eager load() below, so a known-hostile asset never even
       // attempts to load (and error-flash) the original. No-op in render
-      // mode, for <audio>, or when the codec map is absent.
+      // mode, for <audio>, or when the codec map is absent. Before the preview
+      // budget too: a released video has no `src` left for the codec map to key on.
       maybeProxyProactively(mediaEl);
 
-      preloadMedia(mediaEl);
+      toPreload.push(mediaEl);
 
       // Probe volume automation from the GSAP timeline — same approach as the
       // renderer (see discoverAudioVolumeAutomationFromTimeline / audioMixer).
@@ -2366,6 +2378,13 @@ export function initSandboxRuntimeModular(): void {
       // the timeline is ready are re-probed the first time bindMediaMetadataListeners
       // fires after the timeline has been captured (every 30 transport ticks).
       probeAndCacheVolumeKeyframes(mediaEl);
+    }
+    if (toPreload.length === 0) return;
+    // New media is weighed against the preview budget BEFORE it is told to load: a far-away clip
+    // of a hundred-clip edit must not start a decoder only to drop it a moment later.
+    enforcePreviewMediaBudget(true);
+    for (const mediaEl of toPreload) {
+      if (!previewMediaBudget.isReleased(mediaEl)) preloadMedia(mediaEl);
     }
   };
 
@@ -2856,7 +2875,54 @@ export function initSandboxRuntimeModular(): void {
     document.removeEventListener("play", onMediaPlayWakeTransport, true);
   });
 
+  // A Studio preview keeps a loaded source only on the videos near the playhead (see
+  // previewMediaBudget.ts). Only a page the Studio server marked as a preview does: a render or
+  // capture drives every frame itself and needs every source loaded.
+  const previewMediaBudget = createPreviewMediaBudget();
+  let previewBudgetTimerId: number | null = null;
+  let previewBudgetLastRunMs = Number.NEGATIVE_INFINITY;
+  let previewBudgetLastTimeSeconds = Number.NaN;
+  const isPreviewMediaBudgetActive = (): boolean =>
+    !state.tornDown &&
+    document.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null &&
+    !window.__HF_EXPORT_RENDER_SEEK_CONFIG &&
+    !Reflect.get(window, "__HF_RENDER_CAPTURE_MODE");
+  const enforcePreviewMediaBudget = (force: boolean) => {
+    if (!isPreviewMediaBudgetActive()) return;
+    const nowMs = performance.now();
+    const timeSeconds = state.currentTime;
+    const jumped = Math.abs(timeSeconds - previewBudgetLastTimeSeconds) > PLAN_SEEK_JUMP_SECONDS;
+    if (!force && !jumped && nowMs - previewBudgetLastRunMs < PLAN_MIN_INTERVAL_MS) return;
+    previewBudgetLastRunMs = nowMs;
+    previewBudgetLastTimeSeconds = timeSeconds;
+    if (previewBudgetTimerId != null) window.clearTimeout(previewBudgetTimerId);
+    previewBudgetTimerId = null;
+    const { clips } = withTimingResolver(() => resolveMediaClipIndex());
+    const { pending } = previewMediaBudget.update({
+      clips,
+      time: timeSeconds,
+      nowMs,
+      isLeased: (el) => pausedMediaLeases.has(el),
+      compositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
+    });
+    // Deferred releases/attaches (batching, cap room) finish on a timer: a parked transport runs no ticks.
+    if (pending) {
+      previewBudgetTimerId = window.setTimeout(() => {
+        previewBudgetTimerId = null;
+        enforcePreviewMediaBudget(true);
+      }, DETACH_INTERVAL_MS);
+    }
+  };
+  runtimeCleanupCallbacks.push(() => {
+    if (previewBudgetTimerId != null) window.clearTimeout(previewBudgetTimerId);
+    previewBudgetTimerId = null;
+    previewMediaBudget.restoreAll();
+  });
+
   const syncMediaForCurrentState = (timingRevision?: number) => {
+    // Before the pass reads any element: a clip that just became current must hold its source
+    // when `syncRuntimeMedia` seeks it.
+    enforcePreviewMediaBudget(false);
     // Scope 1 of 3 (see `withTimingResolver`). Closes before `syncRuntimeMedia`,
     // which may call `el.load()` and invalidate every cached duration.
     //

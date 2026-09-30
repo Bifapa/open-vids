@@ -85,7 +85,8 @@ const PARAMETERS: Record<ResearchToolName, Record<string, unknown>> = {
         type: "integer",
         minimum: 1,
         maximum: RESEARCH_LIMITS.searchResults,
-        description: "Results per source (default 6).",
+        description:
+          "Results per source. The turn's Execution Quality sets the default and the maximum; a larger value is reduced to it.",
       },
     },
     required: ["query", "mediaKind"],
@@ -141,12 +142,23 @@ export interface ResearchToolContext {
   candidate?: (id: string) => KnownCandidate | undefined;
   /** The display name of a trusted source in the user's policy. */
   sourceName?: (id: string) => string | undefined;
+  /** The turn's budget of candidates per search: the default `limit` of search_assets and its maximum. */
+  candidateLimit?: number;
 }
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
 const shorten = (value: string, limit: number): string =>
   value.length > limit ? `${value.slice(0, limit - 1).trimEnd()}…` : value;
+
+/** The arguments of a search with `limit` defaulted to the budget and never above it (other values are left for the executor to judge). */
+function clampSearchLimit(args: unknown, budget: number): unknown {
+  if (!isRecord(args)) return args;
+  const { limit } = args;
+  if (limit === undefined || limit === null) return { ...args, limit: budget };
+  if (typeof limit === "number" && limit > budget) return { ...args, limit: budget };
+  return args;
+}
 
 function hostOf(url: string): string | null {
   try {
@@ -218,7 +230,14 @@ export function buildResearchTools(
     name,
     description: DESCRIPTIONS[name],
     parameters: PARAMETERS[name],
-    execute: (args, signal) => execute(name, args, signal),
+    execute: (args, signal) =>
+      execute(
+        name,
+        name === "search_assets" && context.candidateLimit !== undefined
+          ? clampSearchLimit(args, context.candidateLimit)
+          : args,
+        signal,
+      ),
     activity: (args) => activity(name, args, context),
   }));
 }

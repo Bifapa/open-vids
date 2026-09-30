@@ -20,7 +20,12 @@ import {
   type TurnCheckpoint,
   type TurnSummary,
 } from "@hyperframes/agent-protocol";
-import type { AgentBackend, BackendSession, HostToolResult } from "./backend.js";
+import type {
+  AgentBackend,
+  BackendPromptOutcome,
+  BackendSession,
+  HostToolResult,
+} from "./backend.js";
 import { Orchestrator, type TurnAgentSetup } from "./agents/orchestrator.js";
 import { directorInstructions, jevInstructions, specialistInstructions } from "./agents/roles.js";
 import { renderTeam, resolveTurnSetup } from "./agents/setup.js";
@@ -34,6 +39,10 @@ import { renderStoryBlocks } from "./story/prompt.js";
 import { isStoryToolName, storyToolsFor, timelineWritesAllowed } from "./story/tools.js";
 import { TurnResearch } from "./research/executor.js";
 import { isResearchToolName } from "./research/tools.js";
+import { TurnQa } from "./qa/executor.js";
+import { QaLoop, type QaPhase } from "./qa/loop.js";
+import { qaPhaseRefusal } from "./qa/phase.js";
+import { isQaToolName } from "./qa/tools.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import type { CheckpointHandle, CheckpointHost } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
@@ -75,6 +84,10 @@ interface ActiveRun {
   story: TurnStory | null;
   /** The turn's research tools; closed (in-flight imports and resolutions awaited) before the checkpoint ends. */
   research: TurnResearch | null;
+  /** The turn's render QA (service calls and Vision's review tools); closed and awaited before the checkpoint ends. */
+  qa: TurnQa | null;
+  /** Where the turn is in render QA: tools are refused accordingly (see qa/phase.ts). */
+  qaPhase: QaPhase;
   /** The mode the turn runs in (a story action implies `story`). */
   mode: ChatMode;
   /** The Story workspace action the turn runs, if any. */
@@ -104,6 +117,7 @@ export class TurnRunner {
   private readonly analysisFactory: TurnRunnerOptions["analysis"];
   private readonly storyFactory: TurnRunnerOptions["story"];
   private readonly researchFactory: TurnRunnerOptions["research"];
+  private readonly qaFactory: TurnRunnerOptions["qa"];
   private readonly analysisPollMs: number | undefined;
   private readonly timers: StreamTimerApi;
   private readonly sessionManager: SessionManager;
@@ -127,6 +141,7 @@ export class TurnRunner {
     this.analysisFactory = options.analysis;
     this.storyFactory = options.story;
     this.researchFactory = options.research;
+    this.qaFactory = options.qa;
     this.analysisPollMs = options.analysisPollMs;
     this.timers = options.timers ?? {
       setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
@@ -227,6 +242,8 @@ export class TurnRunner {
       analysis: null,
       story: null,
       research: null,
+      qa: null,
+      qaPhase: null,
       mode,
       storyAction: input.storyAction ?? null,
       storyOptions: input.storyOptions ?? null,
@@ -249,6 +266,9 @@ export class TurnRunner {
     reservation.turn.model = prepared.model;
     reservation.turn.thinking = prepared.thinking;
     assistantMessage.model = prepared.model;
+    const execution = prepared.setup.execution;
+    turn.execution = { preset: execution.preset, budget: { ...execution.budget } };
+    reservation.turn.execution = { preset: execution.preset, budget: { ...execution.budget } };
 
     try {
       await this.recoverCheckpoints();
@@ -519,19 +539,29 @@ export class TurnRunner {
     try {
       const setup = run.setup;
       if (!setup) throw new Error("The turn has no agent setup.");
+      const signal = run.controller.signal;
       const editingFactory = this.editingFactory;
       const editingHost = editingFactory ? editingFactory(this.chats.scope) : null;
       const researchFactory = this.researchFactory;
       const researchHost = researchFactory ? researchFactory(this.chats.scope) : null;
+      const qaFactory = this.qaFactory;
+      const qa =
+        qaFactory && editingHost
+          ? new TurnQa({ host: qaFactory(this.chats.scope), turnSignal: signal })
+          : null;
+      run.qa = qa;
       run.editing =
         editingFactory && editingHost
           ? new TurnEditing({
               host: editingHost,
               editorContext: setup.editorContext,
-              turnSignal: run.controller.signal,
+              turnSignal: signal,
               userRequests: [input.prompt],
               turnId: run.turn.id,
               ...(researchHost && { research: researchHost }),
+              fingerprint: qa
+                ? (callSignal) => qa.fingerprint(callSignal).catch(() => null)
+                : undefined,
             })
           : null;
       const analysisFactory = this.analysisFactory;
@@ -539,8 +569,9 @@ export class TurnRunner {
         ? new TurnAnalysis({
             host: analysisFactory(this.chats.scope),
             editing: editingHost,
-            turnSignal: run.controller.signal,
+            turnSignal: signal,
             turnId: run.turn.id,
+            framesPerSource: setup.execution.budget.analysisFramesPerSource,
             ...(this.analysisPollMs !== undefined && { pollMs: this.analysisPollMs }),
           })
         : null;
@@ -549,7 +580,7 @@ export class TurnRunner {
         ? new TurnStory({
             host: storyFactory(this.chats.scope),
             turnId: run.turn.id,
-            turnSignal: run.controller.signal,
+            turnSignal: signal,
             storyOptions: run.storyOptions,
           })
         : null;
@@ -557,7 +588,7 @@ export class TurnRunner {
         ? new TurnResearch({
             host: researchHost,
             turnId: run.turn.id,
-            turnSignal: run.controller.signal,
+            turnSignal: signal,
             enabled: setup.enabled,
             turn: { mode: run.mode, action: run.storyAction },
             storyOptions: run.storyOptions,
@@ -566,11 +597,13 @@ export class TurnRunner {
         : null;
       // The user's Asset Search policy decides what Research may do; when Studio cannot say, research fails closed.
       if (run.research && setup.enabled.includes("research")) {
-        const policy = await run.research.policy(run.controller.signal);
+        const policy = await run.research.policy(signal);
         setup.research = policy
           ? { status: "ready", policy }
           : { status: "unavailable", reason: "Studio's research service did not answer" };
       }
+      // What the project is when the turn starts: render QA runs only when the turn changed it.
+      const startFingerprint = qa ? await qa.fingerprint(signal).catch(() => null) : null;
       const availability: ToolAvailability = {
         enabled: setup.enabled,
         jev: setup.jev !== null,
@@ -583,6 +616,8 @@ export class TurnRunner {
           setup.research?.status === "ready"
             ? setup.research.policy.sources.find((source) => source.id === id)?.name
             : undefined,
+        researchCandidates: setup.execution.budget.researchCandidates,
+        qa: qa !== null,
         mode: run.mode,
         storyAction: run.storyAction,
         planClips: (plan) => this.active?.analysis?.planClips(plan),
@@ -590,13 +625,13 @@ export class TurnRunner {
       const session = await this.agentSession(run.chatId, "director", availability);
       if (run.finalizing) return;
       run.session = session;
-      run.orchestrator = new Orchestrator({
+      const orchestrator = new Orchestrator({
         chats: this.chats,
         chatId: run.chatId,
         turn: run.turn,
         directorMessageId: run.assistantMessage.id,
         setup,
-        signal: run.controller.signal,
+        signal,
         now: this.now,
         ids: this.ids,
         timers: this.timers,
@@ -605,6 +640,7 @@ export class TurnRunner {
         jevSession: () => this.jevSession(run.chatId, setup),
         closeSpecialist: (agent) => this.sessionManager.disposeAgent(run.chatId, agent),
       });
+      run.orchestrator = orchestrator;
       const activeWriter = new TurnEventWriter({
         chats: this.chats,
         chatId: run.chatId,
@@ -624,9 +660,46 @@ export class TurnRunner {
           text,
           model: run.turn.model,
           thinking: run.turn.thinking,
-          signal: run.controller.signal,
+          signal,
           onEvent: (event) => activeWriter.accept(event),
         });
+      /** A Director prompt after the first: the reply starts a new part of the same message. */
+      const promptAgain = async (text: string): Promise<BackendPromptOutcome> => {
+        run.directorIdle = false;
+        activeWriter.startPrompt();
+        const outcome = await promptDirector(text);
+        run.directorIdle = true;
+        return outcome;
+      };
+      /**
+       * The Director must hear back from every run it started, and from steering sent while it was idle: while either
+       * is pending it is re-prompted (a bounded number of times) until it finishes with a reply.
+       */
+      const settleDirector = async (first: BackendPromptOutcome): Promise<BackendPromptOutcome> => {
+        let outcome = first;
+        let followUps = 0;
+        while (
+          outcome === "completed" &&
+          !run.forcedError &&
+          !signal.aborted &&
+          followUps < MAX_FOLLOW_UPS &&
+          (run.pendingSteering.length > 0 || orchestrator.hasUnreported())
+        ) {
+          const results =
+            run.pendingSteering.length > 0 ? "" : await orchestrator.collectUnreported(signal);
+          if (signal.aborted) break;
+          const steering = run.pendingSteering.splice(0);
+          if (steering.length === 0) followUps += 1;
+          const blocks = [
+            results &&
+              `<delegated-results>\n${results}\n</delegated-results>\nThese delegated runs reported after your last reply.`,
+            ...steering.map((text) => `<user-steering>\n${text}\n</user-steering>`),
+            "Continue: adjust the plan and delegated work if needed, wait for any runs still working, then finish the user's request with a short reply.",
+          ].filter(Boolean);
+          outcome = await promptAgain(blocks.join("\n\n"));
+        }
+        return outcome;
+      };
       const storyBlocks =
         run.mode === "story" && run.story
           ? `\n\n${renderStoryBlocks(await this.storyBlockInput(run, setup, run.story))}`
@@ -637,39 +710,42 @@ export class TurnRunner {
       run.markPromptStarted();
       let outcome = await promptPromise;
       run.directorIdle = true;
+      outcome = await settleDirector(outcome);
 
-      // The Director must hear back from every run it started, and from steering sent while it was idle.
-      let followUps = 0;
-      while (
-        outcome === "completed" &&
-        !run.forcedError &&
-        !run.controller.signal.aborted &&
-        followUps < MAX_FOLLOW_UPS &&
-        (run.pendingSteering.length > 0 || run.orchestrator.hasUnreported())
-      ) {
-        const results =
-          run.pendingSteering.length > 0
-            ? ""
-            : await run.orchestrator.collectUnreported(run.controller.signal);
-        if (run.controller.signal.aborted) break;
-        const steering = run.pendingSteering.splice(0);
-        if (steering.length === 0) followUps += 1;
-        const blocks = [
-          results &&
-            `<delegated-results>\n${results}\n</delegated-results>\nThese delegated runs reported after your last reply.`,
-          ...steering.map((text) => `<user-steering>\n${text}\n</user-steering>`),
-          "Continue: adjust the plan and delegated work if needed, wait for any runs still working, then finish the user's request with a short reply.",
-        ].filter(Boolean);
-        run.directorIdle = false;
-        activeWriter.startPrompt();
-        outcome = await promptDirector(blocks.join("\n\n"));
-        run.directorIdle = true;
+      // The Director's work is done: render QA renders, checks and (while passes are left) has the Director correct.
+      if (qa && editingHost && outcome === "completed" && !run.forcedError && !signal.aborted) {
+        outcome = await new QaLoop({
+          chats: this.chats,
+          chatId: run.chatId,
+          turn: run.turn,
+          qa,
+          editing: editingHost,
+          renders: {
+            asked: () => run.editing?.userAskedForRender() ?? false,
+            last: () => run.editing?.lastRender() ?? null,
+          },
+          orchestrator,
+          setup,
+          mode: run.mode,
+          action: run.storyAction,
+          startFingerprint,
+          director: {
+            prompt: promptAgain,
+            settle: settleDirector,
+            takeSteering: () => run.pendingSteering.splice(0),
+            setPhase: (phase) => {
+              run.qaPhase = phase;
+            },
+          },
+          signal,
+          now: this.now,
+        }).run(outcome);
       }
 
       if (run.forcedError) {
         await activeWriter.finish("failed");
         await this.finalize(run, "failed", run.forcedError);
-      } else if (outcome === "aborted" || run.controller.signal.aborted) {
+      } else if (outcome === "aborted" || signal.aborted) {
         await activeWriter.finish("aborted");
         await this.finalize(run, "aborted");
       } else {
@@ -703,6 +779,7 @@ export class TurnRunner {
     }
     return {
       setup: resolveTurnSetup({
+        qaAvailable: this.qaFactory !== undefined && this.editingFactory !== undefined,
         chat,
         settings,
         jevApiKey,
@@ -791,6 +868,12 @@ export class TurnRunner {
     const run = this.active;
     if (!run || run.chatId !== chatId || run.finalizing)
       return { text: "There is no running turn for this tool call.", isError: true };
+    const refusal = qaPhaseRefusal(run.qaPhase, name);
+    if (refusal) return { text: refusal, isError: true };
+    if (isQaToolName(name)) {
+      if (!run.qa) return { text: "Render QA is not available in this runtime.", isError: true };
+      return run.qa.execute(caller, name, args, signal);
+    }
     if (isResearchToolName(name)) {
       if (!run.research)
         return { text: "Research is not available in this runtime.", isError: true };
@@ -832,10 +915,12 @@ export class TurnRunner {
     run.finalizing = true;
     // Every delegated run must be over before the checkpoint closes, or its later writes would escape Revert.
     await run.orchestrator?.shutdown(status === "completed").catch(() => undefined);
+    // Render QA's checks, frame extractions and report writes end here too (the QA loop itself has already returned).
+    await run.qa?.shutdown().catch(() => undefined);
     // Editing calls still running (or a render) end here too: no editing write may land after the checkpoint closes.
     // Analysis jobs are cancelled and a rough cut already sent to the editing service is awaited for the same reason;
     // a story edit or build already sent to the story service is awaited too (it is atomic there).
-    await run.research?.shutdown().catch(() => undefined);
+    const research = await run.research?.shutdown().catch(() => null);
     await run.story?.shutdown().catch(() => undefined);
     await run.analysis?.shutdown().catch(() => undefined);
     await run.editing?.shutdown().catch(() => undefined);
@@ -865,6 +950,18 @@ export class TurnRunner {
         code: "agent_failed",
         message: errorMessage(error, "The agent failed to complete this turn"),
       };
+    }
+    // A cancelled import Studio never settled may still write after this checkpoint closed: the user must hear it.
+    const unsettled = research?.unsettledWrites ?? [];
+    if (unsettled.length > 0) {
+      await this.bestEffort(() =>
+        this.chats.emit(run.chatId, {
+          type: "assistant.text.delta",
+          messageId: run.assistantMessage.id,
+          partId: this.ids(),
+          delta: `\n\nNote: Studio did not confirm whether ${unsettled.length === 1 ? "an asset import" : `${unsettled.length} asset imports`} stopped with this turn wrote anything (${unsettled.join(", ")}). A file that still appears in assets/research is not part of this turn's checkpoint; check the Sources panel.`,
+        }),
+      );
     }
     const assistantStatus: AssistantMessageStatus =
       status === "completed" ? "complete" : status === "failed" ? "failed" : "aborted";
