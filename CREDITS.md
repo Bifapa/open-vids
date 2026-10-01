@@ -1,27 +1,55 @@
 # Credits
 
+OpenVids is licensed under the [Apache License 2.0](LICENSE); see also [NOTICE](NOTICE).
+This file records what OpenVids is built on and the licenses of the third-party
+material it contains.
+
+## Built on HyperFrames
+
+OpenVids started from a snapshot of **[HyperFrames](https://github.com/heygen-com/hyperframes)**
+by HeyGen, Inc. (Apache-2.0). The composition contract, the render pipeline, the
+Studio editor, the CLI, the registry of blocks and components and the agent
+skills come from that project and have been modified here. OpenVids is an
+independent project and is not affiliated with or endorsed by HeyGen.
+
 ## Prior art
 
-HyperFrames was inspired by prior work in the browser-based video rendering space.
-In particular, we want to acknowledge:
+HyperFrames, and through it OpenVids, owes ideas to earlier work on rendering
+web pages to video:
 
 - **[Remotion](https://www.remotion.dev)** pioneered the approach of using a
   headless browser + FFmpeg `image2pipe` pipeline to turn web primitives into
-  deterministic video in the JavaScript ecosystem. Several of HyperFrames'
-  architectural ideas — ordered async barriers for parallel frame capture,
+  deterministic video in the JavaScript ecosystem. Several architectural ideas
+  in the render pipeline — ordered async barriers for parallel frame capture,
   multi-host port availability probing for dev servers, and the broader shape
   of a "render HTML to video" CLI — were informed by studying how Remotion
-  approaches these problems.
+  approaches these problems. The code is independently implemented. OpenVids is
+  not affiliated with Remotion.
 
-All code in this repository is independently implemented and distributed
-under the [Apache 2.0 License](LICENSE). HyperFrames is not affiliated with
-Remotion.
+## What OpenVids is built with
 
-## Thanks
+Thanks to the authors and maintainers of the open-source projects OpenVids
+depends on, in particular:
 
-Thanks also to the authors and maintainers of the open-source projects
-HyperFrames builds on, including Puppeteer, FFmpeg, GSAP, Hono, and the
-broader Node.js ecosystem.
+- **[Tauri](https://tauri.app)** — the desktop shell. Apache-2.0 OR MIT.
+- **[oh-my-pi](https://github.com/can1357/oh-my-pi)** (OMP SDK) — the agent
+  sessions, providers and model catalog behind Agent Chat. MIT.
+- **[Bun](https://bun.sh)** — package manager and the JavaScript runtime shipped
+  inside the app, distributed under its own license terms.
+- **[Puppeteer](https://pptr.dev)** (Apache-2.0) and **[FFmpeg](https://ffmpeg.org)**
+  — frame capture and encoding. OpenVids does not ship Chrome or FFmpeg; it uses
+  the ones installed on the machine.
+- **[Hono](https://hono.dev)** — the local HTTP servers. MIT.
+- **[React Flow](https://reactflow.dev)** (`@xyflow/react`) — the Story graph canvas. MIT.
+- **[sharp](https://sharp.pixelplumbing.com)** (Apache-2.0) with
+  **[libvips](https://www.libvips.org)** (LGPL-3.0-or-later, shipped as a
+  separate dynamic library) — thumbnails and image processing.
+- **[GSAP](https://gsap.com)** — the animation runtime of compositions, under the
+  [GSAP Standard License](https://gsap.com/standard-license) (not an OSI
+  open-source licence).
+
+The complete dependency set is in `bun.lock` and
+`apps/desktop/src-tauri/Cargo.lock`.
 
 ## Third-party licenses
 
@@ -35,8 +63,8 @@ broader Node.js ecosystem.
   It runs on **[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)**, Apache-2.0.
 - The seven 3D-motion catalog pieces (`canopy-part-title`, `glass-shard-title`,
   `code-slice-hero`, `frost-sequence-camera-orbit`, `cuboid-carousel`,
-  `orbit-card`, `wireframe-portal-title`) are contributed with their author's
-  permission under this repository's license. What they vendor or load, by upstream:
+  `orbit-card`, `wireframe-portal-title`) were contributed to HyperFrames with their author's
+  permission under the Apache-2.0 license. What they vendor or load, by upstream:
   - **[three.js](https://threejs.org)**, MIT. Vendored as r185 in `frost-sequence-camera-orbit`,
     `cuboid-carousel` and `orbit-card` (`Three-LICENSE.txt` beside the copy); bundled as r181 inside
     `glass-shard-title`'s `glass-main.js`; loaded from the jsDelivr CDN by `canopy-part-title`
