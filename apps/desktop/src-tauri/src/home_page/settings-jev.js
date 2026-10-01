@@ -4,22 +4,17 @@
    and a live check (POST /api/agent/jev/test). Models of the chosen provider: GET /api/agent/providers/:id/models. */
 (function () {
   "use strict";
-  const { ic, esc, api, S, ui, PAGES, CLICK, CHANGE, row, group, sw, select, opts, head, lede } =
-    OVS;
+  const { ic, esc, api, S, ui, PAGES, CLICK, CHANGE, tr, msg, text, row, group } = OVS;
+  const { sw, select, opts, head, lede } = OVS;
+  /* Escaped text of a catalog message, for the helpers that take markup. */
+  const te = (key, params) => esc(tr(key, params));
 
-  const EFFORT_LABELS = {
-    off: "Off",
-    minimal: "Minimal",
-    low: "Low",
-    medium: "Medium",
-    high: "High",
-    xhigh: "Extra high",
-    max: "Max",
-  };
+  /* Labels are settings.jev.effort.<level> (read when drawn); a level this page doesn't know shows as it is. */
+  const EFFORT_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+  const effortLabel = (level) =>
+    EFFORT_LEVELS.includes(level) ? tr(`settings.jev.effort.${level}`) : level;
   /* Jev runs short jobs: when a provider is picked, start from its quick model rather than leave Jev without one. */
   const FAST_MODEL = /(^|[-_/.: ])(haiku|mini|flash|lite|nano|small|instant)([-_/.: ]|$)/i;
-  const KEY_FOOT =
-    "Stored in a private file on this Mac, readable only by you. Not in the macOS Keychain, and not shared with OMP.";
 
   const jevModels = (id) => (id ? S.provModels[id] : null);
   const jevModelInfo = (j) => {
@@ -33,20 +28,20 @@
   function providerOptions(j, keyMode) {
     const list = OVS.providerList();
     const items = list.map((p) => {
-      const note =
+      const label =
         p.status === "connected"
-          ? ""
+          ? p.name
           : p.status === "signin_required"
-            ? " — needs sign-in"
+            ? tr("settings.jev.provider.needsSignin", { provider: p.name })
             : p.status === "error"
-              ? " — error"
-              : " — not set up";
+              ? tr("settings.jev.provider.error", { provider: p.name })
+              : tr("settings.jev.provider.notSetUp", { provider: p.name });
       /* With Jev's own key any provider will do; with the agents' connection only a connected one can. */
-      return [p.id, p.name + note, !keyMode && !p.authenticated && p.id !== j.provider];
+      return [p.id, label, !keyMode && !p.authenticated && p.id !== j.provider];
     });
     if (j.provider && !list.some((p) => p.id === j.provider))
       items.unshift([j.provider, j.provider]);
-    if (!j.provider) items.unshift(["", "Choose a provider", true]);
+    if (!j.provider) items.unshift(["", tr("settings.jev.provider.choose"), true]);
     return opts(items, j.provider || "");
   }
 
@@ -56,42 +51,49 @@
       sub = null;
     if (!j.provider) {
       ctl = select(
-        opts([["", "Choose a provider first", true]], ""),
+        opts([["", tr("settings.jev.model.chooseProviderFirst"), true]], ""),
         "jev-model",
-        "Jev model",
+        tr("settings.jev.modelAria"),
         null,
         "",
         true,
       );
     } else if (!m || m.status === "loading") {
       ctl = select(
-        opts([["", "Loading models…", true]], ""),
+        opts([["", tr("settings.providers.models.loading"), true]], ""),
         "jev-model",
-        "Jev model",
+        tr("settings.jev.modelAria"),
         null,
         "",
         true,
       );
     } else if (m.status === "failed") {
       ctl = select(
-        opts([["", "Models unavailable", true]], ""),
+        opts([["", tr("settings.jev.model.unavailable"), true]], ""),
         "jev-model",
-        "Jev model",
+        tr("settings.jev.modelAria"),
         null,
         "",
         true,
       );
-      sub = `<span class="status error">${ic("alert")}${esc(m.error)} · <button type="button" class="link" data-act="jev-models-retry" data-fk="jev-models-retry">Retry</button></span>`;
+      sub = `<span class="status error">${ic("alert")}${esc(m.error)} · <button type="button" class="link" data-act="jev-models-retry" data-fk="jev-models-retry">${te("common.retry")}</button></span>`;
     } else if (m.models.length === 0) {
-      ctl = select(opts([["", "No models", true]], ""), "jev-model", "Jev model", null, "", true);
+      ctl = select(
+        opts([["", tr("settings.jev.model.none"), true]], ""),
+        "jev-model",
+        tr("settings.jev.modelAria"),
+        null,
+        "",
+        true,
+      );
     } else {
       const items = m.models.map((x) => [x.modelId, x.name || x.modelId]);
-      if (!j.modelId) items.unshift(["", "Choose a model", true]);
+      if (!j.modelId) items.unshift(["", tr("settings.jev.model.choose"), true]);
       else if (!m.models.some((x) => x.modelId === j.modelId))
-        items.push([j.modelId, j.modelId + " (unavailable)"]);
-      ctl = select(opts(items, j.modelId || ""), "jev-model", "Jev model");
+        items.push([j.modelId, tr("settings.jev.model.unavailableItem", { model: j.modelId })]);
+      ctl = select(opts(items, j.modelId || ""), "jev-model", tr("settings.jev.modelAria"));
     }
-    return row("Model", sub, ctl);
+    return row(te("settings.jev.model"), sub, ctl);
   }
 
   function thinkingRow(j) {
@@ -100,131 +102,135 @@
     const values = ["off"].concat(info.efforts.filter((e) => e !== "off"));
     if (j.thinking && !values.includes(j.thinking)) values.push(j.thinking);
     return row(
-      "Thinking effort",
+      te("settings.jev.thinking"),
       null,
       select(
         opts(
-          [["", "Default"]].concat(values.map((e) => [e, EFFORT_LABELS[e] || e])),
+          [["", tr("settings.jev.effort.default")]].concat(values.map((e) => [e, effortLabel(e)])),
           j.thinking || "",
         ),
         "jev-thinking",
-        "Jev thinking effort",
+        tr("settings.jev.thinkingAria"),
       ),
     );
   }
 
   function credentialBlock(j, prov) {
-    const name = prov ? prov.name : j.provider || "provider";
+    const name = prov ? prov.name : j.provider || tr("settings.jev.providerFallback");
     if (prov && prov.keyless && j.credentials !== "api-key")
       return row(
-        "API key",
-        "Local providers don’t need one.",
-        `<span class="status success">${ic("check")}Not needed</span>`,
+        te("settings.jev.key"),
+        te("settings.jev.key.notNeededHint"),
+        `<span class="status success">${ic("check")}${te("settings.jev.key.notNeeded")}</span>`,
       );
     const radio = (mode, label, hint) =>
       `<button type="button" class="st-radio" role="radio" aria-checked="${j.credentials === mode}" data-act="jev-cred" data-v="${mode}" data-fk="jev-cred:${mode}"><span class="st-label"><b>${label}</b><span>${hint}</span></span></button>`;
-    const radios = `<div class="st-choice" role="radiogroup" aria-label="Jev credential">${radio(
+    const radios = `<div class="st-choice" role="radiogroup" aria-label="${te("settings.jev.credentialAria")}">${radio(
       "provider-login",
-      `Use the ${esc(name)} connection`,
-      "Same credential and limits as your agents",
-    )}${radio("api-key", "Separate API key for Jev", "Keeps Jev’s usage and rate limits apart")}</div>`;
+      te("settings.jev.credential.provider", { provider: name }),
+      te("settings.jev.credential.providerHint"),
+    )}${radio("api-key", te("settings.jev.credential.key"), te("settings.jev.credential.keyHint"))}</div>`;
     if (j.credentials !== "api-key") return radios;
     const busy = ui.busy.jev;
     if (j.apiKeyConfigured && !ui.flags.jevReplace) {
       const status = busy
-        ? `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${esc(busy)}</span>`
-        : `<span class="status success">${ic("check")}Key saved</span>`;
+        ? `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${esc(text(busy))}</span>`
+        : `<span class="status success">${ic("check")}${te("settings.jev.key.saved")}</span>`;
       return (
         radios +
         row(
-          "API key",
-          '<span class="mono">••••••••••••</span> · Saved in a private file on this Mac',
+          te("settings.jev.key"),
+          `<span class="mono">••••••••••••</span> · ${te("settings.jev.key.savedHint")}`,
           `${status}<button type="button" class="btn" data-act="jev-replace" data-fk="jev-replace"${
             busy ? " disabled" : ""
-          }>Replace</button><button type="button" class="btn btn-ghost" data-act="jev-remove" data-fk="jev-remove"${
+          }>${te("settings.jev.key.replace")}</button><button type="button" class="btn btn-ghost" data-act="jev-remove" data-fk="jev-remove"${
             busy ? " disabled" : ""
-          }>Remove</button>`,
+          }>${te("common.remove")}</button>`,
         )
       );
     }
     const err = ui.err.jev;
     return (
       radios +
-      `<div class="st-sub"><div class="st-inline"><input class="input mono${err ? " is-invalid" : ""}" type="password" autocomplete="off" spellcheck="false" placeholder="Paste ${esc(
-        name,
-      )} API key" aria-label="Jev API key" data-act="key-input" data-v="jev" data-draft="jev" data-fk="key:jev"${
+      `<div class="st-sub"><div class="st-inline"><input class="input mono${err ? " is-invalid" : ""}" type="password" autocomplete="off" spellcheck="false" placeholder="${te(
+        "settings.jev.key.placeholder",
+        { provider: name },
+      )}" aria-label="${te("settings.jev.key.aria")}" data-act="key-input" data-v="jev" data-draft="jev" data-fk="key:jev"${
         err ? ' aria-invalid="true" aria-describedby="err-jev"' : ""
       } /><button type="button" class="btn" data-act="jev-save" data-fk="jev-save"${busy ? " disabled" : ""}>${
-        busy ? esc(busy) : "Save"
+        busy ? esc(text(busy)) : te("common.save")
       }</button>${
         j.apiKeyConfigured
-          ? '<button type="button" class="btn btn-ghost" data-act="jev-replace-cancel" data-fk="jev-replace-cancel">Cancel</button>'
+          ? `<button type="button" class="btn btn-ghost" data-act="jev-replace-cancel" data-fk="jev-replace-cancel">${te("common.cancel")}</button>`
           : ""
-      }</div>${err ? `<p class="st-field-err" id="err-jev" role="alert">${esc(err)}</p>` : ""}<p class="st-foot">${KEY_FOOT}</p></div>`
+      }</div>${err ? `<p class="st-field-err" id="err-jev" role="alert">${esc(text(err))}</p>` : ""}<p class="st-foot">${te("settings.key.foot")}</p></div>`
     );
   }
 
   function checkBlock() {
     const t = ui.flags.jevTest,
       busy = !!(t && t.busy);
+    const seconds = new Intl.NumberFormat(OVI18N.language(), {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format((Number(t && t.elapsedMs) || 0) / 1000);
     const status = busy
-      ? '<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>Testing…</span>'
+      ? `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${te("settings.jev.test.running")}</span>`
       : t && t.ok
-        ? `<span class="status success">${ic("check")}Replied in ${((Number(t.elapsedMs) || 0) / 1000).toFixed(1)} s</span>`
+        ? `<span class="status success">${ic("check")}${te("settings.jev.test.replied", { seconds })}</span>`
         : t
-          ? `<span class="status error">${ic("alert")}Failed</span>`
+          ? `<span class="status error">${ic("alert")}${te("settings.jev.test.failed")}</span>`
           : "";
     const detail =
       t && t.ok
         ? `<div class="st-sub"><pre class="st-err-log">${esc(t.model && t.model.modelId)}\n${esc(t.reply)}</pre></div>`
         : t && !busy
-          ? `<div class="st-sub"><p class="st-field-err" role="alert">${esc(t.message || "The test failed.")}</p></div>`
+          ? `<div class="st-sub"><p class="st-field-err" role="alert">${esc(t.message || tr("settings.jev.test.failedMessage"))}</p></div>`
           : "";
     return (
       row(
-        "Test Jev",
-        "Sends a short prompt with the settings above.",
+        te("settings.jev.test"),
+        te("settings.jev.test.hint"),
         `<span aria-live="polite">${status}</span><button type="button" class="btn" data-act="jev-test" data-fk="jev-test"${
           busy ? " disabled" : ""
-        }>Test</button>`,
+        }>${te("settings.jev.test.button")}</button>`,
       ) + detail
     );
   }
 
   PAGES.jev = function () {
-    const intro = lede(
-      "A fast worker the Director and specialists hand small, well-defined tasks. It doesn’t take part in chats on its own.",
-    );
+    const intro = lede("settings.jev.lede");
+    const title = tr("settings.section.jev");
     if (!S.agents)
       return (
-        head("Jev") +
+        head(title) +
         intro +
         (S.agentsError
-          ? OVS.failure("The agent runtime is unavailable", S.agentsError, "agents-retry")
-          : OVS.loading("Jev"))
+          ? OVS.failure("settings.failure.agentRuntime", S.agentsError, "agents-retry")
+          : OVS.loading("settings.loading.jev"))
       );
     const j = S.agents.jev,
       prov = OVS.providerById(j.provider),
       keyMode = j.credentials === "api-key";
     const warn = !keyMode && OVS.providerBad(prov) ? OVS.providerWarn(prov) : null;
     return (
-      head("Jev") +
+      head(title) +
       intro +
       OVS.noteHtml(S.agentsNote) +
       group(
-        "Worker",
+        te("settings.jev.group.worker"),
         row(
-          "Use Jev",
-          "Off: agents do Jev’s small tasks themselves.",
-          sw(j.enabled, "jev-on", "Use Jev"),
+          te("settings.jev.use"),
+          te("settings.jev.use.hint"),
+          sw(j.enabled, "jev-on", tr("settings.jev.use")),
         ) +
           row(
-            "Provider",
+            te("settings.jev.provider"),
             warn,
             select(
               providerOptions(j, keyMode),
               "jev-provider",
-              "Jev provider",
+              tr("settings.jev.providerAria"),
               null,
               warn ? "is-warn" : "",
             ),
@@ -232,8 +238,8 @@
           modelRow(j) +
           thinkingRow(j),
       ) +
-      group("Credential", credentialBlock(j, prov)) +
-      group("Check", checkBlock())
+      group(te("settings.jev.group.credential"), credentialBlock(j, prov)) +
+      group(te("settings.jev.group.check"), checkBlock())
     );
   };
 
@@ -266,7 +272,7 @@
   };
   CLICK["jev-save"] = () => jevSave();
   CLICK["jev-remove"] = () => {
-    ui.busy.jev = "Removing…";
+    ui.busy.jev = msg("settings.jev.busy.removing");
     delete ui.err.jev;
     ui.pendingFk = "key:jev";
     clearTest();
@@ -305,12 +311,12 @@
      apiKeyConfigured is ever shown again. */
   function jevSave() {
     const v = (ui.draft.jev || "").trim();
-    if (!v) ui.err.jev = "Paste an API key first.";
-    else if (/\s/.test(v)) ui.err.jev = "An API key can’t contain spaces.";
-    else if (v.length > 4096) ui.err.jev = "That key is too long.";
+    if (!v) ui.err.jev = msg("settings.key.error.empty");
+    else if (/\s/.test(v)) ui.err.jev = msg("settings.key.error.spaces");
+    else if (v.length > 4096) ui.err.jev = msg("settings.key.error.tooLong");
     else {
       delete ui.err.jev;
-      ui.busy.jev = "Saving…";
+      ui.busy.jev = msg("settings.jev.busy.saving");
       ui.pendingFk = "jev-replace";
       clearTest();
       api("/api/agent/jev/api-key", { apiKey: v })

@@ -5,33 +5,81 @@
 (function () {
   "use strict";
   const { ic, esc, api, formatBytes, formatClock } = OV;
+  const T = (key, params) => OVI18N.t(key, params);
 
-  const LEAD = "Main";
+  /* Agent names, monograms, roles, modes, efforts and file kinds are message keys, translated when they are drawn. */
+  const lead = () => T("home.composer.lead.name");
   const AGENTS = Object.freeze([
-    { id: "editor", name: "Editor", monogram: "E", role: "Cuts clips & handles timing" },
-    { id: "vision", name: "Vision", monogram: "V", role: "Reviews pacing & framing" },
-    { id: "motion", name: "Motion Designer", monogram: "MD", role: "Builds titles & transitions" },
-    { id: "research", name: "Research", monogram: "R", role: "Finds relevant B-roll" },
-    { id: "audio", name: "Audio", monogram: "A", role: "Balances dialogue & music" },
+    {
+      id: "editor",
+      name: "home.composer.agent.editor.name",
+      monogram: "home.composer.agent.editor.mono",
+      role: "home.composer.agent.editor.role",
+    },
+    {
+      id: "vision",
+      name: "home.composer.agent.vision.name",
+      monogram: "home.composer.agent.vision.mono",
+      role: "home.composer.agent.vision.role",
+    },
+    {
+      id: "motion",
+      name: "home.composer.agent.motion.name",
+      monogram: "home.composer.agent.motion.mono",
+      role: "home.composer.agent.motion.role",
+    },
+    {
+      id: "research",
+      name: "home.composer.agent.research.name",
+      monogram: "home.composer.agent.research.mono",
+      role: "home.composer.agent.research.role",
+    },
+    {
+      id: "audio",
+      name: "home.composer.agent.audio.name",
+      monogram: "home.composer.agent.audio.mono",
+      role: "home.composer.agent.audio.role",
+    },
   ]);
+  const agentName = (a) => T(a.name);
   /* Low / Medium / High always (as the prototype); extra efforts only when the model supports them (as Chat does). */
   const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"];
   const BASE_EFFORTS = ["low", "medium", "high"];
   const EFFORT_LABEL = {
-    minimal: "Minimal",
-    low: "Low",
-    medium: "Medium",
-    high: "High",
-    xhigh: "X-High",
-    max: "Max",
+    minimal: "home.composer.effort.minimal",
+    low: "home.composer.effort.low",
+    medium: "home.composer.effort.medium",
+    high: "home.composer.effort.high",
+    xhigh: "home.composer.effort.xhigh",
+    max: "home.composer.effort.max",
   };
   /* The effort buttons share one row of a 320 px popover with up to seven choices: short labels there, full names
      in the chip, tooltips and aria-labels. */
-  const EFFORT_SHORT = { minimal: "Min", medium: "Med", xhigh: "XHigh" };
+  const EFFORT_SHORT = {
+    minimal: "home.composer.effort.short.minimal",
+    medium: "home.composer.effort.short.medium",
+    xhigh: "home.composer.effort.short.xhigh",
+  };
+  /* `name` is the mode's id (it travels with the start request); `label` / `description` are what the user reads. */
   const MODES = Object.freeze([
-    { name: "Plan", intent: "plan", description: "Proposes a plan first" },
-    { name: "Edit", intent: "edit", description: "Acts on the timeline" },
-    { name: "Ask", intent: "ask", description: "Answers only" },
+    {
+      name: "Plan",
+      intent: "plan",
+      label: "home.composer.mode.plan",
+      description: "home.composer.mode.planDescription",
+    },
+    {
+      name: "Edit",
+      intent: "edit",
+      label: "home.composer.mode.edit",
+      description: "home.composer.mode.editDescription",
+    },
+    {
+      name: "Ask",
+      intent: "ask",
+      label: "home.composer.mode.ask",
+      description: "home.composer.mode.askDescription",
+    },
   ]);
   const KIND_ICON = {
     video: "film",
@@ -43,16 +91,17 @@
     file: "file",
   };
   const KIND_NAME = {
-    video: "Video",
-    audio: "Audio",
-    image: "Image",
-    subtitle: "Subtitles",
-    document: "Document",
-    font: "Font",
-    file: "File",
+    video: "home.composer.kind.video",
+    audio: "home.composer.kind.audio",
+    image: "home.composer.kind.image",
+    subtitle: "home.composer.kind.subtitle",
+    document: "home.composer.kind.document",
+    font: "home.composer.kind.font",
+    file: "home.composer.kind.file",
   };
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-  const effortLabel = (e) => (e ? EFFORT_LABEL[e] || cap(e) : "Default");
+  const effortLabel = (e) =>
+    e ? (EFFORT_LABEL[e] ? T(EFFORT_LABEL[e]) : cap(e)) : T("home.composer.effort.default");
   const sameModel = (a, b) => !!a && !!b && a.provider === b.provider && a.modelId === b.modelId;
   const modelKey = (m) => (m ? m.provider + "/" + m.modelId : "");
   /* "Claude Sonnet 4.5" → "Sonnet", "Gemini 2.5 Pro" → "Gemini Pro": the prototype's short chip label. */
@@ -113,39 +162,37 @@
 
     /* ---------- shell ---------- */
     panelEl.classList.add("ov-chat", "is-intake");
-    panelEl.setAttribute("aria-label", "Start a new project");
     const pane = node("div", "pane ov-chat-pane");
     pane.setAttribute("role", "group");
     refs.composer = node("div", "ov-chat-composer");
     pane.appendChild(refs.composer);
     if (opts.footer) pane.appendChild(opts.footer);
     refs.suggestions = node("div", "ov-chat-suggestions ov-chat-intake-suggestions");
-    (opts.suggestions || []).forEach((prompt) => {
-      const s = button("sel-item ov-chat-suggestion", prompt, "film");
+    (opts.suggestions || []).forEach((key) => {
+      const s = button("sel-item ov-chat-suggestion", null, "film");
       s.dataset.action = "suggestion";
-      s.dataset.prompt = prompt;
-      s.appendChild(node("span", "", prompt));
+      s.dataset.promptKey = key;
+      s.appendChild(node("span"));
       refs.suggestions.appendChild(s);
     });
     pane.appendChild(refs.suggestions);
     panelEl.appendChild(pane);
 
-    const label = node("label", "sr-only", "Describe the new project");
+    const label = node("label", "sr-only");
+    refs.promptLabel = label;
     refs.attach = node("div", "ov-chat-ctx-list ov-chat-attach");
     refs.attach.setAttribute("role", "list");
-    refs.attach.setAttribute("aria-label", "Files for the new project");
     refs.attach.hidden = true;
     refs.textarea = node("textarea", "ov-chat-textarea");
     refs.textarea.rows = 1;
     refs.textarea.id = "startPrompt";
-    refs.textarea.setAttribute("aria-label", "Describe the new project");
     refs.textarea.setAttribute("autocomplete", "off");
     refs.textarea.spellcheck = true;
-    refs.textarea.placeholder = opts.placeholder || "Describe the video you want to make…";
     label.htmlFor = refs.textarea.id;
     refs.drop = node("div", "ov-chat-drop");
     refs.drop.setAttribute("aria-hidden", "true");
-    refs.drop.append(icon("import"), node("span", "", "Drop to add to the new project"));
+    refs.dropText = node("span");
+    refs.drop.append(icon("import"), refs.dropText);
     /* No model connected (the catalog came back empty): say so here, with the way to fix it, rather than let
        Start fail later inside the new project's chat. */
     refs.noModel = node("div", "ov-chat-nomodel");
@@ -153,12 +200,8 @@
     refs.noModel.setAttribute("role", "status");
     refs.noModelButton = button("btn btn-sm", null);
     refs.noModelButton.dataset.action = "connect-model";
-    refs.noModelButton.textContent = "Connect a model";
-    refs.noModel.append(
-      icon("alert"),
-      node("span", "ov-chat-nomodel-text", "Connect a model to use the agents."),
-      refs.noModelButton,
-    );
+    refs.noModelText = node("span", "ov-chat-nomodel-text");
+    refs.noModel.append(icon("alert"), refs.noModelText, refs.noModelButton);
     refs.composer.append(label, refs.attach, refs.textarea, refs.drop, refs.noModel);
 
     const controls = node("div", "ov-chat-controls");
@@ -176,12 +219,11 @@
     [refs.modelButton, refs.modelLabel] = chip("model", "settings", "dialog");
     [refs.agentsButton, refs.agentsLabel] = chip("agents", "agents", "dialog");
     [refs.modeButton, refs.modeLabel] = chip("mode", "chat", "menu");
-    refs.attachButton = button("icon-btn sm ov-chat-attach-btn", "Add files", "paperclip");
+    refs.attachButton = button("icon-btn sm ov-chat-attach-btn", null, "paperclip");
     refs.attachButton.dataset.action = "attach";
-    setTip(refs.attachButton, "Add files");
-    refs.send = button("btn btn-sm ov-chat-send", "Start new project", "send");
+    refs.send = button("btn btn-sm ov-chat-send", null, "send");
     refs.send.dataset.action = "send";
-    refs.sendLabel = node("span", "ov-chat-send-label", "Start");
+    refs.sendLabel = node("span", "ov-chat-send-label");
     refs.sendKbd = node("span", "kbd", "↵");
     refs.send.append(refs.sendLabel, refs.sendKbd);
     const spacer = node("span", "ov-chat-spacer");
@@ -197,6 +239,26 @@
       refs.send,
     );
     refs.composer.appendChild(controls);
+    /* The static texts; drawn at mount and again by relocalize() when the language changes. */
+    function paintStatic() {
+      panelEl.setAttribute("aria-label", T("home.start.title"));
+      refs.promptLabel.textContent = T("home.composer.promptLabel");
+      refs.attach.setAttribute("aria-label", T("home.composer.filesLabel"));
+      refs.textarea.setAttribute("aria-label", T("home.composer.promptLabel"));
+      refs.textarea.placeholder = T(opts.placeholder || "home.start.placeholder");
+      refs.dropText.textContent = T("home.composer.drop");
+      refs.noModelText.textContent = T("home.composer.noModel.text");
+      refs.noModelButton.textContent = T("home.composer.noModel.connect");
+      const add = T("home.composer.addFiles");
+      refs.attachButton.setAttribute("aria-label", add);
+      setTip(refs.attachButton, add);
+      refs.suggestions.querySelectorAll("[data-prompt-key]").forEach((s) => {
+        const text = T(s.dataset.promptKey);
+        s.setAttribute("aria-label", text);
+        s.lastElementChild.textContent = text;
+      });
+    }
+    paintStatic();
 
     /* ---------- data: model catalog + agent defaults ---------- */
     function currentModel() {
@@ -237,7 +299,7 @@
           update();
         })
         .catch((err) => {
-          state.catalogError = err.message || "unavailable";
+          state.catalogError = { message: err.message || "" };
           renderPopover();
           update();
         });
@@ -245,11 +307,15 @@
 
     /* ---------- composer state ---------- */
     const noModel = () => !!state.catalog && state.catalog.models.length === 0;
+    const catalogDetail = () => state.catalogError.message || T("home.composer.unavailable");
     function modelChipText() {
-      if (!state.catalog && !state.catalogError) return "Loading…";
-      if (noModel()) return "No model";
+      if (!state.catalog && !state.catalogError) return T("home.composer.model.loading");
+      if (noModel()) return T("home.composer.model.none");
       const m = currentModel();
-      return (m ? shortName(m.name) : "Default model") + " · " + effortLabel(state.effort);
+      return T("home.composer.model.chip", {
+        model: m ? shortName(m.name) : T("home.composer.model.default"),
+        effort: effortLabel(state.effort),
+      });
     }
     const agentCount = () => 1 + AGENTS.filter((a) => state.agents[a.id]).length;
     const modeOf = () => MODES.find((m) => m.name === state.mode) || MODES[1];
@@ -258,19 +324,32 @@
       const m = currentModel();
       refs.modelLabel.textContent = modelChipText();
       const modelTip = state.catalogError
-        ? "Agent runtime unavailable · " + state.catalogError
-        : (m ? m.name : "Default model") + " · " + effortLabel(state.effort) + " thinking effort";
-      refs.modelButton.setAttribute("aria-label", LEAD + " model: " + modelTip);
+        ? T("home.composer.model.tipError", { error: catalogDetail() })
+        : T("home.composer.model.tip", {
+            model: m ? m.name : T("home.composer.model.default"),
+            effort: effortLabel(state.effort),
+          });
+      refs.modelButton.setAttribute(
+        "aria-label",
+        T("home.composer.model.aria", { agent: lead(), detail: modelTip }),
+      );
       setTip(refs.modelButton, modelTip);
-      refs.agentsLabel.textContent = "Agents · " + agentCount();
-      refs.agentsButton.setAttribute("aria-label", "Agents, " + agentCount() + " enabled");
-      setTip(refs.agentsButton, "Agents · " + agentCount());
-      refs.modeLabel.textContent = state.mode;
+      const count = agentCount();
+      refs.agentsLabel.textContent = T("home.composer.agents.chip", { count });
+      refs.agentsButton.setAttribute("aria-label", T("home.composer.agents.aria", { count }));
+      setTip(refs.agentsButton, T("home.composer.agents.chip", { count }));
+      const mode = modeOf(),
+        modeName = T(mode.label),
+        modeDescription = T(mode.description);
+      refs.modeLabel.textContent = modeName;
       refs.modeButton.setAttribute(
         "aria-label",
-        "Mode: " + state.mode + " — " + modeOf().description,
+        T("home.composer.mode.aria", { mode: modeName, description: modeDescription }),
       );
-      setTip(refs.modeButton, state.mode + " mode — " + modeOf().description);
+      setTip(
+        refs.modeButton,
+        T("home.composer.mode.tip", { mode: modeName, description: modeDescription }),
+      );
       const hasText = !!refs.textarea.value.trim(),
         busy = !!state.busy,
         ready = !busy && !noModel() && (hasText || state.files.length > 0);
@@ -279,19 +358,20 @@
       if (busy !== glyph.classList.contains("spinner"))
         glyph.replaceWith(busy ? node("i", "spinner") : icon("send"));
       refs.send.dataset.mode = busy ? "busy" : "start";
-      refs.sendLabel.textContent = busy ? state.busy : "Start";
+      const busyText = busy ? T(state.busy) : "";
+      refs.sendLabel.textContent = busy ? busyText : T("home.composer.send.label");
       refs.sendKbd.textContent = busy ? "" : "↵";
-      refs.send.setAttribute("aria-label", busy ? state.busy : "Start new project");
+      refs.send.setAttribute("aria-label", busy ? busyText : T("home.composer.send.aria"));
       refs.send.setAttribute("aria-busy", String(busy));
       setTip(
         refs.send,
         busy
-          ? state.busy
+          ? busyText
           : ready
-            ? "Start the new project · Enter"
+            ? T("home.composer.send.tipReady", { key: "Enter" })
             : noModel()
-              ? "Connect a model first"
-              : "Describe the video or add files first",
+              ? T("home.composer.send.tipNoModel")
+              : T("home.composer.send.tipEmpty"),
       );
       refs.send.disabled = !ready;
       refs.send.classList.toggle("btn-primary", ready);
@@ -343,10 +423,18 @@
           node(
             "span",
             "sr-only",
-            " (" + (KIND_NAME[f.kind] || "File") + ", " + fileDetail(f) + ")",
+            " " +
+              T("home.composer.file.sr", {
+                kind: T(KIND_NAME[f.kind] || KIND_NAME.file),
+                detail: fileDetail(f),
+              }),
           ),
         );
-        const x = button("icon-btn xs ov-chat-ctx-x", "Remove " + f.name, "x");
+        const x = button(
+          "icon-btn xs ov-chat-ctx-x",
+          T("home.composer.file.remove", { name: f.name }),
+          "x",
+        );
         x.dataset.action = "file-remove";
         x.dataset.index = String(i);
         x.disabled = !!state.busy;
@@ -393,8 +481,8 @@
         OVH.toast(
           esc(
             skipped.length === 1
-              ? "“" + skipped[0] + "” can’t be added — only files can, not folders."
-              : skipped.length + " items can’t be added — only files can, not folders.",
+              ? T("home.composer.skipped.one", { name: skipped[0] })
+              : T("home.composer.skipped.many", { count: skipped.length }),
           ),
         );
     }
@@ -406,7 +494,13 @@
           reportSkipped(res);
           refs.textarea.focus({ preventScroll: true });
         })
-        .catch((err) => OVH.toast(esc("Couldn’t add files: " + err.message), null, "error"));
+        .catch((err) =>
+          OVH.toast(
+            esc(T("home.composer.error.addFiles", { message: err.message })),
+            null,
+            "error",
+          ),
+        );
     }
     /* An OS drop: the webview gives names only; Rust reads the real paths off the drag pasteboard. */
     function dropNames(names) {
@@ -417,7 +511,7 @@
           reportSkipped(res);
         })
         .catch((err) =>
-          OVH.toast(esc("Couldn’t add the dropped files: " + err.message), null, "error"),
+          OVH.toast(esc(T("home.composer.error.drop", { message: err.message })), null, "error"),
         );
     }
 
@@ -449,11 +543,13 @@
       sel.dataset.nav = "true";
       sel.setAttribute(
         "aria-label",
-        agentId ? AGENTS.find((a) => a.id === agentId).name + " model" : LEAD + " model",
+        T("home.composer.pop.model", {
+          agent: agentId ? agentName(AGENTS.find((a) => a.id === agentId)) : lead(),
+        }),
       );
       if (agentId) {
         sel.dataset.agentModel = agentId;
-        const o = node("option", "", "Inherit from " + LEAD);
+        const o = node("option", "", T("home.composer.inheritFrom", { agent: lead() }));
         o.value = "";
         sel.appendChild(o);
       } else sel.dataset.mainModel = "true";
@@ -478,13 +574,13 @@
     function effortGroup(selected, agentId, model) {
       const g = node("div", "seg text sm ov-chat-effort");
       g.setAttribute("role", "group");
-      g.setAttribute("aria-label", "Thinking effort");
+      g.setAttribute("aria-label", T("home.composer.thinkingEffort"));
       const supported = effortsFor(model);
       [null]
         .concat(EFFORTS.filter((e) => BASE_EFFORTS.includes(e) || supported.includes(e)))
         .forEach((e) => {
-          const b = button("", effortLabel(e) + " thinking effort");
-          b.textContent = (e && EFFORT_SHORT[e]) || effortLabel(e);
+          const b = button("", T("home.composer.effort.aria", { effort: effortLabel(e) }));
+          b.textContent = (e && EFFORT_SHORT[e] && T(EFFORT_SHORT[e])) || effortLabel(e);
           setTip(b, effortLabel(e));
           b.dataset.action = "effort";
           b.dataset.effort = e || "";
@@ -506,13 +602,10 @@
       if (state.catalog) return false;
       const p = node("p", "ov-chat-pop-note");
       if (state.catalogError)
-        p.textContent =
-          "The agent runtime is unavailable (" +
-          state.catalogError +
-          "). The new project’s chat starts with its defaults.";
+        p.textContent = T("home.composer.runtimeUnavailable", { error: catalogDetail() });
       else {
         p.appendChild(node("i", "spinner"));
-        p.appendChild(document.createTextNode("Loading models…"));
+        p.appendChild(document.createTextNode(T("home.composer.loadingModels")));
       }
       content.appendChild(p);
       return true;
@@ -527,10 +620,10 @@
       if (refs.popover) refs.popover.remove();
       const agent = AGENTS.find((a) => a.id === state.popoverAgent) || AGENTS[0];
       const titles = {
-        agents: "Agents",
-        settings: agent.name + " · Settings",
-        model: LEAD + " model",
-        mode: "Mode",
+        agents: T("home.composer.pop.agents"),
+        settings: T("home.composer.pop.settings", { agent: agentName(agent) }),
+        model: T("home.composer.pop.model", { agent: lead() }),
+        mode: T("home.composer.pop.mode"),
       };
       const pop = node("section", "popover ov-chat-popover");
       pop.dataset.kind = state.overlay;
@@ -538,7 +631,11 @@
       pop.setAttribute("aria-label", titles[state.overlay]);
       const head = node("div", "float-head ov-chat-pop-head");
       if (state.overlay === "settings") {
-        const back = button("icon-btn sm ov-chat-pop-back", "Back to agents", "chevron-left");
+        const back = button(
+          "icon-btn sm ov-chat-pop-back",
+          T("home.composer.pop.back"),
+          "chevron-left",
+        );
         back.dataset.action = "settings-back";
         back.dataset.nav = "true";
         head.appendChild(back);
@@ -548,34 +645,44 @@
       if (state.overlay === "model") {
         if (!catalogNote(content)) {
           content.append(
-            field("Model", modelSelect(state.model, null)),
-            field("Thinking effort", effortGroup(state.effort, null, currentModel())),
+            field(T("home.composer.field.model"), modelSelect(state.model, null)),
+            field(
+              T("home.composer.thinkingEffort"),
+              effortGroup(state.effort, null, currentModel()),
+            ),
           );
         }
-        const help = node("p", "ov-chat-help", "Default follows the agent defaults. ");
-        const link = button("link", "Open agent defaults in Settings");
-        link.textContent = "Agent defaults…";
-        link.dataset.action = "agent-defaults";
-        link.dataset.nav = "true";
-        help.appendChild(link);
+        const help = node("p", "ov-chat-help");
+        help.innerHTML = OVI18N.rich(
+          "home.composer.modelHelp",
+          {},
+          {
+            link: (inner) =>
+              '<button class="link" type="button" aria-label="' +
+              esc(T("home.composer.openAgentDefaults")) +
+              '" data-action="agent-defaults" data-nav="true">' +
+              inner +
+              "</button>",
+          },
+        );
         content.appendChild(help);
       } else if (state.overlay === "agents") {
         content.setAttribute("role", "group");
-        content.setAttribute("aria-label", "Available agents");
+        content.setAttribute("aria-label", T("home.composer.agents.group"));
         const main = node("div", "sel-item ov-chat-agent-row is-main");
         const info = node("div", "ov-chat-agent-info");
         info.append(
-          node("span", "ov-chat-agent-name", LEAD),
-          node("span", "ov-chat-agent-role", "Coordinates this project"),
+          node("span", "ov-chat-agent-name", lead()),
+          node("span", "ov-chat-agent-role", T("home.composer.lead.role")),
         );
-        const always = button("sw", LEAD + " is always on");
+        const always = button("sw", T("home.composer.lead.alwaysOnAria", { agent: lead() }));
         always.setAttribute("role", "switch");
         always.setAttribute("aria-checked", "true");
         always.disabled = true;
         main.append(
-          monogram(LEAD.charAt(0)),
+          monogram(T("home.composer.lead.mono")),
           info,
-          node("span", "ov-chat-agent-always", "Always on"),
+          node("span", "ov-chat-agent-always", T("home.composer.lead.alwaysOn")),
           always,
         );
         content.appendChild(main);
@@ -586,25 +693,25 @@
           );
           const inf = node("div", "ov-chat-agent-info");
           inf.append(
-            node("span", "ov-chat-agent-name", a.name),
-            node("span", "ov-chat-agent-role", a.role),
+            node("span", "ov-chat-agent-name", agentName(a)),
+            node("span", "ov-chat-agent-role", T(a.role)),
           );
           const gear = button(
             "icon-btn sm ov-chat-agent-gear",
-            "Settings for " + a.name,
+            T("home.composer.agent.settingsAria", { agent: agentName(a) }),
             "sliders",
           );
           gear.dataset.action = "agent-settings";
           gear.dataset.agent = a.id;
           gear.dataset.nav = "true";
-          setTip(gear, a.name + " settings");
-          const sw = button("sw", a.name + " agent");
+          setTip(gear, T("home.composer.agent.settingsTip", { agent: agentName(a) }));
+          const sw = button("sw", T("home.composer.agent.switchAria", { agent: agentName(a) }));
           sw.setAttribute("role", "switch");
           sw.setAttribute("aria-checked", String(state.agents[a.id]));
           sw.dataset.action = "agent-switch";
           sw.dataset.agent = a.id;
           sw.dataset.nav = "true";
-          row.append(monogram(a.monogram), inf, gear, sw);
+          row.append(monogram(T(a.monogram)), inf, gear, sw);
           content.appendChild(row);
         });
       } else if (state.overlay === "settings") {
@@ -614,24 +721,21 @@
             ? state.catalog.models.find((m) => sameModel(m, prefs.model)) || null
             : currentModel();
           content.append(
-            field("Model", modelSelect(prefs.model, agent.id)),
-            field("Thinking effort", effortGroup(prefs.effort, agent.id, model)),
+            field(T("home.composer.field.model"), modelSelect(prefs.model, agent.id)),
+            field(T("home.composer.thinkingEffort"), effortGroup(prefs.effort, agent.id, model)),
           );
         }
         content.appendChild(
-          node(
-            "p",
-            "ov-chat-help",
-            "Inherit from " +
-              LEAD +
-              " and Default thinking keep this agent aligned with " +
-              LEAD +
-              ".",
-          ),
+          node("p", "ov-chat-help", T("home.composer.settings.help", { lead: lead() })),
         );
       } else {
         MODES.forEach((m) => {
-          const b = button("sel-item ov-chat-mode-item", m.name + " mode: " + m.description);
+          const modeName = T(m.label),
+            modeDescription = T(m.description);
+          const b = button(
+            "sel-item ov-chat-mode-item",
+            T("home.composer.mode.itemAria", { mode: modeName, description: modeDescription }),
+          );
           b.dataset.action = "mode-choice";
           b.dataset.mode = m.name;
           b.dataset.nav = "true";
@@ -642,8 +746,8 @@
           mark.setAttribute("aria-hidden", "true");
           b.append(
             mark,
-            node("span", "ov-chat-mode-name", m.name),
-            node("span", "ov-chat-mode-desc", m.description),
+            node("span", "ov-chat-mode-name", modeName),
+            node("span", "ov-chat-mode-desc", modeDescription),
           );
           content.appendChild(b);
         });
@@ -706,7 +810,7 @@
         if (state.overlay === a) closePopover(false);
         else openPopover(a, t, null, true);
       } else if (a === "suggestion") {
-        refs.textarea.value = t.dataset.prompt;
+        refs.textarea.value = T(t.dataset.promptKey);
         autoGrow();
         update();
         refs.textarea.focus();
@@ -927,6 +1031,13 @@
         refs.textarea.focus();
       },
       reloadAgents: loadAgents,
+      /* The language changed: redraw every text the composer built once. */
+      relocalize() {
+        paintStatic();
+        renderFiles();
+        update();
+        renderPopover();
+      },
       repositionPopover: place,
     };
   }

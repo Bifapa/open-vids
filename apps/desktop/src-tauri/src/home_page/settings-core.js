@@ -9,24 +9,71 @@
   const params = new URLSearchParams(location.search);
   const SECTION_KEY = "ov-settings-section";
 
+  /* Labels are catalog keys, read when drawn (a language switch redraws the window). */
   const SECTIONS = [
-    { group: "App", id: "general", label: "General", icon: "settings" },
-    { group: "App", id: "appearance", label: "Appearance", icon: "contrast" },
-    { group: "AI", id: "agents", label: "Agents", icon: "agents" },
-    { group: "AI", id: "providers", label: "Models & Providers", icon: "plug" },
-    { group: "AI", id: "jev", label: "Jev", icon: "bolt" },
-    { group: "Workflow", id: "assets", label: "Asset Search", icon: "image" },
-    { group: "Workflow", id: "execution", label: "Execution", icon: "gauge" },
+    {
+      group: "settings.nav.group.app",
+      id: "general",
+      label: "settings.section.general",
+      icon: "settings",
+    },
+    {
+      group: "settings.nav.group.app",
+      id: "appearance",
+      label: "settings.section.appearance",
+      icon: "contrast",
+    },
+    {
+      group: "settings.nav.group.ai",
+      id: "agents",
+      label: "settings.section.agents",
+      icon: "agents",
+    },
+    {
+      group: "settings.nav.group.ai",
+      id: "providers",
+      label: "settings.section.providers",
+      icon: "plug",
+    },
+    { group: "settings.nav.group.ai", id: "jev", label: "settings.section.jev", icon: "bolt" },
+    {
+      group: "settings.nav.group.workflow",
+      id: "assets",
+      label: "settings.section.assets",
+      icon: "image",
+    },
+    {
+      group: "settings.nav.group.workflow",
+      id: "execution",
+      label: "settings.section.execution",
+      icon: "gauge",
+    },
   ];
-  /* Agent ids are the runtime's (packages/agent-protocol SpecialistId); the Director is configured apart. */
-  const AGENTS = [
-    { id: "director", name: "Director", mono: "D", role: "Plans the edit and delegates" },
-    { id: "editor", name: "Editor", mono: "E", role: "Cuts clips & handles timing" },
-    { id: "vision", name: "Vision", mono: "V", role: "Reviews pacing & framing" },
-    { id: "motion", name: "Motion Designer", mono: "MD", role: "Builds titles & transitions" },
-    { id: "research", name: "Research", mono: "R", role: "Finds relevant B-roll" },
-    { id: "audio", name: "Audio", mono: "A", role: "Balances dialogue & music" },
-  ];
+  const tr = (key, params) => OVI18N.t(key, params);
+  /* State keeps a message it will show as { key, params } until it is drawn, so a language switch re-words it
+     (failMsg marks an error note). A plain string is text as it came from the server or the user. */
+  const msg = (key, params) => ({ key, params });
+  const failMsg = (key, params) => ({ key, params, error: true });
+  const text = (m) =>
+    m && typeof m === "object" ? tr(m.key, m.params) : m == null ? "" : String(m);
+  /* Names in a row ("A, B, C"), joined the way the active language does. */
+  const list = (items) =>
+    new Intl.ListFormat(OVI18N.language(), { type: "unit", style: "short" }).format(items);
+  /* Agent ids are the runtime's (packages/agent-protocol SpecialistId); the Director is configured apart.
+     name, mono and role are read when drawn. */
+  const agent = (id) => ({
+    id,
+    get name() {
+      return tr(`settings.agent.${id}.name`);
+    },
+    get mono() {
+      return tr(`settings.agent.${id}.mono`);
+    },
+    get role() {
+      return tr(`settings.agent.${id}.role`);
+    },
+  });
+  const AGENTS = ["director", "editor", "vision", "motion", "research", "audio"].map(agent);
 
   const store = {
     get(k) {
@@ -50,7 +97,7 @@
     : store.get(SECTION_KEY) || "general";
   if (!SECTIONS.some((s) => s.id === section)) section = "general";
 
-  /* Server data. A note is "" or a message; a leading "!" marks an error. */
+  /* Server data. A note is "" or a message ({ key, params, error? } or text; text with a leading "!" is an error). */
   const S = {
     prefs: null,
     prefsError: null,
@@ -137,24 +184,34 @@
       )
       .join("");
   function stepper(value, min, max, act, label) {
-    return `<div class="seg st-step" role="group" aria-label="${esc(label)}"><button type="button" aria-label="Fewer" data-act="${act}" data-d="-1" data-fk="${act}:-"${
+    return `<div class="seg st-step" role="group" aria-label="${esc(label)}"><button type="button" aria-label="${esc(
+      tr("settings.stepper.fewer"),
+    )}" data-act="${act}" data-d="-1" data-fk="${act}:-"${
       value <= min ? " disabled" : ""
-    }>${ic("minus")}</button><output aria-live="polite">${value}</output><button type="button" aria-label="More" data-act="${act}" data-d="1" data-fk="${act}:+"${
+    }>${ic("minus")}</button><output aria-live="polite">${value}</output><button type="button" aria-label="${esc(
+      tr("settings.stepper.more"),
+    )}" data-act="${act}" data-d="1" data-fk="${act}:+"${
       value >= max ? " disabled" : ""
     }>${ic("plus")}</button></div>`;
   }
   const head = (title, right) => `<div class="st-head"><h1>${esc(title)}</h1>${right || ""}</div>`;
-  const lede = (text) => `<p class="st-lede">${text}</p>`;
-  const loading = (what) => `<div class="st-loading"><i class="spinner"></i>Loading ${what}…</div>`;
-  /* A data source that failed: what failed, the reason, and a way to try again. */
+  /* key: the catalog key of the intro paragraph. */
+  const lede = (key) => `<p class="st-lede">${esc(tr(key))}</p>`;
+  /* what: the catalog key of the whole "Loading …" line. */
+  const loading = (what) => `<div class="st-loading"><i class="spinner"></i>${esc(tr(what))}</div>`;
+  /* A data source that failed: what failed (a catalog key), the reason, and a way to try again. */
   const failure = (what, reason, act) =>
-    `<p class="st-status is-error" role="alert">${esc(what)}${reason ? ": " + esc(reason) : ""}</p><p><button type="button" class="btn" data-act="${act}" data-fk="${act}">Try Again</button></p>`;
-  const noteHtml = (note) =>
-    note
-      ? `<p class="st-status${note.startsWith("!") ? " is-error" : ""}" role="${
-          note.startsWith("!") ? "alert" : "status"
-        }">${esc(note.replace(/^!/, ""))}</p>`
-      : "";
+    `<p class="st-status is-error" role="alert">${esc(
+      reason ? tr("settings.failure.withReason", { what: tr(what), reason }) : tr(what),
+    )}</p><p><button type="button" class="btn" data-act="${act}" data-fk="${act}">${esc(
+      tr("settings.failure.tryAgain"),
+    )}</button></p>`;
+  const noteHtml = (note) => {
+    if (!note) return "";
+    const bad = typeof note === "object" ? !!note.error : note.startsWith("!");
+    const body = typeof note === "object" ? text(note) : note.replace(/^!/, "");
+    return `<p class="st-status${bad ? " is-error" : ""}" role="${bad ? "alert" : "status"}">${esc(body)}</p>`;
+  };
   const sameModel = (a, b) => !!a && !!b && a.provider === b.provider && a.modelId === b.modelId;
   const modelKey = (m) => (m ? m.provider + "/" + m.modelId : "");
 
@@ -165,10 +222,10 @@
   const providerBad = (p) => !!p && p.status !== "connected";
   function issueText(p) {
     return p.status === "signin_required"
-      ? `${p.name} needs sign-in`
+      ? tr("settings.provider.issue.signinRequired", { name: p.name })
       : p.status === "error"
-        ? `${p.name} has an error`
-        : `${p.name} isn’t set up`;
+        ? tr("settings.provider.issue.error", { name: p.name })
+        : tr("settings.provider.issue.notSetUp", { name: p.name });
   }
   const issueCount = () =>
     (S.providers || []).filter((p) => p.status === "error" || p.status === "signin_required")
@@ -177,7 +234,7 @@
   const fixLink = (id) =>
     `<button type="button" class="link" data-act="goto-provider" data-v="${esc(id)}" data-fk="fix:${esc(
       id,
-    )}">Fix</button>`;
+    )}">${esc(tr("settings.provider.fix"))}</button>`;
   const providerWarn = (p) =>
     `<span class="status warning">${ic("alert")}<span>${esc(issueText(p))} · ${fixLink(p.id)}</span></span>`;
   function setProviders(res) {
@@ -209,16 +266,18 @@
     const issues = issueCount();
     SECTIONS.forEach((s) => {
       if (s.group !== last) {
-        html += `<div class="nav-label">${s.group}</div>`;
+        html += `<div class="nav-label">${esc(tr(s.group))}</div>`;
         last = s.group;
       }
       const badge =
         s.id === "providers" && issues
-          ? `<span class="pill warn" aria-label="${issues} need attention">${issues}</span>`
+          ? `<span class="pill warn" aria-label="${esc(
+              tr("settings.nav.needAttention", { count: issues }),
+            )}">${issues}</span>`
           : "";
       html += `<button type="button" class="nav-item" data-section="${s.id}"${
         s.id === section ? ' aria-current="page"' : ""
-      }>${ic(s.icon)}<span class="grow">${esc(s.label)}</span>${badge}</button>`;
+      }>${ic(s.icon)}<span class="grow">${esc(tr(s.label))}</span>${badge}</button>`;
     });
     nav.innerHTML = html;
   }
@@ -237,7 +296,7 @@
     const navKey = nav && a && nav.contains(a) && a.dataset ? a.dataset.section : null;
     const top = main.scrollTop;
     const known = SECTIONS.find((s) => s.id === section);
-    if (title && known) title.textContent = known.label;
+    if (title) title.textContent = known ? tr(known.label) : tr("settings.window.heading");
     renderNav();
     if (navKey) {
       const n = nav.querySelector(`[data-section="${navKey}"]`);
@@ -249,8 +308,8 @@
     } catch (err) {
       console.error(err);
       html =
-        head(known ? known.label : "Settings") +
-        noteHtml("!This page failed to draw: " + err.message);
+        head(known ? tr(known.label) : tr("settings.window.heading")) +
+        noteHtml(failMsg("settings.page.drawFailed", { message: err.message }));
     }
     main.innerHTML = `<div class="${pageClass}">${html}</div>`;
     /* Unsaved key drafts are put back as a property, never written into the markup. */
@@ -329,7 +388,7 @@
           return true;
         })
         .catch((err) => {
-          S.agentsNote = "!Couldn’t save: " + err.message;
+          S.agentsNote = failMsg("settings.note.saveFailed", { message: err.message });
           return false;
         })
         .finally(() => render(true));
@@ -379,6 +438,11 @@
 
   window.OVS = {
     ic,
+    tr,
+    msg,
+    failMsg,
+    text,
+    list,
     esc,
     api,
     params,

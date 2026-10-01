@@ -371,6 +371,16 @@ html.st-embed {
   flex: 1 1 0;
   padding: 0 2px;
 }
+/* Segment labels never wrap (a translated label is as wide as it needs to be). */
+.st-win .seg button,
+.ob-root .seg button {
+  white-space: nowrap;
+}
+.st-agent .st-label > b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .st-agents .st-row > .sw {
   justify-self: end;
 }
@@ -613,6 +623,42 @@ html.st-embed {
 /* The effort column holds five choices (Default and Off next to the prototype's Low / Med / High). */
 .st-agents .st-row {
   grid-template-columns: minmax(0, 1fr) 152px 212px var(--h-md);
+}
+/* Languages whose five effort labels do not fit in 212px (Russian «По умолчанию», «Средний», «Высокий»): the
+   effort control moves to a second line under the agent and model columns, so the name, the model select
+   and the toggle keep the widths they have in English. The header drops its effort cell. */
+html:lang(ru) .st-agents .st-row {
+  grid-template-columns: minmax(0, 1fr) 152px var(--h-md);
+  grid-template-areas:
+    "agent model toggle"
+    "effort effort .";
+  gap: 6px var(--sp-3);
+}
+html:lang(ru) .st-agents .st-row.st-th {
+  grid-template-areas: "agent model toggle";
+}
+html:lang(ru) .st-agents .st-row > :nth-child(1) {
+  grid-area: agent;
+}
+html:lang(ru) .st-agents .st-row > :nth-child(2) {
+  grid-area: model;
+}
+html:lang(ru) .st-agents .st-row > :nth-child(3) {
+  grid-area: effort;
+}
+html:lang(ru) .st-agents .st-row > :nth-child(4) {
+  grid-area: toggle;
+}
+html:lang(ru) .st-agents .st-row.st-th > :nth-child(3) {
+  display: none;
+}
+html:lang(ru) .st-agents .seg {
+  width: auto;
+  justify-self: start;
+}
+html:lang(ru) .st-agents .seg.text button {
+  flex: 0 0 auto;
+  padding: 0 10px;
 }
 
 /* ---- Additions for the real data (long provider and model lists, free-text notes, number fields) ---- */

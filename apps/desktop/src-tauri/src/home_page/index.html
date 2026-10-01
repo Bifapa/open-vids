@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Projects — OpenVids</title>
+    <title data-i18n="home.page.title">Projects — OpenVids</title>
     <link rel="stylesheet" href="/assets/ov.css" />
     <link rel="stylesheet" href="/assets/composer.css" />
     <link rel="stylesheet" href="/assets/home.css" />
@@ -58,7 +58,7 @@
           </div>
         </div>
         <button class="btn btn-ghost btn-sm launch-skip" type="button">
-          Skip <span class="kbd">esc</span>
+          <span data-i18n="home.launch.skip">Skip</span> <span class="kbd">esc</span>
         </button>
       </div>
       <script>
@@ -200,27 +200,48 @@
           </svg>
         </div>
         <div class="tb-spacer" data-tauri-drag-region></div>
-        <div class="tb-tools" id="tb-tools" role="toolbar" aria-label="Projects toolbar">
+        <div
+          class="tb-tools"
+          id="tb-tools"
+          role="toolbar"
+          aria-label="Projects toolbar"
+          data-i18n-aria-label="home.toolbar.label"
+        >
           <div class="field" id="field">
             <span id="fieldIcon"></span>
             <input
               id="search"
               type="text"
               placeholder="Search projects"
+              data-i18n-placeholder="home.search.placeholder"
               aria-label="Search projects"
+              data-i18n-aria-label="home.search.label"
               autocomplete="off"
               spellcheck="false"
             />
             <span class="kbd">⌘F</span>
-            <button class="clear" id="clearSearch" type="button" aria-label="Clear search"></button>
+            <button
+              class="clear"
+              id="clearSearch"
+              type="button"
+              aria-label="Clear search"
+              data-i18n-aria-label="home.search.clear"
+            ></button>
           </div>
-          <div class="seg" role="group" aria-label="View mode">
+          <div
+            class="seg"
+            role="group"
+            aria-label="View mode"
+            data-i18n-aria-label="home.view.label"
+          >
             <button
               id="viewGrid"
               type="button"
               aria-pressed="true"
               aria-label="Grid view"
+              data-i18n-aria-label="home.view.grid"
               data-tip="Grid view"
+              data-tip-i18n="home.view.grid"
               data-kbd="⌘1"
             ></button>
             <button
@@ -228,7 +249,9 @@
               type="button"
               aria-pressed="false"
               aria-label="List view"
+              data-i18n-aria-label="home.view.list"
               data-tip="List view"
+              data-tip-i18n="home.view.list"
               data-kbd="⌘2"
             ></button>
           </div>
@@ -237,7 +260,9 @@
             id="settingsBtn"
             type="button"
             aria-label="Settings"
+            data-i18n-aria-label="home.toolbar.settings"
             data-tip="Settings"
+            data-tip-i18n="home.toolbar.settings"
             data-kbd="⌘,"
           ></button>
           <span class="tb-sep" aria-hidden="true"></span>
@@ -246,6 +271,7 @@
             id="openBtn"
             type="button"
             data-tip="Open an existing project from disk"
+            data-tip-i18n="home.toolbar.openTip"
             data-kbd="⌘O"
             data-tip-align="end"
           ></button>
@@ -254,6 +280,7 @@
             id="newBtn"
             type="button"
             data-tip="Create a new project"
+            data-tip-i18n="home.toolbar.newTip"
             data-kbd="⌘N"
             data-tip-align="end"
           ></button>
@@ -263,16 +290,29 @@
       <main class="main" id="main">
         <section class="lo" id="lastOpened" aria-labelledby="loTitle">
           <div class="lo-head">
-            <h2 class="sect-label" id="loTitle">Last Opened</h2>
-            <button class="btn btn-ghost btn-sm" id="showAll" type="button">Show All</button>
+            <h2 class="sect-label" id="loTitle" data-i18n="home.lastOpened.title">Last Opened</h2>
+            <button
+              class="btn btn-ghost btn-sm"
+              id="showAll"
+              type="button"
+              data-i18n="home.lastOpened.showAll"
+            >
+              Show All
+            </button>
           </div>
-          <div class="lo-strip" id="loStrip" role="list" aria-label="Last opened projects"></div>
+          <div
+            class="lo-strip"
+            id="loStrip"
+            role="list"
+            aria-label="Last opened projects"
+            data-i18n-aria-label="home.lastOpened.label"
+          ></div>
         </section>
 
         <section class="start" id="startChat" aria-labelledby="startTitle">
           <div class="start-col">
-            <h2 id="startTitle">Start a new project</h2>
-            <p class="start-hint">
+            <h2 id="startTitle" data-i18n="home.start.title">Start a new project</h2>
+            <p class="start-hint" data-i18n="home.start.hint">
               Describe the video and drop in footage, music or a script. OpenVids creates the
               project, imports the files, and the agents make the first pass.
             </p>
@@ -294,16 +334,29 @@
                 aria-haspopup="menu"
                 aria-expanded="false"
                 data-tip="Sort projects"
+                data-tip-i18n="home.sort.tip"
                 data-tip-align="end"
               ></button>
             </div>
           </div>
-          <div id="body" role="listbox" aria-label="Recent projects"></div>
+          <div
+            id="body"
+            role="listbox"
+            aria-label="Recent projects"
+            data-i18n-aria-label="home.recent.label"
+          ></div>
         </section>
       </main>
 
       <footer class="statusbar" id="statusbar"></footer>
-      <div class="ob" id="ob" role="dialog" aria-modal="true" aria-label="Set up OpenVids">
+      <div
+        class="ob"
+        id="ob"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Set up OpenVids"
+        data-i18n-aria-label="home.onboarding.label"
+      >
         <div class="ob-scroll-host" id="obMain">
           <div class="ob-loading"><i class="spinner" aria-hidden="true"></i></div>
         </div>

@@ -6,26 +6,32 @@
    (credentialSource "api-key") can be removed here. */
 (function () {
   "use strict";
-  const { ic, esc, api, S, ui, PAGES, CLICK, INPUT, ENTER, AGENTS, group, head, lede } = OVS;
+  const { ic, esc, api, S, ui, PAGES, CLICK, INPUT, ENTER, AGENTS, tr, msg, failMsg, text } = OVS;
+  const { group, head, lede } = OVS;
+  /* Escaped text of a catalog message, for the helpers that take markup. */
+  const te = (key, params) => esc(tr(key, params));
 
   /* Shown first, with the connected / error / sign-in ones; every other provider sits behind a disclosure. */
   const WELL_KNOWN = ["anthropic", "openai", "google", "openrouter", "ollama"];
   const MODEL_CAP = 12;
-  const KEY_FOOT =
-    "Stored in a private file on this Mac, readable only by you. Not in the macOS Keychain, and not shared with OMP.";
 
-  const firstLine = (text, max) => {
-    const line = String(text || "")
+  const firstLine = (value, max) => {
+    const line = String(value || "")
       .split("\n")[0]
       .trim();
     return line.length > max ? line.slice(0, max - 1) + "…" : line;
   };
-  function ago(ts) {
+  /* "Synced just now" · "Synced 5 min ago" · "Synced 3 h ago" · "Synced Oct 1" — one message each. */
+  function syncedText(ts) {
     const m = Math.max(0, Math.round((Date.now() - ts) / 60e3));
-    if (m < 1) return "just now";
-    if (m < 60) return m + " min ago";
-    if (m < 24 * 60) return Math.round(m / 60) + " h ago";
-    return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (m < 1) return tr("settings.providers.synced.justNow");
+    if (m < 60) return tr("settings.providers.synced.minutes", { count: m });
+    if (m < 24 * 60) return tr("settings.providers.synced.hours", { count: Math.round(m / 60) });
+    const date = new Intl.DateTimeFormat(OVI18N.language(), {
+      month: "short",
+      day: "numeric",
+    }).format(new Date(ts));
+    return tr("settings.providers.synced.date", { date });
   }
 
   /* ---------- data ---------- */
@@ -69,7 +75,7 @@
   function sync(rowId) {
     if (ui.busy.sync) return;
     ui.busy.sync = true;
-    if (rowId) ui.busy[rowId] = "Checking…";
+    if (rowId) ui.busy[rowId] = msg("settings.providers.busy.checking");
     ui.flags.providersNote = "";
     api("/api/agent/providers/refresh", undefined, "POST")
       .then((res) => {
@@ -77,7 +83,9 @@
         providersChanged();
       })
       .catch((err) => {
-        ui.flags.providersNote = "!Couldn’t refresh: " + err.message;
+        ui.flags.providersNote = failMsg("settings.providers.note.refreshFailed", {
+          message: err.message,
+        });
       })
       .finally(() => {
         delete ui.busy.sync;
@@ -112,7 +120,7 @@
       });
   }
   function setLogout(id) {
-    ui.busy[id] = "Signing out…";
+    ui.busy[id] = msg("settings.providers.busy.signingOut");
     ui.flags.providersNote = "";
     api(`/api/agent/providers/${encodeURIComponent(id)}/oauth/logout`, undefined, "POST")
       .then((res) => {
@@ -120,7 +128,9 @@
         providersChanged();
       })
       .catch((err) => {
-        ui.flags.providersNote = "!Couldn’t sign out: " + err.message;
+        ui.flags.providersNote = failMsg("settings.providers.note.signOutFailed", {
+          message: err.message,
+        });
       })
       .finally(() => {
         delete ui.busy[id];
@@ -130,12 +140,12 @@
   function connect(id) {
     const k = `prov:${id}`,
       v = (ui.draft[k] || "").trim();
-    if (!v) ui.err[k] = "Paste an API key first.";
-    else if (/\s/.test(v)) ui.err[k] = "An API key can’t contain spaces.";
-    else if (v.length > 4096) ui.err[k] = "That key is too long.";
+    if (!v) ui.err[k] = msg("settings.key.error.empty");
+    else if (/\s/.test(v)) ui.err[k] = msg("settings.key.error.spaces");
+    else if (v.length > 4096) ui.err[k] = msg("settings.key.error.tooLong");
     else {
       delete ui.err[k];
-      setKey(id, v, "Checking the key…");
+      setKey(id, v, msg("settings.providers.busy.checkingKey"));
     }
   }
 
@@ -153,35 +163,50 @@
   }
 
   /* ---------- markup ---------- */
-  function keyForm(p, label) {
+  /* replace: the provider already has a key stored here, so the field says "Replace API key". */
+  function keyForm(p, replace) {
     const err = ui.err[`prov:${p.id}`],
       id = esc(p.id);
+    const placeholder = tr(
+      replace ? "settings.providers.key.replace" : "settings.providers.key.placeholder",
+    );
+    const aria = tr(
+      replace ? "settings.providers.key.replaceAria" : "settings.providers.key.aria",
+      {
+        provider: p.name,
+      },
+    );
     return (
-      `<div class="st-inline"><input class="input mono${err ? " is-invalid" : ""}" type="password" autocomplete="off" spellcheck="false" placeholder="${label}" aria-label="${esc(
-        p.name + " " + label,
-      )}" data-act="key-input" data-v="${id}" data-draft="prov:${id}" data-fk="key:${id}"${
+      `<div class="st-inline"><input class="input mono${err ? " is-invalid" : ""}" type="password" autocomplete="off" spellcheck="false" placeholder="${esc(
+        placeholder,
+      )}" aria-label="${esc(aria)}" data-act="key-input" data-v="${id}" data-draft="prov:${id}" data-fk="key:${id}"${
         err ? ` aria-invalid="true" aria-describedby="err-${id}"` : ""
-      } /><button type="button" class="btn" data-act="prov-connect" data-v="${id}" data-fk="connect:${id}">Connect</button></div>` +
-      (err ? `<p class="st-field-err" id="err-${id}" role="alert">${esc(err)}</p>` : "") +
-      `<p class="st-foot">${KEY_FOOT}</p>`
+      } /><button type="button" class="btn" data-act="prov-connect" data-v="${id}" data-fk="connect:${id}">${esc(
+        tr("settings.providers.connect"),
+      )}</button></div>` +
+      (err ? `<p class="st-field-err" id="err-${id}" role="alert">${esc(text(err))}</p>` : "") +
+      `<p class="st-foot">${esc(tr("settings.key.foot"))}</p>`
     );
   }
   const disconnectLink = (p) =>
     `<div><button type="button" class="link" data-act="prov-disconnect" data-v="${esc(p.id)}" data-fk="disconnect:${esc(
       p.id,
-    )}">Disconnect</button></div>`;
+    )}">${esc(tr("settings.providers.disconnect"))}</button></div>`;
   const errLog = (p) =>
-    `<pre class="st-err-log">${esc(p.error || "No details were reported.")}</pre>`;
+    `<pre class="st-err-log">${esc(p.error || tr("settings.providers.noDetails"))}</pre>`;
 
   function modelsBlock(p) {
     const m = S.provModels[p.id];
     if (!m || m.status === "loading")
-      return `<p class="st-foot"><span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>Loading models…</span></p>`;
+      return `<p class="st-foot"><span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${esc(tr("settings.providers.models.loading"))}</span></p>`;
     if (m.status === "failed")
-      return `<p class="st-field-err">Couldn’t load the models: ${esc(m.error)} <button type="button" class="link" data-act="prov-models-retry" data-v="${esc(
+      return `<p class="st-field-err">${esc(
+        tr("settings.providers.models.loadFailed", { error: m.error }),
+      )} <button type="button" class="link" data-act="prov-models-retry" data-v="${esc(
         p.id,
-      )}" data-fk="models-retry:${esc(p.id)}">Retry</button></p>`;
-    if (m.models.length === 0) return `<p class="st-foot">This provider lists no models.</p>`;
+      )}" data-fk="models-retry:${esc(p.id)}">${esc(tr("common.retry"))}</button></p>`;
+    if (m.models.length === 0)
+      return `<p class="st-foot">${esc(tr("settings.providers.models.none"))}</p>`;
     const all = !!ui.flags[`allModels:${p.id}`];
     const rows = m.models
       .map((x) => ({ x, users: usedBy(p.id, x.modelId) }))
@@ -192,21 +217,29 @@
         .map(
           ({ x, users }) =>
             `<dt title="${esc(x.modelId)}">${esc(x.name || x.modelId)}</dt><dd>${
-              users == null ? "" : users.length ? esc(users.join(", ")) : "Not used"
+              users == null
+                ? ""
+                : users.length
+                  ? esc(OVS.list(users))
+                  : esc(tr("settings.providers.models.notUsed"))
             }</dd>`,
         )
         .join("")}</dl>` +
       (rows.length > MODEL_CAP
         ? `<div><button type="button" class="link" data-act="prov-models-more" data-v="${esc(p.id)}" data-fk="models-more:${esc(
             p.id,
-          )}">${all ? "Show fewer models" : `Show all ${rows.length} models`}</button></div>`
+          )}">${esc(
+            all
+              ? tr("settings.providers.models.showFewer")
+              : tr("settings.providers.models.showAll", { count: rows.length }),
+          )}</button></div>`
         : "")
     );
   }
 
   /* Sign out of a sign-in made inside OpenVids (credentialSource "oauth"); it does not revoke anything at the provider. */
   const signOutBlock = (p) =>
-    `<p class="st-foot">Signed in with OpenVids. The sign-in is kept in a private OpenVids database on this Mac, never in the OMP setup. Signing out removes it from this Mac; it doesn’t revoke OpenVids’ access at ${esc(p.name)} — do that in your ${esc(p.name)} account settings.</p><div><button type="button" class="link" data-act="signout" data-v="${esc(p.id)}" data-fk="signout:${esc(p.id)}">Sign out</button></div>`;
+    `<p class="st-foot">${esc(tr("settings.providers.signedInFoot", { provider: p.name }))}</p><div><button type="button" class="link" data-act="signout" data-v="${esc(p.id)}" data-fk="signout:${esc(p.id)}">${esc(tr("settings.providers.signOut"))}</button></div>`;
 
   function providerBody(p) {
     const si = OVS.signin;
@@ -219,15 +252,15 @@
         (p.credentialSource === "oauth"
           ? signOutBlock(p)
           : p.credentialSource === "api-key"
-            ? `<p class="st-foot">Key stored in a private file on this Mac, readable only by you. Not in the macOS Keychain, and not shared with OMP.</p>${disconnectLink(p)}`
+            ? `<p class="st-foot">${esc(tr("settings.providers.keyStoredFoot"))}</p>${disconnectLink(p)}`
             : p.keyless
-              ? `<p class="st-foot">Runs on this Mac and needs no credential.</p>`
-              : `<p class="st-foot">Connected through your OMP setup. OpenVids only reads it and can’t change or remove it from here.</p>`);
+              ? `<p class="st-foot">${esc(tr("settings.providers.keylessFoot"))}</p>`
+              : `<p class="st-foot">${esc(tr("settings.providers.ompFoot"))}</p>`);
     } else if (p.status === "error") {
       body +=
         errLog(p) +
         si.start(p) +
-        keyForm(p, p.credentialSource === "api-key" ? "Replace API key" : "API key") +
+        keyForm(p, p.credentialSource === "api-key") +
         (p.credentialSource === "api-key" ? disconnectLink(p) : "") +
         (p.credentialSource === "oauth" ? signOutBlock(p) : "");
     } else if (p.status === "signin_required") {
@@ -235,10 +268,10 @@
         (p.error ? errLog(p) : "") +
         (p.oauth
           ? si.start(p)
-          : `<p class="st-foot">This sign-in is made in OMP. Sign in to ${esc(p.name)} there, then press Refresh above. Models stay listed while signed out, but agents can’t use them. Or use an API key instead.</p>`) +
-        keyForm(p, "API key");
+          : `<p class="st-foot">${esc(tr("settings.providers.ompSigninFoot", { provider: p.name }))}</p>`) +
+        keyForm(p, false);
     } else {
-      body += si.start(p) + keyForm(p, "API key");
+      body += si.start(p) + keyForm(p, false);
     }
     return wrapBody(p, body);
   }
@@ -249,42 +282,47 @@
     const open = !!ui.open[p.id],
       busy = ui.busy[p.id],
       id = esc(p.id),
-      keyBtn = `<button type="button" class="btn" data-act="prov-open" data-v="${id}" data-fk="setup:${id}">Use an API key</button>`;
+      keyBtn = `<button type="button" class="btn" data-act="prov-open" data-v="${id}" data-fk="setup:${id}">${esc(tr("settings.providers.useKey"))}</button>`;
     let dot = "off",
-      badge = '<span class="badge">Not configured</span>',
-      sub = "Add an API key to use it",
+      badge = `<span class="badge">${esc(tr("settings.providers.badge.notConfigured"))}</span>`,
+      sub = tr("settings.providers.sub.notConfigured"),
       act = "";
     if (p.status === "connected") {
-      const via = p.keyless
-        ? "Local · no key needed"
-        : p.credentialSource === "api-key"
-          ? "API key in OpenVids"
-          : p.credentialSource === "oauth"
-            ? "Signed in with OpenVids"
-            : p.credentialSource === "omp"
-              ? "From your OMP setup"
-              : "Credential found";
+      const via = tr(
+        p.keyless
+          ? "settings.providers.via.local"
+          : p.credentialSource === "api-key"
+            ? "settings.providers.via.apiKey"
+            : p.credentialSource === "oauth"
+              ? "settings.providers.via.signin"
+              : p.credentialSource === "omp"
+                ? "settings.providers.via.omp"
+                : "settings.providers.via.found",
+      );
       dot = "ok";
-      badge = '<span class="badge success">Connected</span>';
-      sub = `${via} · ${p.modelCount} ${p.modelCount === 1 ? "model" : "models"}${
-        p.verified || p.keyless ? "" : " · not checked"
-      }`;
+      badge = `<span class="badge success">${esc(tr("settings.providers.badge.connected"))}</span>`;
+      sub = tr(
+        p.verified || p.keyless
+          ? "settings.providers.sub.connected"
+          : "settings.providers.sub.connectedUnchecked",
+        { via, count: p.modelCount },
+      );
     } else if (p.status === "signin_required") {
       dot = "warn";
-      badge = '<span class="badge warning">Sign-in required</span>';
-      sub = firstLine(p.error, 100) || "The OMP sign-in expired";
+      badge = `<span class="badge warning">${esc(tr("settings.providers.badge.signinRequired"))}</span>`;
+      sub = firstLine(p.error, 100) || tr("settings.providers.sub.signinExpired");
       act = open ? "" : OVS.signin.rowAction(p) + keyBtn;
     } else if (p.status === "error") {
       dot = "err";
-      badge = '<span class="badge error">Error</span>';
-      sub = firstLine(p.error, 100) || "The provider couldn’t be checked";
+      badge = `<span class="badge error">${esc(tr("settings.providers.badge.error"))}</span>`;
+      sub = firstLine(p.error, 100) || tr("settings.providers.sub.checkFailed");
       act =
-        `<button type="button" class="btn" data-act="prov-retry" data-v="${id}" data-fk="retry:${id}">Retry</button>` +
+        `<button type="button" class="btn" data-act="prov-retry" data-v="${id}" data-fk="retry:${id}">${esc(tr("common.retry"))}</button>` +
         OVS.signin.rowAction(p);
     } else if (!open) {
       act = p.oauth
         ? OVS.signin.rowAction(p) + keyBtn
-        : `<button type="button" class="btn" data-act="prov-open" data-v="${id}" data-fk="setup:${id}">Set up</button>`;
+        : `<button type="button" class="btn" data-act="prov-open" data-v="${id}" data-fk="setup:${id}">${esc(tr("settings.providers.setUp"))}</button>`;
     }
     const signing = OVS.signin.rowState(p);
     if (signing) {
@@ -292,15 +330,17 @@
       act = "";
     }
     if (busy) {
-      badge = `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${esc(busy)}</span>`;
+      badge = `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${esc(text(busy))}</span>`;
       act = "";
     }
     const toggle =
       p.status === "not_configured" && !open
         ? ""
-        : `<button type="button" class="icon-btn st-prov-toggle" aria-expanded="${open}" aria-label="${
-            open ? "Hide" : "Show"
-          } ${esc(p.name)} details" data-act="prov-toggle" data-v="${id}" data-fk="toggle:${id}">${ic(
+        : `<button type="button" class="icon-btn st-prov-toggle" aria-expanded="${open}" aria-label="${esc(
+            tr(open ? "settings.providers.hideDetails" : "settings.providers.showDetails", {
+              provider: p.name,
+            }),
+          )}" data-act="prov-toggle" data-v="${id}" data-fk="toggle:${id}">${ic(
             "chevron-right",
           )}</button>`;
     return (
@@ -328,38 +368,38 @@
   PAGES.providers = function () {
     if (!S.providers)
       return (
-        head("Models & Providers") +
+        head(tr("settings.section.providers")) +
         (S.providersError
-          ? OVS.failure("The agent runtime is unavailable", S.providersError, "providers-retry")
-          : OVS.loading("providers"))
+          ? OVS.failure("settings.failure.agentRuntime", S.providersError, "providers-retry")
+          : OVS.loading("settings.loading.providers"))
       );
     const { primary, rest } = split();
     const showAll = !!ui.flags.showAllProviders;
     const connected = S.providers.filter((p) => p.status === "connected").length;
     const meta = `<span class="st-head-meta">${
       ui.busy.sync
-        ? '<i class="spinner" aria-hidden="true"></i>Syncing…'
-        : esc(S.syncedAt ? "Synced " + ago(S.syncedAt) : "Not synced yet")
+        ? `<i class="spinner" aria-hidden="true"></i>${esc(tr("settings.providers.syncing"))}`
+        : esc(S.syncedAt ? syncedText(S.syncedAt) : tr("settings.providers.notSynced"))
     }<button type="button" class="btn" data-act="sync" data-fk="sync"${ui.busy.sync ? " disabled" : ""}>${ic(
       "refresh",
-    )}Refresh</button></span>`;
+    )}${esc(tr("settings.providers.refresh"))}</button></span>`;
     const disclosure = rest.length
-      ? `<div class="st-sub"><button type="button" class="link" data-act="providers-all" aria-expanded="${showAll}" data-fk="providers-all">${
-          showAll ? "Hide other providers" : `Show all providers (${rest.length} more)`
-        }</button></div>`
+      ? `<div class="st-sub"><button type="button" class="link" data-act="providers-all" aria-expanded="${showAll}" data-fk="providers-all">${esc(
+          showAll
+            ? tr("settings.providers.hideOthers")
+            : tr("settings.providers.showOthers", { count: rest.length }),
+        )}</button></div>`
       : "";
     return (
-      head("Models & Providers", meta) +
-      lede(
-        "Providers and their models come from your OMP setup, plus any API key you add here. Agents and Jev can only use models from connected providers.",
-      ) +
+      head(tr("settings.section.providers"), meta) +
+      lede("settings.providers.lede") +
       OVS.noteHtml(ui.flags.providersNote) +
       group(
-        "Providers",
+        te("settings.providers.group.providers"),
         primary.map(providerRow).join("") +
           disclosure +
           (showAll ? rest.map(providerRow).join("") : ""),
-        `<span class="note">${connected} of ${S.providers.length} connected</span>`,
+        `<span class="note">${esc(tr("settings.providers.connectedCount", { connected, total: S.providers.length }))}</span>`,
       )
     );
   };
@@ -398,7 +438,8 @@
   CLICK["prov-retry"] = (t) => sync(t.dataset.v);
   CLICK.sync = () => sync(null);
   CLICK["prov-connect"] = (t) => connect(t.dataset.v);
-  CLICK["prov-disconnect"] = (t) => setKey(t.dataset.v, null, "Disconnecting…");
+  CLICK["prov-disconnect"] = (t) =>
+    setKey(t.dataset.v, null, msg("settings.providers.busy.disconnecting"));
   CLICK.signout = (t) => setLogout(t.dataset.v);
   CLICK["prov-models-retry"] = (t) => loadModels(t.dataset.v);
   CLICK["prov-models-more"] = (t) => {

@@ -5,7 +5,7 @@
    Loaded on demand by home.js (see openOnboarding there); nothing here runs on a machine that finished setup. */
 (function () {
   "use strict";
-  const { ic, esc, api, PAGES, CLICK } = OVS;
+  const { ic, esc, api, PAGES, CLICK, tr } = OVS;
   const root = document.documentElement;
   const overlay = document.getElementById("ob");
   const hostEl = document.getElementById("obMain");
@@ -46,7 +46,8 @@
   };
   const steps = {};
 
-  /* The title is the step's focus target: screen readers announce it when the step changes. */
+  /* The title is the step's focus target: screen readers announce it when the step changes. text and lede are
+     translated by the caller. */
   const title = (text, lede) =>
     `<h1 id="obTitle" data-fk="ob-title" tabindex="-1">${esc(text)}</h1>${
       lede ? `<p class="st-lede">${esc(lede)}</p>` : ""
@@ -78,16 +79,18 @@
   const mark =
     '<svg class="ob-mark" viewBox="0 0 45 45" role="img" aria-label="OpenVids"><circle cx="22.5" cy="22.5" r="19.3" fill="none" stroke="currentColor" stroke-width="6.2"/><circle cx="22.5" cy="22.5" r="6.5" fill="currentColor"/></svg>';
   function stepNav() {
-    return `<nav class="ob-steps" aria-label="Setup steps"><ol>${ORDER.map((id, i) => {
-      const s = steps[id];
-      const cur = id === OB.step;
-      const done = !cur && s.done() === true;
-      return `<li><button type="button" class="ob-step${cur ? " is-current" : ""}${done ? " is-done" : ""}" data-act="ob-goto" data-v="${id}" data-fk="ob-step:${id}"${
-        cur ? ' aria-current="step"' : ""
-      }><span class="ob-num">${done ? ic("check") : i + 1}</span>${esc(s.label)}${
-        done ? '<span class="sr-only"> (done)</span>' : ""
-      }</button></li>`;
-    }).join("")}</ol></nav>`;
+    return `<nav class="ob-steps" aria-label="${esc(tr("onboarding.steps.aria"))}"><ol>${ORDER.map(
+      (id, i) => {
+        const s = steps[id];
+        const cur = id === OB.step;
+        const done = !cur && s.done() === true;
+        return `<li><button type="button" class="ob-step${cur ? " is-current" : ""}${done ? " is-done" : ""}" data-act="ob-goto" data-v="${id}" data-fk="ob-step:${id}"${
+          cur ? ' aria-current="step"' : ""
+        }><span class="ob-num">${done ? ic("check") : i + 1}</span>${esc(tr(s.label))}${
+          done ? `<span class="sr-only"> ${esc(tr("onboarding.step.done"))}</span>` : ""
+        }</button></li>`;
+      },
+    ).join("")}</ol></nav>`;
   }
   PAGES.onboarding = function () {
     const id = OB.step,
@@ -102,13 +105,13 @@
       `<div class="ob-scroll"><div class="ob-col" role="group" aria-labelledby="obTitle">${s.view()}${OVS.noteHtml(OB.note)}</div></div>` +
       `<footer class="ob-foot"><div class="ob-foot-in"><button type="button" class="link" data-act="ob-skip" data-fk="ob-skip"${
         OB.busy ? " disabled" : ""
-      }>${OB.completed ? "Close" : "Skip setup"}</button><span class="push"></span>${
+      }>${esc(tr(OB.completed ? "common.close" : "onboarding.skip"))}</button><span class="push"></span>${
         i > 0
-          ? '<button type="button" class="btn" data-act="ob-back" data-fk="ob-back">Back</button>'
+          ? `<button type="button" class="btn" data-act="ob-back" data-fk="ob-back">${esc(tr("common.back"))}</button>`
           : ""
       }<button type="button" class="btn${p.kind === "primary" ? " btn-primary" : ""}" data-act="ob-next" data-fk="ob-primary"${
         OB.busy || p.disabled ? " disabled" : ""
-      }>${esc(p.label)}</button></div></footer></div>`
+      }>${esc(tr(p.label))}</button></div></footer></div>`
     );
   };
 
@@ -128,7 +131,7 @@
       })
       .catch((err) => {
         OB.busy = false;
-        OB.note = "!Couldn’t save that setup is finished: " + err.message;
+        OB.note = OVS.failMsg("onboarding.note.finishFailed", { message: err.message });
         OVS.render(true);
       });
   }
@@ -260,6 +263,11 @@
     hostEl.scrollTop = 0;
     focusStart();
   }
+
+  /* The language changed while the setup is open: every step is drawn again in it. */
+  window.addEventListener("ov-language", () => {
+    if (OB.open) OVS.render(true);
+  });
 
   window.OVOB = {
     steps,

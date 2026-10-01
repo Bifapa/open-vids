@@ -2,59 +2,57 @@
    changed with the native picker, POST /api/pick-parent), a review of what the earlier steps found, and Finish. */
 (function () {
   "use strict";
-  const { ic, esc, api, CLICK, group } = OVS;
+  const { ic, esc, api, CLICK, group, tr } = OVS;
   const { OB, title } = OVOB;
 
   let note = "";
   const prefsOf = () => OB.host.prefs();
   const location = () => (prefsOf().newProject && prefsOf().newProject.location) || "";
 
+  /* what and detail are catalog keys. */
   function review() {
     const m = OVOB.steps.models.done(),
       s = OVOB.steps.system.done();
     const line = (id, ok, what, detail) =>
-      `<div class="st-prov"><span class="dot ${ok === true ? "ok" : ok === false ? "warn" : "off"}" aria-hidden="true"></span><div class="st-label"><b>${what}</b><span>${detail}</span></div><div class="st-ctl"><button type="button" class="link" data-act="ob-goto" data-v="${id}" data-fk="ob-review:${id}">${
-        ok === true ? "Review" : "Set up"
-      }</button></div></div>`;
+      `<div class="st-prov"><span class="dot ${ok === true ? "ok" : ok === false ? "warn" : "off"}" aria-hidden="true"></span><div class="st-label"><b>${esc(tr(what))}</b><span>${esc(tr(detail))}</span></div><div class="st-ctl"><button type="button" class="link" data-act="ob-goto" data-v="${id}" data-fk="ob-review:${id}">${esc(
+        tr(ok === true ? "onboarding.project.review" : "onboarding.project.setUp"),
+      )}</button></div></div>`;
     return group(
-      "What’s ready",
+      esc(tr("onboarding.project.group.ready")),
       line(
         "models",
         m,
-        "Model",
+        "onboarding.project.review.model",
         m === true
-          ? "Connected. The agents are ready."
-          : "Not connected. The editor works by hand; connect one in Settings to use the agents.",
+          ? "onboarding.project.review.model.ready"
+          : "onboarding.project.review.model.missing",
       ) +
         line(
           "system",
           s,
-          "Chrome and FFmpeg",
+          "onboarding.project.review.system",
           s === true
-            ? "Found. Rendering and thumbnails will work."
-            : "Not all found. Rendering may not work until they are installed.",
+            ? "onboarding.project.review.system.ready"
+            : "onboarding.project.review.system.missing",
         ),
     );
   }
 
   OVOB.steps.project = {
-    label: "Project",
+    label: "onboarding.step.project",
     done: () => false,
     view: () =>
-      title(
-        "Your first project",
-        "Every project is a folder of plain files. New ones are created in the folder below.",
-      ) +
+      title(tr("onboarding.project.title"), tr("onboarding.project.lede")) +
       group(
-        "Projects folder",
-        `<div class="st-row"><div class="st-label"><b>Location</b><span>Change it any time in Settings → General.</span></div><div class="st-ctl"><div class="loc"><span class="path" title="${esc(
+        esc(tr("onboarding.project.group.folder")),
+        `<div class="st-row"><div class="st-label"><b>${esc(tr("onboarding.project.location"))}</b><span>${esc(tr("onboarding.project.location.hint"))}</span></div><div class="st-ctl"><div class="loc"><span class="path" title="${esc(
           location(),
-        )}">${ic("folder")}${esc(location())}</span></div><button type="button" class="btn" data-act="ob-choose" data-fk="ob-choose">Change…</button></div></div>`,
+        )}">${ic("folder")}${esc(location())}</span></div><button type="button" class="btn" data-act="ob-choose" data-fk="ob-choose">${esc(tr("onboarding.project.change"))}</button></div></div>`,
       ) +
       OVS.noteHtml(note) +
       review() +
-      '<p class="st-foot">Finish opens Projects with the start box ready. You can reopen this from Help → Welcome to OpenVids.</p>',
-    primary: () => ({ label: "Finish", kind: "primary" }),
+      `<p class="st-foot">${esc(tr("onboarding.project.foot"))}</p>`,
+    primary: () => ({ label: "onboarding.project.finish", kind: "primary" }),
     enter: () => {
       note = "";
     },
@@ -68,7 +66,7 @@
         );
       })
       .catch((err) => {
-        note = "!Couldn’t change the folder: " + err.message;
+        note = OVS.failMsg("onboarding.project.changeFailed", { message: err.message });
       })
       .finally(() => OVS.render(true));
   };

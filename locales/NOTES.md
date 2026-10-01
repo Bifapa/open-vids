@@ -2,3 +2,212 @@
 
 Context for keys whose English text is ambiguous on its own (a single word, an abbreviation, a verb that
 could be a noun). Keys are listed by area; a key that is not here reads as it says.
+
+## home-main
+
+- `home.launch.skip` — Button on the launch splash, followed by the Esc key hint.
+- `home.view.label` — Group label for the Grid / List toggle.
+- `home.view.grid` — Tooltip and accessible name of the toggle that shows projects as a grid of cards.
+- `home.view.list` — Tooltip and accessible name of the toggle that shows projects as a table rows.
+- `home.lastOpened.title` — Heading of the strip with the five most recently opened projects.
+- `home.lastOpened.showAll` — Button that scrolls to the full Recent Projects list.
+- `home.sort.label` — Dim label inside the sort button; the current sort name follows it.
+- `home.time.minutesAgo` — Shown only for 2 minutes and more; "min" is minutes.
+- `home.time.hoursAgo` — "h" is hours.
+- `home.time.yesterdayAt` — {time} is a localized clock time.
+- `home.time.weekdayAt` — {weekday} is a localized weekday name, {time} a clock time.
+- `home.media.clips` — Clip count of a project.
+- `home.size.bytes` — File size under 1000 bytes.
+- `home.size.kb` — File size unit, 1000-based (as Finder). {value} is already formatted.
+- `home.error.requestFailed` — Fallback error text when the local server gives no message; {status} is an HTTP status code.
+- `home.item.notFound` — Status of a project whose folder is gone.
+- `home.item.locate` — Link and menu item: point OpenVids at the project's new folder.
+- `home.item.aria.opened` — {when} is a relative time such as "3 min ago".
+- `home.list.name` — Column header of the projects table.
+- `home.list.opened` — Column header of the projects table.
+- `home.list.duration` — Column header of the projects table.
+- `home.list.clips` — Column header: number of clips in the project.
+- `home.list.location` — Column header: folder path of the project.
+- `home.count.filtered` — Count next to "Recent Projects" while searching.
+- `home.hint.select` — Status bar hint next to the arrow keys.
+- `home.hint.open` — Status bar hint next to the Return key.
+- `home.hint.rename` — Status bar hint next to F2.
+- `home.hint.search` — Status bar hint next to the Command-F shortcut.
+- `home.item.removeFromRecent` — Removes the entry from the list only; files stay on disk.
+- `home.item.trashConfirm` — Same action as "Move to Trash"; the ellipsis means a confirmation follows.
+- `home.error.load` — {message} is the error text from the app's local server.
+- `home.error.reveal` — {message} is the error text from the app's local server.
+- `home.error.duplicate` — {message} is the error text from the app's local server.
+- `home.error.undo` — {message} is the error text from the app's local server.
+- `home.error.remove` — {message} is the error text from the app's local server.
+- `home.error.relink` — {message} is the error text from the app's local server.
+- `home.error.rename` — {message} is the error text from the app's local server.
+- `home.error.trash` — {message} is the error text from the app's local server.
+- `home.error.open` — {message} is the error text from the app's local server.
+- `home.error.openFolder` — {message} is the error text from the app's local server.
+- `home.error.chooseFolder` — {message} is the error text from the app's local server.
+- `home.error.listLocations` — {message} is the error text from the app's local server.
+- `home.error.create` — {message} is the error text from the app's local server.
+- `home.error.setup` — {message} is the error text from the app's local server.
+- `home.toast.relinked` — <path> wraps the folder path (monospace).
+- `home.toast.missing` — <path> wraps the folder path (monospace). The toast has a "Locate…" button.
+- `home.trash.body` — Followed by the folder path on its own line.
+- `home.opening.text` — <name> emphasises the project name.
+- `home.opening.project` — Stands in for the project name while a folder is being opened ("Opening “project”…").
+- `home.opening.lastProject` — Stands in for the project name when the last project is reopened at launch.
+- `home.settings.title` — Title of the Settings frame.
+- `home.new.title` — Dialog title.
+- `home.new.name` — Field label: the new project's folder name.
+- `home.new.location` — Field label: the parent folder.
+- `home.new.customSize` — Shown in the Resolution list when the aspect ratio is Custom.
+- `home.new.aspect.landscape` — Aspect ratio option; {ratio} is e.g. 16:9.
+- `home.new.aspect.portrait` — Aspect ratio option; {ratio} is e.g. 9:16.
+- `home.new.aspect.square` — Aspect ratio option; {ratio} is 1:1.
+- `home.new.aspect.custom` — Aspect ratio option that reveals width and height fields.
+- `home.new.otherFolder` — Menu item that opens the macOS folder picker.
+- `home.new.error.exists` — {name} is a folder; the Russian adjective must agree with a folder (feminine: «папка»).
+- `home.new.summary` — One-line summary under the form; "s" is seconds; {size} is e.g. 1920×1080 or a dash.
+- `home.start.format.landscape` — Video orientation in the format menu, after the ratio (16:9).
+- `home.start.format.portrait` — Video orientation in the format menu, after the ratio (9:16, 4:5).
+- `home.start.format.square` — Video orientation in the format menu, after the ratio (1:1).
+- `home.start.format.item` — Format menu item: {ratio} 16:9, {name} orientation, {size} 1920×1080.
+- `home.start.aspect.tip` — Tooltip of the format chip of the start composer.
+- `home.start.foot.label` — Followed by the folder path and a Change… link.
+- `home.start.files` — Files added to the start composer and their total size.
+- `home.start.creating` — Busy label on the Start button.
+- `home.composer.agent.editor.name` — Name of a specialist agent (a role).
+- `home.composer.agent.editor.mono` — One- or two-letter monogram of the agent, shown in a small badge.
+- `home.composer.agent.vision.name` — Name of a specialist agent (a role).
+- `home.composer.agent.vision.mono` — One- or two-letter monogram of the agent, shown in a small badge.
+- `home.composer.agent.motion.name` — Name of a specialist agent (a role).
+- `home.composer.agent.motion.mono` — One- or two-letter monogram of the agent, shown in a small badge.
+- `home.composer.agent.research.name` — Name of a specialist agent (a role).
+- `home.composer.agent.research.mono` — One- or two-letter monogram of the agent, shown in a small badge.
+- `home.composer.agent.audio.name` — Name of a specialist agent (a role).
+- `home.composer.agent.audio.mono` — One- or two-letter monogram of the agent, shown in a small badge.
+- `home.composer.lead.name` — The lead agent of the new project's chat (the Director).
+- `home.composer.lead.mono` — Monogram of the lead agent.
+- `home.composer.agent.switchAria` — Accessible name of the on/off switch of an agent.
+- `home.composer.agents.chip` — Chip showing how many agents are enabled.
+- `home.composer.effort.minimal` — Thinking effort level.
+- `home.composer.effort.low` — Thinking effort level.
+- `home.composer.effort.medium` — Thinking effort level.
+- `home.composer.effort.high` — Thinking effort level.
+- `home.composer.effort.xhigh` — Thinking effort level above High.
+- `home.composer.effort.max` — Thinking effort level.
+- `home.composer.effort.default` — Thinking effort: the model's own default.
+- `home.composer.effort.short.minimal` — Short label of a button in a narrow row.
+- `home.composer.effort.short.medium` — Short label of a button in a narrow row.
+- `home.composer.effort.short.xhigh` — Short label of a button in a narrow row.
+- `home.composer.thinkingEffort` — How long the model reasons before answering.
+- `home.composer.file.sr` — Screen-reader text after a file name; {detail} is size and duration.
+- `home.composer.inheritFrom` — Option of a model list: use the lead agent's model.
+- `home.composer.kind.video` — Kind of an attached file (screen-reader text).
+- `home.composer.mode.plan` — Mode of the new project's chat: the agents propose a plan first.
+- `home.composer.mode.edit` — Mode of the new project's chat: the agents edit the timeline.
+- `home.composer.mode.ask` — Mode of the new project's chat: the agents only answer.
+- `home.composer.model.chip` — Chip label: model short name and thinking effort.
+- `home.composer.model.tipError` — The agent runtime is the local process the agents run in.
+- `home.composer.modelHelp` — <link> is a button that opens the agent defaults in Settings.
+- `home.composer.send.label` — Button that creates the project; a Return key hint follows.
+- `home.composer.send.tipReady` — {key} is the key name (Enter).
+- `home.composer.settings.help` — Refers to the model option "Inherit from {lead}" and the effort button "Default".
+- `home.composer.unavailable` — Used as the error detail when the agent runtime gives no reason.
+
+## home-settings
+
+- `settings.window.documentTitle` — Title of the Settings window (the browser title).
+- `settings.window.close` — Accessible name of the red close button in the Settings title bar.
+- `settings.nav.label` — Accessible name of the section list on the left of the Settings window.
+- `settings.nav.group.app` — Heading of the first group in the Settings section list (General, Appearance).
+- `settings.nav.group.ai` — Heading of the second group in the Settings section list (Agents, Models & Providers, Jev).
+- `settings.nav.group.workflow` — Heading of the third group in the Settings section list (Asset Search, Execution).
+- `settings.nav.needAttention` — Accessible name of the badge on Models & Providers: how many providers have a problem.
+- `settings.section.general` — Settings section name (nav item, window title and page heading).
+- `settings.section.jev` — Product name: stays Jev in every language.
+- `settings.section.execution` — Settings section about how hard the agents work (execution quality, autonomy).
+- `settings.agent.director.name` — Name of an agent role.
+- `settings.agent.director.mono` — Monogram (one or two letters) in the round badge next to the agent name: the initials of the name.
+- `settings.agent.editor.name` — Name of an agent role.
+- `settings.agent.editor.mono` — Monogram (one or two letters) in the round badge next to the agent name: the initials of the name.
+- `settings.agent.vision.name` — Name of an agent role.
+- `settings.agent.vision.mono` — Monogram (one or two letters) in the round badge next to the agent name: the initials of the name.
+- `settings.agent.motion.name` — Name of an agent role.
+- `settings.agent.motion.mono` — Monogram (one or two letters) in the round badge next to the agent name: the initials of the name.
+- `settings.agent.research.name` — Name of an agent role.
+- `settings.agent.research.mono` — Monogram (one or two letters) in the round badge next to the agent name: the initials of the name.
+- `settings.agent.audio.name` — Name of an agent role.
+- `settings.agent.audio.mono` — Monogram (one or two letters) in the round badge next to the agent name: the initials of the name.
+- `settings.stepper.fewer` — Accessible name of the minus button of a number stepper.
+- `settings.stepper.more` — Accessible name of the plus button of a number stepper.
+- `settings.failure.withReason` — A failure line: what failed, then the reason the server gave.
+- `settings.failure.agentRuntime` — The background process that runs the AI agents did not answer.
+- `settings.provider.fix` — Link next to a provider warning; it jumps to that provider in Models & Providers.
+- `settings.general.format.custom` — Option for a project size that is not in the list; the numbers are width and height in pixels.
+- `settings.general.location` — The folder new projects are created in.
+- `settings.general.openIn` — Which workspace (Media, Story or Edit) a new project opens in.
+- `settings.general.openIn.story` — Product mode name: stays Story.
+- `settings.general.openIn.edit` — Workspace name (the timeline editor).
+- `settings.general.format` — Video size and aspect ratio of new projects.
+- `settings.general.onLaunch` — What the app does when it starts.
+- `settings.general.onLaunch.projects` — “Projects” is the home page listing all projects.
+- `settings.agents.effort.default` — Thinking effort: the model’s own default.
+- `settings.agents.effort.off` — Thinking effort: thinking switched off.
+- `settings.agents.effort.medium` — Abbreviation of Medium (a short segmented button).
+- `settings.agents.effort.minimal` — Abbreviation of Minimal (a short segmented button).
+- `settings.agents.effort.xhigh` — Abbreviation of Extra high (a short segmented button).
+- `settings.agents.model.inherit` — Model choice for a specialist: use the Director’s model.
+- `settings.agents.model.runtimeDefault` — Model choice for the Director: the model the agent runtime picks.
+- `settings.agents.col.agent` — Table column heading.
+- `settings.agents.col.model` — Table column heading.
+- `settings.agents.col.effort` — Table column heading: how long the model reasons before answering.
+- `settings.agents.col.on` — Table column heading: whether the agent is on by default (switch).
+- `settings.key.foot` — OMP is the agent toolkit OpenVids can reuse logins from; it is a name, not translated.
+- `settings.providers.synced.date` — {date} is a short date such as “Oct 1”.
+- `settings.providers.key.replace` — Placeholder of the key field when a key is already stored.
+- `settings.providers.connect` — Button next to the API key field.
+- `settings.providers.disconnect` — Removes the API key OpenVids stores for the provider.
+- `settings.providers.models.notUsed` — Shown next to a model that no agent uses.
+- `settings.providers.ompSigninFoot` — “Refresh” is the button labelled settings.providers.refresh.
+- `settings.providers.sub.connected` — {via} is one of the settings.providers.via.\* phrases (how the provider is connected).
+- `settings.providers.sub.connectedUnchecked` — Same as settings.providers.sub.connected, for a provider whose credential has not been verified live.
+- `settings.providers.setUp` — Button on a provider row (verb).
+- `settings.providers.refresh` — Button that re-reads the provider list.
+- `settings.signin.flow.browser` — Sign-in method: through the browser.
+- `settings.signin.flow.device` — Sign-in method: type a code on the provider’s page.
+- `settings.signin.flow.paste` — Sign-in method: paste a code back into the app.
+- `settings.signin.footPort` — “Device code” is the label settings.signin.flow.device.
+- `settings.signin.prompt.optional` — {message} is a question or instruction written by the provider.
+- `settings.jev.model.unavailableItem` — {model} is a model id the provider no longer lists.
+- `settings.jev.providerFallback` — Lower-case noun used in place of a provider name that is not known: “Use the provider connection”.
+- `settings.jev.test.replied` — {seconds} is a number of seconds with one decimal.
+- `settings.jev.test.button` — Button (verb) that runs a live test.
+- `settings.jev.group.check` — Group heading (noun): a live test of Jev’s settings.
+- `settings.assets.custom` — Badge on a source the user added.
+- `settings.execution.field.qaFramesPerMinute.hint` — {min}–{max} is the allowed range of the number.
+- `settings.execution.mode.plan` — Chat mode name; matches the composer’s Mode chip.
+- `settings.execution.mode.edit` — Chat mode name; matches the composer’s Mode chip.
+- `settings.execution.mode.ask` — Chat mode name; matches the composer’s Mode chip.
+- `settings.execution.passes.many` — {passes} is 2 or more; {corrections} is one less.
+- `settings.execution.summary.vision` — Fragment of a summary line; keep the <b> tags.
+- `settings.execution.summary.critique` — Fragment of a summary line; keep the <b> tags.
+- `settings.execution.summary.research` — Fragment of a summary line; keep the <b> tags.
+- `settings.execution.summary.thinking` — Fragment of a summary line; {policy} is Economy, As configured or Thorough.
+- `settings.execution.customize` — Link that switches the budget to Custom so every field can be edited.
+- `settings.execution.passes` — How many times the agent renders its work and checks the result.
+- `onboarding.step.done` — Read by screen readers after a completed step name.
+- `onboarding.step.welcome` — Name of the first setup step.
+- `onboarding.step.model` — Name of the setup step that connects an AI model.
+- `onboarding.step.system` — Name of the setup step that checks Chrome and FFmpeg.
+- `onboarding.models.connected` — {names} is a list of provider names; keep the <names> tags around it.
+- `onboarding.models.connected.hint` — {count} is how many providers are connected: “its models” for one, “their models” for several.
+- `onboarding.system.phase.downloadingOf` — {downloaded} and {total} are file sizes such as “12.3 MB”.
+- `onboarding.system.chromeAt` — Keep the <path> tags around {path}.
+- `onboarding.system.missing` — Status of a required tool that was not found.
+- `onboarding.system.brewRuns` — Keep the <code> tags around {command}.
+- `onboarding.system.runIt` — “it” is the command shown above the sentence; “Check again” is the button onboarding.system.checkAgain.
+- `onboarding.system.runItNoBrew` — Keep the <link> tags (a button that opens the Homebrew site).
+- `onboarding.project.location.hint` — “Settings → General” names the Settings window and its section settings.section.general.
+- `onboarding.project.review` — Link next to a ready setup item (verb): go back to that step.
+- `onboarding.project.setUp` — Link next to a setup item that is not ready (verb): go to that step.
+- `onboarding.project.foot` — “Help → Welcome to OpenVids” is a menu path; the Russian must match the translated menu (Rust menu strings).

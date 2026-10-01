@@ -2,8 +2,12 @@
    server, actions through its token-guarded API, the start composer creating real projects. */
 (function () {
   "use strict";
-  const { ic, esc, api, fmtDur, fmtOpened, fmtMedia, dayDiff, formatBytes, blankThumb } = OV;
+  const { ic, esc, api, fmtDur, fmtOpened, fmtMedia, fmtNumber, dayDiff, formatBytes, blankThumb } =
+    OV;
   const { toast, showMenu, closeMenu, sheet } = OVH;
+  const tr = (key, params) => OVI18N.t(key, params);
+  /* The same, HTML-escaped: for markup built as a string (menus, toasts, templates). */
+  const th = (key, params) => esc(OVI18N.t(key, params));
   const $ = (s) => document.querySelector(s);
   const win = $("#win"),
     main = $("#main"),
@@ -46,19 +50,27 @@
   };
   const byId = (id) => S.items.find((p) => p.id === id);
   const itemEl = (id) => body.querySelector('[data-item][data-id="' + CSS.escape(id) + '"]');
-  const SORTS = { opened: "Last opened", name: "Name", dur: "Duration" };
-  const mono = (s) => '<span class="mono" style="font-size:11px">' + esc(s) + "</span>";
+  const SORTS = { opened: "home.sort.opened", name: "home.sort.name", dur: "home.sort.duration" };
+  const monoWrap = (inner) => '<span class="mono" style="font-size:11px">' + inner + "</span>";
 
   /* ---------- static chrome ---------- */
   $("#fieldIcon").innerHTML = ic("search", 14);
   $("#clearSearch").innerHTML = ic("x", 10);
   $("#viewGrid").innerHTML = ic("grid", 14);
   $("#viewList").innerHTML = ic("list", 14);
-  $("#openBtn").innerHTML = ic("folder-open", 14) + "Open Project…";
-  $("#newBtn").innerHTML = ic("plus", 14) + "New Project";
+  paintChrome();
   $("#settingsBtn").innerHTML = ic("settings");
   $("#settingsBtn").setAttribute("aria-haspopup", "dialog");
   $("#settingsBtn").setAttribute("aria-expanded", "false");
+  /* The texts drawn from script, at load and again when the language changes. The tooltips (data-tip) are read
+     by the tooltip layer, so they are set here from data-tip-i18n. */
+  function paintChrome() {
+    $("#openBtn").innerHTML = ic("folder-open", 14) + th("home.toolbar.open");
+    $("#newBtn").innerHTML = ic("plus", 14) + th("home.toolbar.new");
+    document.querySelectorAll("[data-tip-i18n]").forEach((el) => {
+      el.dataset.tip = tr(el.dataset.tipI18n);
+    });
+  }
 
   /* ---------- data ---------- */
   const toItem = (r) => ({
@@ -83,7 +95,7 @@
       .catch((err) => {
         S.loading = false;
         render();
-        toast(esc("Couldn’t load your projects: " + err.message), null, "error");
+        toast(th("home.error.load", { message: err.message }), null, "error");
       });
   }
 
@@ -101,12 +113,12 @@
     return a.sort(cmp);
   }
   function groups(a) {
-    if (S.sort !== "opened") return [{ label: "All projects", items: a }];
+    if (S.sort !== "opened") return [{ label: tr("home.group.all"), items: a }];
     const defs = [
-      ["Today", (n) => n <= 0],
-      ["Yesterday", (n) => n === 1],
-      ["Previous 7 Days", (n) => n >= 2 && n <= 7],
-      ["Earlier", (n) => n > 7],
+      [tr("home.group.today"), (n) => n <= 0],
+      [tr("home.group.yesterday"), (n) => n === 1],
+      [tr("home.group.previous7"), (n) => n >= 2 && n <= 7],
+      [tr("home.group.earlier"), (n) => n > 7],
     ];
     return defs
       .map(([label, f]) => ({ label, items: a.filter((p) => f(dayDiff(p.ts))) }))
@@ -118,7 +130,9 @@
     return S.renaming === p.id && S.renameAt === (at || "list")
       ? '<input class="rename-input" data-rename value="' +
           esc(p.name) +
-          '" aria-label="Rename project" spellcheck="false" />'
+          '" aria-label="' +
+          th("home.item.renameLabel") +
+          '" spellcheck="false" />'
       : esc(p.name);
   }
   function thumbHtml(p, more, row) {
@@ -135,8 +149,8 @@
       (row ? "" : '<span class="thumb-check">' + ic("check", 10) + "</span>") +
       (p.missing || row ? "" : '<span class="thumb-dur">' + fmtDur(p.dur) + "</span>") +
       (more
-        ? '<button class="thumb-more" type="button" tabindex="-1" data-more aria-label="More actions for ' +
-          esc(p.name) +
+        ? '<button class="thumb-more" type="button" tabindex="-1" data-more aria-label="' +
+          th("home.item.moreActions", { name: p.name }) +
           '" aria-haspopup="menu">' +
           ic("ellipsis", 14) +
           "</button>"
@@ -148,11 +162,14 @@
     return p.missing
       ? '<span class="status warning">' +
           ic("alert", 12) +
-          'Not found</span><span class="mid">·</span><button class="link" type="button" tabindex="-1" data-locate>Locate…</button>'
+          th("home.item.notFound") +
+          '</span><span class="mid">·</span><button class="link" type="button" tabindex="-1" data-locate>' +
+          th("home.item.locate") +
+          "</button>"
       : "<span>" +
-          fmtOpened(p.ts) +
+          esc(fmtOpened(p.ts)) +
           '</span><span class="mid">·</span><span>' +
-          fmtMedia(p.media) +
+          esc(fmtMedia(p.media)) +
           "</span>";
   }
   function attrs(p, cls, tab) {
@@ -170,8 +187,7 @@
       '" data-item data-id="' +
       esc(p.id) +
       '" aria-label="' +
-      esc(p.name) +
-      (p.missing ? ", project not found" : "") +
+      (p.missing ? th("home.item.aria.notFound", { name: p.name }) : esc(p.name)) +
       '"'
     );
   }
@@ -200,8 +216,9 @@
       '" data-lo data-id="' +
       esc(p.id) +
       '" aria-label="' +
-      esc(p.name) +
-      (p.missing ? ", project not found" : ", opened " + esc(fmtOpened(p.ts))) +
+      (p.missing
+        ? th("home.item.aria.notFound", { name: p.name })
+        : th("home.item.aria.opened", { name: p.name, when: fmtOpened(p.ts) })) +
       '">' +
       thumbHtml(p, true) +
       '<div class="card-text"><div class="name" title="' +
@@ -228,7 +245,10 @@
     const st = p.missing
       ? '<span class="status warning">' +
         ic("alert", 12) +
-        'Not found</span> <button class="link" type="button" tabindex="-1" data-locate>Locate…</button>'
+        th("home.item.notFound") +
+        '</span> <button class="link" type="button" tabindex="-1" data-locate>' +
+        th("home.item.locate") +
+        "</button>"
       : "";
     return (
       "<div " +
@@ -246,19 +266,19 @@
       st +
       "</div>" +
       '<span class="cell">' +
-      fmtOpened(p.ts) +
+      esc(fmtOpened(p.ts)) +
       '</span><span class="cell r">' +
       (p.missing ? "—" : fmtDur(p.dur)) +
       '</span><span class="cell r">' +
-      (p.missing ? "—" : p.media) +
+      (p.missing ? "—" : fmtNumber(p.media)) +
       "</span>" +
       '<span class="cell path" title="' +
       esc(p.dir) +
       '">' +
       esc(p.path) +
       "</span>" +
-      '<button class="icon-btn sm more" type="button" tabindex="-1" data-more aria-label="More actions for ' +
-      esc(p.name) +
+      '<button class="icon-btn sm more" type="button" tabindex="-1" data-more aria-label="' +
+      th("home.item.moreActions", { name: p.name }) +
       '" aria-haspopup="menu">' +
       ic("ellipsis", 14) +
       "</button></div>"
@@ -278,10 +298,14 @@
       "</button>";
     return (
       '<div class="row-head list-head" role="presentation"><span></span>' +
-      s("name", "Name") +
-      s("opened", "Last opened") +
-      s("dur", "Duration", "num-col") +
-      '<span class="num-col">Clips</span><span>Location</span><span></span></div>'
+      s("name", th("home.list.name")) +
+      s("opened", th("home.list.opened")) +
+      s("dur", th("home.list.duration"), "num-col") +
+      '<span class="num-col">' +
+      th("home.list.clips") +
+      "</span><span>" +
+      th("home.list.location") +
+      "</span><span></span></div>"
     );
   }
   function skeleton() {
@@ -303,9 +327,21 @@
           ).join("") +
           "</div>");
     return (
-      '<div role="status" class="sr-only">Loading projects…</div>' +
+      '<div role="status" class="sr-only">' +
+      th("home.status.loading") +
+      "</div>" +
       (S.view === "list"
-        ? '<div class="row-head list-head" aria-hidden="true"><span></span><span>Name</span><span>Last opened</span><span class="num-col">Duration</span><span class="num-col">Clips</span><span>Location</span><span></span></div>'
+        ? '<div class="row-head list-head" aria-hidden="true"><span></span><span>' +
+          th("home.list.name") +
+          "</span><span>" +
+          th("home.list.opened") +
+          '</span><span class="num-col">' +
+          th("home.list.duration") +
+          '</span><span class="num-col">' +
+          th("home.list.clips") +
+          "</span><span>" +
+          th("home.list.location") +
+          "</span><span></span></div>"
         : "") +
       g(S.view === "grid" ? 5 : 3) +
       g(S.view === "grid" ? 6 : 5)
@@ -319,9 +355,13 @@
     esc(OVI18N.t("home.recent.empty.description")) +
     "</p></div>";
   const noResults = () =>
-    '<div class="empty inline"><h2>No matches</h2><p>Nothing in Recent matches “' +
-    esc(S.q.trim()) +
-    '”. Search covers project names and locations.</p><div class="empty-actions"><button class="btn btn-sm" type="button" data-act="clear">Clear Search</button></div></div>';
+    '<div class="empty inline"><h2>' +
+    th("home.search.empty.title") +
+    "</h2><p>" +
+    th("home.search.empty.description", { query: S.q.trim() }) +
+    '</p><div class="empty-actions"><button class="btn btn-sm" type="button" data-act="clear">' +
+    th("home.search.empty.clear") +
+    "</button></div></div>";
 
   /* ---------- render ---------- */
   function render() {
@@ -343,9 +383,21 @@
     $("#viewGrid").setAttribute("aria-pressed", S.view === "grid");
     $("#viewList").setAttribute("aria-pressed", S.view === "list");
     refreshFoot();
-    $("#sortBtn").innerHTML = '<span class="lbl">Sort</span> ' + SORTS[S.sort] + ic("chevron", 12);
+    $("#sortBtn").innerHTML =
+      '<span class="lbl">' +
+      th("home.sort.label") +
+      "</span> " +
+      th(SORTS[S.sort]) +
+      ic("chevron", 12);
     $("#count").textContent =
-      S.loading || empty ? "" : searching ? list.length + " of " + S.items.length : S.items.length;
+      S.loading || empty
+        ? ""
+        : searching
+          ? tr("home.count.filtered", {
+              shown: fmtNumber(list.length),
+              total: fmtNumber(S.items.length),
+            })
+          : fmtNumber(S.items.length);
     if (S.sel && !list.some((p) => p.id === S.sel)) S.sel = null;
     const tabId = S.sel || (list[0] && list[0].id);
     if (S.loading) body.innerHTML = skeleton();
@@ -358,14 +410,14 @@
           .map(
             (g) =>
               '<div class="group-head sect-label" role="presentation">' +
-              g.label +
+              esc(g.label) +
               '<span class="count">' +
-              g.items.length +
+              fmtNumber(g.items.length) +
               "</span></div>" +
               '<div class="' +
               (S.view === "grid" ? "grid" : "list") +
               '" role="group" aria-label="' +
-              g.label +
+              esc(g.label) +
               '">' +
               g.items
                 .map((p) => (S.view === "grid" ? cardHtml : rowHtml)(p, p.id === tabId ? 0 : -1))
@@ -399,11 +451,13 @@
   function status() {
     const sel = S.sel && byId(S.sel),
       miss = S.items.filter((p) => p.missing).length;
+    const hint = (kbd, key) =>
+      '<span class="hint"><span class="kbd">' + kbd + "</span>" + th(key) + "</span>";
     const hints = [
-      '<span class="hint"><span class="kbd">↑↓←→</span>Select</span>',
-      '<span class="hint"><span class="kbd">↵</span>Open</span>',
-      '<span class="hint"><span class="kbd">F2</span>Rename</span>',
-      '<span class="hint"><span class="kbd">⌘F</span>Search</span>',
+      hint("↑↓←→", "home.hint.select"),
+      hint("↵", "home.hint.open"),
+      hint("F2", "home.hint.rename"),
+      hint("⌘F", "home.hint.search"),
     ];
     let left;
     if (S.loading) left = esc(OVI18N.t("home.status.loading"));
@@ -416,7 +470,8 @@
         (sel.missing
           ? '<span class="status warning" style="margin-left:6px">' +
             ic("alert", 12) +
-            "Not found</span>"
+            th("home.item.notFound") +
+            "</span>"
           : "");
     else
       left = esc(
@@ -514,19 +569,29 @@
   function itemMenu(p, at) {
     if (p.missing)
       return [
-        { label: "Locate…", icon: "locate", act: () => locate(p, at) },
+        { label: th("home.item.locate"), icon: "locate", act: () => locate(p, at) },
         { sep: 1 },
-        { label: "Remove from Recent", icon: "x", kbd: "⌘⌫", act: () => remove(p, at) },
+        {
+          label: th("home.item.removeFromRecent"),
+          icon: "x",
+          kbd: "⌘⌫",
+          act: () => remove(p, at),
+        },
       ];
     return [
-      { label: "Open", icon: "folder-open", kbd: "↵", act: () => openProject(p, at) },
-      { label: "Rename", icon: "pencil", kbd: "F2", act: () => startRename(p, at) },
-      { label: "Reveal in Finder", icon: "folder", kbd: "⇧⌘R", act: () => reveal(p) },
-      { label: "Duplicate", icon: "copy", kbd: "⌘D", act: () => duplicate(p, at) },
+      { label: th("home.item.open"), icon: "folder-open", kbd: "↵", act: () => openProject(p, at) },
+      { label: th("home.item.rename"), icon: "pencil", kbd: "F2", act: () => startRename(p, at) },
+      { label: th("home.item.reveal"), icon: "folder", kbd: "⇧⌘R", act: () => reveal(p) },
+      { label: th("home.item.duplicate"), icon: "copy", kbd: "⌘D", act: () => duplicate(p, at) },
       { sep: 1 },
-      { label: "Remove from Recent", icon: "x", kbd: "⌘⌫", act: () => remove(p, at) },
       {
-        label: prefs.confirmTrash === false ? "Move to Trash" : "Move to Trash…",
+        label: th("home.item.removeFromRecent"),
+        icon: "x",
+        kbd: "⌘⌫",
+        act: () => remove(p, at),
+      },
+      {
+        label: th(prefs.confirmTrash === false ? "home.item.trash" : "home.item.trashConfirm"),
         icon: "trash",
         danger: 1,
         act: () => trash(p, at),
@@ -549,11 +614,12 @@
   main.addEventListener("scroll", () => closeMenu(false), { passive: true });
 
   /* ---------- actions ---------- */
-  function fail(prefix) {
-    return (err) => toast(esc(prefix + err.message), null, "error");
+  /* A toast for a failed action: the message is the backend's error text, passed as {message}. */
+  function fail(key, params) {
+    return (err) => toast(th(key, Object.assign({ message: err.message }, params)), null, "error");
   }
   function reveal(p) {
-    api("/api/reveal", { id: p.id }).catch(fail("Couldn’t reveal the folder: "));
+    api("/api/reveal", { id: p.id }).catch(fail("home.error.reveal"));
   }
   function duplicate(p, at) {
     api("/api/duplicate", { id: p.id })
@@ -561,10 +627,10 @@
         load(() => {
           const c = res.project && byId(res.project.id);
           if (c) land(at, c.id);
-          toast("Duplicated “" + esc(p.name) + "” as “" + esc(c ? c.name : "") + "”.");
+          toast(th("home.toast.duplicated", { name: p.name, copy: c ? c.name : "" }));
         }),
       )
-      .catch(fail("Couldn’t duplicate “" + p.name + "”: "));
+      .catch(fail("home.error.duplicate", { name: p.name }));
   }
   /* Removes from Recent only; Undo puts the same entry back. */
   function remove(p, at) {
@@ -578,15 +644,15 @@
         render();
         if (at === "strip") land(at, null, si);
         else if (next) select(next.id, { focus: true });
-        toast("“" + esc(p.name) + "” removed from Recent. Files on disk are untouched.", {
-          label: "Undo",
+        toast(th("home.toast.removed", { name: p.name }), {
+          label: tr("common.undo"),
           act: () =>
             api("/api/recents/restore", { entry: res.entry })
               .then(() => load(() => land(at, p.id)))
-              .catch(fail("Couldn’t undo: ")),
+              .catch(fail("home.error.undo")),
         });
       })
-      .catch(fail("Couldn’t remove “" + p.name + "”: "));
+      .catch(fail("home.error.remove", { name: p.name }));
   }
   function locate(p, at) {
     api("/api/locate", { id: p.id })
@@ -595,10 +661,16 @@
         load(() => {
           const q = res.project && byId(res.project.id);
           if (q) land(at, q.id);
-          toast("Relinked “" + esc(p.name) + "” to " + mono(res.project ? res.project.path : ""));
+          toast(
+            OVI18N.rich(
+              "home.toast.relinked",
+              { name: p.name, path: res.project ? res.project.path : "" },
+              { path: monoWrap },
+            ),
+          );
         });
       })
-      .catch(fail("Couldn’t relink “" + p.name + "”: "));
+      .catch(fail("home.error.relink", { name: p.name }));
   }
   /* Rename edits the name where it was invoked: in the Last Opened card or in the Recent list. Renames the folder. */
   function startRename(p, at) {
@@ -637,7 +709,7 @@
         p.name = old;
         render();
         land(at, p.id);
-        toast(esc("Couldn’t rename “" + old + "”: " + err.message), null, "error");
+        toast(th("home.error.rename", { name: old, message: err.message }), null, "error");
       })
       .finally(() => {
         renameBusy = false;
@@ -646,12 +718,19 @@
   function trash(p, at) {
     if (prefs.confirmTrash === false) return doTrash(p, at);
     const { sh, close } = sheet(
-      "<h3>Move “" +
-        esc(p.name) +
-        '” to the Trash?</h3><p>The project folder and everything in it goes to the Trash:</p><p class="np-path">' +
+      "<h3>" +
+        th("home.trash.title", { name: p.name }) +
+        "</h3><p>" +
+        th("home.trash.body") +
+        '</p><p class="np-path">' +
         esc(p.dir) +
-        "</p><p>You can put it back from the Trash in Finder. Removing it from Recent instead keeps the files where they are.</p>" +
-        '<div class="sheet-actions"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-danger" type="button" id="trOk">Move to Trash</button></div>',
+        "</p><p>" +
+        th("home.trash.hint") +
+        '</p><div class="sheet-actions"><button class="btn" type="button" data-cancel>' +
+        th("common.cancel") +
+        '</button><button class="btn btn-danger" type="button" id="trOk">' +
+        th("home.item.trash") +
+        "</button></div>",
       { role: "alertdialog" },
     );
     sh.querySelector("#trOk").onclick = () => {
@@ -671,26 +750,26 @@
         render();
         if (at === "strip") land(at, null, si);
         else if (next) select(next.id, { focus: true });
-        toast("Moved “" + esc(p.name) + "” to the Trash.");
+        toast(th("home.toast.trashed", { name: p.name }));
       })
-      .catch(fail("Couldn’t move “" + p.name + "” to the Trash: "));
+      .catch(fail("home.error.trash", { name: p.name }));
   }
 
   /* ---------- opening: the window stays here until Studio is up, then navigates ---------- */
   let pollTimer = null,
     overlay = null;
-  function showOpening(label) {
-    S.opening = label || "project";
+  /* `label` is the project's name; without one, `fallback` (a message key) stands in ("project", "last project"). */
+  function showOpening(label, fallback) {
+    S.opening = true;
+    S.openingLabel = label || "";
+    S.openingFallback = fallback || "home.opening.project";
     if (!overlay) {
       overlay = document.createElement("div");
       overlay.className = "opening";
       overlay.setAttribute("role", "status");
       win.appendChild(overlay);
     }
-    overlay.innerHTML =
-      '<div class="opening-card"><i class="spinner"></i><span>Opening <span class="name">“' +
-      esc(S.opening) +
-      "”</span>…</span></div>";
+    paintOpening();
     clearInterval(pollTimer);
     pollTimer = setInterval(() => {
       api("/api/open-state")
@@ -698,9 +777,10 @@
           if (st.phase === "failed") {
             hideOpening();
             toast(
-              esc(
-                "Couldn’t open “" + (st.label || S.opening) + "”: " + (st.error || "unknown error"),
-              ),
+              th("home.error.open", {
+                name: st.label || openingName(),
+                message: st.error || tr("home.error.unknown"),
+              }),
               null,
               "error",
             );
@@ -713,6 +793,18 @@
         })
         .catch(() => clearInterval(pollTimer));
     }, 500);
+  }
+  const openingName = () => S.openingLabel || tr(S.openingFallback);
+  function paintOpening() {
+    if (!overlay) return;
+    overlay.innerHTML =
+      '<div class="opening-card"><i class="spinner"></i><span>' +
+      OVI18N.rich(
+        "home.opening.text",
+        { name: openingName() },
+        { name: (inner) => '<span class="name">' + inner + "</span>" },
+      ) +
+      "</span></div>";
   }
   function hideOpening() {
     clearInterval(pollTimer);
@@ -727,16 +819,16 @@
   function openProject(p, at) {
     if (S.opening) return;
     if (p.missing)
-      return toast("“" + esc(p.name) + "” can’t be found. It was last at " + mono(p.path), {
-        label: "Locate…",
-        act: () => locate(p, at),
-      });
+      return toast(
+        OVI18N.rich("home.toast.missing", { name: p.name, path: p.path }, { path: monoWrap }),
+        { label: tr("home.item.locate"), act: () => locate(p, at) },
+      );
     closeMenu(false);
     showOpening(p.name);
     api("/api/open", p.media === 0 ? { id: p.id, workspace: "media" } : { id: p.id }).catch(
       (err) => {
         hideOpening();
-        toast(esc("Couldn’t open “" + p.name + "”: " + err.message), null, "error");
+        toast(th("home.error.open", { name: p.name, message: err.message }), null, "error");
         load();
       },
     );
@@ -754,13 +846,17 @@
     closeMenu(false);
     api("/api/pick-open", {})
       .then((res) => {
-        if (!res.cancelled) showOpening("project");
+        if (!res.cancelled) showOpening(null, "home.opening.project");
       })
       .catch((err) => {
         if (!err.data || !err.data.invalid)
-          return toast(esc("Couldn’t open the folder: " + err.message), null, "error");
+          return toast(th("home.error.openFolder", { message: err.message }), null, "error");
         const { sh, close } = sheet(
-          "<h3>Open Project</h3><p>Choose a project folder. An OpenVids project is a folder with an index.html composition.</p>" +
+          "<h3>" +
+            th("home.openSheet.title") +
+            "</h3><p>" +
+            th("home.openSheet.body") +
+            "</p>" +
             '<span class="np-err" role="alert">' +
             ic("alert", 12) +
             "<span>" +
@@ -773,7 +869,11 @@
             '</span></span><p class="np-path">' +
             esc(err.data.path || "") +
             "</p>" +
-            '<div class="sheet-actions"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="button" id="opAgain">Choose Another…</button></div>',
+            '<div class="sheet-actions"><button class="btn" type="button" data-cancel>' +
+            th("common.cancel") +
+            '</button><button class="btn btn-primary" type="button" id="opAgain">' +
+            th("home.openSheet.again") +
+            "</button></div>",
         );
         sh.querySelector("#opAgain").onclick = () => {
           close();
@@ -807,11 +907,11 @@
     ],
   };
   const ASPECTS = [
-    ["16:9", "16:9 landscape"],
-    ["9:16", "9:16 portrait"],
-    ["1:1", "1:1 square"],
-    ["4:5", "4:5 portrait"],
-    ["custom", "Custom…"],
+    ["16:9", "home.new.aspect.landscape"],
+    ["9:16", "home.new.aspect.portrait"],
+    ["1:1", "home.new.aspect.square"],
+    ["4:5", "home.new.aspect.portrait"],
+    ["custom", "home.new.aspect.custom"],
   ];
   const badName = (n) =>
     n === "." || n === ".." || /[:/\\]/.test(n) || [...n].some((c) => c.charCodeAt(0) < 0x20);
@@ -840,14 +940,14 @@
           items.concat([
             { sep: 1 },
             {
-              label: "Other Folder…",
+              label: th("home.new.otherFolder"),
               icon: "folder-open",
               act: () =>
                 api("/api/pick-parent", {})
                   .then((p) => {
                     if (!p.cancelled) onPick({ dir: p.parent, path: p.path });
                   })
-                  .catch(fail("Couldn’t choose the folder: ")),
+                  .catch(fail("home.error.chooseFolder")),
             },
           ]),
           r.right - 224,
@@ -856,7 +956,7 @@
           anchor,
         );
       })
-      .catch(fail("Couldn’t list locations: "));
+      .catch(fail("home.error.listLocations"));
   }
   function newSheet() {
     if (S.opening) return;
@@ -868,27 +968,55 @@
       .flatMap((a) => RES[a].map((r, i) => ({ a, i, w: r[1], h: r[2] })))
       .find((x) => x.w === d.width && x.h === d.height);
     const { sh, close } = sheet(
-      "<h3>New Project</h3>" +
-        '<label>Name<input class="input" id="npName" value="my-video" spellcheck="false" autocomplete="off" aria-describedby="npNameErr" /><span class="np-err" id="npNameErr" role="alert"></span></label>' +
-        '<div class="np-f" role="group" aria-labelledby="npLocL"><span id="npLocL">Location</span><div class="loc"><div class="path" id="npLoc">' +
+      "<h3>" +
+        th("home.new.title") +
+        "</h3>" +
+        "<label>" +
+        th("home.new.name") +
+        '<input class="input" id="npName" value="my-video" spellcheck="false" autocomplete="off" aria-describedby="npNameErr" /><span class="np-err" id="npNameErr" role="alert"></span></label>' +
+        '<div class="np-f" role="group" aria-labelledby="npLocL"><span id="npLocL">' +
+        th("home.new.location") +
+        '</span><div class="loc"><div class="path" id="npLoc">' +
         ic("folder", 12) +
-        '<span></span></div><button class="btn" type="button" id="npChoose" aria-haspopup="menu" aria-expanded="false">Choose…</button></div></div>' +
-        '<div class="np-row"><label>Aspect ratio<select class="sel" id="npAspect">' +
-        ASPECTS.map(([v, l]) => opt(v, l, v === (match ? match.a : "custom"))).join("") +
+        '<span></span></div><button class="btn" type="button" id="npChoose" aria-haspopup="menu" aria-expanded="false">' +
+        th("home.new.choose") +
+        "</button></div></div>" +
+        '<div class="np-row"><label>' +
+        th("home.new.aspectRatio") +
+        '<select class="sel" id="npAspect">' +
+        ASPECTS.map(([v, l]) =>
+          opt(v, th(l, { ratio: v }), v === (match ? match.a : "custom")),
+        ).join("") +
         "</select></label>" +
-        '<label>Resolution<select class="sel" id="npRes"></select></label></div>' +
-        '<div class="np-row" id="npCustom" hidden><label>Width (px)<input class="input" id="npW" type="number" min="1" max="8192" step="1" value="' +
+        "<label>" +
+        th("home.new.resolution") +
+        '<select class="sel" id="npRes"></select></label></div>' +
+        '<div class="np-row" id="npCustom" hidden><label>' +
+        th("home.new.width") +
+        '<input class="input" id="npW" type="number" min="1" max="8192" step="1" value="' +
         d.width +
         '" inputmode="numeric" aria-describedby="npSizeErr" /></label>' +
-        '<label>Height (px)<input class="input" id="npH" type="number" min="1" max="8192" step="1" value="' +
+        "<label>" +
+        th("home.new.height") +
+        '<input class="input" id="npH" type="number" min="1" max="8192" step="1" value="' +
         d.height +
         '" inputmode="numeric" aria-describedby="npSizeErr" /></label><span class="np-err np-span" id="npSizeErr" role="alert"></span></div>' +
-        '<div class="np-row"><label>Frame rate<select class="sel" id="npFps">' +
-        [24, 25, 30, 60].map((v) => opt(v, v + " fps", v === d.fps)).join("") +
+        '<div class="np-row"><label>' +
+        th("home.new.frameRate") +
+        '<select class="sel" id="npFps">' +
+        [24, 25, 30, 60]
+          .map((v) => opt(v, th("home.new.fps", { fps: String(v) }), v === d.fps))
+          .join("") +
         "</select></label>" +
-        '<label>Duration (seconds)<input class="input" id="npDur" type="number" min="1" max="3600" step="1" value="10" inputmode="numeric" aria-describedby="npDurErr" /><span class="np-err" id="npDurErr" role="alert"></span></label></div>' +
+        "<label>" +
+        th("home.new.duration") +
+        '<input class="input" id="npDur" type="number" min="1" max="3600" step="1" value="10" inputmode="numeric" aria-describedby="npDurErr" /><span class="np-err" id="npDurErr" role="alert"></span></label></div>' +
         '<p class="np-sum" id="npSum" aria-live="polite"></p>' +
-        '<div class="sheet-actions"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="button" id="npOk">Create</button></div>',
+        '<div class="sheet-actions"><button class="btn" type="button" data-cancel>' +
+        th("common.cancel") +
+        '</button><button class="btn btn-primary" type="button" id="npOk">' +
+        th("home.new.create") +
+        "</button></div>",
     );
     const q = (id) => sh.querySelector("#" + id),
       inp = q("npName");
@@ -911,7 +1039,7 @@
       const on = custom(),
         sel = q("npRes");
       sel.innerHTML = on
-        ? "<option>Custom size below</option>"
+        ? "<option>" + th("home.new.customSize") + "</option>"
         : RES[q("npAspect").value].map((r, i) => opt(i, r[0], i === 1)).join("");
       if (!on) sel.value = first && match ? String(match.i) : "1";
       sel.disabled = on;
@@ -948,37 +1076,31 @@
         "npNameErr",
         [inp],
         !name
-          ? "Enter a folder name for the project."
+          ? th("home.new.error.name")
           : badName(name)
-            ? "Use a single folder name, without : / \\ or control characters."
+            ? th("home.new.error.badName")
             : taken
-              ? "“" + esc(name) + "” already exists in " + esc(loc.path) + " and isn’t empty."
+              ? th("home.new.error.exists", { name, path: loc.path })
               : "",
       );
       const okSize =
         !custom() ||
-        setErr(
-          "npSizeErr",
-          [q("npW"), q("npH")],
-          px(w) && px(h) ? "" : "Width and height must be whole numbers from 1 to 8192 px.",
-        );
+        setErr("npSizeErr", [q("npW"), q("npH")], px(w) && px(h) ? "" : th("home.new.error.size"));
       if (!custom()) setErr("npSizeErr", [q("npW"), q("npH")], "");
       const okDur = setErr(
         "npDurErr",
         [q("npDur")],
-        Number.isFinite(dur) && dur >= 1 && dur <= 3600
-          ? ""
-          : "Duration must be from 1 to 3600 seconds.",
+        Number.isFinite(dur) && dur >= 1 && dur <= 3600 ? "" : th("home.new.error.duration"),
       );
       q("npSum").innerHTML =
         "<span>" +
         esc(loc.path.replace(/\/$/, "") + "/" + (name || "…")) +
         "</span><span>" +
-        (okSize ? w + "×" + h : "—") +
-        " · " +
-        q("npFps").value +
-        " fps · " +
-        (okDur ? dur + " s" : "—") +
+        th("home.new.summary", {
+          size: okSize ? w + "×" + h : "—",
+          fps: q("npFps").value,
+          duration: okDur ? String(dur) : "—",
+        }) +
         "</span>";
       return okName && okSize && okDur;
     }
@@ -1063,7 +1185,7 @@
     settingsReturn = trigger || document.activeElement;
     const f = document.createElement("iframe");
     f.className = "ov-settings-frame";
-    f.title = "Settings";
+    f.title = tr("home.settings.title");
     f.src =
       "/settings?embed=1&theme=" +
       encodeURIComponent(OV.themePref()) +
@@ -1374,10 +1496,10 @@
 
   /* ---------- Start: prompt + files → a new project that opens in Media with the conversation running ---------- */
   const FORMATS = [
-    ["16:9", "Landscape", 1920, 1080],
-    ["9:16", "Portrait", 1080, 1920],
-    ["1:1", "Square", 1080, 1080],
-    ["4:5", "Portrait", 1080, 1350],
+    ["16:9", "home.start.format.landscape", 1920, 1080],
+    ["9:16", "home.start.format.portrait", 1080, 1920],
+    ["1:1", "home.start.format.square", 1080, 1080],
+    ["4:5", "home.start.format.portrait", 1080, 1350],
   ];
   const ratioOf = (w, h) => {
     const g = (a, b) => (b ? g(b, a % b) : a);
@@ -1414,10 +1536,11 @@
       r +
       "</span>" +
       ic("chevron-down").replace('class="ic"', 'class="ic ov-chat-chip-caret"');
-    aspectBtn.dataset.tip = "Format · " + w + "×" + h + " · " + fps + " fps";
+    const size = w + "×" + h;
+    aspectBtn.dataset.tip = tr("home.start.aspect.tip", { size, fps: String(fps) });
     aspectBtn.setAttribute(
       "aria-label",
-      "Format: " + r + " " + l + ", " + w + "×" + h + ", " + fps + " fps",
+      tr("home.start.aspect.aria", { ratio: r, name: tr(l), size, fps: String(fps) }),
     );
   }
   aspectBtn.addEventListener("click", () => {
@@ -1425,7 +1548,11 @@
     const r = aspectBtn.getBoundingClientRect();
     showMenu(
       formats().map((f) => ({
-        label: f[0] + " " + f[1] + " · " + f[2] + "×" + f[3],
+        label: th("home.start.format.item", {
+          ratio: f[0],
+          name: tr(f[1]),
+          size: f[2] + "×" + f[3],
+        }),
         radio: true,
         checked: f[0] === start.fmt[0],
         act: () => {
@@ -1444,11 +1571,17 @@
   foot.className = "start-foot";
   foot.innerHTML =
     ic("folder") +
-    '<span>New project in</span><span class="start-path"></span>' +
-    '<button class="link" type="button" aria-haspopup="menu" aria-expanded="false">Change…</button><span class="start-files" hidden></span>';
+    '<span></span><span class="start-path"></span>' +
+    '<button class="link" type="button" aria-haspopup="menu" aria-expanded="false"></button><span class="start-files" hidden></span>';
   const locBtn = foot.querySelector(".link"),
     pathEl = foot.querySelector(".start-path"),
     filesEl = foot.querySelector(".start-files");
+  const footLabel = foot.querySelector("span");
+  function paintFoot() {
+    footLabel.textContent = tr("home.start.foot.label");
+    locBtn.textContent = tr("home.start.foot.change");
+  }
+  paintFoot();
   locBtn.onclick = () => {
     if (!start.busy)
       locationMenu(locBtn, start.loc, (l) => {
@@ -1467,9 +1600,10 @@
     const files = st.files || [];
     filesEl.hidden = !files.length;
     filesEl.textContent = files.length
-      ? files.length +
-        (files.length === 1 ? " file · " : " files · ") +
-        formatBytes(files.reduce((s, f) => s + (f.size || 0), 0))
+      ? tr("home.start.files", {
+          count: files.length,
+          size: formatBytes(files.reduce((s, f) => s + (f.size || 0), 0)),
+        })
       : "";
     clearTimeout(footTimer);
     const seq = ++footSeq;
@@ -1492,7 +1626,7 @@
   function startProject(payload) {
     if (start.busy) return;
     start.busy = true;
-    composer.setBusy("Creating project…");
+    composer.setBusy("home.start.creating");
     api(
       "/api/start",
       Object.assign({}, payload, {
@@ -1508,15 +1642,15 @@
       .catch((err) => {
         start.busy = false;
         composer.setBusy(null);
-        toast(esc("Couldn’t create the project: " + err.message), null, "error");
+        toast(th("home.error.create", { message: err.message }), null, "error");
       });
   }
   composer = OVComposer.mount(chatHost, {
-    placeholder: "Describe the video you want to make…",
+    placeholder: "home.start.placeholder",
     suggestions: [
-      "Cut a 60-second highlight reel from these clips",
-      "Add captions and a title card to this interview",
-      "Build a product teaser with music and motion titles",
+      "home.start.suggestion.highlights",
+      "home.start.suggestion.captions",
+      "home.start.suggestion.teaser",
     ],
     footer: foot,
     controls: [aspectBtn],
@@ -1574,17 +1708,24 @@
   initStartLocation();
   render();
   load();
-  /* The catalog finished loading, or the language changed: redraw the translated parts (static markup is re-applied by OVI18N). */
+  /* The catalog finished loading, or the language changed: redraw everything built from script (static markup is
+     re-applied by OVI18N). */
   window.addEventListener("ov-language", () => {
+    paintChrome();
+    paintAspect();
+    paintFoot();
+    composer.relocalize();
+    paintOpening();
+    if (settingsFrame) settingsFrame.title = tr("home.settings.title");
     render();
   });
   /* Opening at launch (Reopen last project / a project named on the command line): show it until Studio is up. */
   api("/api/open-state")
     .then((st) => {
-      if (st.phase === "opening") showOpening(st.label || "last project");
+      if (st.phase === "opening") showOpening(st.label, "home.opening.lastProject");
       else if (st.phase === "failed")
         toast(
-          esc("Couldn’t open “" + st.label + "”: " + (st.error || "unknown error")),
+          th("home.error.open", { name: st.label, message: st.error || tr("home.error.unknown") }),
           null,
           "error",
         );
@@ -1606,7 +1747,7 @@
       const el = document.createElement("script");
       el.src = "/assets/" + name + ".js";
       el.onload = resolve;
-      el.onerror = () => reject(new Error("couldn’t load " + name));
+      el.onerror = () => reject(new Error(tr("home.error.scriptLoad", { name })));
       document.head.appendChild(el);
     });
   let obLoad = null,
@@ -1653,7 +1794,7 @@
         /* The setup can't be shown: don't trap the user behind a blank overlay. */
         document.documentElement.classList.remove("is-onboarding");
         lockPage(false);
-        toast(esc("Couldn’t open the setup: " + err.message), null, "error");
+        toast(th("home.error.setup", { message: err.message }), null, "error");
       });
   }
   /* Decided by index.html before first paint: unfinished setup, or Help › Welcome asked for it. */

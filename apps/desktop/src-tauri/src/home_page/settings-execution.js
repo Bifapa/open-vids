@@ -3,7 +3,9 @@
    Autonomy group (agents.autonomy {defaultIntent, askBeforeLockedEdits, askBeforeDownloads}, same route). */
 (function () {
   "use strict";
-  const { esc, S, PAGES, CLICK, CHANGE, row, group, sw, seg, stepper, head } = OVS;
+  const { esc, S, PAGES, CLICK, CHANGE, tr, row, group, sw, seg, stepper, head } = OVS;
+  /* Escaped text of a catalog message, for the helpers that take markup. */
+  const te = (key, params) => esc(tr(key, params));
 
   /* This page has no build step, so the budget model is restated here. KEEP IN SYNC with
        packages/agent-protocol/src/qa.ts      (EXECUTION_BUDGET_RANGES, EXECUTION_BUDGETS, SPECIALIST_THINKING_POLICIES,
@@ -49,59 +51,65 @@
       specialistThinking: "thorough",
     },
   };
+  /* Labels, hints and the other words on this page are catalog keys, read when drawn. */
   const QUALITY = [
-    ["fast", "Fast"],
-    ["balanced", "Balanced"],
-    ["best", "Best"],
-    ["custom", "Custom"],
+    ["fast", "settings.execution.quality.fast"],
+    ["balanced", "settings.execution.quality.balanced"],
+    ["best", "settings.execution.quality.best"],
+    ["custom", "settings.execution.quality.custom"],
   ];
   const QUALITY_NOTE = {
-    fast: "Quickest. One render check, no correction round.",
-    balanced: "The default for most edits. Checks the render and corrects once.",
-    best: "Slowest and most thorough. Three QA passes, deeper research.",
-    custom: "Your own budget, field by field.",
+    fast: "settings.execution.quality.fast.note",
+    balanced: "settings.execution.quality.balanced.note",
+    best: "settings.execution.quality.best.note",
+    custom: "settings.execution.quality.custom.note",
   };
   const THINKING = [
-    ["economy", "Economy"],
-    ["configured", "As configured"],
-    ["thorough", "Thorough"],
+    ["economy", "settings.execution.thinking.economy"],
+    ["configured", "settings.execution.thinking.configured"],
+    ["thorough", "settings.execution.thinking.thorough"],
   ];
   const THINKING_HINT = {
-    economy: "Specialists think at most Low.",
-    configured: "Specialists think as you configured them.",
-    thorough: "Specialists think at least High.",
+    economy: "settings.execution.thinking.economy.hint",
+    configured: "settings.execution.thinking.configured.hint",
+    thorough: "settings.execution.thinking.thorough.hint",
   };
+  /* [value, translated label] pairs for a segmented control. */
+  const labelled = (list) => list.map((e) => [e[0], tr(e[1])]);
   /* Numeric budget fields as rows, in the order Studio shows them (render QA passes is the stepper above). */
+  /* hint and unusedHint carry the range ({min}–{max}); unusedHint (qaOnly fields) adds that the field is
+     idle while render QA is off. */
   const FIELDS = [
     {
       field: "qaFramesPerMinute",
-      label: "Vision frames per minute",
-      hint: "How densely Vision samples the rendered video.",
+      label: "settings.execution.field.qaFramesPerMinute",
+      hint: "settings.execution.field.qaFramesPerMinute.hint",
+      unusedHint: "settings.execution.field.qaFramesPerMinute.hintUnused",
       qaOnly: true,
     },
     {
       field: "qaMaxFrames",
-      label: "Vision frames per pass",
-      hint: "The most frames Vision looks at in one pass.",
+      label: "settings.execution.field.qaMaxFrames",
+      hint: "settings.execution.field.qaMaxFrames.hint",
+      unusedHint: "settings.execution.field.qaMaxFrames.hintUnused",
       qaOnly: true,
     },
     {
       field: "analysisFramesPerSource",
-      label: "Analysis frames per source",
-      hint: "Frames Vision inspects per source file when analysing long footage.",
+      label: "settings.execution.field.analysisFramesPerSource",
+      hint: "settings.execution.field.analysisFramesPerSource.hint",
     },
     {
       field: "researchCandidates",
-      label: "Research candidates",
-      hint: "Candidates Research compares per search.",
+      label: "settings.execution.field.researchCandidates",
+      hint: "settings.execution.field.researchCandidates.hint",
     },
   ];
-  const CRITIQUE_HINT = "How often Vision may ask for a closer look in one pass.";
   /* Autonomy: packages/agent-protocol AutonomySettings. Mode copy matches the composer's Mode chip. */
   const MODES = [
-    ["plan", "Plan", "Proposes a plan first"],
-    ["edit", "Edit", "Acts on the timeline"],
-    ["ask", "Ask", "Answers only"],
+    ["plan", "settings.execution.mode.plan", "settings.execution.mode.plan.hint"],
+    ["edit", "settings.execution.mode.edit", "settings.execution.mode.edit.hint"],
+    ["ask", "settings.execution.mode.ask", "settings.execution.mode.ask.hint"],
   ];
   const AUTONOMY_DEFAULTS = {
     defaultIntent: "plan",
@@ -121,46 +129,64 @@
   /* The budget a chat without its own choice runs with. */
   const resolve = (eq) =>
     eq.preset === "custom" ? clampBudget(eq.custom) : Object.assign({}, PRESETS[eq.preset]);
-  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   function passesHint(passes) {
-    if (passes === 0) return "Render QA is off: the agent does not render and check its work.";
-    if (passes === 1) return "One render, checked and reported; no automatic correction.";
-    return `Up to ${passes} renders, each checked; at most ${plural(passes - 1, "correction", "corrections")} in between.`;
+    if (passes === 0) return tr("settings.execution.passes.off");
+    if (passes === 1) return tr("settings.execution.passes.one");
+    return tr("settings.execution.passes.many", { passes, corrections: passes - 1 });
   }
 
   function summary(b) {
+    const bold = { b: (inner) => `<b>${inner}</b>` };
     const items = [];
     if (b.qaPasses > 0) {
-      items.push(`Vision <b>${b.qaFramesPerMinute} frames/min, max ${b.qaMaxFrames}</b>`);
-      items.push(`Critique <b>${plural(b.critiqueRounds, "round", "rounds")}</b>`);
+      items.push(
+        OVI18N.rich(
+          "settings.execution.summary.vision",
+          { perMinute: b.qaFramesPerMinute, max: b.qaMaxFrames },
+          bold,
+        ),
+      );
+      items.push(
+        OVI18N.rich("settings.execution.summary.critique", { count: b.critiqueRounds }, bold),
+      );
     }
-    items.push(`Research <b>${plural(b.researchCandidates, "candidate", "candidates")}</b>`);
+    items.push(
+      OVI18N.rich("settings.execution.summary.research", { count: b.researchCandidates }, bold),
+    );
     const policy = THINKING.find((t) => t[0] === b.specialistThinking);
-    items.push(`Thinking <b>${esc(policy ? policy[1] : b.specialistThinking)}</b>`);
+    items.push(
+      OVI18N.rich(
+        "settings.execution.summary.thinking",
+        { policy: policy ? tr(policy[1]) : b.specialistThinking },
+        bold,
+      ),
+    );
     return `<div class="st-sub"><div class="st-summary">${items
       .map((i) => `<span>${i}</span>`)
       .join(
         "",
-      )}<button type="button" class="link" data-act="customize" data-fk="customize">Customize</button></div></div>`;
+      )}<button type="button" class="link" data-act="customize" data-fk="customize">${te("settings.execution.customize")}</button></div></div>`;
   }
   const field = (name) => FIELDS.find((f) => f.field === name);
   /* Every real budget field in the prototype's custom-rows style (Studio's order; render QA passes is the stepper above). */
   function customRows(b) {
     const qaOff = b.qaPasses === 0;
+    const range = { min: RANGES.critiqueRounds.min, max: RANGES.critiqueRounds.max };
     return (
       '<div class="st-sub is-flush">' +
       numRow(field("qaFramesPerMinute"), b, qaOff) +
       numRow(field("qaMaxFrames"), b, qaOff) +
       row(
-        "Critique rounds",
-        `${CRITIQUE_HINT} ${RANGES.critiqueRounds.min}–${RANGES.critiqueRounds.max}.${
-          qaOff ? " Unused while render QA is off." : ""
-        }`,
+        te("settings.execution.critique"),
+        te(
+          qaOff ? "settings.execution.critique.hintUnused" : "settings.execution.critique.hint",
+          range,
+        ),
         seg(
           [1, 2, 3, 4].map((n) => [n, String(n)]),
           b.critiqueRounds,
           "exec-critique",
-          "Critique rounds",
+          tr("settings.execution.critique"),
           null,
           qaOff,
         ),
@@ -169,9 +195,14 @@
       numRow(field("analysisFramesPerSource"), b, false) +
       numRow(field("researchCandidates"), b, false) +
       row(
-        "Specialist thinking",
-        esc(THINKING_HINT[b.specialistThinking] || ""),
-        seg(THINKING, b.specialistThinking, "exec-thinking", "Specialist thinking"),
+        te("settings.execution.specialistThinking"),
+        THINKING_HINT[b.specialistThinking] ? te(THINKING_HINT[b.specialistThinking]) : "",
+        seg(
+          labelled(THINKING),
+          b.specialistThinking,
+          "exec-thinking",
+          tr("settings.execution.specialistThinking"),
+        ),
       ) +
       "</div>"
     );
@@ -180,9 +211,9 @@
     const unused = qaOff && f.qaOnly;
     const r = RANGES[f.field];
     return row(
-      esc(f.label),
-      `${esc(f.hint)} ${r.min}–${r.max}.${unused ? " Unused while render QA is off." : ""}`,
-      `<input class="input mono st-num" type="number" inputmode="numeric" min="${r.min}" max="${r.max}" step="1" value="${b[f.field]}" aria-label="${esc(
+      te(f.label),
+      te(unused ? f.unusedHint : f.hint, { min: r.min, max: r.max }),
+      `<input class="input mono st-num" type="number" inputmode="numeric" min="${r.min}" max="${r.max}" step="1" value="${b[f.field]}" aria-label="${te(
         f.label,
       )}" data-act="exec-num" data-key="${f.field}" data-fk="exec-num:${f.field}"${unused ? " disabled" : ""} />`,
       unused ? "is-disabled" : "",
@@ -192,72 +223,76 @@
   PAGES.execution = function () {
     if (!S.agents)
       return (
-        head("Execution") +
+        head(tr("settings.section.execution")) +
         (S.agentsError
-          ? OVS.failure("The agent runtime is unavailable", S.agentsError, "agents-retry")
-          : OVS.loading("execution settings"))
+          ? OVS.failure("settings.failure.agentRuntime", S.agentsError, "agents-retry")
+          : OVS.loading("settings.loading.execution"))
       );
     const eq = S.agents.executionQuality,
       b = resolve(eq),
       custom = eq.preset === "custom";
     const au = Object.assign({}, AUTONOMY_DEFAULTS, S.agents.autonomy);
     return (
-      head("Execution") +
+      head(tr("settings.section.execution")) +
       OVS.noteHtml(S.agentsNote) +
       group(
-        "Quality",
+        te("settings.execution.group.quality"),
         row(
-          "Execution quality",
-          esc(QUALITY_NOTE[eq.preset] || ""),
-          seg(QUALITY, eq.preset, "quality", "Default execution quality"),
+          te("settings.execution.quality"),
+          QUALITY_NOTE[eq.preset] ? te(QUALITY_NOTE[eq.preset]) : "",
+          seg(labelled(QUALITY), eq.preset, "quality", tr("settings.execution.quality.aria")),
         ) +
           row(
-            "Render QA passes",
+            te("settings.execution.passes"),
             esc(passesHint(b.qaPasses)),
             stepper(
               b.qaPasses,
               RANGES.qaPasses.min,
               RANGES.qaPasses.max,
               "exec-qa",
-              "Render QA passes",
+              tr("settings.execution.passes"),
             ),
           ) +
           (custom ? customRows(b) : summary(b)),
       ) +
-      '<p class="st-foot">How hard agents work in chats that have no choice of their own. A chat’s Execution quality control overrides this.</p>' +
+      `<p class="st-foot">${te("settings.execution.foot")}</p>` +
       group(
-        "Autonomy",
+        te("settings.execution.group.autonomy"),
         row(
-          "Default chat mode",
-          esc(MODES.find((m) => m[0] === au.defaultIntent)[2]),
+          te("settings.execution.chatMode"),
+          te(MODES.find((m) => m[0] === au.defaultIntent)[2]),
           seg(
-            MODES.map((m) => [m[0], m[1]]),
+            MODES.map((m) => [m[0], tr(m[1])]),
             au.defaultIntent,
             "auto-intent",
-            "Default chat mode",
+            tr("settings.execution.chatMode"),
           ),
         ) +
           row(
-            "Ask before changing locked or hand-edited sections",
-            au.askBeforeLockedEdits
-              ? "Agents stop and ask before touching them."
-              : "Agents leave them as they are, carry on and report what they skipped. Locked material is never changed either way.",
+            te("settings.execution.askLocked"),
+            te(
+              au.askBeforeLockedEdits
+                ? "settings.execution.askLocked.hintOn"
+                : "settings.execution.askLocked.hintOff",
+            ),
             sw(
               au.askBeforeLockedEdits,
               "auto-sw",
-              "Ask before changing locked or hand-edited sections",
+              tr("settings.execution.askLocked"),
               "askBeforeLockedEdits",
             ),
           ) +
           row(
-            "Ask before downloading assets",
-            au.askBeforeDownloads
-              ? "Agents list what they found and wait for your approval."
-              : "Agents download what fits without asking.",
+            te("settings.execution.askDownloads"),
+            te(
+              au.askBeforeDownloads
+                ? "settings.execution.askDownloads.hintOn"
+                : "settings.execution.askDownloads.hintOff",
+            ),
             sw(
               au.askBeforeDownloads,
               "auto-sw",
-              "Ask before downloading assets",
+              tr("settings.execution.askDownloads"),
               "askBeforeDownloads",
             ),
           ),

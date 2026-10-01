@@ -160,40 +160,61 @@
     b.setHours(0, 0, 0, 0);
     return Math.round((a - b) / D);
   }
+  /* Formatters read the language at call time (OVI18N.language()), so they follow a language switch on the next render. */
+  const fmtNumber = function (n) {
+    return new Intl.NumberFormat(OVI18N.language()).format(n);
+  };
+  const upperFirst = function (s, lang) {
+    return s ? s.charAt(0).toLocaleUpperCase(lang) + s.slice(1) : s;
+  };
   function fmtOpened(ts) {
     const n = dayDiff(ts),
+      lang = OVI18N.language(),
       t = new Date(ts),
-      time = t.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      time = t.toLocaleTimeString(lang, { hour: "numeric", minute: "2-digit" });
     if (n <= 0) {
       const m = Math.max(1, Math.round((Date.now() - ts) / 60e3));
-      return m < 2 ? "Just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago";
+      if (m < 2) return OVI18N.t("home.time.justNow");
+      return m < 60
+        ? OVI18N.t("home.time.minutesAgo", { count: m })
+        : OVI18N.t("home.time.hoursAgo", { count: Math.round(m / 60) });
     }
-    if (n === 1) return "Yesterday, " + time;
-    if (n < 7) return t.toLocaleDateString("en-US", { weekday: "long" }) + ", " + time;
-    return t.toLocaleDateString("en-US", {
+    if (n === 1) return OVI18N.t("home.time.yesterdayAt", { time });
+    if (n < 7)
+      return OVI18N.t("home.time.weekdayAt", {
+        weekday: upperFirst(t.toLocaleDateString(lang, { weekday: "long" }), lang),
+        time,
+      });
+    return t.toLocaleDateString(lang, {
       month: "short",
       day: "numeric",
       year: t.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
     });
   }
   function fmtMedia(n) {
-    return n + (n === 1 ? " clip" : " clips");
+    return OVI18N.t("home.media.clips", { count: n });
   }
-  /* Finder units (1000), as the prototype's composer shows sizes. */
+  /* Finder units (1000), as the prototype's composer shows sizes. The unit is a message (Intl's "kB" is not the
+     prototype's "KB"); the number is Intl, one decimal under 100. */
+  const SIZE_UNITS = [
+    "home.size.bytes",
+    "home.size.kb",
+    "home.size.mb",
+    "home.size.gb",
+    "home.size.tb",
+  ];
   function formatBytes(bytes) {
-    const units = ["bytes", "KB", "MB", "GB", "TB"];
     let value = Math.max(0, Number(bytes) || 0),
       unit = 0;
-    while (value >= 1000 && unit < units.length - 1) {
+    while (value >= 1000 && unit < SIZE_UNITS.length - 1) {
       value /= 1000;
       unit += 1;
     }
-    if (unit === 0) return value + (value === 1 ? " byte" : " bytes");
-    return (
-      (value < 100 ? value.toFixed(1).replace(/\.0$/, "") : String(Math.round(value))) +
-      " " +
-      units[unit]
-    );
+    if (unit === 0) return OVI18N.t(SIZE_UNITS[0], { count: value });
+    const num = new Intl.NumberFormat(OVI18N.language(), {
+      maximumFractionDigits: value < 100 ? 1 : 0,
+    }).format(value);
+    return OVI18N.t(SIZE_UNITS[unit], { value: num });
   }
   function formatClock(seconds) {
     const total = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -233,7 +254,7 @@
           ) {
             const err = new Error(
               (data && data.error && (data.error.message || data.error)) ||
-                "request failed (" + res.status + ")",
+                OVI18N.t("home.error.requestFailed", { status: res.status }),
             );
             err.status = res.status;
             err.data = data;
@@ -276,6 +297,7 @@
     fmtDur: fmtDur,
     fmtOpened: fmtOpened,
     fmtMedia: fmtMedia,
+    fmtNumber: fmtNumber,
     dayDiff: dayDiff,
     formatBytes: formatBytes,
     formatClock: formatClock,

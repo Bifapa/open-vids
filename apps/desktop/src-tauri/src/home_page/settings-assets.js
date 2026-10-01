@@ -5,24 +5,23 @@
    Source names, domains and license notes are user- or server-supplied text: always escaped. */
 (function () {
   "use strict";
-  const { ic, esc, api, S, ui, PAGES, CLICK, INPUT, ENTER, row, group, sw, head, lede } = OVS;
+  const { ic, esc, api, S, ui, PAGES, CLICK, INPUT, ENTER, tr, msg, text, row, group } = OVS;
+  const { sw, head, lede } = OVS;
+  /* Escaped text of a catalog message, for the helpers that take markup. */
+  const te = (key, params) => esc(tr(key, params));
 
-  const KIND_LABELS = { video: "Video", picture: "Pictures", audio: "Audio" };
+  /* A kind this page doesn't know is shown as the server names it. */
+  const KIND_KEYS = {
+    video: "settings.assets.kind.video",
+    picture: "settings.assets.kind.picture",
+    audio: "settings.assets.kind.audio",
+  };
   /* packages/agent-protocol RESEARCH_LIMITS.nameChars */
   const NAME_CHARS = 80;
+  /* [mode, icon, title key, hint key] */
   const MODES = [
-    [
-      "trusted",
-      "shield",
-      "Trusted sources only",
-      "Search only the sources below. Each one notes its license terms.",
-    ],
-    [
-      "any",
-      "globe",
-      "Any source",
-      "Search the web. Check each asset’s license before you publish.",
-    ],
+    ["trusted", "shield", "settings.assets.mode.trusted", "settings.assets.mode.trusted.hint"],
+    ["any", "globe", "settings.assets.mode.any", "settings.assets.mode.any.hint"],
   ];
 
   const sourcesUrl = (id) => "/api/research/sources/" + encodeURIComponent(id);
@@ -64,7 +63,8 @@
           return null;
         })
         .catch((err) => {
-          if (!inline) S.policyNote = "!Couldn’t save: " + err.message;
+          if (!inline)
+            S.policyNote = OVS.failMsg("settings.note.saveFailed", { message: err.message });
           return err.message;
         })
         .finally(() => OVS.render(true)),
@@ -74,7 +74,7 @@
   function addSource() {
     const raw = (ui.draft.source || "").trim();
     if (!raw) {
-      ui.err.source = "Enter a site address.";
+      ui.err.source = msg("settings.assets.error.enterSite");
       return;
     }
     if (ui.busy.source) return;
@@ -93,88 +93,87 @@
 
   /* ---------- markup ---------- */
   function sourceRow(s) {
-    const kinds = s.kinds.map((k) => KIND_LABELS[k] || k).join(" · ");
+    const kinds = s.kinds.map((k) => (KIND_KEYS[k] ? tr(KIND_KEYS[k]) : k)).join(" · ");
     const domains = s.domains.join(", ");
     return `<div class="st-row st-src${s.enabled ? "" : " is-off"}" data-source="${esc(s.id)}">${sw(
       s.enabled,
       "source-on",
-      "Use " + s.name,
+      tr("settings.assets.useSource", { name: s.name }),
       s.id,
     )}<div class="st-label"><b>${esc(s.name)}${
-      s.builtIn ? "" : '<span class="badge sm">Custom</span>'
+      s.builtIn ? "" : `<span class="badge sm">${te("settings.assets.custom")}</span>`
     }</b><span><span class="mono" title="${esc(domains)}">${esc(domains)}</span></span>${
       s.licenseNote ? `<span>${esc(s.licenseNote)}</span>` : ""
-    }</div><span class="lic">${esc(kinds)}</span><button type="button" class="icon-btn" aria-label="Remove ${esc(
-      s.name,
-    )}" data-tip="Remove" data-tip-align="end" data-act="source-remove" data-key="${esc(s.id)}" data-fk="remove:${esc(
+    }</div><span class="lic">${esc(kinds)}</span><button type="button" class="icon-btn" aria-label="${te(
+      "settings.assets.removeSource",
+      { name: s.name },
+    )}" data-tip="${te("common.remove")}" data-tip-align="end" data-act="source-remove" data-key="${esc(s.id)}" data-fk="remove:${esc(
       s.id,
     )}">${ic("trash")}</button></div>`;
   }
 
   PAGES.assets = function () {
-    const intro = lede(
-      "Applies to all projects. Only the Research agent searches outside a project, and only as allowed here.",
-    );
+    const intro = lede("settings.assets.lede");
+    const title = tr("settings.section.assets");
     const p = S.policy;
     if (!p)
       return (
-        head("Asset Search") +
+        head(title) +
         intro +
         (S.policyError
-          ? OVS.failure("Couldn’t load Asset Search settings", S.policyError, "policy-retry")
-          : OVS.loading("Asset Search settings"))
+          ? OVS.failure("settings.failure.assets", S.policyError, "policy-retry")
+          : OVS.loading("settings.loading.assets"))
       );
     const onCount = p.sources.filter((s) => s.enabled).length;
-    const modes = `<div class="st-choice" role="radiogroup" aria-label="Search mode">${MODES.map(
+    const modes = `<div class="st-choice" role="radiogroup" aria-label="${te("settings.assets.mode.aria")}">${MODES.map(
       (m) =>
         `<button type="button" class="st-radio" role="radio" aria-checked="${p.mode === m[0]}" data-act="asset-mode" data-v="${m[0]}" data-fk="mode:${m[0]}"><span class="st-label"><b>${ic(
           m[1],
-        )}${m[2]}</b><span>${m[3]}</span></span></button>`,
+        )}${te(m[2])}</b><span>${te(m[3])}</span></span></button>`,
     ).join("")}</div>`;
     const err = ui.err.source;
-    const add = `<div class="st-add"><div class="st-inline"><input class="input mono${err ? " is-invalid" : ""}" type="text" spellcheck="false" autocomplete="off" placeholder="Add a site, e.g. archive.org" aria-label="Add a custom source" data-act="source-input" data-draft="source" data-fk="source-input"${
+    const add = `<div class="st-add"><div class="st-inline"><input class="input mono${err ? " is-invalid" : ""}" type="text" spellcheck="false" autocomplete="off" placeholder="${te("settings.assets.add.placeholder")}" aria-label="${te("settings.assets.add.aria")}" data-act="source-input" data-draft="source" data-fk="source-input"${
       err ? ' aria-invalid="true" aria-describedby="err-source"' : ""
     } /><button type="button" class="btn" data-act="source-add" data-fk="source-add"${
       ui.busy.source ? " disabled" : ""
-    }>${ic("plus")}Add</button></div>${
-      err ? `<p class="st-field-err" id="err-source" role="alert">${esc(err)}</p>` : ""
+    }>${ic("plus")}${te("settings.assets.add")}</button></div>${
+      err ? `<p class="st-field-err" id="err-source" role="alert">${esc(text(err))}</p>` : ""
     }</div>`;
-    const searchNote =
+    const removed = p.removedBuiltIns.length;
+    const meta = `<span class="note">${te(
       p.mode === "trusted"
         ? onCount
-          ? "Only these are searched"
-          : ""
-        : "Searched first, then the rest of the web";
-    const removed = p.removedBuiltIns.length;
-    const meta = `<span class="note">${onCount} of ${p.sources.length} on${
-      searchNote ? " · " + searchNote : ""
-    }</span>${
+          ? "settings.assets.meta.trusted"
+          : "settings.assets.meta"
+        : "settings.assets.meta.any",
+      { on: onCount, total: p.sources.length },
+    )}</span>${
       removed
-        ? `<button type="button" class="link push" data-act="source-restore" data-fk="source-restore">Restore built-in sources (${removed})</button>`
+        ? `<button type="button" class="link push" data-act="source-restore" data-fk="source-restore">${te("settings.assets.restore", { count: removed })}</button>`
         : ""
     }`;
     const list = p.sources.length
       ? p.sources.map(sourceRow).join("")
-      : `<div class="st-row"><div class="st-label"><span>No trusted sources. Add a site below${
-          removed ? ", or restore the built-in sources" : ""
-        }.</span></div></div>`;
+      : `<div class="st-row"><div class="st-label"><span>${te(
+          removed ? "settings.assets.empty.restore" : "settings.assets.empty",
+        )}</span></div></div>`;
     const empty =
       p.mode === "trusted" && !onCount
-        ? `<p class="st-foot"><span class="status warning">${ic("alert")}All sources are off, so asset search will find nothing.</span></p>`
+        ? `<p class="st-foot"><span class="status warning">${ic("alert")}${te("settings.assets.allOff")}</span></p>`
         : "";
     const readLinked = p.websites.readLinkedPages;
     return (
-      head("Asset Search") +
+      head(title) +
       intro +
       OVS.noteHtml(S.policyNote) +
-      group("Search mode", modes) +
-      `<section class="st-group"><div class="sect-label"><span>Trusted sources</span>${meta}</div><div class="st-box">${list}${add}</div>${empty}</section>` +
+      group(te("settings.assets.group.mode"), modes) +
+      `<section class="st-group"><div class="sect-label"><span>${te("settings.assets.group.sources")}</span>${meta}</div><div class="st-box">${list}${add}</div>${empty}</section>` +
       group(
-        "Websites",
+        te("settings.assets.group.websites"),
         row(
-          "Open links you send in chat",
-          "Agents can read the pages you link — colors, fonts, logo, screenshots — to match a site’s style. Only links from your own messages, plus other pages on the same site.",
-          sw(readLinked, "read-linked", "Open links you send in chat"),
+          te("settings.assets.readLinked"),
+          te("settings.assets.readLinked.hint"),
+          sw(readLinked, "read-linked", tr("settings.assets.readLinked")),
         ),
       )
     );

@@ -5,26 +5,26 @@
    are one install (ffprobe has no button of its own). Every string from the check or the installer is escaped. */
 (function () {
   "use strict";
-  const { ic, esc, api, CLICK, group } = OVS;
+  const { ic, esc, api, CLICK, group, tr } = OVS;
   const { title } = OVOB;
 
-  /* `with`: the tool whose installer provides this one. */
+  /* Tool names are proper nouns; why is a catalog key. `with`: the tool whose installer provides this one. */
   const TOOLS = [
-    { id: "chrome", name: "Chrome", why: "Renders your video and captures project thumbnails." },
-    { id: "ffmpeg", name: "FFmpeg", why: "Encodes and decodes video and audio when rendering." },
+    { id: "chrome", name: "Chrome", why: "onboarding.system.tool.chrome.why" },
+    { id: "ffmpeg", name: "FFmpeg", why: "onboarding.system.tool.ffmpeg.why" },
     {
       id: "ffprobe",
       name: "ffprobe",
-      why: "Reads the length, size and format of imported media.",
+      why: "onboarding.system.tool.ffprobe.why",
       with: "ffmpeg",
     },
   ];
   /* What to run by hand when the page can't install (macOS: Homebrew). */
   const COMMANDS = { ffmpeg: "brew install ffmpeg" };
   const SOURCES = {
-    openvids: "installed by OpenVids",
-    env: "set by an environment variable",
-    system: "found on this Mac",
+    openvids: "onboarding.system.source.openvids",
+    env: "onboarding.system.source.env",
+    system: "onboarding.system.source.system",
   };
   const RUNNING = ["checking", "downloading", "installing"];
   const POLL_MS = 500;
@@ -89,7 +89,8 @@
           .catch((err) => {
             Y.inst[key] = {
               phase: "failed",
-              error: "Lost contact with the installer: " + err.message,
+              error: null,
+              lostContact: err.message,
             };
           }),
       ),
@@ -141,14 +142,19 @@
       ? "/assets/mark-loader-light.svg"
       : "/assets/mark-loader.svg";
   function phaseText(st) {
-    if (st.phase === "checking") return "Checking…";
-    if (st.phase === "installing") return "Installing…";
+    if (st.phase === "checking") return tr("onboarding.system.phase.checking");
+    if (st.phase === "installing") return tr("onboarding.system.phase.installing");
     if (st.phase === "downloading") {
       const d = Number(st.downloaded),
         t = Number(st.total);
-      if (t > 0 && d >= 0) return `Downloading · ${OV.formatBytes(d)} of ${OV.formatBytes(t)}`;
-      if (d > 0) return `Downloading · ${OV.formatBytes(d)}`;
-      return "Downloading…";
+      if (t > 0 && d >= 0)
+        return tr("onboarding.system.phase.downloadingOf", {
+          downloaded: OV.formatBytes(d),
+          total: OV.formatBytes(t),
+        });
+      if (d > 0)
+        return tr("onboarding.system.phase.downloadingSome", { downloaded: OV.formatBytes(d) });
+      return tr("onboarding.system.phase.downloading");
     }
     return "";
   }
@@ -161,7 +167,7 @@
     )}</span></div>${
       pct == null
         ? ""
-        : `<div class="ob-bar" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>`
+        : `<div class="ob-bar" role="progressbar" aria-label="${esc(tr("onboarding.system.progressAria"))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>`
     }${st.detail ? `<p class="ob-detail" title="${esc(st.detail)}">${esc(st.detail)}</p>` : ""}`;
   }
   /* The check says what Homebrew would run and what to tell the user; the constants are only a fallback. */
@@ -171,21 +177,24 @@
   const copyRow = (cmd, key) =>
     `<div class="st-inline"><code class="ob-cmd">${esc(cmd)}</code><button type="button" class="btn btn-sm" data-act="ob-copy" data-v="${esc(
       cmd,
-    )}" data-fk="ob-copy:${esc(key)}">${Y.copied === cmd ? "Copied" : "Copy"}</button></div>`;
+    )}" data-fk="ob-copy:${esc(key)}">${esc(tr(Y.copied === cmd ? "common.copied" : "common.copy"))}</button></div>`;
+  /* A message with <tag>…</tag> markup, escaped; wrappers build the HTML of each tag. */
+  const rich = (key, params, wrappers) => OVI18N.rich(key, params, wrappers);
 
   function toolRow(t) {
     const c = Y.check[t.id] || {},
       key = t.with || t.id,
       parent = t.with ? Y.check[t.with] || {} : null,
       st = Y.inst[key];
-    const label = `<div class="st-label"><b>${esc(t.name)}</b><span>${esc(t.why)}</span>`;
+    const label = `<div class="st-label"><b>${esc(t.name)}</b><span>${esc(tr(t.why))}</span>`;
     if (c.found) {
-      const bits = [c.version && "version " + c.version, c.source && SOURCES[c.source]].filter(
-        Boolean,
-      );
+      const bits = [
+        c.version && tr("onboarding.system.version", { version: c.version }),
+        c.source && SOURCES[c.source] && tr(SOURCES[c.source]),
+      ].filter(Boolean);
       return `<div class="ob-tool">${label}${c.path ? `<span class="mono" title="${esc(c.path)}">${esc(c.path)}</span>` : ""}${
         bits.length ? `<span>${esc(bits.join(" · "))}</span>` : ""
-      }</div><div class="st-ctl"><span class="status success">${ic("check")}Found</span></div></div>`;
+      }</div><div class="st-ctl"><span class="status success">${ic("check")}${esc(tr("onboarding.system.found"))}</span></div></div>`;
     }
     /* Missing: what is happening, or what can be done. */
     let ctl = "",
@@ -194,46 +203,80 @@
     const own = !t.with || (parent && parent.found); /* ffprobe installs through FFmpeg's button */
     const canInstall = own && !!c.canInstall;
     if (t.with && !own) {
-      sub = `<span>Comes with ${esc(TOOLS.find((x) => x.id === t.with).name)}.</span>`;
+      sub = `<span>${esc(tr("onboarding.system.comesWith", { tool: TOOLS.find((x) => x.id === t.with).name }))}</span>`;
     }
     if (c.systemPath && !c.found)
-      sub += `<span>Chrome is at <span class="mono">${esc(c.systemPath)}</span>, but rendering can’t use that copy.</span>`;
+      sub += `<span>${rich(
+        "onboarding.system.chromeAt",
+        { path: c.systemPath },
+        { path: (inner) => `<span class="mono">${inner}</span>` },
+      )}</span>`;
     if (st && RUNNING.includes(st.phase)) {
       ctl = own
-        ? `<button type="button" class="btn" data-act="ob-sys-cancel" data-v="${esc(key)}" data-fk="ob-sys-cancel:${esc(key)}">Cancel</button>`
-        : `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>Installing…</span>`;
+        ? `<button type="button" class="btn" data-act="ob-sys-cancel" data-v="${esc(key)}" data-fk="ob-sys-cancel:${esc(key)}">${esc(tr("common.cancel"))}</button>`
+        : `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${esc(tr("onboarding.system.phase.installing"))}</span>`;
       if (own) extra = runBlock(st);
     } else {
       const failed = own && !!st && st.phase === "failed",
         cancelled = own && !!st && st.phase === "cancelled";
       const button = canInstall
-        ? `<button type="button" class="btn" data-act="ob-sys-install" data-v="${esc(key)}" data-fk="ob-sys-install:${esc(key)}">${
-            failed ? "Try again" : c.installer === "homebrew" ? "Install with Homebrew" : "Install"
-          }</button>`
+        ? `<button type="button" class="btn" data-act="ob-sys-install" data-v="${esc(key)}" data-fk="ob-sys-install:${esc(key)}">${esc(
+            failed
+              ? tr("common.tryAgain")
+              : tr(
+                  c.installer === "homebrew"
+                    ? "onboarding.system.installHomebrew"
+                    : "onboarding.system.install",
+                ),
+          )}</button>`
         : "";
-      ctl = `<span class="status ${failed ? "error" : "warning"}">${ic("alert")}${
-        failed ? "Install failed" : cancelled ? "Cancelled" : "Missing"
-      }</span>${button}`;
+      ctl = `<span class="status ${failed ? "error" : "warning"}">${ic("alert")}${esc(
+        tr(
+          failed
+            ? "onboarding.system.installFailed"
+            : cancelled
+              ? "onboarding.system.cancelled"
+              : "onboarding.system.missing",
+        ),
+      )}</span>${button}`;
       if (failed)
-        extra += `<p class="st-field-err" role="alert">${esc(String((st && st.error) || "The install failed."))}</p>`;
+        extra += `<p class="st-field-err" role="alert">${esc(
+          st && st.lostContact
+            ? tr("onboarding.system.lostContact", { message: st.lostContact })
+            : String((st && st.error) || tr("onboarding.system.installFailedMessage")),
+        )}</p>`;
       if (canInstall && c.installer === "homebrew" && !failed)
         extra += `<p class="st-foot">${
           brew().note
             ? esc(brew().note).replace(/`([^`]*)`/g, '<code class="mono">$1</code>')
-            : `Runs <code class="mono">${esc(commandFor("ffmpeg"))}</code>, which can install several dependency packages and take a few minutes. FFmpeg includes ffprobe.`
+            : rich(
+                "onboarding.system.brewRuns",
+                { command: commandFor("ffmpeg") },
+                { code: (inner) => `<code class="mono">${inner}</code>` },
+              )
         }</p>`;
       /* By hand: no installer here, or the installer failed. */
       const cmd = own && Y.check.platform === "macos" ? commandFor(key) : null;
       if (cmd && (!canInstall || failed)) {
+        const noBrew = c.installer == null && !canInstall && key === "ffmpeg";
         extra +=
           copyRow(cmd, key) +
-          `<p class="st-foot">${failed ? "Or run it" : "Run it"} in Terminal, then press Check again.${
-            c.installer == null && !canInstall && key === "ffmpeg"
-              ? ' Homebrew isn’t installed: <button type="button" class="link" data-act="ob-open-brew" data-fk="ob-open-brew">Get Homebrew</button>.'
-              : ""
-          }</p>`;
+          `<p class="st-foot">${rich(
+            noBrew
+              ? failed
+                ? "onboarding.system.orRunItNoBrew"
+                : "onboarding.system.runItNoBrew"
+              : failed
+                ? "onboarding.system.orRunIt"
+                : "onboarding.system.runIt",
+            {},
+            {
+              link: (inner) =>
+                `<button type="button" class="link" data-act="ob-open-brew" data-fk="ob-open-brew">${inner}</button>`,
+            },
+          )}</p>`;
       } else if (own && !canInstall && !cmd && !t.with)
-        extra += `<p class="st-foot">Install ${esc(t.name)} yourself, then press Check again.</p>`;
+        extra += `<p class="st-foot">${esc(tr("onboarding.system.installYourself", { tool: t.name }))}</p>`;
     }
     return `<div class="ob-tool">${label}${sub}</div><div class="st-ctl">${ctl}</div>${
       extra ? `<div class="ob-tool-extra">${extra}</div>` : ""
@@ -243,7 +286,7 @@
   const allFound = () => TOOLS.every((t) => Y.check && Y.check[t.id] && Y.check[t.id].found);
 
   OVOB.steps.system = {
-    label: "System",
+    label: "onboarding.step.system",
     skipWhenDone: true,
     done: () => (Y.check ? allFound() : Y.error ? false : null),
     load: () => check(),
@@ -253,32 +296,37 @@
     leave: stop,
     stop,
     view() {
-      const head = title(
-        "System check",
-        "OpenVids needs Chrome and FFmpeg to render your video and make thumbnails.",
-      );
-      const speech =
-        '<p class="st-foot">Speech recognition downloads its model the first time you use it.</p>';
+      const head = title(tr("onboarding.system.title"), tr("onboarding.system.lede"));
+      const speech = `<p class="st-foot">${esc(tr("onboarding.system.speech"))}</p>`;
       const meta = `<button type="button" class="btn btn-sm push" data-act="ob-sys-check" data-fk="ob-sys-check"${
         Y.loading ? " disabled" : ""
-      }>${Y.loading ? '<i class="spinner" aria-hidden="true"></i>Checking…' : "Check again"}</button>`;
+      }>${
+        Y.loading
+          ? `<i class="spinner" aria-hidden="true"></i>${esc(tr("onboarding.system.phase.checking"))}`
+          : esc(tr("onboarding.system.checkAgain"))
+      }</button>`;
       if (!Y.check)
         return (
           head +
           (Y.error
-            ? OVS.failure("Couldn’t run the system check", Y.error, "ob-sys-check") +
-              '<p class="st-foot">You can continue; OpenVids will tell you when something it needs is missing.</p>'
-            : OVS.loading("the system check")) +
+            ? OVS.failure("onboarding.failure.systemCheck", Y.error, "ob-sys-check") +
+              `<p class="st-foot">${esc(tr("onboarding.system.continueAnyway"))}</p>`
+            : OVS.loading("onboarding.loading.systemCheck")) +
           speech
         );
       return (
         head +
-        OVS.noteHtml(Y.error ? "!Couldn’t check again: " + Y.error : "") +
-        group("Tools", TOOLS.map(toolRow).join(""), meta) +
+        OVS.noteHtml(
+          Y.error ? OVS.failMsg("onboarding.system.checkAgainFailed", { message: Y.error }) : "",
+        ) +
+        group(esc(tr("onboarding.system.group.tools")), TOOLS.map(toolRow).join(""), meta) +
         speech
       );
     },
-    primary: () => ({ label: "Continue", kind: Y.check && allFound() ? "primary" : "secondary" }),
+    primary: () => ({
+      label: "common.continue",
+      kind: Y.check && allFound() ? "primary" : "secondary",
+    }),
   };
 
   CLICK["ob-sys-check"] = () => {

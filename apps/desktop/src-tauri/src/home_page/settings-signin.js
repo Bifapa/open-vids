@@ -10,9 +10,14 @@
    authUrl is only opened when it parses as https. A pasted code never goes into the markup. */
 (function () {
   "use strict";
-  const { esc, api, ui, CLICK, INPUT, ENTER } = OVS;
+  const { esc, api, ui, CLICK, INPUT, ENTER, tr, msg, text } = OVS;
 
-  const FLOW_LABELS = { browser: "Browser", device: "Device code", paste: "Paste code" };
+  /* A flow this page doesn't know is shown as the runtime names it. */
+  const FLOW_KEYS = {
+    browser: "settings.signin.flow.browser",
+    device: "settings.signin.flow.device",
+    paste: "settings.signin.flow.paste",
+  };
   const RUNNING = ["pending", "needs_input"];
   const POLL_MS = 1000;
   /* Only open a page the user just asked for: a sign-in older than this is a resumed one. */
@@ -47,7 +52,7 @@
     const url = httpsUrl(value);
     const l = L[pid];
     if (!url) {
-      if (l) l.openError = "The sign-in address isn’t a secure web address, so it wasn’t opened.";
+      if (l) l.openError = msg("settings.signin.error.notSecure");
       return Promise.resolve();
     }
     return api("/api/open-external", { url })
@@ -55,7 +60,7 @@
         if (l) l.openError = null;
       })
       .catch((err) => {
-        if (l) l.openError = "Couldn’t open the browser: " + err.message;
+        if (l) l.openError = msg("settings.signin.error.openFailed", { message: err.message });
       })
       .finally(() => OVS.render(true));
   }
@@ -99,7 +104,8 @@
             pid,
             Object.assign({}, l.state, {
               status: "failed",
-              error: "Lost contact with the sign-in: " + err.message,
+              error: null,
+              lostContact: err.message,
             }),
           );
       });
@@ -126,8 +132,9 @@
         OVS.providersChanged();
       })
       .catch((err) => {
-        ui.flags.providersNote =
-          "!Signed in, but the provider list couldn’t be reloaded: " + err.message;
+        ui.flags.providersNote = OVS.failMsg("settings.signin.error.reloadFailed", {
+          message: err.message,
+        });
       })
       .finally(() => {
         if (L[pid] === l) delete L[pid];
@@ -158,7 +165,7 @@
       .then((st) => {
         if (L[pid] !== l) return;
         l.starting = false;
-        if (!isState(st)) l.error = "The agent runtime gave an unexpected answer.";
+        if (!isState(st)) l.error = msg("settings.signin.error.unexpectedAnswer");
         else apply(pid, st);
       })
       .catch((err) => {
@@ -180,7 +187,7 @@
       text = (ui.draft[key] || "").trim();
     // A required prompt may take a blank answer as its default; the paste fallback needs something to send.
     if (!text && st.prompt.optional) {
-      l.inputError = "Paste the code or address first.";
+      l.inputError = msg("settings.signin.error.pasteFirst");
       return;
     }
     l.inputError = null;
@@ -230,19 +237,19 @@
      than one flow opens its body first, to choose; one flow starts at once. */
   function rowAction(p) {
     if (flowsOf(p).length === 0 || running(p.id)) return "";
-    return `<button type="button" class="btn" data-act="signin-start" data-v="${keyId(p.id)}" data-row="1" data-fk="signin:${keyId(p.id)}">Sign in…</button>`;
+    return `<button type="button" class="btn" data-act="signin-start" data-v="${keyId(p.id)}" data-row="1" data-fk="signin:${keyId(p.id)}">${esc(tr("settings.signin.start"))}</button>`;
   }
   function rowState(p) {
     const l = L[p.id];
     if (!l) return null;
-    if (l.starting) return "Starting sign-in…";
+    if (l.starting) return tr("settings.signin.state.starting");
     const st = l.state && l.state.status;
     return st === "succeeded"
-      ? "Finishing…"
+      ? tr("settings.signin.state.finishing")
       : RUNNING.includes(st)
         ? st === "needs_input"
-          ? "Needs your input"
-          : "Waiting for browser…"
+          ? tr("settings.signin.state.needsInput")
+          : tr("settings.signin.state.waitingBrowser")
         : null;
   }
   /* In the body, before a sign-in runs: choice of flow (when more than one) and the button. */
@@ -253,21 +260,22 @@
     const choice =
       flows.length > 1
         ? OVS.seg(
-            flows.map((f) => [f.flow, FLOW_LABELS[f.flow] || f.flow]),
+            flows.map((f) => [f.flow, FLOW_KEYS[f.flow] ? tr(FLOW_KEYS[f.flow]) : f.flow]),
             chosenFlow(p),
             "signin-flow",
-            `${p.name} sign-in method`,
+            tr("settings.signin.methodAria", { provider: p.name }),
             p.id,
           )
         : "";
     const port = flows.find((f) => f.fixedPort && f.callbackPort);
-    const portNote =
+    const foot =
       port && flows.length > 1
-        ? ` The browser method uses local port ${esc(port.callbackPort)}; if another app has it, choose Device code.`
-        : "";
+        ? tr("settings.signin.footPort", { provider: p.name, port: String(port.callbackPort) })
+        : tr("settings.signin.foot", { provider: p.name });
     return (
-      `<div class="st-inline">${choice}<button type="button" class="btn" data-act="signin-start" data-v="${id}" data-fk="signin-go:${id}">${L[p.id] ? "Try again" : "Sign in…"}</button></div>` +
-      `<p class="st-foot">Sign in to ${esc(p.name)} in your browser. The sign-in is kept in a private OpenVids database on this Mac and replaces your OMP login for ${esc(p.name)} until you sign out; it’s never written to the OMP setup.${portNote}</p>`
+      `<div class="st-inline">${choice}<button type="button" class="btn" data-act="signin-start" data-v="${id}" data-fk="signin-go:${id}">${esc(
+        tr(L[p.id] ? "common.tryAgain" : "settings.signin.start"),
+      )}</button></div>` + `<p class="st-foot">${esc(foot)}</p>`
     );
   }
   function promptBlock(pid, st) {
@@ -276,15 +284,19 @@
       id = keyId(pid),
       err = l.inputError;
     return (
-      `<label class="st-foot" for="signin-input-${id}">${esc(pr.message)}${pr.optional ? " (optional)" : ""}</label>` +
+      `<label class="st-foot" for="signin-input-${id}">${esc(
+        pr.optional ? tr("settings.signin.prompt.optional", { message: pr.message }) : pr.message,
+      )}</label>` +
       `<div class="st-inline"><input id="signin-input-${id}" class="input mono${err ? " is-invalid" : ""}" type="${
         pr.secret ? "password" : "text"
       }" autocomplete="off" spellcheck="false" placeholder="${esc(pr.placeholder || "")}" data-act="signin-input" data-draft="oauth:${id}" data-v="${id}" data-fk="signin-input:${id}"${
         err ? ' aria-invalid="true" aria-describedby="err-signin-' + id + '"' : ""
       } /><button type="button" class="btn" data-act="signin-submit" data-v="${id}" data-fk="signin-submit:${id}"${
         l.sending ? " disabled" : ""
-      }>${l.sending ? "Sending…" : "Continue"}</button></div>` +
-      (err ? `<p class="st-field-err" id="err-signin-${id}" role="alert">${esc(err)}</p>` : "")
+      }>${esc(l.sending ? tr("settings.signin.sending") : tr("common.continue"))}</button></div>` +
+      (err
+        ? `<p class="st-field-err" id="err-signin-${id}" role="alert">${esc(text(err))}</p>`
+        : "")
     );
   }
   /* The sign-in in the provider's body: running, or how it ended. */
@@ -294,9 +306,11 @@
     const id = keyId(p.id);
     let inner;
     if (l.starting) {
-      inner = `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>Starting the sign-in…</span>`;
+      inner = `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${esc(tr("settings.signin.starting"))}</span>`;
     } else if (!l.state) {
-      inner = `<p class="st-field-err" role="alert">Couldn’t start the sign-in: ${esc(firstLine(l.error))}</p>`;
+      inner = `<p class="st-field-err" role="alert">${esc(
+        tr("settings.signin.startFailed", { reason: firstLine(text(l.error)) }),
+      )}</p>`;
     } else {
       const st = l.state;
       if (RUNNING.includes(st.status)) {
@@ -306,15 +320,13 @@
           st.status === "needs_input"
             ? ""
             : url
-              ? device
-                ? "Waiting for you to enter the code in the browser…"
-                : "Waiting for you to finish in the browser…"
-              : "Preparing the sign-in…";
+              ? tr(device ? "settings.signin.waiting.device" : "settings.signin.waiting.browser")
+              : tr("settings.signin.preparing");
         const code =
           device && st.deviceCode
-            ? `<div class="st-code-row"><code class="st-code" aria-label="Device code">${esc(st.deviceCode)}</code><button type="button" class="btn btn-sm" data-act="signin-copy" data-v="${id}" data-fk="signin-copy:${id}">${
-                ui.flags[`copied:${p.id}`] ? "Copied" : "Copy"
-              }</button></div>`
+            ? `<div class="st-code-row"><code class="st-code" aria-label="${esc(tr("settings.signin.deviceCodeAria"))}">${esc(st.deviceCode)}</code><button type="button" class="btn btn-sm" data-act="signin-copy" data-v="${id}" data-fk="signin-copy:${id}">${esc(
+                tr(ui.flags[`copied:${p.id}`] ? "common.copied" : "common.copy"),
+              )}</button></div>`
             : "";
         /* The provider's own wording shows when there is no code to lift out of it. */
         const note =
@@ -322,34 +334,44 @@
             ? `<p class="st-foot">${esc(st.instructions)}</p>`
             : "";
         const links = url
-          ? `<span class="st-signin-links"><button type="button" class="link" data-act="signin-open" data-v="${id}" data-fk="signin-open:${id}">${
-              device ? "Open the verification page" : "Open again"
-            }</button><button type="button" class="link" data-act="signin-copy-link" data-v="${id}" data-fk="signin-copy-link:${id}">${
-              ui.flags[`copiedLink:${p.id}`] ? "Link copied" : "Copy link"
-            }</button></span>`
+          ? `<span class="st-signin-links"><button type="button" class="link" data-act="signin-open" data-v="${id}" data-fk="signin-open:${id}">${esc(
+              tr(device ? "settings.signin.openVerification" : "settings.signin.openAgain"),
+            )}</button><button type="button" class="link" data-act="signin-copy-link" data-v="${id}" data-fk="signin-copy-link:${id}">${esc(
+              tr(
+                ui.flags[`copiedLink:${p.id}`]
+                  ? "settings.signin.linkCopied"
+                  : "settings.signin.copyLink",
+              ),
+            )}</button></span>`
           : "";
         inner =
           (waiting
-            ? `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${waiting}</span>`
+            ? `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${esc(waiting)}</span>`
             : "") +
           code +
           note +
           (st.progress ? `<p class="st-foot">${esc(st.progress)}</p>` : "") +
           (st.prompt ? promptBlock(p.id, st) : "") +
-          (l.openError ? `<p class="st-field-err" role="alert">${esc(l.openError)}</p>` : "") +
+          (l.openError
+            ? `<p class="st-field-err" role="alert">${esc(text(l.openError))}</p>`
+            : "") +
           `<div class="st-actions">${links}<button type="button" class="btn btn-ghost push" data-act="signin-cancel" data-v="${id}" data-fk="signin-cancel:${id}"${
             l.cancelling ? " disabled" : ""
-          }>Cancel</button></div>`;
+          }>${esc(tr("common.cancel"))}</button></div>`;
       } else if (st.status === "succeeded") {
-        inner = `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>Signed in. Updating providers…</span>`;
+        inner = `<span class="st-preset-note"><i class="spinner" aria-hidden="true"></i>${esc(tr("settings.signin.succeeded"))}</span>`;
       } else {
-        const msg =
+        const msgText =
           st.status === "cancelled"
-            ? "Sign-in cancelled."
+            ? tr("settings.signin.cancelled")
             : st.status === "expired"
-              ? "The sign-in expired."
-              : "Sign-in failed" + (st.error ? ": " + firstLine(st.error) : ".");
-        inner = `<p class="${st.status === "failed" ? "st-field-err" : "st-foot"}" role="alert">${esc(msg)}</p>`;
+              ? tr("settings.signin.expired")
+              : st.lostContact
+                ? tr("settings.signin.lostContact", { message: st.lostContact })
+                : st.error
+                  ? tr("settings.signin.failedReason", { reason: firstLine(st.error) })
+                  : tr("settings.signin.failed");
+        inner = `<p class="${st.status === "failed" ? "st-field-err" : "st-foot"}" role="alert">${esc(msgText)}</p>`;
       }
     }
     return `<div class="st-signin" aria-live="polite">${inner}</div>`;

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Settings — OpenVids</title>
+    <title data-i18n="settings.window.documentTitle">Settings — OpenVids</title>
     <link rel="stylesheet" href="/assets/ov.css" />
     <link rel="stylesheet" href="/assets/composer.css" />
     <link rel="stylesheet" href="/assets/settings.css" />
@@ -36,14 +36,24 @@
     >
       <header class="titlebar st-titlebar">
         <div class="tl-group">
-          <button type="button" class="tl close" aria-label="Close Settings"></button
+          <button
+            type="button"
+            class="tl close"
+            aria-label="Close Settings"
+            data-i18n-aria-label="settings.window.close"
+          ></button
           ><span class="tl min" aria-hidden="true"></span
           ><span class="tl max" aria-hidden="true"></span>
         </div>
-        <span class="st-title" id="stTitle">Settings</span>
+        <span class="st-title" id="stTitle" data-i18n="settings.window.heading">Settings</span>
       </header>
       <div class="st-layout">
-        <nav class="st-nav" id="stNav" aria-label="Settings sections"></nav>
+        <nav
+          class="st-nav"
+          id="stNav"
+          aria-label="Settings sections"
+          data-i18n-aria-label="settings.nav.label"
+        ></nav>
         <main class="st-main" id="stMain" tabindex="-1"></main>
       </div>
     </div>

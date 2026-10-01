@@ -3,21 +3,25 @@
    own warning with a Fix link (the provider list, GET /api/agent/providers, is loaded by Models & Providers). */
 (function () {
   "use strict";
-  const { ic, esc, S, PAGES, CLICK, CHANGE, AGENTS, sw, seg, select, head } = OVS;
+  const { ic, esc, S, PAGES, CLICK, CHANGE, AGENTS, tr, sw, seg, select, head } = OVS;
 
-  /* null is a real state ("Default": the model's own effort), "off" switches thinking off. */
+  /* null is a real state ("Default": the model's own effort), "off" switches thinking off. Labels are
+     settings.agents.effort.<name> (read when drawn); a level this page doesn't know shows as it is. */
   const EFFORTS = [
-    ["", "Default"],
-    ["off", "Off"],
-    ["low", "Low"],
-    ["medium", "Med"],
-    ["high", "High"],
+    ["", "default"],
+    ["off", "off"],
+    ["low", "low"],
+    ["medium", "medium"],
+    ["high", "high"],
   ];
-  const EXTRA_EFFORT_LABEL = { minimal: "Min", xhigh: "XHigh", max: "Max" };
+  const EXTRA_EFFORTS = { minimal: "minimal", xhigh: "xhigh", max: "max" };
+  const effortLabel = (name) => tr(`settings.agents.effort.${name}`);
 
   function modelOptions(value, inherit) {
     const sel = (on) => (on ? " selected" : "");
-    let html = `<option value=""${sel(!value)}>${inherit ? "Same as Director" : "Runtime default"}</option>`;
+    let html = `<option value=""${sel(!value)}>${esc(
+      tr(inherit ? "settings.agents.model.inherit" : "settings.agents.model.runtimeDefault"),
+    )}</option>`;
     const models = (S.catalog && S.catalog.models) || [];
     [...new Set(models.map((m) => m.provider))].forEach((p) => {
       html += `<optgroup label="${esc(OVS.providerName(p))}">${models
@@ -29,23 +33,29 @@
         .join("")}</optgroup>`;
     });
     if (value && !models.some((m) => OVS.sameModel(m, value)))
-      html += `<optgroup label="${esc(OVS.providerName(value.provider))} — unavailable"><option value="${esc(
+      html += `<optgroup label="${esc(
+        tr("settings.agents.model.unavailableGroup", {
+          provider: OVS.providerName(value.provider),
+        }),
+      )}"><option value="${esc(
         OVS.modelKey(value),
       )}" selected>${esc(value.modelId)}</option></optgroup>`;
     return html;
   }
+  /* [value, label] pairs, the label read now. */
   const efforts = (current) =>
-    current && !EFFORTS.some((e) => e[0] === current)
-      ? EFFORTS.concat([[current, EXTRA_EFFORT_LABEL[current] || current]])
-      : EFFORTS;
+    (current && !EFFORTS.some((e) => e[0] === current)
+      ? EFFORTS.concat([[current, EXTRA_EFFORTS[current] || null]])
+      : EFFORTS
+    ).map((e) => [e[0], e[1] ? effortLabel(e[1]) : e[0]]);
 
   PAGES.agents = function () {
     if (!S.agents)
       return (
-        head("Agents") +
+        head(tr("settings.section.agents")) +
         (S.agentsError
-          ? OVS.failure("The agent runtime is unavailable", S.agentsError, "agents-retry")
-          : OVS.loading("agent defaults"))
+          ? OVS.failure("settings.failure.agentRuntime", S.agentsError, "agents-retry")
+          : OVS.loading("settings.loading.agentDefaults"))
       );
     const rows = AGENTS.map((ag) => {
       const dir = ag.id === "director",
@@ -59,26 +69,31 @@
       const warn = bad
         ? OVS.providerWarn(provider)
         : missing
-          ? `<span class="status warning">${ic("alert")}Model unavailable</span>`
+          ? `<span class="status warning">${ic("alert")}${esc(tr("settings.agents.modelUnavailable"))}</span>`
           : "";
       return `<div class="st-row${on ? "" : " is-off"}"><div class="st-agent"><span class="st-mono" aria-hidden="true">${
         ag.mono
       }</span><div class="st-label"><b>${esc(ag.name)}</b><span>${esc(ag.role)}</span></div></div><div class="st-model-cell">${select(
         modelOptions(cfg.model, !dir),
         "agent-model",
-        ag.name + " model",
+        tr("settings.agents.modelAria", { agent: ag.name }),
         ag.id,
         bad || missing ? "is-warn" : "",
-      )}${warn}</div>${seg(efforts(cfg.thinking), cfg.thinking || "", "agent-effort", ag.name + " thinking effort", ag.id)}${
+      )}${warn}</div>${seg(efforts(cfg.thinking), cfg.thinking || "", "agent-effort", tr("settings.agents.effortAria", { agent: ag.name }), ag.id)}${
         dir
-          ? `<span data-tip="Director is always on" data-tip-align="end">${sw(true, "agent-on", "Director, always on", ag.id, true)}</span>`
-          : sw(cfg.enabledByDefault, "agent-on", ag.name + " on by default", ag.id)
+          ? `<span data-tip="${esc(tr("settings.agents.director.alwaysOn.tip"))}" data-tip-align="end">${sw(true, "agent-on", tr("settings.agents.director.alwaysOn.aria"), ag.id, true)}</span>`
+          : sw(
+              cfg.enabledByDefault,
+              "agent-on",
+              tr("settings.agents.onByDefaultAria", { agent: ag.name }),
+              ag.id,
+            )
       }</div>`;
     }).join("");
     return (
-      head("Agents") +
+      head(tr("settings.section.agents")) +
       OVS.noteHtml(S.agentsNote) +
-      `<section class="st-group st-agents"><div class="sect-label"><span>Defaults for new chats</span><button type="button" class="link push" data-act="agents-reset" data-fk="agents-reset">Reset to defaults</button></div><div class="st-box"><div class="st-row st-th list-head" aria-hidden="true"><span>Agent</span><span>Model</span><span>Thinking effort</span><span>On</span></div>${rows}</div><p class="st-foot">Per-chat changes in the Chat panel override these. Models come from connected providers.</p></section>`
+      `<section class="st-group st-agents"><div class="sect-label"><span>${esc(tr("settings.agents.group.defaults"))}</span><button type="button" class="link push" data-act="agents-reset" data-fk="agents-reset">${esc(tr("settings.agents.reset"))}</button></div><div class="st-box"><div class="st-row st-th list-head" aria-hidden="true"><span>${esc(tr("settings.agents.col.agent"))}</span><span>${esc(tr("settings.agents.col.model"))}</span><span>${esc(tr("settings.agents.col.effort"))}</span><span>${esc(tr("settings.agents.col.on"))}</span></div>${rows}</div><p class="st-foot">${esc(tr("settings.agents.foot"))}</p></section>`
     );
   };
 
@@ -122,7 +137,7 @@
         });
       });
       return { director: { model: null, thinking: null }, specialists };
-    }, "Agent defaults reset.");
+    }, OVS.msg("settings.agents.notice.reset"));
   };
   CHANGE["agent-model"] = (t) => {
     const model = t.value ? parseModel(t.value) : null,
