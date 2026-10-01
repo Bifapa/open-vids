@@ -3,7 +3,18 @@ import { i18n, showLanguage } from "./instance";
 import { LANGUAGE_CODES, SYSTEM_LANGUAGE } from "./languages";
 import { resolveLanguage } from "./resolveLanguage";
 
-export { useTranslation } from "react-i18next";
+export { Trans, useTranslation } from "react-i18next";
+export {
+  formatBytes,
+  formatDate,
+  formatDateTime,
+  formatDuration,
+  formatList,
+  formatNumber,
+  formatPercent,
+  formatRelativeTime,
+  formatTime,
+} from "./format";
 export { isTranslationKey, i18n, showLanguage, type TranslationKey } from "./instance";
 export { LANGUAGES, LANGUAGE_CODES, type Language } from "./languages";
 export { resolveLanguage } from "./resolveLanguage";

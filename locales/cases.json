@@ -1,170 +1,158 @@
-{
-  "fixtures": {
-    "ru": {
-      "settings.language.label": "Язык",
-      "home.recent.title": "Недавние проекты",
-      "home.status.projects": "{count, plural, one {# проект} few {# проекта} many {# проектов} other {# проекта}}",
-      "home.status.missing": "{count, plural, one {# не найден} few {# не найдены} many {# не найдено} other {# не найдено}}",
-      "studio.statusBar.chapters": "{count, plural, one {# глава} few {# главы} many {# глав} other {# главы}}",
-      "studio.statusBar.fps": "{fps} к/с"
-    }
+[
+  {
+    "locale": "en",
+    "key": "settings.language.label",
+    "params": {},
+    "expected": "Language"
   },
-  "cases": [
-    {
-      "locale": "en",
-      "key": "settings.language.label",
-      "params": {},
-      "expected": "Language"
+  {
+    "locale": "ru",
+    "key": "settings.language.label",
+    "params": {},
+    "expected": "Язык"
+  },
+  {
+    "locale": "en",
+    "key": "studio.statusBar.fps",
+    "params": {
+      "fps": 30
     },
-    {
-      "locale": "ru",
-      "key": "settings.language.label",
-      "params": {},
-      "expected": "Язык"
+    "expected": "30 fps"
+  },
+  {
+    "locale": "ru",
+    "key": "studio.statusBar.fps",
+    "params": {
+      "fps": 30
     },
-    {
-      "locale": "en",
-      "key": "studio.statusBar.fps",
-      "params": {
-        "fps": 30
-      },
-      "expected": "30 fps"
+    "expected": "30 к/с"
+  },
+  {
+    "locale": "en",
+    "key": "studio.statusBar.chapters",
+    "params": {
+      "count": 1
     },
-    {
-      "locale": "ru",
-      "key": "studio.statusBar.fps",
-      "params": {
-        "fps": 30
-      },
-      "expected": "30 к/с"
+    "expected": "1 chapter"
+  },
+  {
+    "locale": "en",
+    "key": "studio.statusBar.chapters",
+    "params": {
+      "count": 2
     },
-    {
-      "locale": "en",
-      "key": "studio.statusBar.chapters",
-      "params": {
-        "count": 1
-      },
-      "expected": "1 chapter"
+    "expected": "2 chapters"
+  },
+  {
+    "locale": "en",
+    "key": "home.status.projects",
+    "params": {
+      "count": 0
     },
-    {
-      "locale": "en",
-      "key": "studio.statusBar.chapters",
-      "params": {
-        "count": 2
-      },
-      "expected": "2 chapters"
+    "expected": "0 projects"
+  },
+  {
+    "locale": "en",
+    "key": "home.status.projects",
+    "params": {
+      "count": 1000
     },
-    {
-      "locale": "en",
-      "key": "home.status.projects",
-      "params": {
-        "count": 0
-      },
-      "expected": "0 projects"
+    "expected": "1,000 projects"
+  },
+  {
+    "locale": "ru",
+    "key": "home.status.projects",
+    "params": {
+      "count": 1
     },
-    {
-      "locale": "en",
-      "key": "home.status.projects",
-      "params": {
-        "count": 1000
-      },
-      "expected": "1,000 projects"
+    "expected": "1 проект"
+  },
+  {
+    "locale": "ru",
+    "key": "home.status.projects",
+    "params": {
+      "count": 2
     },
-    {
-      "locale": "ru",
-      "key": "home.status.projects",
-      "params": {
-        "count": 1
-      },
-      "expected": "1 проект"
+    "expected": "2 проекта"
+  },
+  {
+    "locale": "ru",
+    "key": "home.status.projects",
+    "params": {
+      "count": 5
     },
-    {
-      "locale": "ru",
-      "key": "home.status.projects",
-      "params": {
-        "count": 2
-      },
-      "expected": "2 проекта"
+    "expected": "5 проектов"
+  },
+  {
+    "locale": "ru",
+    "key": "home.status.projects",
+    "params": {
+      "count": 11
     },
-    {
-      "locale": "ru",
-      "key": "home.status.projects",
-      "params": {
-        "count": 5
-      },
-      "expected": "5 проектов"
+    "expected": "11 проектов"
+  },
+  {
+    "locale": "ru",
+    "key": "home.status.projects",
+    "params": {
+      "count": 21
     },
-    {
-      "locale": "ru",
-      "key": "home.status.projects",
-      "params": {
-        "count": 11
-      },
-      "expected": "11 проектов"
+    "expected": "21 проект"
+  },
+  {
+    "locale": "ru",
+    "key": "home.status.projects",
+    "params": {
+      "count": 1000
     },
-    {
-      "locale": "ru",
-      "key": "home.status.projects",
-      "params": {
-        "count": 21
-      },
-      "expected": "21 проект"
+    "expected": "1 000 проектов"
+  },
+  {
+    "locale": "ru",
+    "key": "home.status.missing",
+    "params": {
+      "count": 1
     },
-    {
-      "locale": "ru",
-      "key": "home.status.projects",
-      "params": {
-        "count": 1000
-      },
-      "expected": "1 000 проектов"
+    "expected": "1 не найден"
+  },
+  {
+    "locale": "ru",
+    "key": "home.status.missing",
+    "params": {
+      "count": 2
     },
-    {
-      "locale": "ru",
-      "key": "home.status.missing",
-      "params": {
-        "count": 1
-      },
-      "expected": "1 не найден"
+    "expected": "2 не найдены"
+  },
+  {
+    "locale": "ru",
+    "key": "home.status.missing",
+    "params": {
+      "count": 5
     },
-    {
-      "locale": "ru",
-      "key": "home.status.missing",
-      "params": {
-        "count": 2
-      },
-      "expected": "2 не найдены"
+    "expected": "5 не найдено"
+  },
+  {
+    "locale": "ru",
+    "key": "home.status.missing",
+    "params": {
+      "count": 21
     },
-    {
-      "locale": "ru",
-      "key": "home.status.missing",
-      "params": {
-        "count": 5
-      },
-      "expected": "5 не найдено"
+    "expected": "21 не найден"
+  },
+  {
+    "locale": "ru",
+    "key": "studio.statusBar.chapters",
+    "params": {
+      "count": 3
     },
-    {
-      "locale": "ru",
-      "key": "home.status.missing",
-      "params": {
-        "count": 21
-      },
-      "expected": "21 не найден"
+    "expected": "3 главы"
+  },
+  {
+    "locale": "ru",
+    "key": "studio.statusBar.chapters",
+    "params": {
+      "count": 12
     },
-    {
-      "locale": "ru",
-      "key": "studio.statusBar.chapters",
-      "params": {
-        "count": 3
-      },
-      "expected": "3 главы"
-    },
-    {
-      "locale": "ru",
-      "key": "studio.statusBar.chapters",
-      "params": {
-        "count": 12
-      },
-      "expected": "12 глав"
-    }
-  ]
-}
+    "expected": "12 глав"
+  }
+]

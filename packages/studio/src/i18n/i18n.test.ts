@@ -1,18 +1,10 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import shared from "../../../../locales/cases.json";
+import cases from "../../../../locales/cases.json";
+import ru from "../../../../locales/ru.json";
 import { parseAppPreferences, useAppPreferences } from "../components/settings/appPreferences";
 import { i18n, isTranslationKey, showLanguage, startI18n, t } from ".";
-
-// The catalog ships English only; the shared cases carry a Russian fixture (plurals with few/many) that the
-// tests register as a language, so the resolution and switching paths are exercised against a second locale.
-vi.mock("../../../../locales/index.json", () => ({
-  default: [
-    { code: "en", name: "English" },
-    { code: "ru", name: "Русский" },
-  ],
-}));
 
 const BASE = {
   version: 1,
@@ -28,9 +20,6 @@ function setPreferences(language: string): void {
 
 beforeEach(async () => {
   useAppPreferences.setState({ preferences: null });
-  for (const [code, messages] of Object.entries(shared.fixtures)) {
-    i18n.addResourceBundle(code, "translation", messages);
-  }
   await i18n.changeLanguage("en");
 });
 
@@ -40,7 +29,8 @@ afterEach(() => {
 
 describe("catalog parity", () => {
   it("renders every shared case exactly as the Projects page does", () => {
-    for (const { locale, key, params, expected } of shared.cases) {
+    i18n.addResourceBundle("ru", "translation", ru);
+    for (const { locale, key, params, expected } of cases) {
       expect(isTranslationKey(key), key).toBe(true);
       if (!isTranslationKey(key)) continue;
       expect(t(key, { ...params, lng: locale }), `${locale} ${key}`).toBe(expected);
@@ -62,7 +52,7 @@ describe("fallback", () => {
 });
 
 describe("showLanguage", () => {
-  it("switches to a language whose messages are in, and leaves <html lang> to startI18n", async () => {
+  it("loads the language on demand and switches to it", async () => {
     await showLanguage("ru");
     expect(i18n.language).toBe("ru");
     expect(t("settings.language.label")).toBe("Язык");

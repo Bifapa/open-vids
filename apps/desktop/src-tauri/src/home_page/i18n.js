@@ -345,6 +345,47 @@
     }
   }
 
+  function escapeHtml(s) {
+    return String(s).replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    );
+  }
+
+  /* Markup inside one phrase (the Studio `Trans` analog): the message carries `<tag>text</tag>` pairs, and
+     `wrappers.tag(innerHtml)` returns the HTML for each; everything else is HTML-escaped. String params are
+     formatted as placeholders and put back escaped at the end, so a param value can never open a tag.
+     Unknown tags keep their text. */
+  function rich(key, params, wrappers) {
+    const p = params || {},
+      safe = {},
+      values = [];
+    for (const k of Object.keys(p)) {
+      safe[k] = typeof p[k] === "string" ? "\u0000" + values.push(p[k]) + "\u0000" : p[k];
+    }
+    const text = core.t(key, safe);
+    const w = wrappers || {};
+    const esc = function (s) {
+      return escapeHtml(s).replace(/\u0000(\d+)\u0000/g, function (_, n) {
+        return escapeHtml(values[Number(n) - 1]);
+      });
+    };
+    const render = function (s) {
+      let out = "";
+      let i = 0;
+      const re = /<([a-zA-Z][\w-]*)>([\s\S]*?)<\/\1>/g;
+      let m;
+      while ((m = re.exec(s))) {
+        out += esc(s.slice(i, m.index));
+        const inner = render(m[2]);
+        out += typeof w[m[1]] === "function" ? w[m[1]](inner) : inner;
+        i = m.index + m[0].length;
+      }
+      return out + esc(s.slice(i));
+    };
+    return render(text);
+  }
+
   function announce() {
     document.documentElement.lang = core.language();
     if (document.readyState === "loading")
@@ -386,6 +427,7 @@
       });
     },
     t: core.t,
+    rich: rich,
     languages: core.languages,
     language: core.language,
     preference: core.preference,

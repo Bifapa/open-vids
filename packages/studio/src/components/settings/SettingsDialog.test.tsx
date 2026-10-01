@@ -188,7 +188,7 @@ it("saves the automatic update check and keeps the frame rates the editor can ho
   ).toEqual(["24 fps", "25 fps", "30 fps", "60 fps"]);
 });
 
-it("switches the app language from General: saved and in the store", async () => {
+it("switches the app language from General: saved, in the store, and the row re-renders in Russian", async () => {
   const fetchMock = stubPreferencesFetch();
   vi.stubGlobal("navigator", { languages: ["en-US"] });
   const stopI18n = startI18n("");
@@ -203,9 +203,9 @@ it("switches the app language from General: saved and in the store", async () =>
     const names = [...document.body.querySelectorAll('[role="option"]')].map((option) =>
       option.textContent?.replace("✓", ""),
     );
-    expect(names).toEqual(["System", "English"]);
-    // System is highlighted when the list opens; English is the row under it.
-    for (const key of ["ArrowDown", "Enter"]) {
+    expect(names).toEqual(["System", "English", "Русский"]);
+    // System is highlighted when the list opens; Русский is two rows under it.
+    for (const key of ["ArrowDown", "ArrowDown", "Enter"]) {
       await act(async () => {
         (document.activeElement ?? document.body).dispatchEvent(
           new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
@@ -216,11 +216,11 @@ it("switches the app language from General: saved and in the store", async () =>
 
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/app/preferences",
-      expect.objectContaining({ method: "PUT", body: JSON.stringify({ language: "en" }) }),
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ language: "ru" }) }),
     );
-    expect(useAppPreferences.getState().preferences?.language).toBe("en");
-    await settle();
-    expect(document.body.querySelector('[aria-label="Language"]')?.textContent).toBe("English");
+    expect(useAppPreferences.getState().preferences?.language).toBe("ru");
+    await vi.waitFor(() => expect(document.body.textContent).toContain("Язык"));
+    expect(document.body.querySelector('[aria-label="Язык"]')?.textContent).toBe("Русский");
   } finally {
     stopI18n();
     await act(async () => void (await i18n.changeLanguage("en")));

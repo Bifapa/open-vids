@@ -1,6 +1,4 @@
 [
-  {
-    "code": "en",
-    "name": "English"
-  }
+  { "code": "en", "name": "English" },
+  { "code": "ru", "name": "Русский" }
 ]

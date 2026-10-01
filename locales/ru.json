@@ -1,0 +1,23 @@
+{
+  "settings.language.label": "Язык",
+  "settings.language.system": "Как в системе",
+  "home.recent.title": "Недавние проекты",
+  "home.recent.empty.title": "Нет недавних проектов",
+  "home.recent.empty.description": "Здесь появятся проекты, которые вы создадите или откроете.",
+  "home.status.loading": "Загрузка проектов…",
+  "home.status.projects": "{count, plural, one {# проект} few {# проекта} many {# проектов} other {# проекта}}",
+  "home.status.missing": "{count, plural, one {# не найден} few {# не найдены} many {# не найдено} other {# не найдено}}",
+  "studio.statusBar.hint.play": "Воспроизвести",
+  "studio.statusBar.hint.blade": "Лезвие",
+  "studio.statusBar.hint.split": "Разрезать",
+  "studio.statusBar.hint.panCanvas": "Тяните холст, чтобы прокрутить",
+  "studio.statusBar.hint.scrollZoom": "Прокрутите, чтобы изменить масштаб",
+  "studio.statusBar.hint.delete": "Удалить",
+  "studio.statusBar.hint.preview": "Просмотр",
+  "studio.statusBar.hint.search": "Поиск",
+  "studio.statusBar.hint.dragToTimeline": "Перетащите на таймлайн или в Story",
+  "studio.statusBar.snapOn": "Привязка вкл.",
+  "studio.statusBar.snapOff": "Привязка выкл.",
+  "studio.statusBar.chapters": "{count, plural, one {# глава} few {# главы} many {# глав} other {# главы}}",
+  "studio.statusBar.fps": "{fps} к/с"
+}

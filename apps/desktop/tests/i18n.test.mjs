@@ -10,16 +10,9 @@ const root = new URL("../../../", import.meta.url);
 const readJson = (rel) => JSON.parse(readFileSync(new URL(rel, root), "utf8"));
 const script = readFileSync(new URL("../src-tauri/src/home_page/i18n.js", import.meta.url), "utf8");
 
-const shared = readJson("locales/cases.json");
-/* The catalog ships English only; the shared cases carry a Russian fixture (plurals with few/many) that the
-   tests serve as a second language, so resolution, loading and switching are exercised end to end. */
-const shipped = readJson("locales/index.json");
-const index = shipped.concat(Object.keys(shared.fixtures).map((code) => ({ code, name: code })));
-const catalog = Object.assign(
-  Object.fromEntries(shipped.map((l) => [l.code, readJson(`locales/${l.code}.json`)])),
-  shared.fixtures,
-);
-const cases = shared.cases;
+const index = readJson("locales/index.json");
+const catalog = Object.fromEntries(index.map((l) => [l.code, readJson(`locales/${l.code}.json`)]));
+const cases = readJson("locales/cases.json");
 
 /* Values made inside the vm context have that realm's prototypes: compare plain data through JSON. */
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -73,9 +66,9 @@ test("every locales/cases.json case formats to the expected string", () => {
   }
 });
 
-test("every shipped locale has exactly the keys of en", () => {
+test("every locale has exactly the keys of en", () => {
   const en = Object.keys(catalog.en).sort();
-  for (const l of shipped) assert.deepEqual(Object.keys(catalog[l.code]).sort(), en, l.code);
+  for (const l of index) assert.deepEqual(Object.keys(catalog[l.code]).sort(), en, l.code);
 });
 
 test("format: parameters, nesting, exact matches, quoting, malformed input", () => {
@@ -244,4 +237,26 @@ test("unusable injected data falls back to fetching", async () => {
       "/locales/ru.json",
     ]);
   }
+});
+
+test("rich: tags in a phrase become wrappers, text and params stay escaped", async () => {
+  const messages = {
+    en: {
+      ...catalog.en,
+      "x.rich":
+        "Read <link>the {what}</link> & more <b>{n, plural, one {# bit} other {# bits}}</b>",
+    },
+  };
+  const { i18n } = load({ messages });
+  await i18n.init("en", { index, messages });
+  const html = i18n.rich(
+    "x.rich",
+    { what: "<docs>", n: 2 },
+    { link: (inner) => `<a href="#">${inner}</a>`, b: (inner) => `<strong>${inner}</strong>` },
+  );
+  assert.equal(html, 'Read <a href="#">the &lt;docs&gt;</a> &amp; more <strong>2 bits</strong>');
+  assert.equal(
+    i18n.rich("x.rich", { what: "<link>x</link>", n: 1 }, {}),
+    "Read the &lt;link&gt;x&lt;/link&gt; &amp; more 1 bit",
+  );
 });
