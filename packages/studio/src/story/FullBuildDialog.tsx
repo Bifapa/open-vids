@@ -47,7 +47,7 @@ export function FullBuildDialog({
       footer={
         <>
           {blocker && (
-            <span className="mr-auto text-step-10 text-text-3" role="status">
+            <span className="mr-auto text-xs text-fg-3" role="status">
               {blocker}
             </span>
           )}
@@ -74,9 +74,7 @@ export function FullBuildDialog({
 
       {locked.length > 0 && (
         <DialogGroup title="Locked chapters">
-          <p className="text-step-10 text-text-3">
-            Locked chapters stay as built unless you tick them.
-          </p>
+          <p className="text-xs text-fg-3">Locked chapters stay as built unless you tick them.</p>
           <div className="flex flex-col">
             {locked.map((section) => (
               <ChoiceRow
@@ -115,7 +113,7 @@ export function FullBuildDialog({
           >
             Rebuild affected instead
           </Button>
-          {rebuildBlocker && <span className="text-step-10 text-text-3">{rebuildBlocker}</span>}
+          {rebuildBlocker && <span className="text-xs text-fg-3">{rebuildBlocker}</span>}
         </div>
       </Callout>
     </StoryDialog>

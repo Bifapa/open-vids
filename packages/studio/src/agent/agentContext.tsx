@@ -4,6 +4,8 @@ import { createAgentClient } from "./agentClient";
 import { createAgentStore, type AgentState, type AgentStore } from "./agentStore";
 import { browserEventSource, type EventSourceFactory } from "./agentStream";
 import type { EditorContextSource } from "./editorContext";
+import { consumeIntake } from "./agentIntake";
+import { withoutExcluded } from "./composerContext";
 
 const AgentStoreContext = createContext<AgentStore | null>(null);
 
@@ -45,15 +47,19 @@ export function useProjectAgentStore(
   });
 
   useEffect(() => {
+    const client = createAgentClient(projectId);
     const next = createAgentStore({
-      client: createAgentClient(projectId),
+      client,
       openEventSource,
-      captureEditorContext: () => live.current.editorContext.capture(),
+      captureEditorContext: () => withoutExcluded(live.current.editorContext.capture()),
       onTurnReverted: () => live.current.onReverted(),
       onTurnEnded: () => live.current.onTurnEnded(),
     });
     setStore(next);
-    void next.getState().init();
+    void next
+      .getState()
+      .init()
+      .then(() => consumeIntake(next, client));
     return () => {
       next.getState().dispose();
       setStore(null);

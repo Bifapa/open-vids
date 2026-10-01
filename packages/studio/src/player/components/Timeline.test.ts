@@ -31,7 +31,6 @@ import {
   PLAYHEAD_HEAD_W,
   RULER_H,
   TRACK_H,
-  TRACKS_LEFT_PAD,
   getTimelineDisplayContentWidth,
   getTimelineFitPps,
   getTimelineLaneTop,
@@ -165,7 +164,7 @@ describe("Timeline playhead motion", () => {
       elements: [{ id: "clip-1", tag: "div", start: 10, duration: 1, track: 0 }],
     });
     const { root, playhead } = renderTimelineGeometry("clip-1");
-    const wrapperLeft = GUTTER + TRACKS_LEFT_PAD + 1000.3 - PLAYHEAD_HEAD_W / 2;
+    const wrapperLeft = LABEL_COL_W + GUTTER + 1000.3 - PLAYHEAD_HEAD_W / 2;
     act(() => liveTime.notify(10.003));
     expect(playhead.style.transform).toBe(`translateX(${wrapperLeft}px)`);
     act(() => usePlayerStore.setState({ isPlaying: false }));
@@ -175,49 +174,6 @@ describe("Timeline playhead motion", () => {
 });
 
 describe("Timeline provider boundary", () => {
-  it("keeps all-collapsed horizontal positions at the gutter plus the pre-t=0 pad", () => {
-    usePlayerStore.setState({
-      duration: 11,
-      timelineReady: true,
-      currentTime: 10,
-      zoomMode: "manual",
-      manualZoomPercent: 100,
-      elements: [{ id: "clip-1", tag: "div", start: 10, duration: 1, track: 0 }],
-    });
-
-    const { root, clip, trackHeader, rulerTick, rulerOrigin, playhead } =
-      renderTimelineGeometry("clip-1");
-
-    expect(trackHeader.style.width).toBe(`${GUTTER + TRACKS_LEFT_PAD}px`);
-    expect(clip.style.left).toBe("1000px");
-    expect(clip.style.height).toBe("");
-    expect(clip.style.bottom).toBe(`${CLIP_Y}px`);
-    expect(rulerOrigin.style.width).toBe(`${GUTTER + TRACKS_LEFT_PAD}px`);
-    expect(rulerTick.style.left).toBe("999.5px");
-    expect(playhead.style.transform).toBe(
-      `translateX(${Math.round(GUTTER + TRACKS_LEFT_PAD + 1000 - PLAYHEAD_HEAD_W / 2)}px)`,
-    );
-    expect(playhead.style.width).toBe(`${PLAYHEAD_HEAD_W}px`);
-    expect(
-      resolveTimelineAssetDrop(
-        {
-          rectLeft: 100,
-          rectTop: 0,
-          scrollLeft: 0,
-          scrollTop: 0,
-          contentOrigin: GUTTER,
-          pixelsPerSecond: 100,
-          trackOrder: [0],
-        },
-        1132,
-        100,
-      ).start,
-    ).toBe(10);
-    expect(getTimelineFitPps(640, 11, GUTTER)).toBe(10.1);
-
-    act(() => root.unmount());
-  });
-
   it("reserves the label column and keeps expanded keyframes aligned with ruler time", () => {
     usePlayerStore.setState({
       duration: 20,
@@ -953,17 +909,17 @@ describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
   it("computes fit pps against the 60s floor for short compositions", () => {
     // A 10s comp maps 60s onto the viewport → the comp takes ~1/6 of the width.
     // (10 * 1.2 = 12s of headroom-padded content is still under the 60s floor.)
-    const pps = getTimelineFitPps(viewport, 10, GUTTER + TRACKS_LEFT_PAD);
-    expect(pps).toBeCloseTo((viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / MIN_TIMELINE_EXTENT_S);
-    expect(10 * pps).toBeCloseTo((viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / 6);
+    const pps = getTimelineFitPps(viewport, 10, LABEL_COL_W + GUTTER);
+    expect(pps).toBeCloseTo((viewport - (LABEL_COL_W + GUTTER) - 2) / MIN_TIMELINE_EXTENT_S);
+    expect(10 * pps).toBeCloseTo((viewport - (LABEL_COL_W + GUTTER) - 2) / 6);
   });
 
   it("fits duration * FIT_ZOOM_HEADROOM (not the bare duration) for long compositions", () => {
-    expect(getTimelineFitPps(viewport, 60, GUTTER + TRACKS_LEFT_PAD)).toBeCloseTo(
-      (viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / (60 * FIT_ZOOM_HEADROOM),
+    expect(getTimelineFitPps(viewport, 60, LABEL_COL_W + GUTTER)).toBeCloseTo(
+      (viewport - (LABEL_COL_W + GUTTER) - 2) / (60 * FIT_ZOOM_HEADROOM),
     );
-    expect(getTimelineFitPps(viewport, 120, GUTTER + TRACKS_LEFT_PAD)).toBeCloseTo(
-      (viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / (120 * FIT_ZOOM_HEADROOM),
+    expect(getTimelineFitPps(viewport, 120, LABEL_COL_W + GUTTER)).toBeCloseTo(
+      (viewport - (LABEL_COL_W + GUTTER) - 2) / (120 * FIT_ZOOM_HEADROOM),
     );
   });
 
@@ -974,8 +930,8 @@ describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
   });
 
   it("leaves CapCut-style trailing headroom: the comp ends at 1/1.2 of the usable width", () => {
-    const usable = viewport - (GUTTER + TRACKS_LEFT_PAD) - 2;
-    const pps = getTimelineFitPps(viewport, 120, GUTTER + TRACKS_LEFT_PAD);
+    const usable = viewport - (LABEL_COL_W + GUTTER) - 2;
+    const pps = getTimelineFitPps(viewport, 120, LABEL_COL_W + GUTTER);
     // Composition content occupies usable/1.2 px; the remaining ~17% is empty
     // droppable ruler/lane surface past the end.
     expect(120 * pps).toBeCloseTo(usable / FIT_ZOOM_HEADROOM);
@@ -989,11 +945,11 @@ describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
   });
 
   it("uses the floor for zero/invalid durations", () => {
-    expect(getTimelineFitPps(viewport, 0, GUTTER + TRACKS_LEFT_PAD)).toBeCloseTo(
-      (viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / MIN_TIMELINE_EXTENT_S,
+    expect(getTimelineFitPps(viewport, 0, LABEL_COL_W + GUTTER)).toBeCloseTo(
+      (viewport - (LABEL_COL_W + GUTTER) - 2) / MIN_TIMELINE_EXTENT_S,
     );
-    expect(getTimelineFitPps(viewport, Number.NaN, GUTTER + TRACKS_LEFT_PAD)).toBeCloseTo(
-      (viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / MIN_TIMELINE_EXTENT_S,
+    expect(getTimelineFitPps(viewport, Number.NaN, LABEL_COL_W + GUTTER)).toBeCloseTo(
+      (viewport - (LABEL_COL_W + GUTTER) - 2) / MIN_TIMELINE_EXTENT_S,
     );
   });
 });
@@ -1016,10 +972,10 @@ describe("getTimelineDisplayContentWidth", () => {
       getTimelineDisplayContentWidth({
         trackContentWidth: 200,
         viewportWidth: 2000,
-        contentOrigin: GUTTER + TRACKS_LEFT_PAD,
+        contentOrigin: LABEL_COL_W + GUTTER,
         pps: 5,
       }),
-    ).toBe(2000 - (GUTTER + TRACKS_LEFT_PAD) - 2);
+    ).toBe(2000 - (LABEL_COL_W + GUTTER) - 2);
   });
 
   it("tracks a drag ghost past every other bound (drag-to-extend)", () => {
@@ -1085,7 +1041,7 @@ describe("getTimelineScrollLeftForZoomAnchor", () => {
         nextPixelsPerSecond: 20,
         duration: 120,
       }),
-    ).toBe(668);
+    ).toBe(GUTTER + ((300 + 200 - GUTTER) / 10) * 20 - 300);
   });
 
   it("clamps negative scroll targets", () => {
@@ -1120,11 +1076,11 @@ describe("getTimelinePlayheadLeft", () => {
     // Wrapper left + PLAYHEAD_HEAD_W/2 (where the 1px line is centered) must
     // equal contentOrigin + t*pps at any zoom, for both the padded default
     // origin and the plain gutter origin.
-    expect(getTimelinePlayheadLeft(4, 20, GUTTER + TRACKS_LEFT_PAD) + PLAYHEAD_HEAD_W / 2).toBe(
-      GUTTER + TRACKS_LEFT_PAD + 4 * 20,
+    expect(getTimelinePlayheadLeft(4, 20, LABEL_COL_W + GUTTER) + PLAYHEAD_HEAD_W / 2).toBe(
+      LABEL_COL_W + GUTTER + 4 * 20,
     );
-    expect(getTimelinePlayheadLeft(10, 7.5, GUTTER + TRACKS_LEFT_PAD) + PLAYHEAD_HEAD_W / 2).toBe(
-      GUTTER + TRACKS_LEFT_PAD + 75,
+    expect(getTimelinePlayheadLeft(10, 7.5, LABEL_COL_W + GUTTER) + PLAYHEAD_HEAD_W / 2).toBe(
+      LABEL_COL_W + GUTTER + 75,
     );
     expect(getTimelinePlayheadLeft(4, 20, GUTTER) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + 4 * 20);
     expect(getTimelinePlayheadLeft(10, 7.5, GUTTER) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + 75);
@@ -1137,8 +1093,8 @@ describe("getTimelinePlayheadLeft", () => {
   });
 
   it("centers the line exactly on the left pad's end (the 00:00 tick) at t = 0", () => {
-    expect(getTimelinePlayheadLeft(0, 20, GUTTER + TRACKS_LEFT_PAD) + PLAYHEAD_HEAD_W / 2).toBe(
-      GUTTER + TRACKS_LEFT_PAD,
+    expect(getTimelinePlayheadLeft(0, 20, LABEL_COL_W + GUTTER) + PLAYHEAD_HEAD_W / 2).toBe(
+      LABEL_COL_W + GUTTER,
     );
   });
 
@@ -1147,11 +1103,11 @@ describe("getTimelinePlayheadLeft", () => {
   });
 
   it("guards invalid input", () => {
-    expect(getTimelinePlayheadLeft(Number.NaN, 20, GUTTER + TRACKS_LEFT_PAD)).toBe(
-      GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2,
+    expect(getTimelinePlayheadLeft(Number.NaN, 20, LABEL_COL_W + GUTTER)).toBe(
+      LABEL_COL_W + GUTTER - PLAYHEAD_HEAD_W / 2,
     );
-    expect(getTimelinePlayheadLeft(4, Number.NaN, GUTTER + TRACKS_LEFT_PAD)).toBe(
-      GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2,
+    expect(getTimelinePlayheadLeft(4, Number.NaN, LABEL_COL_W + GUTTER)).toBe(
+      LABEL_COL_W + GUTTER - PLAYHEAD_HEAD_W / 2,
     );
     expect(getTimelinePlayheadLeft(Number.NaN, 20, GUTTER)).toBe(GUTTER - PLAYHEAD_HEAD_W / 2);
     expect(getTimelinePlayheadLeft(4, Number.NaN, LABEL_COL_W)).toBe(
@@ -1277,10 +1233,10 @@ describe("resolveTimelineAssetDrop", () => {
           trackHeight: 72,
           trackOrder: [0, 3, 7],
         },
-        432, // rectLeft(100) + GUTTER(32) + 3s*100pps  (contentOrigin = GUTTER)
-        // clientY: rectTop(200) + RULER_H(24) + TRACKS_TOP_PAD(72) + TRACK_H(48)
-        // + TRACK_H/2(24) = 368 → row 1 → track 3.
-        368,
+        100 + GUTTER + 300, // rectLeft + contentOrigin + 3s*100pps
+        // clientY: rectTop(200) + RULER_H(24) + TRACKS_TOP_PAD(16) + TRACK_H(48)
+        // + TRACK_H/2(24) = 312 → row 1 → track 3.
+        312,
       ),
     ).toEqual({ start: 3, track: 3 });
   });
@@ -1298,7 +1254,7 @@ describe("resolveTimelineAssetDrop", () => {
           trackHeight: 72,
           trackOrder: [0, 3, 7],
         },
-        250, // rectLeft(100) + GUTTER(32) + 1.18s*100pps  (contentOrigin = GUTTER)
+        100 + GUTTER + 118, // rectLeft + contentOrigin + 1.18s*100pps
         600,
       ),
     ).toEqual({ start: 1.18, track: 8 });

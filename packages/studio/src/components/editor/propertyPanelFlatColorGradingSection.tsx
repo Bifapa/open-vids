@@ -9,7 +9,12 @@ import {
 } from "@hyperframes/core/color-grading";
 import { Plus, Settings } from "../../icons/SystemIcons";
 import { LUT_EXT } from "@hyperframes/core/media-types";
-import { FLAT_PREVIEW_GRID, FlatSlider } from "./propertyPanelFlatPrimitives";
+import { CaretDown } from "@phosphor-icons/react";
+import { FlatSlider } from "./propertyPanelFlatPrimitives";
+import { FlatSubGroup } from "./propertyPanelFlatSubGroup";
+import { Badge } from "../ui/Status";
+import { Button } from "../ui/Button";
+import { INSP_MINI_BUTTON, INSP_SELECT, INSP_SUBGROUP_HEAD } from "./inspectorStyles";
 import type {
   ColorGradingControllerState,
   ColorGradingPresetPreviews,
@@ -69,23 +74,20 @@ function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
   return (
     <div
       data-flat-grade-hdr-banner="true"
-      className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] leading-4 text-amber-100"
+      className="rounded-sm border border-warning/35 bg-warning-soft px-2 py-1.5 text-xs leading-[15px] text-fg-2"
     >
-      <div className="mb-0.5 flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 text-fg">
         <span className="font-semibold">{metadata.color.label} source</span>
-        <span className="rounded-sm bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-100">
-          SDR preview
-        </span>
+        <Badge tone="warning" size="sm">
+          SDR Preview
+        </Badge>
       </div>
-      <p className="text-amber-100/80">
+      <p className="mt-0.5">
         These controls use the current SDR shader preview path. Render may stay HDR-tagged, but this
         is not true HDR color grading yet.
       </p>
       {details && (
-        <p
-          data-flat-grade-hdr-detail="true"
-          className="mt-0.5 truncate text-[9px] text-amber-100/55"
-        >
+        <p data-flat-grade-hdr-detail="true" className="mt-0.5 truncate text-2xs text-fg-3">
           {details}
         </p>
       )}
@@ -199,88 +201,98 @@ export function FlatColorGradingSection({
     );
   };
 
+  const selectedPreset = HF_COLOR_GRADING_GRADE_PRESETS.find((p) => p.id === grading.preset);
+  const primaryAdjusted = COLOR_GRADING_ADJUST_SLIDERS.some(
+    (slider) => Math.abs(grading.adjust[slider.key]) > 1e-6,
+  );
+
   return (
-    <div className="space-y-1.5">
+    <div className="grid gap-1.5">
       <HdrBanner metadata={mediaMetadata} />
       <PropertyPanelColorScopes
         captureFrame={() => captureGradedFrame()}
         refreshKey={scopesRefreshKey}
       />
-      <div data-flat-grade-presets="true" className="space-y-1.5">
-        {presetPreviews.status === "unavailable" && (
-          <button
-            type="button"
-            onClick={onRequestPresetPreviews}
-            className="text-[10px] font-medium text-panel-accent hover:text-panel-accent/80"
-          >
-            Retry look previews
-          </button>
-        )}
-        <div data-flat-grade-preset-group="presets" className={FLAT_PREVIEW_GRID}>
-          {HF_COLOR_GRADING_GRADE_PRESETS.map((preset) => {
-            const label = preset.label;
-            const selected = grading.preset === preset.id;
-            const preview = presetPreviews.images[preset.id];
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                data-flat-grade-preset={preset.id}
-                aria-pressed={selected}
-                {...presetPreviewHandlers({
-                  id: preset.id,
-                  label,
-                  resolve: () => resolvePreset(preset.id),
-                  onPreview: onPreviewColorGrading,
-                  onCommit: onCommitColorGrading,
-                })}
-                className={`min-w-0 overflow-hidden border text-left text-[10px] transition-colors ${
-                  selected
-                    ? "border-panel-accent bg-panel-accent/10 text-panel-text-0"
-                    : "border-panel-hairline bg-panel-bg-soft text-panel-text-3 hover:border-panel-border-input hover:text-panel-text-1"
-                }`}
-              >
-                <span
-                  data-flat-grade-preview-frame={preset.id}
-                  className="flex w-full items-center justify-center overflow-hidden bg-black/20"
-                  style={{ aspectRatio: `${presetPreviews.width} / ${presetPreviews.height}` }}
+      <FlatSubGroup
+        title="Looks"
+        meta={`${selectedPreset?.label ?? "None"} · ${Math.round(grading.intensity * 100)}%`}
+      >
+        <div data-flat-grade-presets="true" className="grid gap-1.5">
+          {presetPreviews.status === "unavailable" && (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="justify-self-start"
+              onClick={onRequestPresetPreviews}
+            >
+              Retry look previews
+            </Button>
+          )}
+          <div data-flat-grade-preset-group="presets" className="grid grid-cols-3 gap-1.5">
+            {HF_COLOR_GRADING_GRADE_PRESETS.map((preset) => {
+              const label = preset.label;
+              const selected = grading.preset === preset.id;
+              const preview = presetPreviews.images[preset.id];
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  data-flat-grade-preset={preset.id}
+                  aria-pressed={selected}
+                  {...presetPreviewHandlers({
+                    id: preset.id,
+                    label,
+                    resolve: () => resolvePreset(preset.id),
+                    onPreview: onPreviewColorGrading,
+                    onCommit: onCommitColorGrading,
+                  })}
+                  className={`grid min-w-0 overflow-hidden rounded-sm border text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent ${
+                    selected
+                      ? "border-accent bg-surface-1 text-fg shadow-[inset_0_0_0_1px_var(--color-accent)]"
+                      : "border-border-subtle bg-surface-1 text-fg-2 hover:border-border-strong hover:text-fg"
+                  }`}
                 >
-                  {preview ? (
-                    <img
-                      data-flat-grade-preview={preset.id}
-                      src={preview}
-                      alt=""
-                      draggable={false}
-                      className="block h-full w-full object-contain"
-                    />
-                  ) : (
-                    <span
-                      data-flat-grade-preview-placeholder={presetPreviews.status}
-                      className="h-full w-full bg-panel-bg-soft"
-                    />
-                  )}
-                </span>
-                <span className="block truncate px-2 py-1.5">{label}</span>
-              </button>
-            );
-          })}
+                  <span
+                    data-flat-grade-preview-frame={preset.id}
+                    className="flex w-full items-center justify-center overflow-hidden bg-bg-1"
+                    style={{ aspectRatio: `${presetPreviews.width} / ${presetPreviews.height}` }}
+                  >
+                    {preview ? (
+                      <img
+                        data-flat-grade-preview={preset.id}
+                        src={preview}
+                        alt=""
+                        draggable={false}
+                        className="block h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span
+                        data-flat-grade-preview-placeholder={presetPreviews.status}
+                        className="h-full w-full bg-surface-1"
+                      />
+                    )}
+                  </span>
+                  <span className="block truncate px-[5px] pt-[3px] pb-1 text-2xs leading-[13px]">
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
-      <FlatSlider
-        label="Amount"
-        value={Math.round(grading.intensity * 100)}
-        min={0}
-        max={100}
-        tier={grading.intensity === 1 ? "default" : "explicitCustom"}
-        displayValue={`${Math.round(grading.intensity * 100)}%`}
-        onCommit={actions.setIntensityPercent}
-        onReset={() => actions.setIntensityPercent(100)}
-      />
+        <FlatSlider
+          label="Amount"
+          value={Math.round(grading.intensity * 100)}
+          min={0}
+          max={100}
+          tier={grading.intensity === 1 ? "default" : "explicitCustom"}
+          displayValue={`${Math.round(grading.intensity * 100)}%`}
+          onCommit={actions.setIntensityPercent}
+          onReset={() => actions.setIntensityPercent(100)}
+        />
+      </FlatSubGroup>
 
-      <div className="space-y-0.5 border-t border-panel-hairline pt-1.5">
-        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          Primary
-        </div>
+      <FlatSubGroup title="Primary" meta={primaryAdjusted ? "Adjusted" : undefined}>
         {COLOR_GRADING_ADJUST_SLIDERS.map((slider) => {
           const rawPercent = grading.adjust[slider.key] * slider.scale;
           const isSet = Math.abs(grading.adjust[slider.key]) > 1e-6;
@@ -305,12 +317,9 @@ export function FlatColorGradingSection({
             </div>
           );
         })}
-      </div>
+      </FlatSubGroup>
 
-      <div className="space-y-1.5 border-t border-panel-hairline pt-1.5">
-        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          Color wheels
-        </div>
+      <FlatSubGroup title="Color Wheels">
         <ColorWheels
           value={resolvedGrading.wheels}
           onPreview={(wheels) =>
@@ -328,12 +337,9 @@ export function FlatColorGradingSection({
             })
           }
         />
-      </div>
+      </FlatSubGroup>
 
-      <div className="space-y-1.5 border-t border-panel-hairline pt-1.5">
-        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          Curves
-        </div>
+      <FlatSubGroup title="Curves">
         <ColorCurves
           value={{ curves: resolvedGrading.curves, hueCurves: resolvedGrading.hueCurves }}
           onPreview={({ curves, hueCurves }) =>
@@ -353,12 +359,9 @@ export function FlatColorGradingSection({
             })
           }
         />
-      </div>
+      </FlatSubGroup>
 
-      <div className="space-y-1.5 border-t border-panel-hairline pt-1.5">
-        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          Secondary color
-        </div>
+      <FlatSubGroup title="Secondary">
         <PropertyPanelColorSecondary
           secondaries={resolvedGrading.secondaries}
           captureFrame={() => captureGradedFrame({ grading: secondaryInputGrading })}
@@ -370,32 +373,29 @@ export function FlatColorGradingSection({
             })
           }
         />
-      </div>
+      </FlatSubGroup>
 
-      <div className="border-t border-panel-hairline pt-1.5">
+      <div className="min-w-0 border-t border-border-subtle">
         <button
           type="button"
           data-flat-grade-lut-toggle="true"
+          aria-expanded={lutOpen}
           onClick={() => setLutOpen((v) => !v)}
-          className="flex min-h-[30px] w-full items-center justify-between text-left"
+          className={INSP_SUBGROUP_HEAD}
         >
-          <span className="text-[11px] text-panel-text-2">Custom LUT</span>
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="currentColor"
-            className={`shrink-0 text-panel-text-5 transition-transform ${lutOpen ? "rotate-90" : ""}`}
-          >
-            <path d="M2 3l3 4 3-4z" />
-          </svg>
+          <CaretDown
+            size={12}
+            aria-hidden="true"
+            className={`shrink-0 text-fg-3 transition-transform ${lutOpen ? "" : "-rotate-90"}`}
+          />
+          Custom LUT
+          <span className="ml-auto min-w-0 truncate font-normal text-fg-3">
+            {selectedLutName ?? "None"}
+          </span>
         </button>
         {lutOpen && (
-          <div className="space-y-1.5 pb-1">
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-panel-text-3">
-                {selectedLutName ?? "None"}
-              </span>
+          <div className="grid gap-1.5 pt-0.5 pb-2.5">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5">
               <select
                 data-flat-grade-lut-select="true"
                 aria-label="Custom LUT"
@@ -404,7 +404,7 @@ export function FlatColorGradingSection({
                   const src = e.target.value;
                   actions.applyLut(src || null, src && lut?.src === src ? lut.intensity : 1);
                 }}
-                className="border-b border-panel-border-input/50 bg-transparent font-mono text-[10px] text-panel-text-3 outline-hidden hover:border-panel-border-input"
+                className={`${INSP_SELECT} font-mono text-num`}
               >
                 <option value="">None</option>
                 {lutAssets.map((asset) => (
@@ -413,15 +413,15 @@ export function FlatColorGradingSection({
                   </option>
                 ))}
               </select>
-              <button
-                type="button"
+              <Button
+                size="sm"
                 disabled={!onImportAssets}
                 onClick={() => lutInputRef.current?.click()}
                 title="Import .cube LUT"
-                className="shrink-0 text-panel-text-4 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
+                icon={<Plus size={12} />}
               >
-                <Plus size={12} />
-              </button>
+                Import
+              </Button>
               <input
                 ref={lutInputRef}
                 type="file"
@@ -449,71 +449,57 @@ export function FlatColorGradingSection({
         )}
       </div>
 
-      <div className="space-y-1.5 border-t border-panel-hairline pt-1.5">
-        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          Finish
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="flex-1">{renderDetailSlider("vignette")}</div>
-          <button
-            type="button"
-            data-flat-grade-settings="vignette"
-            title="Vignette settings"
-            onClick={() => setDetailSettingsOpen((c) => (c === "vignette" ? null : "vignette"))}
-            className="shrink-0 text-panel-text-4 hover:text-panel-text-1"
-          >
-            <Settings size={12} />
-          </button>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="flex-1">{renderDetailSlider("grain")}</div>
-          <button
-            type="button"
-            data-flat-grade-settings="grain"
-            title="Grain settings"
-            onClick={() => setDetailSettingsOpen((c) => (c === "grain" ? null : "grain"))}
-            className="shrink-0 text-panel-text-4 hover:text-panel-text-1"
-          >
-            <Settings size={12} />
-          </button>
-        </div>
+      <FlatSubGroup title="Finish">
+        {(["vignette", "grain"] as const).map((key) => (
+          <div key={key} className="grid grid-cols-[minmax(0,1fr)_20px] items-center gap-1">
+            {renderDetailSlider(key)}
+            <button
+              type="button"
+              data-flat-grade-settings={key}
+              title={key === "vignette" ? "Vignette settings" : "Grain settings"}
+              aria-label={key === "vignette" ? "Vignette settings" : "Grain settings"}
+              aria-expanded={detailSettingsOpen === key}
+              onClick={() => setDetailSettingsOpen((c) => (c === key ? null : key))}
+              className={`${INSP_MINI_BUTTON} aria-expanded:bg-surface-3 aria-expanded:text-fg`}
+            >
+              <Settings size={12} />
+            </button>
+          </div>
+        ))}
         {detailSettingsOpen && (
-          <div className="space-y-0.5 border-l-2 border-panel-border-input pl-2.5">
+          <div className="grid gap-1.5 border-l-2 border-border pl-2.5">
             {(detailSettingsOpen === "vignette" ? VIGNETTE_TUNE_SLIDERS : GRAIN_TUNE_SLIDERS).map(
               (slider) => renderDetailSlider(slider.key),
             )}
           </div>
         )}
-      </div>
+      </FlatSubGroup>
 
       {onApplyScopeAvailable && (
-        <div className="flex items-center justify-between gap-2 border-t border-panel-hairline pt-1.5">
-          <span className="flex items-center gap-1.5 text-[11px] text-panel-text-2">
-            Copy grade to
-            <select
-              aria-label="Copy grade to"
-              value={applyScope}
-              onChange={(e) => {
-                onSetApplyScope(e.target.value as "source-file" | "project");
-              }}
-              disabled={applyBusy}
-              className="border-b border-panel-border-input/50 bg-transparent font-mono text-[11px] text-panel-text-0 outline-hidden hover:border-panel-border-input disabled:opacity-50"
-            >
-              <option value="source-file">Current file media</option>
-              <option value="project">All project media</option>
-            </select>
-          </span>
-          <button
-            type="button"
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5 border-t border-border-subtle pt-2">
+          <span className="whitespace-nowrap text-sm text-fg-3">Copy grade to</span>
+          <select
+            aria-label="Copy grade to"
+            value={applyScope}
+            onChange={(e) => {
+              onSetApplyScope(e.target.value as "source-file" | "project");
+            }}
+            disabled={applyBusy}
+            className={INSP_SELECT}
+          >
+            <option value="source-file">Current file media</option>
+            <option value="project">All project media</option>
+          </select>
+          <Button
+            size="sm"
             data-flat-grade-apply="true"
             disabled={applyBusy}
             onClick={() => {
               onApplyToScope();
             }}
-            className="text-[11px] font-medium text-panel-accent hover:text-panel-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {applyBusy ? "Applying" : "Apply"}
-          </button>
+          </Button>
         </div>
       )}
     </div>

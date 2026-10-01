@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react";
-import { PLAYHEAD_GLOW_W } from "./PlayheadIndicator";
+import { PLAYHEAD_VISUAL_W } from "./PlayheadIndicator";
 import { useSettledScrollLeft } from "./useSettledScrollLeft";
 
 // Clips the playhead at the track headers' edge once a scroll settles, so one scrolled off to
@@ -24,7 +24,7 @@ export function TimelinePlayheadLayer({
         clipPath:
           settledScrollLeft === null
             ? undefined
-            : `inset(0 0 0 ${settledScrollLeft + contentOrigin - PLAYHEAD_GLOW_W / 2}px)`,
+            : `inset(0 0 0 ${settledScrollLeft + contentOrigin - PLAYHEAD_VISUAL_W / 2}px)`,
       }}
     >
       {children}

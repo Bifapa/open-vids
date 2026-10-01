@@ -301,7 +301,7 @@ describe("NLEPreview", () => {
         );
       });
       act(() => vi.advanceTimersByTime(300));
-      expect(chip(view)?.textContent).toBe("Panned·Fit");
+      expect(chip(view)?.textContent).toBe("PannedFit");
       view.cleanup();
     });
 
@@ -337,7 +337,7 @@ describe("NLEPreview", () => {
       expect([chip(view), navigator(view)]).toEqual([null, null]);
 
       pinchIn(view, 10);
-      expect(chip(view)?.textContent).toMatch(/^Zoomed 2\d\d%·Fit$/);
+      expect(chip(view)?.textContent).toMatch(/^Zoomed 2\d\d%Fit$/);
       const region = view.host.querySelector<HTMLElement>(
         '[data-testid="preview-zoom-navigator-region"]',
       );

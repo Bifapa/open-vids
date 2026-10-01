@@ -212,7 +212,7 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
           ref={buttonRef}
           aria-label="Effects — group these clips first"
           title="Group these clips to add effects to all of them"
-          className="flex h-6 items-center justify-center rounded-sm border-0 bg-transparent px-1 text-[10px] font-semibold text-[var(--timeline-text-faint)] hover:text-[var(--timeline-text-soft)]"
+          className="flex h-ctl-xs items-center justify-center rounded-sm border-0 bg-transparent px-1 text-2xs leading-none font-semibold tracking-[0.02em] text-fg-2 hover:bg-surface-2 hover:text-fg"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
@@ -252,10 +252,10 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
         ref={buttonRef}
         aria-label={nodeCount > 0 ? `Effects — ${nodeCount} applied` : "Effects"}
         title="Effects"
-        className={`flex h-6 items-center justify-center gap-0.5 rounded border-0 bg-transparent px-1 text-[10px] font-semibold transition-colors ${
+        className={`flex h-ctl-xs items-center justify-center gap-0.5 rounded-sm border-0 bg-transparent px-1 text-2xs leading-none font-semibold tracking-[0.02em] transition-colors hover:bg-surface-2 ${
           open || nodeCount > 0
-            ? "text-[var(--timeline-accent)]"
-            : "text-[var(--timeline-text-faint)] hover:text-[var(--timeline-text-soft)]"
+            ? "text-fg shadow-[inset_0_0_0_1px_var(--color-border-strong)]"
+            : "text-fg-2 hover:text-fg"
         }`}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { Button } from "../ui";
 import {
   isFitZoom,
   isPreviewAtFit,
@@ -8,10 +9,6 @@ import {
 } from "./previewZoom";
 
 const NAVIGATOR_PX = 112;
-
-function zoomChipLabel(zoomPercent: number): string {
-  return isFitZoom(zoomPercent) ? "Panned" : `Zoomed ${Math.round(zoomPercent)}%`;
-}
 
 function navigatorFrameSize(stage: { width: number; height: number }) {
   const ratio = stage.width > 0 && stage.height > 0 ? stage.width / stage.height : 16 / 9;
@@ -74,34 +71,40 @@ export function PreviewZoomOverlay({
   return (
     <>
       <div
-        className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 rounded-md py-1 pl-2.5 pr-1 text-xs text-white/80 bg-black/60 backdrop-blur-xs"
+        className="absolute top-2.5 left-2.5 z-50 flex h-ctl items-center gap-2 rounded-md border border-border bg-bg-1/94 py-0 pr-0.5 pl-2.5 text-xs whitespace-nowrap text-fg-2 shadow-tip"
         data-testid="preview-zoom-chip"
         // The pane clears the timeline selection on a pointerdown outside the frame.
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <span className="tabular-nums">{zoomChipLabel(zoom.zoomPercent)}</span>
-        <span aria-hidden="true" className="text-white/30">
-          ·
-        </span>
-        <button
-          type="button"
-          className="rounded px-1.5 py-0.5 font-medium text-studio-accent hover:bg-white/10 transition-colors"
+        {isFitZoom(zoom.zoomPercent) ? (
+          <span>Panned</span>
+        ) : (
+          <span>
+            Zoomed{" "}
+            <b className="font-mono text-num font-medium tabular-nums text-fg">
+              {Math.round(zoom.zoomPercent)}%
+            </b>
+          </span>
+        )}
+        <Button
+          size="xs"
+          variant="secondary"
           onClick={onFit}
           aria-label="Fit the whole frame in view"
           data-testid="preview-zoom-fit"
         >
           Fit
-        </button>
+        </Button>
       </div>
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute bottom-3 right-3 z-50 rounded-md p-1.5 bg-black/60 backdrop-blur-xs"
+        className="pointer-events-none absolute bottom-2.5 left-2.5 z-50 overflow-hidden rounded-sm border border-border bg-tip-bg/88 shadow-tip"
         data-testid="preview-zoom-navigator"
       >
-        <div className="relative overflow-hidden bg-white/10" style={navigatorFrameSize(stageSize)}>
+        <div className="relative overflow-hidden" style={navigatorFrameSize(stageSize)}>
           <div
             ref={navigatorRegionRef}
-            className="absolute rounded-[1px] border border-studio-accent bg-studio-accent/15"
+            className="absolute rounded-[2px] border-[1.5px] border-fg bg-fg/10"
             data-testid="preview-zoom-navigator-region"
           />
         </div>

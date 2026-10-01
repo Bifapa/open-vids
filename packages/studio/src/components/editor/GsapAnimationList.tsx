@@ -56,7 +56,7 @@ export function GsapAnimationList({
   return (
     <div className="space-y-2">
       {animations.length === 0 && (
-        <p className="text-[11px] leading-4 text-neutral-500">
+        <p className="text-sm leading-4 text-fg-3">
           No animations on this element yet — add an effect below to animate it.
         </p>
       )}

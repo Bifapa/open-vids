@@ -8,20 +8,29 @@ import {
   type KeyboardEvent,
 } from "react";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
-import { CircleNotch, TreeStructure, X } from "@phosphor-icons/react";
+import { TreeStructure, X } from "@phosphor-icons/react";
 import type { StoryAction, StoryActionOptions, StoryPoint } from "@hyperframes/agent-protocol";
 import type { AgentStore } from "../agent/agentStore";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import { useResearchServices, useSourcesStore } from "../research/researchContext";
-import { Button } from "../components/ui";
+import { Button, IconButton, Spinner } from "../components/ui";
 import { isTextFieldTarget } from "../utils/typingTarget";
 import { FullBuildDialog } from "./FullBuildDialog";
 import { RebuildDialog } from "./RebuildDialog";
 import { StoryCanvas } from "./StoryCanvas";
 import { useStoryServices, useStoryStore } from "./storyContext";
-import { addNode, newChapter, newMaterial, newStoryId, removeItems } from "./storyGraphOps";
+import {
+  addNode,
+  moveNodes,
+  newChapter,
+  newMaterial,
+  newStoryId,
+  removeItems,
+} from "./storyGraphOps";
 import { StoryInspector } from "./StoryInspector";
-import { StoryToolbar } from "./StoryToolbar";
+import { tidyLayout } from "./storyLayout";
+import { StorySectionStrip } from "./StorySectionStrip";
+import { StoryToolbar, type StoryTool } from "./StoryToolbar";
 import type { NewNodeRequest } from "./AddNodePopover";
 import { fullBuildNeedsConfirm, syncBlocker } from "./storySync";
 import { agentBlocker, researchBlocker, useStoryAgent, useStoryAgentSync } from "./useStoryAgent";
@@ -62,15 +71,17 @@ function EmptyStory({
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-      <TreeStructure size={28} className="text-text-4" aria-hidden />
+      <span className="flex size-10 items-center justify-center rounded-lg border border-border bg-bg-1 text-fg-3 shadow-raise">
+        <TreeStructure size={20} aria-hidden />
+      </span>
       <div className="flex flex-col gap-1">
-        <p className="text-step-13 font-semibold text-text-1">No story yet</p>
-        <p className="max-w-sm text-step-11 text-text-3">
+        <p className="text-md font-semibold text-fg">No story yet</p>
+        <p className="max-w-sm text-sm leading-[17px] text-pretty text-fg-3">
           Ask the agent to plan the video as chapters from your footage, or start with a chapter and
           build it yourself.
         </p>
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-1.5">
         <Button variant="primary" size="sm" disabled={planDisabled} onClick={onPlan}>
           Plan with AI
         </Button>
@@ -92,6 +103,7 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
   const notice = useStoryStore((state) => state.notice);
   const sync = useStoryStore((state) => state.sync);
   const [dialog, setDialog] = useState<StoryPanelDialog | null>(null);
+  const [tool, setTool] = useState<StoryTool>("select");
   const agent = useStoryAgent(agentStore);
   const library = useStoryLibrary(client, projectId);
   const flow = useReactFlow();
@@ -203,12 +215,57 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
     else useDockLayoutStore.getState().activatePanel("chat");
   };
 
+  const fit = () => void flow.fitView({ padding: 0.12, maxZoom: 1, duration: 200 });
+  const zoomBy = (change: { by: number } | { to: number }) => {
+    const level = "to" in change ? change.to : flow.getZoom() * change.by;
+    void flow.zoomTo(Math.min(2, Math.max(0.05, level)), { duration: 150 });
+  };
+
+  /** Tidy up: one undoable move of every card into the play-order layout, then the whole graph in view. */
+  const tidy = () => {
+    const current = store.getState().graph;
+    if (!current) return;
+    const positions = tidyLayout(current, (id) => flow.getNode(id)?.measured?.height ?? null);
+    if (store.getState().commit((graph) => moveNodes(graph, positions))) {
+      requestAnimationFrame(fit);
+    }
+  };
+
+  /** A section in the strip: select its chapter and bring it to the middle of the canvas. */
+  const openChapter = (chapter: string) => {
+    store.getState().select({ nodes: [chapter], edges: [] });
+    const node = flow.getNode(chapter);
+    if (!node) return;
+    const width = node.measured?.width ?? CARD.width;
+    const height = node.measured?.height ?? CARD.height;
+    void flow.setCenter(node.position.x + width / 2, node.position.y + height / 2, {
+      zoom: Math.max(flow.getZoom(), 0.6),
+      duration: 200,
+    });
+  };
+
+  /** Canvas keys (prototype): V/H tools, ⇧T tidy, = / - zoom, ⇧1 fit; Delete/Backspace deletes the selection. */
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    // Fields keep their keys; anywhere else in the panel Delete/Backspace deletes the selection.
-    if (event.key !== "Delete" && event.key !== "Backspace") return;
+    // Fields keep their keys; an open dialog owns its keys and the canvas behind it keeps its selection.
     if (event.altKey || event.metaKey || event.ctrlKey || isTextFieldTarget(event.target)) return;
-    // An open dialog owns its keys; the canvas behind it keeps its selection.
     if (event.target instanceof Element && event.target.closest('[role="dialog"]')) return;
+    const key = event.key.toLowerCase();
+    const canvasKey = (() => {
+      if (event.shiftKey && key === "t") return tidy;
+      if (event.shiftKey && (event.code === "Digit1" || key === "!")) return fit;
+      if (event.shiftKey) return null;
+      if (key === "v") return () => setTool("select");
+      if (key === "h") return () => setTool("pan");
+      if (key === "=" || key === "+") return () => zoomBy({ by: 1.25 });
+      if (key === "-") return () => zoomBy({ by: 1 / 1.25 });
+      return null;
+    })();
+    if (canvasKey && hasGraph && status === "ready") {
+      event.preventDefault();
+      canvasKey();
+      return;
+    }
+    if (event.key !== "Delete" && event.key !== "Backspace") return;
     const { selection } = store.getState();
     const ids = [...selection.nodes, ...selection.edges];
     if (ids.length === 0) return;
@@ -254,17 +311,18 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
   if (status === "loading" || status === "idle") {
     content = (
       <div
-        className="flex h-full items-center justify-center text-step-11 text-text-3"
+        className="flex h-full items-center justify-center gap-2 text-sm text-fg-3"
         role="status"
       >
+        <Spinner />
         Loading story…
       </div>
     );
   } else if (status === "error") {
     content = (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-        <p className="text-step-12 text-text-1">Couldn't load the story</p>
-        {loadError && <p className="text-step-11 text-text-3">{loadError}</p>}
+      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+        <p className="text-md font-semibold text-fg">Couldn't load the story</p>
+        {loadError && <p className="max-w-sm text-sm text-fg-3">{loadError}</p>}
         <Button size="sm" variant="secondary" onClick={() => void store.getState().reload()}>
           Retry
         </Button>
@@ -279,7 +337,7 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
       />
     );
   } else {
-    content = <StoryCanvas onRefused={refuse} />;
+    content = <StoryCanvas tool={tool} onRefused={refuse} />;
   }
 
   return (
@@ -295,51 +353,50 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
           focusWithin.current = true;
         }}
         onBlurCapture={onBlurCapture}
-        className="relative flex h-full min-h-0 flex-col bg-bg-1 text-text-1 outline-hidden"
+        className="@container/story relative flex h-full min-h-0 flex-col bg-bg-0 text-fg outline-hidden"
       >
         <StoryToolbar
           library={library}
           agent={agent}
+          tool={tool}
+          onTool={setTool}
           onAdd={add}
-          onFit={() => void flow.fitView({ padding: 0.2, maxZoom: 1, duration: 200 })}
+          onTidy={tidy}
+          onZoom={zoomBy}
+          onFit={fit}
           onUndo={() => store.getState().undo()}
           onRedo={() => store.getState().redo()}
           onAction={requestAction}
           onRebuild={() => setDialog({ kind: "rebuild", chapters: null })}
           onFindMissing={() => research.find(null)}
         />
-        {agentBusy && (
-          <div
-            role="status"
-            className="flex shrink-0 items-center gap-2 border-b border-border bg-selection/10 px-3 py-1.5 text-step-11 text-selection"
-          >
-            <CircleNotch
-              size={12}
-              className="animate-spin motion-reduce:animate-none"
-              aria-hidden
-            />
-            AI is working on the story… The canvas is read-only until it finishes.
-          </div>
-        )}
-        {notice && (
-          <div
-            role="alert"
-            className="flex shrink-0 items-start justify-between gap-2 border-b border-border bg-container/10 px-3 py-1.5 text-step-11 text-text-1"
-          >
-            <span>{notice}</span>
-            <button
-              type="button"
-              aria-label="Dismiss message"
-              onClick={() => store.getState().setNotice(null)}
-              className="shrink-0 rounded-sm text-text-3 outline-hidden hover:text-text-0 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
-            >
-              <X size={12} aria-hidden />
-            </button>
-          </div>
-        )}
         <div className="flex min-h-0 flex-1">
-          <div ref={canvasRef} className="relative min-w-0 flex-1">
+          <div ref={canvasRef} className="relative min-w-0 flex-1 bg-stage">
             {content}
+            {notice && (
+              <div
+                role="alert"
+                className="absolute top-2.5 left-1/2 z-20 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-start gap-2 rounded-md border border-border bg-bg-1 py-1.5 pr-1.5 pl-3 text-sm text-fg shadow-pop"
+              >
+                <span className="min-w-0 pt-0.5">{notice}</span>
+                <IconButton
+                  aria-label="Dismiss message"
+                  size="xs"
+                  icon={<X size={10} aria-hidden />}
+                  onClick={() => store.getState().setNotice(null)}
+                />
+              </div>
+            )}
+            {agentBusy && (
+              <div
+                role="status"
+                className="absolute bottom-3 left-1/2 z-20 flex h-head max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2 rounded-md border border-border bg-menu-bg px-3 text-sm whitespace-nowrap text-fg-2 shadow-pop backdrop-blur-md"
+              >
+                <Spinner />
+                <b className="font-semibold text-fg">AI is working on the story…</b>
+                <span className="truncate">The canvas is read-only until it finishes.</span>
+              </div>
+            )}
           </div>
           {hasGraph && status === "ready" && (
             <StoryInspector
@@ -348,6 +405,12 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
             />
           )}
         </div>
+        {hasGraph && status === "ready" && (
+          <StorySectionStrip
+            onOpenChapter={openChapter}
+            onOpenEdit={() => useDockLayoutStore.getState().activatePanel("preview")}
+          />
+        )}
         {dialogView}
       </div>
     </StoryResearchProvider>

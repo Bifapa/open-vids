@@ -1,0 +1,62 @@
+/* Media workspace: the few rules Tailwind utilities can't express (a tile size custom property, a sticky blurred
+   section head, the offline hatch, thumbnail hairlines, the drop tray's entrance). Everything else is utilities. */
+
+.hf-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--hf-media-tile, 168px), 1fr));
+  gap: 6px;
+  padding: 0 10px 4px;
+}
+
+.hf-media-group {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: color-mix(in oklch, var(--color-bg-0) 92%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.hf-media-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-stage);
+}
+
+.hf-media-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--color-edge-hi);
+  pointer-events: none;
+}
+
+.hf-media-offline {
+  background:
+    repeating-linear-gradient(135deg, transparent 0 7px, var(--color-stripe) 7px 8px),
+    var(--color-bg-0);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.hf-media-offline::after {
+  box-shadow: none;
+}
+
+.hf-media-tray {
+  animation: hf-media-tray 0.14s ease-out;
+}
+
+@keyframes hf-media-tray {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-media-tray {
+    animation: none;
+  }
+}

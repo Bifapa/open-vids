@@ -129,7 +129,7 @@ pub fn origin_allowed(head: &Head, port: u16) -> bool {
             format!("http://127.0.0.1:{port}"),
             format!("http://localhost:{port}"),
         ];
-        if !local.iter().any(|e| *e == origin) {
+        if !local.contains(&origin) {
             return false;
         }
     }

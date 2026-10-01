@@ -1,21 +1,15 @@
 import type React from "react";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
-import { Music } from "../../icons/SystemIcons";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { TrackClipCount } from "./TrackClipCount";
 import { trackDisplaySuffix } from "./timelineTrackDisplay";
 
+/** The square 20px head control the eye, caret and spacers share. */
+export const TRACK_HEAD_BUTTON =
+  "flex size-ctl-xs shrink-0 items-center justify-center rounded-sm border-0 bg-transparent p-0 transition-colors focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
+
 // Hide, plainly. The speaker variant was the mute presentation; with mute gone
 // this is the visibility eye it always was, and audio rows do not render it.
-function visibilityButtonLabel(hidden: boolean, suffix: string): string {
-  return hidden ? `Show track${suffix}` : `Hide track${suffix}`;
-}
-
-function visibilityButtonIcon(hidden: boolean) {
-  const Icon = hidden ? EyeSlash : Eye;
-  return <Icon size={14} weight="bold" aria-hidden="true" />;
-}
-
 export function VisibilityButton({
   hidden,
   trackNumber,
@@ -29,20 +23,19 @@ export function VisibilityButton({
   visible: boolean;
   onToggle: TimelineEditCallbacks["onToggleTrackHidden"];
 }) {
-  if (!visible) return <span aria-hidden="true" className="h-6 w-6 shrink-0" />;
+  if (!visible) return <span aria-hidden="true" className="size-ctl-xs shrink-0" />;
   // Display number in the text, real key in the callback. The two must not be
   // conflated in either direction.
   const suffix = trackDisplaySuffix(trackDisplayNumber);
-  const label = visibilityButtonLabel(hidden, suffix);
+  const label = hidden ? `Show track${suffix}` : `Hide track${suffix}`;
+  const Icon = hidden ? EyeSlash : Eye;
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 transition-colors focus-visible:outline-solid focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-[var(--timeline-accent)] ${
-        hidden
-          ? "text-[var(--timeline-accent)] hover:text-[var(--timeline-text-solid)]"
-          : "text-[var(--timeline-text-faint)] hover:text-[var(--timeline-text-soft)]"
+      className={`${TRACK_HEAD_BUTTON} ${
+        hidden ? "bg-surface-3 text-fg" : "text-fg-3 hover:bg-surface-2 hover:text-fg"
       }`}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
@@ -52,89 +45,87 @@ export function VisibilityButton({
         void onToggle?.(trackNumber, !hidden, trackDisplayNumber);
       }}
     >
-      {visibilityButtonIcon(hidden)}
+      <Icon className="size-icon-sm" aria-hidden="true" />
     </button>
   );
 }
 
-// The header a track gets when it has no keyframe clip to disclose: label, clip
-// count, eye. Not deprecated — it is the live path for every track without lanes.
+/** The track's kind code (V1, A2, CAP, MOT) in the head's fixed first column. */
+export function TrackCode({ code }: { code: string | undefined }) {
+  if (!code) return null;
+  return (
+    <span
+      aria-hidden="true"
+      className="min-w-[22px] shrink-0 font-mono text-num font-semibold text-fg-2"
+    >
+      {code}
+    </span>
+  );
+}
+
+// The header a track gets when it has no keyframe clip to disclose: caret slot,
+// code, name, clip count, eye. Not deprecated — it is the live path for every
+// track without lanes.
 export function PlainTrackHeader({
   trackNumber,
   trackDisplayNumber,
+  trackCode,
   trackLabel,
   clipCount,
   showTrackLabel,
   isTrackHidden,
   isAudioTrack,
   onToggleTrackHidden,
+  leading,
   trailing,
 }: {
   trackNumber: number;
   trackDisplayNumber: number | null;
+  trackCode?: string;
   trackLabel: string;
   clipCount: number;
   isTrackHidden: boolean;
   isAudioTrack: boolean;
   onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
   showTrackLabel: boolean;
+  /** The lane disclosure caret, or nothing: the slot keeps every code aligned. */
+  leading?: React.ReactNode;
   /** Trailing controls that belong on the control line — the FX entry points,
    *  which the caller owns because only it knows the clip they act on. */
   trailing?: React.ReactNode;
 }) {
   return (
-    <>
-      {/* One line: the name, then every control pushed to the right edge. The
-          two-line split this replaced existed to stop four controls truncating
-          the name — but the name already truncates on its own (`min-w-0` plus
-          `truncate`), and the controls are `shrink-0`, so they hold the edge
-          and the name gives way instead. */}
-      <div className="flex min-w-0 items-center gap-1">
-        {isAudioTrack && (
-          <Music
-            size={12}
-            weight="fill"
-            aria-hidden="true"
-            className="text-[var(--timeline-text-faint)]"
-          />
-        )}
-        {/* No `flex-1`: the name takes only the width it needs, so the clip
-            count sits against it rather than being pushed out to meet the
-            controls. The slack goes to the `ml-auto` group below instead. */}
-        {showTrackLabel && (
-          <span title={trackLabel} className="min-w-0 truncate text-[11px] leading-tight">
-            {trackLabel}
-          </span>
-        )}
-        {showTrackLabel && <TrackClipCount clipCount={clipCount} />}
-        {/* `ml-auto` is what anchors the group right: it absorbs the slack the
-            truncating name leaves, so the controls sit on the edge whatever the
-            name's length. */}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          {/* Not on an audio track. The control is the old visibility eye, and
-            on audio it silences rather than hides — but a row that already says
-            what it is with a speaker does not also need the hide affordance
-            sitting in the eye's slot. `visible={false}` rather than omitting the
-            element, so the spacer keeps every row's control columns aligned.
+    <div className="flex min-w-0 items-center gap-[3px]">
+      {leading ?? <span aria-hidden="true" className="w-4 shrink-0" />}
+      {showTrackLabel && <TrackCode code={trackCode} />}
+      {/* The name truncates and gives way; the controls are `shrink-0` and
+          hold the right edge whatever the name's length. */}
+      {showTrackLabel && (
+        <span title={trackLabel} className="min-w-0 flex-1 truncate text-xs text-fg-3">
+          {trackLabel}
+        </span>
+      )}
+      {showTrackLabel && <TrackClipCount clipCount={clipCount} />}
+      <div className="ml-auto flex shrink-0 items-center gap-[3px]">
+        {/* Not on an audio track: the eye there silences rather than hides, and
+            the row already says what it is. `visible={false}` keeps a spacer so
+            every row's control columns stay aligned.
 
-            EXCEPT when the audio track is ALREADY hidden. Withholding the
-            control unconditionally withheld the only way back: `data-hidden`
-            silences the clip in preview and drops it from the render, the
-            panel's "Muted" is the unrelated HTML `muted` attribute, and nothing
-            else writes it — so a track hidden before this rule (or by "Hide
-            all", or by hand) was silent with no control anywhere to restore it.
-            Offering the eye only in that state keeps the affordance off a normal
-            audio row while leaving the door open from the inside. */}
-          <VisibilityButton
-            hidden={isTrackHidden}
-            trackNumber={trackNumber}
-            trackDisplayNumber={trackDisplayNumber}
-            visible={!isAudioTrack || isTrackHidden}
-            onToggle={onToggleTrackHidden}
-          />
-          {trailing}
-        </div>
+            EXCEPT when the audio track is ALREADY hidden. `data-hidden` silences
+            the clip in preview and drops it from the render, and nothing else
+            writes it back — so a track hidden by "Hide all" or by hand would be
+            silent with no control anywhere to restore it. Offering the eye only
+            in that state keeps it off a normal audio row while leaving the door
+            open from the inside. */}
+        <VisibilityButton
+          hidden={isTrackHidden}
+          trackNumber={trackNumber}
+          trackDisplayNumber={trackDisplayNumber}
+          visible={!isAudioTrack || isTrackHidden}
+          onToggle={onToggleTrackHidden}
+        />
+        {trailing}
       </div>
-    </>
+    </div>
   );
 }

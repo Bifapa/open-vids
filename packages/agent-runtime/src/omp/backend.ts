@@ -21,6 +21,7 @@ import {
 import { cfgDefaultThinkingLevel } from "@oh-my-pi/pi-coding-agent/session/settings";
 import type {
   AgentBackend,
+  BackendEvent,
   BackendPromptInput,
   BackendPromptOutcome,
   BackendSession,
@@ -201,16 +202,23 @@ function createCatalog(registry: ModelRegistry, settings: Settings): CatalogServ
   return createModelCatalog(catalogSources(models), defaultRole, roleDefault.thinking);
 }
 
-/** Exposes a runtime host tool to OMP. It is essential (always loaded), and the runtime reports its effects. */
-function toOmpTool(tool: HostTool): CustomTool {
+/**
+ * Exposes a runtime host tool to OMP. It is essential (always loaded), and the runtime reports its effects; progress the
+ * tool reports (a render) goes out as `tool.progress` of its call.
+ */
+function toOmpTool(tool: HostTool, report: (event: BackendEvent) => void): CustomTool {
   return {
     name: tool.name,
     label: tool.name,
     description: tool.description,
     parameters: tool.parameters,
     loadMode: "essential",
-    async execute(_toolCallId, params, _onUpdate, _context, signal) {
-      const result = await tool.execute(params, signal ?? new AbortController().signal);
+    async execute(toolCallId, params, _onUpdate, _context, signal) {
+      const result = await tool.execute(
+        params,
+        signal ?? new AbortController().signal,
+        (progress) => report({ type: "tool.progress", toolCallId, progress }),
+      );
       return {
         content: hostToolContent(result),
         ...(result.isError && { isError: true }),
@@ -244,6 +252,17 @@ class OmpBackendSession implements BackendSession {
     private readonly onDispose: () => void,
   ) {
     this.unsubscribe = session.subscribe((event) => this.handleEvent(event));
+  }
+
+  /** An event the runtime side produced (host tool progress) for the prompt in flight. */
+  report(event: BackendEvent): void {
+    const active = this.activeTurn;
+    if (!active || active.settled) return;
+    try {
+      active.onEvent(event);
+    } catch {
+      // The runtime owns event persistence; a consumer callback must not break the tool.
+    }
   }
 
   private handleEvent(event: unknown): void {
@@ -560,25 +579,10 @@ class OmpBackend implements AgentBackend {
     const services = await this.ensureServices();
     if (this.disposed) throw new Error("The OMP backend has been disposed.");
 
-    let sessionManager: SessionManager;
-    if (input.stateDir === null) {
-      sessionManager = SessionManager.inMemory(input.projectDir);
-    } else {
-      await mkdir(input.stateDir, { recursive: true });
-      const existing = await SessionManager.list(input.projectDir, input.stateDir);
-      let newest = existing[0];
-      for (const candidate of existing) {
-        if (!newest || candidate.modified.getTime() > newest.modified.getTime()) {
-          newest = candidate;
-        }
-      }
-      sessionManager = newest
-        ? await SessionManager.open(newest.path, input.stateDir, undefined, {
-            initialCwd: input.projectDir,
-            throwIfMissing: true,
-          })
-        : SessionManager.create(input.projectDir, input.stateDir);
-    }
+    const sessionManager =
+      input.stateDir === null
+        ? SessionManager.inMemory(input.projectDir)
+        : await openProjectSessionManager(input.projectDir, input.stateDir);
 
     // Explicit credentials (Jev's API key) live in a private in-memory store for this session only, so they never
     // replace the credentials other agents use for the same provider.
@@ -612,6 +616,8 @@ class OmpBackend implements AgentBackend {
         "edit.mode": "replace",
       });
       const hostToolMap = new Map(input.hostTools.map((tool) => [tool.name, tool]));
+      // Host tools are created before the adapter exists; their progress reaches it once it does.
+      let progressTarget: OmpBackendSession | null = null;
       const hostToolNames = [...hostToolMap.keys()];
       const { session } = await createAgentSession({
         cwd: input.projectDir,
@@ -629,7 +635,9 @@ class OmpBackend implements AgentBackend {
         // task/subagent tools: the runtime owns the one-level agent hierarchy.
         toolNames: [...PROJECT_FILE_TOOLS, ...hostToolNames],
         restrictToolNames: true,
-        customTools: input.hostTools.map(toOmpTool),
+        customTools: input.hostTools.map((tool) =>
+          toOmpTool(tool, (event) => progressTarget?.report(event)),
+        ),
         allowRestrictedCustomTools: true,
         autoApprove: true,
         enableMCP: false,
@@ -642,7 +650,7 @@ class OmpBackend implements AgentBackend {
           {
             path: "<openvids-project-boundary>",
             resolvedPath: "<openvids-project-boundary>",
-            factory: projectBoundaryExtension(input.projectDir),
+            factory: projectBoundaryExtension(input.projectDir, input.fileWriteRefusal),
             error: null,
           },
         ],
@@ -673,8 +681,7 @@ class OmpBackend implements AgentBackend {
         );
       }
       const ownAuth = privateAuth;
-      let adapter: OmpBackendSession;
-      adapter = new OmpBackendSession(
+      const adapter = new OmpBackendSession(
         session,
         input.projectDir,
         services,
@@ -686,6 +693,7 @@ class OmpBackend implements AgentBackend {
         },
       );
       this.sessions.add(adapter);
+      progressTarget = adapter;
       return adapter;
     } catch (error) {
       privateAuth?.close();
@@ -704,6 +712,35 @@ class OmpBackend implements AgentBackend {
     })();
     return this.disposePromise;
   }
+}
+
+/**
+ * Resumes the newest OMP session stored in `stateDir`, or starts one, bound to `projectDir`.
+ *
+ * A session file records the folder it was created in, and OMP resumes there when that folder
+ * still exists. A project copied or duplicated together with its chats would then edit the
+ * ORIGINAL project's files, so a resumed session is rebound to this project (the file stays in
+ * `stateDir`).
+ */
+export async function openProjectSessionManager(
+  projectDir: string,
+  stateDir: string,
+): Promise<SessionManager> {
+  await mkdir(stateDir, { recursive: true });
+  const existing = await SessionManager.list(projectDir, stateDir);
+  let newest = existing[0];
+  for (const candidate of existing) {
+    if (!newest || candidate.modified.getTime() > newest.modified.getTime()) newest = candidate;
+  }
+  if (!newest) return SessionManager.create(projectDir, stateDir);
+  const manager = await SessionManager.open(newest.path, stateDir, undefined, {
+    initialCwd: projectDir,
+    throwIfMissing: true,
+  });
+  if (path.resolve(manager.getCwd()) !== path.resolve(projectDir)) {
+    await manager.moveTo(projectDir, stateDir);
+  }
+  return manager;
 }
 
 export function createBackend(options?: { agentDir?: string }): AgentBackend {

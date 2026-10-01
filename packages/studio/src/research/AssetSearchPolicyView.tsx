@@ -1,15 +1,23 @@
 import { useState } from "react";
-import { ArrowCounterClockwise, Globe, Plus, Trash } from "@phosphor-icons/react";
+import {
+  ArrowCounterClockwise,
+  Globe,
+  Plus,
+  ShieldCheck,
+  Trash,
+  WarningCircle,
+  type Icon,
+} from "@phosphor-icons/react";
 import {
   ASSET_SEARCH_MODES,
   type AssetSearchMode,
   type TrustedSource,
 } from "@hyperframes/agent-protocol";
-import { Button, IconButton, Toggle, Tooltip, cn } from "../components/ui";
+import { Badge, Button, IconButton, Toggle, Tooltip, cn } from "../components/ui";
 import { AddTrustedSourceForm } from "./AddTrustedSourceForm";
 import { MEDIA_KIND_LABELS } from "./licenseLabels";
 import { useResearchServices } from "./researchContext";
-import { ExternalLink, InlineError, SectionHeading } from "./researchUi";
+import { ExternalLink, InlineError, NoteBox, SectionHeading } from "./researchUi";
 import { useAssetSearchPolicy, type AssetSearchPolicyState } from "./useAssetSearchPolicy";
 
 const MODE_COPY: Record<AssetSearchMode, { label: string; description: string }> = {
@@ -24,42 +32,58 @@ const MODE_COPY: Record<AssetSearchMode, { label: string; description: string }>
   },
 };
 
+const MODE_ICONS: Record<AssetSearchMode, Icon> = { trusted: ShieldCheck, any: Globe };
+
+/** The prototype's `.st-box`: one bordered group of rows on the chrome surface. */
+const BOX = "overflow-hidden rounded-md border border-border-subtle bg-bg-1";
+
+/** Search mode as the prototype's radio list: a dot, a bold label with its glyph, and what the mode means. */
 function ModeSwitch({ state }: { state: AssetSearchPolicyState }) {
   const mode = state.policy?.mode ?? "trusted";
   return (
-    <div className="flex flex-col gap-1.5">
-      <div
-        role="radiogroup"
-        aria-label="Asset Search mode"
-        className="flex h-ctl items-center gap-0.5 rounded-md border border-border-strong bg-bg-2 p-0.5"
-      >
-        {ASSET_SEARCH_MODES.map((option) => {
-          const checked = option === mode;
-          return (
-            <button
-              key={option}
-              type="button"
-              role="radio"
-              aria-checked={checked}
-              disabled={state.policy === null || state.pending !== null}
-              onClick={() => {
-                if (!checked) void state.change("mode", (client) => client.setMode(option));
-              }}
+    <div role="radiogroup" aria-label="Asset Search mode" className={BOX}>
+      {ASSET_SEARCH_MODES.map((option) => {
+        const checked = option === mode;
+        const ModeIcon = MODE_ICONS[option];
+        return (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            disabled={state.policy === null || state.pending !== null}
+            onClick={() => {
+              if (!checked) void state.change("mode", (client) => client.setMode(option));
+            }}
+            className={cn(
+              "group/radio grid w-full grid-cols-[16px_minmax(0,1fr)] items-start gap-x-2 gap-y-0.5 px-3 py-2 text-left",
+              "border-border-subtle not-first:border-t",
+              "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
+              "disabled:cursor-not-allowed",
+            )}
+          >
+            <span
+              aria-hidden="true"
               className={cn(
-                "h-full flex-1 rounded-sm px-2 text-step-11 font-medium outline-hidden transition-colors duration-hover",
-                "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
-                "disabled:cursor-not-allowed",
-                checked ? "bg-hover text-text-0" : "text-text-3 enabled:hover:text-text-1",
+                "row-span-2 mt-px size-3.5 rounded-full",
+                checked
+                  ? "border-4 border-fg bg-bg-1"
+                  : "border border-border-strong bg-surface-1 group-enabled/radio:group-hover/radio:border-fg-3",
               )}
-            >
+            />
+            <span className="flex items-center gap-1 text-base leading-4 text-fg">
+              <ModeIcon size={12} className="shrink-0 text-fg-3" aria-hidden />
               {MODE_COPY[option].label}
-            </button>
-          );
-        })}
-      </div>
-      <p className="text-step-10 text-text-3" data-testid="asset-search-mode-description">
-        {MODE_COPY[mode].description}
-      </p>
+            </span>
+            <span
+              className="col-start-2 text-xs leading-[14px] text-fg-3 [text-wrap:pretty]"
+              data-testid={checked ? "asset-search-mode-description" : undefined}
+            >
+              {MODE_COPY[option].description}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -67,20 +91,13 @@ function ModeSwitch({ state }: { state: AssetSearchPolicyState }) {
 function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearchPolicyState }) {
   const [confirming, setConfirming] = useState(false);
   const busy = state.pending !== null;
+  const notes = [source.description, source.licenseNote].filter(Boolean).join(" ");
   return (
     <li
       data-source-id={source.id}
-      className="flex flex-col gap-1 rounded-md border border-border bg-surface px-2.5 py-2"
+      className="flex flex-col gap-1.5 border-border-subtle px-3 py-2 not-first:border-t"
     >
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-step-11 font-semibold text-text-0">
-          {source.name}
-        </span>
-        {source.builtIn && (
-          <span className="shrink-0 rounded-sm border border-border-input bg-bg-2 px-1 text-step-10 text-text-3">
-            Built-in
-          </span>
-        )}
+      <div className="grid grid-cols-[28px_minmax(0,1fr)_28px] items-center gap-2.5">
         <Toggle
           label={`Use ${source.name}`}
           checked={source.enabled}
@@ -89,38 +106,52 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
             void state.change(source.id, (client) => client.updateSource(source.id, { enabled }))
           }
         />
+        <div className="grid min-w-0 gap-px">
+          <span
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 text-base leading-4 font-medium",
+              source.enabled ? "text-fg" : "text-fg-3",
+            )}
+          >
+            <span className="truncate">{source.name}</span>
+            {source.builtIn && <Badge size="sm">Built-in</Badge>}
+          </span>
+          <span className="truncate text-xs leading-[14px] text-fg-3">
+            {source.domains.length > 0 && (
+              <span className="font-mono text-num">{source.domains.join(", ")} · </span>
+            )}
+            {source.kinds.map((kind) => MEDIA_KIND_LABELS[kind]).join(" · ")}
+          </span>
+        </div>
         <Tooltip label="Remove source" side="bottom">
           <IconButton
             aria-label={`Remove ${source.name}`}
-            size="sm"
+            size="md"
             disabled={busy}
-            icon={<Trash size={12} aria-hidden />}
+            icon={<Trash size={14} aria-hidden />}
             onClick={() => setConfirming(true)}
           />
         </Tooltip>
       </div>
-      <p className="text-step-10 text-text-3">
-        {source.kinds.map((kind) => MEDIA_KIND_LABELS[kind]).join(" · ")}
-        {source.domains.length > 0 && <> · {source.domains.join(", ")}</>}
-      </p>
-      {(source.description || source.licenseNote) && (
-        <p className="text-step-10 text-text-4">
-          {[source.description, source.licenseNote].filter(Boolean).join(" ")}
+      {(notes || source.homepage) && (
+        <p className="flex flex-wrap items-center gap-x-1.5 pl-[38px] text-xs leading-[15px] text-fg-3">
+          {notes && <span className="[text-wrap:pretty]">{notes}</span>}
+          {source.homepage && (
+            <ExternalLink href={source.homepage}>
+              {source.homepage.replace(/^https?:\/\//, "")}
+            </ExternalLink>
+          )}
         </p>
-      )}
-      {source.homepage && (
-        <ExternalLink href={source.homepage} className="self-start text-step-10">
-          {source.homepage.replace(/^https?:\/\//, "")}
-        </ExternalLink>
       )}
       {confirming && (
         <div
           role="group"
           aria-label={`Confirm removing ${source.name}`}
-          className="flex flex-wrap items-center justify-between gap-2 rounded-sm bg-bg-2 px-2 py-1.5 text-step-10 text-text-2"
+          className="ml-[38px] flex flex-wrap items-center justify-between gap-2 rounded-sm bg-surface-1 px-2 py-1.5 text-xs text-fg-2"
         >
           <span>
-            Remove {source.name}?{source.builtIn && " Restore built-in sources brings it back."}
+            Remove <b className="font-semibold text-fg">{source.name}</b>?
+            {source.builtIn && " Restore built-in sources brings it back."}
           </span>
           <span className="flex gap-1.5">
             <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
@@ -148,94 +179,114 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
 
 /**
  * The global Asset Search policy: where the Research agent may search and download, for every project. The Studio
- * server enforces it; this is only where the user sets it.
+ * server enforces it; this is only where the user sets it. Mounted by the Sources panel and the Settings window.
  */
-export function AssetSearchPolicyView() {
+export function AssetSearchPolicyView({ className }: { className?: string } = {}) {
   const { client } = useResearchServices();
   const state = useAssetSearchPolicy(client);
   const [adding, setAdding] = useState(false);
   const { policy } = state;
   const removed = policy?.removedBuiltIns.length ?? 0;
+  const onCount = policy?.sources.filter((source) => source.enabled).length ?? 0;
+  const searchNote =
+    policy?.mode === "any"
+      ? "Searched first, then the rest of the web"
+      : onCount > 0
+        ? "Only these are searched"
+        : null;
 
   return (
-    <div className="flex flex-col gap-4 px-3 py-3">
-      <div className="flex items-start gap-2 rounded-md border border-border-input bg-bg-2 px-2.5 py-2 text-step-11 text-text-2">
-        <Globe size={14} className="mt-px shrink-0 text-text-3" aria-hidden />
-        <span>
-          <span className="font-semibold text-text-1">Applies to all projects.</span> The Research
-          agent is the only one that searches outside the project, and only as allowed here.
-        </span>
-      </div>
+    <div className={cn("flex flex-col gap-5 px-3 py-3", className)}>
+      <NoteBox icon={<Globe size={12} />}>
+        <b className="font-semibold">Applies to all projects.</b> The Research agent is the only one
+        that searches outside the project, and only as allowed here.
+      </NoteBox>
       {state.error && <InlineError message={state.error} onDismiss={state.dismissError} />}
       {state.loading && !policy ? (
-        <p role="status" className="text-step-11 text-text-3">
+        <p role="status" className="text-sm text-fg-3">
           Loading Asset Search settings…
         </p>
       ) : !policy ? (
-        <Button size="sm" variant="secondary" onClick={() => void state.reload()}>
+        <Button
+          className="self-start"
+          size="sm"
+          variant="secondary"
+          onClick={() => void state.reload()}
+        >
           Retry
         </Button>
       ) : (
         <>
-          <section className="flex flex-col gap-2">
-            <SectionHeading title="Asset Search" />
+          <section className="flex flex-col gap-1.5">
+            <SectionHeading title="Search mode" />
             <ModeSwitch state={state} />
           </section>
-          <section className="flex flex-col gap-2">
+          <section className="flex flex-col gap-1.5">
             <SectionHeading
-              title={`Trusted sources (${policy.sources.filter((source) => source.enabled).length} on)`}
+              title="Trusted sources"
+              note={`${onCount} of ${policy.sources.length} on${searchNote ? ` · ${searchNote}` : ""}`}
             />
-            {policy.sources.length === 0 ? (
-              <p className="text-step-11 text-text-3">
-                No trusted sources. Add a website, or restore the built-in sources.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1.5" aria-label="Trusted sources">
-                {policy.sources.map((source) => (
-                  <SourceRow key={source.id} source={source} state={state} />
-                ))}
-              </ul>
-            )}
-            {adding ? (
-              <AddTrustedSourceForm
-                pending={state.pending === "add"}
-                onCancel={() => setAdding(false)}
-                onAdd={async (request) => {
-                  const failure = await state.change(
-                    "add",
-                    (research) => research.addSource(request),
-                    { inline: true },
-                  );
-                  if (failure === null) setAdding(false);
-                  return failure;
-                }}
-              />
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon={<Plus size={12} aria-hidden />}
-                  disabled={state.pending !== null}
-                  onClick={() => setAdding(true)}
-                >
-                  Add trusted source
-                </Button>
-                {removed > 0 && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    icon={<ArrowCounterClockwise size={12} aria-hidden />}
-                    loading={state.pending === "restore"}
-                    disabled={state.pending !== null}
-                    onClick={() =>
-                      void state.change("restore", (research) => research.restoreSources())
-                    }
-                  >
-                    Restore built-in sources ({removed})
-                  </Button>
+            <div className={BOX}>
+              {policy.sources.length === 0 ? (
+                <p className="px-3 py-2.5 text-sm text-fg-3">
+                  No trusted sources. Add a website, or restore the built-in sources.
+                </p>
+              ) : (
+                <ul aria-label="Trusted sources">
+                  {policy.sources.map((source) => (
+                    <SourceRow key={source.id} source={source} state={state} />
+                  ))}
+                </ul>
+              )}
+              <div className="border-t border-border-subtle px-3 py-2">
+                {adding ? (
+                  <AddTrustedSourceForm
+                    pending={state.pending === "add"}
+                    onCancel={() => setAdding(false)}
+                    onAdd={async (request) => {
+                      const failure = await state.change(
+                        "add",
+                        (research) => research.addSource(request),
+                        { inline: true },
+                      );
+                      if (failure === null) setAdding(false);
+                      return failure;
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={<Plus size={12} aria-hidden />}
+                      disabled={state.pending !== null}
+                      onClick={() => setAdding(true)}
+                    >
+                      Add trusted source
+                    </Button>
+                    {removed > 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<ArrowCounterClockwise size={12} aria-hidden />}
+                        loading={state.pending === "restore"}
+                        disabled={state.pending !== null}
+                        onClick={() =>
+                          void state.change("restore", (research) => research.restoreSources())
+                        }
+                      >
+                        Restore built-in sources ({removed})
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
+            </div>
+            {policy.mode === "trusted" && onCount === 0 && (
+              <p className="flex items-center gap-1 px-0.5 text-xs font-medium text-warning">
+                <WarningCircle size={12} weight="fill" aria-hidden />
+                All sources are off, so asset search will find nothing.
+              </p>
             )}
           </section>
         </>

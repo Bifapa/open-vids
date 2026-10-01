@@ -77,13 +77,15 @@ export function PromotableControl({
   );
 
   return (
-    <div className={`relative ${bound ? "rounded-lg ring-1 ring-studio-accent/40" : ""}`}>
+    <div
+      className={`group/promo relative ${bound ? "rounded-sm shadow-[0_0_0_1px_var(--color-accent-line)]" : ""}`}
+    >
       {rendered}
       {bound && (
         <span
           // Sits above the row (not on top of top-0) so it clears a value that
           // renders flush to the row's right edge, e.g. flat Font/Color rows.
-          className="pointer-events-none absolute -top-2 right-1.5 z-10 inline-flex max-w-[60%] items-center gap-1 truncate rounded-sm bg-studio-accent/20 px-1 py-px font-mono text-[8px] font-medium text-studio-accent"
+          className="pointer-events-none absolute -top-2 right-1.5 z-10 inline-flex max-w-[60%] items-center gap-1 truncate rounded-xs border border-accent-line bg-accent-soft px-1 font-mono text-2xs leading-[14px] text-fg"
           title={`Bound to variable "${promote.boundId}"`}
         >
           ◆ {promote.boundId}
@@ -97,9 +99,11 @@ export function PromotableControl({
             e.stopPropagation();
             promote.promote();
           }}
-          className="absolute -top-2 right-1.5 z-10 inline-flex items-center gap-1 rounded-sm bg-neutral-800/80 px-1 py-px font-mono text-[8px] font-medium text-neutral-400 opacity-70 transition-colors hover:bg-studio-accent/20 hover:text-studio-accent hover:opacity-100"
+          aria-label="Make this a variable"
+          // Sits in the label column, right after the label text (the prototype's `.promo`).
+          className="absolute left-[54px] top-1 z-10 inline-flex size-4 items-center justify-center rounded-xs text-2xs text-fg-disabled opacity-0 transition-[color,background-color,opacity] group-hover/promo:opacity-100 hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-accent"
         >
-          ◇ var
+          ◇
         </button>
       )}
     </div>

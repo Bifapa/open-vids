@@ -52,10 +52,10 @@ export function FxBandRuler({ band, at }: FxBandRulerProps) {
               title={`${range.name} — ${range.says}`}
               className={
                 range.name === here.name
-                  ? "hf-fx-ruler-band bg-panel-accent"
+                  ? "hf-fx-ruler-band bg-fg-2"
                   : reachable
-                    ? "hf-fx-ruler-band bg-panel-text-4/50"
-                    : "hf-fx-ruler-band bg-panel-text-4/15"
+                    ? "hf-fx-ruler-band bg-surface-3"
+                    : "hf-fx-ruler-band bg-surface-2"
               }
               style={{
                 width: `${(positionOf(range.to) - positionOf(range.from)) * 100}%`,
@@ -64,8 +64,8 @@ export function FxBandRuler({ band, at }: FxBandRulerProps) {
           );
         })}
       </div>
-      <p className="hf-fx-ruler-label truncate pt-0.5 text-[9px] text-panel-text-2">
-        <span className="hf-fx-ruler-name text-panel-text-1">{here.name}</span> — {here.says}
+      <p className="hf-fx-ruler-label truncate pt-0.5 text-2xs text-fg-2">
+        <span className="hf-fx-ruler-name text-fg">{here.name}</span> — {here.says}
       </p>
     </div>
   );

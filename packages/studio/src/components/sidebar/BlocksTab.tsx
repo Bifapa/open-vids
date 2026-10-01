@@ -1,13 +1,14 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { Check, DotsThree, Info, Plus, Sparkle, WarningCircle } from "@phosphor-icons/react";
 import { SearchInput } from "../ui/SearchInput";
+import { IconButton } from "../ui/IconButton";
+import { Menu, MenuItem } from "../ui/Menu";
+import { Spinner } from "../ui/Status";
+import { cn } from "../ui/cn";
 import { PromptPreviewModal } from "./PromptPreviewModal";
 import { useBlockCatalog } from "../../hooks/useBlockCatalog";
-import {
-  BLOCK_CATEGORIES,
-  getCategoryColors,
-  type BlockCategory,
-} from "../../utils/blockCategories";
+import { BLOCK_CATEGORIES, type BlockCategory } from "../../utils/blockCategories";
 import { usePlayerStore } from "../../player";
 import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
@@ -31,66 +32,62 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-neutral-600 text-xs">
-        Loading blocks…
+      <div className="flex flex-1 items-center justify-center gap-2 text-xs text-fg-3">
+        <Spinner size="sm" />
+        Loading catalog…
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center text-red-400 text-xs px-4 text-center">
+      <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-error">
         {error}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Search */}
-      <div className="px-3 pt-2 pb-1 shrink-0">
+    <div className="flex min-h-0 flex-1 flex-col bg-bg-0">
+      <div className="shrink-0 px-2 pb-1.5 pt-2">
         <SearchInput
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name, category, or tag…"
+          placeholder="Search blocks, captions, transitions…"
           aria-label="Search blocks"
         />
       </div>
 
-      {/* Category pills */}
-      <div className="px-3 pt-1 pb-2 shrink-0 overflow-x-auto">
-        <div className="flex gap-1">
-          <CategoryPill label="All" active={category === null} onClick={() => setCategory(null)} />
-          {BLOCK_CATEGORIES.map((cat) => (
-            <CategoryPill
-              key={cat.id}
-              label={cat.label}
-              category={cat.id}
-              active={category === cat.id}
-              onClick={() => setCategory(category === cat.id ? null : cat.id)}
-            />
-          ))}
-        </div>
+      {/* Category chips wrap like the prototype's, so every category stays in view. */}
+      <div className="flex shrink-0 flex-wrap gap-1 px-2 pb-1.5">
+        <CategoryChip label="All" active={category === null} onClick={() => setCategory(null)} />
+        {BLOCK_CATEGORIES.map((cat) => (
+          <CategoryChip
+            key={cat.id}
+            label={cat.label}
+            active={category === cat.id}
+            onClick={() => setCategory(category === cat.id ? null : cat.id)}
+          />
+        ))}
       </div>
 
-      {/* Block grid */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-border-subtle px-2 pb-2 pt-2">
         {category === "vfx" && (
-          <div className="mb-2 px-2 py-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-[9px] text-purple-300 leading-relaxed">
-            VFX blocks use WebGL via HTML-in-Canvas. Enable{" "}
-            <span className="font-mono text-purple-200">chrome://flags/#html-in-canvas</span> for
-            preview.
-          </div>
+          <p className="m-0 mb-2 grid grid-cols-[14px_minmax(0,1fr)] gap-1.5 text-xs leading-[15px] text-fg-3">
+            <Info size={12} className="mt-px" aria-hidden />
+            <span>
+              VFX blocks use WebGL via HTML-in-Canvas. Enable{" "}
+              <span className="font-mono text-num text-fg-2">chrome://flags/#html-in-canvas</span>{" "}
+              for preview.
+            </span>
+          </p>
         )}
         {filteredBlocks.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-neutral-600 text-xs">
+          <div className="flex h-32 items-center justify-center text-xs text-fg-3">
             No blocks match your search
           </div>
         ) : (
-          <div
-            className="grid gap-1.5"
-            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" }}
-          >
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-x-1 gap-y-1.5">
             {filteredBlocks.map((block) => {
               const dur = "duration" in block ? (block.duration as number) : undefined;
               return (
@@ -133,36 +130,32 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
   );
 });
 
-function CategoryPill({
+function CategoryChip({
   label,
-  category,
   active,
   onClick,
 }: {
   label: string;
-  category?: BlockCategory;
   active: boolean;
   onClick: () => void;
 }) {
-  const colors = category ? getCategoryColors(category) : null;
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-medium transition-colors active:scale-[0.98] ${
+      className={cn(
+        "h-5 shrink-0 whitespace-nowrap rounded-pill border px-[7px] text-xs font-medium transition-colors duration-hover",
+        "outline-hidden focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
         active
-          ? colors
-            ? `${colors.bg} ${colors.text}`
-            : "bg-neutral-700 text-neutral-200"
-          : "bg-neutral-900 text-neutral-500 hover:text-neutral-300"
-      }`}
+          ? "border-border-strong bg-surface-3 text-fg"
+          : "border-border bg-transparent text-fg-2 hover:bg-surface-2 hover:text-fg",
+      )}
     >
       {label}
     </button>
   );
 }
-
 interface CompositionContext {
   currentTime: number;
   activeCompPath: string | null;
@@ -296,7 +289,6 @@ function BlockCard({
   const [hovered, setHovered] = useState(false);
   const [addState, setAddState] = useState<"idle" | "adding" | "added" | "failed">("idle");
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const colors = getCategoryColors(category);
   const needsWebGL = tags?.includes("html-in-canvas") || tags?.includes("webgl");
 
   const handleEnter = useCallback(() => {
@@ -376,9 +368,22 @@ function BlockCard({
     ],
   );
 
+  const categoryLabel = BLOCK_CATEGORIES.find((c) => c.id === category)?.label ?? category;
+  const meta = [categoryLabel];
+  if (duration != null) meta.push(`${duration}s`);
+  if (needsWebGL) meta.push("WebGL");
+  const addLabel =
+    addState === "adding"
+      ? "Adding…"
+      : addState === "added"
+        ? "Added"
+        : addState === "failed"
+          ? "Couldn't add"
+          : "Add to composition at current time";
+
   return (
     <div
-      className="group/card rounded-md overflow-hidden cursor-pointer transition-colors bg-neutral-900 hover:bg-neutral-800"
+      className="group/card relative flex min-w-0 cursor-grab flex-col gap-[3px] rounded-md px-[3px] pb-[5px] pt-[3px] transition-colors duration-hover hover:bg-surface-1 focus-within:bg-surface-1"
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "copy";
@@ -389,7 +394,7 @@ function BlockCard({
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
     >
-      <div className="aspect-video w-full overflow-hidden relative">
+      <div className="relative aspect-video w-full overflow-hidden rounded-xs bg-bg-1 shadow-[inset_0_0_0_1px_var(--color-border-subtle)]">
         {hovered && videoUrl ? (
           <video
             src={videoUrl}
@@ -397,10 +402,10 @@ function BlockCard({
             muted
             loop
             playsInline
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
           />
         ) : posterUrl ? (
-          <img src={posterUrl} alt={title} loading="lazy" className="w-full h-full object-cover" />
+          <img src={posterUrl} alt={title} loading="lazy" className="h-full w-full object-cover" />
         ) : videoUrl && metadataSlot.granted ? (
           <video
             src={videoUrl}
@@ -409,100 +414,72 @@ function BlockCard({
             preload="metadata"
             onLoadedMetadata={metadataSlot.release}
             onError={metadataSlot.release}
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
           />
         ) : (
-          <div className={`w-full h-full flex items-center justify-center ${colors.bg}`}>
-            <span className={`text-[9px] font-medium ${colors.text}`}>
-              {category.toUpperCase()}
-            </span>
+          <div className="flex h-full w-full items-center justify-center text-md font-bold tracking-[-0.01em] text-fg-3">
+            {categoryLabel}
           </div>
         )}
 
-        {/* Action overlay — also revealed when a button inside receives focus */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/60 opacity-0 group-hover/card:opacity-100 group-focus-within/card:opacity-100 transition-opacity">
-          {onAdd && (
-            <button
-              type="button"
-              onClick={handleAdd}
-              title="Add to composition at current time"
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-[10px] font-semibold transition-colors active:scale-[0.97] ${
-                addState === "failed"
-                  ? "bg-red-500 text-white"
-                  : "bg-white text-black hover:bg-neutral-200"
-              }`}
-            >
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              {addState === "adding"
-                ? "Adding…"
-                : addState === "added"
-                  ? "Added!"
-                  : addState === "failed"
-                    ? "Failed"
-                    : "Add"}
-            </button>
-          )}
+        {/* Hover actions, also revealed while a control inside has focus. */}
+        <div className="absolute right-[3px] top-[3px] opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100 has-[[data-popup-open]]:opacity-100">
+          <Menu
+            side="bottom"
+            align="end"
+            aria-label={`${title} actions`}
+            trigger={
+              <IconButton
+                size="xs"
+                aria-label={`Actions for ${title}`}
+                icon={<DotsThree size={14} weight="bold" aria-hidden />}
+                className="bg-on-media-bg text-on-media hover:bg-on-media-bg hover:text-on-media"
+              />
+            }
+          >
+            {onAdd && (
+              <MenuItem icon={<Plus size={14} aria-hidden />} onClick={handleAdd}>
+                Add at Playhead
+              </MenuItem>
+            )}
+            <MenuItem icon={<Sparkle size={14} aria-hidden />} onClick={handleShowPrompt}>
+              Copy Prompt…
+            </MenuItem>
+          </Menu>
+        </div>
+        {onAdd && (
           <button
             type="button"
-            onClick={handleShowPrompt}
-            title="Generate a prompt to paste into your AI agent"
-            className={`flex items-center gap-1.5 px-3 ${onAdd ? "py-1" : "py-1.5"} rounded-md transition-colors active:scale-[0.97] ${
-              onAdd
-                ? "bg-white/15 text-white/90 hover:bg-white/25 text-[9px]"
-                : "bg-white text-black hover:bg-neutral-200 text-[10px] font-semibold"
-            }`}
+            onClick={handleAdd}
+            title={addLabel}
+            aria-label={addLabel}
+            className={cn(
+              "absolute bottom-[3px] right-[3px] flex size-5 items-center justify-center rounded-sm transition-[opacity,background-color]",
+              "outline-hidden focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+              addState === "idle"
+                ? "bg-on-media-bg text-on-media opacity-0 hover:bg-accent hover:text-accent-ink group-hover/card:opacity-100 group-focus-within/card:opacity-100"
+                : addState === "failed"
+                  ? "bg-error text-on-media opacity-100"
+                  : "bg-accent text-accent-ink opacity-100",
+            )}
           >
-            <svg
-              width={onAdd ? 9 : 11}
-              height={onAdd ? 9 : 11}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <rect x="9" y="9" width="13" height="13" rx="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-            Ask agent
+            {addState === "adding" ? (
+              <Spinner size="sm" />
+            ) : addState === "added" ? (
+              <Check size={12} weight="bold" aria-hidden />
+            ) : addState === "failed" ? (
+              <WarningCircle size={12} weight="bold" aria-hidden />
+            ) : (
+              <Plus size={12} weight="bold" aria-hidden />
+            )}
           </button>
-        </div>
-
-        {/* Badges */}
-        <div className="absolute top-1 right-1 flex items-center gap-0.5 pointer-events-none">
-          {needsWebGL && (
-            <span className="px-1 py-px rounded-sm text-[7px] font-semibold text-purple-300 bg-purple-900/70">
-              WebGL
-            </span>
-          )}
-          {duration != null && (
-            <span className="px-1 py-px rounded-sm text-[8px] font-medium text-white/80 bg-black/50">
-              {duration}s
-            </span>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* Info */}
-      <div className="px-1.5 py-1.5">
-        <div className="text-[10px] font-medium text-neutral-200 truncate leading-tight">
-          {title}
-        </div>
-        <div className="flex items-center gap-1 mt-0.5">
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${colors.dot}`} />
-          <span className={`text-[8px] ${colors.text}`}>
-            {BLOCK_CATEGORIES.find((c) => c.id === category)?.label}
-          </span>
-        </div>
+      <div className="truncate px-px text-xs leading-[14px] text-fg-2 group-hover/card:text-fg">
+        {title}
       </div>
+      <div className="truncate px-px text-2xs leading-3 text-fg-3">{meta.join(" · ")}</div>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readin
 import { STUDIO_PREVIEW_DETACHED_SRC_ATTR } from "@hyperframes/core/studio-preview-mark";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
-import { HyperframesLoader } from "../../components/ui";
+import { BrandLoader } from "../../components/ui";
 import { usePlayerStore } from "../store/playerStore";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
@@ -339,13 +339,14 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         // Inject pasteboard shadow: let the shadow around the canvas bleed
         // into the surrounding pasteboard area (overflow: visible on the container)
-        // and add a subtle outline + drop-shadow so the canvas boundary reads
-        // against the gray pasteboard, consistent with professional editors.
+        // and add the frame edge (prototype `.frame`: inner hairline + raised
+        // shadow) so the canvas boundary reads against the stage. Custom
+        // properties inherit into the shadow root, so it follows the theme.
         if (player.shadowRoot) {
           const pasteboardStyle = document.createElement("style");
           pasteboardStyle.textContent =
             ".hfp-container{overflow:visible}" +
-            ".hfp-iframe{box-shadow:0 0 0 1px rgba(255,255,255,0.08),0 4px 32px rgba(0,0,0,.7)}";
+            ".hfp-iframe{box-shadow:0 0 0 1px var(--color-edge-hi),var(--shadow-raise)}";
           player.shadowRoot.appendChild(pasteboardStyle);
         }
 
@@ -492,7 +493,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         <div ref={containerRef} className="w-full h-full" />
         {showCompositionOverlay && (
           <div
-            className="absolute inset-0 bg-black flex items-center justify-center z-30 select-none"
+            className="absolute inset-0 bg-stage flex items-center justify-center z-30 select-none"
             data-hyperframes-ignore=""
             data-testid="composition-loading-overlay"
             draggable={false}
@@ -500,7 +501,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             onMouseDown={(event) => event.preventDefault()}
             onPointerDown={(event) => event.preventDefault()}
           >
-            <HyperframesLoader
+            <BrandLoader
               title="Loading composition"
               detail="Preparing the Studio preview."
               size={56}
@@ -509,7 +510,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         )}
         {showAssetOverlay && (
           <div
-            className="absolute inset-0 bg-black flex items-center justify-center z-20 select-none"
+            className="absolute inset-0 bg-stage flex items-center justify-center z-20 select-none"
             data-hyperframes-ignore=""
             draggable={false}
             style={{
@@ -521,7 +522,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             onMouseDown={(event) => event.preventDefault()}
           >
             <div className="flex flex-col items-center gap-3">
-              <HyperframesLoader
+              <BrandLoader
                 title="Preparing preview assets"
                 detail="Waiting for media and motion assets before playback starts."
                 size={56}
@@ -530,7 +531,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
                 <button
                   type="button"
                   onClick={handleContinueAnyway}
-                  className="px-3 py-1.5 text-[11px] rounded-md border border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:bg-neutral-800 transition-colors"
+                  className="h-ctl-sm rounded-sm border border-border bg-surface-1 px-2 text-sm font-medium text-fg transition-colors hover:border-border-strong hover:bg-surface-2"
                 >
                   Continue anyway
                 </button>
@@ -540,16 +541,16 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         )}
         {previewError && (
           <div
-            className="absolute inset-0 z-40 flex items-center justify-center bg-black/90 px-6 text-center"
+            className="absolute inset-0 z-40 flex items-center justify-center bg-stage/95 px-6 text-center"
             data-hyperframes-ignore=""
             data-testid="composition-preview-error"
           >
             <div className="max-w-sm">
-              <p className="text-sm font-semibold text-white">Preview failed to load</p>
-              <p className="mt-1 text-xs text-neutral-400">{previewError}</p>
+              <p className="text-md font-semibold text-fg">Preview failed to load</p>
+              <p className="mt-1 text-sm text-fg-3">{previewError}</p>
               <button
                 type="button"
-                className="mt-4 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-neutral-200"
+                className="mt-4 h-ctl rounded-md bg-accent px-3 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent-hover"
                 onClick={() => retryPreviewRef.current?.()}
               >
                 Retry preview

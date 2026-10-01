@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
-  Controls,
   MiniMap,
   ReactFlow,
   applyNodeChanges,
+  useStore,
   type Connection,
   type EdgeChange,
   type FinalConnectionState,
@@ -19,6 +19,7 @@ import { toFlowEdges, toFlowNodes, type StoryFlowNode } from "./storyFlow";
 import { connectNodes, moveNodes } from "./storyGraphOps";
 import { STORY_KIND_STYLES } from "./storyKinds";
 import { STORY_NODE_TYPES } from "./StoryNodeCard";
+import type { StoryTool } from "./StoryToolbar";
 import "@xyflow/react/dist/style.css";
 import "./story.css";
 
@@ -45,7 +46,13 @@ function selectChanges(changes: ReadonlyArray<NodeChange<StoryFlowNode> | EdgeCh
  * The graph canvas. Positions, connections and selection go through the story store; while the agent works
  * the canvas can still be panned, zoomed and inspected, but nothing moves or connects.
  */
-export function StoryCanvas({ onRefused }: { onRefused: (reason: string) => void }) {
+export function StoryCanvas({
+  tool,
+  onRefused,
+}: {
+  tool: StoryTool;
+  onRefused: (reason: string) => void;
+}) {
   const { store } = useStoryServices();
   const projectId = useStoryStore((state) => state.projectId ?? "");
   const graph = useStoryStore((state) => state.graph);
@@ -150,43 +157,58 @@ export function StoryCanvas({ onRefused }: { onRefused: (reason: string) => void
       : { padding: 0.2, maxZoom: 1 };
   });
 
+  // Card text holds its on-screen size as the graph zooms out (story.css `--hf-k`), and detail steps down.
+  const zoom = useStore((state) => state.transform[2]);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    wrapperRef.current?.style.setProperty("--hf-z", String(zoom));
+  }, [zoom]);
+  const focus = selection.nodes.length === 1 && selection.edges.length === 0;
+  const editable = !readOnly && tool === "select";
+
   return (
-    <ReactFlow<StoryFlowNode>
-      className={cn("hf-story-flow", readOnly && "hf-story-readonly")}
-      colorMode="dark"
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={STORY_NODE_TYPES}
-      // Controls on a card (Find with Research) take clicks, not drags; `hf-` keeps the hook out of Tailwind.
-      noDragClassName="hf-story-nodrag"
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onConnect={onConnect}
-      onConnectEnd={onConnectEnd}
-      isValidConnection={isValidConnection}
-      nodesDraggable={!readOnly}
-      nodesConnectable={!readOnly}
-      elementsSelectable
-      deleteKeyCode={null}
-      panActivationKeyCode={null}
-      multiSelectionKeyCode={["Meta", "Control", "Shift"]}
-      onlyRenderVisibleElements
-      minZoom={0.05}
-      maxZoom={1.75}
-      fitView
-      fitViewOptions={initialFit}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background variant={BackgroundVariant.Dots} gap={22} size={1} />
-      <Controls position="bottom-left" showInteractive={false} />
-      <MiniMap<StoryFlowNode>
-        position="bottom-right"
-        pannable
-        zoomable
-        nodeColor={(node) => STORY_KIND_STYLES[node.data.node.kind].stroke}
-        nodeBorderRadius={4}
-        style={{ width: 150, height: 96 }}
-      />
-    </ReactFlow>
+    <div ref={wrapperRef} className="h-full w-full">
+      <ReactFlow<StoryFlowNode>
+        className={cn(
+          "hf-story-flow",
+          readOnly && "hf-story-readonly",
+          tool === "pan" && "hf-story-pan",
+          focus && "hf-focus",
+          zoom < 0.5 ? "hf-lod-far" : zoom < 0.8 && "hf-lod-mid",
+        )}
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={STORY_NODE_TYPES}
+        // Controls on a card (Find with Research) take clicks, not drags; `hf-` keeps the hook out of Tailwind.
+        noDragClassName="hf-story-nodrag"
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onConnectEnd={onConnectEnd}
+        isValidConnection={isValidConnection}
+        nodesDraggable={editable}
+        nodesConnectable={editable}
+        elementsSelectable
+        deleteKeyCode={null}
+        panActivationKeyCode={null}
+        multiSelectionKeyCode={["Meta", "Control", "Shift"]}
+        onlyRenderVisibleElements
+        minZoom={0.05}
+        maxZoom={2}
+        fitView
+        fitViewOptions={initialFit}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
+        <MiniMap<StoryFlowNode>
+          position="bottom-right"
+          pannable
+          zoomable
+          nodeColor={(node) => STORY_KIND_STYLES[node.data.node.kind].stroke}
+          nodeBorderRadius={4}
+          style={{ width: 150, height: 96 }}
+        />
+      </ReactFlow>
+    </div>
   );
 }

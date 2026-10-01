@@ -1,58 +1,38 @@
-import { Eye, Layers } from "../../icons/SystemIcons";
+import { CursorClick, EyeSlash, Selection, SquaresFour, Waveform } from "@phosphor-icons/react";
+import { Eye, Film, Layers, Square, Type, X } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditingTypes";
-import { canHideSelections } from "../../utils/timelineInspector";
+import { canHideSelections, isAudioDomElement } from "../../utils/timelineInspector";
+import { Button, IconButton } from "../ui";
+import { InspectorCompositionFacts } from "./PropertyPanelCompositionFacts";
+import type { InspectorElementKind } from "./PropertyPanelFlatHeader";
 
 function FlatEmptyState() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2.5 px-8 py-10 text-center">
-      <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-panel-border-input bg-panel-input text-panel-text-3">
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.4"
-        >
-          <path d="M4 3l6 14 2-6 6-2z" strokeLinejoin="round" />
-        </svg>
-      </span>
-      <div className="text-[13px] font-semibold text-panel-text-0">Nothing selected</div>
-      <div className="max-w-[250px] text-[11px] leading-normal text-panel-text-3">
-        Click any element on the canvas to edit it, or drag to select several.
-      </div>
-      <div className="mt-2 flex w-full flex-col gap-1.5">
-        <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
-          <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
-            <span className="text-panel-danger">●</span>
-            Record a gesture
-          </span>
-          <span className="rounded-sm border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
-            R
-          </span>
-        </span>
-        <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
-          <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
-            <span className="text-panel-accent">✦</span>
-            Describe a change to the agent
-          </span>
-          <span className="rounded-sm border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
-            ⌘K
-          </span>
-        </span>
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-bg-0 text-sm text-fg">
+      <InspectorCompositionFacts />
+      <div className="flex items-start gap-2 px-3 py-3 text-sm leading-[17px] text-fg-3">
+        <CursorClick size={14} className="mt-px shrink-0" aria-hidden="true" />
+        <p className="m-0 text-pretty">
+          <span className="font-medium text-fg-2">Nothing selected.</span> Click any element on the
+          canvas to edit it, or drag to select several.
+        </p>
       </div>
     </div>
   );
 }
 
-function elementKindGlyph(element: DomEditSelection): { glyph: string; className: string } {
-  if (element.tagName === "video" || element.tagName === "audio" || element.tagName === "img") {
-    return { glyph: "◆", className: "bg-panel-media/10 text-panel-media" };
-  }
-  if (element.textFields?.length > 0) {
-    return { glyph: "T", className: "bg-panel-accent/10 text-panel-accent" };
-  }
-  return { glyph: "▦", className: "bg-panel-container/10 text-panel-container" };
+const KIND_ICON = { media: Film, audio: Waveform, text: Type, other: Square } as const;
+const KIND_CHIP: Record<InspectorElementKind, string> = {
+  text: "bg-k-caption-h border-k-caption-l",
+  media: "bg-k-video-h border-k-video-l",
+  audio: "bg-k-audio-h border-k-audio-l",
+  other: "bg-k-motion-h border-k-motion-l",
+};
+
+function selectionKind(element: DomEditSelection): InspectorElementKind {
+  if (isAudioDomElement(element.element)) return "audio";
+  if (element.tagName === "video" || element.tagName === "img") return "media";
+  return element.textFields?.length > 0 ? "text" : "other";
 }
 
 function FlatMultiSelectState({
@@ -72,95 +52,87 @@ function FlatMultiSelectState({
   // button and the refusal cannot disagree about what audio is.
   const hasAudio = !canHideSelections(multiSelectedElements);
   return (
-    <div className="flex flex-col gap-3 px-4 py-3">
-      <div className="flex items-center gap-3 rounded-xl border border-panel-border bg-panel-surface p-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-panel-accent/10 text-panel-accent">
-          <Layers size={16} />
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-bg-0 text-sm text-fg">
+      <div className="flex shrink-0 items-center gap-2.5 border-b border-border-subtle px-3 py-2.5">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-sm border border-border bg-surface-1 text-fg-2">
+          <Selection size={14} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-semibold text-panel-text-0">
-            {multiSelectCount} elements selected
+          <div className="truncate text-md font-semibold text-fg">
+            {multiSelectCount} Elements Selected
           </div>
-          <div className="mt-px font-mono text-[10px] text-panel-text-3">
-            shift-click to add or remove
-          </div>
+          <div className="mt-px truncate text-xs text-fg-3">⇧-click to add or remove</div>
         </div>
-        <button
-          type="button"
+        <IconButton
+          size="sm"
           data-flat-multiselect-clear="true"
           aria-label="Clear selection"
+          title="Clear selection"
+          icon={<X size={14} />}
+          className="-mr-1"
           onClick={onClearSelection}
-          className="flex h-[26px] w-[26px] shrink-0 items-center justify-center text-panel-text-3"
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path d="M3 3l10 10M13 3L3 13" />
-          </svg>
-        </button>
+        />
       </div>
-      <div className="flex flex-col gap-1">
-        {multiSelectedElements.map((element) => {
-          const { glyph, className } = elementKindGlyph(element);
-          return (
-            <span
-              key={`${element.id ?? element.selector ?? ""}:${element.selectorIndex ?? 0}`}
-              className="flex items-center gap-2 rounded-lg border border-panel-border bg-panel-bg px-2.5 py-[7px]"
-            >
-              <span
-                className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm text-[9px] font-bold ${className}`}
-              >
-                {glyph}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[11px] text-panel-text-1">
-                {element.label}
-              </span>
-              <span className="shrink-0 font-mono text-[9px] text-panel-text-4">
-                {element.id ? `#${element.id}` : element.selector}
-              </span>
-            </span>
-          );
-        })}
-      </div>
-      {/* Neither action applies to audio, so the row goes rather than showing
-          an empty frame. Grouping is the LAYOUT grouper — a positioned wrapper
-          around a bounding box, and an <audio> clip has none (grouping two
-          produced a 0x0 div with inline left/top on elements that are never
-          laid out). Hiding is visibility, which for audio doubles as mute; the
-          timeline already withholds the eye on an audio track
-          (`visible={!isAudioTrack}`) and this panel was the way back to the
-          same write. Both handlers refuse it too — they own keyboard paths no
-          hidden button can gate. */}
-      {!hasAudio && (
-        <div className="flex gap-2">
-          <button
-            type="button"
-            data-flat-multiselect-group="true"
-            onClick={onGroupSelection}
-            className="flex h-[34px] flex-1 items-center justify-center gap-2 rounded-lg bg-panel-hover text-[11px] font-semibold text-panel-text-0"
-          >
-            <Layers size={13} />
-            Group selection
-          </button>
-          <button
-            type="button"
-            data-flat-multiselect-hide-all="true"
-            onClick={onHideAllSelected}
-            className="flex h-[34px] items-center gap-1.5 rounded-lg border border-panel-border-input bg-panel-input px-3 text-[11px] font-medium text-panel-text-2"
-          >
-            <Eye size={13} />
-            Hide all
-          </button>
+      <div className="border-b border-border-subtle">
+        <div className="flex h-[30px] items-center gap-1 pl-2 pr-2.5 text-sm font-semibold">
+          <SquaresFour size={12} className="text-fg-3" aria-hidden="true" />
+          Selection
         </div>
-      )}
-      <span className="text-center text-[10px] text-panel-text-5">
-        Select a single element to edit its properties
-      </span>
+        <div className="grid gap-1.5 px-3 pb-3 pt-0.5">
+          <ul className="m-0 grid list-none gap-0.5 p-0">
+            {multiSelectedElements.map((element) => {
+              const kind = selectionKind(element);
+              const Icon = KIND_ICON[kind];
+              return (
+                <li
+                  key={`${element.id ?? element.selector ?? ""}:${element.selectorIndex ?? 0}`}
+                  className="grid h-row-sm grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 rounded-sm px-1.5 hover:bg-surface-1"
+                >
+                  <span
+                    className={`flex size-5 items-center justify-center rounded-xs border text-clip-ink ${KIND_CHIP[kind]}`}
+                  >
+                    <Icon size={12} />
+                  </span>
+                  <span className="min-w-0 truncate">{element.label}</span>
+                  <span className="whitespace-nowrap font-mono text-num text-fg-3">
+                    {element.id ? `#${element.id}` : element.selector}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {/* Neither action applies to audio, so the row goes rather than showing
+              an empty frame. Grouping is the LAYOUT grouper — a positioned wrapper
+              around a bounding box, and an <audio> clip has none (grouping two
+              produced a 0x0 div with inline left/top on elements that are never
+              laid out). Hiding is visibility, which for audio doubles as mute; the
+              timeline already withholds the eye on an audio track
+              (`visible={!isAudioTrack}`) and this panel was the way back to the
+              same write. Both handlers refuse it too — they own keyboard paths no
+              hidden button can gate. */}
+          {!hasAudio && (
+            <div className="flex flex-wrap gap-1.5">
+              <Button
+                size="sm"
+                data-flat-multiselect-group="true"
+                icon={<Layers size={12} />}
+                onClick={onGroupSelection}
+              >
+                Group Selection
+              </Button>
+              <Button
+                size="sm"
+                data-flat-multiselect-hide-all="true"
+                icon={<EyeSlash size={12} />}
+                onClick={onHideAllSelected}
+              >
+                Hide All
+              </Button>
+            </div>
+          )}
+          <p className="m-0 text-xs text-fg-3">Select a single element to edit its properties.</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -195,26 +167,22 @@ export function PropertyPanelEmptyState({
   }
 
   return (
-    <div className="flex h-full flex-col bg-neutral-900">
+    <div className="flex h-full flex-col bg-bg-0">
       <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
         {multiSelectCount > 1 ? (
           <>
-            <Layers size={18} className="mb-3 text-neutral-600" />
-            <p className="text-sm font-medium text-neutral-200">
-              {multiSelectCount} elements selected
-            </p>
-            <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
+            <Layers size={18} className="mb-3 text-fg-disabled" />
+            <p className="text-sm font-medium text-fg">{multiSelectCount} elements selected</p>
+            <p className="mt-2 max-w-[260px] text-xs leading-5 text-fg-3">
               Select a single element to edit its properties. Click an element in the preview or use
               the timeline layer panel.
             </p>
           </>
         ) : (
           <>
-            <Eye size={18} className="mb-3 text-neutral-600" />
-            <p className="text-sm font-medium text-neutral-200">
-              Select an element in the preview.
-            </p>
-            <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
+            <Eye size={18} className="mb-3 text-fg-disabled" />
+            <p className="text-sm font-medium text-fg">Select an element in the preview.</p>
+            <p className="mt-2 max-w-[260px] text-xs leading-5 text-fg-3">
               The inspector is tuned for element edits with safer geometry controls, color picking,
               and cleaner grouped layer controls.
             </p>

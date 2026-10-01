@@ -19,7 +19,9 @@ const COLOR_LITERAL = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})\b|\b(?:rgba?|h
 
 /** Files whose whole job is to hold colour values. */
 function isTokenSource(relative: string): boolean {
-  return /styles\/(theme\.css|tailwind-preset\.shared\.js|tailwind-preset\.ts)$/.test(relative);
+  return /styles\/(theme\.css|theme-light\.css|tailwind-preset\.shared\.js|tailwind-preset\.ts)$/.test(
+    relative,
+  );
 }
 
 function isScanned(relative: string): boolean {
@@ -140,6 +142,7 @@ describe("colour literal counter", () => {
 
   it("leaves the token sources and the tests out of the scan", () => {
     expect(isScanned("packages/studio/src/styles/theme.css")).toBe(false);
+    expect(isScanned("packages/studio/src/styles/theme-light.css")).toBe(false);
     expect(isScanned("packages/studio/src/styles/tailwind-preset.shared.js")).toBe(false);
     expect(isScanned("packages/studio/src/styles/theme.test.ts")).toBe(false);
     expect(isScanned("packages/studio/src/components/ui/Button.tsx")).toBe(true);

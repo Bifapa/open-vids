@@ -3,7 +3,6 @@ import type { RegistryItem } from "@hyperframes/core/registry";
 import { useBlockCatalog } from "../../hooks/useBlockCatalog";
 import { Film, Plus } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
-import { FLAT_PREVIEW_GRID } from "./propertyPanelFlatPrimitives";
 import type { ElementTiming } from "./propertyPanelFlatTimingDerivation";
 
 export const MEDIA_TREATMENT_OVERLAY_TAG = "media-treatment-overlay";
@@ -40,66 +39,78 @@ export function FlatOverlaysSection({
   const [previewing, setPreviewing] = useState<string | null>(null);
 
   if (loading) {
-    return <div className="py-4 text-center text-[10px] text-panel-text-4">Loading overlays…</div>;
+    return <div className="py-4 text-center text-xs text-fg-3">Loading overlays…</div>;
   }
   if (error) {
-    return <div className="py-4 text-center text-[10px] text-red-300">{error}</div>;
+    return <div className="py-4 text-center text-xs text-error">{error}</div>;
   }
 
   const busy = adding !== null;
+  const described = overlays.find((overlay) => overlay.name === previewing);
   return (
-    <div data-flat-overlays="true" className={FLAT_PREVIEW_GRID}>
-      {overlays.map((overlay) => (
-        <button
-          key={overlay.name}
-          type="button"
-          data-flat-overlay={overlay.name}
-          aria-label={`Add ${overlay.title}`}
-          disabled={busy}
-          title={overlay.description}
-          onPointerEnter={() => setPreviewing(overlay.name)}
-          onPointerLeave={() => setPreviewing(null)}
-          onFocus={() => setPreviewing(overlay.name)}
-          onBlur={() => setPreviewing(null)}
-          onClick={() => {
-            setAdding(overlay.name);
-            void onAddOverlay(overlay.name).finally(() => setAdding(null));
-          }}
-          className="group min-w-0 overflow-hidden border border-panel-hairline bg-panel-bg-soft text-left transition-colors hover:border-panel-border-input hover:bg-panel-bg disabled:cursor-wait disabled:opacity-50"
-        >
-          <span className="relative flex aspect-video w-full items-center justify-center overflow-hidden bg-black/20">
-            {previewing === overlay.name && overlay.preview?.video ? (
-              <video
-                src={overlay.preview.video}
-                poster={overlay.preview.poster}
-                autoPlay
-                muted
-                loop
-                playsInline
-                className="block h-full w-full object-cover"
-              />
-            ) : overlay.preview?.poster ? (
-              <img
-                data-flat-overlay-preview={overlay.name}
-                src={overlay.preview.poster}
-                alt=""
-                draggable={false}
-                loading="lazy"
-                className="block h-full w-full object-cover"
-              />
-            ) : (
-              <Film size={15} className="text-panel-text-4" />
-            )}
-            <Plus
-              size={12}
-              className="absolute right-1.5 top-1.5 text-white opacity-70 drop-shadow-sm group-hover:text-panel-accent group-hover:opacity-100"
-            />
-          </span>
-          <span className="block truncate px-2 py-1.5 text-[10px] text-panel-text-2">
-            {adding === overlay.name ? "Adding…" : overlay.title}
-          </span>
-        </button>
-      ))}
+    <div className="grid gap-1.5">
+      <p className="m-0 text-xs leading-[15px] text-fg-3">
+        Adds a registry block on the Motion track above this clip.
+      </p>
+      <div data-flat-overlays="true" className="grid grid-cols-2 gap-2">
+        {overlays.map((overlay) => (
+          <button
+            key={overlay.name}
+            type="button"
+            data-flat-overlay={overlay.name}
+            aria-label={`Add ${overlay.title}`}
+            disabled={busy}
+            title={overlay.description}
+            onPointerEnter={() => setPreviewing(overlay.name)}
+            onPointerLeave={() => setPreviewing(null)}
+            onFocus={() => setPreviewing(overlay.name)}
+            onBlur={() => setPreviewing(null)}
+            onClick={() => {
+              setAdding(overlay.name);
+              void onAddOverlay(overlay.name).finally(() => setAdding(null));
+            }}
+            className={`group grid min-w-0 gap-1 overflow-hidden rounded-sm border bg-surface-1 pb-1.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent active:bg-surface-2 disabled:cursor-wait disabled:opacity-50 ${
+              previewing === overlay.name
+                ? "border-border-strong text-fg"
+                : "border-border-subtle text-fg-2 hover:border-border-strong hover:text-fg"
+            }`}
+          >
+            <span className="relative flex aspect-video w-full items-center justify-center overflow-hidden bg-bg-1">
+              {previewing === overlay.name && overlay.preview?.video ? (
+                <video
+                  src={overlay.preview.video}
+                  poster={overlay.preview.poster}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="block h-full w-full object-cover"
+                />
+              ) : overlay.preview?.poster ? (
+                <img
+                  data-flat-overlay-preview={overlay.name}
+                  src={overlay.preview.poster}
+                  alt=""
+                  draggable={false}
+                  loading="lazy"
+                  className="block h-full w-full object-cover"
+                />
+              ) : (
+                <Film size={15} className="text-fg-3" />
+              )}
+              <span className="absolute right-1 top-1 inline-flex size-[18px] items-center justify-center rounded-full bg-on-media-bg text-on-media opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                <Plus size={12} />
+              </span>
+            </span>
+            <span className="block truncate px-1.5 text-xs leading-[14px]">
+              {adding === overlay.name ? "Adding…" : overlay.title}
+            </span>
+          </button>
+        ))}
+      </div>
+      {described?.description ? (
+        <p className="m-0 min-h-7 text-xs leading-[14px] text-fg-3">{described.description}</p>
+      ) : null}
     </div>
   );
 }

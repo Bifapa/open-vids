@@ -98,7 +98,7 @@ function hasJsonContentType(request: Request): boolean {
   return contentType?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
 }
 
-function originMatchesHost(request: Request): boolean {
+export function originMatchesHost(request: Request): boolean {
   const origin = request.headers.get("origin");
   if (origin === null) return true;
   const host = request.headers.get("host");

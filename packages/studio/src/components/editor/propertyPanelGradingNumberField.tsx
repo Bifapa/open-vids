@@ -109,7 +109,7 @@ export function GradingNumberField({
             event.currentTarget.blur();
           }
         }}
-        className={`border-b border-panel-border-input/50 bg-transparent py-0.5 text-right font-mono text-[9px] text-panel-text-2 outline-hidden focus:border-panel-accent disabled:opacity-40 ${inputClassName}`}
+        className={`h-[22px] w-full min-w-0 rounded-sm border border-border bg-surface-1 px-1 text-right font-mono text-2xs text-fg outline-hidden transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:border-border-subtle disabled:bg-transparent disabled:text-fg-disabled ${inputClassName}`}
       />
     </label>
   );

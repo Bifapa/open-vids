@@ -31,7 +31,6 @@ vi.mock("../editor/DomEditOverlay", () => ({
 vi.mock("../editor/MotionPathOverlay", () => ({
   MotionPathOverlay: () => <i data-testid="motion-path" />,
 }));
-vi.mock("../editor/SnapToolbar", () => ({ SnapToolbar: () => null }));
 vi.mock("../editor/GridOverlay", () => ({ GridOverlay: () => null }));
 
 let root: Root;

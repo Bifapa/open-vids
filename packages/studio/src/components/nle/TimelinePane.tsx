@@ -3,6 +3,7 @@ import { Timeline } from "../../player";
 import type { TimelineElement, TimelineTimeRange } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { AudioMeterStrip } from "./AudioMeterStrip";
+import { TimelineSequenceCrumbs } from "./TimelineSequenceCrumbs";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { useNLEContext } from "./NLEContext";
 
@@ -69,6 +70,7 @@ export function TimelinePane({
     seek,
     handleDrillDown,
     compositionStack,
+    handleNavigateComposition,
     updateCompositionStack,
     timelineDisabled,
     timelineSessionEpoch,
@@ -94,7 +96,11 @@ export function TimelinePane({
           }
         }}
       >
-        <div className="shrink-0">{timelineToolbar}</div>
+        <header className="flex h-head shrink-0 items-center gap-1 border-b border-border-subtle bg-bg-1 pr-1 pl-1.5">
+          <TimelineSequenceCrumbs stack={compositionStack} onNavigate={handleNavigateComposition} />
+          {timelineToolbar && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
+          {timelineToolbar}
+        </header>
         <div className="flex min-h-0 flex-1">
           <div className="min-w-0 flex-1">
             <Timeline

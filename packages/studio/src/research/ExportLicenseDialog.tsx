@@ -6,7 +6,7 @@ import { useDialogBehavior } from "../components/ui/useDialogBehavior";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { LicenseChip } from "./LicenseChip";
 import { useExportLicenseGate, type ExportDecision } from "./exportLicenseGate";
-import { SectionHeading } from "./researchUi";
+import { NoteBox, SectionHeading } from "./researchUi";
 
 function ExportLicenseModal({
   check,
@@ -26,7 +26,7 @@ function ExportLicenseModal({
   const count = check.warnings.length;
   return (
     <div
-      className="hf-backdrop-in fixed inset-0 z-100 flex items-center justify-center bg-bg-0/70 px-4 backdrop-blur-xs"
+      className="hf-backdrop-in fixed inset-0 z-100 flex items-center justify-center bg-scrim px-4"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) requestClose();
       }}
@@ -38,50 +38,43 @@ function ExportLicenseModal({
         aria-labelledby={titleId}
         tabIndex={-1}
         data-testid="export-license-dialog"
-        className="flex max-h-[80vh] w-full max-w-[520px] flex-col overflow-hidden rounded-lg border border-border-input bg-surface text-text-1 shadow-popover outline-hidden"
+        className="flex max-h-[80vh] w-full max-w-[520px] flex-col overflow-hidden rounded-lg border border-border bg-bg-1 text-sm text-fg shadow-pop outline-hidden"
       >
-        <header className="flex items-start gap-3 border-b border-border px-4 py-3">
-          <WarningCircle
-            size={18}
-            weight="fill"
-            className="mt-0.5 shrink-0 text-container"
-            aria-hidden
-          />
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <h2 id={titleId} className="text-step-13 font-semibold text-text-0">
-              {count === 1
-                ? "1 asset needs a license check"
-                : `${count} assets need a license check`}
-            </h2>
-            <p className="text-step-11 text-text-2">
-              This export uses researched material whose license is unknown or restricted. You can
-              still export; check the licenses before you publish.
-            </p>
-          </div>
+        <header className="flex h-head shrink-0 items-center gap-1.5 border-b border-border-subtle pr-1 pl-3 select-none">
+          <h2 id={titleId} className="min-w-0 flex-1 truncate text-sm font-semibold">
+            {count === 1 ? "1 asset needs a license check" : `${count} assets need a license check`}
+          </h2>
           <IconButton
             aria-label="Close"
             size="sm"
-            icon={<X size={12} aria-hidden />}
+            icon={<X size={14} aria-hidden />}
             onClick={() => onDecide("cancel")}
           />
         </header>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
-          <ul className="flex flex-col gap-1.5" aria-label="License warnings">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-3 [scrollbar-color:var(--color-surface-3)_transparent]">
+          <NoteBox warn icon={<WarningCircle size={12} weight="fill" />}>
+            This export uses researched material whose license is unknown or restricted. You can
+            still export; check the licenses before you publish.
+          </NoteBox>
+          <ul
+            className="overflow-hidden rounded-md border border-border-subtle bg-bg-0"
+            aria-label="License warnings"
+          >
             {check.warnings.map((warning) => (
               <li
                 key={warning.asset}
-                className="flex flex-col gap-0.5 rounded-md border border-border bg-bg-2 px-2.5 py-1.5"
+                className="flex flex-col gap-1 border-border-subtle px-2.5 py-2 not-first:border-t"
               >
                 <div className="flex items-center gap-2">
                   <span
-                    className="min-w-0 flex-1 truncate font-mono text-step-10 text-text-1"
+                    className="min-w-0 flex-1 truncate font-mono text-num text-fg"
                     title={warning.asset}
                   >
                     {warning.asset}
                   </span>
-                  <LicenseChip status={warning.status} label={warning.license} />
+                  <LicenseChip status={warning.status} label={warning.license} size="md" />
                 </div>
-                <span className="text-step-10 text-text-3">
+                <span className="text-xs leading-[15px] text-fg-3">
                   {/* The server's message names the asset for agents too; the row above already does. */}
                   {warning.message.startsWith(`${warning.asset}: `)
                     ? warning.message.slice(warning.asset.length + 2)
@@ -107,7 +100,7 @@ function ExportLicenseModal({
                   </Button>
                 }
               />
-              <div className="flex flex-col gap-1 rounded-md border border-border-input bg-bg-2 px-2.5 py-2 text-step-10 text-text-1 select-text">
+              <div className="flex flex-col gap-1 rounded-md border border-border-subtle bg-bg-0 px-2.5 py-2 text-sm leading-[17px] text-fg select-text">
                 {check.credits.map((line) => (
                   <p key={line}>{line}</p>
                 ))}
@@ -115,7 +108,7 @@ function ExportLicenseModal({
             </section>
           )}
         </div>
-        <footer className="flex items-center justify-end gap-2 border-t border-border px-4 py-2.5">
+        <footer className="flex min-h-11 shrink-0 items-center justify-end gap-1.5 border-t border-border-subtle py-2 pr-2.5 pl-3">
           <Button size="sm" variant="ghost" onClick={() => onDecide("cancel")}>
             Cancel
           </Button>

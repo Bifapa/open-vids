@@ -153,7 +153,7 @@ describe("while an agent turn runs", () => {
       agent.setState({ activeTurn: ACTIVE });
     });
     expect(host.textContent).toContain("AI is working on the story");
-    expect(button("Add")?.disabled).toBe(true);
+    expect(button("Add node")?.disabled).toBe(true);
     expect(button("Review with AI")?.disabled).toBe(true);
     expect(button("Build Story")?.disabled).toBe(true);
 

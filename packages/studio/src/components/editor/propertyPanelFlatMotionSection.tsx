@@ -1,9 +1,9 @@
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./domEditing";
-import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
+import { formatTimingValue } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
-import { CommitField } from "./propertyPanelPrimitives";
+import { FlatRow } from "./propertyPanelFlatPrimitives";
 import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { GsapAnimationList } from "./GsapAnimationList";
@@ -76,27 +76,24 @@ export function FlatTimingRow({
     void onSetAttribute("duration", (parsed - start).toFixed(2));
   };
 
-  const cell = (label: string, value: string, onCommit: (next: string) => void) => (
-    <div className="grid gap-px">
-      <span className="text-[9px] text-panel-text-4">{label}</span>
-      <span className="border-b border-panel-border-input/50 font-mono text-[11px] text-panel-text-0 hover:border-panel-border-input">
-        <CommitField
-          value={value}
-          onCommit={(next) => {
-            onCommit(next);
-          }}
-        />
-      </span>
-    </div>
+  const row = (label: string, value: string, onCommit: (next: string) => void) => (
+    <FlatRow
+      label={label}
+      value={value}
+      tier="explicitDefault"
+      onCommit={(next) => {
+        onCommit(next);
+      }}
+    />
   );
 
   return (
-    <div className={RESPONSIVE_GRID}>
-      {cell("Start", formatTimingValue(start), commitStart)}
-      {cell("End", formatTimingValue(end), commitEnd)}
-      {cell("Duration", formatTimingValue(duration), commitDuration)}
+    <div className="grid gap-1.5">
+      {row("Start", formatTimingValue(start), commitStart)}
+      {row("End", formatTimingValue(end), commitEnd)}
+      {row("Duration", formatTimingValue(duration), commitDuration)}
       {derived && (
-        <p className="col-span-3 mt-1 text-[10px] leading-snug text-panel-text-3">
+        <p className="m-0 text-xs leading-[15px] text-fg-3">
           Inferred from this element's animation — edit to pin an explicit clip range.
         </p>
       )}
@@ -133,7 +130,7 @@ export function FlatMotionSection({
   const renderedElementId = scopedElementKey(element);
 
   return (
-    <div className="space-y-3">
+    <div className="grid gap-2.5">
       {showTiming && (
         <FlatTimingRow
           element={element}
@@ -145,13 +142,13 @@ export function FlatMotionSection({
       {showEffects && (
         <>
           {multipleTimelines && (
-            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
+            <p className="m-0 rounded-sm border border-warning/35 bg-warning-soft px-2 py-1.5 text-xs leading-[15px] text-fg-2">
               This file has multiple GSAP timelines. Animation editing is disabled to prevent data
               loss — consolidate into a single timeline to enable editing.
             </p>
           )}
           {unsupportedTimelinePattern && (
-            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
+            <p className="m-0 rounded-sm border border-warning/35 bg-warning-soft px-2 py-1.5 text-xs leading-[15px] text-fg-2">
               This timeline uses a computed key the editor can&apos;t resolve statically.
             </p>
           )}

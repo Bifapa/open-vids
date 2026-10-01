@@ -313,7 +313,7 @@ describe("PropertyPanel — STUDIO_FLAT_INSPECTOR_ENABLED on", () => {
       const { host, root } = await renderPanel(true);
       expect(host.querySelector('[data-flat-header-icon="true"]')).not.toBeNull();
       expect(host.querySelector('[data-flat-group-open="true"]')).not.toBeNull();
-      expect(host.textContent).toContain("Ask agent about this element");
+      expect(host.textContent).toContain("Ask Agent About This Element");
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,
@@ -348,10 +348,10 @@ describe("PropertyPanel — STUDIO_FLAT_INSPECTOR_ENABLED on", () => {
       // group titled "Text" may appear, open or collapsed.
       const { host, root } = await renderPanel(true, nonTextElement());
       const openTitle = host.querySelector(
-        '[data-flat-group-open="true"] .text-panel-text-0',
+        '[data-flat-group-open="true"] [data-flat-group-title]',
       )?.textContent;
       const collapsedTitles = Array.from(
-        host.querySelectorAll('[data-flat-group-collapsed="true"] .text-panel-text-2'),
+        host.querySelectorAll('[data-flat-group-collapsed="true"] [data-flat-group-title]'),
       ).map((el) => el.textContent);
       expect(openTitle).not.toBe("Text");
       expect(collapsedTitles).not.toContain("Text");
@@ -719,10 +719,10 @@ function audioElement() {
 // All FlatGroup titles currently mounted (open row + every collapsed row).
 function flatGroupTitles(host: HTMLElement): string[] {
   const open = Array.from(
-    host.querySelectorAll('[data-flat-group-open="true"] .text-panel-text-0'),
+    host.querySelectorAll('[data-flat-group-open="true"] [data-flat-group-title]'),
   ).map((el) => el.textContent ?? "");
   const collapsed = Array.from(
-    host.querySelectorAll('[data-flat-group-collapsed="true"] .text-panel-text-2'),
+    host.querySelectorAll('[data-flat-group-collapsed="true"] [data-flat-group-title]'),
   ).map((el) => el.textContent ?? "");
   return [...open, ...collapsed];
 }

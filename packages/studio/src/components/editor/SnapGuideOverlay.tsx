@@ -11,9 +11,12 @@ export interface SnapGuidesState {
 const MAX_GUIDES = 6;
 const MAX_SPACING_GUIDES = 4;
 
-const GUIDE_COLOR = "rgba(255, 68, 204, 0.85)";
-const SPACING_COLOR = "rgba(255, 68, 204, 0.6)";
-const SPACING_BG = "rgba(255, 68, 204, 0.15)";
+// Guides are neutral (prototype `.v-snap`): accent is reserved for selection.
+const GUIDE_COLOR = "color-mix(in oklch, var(--color-on-media) 88%, transparent)";
+const SPACING_COLOR = "color-mix(in oklch, var(--color-on-media) 60%, transparent)";
+const DASH = "4px, transparent 4px 7px)";
+const GUIDE_DASH_VERTICAL = `repeating-linear-gradient(to bottom, ${GUIDE_COLOR} 0 ${DASH}`;
+const GUIDE_DASH_HORIZONTAL = `repeating-linear-gradient(to right, ${GUIDE_COLOR} 0 ${DASH}`;
 
 interface SnapGuideOverlayProps {
   snapGuidesRef: RefObject<SnapGuidesState | null>;
@@ -70,6 +73,8 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
         el.style.top = `${line.top}px`;
         el.style.width = `${line.width}px`;
         el.style.height = `${line.height}px`;
+        el.style.backgroundImage =
+          line.width <= line.height ? GUIDE_DASH_VERTICAL : GUIDE_DASH_HORIZONTAL;
       }
 
       for (let i = 0; i < MAX_SPACING_GUIDES; i++) {
@@ -126,7 +131,6 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
           style={{
             display: "none",
             position: "absolute",
-            backgroundColor: GUIDE_COLOR,
             zIndex: 50,
           }}
         />
@@ -149,12 +153,12 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
               spacingLabelElsRef.current[i] = el;
             }}
             style={{
-              fontSize: "10px",
-              fontFamily: "monospace",
-              color: GUIDE_COLOR,
-              backgroundColor: SPACING_BG,
-              padding: "0 3px",
-              borderRadius: "2px",
+              fontSize: "var(--text-2xs)",
+              fontFamily: "var(--font-mono)",
+              color: "var(--color-on-media)",
+              backgroundColor: "var(--color-on-media-bg)",
+              padding: "0 4px",
+              borderRadius: "var(--radius-xs)",
               lineHeight: "14px",
               whiteSpace: "nowrap",
             }}

@@ -1,17 +1,22 @@
 // UI primitives
 export { Button, buttonBase, buttonSizes, buttonVariants } from "./components/ui/Button";
 export type { ButtonSize, ButtonVariant, PreviewState } from "./components/ui/Button";
-export { HyperframesLogo } from "./components/StudioHeader";
+export { OpenvidsLogo, OpenvidsMark } from "./components/ui/OpenvidsLogo";
 export { IconButton } from "./components/ui/IconButton";
 export { Tab, TabPanel, Tabs, TabsList } from "./components/ui/Tabs";
-export { HyperframesLoader } from "./components/ui/HyperframesLoader";
-export type { HyperframesLoaderProps } from "./components/ui/HyperframesLoader";
+export { BrandLoader } from "./components/ui/BrandLoader";
+export type { BrandLoaderProps } from "./components/ui/BrandLoader";
 export { Tooltip } from "./components/ui/Tooltip";
+export { Kbd } from "./components/ui/Kbd";
 export { cn } from "./components/ui/cn";
 export {
   ContextMenu,
   Menu,
+  MenuCheckboxItem,
+  MenuGroup,
+  MenuGroupLabel,
   MenuItem,
+  menuItemBase,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
@@ -20,16 +25,22 @@ export {
 } from "./components/ui/Menu";
 export type { MenuItemTone, PopupPreviewState } from "./components/ui/Menu";
 export { Popover } from "./components/ui/Popover";
-export { Input, fieldBase, fieldText } from "./components/ui/Input";
-export type { InputProps } from "./components/ui/Input";
+export { Dialog } from "./components/ui/Dialog";
+export type { DialogProps } from "./components/ui/Dialog";
+export { Input, fieldBase, fieldSizes, fieldText } from "./components/ui/Input";
+export type { FieldSize, InputProps } from "./components/ui/Input";
 export { NumberField } from "./components/ui/NumberField";
 export type { NumberFieldProps } from "./components/ui/NumberField";
 export { Select } from "./components/ui/Select";
 export type { SelectOption, SelectProps } from "./components/ui/Select";
+export { SegmentedControl } from "./components/ui/SegmentedControl";
+export type { SegmentedControlProps, SegmentedOption } from "./components/ui/SegmentedControl";
 export { Slider } from "./components/ui/Slider";
 export type { SliderProps } from "./components/ui/Slider";
 export { Toggle } from "./components/ui/Toggle";
 export type { ToggleProps } from "./components/ui/Toggle";
+export { Badge, Meter, Pill, Spinner, StatusDot } from "./components/ui/Status";
+export type { StatusDotTone, StatusTone } from "./components/ui/Status";
 
 // NLE Layout
 export { EditorShell } from "./components/EditorShell";
@@ -125,7 +136,8 @@ export type { AgentPromptElementInfo } from "./components/editor/domEditingAgent
 
 // Render queue
 export { RenderQueue } from "./components/renders/RenderQueue";
-export type { RenderQueueProps, CompositionDimensions } from "./components/renders/RenderQueue";
+export type { RenderQueueProps } from "./components/renders/RenderQueue";
+export type { CompositionDimensions } from "./components/renders/RenderSettingsForm";
 export { useRenderQueue } from "./components/renders/useRenderQueue";
 export type { FfmpegStatus } from "./components/renders/useFfmpegStatus";
 export type {

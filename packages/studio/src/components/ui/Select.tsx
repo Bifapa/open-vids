@@ -5,8 +5,8 @@
 
 import { Select as BaseSelect } from "@base-ui/react/select";
 import { cn } from "./cn";
-import { fieldBase } from "./Input";
-import { floatingMotion } from "./Menu";
+import { fieldBase, fieldSizes, type FieldSize } from "./Input";
+import { menuItemBase, popupSurface } from "./Menu";
 import type { PreviewState } from "./Button";
 
 export interface SelectOption {
@@ -24,6 +24,8 @@ export interface SelectProps {
   /** Called when a different option is chosen. */
   onCommit: (next: string) => void;
   disabled?: boolean;
+  /** `sm` in panels (default), `md` in window forms. */
+  size?: FieldSize;
   className?: string;
   "data-preview-state"?: PreviewState;
 }
@@ -34,6 +36,7 @@ export function Select({
   options,
   onCommit,
   disabled,
+  size = "sm",
   className,
   "data-preview-state": previewState,
 }: SelectProps) {
@@ -52,6 +55,7 @@ export function Select({
         aria-label={label}
         className={cn(
           fieldBase,
+          fieldSizes[size],
           "w-full cursor-pointer justify-between text-left",
           "data-[popup-open]:border-border-strong",
           className,
@@ -59,7 +63,7 @@ export function Select({
         data-preview-state={previewState}
       >
         <BaseSelect.Value className="truncate" />
-        <BaseSelect.Icon className="shrink-0 text-text-4" aria-hidden="true">
+        <BaseSelect.Icon className="shrink-0 text-fg-3" aria-hidden="true">
           <svg width="8" height="5" viewBox="0 0 8 5" fill="none">
             <path
               d="M1 1L4 4L7 1"
@@ -75,10 +79,7 @@ export function Select({
       <BaseSelect.Portal>
         <BaseSelect.Positioner sideOffset={4} alignItemWithTrigger={false}>
           <BaseSelect.Popup
-            className={cn(
-              "min-w-[var(--anchor-width)] rounded-md border border-border bg-surface py-1 shadow-menu",
-              floatingMotion("duration-open"),
-            )}
+            className={cn(popupSurface, "min-w-[var(--anchor-width)] p-1 shadow-pop")}
           >
             <BaseSelect.List>
               {options.map((option) => (
@@ -86,14 +87,11 @@ export function Select({
                   key={option.value}
                   value={option.value}
                   disabled={option.disabled}
-                  className={cn(
-                    "flex h-ctl-sm cursor-pointer select-none items-center gap-2 px-2.5",
-                    "text-step-11 text-text-2 outline-hidden",
-                    "data-[highlighted]:bg-hover data-[highlighted]:text-text-0",
-                    "data-[selected]:text-text-0",
-                    "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40",
-                  )}
+                  className={cn(menuItemBase, "justify-start gap-2 data-[selected]:font-medium")}
                 >
+                  <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden>
+                    <BaseSelect.ItemIndicator>✓</BaseSelect.ItemIndicator>
+                  </span>
                   <BaseSelect.ItemText className="truncate">{option.label}</BaseSelect.ItemText>
                 </BaseSelect.Item>
               ))}

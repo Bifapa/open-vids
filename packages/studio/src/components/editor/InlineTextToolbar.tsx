@@ -77,7 +77,7 @@ export function InlineTextToolbar({
       data-inline-text-toolbar="true"
       role="toolbar"
       aria-label="Text formatting"
-      className="pointer-events-auto fixed z-200 flex items-center gap-1 rounded-lg border border-white/10 bg-[#15171c] p-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
+      className="pointer-events-auto fixed z-200 flex items-center gap-1 rounded-lg border border-border bg-menu-bg/94 p-1 whitespace-nowrap shadow-pop backdrop-blur-xl"
       style={{
         left: placement.left,
         top: placement.top,
@@ -98,12 +98,12 @@ export function InlineTextToolbar({
       onClick={(event) => event.stopPropagation()}
     >
       <label
-        className="group relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md hover:bg-white/10"
+        className="group relative flex size-ctl-sm cursor-pointer items-center justify-center rounded-sm hover:bg-surface-2"
         title="Text colour"
       >
         <span
           aria-hidden="true"
-          className="h-4 w-4 rounded-full border-2 border-white/25 transition-transform duration-150 group-hover:scale-110 group-active:scale-95"
+          className="size-[18px] rounded-full border border-border-strong transition-[transform,border-color] duration-150 group-hover:scale-105 group-hover:border-fg-2 group-active:scale-95"
           // `background` maps a gradient to the PADDING box and then repeats it
           // to fill the border box, so the 1px border shows the strip either
           // side of the tile: the end colour on the left, the start colour on
@@ -126,6 +126,7 @@ export function InlineTextToolbar({
           onChange={(event) => apply({ color: event.target.value })}
         />
       </label>
+      <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
       <ToolbarToggle
         label="Bold"
         glyph="B"
@@ -201,11 +202,11 @@ function ToolbarToggle({
       title={label}
       aria-label={label}
       aria-pressed={on}
-      className={`flex h-6 w-6 items-center justify-center rounded-md text-xs ${
-        on ? "bg-studio-accent/20 text-studio-accent" : "text-white/70 hover:bg-white/10"
+      className={`flex size-ctl-sm items-center justify-center rounded-sm text-sm ${
+        on ? "bg-surface-3 text-fg" : "text-fg-2 hover:bg-surface-2 hover:text-fg"
       }`}
       style={{
-        fontWeight: bold ? 700 : 400,
+        fontWeight: bold ? 700 : 600,
         fontStyle: italic ? "italic" : "normal",
         textDecoration: underline ? "underline" : "none",
       }}

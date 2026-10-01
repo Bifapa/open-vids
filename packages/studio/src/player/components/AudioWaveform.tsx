@@ -32,12 +32,13 @@ function paintWaveformBars(
   waveformBaselineRgb: string,
   amplitudes: readonly number[],
 ) {
+  // Mirrored about the centre line, like the editor's waveform lanes.
   bars.forEach((bar, index) => {
     const amplitude = amplitudes[index] ?? 0;
     context.fillStyle = `rgb(${waveformBaselineRgb})`;
-    context.fillRect(bar.x, height - 2, bar.width, 2);
+    context.fillRect(bar.x, height / 2 - 0.5, bar.width, 1);
     context.fillStyle = `rgba(${waveformBarRgb},${loudnessToOpacity(amplitude).toFixed(2)})`;
-    context.fillRect(bar.x, height - bar.height, bar.width, bar.height);
+    context.fillRect(bar.x, (height - bar.height) / 2, bar.width, bar.height);
   });
 }
 
@@ -223,12 +224,12 @@ export const AudioWaveform = memo(function AudioWaveform({
       <div className="absolute inset-0 overflow-hidden" style={{ zIndex: 10 }}>
         <canvas
           ref={setCanvasRef}
-          className="absolute inset-x-0 bottom-0 w-full"
-          style={{ top: 16, height: "calc(100% - 16px)" }}
+          className="absolute inset-x-0 w-full"
+          style={{ top: 2, height: "calc(100% - 4px)" }}
         />
         {snapshot.status === "loading" && (
           <div
-            className="absolute inset-x-0 bottom-0 top-4 animate-pulse"
+            className="absolute inset-0 animate-pulse"
             style={{
               background: "var(--timeline-thumbnail-shimmer)",
             }}
@@ -239,7 +240,7 @@ export const AudioWaveform = memo(function AudioWaveform({
         {snapshot.status === "error" && (
           <div
             className="absolute inset-x-0 flex items-center justify-center gap-1.5"
-            style={{ top: 16, bottom: 0 }}
+            style={{ top: 0, bottom: 0 }}
           >
             <div
               className="absolute inset-x-0"

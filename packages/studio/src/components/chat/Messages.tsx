@@ -1,94 +1,192 @@
+import { Fragment, type ReactNode } from "react";
 import {
-  AGENT_DISPLAY_NAMES,
-  type AssistantMessage,
-  type AssistantPart,
-  type MessageReference,
-  type TaskMessage,
-  type UserMessage,
+  Clock,
+  Cursor,
+  File,
+  FilmStrip,
+  Image,
+  LinkSimple,
+  Waveform,
+  type Icon,
+} from "@phosphor-icons/react";
+import type {
+  ActivityPart,
+  AgentId,
+  AssistantMessage,
+  AssistantPart,
+  DelegationPart,
+  MessageReference,
+  TaskMessage,
+  TurnSummary,
+  UserMessage,
 } from "@hyperframes/agent-protocol";
 import { cn } from "../ui/cn";
+import { Badge } from "../ui/Status";
 import { ActivityRow } from "./ActivityRow";
+import { AgentMonogram, chatAgentName } from "./AgentMonogram";
+import { chatMeasure, chatMeasureWide, noteBox, sectLabel } from "./chatStyles";
 import { DelegationRow } from "./DelegationRow";
 import { MarkdownLite } from "./MarkdownLite";
+import { formatClockTime } from "./relativeTime";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 const seconds = (value: number) => `${Math.round(value * 10) / 10}s`;
 
-/** What a reference chip says, or null for kinds with no display yet (media has no UI in this milestone). */
-export function referenceChipLabel(reference: MessageReference): string | null {
+/** The last segment of a path or URL: what a file chip names. */
+function baseName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+/** What a reference chip says. */
+export function referenceChipLabel(reference: MessageReference): string {
   switch (reference.kind) {
     case "editor-selection":
       return reference.label ?? "Editor selection";
     case "timeline-range":
       return reference.label ?? `Timeline ${seconds(reference.start)}–${seconds(reference.end)}`;
     case "asset":
-      return reference.label ?? reference.path;
+      return reference.label ?? baseName(reference.path);
     case "url":
       return reference.title ?? reference.label ?? reference.url;
-    default:
-      return null;
+    default: {
+      const source = reference.source;
+      if (reference.label) return reference.label;
+      if (source.type === "project-path") return baseName(source.path);
+      if (source.type === "url") return baseName(source.url);
+      return "Upload";
+    }
   }
 }
 
-function ReferenceChip({ label }: { label: string }) {
+const REFERENCE_ICONS: Record<MessageReference["kind"], Icon> = {
+  "editor-selection": Cursor,
+  "timeline-range": Clock,
+  asset: File,
+  url: LinkSimple,
+  image: Image,
+  video: FilmStrip,
+  audio: Waveform,
+  file: File,
+};
+
+const REFERENCE_KIND_NAMES: Record<MessageReference["kind"], string> = {
+  "editor-selection": "Selection",
+  "timeline-range": "Time range",
+  asset: "Asset",
+  url: "Link",
+  image: "Image",
+  video: "Video",
+  audio: "Audio",
+  file: "File",
+};
+
+/** A read-only context chip on a sent message: kind icon + label, detail in the tooltip. */
+function ReferenceChip({ reference }: { reference: MessageReference }) {
+  const KindIcon = REFERENCE_ICONS[reference.kind];
+  const label = referenceChipLabel(reference);
+  const kind = REFERENCE_KIND_NAMES[reference.kind];
   return (
-    <span className="inline-flex max-w-full items-center truncate rounded-sm border border-border-strong bg-surface px-1.5 py-0.5 text-step-10 text-text-2">
-      {label}
+    <span
+      role="listitem"
+      title={`${label} — ${kind}`}
+      className="inline-flex h-ctl-sm max-w-full min-w-0 items-center gap-[5px] rounded-sm border border-border bg-bg-1 pr-2 pl-1.5 text-xs leading-none font-medium text-fg-2"
+    >
+      <KindIcon aria-hidden className="size-icon-sm shrink-0 text-fg-3" />
+      <span className="max-w-[22ch] min-w-0 truncate">{label}</span>
+      <span className="sr-only"> ({kind})</span>
     </span>
   );
 }
 
-export function UserBubble({ message }: { message: UserMessage }) {
-  const chips: { id: string; label: string }[] = [];
-  const texts: { id: string; text: string }[] = [];
-  for (const part of message.parts) {
-    if (part.type === "text") texts.push({ id: part.id, text: part.text });
-    else {
-      const label = referenceChipLabel(part.reference);
-      if (label) chips.push({ id: part.id, label });
-    }
-  }
+/** Author, optional tags and time: the head every message shares. */
+function MessageHead({
+  agent,
+  author,
+  at,
+  children,
+}: {
+  agent?: AgentId;
+  author: string;
+  at: number;
+  children?: ReactNode;
+}) {
   return (
-    <div className="flex flex-col items-end gap-1" data-role="user">
-      {message.steering && (
-        <span className="text-step-10 uppercase tracking-wide text-accent">steering</span>
-      )}
-      <div className="max-w-[92%] rounded-lg rounded-br-sm bg-surface px-3 py-2 text-step-12 leading-relaxed text-text-0">
-        {texts.map((part) => (
-          <p key={part.id} className="whitespace-pre-wrap break-words">
-            {part.text}
-          </p>
-        ))}
-        {chips.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {chips.map((chip) => (
-              <ReferenceChip key={chip.id} label={chip.label} />
-            ))}
-          </div>
-        )}
-      </div>
+    <div className="flex min-w-0 items-center gap-1.5 text-xs leading-4">
+      {agent && <AgentMonogram agent={agent} />}
+      <span className="truncate font-semibold text-fg-2">{author}</span>
+      {children}
+      <time
+        dateTime={new Date(at).toISOString()}
+        className="ml-auto shrink-0 font-mono text-num leading-[14px] text-fg-3 tabular-nums"
+      >
+        {formatClockTime(at)}
+      </time>
     </div>
   );
 }
 
-/** The instruction a delegated agent works from: the Director's task, or a follow-up to it. */
-export function TaskBubble({ message }: { message: TaskMessage }) {
-  const from = AGENT_DISPLAY_NAMES[message.from];
+const INTENT_TAGS = { plan: "Plan", ask: "Ask" } as const;
+
+/** The user's message: set apart by a quiet surface fill; context chips above the text. */
+export function UserMessageView({
+  message,
+  turn,
+}: {
+  message: UserMessage;
+  /** The turn this message opened (absent for steering): tags how it ran. */
+  turn?: TurnSummary;
+}) {
+  const references: { id: string; reference: MessageReference }[] = [];
+  const texts: { id: string; text: string }[] = [];
+  for (const part of message.parts) {
+    if (part.type === "text") texts.push({ id: part.id, text: part.text });
+    else references.push({ id: part.id, reference: part.reference });
+  }
+  const intent = turn?.intent === "plan" || turn?.intent === "ask" ? turn.intent : null;
   return (
-    <div
-      data-role="task"
-      className="flex flex-col gap-1 rounded-md border border-l-2 border-hairline border-l-accent/60 bg-surface/40 px-3 py-2"
+    <article
+      data-role="user"
+      className={cn("grid min-w-0 gap-1 rounded-md bg-surface-1 px-2 pt-1.5 pb-[7px]", chatMeasure)}
     >
-      <span
-        className={cn(
-          "text-step-10 uppercase tracking-wide",
-          message.steering ? "text-accent" : "text-text-3",
+      <MessageHead author="You" at={message.createdAt}>
+        {message.steering && (
+          <Badge size="sm" data-testid="steering-tag">
+            Steering
+          </Badge>
         )}
-      >
-        {message.steering ? `Follow-up from ${from}` : `Task from ${from}`}
-      </span>
+        {turn?.mode === "story" && <Badge size="sm">Story</Badge>}
+        {intent && <Badge size="sm">{INTENT_TAGS[intent]}</Badge>}
+      </MessageHead>
+      {references.length > 0 && (
+        <div role="list" aria-label="Attached context" className="flex min-w-0 flex-wrap gap-1">
+          {references.map(({ id, reference }) => (
+            <ReferenceChip key={id} reference={reference} />
+          ))}
+        </div>
+      )}
+      {texts.map((part) => (
+        <p
+          key={part.id}
+          className="text-base leading-[18px] whitespace-pre-wrap text-fg [overflow-wrap:anywhere] text-pretty"
+        >
+          {part.text}
+        </p>
+      ))}
+    </article>
+  );
+}
+
+/** The instruction a delegated agent works from ("Task from Main"), or a follow-up to it. */
+export function TaskBrief({ message, meta }: { message: TaskMessage; meta?: ReactNode }) {
+  const from = chatAgentName(message.from);
+  return (
+    <div data-role="task" className={cn(noteBox, "gap-[3px] px-[9px] pt-[7px] pb-2", chatMeasure)}>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs font-medium text-fg-3">
+        <span>{message.steering ? `Follow-up from ${from}` : `Task from ${from}`}</span>
+        {meta}
+      </div>
       {message.parts.map((part) => (
-        <MarkdownLite key={part.id} text={part.text} />
+        <MarkdownLite key={part.id} text={part.text} className="text-sm leading-[17px] text-fg-2" />
       ))}
     </div>
   );
@@ -99,60 +197,132 @@ function StreamingCaret() {
     <span
       aria-hidden
       data-testid="streaming-caret"
-      className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-0.5 animate-pulse bg-accent motion-reduce:animate-none"
+      className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-0.5 animate-pulse bg-fg-2 motion-reduce:animate-none"
     />
   );
 }
 
-function PartView({ part, live, caret }: { part: AssistantPart; live: boolean; caret: boolean }) {
-  switch (part.type) {
-    case "text":
-      return part.interim ? (
-        <div
-          data-testid="interim-note"
-          className="flex flex-col gap-0.5 border-l-2 border-border-strong pl-2.5 text-text-3"
-        >
-          <span className="text-step-10 font-medium uppercase tracking-wide">Before render QA</span>
-          <MarkdownLite text={part.text} />
-          {caret && <StreamingCaret />}
-        </div>
-      ) : (
-        <div>
-          <MarkdownLite text={part.text} />
-          {caret && <StreamingCaret />}
-        </div>
-      );
-    case "thinking":
-      return <ThinkingBlock part={part} live={live} />;
-    case "activity":
-      return <ActivityRow activity={part.activity} />;
-    case "delegation":
-      return <DelegationRow runId={part.runId} />;
+type WorkPart = ActivityPart | DelegationPart;
+type Segment = { kind: "part"; part: AssistantPart } | { kind: "work"; parts: WorkPart[] };
+
+/** Consecutive activity and delegation parts read as one Working list. */
+function segments(parts: readonly AssistantPart[]): Segment[] {
+  const out: Segment[] = [];
+  for (const part of parts) {
+    const last = out[out.length - 1];
+    if (part.type === "activity" || part.type === "delegation") {
+      if (last?.kind === "work") last.parts.push(part);
+      else out.push({ kind: "work", parts: [part] });
+    } else {
+      out.push({ kind: "part", part });
+    }
   }
+  return out;
 }
 
-export function AssistantBlock({ message }: { message: AssistantMessage }) {
+function WorkList({
+  parts,
+  agent,
+  label,
+}: {
+  parts: WorkPart[];
+  agent: AgentId;
+  label: string | null;
+}) {
+  return (
+    <section
+      aria-label={label ?? "Activity"}
+      className={cn("mt-1.5 grid min-w-0 gap-0.5", chatMeasureWide)}
+    >
+      {label && <div className={cn(sectLabel, "h-ctl-xs items-center")}>{label}</div>}
+      <ul className="-mx-1.5 grid gap-px">
+        {parts.map((part) =>
+          part.type === "activity" ? (
+            <ActivityRow key={part.id} activity={part.activity} agent={agent} />
+          ) : (
+            <DelegationRow key={part.id} runId={part.runId} />
+          ),
+        )}
+      </ul>
+    </section>
+  );
+}
+
+function TextView({ text, interim, caret }: { text: string; interim: boolean; caret: boolean }) {
+  if (interim) {
+    return (
+      <div data-testid="interim-note" className={cn("grid gap-0.5", chatMeasure)}>
+        <span className="text-xs font-medium text-fg-3">Before render QA</span>
+        <MarkdownLite text={text} className="text-fg-2" />
+        {caret && <StreamingCaret />}
+      </div>
+    );
+  }
+  return (
+    <div className={chatMeasure}>
+      <MarkdownLite text={text} />
+      {caret && <StreamingCaret />}
+    </div>
+  );
+}
+
+/**
+ * An agent's reply: head (monogram, name, time), then its parts in order — text, thinking, and Working lists
+ * of its activities and delegations. `plan` sits just above the first Working list.
+ */
+export function AssistantBlock({
+  message,
+  plan,
+  workLabel,
+}: {
+  message: AssistantMessage;
+  plan?: ReactNode;
+  /** Heading of the first Working list (default: "Working" while it streams, "Activity" after). */
+  workLabel?: string;
+}) {
   const streaming = message.status === "streaming";
+  const agent: AgentId = message.agent ?? "director";
   const lastTextId = [...message.parts].reverse().find((part) => part.type === "text")?.id;
   const last = message.parts[message.parts.length - 1];
   // The caret trails the text only while the text is what is being written.
   const caretOnText = streaming && last?.type === "text";
+  const groups = segments(message.parts);
+  const firstWork = groups.findIndex((group) => group.kind === "work");
 
   return (
-    <div className="flex flex-col gap-2" data-role="assistant" data-status={message.status}>
-      {message.parts.map((part) => (
-        <PartView
-          key={part.id}
-          part={part}
-          live={streaming}
-          caret={caretOnText && part.id === lastTextId}
-        />
+    <article
+      className="grid min-w-0 gap-1"
+      data-role="assistant"
+      data-status={message.status}
+      aria-label={`${chatAgentName(agent)}'s reply`}
+    >
+      <MessageHead agent={agent} author={chatAgentName(agent)} at={message.createdAt} />
+      {groups.map((group, index) => (
+        <Fragment key={group.kind === "work" ? group.parts[0]?.id : group.part.id}>
+          {index === firstWork && plan && <div className="mt-1.5">{plan}</div>}
+          {group.kind === "work" ? (
+            <WorkList
+              parts={group.parts}
+              agent={agent}
+              label={
+                index === firstWork ? (workLabel ?? (streaming ? "Working" : "Activity")) : null
+              }
+            />
+          ) : group.part.type === "text" ? (
+            <TextView
+              text={group.part.text}
+              interim={group.part.interim === true}
+              caret={caretOnText && group.part.id === lastTextId}
+            />
+          ) : group.part.type === "thinking" ? (
+            <ThinkingBlock part={group.part} live={streaming} />
+          ) : null}
+        </Fragment>
       ))}
+      {firstWork === -1 && plan && <div className="mt-1.5">{plan}</div>}
       {streaming && message.parts.length === 0 && (
-        <span className="animate-pulse text-step-11 text-text-3 motion-reduce:animate-none">
-          Working…
-        </span>
+        <span className="animate-pulse text-xs text-fg-3 motion-reduce:animate-none">Working…</span>
       )}
-    </div>
+    </article>
   );
 }

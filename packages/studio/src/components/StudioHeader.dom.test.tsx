@@ -1,58 +1,76 @@
 // @vitest-environment happy-dom
 
 /**
- * The header on the shared primitives: Capture and Inspector grouped, Export separate,
- * hotkey filters unchanged (KTD13). Contexts are mocked, not provided.
+ * The titlebar's behaviour: history with step names, Export's routing, the panel toggles over the
+ * dock, the save state, Settings, the OpenVids back button, and hotkey filters (KTD13). Shell
+ * contexts are mocked; the dock and save stores are the real ones.
  */
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { buttonSizes, buttonVariants } from "./ui";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { isTypingTarget } from "../utils/typingTarget";
 import { shouldIgnorePlaybackShortcutTarget } from "../player/lib/playbackShortcuts";
+import { useSaveActivityStore } from "../utils/saveActivity";
+import { useDockLayoutStore, type DockController } from "./dock/dockLayoutStore";
+import { PANEL_IDS, type PanelId } from "./dock/panelRegistry";
+import { useSettingsDialog } from "./settings/settingsStore";
+import { StudioHeader } from "./StudioHeader";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const editHistory = {
-  canUndo: false,
-  canRedo: false,
-  undoLabel: undefined as string | undefined,
-  redoLabel: undefined as string | undefined,
-};
-const renderQueue = { isRendering: false, ffmpegMissing: false };
+interface ShellStub {
+  projectId: string;
+  editHistory: { canUndo: boolean; canRedo: boolean; undoLabel?: string; redoLabel?: string };
+  handleUndo: Mock<() => Promise<void>>;
+  handleRedo: Mock<() => Promise<void>>;
+  renderQueue: { isRendering: boolean; ffmpegMissing: boolean };
+  writeBlockedReason: string | null;
+}
 
-vi.mock("../contexts/StudioContext", () => ({
-  useStudioShellContext: () => ({
+const { shell, panelLayout } = vi.hoisted(() => {
+  const stub: ShellStub = {
     projectId: "demo",
-    editHistory,
-    handleUndo: vi.fn(),
-    handleRedo: vi.fn(),
-    renderQueue,
-  }),
-}));
+    editHistory: { canUndo: false, canRedo: false },
+    handleUndo: vi.fn(async () => {}),
+    handleRedo: vi.fn(async () => {}),
+    renderQueue: { isRendering: false, ffmpegMissing: false },
+    writeBlockedReason: null,
+  };
+  return { shell: stub, panelLayout: { setRightCollapsed: vi.fn(), setRightPanelTab: vi.fn() } };
+});
 
-vi.mock("../contexts/PanelLayoutContext", () => ({
-  usePanelLayoutContext: () => ({
-    rightCollapsed: false,
-    setRightCollapsed: vi.fn(),
-    setRightPanelTab: vi.fn(),
-  }),
-}));
-
-const { StudioHeader } = await import("./StudioHeader");
+vi.mock("../contexts/StudioContext", () => ({ useStudioShellContext: () => shell }));
+vi.mock("../contexts/PanelLayoutContext", () => ({ usePanelLayoutContext: () => panelLayout }));
 
 let mounted: { root: Root; host: HTMLElement } | null = null;
+let controller: { [K in keyof DockController]: Mock };
 
 beforeEach(() => {
-  editHistory.canUndo = false;
-  editHistory.canRedo = false;
-  editHistory.undoLabel = undefined;
-  editHistory.redoLabel = undefined;
-  renderQueue.isRendering = false;
+  shell.editHistory = { canUndo: false, canRedo: false };
+  shell.renderQueue = { isRendering: false, ffmpegMissing: false };
+  shell.writeBlockedReason = null;
+  vi.clearAllMocks();
+  useSaveActivityStore.setState({ pending: 0 });
+  useSettingsDialog.setState({ open: false });
+  controller = {
+    open: vi.fn(),
+    activate: vi.fn(),
+    setTitle: vi.fn(),
+    close: vi.fn(),
+    setGroupVisible: vi.fn(),
+    reset: vi.fn(),
+  };
+  useDockLayoutStore.setState({
+    controller,
+    openPanels: new Set(PANEL_IDS),
+    visiblePanels: new Set<PanelId>(["preview", "timeline", "compositions", "design"]),
+    lastActive: {},
+  });
   window.history.replaceState(null, "", "/");
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   if (!mounted) return;
   const { root, host } = mounted;
   mounted = null;
@@ -60,26 +78,13 @@ afterEach(() => {
   host.remove();
 });
 
-function mount(props: { inspectorButtonActive?: boolean; search?: string } = {}): HTMLElement {
-  if (props.search !== undefined) {
-    window.history.replaceState(null, "", `/${props.search}`);
-  }
+function mount(search?: string, onExport = vi.fn()): HTMLElement {
+  if (search !== undefined) window.history.replaceState(null, "", `/${search}`);
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   mounted = { root, host };
-  act(() =>
-    root.render(
-      <StudioHeader
-        captureFrameHref="blob:frame"
-        captureFrameFilename="frame.png"
-        handleCaptureFrameClick={vi.fn()}
-        refreshCaptureFrameTime={vi.fn()}
-        inspectorButtonActive={props.inspectorButtonActive ?? false}
-        inspectorPanelActive={false}
-      />,
-    ),
-  );
+  act(() => root.render(<StudioHeader onExport={onExport} />));
   return host;
 }
 
@@ -89,93 +94,98 @@ function query(host: HTMLElement, selector: string): HTMLElement {
   return el;
 }
 
-/** Every class the recipe asks for, on the element the header rendered. */
-function expectRecipe(el: HTMLElement, ...recipes: string[]): void {
-  const applied = new Set(el.className.split(/\s+/));
-  for (const recipe of recipes) {
-    for (const token of recipe.split(/\s+/)) {
-      expect(applied, `${token} missing from: ${el.className}`).toContain(token);
-    }
-  }
-}
-
-it("renders Export as the shared primary Button at the medium size", () => {
+it("names the step Undo and Redo would take, and runs the shell's history", () => {
+  shell.editHistory = {
+    canUndo: true,
+    canRedo: false,
+    undoLabel: "Move clip",
+    redoLabel: undefined,
+  };
   const host = mount();
-
-  expectRecipe(
-    query(host, '[data-testid="header-export"]'),
-    buttonVariants.primary,
-    buttonSizes.md,
-  );
+  const undo = query(host, '[aria-label="Undo Move clip"]');
+  expect(undo.hasAttribute("disabled")).toBe(false);
+  expect(query(host, '[aria-label="Redo"]').hasAttribute("disabled")).toBe(true);
+  act(() => undo.click());
+  expect(shell.handleUndo).toHaveBeenCalledTimes(1);
 });
 
-it("no longer renders Undo or Redo in the header", () => {
-  const host = mount();
+it("opens Renders and starts the export, but only opens Renders when FFmpeg is missing", () => {
+  const onExport = vi.fn();
+  let host = mount(undefined, onExport);
+  act(() => query(host, '[data-testid="header-export"]').click());
+  expect(panelLayout.setRightPanelTab).toHaveBeenCalledWith("renders");
+  expect(onExport).toHaveBeenCalledTimes(1);
 
-  expect(host.querySelector('[aria-label="Undo"]')).toBeNull();
-  expect(host.querySelector('[aria-label="Redo"]')).toBeNull();
-});
-
-it("groups Capture and Inspector in one bordered segment, Export outside it", () => {
-  const host = mount();
-  const group = query(host, '[aria-label="Capture current frame"]').closest(".divide-x");
-
-  expect(group?.contains(query(host, '[aria-label="Inspector"]'))).toBe(true);
-  expect(group?.contains(query(host, '[data-testid="header-export"]'))).toBe(false);
-  expect(group).not.toBeNull();
-});
-
-it("drops the Capture label below 1000px but keeps its accessible name", () => {
-  const host = mount();
-  const capture = query(host, '[aria-label="Capture current frame"]');
-
-  expect(query(capture, "span").className).toContain("max-[1000px]:hidden");
-});
-
-/** The bare token, not a `hover:`/`data-[…]:`-prefixed variant of it. */
-function hasToken(className: string, token: string): boolean {
-  return className.split(/\s+/).includes(token);
-}
-
-it("shows Inspector pressed and filled only when on", () => {
-  const host = mount({ inspectorButtonActive: true });
-  const on = query(host, '[aria-label="Inspector"]');
-  expect(on.getAttribute("aria-pressed")).toBe("true");
-  expect(hasToken(on.className, "text-accent")).toBe(true);
-  expect(hasToken(on.className, "bg-hover")).toBe(true);
   act(() => mounted?.root.unmount());
   mounted?.host.remove();
   mounted = null;
-
-  const off = query(mount(), '[aria-label="Inspector"]');
-  expect(off.getAttribute("aria-pressed")).toBe("false");
-  expect(hasToken(off.className, "text-accent")).toBe(false);
-  expect(hasToken(off.className, "bg-hover")).toBe(false);
+  shell.renderQueue = { isRendering: false, ffmpegMissing: true };
+  onExport.mockClear();
+  host = mount(undefined, onExport);
+  act(() => query(host, '[data-testid="header-export"]').click());
+  expect(panelLayout.setRightCollapsed).toHaveBeenCalledWith(false);
+  expect(onExport).not.toHaveBeenCalled();
 });
 
-it("keeps Capture a real download link rather than a button", () => {
-  // `download` is what saves the frame. A Button here would render a <button>
-  // and the control would quietly stop downloading anything.
+it("shows each dock zone's toggle pressed while it shows, and hides the zone on click", () => {
   const host = mount();
-  const capture = query(host, '[aria-label="Capture current frame"]');
-
-  expect(capture.tagName).toBe("A");
-  expect(capture.getAttribute("download")).toBe("frame.png");
-  // h-full replaces the md height: the group's own h-ctl sets the shared control height.
-  expectRecipe(capture, "px-3", "text-step-12");
+  const left = query(host, '[aria-label="Left panel"]');
+  expect(left.getAttribute("aria-pressed")).toBe("true");
+  expect(query(host, '[aria-label="Timeline"]').getAttribute("aria-pressed")).toBe("true");
+  act(() => left.click());
+  expect(controller.setGroupVisible).toHaveBeenCalledWith("compositions", false);
+  act(() => query(host, '[aria-label="Timeline"]').click());
+  expect(controller.setGroupVisible).toHaveBeenCalledWith("timeline", false);
 });
 
-it("classifies the new header controls for the hotkey filters as the old ones were (KTD13)", () => {
-  // Every one of these was a <button> or an <a href> before the sweep: never a
-  // typing target, always claimed by the playback filter. A primitive that
-  // rendered a different element would leak or swallow hotkeys in silence.
+it("reopens a hidden column on its last shown panel", () => {
+  useDockLayoutStore.setState({
+    visiblePanels: new Set<PanelId>(["preview", "timeline", "compositions"]),
+    lastActive: { right: "layers" },
+  });
+  const host = mount();
+  const right = query(host, '[aria-label="Right panel"]');
+  expect(right.getAttribute("aria-pressed")).toBe("false");
+  act(() => right.click());
+  expect(controller.setGroupVisible).toHaveBeenCalledWith("design", true);
+  expect(controller.activate).toHaveBeenCalledWith("layers");
+});
+
+it("reads Saving… while a write is in flight, Saved after it lands, Not saved when writes are blocked", () => {
+  vi.useFakeTimers();
+  const host = mount();
+  const state = () => query(host, '[data-testid="save-state"]');
+  expect(state().textContent).toBe("Saved");
+  act(() => useSaveActivityStore.setState({ pending: 1 }));
+  expect(state().textContent).toBe("Saving…");
+  act(() => useSaveActivityStore.setState({ pending: 0 }));
+  expect(state().textContent).toBe("Saving…");
+  act(() => vi.advanceTimersByTime(600));
+  expect(state().textContent).toBe("Saved");
+
+  act(() => mounted?.root.unmount());
+  mounted?.host.remove();
+  mounted = null;
+  shell.writeBlockedReason = "Saving is paused";
+  const blocked = mount();
+  expect(query(blocked, '[data-testid="save-state"]').textContent).toBe("Not saved");
+});
+
+it("opens Settings from the gear", () => {
+  const host = mount();
+  act(() => query(host, '[aria-label="Settings"]').click());
+  expect(useSettingsDialog.getState().open).toBe(true);
+});
+
+it("keeps the titlebar controls out of the typing and playback hotkey paths (KTD13)", () => {
+  shell.editHistory = { canUndo: true, canRedo: true, undoLabel: undefined, redoLabel: undefined };
   const host = mount();
   const controls = [
     query(host, '[data-testid="header-export"]'),
-    query(host, '[aria-label="Inspector"]'),
-    query(host, '[aria-label="Capture current frame"]'),
+    query(host, '[aria-label="Undo"]'),
+    query(host, '[aria-label="Left panel"]'),
+    query(host, '[aria-label="Settings"]'),
   ];
-
   for (const el of controls) {
     expect(isTypingTarget(el), el.getAttribute("aria-label") ?? el.tagName).toBe(false);
     expect(shouldIgnorePlaybackShortcutTarget(el), el.tagName).toBe(true);
@@ -184,26 +194,23 @@ it("classifies the new header controls for the hotkey filters as the old ones we
 
 it("keeps the logo when Studio is not embedded in OpenVids", () => {
   const host = mount();
-
   expect(host.querySelector('[data-testid="openvids-back"]')).toBeNull();
-  expect(host.querySelector('[aria-label="Hyperframes"]')).not.toBeNull();
+  expect(host.querySelector('[aria-label="OpenVids"]')).not.toBeNull();
 });
 
 it("swaps the logo for a back button when the OpenVids home param is present", () => {
-  const host = mount({ search: "?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035" });
+  const host = mount("?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035");
   const back = query(host, '[data-testid="openvids-back"]');
-
   expect(back.tagName).toBe("BUTTON");
   expect(back.getAttribute("aria-label")).toBe("Back to projects");
   expect(back.textContent).toContain("Projects");
-  expect(host.querySelector('[aria-label="Hyperframes"]')).toBeNull();
+  expect(host.querySelector('[aria-label="OpenVids"]')).toBeNull();
   expect(isTypingTarget(back)).toBe(false);
   expect(shouldIgnorePlaybackShortcutTarget(back)).toBe(true);
 });
 
 it("keeps the logo when the OpenVids home param fails validation", () => {
-  const host = mount({ search: "?openvidsHome=http%3A%2F%2Fexample.com%3A57035" });
-
+  const host = mount("?openvidsHome=http%3A%2F%2Fexample.com%3A57035");
   expect(host.querySelector('[data-testid="openvids-back"]')).toBeNull();
-  expect(host.querySelector('[aria-label="Hyperframes"]')).not.toBeNull();
+  expect(host.querySelector('[aria-label="OpenVids"]')).not.toBeNull();
 });

@@ -1,18 +1,12 @@
-import { createContext, useContext, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useRef, type ReactNode, type RefObject } from "react";
 import {
   usePreviewCompositionRect,
   type PreviewCompositionRect,
 } from "./usePreviewCompositionRect";
-import { usePreviewGuidesStore } from "./previewGuidesStore";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { usePreviewGuidesStore, type PreviewSnapPreferences } from "./previewGuidesStore";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 
-export interface PreviewSnapPreferences {
-  snapEnabled: boolean;
-  gridVisible: boolean;
-  gridSpacing: number;
-  snapToGrid: boolean;
-}
+export type { PreviewSnapPreferences } from "./previewGuidesStore";
 
 interface PreviewOverlayContextValue {
   state: {
@@ -31,16 +25,6 @@ interface PreviewOverlayContextValue {
 
 const PreviewOverlayContext = createContext<PreviewOverlayContextValue | null>(null);
 
-function readSnapPrefs(): PreviewSnapPreferences {
-  const prefs = readStudioUiPreferences();
-  return {
-    snapEnabled: prefs.snapEnabled ?? true,
-    gridVisible: prefs.gridVisible ?? false,
-    gridSpacing: prefs.gridSpacing ?? 50,
-    snapToGrid: prefs.snapToGrid ?? false,
-  };
-}
-
 export interface PreviewOverlayProviderProps {
   iframe?: HTMLIFrameElement | null;
   children: ReactNode;
@@ -48,7 +32,7 @@ export interface PreviewOverlayProviderProps {
 
 export function PreviewOverlayProvider({ iframe, children }: PreviewOverlayProviderProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  const [snapPrefs, setSnapPrefs] = useState(readSnapPrefs);
+  const snapPrefs = usePreviewGuidesStore((state) => state.snapPrefs);
   const rulerVisible = usePreviewGuidesStore((state) => state.rulerVisible);
   const safeMarginsVisible = usePreviewGuidesStore((state) => state.safeMarginsVisible);
   const liveIframe = useLivePreviewIframe();
@@ -60,10 +44,7 @@ export function PreviewOverlayProvider({ iframe, children }: PreviewOverlayProvi
   const contextValue: PreviewOverlayContextValue = {
     state: { snapPrefs, rulerVisible, safeMarginsVisible, iframeRef, compositionRect },
     actions: {
-      setSnapPrefs: (patch) => {
-        writeStudioUiPreferences(patch);
-        setSnapPrefs((current) => ({ ...current, ...patch }));
-      },
+      setSnapPrefs: (patch) => usePreviewGuidesStore.getState().setSnapPrefs(patch),
       toggleRulers: () => usePreviewGuidesStore.getState().toggle("rulerVisible"),
       toggleSafeMargins: () => usePreviewGuidesStore.getState().toggle("safeMarginsVisible"),
     },

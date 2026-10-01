@@ -6,6 +6,7 @@ import {
   type AgentModelCatalog,
   type AssistantMessage,
   type AssistantMessageStatus,
+  type ChatIntent,
   type ChatMode,
   type StoryAction,
   type StoryActionOptions,
@@ -45,7 +46,8 @@ import { qaPhaseRefusal } from "./qa/phase.js";
 import { renderInterimInstruction } from "./qa/prompt.js";
 import { isQaToolName } from "./qa/tools.js";
 import { RuntimeError, errorMessage } from "./errors.js";
-import type { CheckpointHandle, CheckpointHost } from "./checkpointHost.js";
+import type { CheckpointHandle, CheckpointHost, RevertOutcome } from "./checkpointHost.js";
+import { intentRefusal, renderIntentBlock } from "./intent.js";
 import { ChatService } from "./chats.js";
 import { renderPromptContext } from "./promptContext.js";
 import { renderRevertedTurns, revertedSinceLastPrompt } from "./revertedTurns.js";
@@ -68,6 +70,11 @@ const DEFAULT_IDLE_MS = 15 * 60_000;
 const DEFAULT_RENEW_MS = 20_000;
 /** How many times the Director is re-prompted with results of runs it finished without collecting. */
 const MAX_FOLLOW_UPS = 3;
+
+interface ChatTurnTarget {
+  turn: TurnSummary;
+  checkpoint: TurnCheckpoint | null;
+}
 
 interface ActiveRun {
   chatId: string;
@@ -92,6 +99,8 @@ interface ActiveRun {
   qaPhase: QaPhase;
   /** The mode the turn runs in (a story action implies `story`). */
   mode: ChatMode;
+  /** What the user wants from the turn: Plan and Ask turns never change the project. */
+  intent: ChatIntent;
   /** The Story workspace action the turn runs, if any. */
   storyAction: StoryAction | null;
   /** The user's choices for a build/rebuild action (scope, manual-edit policy, locked chapters), if any. */
@@ -185,6 +194,10 @@ export class TurnRunner {
     }
     // A Story workspace action is always a story-mode turn; otherwise the request's mode, else the chat's.
     const mode: ChatMode = input.storyAction ? "story" : (input.mode ?? chatState.chat.activeMode);
+    // A Story workspace action always acts; otherwise the request's intent, else the chat's, else Edit.
+    const intent: ChatIntent = input.storyAction
+      ? "edit"
+      : (input.intent ?? chatState.chat.intent ?? "edit");
     const startedAt = this.now();
     const turnId = this.ids();
     const promptMessageId = this.ids();
@@ -200,6 +213,7 @@ export class TurnRunner {
       thinking: chatState.chat.thinking,
       checkpoint: { status: "active", entryIds: [], createdAt: startedAt },
       mode,
+      intent,
       ...(input.storyAction && { storyAction: input.storyAction }),
       ...(input.storyOptions && { storyOptions: input.storyOptions }),
     };
@@ -247,6 +261,7 @@ export class TurnRunner {
       qa: null,
       qaPhase: null,
       mode,
+      intent,
       storyAction: input.storyAction ?? null,
       storyOptions: input.storyOptions ?? null,
       directorIdle: false,
@@ -360,11 +375,89 @@ export class TurnRunner {
       run.controller.abort();
   }
 
-  async revert(
-    chatId: string,
-    turnId: string,
-    mode: RevertMode = "keep-later-edits",
-  ): Promise<RevertTurnResponse> {
+  /**
+   * Reverts a finished turn's checkpoint. Without a mode, files changed after the turn stop it with a conflict (the
+   * user then chooses `keep-later-edits` or `just-this`).
+   */
+  async revert(chatId: string, turnId: string, mode?: RevertMode): Promise<RevertTurnResponse> {
+    const { turn, checkpoint } = this.revertTarget(chatId, turnId);
+    if (checkpoint?.status !== "ready" || checkpoint.entryIds.length === 0) {
+      throw new RuntimeError("revert_unavailable", "This turn has no reversible checkpoint", 409);
+    }
+    return this.whileReverting(chatId, async () => {
+      const outcome = await this.undoEntries(
+        checkpoint.entryIds,
+        mode,
+        "Could not revert this turn",
+      );
+      const undoEntryIds = [...(checkpoint.revertEntryIds ?? []), ...(outcome.undoEntryIds ?? [])];
+      if (!outcome.ok) {
+        const remaining = outcome.remainingEntryIds;
+        if (remaining && !sameIds(checkpoint.entryIds, remaining)) {
+          // The newer entries were reverted before the conflict: only the older ones remain to revert.
+          await this.emitCheckpoint(chatId, turnId, {
+            ...checkpoint,
+            entryIds: remaining,
+            revertedEntryIds: [
+              ...checkpoint.entryIds.slice(remaining.length),
+              ...(checkpoint.revertedEntryIds ?? []),
+            ],
+            revertEntryIds: undoEntryIds,
+          });
+        }
+        return { ok: false, conflict: outcome.conflict };
+      }
+      // Revert untouched files leaves the files that changed later as they are: the turn's files no undo touched.
+      let keptFiles: string[] = [];
+      if (mode === "keep-later-edits" && checkpoint.files) {
+        const undone = await this.checkpoints
+          .files(this.chats.scope, undoEntryIds)
+          .catch((): string[] | null => null);
+        if (undone) keptFiles = checkpoint.files.filter((file) => !undone.includes(file));
+      }
+      const updated: TurnCheckpoint = {
+        ...checkpoint,
+        status: "reverted",
+        revertedAt: this.now(),
+        revertedEntryIds: [...checkpoint.entryIds, ...(checkpoint.revertedEntryIds ?? [])],
+        revertEntryIds: undoEntryIds,
+        ...(keptFiles.length > 0 && { keptFiles }),
+      };
+      await this.emitCheckpoint(chatId, turnId, updated);
+      return { ok: true, turn: { ...turn, checkpoint: updated } };
+    });
+  }
+
+  /** Undo revert: undoes the entries the revert wrote, so the turn's changes are back and revertable again. */
+  async unrevert(chatId: string, turnId: string, mode?: RevertMode): Promise<RevertTurnResponse> {
+    const { turn, checkpoint } = this.revertTarget(chatId, turnId);
+    const undoEntryIds = checkpoint?.revertEntryIds ?? [];
+    if (checkpoint?.status !== "reverted" || undoEntryIds.length === 0) {
+      throw new RuntimeError("revert_unavailable", "This revert cannot be undone", 409);
+    }
+    return this.whileReverting(chatId, async () => {
+      const outcome = await this.undoEntries(undoEntryIds, mode, "Could not undo the revert");
+      if (!outcome.ok) {
+        const remaining = outcome.remainingEntryIds;
+        if (remaining && !sameIds(undoEntryIds, remaining)) {
+          await this.emitCheckpoint(chatId, turnId, { ...checkpoint, revertEntryIds: remaining });
+        }
+        return { ok: false, conflict: outcome.conflict };
+      }
+      const restored: TurnCheckpoint = {
+        status: "ready",
+        entryIds: checkpoint.revertedEntryIds ?? checkpoint.entryIds,
+        createdAt: checkpoint.createdAt,
+        ...(checkpoint.closedAt !== undefined && { closedAt: checkpoint.closedAt }),
+        ...(checkpoint.files && { files: checkpoint.files }),
+      };
+      await this.emitCheckpoint(chatId, turnId, restored);
+      return { ok: true, turn: { ...turn, checkpoint: restored } };
+    });
+  }
+
+  /** The turn a revert (or undo of one) targets; refused while any turn or revert of the project runs. */
+  private revertTarget(chatId: string, turnId: string): ChatTurnTarget {
     if (this.active) {
       if (this.active.chatId === chatId)
         throw new RuntimeError("chat_busy", "This chat has a running turn", 409);
@@ -385,52 +478,52 @@ export class TurnRunner {
     if (!turn) throw new RuntimeError("turn_not_found", "Turn was not found", 404);
     if (state.chat.status === "working")
       throw new RuntimeError("chat_busy", "This chat has a running turn", 409);
-    const checkpoint = turn.checkpoint;
-    if (!checkpoint || checkpoint.status !== "ready" || checkpoint.entryIds.length === 0) {
-      throw new RuntimeError("revert_unavailable", "This turn has no reversible checkpoint", 409);
-    }
+    return { turn, checkpoint: turn.checkpoint };
+  }
 
+  private async whileReverting<T>(chatId: string, work: () => Promise<T>): Promise<T> {
     this.revertingChatId = chatId;
     try {
-      let outcome;
-      try {
-        outcome = await this.checkpoints.revert(this.chats.scope, checkpoint.entryIds, mode);
-      } catch (error) {
-        throw new RuntimeError(
-          "runtime_unavailable",
-          errorMessage(error, "Could not revert this turn"),
-          503,
-        );
-      }
-      if (!outcome.ok) {
-        if (outcome.remainingEntryIds && !sameIds(checkpoint.entryIds, outcome.remainingEntryIds)) {
-          const updatedCheckpoint: TurnCheckpoint = {
-            ...checkpoint,
-            entryIds: outcome.remainingEntryIds,
-          };
-          await this.chats.emit(chatId, {
-            type: "checkpoint.updated",
-            turnId,
-            checkpoint: updatedCheckpoint,
-          });
-        }
-        return { ok: false, conflict: outcome.conflict };
-      }
-      const updatedCheckpoint: TurnCheckpoint = {
-        ...checkpoint,
-        status: "reverted",
-        revertedAt: this.now(),
-      };
-      const updatedTurn: TurnSummary = { ...turn, checkpoint: updatedCheckpoint };
-      await this.chats.emit(chatId, {
-        type: "checkpoint.updated",
-        turnId,
-        checkpoint: updatedCheckpoint,
-      });
-      return { ok: true, turn: updatedTurn };
+      return await work();
     } finally {
       this.revertingChatId = null;
     }
+  }
+
+  private async undoEntries(
+    entryIds: readonly string[],
+    mode: RevertMode | undefined,
+    failure: string,
+  ): Promise<RevertOutcome> {
+    try {
+      return await this.checkpoints.revert(this.chats.scope, entryIds, mode);
+    } catch (error) {
+      throw new RuntimeError("runtime_unavailable", errorMessage(error, failure), 503);
+    }
+  }
+
+  private async emitCheckpoint(
+    chatId: string,
+    turnId: string,
+    checkpoint: TurnCheckpoint,
+  ): Promise<void> {
+    await this.chats.emit(chatId, { type: "checkpoint.updated", turnId, checkpoint });
+  }
+
+  /** The files a closed checkpoint's entries changed; nothing when Studio cannot say (the footer then omits them). */
+  private async checkpointFiles(entryIds: readonly string[]): Promise<{ files?: string[] }> {
+    try {
+      return { files: await this.checkpoints.files(this.chats.scope, entryIds) };
+    } catch {
+      return {};
+    }
+  }
+
+  /** The harness's own file writes (edit/write) are refused in a Plan or Ask turn, for every agent of the turn. */
+  private fileWriteRefusal(chatId: string, toolName: string): string | null {
+    const run = this.active;
+    if (!run || run.chatId !== chatId) return null;
+    return intentRefusal(run.intent, toolName);
   }
 
   /**
@@ -481,6 +574,7 @@ export class TurnRunner {
         const checkpoint: TurnCheckpoint = {
           status: "ready",
           entryIds,
+          ...(await this.checkpointFiles(entryIds)),
           createdAt,
           closedAt: this.now(),
         };
@@ -621,6 +715,7 @@ export class TurnRunner {
         researchCandidates: setup.execution.budget.researchCandidates,
         qa: qa !== null,
         mode: run.mode,
+        intent: run.intent,
         storyAction: run.storyAction,
         planClips: (plan) => this.active?.analysis?.planClips(plan),
       };
@@ -706,6 +801,7 @@ export class TurnRunner {
         }
         return outcome;
       };
+      const intentBlock = renderIntentBlock(run.intent);
       const storyBlocks =
         run.mode === "story" && run.story
           ? `\n\n${renderStoryBlocks(await this.storyBlockInput(run, setup, run.story))}`
@@ -721,12 +817,13 @@ export class TurnRunner {
       const revertedBlocks = revertedBlock ? `\n\n${revertedBlock}` : "";
       // Render QA will apply to this turn (it runs only if the project changed): every Director reply before it is interim.
       const qaWillApply =
+        run.intent === "edit" &&
         qa !== null &&
         editingHost !== null &&
         setup.execution.budget.qaPasses > 0 &&
         qaApplies(run.mode, run.storyAction);
       const promptPromise = promptDirector(
-        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references)}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
+        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references)}${intentBlock ? `\n\n${intentBlock}` : ""}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
       );
       run.markPromptStarted();
       let outcome = await promptPromise;
@@ -734,7 +831,14 @@ export class TurnRunner {
       outcome = await settleDirector(outcome, qaWillApply);
 
       // The Director's work is done: render QA renders, checks and (while passes are left) has the Director correct.
-      if (qa && editingHost && outcome === "completed" && !run.forcedError && !signal.aborted) {
+      if (
+        run.intent === "edit" &&
+        qa &&
+        editingHost &&
+        outcome === "completed" &&
+        !run.forcedError &&
+        !signal.aborted
+      ) {
         outcome = await new QaLoop({
           chats: this.chats,
           chatId: run.chatId,
@@ -841,8 +945,8 @@ export class TurnRunner {
     agent: "director" | SpecialistId,
     availability: ToolAvailability,
   ): Promise<BackendSession> {
-    const hostTools = buildHostTools(agent, availability, (name, args, signal) =>
-      this.dispatchTool(chatId, agent, name, args, signal),
+    const hostTools = buildHostTools(agent, availability, (name, args, signal, progress) =>
+      this.dispatchTool(chatId, agent, name, args, signal, progress),
     );
     const instructions =
       agent === "director" ? directorInstructions() : specialistInstructions(agent);
@@ -863,6 +967,7 @@ export class TurnRunner {
             : await this.store.agentStateDir(chatId, agent),
         instructions,
         hostTools,
+        fileWriteRefusal: (toolName: string) => this.fileWriteRefusal(chatId, toolName),
       }),
     });
   }
@@ -876,6 +981,7 @@ export class TurnRunner {
       stateDir: null,
       instructions: jevInstructions(),
       hostTools: [],
+      fileWriteRefusal: (toolName: string) => this.fileWriteRefusal(chatId, toolName),
       ...(credentials && { credentials }),
     });
   }
@@ -887,11 +993,12 @@ export class TurnRunner {
     name: string,
     args: unknown,
     signal: AbortSignal,
+    progress?: (percent: number) => void,
   ): Promise<HostToolResult> {
     const run = this.active;
     if (!run || run.chatId !== chatId || run.finalizing)
       return { text: "There is no running turn for this tool call.", isError: true };
-    const refusal = qaPhaseRefusal(run.qaPhase, name);
+    const refusal = qaPhaseRefusal(run.qaPhase, name) ?? intentRefusal(run.intent, name);
     if (refusal) return { text: refusal, isError: true };
     if (isQaToolName(name)) {
       if (!run.qa) return { text: "Render QA is not available in this runtime.", isError: true };
@@ -917,7 +1024,7 @@ export class TurnRunner {
       return { text: STORY_TURN_TIMELINE_REFUSAL, isError: true };
     if (isEditingToolName(name)) {
       if (!run.editing) return { text: "Editing is not available in this runtime.", isError: true };
-      return run.editing.execute(name, args, signal);
+      return run.editing.execute(name, args, signal, progress);
     }
     if (isAnalysisToolName(name)) {
       if (!run.analysis)
@@ -953,7 +1060,8 @@ export class TurnRunner {
     let checkpoint: TurnCheckpoint = { status: "ready", entryIds: [], createdAt, closedAt };
     if (run.checkpoint) {
       try {
-        checkpoint = { ...checkpoint, entryIds: await run.checkpoint.end() };
+        const entryIds = await run.checkpoint.end();
+        checkpoint = { ...checkpoint, entryIds, ...(await this.checkpointFiles(entryIds)) };
       } catch {
         // Studio could not be reached (shutting down, restarting). The transaction is not lost: it stays "active"
         // with its id, and recoverCheckpoints() closes it and collects its entries on the next turn or project load.

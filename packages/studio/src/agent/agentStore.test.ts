@@ -459,6 +459,7 @@ describe("revert", () => {
     await created.getState().revert("t1");
     expect(created.getState().reverts.t1).toEqual({
       status: "conflict",
+      action: "revert",
       files: ["index.html", "a.css"],
     });
 

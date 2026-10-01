@@ -1,6 +1,7 @@
 import type { Direction } from "dockview-react";
 
 export const PANEL_IDS = [
+  "media",
   "preview",
   "story",
   "timeline",
@@ -31,10 +32,16 @@ export interface PanelDefinition {
 
 export const PANEL_DEFINITIONS = {
   preview: {
-    title: "Preview",
+    title: "Viewer",
     zone: "center",
     reopen: { near: "timeline", direction: "above" },
     keepMounted: true,
+  },
+  /** The Media workspace: the project's media library. While it shows, the other dock groups step aside. */
+  media: {
+    title: "Media",
+    zone: "center",
+    reopen: { near: "preview", direction: "within" },
   },
   story: {
     title: "Story",
@@ -59,7 +66,7 @@ export const PANEL_DEFINITIONS = {
     zone: "left",
     reopen: { near: "compositions", direction: "within" },
   },
-  design: { title: "Design", zone: "right", reopen: { near: "preview", direction: "right" } },
+  design: { title: "Inspector", zone: "right", reopen: { near: "preview", direction: "right" } },
   layers: { title: "Layers", zone: "right", reopen: { near: "design", direction: "within" } },
   renders: { title: "Renders", zone: "right", reopen: { near: "design", direction: "within" } },
   /** Not in the default layout: Window > Sources & Licenses, the Story workspace and the export check open it. */

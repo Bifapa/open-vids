@@ -30,7 +30,7 @@ export function TabsList({ className, ...props }: StyledProps<typeof BaseTabs.Li
     <BaseTabs.List
       // Arrow keys move selection, matching today's sidebar strip.
       activateOnFocus
-      className={cn("inline-flex items-center gap-0.5 rounded-lg bg-surface-alt p-1", className)}
+      className={cn("inline-flex items-center gap-0.5", className)}
       {...props}
     />
   );
@@ -42,8 +42,10 @@ interface TabProps extends StyledProps<typeof BaseTabs.Tab> {
 }
 
 /**
- * aria-selected drives the selected look (Base UI sets it) so assistive tech
- * and sighted users match. data-preview-state is for gallery shots only.
+ * The prototype's panel tab: dim text, a surface on hover, the primary ink and an
+ * accent underline when selected. aria-selected drives the selected look (Base UI
+ * sets it) so assistive tech and sighted users match. data-preview-state is for
+ * gallery shots only.
  */
 export function Tab({ value, className, ...props }: TabProps) {
   return (
@@ -51,13 +53,14 @@ export function Tab({ value, className, ...props }: TabProps) {
       value={value}
       data-tab-id={value}
       className={cn(
-        "inline-flex h-ctl-sm cursor-pointer select-none items-center justify-center rounded-sm px-2.5",
-        "text-step-11 font-semibold whitespace-nowrap text-text-3",
-        "transition-[background-color,color] ease-out-quint duration-hover",
-        "hover:text-text-1 data-[preview-state=hover]:text-text-1",
-        "aria-selected:bg-hover aria-selected:text-text-0",
-        "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
-        "data-[preview-state=focus]:outline-solid data-[preview-state=focus]:outline-2 data-[preview-state=focus]:outline-offset-1 data-[preview-state=focus]:outline-accent",
+        "relative inline-flex h-ctl-sm cursor-pointer select-none items-center justify-center rounded-sm px-2",
+        "text-sm font-medium whitespace-nowrap text-fg-3",
+        "transition-[background-color,color] ease-standard duration-hover",
+        "hover:bg-surface-1 hover:text-fg data-[preview-state=hover]:bg-surface-1 data-[preview-state=hover]:text-fg",
+        "aria-selected:text-fg",
+        "after:pointer-events-none after:absolute after:inset-x-2 after:-bottom-1 after:h-0.5 after:rounded-t-[1px] after:bg-transparent aria-selected:after:bg-accent",
+        "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent",
+        "data-[preview-state=focus]:outline-solid data-[preview-state=focus]:outline-2 data-[preview-state=focus]:-outline-offset-1 data-[preview-state=focus]:outline-accent",
         className,
       )}
       {...props}

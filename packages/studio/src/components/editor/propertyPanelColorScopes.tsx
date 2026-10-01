@@ -6,6 +6,8 @@ import {
 } from "./colorGradingFrameAnalysis";
 import { useColorGradingScopes } from "./useColorGradingScopes";
 import { RotateCw } from "../../icons/SystemIcons";
+import { CaretDown } from "@phosphor-icons/react";
+import { INSP_MINI_BUTTON, INSP_SUBGROUP_HEAD } from "./inspectorStyles";
 
 const MODES: Array<{ id: ColorGradingScopeMode; label: string }> = [
   { id: "histogram", label: "Histogram" },
@@ -200,48 +202,52 @@ export function PropertyPanelColorScopes({
   }, [analysis, mode]);
 
   return (
-    <div data-flat-grade-scopes="true" className="border-b border-panel-hairline pb-1.5">
-      <div className="flex min-h-7 items-center justify-between">
+    <div data-flat-grade-scopes="true" className="min-w-0">
+      <div className="flex min-w-0 items-center gap-1">
         <button
           type="button"
+          aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
-          className="flex min-h-7 flex-1 items-center justify-between text-left"
+          className={INSP_SUBGROUP_HEAD}
         >
-          <span className="text-[11px] text-panel-text-2">Scopes</span>
-          <span className="text-[9px] text-panel-text-5">{open ? status : "Off"}</span>
+          <CaretDown
+            size={12}
+            aria-hidden="true"
+            className={`shrink-0 text-fg-3 transition-transform ${open ? "" : "-rotate-90"}`}
+          />
+          Scopes
+          <span className="ml-auto truncate font-normal text-fg-3">{open ? status : "Off"}</span>
         </button>
-        <span className="flex items-center gap-2">
-          {open && (
+      </div>
+      {open && (
+        <div className="grid gap-1.5 pt-0.5 pb-2.5">
+          <div className="flex min-w-0 items-center gap-1">
+            <div className="grid min-w-0 flex-1 grid-cols-4 gap-px rounded-md border border-border bg-bg-1 p-0.5">
+              {MODES.map((candidate) => (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  aria-pressed={mode === candidate.id}
+                  onClick={() => setMode(candidate.id)}
+                  className={`h-[18px] min-w-0 truncate rounded-sm px-1 text-xs transition-colors focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent ${
+                    mode === candidate.id
+                      ? "bg-surface-3 text-fg"
+                      : "text-fg-3 hover:bg-surface-1 hover:text-fg-2"
+                  }`}
+                >
+                  {candidate.label}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               aria-label="Refresh scopes"
               title="Refresh scopes"
               onClick={refresh}
-              className="p-1 text-panel-text-4 hover:text-panel-text-1"
+              className={INSP_MINI_BUTTON}
             >
-              <RotateCw size={10} />
+              <RotateCw size={12} />
             </button>
-          )}
-        </span>
-      </div>
-      {open && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 overflow-x-auto">
-            {MODES.map((candidate) => (
-              <button
-                key={candidate.id}
-                type="button"
-                aria-pressed={mode === candidate.id}
-                onClick={() => setMode(candidate.id)}
-                className={`whitespace-nowrap border-b-2 py-1 text-[9px] ${
-                  mode === candidate.id
-                    ? "border-panel-accent text-panel-text-1"
-                    : "border-transparent text-panel-text-4 hover:text-panel-text-2"
-                }`}
-              >
-                {candidate.label}
-              </button>
-            ))}
           </div>
           <canvas
             ref={canvasRef}
@@ -249,7 +255,7 @@ export function PropertyPanelColorScopes({
             height={144}
             role="img"
             aria-label={`${MODES.find((candidate) => candidate.id === mode)?.label ?? mode} scope, ${status}`}
-            className="block h-auto w-full border border-panel-hairline bg-black"
+            className="block h-auto w-full rounded-sm border border-border-subtle bg-bg-1"
           />
         </div>
       )}

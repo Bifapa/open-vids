@@ -34,6 +34,7 @@ import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
 import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
 import { deriveTimelineTransitionSeamsByTrack } from "./timelineTransitionSeams";
+import { buildTimelineTrackCodes } from "./timelineTrackIdentity";
 
 export function TimelineLanes({
   pps,
@@ -115,6 +116,10 @@ export function TimelineLanes({
   // synthetic lane element spans the whole composition rather than a clip.
   const compositionDuration = usePlayerStore((s) => s.duration);
   useAutomationSelectionKeyboard({ lanes: automationLanes });
+  const trackCodes = useMemo(
+    () => buildTimelineTrackCodes(tracks, displayTrackOrder),
+    [tracks, displayTrackOrder],
+  );
   const { logicalRowsByTrack, groupByAnchor } = useTimelineLaneRowIndexes(logicalRows, groups);
   const groupMemberTracks = useMemo(
     () => new Set(groups.flatMap((group) => group.memberTracks)),
@@ -200,7 +205,9 @@ export function TimelineLanes({
         const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
         const isPendingTrack =
           draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
-        const rowBackground = theme.rowBackground;
+        const rowBackground = els.some(isAudioTimelineElement)
+          ? "var(--color-lane-audio)"
+          : theme.rowBackground;
         const beatStripOnTrack = trackShowsBeatStrip(els, beatAnalysis?.beatTimes, {
           selectedElementId,
           isMusicTrack,
@@ -282,6 +289,7 @@ export function TimelineLanes({
               lanesId={`${lanesId} ${automationLanesId}`}
               contentOrigin={contentOrigin}
               keyframeClip={keyframeClip}
+              trackCode={trackCodes.get(trackNum)}
               trackElements={els}
               clipCount={els.length}
               isExpanded={rowExpanded}
@@ -310,7 +318,7 @@ export function TimelineLanes({
                 opacity: isTrackHidden ? 0.35 : 1,
                 transition: "opacity 120ms ease",
               }}
-              className="relative"
+              className="timeline-lane relative"
               onContextMenu={(e: React.MouseEvent) => {
                 // Clip / keyframe-diamond context menus preventDefault at the
                 // target before this bubble handler runs — respect them so a

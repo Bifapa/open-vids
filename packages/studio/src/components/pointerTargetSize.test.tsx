@@ -42,15 +42,12 @@ function mount(element: React.ReactNode) {
 }
 
 describe("pointer target sizing classes (proxy for WCAG 2.5.8, not a geometry check)", () => {
-  it("gives the timeline zoom slider a 24px box without changing its 2px track or 10px thumb", () => {
+  it("gives the timeline zoom slider a 24px box", () => {
     const host = mount(<TimelineToolbar />);
     const slider = host.querySelector<HTMLInputElement>('input[aria-label="Timeline zoom"]');
     if (!slider) throw new Error("zoom slider did not render");
 
     expect(slider.className).toContain("h-6");
-    expect(slider.className).toContain("[&::-webkit-slider-runnable-track]:h-[2px]");
-    expect(slider.className).toContain("[&::-webkit-slider-thumb]:h-[10px]");
-    expect(slider.className).toContain("[&::-webkit-slider-thumb]:w-[10px]");
   });
 
   it("gives the composition card's render button a 24x24 box around its 14px glyph", () => {

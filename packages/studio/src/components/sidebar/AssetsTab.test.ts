@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { filterByUsage, countUsage, deriveUsedPaths } from "./AssetsTab";
-import { truncateMiddle, formatDuration } from "./assetHelpers";
+import { formatDuration } from "./assetHelpers";
 import { globalAssetRows } from "./GlobalAssetsView";
 
 const assets = ["bgm.mp3", "logo.png", "orphan.wav"];
@@ -90,43 +90,6 @@ describe("countUsage", () => {
 
   it("is all-unused with an empty used set", () => {
     expect(countUsage(assets, new Set())).toEqual({ used: 0, unused: 3 });
-  });
-});
-
-describe("truncateMiddle", () => {
-  it("returns the original string when it fits within maxLen", () => {
-    expect(truncateMiddle("short.mp4", 20)).toBe("short.mp4");
-    expect(truncateMiddle("exact_length_str.mp4", 20)).toBe("exact_length_str.mp4");
-  });
-
-  it("truncates longer strings with an ellipsis in the middle", () => {
-    const result = truncateMiddle("2a37eabf-long-uuid-887d8.mp4", 20);
-    expect(result.length).toBeLessThanOrEqual(20);
-    expect(result).toContain("…");
-    // Preserves head
-    expect(result.startsWith("2a37eabf-long-uuid-8")).toBe(false); // head is shortened
-    expect(result.startsWith("2a37eabf")).toBe(true);
-    // Preserves tail
-    expect(result.endsWith("887d8.mp4")).toBe(false); // tail portion only
-    expect(result.endsWith(".mp4")).toBe(true);
-  });
-
-  it("preserves the full filename extension in the tail", () => {
-    const result = truncateMiddle("verylongnamehere12345.mp4", 14);
-    expect(result.endsWith(".mp4")).toBe(true);
-    expect(result.length).toBeLessThanOrEqual(14);
-  });
-
-  it("handles maxLen of 1 (degenerate)", () => {
-    const result = truncateMiddle("abcdef", 1);
-    // head = 0, tail = 0 → just the ellipsis
-    expect(result).toBe("…");
-  });
-
-  it("handles a string of exactly maxLen+1 chars", () => {
-    const result = truncateMiddle("abcdefgh", 7);
-    expect(result.length).toBeLessThanOrEqual(7);
-    expect(result).toContain("…");
   });
 });
 

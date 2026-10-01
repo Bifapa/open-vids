@@ -64,6 +64,13 @@ export interface FxAddMenuProps {
   withEffect(base: HfAudioFxChain, type: string): HfAudioFxChain;
 }
 
+/** A `.menu-item` row; the effect's mechanism sits right-aligned via `data-mech`. */
+const FX_MENU_ITEM =
+  "flex h-6 w-full min-w-0 items-center gap-2 truncate rounded-sm px-2 text-left text-sm text-fg outline-hidden hover:bg-accent hover:text-accent-ink focus-visible:bg-accent focus-visible:text-accent-ink disabled:text-fg-disabled after:ml-auto after:shrink-0 after:text-xs after:text-fg-3 after:content-[attr(data-mech)] hover:after:text-accent-ink focus-visible:after:text-accent-ink";
+
+/** A menu group heading. */
+const FX_MENU_GROUP = "px-2 pt-1.5 pb-0.5 text-xs text-fg-3";
+
 /** The shelf `adding` opens: Tone, the named jobs, and the raw effect registry. */
 export function FxAddMenu({
   disabled,
@@ -83,7 +90,7 @@ export function FxAddMenu({
 }: FxAddMenuProps) {
   return (
     <div
-      className="hf-fx-add-menu space-y-1.5 rounded-[4px] border border-panel-border-input p-1.5"
+      className="hf-fx-add-menu grid max-h-[min(72vh,600px)] gap-1 overflow-y-auto overscroll-contain rounded-md border border-border bg-bg-1 p-1 shadow-raise"
       // On the shelf, not on each button: moving between two of them passes
       // through the gap, and a per-button leave would revert on the way.
       onMouseLeave={() => {
@@ -97,14 +104,13 @@ export function FxAddMenu({
         onAuditionLevel?.(false);
       }}
     >
-      <div className="hf-fx-add-group flex flex-wrap items-center gap-1">
-        <span className="hf-fx-add-group-label w-full font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
-          Tone
-        </span>
+      <div className="hf-fx-add-group grid gap-px">
+        <span className={`hf-fx-add-group-label ${FX_MENU_GROUP}`}>Tone</span>
         {onLevel ? (
           <button
             type="button"
-            className="hf-fx-add-composite rounded-[3px] bg-panel-surface px-1.5 py-0.5 text-[10px] text-panel-text-1 hover:text-panel-text-0"
+            className={`hf-fx-add-composite ${FX_MENU_ITEM}`}
+            data-mech="Loudness"
             title="Listen to this track and even out its loud and quiet parts."
             disabled={disabled || analysing}
             onClick={() => {
@@ -128,7 +134,9 @@ export function FxAddMenu({
             onFocus={levelled ? undefined : () => onAuditionLevel?.(true)}
           >
             {levelled ? "Remove levelling" : "Even Out Levels"}
-            {auditioningLevel ? <span className="hf-fx-add-working"> measuring…</span> : null}
+            {auditioningLevel ? (
+              <span className="hf-fx-add-working text-fg-3"> measuring…</span>
+            ) : null}
           </button>
         ) : null}
         <button
@@ -136,7 +144,8 @@ export function FxAddMenu({
           // Not hf-fx-add-item: Tone is a composite over several filters, not
           // an entry in the effect registry, and a count of the registry must
           // not include it.
-          className="hf-fx-add-composite rounded-[3px] bg-panel-surface px-1.5 py-0.5 text-[10px] text-panel-text-1 hover:text-panel-text-0"
+          className={`hf-fx-add-composite ${FX_MENU_ITEM}`}
+          data-mech="3-band"
           title="Bass, middle and treble on one set of faders."
           // No audition of its own: a Tone module arrives with every band at
           // 0 dB, so there is nothing to hear until a fader moves, and a hover
@@ -152,10 +161,8 @@ export function FxAddMenu({
         </button>
       </div>
       {GROUPED.map(({ group, defs, jobs }) => (
-        <div key={group} className="hf-fx-add-group flex flex-wrap items-center gap-1">
-          <span className="hf-fx-add-group-label w-full font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
-            {GROUP_LABEL[group]}
-          </span>
+        <div key={group} className="hf-fx-add-group grid gap-px">
+          <span className={`hf-fx-add-group-label ${FX_MENU_GROUP}`}>{GROUP_LABEL[group]}</span>
           {jobs.map((job) => (
             <button
               key={job.id}
@@ -163,7 +170,7 @@ export function FxAddMenu({
               // Same class as any other entry: a job IS an effect, and one
               // that looked special would read as a preset rather than as the
               // thing the author is about to add.
-              className="hf-fx-add-item rounded-[3px] bg-panel-surface px-1.5 py-0.5 text-[10px] text-panel-text-1 hover:text-panel-text-0"
+              className={`hf-fx-add-item ${FX_MENU_ITEM}`}
               title={job.does}
               onClick={() => onJob(job)}
               onMouseEnter={() => {
@@ -179,7 +186,8 @@ export function FxAddMenu({
             <button
               key={d.id}
               type="button"
-              className="hf-fx-add-item rounded-[3px] bg-panel-surface px-1.5 py-0.5 text-[10px] text-panel-text-1 hover:text-panel-text-0"
+              className={`hf-fx-add-item ${FX_MENU_ITEM}`}
+              data-mech={d.label}
               // The menu that adds it has to call it what the rack will call
               // it, or the author picks "High-pass" and a module named
               // "Remove Rumble" appears. The registry's own description stays

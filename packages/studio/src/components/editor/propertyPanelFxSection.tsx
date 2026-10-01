@@ -6,6 +6,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Plus } from "@phosphor-icons/react";
+import { Button } from "../ui/Button";
 import { audioFxRevealTarget, scrollRevealedRowIntoView } from "./audioFxRevealTarget.js";
 import {
   defaultAudioFxParams,
@@ -444,7 +446,7 @@ export function FxSection({
   return (
     <div
       ref={rootRef}
-      className="hf-fx-section space-y-2"
+      className="hf-fx-section grid gap-2"
       // Focus lives on the buttons and menu items inside, so the keystroke
       // bubbles to here without the section needing focus of its own.
       onKeyDown={closeMenus}
@@ -535,10 +537,10 @@ export function FxSection({
           opened one and changed their mind had no way back: picking something
           was the only thing that set these false, so the only exits were adding
           an effect they did not want or deselecting the clip. */}
-      <div className="flex flex-col gap-1">
-        <button
-          type="button"
-          className="hf-fx-preset w-full rounded-[4px] border border-panel-text-0 py-1.5 text-[11px] font-semibold text-panel-text-0 disabled:opacity-40"
+      <div className="flex flex-wrap gap-1.5">
+        <Button
+          size="sm"
+          className="hf-fx-preset aria-expanded:border-border-strong aria-expanded:bg-surface-3"
           aria-expanded={picking}
           disabled={disabled}
           onClick={() => {
@@ -551,10 +553,11 @@ export function FxSection({
           }}
         >
           {picking ? "Close" : "Presets"}
-        </button>
-        <button
-          type="button"
-          className="hf-fx-add self-end px-1 text-[10px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-40"
+        </Button>
+        <Button
+          size="sm"
+          className="hf-fx-add aria-expanded:border-border-strong aria-expanded:bg-surface-3"
+          icon={adding ? undefined : <Plus size={12} aria-hidden="true" />}
           aria-expanded={adding}
           disabled={disabled}
           onClick={() => {
@@ -566,8 +569,8 @@ export function FxSection({
             setPicking(false);
           }}
         >
-          {adding ? "Close" : "+ effect"}
-        </button>
+          {adding ? "Close" : "Add Effect"}
+        </Button>
       </div>
     </div>
   );

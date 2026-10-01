@@ -4,6 +4,12 @@ import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { useMenuKeyboardNav } from "./menuKeyboardNav";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
+import {
+  timelineMenuItem,
+  timelineMenuSeparator,
+  timelineMenuShortcut,
+  timelineMenuSurface,
+} from "./timelineMenuStyles";
 
 export interface KeyframeDiamondContextMenuState {
   x: number;
@@ -39,10 +45,8 @@ interface KeyframeDiamondContextMenuProps {
   onMoveToPlayhead?: (element: TimelineElement, keyframe: TimelineKeyframeTarget) => void;
 }
 
-const ITEM_CLS =
-  "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left";
-const DESTRUCTIVE_ITEM_CLS =
-  "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left";
+const ITEM_CLS = `${timelineMenuItem(true)} justify-start gap-2`;
+const DESTRUCTIVE_ITEM_CLS = `${timelineMenuItem(true, "danger")} justify-start gap-2`;
 
 export function KeyframeDiamondContextMenu({
   state,
@@ -96,7 +100,7 @@ export function KeyframeDiamondContextMenu({
       ref={menuRef}
       role="menu"
       aria-label="Keyframe actions"
-      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px] overflow-y-auto"
+      className={`${timelineMenuSurface} overflow-y-auto`}
       style={{ left: adjustedX, top: adjustedY, maxHeight: `calc(100vh - ${adjustedY + 8}px)` }}
     >
       {onMoveToPlayhead && (
@@ -120,14 +124,14 @@ export function KeyframeDiamondContextMenu({
         <button
           type="button"
           role="menuitem"
-          className={`${ITEM_CLS} justify-between`}
+          className={timelineMenuItem(true)}
           onClick={() => {
             onEditEase(state.elementId, keyframe);
             onClose();
           }}
         >
           <span>Edit Ease…</span>
-          <span className="text-[10px] text-neutral-500">{state.currentEase ?? "default"}</span>
+          <span className={timelineMenuShortcut}>{state.currentEase ?? "default"}</span>
         </button>
       )}
 
@@ -165,14 +169,14 @@ export function KeyframeDiamondContextMenu({
 
       {/* Deleting every keyframe sat adjacent to the single delete and styled
           identically. Separate and mark it so the two cannot be misread. */}
-      <div className="my-1 border-t border-neutral-700/60" role="separator" />
+      <div className={timelineMenuSeparator} role="separator" />
 
-      <div className="my-1 border-t border-neutral-700/60" role="separator" />
+      <div className={timelineMenuSeparator} role="separator" />
 
       <button
         type="button"
         role="menuitem"
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/40 focus-visible:bg-red-950/40 outline-hidden cursor-pointer text-left"
+        className={DESTRUCTIVE_ITEM_CLS}
         onClick={() => {
           onDeleteAll(state.element, state.animationId);
           onClose();

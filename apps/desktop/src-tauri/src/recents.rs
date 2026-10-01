@@ -77,7 +77,7 @@ impl RecentsStore {
             true
         });
         self.entries
-            .sort_by(|a, b| b.last_opened.cmp(&a.last_opened));
+            .sort_by_key(|e| std::cmp::Reverse(e.last_opened));
     }
 
     /// Record an open: move the entry to the front, updating metadata.
@@ -141,7 +141,7 @@ impl RecentsStore {
             entry.dir = new_dir.to_path_buf();
             entry.last_opened = now_secs();
             self.entries
-                .sort_by(|a, b| b.last_opened.cmp(&a.last_opened));
+                .sort_by_key(|e| std::cmp::Reverse(e.last_opened));
             self.save();
             return true;
         }
@@ -157,6 +157,45 @@ impl RecentsStore {
             return true;
         }
         false
+    }
+
+    /// Drop an entry by id and hand it back with its position, so the caller
+    /// can offer Undo (`restore`).
+    pub fn take(&mut self, id: &str) -> Option<(usize, RecentEntry)> {
+        let index = self.entries.iter().position(|e| e.id == id)?;
+        let entry = self.entries.remove(index);
+        self.save();
+        Some((index, entry))
+    }
+
+    /// Put a taken entry back (Undo of Remove from Recent). Its timestamp is
+    /// kept, so it lands where it was; a later record of the same folder wins.
+    pub fn restore(&mut self, entry: RecentEntry) {
+        let key = canonical_key(&entry.dir);
+        if self.entries.iter().any(|e| canonical_key(&e.dir) == key) {
+            return;
+        }
+        self.entries.push(entry);
+        self.entries
+            .sort_by_key(|e| std::cmp::Reverse(e.last_opened));
+        self.save();
+    }
+
+    /// Point a (missing) entry at the folder the user located. Any other entry
+    /// for that folder is merged into it. Returns false when `id` is unknown.
+    pub fn relink(&mut self, id: &str, new_id: &str, new_dir: &Path) -> bool {
+        let key = canonical_key(new_dir);
+        let Some(index) = self.entries.iter().position(|e| e.id == id) else {
+            return false;
+        };
+        let mut entry = self.entries.remove(index);
+        self.entries.retain(|e| canonical_key(&e.dir) != key);
+        entry.id = new_id.to_string();
+        entry.dir = key;
+        let at = index.min(self.entries.len());
+        self.entries.insert(at, entry);
+        self.save();
+        true
     }
 }
 
@@ -246,6 +285,44 @@ mod tests {
         assert!(store.remove("a"));
         assert_eq!(store.entries().len(), 1);
         assert_eq!(store.entries()[0].id, "b");
+    }
+
+    #[test]
+    fn take_then_restore_puts_the_entry_back_in_place() {
+        let base = tmp("restore");
+        let store_path = base.join("recents.json");
+        let mut store = RecentsStore::load(&store_path);
+        store.record("a", &proj(&base, "a"), None, None);
+        store.entries[0].last_opened = 10;
+        store.record("b", &proj(&base, "b"), None, None);
+        store.entries[0].last_opened = 30;
+        store.record("c", &proj(&base, "c"), None, None);
+        store.entries[0].last_opened = 20;
+        store.entries.sort_by_key(|e| std::cmp::Reverse(e.last_opened));
+        let (index, entry) = store.take("c").unwrap();
+        assert_eq!(index, 1);
+        assert!(store.find_by_id("c").is_none());
+        store.restore(entry.clone());
+        let ids: Vec<_> = store.entries().iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["b", "c", "a"]);
+        // Restoring twice never duplicates the folder.
+        store.restore(entry);
+        assert_eq!(store.entries().len(), 3);
+    }
+
+    #[test]
+    fn relink_points_the_entry_at_the_located_folder_and_merges_duplicates() {
+        let base = tmp("relink");
+        let store_path = base.join("recents.json");
+        let mut store = RecentsStore::load(&store_path);
+        let gone = base.join("gone");
+        store.record("gone", &gone, None, None);
+        let found = proj(&base, "found");
+        store.record("found", &found, None, None);
+        assert!(store.relink("gone", "found", &found));
+        assert_eq!(store.entries().len(), 1);
+        assert_eq!(store.entries()[0].dir, found);
+        assert!(!store.relink("nope", "x", &found));
     }
 
     #[test]

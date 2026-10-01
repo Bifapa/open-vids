@@ -109,14 +109,7 @@ pub fn scaffold(template_index: &Path, params: &CreateParams) -> Result<PathBuf,
         .ok_or_else(|| CreateError::BadPatch("template has no composition root".to_string()))?;
     std::fs::write(dest.join("index.html"), html).map_err(|e| CreateError::Io(e.to_string()))?;
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    // ISO-8601 without a date dependency: format from epoch seconds via a
-    // fixed template is overkill — the CLI writes `new Date().toISOString()`;
-    // a seconds-precision UTC render keeps the field honest.
-    let created_at = format_epoch_utc(now);
+    let created_at = now_iso();
     std::fs::write(
         dest.join("meta.json"),
         format!(
@@ -210,6 +203,17 @@ fn to_package_name(name: &str) -> String {
         out.push_str("video");
     }
     out
+}
+
+/// The current time as ISO-8601 UTC with seconds precision. The CLI writes
+/// `new Date().toISOString()`; without a date dependency, seconds are the
+/// honest resolution.
+pub fn now_iso() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format_epoch_utc(now)
 }
 
 /// Days-from-civil algorithm (Howard Hinnant) for an epoch-seconds UTC date.

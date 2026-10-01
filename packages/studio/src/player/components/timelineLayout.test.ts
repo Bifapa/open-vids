@@ -9,7 +9,7 @@ import {
   TRACKS_TOP_PAD,
   TRACKS_BOTTOM_PAD,
   GUTTER,
-  TRACKS_LEFT_PAD,
+  LABEL_COL_W,
   getTimelineRowTop,
   getTimelineScrubTime,
   getTimelineRowFromY,
@@ -127,27 +127,27 @@ describe("variable timeline row geometry", () => {
 
 describe("collapsed timeline row geometry characterization", () => {
   it.each([
-    [0, 74],
-    [1, 122],
-    [4, 266],
+    [0, 40],
+    [1, 88],
+    [4, 232],
   ])("keeps row %i at content y=%i", (row, expectedTop) => {
     expect(getTimelineRowTop(row)).toBe(expectedTop);
   });
 
   it.each([
-    [74, 0],
-    [86, 0.25],
-    [146, 1.5],
-    [290, 4.5],
+    [40, 0],
+    [52, 0.25],
+    [112, 1.5],
+    [256, 4.5],
   ])("maps content y=%i to fractional row %f", (contentY, expectedRow) => {
     expect(getTimelineRowFromY(contentY)).toBe(expectedRow);
   });
 
   it.each([
-    [0, 146],
-    [1, 194],
-    [3, 290],
-    [5, 386],
+    [0, 112],
+    [1, 160],
+    [3, 256],
+    [5, 352],
   ])("keeps the %i-track canvas height at %i", (trackCount, expectedHeight) => {
     expect(getTimelineCanvasHeight(baseRows(trackCount))).toBe(expectedHeight);
   });
@@ -256,11 +256,11 @@ describe("getTimelineScrubTime", () => {
       clientX,
       viewportLeft: 0,
       scrollLeft: 0,
-      contentOrigin: GUTTER + TRACKS_LEFT_PAD,
+      contentOrigin: LABEL_COL_W + GUTTER,
       pixelsPerSecond: 100,
       duration,
     });
-  const origin = GUTTER + TRACKS_LEFT_PAD;
+  const origin = LABEL_COL_W + GUTTER;
 
   it("maps the content origin to t=0", () => {
     expect(at(origin)).toBe(0);
@@ -286,7 +286,7 @@ describe("getTimelineScrubTime", () => {
         clientX: 500,
         viewportLeft: 0,
         scrollLeft: 0,
-        contentOrigin: GUTTER + TRACKS_LEFT_PAD,
+        contentOrigin: LABEL_COL_W + GUTTER,
         pixelsPerSecond: 0,
         duration: 10,
       }),

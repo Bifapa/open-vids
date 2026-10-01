@@ -181,7 +181,7 @@ describe("Asset Search policy", () => {
       url: "/api/research/policy",
       body: { mode: "any" },
     });
-    expect(host.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe(
+    expect(host.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain(
       "Any source",
     );
     expect(

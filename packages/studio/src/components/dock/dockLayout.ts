@@ -62,7 +62,7 @@ export function applySideMinimums(api: DockviewApi, dockWidth = window.innerWidt
 }
 
 function minimumSize(id: PanelId) {
-  if (id === "preview" || id === "story") {
+  if (id === "preview" || id === "story" || id === "media") {
     return { minimumWidth: MIN_PREVIEW_W, minimumHeight: MIN_PREVIEW_H };
   }
   if (id === "timeline") return { minimumHeight: MIN_TIMELINE_H };
@@ -90,7 +90,8 @@ export function buildEditLayout(api: DockviewApi, viewportWidth: number) {
   const widths = defaultSideWidths(viewportWidth);
   addRegisteredPanel(api, "preview");
   addRegisteredPanel(api, "timeline", { referencePanel: "preview", direction: "below" });
-  // The Story workspace shares the preview's place: the header's Edit | Story switch flips between them.
+  // The Media and Story workspaces share the preview's place: the header's Media | Story | Edit switch flips them.
+  addRegisteredPanel(api, "media", { referencePanel: "preview", direction: "within" });
   addRegisteredPanel(api, "story", { referencePanel: "preview", direction: "within" });
   api.getPanel("preview")?.api.setActive();
   addRegisteredPanel(api, "compositions", { referencePanel: "preview", direction: "left" });

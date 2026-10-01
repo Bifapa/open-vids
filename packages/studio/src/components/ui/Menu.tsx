@@ -44,10 +44,11 @@ export function floatingMotion(openDuration: "duration-open" | "duration-tooltip
 }
 
 /**
- * Chrome shared by every floating panel (`Popover` too); callers add their own shadow token.
+ * Chrome shared by every floating panel (`Popover`, `Select` too): the prototype's
+ * translucent menu surface over a blur. Callers add their own shadow token.
  */
 export const popupSurface = cn(
-  "rounded-lg border border-border-input bg-surface",
+  "rounded-lg border border-border bg-menu-bg/94 backdrop-blur-xl backdrop-saturate-120",
   floatingMotion("duration-open"),
   "data-[preview-state=open]:opacity-100 data-[preview-state=open]:scale-100",
 );
@@ -55,19 +56,26 @@ export const popupSurface = cn(
 /** The popup's own layer: menus sit above panel chrome and below a modal. */
 const POPUP_LAYER = "z-200";
 
-const menuPopup = cn(popupSurface, "min-w-36 p-1 shadow-menu");
+const menuPopup = cn(popupSurface, "min-w-40 p-1 shadow-pop");
 
-/** One row. `data-highlighted` is set by keyboard and pointer alike, so the seen row is the Enter row. */
-const itemBase = cn(
-  "flex cursor-default select-none items-center justify-between gap-6 rounded-sm px-2 py-1.5",
-  "text-step-11 whitespace-nowrap text-text-1",
-  "outline-hidden transition-colors ease-out-quint duration-hover",
-  "data-[highlighted]:bg-hover data-[highlighted]:text-text-0",
-  "data-[preview-state=hover]:bg-hover data-[preview-state=hover]:text-text-0",
-  "data-[disabled]:pointer-events-none data-[disabled]:opacity-40",
+/**
+ * One row: 24 px, filled with the accent while highlighted. `data-highlighted` is set
+ * by keyboard and pointer alike, so the seen row is the Enter row. Icons, shortcuts
+ * and indicators inside read `currentColor` or flip with `in-data-[highlighted]:`.
+ */
+export const menuItemBase = cn(
+  "flex h-ctl-sm cursor-default select-none items-center justify-between gap-6 rounded-sm px-2",
+  "text-sm whitespace-nowrap text-fg",
+  "outline-hidden",
+  "data-[highlighted]:bg-accent data-[highlighted]:text-accent-ink",
+  "data-[preview-state=hover]:bg-accent data-[preview-state=hover]:text-accent-ink",
+  "data-[disabled]:pointer-events-none data-[disabled]:text-fg-disabled",
 );
 
-const itemDanger = cn("text-danger data-[highlighted]:bg-danger/15 data-[highlighted]:text-danger");
+const itemDanger = cn(
+  "text-error data-[highlighted]:bg-error data-[highlighted]:text-bg-0",
+  "data-[preview-state=hover]:bg-error data-[preview-state=hover]:text-bg-0",
+);
 
 export type MenuItemTone = "default" | "danger";
 
@@ -169,11 +177,15 @@ export function ContextMenu({
   );
 }
 
-/** Keyboard shortcut hint, mono and tabular; exported for hints that are not a plain string. */
+/** Keyboard shortcut hint, dim and tabular; inks with the row while it is highlighted. */
 export function MenuShortcut({ className, ...props }: StyledProps<"span">) {
   return (
     <span
-      className={cn("shrink-0 font-mono text-step-10 tabular-nums text-text-4", className)}
+      className={cn(
+        "shrink-0 text-xs tracking-[0.04em] tabular-nums text-fg-3",
+        "in-data-[highlighted]:text-current in-data-[preview-state=hover]:text-current",
+        className,
+      )}
       aria-hidden="true"
       {...props}
     />
@@ -181,7 +193,9 @@ export function MenuShortcut({ className, ...props }: StyledProps<"span">) {
 }
 
 interface MenuItemProps extends StyledProps<typeof BaseMenu.Item> {
-  /** Rendered as a dim mono hint on the trailing edge. Decorative. */
+  /** Leading glyph, 14 px, dim until the row is highlighted. */
+  icon?: ReactNode;
+  /** Rendered as a dim hint on the trailing edge. Decorative. */
   shortcut?: string;
   /** `danger` for a destructive action (Delete, Remove). */
   tone?: MenuItemTone;
@@ -189,10 +203,23 @@ interface MenuItemProps extends StyledProps<typeof BaseMenu.Item> {
 }
 
 /** One action. `disabled` items are skipped by the arrow keys, not just dimmed. */
-export function MenuItem({ shortcut, tone, className, children, ...props }: MenuItemProps) {
+export function MenuItem({ icon, shortcut, tone, className, children, ...props }: MenuItemProps) {
   return (
-    <BaseMenu.Item className={cn(itemBase, tone === "danger" && itemDanger, className)} {...props}>
-      <span className="truncate">{children}</span>
+    <BaseMenu.Item
+      className={cn(menuItemBase, tone === "danger" && itemDanger, className)}
+      {...props}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        {icon ? (
+          <span
+            className="flex size-icon-md shrink-0 items-center justify-center text-fg-3 in-data-[highlighted]:text-current in-data-[disabled]:text-current"
+            aria-hidden="true"
+          >
+            {icon}
+          </span>
+        ) : null}
+        <span className="truncate">{children}</span>
+      </span>
       {shortcut ? <MenuShortcut>{shortcut}</MenuShortcut> : null}
     </BaseMenu.Item>
   );
@@ -210,11 +237,11 @@ interface MenuRadioItemProps extends StyledProps<typeof BaseMenu.RadioItem> {
 /** One choice in a `MenuRadioGroup`. The dot renders only while it is checked. */
 export function MenuRadioItem({ className, children, ...props }: MenuRadioItemProps) {
   return (
-    <BaseMenu.RadioItem className={cn(itemBase, className)} {...props}>
+    <BaseMenu.RadioItem className={cn(menuItemBase, className)} {...props}>
       <span className="truncate">{children}</span>
       {/* Fixed box so a checked and an unchecked row keep the same width. */}
       <span className="flex size-3 shrink-0 items-center justify-center">
-        <BaseMenu.RadioItemIndicator className="size-1.5 rounded-full bg-accent" />
+        <BaseMenu.RadioItemIndicator className="size-1.5 rounded-full bg-current" />
       </span>
     </BaseMenu.RadioItem>
   );
@@ -227,9 +254,9 @@ export function MenuCheckboxItem({
   ...props
 }: StyledProps<typeof BaseMenu.CheckboxItem>) {
   return (
-    <BaseMenu.CheckboxItem className={cn(itemBase, className)} {...props}>
+    <BaseMenu.CheckboxItem className={cn(menuItemBase, className)} {...props}>
       <span className="truncate">{children}</span>
-      <span className="flex size-3 shrink-0 items-center justify-center text-accent">
+      <span className="flex size-3 shrink-0 items-center justify-center">
         <BaseMenu.CheckboxItemIndicator>✓</BaseMenu.CheckboxItemIndicator>
       </span>
     </BaseMenu.CheckboxItem>
@@ -238,5 +265,20 @@ export function MenuCheckboxItem({
 
 /** A hairline between two groups of items. */
 export function MenuSeparator({ className, ...props }: StyledProps<typeof BaseMenu.Separator>) {
-  return <BaseMenu.Separator className={cn("my-1 h-px bg-hairline", className)} {...props} />;
+  return <BaseMenu.Separator className={cn("mx-1.5 my-1 h-px bg-border", className)} {...props} />;
+}
+
+/** A labelled run of items; the label is `MenuGroupLabel`, which names the group for assistive tech. */
+export function MenuGroup(props: ComponentPropsWithoutRef<typeof BaseMenu.Group>) {
+  return <BaseMenu.Group {...props} />;
+}
+
+/** The dim heading over a `MenuGroup` ("Reveal", "Sort by"). Not an item: arrow keys skip it. */
+export function MenuGroupLabel({ className, ...props }: StyledProps<typeof BaseMenu.GroupLabel>) {
+  return (
+    <BaseMenu.GroupLabel
+      className={cn("px-2 pb-0.5 pt-1 text-xs text-fg-3", className)}
+      {...props}
+    />
+  );
 }

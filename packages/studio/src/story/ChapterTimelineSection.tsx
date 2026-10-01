@@ -1,7 +1,7 @@
-import { ArrowsClockwise, CheckCircle } from "@phosphor-icons/react";
+import { ArrowsClockwise, Check } from "@phosphor-icons/react";
 import type { StoryNodeFacts, StorySyncReport } from "@hyperframes/agent-protocol";
-import { Button, Tooltip } from "../components/ui";
-import { Section } from "./inspectorFields";
+import { Badge, Button, Tooltip } from "../components/ui";
+import { Field, HintNote, Section } from "./inspectorFields";
 import { EditRows } from "./StoryDialog";
 import { formatDuration } from "./storyFormat";
 import { chapterBadges, formatSpan, sectionEdits, sectionOf } from "./storySync";
@@ -26,28 +26,29 @@ export function ChapterTimelineSection({
 }) {
   const onTimeline = facts?.timeline ?? null;
   const placed = onTimeline && (
-    <p className="text-step-10 text-accent">
-      On the timeline {formatDuration(onTimeline.start)}–{formatDuration(onTimeline.end)} ·{" "}
-      {onTimeline.clips} clips
-    </p>
+    <Field label="On timeline">
+      <span className="px-0.5 font-mono text-sm text-fg">
+        {formatDuration(onTimeline.start)} – {formatDuration(onTimeline.end)}
+        <span className="font-ui text-xs text-fg-3"> · {onTimeline.clips} clips</span>
+      </span>
+    </Field>
   );
   const section = sectionOf(report, chapter);
 
-  let body;
+  let status;
+  let body = null;
   if (!report || report.state === "not_built") {
-    body = (
-      <p className="text-step-10 text-text-3">
-        Not built yet: Build Story puts it on the timeline.
-      </p>
-    );
+    status = <Badge>Not built</Badge>;
+    body = <HintNote icon={ArrowsClockwise}>Build Story puts it on the timeline.</HintNote>;
   } else if (report.state === "untracked") {
+    status = <Badge>Untracked</Badge>;
     body = (
-      <p className="text-step-10 text-text-3">
+      <HintNote icon={ArrowsClockwise}>
         Built before sync tracking: Build Story takes the timeline over.
-      </p>
+      </HintNote>
     );
   } else if (!section) {
-    body = <p className="text-step-10 text-text-3">Not on the timeline.</p>;
+    status = <Badge>Not on the timeline</Badge>;
   } else {
     const badges = chapterBadges(report, chapter);
     const edits = sectionEdits(section);
@@ -56,13 +57,14 @@ export function ChapterTimelineSection({
       report.moved.includes(chapter) ||
       report.lockedPending.includes(chapter);
     if (badges.length === 0) {
-      body = (
-        <p className="flex items-center gap-1 text-step-10 text-text-2">
-          <CheckCircle size={11} weight="fill" className="text-accent" aria-hidden />
-          In sync with the timeline
-        </p>
+      status = (
+        <Badge tone="success">
+          <Check size={11} weight="bold" aria-hidden />
+          In sync
+        </Badge>
       );
     } else {
+      status = <SyncBadges badges={badges} />;
       const blocker = readOnly
         ? "The agent is working"
         : needsRebuild
@@ -70,19 +72,18 @@ export function ChapterTimelineSection({
           : "Only edited on the timeline: nothing to rebuild";
       body = (
         <>
-          <SyncBadges badges={badges} />
           {(section.moved || section.change !== "unchanged") && (
-            <p className="text-step-10 tabular-nums text-text-2">
-              {formatSpan(section.current)} → {formatSpan(section.next)}
-            </p>
+            <Field label="Moves to">
+              <span className="px-0.5 font-mono text-sm text-fg-2">
+                {formatSpan(section.current)} → {formatSpan(section.next)}
+              </span>
+            </Field>
           )}
-          {section.reasons.length > 0 && (
-            <ul className="flex list-disc flex-col gap-0.5 pl-4 text-step-10 text-text-3">
-              {section.reasons.map((reason) => (
-                <li key={reason}>{reason}</li>
-              ))}
-            </ul>
-          )}
+          {section.reasons.map((reason) => (
+            <HintNote key={reason} icon={ArrowsClockwise} tone="warning">
+              {reason}
+            </HintNote>
+          ))}
           {edits.length > 0 && (
             <EditRows edits={edits.map((edit) => ({ edit, where: section.title }))} />
           )}
@@ -99,7 +100,7 @@ export function ChapterTimelineSection({
               disabled={blocker !== null}
               icon={<ArrowsClockwise size={12} aria-hidden />}
               onClick={() => onRebuild(chapter)}
-              className="self-start"
+              className="w-full"
             >
               Rebuild this section
             </Button>
@@ -111,6 +112,9 @@ export function ChapterTimelineSection({
 
   return (
     <Section title="Timeline">
+      <Field label="Status">
+        <span className="flex min-w-0 flex-wrap items-center gap-1">{status}</span>
+      </Field>
       {placed}
       {body}
     </Section>

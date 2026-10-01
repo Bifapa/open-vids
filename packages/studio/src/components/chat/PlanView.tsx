@@ -1,68 +1,54 @@
 import { useId, useState } from "react";
-import {
-  CaretRight,
-  Check,
-  Circle,
-  CircleNotch,
-  ListChecks,
-  MinusCircle,
-  WarningCircle,
-} from "@phosphor-icons/react";
-import {
-  AGENT_DISPLAY_NAMES,
-  type ExecutionPlan,
-  type PlanStepStatus,
-} from "@hyperframes/agent-protocol";
+import { CaretRight, Check, Minus, WarningCircle } from "@phosphor-icons/react";
+import type { ExecutionPlan, PlanStepStatus } from "@hyperframes/agent-protocol";
 import { cn } from "../ui/cn";
+import { StatusDot } from "../ui/Status";
 import { PLAN_STATUS_LABELS } from "./agentLabels";
+import { chatAgentName } from "./AgentMonogram";
+import { chatFocus, chatMeasureWide } from "./chatStyles";
 
-function StepGlyph({ status }: { status: PlanStepStatus }) {
+function StepMark({ status }: { status: PlanStepStatus }) {
   switch (status) {
-    case "pending":
-      return <Circle size={11} aria-hidden className="shrink-0 text-text-4" />;
-    case "running":
-      return (
-        <CircleNotch
-          size={11}
-          weight="bold"
-          aria-hidden
-          className="shrink-0 animate-spin text-accent motion-reduce:animate-none"
-        />
-      );
     case "done":
-      return <Check size={11} weight="bold" aria-hidden className="shrink-0 text-accent" />;
+      return <Check aria-hidden weight="bold" className="size-icon-sm text-success" />;
+    case "running":
+      return <StatusDot tone="running" />;
     case "failed":
-      return <WarningCircle size={11} weight="fill" aria-hidden className="shrink-0 text-danger" />;
+      return <WarningCircle aria-hidden weight="fill" className="size-icon-sm text-error" />;
     case "skipped":
-      return <MinusCircle size={11} aria-hidden className="shrink-0 text-text-4" />;
+      return <Minus aria-hidden className="size-icon-sm text-fg-disabled" />;
+    case "pending":
+      return <StatusDot tone="off" />;
   }
 }
 
-/** "2 of 4 done · 1 failed": the whole plan in one line, for when it is folded. */
-function planSummary(plan: ExecutionPlan): string {
-  const count = (status: PlanStepStatus) =>
-    plan.steps.filter((step) => step.status === status).length;
-  const parts = [`${count("done")} of ${plan.steps.length} done`];
-  if (count("failed") > 0) parts.push(`${count("failed")} failed`);
-  if (count("skipped") > 0) parts.push(`${count("skipped")} skipped`);
-  return parts.join(" · ");
-}
+const STEP_TEXT: Record<PlanStepStatus, string> = {
+  done: "text-fg-3",
+  running: "font-medium text-fg",
+  failed: "text-fg-2",
+  skipped: "text-fg-disabled line-through",
+  pending: "text-fg-2",
+};
 
 /**
- * The Director's compact plan for a turn: open while the turn runs, folded to one line once it ends (the
- * user can still open it). Informational only; nothing here waits for approval.
+ * The Director's compact plan for a turn, "n of m" in its head: open while the turn runs, folded once it ends
+ * (the user can still open it). Informational only; nothing here waits for approval.
  */
 export function PlanView({ plan, live }: { plan: ExecutionPlan; live: boolean }) {
   const [choice, setChoice] = useState<boolean | null>(null);
   const open = choice ?? live;
   const listId = useId();
   if (plan.steps.length === 0) return null;
+  const reached = plan.steps.filter((step) => step.status !== "pending").length;
 
   return (
     <section
       aria-label="Plan"
       data-testid="turn-plan"
-      className="rounded-md border border-hairline bg-bg-2"
+      className={cn(
+        "overflow-hidden rounded-md border border-border-subtle bg-bg-1",
+        chatMeasureWide,
+      )}
     >
       <button
         type="button"
@@ -70,47 +56,45 @@ export function PlanView({ plan, live }: { plan: ExecutionPlan; live: boolean })
         aria-controls={listId}
         onClick={() => setChoice(!open)}
         className={cn(
-          "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-step-11 outline-hidden",
-          "transition-colors duration-hover hover:bg-hover/40",
-          "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
+          "flex h-ctl w-full items-center gap-[5px] pr-2 pl-[5px] text-left text-sm font-semibold text-fg",
+          "transition-colors duration-hover hover:bg-surface-1",
+          chatFocus,
         )}
       >
-        <ListChecks size={13} aria-hidden className="shrink-0 text-text-3" />
-        <span className="font-medium text-text-1">Plan</span>
-        <span className="min-w-0 flex-1 truncate text-text-3">{planSummary(plan)}</span>
         <CaretRight
-          size={10}
-          weight="bold"
           aria-hidden
           className={cn(
-            "shrink-0 text-text-4 transition-transform duration-expand",
+            "size-icon-sm text-fg-3 transition-transform duration-expand",
             open && "rotate-90",
           )}
         />
+        <span>Plan</span>
+        <span className="ml-auto text-xs font-normal whitespace-nowrap text-fg-3 tabular-nums">
+          {reached} of {plan.steps.length}
+        </span>
       </button>
       {open && (
-        <ol id={listId} className="flex flex-col gap-0.5 border-t border-hairline px-2 py-1.5">
+        <ol id={listId} className="grid gap-px px-2 pt-0.5 pb-[7px]">
           {plan.steps.map((step) => (
             <li
               key={step.id}
               data-step-status={step.status}
-              className="flex items-center gap-1.5 text-step-11"
+              className={cn(
+                "flex min-h-ctl-xs items-start gap-2 py-[3px] text-sm leading-4",
+                STEP_TEXT[step.status],
+              )}
             >
-              <StepGlyph status={step.status} />
               <span
-                className={cn(
-                  "min-w-0 flex-1 truncate",
-                  step.status === "running" && "text-text-0",
-                  step.status === "skipped" && "text-text-4 line-through",
-                  step.status !== "running" && step.status !== "skipped" && "text-text-2",
-                )}
+                aria-hidden
+                className="inline-flex h-4 w-3.5 shrink-0 items-center justify-center"
               >
-                {step.title}
+                <StepMark status={step.status} />
               </span>
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{step.title}</span>
               <span className="sr-only">{PLAN_STATUS_LABELS[step.status]}</span>
-              {step.agent && (
-                <span className="shrink-0 text-step-10 text-text-4">
-                  {AGENT_DISPLAY_NAMES[step.agent]}
+              {step.agent && step.agent !== "director" && (
+                <span className="shrink-0 text-xs font-normal text-fg-3">
+                  {chatAgentName(step.agent)}
                 </span>
               )}
             </li>

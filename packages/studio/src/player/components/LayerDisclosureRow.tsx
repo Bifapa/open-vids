@@ -1,19 +1,16 @@
+import { CaretRight } from "@phosphor-icons/react";
 import { TRACK_H } from "./timelineLayout";
 import { TrackClipCount } from "./TrackClipCount";
+import { TrackCode } from "./TimelineTrackPlainHeader";
 
-// Layer row (diamond, name, then the ∿ disclosure on the right edge) — the
-// disclosure lives
-// here, not on the clip bar, and re-expands a collapsed layer. `∿` (not a
-// caret) because a group's own row keeps the caret for its structural
-// disclosure (member rows) — this button only ever means "show this row's
-// lanes", so it needs its own distinct glyph.
 /**
- * The `∿` that shows or hides a row's lanes.
+ * The caret that shows or hides a row's lanes, first in the track head.
  *
  * Shared, because two layouts need the identical control: the keyframe layer
  * row below, and the plain track header — an audio track with automation keeps
- * its own look (music glyph, indent) and gains this, rather than being
- * re-rendered as a keyframe layer to get at the button.
+ * its own look and gains this, rather than being re-rendered as a keyframe
+ * layer to get at the button. A group's own row has a separate structural
+ * caret (member rows); this one only ever means "show this row's lanes".
  */
 export function LaneToggleButton({
   name,
@@ -35,12 +32,8 @@ export function LaneToggleButton({
       aria-controls={lanesId}
       aria-label={`${isExpanded ? "Hide" : "Show"} ${name} lanes`}
       title={`${isExpanded ? "Hide" : "Show"} lanes`}
-      // h-6 w-6 = the 24x24 WCAG 2.2 minimum target. The glyph stays 11px;
-      // only the hit box grows.
-      className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[11px] leading-none focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[var(--timeline-accent)] ${
-        isExpanded
-          ? "text-[var(--timeline-accent)]"
-          : "text-[var(--timeline-handle)] hover:text-[var(--timeline-text-solid)]"
+      className={`flex h-ctl-xs w-4 shrink-0 items-center justify-center rounded-sm border-0 bg-transparent p-0 transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+        isExpanded ? "text-fg" : "text-fg-3"
       }`}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
@@ -48,13 +41,20 @@ export function LaneToggleButton({
         onToggle();
       }}
     >
-      <span aria-hidden="true">∿</span>
+      <CaretRight
+        aria-hidden="true"
+        weight="bold"
+        className={`size-icon-xs transition-transform duration-120 motion-reduce:transition-none ${
+          isExpanded ? "rotate-90" : ""
+        }`}
+      />
     </button>
   );
 }
 
 export function LayerDisclosureRow({
   name,
+  code,
   clipCount,
   isExpanded,
   gutterBackground,
@@ -67,6 +67,8 @@ export function LayerDisclosureRow({
    *  track; the track itself once it holds several, since naming a shared row
    *  after one of its clips reads as if the rows under it were that clip's. */
   name: string;
+  /** The track's kind code (V1, MOT…), when the lanes know it. */
+  code?: string;
   clipCount: number;
   isExpanded: boolean;
   gutterBackground: string;
@@ -84,37 +86,21 @@ export function LayerDisclosureRow({
 }) {
   return (
     <div
-      className="absolute left-0 top-0 flex items-center gap-1.5 overflow-hidden px-1.5 text-[11px]"
-      style={{
-        width: columnWidth,
-        height: TRACK_H,
-        color: "var(--timeline-text-solid)",
-        background: gutterBackground,
-      }}
+      className="absolute left-0 top-0 flex items-center gap-[3px] overflow-hidden pr-1.5 pl-1"
+      style={{ width: columnWidth, height: TRACK_H, background: gutterBackground }}
     >
-      {/* Decorative: the disclosure button above already names the row's keyframe
-          state, and aria-label on a plain span is not exposed reliably anyway. */}
-      <span
-        aria-hidden="true"
-        className="shrink-0 text-[13px] leading-none text-[var(--timeline-text-dim)]"
-      >
-        ◇
-      </span>
-      <span title={name} className="min-w-0 flex-1 truncate font-medium leading-tight">
-        {name}
-      </span>
-      <TrackClipCount clipCount={clipCount} />
-      {children}
-      {/* Anchored right, on every header that has one: the lane toggle is the
-          row's last word about itself, and a left-hand ∿ put it where the eye
-          looks for identity instead. `ml-auto` rather than a spacer so it holds
-          the edge whatever else the row grows. */}
       <LaneToggleButton
         name={name}
         isExpanded={isExpanded}
         lanesId={lanesId}
         onToggle={onToggleClipExpanded}
       />
+      <TrackCode code={code} />
+      <span title={name} className="min-w-0 flex-1 truncate text-xs text-fg-3">
+        {name}
+      </span>
+      <TrackClipCount clipCount={clipCount} />
+      {children}
     </div>
   );
 }

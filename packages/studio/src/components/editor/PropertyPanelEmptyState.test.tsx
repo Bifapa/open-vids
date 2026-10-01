@@ -22,16 +22,6 @@ function renderInto(node: React.ReactElement) {
   return { host, root };
 }
 
-describe("PropertyPanelEmptyState — flat empty", () => {
-  it("shows the cursor glyph, headline, and the two shortcut rows", () => {
-    const { host, root } = renderInto(<PropertyPanelEmptyState flat multiSelectCount={0} />);
-    expect(host.textContent).toContain("Nothing selected");
-    expect(host.textContent).toContain("Record a gesture");
-    expect(host.textContent).toContain("Describe a change to the agent");
-    act(() => root.unmount());
-  });
-});
-
 describe("PropertyPanelEmptyState — flat multi-select", () => {
   const elements = [
     { id: "mono-label", selector: ".mono-label", label: "Mono Label", tagName: "div" },
@@ -52,7 +42,7 @@ describe("PropertyPanelEmptyState — flat multi-select", () => {
         onClearSelection={onClearSelection}
       />,
     );
-    expect(host.textContent).toContain("2 elements selected");
+    expect(host.textContent).toContain("2 Elements Selected");
     expect(host.textContent).toContain("Mono Label");
     expect(host.textContent).toContain("S2 Chart");
 
@@ -101,7 +91,7 @@ describe("PropertyPanelEmptyState — flat multi-select", () => {
     // panel was the way back to the same write.
     expect(host.querySelector('[data-flat-multiselect-hide-all="true"]')).toBeNull();
     // The list still names what is selected; only the actions go.
-    expect(host.textContent).toContain("2 elements selected");
+    expect(host.textContent).toContain("2 Elements Selected");
     act(() => root.unmount());
   });
 

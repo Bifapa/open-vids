@@ -48,7 +48,6 @@ type ViewportInputs = Omit<
   TimelineViewportProps,
   "className" | "data-timeline-scroll-viewport" | "data-timeline-auto-scroll-left-inset"
 > & {
-  labelMode: boolean;
   zoomMode: "fit" | "manual";
 };
 
@@ -69,8 +68,8 @@ export function buildTimelineMeta({
   labelColumnWidth,
   razorGuide,
 }: TimelineMetaBuilderInputs): TimelineMeta {
-  const { labelMode, zoomMode, ...viewportProps } = viewport;
-  const containerClassName = `relative border-t select-none h-full overflow-hidden ${container.isDragOver ? container.accentClass : ""} ${container.activeTool === "razor" ? "cursor-crosshair" : container.shiftHeld ? "cursor-crosshair" : "cursor-default"}`;
+  const { zoomMode, ...viewportProps } = viewport;
+  const containerClassName = `relative select-none h-full overflow-hidden ${container.isDragOver ? container.accentClass : ""} ${container.activeTool === "razor" ? "cursor-crosshair" : container.shiftHeld ? "cursor-crosshair" : "cursor-default"}`;
   const viewportClassName = `${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-hidden`;
   return {
     emptyState,
@@ -86,7 +85,7 @@ export function buildTimelineMeta({
     viewportProps: {
       ...viewportProps,
       "data-timeline-scroll-viewport": true,
-      "data-timeline-auto-scroll-left-inset": labelMode ? labelColumnWidth : 0,
+      "data-timeline-auto-scroll-left-inset": labelColumnWidth,
       className: viewportClassName,
     },
     razorGuide,

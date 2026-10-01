@@ -2,6 +2,7 @@ import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import { EASE_LABELS } from "./gsapAnimationConstants";
 import { EaseCurveSection } from "./EaseCurveSection";
 import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
+import { INSP_SELECT } from "./inspectorStyles";
 
 // The full GSAP easing vocabulary offered by the "Set all…" bulk control —
 // every standard family in in/out/inOut, so authors aren't limited to a curated
@@ -62,7 +63,7 @@ export function KeyframeEaseList({
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
-        <p className="text-[9px] font-semibold uppercase tracking-wider text-neutral-500">
+        <p className="text-2xs font-semibold uppercase tracking-wider text-fg-3">
           Per-keyframe easing
         </p>
         {onApplyAll && (
@@ -74,7 +75,7 @@ export function KeyframeEaseList({
               const next = e.target.value;
               if (next) onApplyAll(next);
             }}
-            className="ml-auto cursor-pointer rounded-sm bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-hidden hover:bg-neutral-700 focus:ring-1 focus:ring-panel-accent/40"
+            className={`${INSP_SELECT} ml-auto w-auto`}
           >
             <option value="" disabled>
               Set all…
@@ -99,7 +100,7 @@ export function KeyframeEaseList({
           <div
             key={`${i}-${kf.percentage}`}
             data-ease-segment-pct={kf.percentage}
-            className="rounded-md bg-neutral-900/50"
+            className="rounded-md bg-surface-1/50"
           >
             <button
               type="button"
@@ -107,14 +108,14 @@ export function KeyframeEaseList({
               aria-expanded={isExpanded}
               className="flex w-full items-center gap-2 px-2 py-1.5 text-left active:scale-[0.99]"
             >
-              <span className="text-[10px] font-medium text-neutral-400">{label}</span>
-              <span className="ml-auto text-[9px] text-neutral-500">{easeLabel}</span>
+              <span className="text-xs font-medium text-fg-2">{label}</span>
+              <span className="ml-auto text-2xs text-fg-3">{easeLabel}</span>
               <svg
                 width="8"
                 height="8"
                 viewBox="0 0 10 10"
                 fill="currentColor"
-                className={`text-neutral-500 transition-transform duration-150 ${isExpanded ? "" : "-rotate-90"}`}
+                className={`text-fg-3 transition-transform duration-150 ${isExpanded ? "" : "-rotate-90"}`}
               >
                 <path d="M2 3l3 4 3-4z" />
               </svg>

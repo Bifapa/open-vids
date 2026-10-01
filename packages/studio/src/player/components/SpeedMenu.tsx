@@ -1,6 +1,14 @@
-import { useState, useCallback, memo } from "react";
-import { Tooltip } from "../../components/ui";
-import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { memo } from "react";
+import { CaretDown } from "@phosphor-icons/react";
+import {
+  Menu,
+  MenuRadioGroup,
+  MenuRadioItem,
+  buttonBase,
+  buttonSizes,
+  buttonVariants,
+  cn,
+} from "../../components/ui";
 
 const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2] as const;
 
@@ -15,56 +23,42 @@ export const SpeedMenu = memo(function SpeedMenu({
   setPlaybackRate,
   disabled,
 }: SpeedMenuProps) {
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const closeMenu = useCallback(() => setShowSpeedMenu(false), []);
-  // Ref on the container (trigger + menu) so trigger clicks toggle instead of
-  // close-then-reopen; Escape also dismisses.
-  const speedMenuContainerRef = useContextMenuDismiss(closeMenu);
-
   return (
-    <div ref={speedMenuContainerRef} className="relative shrink-0">
-      <Tooltip label="Playback speed">
+    <Menu
+      side="top"
+      align="end"
+      aria-label="Playback speed options"
+      className="min-w-[120px]"
+      trigger={
         <button
           type="button"
-          onClick={() => setShowSpeedMenu((v) => !v)}
           disabled={disabled}
-          aria-haspopup="menu"
-          aria-expanded={showSpeedMenu}
           aria-label="Playback speed"
-          className="h-7 w-8 rounded-md font-mono text-[10px] tabular-nums text-neutral-500 transition-colors hover:text-neutral-200 disabled:opacity-30"
+          className={cn(
+            buttonBase,
+            buttonVariants.ghost,
+            buttonSizes.sm,
+            "min-w-10 gap-1 pr-1.5 pl-2 font-normal tabular-nums data-[popup-open]:bg-surface-2 data-[popup-open]:text-fg",
+            playbackRate !== 1 && "text-fg",
+          )}
         >
-          {playbackRate === 1 ? "1x" : `${playbackRate}x`}
+          {playbackRate}×
+          <CaretDown size={10} weight="bold" aria-hidden="true" />
         </button>
-      </Tooltip>
-      {showSpeedMenu && (
-        <div
-          role="menu"
-          aria-label="Playback speed options"
-          className="absolute bottom-full right-0 mb-1.5 rounded-lg shadow-xl z-50 min-w-[56px] overflow-hidden"
-          style={{ background: "#161618", border: "1px solid rgba(255,255,255,0.08)" }}
-        >
-          {SPEED_OPTIONS.map((rate) => {
-            const isCurrent = rate === playbackRate;
-            return (
-              <button
-                key={rate}
-                type="button"
-                role="menuitemradio"
-                aria-checked={isCurrent}
-                onClick={() => {
-                  setPlaybackRate(rate);
-                  setShowSpeedMenu(false);
-                }}
-                className={`block w-full px-3 py-1.5 text-[11px] text-left font-mono tabular-nums transition-colors outline-hidden focus-visible:bg-white/4 ${
-                  isCurrent ? "text-neutral-50 bg-white/6" : "text-neutral-500 hover:bg-white/4"
-                }`}
-              >
-                {rate}x
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
+      }
+    >
+      <MenuRadioGroup
+        value={playbackRate}
+        onValueChange={(value) => {
+          if (typeof value === "number") setPlaybackRate(value);
+        }}
+      >
+        {SPEED_OPTIONS.map((rate) => (
+          <MenuRadioItem key={rate} value={rate}>
+            {rate === 1 ? "1× (Normal)" : `${rate}×`}
+          </MenuRadioItem>
+        ))}
+      </MenuRadioGroup>
+    </Menu>
   );
 });

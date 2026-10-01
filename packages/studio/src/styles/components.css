@@ -39,10 +39,10 @@
   border-radius: 999px;
   -webkit-appearance: none;
   appearance: none;
-  background: #ffffff;
+  background: var(--color-fg);
   box-shadow:
-    0 0 0 2px #0c0c0e,
-    0 1px 4px rgba(0, 0, 0, 0.55);
+    0 0 0 2px var(--color-bg-0),
+    0 1px 4px oklch(0% 0 0 / calc(0.55 * var(--sh)));
   cursor: default;
 }
 
@@ -57,10 +57,10 @@
   height: 1rem;
   border: 0;
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--color-fg);
   box-shadow:
-    0 0 0 2px #0c0c0e,
-    0 1px 4px rgba(0, 0, 0, 0.55);
+    0 0 0 2px var(--color-bg-0),
+    0 1px 4px oklch(0% 0 0 / calc(0.55 * var(--sh)));
   cursor: default;
 }
 
@@ -70,16 +70,16 @@
 
 .hf-color-grading-range:focus-visible::-webkit-slider-thumb {
   box-shadow:
-    0 0 0 2px #0c0c0e,
-    0 0 0 4px rgba(60, 230, 172, 0.22),
-    0 1px 4px rgba(0, 0, 0, 0.55);
+    0 0 0 2px var(--color-bg-0),
+    0 0 0 4px var(--color-accent),
+    0 1px 4px oklch(0% 0 0 / calc(0.55 * var(--sh)));
 }
 
 .hf-color-grading-range:focus-visible::-moz-range-thumb {
   box-shadow:
-    0 0 0 2px #0c0c0e,
-    0 0 0 4px rgba(60, 230, 172, 0.22),
-    0 1px 4px rgba(0, 0, 0, 0.55);
+    0 0 0 2px var(--color-bg-0),
+    0 0 0 4px var(--color-accent),
+    0 1px 4px oklch(0% 0 0 / calc(0.55 * var(--sh)));
 }
 
 .hf-preview-volume-range {
@@ -105,10 +105,10 @@
   border: 0;
   border-radius: 999px;
   appearance: none;
-  background: #ffffff;
+  background: var(--color-fg);
   box-shadow:
-    0 0 0 2px #0a0a0a,
-    0 1px 3px rgba(0, 0, 0, 0.5);
+    0 0 0 2px var(--color-bg-0),
+    0 1px 3px oklch(0% 0 0 / calc(0.5 * var(--sh)));
   cursor: grab;
 }
 
@@ -128,10 +128,10 @@
   height: 0.5rem;
   border: 0;
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--color-fg);
   box-shadow:
-    0 0 0 2px #0a0a0a,
-    0 1px 3px rgba(0, 0, 0, 0.5);
+    0 0 0 2px var(--color-bg-0),
+    0 1px 3px oklch(0% 0 0 / calc(0.5 * var(--sh)));
   cursor: grab;
 }
 
@@ -146,20 +146,209 @@
 .hf-preview-volume-range:focus-visible::-webkit-slider-thumb,
 .hf-preview-volume-range:focus-visible::-moz-range-thumb {
   box-shadow:
-    0 0 0 2px #0a0a0a,
-    0 0 0 4px rgba(60, 230, 172, 0.4),
-    0 1px 3px rgba(0, 0, 0, 0.5);
+    0 0 0 2px var(--color-bg-0),
+    0 0 0 4px var(--color-accent),
+    0 1px 3px oklch(0% 0 0 / calc(0.5 * var(--sh)));
 }
 
+/* ---- Timeline clips --------------------------------------------------------
+   A clip wears its KIND's hues (`k-*` tokens: h = head strip, b = body, l =
+   edge) — identity only. Selection is the accent outline, never a hue. */
 .timeline-clip {
-  background-color: var(--clip-bg);
-  border: 1px solid var(--clip-border);
+  --ch: var(--color-k-video-h);
+  --cb: var(--color-k-video-b);
+  --cl: var(--color-k-video-l);
+  background-color: var(--cb);
+  border: 1px solid var(--cl);
   border-radius: var(--timeline-clip-radius);
-  box-shadow:
-    inset 0 1px 0 var(--timeline-clip-highlight),
-    var(--timeline-clip-shadow);
 }
 
+.timeline-clip.k-image {
+  --ch: var(--color-k-image-h);
+  --cb: var(--color-k-image-b);
+  --cl: var(--color-k-image-l);
+}
+
+.timeline-clip.k-audio {
+  --ch: var(--color-k-audio-h);
+  --cb: var(--color-k-audio-b);
+  --cl: var(--color-k-audio-l);
+}
+
+.timeline-clip.k-motion {
+  --ch: var(--color-k-motion-h);
+  --cb: var(--color-k-motion-b);
+  --cl: var(--color-k-motion-l);
+}
+
+.timeline-clip.k-caption {
+  --ch: var(--color-k-caption-h);
+  --cb: var(--color-k-caption-h);
+  --cl: var(--color-k-caption-l);
+}
+
+.timeline-clip.is-hovered {
+  border-color: color-mix(in oklch, var(--cl) 70%, var(--color-mix-hi));
+}
+
+/* The kind strip: glyph + name on the head hue. */
+.timeline-clip__head {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 5;
+  display: flex;
+  height: 14px;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  padding: 0 5px;
+  border-radius: calc(var(--timeline-clip-radius) - 1px) calc(var(--timeline-clip-radius) - 1px) 0 0;
+  background: var(--ch);
+  color: var(--color-clip-ink);
+  font: 500 var(--text-num) / 14px var(--font-ui);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.timeline-clip__icon {
+  flex: none;
+  width: var(--spacing-icon-xs);
+  height: var(--spacing-icon-xs);
+  opacity: 0.85;
+}
+
+.timeline-clip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-clip.has-head .timeline-clip__body {
+  top: 14px;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
+/* A caption is all strip: its block is the head hue, its name centred-left. */
+.timeline-clip.k-caption .timeline-clip__head {
+  inset: 0;
+  height: auto;
+  border-radius: inherit;
+}
+
+.timeline-clip.k-motion .timeline-clip__body {
+  background: repeating-linear-gradient(90deg, var(--color-grid-line) 0 1px, transparent 1px 12px);
+}
+
+.timeline-clip__timecode {
+  position: absolute;
+  bottom: 4px;
+  left: 6px;
+  overflow: hidden;
+  color: var(--color-clip-ink);
+  font: var(--text-2xs) / 1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Trim handles: the edge strip shows on hover, turns accent when selected. */
+.timeline-clip__handle-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  background: color-mix(in oklch, var(--color-clip-ink) 12%, transparent);
+}
+
+.timeline-clip__handle-bar::after {
+  content: "";
+  position: absolute;
+  top: 30%;
+  bottom: 30%;
+  left: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in oklch, var(--clip-handle, var(--color-clip-ink)) 75%, transparent);
+}
+
+.timeline-clip.is-selected .timeline-clip__handle-bar {
+  background: var(--color-accent);
+}
+
+.timeline-clip.is-selected .timeline-clip__handle-bar::after {
+  background: var(--color-accent-ink);
+}
+
+/* The clip under the playhead: a brighter edge, no fill. */
+.timeline-clip[data-active] {
+  border-color: color-mix(in oklch, var(--cl) 70%, var(--color-mix-hi));
+}
+
+.timeline-clip.is-selected {
+  z-index: 2;
+  border-color: transparent;
+  outline: 2px solid var(--timeline-clip-selection);
+  outline-offset: -2px;
+}
+
+.timeline-clip.is-selected .timeline-clip__head {
+  background: color-mix(in oklch, var(--ch) 84%, var(--color-mix-hi));
+  font-weight: 600;
+}
+
+.timeline-clip.is-selected:focus-visible {
+  outline-offset: -2px;
+  box-shadow:
+    0 0 0 2px var(--color-bg-0),
+    0 0 0 4px var(--color-fg);
+}
+
+.timeline-clip:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.timeline-clip.is-dragging {
+  opacity: 0.92;
+  box-shadow: var(--shadow-lift);
+}
+
+/* Hidden (data-hidden) and muted clips: hatched, their content dimmed. */
+.timeline-clip[data-clip-hidden="true"],
+.timeline-clip.is-audio[data-audio-muted="true"] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--color-stripe) 0 3px,
+    transparent 3px 7px
+  );
+}
+
+.timeline-clip[data-clip-hidden="true"] > .timeline-clip__head,
+.timeline-clip[data-clip-hidden="true"] .timeline-clip__body,
+.timeline-clip.is-audio[data-audio-muted="true"] .timeline-clip__body {
+  opacity: 0.45;
+}
+
+.timeline-audio-link {
+  position: absolute;
+  z-index: 4;
+  top: -9px;
+  left: 50%;
+  width: 1px;
+  height: 10px;
+  background: var(--timeline-audio-link);
+  pointer-events: none;
+}
+
+/* Lane surface: one hairline per major ruler tick (`--timeline-grid-w`). */
+.timeline-lane {
+  background-image: linear-gradient(90deg, var(--color-grid-line) 1px, transparent 1px);
+  background-size: var(--timeline-grid-w, 100px) 100%;
+}
+
+/* Transition badge on a seam: a small bow-tie chip over a faint crossfade. */
 .timeline-transition {
   position: absolute;
   width: 0;
@@ -171,19 +360,17 @@
 .timeline-transition__zone {
   position: absolute;
   left: calc(var(--timeline-transition-zone-width) / -2);
-  top: -21px;
+  top: -14px;
   width: var(--timeline-transition-zone-width);
-  height: 42px;
-  border-radius: 8px;
+  height: 28px;
+  border-radius: var(--radius-xs);
   overflow: hidden;
-  background: var(--timeline-transition-zone);
-  filter: blur(2.5px);
-  opacity: 0.95;
+  opacity: 0.55;
 }
 
 .timeline-transition__image {
   position: absolute;
-  inset: -4px;
+  inset: 0;
   background-position: center;
   background-size: cover;
 }
@@ -198,171 +385,39 @@
 
 .timeline-transition__badge {
   position: absolute;
-  left: -14px;
-  top: -14px;
+  left: -8px;
+  top: -8px;
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 16px;
+  height: 16px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--timeline-transition-badge-ink) 22%, transparent);
-  border-radius: 999px;
-  background: var(--timeline-transition-badge);
-  box-shadow: 0 2px 5px var(--timeline-playhead-shadow);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface-3);
+  color: var(--color-fg-2);
 }
 
 .timeline-transition__badge svg {
-  width: 17px;
-  height: 17px;
+  width: 12px;
+  height: 12px;
 }
+
 .timeline-transition__frame,
 .timeline-transition__frame--out,
 .timeline-transition__frame--in {
   fill: none;
-  stroke: var(--timeline-transition-badge-ink);
+  stroke: currentColor;
   stroke-width: 1.5;
 }
+
 .timeline-transition__intersection {
-  fill: var(--timeline-transition-badge-ink);
+  fill: currentColor;
   opacity: 0.7;
-}
-
-.timeline-clip::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--clip-bg-active);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.timeline-clip[data-active] {
-  border-color: var(--clip-border-active);
-}
-
-.timeline-clip[data-active]::before {
-  opacity: 1;
-}
-
-/* Audio clips read as a distinct kind — a persistent violet tint vs the teal-
-   accented visual clips — so the audio zone at the bottom is visually separate
-   at a glance (the timeline's kinds: visual on top, audio below). */
-.timeline-clip.is-audio {
-  background-color: var(--timeline-clip-audio-bg);
-  border-color: var(--timeline-clip-audio-border);
-  border-radius: var(--timeline-clip-audio-radius);
-}
-
-.timeline-clip.is-audio.is-hovered {
-  background-color: var(--timeline-clip-audio-bg-hover);
-}
-
-.timeline-clip.is-audio.is-dragging {
-  box-shadow:
-    inset 0 0 0 999px var(--timeline-clip-audio-bg-dragging),
-    0 8px 24px var(--timeline-clip-shadow-dragging);
-}
-
-/* Mute greys the pill in place. Hot path: no transition. */
-.timeline-clip.is-audio[data-clip-hidden="true"],
-.timeline-clip.is-audio[data-audio-muted="true"] {
-  background-color: var(--timeline-clip-audio-muted-bg);
-  transition: none;
-}
-
-.timeline-audio-link {
-  position: absolute;
-  z-index: 4;
-  top: -9px;
-  left: 50%;
-  width: 1px;
-  height: 10px;
-  background: var(--timeline-audio-link);
-  pointer-events: none;
-}
-
-.timeline-clip.is-hovered {
-  background-color: var(--clip-bg-hover);
-}
-
-.timeline-clip[data-active].is-hovered {
-  border-color: var(--clip-border-hover);
-}
-
-.timeline-clip.is-selected {
-  outline: 1.5px solid var(--timeline-clip-selection);
-  outline-offset: -1.5px;
-}
-
-.timeline-clip.is-selected::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  border-radius: inherit;
-  box-shadow: inset 0 0 0 1px var(--timeline-clip-selection-highlight);
-  pointer-events: none;
-}
-
-.timeline-clip[data-active].is-selected {
-  outline: 1.5px solid var(--timeline-clip-selection);
-  outline-offset: -1.5px;
-}
-
-.timeline-clip.is-dragging {
-  /* Veil is a shadow, not background-color, so drop does not fade the hover fill. */
-  box-shadow:
-    inset 0 0 0 999px var(--clip-bg-dragging),
-    0 8px 24px var(--timeline-clip-shadow-dragging);
-}
-
-.timeline-clip__label {
-  position: absolute;
-  top: 5px;
-  left: 6px;
-  z-index: 6;
-  width: fit-content;
-  max-width: calc(100% - 22px);
-  overflow: hidden;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--timeline-clip-chip-bg);
-  color: var(--timeline-clip-chip-text);
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 16px;
-  pointer-events: none;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.timeline-clip.is-audio .timeline-clip__label {
-  top: 11px;
-  left: 9px;
-  background: var(--timeline-clip-chip-audio-bg);
-}
-
-.timeline-clip__timecode {
-  position: absolute;
-  bottom: 6px;
-  left: 12px;
-  overflow: hidden;
-  color: var(--timeline-tick-text);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .timeline-clip {
-    transition: background-color 120ms ease-out;
-  }
-
-  .timeline-clip__handle-bar {
-    transition: opacity 120ms ease-out;
+    transition: border-color 120ms ease-out;
   }
 }
 
@@ -381,15 +436,15 @@
 }
 
 /*
- * HyperFrames brand loader. Shared by preview overlays that need a calm,
- * branded loading state instead of a generic spinner.
+ * OpenVids brand loader (BrandLoader). Shared by preview overlays that need a
+ * calm, branded loading state instead of a generic spinner.
  */
 .hf-loader {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   width: min(34rem, 100%);
   padding: 1.5rem;
   box-sizing: border-box;
@@ -406,8 +461,8 @@
   width: 100%;
   height: 100%;
   min-height: 12rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.52);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-stage);
 }
 
 .hf-loader-mark-frame {
@@ -423,18 +478,19 @@
 .hf-loader-mark {
   display: block;
   overflow: visible;
-  filter: drop-shadow(0 0 7px rgba(79, 219, 94, 0.2));
+  margin-bottom: 0.25rem;
+  color: var(--color-fg);
   user-select: none;
   -webkit-user-select: none;
   -webkit-user-drag: none;
 }
 
 .hf-loader-title {
-  font-family: var(--font-sans);
-  font-size: 1rem;
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
   font-weight: 600;
-  letter-spacing: 0;
-  color: var(--hf-heading, #f4f4f5);
+  letter-spacing: -0.005em;
+  color: var(--hf-heading, var(--color-fg));
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -445,10 +501,10 @@
   max-width: 32rem;
   min-height: 2.5rem;
   overflow: hidden;
-  color: var(--hf-text-secondary, rgba(244, 244, 245, 0.68));
-  font-family: var(--font-sans);
-  font-size: 0.82rem;
-  line-height: 1.6;
+  color: var(--hf-text-secondary, var(--color-fg-3));
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 17px;
 }
 
 .hf-loader-mono {
@@ -457,19 +513,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--hf-text-tertiary, rgba(244, 244, 245, 0.46));
+  color: var(--hf-text-tertiary, var(--color-fg-3));
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-num);
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
 
 .hf-loader-progress {
   width: min(18rem, 72vw);
-  height: 0.375rem;
+  height: 3px;
   overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  background: var(--color-surface-3);
 }
 
 @keyframes hf-thumb-fade {
@@ -487,7 +543,7 @@
   transform: scaleX(0);
   transform-origin: left center;
   border-radius: inherit;
-  background: linear-gradient(90deg, #06e3fa, #4fdb5e);
+  background: var(--color-fg-2);
   transition: transform 160ms ease;
 }
 
@@ -597,7 +653,7 @@
 .hf-fx-preset-item:focus-visible {
   /* The accent at low alpha rather than a grey: the row is lit by the thing that
      is playing, and it should read as the same event as the bars. */
-  background-color: rgba(60, 230, 172, 0.12);
+  background-color: color-mix(in oklch, var(--color-accent) 12%, transparent);
 }
 
 .hf-fx-preset-wave {
@@ -623,7 +679,7 @@
   width: 2px;
   height: 100%;
   border-radius: 1px;
-  background: #3ce6ac;
+  background: var(--color-accent);
   transform: scaleY(0.25);
   transform-origin: center;
 }
@@ -654,12 +710,13 @@
 }
 
 /* Receipt-driven WebMCP Topology Lens. Every animation is one-shot Studio
-   chrome; none of these nodes enter the composition iframe or rendered output. */
+   chrome; none of these nodes enter the composition iframe or rendered output.
+   Like the prototype's agent lens it is neutral (the accent is for selection
+   only): on-media ink with a dark halo, which reads over any picture in
+   either theme. */
 .hf-topology-contour {
-  border: 1px solid rgba(60, 230, 172, 0.62);
-  box-shadow:
-    0 0 0 1px rgba(6, 227, 250, 0.08),
-    inset 0 0 18px rgba(60, 230, 172, 0.035);
+  border: 1px solid color-mix(in oklch, var(--color-on-media) 55%, transparent);
+  box-shadow: 0 0 0 1px oklch(0% 0 0 / 0.3);
 }
 
 .hf-topology-field::before,
@@ -672,50 +729,41 @@
   z-index: 2;
   padding: 1px 3px;
   border-radius: 2px;
-  background: rgba(5, 15, 12, 0.86);
-  color: rgb(90, 247, 193);
-  font:
-    600 7px/1.3 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    monospace;
+  background: var(--color-on-media-bg);
+  color: var(--color-on-media);
+  font: 600 7px/1.3 var(--font-mono);
   letter-spacing: 0.04em;
   text-transform: lowercase;
 }
 
 .hf-topology-field {
   z-index: 0;
-  border: 1px solid rgba(60, 230, 172, 0.28);
+  border: 1px solid color-mix(in oklch, var(--color-on-media) 30%, transparent);
   background: linear-gradient(
     90deg,
-    rgba(60, 230, 172, 0.025),
-    rgba(60, 230, 172, 0.1) 68%,
-    rgba(6, 227, 250, 0.06)
+    color-mix(in oklch, var(--color-on-media) 3%, transparent),
+    color-mix(in oklch, var(--color-on-media) 8%, transparent) 68%,
+    color-mix(in oklch, var(--color-on-media) 4%, transparent)
   );
-  box-shadow: inset 0 0 28px rgba(60, 230, 172, 0.05);
 }
 
 .hf-topology-target {
-  border: 1px solid rgba(60, 230, 172, 0.82);
-  box-shadow:
-    0 0 0 1px rgba(60, 230, 172, 0.14),
-    0 0 18px rgba(6, 227, 250, 0.09);
+  border: 1.5px solid color-mix(in oklch, var(--color-on-media) 88%, transparent);
+  box-shadow: 0 0 0 1px oklch(0% 0 0 / 0.45);
 }
 
 .hf-topology-scan {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(60, 230, 172, 0.16) 55%,
-    rgba(230, 255, 247, 0.9)
+    color-mix(in oklch, var(--color-on-media) 16%, transparent) 55%,
+    color-mix(in oklch, var(--color-on-media) 90%, transparent)
   );
   clip-path: polygon(0 0, 100% 0, 72% 100%, 0 100%);
 }
 
 .hf-topology-seal {
-  filter: drop-shadow(0 0 6px rgba(60, 230, 172, 0.36));
+  filter: drop-shadow(0 1px 2px oklch(0% 0 0 / 0.6));
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -747,12 +795,9 @@
     animation: hf-topology-seal 224ms cubic-bezier(0.23, 1, 0.32, 1) both;
   }
 
-  .hf-topology-seal path:first-of-type {
-    animation: hf-topology-seal-left 224ms cubic-bezier(0.23, 1, 0.32, 1) both;
-  }
-
-  .hf-topology-seal path:nth-of-type(2) {
-    animation: hf-topology-seal-right 224ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  /* The mark's playhead (its two paths) scrubs into place along the timeline. */
+  .hf-topology-seal path {
+    animation: hf-topology-seal-scrub 224ms cubic-bezier(0.23, 1, 0.32, 1) both;
   }
 }
 
@@ -803,18 +848,10 @@
   }
 }
 
-@keyframes hf-topology-seal-left {
+/* SVG user units: the mark's timeline is ~100 units long. */
+@keyframes hf-topology-seal-scrub {
   from {
-    transform: translate3d(-9px, 0, 0);
-  }
-  to {
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-@keyframes hf-topology-seal-right {
-  from {
-    transform: translate3d(9px, 0, 0);
+    transform: translate3d(-40px, 0, 0);
   }
   to {
     transform: translate3d(0, 0, 0);

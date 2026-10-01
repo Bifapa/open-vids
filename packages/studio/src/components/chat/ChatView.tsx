@@ -4,10 +4,10 @@ import { useAgentStore } from "../../agent/agentContext";
 import { describeTurnError } from "../../agent/agentErrors";
 import { activeThread, runningTurn } from "../../agent/agentSelectors";
 import { Button } from "../ui/Button";
-import { ChatHeader } from "./ChatHeader";
-import { StoryModeBanner } from "./ChatModeSwitch";
+import { cn } from "../ui/cn";
+import { chatPadX } from "./chatStyles";
 import { Composer } from "./Composer";
-import { MessageList } from "./MessageList";
+import { EmptyChat, MessageList } from "./MessageList";
 
 const ANNOUNCE_EVERY_MS = 2000;
 
@@ -62,7 +62,7 @@ function LoadFailure({
       role="alert"
       className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center"
     >
-      <p className="text-step-12 text-text-1">{message}</p>
+      <p className="text-sm text-fg-2">{message}</p>
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={onRetry}>
           Try again
@@ -88,15 +88,19 @@ export function ChatView() {
   const announcement = useThrottledText(statusSentence(chat), ANNOUNCE_EVERY_MS);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <ChatHeader />
+    <div className="flex min-h-0 flex-1 flex-col">
       {error && chatId ? (
         <LoadFailure message={error} onRetry={() => void openChat(chatId)} onBack={closeChat} />
+      ) : chatId === null && !loading ? (
+        // The new-chat draft: hint and suggestions over the composer; the first send creates the chat.
+        <>
+          <div className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto", chatPadX)}>
+            <EmptyChat />
+          </div>
+          <Composer />
+        </>
       ) : loading || !chat ? (
-        <div
-          className="flex flex-1 items-center justify-center text-step-11 text-text-3"
-          role="status"
-        >
+        <div className="flex flex-1 items-center justify-center text-xs text-fg-3" role="status">
           Loading chat…
         </div>
       ) : (
@@ -104,12 +108,11 @@ export function ChatView() {
           {streamStatus === "reconnecting" && (
             <p
               role="status"
-              className="shrink-0 bg-container/10 px-3 py-1 text-step-11 text-container"
+              className="shrink-0 border-b border-border-subtle bg-warning-soft px-3 py-1 text-xs text-warning"
             >
               Reconnecting to the agent…
             </p>
           )}
-          <StoryModeBanner />
           {/* A new thread is a new page: it starts at its newest content. */}
           <MessageList key={thread} chat={chat} thread={thread} />
           <Composer />

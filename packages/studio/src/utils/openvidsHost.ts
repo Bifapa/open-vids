@@ -60,3 +60,20 @@ export function readOpenvidsHomeOrigin(search?: string): string | null {
   if (!raw) return null;
   return isValidOpenvidsHomeOrigin(raw) ? raw : null;
 }
+
+export const OPENVIDS_WORKSPACE_PARAM = "openvidsWorkspace";
+
+/**
+ * Take the workspace the desktop asked Studio to open on (`openvidsWorkspace`, set for a new
+ * project or a start-from-chat), and drop it from the address so a reload opens the layout the
+ * user left rather than forcing the workspace again. Null when absent.
+ */
+export function takeOpenvidsWorkspaceParam(): string | null {
+  if (typeof window === "undefined") return null;
+  const url = new URL(window.location.href);
+  const value = url.searchParams.get(OPENVIDS_WORKSPACE_PARAM);
+  if (value === null) return null;
+  url.searchParams.delete(OPENVIDS_WORKSPACE_PARAM);
+  window.history.replaceState(window.history.state, "", url);
+  return value;
+}

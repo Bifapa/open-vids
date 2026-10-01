@@ -125,7 +125,7 @@ export function OffCanvasIndicators({
                 role="button"
                 tabIndex={0}
                 aria-label={`Select off-canvas element ${r.key}`}
-                className="pointer-events-auto absolute inset-0 border-2 border-dashed border-studio-accent/10 rounded-md cursor-pointer hover:border-studio-accent hover:bg-studio-accent/10 transition-colors"
+                className="pointer-events-auto absolute inset-0 cursor-pointer rounded-md border-[1.5px] border-dashed border-on-media/30 transition-colors outline-hidden hover:border-solid hover:border-on-media/80 hover:bg-on-media-bg/40 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                 style={clipOutside ? { clipPath: clipOutside } : undefined}
                 title={`Off-canvas: ${r.key} — click to select`}
                 onClick={handleClick}
@@ -167,7 +167,7 @@ export function ChildRectOutlines({
       {rects.map((rect, index) => (
         <div
           key={index}
-          className="pointer-events-none absolute border border-dashed border-white/20 rounded-xs"
+          className="pointer-events-none absolute rounded-xs border border-dashed border-on-media/25"
           style={{
             left: rect.left,
             top: rect.top,

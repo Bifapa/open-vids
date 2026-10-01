@@ -16,13 +16,13 @@ export function resolveValueTier(
 }
 
 export const VALUE_TIER_LABEL_CLASS: Record<PropertyValueTier, string> = {
-  default: "text-panel-text-3",
-  explicitDefault: "text-panel-text-2",
-  explicitCustom: "text-panel-text-0",
+  default: "text-fg-3",
+  explicitDefault: "text-fg-3",
+  explicitCustom: "text-fg",
 };
 
 export const VALUE_TIER_VALUE_CLASS: Record<PropertyValueTier, string> = {
-  default: "text-panel-text-3",
-  explicitDefault: "text-panel-text-0",
-  explicitCustom: "text-panel-accent",
+  default: "text-fg-2",
+  explicitDefault: "text-fg",
+  explicitCustom: "text-fg",
 };

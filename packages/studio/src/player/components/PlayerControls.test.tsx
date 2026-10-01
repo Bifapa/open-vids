@@ -33,7 +33,7 @@ afterEach(async () => {
 
 describe("PlayerControls timecode", () => {
   it("rewrites the timecode only when the shown text changes", async () => {
-    const timecode = host.querySelector("button.font-mono > span");
+    const timecode = host.querySelector('[data-testid="preview-timecode"]');
     expect(timecode?.textContent).toBe("00:02");
     const writes: MutationRecord[] = [];
     const observer = new MutationObserver((records) => writes.push(...records));

@@ -22,7 +22,7 @@ function ClipLintDot({ element }: { element: TimelineElement }) {
   if (!lint || lint.count === 0) return null;
   return (
     <span
-      className="absolute w-1.5 h-1.5 rounded-full bg-amber-400"
+      className="absolute size-1.5 rounded-full bg-warning"
       style={{ top: 7, right: 7 }}
       title={lint.messages.join("\n")}
     />
@@ -59,8 +59,12 @@ export function renderClipChildren(
       {renderClipContent && (
         // borderRadius: inherit — the clip itself is overflow-visible (keyframe
         // diamonds hang outside its bounds), so the thumbnail layer must clip
-        // itself to the clip's rounded corners or sharp corners poke out.
-        <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: "inherit" }}>
+        // itself to the clip's rounded corners or sharp corners poke out. It
+        // starts under the kind strip (`.has-head`, components.css).
+        <div
+          className="timeline-clip__body absolute inset-0 overflow-hidden"
+          style={{ borderRadius: "inherit" }}
+        >
           {renderClipContent(element, clipStyle, context)}
         </div>
       )}

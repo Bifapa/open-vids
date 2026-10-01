@@ -1,83 +1,107 @@
 import {
-  BookOpen,
   FilmStrip,
+  FlagBanner,
   Image,
   MusicNotes,
-  Sparkle,
+  Shapes,
   WarningCircle,
   type Icon,
 } from "@phosphor-icons/react";
-import type {
-  AttachmentPlacement,
-  ChapterStatus,
-  MissingMediaKind,
-  StoryNarrativeRole,
-  StoryNodeKind,
+import {
+  isSoundEffect,
+  type AttachmentPlacement,
+  type ChapterStatus,
+  type MissingMediaKind,
+  type StoryNarrativeRole,
+  type StoryNode,
+  type StoryNodeKind,
 } from "@hyperframes/agent-protocol";
 
+/**
+ * A node kind's identity in the prototype's clip-kind hues: video → `k-video`, picture → `k-image`, music →
+ * `k-audio`, motion → `k-motion`. Hues mark identity only; selection is always the accent.
+ */
 export interface StoryKindStyle {
   label: string;
   icon: Icon;
-  /** Icon/text colour. */
-  text: string;
-  /** Soft tint behind the kind's icon. */
-  tint: string;
-  /** Card accent edge. */
-  border: string;
-  /** Stroke of the kind's attachment edges (a CSS value; SVG styles take variables). */
+  /** The card's kind class in story.css (`--hf-kh/kb/kl`: header, body, edge hue). */
+  kindClass: string;
+  /** Type chip: the kind's header hue with clip ink (lists, inspector head, menus). */
+  chip: string;
+  /** Fill behind a missing thumbnail. */
+  body: string;
+  /** The kind's edge hue as a CSS value (minimap). */
   stroke: string;
 }
 
 export const STORY_KIND_STYLES: Record<StoryNodeKind, StoryKindStyle> = {
   chapter: {
     label: "Chapter",
-    icon: BookOpen,
-    text: "text-accent",
-    tint: "bg-accent/15",
-    border: "border-t-accent",
-    stroke: "var(--color-accent)",
+    icon: FlagBanner,
+    kindClass: "hf-k-chapter",
+    chip: "border border-border-strong bg-surface-3 text-fg",
+    body: "bg-surface-1",
+    stroke: "var(--color-fg-3)",
   },
   video: {
     label: "Video",
     icon: FilmStrip,
-    text: "text-media",
-    tint: "bg-media/15",
-    border: "border-t-media",
-    stroke: "var(--color-media)",
+    kindClass: "hf-k-video",
+    chip: "border border-k-video-l bg-k-video-h text-clip-ink",
+    body: "bg-k-video-b",
+    stroke: "var(--color-k-video-l)",
   },
   picture: {
     label: "Picture",
     icon: Image,
-    text: "text-violet-400",
-    tint: "bg-violet-400/15",
-    border: "border-t-violet-400",
-    stroke: "var(--color-violet-400)",
+    kindClass: "hf-k-image",
+    chip: "border border-k-image-l bg-k-image-h text-clip-ink",
+    body: "bg-k-image-b",
+    stroke: "var(--color-k-image-l)",
   },
   music: {
     label: "Music",
     icon: MusicNotes,
-    text: "text-pink-400",
-    tint: "bg-pink-400/15",
-    border: "border-t-pink-400",
-    stroke: "var(--color-pink-400)",
+    kindClass: "hf-k-audio",
+    chip: "border border-k-audio-l bg-k-audio-h text-clip-ink",
+    body: "bg-k-audio-b",
+    stroke: "var(--color-k-audio-l)",
   },
   motion: {
     label: "Motion Graphics",
-    icon: Sparkle,
-    text: "text-container",
-    tint: "bg-container/15",
-    border: "border-t-container",
-    stroke: "var(--color-container)",
+    icon: Shapes,
+    kindClass: "hf-k-motion",
+    chip: "border border-k-motion-l bg-k-motion-h text-clip-ink",
+    body: "bg-k-motion-b",
+    stroke: "var(--color-k-motion-l)",
   },
   missing: {
     label: "Missing Asset",
     icon: WarningCircle,
-    text: "text-danger",
-    tint: "bg-danger/15",
-    border: "border-t-danger",
-    stroke: "var(--color-danger)",
+    kindClass: "hf-k-missing",
+    chip: "border border-dashed border-border-strong bg-transparent text-warning",
+    body: "bg-transparent",
+    stroke: "var(--color-fg-disabled)",
   },
 };
+
+/** What a material plays as in its chapters: the bold first word of a card's meta line. */
+export function materialRole(node: StoryNode): string {
+  switch (node.kind) {
+    case "chapter":
+      return "Chapter";
+    case "video":
+      return "B-roll";
+    case "picture":
+      return "Picture";
+    case "music":
+      return isSoundEffect(node) ? "SFX" : "Music";
+    case "motion":
+      return "Motion preset";
+    case "missing":
+      return "Missing";
+  }
+}
 
 export const NARRATIVE_ROLE_LABELS: Record<StoryNarrativeRole, string> = {
   hook: "Hook",

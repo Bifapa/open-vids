@@ -1,16 +1,31 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Pause, Play, Waveform } from "@phosphor-icons/react";
 import { classifyWebAudioMediaRoute } from "@hyperframes/core/runtime/web-audio-route";
+import { IconButton, cn } from "../ui";
 import { ContextMenu } from "./AssetContextMenu";
-import { basename, getAudioSubtype, type CopyFeedback } from "./assetHelpers";
-import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
-import { usePlayerStore } from "../../player/store/playerStore";
-import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
-import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
+import {
+  ASSET_ITEM_CLASS,
+  ASSET_NAME_CLASS,
+  ASSET_THUMB_CLASS,
+  basename,
+  filename,
+  formatDuration,
+  getAudioSubtype,
+  type CopyFeedback,
+} from "./assetHelpers";
+import {
+  CopyChip,
+  UsedDot,
+  openAssetContextMenu,
+  useAssetActivation,
+  writeAssetDragData,
+} from "./AssetCard";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
-import { timelineClipFocusId } from "../../player/components/timelineNavigationIdentity";
 
 // Only one preview should play at a time; starting a row stops the previous one.
 let stopCurrentPreview: (() => void) | null = null;
+
+const BAR_COUNT = 16;
 
 export function AudioRow({
   projectId,
@@ -36,6 +51,7 @@ export function AudioRow({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [playing, setPlaying] = useState(false);
   const [bars, setBars] = useState<number[]>([]);
+  const [progress, setProgress] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const actxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -45,66 +61,15 @@ export function AudioRow({
   const subtype = getAudioSubtype(asset);
   const serveUrl = resolveMediaPreviewUrl(asset, projectId);
   const isCopied = copyFeedback?.path === asset && copyFeedback.ok;
-  const copyFailed = copyFeedback?.path === asset && !copyFeedback.ok;
+  const activation = useAssetActivation(asset, projectId, used, onAddAssetToTimeline);
+  const durationLabel = formatDuration(meta?.duration ?? 0);
 
   const stopPlayback = useCallback(() => {
     audioRef.current?.pause();
     setPlaying(false);
+    setProgress(0);
     cancelAnimationFrame(animRef.current);
   }, []);
-
-  // CapCut-style click behavior: drag-threshold gate.
-  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
-  const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
-  const requestTimelineFocus = usePlayerStore((s) => s.requestTimelineFocus);
-  const elements = usePlayerStore((s) => s.elements);
-  const setPreviewAsset = useAssetPreviewStore((s) => s.setPreviewAsset);
-  const clearPreviewAsset = useAssetPreviewStore((s) => s.clearPreviewAsset);
-
-  // Reveal the clip when the asset is already on the timeline, otherwise open
-  // the preview overlay. Shared by pointer-up and keyboard activation so the
-  // row does the same thing however it is operated.
-  const activateRow = useCallback(() => {
-    if (used) {
-      const clip = findClipForAsset(elements, asset);
-      if (clip) {
-        // Dismiss any open preview overlay (from another asset) — the reveal
-        // must not leave a stale preview card floating over the canvas.
-        clearPreviewAsset();
-        const clipKey = clip.key ?? clip.id;
-        setSelectedElementId(clipKey);
-        // Scroll the timeline so the selected clip is actually visible.
-        requestTimelineFocus(timelineClipFocusId(clipKey));
-        return;
-      }
-    }
-    // Not added → preview overlay (audio player)
-    setPreviewAsset(asset, projectId);
-  }, [
-    used,
-    elements,
-    asset,
-    projectId,
-    setSelectedElementId,
-    requestTimelineFocus,
-    setPreviewAsset,
-    clearPreviewAsset,
-  ]);
-
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    pointerDownRef.current = { x: e.clientX, y: e.clientY };
-  }, []);
-
-  const handlePointerUp = useCallback(
-    (e: React.PointerEvent) => {
-      const origin = pointerDownRef.current;
-      pointerDownRef.current = null;
-      if (!origin) return;
-      if (!isPointerClick(e.clientX - origin.x, e.clientY - origin.y)) return;
-      activateRow();
-    },
-    [activateRow],
-  );
 
   useEffect(() => {
     return () => {
@@ -117,25 +82,25 @@ export function AudioRow({
 
   useEffect(() => {
     if (playing) {
-      const barCount = 24;
       const loop = () => {
+        const audio = audioRef.current;
+        if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+          setProgress(audio.currentTime / audio.duration);
+        }
         const analyser = analyserRef.current;
-        if (!analyser) {
-          animRef.current = requestAnimationFrame(loop);
-          return;
+        if (analyser) {
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(data);
+          const step = Math.floor(data.length / BAR_COUNT);
+          const next: number[] = [];
+          for (let i = 0; i < BAR_COUNT; i++) {
+            let sum = 0;
+            for (let j = 0; j < step; j++) sum += data[i * step + j];
+            next.push(sum / step / 255);
+          }
+          setBars(next);
         }
-        const data = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(data);
-        const step = Math.floor(data.length / barCount);
-        const next: number[] = [];
-        for (let i = 0; i < barCount; i++) {
-          let sum = 0;
-          for (let j = 0; j < step; j++) sum += data[i * step + j];
-          next.push(sum / step / 255);
-        }
-        setBars(next);
-        if (audioRef.current && !audioRef.current.paused)
-          animRef.current = requestAnimationFrame(loop);
+        if (!audio || !audio.paused) animRef.current = requestAnimationFrame(loop);
       };
       animRef.current = requestAnimationFrame(loop);
     } else {
@@ -166,6 +131,7 @@ export function AudioRow({
       const el = new Audio();
       el.onended = () => {
         setPlaying(false);
+        setProgress(0);
         cancelAnimationFrame(animRef.current);
       };
       // `src` must be set BEFORE classifying: the check reads `currentSrc`/
@@ -204,106 +170,64 @@ export function AudioRow({
     <>
       <div
         draggable
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
         role="button"
         tabIndex={0}
+        title={filename(asset)}
         aria-label={`${name} — open, drag to timeline, right-click for actions`}
-        onKeyDown={(e) => {
-          // Only when the row itself is focused — keydowns bubbling from the
-          // inner controls (play button) must keep their native activation.
-          if (e.target !== e.currentTarget) return;
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            activateRow();
-          }
-        }}
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "copy";
-          e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
-          e.dataTransfer.setData("text/plain", asset);
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setContextMenu({ x: e.clientX, y: e.clientY });
-        }}
-        className={`group w-full text-left px-4 py-1.5 flex items-center gap-2.5 transition-colors cursor-pointer outline-hidden focus-visible:bg-neutral-800/60 ${
-          playing
-            ? "bg-panel-accent/6"
-            : isCopied
-              ? "bg-panel-accent/10"
-              : "hover:bg-panel-surface-hover"
-        }`}
+        {...activation}
+        onDragStart={(e) => writeAssetDragData(e, asset)}
+        onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
+        className={cn(
+          ASSET_ITEM_CLASS,
+          "flex h-row min-w-0 cursor-grab items-center gap-1.5 pr-1.5 pl-0.5 active:cursor-grabbing",
+          isCopied && "border-accent-line bg-accent-soft",
+        )}
       >
-        <button
+        <IconButton
+          size="xs"
           aria-label={playing ? `Pause preview of ${name}` : `Play preview of ${name}`}
           aria-pressed={playing}
-          className={`w-7 h-7 rounded-md shrink-0 flex items-center justify-center transition-colors active:scale-[0.95] ${
-            playing
-              ? "bg-panel-accent/15 text-panel-accent"
-              : "text-panel-text-5 group-hover:text-panel-text-3"
-          }`}
+          icon={playing ? <Pause size={12} weight="fill" /> : <Play size={12} weight="fill" />}
           onClick={(e) => {
             e.stopPropagation();
-            togglePlay();
+            void togglePlay();
           }}
-        >
-          {playing ? (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="4" width="4" height="16" rx="1" />
-              <rect x="14" y="4" width="4" height="16" rx="1" />
-            </svg>
-          ) : (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="6,4 20,12 6,20" />
-            </svg>
-          )}
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span
-              className={`text-[12px] font-medium truncate ${used ? "text-panel-text-1" : "text-panel-text-3"}`}
-            >
-              {name}
-            </span>
-            {!playing && (
-              <span className="text-[11px] text-panel-text-5 shrink-0">
-                {meta?.duration ? `${meta.duration}s · ` : ""}
-                {subtype}
-              </span>
-            )}
-            {used && (
-              <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded-sm shrink-0">
-                in use
-              </span>
-            )}
-            {(isCopied || copyFailed) && (
-              <span
-                role="status"
-                className={`shrink-0 text-[9px] font-medium px-1.5 py-px rounded ${
-                  copyFailed ? "text-red-400 bg-red-500/10" : "text-panel-accent bg-panel-accent/10"
-                }`}
-              >
-                {copyFailed ? "Copy failed" : "Copied"}
-              </span>
-            )}
-          </div>
-          {bars.length > 0 && (
-            <div className="flex items-end gap-[2px] h-[14px] mt-0.5">
+        />
+        <div className={cn(ASSET_THUMB_CLASS, "w-11 shrink-0 bg-k-audio-b")}>
+          {bars.length > 0 ? (
+            <span aria-hidden="true" className="absolute inset-x-1 inset-y-1 flex items-end gap-px">
               {bars.map((v, i) => (
-                <div
+                <span
                   key={i}
-                  className="flex-1 rounded-[1px]"
-                  style={{
-                    height: `${Math.max(10, v * 100)}%`,
-                    background: `linear-gradient(to top, rgba(60, 230, 172, ${0.3 + v * 0.5}), rgba(60, 230, 172, ${0.5 + v * 0.5}))`,
-                    transition: "height 80ms ease-out",
-                  }}
+                  className="flex-1 rounded-[1px] bg-wave transition-[height] duration-75 ease-out"
+                  style={{ height: `${Math.max(10, v * 100)}%`, opacity: 0.5 + v * 0.5 }}
                 />
               ))}
-            </div>
+            </span>
+          ) : (
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 flex items-center justify-center text-wave"
+            >
+              <Waveform size={16} />
+            </span>
+          )}
+          {playing && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-fg"
+              style={{ width: `${progress * 100}%` }}
+            />
           )}
         </div>
+        <span className={cn(ASSET_NAME_CLASS, "flex-1 text-base", playing && "text-fg")}>
+          {name}
+        </span>
+        {used && <UsedDot />}
+        <CopyChip feedback={copyFeedback} asset={asset} />
+        <span className="shrink-0 text-xs text-fg-3 tabular-nums">
+          {durationLabel ? `${subtype} · ${durationLabel}` : subtype}
+        </span>
       </div>
 
       {contextMenu && (

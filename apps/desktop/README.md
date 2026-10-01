@@ -79,17 +79,25 @@ apps/desktop/
     src/lib.rs             Window, menu, mode selection, project opening
     src/sidecar.rs         Spawn + readiness-poll + teardown the Studio server
     src/home.rs            Projects home screen: lifetime-owned loopback server
-    src/home.html          The home page document (token injected per launch)
-    src/home_routes.rs     Home HTTP plumbing: request reading, routing
+    src/home_page/         The Projects page + Settings window (HTML/CSS/JS, compiled in;
+                           ported from the OpenDesign prototype, both themes)
+    src/home_routes.rs     Home HTTP plumbing: routing, pages/assets, open/pick/thumbs
+    src/home_api.rs        Preferences, metadata, duplicate/reveal/locate, recents undo,
+                           composer files, start-from-chat, agent-runtime proxy routes
     src/home_create.rs     POST /api/create (scaffold, then open)
     src/home_project.rs    Rename (folder + meta.json) and Trash handlers
     src/home_auth.rs       Per-launch token + Host/Origin checks
-    src/recents.rs         recents.json persistence (dedupe, sort, rename)
+    src/prefs.rs           ~/.openvids/app/preferences.json (shared with Studio)
+    src/project_meta.rs    Duration + clip count from index.html (cached by mtime)
+    src/intake.rs          Start-from-chat: folder name, file import, intake.json
+    src/drop_paths.rs      Real paths of an OS drop (macOS drag pasteboard)
+    src/agent_proxy.rs     Lazy project-less agent runtime for models/settings
+    src/recents.rs         recents.json persistence (dedupe, sort, rename, undo, relink)
     src/structure.rs       index.html + data-composition-id validation, patching
     src/create.rs          Blank-template scaffold (fps/size/duration, meta.json)
     src/thumbnails.rs      Background thumbnail refresh from Studio
     src/project.rs         Directory -> Studio project id
-    capabilities/main.json The webview's permissions (none)
+    capabilities/main.json Window dragging for the loopback pages, nothing else
   sidecar/
     serve.mjs              Parent-death watch; see "Teardown" below
 ```
@@ -103,7 +111,14 @@ no bundling, full HMR.
 
 The base Tauri config deliberately has no bundled runtime resources: a fresh
 clone can start dev mode or run `cargo check` before the production payload is
-staged. The icons are tracked, and Tauri generates `gen/schemas` as needed.
+staged. Tauri generates `gen/schemas` as needed.
+
+The icons are tracked. Their source is `src-tauri/icons/app-icon.svg` (the
+design's app icon, inset to the macOS icon grid: an 824 px tile centered on a
+1024 px canvas). To regenerate after changing it, run
+`bun run tauri icon src-tauri/icons/app-icon.svg -o /tmp/ov-icons` and copy the
+files that `bundle.icon` in `tauri.conf.json` lists, plus `icon.png`, into
+`src-tauri/icons/`.
 
 ### Production
 
@@ -209,13 +224,25 @@ Tauri resource mapping still resolves) without sources or dependencies; Chat the
 
 ## Security
 
-The webview gets no native access at all.
+The webview gets no native access beyond moving its own window.
 
 - `withGlobalTauri` is `false`, so there is no `window.__TAURI__`.
-- `capabilities/main.json` declares **no permissions and no `remote` block**.
-  Tauri treats `http://127.0.0.1` as a remote origin, so that document is
-  denied every IPC command. The list stays empty unless a specific need
-  appears.
+- The window uses an overlay titlebar (traffic lights over the pages' own 52 px
+  titlebar). `capabilities/main.json` grants the loopback pages
+  (`remote.urls`: `http://127.0.0.1:*`, `http://localhost:*`) exactly
+  `core:window:allow-start-dragging` and `allow-internal-toggle-maximize`, so
+  `data-tauri-drag-region` titlebars drag and double-click-zoom the window.
+  No other IPC command is reachable.
+- The Projects page's own agent runtime (`agent_proxy.rs`): the model catalog
+  and agent defaults are needed before any Studio sidecar exists, so the home
+  server lazily spawns the same runtime with a per-launch bearer token that
+  never reaches the webview, and proxies only `/v1/models` and `/v1/settings`
+  behind the home token.
+- OS file drops on the Projects page still arrive as HTML5 drops (see below);
+  the page posts the dropped *names* and Rust reads the real paths off the
+  macOS drag pasteboard (`drop_paths.rs`), keeping only matching names. Files
+  are copied (APFS clones) into `<project>/assets/` on Start — nothing is
+  streamed through JavaScript.
 - No `fs`, `shell`, `process`, `http` or `dialog` plugin is installed. The
   folder picker is `rfd`, called from Rust — a Tauri dialog plugin would have
   put a dialog capability in the bundle, and picking a folder is the one

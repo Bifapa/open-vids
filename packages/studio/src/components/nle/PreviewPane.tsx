@@ -113,11 +113,9 @@ export function PreviewPane({
   return (
     <div
       ref={containerRef}
-      // A recessed well inset in its dock card; dropped in fullscreen so the
-      // preview fills the screen edge-to-edge.
-      className={`flex-1 min-h-0 flex flex-col overflow-hidden bg-[var(--studio-preview-bg,var(--color-neutral-950))] ${
-        isFullscreen ? "" : "m-3 rounded-md border border-neutral-800/50"
-      }`}
+      // The stage fills the panel edge to edge (prototype viewer); the
+      // transport bar below draws its own head-coloured strip.
+      className="flex min-h-0 flex-1 flex-col overflow-hidden bg-stage"
       data-studio-fullscreen-target=""
     >
       <div
@@ -150,7 +148,7 @@ export function PreviewPane({
             onCompositionSizeChange={setPreviewCompositionSize}
           />
           {previewDragOver && (
-            <div className="absolute inset-2 z-40 rounded-lg border-2 border-dashed border-studio-accent/50 bg-studio-accent/4 pointer-events-none" />
+            <div className="pointer-events-none absolute inset-2 z-40 rounded-lg border-2 border-dashed border-accent/60 bg-accent/5" />
           )}
           <AssetPreviewOverlay />
         </div>
@@ -159,8 +157,6 @@ export function PreviewPane({
           {!isFullscreen && previewOverlay}
         </PreviewOverlayProvider>
       </div>
-      {/* Transport row: no own background or border — the controls sit flat on
-          the preview panel's surface (CapCut-style). */}
       <div className="shrink-0">
         {!isFullscreen && compositionStack.length > 1 && (
           <CompositionBreadcrumb stack={compositionStack} onNavigate={handleNavigateComposition} />

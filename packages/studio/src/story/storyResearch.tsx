@@ -82,15 +82,18 @@ export function FindWithResearchButton({
   node,
   research,
   className,
+  block,
 }: {
   node: MissingAssetNode;
   research: StoryResearch;
   className?: string;
+  /** Full width, as on a Missing Asset card. */
+  block?: boolean;
 }) {
   const blocker = findBlocker(research, node);
   return (
     <span
-      className={cn("hf-story-nodrag flex self-start", className)}
+      className={cn("hf-story-nodrag flex", block ? "w-full" : "self-start", className)}
       title={
         blocker ?? "Research looks for this material and resolves the node with what it imports"
       }
@@ -99,8 +102,9 @@ export function FindWithResearchButton({
         size="sm"
         variant="secondary"
         disabled={blocker !== null}
-        icon={<MagnifyingGlass size={11} aria-hidden />}
+        icon={<MagnifyingGlass size={12} className="text-fg-2" aria-hidden />}
         data-story-find={node.id}
+        className={block ? "w-full" : undefined}
         onClick={(event) => {
           event.stopPropagation();
           research.find([node.id]);
@@ -124,18 +128,18 @@ export function ResolvedCardLine({
 }) {
   const source = research?.sourceOf(assetOf(node)) ?? null;
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 pt-0.5" data-story-resolved={resolution.missing}>
-      <span className="flex items-center gap-1 text-step-10 font-medium text-accent">
-        <MagnifyingGlass size={10} weight="bold" aria-hidden />
+    <div className="flex min-w-0 flex-col gap-0.5 px-1" data-story-resolved={resolution.missing}>
+      <span className="flex items-center gap-1 text-2xs font-medium text-fg-2">
+        <MagnifyingGlass size={10} weight="bold" className="text-success" aria-hidden />
         {resolution.turnId ? "Found by Research" : "Resolved by you"}
       </span>
       {resolution.need && (
-        <span className="truncate text-step-10 text-text-3" title={resolution.need}>
+        <span className="truncate text-2xs text-fg-3" title={resolution.need}>
           For: {resolution.need}
         </span>
       )}
       {source && (
-        <span className="flex min-w-0 items-center gap-1 text-step-10 text-text-3">
+        <span className="flex min-w-0 items-center gap-1 text-2xs text-fg-3">
           <LicenseChip
             status={source.licenseStatus}
             label={source.license}

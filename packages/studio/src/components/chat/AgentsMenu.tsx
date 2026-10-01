@@ -1,214 +1,269 @@
-import { useRef, useState } from "react";
-import { GearSix, UsersThree } from "@phosphor-icons/react";
+import { useRef, useState, type ReactNode } from "react";
+import { SlidersHorizontal, UsersThree } from "@phosphor-icons/react";
 import {
-  AGENT_DISPLAY_NAMES,
   SPECIALIST_IDS,
+  type AgentSettings,
   type ChatSummary,
+  type ModelSelection,
+  type SpecialistConfig,
   type SpecialistId,
 } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
-import { directorConfig, runningTurn, specialistConfig } from "../../agent/agentSelectors";
+import { resolveModel, runningTurn, sameModel } from "../../agent/agentSelectors";
 import { cn } from "../ui/cn";
 import { IconButton } from "../ui/IconButton";
-import { Popover } from "../ui/Popover";
 import { Toggle } from "../ui/Toggle";
-import { AgentConfigDialog, type ConfigurableAgent } from "./AgentConfigDialog";
-import { AgentDefaultsDialog } from "./AgentDefaultsDialog";
-import { AGENT_BLURBS, describeModelConfig } from "./agentLabels";
+import { AgentConfigDialog } from "./AgentConfigDialog";
+import { AgentMonogram, chatAgentName } from "./AgentMonogram";
+import { AGENT_BLURBS } from "./agentLabels";
+import {
+  ChipCaret,
+  ComposerPopover,
+  EffortField,
+  LOCKED_REASON,
+  ModelChoice,
+  ModelFieldButton,
+  PopoverField,
+  PopoverHelp,
+  chipClass,
+  chipIconClass,
+  chipLabelClass,
+  linkClass,
+  modelFieldLabel,
+} from "./composerParts";
 
-const LOCKED_REASON = "Agents can't change while this chat is working.";
+type View = { kind: "list" } | { kind: "settings" | "model"; agent: SpecialistId };
 
-function AgentRow({
-  agent,
-  summary,
-  custom,
-  toggle,
-  onConfigure,
-}: {
-  agent: ConfigurableAgent;
-  /** "Sonnet · High", or why it can't be shown. */
-  summary: string;
-  custom: boolean | null;
-  toggle?: { checked: boolean; disabled: boolean; onCommit: (next: boolean) => void };
-  onConfigure: () => void;
-}) {
-  const name = AGENT_DISPLAY_NAMES[agent];
+const EMPTY: SpecialistConfig = { model: null, thinking: null, allowedModels: [] };
+
+const sameSelection = (left: ModelSelection | null, right: ModelSelection | null) =>
+  left === right || sameModel(left, right);
+
+/** The specialist's global default as a config, or empty when settings are unknown. */
+function globalConfig(settings: AgentSettings | null, id: SpecialistId): SpecialistConfig {
+  if (!settings) return EMPTY;
+  const { model, thinking, allowedModels } = settings.specialists[id];
+  return { model, thinking, allowedModels };
+}
+
+function sameConfig(left: SpecialistConfig, right: SpecialistConfig): boolean {
   return (
-    <li className="flex items-center gap-2 px-3 py-1.5" data-agent={agent}>
-      {toggle ? (
-        <Toggle
-          label={`Enable ${name}`}
-          checked={toggle.checked}
-          disabled={toggle.disabled}
-          onCommit={toggle.onCommit}
-          // Base UI marks a disabled switch with `data-disabled`, not `:disabled`.
-          className="data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40"
-        />
-      ) : (
-        <span className="w-7 shrink-0 text-center text-step-10 text-text-4">lead</span>
-      )}
-      <div className="min-w-0 flex-1" title={AGENT_BLURBS[agent]}>
-        <p className="text-step-11 font-medium text-text-1">{name}</p>
-        <p className="flex min-w-0 items-center gap-1 text-step-10 text-text-3">
-          <span className="truncate">{summary}</span>
-          {custom !== null && (
-            <span
-              className={cn(
-                "shrink-0 rounded-sm px-1",
-                custom ? "bg-accent/10 text-accent" : "text-text-4",
-              )}
-            >
-              {custom ? "custom" : "default"}
-            </span>
-          )}
-        </p>
-      </div>
-      <IconButton
-        aria-label={`Configure ${name}`}
-        size="sm"
-        icon={<GearSix size={13} aria-hidden />}
-        onClick={onConfigure}
-      />
-    </li>
+    sameSelection(left.model, right.model) &&
+    left.thinking === right.thinking &&
+    left.allowedModels.length === right.allowedModels.length &&
+    left.allowedModels.every((model, index) => sameModel(model, right.allowedModels[index] ?? null))
   );
 }
 
+const rowClass =
+  "grid min-h-row-lg grid-cols-[16px_minmax(0,1fr)_auto_auto] items-center gap-x-2 rounded-md border border-transparent py-1 pr-1 pl-1.5 hover:border-border-subtle hover:bg-surface-1";
+
 /**
- * Which specialists the Director may delegate to in this chat, and what each runs on. The dialogs live
- * beside the popover, so closing the popover to open one does not unmount it.
+ * The Agents · N chip: which specialists Main may hand work to in this chat (switches), each one's model and
+ * thinking (its settings view), and the advanced per-chat config (allowed models) behind "More settings…".
  */
 export function AgentsMenu({ chat }: { chat: ChatSummary }) {
   const settings = useAgentStore((state) => state.settings);
   const catalog = useAgentStore((state) => state.models);
+  const catalogFailed = useAgentStore((state) => state.modelsFailed);
   const locked = useAgentStore((state) => runningTurn(state.chat) !== null);
   const setEnabledAgents = useAgentStore((state) => state.setEnabledAgents);
+  const setAgentOverride = useAgentStore((state) => state.setAgentOverride);
   const [open, setOpen] = useState(false);
-  const [configuring, setConfiguring] = useState<ConfigurableAgent | null>(null);
-  const [defaultsOpen, setDefaultsOpen] = useState(false);
-  const [pending, setPending] = useState<SpecialistId | null>(null);
+  const [view, setView] = useState<View>({ kind: "list" });
+  const [advanced, setAdvanced] = useState<SpecialistId | null>(null);
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const enabled = chat.enabledAgents;
-  const runtimeDefaults = {
-    model: catalog?.defaultModel ?? null,
-    thinking: catalog?.defaultThinking ?? null,
-  };
-  const director = directorConfig(chat, settings);
+  const count = enabled.length + 1;
 
-  const toggle = async (id: SpecialistId, next: boolean) => {
-    setPending(id);
+  const run = async (action: () => Promise<{ ok: true } | { ok: false; message: string }>) => {
+    setPending(true);
     setError(null);
-    const result = await setEnabledAgents(
-      next ? [...enabled, id] : enabled.filter((known) => known !== id),
-    );
-    setPending(null);
+    const result = await action();
+    setPending(false);
     if (!result.ok) setError(result.message);
   };
 
-  const openDialog = (show: () => void) => {
-    setOpen(false);
-    setError(null);
-    show();
+  const toggle = (id: SpecialistId, next: boolean) =>
+    run(() => setEnabledAgents(next ? [...enabled, id] : enabled.filter((known) => known !== id)));
+
+  /** A change to one field: the chat keeps its own config only while it differs from the default. */
+  const change = (id: SpecialistId, patch: Partial<SpecialistConfig>) => {
+    const global = globalConfig(settings, id);
+    const next = { ...(chat.agentOverrides?.[id] ?? global), ...patch };
+    return run(() => setAgentOverride(id, sameConfig(next, global) ? null : next));
+  };
+
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setView({ kind: "list" });
+      setError(null);
+    }
   };
 
   const trigger = (
     <button
       ref={triggerRef}
       type="button"
-      aria-label={`Agents: ${enabled.length} enabled`}
-      className={cn(
-        "flex h-ctl-sm shrink-0 items-center gap-1 rounded-sm px-1.5 text-step-11 text-text-2",
-        "outline-hidden transition-colors duration-hover hover:bg-hover hover:text-text-0",
-        "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
-        "data-[popup-open]:bg-hover data-[popup-open]:text-text-0",
-      )}
+      data-chip="agents"
+      aria-label={`Agents, ${count} enabled`}
+      title={`Agents · ${count}`}
+      className={chipClass}
     >
-      <UsersThree size={13} aria-hidden />
-      Agents
-      <span className="rounded-sm bg-surface px-1 text-step-10 tabular-nums text-text-1">
-        {enabled.length}
-      </span>
+      <UsersThree size={12} aria-hidden className={chipIconClass} />
+      <span className={chipLabelClass}>Agents · {count}</span>
+      <ChipCaret />
     </button>
   );
 
+  const agent = view.kind === "list" ? null : view.agent;
+  const title = agent
+    ? view.kind === "model"
+      ? `${chatAgentName(agent)} · Model`
+      : `${chatAgentName(agent)} · Settings`
+    : "Agents";
+  const back = agent
+    ? {
+        label:
+          view.kind === "model" ? `Back to ${chatAgentName(agent)} settings` : "Back to agents",
+        onBack: () =>
+          setView(view.kind === "model" ? { kind: "settings", agent } : { kind: "list" }),
+      }
+    : undefined;
+
+  let body: ReactNode;
+  if (agent) {
+    const global = globalConfig(settings, agent);
+    const override = chat.agentOverrides?.[agent] ?? null;
+    const current = override ?? global;
+    const runtimeModel = catalog?.defaultModel ?? null;
+    const modelFallback = global.model ?? runtimeModel;
+    const ownModel =
+      override && !sameSelection(override.model, global.model) ? override.model : null;
+    const ownEffort = override && override.thinking !== global.thinking ? override.thinking : null;
+    body =
+      view.kind === "model" && catalog ? (
+        <ModelChoice
+          catalog={catalog}
+          explicit={ownModel}
+          fallback={modelFallback}
+          onSelect={(model) => {
+            setView({ kind: "settings", agent });
+            void change(agent, { model: model ?? global.model });
+          }}
+        />
+      ) : (
+        <>
+          <PopoverField label="Model">
+            <ModelFieldButton
+              name={`${chatAgentName(agent)} model`}
+              label={modelFieldLabel(catalog, catalogFailed, ownModel, modelFallback)}
+              disabled={locked || pending || !catalog || catalog.models.length === 0}
+              onOpen={() => setView({ kind: "model", agent })}
+            />
+          </PopoverField>
+          <EffortField
+            model={resolveModel(current.model, catalog, runtimeModel).info}
+            value={ownEffort}
+            defaultEffort={global.thinking ?? catalog?.defaultThinking ?? null}
+            disabled={locked || pending}
+            onChange={(effort) => void change(agent, { thinking: effort ?? global.thinking })}
+          />
+          <PopoverHelp>
+            Default follows your agent defaults.{" "}
+            <button
+              type="button"
+              className={linkClass}
+              onClick={() => {
+                onOpenChange(false);
+                setAdvanced(agent);
+              }}
+            >
+              More settings…
+            </button>
+          </PopoverHelp>
+        </>
+      );
+  } else {
+    body = (
+      <div role="group" aria-label="Available agents" className="grid gap-px">
+        <div className={rowClass} data-agent="director">
+          <AgentMonogram agent="director" />
+          <AgentInfo name={chatAgentName("director")} role="Coordinates this project" />
+          <span className="col-span-2 col-start-3 pr-1 text-xs whitespace-nowrap text-fg-3">
+            Always on
+          </span>
+        </div>
+        {SPECIALIST_IDS.map((id) => {
+          const on = enabled.includes(id);
+          const name = chatAgentName(id);
+          return (
+            <div key={id} className={rowClass} data-agent={id}>
+              <AgentMonogram agent={id} off={!on} />
+              <AgentInfo name={name} role={AGENT_BLURBS[id]} off={!on} />
+              <IconButton
+                size="sm"
+                aria-label={`Settings for ${name}`}
+                title={`${name} settings`}
+                icon={<SlidersHorizontal size={12} aria-hidden />}
+                onClick={() => setView({ kind: "settings", agent: id })}
+              />
+              <Toggle
+                label={`${name} agent`}
+                checked={on}
+                disabled={locked || pending}
+                onCommit={(next) => void toggle(id, next)}
+              />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <>
-      <Popover
+      <ComposerPopover
         trigger={trigger}
         open={open}
-        onOpenChange={setOpen}
-        side="bottom"
-        align="end"
-        aria-label="Agents in this chat"
-        className="w-80 p-0"
+        onOpenChange={onOpenChange}
+        title={title}
+        back={back}
       >
-        <div className="px-3 pb-1 pt-2.5">
-          <p className="text-step-11 font-semibold text-text-0">Agents in this chat</p>
-          <p className="text-step-10 text-text-3">
-            The Director hands work to the specialists you enable.
-          </p>
-        </div>
-        <ul className="flex flex-col py-1">
-          <AgentRow
-            agent="director"
-            summary={describeModelConfig(director.config, catalog, runtimeDefaults)}
-            custom={director.custom}
-            onConfigure={() => openDialog(() => setConfiguring("director"))}
-          />
-          {SPECIALIST_IDS.map((id) => {
-            const view = specialistConfig(chat, settings, id);
-            return (
-              <AgentRow
-                key={id}
-                agent={id}
-                summary={
-                  view
-                    ? describeModelConfig(view.config, catalog, runtimeDefaults)
-                    : "Settings unavailable"
-                }
-                custom={view ? view.custom : null}
-                toggle={{
-                  checked: enabled.includes(id),
-                  disabled: locked || pending !== null,
-                  onCommit: (next) => void toggle(id, next),
-                }}
-                onConfigure={() => openDialog(() => setConfiguring(id))}
-              />
-            );
-          })}
-        </ul>
-        {(locked || error) && (
-          <p
-            role={error ? "alert" : undefined}
-            className={cn("px-3 pb-1.5 text-step-10", error ? "text-danger" : "text-container")}
-          >
-            {error ?? LOCKED_REASON}
-          </p>
+        {body}
+        {(locked || error) && view.kind !== "model" && (
+          <PopoverHelp tone={error ? "error" : "warning"}>{error ?? LOCKED_REASON}</PopoverHelp>
         )}
-        <div className="border-t border-hairline p-1">
-          <button
-            type="button"
-            onClick={() => openDialog(() => setDefaultsOpen(true))}
-            className="flex h-ctl-sm w-full items-center gap-1.5 rounded-sm px-2 text-left text-step-11 text-text-2 outline-hidden transition-colors duration-hover hover:bg-hover hover:text-text-0 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            <GearSix size={12} aria-hidden />
-            Defaults & Jev…
-          </button>
-        </div>
-      </Popover>
-      {configuring && (
+      </ComposerPopover>
+      {advanced && (
         <AgentConfigDialog
-          key={configuring}
-          agent={configuring}
+          key={advanced}
+          agent={advanced}
           chat={chat}
           finalFocus={triggerRef}
-          onClose={() => setConfiguring(null)}
+          onClose={() => setAdvanced(null)}
         />
       )}
-      {defaultsOpen && (
-        <AgentDefaultsDialog finalFocus={triggerRef} onClose={() => setDefaultsOpen(false)} />
-      )}
     </>
+  );
+}
+
+function AgentInfo({ name, role, off = false }: { name: string; role: string; off?: boolean }) {
+  return (
+    <span className="grid min-w-0 gap-px" title={role}>
+      <span
+        className={cn(
+          "truncate text-sm leading-4 font-medium whitespace-nowrap",
+          off ? "text-fg-2" : "text-fg",
+        )}
+      >
+        {name}
+      </span>
+      <span className="truncate text-xs leading-[14px] whitespace-nowrap text-fg-3">{role}</span>
+    </span>
   );
 }

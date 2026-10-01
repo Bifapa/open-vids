@@ -7,6 +7,7 @@ import {
 } from "@hyperframes/core/wiggle-ease";
 import { roundToCenti } from "../../utils/rounding";
 import { MiniCurveSvg } from "./easeCurveSvg";
+import { INSP_SELECT } from "./inspectorStyles";
 
 type Pts = [number, number, number, number];
 
@@ -93,17 +94,17 @@ export function EaseBezierField({
             }
           }}
           onBlur={(event) => commit(event.currentTarget.value)}
-          className={`w-full rounded border bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-hidden ${
+          className={`h-ctl-sm w-full rounded-sm border bg-surface-1 px-1.5 font-mono text-num text-fg outline-hidden focus-visible:outline-2 focus-visible:outline-offset-1 ${
             error
-              ? "border-red-500/70 focus:border-red-400"
-              : "border-white/10 focus:border-panel-accent/50"
+              ? "border-error focus-visible:outline-error"
+              : "border-border hover:border-border-strong focus-visible:outline-accent"
           }`}
         />
       </div>
       <p
         id={errorId}
         aria-live="polite"
-        className={`mt-1 text-[9px] text-red-400 ${error ? "" : "sr-only"}`}
+        className={`mt-1 text-2xs text-error ${error ? "" : "sr-only"}`}
       >
         {error ?? "Valid bezier values"}
       </p>
@@ -171,7 +172,7 @@ export function SpringBounceField({
   onCommit: (ease: string) => void;
 }) {
   return (
-    <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[10px] text-neutral-400">
+    <div className="mt-1.5 flex items-center gap-2 px-0.5 text-xs text-fg-2">
       <span aria-hidden="true">Bounce</span>
       <NumericCommitInput
         label="Spring bounce"
@@ -183,7 +184,7 @@ export function SpringBounceField({
           const bounce = parseSpringBounce(`spring(${value})`);
           if (bounce !== null) onCommit(`spring(${round2(bounce)})`);
         }}
-        className="w-16 rounded-sm border border-white/10 bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-hidden focus:border-panel-accent/50"
+        className="h-ctl-sm w-16 rounded-sm border border-border bg-surface-1 px-1.5 font-mono text-num text-fg outline-hidden hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
       />
     </div>
   );
@@ -198,7 +199,7 @@ export function WiggleField({
 }) {
   const amplitude = config.amplitude ?? WIGGLE_DEFAULT_AMPLITUDE[config.type];
   return (
-    <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[10px] text-neutral-400">
+    <div className="mt-1.5 flex items-center gap-2 px-0.5 text-xs text-fg-2">
       <div className="flex items-center gap-1">
         <span aria-hidden="true">Count</span>
         <NumericCommitInput
@@ -207,7 +208,7 @@ export function WiggleField({
           min={1}
           step={1}
           onCommit={(value) => commitWiggle(onCommit, value, config.type, amplitude)}
-          className="w-14 rounded-sm border border-white/10 bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-hidden focus:border-panel-accent/50"
+          className="h-ctl-sm w-14 rounded-sm border border-border bg-surface-1 px-1.5 font-mono text-num text-fg outline-hidden hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         />
       </div>
       <div className="flex items-center gap-1">
@@ -220,7 +221,7 @@ export function WiggleField({
               commitWiggle(onCommit, config.wiggles, event.currentTarget.value, amplitude);
             }
           }}
-          className="rounded-sm border border-white/10 bg-black/20 px-1.5 py-1 text-[10px] text-neutral-300 outline-hidden focus:border-panel-accent/50"
+          className={`${INSP_SELECT} w-auto`}
         >
           {WIGGLE_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -238,7 +239,7 @@ export function WiggleField({
           max={1}
           step={0.01}
           onCommit={(value) => commitWiggle(onCommit, config.wiggles, config.type, value)}
-          className="w-16 rounded-sm border border-white/10 bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-hidden focus:border-panel-accent/50"
+          className="h-ctl-sm w-16 rounded-sm border border-border bg-surface-1 px-1.5 font-mono text-num text-fg outline-hidden hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         />
       </div>
     </div>

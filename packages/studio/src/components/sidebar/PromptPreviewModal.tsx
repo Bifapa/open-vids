@@ -1,4 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { Info, X } from "@phosphor-icons/react";
+import { Button } from "../ui/Button";
+import { IconButton } from "../ui/IconButton";
+import { Kbd } from "../ui/Kbd";
 import { useDialogBehavior } from "../ui/useDialogBehavior";
 
 export function PromptPreviewModal({
@@ -46,7 +50,7 @@ export function PromptPreviewModal({
 
   return (
     <div
-      className={`fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xs transition-opacity duration-150 ease-out ${
+      className={`fixed inset-0 z-100 flex items-center justify-center bg-scrim px-6 py-12 transition-opacity duration-150 ease-out ${
         entered ? "opacity-100" : "opacity-0"
       }`}
       onClick={requestClose}
@@ -57,37 +61,23 @@ export function PromptPreviewModal({
         aria-modal="true"
         aria-label={`Ask agent — ${title}`}
         tabIndex={-1}
-        className="w-[560px] max-h-[80vh] flex flex-col rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl outline-hidden"
+        className="flex max-h-full w-[min(560px,100%)] flex-col overflow-hidden rounded-lg border border-border bg-bg-1 text-sm text-fg shadow-pop outline-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
-          <div>
-            <h3 className="text-sm font-medium text-neutral-200">Ask agent</h3>
-            <p className="text-xs text-neutral-500 mt-0.5">{title}</p>
-          </div>
-          <button
+        <div className="flex h-head shrink-0 items-center gap-1.5 border-b border-border-subtle pl-3 pr-1">
+          <h3 className="m-0 shrink-0 text-sm font-semibold">Copy Prompt</h3>
+          <span className="min-w-0 flex-1 truncate text-xs text-fg-3">{title}</span>
+          <IconButton
+            size="sm"
             aria-label="Close"
-            className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 active:scale-[0.95]"
             onClick={onClose}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+            icon={<X size={12} aria-hidden />}
+          />
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <p className="text-[11px] text-neutral-500 mb-2">
-            Edit the prompt below, then copy and paste into your AI agent
+        <div className="grid min-h-0 flex-1 gap-2 overflow-y-auto p-3">
+          <p className="m-0 grid grid-cols-[14px_minmax(0,1fr)] gap-1.5 text-xs leading-[15px] text-fg-3">
+            <Info size={12} className="mt-px" aria-hidden />
+            Edit the prompt below, then copy and paste it into your AI agent.
           </p>
           <textarea
             ref={textareaRef}
@@ -96,29 +86,21 @@ export function PromptPreviewModal({
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handleCopy();
             }}
-            className="w-full min-h-[240px] text-[11px] text-neutral-200 leading-relaxed font-mono bg-neutral-900/60 rounded-lg p-3 border border-neutral-800 resize-y focus:outline-hidden focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
+            className="min-h-[240px] w-full resize-y rounded-sm border border-border bg-surface-1 px-2 py-[5px] font-mono text-num leading-[17px] text-fg-2 hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           />
         </div>
-        <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">
-          <span className="text-[11px] text-neutral-600">
-            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to copy
+        <div className="flex min-h-11 shrink-0 items-center gap-1.5 border-t border-border-subtle py-2 pl-3 pr-2.5">
+          <span className="mr-auto flex items-center gap-1 text-xs text-fg-3">
+            <Kbd>{navigator.platform.includes("Mac") ? "⌘↵" : "Ctrl+↵"}</Kbd> to copy
           </span>
-          <button
-            className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97] ${
-              copyState === "copied"
-                ? "bg-emerald-500 text-white"
-                : copyState === "failed"
-                  ? "bg-red-500 text-white"
-                  : "bg-studio-accent/90 text-neutral-950 hover:bg-studio-accent"
-            }`}
-            onClick={handleCopy}
-          >
-            {copyState === "copied"
-              ? "Copied!"
-              : copyState === "failed"
-                ? "Copy failed"
-                : "Copy prompt"}
-          </button>
+          {copyState === "failed" && (
+            <span role="alert" className="text-xs text-error">
+              Copy failed
+            </span>
+          )}
+          <Button variant="primary" size="sm" onClick={() => void handleCopy()}>
+            {copyState === "copied" ? "Copied!" : "Copy Prompt"}
+          </Button>
         </div>
       </div>
     </div>

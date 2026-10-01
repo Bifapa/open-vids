@@ -1,5 +1,5 @@
 import type { TimelineElement } from "../player";
-import type { CompositionDimensions } from "../components/renders/RenderQueue";
+import type { CompositionDimensions } from "../components/renders/RenderSettingsForm";
 import type { FfmpegStatus } from "../components/renders/useFfmpegStatus";
 import { useContext, useMemo, type ReactNode } from "react";
 import { createStableContext } from "../utils/hmrStableContext";

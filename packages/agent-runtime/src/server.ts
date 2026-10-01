@@ -98,7 +98,7 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
         new RuntimeError("unauthorized", "A valid runtime bearer token is required", 401),
       );
     }
-    if (context.req.path === `${AGENT_RUNTIME_PREFIX}/health`) return next();
+    if (isGlobalRoute(context.req.path)) return next();
     try {
       const scope = await resolveScope(context.req.raw.headers);
       const project = await getProjectRuntime(scope, projects, options, turnOptions, now, ids);
@@ -308,6 +308,15 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
     return context.json(response);
   });
 
+  app.post(`${AGENT_RUNTIME_PREFIX}/chats/:chatId/turns/:turnId/unrevert`, async (context) => {
+    const parsed = parseRevertTurn(await readBody(context));
+    if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+    const response = await context
+      .get("project")
+      .turns.unrevert(context.req.param("chatId"), context.req.param("turnId"), parsed.value.mode);
+    return context.json(response);
+  });
+
   return Object.assign(app, {
     dispose: async () => {
       const runtimes = await Promise.allSettled([...projects.values()]);
@@ -363,6 +372,20 @@ async function getProjectRuntime(
     );
   }
   return runtime;
+}
+
+/** Routes that never touch a project: Home calls them before any project is open (token only). */
+function isGlobalRoute(path: string): boolean {
+  if (!path.startsWith(`${AGENT_RUNTIME_PREFIX}/`)) return false;
+  const rest = path.slice(AGENT_RUNTIME_PREFIX.length + 1);
+  return (
+    rest === "health" ||
+    rest === "models" ||
+    rest === "providers" ||
+    /^providers\/[^/]+\/models$/.test(rest) ||
+    rest === "settings" ||
+    rest === "settings/jev/api-key"
+  );
 }
 
 async function resolveScope(headers: Headers): Promise<ProjectScope> {

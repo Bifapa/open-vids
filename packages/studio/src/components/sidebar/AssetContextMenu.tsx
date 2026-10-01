@@ -1,9 +1,56 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Copy, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
+import { Button, cn, fieldBase, fieldText, popupSurface } from "../ui";
 import { filename } from "./assetHelpers";
 
 /** Reject names that would escape the asset directory or break paths. */
 function isValidAssetName(name: string): boolean {
   return name.length > 0 && !/[/\\]/.test(name) && !name.includes("..");
+}
+
+/** A menu row in the shared menu look: 24 px, accent fill under the pointer or focus. */
+const itemBase = cn(
+  "flex h-ctl-sm w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-left text-sm whitespace-nowrap",
+  "outline-hidden transition-colors duration-hover",
+);
+const itemDefault =
+  "text-fg hover:bg-accent hover:text-accent-ink focus-visible:bg-accent focus-visible:text-accent-ink";
+const itemDanger =
+  "text-error hover:bg-error hover:text-bg-0 focus-visible:bg-error focus-visible:text-bg-0";
+
+function MenuRow({
+  icon,
+  danger,
+  onClick,
+  children,
+}: {
+  icon: ReactNode;
+  danger?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className={cn(itemBase, danger ? itemDanger : itemDefault, "group/item")}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex size-icon-md shrink-0 items-center justify-center",
+          danger
+            ? "text-current"
+            : "text-fg-3 group-hover/item:text-current group-focus-visible/item:text-current",
+        )}
+      >
+        {icon}
+      </span>
+      <span className="truncate">{children}</span>
+    </button>
+  );
 }
 
 export function ContextMenu({
@@ -93,10 +140,11 @@ export function ContextMenu({
     onClose();
   }, [renameDraft, asset, onRename, onClose]);
 
-  const itemCls =
-    "w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden active:bg-neutral-700/70 transition-colors";
+  const name = filename(asset);
 
-  return (
+  // Portaled to the body: dock panels are `contain: paint`, which would clip a
+  // fixed-position menu to the panel it was opened from.
+  return createPortal(
     <div
       className="fixed inset-0 z-200"
       onClick={onClose}
@@ -108,128 +156,119 @@ export function ContextMenu({
       <div
         ref={menuRef}
         role="menu"
-        aria-label={`Actions for ${filename(asset)}`}
-        className="absolute bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[160px] text-xs"
+        aria-label={`Actions for ${name}`}
+        className={cn(popupSurface, "absolute min-w-44 p-1 shadow-pop", mode !== "menu" && "w-60")}
         style={{ left: pos.x, top: pos.y }}
         onClick={(e) => e.stopPropagation()}
       >
         {mode === "menu" && (
           <>
             {onAddAtPlayhead && (
-              <button
-                role="menuitem"
+              <MenuRow
+                icon={<Plus size={14} />}
                 onClick={() => {
                   onAddAtPlayhead(asset);
                   onClose();
                 }}
-                className={itemCls}
               >
-                Add at playhead
-              </button>
+                Insert at Playhead
+              </MenuRow>
             )}
-            <button
-              role="menuitem"
+            <MenuRow
+              icon={<Copy size={14} />}
               onClick={() => {
                 onCopy(asset);
                 onClose();
               }}
-              className={itemCls}
             >
-              Copy path
-            </button>
+              Copy Path
+            </MenuRow>
             {onRename && (
-              <button role="menuitem" onClick={() => setMode("rename")} className={itemCls}>
+              <MenuRow icon={<PencilSimple size={14} />} onClick={() => setMode("rename")}>
                 Rename
-              </button>
+              </MenuRow>
             )}
             {onDelete && (
-              <button
-                role="menuitem"
-                onClick={() => setMode("confirm-delete")}
-                className={`${itemCls} text-red-400`}
-              >
-                Delete
-              </button>
+              <>
+                <div role="separator" className="mx-1.5 my-1 h-px bg-border" />
+                <MenuRow
+                  icon={<Trash size={14} />}
+                  danger
+                  onClick={() => setMode("confirm-delete")}
+                >
+                  Delete…
+                </MenuRow>
+              </>
             )}
           </>
         )}
         {mode === "confirm-delete" && (
-          <DeleteConfirm
-            name={filename(asset)}
-            onConfirm={() => {
-              onDelete?.(asset);
-              onClose();
-            }}
-            onCancel={() => setMode("menu")}
-          />
+          <div
+            role="group"
+            aria-label={`Confirm deleting ${name}`}
+            className="flex flex-col gap-1.5 px-1.5 pt-1 pb-0.5 text-sm text-fg"
+          >
+            <p className="leading-[17px] [overflow-wrap:anywhere]">
+              Delete <b className="font-semibold">{name}</b>?
+            </p>
+            <p className="text-xs text-fg-3">The file is removed from the project folder.</p>
+            <div className="flex justify-end gap-1.5">
+              <Button size="sm" variant="ghost" onClick={() => setMode("menu")}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => {
+                  onDelete?.(asset);
+                  onClose();
+                }}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
         {mode === "rename" && (
-          <div className="px-2 py-1.5 flex flex-col gap-1">
-            <input
-              autoFocus
-              value={renameDraft}
-              onChange={(e) => {
-                setRenameDraft(e.target.value);
-                setRenameError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitRename();
-                if (e.key === "Escape") {
-                  e.stopPropagation();
-                  setMode("menu");
-                }
-              }}
-              aria-label={`Rename ${filename(asset)}`}
-              className="w-full bg-neutral-800 border border-neutral-600 rounded-sm px-1.5 py-1 text-[11px] text-white focus:border-studio-accent/60 focus:outline-hidden"
-            />
-            {renameError && <span className="text-[10px] text-red-400">{renameError}</span>}
-            <div className="flex items-center justify-end gap-1">
-              <button
-                onClick={() => setMode("menu")}
-                className="px-2 py-0.5 text-[10px] rounded-sm text-neutral-400 hover:text-neutral-200 transition-colors"
-              >
+          <div className="flex flex-col gap-1.5 px-1 py-1">
+            <div className={fieldBase} aria-invalid={renameError ? true : undefined}>
+              <input
+                autoFocus
+                value={renameDraft}
+                onChange={(e) => {
+                  setRenameDraft(e.target.value);
+                  setRenameError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename();
+                  if (e.key === "Escape") {
+                    e.stopPropagation();
+                    setMode("menu");
+                  }
+                }}
+                aria-label={`Rename ${name}`}
+                aria-invalid={renameError ? true : undefined}
+                spellCheck={false}
+                className={fieldText}
+              />
+            </div>
+            {renameError && (
+              <span role="alert" className="px-0.5 text-xs text-error">
+                {renameError}
+              </span>
+            )}
+            <div className="flex items-center justify-end gap-1.5">
+              <Button size="sm" variant="ghost" onClick={() => setMode("menu")}>
                 Cancel
-              </button>
-              <button
-                onClick={commitRename}
-                className="px-2 py-0.5 text-[10px] rounded-sm bg-studio-accent/80 hover:bg-studio-accent text-white transition-colors"
-              >
+              </Button>
+              <Button size="sm" variant="primary" onClick={commitRename}>
                 Rename
-              </button>
+              </Button>
             </div>
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function DeleteConfirm({
-  name,
-  onConfirm,
-  onCancel,
-}: {
-  name: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="px-2 py-1.5 bg-red-950/30 border-l-2 border-red-500 flex items-center justify-between gap-2">
-      <span className="text-[10px] text-red-400 truncate">Delete {name}?</span>
-      <div className="flex items-center gap-1 shrink-0">
-        <button
-          onClick={onConfirm}
-          className="px-2 py-0.5 text-[10px] rounded-sm bg-red-600 text-white hover:bg-red-500 active:bg-red-700 transition-colors"
-        >
-          Delete
-        </button>
-        <button
-          onClick={onCancel}
-          className="px-2 py-0.5 text-[10px] rounded-sm text-neutral-400 hover:text-neutral-200 transition-colors"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

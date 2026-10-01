@@ -32,7 +32,8 @@ export function ModelPicker({
   fallback,
   name = "Model",
   disabledReason = "The model can't change while the agent is working.",
-}: ModelPickerProps) {
+  className,
+}: ModelPickerProps & { className?: string }) {
   const [open, setOpen] = useState(false);
   const resolved = resolveModel(explicit, catalog, fallback);
   const defaultInfo = resolveModel(null, catalog, fallback);
@@ -54,6 +55,7 @@ export function ModelPicker({
         "outline-hidden transition-colors duration-hover hover:border-border-strong",
         "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
         "disabled:cursor-not-allowed disabled:opacity-50",
+        className,
       )}
     >
       <span className="truncate">{label}</span>

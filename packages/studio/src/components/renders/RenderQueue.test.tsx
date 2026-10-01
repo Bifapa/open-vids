@@ -5,10 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { RenderQueue, type StartRenderHandler } from "./RenderQueue";
 import { getPersistedRenderSettings } from "./renderSettings";
-import { buttonBase, buttonSizes, buttonVariants, cn } from "../ui";
 import { isTypingTarget } from "../../utils/typingTarget";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
 import type { FfmpegStatus } from "./useFfmpegStatus";
+import type { RenderJob } from "./useRenderQueue";
 
 // Encoder availability arrives as a prop (useRenderQueue owns the probe), so
 // each case just states the environment it is about.
@@ -36,6 +36,7 @@ afterEach(() => {
 function mountRenderQueue(
   onStartRender: Mock<StartRenderHandler>,
   compositionDimensions = { width: 1920, height: 1080 },
+  jobs: RenderJob[] = [],
 ) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -43,7 +44,7 @@ function mountRenderQueue(
   act(() => {
     root?.render(
       <RenderQueue
-        jobs={[]}
+        jobs={jobs}
         projectId="demo"
         onDelete={vi.fn()}
         onClearCompleted={vi.fn()}
@@ -103,16 +104,6 @@ describe("RenderQueue controls", () => {
     // shared Select now; a native one would bring back an OS popup that no
     // token can reach.
     expect(mountRenderQueue(vi.fn()).querySelector("select")).toBeNull();
-  });
-
-  it("wears exactly the header Export's recipe, plus the full width", () => {
-    // AE3. Set equality, not "contains": the bug this replaces was an extra
-    // `text-[11px]` on this button, which `cn` resolved by dropping the size
-    // recipe's `text-step-12` and left the two Exports a type step apart.
-    const shared = cn(buttonBase, buttonVariants.primary, buttonSizes.md);
-    const classes = new Set(exportButtonIn(mountRenderQueue(vi.fn())).className.split(/\s+/));
-
-    expect(classes).toEqual(new Set([...shared.split(/\s+/), "w-full"]));
   });
 
   it("classifies the format Select the way it classified the native one (KTD13)", async () => {
@@ -196,6 +187,29 @@ describe("RenderQueue Export button", () => {
   });
 });
 
+describe("RenderQueue recent renders", () => {
+  it("lists finished renders newest first and reports the newest render's duration", () => {
+    const job = (id: string, createdAt: number, durationMs: number): RenderJob => ({
+      id,
+      status: "complete",
+      progress: 100,
+      filename: `${id}.mp4`,
+      createdAt,
+      durationMs,
+    });
+    // Server history arrives newest-first, session jobs are appended: neither order is a clock.
+    const host = mountRenderQueue(vi.fn(), undefined, [
+      job("middle", 2_000, 20_000),
+      job("oldest", 1_000, 10_000),
+      job("newest", 3_000, 30_000),
+    ]);
+
+    const names = [...host.querySelectorAll("li b")].map((b) => b.textContent);
+    expect(names).toEqual(["newest.mp4", "middle.mp4", "oldest.mp4"]);
+    expect(host.querySelector("footer")?.textContent).toContain("30s");
+  });
+});
+
 describe("RenderQueue FFmpeg gate", () => {
   it("refuses Export and shows the install command when the server reports no FFmpeg", () => {
     ffmpegStatus = {
@@ -224,7 +238,7 @@ describe("RenderQueue FFmpeg gate", () => {
     const host = mountRenderQueue(vi.fn());
 
     const recheckButton = [...host.querySelectorAll("button")].find(
-      (b) => b.textContent === "Recheck",
+      (b) => b.textContent === "Check Again",
     );
     if (!recheckButton) throw new Error("recheck button did not render");
     act(() => {

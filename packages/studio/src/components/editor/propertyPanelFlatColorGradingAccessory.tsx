@@ -1,3 +1,4 @@
+import { INSP_MINI_BUTTON } from "./inspectorStyles";
 import { useEffect, useRef } from "react";
 import { isHfColorGradingActive } from "@hyperframes/core/color-grading";
 import { Compare, RotateCcw } from "../../icons/SystemIcons";
@@ -70,7 +71,7 @@ export function FlatColorGradingAccessory({
           commitCompare(false);
         }}
         title="Hold to show original"
-        className="shrink-0 text-panel-text-3 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
+        className={INSP_MINI_BUTTON}
       >
         <Compare size={12} />
       </button>
@@ -82,7 +83,7 @@ export function FlatColorGradingAccessory({
         />
         <span
           data-flat-grade-status-message="true"
-          className="max-w-[84px] truncate text-[9px] text-panel-text-4"
+          className="max-w-[84px] truncate text-2xs text-fg-3"
         >
           {runtimeStatus.message}
         </span>
@@ -95,7 +96,7 @@ export function FlatColorGradingAccessory({
           e.stopPropagation();
           resetGrading();
         }}
-        className="shrink-0 text-panel-text-3 hover:text-panel-text-1"
+        className={INSP_MINI_BUTTON}
       >
         <RotateCcw size={12} />
       </button>

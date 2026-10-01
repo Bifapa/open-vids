@@ -141,7 +141,7 @@ export function AgentConfigDialog({
           label="Use"
           hint={
             scope === "default"
-              ? "Follows your global default. Change it in Defaults & Jev."
+              ? "Follows your global default. Change it in Settings → Agents."
               : "Applies to this chat only."
           }
         >

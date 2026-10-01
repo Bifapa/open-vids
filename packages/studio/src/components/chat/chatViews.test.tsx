@@ -61,44 +61,49 @@ describe("history view", () => {
     expect(mounted.client.getChat).toHaveBeenCalledWith("c1");
   });
 
-  it("creates a chat and lands in it", async () => {
-    mounted = mountChat({ chats: [] }, { chat: chatState({ chat: summary({ id: "new" }) }) });
-    expect(mounted.host.textContent).toContain("No chats yet");
-    await click(buttonWithText(mounted.host, "New chat"));
-    expect(mounted.client.createChat).toHaveBeenCalled();
-    expect(mounted.client.getChat).toHaveBeenCalledWith("new");
-    expect(mounted.store.getState().view).toBe("chat");
+  it("opens on the new-chat draft when there are no chats, and creates the chat on the first send", async () => {
+    mounted = mountChat({}, { chat: chatState({ chat: summary({ id: "c9" }) }) });
+    const { host, client, store } = mounted;
+    client.createChat.mockResolvedValueOnce(summary({ id: "c9" }));
+    await act(async () => {
+      await store.getState().init();
+    });
+    expect(store.getState().view).toBe("chat");
+    expect(client.createChat).not.toHaveBeenCalled();
+    await click(buttonWithText(host, "Add captions for the dialogue"));
+    const field = host.querySelector("textarea");
+    if (!field) throw new Error("no composer in the draft");
+    expect(field.value).toBe("Add captions for the dialogue");
+    await pressKey(field, "Enter");
+    expect(client.createChat).toHaveBeenCalledTimes(1);
+    expect(client.startTurn).toHaveBeenCalledWith(
+      "c9",
+      expect.objectContaining({ prompt: "Add captions for the dialogue" }),
+    );
+    expect(client.getChat).toHaveBeenCalledWith("c9");
+    expect(store.getState().chatId).toBe("c9");
   });
 
   it("goes back to history from a chat, and moves focus to the history region", async () => {
     mounted = mountChat({ chats }, { chat: chatState() });
     await click(buttonWithText(mounted.host, "Tighten the intro"));
-    await click(byLabel(mounted.host, "Back to chats"));
+    await click(byLabel(mounted.host, "Chat history"));
     expect(mounted.store.getState().view).toBe("history");
-    expect(document.activeElement?.getAttribute("aria-label")).toBe("Chat history");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Chats");
   });
 });
 
 describe("chat header", () => {
-  it("locks the model, effort and title while a run is live", () => {
+  it("locks the title while a run is live", () => {
     mounted = mountChat({ view: "chat", chatId: "c1", chat: runningChatState() });
-    expect(byLabel<HTMLButtonElement>(mounted.host, "Model: Sonnet")?.disabled).toBe(true);
     expect(
-      byLabel<HTMLButtonElement>(mounted.host, "Chat title: Tighten the intro. Rename")?.disabled,
-    ).toBe(true);
-    expect(byLabel(mounted.host, "Thinking effort")?.hasAttribute("disabled")).toBe(true);
-  });
-
-  it("shows the resolved default model when the chat has no explicit choice", () => {
-    mounted = mountChat({ view: "chat", chatId: "c1", chat: chatState() });
-    const trigger = byLabel<HTMLButtonElement>(mounted.host, "Model: Sonnet");
-    expect(trigger?.disabled).toBe(false);
-    expect(trigger?.textContent).toContain("default");
+      byLabel(mounted.host, "Rename chat: Tighten the intro")?.getAttribute("aria-disabled"),
+    ).toBe("true");
   });
 
   it("renames inline: Enter commits through the server", async () => {
     mounted = mountChat({ view: "chat", chatId: "c1", chat: chatState() });
-    await click(byLabel(mounted.host, "Chat title: Tighten the intro. Rename"));
+    await click(byLabel(mounted.host, "Rename chat: Tighten the intro"));
     const input = byLabel<HTMLInputElement>(mounted.host, "Chat title");
     if (!input) throw new Error("no title field");
     await type(input, "Sharper intro");

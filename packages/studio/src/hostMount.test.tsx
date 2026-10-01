@@ -248,6 +248,7 @@ describe("public export surface: a host mounting hand editing outside EditorShel
       ).rejects.toBeInstanceOf(StudioFileConflictError);
     });
 
-    expect(bannerHost.textContent).toContain("changed outside Studio");
+    // The banner names the file that changed on disk.
+    expect(bannerHost.textContent).toContain("index.html");
   });
 });

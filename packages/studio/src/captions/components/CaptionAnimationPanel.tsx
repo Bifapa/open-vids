@@ -1,6 +1,7 @@
 import { memo, useCallback } from "react";
 import { useCaptionStore } from "../store";
 import type { CaptionAnimation } from "../types";
+import { rangeFillStyle } from "../../components/editor/inspectorStyles";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -169,9 +170,10 @@ function AnimationPhase({
                 const v = Number(e.target.value);
                 if (Number.isFinite(v)) onChange({ intensity: v });
               }}
-              className="flex-1 accent-studio-accent disabled:opacity-40"
+              className="hf-insp-rng flex-1"
+              style={rangeFillStyle(intensity, 0, 1)}
             />
-            <span className="text-2xs text-neutral-400 font-mono w-8 text-right shrink-0">
+            <span className="w-10 shrink-0 text-right font-mono text-num text-fg-2">
               {intensity.toFixed(2)}
             </span>
           </div>
@@ -239,7 +241,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
   if (!group || !resolvedGroupId || !animation) {
     return (
       <div className="flex items-center justify-center h-full px-4 text-center">
-        <p className="text-xs text-neutral-500">Select a caption word to edit animations</p>
+        <p className="m-0 text-sm text-fg-3">Select a caption word to edit animations</p>
       </div>
     );
   }
@@ -286,13 +288,13 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
       </div>
 
       {/* Footer */}
-      <div className="shrink-0 px-3 py-2 border-t border-neutral-800">
+      <div className="shrink-0 border-t border-border-subtle px-3 py-2">
         <button
           type="button"
           onClick={handleApplyToAll}
           disabled={gated}
           title={gated ? "Disabled until animation editing is applied to playback" : undefined}
-          className="w-full py-1.5 rounded-sm border border-neutral-700 text-2xs text-neutral-300 hover:border-studio-accent/50 hover:text-studio-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-neutral-700 disabled:hover:text-neutral-300"
+          className="h-ctl-sm w-full rounded-sm border border-border bg-surface-1 text-sm text-fg transition-colors hover:border-border-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:border-border-subtle disabled:bg-transparent disabled:text-fg-disabled"
         >
           Apply to all groups
         </button>

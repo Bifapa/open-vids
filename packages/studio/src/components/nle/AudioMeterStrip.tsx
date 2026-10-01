@@ -215,29 +215,29 @@ function useMeterLoop(
 
 function Bar({ maskRef, peakRef }: { maskRef: Ref<HTMLDivElement>; peakRef: Ref<HTMLDivElement> }) {
   return (
-    <div className="relative h-full w-[18px] overflow-hidden rounded-[2px] bg-neutral-900">
+    <div className="relative h-full w-3 overflow-hidden rounded-[2px] bg-surface-1">
       <div
-        className="absolute inset-x-0 bottom-0 bg-green-500"
+        className="absolute inset-x-0 bottom-0 bg-success"
         style={{ height: `${AMBER_AT * 100}%` }}
       />
       <div
-        className="absolute inset-x-0 bg-amber-500"
+        className="absolute inset-x-0 bg-warning"
         style={{ bottom: `${AMBER_AT * 100}%`, height: `${(RED_AT - AMBER_AT) * 100}%` }}
       />
       <div
-        className="absolute inset-x-0 top-0 bg-red-500"
+        className="absolute inset-x-0 top-0 bg-error"
         style={{ height: `${(1 - RED_AT) * 100}%` }}
       />
       <div
         ref={maskRef}
         data-testid="meter-mask"
-        className="absolute inset-x-0 top-0 bg-neutral-900"
+        className="absolute inset-x-0 top-0 bg-surface-1"
         style={{ height: "100%" }}
       />
       <div
         ref={peakRef}
         data-testid="meter-peak"
-        className="absolute inset-x-0 bottom-0 h-px bg-white"
+        className="absolute inset-x-0 bottom-0 h-0.5 bg-fg"
       />
     </div>
   );
@@ -326,10 +326,10 @@ function Fader({
         onCommit(audioFaderPositionToGain(clampNumber(next, AUDIO_GAIN_FADER_MIN, maxPosition)));
         e.preventDefault();
       }}
-      className="relative h-full w-2 shrink-0 cursor-ns-resize touch-none rounded-full bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent"
+      className="relative h-full w-2 shrink-0 cursor-ns-resize touch-none before:absolute before:inset-y-0 before:left-1/2 before:w-[3px] before:-translate-x-1/2 before:rounded-[2px] before:bg-surface-3 before:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
     >
       <div
-        className="absolute inset-x-[-3px] h-1.5 -translate-y-1/2 rounded-full bg-neutral-200"
+        className="absolute inset-x-[-3px] h-1.5 -translate-y-1/2 rounded-full border border-border-strong bg-fg"
         style={{ bottom: `${fraction * 100}%` }}
       />
     </div>
@@ -363,7 +363,7 @@ function MeterStrip({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strip.id, register]);
   return (
-    <div className="flex w-[104px] shrink-0 flex-col items-center gap-1 px-1.5 pt-2 pb-1">
+    <div className="flex w-[104px] shrink-0 flex-col items-center gap-1 px-1.5 pt-2 pb-1.5">
       <div
         className="flex min-h-0 flex-1 items-stretch gap-1.5"
         aria-label={`${strip.label} level`}
@@ -376,7 +376,7 @@ function MeterStrip({
           onLive={(v) => onLive(strip.id, v)}
           onCommit={(v) => onCommit(strip.id, v)}
         />
-        <div className="relative w-5 font-mono text-[9px] leading-none text-neutral-500">
+        <div className="relative w-[26px] font-mono text-2xs leading-none text-fg-3">
           {METER_DB_MARKS.map((db) => (
             <span
               key={db}
@@ -392,7 +392,7 @@ function MeterStrip({
           <Bar maskRef={refs[2]} peakRef={refs[3]} />
         </div>
       </div>
-      <span className="max-w-full truncate text-[10px] text-neutral-400" title={strip.label}>
+      <span className="max-w-full truncate text-xs font-medium text-fg-2" title={strip.label}>
         {strip.label}
       </span>
     </div>
@@ -425,7 +425,7 @@ function MeterStripBody({ previewIframeRef }: AudioMeterStripProps) {
   return (
     <div
       data-testid="audio-meter-strip"
-      className="flex shrink-0 overflow-x-auto border-l border-neutral-800/50 bg-neutral-950"
+      className="flex shrink-0 overflow-x-auto border-l border-border-subtle bg-bg-1"
     >
       {strips.map((strip) => (
         <MeterStrip

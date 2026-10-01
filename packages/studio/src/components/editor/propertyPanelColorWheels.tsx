@@ -5,6 +5,7 @@ import {
   type NormalizedHfColorGradingWheels,
 } from "@hyperframes/core/color-grading";
 import { RotateCcw } from "../../icons/SystemIcons";
+import { INSP_MINI_BUTTON, rangeFillStyle } from "./inspectorStyles";
 import { clampNumber } from "../../utils/studioHelpers";
 import { GradingNumberField } from "./propertyPanelGradingNumberField";
 import { useInspectorGestureDraft } from "./useInspectorGestureTransaction";
@@ -24,6 +25,16 @@ const RESET_WHEEL: NormalizedTonalWheel = {
   amount: WHEEL_CONTROLS.amount.identity,
   level: WHEEL_CONTROLS.level.identity,
 };
+
+/**
+ * The wheel's spectrum. Hue 0 sits at 3 o'clock and rises counter-clockwise — the same
+ * direction `wheelFromPointer` reads — so the CSS conic (which runs clockwise) lists the
+ * hues in descending order. Real hue is a data encoding, so these stay literal oklch.
+ */
+export const WHEEL_BACKGROUND = [
+  "radial-gradient(closest-side, var(--color-surface-2) 0%, color-mix(in oklch, var(--color-surface-2) 55%, transparent) 55%, transparent 100%)",
+  "conic-gradient(from 90deg, oklch(63% 0.2 29), oklch(60% 0.22 328), oklch(52% 0.2 264), oklch(80% 0.12 195), oklch(72% 0.19 142), oklch(88% 0.16 105), oklch(63% 0.2 29))",
+].join(", ");
 
 function wrapHue(value: number): number {
   const { min, maxExclusive } = WHEEL_CONTROLS.hue;
@@ -142,18 +153,18 @@ function TonalWheel({
   };
 
   return (
-    <div data-color-wheel={label.toLowerCase()} className="min-w-[88px] flex-1 space-y-1.5">
-      <div className="flex items-center justify-between gap-1">
-        <span className="truncate text-[10px] font-medium text-panel-text-2">{label}</span>
+    <div data-color-wheel={label.toLowerCase()} className="grid min-w-[84px] flex-1 gap-1">
+      <div className="flex min-h-5 items-center justify-between gap-0.5">
+        <span className="truncate text-xs font-medium text-fg-2">{label}</span>
         <button
           type="button"
           aria-label={`Reset ${label}`}
           title={`Reset ${label}`}
           disabled={disabled}
           onClick={onReset}
-          className="text-panel-text-4 hover:text-panel-text-1 disabled:opacity-40"
+          className={INSP_MINI_BUTTON}
         >
-          <RotateCcw size={10} />
+          <RotateCcw size={12} />
         </button>
       </div>
       <div
@@ -204,15 +215,12 @@ function TonalWheel({
           }
         }}
         onBlur={onSettle}
-        className="relative mx-auto aspect-square w-full max-w-[112px] touch-none rounded-full border border-panel-border-input outline-hidden focus:ring-1 focus:ring-panel-accent disabled:opacity-40"
-        style={{
-          background:
-            "radial-gradient(circle, rgb(128 128 128) 0%, transparent 72%), conic-gradient(from 90deg, #f33, #f3f, #33f, #3ff, #3f3, #ff3, #f33)",
-        }}
+        className="hf-insp-wheel relative mx-auto aspect-square w-full max-w-[112px] touch-none rounded-full outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-disabled:opacity-40"
+        style={{ background: WHEEL_BACKGROUND }}
       >
         <span
           data-color-wheel-thumb="true"
-          className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-transparent shadow-[0_0_0_1px_rgba(0,0,0,0.8)]"
+          className="hf-insp-puck pointer-events-none absolute z-[1] size-3 -translate-x-1/2 -translate-y-1/2 rounded-full"
           style={{ left: `${thumbLeft}%`, top: `${thumbTop}%` }}
         />
       </div>
@@ -238,7 +246,8 @@ function TonalWheel({
         }}
         onKeyUp={onSettle}
         onBlur={onSettle}
-        className="h-3 w-full accent-panel-accent"
+        className="hf-insp-rng"
+        style={rangeFillStyle(wheel.level, WHEEL_CONTROLS.level.min, WHEEL_CONTROLS.level.max)}
       />
       <div className="grid grid-cols-3 gap-1">
         <GradingNumberField
@@ -248,7 +257,7 @@ function TonalWheel({
           max={HUE_MAX}
           disabled={disabled}
           formatValue={formatIntegerInput}
-          labelTextClassName="block text-[8px] uppercase text-panel-text-5"
+          labelTextClassName="block text-2xs text-fg-3"
           onBegin={onBegin}
           onPreview={(hue) => onPreview({ ...wheel, hue: wrapHue(hue) })}
           onSettle={onSettle}
@@ -261,7 +270,7 @@ function TonalWheel({
           max={WHEEL_CONTROLS.amount.max * PERCENT_SCALE}
           disabled={disabled}
           formatValue={formatIntegerInput}
-          labelTextClassName="block text-[8px] uppercase text-panel-text-5"
+          labelTextClassName="block text-2xs text-fg-3"
           onBegin={onBegin}
           onPreview={(amount) => onPreview({ ...wheel, amount: amount / PERCENT_SCALE })}
           onSettle={onSettle}
@@ -274,7 +283,7 @@ function TonalWheel({
           max={WHEEL_CONTROLS.level.max * PERCENT_SCALE}
           disabled={disabled}
           formatValue={formatIntegerInput}
-          labelTextClassName="block text-[8px] uppercase text-panel-text-5"
+          labelTextClassName="block text-2xs text-fg-3"
           onBegin={onBegin}
           onPreview={(level) => onPreview({ ...wheel, level: level / PERCENT_SCALE })}
           onSettle={onSettle}
@@ -314,7 +323,7 @@ export function ColorWheels({
   return (
     <div
       data-color-wheels="true"
-      className="grid grid-cols-[repeat(auto-fit,minmax(88px,1fr))] gap-2"
+      className="grid grid-cols-[repeat(auto-fit,minmax(84px,1fr))] gap-2"
     >
       {WHEELS.map(({ key, label }) => (
         <TonalWheel

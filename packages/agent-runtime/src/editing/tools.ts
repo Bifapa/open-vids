@@ -28,7 +28,12 @@ export function isEditingToolName(name: string): name is EditingToolName {
   return Object.values<string>(EDITING_TOOL_NAMES).includes(name);
 }
 
-type Executor = (name: string, args: unknown, signal: AbortSignal) => Promise<HostToolResult>;
+type Executor = (
+  name: string,
+  args: unknown,
+  signal: AbortSignal,
+  progress?: (percent: number) => void,
+) => Promise<HostToolResult>;
 
 /**
  * Which editing tools an agent gets. The Director edits the timeline itself only when there is no Editor to delegate
@@ -477,7 +482,7 @@ export function buildEditingTools(
     name,
     description: DESCRIPTIONS[name],
     parameters: PARAMETERS[name],
-    execute: (args, signal) => execute(name, args, signal),
+    execute: (args, signal, progress) => execute(name, args, signal, progress),
     activity: (args) => ACTIVITIES[name](args),
   }));
 }

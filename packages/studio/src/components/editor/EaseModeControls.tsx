@@ -52,14 +52,14 @@ export const EasePresetGrid = function EasePresetGrid({
             tabIndex={isActive ? 0 : -1}
             onClick={() => onSelect(preset.ease)}
             className={`flex flex-col items-center gap-0.5 rounded-md p-1 transition-colors ${
-              isActive ? "bg-panel-accent/10 ring-1 ring-panel-accent/30" : "hover:bg-neutral-800"
+              isActive ? "bg-accent-soft ring-1 ring-accent-line" : "hover:bg-surface-2"
             }`}
             title={preset.label}
           >
             <MiniCurveSvg ease={preset.ease} active={isActive} />
             <span
               className={`text-center text-[8px] leading-none ${
-                isActive ? "text-panel-accent" : "text-neutral-500"
+                isActive ? "text-fg" : "text-fg-3"
               }`}
             >
               {preset.label}
@@ -80,7 +80,7 @@ export function EaseModeToggle({
 }) {
   return (
     <div
-      className="mb-2 grid grid-cols-3 rounded-md bg-black/20 p-0.5"
+      className="mb-2 grid grid-cols-3 gap-px rounded-md border border-border bg-bg-1 p-0.5"
       role="radiogroup"
       aria-label="Ease editor mode"
     >
@@ -97,8 +97,8 @@ export function EaseModeToggle({
               if (active) return;
               onCommit(DEFAULT_EASE_BY_MODE[candidateMode]);
             }}
-            className={`rounded px-2 py-1 text-[10px] font-medium transition-colors ${
-              active ? "bg-neutral-700 text-neutral-100" : "text-neutral-500 hover:text-neutral-300"
+            className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+              active ? "bg-surface-3 text-fg" : "text-fg-3 hover:bg-surface-1 hover:text-fg-2"
             }`}
           >
             {MODE_LABELS[candidateMode]}

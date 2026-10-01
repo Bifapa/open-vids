@@ -94,7 +94,7 @@ describe("FlatStyleSection — Fill", () => {
     const gradientSegment = Array.from(host.querySelectorAll('[data-flat-segment="true"]')).find(
       (el) => el.textContent === "Gradient",
     );
-    expect(gradientSegment?.className).toContain("text-panel-text-0");
+    expect(gradientSegment?.getAttribute("aria-pressed")).toBe("true");
     act(() => root.unmount());
   });
 
@@ -411,18 +411,6 @@ describe("FlatStyleSection — blur sliders", () => {
     });
     // backdropBlurValue=6 -> max=Math.max(60, 6)=60; clientX=50 of width 100 -> ratio 0.5 -> 30px.
     expect(onSetStyle).toHaveBeenCalledWith("backdrop-filter", "blur(30px)");
-    act(() => root.unmount());
-  });
-
-  it("does not render a fill/knob highlight for a zero-value blur (default tier)", () => {
-    const { host, root } = renderSection({});
-    const tracks = host.querySelectorAll('[data-flat-slider-track="true"]');
-    // Only the first two tracks are the blur sliders (Layer blur, Backdrop); Opacity
-    // (the third track) always renders a fill by design, so it's excluded here.
-    const blurTracks = Array.from(tracks).slice(0, 2);
-    for (const track of blurTracks) {
-      expect(track.querySelectorAll('[data-flat-slider-fill="true"]')).toHaveLength(0);
-    }
     act(() => root.unmount());
   });
 });

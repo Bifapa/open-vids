@@ -21,19 +21,25 @@ export function SourcesPanel() {
     <Tabs
       value={tab}
       onValueChange={(value) => setTab(value === "policy" ? "policy" : "project")}
-      className="flex h-full min-h-0 flex-col bg-bg-1 text-text-1"
+      className="flex h-full min-h-0 flex-col bg-bg-0 text-fg"
       data-studio-sources=""
     >
-      <div className="flex shrink-0 items-center border-b border-border px-2 py-1.5">
+      <div className="flex h-head shrink-0 items-center border-b border-border-subtle px-2">
         <TabsList aria-label="Sources and licenses">
-          <Tab value="project">Project sources</Tab>
+          <Tab value="project">Project Sources</Tab>
           <Tab value="policy">Asset Search</Tab>
         </TabsList>
       </div>
-      <TabPanel value="project" className="min-h-0 flex-1 overflow-y-auto">
+      <TabPanel
+        value="project"
+        className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:var(--color-surface-3)_transparent]"
+      >
         <ProjectSources onOpenPolicy={() => setTab("policy")} />
       </TabPanel>
-      <TabPanel value="policy" className="min-h-0 flex-1 overflow-y-auto">
+      <TabPanel
+        value="policy"
+        className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:var(--color-surface-3)_transparent]"
+      >
         <AssetSearchPolicyView />
       </TabPanel>
     </Tabs>

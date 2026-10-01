@@ -39,23 +39,6 @@ export function ext(path: string): string {
 }
 
 /**
- * Truncate a string to at most `maxLen` chars, preserving the start and end.
- * Middle characters are replaced with an ellipsis. If the string is short
- * enough it is returned unchanged.
- *
- * @example truncateMiddle("2a37eabf-long-uuid-887d8.mp4", 20) → "2a37eabf-…887d8.mp4"
- *
- * Pure — unit-tested.
- */
-export function truncateMiddle(str: string, maxLen: number): string {
-  if (str.length <= maxLen) return str;
-  const keep = maxLen - 1; // 1 char for ellipsis
-  const tail = Math.floor(keep / 3);
-  const head = keep - tail;
-  return str.slice(0, head) + "…" + str.slice(str.length - tail);
-}
-
-/**
  * Format a duration in seconds as MM:SS. Returns an empty string for
  * non-positive, NaN, or Infinity values. Pure — unit-tested.
  */
@@ -67,11 +50,40 @@ export function formatDuration(seconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/** Section headings, in the order the panel lists them. */
 export const CATEGORY_LABELS: Record<MediaCategory, string> = {
-  audio: "Audio",
-  images: "Images",
   video: "Video",
+  images: "Images",
+  audio: "Audio",
   fonts: "Fonts",
 };
 
-export const FILTER_ORDER: MediaCategory[] = ["audio", "images", "video", "fonts"];
+/** Type filter segment labels (the prototype's All · Video · Image · Audio · Fonts). */
+export const FILTER_LABELS: Record<MediaCategory, string> = {
+  video: "Video",
+  images: "Image",
+  audio: "Audio",
+  fonts: "Fonts",
+};
+
+export const FILTER_ORDER: MediaCategory[] = ["video", "images", "audio", "fonts"];
+
+/**
+ * The prototype's `.sel-item`: a tile or row that lifts on hover and rings on
+ * keyboard focus. Shared by every asset tile, row and font row.
+ */
+export const ASSET_ITEM_CLASS = [
+  "group rounded-md border border-transparent outline-hidden select-none",
+  "hover:border-border-subtle hover:bg-surface-1",
+  "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+].join(" ");
+
+/** The prototype's `.thumb`: a 16:9 well with an inner hairline over the media. */
+export const ASSET_THUMB_CLASS = [
+  "relative aspect-video overflow-hidden rounded-xs bg-surface-1",
+  "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:content-['']",
+  "after:shadow-[inset_0_0_0_1px_var(--color-edge-hi)]",
+].join(" ");
+
+/** Name text of a row or tile: secondary at rest, primary on hover. */
+export const ASSET_NAME_CLASS = "min-w-0 truncate text-fg-2 group-hover:text-fg";

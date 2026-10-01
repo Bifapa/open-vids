@@ -22,18 +22,21 @@ const chipButton = cn(
   "disabled:cursor-not-allowed disabled:opacity-40",
 );
 
-function AllowedModels({
+/** The extra models the Director may route one task to. `bare` drops the field label and hint (Settings rows). */
+export function AllowedModels({
   name,
   value,
   catalog,
   disabled,
   onChange,
+  bare = false,
 }: {
   name: string;
   value: readonly ModelSelection[];
   catalog: AgentModelCatalog | null;
   disabled: boolean;
   onChange: (next: ModelSelection[]) => void;
+  bare?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const toggle = (model: ModelSelection) =>
@@ -43,6 +46,69 @@ function AllowedModels({
         : [...value, model],
     );
 
+  const list = (
+    <ul
+      aria-label={`Models the Director may also use for ${name}`}
+      className={cn("flex flex-wrap gap-1", bare && "justify-end")}
+    >
+      {value.map((model) => {
+        const known = findModel(catalog, model);
+        const label = known?.name ?? `${model.provider}/${model.modelId}`;
+        return (
+          <li
+            key={`${model.provider}/${model.modelId}`}
+            className="inline-flex h-ctl-sm items-center gap-0.5 rounded-sm border border-border-input bg-input pl-2 pr-0.5 text-step-11 text-text-1"
+            title={known ? undefined : "Not signed in to this model's provider."}
+          >
+            <span className={cn("max-w-40 truncate", !known && "text-text-3")}>{label}</span>
+            <button
+              type="button"
+              aria-label={`Remove ${label}`}
+              disabled={disabled}
+              onClick={() => toggle(model)}
+              className="rounded-sm p-0.5 text-text-3 outline-hidden enabled:hover:text-text-0 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-40"
+            >
+              <X size={10} aria-hidden />
+            </button>
+          </li>
+        );
+      })}
+      <li>
+        <Popover
+          open={open}
+          onOpenChange={setOpen}
+          side="bottom"
+          align="start"
+          aria-label={`Models ${name} may also use`}
+          trigger={
+            <button
+              type="button"
+              aria-label={`Add a model ${name} may also use`}
+              disabled={disabled || !catalog || catalog.models.length === 0}
+              className={chipButton}
+            >
+              <Plus size={11} aria-hidden />
+              Add
+            </button>
+          }
+        >
+          {catalog && (
+            <ModelList
+              models={catalog.models}
+              explicit={null}
+              defaultName={null}
+              includeDefault={false}
+              selected={value}
+              onSelect={(model) => {
+                if (model) toggle(model);
+              }}
+            />
+          )}
+        </Popover>
+      </li>
+    </ul>
+  );
+  if (bare) return list;
   return (
     <DialogField
       label="Director may also use"
@@ -52,66 +118,7 @@ function AllowedModels({
           : `The Director may pick one of these for a single ${name} task.`
       }
     >
-      <ul
-        aria-label={`Models the Director may also use for ${name}`}
-        className="flex flex-wrap gap-1"
-      >
-        {value.map((model) => {
-          const known = findModel(catalog, model);
-          const label = known?.name ?? `${model.provider}/${model.modelId}`;
-          return (
-            <li
-              key={`${model.provider}/${model.modelId}`}
-              className="inline-flex h-ctl-sm items-center gap-0.5 rounded-sm border border-border-input bg-input pl-2 pr-0.5 text-step-11 text-text-1"
-              title={known ? undefined : "Not signed in to this model's provider."}
-            >
-              <span className={cn("max-w-40 truncate", !known && "text-text-3")}>{label}</span>
-              <button
-                type="button"
-                aria-label={`Remove ${label}`}
-                disabled={disabled}
-                onClick={() => toggle(model)}
-                className="rounded-sm p-0.5 text-text-3 outline-hidden enabled:hover:text-text-0 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-40"
-              >
-                <X size={10} aria-hidden />
-              </button>
-            </li>
-          );
-        })}
-        <li>
-          <Popover
-            open={open}
-            onOpenChange={setOpen}
-            side="bottom"
-            align="start"
-            aria-label={`Models ${name} may also use`}
-            trigger={
-              <button
-                type="button"
-                aria-label={`Add a model ${name} may also use`}
-                disabled={disabled || !catalog || catalog.models.length === 0}
-                className={chipButton}
-              >
-                <Plus size={11} aria-hidden />
-                Add
-              </button>
-            }
-          >
-            {catalog && (
-              <ModelList
-                models={catalog.models}
-                explicit={null}
-                defaultName={null}
-                includeDefault={false}
-                selected={value}
-                onSelect={(model) => {
-                  if (model) toggle(model);
-                }}
-              />
-            )}
-          </Popover>
-        </li>
-      </ul>
+      {list}
     </DialogField>
   );
 }

@@ -2,12 +2,7 @@
 
 import { act } from "react";
 import { afterEach, expect, it } from "vitest";
-import {
-  EXECUTION_BUDGETS,
-  type AgentSettings,
-  type ExecutionQuality,
-  type UpdateAgentSettingsRequest,
-} from "@hyperframes/agent-protocol";
+import { EXECUTION_BUDGETS, type ExecutionQuality } from "@hyperframes/agent-protocol";
 import { SETTINGS, chatState, runningChatState, summary } from "../../agent/agentTestHarness";
 import {
   buttonWithText,
@@ -60,7 +55,6 @@ it("shows that a chat follows the global default, switches to a preset and back 
   const { client } = mounted;
 
   expect(trigger()?.getAttribute("aria-label")).toBe("Execution quality: Balanced (default)");
-  expect(trigger()?.textContent).toContain("default");
 
   await openMenu();
   expect(row("default")?.getAttribute("aria-checked")).toBe("true");
@@ -138,42 +132,5 @@ it("locks the choice while the chat is working", async () => {
   await openMenu();
   expect(row("fast")?.disabled).toBe(true);
   expect(row("custom")?.disabled).toBe(true);
-  expect(document.body.textContent).toContain("can't change while this chat is working");
-});
-
-it("edits the global default in Agent defaults, custom budget included", async () => {
-  mounted = mountChat({ view: "chat", chatId: "c1", chat: chatState(), settings: SETTINGS });
-  const { client, store } = mounted;
-  let settings: AgentSettings = SETTINGS;
-  client.updateSettings.mockImplementation(async (request: UpdateAgentSettingsRequest) => {
-    if (request.executionQuality)
-      settings = { ...settings, executionQuality: request.executionQuality };
-    return settings;
-  });
-
-  await click(byLabel(document.body, "Agents: 0 enabled"));
-  await settle();
-  await click(buttonWithText(document.body, "Defaults & Jev"));
-  await settle();
-
-  expect(radio("Default execution quality", "balanced").checked).toBe(true);
-  await click(radio("Default execution quality", "custom"));
-  expect(client.updateSettings).toHaveBeenLastCalledWith({
-    executionQuality: { preset: "custom", custom: EXECUTION_BUDGETS.balanced },
-  });
-
-  // Custom shows the whole budget inline; every change saves.
-  await click(radio("Render QA passes", "5"));
-  expect(client.updateSettings).toHaveBeenLastCalledWith({
-    executionQuality: {
-      preset: "custom",
-      custom: { ...EXECUTION_BUDGETS.balanced, qaPasses: 5 },
-    },
-  });
-  expect(store.getState().settings?.executionQuality.custom.qaPasses).toBe(5);
-  expect(
-    document.body.querySelector('[data-testid="default-quality-detail"]')?.textContent,
-  ).toContain("5 render QA passes");
-  // The chat follows the default, so its control shows the new default too.
-  expect(trigger()?.getAttribute("aria-label")).toBe("Execution quality: Custom (default)");
+  expect(document.body.textContent).toContain("Can't change while the agent is working");
 });

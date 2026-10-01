@@ -1,0 +1,616 @@
+/* Settings window — the prototype openvids-settings.css (layout, rows, theme tiles, agents table). */
+
+.st-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--sp-6);
+  box-sizing: border-box;
+}
+.st-win {
+  --row-h: var(--h-row-lg);
+  --row-py: 6px;
+  width: min(900px, 100%);
+  height: min(640px, calc(100vh - 48px));
+  min-height: 0;
+  grid-template-rows: 44px minmax(0, 1fr);
+  box-shadow: var(--shadow-pop);
+}
+.st-win[data-density="compact"] {
+  --row-h: var(--h-row);
+  --row-py: 3px;
+  --h-nav: 24px;
+}
+.st-titlebar {
+  position: relative;
+}
+.st-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--fg);
+  pointer-events: none;
+}
+
+/* Embedded (?embed=1): floats over Projects / a project instead of the desktop backdrop */
+html.st-embed {
+  background: transparent;
+}
+.st-embed .st-body {
+  background: var(--scrim);
+  animation: st-fade 0.14s ease-out;
+}
+.st-embed .st-win {
+  animation: st-pop 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes st-fade {
+  from {
+    background: transparent;
+  }
+}
+@keyframes st-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+.st-embed button.tl {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  color: color-mix(in oklch, var(--tl-close) 30%, black);
+}
+.st-embed button.tl .ic {
+  --s: var(--ic-xs);
+  stroke-width: 2.4;
+  opacity: 0;
+}
+.st-embed .tl-group:hover button.tl .ic,
+.st-embed button.tl:focus-visible .ic {
+  opacity: 1;
+}
+.st-embed button.tl:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.st-layout {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* ---- Category navigation (shared .nav-label / .nav-item / .pill.warn) ---- */
+.st-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--sp-2);
+  background: var(--bg-1);
+  border-right: 1px solid var(--border-subtle);
+  overflow-y: auto;
+}
+
+/* ---- Content ---- */
+.st-main {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--sp-5) var(--sp-6) var(--sp-8);
+  scrollbar-color: var(--surface-3) transparent;
+  outline: 0;
+}
+.st-page {
+  max-width: 640px;
+  margin: 0 auto;
+}
+.st-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-1);
+}
+.st-head h1 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.st-lede {
+  margin: var(--sp-1) 0 0;
+  color: var(--fg-3);
+  font-size: var(--text-sm);
+  line-height: 17px;
+  text-wrap: pretty;
+}
+.st-head-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.st-group {
+  margin-top: var(--sp-5);
+}
+.st-group > .sect-label {
+  padding: 0 2px 6px;
+}
+.st-box {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.st-foot {
+  margin: 6px 2px 0;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 15px;
+}
+.st-prov-body .st-foot {
+  margin: 0;
+}
+
+.st-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px var(--sp-4);
+  min-height: var(--row-h);
+  padding: var(--row-py) var(--sp-3);
+  box-sizing: border-box;
+}
+.st-row + .st-row,
+.st-row + .st-sub,
+.st-sub + .st-row {
+  border-top: 1px solid var(--border-subtle);
+}
+.st-label {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.st-label > b {
+  font-size: var(--text-base);
+  font-weight: 400;
+  color: var(--fg);
+  line-height: 16px;
+}
+.st-label > span {
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+  line-height: 14px;
+  text-wrap: pretty;
+}
+.st-label .badge {
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+.st-ctl {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+.st-ctl .sel {
+  width: auto;
+  min-width: 150px;
+}
+.st-row.is-disabled .st-label > b,
+.st-row.is-disabled .st-label > span {
+  color: var(--fg-disabled);
+}
+
+/* Window forms use 28px controls; the shared .sel is the 24px panel size */
+.st-win .sel {
+  height: var(--h-md);
+  padding-left: 10px;
+  border-radius: var(--r-md);
+}
+.st-ctl .loc {
+  min-width: 0;
+}
+.st-ctl .loc .path {
+  flex: 0 1 auto;
+  max-width: 240px;
+}
+.st-ctl .loc .path .ic {
+  --s: var(--ic-sm);
+  color: var(--fg-3);
+}
+
+/* Stepper: a .seg with a value between two buttons */
+.st-step output {
+  min-width: 24px;
+  text-align: center;
+  font: 500 var(--text-sm)/22px var(--font-mono);
+  color: var(--fg);
+}
+
+/* Status text, busy note and inline icon sizes */
+.st-win .status {
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.st-preset-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+/* ---- Appearance: theme tiles (swatches render fixed palettes via .theme-dark / .theme-light) ---- */
+.st-themes {
+  display: flex;
+  gap: 10px;
+}
+.st-theme {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  font-size: var(--text-xs);
+}
+.st-theme i,
+.st-theme i > span {
+  display: block;
+  width: 68px;
+  height: 44px;
+  border-radius: var(--r-md);
+  background:
+    linear-gradient(var(--surface-3), var(--surface-3)) 7px 7px / 54px 5px no-repeat,
+    linear-gradient(var(--surface-1), var(--surface-1)) 7px 16px / 17px 21px no-repeat,
+    linear-gradient(var(--surface-2), var(--surface-2)) 28px 16px / 33px 21px no-repeat,
+    var(--bg-0);
+}
+.st-theme i {
+  position: relative;
+}
+.st-theme i > span {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(0 0, 56px 0, 12px 100%, 0 100%);
+}
+/* Ring lives on a pseudo-element so it uses the app theme, not the swatch palette */
+.st-theme::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 68px;
+  height: 44px;
+  transform: translateX(-50%);
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 1px var(--border);
+  pointer-events: none;
+}
+.st-theme:hover::after {
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+.st-theme:hover,
+.st-theme[aria-pressed="true"] {
+  color: var(--fg);
+}
+.st-theme[aria-pressed="true"]::after {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.st-theme:focus-visible {
+  outline: 0;
+}
+.st-theme:focus-visible::after {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* ---- Agents table ---- */
+.st-agents .st-row {
+  grid-template-columns: minmax(0, 1fr) 152px 144px var(--h-md);
+  gap: var(--sp-3);
+}
+.st-th {
+  min-height: 0;
+  padding-block: 0;
+  border-radius: var(--r-md) var(--r-md) 0 0;
+}
+.st-th > :last-child {
+  justify-self: end;
+}
+.st-th + .st-row {
+  border-top: 0;
+}
+.st-agent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.st-mono {
+  flex: none;
+  width: var(--h-xs);
+  height: var(--h-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  color: var(--fg-2);
+  font: 600 var(--text-2xs)/1 var(--font-mono);
+  text-transform: uppercase;
+  user-select: none;
+}
+.st-agent .st-label > b {
+  font-weight: 500;
+}
+.st-agent .st-label > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-agents .sel {
+  min-width: 0;
+  width: 100%;
+}
+.st-agents .seg {
+  width: 100%;
+}
+.st-agents .seg.text button {
+  flex: 1 1 0;
+  padding: 0 2px;
+}
+.st-agents .st-row > .sw {
+  justify-self: end;
+}
+.st-row.is-off .st-mono {
+  background: transparent;
+  color: var(--fg-3);
+}
+.st-row.is-off .st-agent .st-label > b {
+  color: var(--fg-2);
+}
+.st-model-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.st-model-cell .status {
+  white-space: normal;
+  line-height: 14px;
+}
+.sel.is-warn {
+  border-color: color-mix(in oklch, var(--warning) 55%, var(--border));
+}
+
+/* ---- Providers ---- */
+.st-prov {
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px var(--sp-3);
+  min-height: var(--row-h);
+  padding: var(--row-py) var(--sp-3);
+}
+.st-prov + .st-prov,
+.st-prov-body + .st-prov {
+  border-top: 1px solid var(--border-subtle);
+}
+.st-prov .st-label > b {
+  font-weight: 500;
+}
+.st-prov-toggle .ic {
+  transition: transform 0.12s;
+}
+.st-prov-toggle[aria-expanded="true"] .ic {
+  transform: rotate(90deg);
+}
+.st-prov-body {
+  padding: 2px var(--sp-3) var(--sp-3) 30px;
+  display: grid;
+  gap: var(--sp-2);
+}
+.st-models {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 var(--sp-4);
+  margin: 0;
+  padding: 4px 0;
+  font-size: var(--text-sm);
+  border-top: 1px dashed var(--border-subtle);
+}
+.st-models dt {
+  padding: 4px 0;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--text-num);
+}
+.st-models dd {
+  margin: 0;
+  padding: 4px 0;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  text-align: right;
+}
+.st-err-log {
+  margin: 0;
+  padding: 6px var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  border: 1px solid var(--border-subtle);
+  color: var(--fg-2);
+  font: var(--text-xs)/15px var(--font-mono);
+  white-space: pre-wrap;
+}
+.st-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.st-inline .input.mono {
+  font-family: var(--font-mono);
+}
+.input.is-invalid {
+  border-color: color-mix(in oklch, var(--error) 60%, var(--border));
+}
+.st-field-err {
+  margin: 0;
+  color: var(--error);
+  font-size: var(--text-xs);
+}
+.st-sub .st-field-err {
+  margin-top: var(--sp-1);
+}
+
+/* ---- Credential ---- */
+.st-choice {
+  display: grid;
+  gap: 2px;
+}
+.st-radio {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 2px var(--sp-2);
+  align-items: start;
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  background: none;
+  text-align: left;
+  color: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+.st-radio + .st-radio {
+  border-top: 1px solid var(--border-subtle);
+}
+.st-radio .st-label {
+  grid-column: 2;
+}
+.st-radio::before {
+  content: "";
+  grid-row: 1 / span 2;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+}
+.st-radio:hover::before {
+  border-color: var(--fg-3);
+}
+.st-radio[aria-checked="true"]::before {
+  border: 4px solid var(--fg);
+  background: var(--bg-1);
+}
+.st-radio:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--r-md);
+}
+.st-radio .ic {
+  --s: var(--ic-sm);
+  color: var(--fg-3);
+  vertical-align: -2px;
+  margin-right: var(--sp-1);
+}
+
+/* ---- Sources ---- */
+.st-src {
+  grid-template-columns: var(--h-md) minmax(0, 1fr) auto var(--h-md);
+  gap: 10px;
+}
+.st-src .st-label > b {
+  font-weight: 500;
+}
+.st-src .st-label > span .mono {
+  color: var(--fg-3);
+  font-size: var(--text-num);
+}
+.st-src .lic {
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+.st-src.is-off .st-label > b,
+.st-src.is-off .lic {
+  color: var(--fg-3);
+}
+.st-add {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.st-add .input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---- Execution ---- */
+.st-sub {
+  padding: 6px var(--sp-3) var(--sp-2);
+}
+.st-sub.is-flush {
+  padding: 0;
+}
+.st-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--sp-4);
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+}
+.st-summary b {
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.st-summary .link {
+  margin-left: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-embed .st-body,
+  .st-embed .st-win {
+    animation: none;
+  }
+}
+
+/* Desktop: the Settings document is always framed over the Projects page (?embed=1). */
+.st-win .st-titlebar {
+  cursor: default;
+}
+.st-status {
+  margin: 6px 2px 0;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 15px;
+}
+.st-status.is-error {
+  color: var(--error);
+}
+.st-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--sp-3);
+  color: var(--fg-3);
+  font-size: var(--text-sm);
+}
+/* "Default" (runtime default thinking) is wider than the prototype's "Off": give the effort column room. */
+.st-agents .st-row {
+  grid-template-columns: minmax(0, 1fr) 152px 176px var(--h-md);
+}

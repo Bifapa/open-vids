@@ -1,8 +1,10 @@
 import type React from "react";
 
-// Editor primary color (themeable via --hf-accent). Applied through inline
-// style because CSS var() isn't valid in SVG presentation attributes.
-export const ACCENT = "var(--hf-accent, #3CE6AC)";
+// Motion paths are neutral over media (prototype `.v-path-*`): accent is kept
+// for selection. Applied through inline style because CSS var() isn't valid in
+// SVG presentation attributes.
+export const PATH_INK = "var(--color-on-media)";
+const NODE_FILL = "var(--color-on-media-bg)";
 
 /** One path node: a diamond (matching the timeline keyframe), a wider transparent
  *  grab target (when editable), and a hover-revealed × delete badge (when removable). */
@@ -39,10 +41,9 @@ export function MotionPathNode(props: {
         height={side}
         rx={side * 0.17}
         transform={`rotate(45 ${cx} ${cy})`}
-        stroke="#0b0f1a"
         strokeWidth={1.5}
         vectorEffect="non-scaling-stroke"
-        style={{ fill: ACCENT }}
+        style={{ fill: selected ? PATH_INK : NODE_FILL, stroke: PATH_INK }}
       />
       {interactive && (
         <circle
@@ -69,18 +70,17 @@ export function MotionPathNode(props: {
             cx={bx}
             cy={by}
             r={r * 1.3}
-            stroke="#0b0f1a"
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
-            style={{ fill: ACCENT }}
+            style={{ fill: PATH_INK, stroke: NODE_FILL }}
           />
           <line
             x1={bx - k}
             y1={by - k}
             x2={bx + k}
             y2={by + k}
-            stroke="#0b0f1a"
             strokeWidth={1.5}
+            style={{ stroke: NODE_FILL }}
             vectorEffect="non-scaling-stroke"
           />
           <line
@@ -88,8 +88,8 @@ export function MotionPathNode(props: {
             y1={by - k}
             x2={bx - k}
             y2={by + k}
-            stroke="#0b0f1a"
             strokeWidth={1.5}
+            style={{ stroke: NODE_FILL }}
             vectorEffect="non-scaling-stroke"
           />
         </g>

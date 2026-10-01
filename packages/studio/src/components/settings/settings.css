@@ -1,0 +1,91 @@
+/*
+ * Settings window (prototype openvids-settings.css). Layout and rows are Tailwind utilities in the components;
+ * this file keeps what utilities can't say: the Appearance tiles, which paint a fixed dark or light palette
+ * whatever the app theme is (the --swatch-* tokens), with the selection ring in the app theme.
+ */
+
+.hf-theme-tile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-fg-2);
+  font-size: var(--text-xs);
+}
+
+.hf-theme-tile:hover,
+.hf-theme-tile[aria-pressed="true"] {
+  color: var(--color-fg);
+}
+
+.hf-theme-swatch,
+.hf-theme-swatch > span {
+  display: block;
+  width: 68px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(var(--s3), var(--s3)) 7px 7px / 54px 5px no-repeat,
+    linear-gradient(var(--s1), var(--s1)) 7px 16px / 17px 21px no-repeat,
+    linear-gradient(var(--s2), var(--s2)) 28px 16px / 33px 21px no-repeat,
+    var(--s0);
+}
+
+.hf-theme-swatch {
+  position: relative;
+}
+
+/* Match system: the light half over the dark one, split on a diagonal. */
+.hf-theme-swatch > span {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(0 0, 56px 0, 12px 100%, 0 100%);
+}
+
+.hf-swatch-dark {
+  --s0: var(--swatch-dark-bg-0);
+  --s1: var(--swatch-dark-surface-1);
+  --s2: var(--swatch-dark-surface-2);
+  --s3: var(--swatch-dark-surface-3);
+}
+
+.hf-swatch-light {
+  --s0: var(--swatch-light-bg-0);
+  --s1: var(--swatch-light-surface-1);
+  --s2: var(--swatch-light-surface-2);
+  --s3: var(--swatch-light-surface-3);
+}
+
+/* The ring is a pseudo-element so it wears the app theme, not the swatch palette. */
+.hf-theme-tile::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 68px;
+  height: 44px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 1px var(--color-border);
+  pointer-events: none;
+}
+
+.hf-theme-tile:hover::after {
+  box-shadow: 0 0 0 1px var(--color-border-strong);
+}
+
+.hf-theme-tile[aria-pressed="true"]::after {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+.hf-theme-tile:focus-visible {
+  outline: 0;
+}
+
+.hf-theme-tile:focus-visible::after {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}

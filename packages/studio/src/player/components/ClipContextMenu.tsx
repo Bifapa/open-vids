@@ -4,6 +4,12 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { canSplitElement } from "../../utils/timelineElementSplit";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { useMenuKeyboardNav } from "./menuKeyboardNav";
+import {
+  timelineMenuItem,
+  timelineMenuSeparator,
+  timelineMenuShortcut,
+  timelineMenuSurface,
+} from "./timelineMenuStyles";
 
 interface ClipContextMenuProps {
   x: number;
@@ -64,20 +70,12 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
   const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
 
-  // Same enabled/disabled menu-item pattern as the sibling TrackGapContextMenu.
-  const itemClass = (enabled: boolean) =>
-    `w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none${
-      enabled
-        ? " focus-visible:bg-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-        : " text-neutral-600 cursor-not-allowed"
-    }`;
-
   return createPortal(
     <div
       ref={menuRef}
       role="menu"
       aria-label="Clip actions"
-      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className={timelineMenuSurface}
       style={{ left: adjustedX, top: adjustedY }}
     >
       {splitLabel && (
@@ -85,11 +83,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
           <button
             type="button"
             role="menuitem"
-            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-hidden focus-visible:bg-neutral-800 ${
-              canSplit
-                ? "text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-                : "text-neutral-600 cursor-not-allowed"
-            }`}
+            className={timelineMenuItem(canSplit)}
             disabled={!canSplit}
             onClick={() => {
               if (canSplit) {
@@ -99,9 +93,9 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{splitLabel}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">S</span>
+            <span className={timelineMenuShortcut}>S</span>
           </button>
-          <div className="my-1 border-t border-neutral-700/60" />
+          <div className={timelineMenuSeparator} />
         </>
       )}
 
@@ -111,21 +105,21 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             <button
               type="button"
               role="menuitem"
-              className={itemClass(true)}
+              className={timelineMenuItem(true)}
               onClick={() => {
                 onCopy();
                 onClose();
               }}
             >
               <span>{selectionSize > 1 ? `Copy ${selectionSize} clips` : "Copy"}</span>
-              <span className="text-neutral-500 text-[10px] ml-3">⌘C</span>
+              <span className={timelineMenuShortcut}>⌘C</span>
             </button>
           )}
           {onPaste && (
             <button
               type="button"
               role="menuitem"
-              className={itemClass(!!canPaste)}
+              className={timelineMenuItem(!!canPaste)}
               disabled={!canPaste}
               onClick={() => {
                 if (!canPaste) return;
@@ -134,38 +128,38 @@ export const ClipContextMenu = memo(function ClipContextMenu({
               }}
             >
               <span>Paste</span>
-              <span className="text-neutral-500 text-[10px] ml-3">⌘V</span>
+              <span className={timelineMenuShortcut}>⌘V</span>
             </button>
           )}
           {onDuplicate && (
             <button
               type="button"
               role="menuitem"
-              className={itemClass(true)}
+              className={timelineMenuItem(true)}
               onClick={() => {
                 void onDuplicate();
                 onClose();
               }}
             >
               <span>{selectionSize > 1 ? `Duplicate ${selectionSize} clips` : "Duplicate"}</span>
-              <span className="text-neutral-500 text-[10px] ml-3">⌘D</span>
+              <span className={timelineMenuShortcut}>⌘D</span>
             </button>
           )}
-          <div className="my-1 border-t border-neutral-700/60" />
+          <div className={timelineMenuSeparator} />
         </>
       )}
 
       <button
         type="button"
         role="menuitem"
-        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left"
+        className={timelineMenuItem(true, "danger")}
         onClick={() => {
           onDelete(element);
           onClose();
         }}
       >
         <span>Delete</span>
-        <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
+        <span className={timelineMenuShortcut}>⌫</span>
       </button>
     </div>,
     document.body,

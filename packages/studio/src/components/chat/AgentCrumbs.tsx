@@ -1,56 +1,42 @@
-import { useMemo } from "react";
-import { AGENT_DISPLAY_NAMES, type AgentRun } from "@hyperframes/agent-protocol";
-import { agentCrumbs, type ThreadId } from "../../agent/agentSelectors";
+import { Fragment } from "react";
+import type { AgentRun, WorkerAgentId } from "@hyperframes/agent-protocol";
+import type { ThreadId } from "../../agent/agentSelectors";
 import { cn } from "../ui/cn";
+import { chatAgentName } from "./AgentMonogram";
+import { chatFocus } from "./chatStyles";
 
-function Crumb({
-  label,
-  active,
-  live,
-  first,
-  onSelect,
-}: {
-  label: string;
-  active: boolean;
-  live: boolean;
-  first: boolean;
-  onSelect: () => void;
-}) {
+/**
+ * The agent that handed `agent` its work when every one of its runs came from the same specialist (Jev called by
+ * the Editor): that agent sits between Main and it in the path. Null when Main started it.
+ */
+function callerOf(runs: readonly AgentRun[], agent: WorkerAgentId): WorkerAgentId | null {
+  let caller: WorkerAgentId | null = null;
+  for (const run of runs) {
+    if (run.agent !== agent) continue;
+    const parent = run.parentRunId ? runs.find((item) => item.id === run.parentRunId) : undefined;
+    if (!parent) return null;
+    if (caller && caller !== parent.agent) return null;
+    caller = parent.agent;
+  }
+  return caller;
+}
+
+const crumbClass = cn(
+  "inline-flex h-ctl-xs min-w-0 shrink items-center truncate rounded-sm px-1.5 text-xs whitespace-nowrap",
+  chatFocus,
+);
+
+function Sep({ className }: { className?: string }) {
   return (
-    <li className="flex shrink-0 items-center gap-0.5">
-      {!first && (
-        <span aria-hidden className="px-0.5 text-text-5">
-          /
-        </span>
-      )}
-      <button
-        type="button"
-        aria-current={active ? "page" : undefined}
-        onClick={onSelect}
-        className={cn(
-          "flex h-5 items-center gap-1 rounded-sm px-1.5 outline-hidden transition-colors duration-hover",
-          "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
-          active ? "bg-hover font-medium text-text-0" : "text-text-3 hover:text-text-1",
-        )}
-      >
-        {label}
-        {live && (
-          <>
-            <span
-              aria-hidden
-              className="size-1.5 animate-pulse rounded-full bg-accent motion-reduce:animate-none"
-            />
-            <span className="sr-only">(working)</span>
-          </>
-        )}
-      </button>
-    </li>
+    <span aria-hidden className={cn("shrink-0 text-xs text-fg-disabled select-none", className)}>
+      /
+    </span>
   );
 }
 
 /**
- * `Main / Editor / Vision`: the clean chat plus every agent that worked in it, in order of first appearance.
- * One level only; each crumb switches the conversation to that agent's runs.
+ * `Main / Editor / Jev` in the context row of a subagent view: quiet metadata, not navigation chrome. The
+ * middle crumb collapses to `…` on a narrow dock.
  */
 export function AgentCrumbs({
   runs,
@@ -58,32 +44,48 @@ export function AgentCrumbs({
   onSelect,
 }: {
   runs: readonly AgentRun[];
-  active: ThreadId;
+  active: WorkerAgentId;
   onSelect: (thread: ThreadId) => void;
 }) {
-  const crumbs = useMemo(() => agentCrumbs(runs), [runs]);
-  if (crumbs.length === 0) return null;
+  const caller = callerOf(runs, active);
+  const link = cn(crumbClass, "text-fg-3 hover:bg-surface-2 hover:text-fg");
   return (
-    <nav aria-label="Agent threads" className="min-w-0">
-      <ol className="flex min-w-0 items-center overflow-x-auto text-step-11">
-        <Crumb
-          first
-          label="Main"
-          active={active === "main"}
-          live={false}
-          onSelect={() => onSelect("main")}
-        />
-        {crumbs.map((crumb) => (
-          <Crumb
-            key={crumb.agent}
-            first={false}
-            label={AGENT_DISPLAY_NAMES[crumb.agent]}
-            active={active === crumb.agent}
-            live={crumb.live}
-            onSelect={() => onSelect(crumb.agent)}
-          />
-        ))}
-      </ol>
+    <nav aria-label="Agent threads" className="flex min-w-0 shrink items-center overflow-hidden">
+      <button type="button" className={link} onClick={() => onSelect("main")}>
+        Main
+      </button>
+      {caller && (
+        <Fragment>
+          <Sep className="@max-[299px]/chat:hidden" />
+          <button
+            type="button"
+            className={cn(link, "@max-[299px]/chat:hidden")}
+            onClick={() => onSelect(caller)}
+          >
+            {chatAgentName(caller)}
+          </button>
+          <Sep className="hidden @max-[299px]/chat:inline" />
+          <button
+            type="button"
+            aria-label={`Open ${chatAgentName(caller)}'s thread`}
+            className={cn(
+              link,
+              "hidden min-w-ctl-xs justify-center px-1 @max-[299px]/chat:inline-flex",
+            )}
+            onClick={() => onSelect(caller)}
+          >
+            …
+          </button>
+        </Fragment>
+      )}
+      <Sep />
+      <button
+        type="button"
+        aria-current="page"
+        className={cn(crumbClass, "shrink-0 cursor-default font-medium text-fg-2")}
+      >
+        {chatAgentName(active)}
+      </button>
     </nav>
   );
 }

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FilmStrip, Image, MusicNotes, WarningCircle, type Icon } from "@phosphor-icons/react";
 import type { ProjectSourceEntry, ResearchMediaKind } from "@hyperframes/agent-protocol";
-import { cn } from "../components/ui";
+import { Badge, cn } from "../components/ui";
 import { projectFileUrl, storyFrameUrl } from "../story/storyClient";
 import { LicenseChip } from "./LicenseChip";
-import { CONFIDENCE_LABELS, retrievedByLabel, urlHost } from "./licenseLabels";
+import { CONFIDENCE_LABELS, MEDIA_KIND_LABELS, retrievedByLabel, urlHost } from "./licenseLabels";
 import { ExternalLink } from "./researchUi";
 
 const KIND_ICONS: Record<ResearchMediaKind, Icon> = {
@@ -25,7 +25,12 @@ function Thumbnail({ projectId, record }: { projectId: string; record: ProjectSo
   const [failed, setFailed] = useState<string | null>(null);
   const KindIcon = KIND_ICONS[record.mediaKind];
   return (
-    <div className="flex h-9 w-16 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-bg-2">
+    <div
+      className={cn(
+        "relative flex aspect-video w-[52px] shrink-0 items-center justify-center overflow-hidden rounded-xs bg-stage",
+        "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:shadow-[inset_0_0_0_1px_var(--color-edge-hi)] after:content-['']",
+      )}
+    >
       {src && failed !== src ? (
         <img
           src={src}
@@ -34,10 +39,10 @@ function Thumbnail({ projectId, record }: { projectId: string; record: ProjectSo
           decoding="async"
           draggable={false}
           onError={() => setFailed(src)}
-          className="h-full w-full object-cover"
+          className="size-full object-cover"
         />
       ) : (
-        <KindIcon size={16} className="text-text-3" aria-hidden />
+        <KindIcon size={14} className="text-fg-3" aria-hidden />
       )}
     </div>
   );
@@ -46,8 +51,8 @@ function Thumbnail({ projectId, record }: { projectId: string; record: ProjectSo
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
-      <dt className="text-text-4">{label}</dt>
-      <dd className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-text-2">
+      <dt className="text-fg-3">{label}</dt>
+      <dd className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-fg">
         {children}
       </dd>
     </>
@@ -78,48 +83,43 @@ export function SourceRecord({
       ref={ref}
       data-source-record={record.asset}
       className={cn(
-        "flex flex-col gap-2 rounded-md border bg-surface px-2.5 py-2",
-        highlighted ? "border-selection ring-1 ring-selection" : "border-border",
+        "flex flex-col gap-2 rounded-md border px-2 py-2",
+        highlighted ? "border-accent-line bg-accent-soft" : "border-border-subtle bg-bg-1",
       )}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex items-center gap-2.5">
         <Thumbnail projectId={projectId} record={record} />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <div className="flex items-center gap-1.5">
-            <span className="min-w-0 flex-1 truncate text-step-11 font-semibold text-text-0">
-              {record.title}
-            </span>
-            <LicenseChip status={record.licenseStatus} />
-          </div>
-          <span className="truncate font-mono text-step-10 text-text-4" title={record.asset}>
-            {record.asset}
+        <div className="grid min-w-0 flex-1 gap-px">
+          <span className="truncate text-sm text-fg" title={record.title}>
+            {record.title}
           </span>
-          {!record.present && (
-            <span className="flex items-center gap-1 text-step-10 font-medium text-danger">
-              <WarningCircle size={10} weight="fill" aria-hidden />
-              File missing from the project
-            </span>
-          )}
+          <span className="truncate text-xs text-fg-3" title={record.asset}>
+            {MEDIA_KIND_LABELS[record.mediaKind]} ·{" "}
+            <span className="font-mono text-num">{record.asset}</span>
+          </span>
         </div>
+        <LicenseChip status={record.licenseStatus} size="md" />
       </div>
-      <dl className="grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-1 text-step-10">
+      {!record.present && (
+        <span className="flex items-center gap-1 text-xs font-medium text-error">
+          <WarningCircle size={12} weight="fill" aria-hidden />
+          File missing from the project
+        </span>
+      )}
+      <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1.5 px-0.5 text-sm">
         <Row label="License">
           {record.licenseUrl ? (
             <ExternalLink href={record.licenseUrl}>{record.license}</ExternalLink>
           ) : (
-            <span className="text-text-1">{record.license}</span>
+            <span>{record.license}</span>
           )}
-          <span className="text-text-4">· {CONFIDENCE_LABELS[record.licenseConfidence]}</span>
+          <span className="text-xs text-fg-3">· {CONFIDENCE_LABELS[record.licenseConfidence]}</span>
         </Row>
         {record.licenseBasis && <Row label="Found in">{record.licenseBasis}</Row>}
         <Row label="Source">
-          <span
-            className={cn(
-              "rounded-sm border px-1 font-medium",
-              record.source.trusted
-                ? "border-accent/40 bg-accent/10 text-accent"
-                : "border-border-input bg-bg-2 text-text-2",
-            )}
+          <Badge
+            size="sm"
+            tone={record.source.trusted ? "success" : "neutral"}
             title={
               record.source.trusted
                 ? "Found on a trusted source"
@@ -127,14 +127,16 @@ export function SourceRecord({
             }
           >
             {record.source.trusted ? "Trusted" : "Web"}
-          </span>
-          <span className="truncate text-text-1">{record.source.name}</span>
+          </Badge>
+          <span className="truncate">{record.source.name}</span>
         </Row>
         <Row label="Author">
           {record.author && record.authorUrl ? (
             <ExternalLink href={record.authorUrl}>{record.author}</ExternalLink>
           ) : (
-            <span>{record.author ?? "Not stated"}</span>
+            <span className={cn(!record.author && "text-fg-3")}>
+              {record.author ?? "Not stated"}
+            </span>
           )}
         </Row>
         <Row label="Links">
@@ -155,23 +157,23 @@ export function SourceRecord({
         <Row label="Used in">
           {record.usedIn.length > 0 ? (
             record.usedIn.map((composition) => (
-              <span key={composition} className="font-mono text-text-1">
+              <span key={composition} className="font-mono text-num text-fg-2">
                 {composition}
               </span>
             ))
           ) : (
-            <span>Not on a timeline yet</span>
+            <span className="text-fg-3">Not on a timeline yet</span>
           )}
         </Row>
       </dl>
       {record.issues.length > 0 && (
-        <ul className="flex flex-col gap-0.5" aria-label="Issues">
+        <ul
+          className="flex flex-col gap-1 rounded-sm bg-warning-soft px-2 py-1.5"
+          aria-label="Issues"
+        >
           {record.issues.map((issue) => (
-            <li
-              key={issue}
-              className="flex items-start gap-1 text-step-10 font-medium text-container"
-            >
-              <WarningCircle size={10} weight="fill" className="mt-px shrink-0" aria-hidden />
+            <li key={issue} className="flex items-start gap-1.5 text-xs text-warning">
+              <WarningCircle size={12} weight="fill" className="mt-px shrink-0" aria-hidden />
               {issue}
             </li>
           ))}

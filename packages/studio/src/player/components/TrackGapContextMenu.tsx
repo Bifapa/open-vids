@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { timelineMenuItem, timelineMenuShortcut, timelineMenuSurface } from "./timelineMenuStyles";
 
 interface TrackGapContextMenuProps {
   x: number;
@@ -52,13 +53,6 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
   const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
 
-  const itemClass = (enabled: boolean) =>
-    `w-full flex items-center justify-between px-3 py-1.5 text-xs text-left ${
-      enabled
-        ? "text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-        : "text-neutral-600 cursor-not-allowed"
-    }`;
-
   // Disabled reasons: no gap under the pointer beats the lock reason — a
   // pointer not on a gap has nothing to close regardless of movability.
   const closeGapTitle = canCloseGap
@@ -75,13 +69,13 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className={timelineMenuSurface}
       style={{ left: adjustedX, top: adjustedY }}
       onPointerLeave={() => onHoverAction(null)}
     >
       <button
         type="button"
-        className={itemClass(canCloseGap)}
+        className={timelineMenuItem(canCloseGap)}
         disabled={!canCloseGap}
         title={closeGapTitle}
         onPointerEnter={() => onHoverAction(canCloseGap ? "close-gap" : null)}
@@ -92,13 +86,11 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
         }}
       >
         <span>Close gap</span>
-        {gapWidth != null && (
-          <span className="text-neutral-500 text-[10px] ml-3">{gapWidth.toFixed(2)}s</span>
-        )}
+        {gapWidth != null && <span className={timelineMenuShortcut}>{gapWidth.toFixed(2)}s</span>}
       </button>
       <button
         type="button"
-        className={itemClass(canCloseAllGaps)}
+        className={timelineMenuItem(canCloseAllGaps)}
         disabled={!canCloseAllGaps}
         title={closeAllTitle}
         onPointerEnter={() => onHoverAction(canCloseAllGaps ? "close-all" : null)}

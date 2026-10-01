@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, Plus } from "@phosphor-icons/react";
+import { ArrowLeft, CaretRight, Plus } from "@phosphor-icons/react";
 import type { StoryNodeKind } from "@hyperframes/agent-protocol";
-import { Button, IconButton, Popover, cn } from "../components/ui";
+import { IconButton, Popover, cn } from "../components/ui";
 import type { NewMaterialInput } from "./storyGraphOps";
 import { fileName, formatDuration } from "./storyFormat";
 import { STORY_KIND_STYLES } from "./storyKinds";
@@ -108,20 +108,19 @@ export function AddNodePopover({
       side="bottom"
       align="start"
       aria-label="Add to the story"
-      className="w-64 p-1.5"
+      className="w-64 p-1"
       trigger={
-        <Button
+        <IconButton
+          aria-label="Add node"
+          title="Add node"
           size="sm"
-          variant="secondary"
           disabled={disabled}
-          icon={<Plus size={12} aria-hidden />}
-        >
-          Add
-        </Button>
+          icon={<Plus size={14} aria-hidden />}
+        />
       }
     >
       {picking === null ? (
-        <ul className="flex flex-col">
+        <ul className="flex flex-col" aria-label="Add node">
           {ORDER.map((kind) => {
             const style = STORY_KIND_STYLES[kind];
             const KindIcon = style.icon;
@@ -136,15 +135,20 @@ export function AddNodePopover({
                       add({ kind });
                     }
                   }}
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-step-11 text-text-1 outline-hidden hover:bg-hover focus-visible:bg-hover"
+                  className="flex h-ctl-sm w-full items-center gap-2 rounded-sm px-1.5 text-left text-sm text-fg outline-hidden hover:bg-surface-2 focus-visible:bg-surface-2"
                 >
                   <span
-                    className={cn("flex size-5 items-center justify-center rounded-sm", style.tint)}
+                    className={cn(
+                      "flex size-[18px] shrink-0 items-center justify-center rounded-xs",
+                      style.chip,
+                    )}
                   >
-                    <KindIcon size={12} weight="bold" className={style.text} aria-hidden />
+                    <KindIcon size={11} weight="bold" aria-hidden />
                   </span>
                   {style.label}
-                  {isPicked(kind) && <span className="ml-auto text-text-4">…</span>}
+                  {isPicked(kind) && (
+                    <CaretRight size={12} className="ml-auto text-fg-3" aria-hidden />
+                  )}
                 </button>
               </li>
             );
@@ -165,7 +169,7 @@ export function AddNodePopover({
               autoFocus
               placeholder={picking === "motion" ? "Search presets" : "Search files"}
               onChange={(event) => setQuery(event.target.value)}
-              className="h-ctl-sm min-w-0 flex-1 rounded-sm border border-border-input bg-input px-2 text-step-11 text-text-1 outline-hidden placeholder:text-text-5 focus:border-border-strong"
+              className="h-ctl-sm min-w-0 flex-1 rounded-sm border border-border bg-surface-1 px-2 text-sm text-fg outline-hidden placeholder:text-fg-disabled focus:border-border-strong"
             />
           </div>
           <ul
@@ -174,7 +178,7 @@ export function AddNodePopover({
             aria-label="Choices"
           >
             {choices.length === 0 && (
-              <li className="px-2 py-2 text-step-11 text-text-3">
+              <li className="px-2 py-2 text-sm text-fg-3">
                 {library.status === "loading"
                   ? "Loading…"
                   : picking === "motion"
@@ -189,10 +193,10 @@ export function AddNodePopover({
                   role="option"
                   aria-selected={false}
                   onClick={() => add(choice.request)}
-                  className="flex w-full flex-col rounded-sm px-2 py-1.5 text-left outline-hidden hover:bg-hover focus-visible:bg-hover"
+                  className="flex w-full flex-col rounded-sm px-2 py-1 text-left outline-hidden hover:bg-surface-2 focus-visible:bg-surface-2"
                 >
-                  <span className="truncate text-step-11 text-text-1">{choice.label}</span>
-                  <span className="truncate text-step-10 text-text-3">{choice.detail}</span>
+                  <span className="truncate text-sm text-fg">{choice.label}</span>
+                  <span className="truncate text-xs text-fg-3">{choice.detail}</span>
                 </button>
               </li>
             ))}

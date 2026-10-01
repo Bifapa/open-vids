@@ -4,9 +4,11 @@ import { IconContext } from "@phosphor-icons/react";
 import { StudioApp } from "./App";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { readIconTokens } from "./styles/iconTokens";
+import { startAppTheme } from "./components/settings/appTheme";
 import { prefetchPreviewForHash } from "./utils/previewPrefetch";
 import "./styles/studio.css";
 
+startAppTheme();
 prefetchPreviewForHash(window.location.hash);
 window.addEventListener("hashchange", () => prefetchPreviewForHash(window.location.hash));
 

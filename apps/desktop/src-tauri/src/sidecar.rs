@@ -80,23 +80,33 @@ impl StudioServer {
     pub fn origin(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
     }
+}
 
-    /// The Studio deep link for a project served by this instance.
-    ///
-    /// The embedded server is single-project and resolves the project id from
-    /// the directory name, so this is the only URL that can name it. The
-    /// `openvidsHome` query tells Studio where the Projects home screen
-    /// lives so its header can offer a back button; a query string survives
-    /// View > Reload (the query outlives hash rewrites) and the prod Hono
-    /// server ignores it via its SPA fallback.
-    pub fn project_url(&self, project_id: &str, home_origin: &str) -> String {
-        format!(
-            "{}/?openvidsHome={}#project/{}",
-            self.origin(),
-            urlencode(home_origin),
-            urlencode(project_id)
-        )
+/// The Studio deep link for a project (dev server or this sidecar).
+///
+/// The embedded server is single-project and resolves the project id from
+/// the directory name, so the fragment is the only thing that can name it.
+/// The query carries what the desktop tells Studio (contract 2): `openvidsHome`
+/// (where the Projects page lives, for the header's back button),
+/// `openvidsTheme` (the resolved theme for first paint) and, when the open asks
+/// for one, `openvidsWorkspace`. A query survives View > Reload (it outlives
+/// hash rewrites) and the prod Hono server ignores it via its SPA fallback.
+pub fn studio_url(
+    studio_origin: &str,
+    project_id: &str,
+    home_origin: &str,
+    theme: &str,
+    workspace: Option<&str>,
+) -> String {
+    let mut query = format!(
+        "openvidsHome={}&openvidsTheme={}",
+        urlencode(home_origin),
+        urlencode(theme)
+    );
+    if let Some(workspace) = workspace {
+        query.push_str(&format!("&openvidsWorkspace={}", urlencode(workspace)));
     }
+    format!("{studio_origin}/?{query}#project/{}", urlencode(project_id))
 }
 
 impl Drop for StudioServer {
@@ -120,16 +130,6 @@ pub fn urlencode(value: &str) -> String {
         }
     }
     out
-}
-
-/// The `project_url` shape without the child handle, for unit tests.
-#[cfg(test)]
-pub fn project_url_for_test(studio_origin: &str, project_id: &str, home_origin: &str) -> String {
-    format!(
-        "{studio_origin}/?openvidsHome={}#project/{}",
-        urlencode(home_origin),
-        urlencode(project_id)
-    )
 }
 
 /// Reap the sidecar's process group when the app shuts down.

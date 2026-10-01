@@ -130,16 +130,16 @@ function EaseTypeDropdown({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center gap-2 rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-left transition-colors hover:border-white/20"
+        className="flex h-ctl-sm w-full items-center gap-2 rounded-sm border border-border bg-surface-1 px-2 text-left transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
       >
         <MiniCurveSvg ease={ease} active size={16} />
-        <span className="text-[11px] text-neutral-200">{label}</span>
+        <span className="text-sm text-fg">{label}</span>
         <svg
           width="8"
           height="8"
           viewBox="0 0 10 10"
           fill="currentColor"
-          className={`ml-auto text-neutral-500 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`ml-auto text-fg-3 transition-transform ${open ? "rotate-180" : ""}`}
         >
           <path d="M2 3l3 4 3-4z" />
         </svg>
@@ -151,7 +151,7 @@ function EaseTypeDropdown({
           role="menu"
           aria-label={`${MODE_LABELS[kind]} ease presets`}
           onKeyDown={handleMenuKeyDown}
-          className="absolute inset-x-0 top-full z-20 mt-1 rounded-md border border-white/10 bg-neutral-900 p-2 shadow-xl"
+          className="absolute inset-x-0 top-full z-20 mt-1 rounded-lg border border-border bg-menu-bg/94 p-2 shadow-pop backdrop-blur-xl"
         >
           <EasePresetGrid
             kind={kind}
@@ -393,10 +393,10 @@ export function EaseCurveSection({
   const label = resolveEditorLabel(displayedEase, springBounce, isWiggle);
 
   return (
-    <div className="rounded-lg bg-neutral-900/50 p-2">
+    <div className="rounded-lg bg-surface-1/50 p-2">
       <EaseTypeDropdown kind={mode} ease={displayedEase} label={label} onSelect={commitEase} />
       {collidingAnimationTargets && collidingAnimationTargets.length > 1 && (
-        <p className="mb-1 text-[9px] text-neutral-500">
+        <p className="mb-1 text-2xs text-fg-3">
           Applies to {collidingAnimationTargets.length} animations
         </p>
       )}
@@ -407,7 +407,7 @@ export function EaseCurveSection({
       {showGraph ? (
         <>
           <div
-            className="mx-auto overflow-hidden rounded-md border border-white/5 bg-black/20"
+            className="mx-auto overflow-hidden rounded-sm border border-border-subtle bg-bg-0"
             style={{ aspectRatio: `${SVGW} / ${SVGH}`, width: "100%", maxWidth: 230 }}
           >
             <svg
@@ -545,7 +545,7 @@ export function EaseCurveSection({
           />
         </>
       ) : (
-        <p className="px-0.5 py-1.5 text-[10px] leading-relaxed text-neutral-500">
+        <p className="px-0.5 py-1.5 text-xs leading-relaxed text-fg-3">
           {label} preset: switch to Curve, Spring, or Wiggle above to shape it by hand.
         </p>
       )}

@@ -43,7 +43,6 @@ vi.mock("../editor/TopologyLens", async () => {
 vi.mock("../../captions/components/CaptionOverlay", () => ({ CaptionOverlay: () => null }));
 vi.mock("../editor/DomEditOverlay", () => ({ DomEditOverlay: () => null }));
 vi.mock("../editor/MotionPathOverlay", () => ({ MotionPathOverlay: () => null }));
-vi.mock("../editor/SnapToolbar", () => ({ SnapToolbar: () => null }));
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;

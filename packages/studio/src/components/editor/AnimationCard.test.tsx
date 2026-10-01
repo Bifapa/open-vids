@@ -329,14 +329,6 @@ describe("AnimationCard ease editing", () => {
 });
 
 describe("AnimationCard flat branch", () => {
-  it("renders a mint border-left and panel-token colors when flat", () => {
-    const { host, root } = renderCard({ defaultExpanded: false, flat: true });
-    const card = host.querySelector('[data-flat-effect-card="true"]');
-    expect(card).not.toBeNull();
-    expect(card?.className).toContain("border-panel-accent");
-    act(() => root.unmount());
-  });
-
   it("still renders the legacy (non-flat) appearance when flat is omitted", () => {
     const { host, root } = renderCard({ defaultExpanded: false });
     expect(host.querySelector('[data-flat-effect-card="true"]')).toBeNull();

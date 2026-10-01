@@ -120,6 +120,7 @@ export class ChatService {
       ...(input.thinking !== undefined && { thinking: input.thinking }),
       ...(input.enabledAgents !== undefined && { enabledAgents: [...input.enabledAgents] }),
       ...(input.activeMode !== undefined && { activeMode: input.activeMode }),
+      ...(input.intent !== undefined && { intent: input.intent }),
       ...(input.executionQuality !== undefined && {
         executionQuality: input.executionQuality && structuredClone(input.executionQuality),
       }),

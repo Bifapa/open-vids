@@ -11,6 +11,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { CaretDown, X } from "@phosphor-icons/react";
 import {
   defaultAudioFxParams,
   getAudioFxDef,
@@ -23,6 +24,13 @@ import { EFFECT_COPY, SUMMARY } from "@hyperframes/core/audio-fx-copy";
 import { getAudioFxProfile } from "@hyperframes/core/audio-fx-profiles";
 import { FX_FAMILY_TYPE, fxFamilyOf, fxFamilyTint } from "./propertyPanelFxFamily.js";
 import { FxNodeOpenBody } from "./propertyPanelFxNodeOpenBody.js";
+import {
+  INSP_CARD,
+  INSP_FOCUS_INSET,
+  INSP_MINI_BUTTON,
+  inspSwitchKnob,
+  inspSwitchTrack,
+} from "./inspectorStyles";
 
 /**
  * The one control that carries the module, if it has one.
@@ -117,31 +125,33 @@ interface FxNodeRowProps {
 /** Reorder arrow. Disabled at the end of the chain it would move past. */
 function FxMoveButton({
   label,
-  glyph,
+  up,
   disabled,
   onClick,
 }: {
   label: string;
-  glyph: string;
+  up: boolean;
   disabled: boolean;
   onClick(): void;
 }) {
   return (
     <button
       type="button"
-      className="hf-fx-move px-1 font-mono text-[10px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-25"
+      className={`hf-fx-move ${INSP_MINI_BUTTON} w-4`}
       title={label}
+      aria-label={label}
       disabled={disabled}
       onClick={onClick}
     >
-      {glyph}
+      <CaretDown size={10} aria-hidden="true" className={up ? "rotate-180" : undefined} />
     </button>
   );
 }
 
-/** Name, bypass, reorder and remove for one effect. */
+/** Name, summary, bypass, reorder and remove for one effect (`.fx-node-h`). */
 function FxNodeHeader({
   label,
+  summary,
   family,
   position,
   open,
@@ -155,6 +165,8 @@ function FxNodeHeader({
   onRemove,
 }: {
   label: string;
+  /** What the effect is doing, as a sentence under the name. */
+  summary?: string;
   /** How this family letters, so the KIND reads before the word does. */
   family: string;
   position?: number;
@@ -169,56 +181,67 @@ function FxNodeHeader({
   onRemove(): void;
 }) {
   return (
-    <div className="hf-fx-node-head flex min-h-7 items-center gap-1 px-1.5">
+    <div className="hf-fx-node-head flex min-h-9 items-center gap-1 py-0.5 pl-1.5 pr-1">
       {/* Two digits, because a rack reads as a path when its steps are numbered
           and as a list when they are not — and the difference decides whether an
           author thinks the order matters. It does; it is audible. */}
       {position !== undefined ? (
-        <span className="hf-fx-node-index shrink-0 font-mono text-[9px] tabular-nums text-panel-text-2">
+        <span className="hf-fx-node-index w-4 shrink-0 text-center font-mono text-2xs tabular-nums text-fg-3">
           {String(position).padStart(2, "0")}
         </span>
       ) : null}
-      <button
-        type="button"
-        className={`hf-fx-node-name flex-1 truncate text-left text-[11px] text-panel-text-1 hover:text-panel-text-0 ${family}`}
-        // Truncated in the same narrow column as the param labels below, so it
-        // needs the same fallback to the full text on hover.
-        title={label}
-        aria-expanded={open}
-        onClick={onToggleOpen}
-      >
-        {label}
-      </button>
-      <button
-        type="button"
-        className="hf-fx-bypass rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-40"
-        aria-pressed={bypassed}
-        title={bypassed ? "Enable" : "Bypass"}
-        disabled={disabled}
-        onClick={onToggleBypass}
-      >
-        {bypassed ? "Off" : "On"}
-      </button>
+      <span className="grid min-w-0 flex-1 gap-px rounded-xs px-1 py-[3px] transition-colors hover:bg-surface-2">
+        <button
+          type="button"
+          className={`hf-fx-node-name min-w-0 truncate rounded-xs text-left text-sm font-medium leading-[15px] ${
+            bypassed ? "text-fg-3" : "text-fg"
+          } ${INSP_FOCUS_INSET} ${family}`}
+          // Truncated in the same narrow column as the param labels below, so it
+          // needs the same fallback to the full text on hover.
+          title={label}
+          aria-expanded={open}
+          onClick={onToggleOpen}
+        >
+          {label}
+        </button>
+        {summary ? (
+          <span className="hf-fx-node-summary truncate text-xs text-fg-3" title={summary}>
+            {summary}
+          </span>
+        ) : null}
+      </span>
       <FxMoveButton
         label="Move up"
-        glyph="&uarr;"
+        up
         disabled={Boolean(disabled) || first}
         onClick={() => onMove(-1)}
       />
       <FxMoveButton
         label="Move down"
-        glyph="&darr;"
+        up={false}
         disabled={Boolean(disabled) || last}
         onClick={() => onMove(1)}
       />
       <button
         type="button"
-        className="hf-fx-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-red-400 disabled:opacity-40"
+        className={`hf-fx-bypass mx-0.5 ${inspSwitchTrack(!bypassed)}`}
+        aria-pressed={bypassed}
+        aria-label={bypassed ? `Enable ${label}` : `Bypass ${label}`}
+        title={bypassed ? "Enable" : "Bypass"}
+        disabled={disabled}
+        onClick={onToggleBypass}
+      >
+        <span className={inspSwitchKnob(!bypassed)} />
+      </button>
+      <button
+        type="button"
+        className={`hf-fx-remove ${INSP_MINI_BUTTON} hover:text-error`}
         title="Remove"
+        aria-label={`Remove ${label}`}
         disabled={disabled}
         onClick={onRemove}
       >
-        &times;
+        <X size={12} aria-hidden="true" />
       </button>
     </div>
   );
@@ -273,7 +296,7 @@ export function FxNodeRow({
   const summary = SUMMARY[node.type]?.(params);
   return (
     <div
-      className={`hf-fx-node rounded-[4px] border border-l-2 border-panel-border-input${bypassed ? " opacity-50" : ""}`}
+      className={`hf-fx-node ${INSP_CARD} border-l-2${bypassed ? " hf-fx-node-off" : ""}`}
       data-fx-node={node.type}
       data-fx-family={fxFamilyOf(node)}
       // The scroll anchor a revealed automation lane lands on. Keyed by node id
@@ -293,6 +316,10 @@ export function FxNodeRow({
         // clarity must not show the same name twice. Then the plain name, and
         // the registry's only if an effect somehow has no copy.
         label={node.label ?? EFFECT_COPY[node.type]?.title ?? registryDef.label}
+        // What this effect is doing to the sound, as a sentence. The rack is read
+        // top to bottom far more often than any one module is opened, so this is
+        // the line that decides whether an author can follow their own mix.
+        summary={summary}
         open={open}
         bypassed={bypassed}
         first={index === 0}
@@ -305,14 +332,6 @@ export function FxNodeRow({
         onMove={(delta) => onMove(index, delta)}
         onRemove={() => onRemove(index)}
       />
-      {summary ? (
-        <p
-          className="hf-fx-node-summary truncate px-1.5 pb-1 text-[10px] text-panel-text-2"
-          title={summary}
-        >
-          {summary}
-        </p>
-      ) : null}
       {open ? (
         <FxNodeOpenBody
           node={node}

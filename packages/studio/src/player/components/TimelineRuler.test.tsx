@@ -48,15 +48,15 @@ describe("TimelineRuler", () => {
     const settle = () => act(() => vi.advanceTimersByTime(TIMELINE_SCROLL_SETTLE_MS));
 
     expect(mask()).toBeNull();
-    // The 10s label starts at 200 - 0.5 + 5 = 204.5 in ruler space.
+    // The 10s label starts at 200 - 0.5 + 4 = 203.5 in ruler space.
+    scrollTo(203);
+    expect(mask()).toBeNull();
+    settle();
+    expect(mask()).toBe("3.5px");
     scrollTo(204);
     expect(mask()).toBeNull();
     settle();
-    expect(mask()).toBe("4.5px");
-    scrollTo(205);
-    expect(mask()).toBeNull();
-    settle();
-    expect(mask()).toBe("204.5px");
+    expect(mask()).toBe("203.5px");
     act(() => root.unmount());
   });
 
@@ -91,7 +91,7 @@ describe("TimelineRuler", () => {
     act(() => first.dispatchEvent(new Event("scroll")));
     render(make(205));
     expect(host.querySelector<HTMLElement>("[data-timeline-ruler-label-mask]")?.style.left).toBe(
-      "204.5px",
+      "203.5px",
     );
     act(() => root.unmount());
   });

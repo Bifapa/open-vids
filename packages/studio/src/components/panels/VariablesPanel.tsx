@@ -56,9 +56,9 @@ function formatIssue(issue: VariableValidationIssue): string {
 function ValidationStrip({ issues }: { issues: VariableValidationIssue[] }) {
   if (issues.length === 0) return null;
   return (
-    <div className="space-y-1 rounded-lg border border-red-900/60 bg-red-950/30 p-2">
+    <div className="space-y-1 rounded-md border border-red-900/60 bg-red-950/30 p-2">
       {issues.map((issue) => (
-        <p key={`${issue.kind}:${issue.variableId}`} className="text-[10px] text-red-300">
+        <p key={`${issue.kind}:${issue.variableId}`} className="text-xs text-red-300">
           {formatIssue(issue)}
         </p>
       ))}
@@ -90,21 +90,28 @@ function VariableRow({
   onRemove: () => void;
 }) {
   return (
-    <div className="space-y-1.5 rounded-lg border border-neutral-800/70 p-2">
-      <div className="flex items-center gap-1.5">
-        <span className="truncate text-[10px] font-medium text-neutral-300">{decl.label}</span>
-        <span className="rounded-sm bg-neutral-800 px-1 py-px font-mono text-[8px] text-neutral-500">
-          {decl.type}
+    <div className="grid min-w-0 gap-1 border-t border-border-subtle py-1.5 first:border-t-0">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="max-w-[60%] shrink-0 truncate text-sm font-medium text-fg">
+          {decl.label}
+        </span>
+        {overridden && (
+          <span
+            className="size-1.5 shrink-0 rounded-full bg-fg-2 shadow-[0_0_0_2px_var(--color-surface-3)]"
+            title="Overridden in this preview"
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate font-mono text-num text-fg-3">
+          {decl.id} · {decl.type}
         </span>
         {unused && (
           <span
-            className="rounded-sm bg-amber-900/40 px-1 py-px text-[8px] text-amber-400"
+            className="inline-flex h-4 shrink-0 items-center rounded-xs bg-warning-soft px-1 text-2xs text-warning"
             title="No script reads this variable"
           >
             unused
           </span>
         )}
-        {overridden && <span className="h-1.5 w-1.5 rounded-full bg-studio-accent" />}
         <span className="ml-auto flex items-center gap-1">
           {overridden && isScalar(value) && (
             <RowAction
@@ -117,7 +124,7 @@ function VariableRow({
           <RowAction label="✕" title="Remove declaration" danger onClick={onRemove} />
         </span>
       </div>
-      {decl.description && <p className="text-[9px] text-neutral-500">{decl.description}</p>}
+      {decl.description && <p className="m-0 text-xs text-fg-3">{decl.description}</p>}
       {editing ? (
         <DeclarationForm
           initial={draftFromDeclaration(decl)}
@@ -141,13 +148,11 @@ function UndeclaredReads({
 }) {
   if (!usage || usage.undeclaredReads.length === 0) return null;
   return (
-    <div className="space-y-1 rounded-lg border border-neutral-800/70 bg-neutral-900/40 p-2">
-      <p className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
-        Read by scripts, not declared
-      </p>
+    <div className="grid gap-1 rounded-md border border-border bg-bg-1 p-2">
+      <p className="m-0 text-xs font-semibold text-fg-2">Read by scripts, not declared</p>
       {usage.undeclaredReads.map((id) => (
         <div key={id} className="flex items-center gap-2">
-          <code className="font-mono text-[10px] text-neutral-400">{id}</code>
+          <code className="font-mono text-xs text-fg-2">{id}</code>
           <RowAction
             label="Declare"
             title="Declare as a string variable"
@@ -169,24 +174,18 @@ function PreviewModeHeader({
 }) {
   const hasOverrides = overrideCount > 0;
   return (
-    <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] font-semibold text-neutral-200">Variables</span>
-        <span
-          className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
-            hasOverrides
-              ? "bg-studio-accent/20 text-studio-accent"
-              : "bg-neutral-800 text-neutral-500"
-          }`}
-        >
-          {hasOverrides ? `Previewing ${overrideCount} custom` : "Previewing defaults"}
+    <div className="flex h-head shrink-0 items-center justify-between border-b border-border-subtle pl-3 pr-1.5">
+      <div className="flex min-w-0 items-baseline gap-1.5">
+        <span className="text-sm font-semibold text-fg">Variables</span>
+        <span className="truncate text-xs text-fg-3">
+          {hasOverrides ? `${overrideCount} overridden` : "Preview and renders use these values."}
         </span>
       </div>
       {hasOverrides && (
         <button
           type="button"
           onClick={onReset}
-          className="h-6 rounded-sm px-2 text-[10px] text-neutral-400 hover:text-neutral-200"
+          className="h-ctl-sm rounded-sm px-2 text-xs text-fg-2 hover:bg-surface-2 hover:text-fg"
         >
           Reset
         </button>
@@ -211,11 +210,9 @@ function HandoffFooter({
   const json = JSON.stringify(effectiveValues);
   const command = `npx hyperframes render ${shellSingleQuote(compPath)} --variables ${shellSingleQuote(json)}`;
   return (
-    <div className="space-y-1.5 rounded-lg border border-neutral-800/70 bg-neutral-900/40 p-2">
-      <p className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
-        Use this template
-      </p>
-      <code className="block truncate font-mono text-[9px] text-neutral-500" title={command}>
+    <div className="space-y-1.5 rounded-md border border-border/70 bg-surface-1/40 p-2">
+      <p className="text-2xs font-medium uppercase tracking-wider text-fg-3">Use this template</p>
+      <code className="block truncate font-mono text-2xs text-fg-3" title={command}>
         {command}
       </code>
       <div className="flex items-center gap-2">
@@ -235,7 +232,7 @@ function HandoffFooter({
 }
 
 const EMPTY_STATE = (
-  <p className="text-[10px] leading-relaxed text-neutral-500">
+  <p className="text-xs leading-relaxed text-fg-3">
     No variables declared. Variables make parts of this composition dynamic — declare them here (or
     in <code className="font-mono">data-composition-variables</code>), read them with{" "}
     <code className="font-mono">getVariables()</code>, and pass values at render time with{" "}
@@ -459,7 +456,7 @@ export const VariablesPanel = memo(function VariablesPanel({
   if (!sdkSession) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center">
-        <p className="text-xs text-neutral-500">Open a composition to manage its variables.</p>
+        <p className="text-xs text-fg-3">Open a composition to manage its variables.</p>
       </div>
     );
   }
@@ -505,7 +502,7 @@ export const VariablesPanel = memo(function VariablesPanel({
           onDeclare={(id) => handleAdd({ id, type: "string", label: id, default: "" })}
         />
         {usage?.scanIncomplete && (
-          <p className="text-[9px] text-neutral-600">
+          <p className="text-2xs text-fg-disabled">
             Scripts access variables dynamically — usage info may be incomplete.
           </p>
         )}
@@ -527,7 +524,7 @@ export const VariablesPanel = memo(function VariablesPanel({
           <button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="h-7 w-full rounded-lg border border-dashed border-neutral-800 text-[10px] font-medium text-neutral-500 transition-colors hover:border-neutral-700 hover:text-neutral-300"
+            className="h-7 w-full rounded-md border border-dashed border-border text-xs font-medium text-fg-3 transition-colors hover:border-border hover:text-fg-2"
           >
             + Add variable
           </button>

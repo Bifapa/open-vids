@@ -126,15 +126,14 @@ export function Slider({
           abort();
         }}
       >
-        <BaseSlider.Track className="h-0.5 w-full rounded-full bg-hover">
-          <BaseSlider.Indicator className="rounded-full bg-text-5" />
+        <BaseSlider.Track className="h-[3px] w-full rounded-full bg-surface-3">
+          <BaseSlider.Indicator className="rounded-full bg-fg-3" />
           <BaseSlider.Thumb
             aria-label={label}
             className={cn(
-              // The ring separates the thumb from the track behind it. A drop
-              // shadow would need a raw colour literal, which R5 does not allow
-              // outside the token file, and no shadow token fits a 10px dot.
-              "size-2.5 rounded-full bg-text-0 ring-2 ring-bg-1",
+              // The prototype's `.rng` thumb: a primary-ink dot whose dark hairline
+              // separates it from the track and the panel in both themes.
+              "size-3 rounded-full border border-black/45 bg-fg",
               "cursor-grab active:cursor-grabbing data-[preview-state=active]:cursor-grabbing",
               "hover:scale-110 data-[preview-state=hover]:scale-110",
               "transition-transform ease-standard duration-hover",

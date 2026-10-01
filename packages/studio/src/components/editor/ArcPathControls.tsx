@@ -31,10 +31,8 @@ export const ArcPathControls = memo(function ArcPathControls({
 
   if (segmentCount < 1) {
     return (
-      <div className="rounded-md border border-neutral-800 bg-neutral-900/50 px-3 py-2">
-        <p className="text-[11px] text-neutral-500">
-          Add at least 2 position keyframes to enable arc motion.
-        </p>
+      <div className="rounded-md border border-border bg-surface-1/50 px-3 py-2">
+        <p className="text-sm text-fg-3">Add at least 2 position keyframes to enable arc motion.</p>
       </div>
     );
   }
@@ -111,7 +109,7 @@ export const ArcPathControls = memo(function ArcPathControls({
                   <button
                     type="button"
                     onClick={() => onUpdateSegment(i, { cp1: undefined, cp2: undefined })}
-                    className="text-[9px] font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+                    className="text-2xs font-medium text-fg-3 transition-colors hover:text-fg-2"
                     title="Reset to auto-generated control points"
                   >
                     Reset

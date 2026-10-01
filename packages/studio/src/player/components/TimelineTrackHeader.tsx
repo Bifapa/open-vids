@@ -55,6 +55,8 @@ interface TimelineTrackHeaderProps {
    *  every subtree. */
   lanesId: string;
   contentOrigin: number;
+  /** Kind code (V1, A2, CAP, MOT); absent outside TimelineLanes. */
+  trackCode?: string;
   /** The track's active keyframe clip (selected, else primary) — the one whose
    *  disclosure + property rows this header shows, whether expanded or not. */
   keyframeClip: TimelineElement | null;
@@ -87,6 +89,7 @@ export function TimelineTrackHeader({
   trackLabel,
   lanesId,
   contentOrigin,
+  trackCode,
   keyframeClip,
   trackElements,
   clipCount,
@@ -298,20 +301,31 @@ export function TimelineTrackHeader({
           <div
             className={
               showTrackLabel
-                ? "flex flex-col justify-center gap-0.5 px-1.5 text-[var(--timeline-handle)]"
-                : "flex flex-col items-center justify-center gap-0.5"
+                ? "flex flex-col justify-center pr-1.5 pl-1"
+                : "flex flex-col items-center justify-center"
             }
             style={{ height: TRACK_H }}
           >
             <PlainTrackHeader
               trackNumber={trackNumber}
               trackDisplayNumber={trackDisplayNumber}
+              trackCode={trackCode}
               trackLabel={trackLabel}
               clipCount={clipCount}
               showTrackLabel={showTrackLabel}
               isTrackHidden={isTrackHidden}
               isAudioTrack={isAudioTrack}
               onToggleTrackHidden={onToggleTrackHidden}
+              leading={
+                disclosable ? (
+                  <LaneToggleButton
+                    name={laneOwnerName}
+                    isExpanded={isExpanded}
+                    lanesId={lanesId}
+                    onToggle={onToggleClipExpanded}
+                  />
+                ) : undefined
+              }
               // On the control line rather than a third row of its own.
               trailing={
                 <>
@@ -357,16 +371,6 @@ export function TimelineTrackHeader({
                         onGroupClips={groupUngroupedClips}
                       />
                     )}
-                  {/* The lane disclosure, on the row's own layout rather than by
-                    swapping it for a keyframe-layer row. */}
-                  {disclosable && (
-                    <LaneToggleButton
-                      name={laneOwnerName}
-                      isExpanded={isExpanded}
-                      lanesId={lanesId}
-                      onToggle={onToggleClipExpanded}
-                    />
-                  )}
                 </>
               }
             />
@@ -376,6 +380,7 @@ export function TimelineTrackHeader({
         <>
           <LayerDisclosureRow
             name={laneOwnerName}
+            code={trackCode}
             clipCount={clipCount}
             isExpanded={isExpanded}
             gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}

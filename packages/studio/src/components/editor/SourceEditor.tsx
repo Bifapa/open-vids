@@ -11,7 +11,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { oneDark } from "@codemirror/theme-one-dark";
+import { sourceEditorTheme } from "./sourceEditorTheme";
 import type { Extension } from "@codemirror/state";
 import { html } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
@@ -113,13 +113,9 @@ export const SourceEditor = memo(function SourceEditor({
           highlightSelectionMatches(),
           keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap]),
           getLanguageExtension(lang),
-          oneDark,
+          sourceEditorTheme,
           updateListener,
           EditorState.readOnly.of(readOnly),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
         ],
       });
 

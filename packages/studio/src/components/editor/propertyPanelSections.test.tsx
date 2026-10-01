@@ -91,7 +91,7 @@ describe("FlatTextSection", () => {
     expect(host.textContent).toContain("PACKETS / FRAME");
     expect(host.textContent).toContain("Font");
     expect(host.textContent).toContain("Weight");
-    expect(host.textContent).toContain("Letter spacing");
+    expect(host.textContent).toContain("Tracking");
     expect(host.textContent).toContain("Line height");
     expect(host.textContent).toContain("Align");
     act(() => root.unmount());

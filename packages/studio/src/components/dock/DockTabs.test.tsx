@@ -104,8 +104,12 @@ afterEach(() => {
 const tab = (id: PanelId) => host.querySelector<HTMLElement>(`[data-tab-panel-id="${id}"]`);
 const stripOf = (id: PanelId) => tab(id)?.closest<HTMLElement>(".dv-tabs-container");
 const groupOf = (id: PanelId) => tab(id)?.closest<HTMLElement>(".dv-groupview");
-const shows = (id: PanelId, part: "icon" | "close") => {
-  const element = tab(id)?.querySelector(`.hf-dock-tab-${part}`);
+const showsClose = (id: PanelId) => {
+  const element = tab(id)?.querySelector(".hf-dock-tab-close");
+  return element ? getComputedStyle(element).display !== "none" : false;
+};
+const tabShown = (id: PanelId) => {
+  const element = tab(id);
   return element ? getComputedStyle(element).display !== "none" : false;
 };
 
@@ -115,35 +119,37 @@ async function activate(id: PanelId) {
 }
 
 describe("dock tabs", () => {
-  it("draw the type icon and close glyph on the shown tab only", () => {
-    for (const id of ["design", "compositions"] as const) {
-      expect(shows(id, "icon")).toBe(true);
-      expect(shows(id, "close")).toBe(true);
-    }
-    for (const id of [
-      "layers",
-      "renders",
-      "variables",
-      "chat",
-      "assets",
-      "code",
-      "catalog",
-    ] as const) {
-      expect(shows(id, "icon")).toBe(false);
-      expect(shows(id, "close")).toBe(false);
+  it("draw the close glyph on the shown tab only", () => {
+    for (const id of ["design", "compositions"] as const) expect(showsClose(id)).toBe(true);
+    for (const id of ["layers", "renders", "variables", "chat", "assets", "code"] as const) {
+      expect(showsClose(id)).toBe(false);
     }
   });
 
-  it("move the icon to the newly shown tab and drop it from the old one", async () => {
+  it("move the close glyph to the newly shown tab", async () => {
     await activate("layers");
-    expect(shows("layers", "icon")).toBe(true);
-    expect(shows("design", "icon")).toBe(false);
-    expect(shows("design", "close")).toBe(false);
+    expect(showsClose("layers")).toBe(true);
+    expect(showsClose("design")).toBe(false);
+  });
+
+  it("keep only the shown workspace's tab in the centre strip, and every side tab", async () => {
+    expect([tabShown("preview"), tabShown("media"), tabShown("story")]).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    expect(tabShown("layers")).toBe(true);
+    await activate("story");
+    expect([tabShown("preview"), tabShown("media"), tabShown("story")]).toEqual([
+      false,
+      false,
+      true,
+    ]);
   });
 
   it("name the close control after the panel, and close only that panel", async () => {
     const close = tab("design")?.querySelector<HTMLElement>(".hf-dock-tab-close");
-    expect(close?.getAttribute("aria-label")).toBe("Close Design");
+    expect(close?.getAttribute("aria-label")).toBe("Close Inspector");
     await act(async () => close?.click());
     expect(useDockLayoutStore.getState().openPanels.has("design")).toBe(false);
     expect(useDockLayoutStore.getState().openPanels.has("layers")).toBe(true);
@@ -156,15 +162,35 @@ describe("dock strip actions", () => {
       actions.closest(".dv-groupview"),
     );
 
-  it("sit on the active group's strip only, and follow the active group", async () => {
-    await activate("design");
-    expect(groupsWithActions()).toEqual([groupOf("design")]);
-    const labels = [...host.querySelectorAll(".hf-dock-strip-actions button")].map((button) =>
-      button.getAttribute("aria-label"),
+  it("sit on every group's strip, with the panel options menu", () => {
+    const groups = new Set(host.querySelectorAll(".dv-groupview"));
+    expect(new Set(groupsWithActions())).toEqual(groups);
+    const labels = [
+      ...(groupOf("design")?.querySelectorAll(".hf-dock-strip-actions button") ?? []),
+    ].map((button) => button.getAttribute("aria-label"));
+    expect(labels).toEqual(["Panel options"]);
+  });
+
+  it("maximise from the panel options menu, and keep a Restore button in view until restored", async () => {
+    const labels = () =>
+      [...(groupOf("design")?.querySelectorAll(".hf-dock-strip-actions button") ?? [])].map(
+        (button) => button.getAttribute("aria-label"),
+      );
+    const menuItem = (name: string) =>
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (item) => item.textContent === name,
+      );
+    const trigger = groupOf("design")?.querySelector<HTMLElement>(
+      '.hf-dock-strip-actions button[aria-label="Panel options"]',
     );
-    expect(labels).toEqual(["Panel menu", "Maximize panel", "Close group"]);
-    await activate("assets");
-    expect(groupsWithActions()).toEqual([groupOf("assets")]);
+    await act(async () => trigger?.click());
+    await act(async () => menuItem("Maximize Panel")?.click());
+    expect(labels()).toEqual(["Restore panel", "Panel options"]);
+    const restore = groupOf("design")?.querySelector<HTMLElement>(
+      '.hf-dock-strip-actions button[aria-label="Restore panel"]',
+    );
+    await act(async () => restore?.click());
+    expect(labels()).toEqual(["Panel options"]);
   });
 });
 

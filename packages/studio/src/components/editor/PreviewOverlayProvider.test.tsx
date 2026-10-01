@@ -7,6 +7,7 @@ import { GridOverlay } from "./GridOverlay";
 import { PreviewOverlayProvider } from "./PreviewOverlayProvider";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { usePreviewGuidesStore } from "./previewGuidesStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -34,10 +35,7 @@ beforeEach(() => {
 
 describe("PreviewOverlayProvider", () => {
   it("derives grid geometry after the iframe prop becomes available", async () => {
-    window.localStorage.setItem(
-      "hf-studio-ui-preferences",
-      JSON.stringify({ gridVisible: true, gridSpacing: 20 }),
-    );
+    usePreviewGuidesStore.getState().setSnapPrefs({ gridVisible: true, gridSpacing: 20 });
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);

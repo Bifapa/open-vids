@@ -17,20 +17,25 @@
 }
 
 /*
- * Studio is a dark-only UI — pin the user-agent color scheme to dark so that
- * browser-native chrome (scrollbars, form controls, focus rings) picks the
- * matching palette instead of defaulting to light against our #0a0a0a body.
+ * Dark is the default; the light theme (`data-theme="light"`, theme-light.css)
+ * switches `color-scheme` itself, so browser-native chrome (scrollbars, form
+ * controls) follows the palette instead of the user agent's default.
  */
 :root {
   color-scheme: dark;
+  scrollbar-color: var(--color-surface-3) transparent;
 }
 
 body {
   margin: 0;
   padding: 0;
-  background: var(--color-bg-0);
-  color: var(--color-text-body);
-  font-family: var(--font-sans);
+  background: var(--color-desktop);
+  color: var(--color-fg);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   overflow: hidden;
 }
 

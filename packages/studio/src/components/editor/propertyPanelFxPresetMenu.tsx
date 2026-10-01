@@ -69,7 +69,7 @@ export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProp
       : HF_AUDIO_FX_PRESET_FAMILIES;
   return (
     <div
-      className="hf-fx-preset-menu space-y-1.5 rounded-[4px] border border-panel-border-input p-1.5"
+      className="hf-fx-preset-menu grid max-h-[min(72vh,600px)] gap-1 overflow-y-auto overscroll-contain rounded-md border border-border bg-bg-1 p-1 shadow-raise"
       // One handler for the shelf rather than one per button: leaving any preset
       // for the gap between two of them has to revert, and a per-button leave
       // fires that on the way to the next one.
@@ -80,8 +80,8 @@ export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProp
       onBlur={onAudition ? () => onAudition(null) : undefined}
     >
       {families.map((family) => (
-        <div key={family} className="hf-fx-preset-group space-y-0.5">
-          <span className="hf-fx-preset-group-label block font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
+        <div key={family} className="hf-fx-preset-group grid gap-px">
+          <span className="hf-fx-preset-group-label block px-2 pt-1.5 pb-0.5 text-xs text-fg-3">
             {FAMILY_LABEL[family]}
           </span>
           {audioFxPresetsByFamily(family).map((preset) => (
@@ -89,7 +89,7 @@ export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProp
               key={preset.id}
               type="button"
               // `pr-8` so a long complaint does not run under the wave.
-              className="hf-fx-preset-item block w-full rounded-[3px] bg-panel-surface py-1 pl-1.5 pr-8 text-left text-panel-text-1 hover:text-panel-text-0"
+              className="hf-fx-preset-item block w-full rounded-sm py-1 pl-2 pr-8 text-left text-fg outline-hidden"
               // The description says what it does; the count is doing real work
               // — it tells the author a preset IS a chain they can open and
               // edit, rather than an opaque setting they cannot follow.
@@ -102,7 +102,7 @@ export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProp
               // same way hovering does, or the whole affordance is mouse-only.
               onFocus={() => onAudition?.(preset.id)}
             >
-              <span className="hf-fx-preset-problem block truncate text-[10px]">
+              <span className="hf-fx-preset-problem block truncate text-sm">
                 {PRESET_PROBLEM[preset.id] ?? preset.description}
               </span>
               {/* "Clean Voice · 5 effects" — the count is on the row in the
@@ -111,7 +111,7 @@ export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProp
                   rather than an opaque setting they cannot follow. The count is
                   its own span so `.hf-fx-preset-name` stays the NAME — several
                   tests read it as the preset's identity. */}
-              <span className="block truncate font-mono text-[9px] text-panel-text-2">
+              <span className="block truncate text-xs text-fg-3">
                 <span className="hf-fx-preset-name">{preset.label}</span>
                 <span className="hf-fx-preset-count">
                   {" · "}

@@ -1,4 +1,6 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
+import { DownloadSimple, Plus } from "@phosphor-icons/react";
+import { cn } from "../ui/cn";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   buildCompositionThumbnailUrl,
@@ -26,8 +28,8 @@ interface CompositionsTabProps {
 }
 
 const DEFAULT_PREVIEW_STAGE = { width: 1920, height: 1080 };
-const CARD_W = 80;
-const CARD_H = 45;
+const CARD_W = 64;
+const CARD_H = 36;
 const THUMBNAIL_PLAYBACK_SYNC_ATTEMPTS = 10;
 
 type PreviewWindow = Window & {
@@ -243,15 +245,15 @@ function CompCard({
       }}
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
-      className={`group/card w-full select-none text-left px-2 py-1.5 flex items-center gap-2.5 transition-colors cursor-grab active:cursor-grabbing outline-hidden focus-visible:bg-neutral-800/60 ${
-        isActive
-          ? "bg-studio-accent/10 border-l-2 border-studio-accent"
-          : "border-l-2 border-transparent hover:bg-neutral-800/50"
-      }`}
+      className={cn(
+        "group/card relative flex min-h-row-lg w-full cursor-grab select-none items-center gap-2 rounded-md border px-1 py-[3px] text-left transition-colors duration-hover active:cursor-grabbing",
+        "outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent",
+        isActive ? "border-accent-line bg-accent-soft" : "border-transparent hover:bg-surface-1",
+      )}
     >
-      <div className="w-20 h-[45px] rounded-sm overflow-hidden bg-neutral-900 shrink-0 relative">
+      <div className="relative h-9 w-16 shrink-0 overflow-hidden rounded-xs bg-bg-1 shadow-[inset_0_0_0_1px_var(--color-border-subtle)]">
         {thumbnailFailed ? (
-          <div className="absolute inset-0 flex items-center justify-center px-1 text-center text-[8px] leading-tight text-neutral-600">
+          <div className="absolute inset-0 flex items-center justify-center px-1 text-center text-2xs leading-tight text-fg-3">
             Preview unavailable
           </div>
         ) : !previewBooted ? null : (
@@ -302,16 +304,16 @@ function CompCard({
         )}
       </div>
       <div
-        className="min-w-0 flex-1"
+        className="grid min-w-0 flex-1 gap-0.5"
         title={lintInfo && lintInfo.count > 0 ? lintInfo.messages.join("\n") : undefined}
       >
-        <div className="flex items-center gap-1">
-          <span className="text-[11px] font-medium text-neutral-300 truncate">{name}</span>
+        <div className="flex min-w-0 items-center gap-[5px] text-base font-medium text-fg">
+          <span className="min-w-0 truncate">{name}</span>
           {isRoot && (
             <span
               aria-label="Root composition — opens automatically on load"
               title="Root composition — opens automatically on load"
-              className="flex-shrink-0 rounded-full bg-neutral-700/60 px-1.5 py-px text-[8px] font-bold uppercase tracking-wide text-neutral-300"
+              className="inline-flex h-[15px] shrink-0 items-center rounded-xs bg-surface-3 px-1 text-2xs font-semibold text-fg-2"
             >
               Root
             </span>
@@ -319,64 +321,57 @@ function CompCard({
           {lintInfo && lintInfo.count > 0 && (
             <span
               aria-label={`${lintInfo.count} lint finding${lintInfo.count === 1 ? "" : "s"}`}
-              className="shrink-0 min-w-[16px] text-center rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-amber-400"
+              className="inline-flex h-[15px] min-w-[15px] shrink-0 items-center justify-center rounded-pill bg-warning-soft px-1 text-2xs font-semibold tabular-nums text-warning"
             >
               {lintInfo.count}
             </span>
           )}
         </div>
-        <span className="text-[9px] text-neutral-600 truncate block">{comp}</span>
+        <span className="block truncate text-xs text-fg-3">{comp}</span>
       </div>
-      {onAddToTimeline && (
-        <button
-          type="button"
-          title={`Add ${name} to timeline at playhead`}
-          aria-label={`Add ${name} to timeline at playhead`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onAddToTimeline();
-          }}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-neutral-600 opacity-0 transition-[color,background-color,opacity] hover:bg-neutral-800 hover:text-studio-accent group-hover/card:opacity-100 group-focus-within/card:opacity-100 focus:opacity-100"
+      {(onAddToTimeline || onRender) && (
+        // The prototype's `.cc-acts`: hover/focus actions on a raised chip at the row's end.
+        <div
+          className={cn(
+            "absolute right-1 top-1/2 hidden -translate-y-1/2 gap-0.5 rounded-sm p-0.5 group-hover/card:flex group-focus-within/card:flex",
+            isActive
+              ? "bg-surface-2"
+              : "bg-surface-2 shadow-[-8px_0_8px_-4px_var(--color-surface-1)]",
+          )}
         >
-          <span aria-hidden="true">+</span>
-        </button>
-      )}
-      {onRender && (
-        <Tooltip label={isRendering ? "A render is already in progress" : `Render ${name}`}>
-          <button
-            type="button"
-            aria-label={isRendering ? "A render is already in progress" : `Render ${name}`}
-            disabled={isRendering}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRender();
-            }}
-            // h-6 w-6 = the 24x24 WCAG 2.2 (2.5.8) minimum target; the 14px glyph
-            // is unchanged, only the box grows. The sibling "+" button is h-8 w-8,
-            // so the card row already has the room.
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors ${
-              isRendering
-                ? "text-neutral-600 cursor-not-allowed"
-                : "text-neutral-600 hover:text-studio-accent hover:bg-neutral-800"
-            }`}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          </button>
-        </Tooltip>
+          {onAddToTimeline && (
+            <Tooltip label="Add to timeline at playhead">
+              <button
+                type="button"
+                aria-label={`Add ${name} to timeline at playhead`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAddToTimeline();
+                }}
+                className="flex h-6 w-6 items-center justify-center rounded-sm text-fg-2 transition-colors duration-hover hover:bg-surface-3 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                <Plus size={14} aria-hidden />
+              </button>
+            </Tooltip>
+          )}
+          {onRender && (
+            <Tooltip label={isRendering ? "A render is already in progress" : `Render ${name}`}>
+              <button
+                type="button"
+                aria-label={isRendering ? "A render is already in progress" : `Render ${name}`}
+                disabled={isRendering}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRender();
+                }}
+                // h-6 w-6 = the 24x24 WCAG 2.2 (2.5.8) minimum target around the 14px glyph.
+                className="flex h-6 w-6 items-center justify-center rounded-sm text-fg-2 transition-colors duration-hover enabled:hover:bg-surface-3 enabled:hover:text-fg disabled:cursor-not-allowed disabled:text-fg-disabled focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                <DownloadSimple size={14} aria-hidden />
+              </button>
+            </Tooltip>
+          )}
+        </div>
       )}
     </div>
   );
@@ -397,30 +392,36 @@ export const CompositionsTab = memo(function CompositionsTab({
   const previewBooted = usePlayerStore((state) => state.previewBooted);
   if (compositions.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center px-4">
-        <p className="text-xs text-neutral-600 text-center">No compositions found</p>
+      <div className="flex flex-1 items-center justify-center px-4">
+        <p className="text-center text-xs text-fg-3">No compositions found</p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      {compositions.map((comp) => (
-        <CompCard
-          key={`${projectId}:${comp}`}
-          projectId={projectId}
-          comp={comp}
-          isActive={activeComposition === comp}
-          isRoot={comp === masterCompositionPath}
-          onSelect={() => onSelect(comp)}
-          onRender={onRenderComposition ? () => onRenderComposition(comp) : undefined}
-          onAddToTimeline={onAddToTimeline ? () => onAddToTimeline(comp) : undefined}
-          isRendering={isRendering}
-          lintInfo={lintFindingsByFile?.get(comp)}
-          contentRevision={thumbnailRevisionOf(thumbnailRevisions, comp)}
-          previewBooted={previewBooted}
-        />
-      ))}
+    <div className="flex-1 overflow-y-auto bg-bg-0 pb-1">
+      <div className="flex h-list-head items-baseline gap-1.5 px-3 pt-2 text-xs font-semibold text-fg-2">
+        Compositions
+        <span className="font-normal tabular-nums text-fg-3">{compositions.length}</span>
+      </div>
+      <div className="grid gap-px px-1.5">
+        {compositions.map((comp) => (
+          <CompCard
+            key={`${projectId}:${comp}`}
+            projectId={projectId}
+            comp={comp}
+            isActive={activeComposition === comp}
+            isRoot={comp === masterCompositionPath}
+            onSelect={() => onSelect(comp)}
+            onRender={onRenderComposition ? () => onRenderComposition(comp) : undefined}
+            onAddToTimeline={onAddToTimeline ? () => onAddToTimeline(comp) : undefined}
+            isRendering={isRendering}
+            lintInfo={lintFindingsByFile?.get(comp)}
+            contentRevision={thumbnailRevisionOf(thumbnailRevisions, comp)}
+            previewBooted={previewBooted}
+          />
+        ))}
+      </div>
     </div>
   );
 });

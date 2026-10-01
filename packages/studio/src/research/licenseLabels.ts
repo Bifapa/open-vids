@@ -4,6 +4,7 @@ import type {
   LicenseStatus,
   ResearchMediaKind,
 } from "@hyperframes/agent-protocol";
+import type { StatusTone } from "../components/ui";
 
 export const LICENSE_STATUS_LABELS: Record<LicenseStatus, string> = {
   clear: "Clear",
@@ -20,17 +21,21 @@ export const LICENSE_STATUS_HINTS: Record<LicenseStatus, string> = {
   unknown: "No license found: check the source before publishing",
 };
 
-/** Chip colours; restricted and unknown are the warned ones. */
-export const LICENSE_STATUS_TONES: Record<LicenseStatus, string> = {
-  clear: "border-accent/40 bg-accent/10 text-accent",
-  attribution: "border-selection/40 bg-selection/10 text-selection",
-  restricted: "border-container/40 bg-container/10 text-container",
-  unknown: "border-danger/40 bg-danger/10 text-danger",
+/** Badge tone per status; restricted and unknown are the warned ones. */
+export const LICENSE_STATUS_TONES: Record<LicenseStatus, StatusTone> = {
+  clear: "success",
+  attribution: "neutral",
+  restricted: "warning",
+  unknown: "error",
 };
 
-export function isWarnedStatus(status: LicenseStatus): boolean {
-  return status === "restricted" || status === "unknown";
-}
+/** Group headings in the Sources list, most urgent first. */
+export const LICENSE_STATUS_GROUPS: ReadonlyArray<{ status: LicenseStatus; label: string }> = [
+  { status: "unknown", label: "No license found" },
+  { status: "restricted", label: "Needs a decision" },
+  { status: "attribution", label: "Needs a credit" },
+  { status: "clear", label: "Clear to use" },
+];
 
 export const CONFIDENCE_LABELS: Record<LicenseConfidence, string> = {
   high: "High confidence",

@@ -36,13 +36,22 @@ type HueTab = {
 export type CurveTab = RgbTab | HueTab;
 
 export const TABS: readonly CurveTab[] = [
-  { kind: "rgb", key: "master", label: "Master", color: "#e5e7eb", min: 0, max: 1 },
-  { kind: "rgb", key: "red", label: "R", color: "#fb7185", min: 0, max: 1 },
-  { kind: "rgb", key: "green", label: "G", color: "#4ade80", min: 0, max: 1 },
-  { kind: "rgb", key: "blue", label: "B", color: "#60a5fa", min: 0, max: 1 },
-  { kind: "hue", key: "hueVsHue", label: "Hue/Hue", color: "#f0abfc", min: -180, max: 180 },
-  { kind: "hue", key: "hueVsSaturation", label: "Hue/Sat", color: "#facc15", min: -1, max: 1 },
-  { kind: "hue", key: "hueVsLuma", label: "Hue/Luma", color: "#f8fafc", min: -1, max: 1 },
+  // Master and the hue curves draw in the panel ink; R/G/B carry their channel's real hue
+  // (a data encoding, the same oklch values as the prototype's `.fx-cv-red|green|blue`).
+  { kind: "rgb", key: "master", label: "Master", color: "var(--color-fg)", min: 0, max: 1 },
+  { kind: "rgb", key: "red", label: "R", color: "oklch(66% 0.19 25)", min: 0, max: 1 },
+  { kind: "rgb", key: "green", label: "G", color: "oklch(72% 0.17 145)", min: 0, max: 1 },
+  { kind: "rgb", key: "blue", label: "B", color: "oklch(64% 0.17 255)", min: 0, max: 1 },
+  { kind: "hue", key: "hueVsHue", label: "Hue/Hue", color: "var(--color-fg)", min: -180, max: 180 },
+  {
+    kind: "hue",
+    key: "hueVsSaturation",
+    label: "Hue/Sat",
+    color: "var(--color-fg)",
+    min: -1,
+    max: 1,
+  },
+  { kind: "hue", key: "hueVsLuma", label: "Hue/Luma", color: "var(--color-fg)", min: -1, max: 1 },
 ];
 
 export const RGB_IDENTITY: readonly HfColorCurvePoint[] = [
@@ -477,7 +486,7 @@ export function CurveGraph({
           onSettle();
         }
       }}
-      className="mx-auto aspect-square w-full max-w-[200px] touch-none rounded-sm border border-panel-border-input bg-black/20 outline-hidden focus:ring-1 focus:ring-panel-accent"
+      className="mx-auto aspect-square w-full max-w-[220px] touch-none rounded-sm border border-border-subtle bg-bg-1 outline-hidden focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
     >
       <defs>
         <linearGradient id={`hf-hue-axis-${tab.key}`}>
@@ -491,7 +500,7 @@ export function CurveGraph({
         </linearGradient>
       </defs>
       {[0.25, 0.5, 0.75].map((ratio) => (
-        <g key={ratio} stroke="rgba(255,255,255,0.08)" strokeWidth="0.5">
+        <g key={ratio} style={{ stroke: "var(--color-grid-line)" }} strokeWidth="0.5">
           <line
             x1={GRAPH_PADDING}
             y1={GRAPH_PADDING + ratio * (GRAPH_SIZE - GRAPH_PADDING * 2)}
@@ -520,7 +529,7 @@ export function CurveGraph({
         data-color-curve-path="true"
         d={path}
         fill="none"
-        stroke={tab.color}
+        style={{ stroke: tab.color }}
         strokeWidth="1.5"
       />
       {points.map(([input, output], index) => {
@@ -531,10 +540,12 @@ export function CurveGraph({
             data-color-curve-point={index}
             cx={point.x}
             cy={point.y}
-            r={selectedIndex === index ? 3.5 : 2.5}
-            fill={selectedIndex === index ? "#fff" : tab.color}
-            stroke="#111"
-            strokeWidth="1"
+            r={selectedIndex === index ? 3.5 : 3}
+            style={{
+              fill: selectedIndex === index ? "var(--color-fg)" : "var(--color-bg-0)",
+              stroke: tab.color,
+            }}
+            strokeWidth="1.25"
           />
         );
       })}

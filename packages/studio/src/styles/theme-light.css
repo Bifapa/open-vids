@@ -1,0 +1,77 @@
+/* The light theme: Settings → Appearance sets `data-theme="light"` on the document
+ * element. Only base values are repeated here; every token theme.css derives with
+ * `var()` / `color-mix()` (accent-soft, the legacy role names, the neutral ramp, the
+ * timeline names, the shadows through `--sh`) follows these on its own. */
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-desktop: oklch(86% 0.004 260);
+  --color-bg-0: oklch(99% 0.0015 260);
+  --color-bg-1: oklch(96.5% 0.003 260);
+  --color-surface-1: oklch(94% 0.004 260);
+  --color-surface-2: oklch(91% 0.005 260);
+  --color-surface-3: oklch(87.5% 0.006 260);
+  --color-scrim: oklch(22% 0.005 260 / 0.24);
+  --color-stage: oklch(93% 0.003 260);
+  --color-lane-audio: oklch(96.5% 0.004 260);
+
+  --color-border-subtle: oklch(91.5% 0.004 260);
+  --color-border: oklch(86.5% 0.005 260);
+  --color-border-strong: oklch(76% 0.007 260);
+
+  /* fg-3 holds 4.5:1 on bg-0, bg-1 and surface-1. */
+  --color-fg: oklch(20% 0.006 260);
+  --color-fg-2: oklch(36% 0.006 260);
+  --color-fg-3: oklch(50% 0.006 260);
+  --color-fg-disabled: oklch(68% 0.005 260);
+
+  /* Same hue as dark, darker so it holds 3:1 as a ring on white. Hover and press
+   * lighten, so the ink's contrast never drops. */
+  --color-accent: oklch(66% 0.17 52);
+  --color-accent-hover: oklch(71% 0.16 54);
+  --color-accent-press: oklch(68% 0.165 53);
+  --color-accent-ink: oklch(15% 0.03 55);
+
+  --color-success: oklch(52% 0.13 155);
+  --color-warning: oklch(54% 0.12 75);
+  --color-error: oklch(54% 0.19 25);
+  --color-success-soft: color-mix(in oklch, var(--color-success) 12%, transparent);
+  --color-warning-soft: color-mix(in oklch, var(--color-warning) 13%, transparent);
+  --color-error-soft: color-mix(in oklch, var(--color-error) 11%, transparent);
+
+  --color-menu-bg: oklch(99% 0.0015 260);
+  --color-tip-bg: oklch(99.5% 0.001 260);
+
+  --color-edge-hi: oklch(0% 0 0 / 0.1);
+  --color-stripe: oklch(0% 0 0 / 0.045);
+  --color-grid-line: oklch(0% 0 0 / 0.055);
+  --color-mix-hi: oklch(0% 0 0);
+
+  --color-k-video-h: oklch(84% 0.05 250);
+  --color-k-video-b: oklch(93.5% 0.02 250);
+  --color-k-video-l: oklch(70% 0.06 250);
+  --color-k-audio-h: oklch(84% 0.06 165);
+  --color-k-audio-b: oklch(94% 0.025 165);
+  --color-k-audio-l: oklch(68% 0.07 165);
+  --color-k-motion-h: oklch(84% 0.055 305);
+  --color-k-motion-b: oklch(94% 0.022 305);
+  --color-k-motion-l: oklch(70% 0.065 305);
+  --color-k-caption-h: oklch(87% 0.06 85);
+  --color-k-caption-b: oklch(87% 0.06 85);
+  --color-k-caption-l: oklch(70% 0.07 85);
+  --color-k-image-h: oklch(84% 0.05 215);
+  --color-k-image-b: oklch(93.5% 0.02 215);
+  --color-k-image-l: oklch(70% 0.055 215);
+  --color-wave: oklch(55% 0.11 165);
+  --color-clip-ink: oklch(22% 0.01 260);
+  --color-c-badge: oklch(0% 0 0 / 0.09);
+  --color-kf: oklch(48% 0.08 305);
+
+  /* Canvas triplets: the light --color-wave and --color-fg-3. */
+  --timeline-waveform-bar-rgb: 21, 133, 97;
+  --timeline-waveform-muted-rgb: 97, 99, 103;
+  --timeline-waveform-baseline-rgb: 21, 133, 97;
+
+  --sh: 0.32;
+}

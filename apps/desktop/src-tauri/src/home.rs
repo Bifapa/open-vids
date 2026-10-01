@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use super::home_auth::HomeToken;
-use super::home_routes::{serve_one, HomeInner, OpenPhase, Opener};
+use super::home_routes::{serve_one, thumb_name_for, HomeInner, OpenPhase, Opener, PrefsListener};
 
 /// A loopback listener that serves the home page for the app's lifetime.
 pub struct HomeServer {
@@ -107,12 +107,37 @@ impl HomeServer {
         }
     }
 
-    /// Forget the currently open project (Show All Projects navigated home).
+    /// Forget the currently open project (the window navigated home). Only a
+    /// real return from a project skips the launch intro on the next page
+    /// load; the navigation hook also fires for the window's first load and
+    /// for reloads of the Projects page, which keep the intro.
     pub fn clear_current(&self) {
         if let Ok(mut inner) = self.inner.lock() {
-            inner.current_id = None;
+            if inner.current_id.take().is_some() {
+                inner.skip_intro = true;
+            }
             inner.open_phase = OpenPhase::Idle;
         }
+    }
+
+    /// Told about preference changes saved through the page (window theme).
+    pub fn set_prefs_listener(&self, listener: PrefsListener) {
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.prefs_listener = Some(listener);
+        }
+    }
+
+    /// The most recently opened project that still exists, for
+    /// "On launch: Reopen last project".
+    pub fn last_project(&self) -> Option<PathBuf> {
+        self.inner.lock().ok().and_then(|inner| {
+            inner
+                .recents
+                .entries()
+                .iter()
+                .find(|e| e.dir.is_dir())
+                .map(|e| e.dir.clone())
+        })
     }
 
     /// Cache fetched thumbnail bytes for `dir` under a stable name and point
@@ -130,13 +155,6 @@ impl HomeServer {
     pub fn token_for_test(&self) -> String {
         self.token.value().to_string()
     }
-}
-
-fn thumb_name_for(dir: &Path, ext: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    dir.to_string_lossy().hash(&mut hasher);
-    format!("{:016x}.{ext}", hasher.finish())
 }
 
 impl Drop for HomeServer {
@@ -181,6 +199,28 @@ mod tests {
         let server = HomeServer::bind(dir.join("recents.json"), dir.join("thumbs")).unwrap();
         let origin = server.origin();
         (server, origin)
+    }
+
+    fn intro_flag(origin: &str) -> bool {
+        let (code, body) = get(origin, "/", None);
+        assert_eq!(code, 200);
+        String::from_utf8_lossy(&body).contains("\"intro\":true")
+    }
+
+    #[test]
+    fn intro_plays_on_launch_and_reload_but_not_after_a_project() {
+        let (server, origin) = spawn("intro");
+        // The navigation hook runs for the first load and every reload too.
+        server.clear_current();
+        assert!(intro_flag(&origin), "cold load plays the intro");
+        server.clear_current();
+        assert!(intro_flag(&origin), "reloading Projects plays it again");
+
+        let project = base("intro-project");
+        server.record_open("intro-project", &project);
+        server.clear_current();
+        assert!(!intro_flag(&origin), "coming back from a project skips it");
+        assert!(intro_flag(&origin), "the skip applies to that one load only");
     }
 
     fn raw(origin: &str, req: &str, body: Option<&[u8]>) -> (u16, Vec<u8>) {

@@ -6,6 +6,7 @@ import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
 import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import "./inspector.css";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
 import { closedGroupHeader, isSelectionHidden } from "./propertyPanelFlatClosedGroup";
@@ -232,7 +233,13 @@ export function PropertyPanelFlat({
   });
 
   const isTextEditable = isTextEditableSelection(element);
-  const elementKind = sections.media ? "media" : element.textFields.length > 0 ? "text" : "other";
+  const elementKind = isAudioDomElement(element.element)
+    ? "audio"
+    : sections.media
+      ? "media"
+      : element.textFields.length > 0
+        ? "text"
+        : "other";
   const toggleOpen = (groupId: string) => {
     const isOpening = openGroupId !== groupId;
     const previousOpenGroupId = openGroupId;
@@ -520,7 +527,7 @@ export function PropertyPanelFlat({
     closedGroupHeader(group, toggleOpen, justToggledIds);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-bg-0 text-sm text-fg">
       <PropertyPanelFlatHeader
         name={element.label}
         meta={`${sourceLabel} · ${element.tagName}`}
@@ -570,7 +577,7 @@ export function PropertyPanelFlat({
               animateEntrance={justToggledIds.includes(openGroup.id)}
             />
             <div
-              className={`${justToggledIds.includes(openGroup.id) ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline bg-panel-bg-inset px-4 py-3 shadow-[inset_0_2px_4px_-1px_rgba(0,0,0,0.5)]`}
+              className={`${justToggledIds.includes(openGroup.id) ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-border-subtle px-3 pb-3 pt-0.5`}
             >
               {openGroup.content}
             </div>

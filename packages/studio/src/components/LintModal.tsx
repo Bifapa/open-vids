@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
-import { XIcon, WarningIcon, CheckCircleIcon, CaretRightIcon } from "@phosphor-icons/react";
+import { useState } from "react";
+import { CheckCircle, Copy, FileCode, Lightning, Terminal, Warning } from "@phosphor-icons/react";
 import { copyTextToClipboard } from "../utils/clipboard";
-import { useDialogBehavior } from "./ui/useDialogBehavior";
+import { Badge, Button, Dialog } from "./ui";
 
 export interface LintFinding {
   severity: "error" | "warning";
@@ -10,11 +10,24 @@ export interface LintFinding {
   fixHint?: string;
 }
 
+/** Findings grouped by file, in first-seen order; file-less findings share one group. */
+function groupByFile(findings: LintFinding[]): Array<[string | null, LintFinding[]]> {
+  const groups = new Map<string | null, LintFinding[]>();
+  for (const finding of findings) {
+    const key = finding.file ?? null;
+    const group = groups.get(key);
+    if (group) group.push(finding);
+    else groups.set(key, [finding]);
+  }
+  return [...groups];
+}
+
+/** The prototype's Checks dialog: findings grouped by file, each a card with severity, message and fix. */
 export function LintModal({
   findings,
   projectId,
   projectDir,
-  title = "HyperFrame Lint Results",
+  title = "Checks",
   promptIntro = "Fix these lint issues",
   onClose,
 }: {
@@ -22,19 +35,17 @@ export function LintModal({
   projectId: string;
   /** Real on-disk project directory for the agent prompt (not the browser URL). */
   projectDir?: string | null;
-  /** Header subtitle — parameterize so console errors don't masquerade as lint results. */
+  /** Dialog title — parameterize so console errors don't masquerade as lint results. */
   title?: string;
   /** First line of the copied agent prompt. */
   promptIntro?: string;
   onClose: () => void;
 }) {
-  const errors = findings.filter((f) => f.severity === "error");
-  const warnings = findings.filter((f) => f.severity === "warning");
-  const hasIssues = findings.length > 0;
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { requestClose } = useDialogBehavior({ open: true, onClose, containerRef });
+  const errors = findings.filter((f) => f.severity === "error").length;
+  const warnings = findings.length - errors;
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  // Console errors carry no file: their group is the runtime, not a source file.
+  const looseLabel = title === "Checks" ? "Composition" : "Runtime Errors";
 
   const handleCopyToAgent = async () => {
     const lines = findings.map((f) => {
@@ -45,124 +56,93 @@ export function LintModal({
     });
     const pathLine = projectDir ? `Project path: ${projectDir}\n\n` : "";
     const text = `${promptIntro} for project "${projectId}":\n\n${pathLine}${lines.join("\n\n")}`;
-    const copiedText = await copyTextToClipboard(text);
-    if (copiedText) {
-      setCopied(true);
-      setCopyFailed(false);
-      setTimeout(() => setCopied(false), 2000);
-    } else {
-      setCopyFailed(true);
-      setTimeout(() => setCopyFailed(false), 3000);
-    }
+    const ok = await copyTextToClipboard(text);
+    setCopyState(ok ? "copied" : "failed");
+    setTimeout(() => setCopyState("idle"), ok ? 2000 : 3000);
   };
 
   return (
-    <div
-      className="hf-backdrop-in fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xs"
-      onClick={requestClose}
-    >
-      <div
-        ref={containerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        tabIndex={-1}
-        className="bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden outline-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800">
-          <div className="flex items-center gap-3">
-            {hasIssues ? (
-              <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center">
-                <WarningIcon size={18} className="text-red-400" weight="fill" />
-              </div>
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-studio-accent/10 flex items-center justify-center">
-                <CheckCircleIcon size={18} className="text-studio-accent" weight="fill" />
-              </div>
+    <Dialog
+      open
+      onClose={onClose}
+      title={title}
+      meta={
+        findings.length > 0
+          ? `${errors} error${errors === 1 ? "" : "s"} · ${warnings} warning${warnings === 1 ? "" : "s"}`
+          : "No issues"
+      }
+      className="w-[min(640px,calc(100vw-2rem))] max-h-[min(720px,calc(100vh-6rem))]"
+      footer={
+        findings.length > 0 ? (
+          <>
+            {copyState === "failed" && (
+              <span role="alert" className="mr-auto text-xs text-error">
+                Copy failed — check clipboard permissions
+              </span>
             )}
-            <div>
-              <h2 className="text-sm font-semibold text-neutral-200">
-                {hasIssues
-                  ? `${errors.length} error${errors.length !== 1 ? "s" : ""}, ${warnings.length} warning${warnings.length !== 1 ? "s" : ""}`
-                  : "All checks passed"}
-              </h2>
-              <p className="text-xs text-neutral-500">{title}</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 transition-colors active:scale-[0.98]"
-          >
-            <XIcon size={16} />
-          </button>
-        </div>
-
-        {/* Copy to agent + findings */}
-        {hasIssues && (
-          <div className="flex items-center justify-end px-5 py-2 border-b border-neutral-800/50">
-            <button
-              onClick={handleCopyToAgent}
-              className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors active:scale-[0.98] ${
-                copied
-                  ? "bg-green-600 text-white"
-                  : copyFailed
-                    ? "bg-red-600 text-white"
-                    : "bg-studio-accent hover:bg-studio-accent/80 text-white"
-              }`}
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Copy size={12} aria-hidden />}
+              onClick={() => void handleCopyToAgent()}
             >
-              {copied
-                ? "Copied!"
-                : copyFailed
-                  ? "Copy failed — check permissions"
-                  : "Copy to Agent"}
-            </button>
-          </div>
-        )}
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          {!hasIssues && (
-            <div className="py-8 text-center text-neutral-500 text-sm">
-              No errors or warnings found. Your composition looks good!
-            </div>
-          )}
-          {errors.map((f, i) => (
-            <div key={`e-${i}`} className="py-3 border-b border-neutral-800/50 last:border-0">
-              <div className="flex items-start gap-2">
-                <WarningIcon size={14} className="text-red-400 shrink-0 mt-0.5" weight="fill" />
-                <div className="min-w-0">
-                  <p className="text-sm text-neutral-200">{f.message}</p>
-                  {f.file && <p className="text-xs text-neutral-600 font-mono mt-0.5">{f.file}</p>}
-                  {f.fixHint && (
-                    <div className="flex items-start gap-1 mt-1.5">
-                      <CaretRightIcon size={10} className="text-studio-accent shrink-0 mt-0.5" />
-                      <p className="text-xs text-studio-accent">{f.fixHint}</p>
-                    </div>
+              {copyState === "copied" ? "Copied!" : "Copy to Agent"}
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
+      {findings.length === 0 ? (
+        <div className="grid justify-items-center gap-1.5 py-8 text-center">
+          <CheckCircle size={20} weight="fill" className="text-success" aria-hidden />
+          <p className="m-0 font-semibold text-fg">All checks passed</p>
+          <p className="m-0 text-xs text-fg-3">No errors or warnings found.</p>
+        </div>
+      ) : (
+        <div className="-mx-3 -my-3 pb-2 pt-1">
+          {groupByFile(findings).map(([file, group]) => (
+            <section
+              key={file ?? ""}
+              className="border-t border-border-subtle px-3 pb-1 pt-2 first:border-t-0"
+            >
+              <h3 className="m-0 flex h-[22px] items-center gap-1.5 text-xs font-semibold text-fg-2">
+                {file ? (
+                  <FileCode size={12} className="text-fg-3" aria-hidden />
+                ) : (
+                  <Terminal size={12} className="text-fg-3" aria-hidden />
+                )}
+                <span className={file ? "font-mono text-num font-medium" : undefined}>
+                  {file ?? looseLabel}
+                </span>
+                <span className="font-normal text-fg-3">{group.length}</span>
+              </h3>
+              {group.map((finding, index) => (
+                <article
+                  key={index}
+                  className="my-1 grid gap-1.5 rounded-md border border-border-subtle bg-bg-0 py-2 pl-2.5 pr-2"
+                >
+                  <Badge
+                    tone={finding.severity === "error" ? "error" : "warning"}
+                    className="justify-self-start"
+                  >
+                    <Warning size={11} weight="bold" aria-hidden />
+                    {finding.severity === "error" ? "Error" : "Warning"}
+                  </Badge>
+                  <p className="m-0 text-sm leading-[17px] text-fg text-pretty">
+                    {finding.message}
+                  </p>
+                  {finding.fixHint && (
+                    <p className="m-0 flex items-start gap-1.5 text-xs leading-[15px] text-fg-3 text-pretty">
+                      <Lightning size={12} className="mt-px shrink-0" aria-hidden />
+                      {finding.fixHint}
+                    </p>
                   )}
-                </div>
-              </div>
-            </div>
-          ))}
-          {warnings.map((f, i) => (
-            <div key={`w-${i}`} className="py-3 border-b border-neutral-800/50 last:border-0">
-              <div className="flex items-start gap-2">
-                <WarningIcon size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                <div className="min-w-0">
-                  <p className="text-sm text-neutral-300">{f.message}</p>
-                  {f.file && <p className="text-xs text-neutral-600 font-mono mt-0.5">{f.file}</p>}
-                  {f.fixHint && (
-                    <div className="flex items-start gap-1 mt-1.5">
-                      <CaretRightIcon size={10} className="text-studio-accent shrink-0 mt-0.5" />
-                      <p className="text-xs text-studio-accent">{f.fixHint}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+                </article>
+              ))}
+            </section>
           ))}
         </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 }

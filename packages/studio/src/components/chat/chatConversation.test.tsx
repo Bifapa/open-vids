@@ -41,8 +41,8 @@ const textarea = (host: HTMLElement) => host.querySelector<HTMLTextAreaElement>(
 describe("composer", () => {
   it("sends when idle: Send button, Enter submits, Shift+Enter does not", async () => {
     const { host, client, store } = open(chatState());
-    expect(byLabel(host, "Send")).not.toBeNull();
-    expect(byLabel(host, "Stop")).toBeNull();
+    expect(byLabel(host, "Send message")).not.toBeNull();
+    expect(byLabel(host, "Stop task")).toBeNull();
 
     const field = textarea(host);
     if (!field) throw new Error("no composer");
@@ -54,14 +54,15 @@ describe("composer", () => {
     expect(client.startTurn).toHaveBeenCalledWith("c1", {
       prompt: "Trim the intro",
       editorContext: undefined,
+      mode: "normal",
     });
     expect(store.getState().drafts.c1).toBe("");
   });
 
   it("turns Send into Stop while a run is live, and Enter steers that run", async () => {
     const { host, client } = open(runningChatState());
-    expect(byLabel(host, "Send")).toBeNull();
-    expect(textarea(host)?.placeholder).toBe("Steer the agent…");
+    expect(byLabel(host, "Send message")).toBeNull();
+    expect(textarea(host)?.placeholder).toBe("Steer the current task…");
 
     const field = textarea(host);
     if (!field) throw new Error("no composer");
@@ -73,7 +74,7 @@ describe("composer", () => {
     });
     expect(client.startTurn).not.toHaveBeenCalled();
 
-    await click(byLabel(host, "Stop"));
+    await click(byLabel(host, "Stop task"));
     expect(client.abortTurn).toHaveBeenCalledWith("c1", "t1");
   });
 
@@ -87,7 +88,7 @@ describe("composer", () => {
     expect(host.querySelector('[data-testid="composer-blocked"]')?.textContent).toContain(
       "“Colour pass” is working on this project",
     );
-    expect(byLabel(host, "Send")?.hasAttribute("disabled")).toBe(true);
+    expect(byLabel(host, "Send message")?.hasAttribute("disabled")).toBe(true);
   });
 
   it("shows a failed send inline in plain language and keeps what was typed", async () => {
@@ -131,7 +132,8 @@ describe("messages", () => {
       ),
     );
     expect(host.textContent).not.toContain("SECRET chain of thought");
-    const toggle = buttonWithText(host, "Thought for 4s");
+    const toggle = buttonWithText(host, "Thinking");
+    expect(toggle?.textContent).toContain("Thought for 4s");
     expect(toggle?.getAttribute("aria-expanded")).toBe("false");
     await click(toggle);
     expect(toggle?.getAttribute("aria-expanded")).toBe("true");
@@ -166,7 +168,11 @@ describe("messages", () => {
     );
     expect(host.textContent).toContain("Read 3 files");
     expect(host.textContent).not.toContain("main.css");
-    await click(buttonWithText(host, "Read 3 files"));
+    await click(
+      [...host.querySelectorAll("button")].find((button) =>
+        button.textContent?.includes("Read 3 files"),
+      ),
+    );
     expect(host.textContent).toContain("styles/main.css");
   });
 
@@ -242,9 +248,9 @@ describe("messages", () => {
         lastSeq: 4,
       }),
     );
-    expect(host.querySelector('[data-role="user"] span')?.textContent).toBe("steering");
+    expect(host.querySelector('[data-testid="steering-tag"]')?.textContent).toBe("Steering");
     expect(host.textContent).toContain("Timeline 1s–2.5s");
-    expect(host.textContent).not.toContain("a.png");
+    expect(host.textContent).toContain("a.png");
   });
 });
 
@@ -338,6 +344,32 @@ describe("turn footer", () => {
     const { host } = open(finished({ ...ready(["e1"]), status: "reverted", revertedAt: 2 }));
     expect(host.textContent).toContain("Reverted");
     expect(buttonWithText(host, "Revert this turn")).toBeNull();
+  });
+
+  it("offers Undo only when the revert can be undone, and puts the turn back through the server", async () => {
+    const plain = open(finished({ ...ready(["e1"]), status: "reverted", revertedAt: 2 }));
+    expect(byLabel(plain.host, "Undo revert")).toBeNull();
+    unmountChat(plain);
+
+    const reverted: TurnCheckpoint = {
+      ...ready(["e1"]),
+      status: "reverted",
+      revertedAt: 2,
+      revertEntryIds: ["r1"],
+      keptFiles: ["captions.html"],
+    };
+    const { host, client } = open(finished(reverted));
+    expect(host.textContent).toContain("Kept later edits to 1 file");
+    client.unrevertTurn.mockResolvedValueOnce({
+      ok: true,
+      turn: turn({ status: "completed", checkpoint: { ...ready(["e1"]), files: ["index.html"] } }),
+    });
+    await click(byLabel(host, "Undo revert"));
+    expect(client.unrevertTurn).toHaveBeenLastCalledWith("c1", "t1", {});
+    expect(buttonWithText(host, "Revert this turn")).not.toBeNull();
+    expect(host.querySelector('[data-testid="turn-files"]')?.textContent).toContain(
+      "1 file changed",
+    );
   });
 
   it("has no footer while the turn is still running", () => {

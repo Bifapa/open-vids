@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NormalizedHfColorGradingWheels } from "@hyperframes/core/color-grading";
-import { ColorWheels } from "./propertyPanelColorWheels";
+import { ColorWheels, WHEEL_BACKGROUND } from "./propertyPanelColorWheels";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -76,9 +76,13 @@ describe("ColorWheels", () => {
   });
 
   it("renders a color sequence that follows the same hue direction as the pointer", () => {
-    const { root, surface } = renderWheels();
-    expect(surface.style.background).toContain("#f33, #f3f, #33f, #3ff, #3f3, #ff3, #f33");
-    act(() => root.unmount());
+    // Hue rises counter-clockwise from 3 o'clock; a clockwise conic from 90deg must
+    // therefore list hues in descending order (wrapping once, back to red).
+    expect(WHEEL_BACKGROUND).toContain("conic-gradient(from 90deg");
+    const hues = [...WHEEL_BACKGROUND.matchAll(/oklch\([\d.]+% [\d.]+ ([\d.]+)\)/g)].map((m) =>
+      Number(m[1]),
+    );
+    expect(hues).toEqual([29, 328, 264, 195, 142, 105, 29]);
   });
 
   it("previews during drag and commits only once on release", () => {

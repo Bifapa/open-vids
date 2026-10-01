@@ -117,6 +117,7 @@ describe("HttpCheckpointHost", () => {
       ok: false,
       conflict: { files: ["index.html"] },
       remainingEntryIds: ["older"],
+      undoEntryIds: ["undo-newer"],
     });
     const undos = fixture.requests.filter((request) => request.path.endsWith("/undo"));
     expect(undos).toHaveLength(2);
@@ -128,5 +129,23 @@ describe("HttpCheckpointHost", () => {
       "just-this",
       "just-this",
     ]);
+  });
+
+  it("asks without a mode so a conflict comes back, and lists the files of entries", async () => {
+    const fixture = await fakeHistoryServer(
+      [
+        { ...entry("only", 600), files: [{ path: "index.html" }, { path: "captions.html" }] },
+        { ...entry("other", 700), files: [{ path: "other.html" }] },
+      ],
+      { only: { ok: true, entry: { id: "undo-only" } } },
+    );
+    const host = new HttpCheckpointHost();
+    expect(await host.revert(fixture.scope, ["only"], undefined)).toEqual({
+      ok: true,
+      undoEntryIds: ["undo-only"],
+    });
+    const undo = fixture.requests.find((request) => request.path.endsWith("/undo"));
+    expect(isRecord(undo?.body) && "mode" in undo.body).toBe(false);
+    expect(await host.files(fixture.scope, ["only"])).toEqual(["captions.html", "index.html"]);
   });
 });

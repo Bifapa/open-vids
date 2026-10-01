@@ -67,7 +67,6 @@ export function useStoryAgent(agentStore: AgentStore | null): StoryAgent {
           message: agentStore.getState().notice?.message ?? "Couldn't open a chat.",
         };
       }
-      await agentStore.getState().setMode("story");
       return { ok: true };
     },
   };

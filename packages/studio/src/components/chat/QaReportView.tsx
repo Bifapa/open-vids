@@ -27,9 +27,9 @@ import {
 const OPEN_STATUS_ORDER: readonly QaIssueStatus[] = ["reappeared", "new", "persisting"];
 
 const SEVERITY_TONES: Record<QaSeverity, string> = {
-  error: "bg-danger/10 text-danger",
-  warning: "bg-container/10 text-container",
-  info: "bg-surface text-text-3",
+  error: "bg-error-soft text-error",
+  warning: "bg-warning-soft text-warning",
+  info: "bg-surface-2 text-fg-3",
 };
 
 function IssueRow({ issue, composition }: { issue: QaIssue; composition: string }) {
@@ -42,14 +42,14 @@ function IssueRow({ issue, composition }: { issue: QaIssue; composition: string 
     <li
       data-issue-id={issue.id}
       data-issue-status={issue.status}
-      className="flex flex-col gap-0.5 rounded-sm px-1.5 py-1 hover:bg-hover/30"
+      className="flex flex-col gap-0.5 rounded-sm px-1.5 py-1 hover:bg-surface-1"
     >
-      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-step-10">
-        <span className={cn("font-medium", fixed ? "text-text-3" : "text-text-1")}>
+      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-2xs">
+        <span className={cn("text-xs font-medium", fixed ? "text-fg-3" : "text-fg")}>
           {QA_ISSUE_KIND_LABELS[issue.kind]}
         </span>
         {!fixed && (
-          <span className={cn("rounded-sm px-1", SEVERITY_TONES[issue.severity])}>
+          <span className={cn("rounded-xs px-1", SEVERITY_TONES[issue.severity])}>
             {QA_SEVERITY_LABELS[issue.severity]}
           </span>
         )}
@@ -58,25 +58,23 @@ function IssueRow({ issue, composition }: { issue: QaIssue; composition: string 
           data-testid="qa-issue-time"
           title={`Show ${range} of ${composition} in the preview`}
           onClick={() => usePlayerStore.getState().requestSeek(issue.start)}
-          className="rounded-sm font-mono tabular-nums text-accent outline-hidden hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
+          className="rounded-xs px-0.5 font-mono text-num text-fg tabular-nums underline decoration-border-strong underline-offset-2 hover:bg-surface-2 hover:decoration-fg-2 outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
         >
           {range}
         </button>
-        <span className="text-text-4">{source}</span>
-        {issue.owner && <span className="text-text-4">→ {QA_OWNER_LABELS[issue.owner]}</span>}
+        <span className="text-fg-3">{source}</span>
+        {issue.owner && <span className="text-fg-3">→ {QA_OWNER_LABELS[issue.owner]}</span>}
       </span>
       <span
         className={cn(
-          "text-step-11 leading-snug",
-          fixed ? "text-text-3 line-through decoration-text-4" : "text-text-2",
+          "text-xs leading-[15px]",
+          fixed ? "text-fg-3 line-through decoration-fg-3" : "text-fg-2",
         )}
       >
         {issue.message}
       </span>
       {issue.suggestion && !fixed && (
-        <span className="text-step-10 leading-snug text-text-3">
-          Suggestion: {issue.suggestion}
-        </span>
+        <span className="text-xs leading-[15px] text-fg-3">Suggestion: {issue.suggestion}</span>
       )}
     </li>
   );
@@ -94,7 +92,7 @@ function IssueGroup({
   if (issues.length === 0) return null;
   return (
     <section data-issue-group={status} className="flex flex-col gap-0.5">
-      <h4 className="px-1.5 text-step-10 font-medium uppercase tracking-wide text-text-4">
+      <h4 className="px-1.5 text-xs font-semibold text-fg-2">
         {QA_ISSUE_STATUS_LABELS[status]} ({issues.length})
       </h4>
       <ul className="flex flex-col">
@@ -114,29 +112,29 @@ function ReportBody({ report }: { report: QaReport }) {
       {!report.current && (
         <p
           data-testid="qa-report-outdated"
-          className="flex items-center gap-1 rounded-sm bg-container/10 px-1.5 py-1 text-step-10 text-container"
+          className="flex items-center gap-1 rounded-sm bg-warning-soft px-1.5 py-1 text-xs text-warning"
         >
-          <ClockCounterClockwise size={11} aria-hidden className="shrink-0" />
+          <ClockCounterClockwise aria-hidden className="size-icon-sm shrink-0" />
           Outdated: the project changed since this render (for example after a revert).
         </p>
       )}
       {report.renderError && (
-        <p className="px-1.5 text-step-11 text-danger">Render failed: {report.renderError}</p>
+        <p className="px-1.5 text-xs text-error">Render failed: {report.renderError}</p>
       )}
       {report.vision.status !== "ran" && (
-        <p className="px-1.5 text-step-10 text-text-3">
+        <p className="px-1.5 text-xs text-fg-3">
           {QA_VISION_STATUS_LABELS[report.vision.status]}
           {report.vision.reason ? `: ${report.vision.reason}` : "."}
         </p>
       )}
       {notRun.map((check) => (
-        <p key={check.id} className="px-1.5 text-step-10 text-text-3">
+        <p key={check.id} className="px-1.5 text-xs text-fg-3">
           {QA_CHECK_LABELS[check.id]} {QA_CHECK_STATUS_LABELS[check.status]}
           {check.detail ? `: ${check.detail}` : "."}
         </p>
       ))}
       {openCount === 0 && report.resolved.length === 0 && !report.renderError && (
-        <p className="px-1.5 text-step-11 text-text-3">No issues found.</p>
+        <p className="px-1.5 text-xs text-fg-3">No issues found.</p>
       )}
       {OPEN_STATUS_ORDER.map((status) => (
         <IssueGroup
@@ -173,15 +171,15 @@ export function QaReportView({ reportId, refreshKey }: { reportId: string; refre
   return (
     <div data-testid="qa-report" data-report-id={reportId} className="py-1">
       {report.status === "loading" && (
-        <p className="px-1.5 text-step-10 text-text-3">Loading the report…</p>
+        <p className="px-1.5 text-xs text-fg-3">Loading the report…</p>
       )}
       {report.status === "failed" && (
-        <p role="alert" className="flex items-center gap-2 px-1.5 text-step-10 text-danger">
+        <p role="alert" className="flex items-center gap-2 px-1.5 text-xs text-error">
           {report.message}
           <button
             type="button"
             onClick={() => setAttempt((count) => count + 1)}
-            className="rounded-sm font-medium text-accent outline-hidden hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
+            className="rounded-xs font-medium text-fg-2 underline decoration-border-strong underline-offset-2 hover:text-fg outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
           >
             Try again
           </button>

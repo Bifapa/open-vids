@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, X } from "../../icons/SystemIcons";
+import { INSP_ROW, INSP_ROW_LABEL, INSP_SELECT, INSP_SUBHEAD } from "./inspectorStyles";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import { normalizeTextMetricValue } from "./propertyPanelHelpers";
@@ -103,46 +104,35 @@ function FlatTextFieldEditor({
         onPreview={(next) => onPreviewTextFieldStyle?.(field.key, "font-size", next)}
         onCommit={(next) => onSetTextFieldStyle(field.key, "font-size", next)}
       />
-      <div className="flex min-h-[30px] items-center justify-between">
+      <div className={INSP_ROW}>
         <span
-          className={
+          className={`${INSP_ROW_LABEL} ${
             VALUE_TIER_LABEL_CLASS[resolveValueTier(field.inlineStyles["font-weight"], "400")]
-          }
-          style={{ fontSize: 11 }}
+          }`}
         >
           Weight
         </span>
-        <label className="flex items-center gap-1.5 border-b border-panel-border-input/50 pb-px hover:border-panel-border-input">
-          <select
-            value={weight}
-            onChange={(e) => {
-              onSetTextFieldStyle(field.key, "font-weight", e.target.value);
-            }}
-            className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-hidden ${
-              VALUE_TIER_VALUE_CLASS[resolveValueTier(field.inlineStyles["font-weight"], "400")]
-            }`}
-          >
-            {(weightOptions.includes(weight) ? weightOptions : [weight, ...weightOptions]).map(
-              (option) => (
-                <option key={option} value={option}>
-                  {WEIGHT_LABELS[option] ?? option}
-                </option>
-              ),
-            )}
-          </select>
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="currentColor"
-            className="shrink-0 text-panel-text-5"
-          >
-            <path d="M2 3l3 4 3-4z" />
-          </svg>
-        </label>
+        <select
+          value={weight}
+          aria-label="Weight"
+          onChange={(e) => {
+            onSetTextFieldStyle(field.key, "font-weight", e.target.value);
+          }}
+          className={`${INSP_SELECT} ${
+            VALUE_TIER_VALUE_CLASS[resolveValueTier(field.inlineStyles["font-weight"], "400")]
+          }`}
+        >
+          {(weightOptions.includes(weight) ? weightOptions : [weight, ...weightOptions]).map(
+            (option) => (
+              <option key={option} value={option}>
+                {WEIGHT_LABELS[option] ?? option}
+              </option>
+            ),
+          )}
+        </select>
       </div>
       <FlatRow
-        label="Letter spacing"
+        label="Tracking"
         value={getTextStyleValue(field, styles, "letter-spacing", "0px")}
         tier={resolveValueTier(field.inlineStyles["letter-spacing"], "0px")}
         onCommit={(next) =>
@@ -277,7 +267,7 @@ export function FlatTextSection({
 
   if (textFields.length > 1) {
     return (
-      <div className="space-y-2.5">
+      <div className="grid gap-1.5">
         <FlatTextLayerList
           fields={textFields}
           activeFieldKey={activeField.key}
@@ -311,7 +301,7 @@ export function FlatTextSection({
   }
 
   return (
-    <div className="space-y-2.5">
+    <div className="grid gap-1.5">
       <FlatTextFieldEditor
         field={activeField}
         styles={styles}
@@ -330,7 +320,7 @@ export function FlatTextSection({
             setActiveFieldKey(nextKey);
           });
         }}
-        className="mt-0.5 flex items-center gap-[5px] text-[10px] text-panel-text-4 hover:text-panel-text-2"
+        className="flex h-ctl-sm items-center gap-1.5 justify-self-start rounded-sm px-1.5 text-xs text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
       >
         <Plus size={10} />
         Add text field
@@ -363,11 +353,9 @@ export function FlatTextLayerList({
   onRemove: (fieldKey: string) => void;
 }) {
   return (
-    <div className="mb-2 border-l-2 border-panel-border-input py-0.5 pl-[10px]">
-      <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-        Text layers
-      </div>
-      <div className="space-y-1">
+    <div className="grid gap-1">
+      <div className={INSP_SUBHEAD}>Text layers</div>
+      <div className="grid gap-0.5">
         {fields.map((field, index) => {
           const active = field.key === activeFieldKey;
           return (
@@ -376,20 +364,20 @@ export function FlatTextLayerList({
               data-flat-text-layer-row="true"
               data-active={active}
               onClick={() => onSelect(field.key)}
-              className={`flex min-h-[26px] cursor-pointer items-center gap-2 rounded px-1 ${
-                active ? "bg-panel-accent/10" : "hover:bg-panel-hover"
+              className={`flex h-row-sm cursor-pointer items-center gap-2 rounded-sm px-1.5 ${
+                active
+                  ? "bg-accent-soft shadow-[inset_0_0_0_1px_var(--color-accent-line)]"
+                  : "hover:bg-surface-1"
               }`}
             >
               <span
                 className="h-3 w-3 shrink-0 rounded-xs"
                 style={{ backgroundColor: getTextFieldColor(field, styles) }}
               />
-              <span className="min-w-0 flex-1 truncate text-[11px] text-panel-text-1">
+              <span className="min-w-0 flex-1 truncate text-sm text-fg">
                 {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
               </span>
-              <span className="shrink-0 font-mono text-[9px] text-panel-text-4">
-                {field.tagName}
-              </span>
+              <span className="shrink-0 font-mono text-2xs text-fg-3">{field.tagName}</span>
               {fields.length > 1 && (
                 <button
                   type="button"
@@ -399,7 +387,7 @@ export function FlatTextLayerList({
                     e.stopPropagation();
                     onRemove(field.key);
                   }}
-                  className="shrink-0 text-panel-text-4 hover:text-panel-text-1"
+                  className="shrink-0 text-fg-3 hover:text-fg"
                 >
                   <X size={10} />
                 </button>
@@ -414,7 +402,7 @@ export function FlatTextLayerList({
         onClick={() => {
           onAdd();
         }}
-        className="mt-1 flex items-center gap-[5px] text-[10px] text-panel-text-4 hover:text-panel-text-2"
+        className="mt-1 flex h-ctl-sm items-center gap-1.5 justify-self-start rounded-sm px-1.5 text-xs text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
       >
         <Plus size={10} />
         Add text field

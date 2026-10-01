@@ -1,20 +1,25 @@
 import { useState, useRef, type CSSProperties } from "react";
+import { CaretRight, X } from "@phosphor-icons/react";
 import { useMountEffect } from "../hooks/useMountEffect";
 import { type AgentModalAnchorPoint, clampNumber } from "../utils/studioHelpers";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
+import { Kbd } from "./ui/Kbd";
 import { useDialogBehavior } from "./ui/useDialogBehavior";
+
+const MODAL_WIDTH = 420;
 
 function getAgentModalPositionStyle(
   anchorPoint: AgentModalAnchorPoint | null,
 ): CSSProperties | undefined {
   if (!anchorPoint || typeof window === "undefined") return undefined;
 
-  const modalWidth = 480;
-  const estimatedModalHeight = 270;
+  const estimatedModalHeight = 240;
   const margin = 16;
   const left = clampNumber(
     anchorPoint.x,
-    margin + modalWidth / 2,
-    window.innerWidth - margin - modalWidth / 2,
+    margin + MODAL_WIDTH / 2,
+    window.innerWidth - margin - MODAL_WIDTH / 2,
   );
   const top = clampNumber(
     anchorPoint.y + 12,
@@ -33,6 +38,7 @@ export interface AskAgentModalProps {
   onClose: () => void;
 }
 
+/** Canvas menu › Ask Agent…: a floating card anchored at the element, in the prototype's `.float` chrome. */
 export function AskAgentModal({
   selectionLabel,
   contextPreview,
@@ -66,8 +72,8 @@ export function AskAgentModal({
     <div
       className={
         anchorPoint
-          ? "hf-backdrop-in fixed inset-0 z-100 bg-black/60 backdrop-blur-xs"
-          : "hf-backdrop-in fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xs"
+          ? "hf-backdrop-in fixed inset-0 z-100 bg-scrim"
+          : "hf-backdrop-in fixed inset-0 z-100 flex items-center justify-center bg-scrim"
       }
       onClick={requestClose}
     >
@@ -77,42 +83,28 @@ export function AskAgentModal({
         aria-modal="true"
         aria-label="Copy prompt to AI agent"
         tabIndex={-1}
-        className={`w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl outline-hidden ${
+        className={`flex flex-col overflow-hidden rounded-lg border border-border bg-bg-1 text-sm text-fg shadow-pop outline-hidden ${
           anchorPoint ? "fixed" : ""
         }`}
-        style={modalPositionStyle}
+        style={{ width: MODAL_WIDTH, ...modalPositionStyle }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
-          <div>
-            <h3 className="text-sm font-medium text-neutral-200">Copy prompt to AI agent</h3>
-            <p className="text-xs text-neutral-500 mt-0.5">
-              {selectionLabel.length > 50 ? `${selectionLabel.slice(0, 49)}…` : selectionLabel}
-            </p>
-          </div>
-          <button
-            className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 active:scale-[0.98]"
-            onClick={onClose}
+        <div className="flex h-head shrink-0 items-center gap-1.5 border-b border-border-subtle pl-3 pr-1">
+          <h3 className="m-0 shrink-0 text-sm font-semibold">Ask Agent</h3>
+          <span className="min-w-0 flex-1 truncate text-xs text-fg-3" title={selectionLabel}>
+            {selectionLabel}
+          </span>
+          <IconButton
+            size="sm"
             aria-label="Close"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+            onClick={onClose}
+            icon={<X size={12} aria-hidden />}
+          />
         </div>
-        <div className="px-5 py-4 space-y-3">
+        <div className="grid gap-2 p-3">
           <textarea
             ref={inputRef}
-            className="w-full h-24 px-3 py-2 rounded-lg border border-neutral-800 bg-neutral-900/60 text-sm text-neutral-200 placeholder-neutral-600 resize-none focus:outline-hidden focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
+            className="h-24 w-full resize-none rounded-sm border border-border bg-surface-1 px-2 py-[5px] text-sm leading-4 text-fg placeholder:text-fg-3 hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
             placeholder="Describe what you want to change…"
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -124,26 +116,27 @@ export function AskAgentModal({
           />
           {contextPreview && (
             <details className="group">
-              <summary className="text-[11px] text-neutral-500 cursor-pointer select-none hover:text-neutral-400">
+              <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-xs text-fg-3 hover:text-fg-2 [&::-webkit-details-marker]:hidden">
+                <CaretRight
+                  size={10}
+                  aria-hidden
+                  className="transition-transform duration-expand group-open:rotate-90"
+                />
                 Context included in prompt
               </summary>
-              <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-neutral-900/80 px-3 py-2 text-[11px] leading-relaxed text-neutral-500 whitespace-pre-wrap wrap-break-word border border-neutral-800/50">
+              <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md border border-border-subtle bg-bg-0 px-2.5 py-2 font-mono text-num leading-4 text-fg-3">
                 {contextPreview}
               </pre>
             </details>
           )}
         </div>
-        <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">
-          <span className="text-[11px] text-neutral-600">
-            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to copy
+        <div className="flex min-h-11 items-center gap-1.5 border-t border-border-subtle py-2 pl-3 pr-2.5">
+          <span className="mr-auto flex items-center gap-1 text-xs text-fg-3">
+            <Kbd>{navigator.platform.includes("Mac") ? "⌘↵" : "Ctrl+↵"}</Kbd> to copy
           </span>
-          <button
-            className="px-4 py-1.5 rounded-lg bg-studio-accent/90 text-xs font-medium text-neutral-950 hover:bg-studio-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            disabled={!value.trim()}
-            onClick={handleSubmit}
-          >
-            Copy prompt
-          </button>
+          <Button variant="primary" size="sm" disabled={!value.trim()} onClick={handleSubmit}>
+            Copy Prompt
+          </Button>
         </div>
       </div>
     </div>

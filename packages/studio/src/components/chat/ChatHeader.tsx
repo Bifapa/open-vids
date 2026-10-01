@@ -1,175 +1,254 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, PencilSimple } from "@phosphor-icons/react";
-import { isThinkingEffort } from "@hyperframes/agent-protocol";
+import { ClockCounterClockwise, DotsThree, PencilSimple, Plus } from "@phosphor-icons/react";
+import type { AgentRunStatus, ChatState, ChatSummary } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
-import { activeThread, effortChoices, resolveModel, runningTurn } from "../../agent/agentSelectors";
+import { activeThread, runningTurn, type ThreadId } from "../../agent/agentSelectors";
+import { openSettings } from "../settings/settingsStore";
 import { cn } from "../ui/cn";
 import { IconButton } from "../ui/IconButton";
-import { Select, type SelectOption } from "../ui/Select";
+import { Menu, MenuItem, MenuSeparator } from "../ui/Menu";
+import { StatusDot, type StatusDotTone } from "../ui/Status";
 import { AgentCrumbs } from "./AgentCrumbs";
-import { ChatModeSwitch } from "./ChatModeSwitch";
-import { AgentsMenu } from "./AgentsMenu";
-import { EFFORT_LABELS } from "./agentLabels";
-import { ExecutionQualityMenu } from "./ExecutionQualityMenu";
-import { ModelPicker } from "./ModelPicker";
+import { chatFocus } from "./chatStyles";
+import { formatElapsed } from "./relativeTime";
+import { useNow } from "./useNow";
 
-function EditableTitle({
-  title,
-  disabled,
-  onCommit,
-}: {
-  title: string;
-  disabled: boolean;
-  onCommit: (title: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
+interface HeaderStatus {
+  label: string;
+  tone: StatusDotTone;
+  /** When the work being timed started; set only while it runs. */
+  since: number | null;
+}
+
+const RUN_STATUS: Record<AgentRunStatus, Omit<HeaderStatus, "since">> = {
+  queued: { label: "Queued", tone: "off" },
+  running: { label: "Working", tone: "running" },
+  completed: { label: "Done", tone: "ok" },
+  failed: { label: "Failed", tone: "error" },
+  aborted: { label: "Stopped", tone: "off" },
+  cancelled: { label: "Stopped", tone: "off" },
+  interrupted: { label: "Interrupted", tone: "warn" },
+};
+
+/** The open chat's state (or, in a subagent view, that agent's latest run). */
+function liveStatus(chat: ChatState, thread: ThreadId): HeaderStatus {
+  if (thread !== "main") {
+    const run = chat.runs.filter((item) => item.agent === thread).pop();
+    if (run) {
+      const status = RUN_STATUS[run.status];
+      return {
+        label: status.label,
+        tone: status.tone,
+        since: run.status === "running" ? run.startedAt : null,
+      };
+    }
+  }
+  const running = runningTurn(chat);
+  if (running) return { label: "Working", tone: "running", since: running.startedAt };
+  const last = chat.turns[chat.turns.length - 1];
+  if (!last) return { label: "Idle", tone: "off", since: null };
+  if (last.status === "failed") return { label: "Failed", tone: "error", since: null };
+  if (last.status === "interrupted") return { label: "Interrupted", tone: "warn", since: null };
+  if (last.status === "aborted") return { label: "Stopped", tone: "off", since: null };
+  return { label: "Done", tone: "ok", since: null };
+}
+
+/** A chat seen from the history list (no snapshot loaded). */
+function summaryStatus(summary: ChatSummary, since: number | null): HeaderStatus {
+  switch (summary.status) {
+    case "working":
+      return { label: "Working", tone: "running", since };
+    case "completed":
+      return { label: "Done", tone: "ok", since: null };
+    case "failed":
+      return { label: "Failed", tone: "error", since: null };
+    case "interrupted":
+      return { label: "Interrupted", tone: "warn", since: null };
+    case "idle":
+      return { label: "Idle", tone: "off", since: null };
+  }
+}
+
+function StatusReadout({ status }: { status: HeaderStatus }) {
+  const timing = status.since !== null;
+  const now = useNow(timing);
+  return (
+    <span
+      aria-live="polite"
+      data-testid="chat-status"
+      data-status={status.label.toLowerCase()}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap tabular-nums",
+        timing ? "text-fg-2" : "text-fg-3",
+      )}
+    >
+      <StatusDot tone={status.tone} />
+      <span className={cn(timing && "@max-[299px]/chat:sr-only")}>{status.label}</span>
+      {status.since !== null && (
+        <>
+          <span aria-hidden className="@max-[299px]/chat:hidden">
+            ·
+          </span>
+          <span className="font-mono text-num">{formatElapsed(now - status.since)}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+function RenameInput({ title, onDone }: { title: string; onDone: (value: string | null) => void }) {
   const [draft, setDraft] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing) inputRef.current?.select();
-  }, [editing]);
-
-  const finish = (commit: boolean) => {
-    setEditing(false);
-    if (commit && draft.trim() && draft.trim() !== title) onCommit(draft.trim());
-  };
-
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        value={draft}
-        aria-label="Chat title"
-        maxLength={200}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => finish(true)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") finish(true);
-          else if (event.key === "Escape") finish(false);
-        }}
-        className="h-ctl-sm min-w-0 flex-1 rounded-sm border border-border-strong bg-input px-1.5 text-step-12 font-medium text-text-0 outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
-      />
-    );
-  }
+  useEffect(() => inputRef.current?.select(), []);
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      title={disabled ? "The title can't change while the agent is working." : "Rename chat"}
-      aria-label={`Chat title: ${title}. Rename`}
-      onClick={() => {
-        setDraft(title);
-        setEditing(true);
+    <input
+      ref={inputRef}
+      value={draft}
+      aria-label="Chat title"
+      maxLength={200}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => onDone(draft)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onDone(draft);
+        else if (event.key === "Escape") onDone(null);
       }}
       className={cn(
-        "group flex min-w-0 flex-1 items-center gap-1 rounded-sm px-1 py-0.5 text-left text-step-12 font-medium text-text-0",
-        "outline-hidden transition-colors duration-hover enabled:hover:bg-hover",
-        "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
-        "disabled:cursor-default",
+        "h-ctl-sm min-w-0 flex-1 rounded-sm border border-border-strong bg-surface-1 px-1.5 text-sm font-medium text-fg",
+        chatFocus,
       )}
-    >
-      <span className="truncate">{title}</span>
-      {!disabled && (
-        <PencilSimple
-          size={11}
-          aria-hidden
-          className="shrink-0 text-text-4 opacity-0 transition-opacity duration-hover group-hover:opacity-100 group-focus-visible:opacity-100"
-        />
-      )}
-    </button>
+    />
   );
 }
 
-function EffortControl({ locked }: { locked: boolean }) {
-  const models = useAgentStore((state) => state.models);
-  const director = useAgentStore((state) => state.settings?.director ?? null);
-  const explicit = useAgentStore((state) => state.chat?.chat.mainAgentModel ?? null);
-  const thinking = useAgentStore((state) => state.chat?.chat.thinking ?? null);
-  const setThinking = useAgentStore((state) => state.setThinking);
+/**
+ * The chat's context row: its title (opens history) with an inline rename pencil — or, in a subagent view, the
+ * `Main / Agent` breadcrumbs — the run status with a live timer, and History, New chat and More.
+ * `contextChat` is the chat the row is about while no snapshot is loaded (loading, or history open); null is the
+ * new-chat draft.
+ */
+export function ChatHeader({ contextChat }: { contextChat: ChatSummary | null }) {
+  const view = useAgentStore((state) => state.view);
+  const chat = useAgentStore((state) => state.chat);
+  const activeTurn = useAgentStore((state) => state.activeTurn);
+  const pending = useAgentStore((state) => state.pending);
+  const thread = useAgentStore((state) => activeThread(state.threads, state.chat));
+  const closeChat = useAgentStore((state) => state.closeChat);
+  const openChat = useAgentStore((state) => state.openChat);
+  const startDraft = useAgentStore((state) => state.startDraft);
+  const renameChat = useAgentStore((state) => state.renameChat);
+  const selectThread = useAgentStore((state) => state.selectThread);
+  const [renaming, setRenaming] = useState(false);
 
-  const { info } = resolveModel(explicit, models, director?.model ?? models?.defaultModel ?? null);
-  const choices = effortChoices(info);
-  const defaultEffort = director?.thinking ?? models?.defaultThinking ?? null;
+  const inChat = view === "chat" && chat !== null;
+  const locked = inChat && runningTurn(chat) !== null;
+  // While a chat loads (or history is open) the row shows the summary of the chat it is about.
+  const shown = inChat ? chat.chat : contextChat;
+  let status: HeaderStatus = { label: "Idle", tone: "off", since: null };
+  if (inChat) status = liveStatus(chat, thread);
+  else if (shown) {
+    status = summaryStatus(shown, activeTurn?.chatId === shown.id ? activeTurn.startedAt : null);
+  }
+  const showHistory = () => {
+    if (view !== "history") closeChat();
+    else if (shown) void openChat(shown.id);
+    else startDraft();
+  };
+  const startRename = () => {
+    if (!locked && inChat) setRenaming(true);
+  };
 
-  const options: SelectOption[] = [
-    {
-      value: "default",
-      label: defaultEffort ? `Default (${EFFORT_LABELS[defaultEffort]})` : "Default",
-    },
-    ...choices.map((effort) => ({ value: effort, label: EFFORT_LABELS[effort] })),
-  ];
-  const value = thinking ?? "default";
-  if (!options.some((option) => option.value === value)) {
-    options.push({ value, label: isThinkingEffort(value) ? EFFORT_LABELS[value] : value });
+  let lead;
+  if (inChat && thread !== "main") {
+    lead = <AgentCrumbs runs={chat.runs} active={thread} onSelect={selectThread} />;
+  } else if (renaming && inChat) {
+    lead = (
+      <RenameInput
+        key={chat.chat.id}
+        title={chat.chat.title}
+        onDone={(value) => {
+          setRenaming(false);
+          if (value !== null) void renameChat(value);
+        }}
+      />
+    );
+  } else {
+    lead = (
+      <>
+        <button
+          type="button"
+          onClick={showHistory}
+          title={view === "history" ? "Back to this chat" : "Open chat history"}
+          className={cn(
+            "inline-flex h-ctl-xs min-w-0 shrink items-center overflow-hidden rounded-sm px-1.5 text-left font-medium text-fg",
+            "hover:bg-surface-2",
+            chatFocus,
+          )}
+        >
+          <span className="truncate">{shown?.title ?? "New chat"}</span>
+        </button>
+        {inChat && (
+          <IconButton
+            size="xs"
+            aria-label={`Rename chat: ${chat.chat.title}`}
+            aria-disabled={locked}
+            title={locked ? "The title can’t change while the agent is working" : "Rename chat"}
+            icon={<PencilSimple aria-hidden className="size-icon-sm" />}
+            onClick={startRename}
+            className={cn(
+              "-ml-1 text-fg-3 opacity-0 group-hover/ctx:opacity-100 focus-visible:opacity-100",
+              locked && "cursor-default text-fg-disabled hover:bg-transparent",
+            )}
+          />
+        )}
+      </>
+    );
   }
 
   return (
-    <div
-      className="w-32 shrink-0"
-      title={choices.length === 0 ? "This model has no adjustable thinking effort." : undefined}
+    <header
+      data-testid="chat-context"
+      className="group/ctx flex h-row-sm shrink-0 min-w-0 items-center gap-1.5 border-b border-border-subtle bg-bg-0 pr-1 pl-1.5 text-sm @min-[440px]/chat:pl-2.5"
     >
-      <Select
-        label="Thinking effort"
-        value={choices.length === 0 ? "default" : value}
-        options={choices.length === 0 ? [{ value: "default", label: "Thinking: fixed" }] : options}
-        disabled={locked || choices.length === 0}
-        onCommit={(next) => {
-          if (next === "default") void setThinking(null);
-          else if (isThinkingEffort(next)) void setThinking(next);
-        }}
-        className="h-ctl-sm"
-      />
-    </div>
-  );
-}
-
-/** Back to history, the chat's title, quality and agents, the Director's two model controls, and the threads. */
-export function ChatHeader() {
-  const chat = useAgentStore((state) => state.chat);
-  const models = useAgentStore((state) => state.models);
-  const modelsFailed = useAgentStore((state) => state.modelsFailed);
-  const directorDefault = useAgentStore((state) => state.settings?.director.model ?? null);
-  const thread = useAgentStore((state) => activeThread(state.threads, state.chat));
-  const closeChat = useAgentStore((state) => state.closeChat);
-  const renameChat = useAgentStore((state) => state.renameChat);
-  const setModel = useAgentStore((state) => state.setModel);
-  const selectThread = useAgentStore((state) => state.selectThread);
-  const locked = runningTurn(chat) !== null;
-
-  return (
-    <header className="flex shrink-0 flex-col gap-1.5 border-b border-border px-2 py-2">
-      <div className="flex items-center gap-1">
+      {lead}
+      <span className="ml-auto" />
+      <StatusReadout status={status} />
+      <div className="flex shrink-0 items-center">
         <IconButton
-          aria-label="Back to chats"
           size="sm"
-          icon={<ArrowLeft size={14} aria-hidden />}
-          onClick={closeChat}
+          aria-label="Chat history"
+          aria-pressed={view === "history"}
+          title="Chat history"
+          icon={<ClockCounterClockwise aria-hidden className="size-icon-md" />}
+          onClick={showHistory}
         />
-        <EditableTitle
-          key={chat?.chat.id}
-          title={chat?.chat.title ?? ""}
-          disabled={locked || chat === null}
-          onCommit={(title) => void renameChat(title)}
+        <IconButton
+          size="sm"
+          aria-label="New chat"
+          title="New chat"
+          disabled={pending !== null}
+          icon={<Plus aria-hidden className="size-icon-md" />}
+          onClick={startDraft}
         />
-        {chat && <ExecutionQualityMenu chat={chat.chat} />}
-        {chat && <AgentsMenu chat={chat.chat} />}
+        <Menu
+          align="end"
+          aria-label="Chat options"
+          trigger={
+            <IconButton
+              size="sm"
+              aria-label="Chat options"
+              title="Chat options"
+              icon={<DotsThree aria-hidden weight="bold" className="size-icon-md" />}
+            />
+          }
+        >
+          <MenuItem icon={<ClockCounterClockwise aria-hidden />} onClick={showHistory}>
+            {view === "history" ? "Back to chat" : "Chat history"}
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem onClick={() => openSettings("agents")}>Agent settings…</MenuItem>
+          <MenuItem onClick={() => openSettings("execution")}>Execution quality…</MenuItem>
+        </Menu>
       </div>
-      <div className="flex items-center gap-1.5">
-        <div className="min-w-0 flex-1">
-          <ModelPicker
-            catalog={models}
-            catalogFailed={modelsFailed}
-            explicit={chat?.chat.mainAgentModel ?? null}
-            fallback={directorDefault ?? models?.defaultModel ?? null}
-            disabled={locked || chat === null}
-            onSelect={(model) => void setModel(model)}
-          />
-        </div>
-        <EffortControl locked={locked || chat === null} />
-        <ChatModeSwitch />
-      </div>
-      {chat && <AgentCrumbs runs={chat.runs} active={thread} onSelect={selectThread} />}
     </header>
   );
 }

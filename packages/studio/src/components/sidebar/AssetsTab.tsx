@@ -1,6 +1,8 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { ListBullets, SquaresFour } from "@phosphor-icons/react";
 import { SearchInput } from "../ui/SearchInput";
+import { SegmentedControl, cn } from "../ui";
 import { MEDIA_EXT, FONT_EXT } from "@hyperframes/core/media-types";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -10,11 +12,22 @@ import {
   getCategory,
   basename,
   CATEGORY_LABELS,
+  FILTER_LABELS,
   FILTER_ORDER,
 } from "./assetHelpers";
 import { AudioRow } from "./AudioRow";
 import { GlobalAssetsView } from "./GlobalAssetsView";
-import { AssetCard, FontRow } from "./AssetCard";
+import { AssetCard, FontRow, type AssetLayout } from "./AssetCard";
+import {
+  DropOverlay,
+  ImportButton,
+  MediaEmpty,
+  NoMatch,
+  SectionLabel,
+  UsageMenu,
+  UsageStrip,
+  type UsageFilter,
+} from "./AssetsTabParts";
 
 interface AssetsTabProps {
   projectId: string;
@@ -25,7 +38,26 @@ interface AssetsTabProps {
   onAddAssetToTimeline?: (path: string) => void;
 }
 
-export type UsageFilter = "all" | "used" | "unused";
+type MediaScope = "local" | "global";
+
+const SCOPE_OPTIONS = [
+  { value: "local", label: "This Project" },
+  {
+    value: "global",
+    label: "All Projects",
+    title: "Reusable assets from your other OpenVids projects",
+  },
+] as const;
+
+const LAYOUT_OPTIONS = [
+  { value: "grid", label: "Grid", icon: <SquaresFour size={14} aria-hidden="true" /> },
+  { value: "list", label: "List", icon: <ListBullets size={14} aria-hidden="true" /> },
+] as const;
+
+/** An OS file drag (not an asset dragged out of this panel). */
+function isFileDrag(e: React.DragEvent): boolean {
+  return Array.from(e.dataTransfer.types).includes("Files");
+}
 
 /** Filter assets by whether the composition references them. Pure — unit-tested. */
 export function filterByUsage(
@@ -98,99 +130,6 @@ export function deriveUsedPaths(elements: Array<{ src?: string }>): Set<string> 
   return paths;
 }
 
-/** Import trigger. An import is an await, so the button owns the pending state
- *  instead of leaving the author clicking a control that looks idle. */
-function ImportButton({ importing, onClick }: { importing: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={importing}
-      aria-busy={importing}
-      className="w-full flex items-center justify-center gap-1.5 rounded-md bg-panel-input px-3 py-[7px] text-[11px] font-medium text-panel-text-3 enabled:hover:text-panel-text-1 enabled:active:scale-[0.98] disabled:opacity-60 transition-colors mb-2.5"
-    >
-      {importing ? (
-        <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none">
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-          />
-        </svg>
-      ) : (
-        <svg
-          width="11"
-          height="11"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        >
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      )}
-      {importing ? "Importing…" : "Import media"}
-    </button>
-  );
-}
-
-/** Empty list body. A query that matched nothing says so and offers a way out;
- *  a genuinely empty project gets the drop hint. */
-function EmptyState({
-  searchQuery,
-  onClearSearch,
-}: {
-  searchQuery: string;
-  onClearSearch: () => void;
-}) {
-  if (searchQuery) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
-        <p className="text-[11px] text-neutral-500 text-center">
-          No assets match &ldquo;{searchQuery}&rdquo;
-        </p>
-        <button
-          type="button"
-          onClick={onClearSearch}
-          className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-panel-input text-panel-text-3 hover:text-panel-text-1 active:scale-[0.98] transition-colors"
-        >
-          Clear search
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        className="text-neutral-700"
-      >
-        <path
-          d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <polyline points="17 8 12 3 7 8" strokeLinecap="round" strokeLinejoin="round" />
-        <line x1="12" y1="3" x2="12" y2="15" strokeLinecap="round" />
-      </svg>
-      <p className="text-[10px] text-neutral-600 text-center">Drop media files here</p>
-    </div>
-  );
-}
-
 export const AssetsTab = memo(function AssetsTab({
   projectId,
   assets,
@@ -204,9 +143,10 @@ export const AssetsTab = memo(function AssetsTab({
   const [copyFeedback, setCopyFeedback] = useState<CopyFeedback>(null);
   const [importing, setImporting] = useState(false);
   const [activeFilter, setActiveFilter] = useState<MediaCategory | "all">("all");
-  const [usageFilter, setUsageFilter] = useState<"all" | "used" | "unused">("all");
+  const [usageFilter, setUsageFilter] = useState<UsageFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"local" | "global">("local");
+  const [viewMode, setViewMode] = useState<MediaScope>("local");
+  const [layout, setLayout] = useState<AssetLayout>("grid");
   const [manifest, setManifest] = useState<
     Map<string, { description?: string; duration?: number; width?: number; height?: number }>
   >(new Map());
@@ -262,6 +202,7 @@ export const AssetsTab = memo(function AssetsTab({
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
+      if (!isFileDrag(e)) return;
       e.preventDefault();
       setDragOver(false);
       if (e.dataTransfer.files.length) void handleImport(e.dataTransfer.files);
@@ -311,55 +252,82 @@ export const AssetsTab = memo(function AssetsTab({
     }
     return groups;
   }, [mediaAssets, usedPaths]);
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { all: mediaAssets.length };
-    for (const cat of FILTER_ORDER) c[cat] = categorized[cat].length;
-    return c;
-  }, [mediaAssets, categorized]);
-  const usageCounts = useMemo(
-    () =>
-      countUsage(
-        assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a)),
-        usedPaths,
-      ),
-    [assets, usedPaths],
+  // Type segments for the kinds the project has at all, so a search can't hide them.
+  const presentCategories = useMemo(
+    () => FILTER_ORDER.filter((cat) => allMediaAssets.some((a) => getCategory(a) === cat)),
+    [allMediaAssets],
   );
+  const usageCounts = useMemo(() => {
+    const { used, unused } = countUsage(allMediaAssets, usedPaths);
+    return { all: allMediaAssets.length, used, unused };
+  }, [allMediaAssets, usedPaths]);
   const visibleCategories =
     activeFilter === "all"
       ? FILTER_ORDER.filter((c) => categorized[c].length > 0)
-      : [activeFilter as MediaCategory].filter((c) => categorized[c].length > 0);
+      : [activeFilter].filter((c) => categorized[c].length > 0);
+
+  const local = viewMode === "local";
+  const noMedia = allMediaAssets.length === 0;
+  const openFilePicker = onImport ? () => fileInputRef.current?.click() : undefined;
+  // The usage filter stays offered while it hides something, so it can be cleared.
+  const offerUsage = (usageCounts.used > 0 && usageCounts.unused > 0) || usageFilter !== "all";
+  const filterOptions = [
+    { value: "all" as const, label: "All" },
+    ...presentCategories.map((cat) => ({ value: cat, label: FILTER_LABELS[cat] })),
+  ];
+
   return (
     <div
-      className={`flex-1 flex flex-col min-h-0 transition-colors ${dragOver ? "bg-studio-accent/5" : ""}`}
+      className="relative flex min-h-0 flex-1 flex-col"
       onDragOver={(e) => {
+        if (!isFileDrag(e)) return;
         e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
         setDragOver(true);
       }}
-      onDragLeave={() => setDragOver(false)}
+      onDragLeave={(e) => {
+        const next = e.relatedTarget;
+        if (next instanceof Node && e.currentTarget.contains(next)) return;
+        setDragOver(false);
+      }}
       onDrop={handleDrop}
     >
-      {/* Header — matches design panel Section pattern */}
-      <div className="px-4 pt-2.5 pb-1.5 shrink-0">
-        {/* Scope toggle */}
-        <div className="flex gap-1 mb-2.5 p-0.5 rounded-md bg-panel-input">
-          {(["local", "global"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setViewMode(m)}
-              className={`flex-1 px-2 py-1 text-[11px] font-medium rounded transition-colors ${
-                viewMode === m
-                  ? "bg-panel-accent/15 text-panel-accent"
-                  : "text-panel-text-3 hover:text-panel-text-1"
-              }`}
-            >
-              {m === "local" ? "This project" : "All projects"}
-            </button>
-          ))}
-        </div>
-        {/* Import */}
-        {onImport && (
+      <div className="mx-2 mt-2 flex shrink-0">
+        <SegmentedControl
+          label="Media scope"
+          size="sm"
+          value={viewMode}
+          options={SCOPE_OPTIONS}
+          onChange={setViewMode}
+          className="flex w-full [&>button]:flex-1"
+        />
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1.5 px-2 pt-2 pb-1.5">
+        <SearchInput
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={local ? "Search media" : "Search all projects"}
+          aria-label={local ? "Search media" : "Search all projects"}
+          disabled={local && noMedia}
+          className="h-ctl flex-1"
+        />
+        {local && (
+          <SegmentedControl
+            label="Asset view"
+            variant="icon"
+            value={layout}
+            options={LAYOUT_OPTIONS}
+            onChange={setLayout}
+            disabled={noMedia}
+          />
+        )}
+        {local && offerUsage && (
+          <UsageMenu value={usageFilter} counts={usageCounts} onChange={setUsageFilter} />
+        )}
+        {openFilePicker && (
           <>
-            <ImportButton importing={importing} onClick={() => fileInputRef.current?.click()} />
+            <ImportButton importing={importing} onClick={openFilePicker} />
             <input
               ref={fileInputRef}
               type="file"
@@ -375,143 +343,96 @@ export const AssetsTab = memo(function AssetsTab({
             />
           </>
         )}
-
-        {/* Search — gated on the UNFILTERED pool so it never unmounts itself */}
-        {allMediaAssets.length > 0 && (
-          <SearchInput
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search assets..."
-            aria-label="Search assets"
-            className="mb-2"
-          />
-        )}
-
-        {/* Filter chips */}
-        {viewMode === "local" && allMediaAssets.length > 0 && (
-          <div className="flex gap-1.5 flex-wrap">
-            <button
-              onClick={() => setActiveFilter("all")}
-              aria-pressed={activeFilter === "all"}
-              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors active:scale-[0.98] ${
-                activeFilter === "all"
-                  ? "bg-panel-accent/15 text-panel-accent"
-                  : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
-              }`}
-            >
-              All {counts.all}
-            </button>
-            {FILTER_ORDER.map((cat) =>
-              counts[cat] > 0 ? (
-                <button
-                  key={cat}
-                  onClick={() => setActiveFilter(activeFilter === cat ? "all" : cat)}
-                  aria-pressed={activeFilter === cat}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors active:scale-[0.98] ${
-                    activeFilter === cat
-                      ? "bg-panel-accent/15 text-panel-accent"
-                      : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
-                  }`}
-                >
-                  {CATEGORY_LABELS[cat]} {counts[cat]}
-                </button>
-              ) : null,
-            )}
-            {usageCounts.used > 0 && usageCounts.unused > 0 && (
-              <>
-                <span className="w-px self-stretch bg-panel-input mx-0.5" aria-hidden="true" />
-                <button
-                  onClick={() => setUsageFilter(usageFilter === "used" ? "all" : "used")}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-                    usageFilter === "used"
-                      ? "bg-panel-accent/15 text-panel-accent"
-                      : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
-                  }`}
-                >
-                  In use {usageCounts.used}
-                </button>
-                <button
-                  onClick={() => setUsageFilter(usageFilter === "unused" ? "all" : "unused")}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-                    usageFilter === "unused"
-                      ? "bg-panel-accent/15 text-panel-accent"
-                      : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
-                  }`}
-                >
-                  Unused {usageCounts.unused}
-                </button>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
-      <div className="flex-1 overflow-y-auto mt-1">
-        {viewMode === "global" ? (
+      {local && !noMedia && (
+        <SegmentedControl
+          label="Filter by type"
+          size="sm"
+          value={activeFilter}
+          options={filterOptions}
+          onChange={setActiveFilter}
+          className="mx-2 mb-1 flex [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-1"
+        />
+      )}
+      {local && usageFilter !== "all" && (
+        <UsageStrip
+          value={usageFilter}
+          count={usageCounts[usageFilter]}
+          onShowAll={() => setUsageFilter("all")}
+        />
+      )}
+
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-2 [scrollbar-color:var(--color-surface-3)_transparent]">
+        {!local ? (
           <GlobalAssetsView searchQuery={searchQuery} />
-        ) : mediaAssets.length === 0 ? (
-          <EmptyState searchQuery={searchQuery} onClearSearch={() => setSearchQuery("")} />
+        ) : noMedia ? (
+          <MediaEmpty onImport={openFilePicker} />
+        ) : visibleCategories.length === 0 ? (
+          <NoMatch searchQuery={searchQuery} onClearSearch={() => setSearchQuery("")} />
         ) : (
-          visibleCategories.map((cat) => (
-            <div key={cat} className="mb-1">
-              {activeFilter === "all" && (
-                <div className="flex items-center gap-2 px-4 py-2 border-t border-panel-border">
-                  <h3 className="text-[12px] font-semibold text-panel-text-1">
-                    {CATEGORY_LABELS[cat]}
-                  </h3>
-                  <span className="text-[11px] text-panel-text-5">{categorized[cat].length}</span>
+          visibleCategories.map((cat) => {
+            const items = categorized[cat];
+            const rows = layout === "list" || cat === "audio" || cat === "fonts";
+            return (
+              <section key={cat} aria-label={CATEGORY_LABELS[cat]}>
+                <SectionLabel count={items.length}>{CATEGORY_LABELS[cat]}</SectionLabel>
+                <div
+                  className={cn(
+                    "px-2",
+                    rows
+                      ? "flex flex-col gap-px"
+                      : "grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-x-1 gap-y-1.5",
+                  )}
+                >
+                  {items.map((a) =>
+                    cat === "audio" ? (
+                      <AudioRow
+                        key={a}
+                        projectId={projectId}
+                        asset={a}
+                        used={usedPaths.has(a)}
+                        meta={manifest.get(a)}
+                        onCopy={handleCopyPath}
+                        copyFeedback={copyFeedback}
+                        onDelete={onDelete}
+                        onRename={onRename}
+                        onAddAssetToTimeline={onAddAssetToTimeline}
+                      />
+                    ) : cat === "fonts" ? (
+                      <FontRow
+                        key={a}
+                        asset={a}
+                        used={usedPaths.has(a)}
+                        onCopy={handleCopyPath}
+                        copyFeedback={copyFeedback}
+                        onDelete={onDelete}
+                        onRename={onRename}
+                        onAddAssetToTimeline={onAddAssetToTimeline}
+                      />
+                    ) : (
+                      <AssetCard
+                        key={a}
+                        projectId={projectId}
+                        asset={a}
+                        used={usedPaths.has(a)}
+                        duration={manifest.get(a)?.duration}
+                        layout={layout}
+                        onCopy={handleCopyPath}
+                        copyFeedback={copyFeedback}
+                        onDelete={onDelete}
+                        onRename={onRename}
+                        onAddAssetToTimeline={onAddAssetToTimeline}
+                      />
+                    ),
+                  )}
                 </div>
-              )}
-              {cat === "audio" &&
-                categorized[cat].map((a) => (
-                  <AudioRow
-                    key={a}
-                    projectId={projectId}
-                    asset={a}
-                    used={usedPaths.has(a)}
-                    meta={manifest.get(a)}
-                    onCopy={handleCopyPath}
-                    copyFeedback={copyFeedback}
-                    onDelete={onDelete}
-                    onRename={onRename}
-                    onAddAssetToTimeline={onAddAssetToTimeline}
-                  />
-                ))}
-              {(cat === "images" || cat === "video") && (
-                <div className="grid grid-cols-2 gap-1 px-2 pb-1">
-                  {categorized[cat].map((a) => (
-                    <AssetCard
-                      key={a}
-                      projectId={projectId}
-                      asset={a}
-                      used={usedPaths.has(a)}
-                      duration={manifest.get(a)?.duration}
-                      onCopy={handleCopyPath}
-                      copyFeedback={copyFeedback}
-                      onDelete={onDelete}
-                      onRename={onRename}
-                      onAddAssetToTimeline={onAddAssetToTimeline}
-                    />
-                  ))}
-                </div>
-              )}
-              {cat === "fonts" &&
-                categorized[cat].map((a) => (
-                  <FontRow
-                    key={a}
-                    asset={a}
-                    used={usedPaths.has(a)}
-                    onCopy={handleCopyPath}
-                    copyFeedback={copyFeedback}
-                    onDelete={onDelete}
-                    onRename={onRename}
-                    onAddAssetToTimeline={onAddAssetToTimeline}
-                  />
-                ))}
-            </div>
-          ))
+              </section>
+            );
+          })
         )}
       </div>
+      {dragOver && <DropOverlay />}
     </div>
   );
 });

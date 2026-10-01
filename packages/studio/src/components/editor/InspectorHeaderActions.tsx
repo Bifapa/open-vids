@@ -34,7 +34,7 @@ export function InspectorHeaderActions({
           onClick={() => {
             void onToggleHidden(selectedElementId, !selectedElementHidden);
           }}
-          className="flex h-6 w-6 items-center justify-center rounded-sm text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+          className="flex h-6 w-6 items-center justify-center rounded-sm text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg-2"
         >
           {selectedElementHidden ? (
             <EyeSlash size={13} weight="bold" aria-hidden="true" />
@@ -50,7 +50,7 @@ export function InspectorHeaderActions({
             onUngroup();
           }}
           title="Ungroup (⌘⇧G)"
-          className="flex h-6 items-center rounded-sm px-2 text-[11px] font-medium text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+          className="flex h-6 items-center rounded-sm px-2 text-sm font-medium text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
         >
           Ungroup
         </button>
@@ -61,9 +61,7 @@ export function InspectorHeaderActions({
           onCopy();
         }}
         className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
-          copied
-            ? "text-studio-accent"
-            : "text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+          copied ? "text-studio-accent" : "text-fg-3 hover:bg-surface-2 hover:text-fg-2"
         }`}
         title={copied ? "Copied!" : "Copy element info to clipboard"}
       >
@@ -85,7 +83,7 @@ export function InspectorHeaderActions({
         onClick={() => {
           onClear();
         }}
-        className="flex h-6 w-6 items-center justify-center rounded-sm text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+        className="flex h-6 w-6 items-center justify-center rounded-sm text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg-2"
       >
         <X size={13} />
       </button>

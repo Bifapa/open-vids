@@ -31,8 +31,18 @@ export interface CheckpointHandle {
 }
 
 export type RevertOutcome =
-  | { ok: true }
-  | { ok: false; conflict: { files: string[] }; remainingEntryIds?: string[] };
+  | {
+      ok: true;
+      /** The history entries the revert wrote (one undo per reverted entry), oldest first. */
+      undoEntryIds?: string[];
+    }
+  | {
+      ok: false;
+      conflict: { files: string[] };
+      remainingEntryIds?: string[];
+      /** Undo entries already written for the newer entries before the conflict stopped the revert. */
+      undoEntryIds?: string[];
+    };
 
 /**
  * The project's transaction/history engine as seen from the runtime. The
@@ -43,12 +53,17 @@ export type RevertOutcome =
 export interface CheckpointHost {
   /** Opens the transaction before any project-changing work. Rejects if no checkpoint can be taken. */
   begin(scope: ProjectScope, label: string): Promise<CheckpointHandle>;
-  /** Reverts entries newest-first. */
+  /**
+   * Undoes entries newest-first. Without a mode, an entry whose files changed afterwards stops the revert with a
+   * conflict; with one, the engine resolves it (`keep-later-edits` skips those files, `just-this` overwrites them).
+   */
   revert(
     scope: ProjectScope,
     entryIds: readonly string[],
-    mode: RevertMode,
+    mode: RevertMode | undefined,
   ): Promise<RevertOutcome>;
+  /** The project-relative files the given entries changed, sorted and unique. */
+  files(scope: ProjectScope, entryIds: readonly string[]): Promise<string[]>;
   /**
    * After a runtime restart or a failed close: closes the transaction if it is still open, then returns the entry ids
    * it left behind, identified by the label/startedAt the runtime persisted. Empty when none can be found.

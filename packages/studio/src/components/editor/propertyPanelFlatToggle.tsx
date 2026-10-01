@@ -1,5 +1,8 @@
+import { INSP_ROW, inspSwitchKnob, inspSwitchTrack } from "./inspectorStyles";
+
 /* ------------------------------------------------------------------ */
-/*  FlatToggle — 24×14 pill switch                                     */
+/*  FlatToggle — the prototype's `.frow` with a 28×16 `.sw` switch      */
+/*  at the start of the field column.                                  */
 /*  (split out of propertyPanelFlatPrimitives.tsx to stay under the    */
 /*  600-line file-size gate)                                           */
 /* ------------------------------------------------------------------ */
@@ -16,34 +19,29 @@ export function FlatToggle({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className="flex min-h-[30px] items-center justify-between">
+    <div className={INSP_ROW}>
       <span
         data-flat-toggle-label="true"
-        className={`text-[11px] ${checked ? "text-panel-text-2" : "text-panel-text-3"}`}
+        className={`min-w-0 truncate text-sm ${checked ? "text-fg-2" : "text-fg-3"}`}
       >
         {label}
       </span>
-      <button
-        type="button"
-        data-flat-toggle="true"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        disabled={disabled}
-        onClick={() => {
-          onChange(!checked);
-        }}
-        className={`relative h-[14px] w-6 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-          checked ? "bg-panel-accent/35" : "bg-panel-hover"
-        }`}
-      >
-        <span
-          data-flat-toggle-knob="true"
-          className={`absolute top-0.5 h-2.5 w-2.5 rounded-full transition-all ${
-            checked ? "right-0.5 bg-panel-accent" : "left-0.5 bg-panel-text-4"
-          }`}
-        />
-      </button>
+      <span className="flex min-w-0 items-center">
+        <button
+          type="button"
+          data-flat-toggle="true"
+          role="switch"
+          aria-checked={checked}
+          aria-label={label}
+          disabled={disabled}
+          onClick={() => {
+            onChange(!checked);
+          }}
+          className={inspSwitchTrack(checked)}
+        >
+          <span data-flat-toggle-knob="true" className={inspSwitchKnob(checked)} />
+        </button>
+      </span>
     </div>
   );
 }

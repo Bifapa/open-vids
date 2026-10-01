@@ -1,5 +1,5 @@
-import { useRef, useState, type ReactNode, type RefObject } from "react";
-import { Check, Gauge, PencilSimple } from "@phosphor-icons/react";
+import { useRef, useState, type RefObject } from "react";
+import { CaretDown, Check, Gauge, PencilSimple } from "@phosphor-icons/react";
 import {
   DEFAULT_EXECUTION_QUALITY,
   EXECUTION_BUDGETS,
@@ -14,16 +14,22 @@ import { useAgentStore } from "../../agent/agentContext";
 import { chatExecutionQuality, runningTurn } from "../../agent/agentSelectors";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
-import { Popover } from "../ui/Popover";
 import { ChatDialog } from "./ChatDialog";
+import {
+  ComposerPopover,
+  LOCKED_REASON,
+  PopoverHelp,
+  chipClass,
+  chipIconClass,
+} from "./composerParts";
 import { ExecutionBudgetFields } from "./ExecutionBudgetFields";
 import { EXECUTION_PRESET_BLURBS, EXECUTION_PRESET_LABELS, describeBudget } from "./qaLabels";
 
-const LOCKED_REASON = "Execution quality can't change while this chat is working.";
 const FIXED_PRESETS: readonly FixedExecutionQualityPreset[] = ["fast", "balanced", "best"];
 
 type Row = "default" | FixedExecutionQualityPreset | "custom";
 
+/** One choice, in the Mode menu's row language: check, name, what it is for, what it changes. */
 function QualityRow({
   row,
   title,
@@ -31,18 +37,18 @@ function QualityRow({
   budget,
   checked,
   disabled,
-  trailing,
+  editable = false,
   onSelect,
 }: {
   row: Row;
   title: string;
-  /** What the choice is for, beside its name. */
   blurb: string;
   /** What it changes, as numbers (`describeBudget`). */
   budget: string;
   checked: boolean;
   disabled: boolean;
-  trailing?: ReactNode;
+  /** Custom opens its editor. */
+  editable?: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -54,21 +60,24 @@ function QualityRow({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "flex w-full items-start gap-2 px-3 py-1.5 text-left outline-hidden transition-colors duration-hover",
-        "enabled:hover:bg-hover focus-visible:bg-hover disabled:cursor-not-allowed disabled:opacity-50",
+        "grid w-full grid-cols-[16px_minmax(0,1fr)] items-center gap-x-1.5 gap-y-px rounded-md border border-transparent py-[5px] pr-2 pl-1 text-left",
+        "outline-hidden enabled:hover:border-border-subtle enabled:hover:bg-surface-1",
+        "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+        "disabled:cursor-not-allowed disabled:opacity-60",
       )}
     >
-      <span className="mt-0.5 flex w-3 shrink-0 justify-center">
-        {checked && <Check size={11} weight="bold" aria-hidden className="text-accent" />}
+      <span
+        aria-hidden
+        className={cn("row-start-1 inline-flex justify-center text-fg", !checked && "invisible")}
+      >
+        <Check size={12} weight="bold" />
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-center gap-1.5 text-step-11">
-          <span className="shrink-0 font-medium text-text-1">{title}</span>
-          {trailing}
-          <span className="min-w-0 truncate text-step-10 text-text-3">{blurb}</span>
-        </span>
-        <span className="block text-step-10 leading-snug text-text-4">{budget}</span>
+      <span className="col-start-2 flex min-w-0 items-center gap-1.5">
+        <span className="shrink-0 text-sm leading-4 font-medium text-fg">{title}</span>
+        {editable && <PencilSimple size={11} aria-hidden className="shrink-0 text-fg-3" />}
+        <span className="min-w-0 truncate text-xs text-fg-3">{blurb}</span>
       </span>
+      <span className="col-start-2 text-xs leading-[14px] text-pretty text-fg-3">{budget}</span>
     </button>
   );
 }
@@ -110,7 +119,7 @@ function CustomQualityDialog({
       className="w-[min(440px,calc(100vw-2rem))]"
       footer={
         <>
-          {locked && <span className="mr-auto text-step-10 text-container">{LOCKED_REASON}</span>}
+          {locked && <span className="mr-auto text-xs text-warning">{LOCKED_REASON}</span>}
           <Button size="sm" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
@@ -128,23 +137,23 @@ function CustomQualityDialog({
       }
     >
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-1 text-step-10 text-text-3">
+        <div className="flex flex-wrap items-center gap-1 text-xs text-fg-3">
           <span>Start from</span>
           {FIXED_PRESETS.map((preset) => (
-            <button
+            <Button
               key={preset}
-              type="button"
+              size="xs"
+              variant="ghost"
               disabled={locked}
               onClick={() => setDraft({ ...EXECUTION_BUDGETS[preset] })}
-              className="rounded-sm px-1.5 py-0.5 font-medium text-accent outline-hidden transition-colors duration-hover enabled:hover:bg-hover focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
             >
               {EXECUTION_PRESET_LABELS[preset]}
-            </button>
+            </Button>
           ))}
         </div>
         <ExecutionBudgetFields value={draft} onChange={setDraft} disabled={locked} />
         {error && (
-          <p role="alert" className="text-step-11 text-danger">
+          <p role="alert" className="text-sm text-error">
             {error}
           </p>
         )}
@@ -154,8 +163,8 @@ function CustomQualityDialog({
 }
 
 /**
- * The chat's Execution Quality: Fast / Balanced / Best / Custom, or the global default. Each choice says what it
- * changes; Custom opens an editor for the whole budget.
+ * The chat's Execution Quality as a compact composer chip (gauge; its name from 440 px): Fast / Balanced / Best /
+ * Custom, or the global default. Each choice says what it changes; Custom opens an editor for the whole budget.
  */
 export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
   const settings = useAgentStore((state) => state.settings);
@@ -186,40 +195,39 @@ export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
     <button
       ref={triggerRef}
       type="button"
+      data-chip="quality"
       aria-label={`Execution quality: ${label}${custom ? "" : " (default)"}`}
-      title="Execution quality: how hard the agents work on this chat's turns"
-      className={cn(
-        "flex h-ctl-sm shrink-0 items-center gap-1 rounded-sm px-1.5 text-step-11 text-text-2",
-        "outline-hidden transition-colors duration-hover hover:bg-hover hover:text-text-0",
-        "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
-        "data-[popup-open]:bg-hover data-[popup-open]:text-text-0",
-      )}
+      title={`Execution quality · ${label}${custom ? "" : " (default)"}`}
+      className={chipClass}
     >
-      <Gauge size={13} aria-hidden />
-      {label}
-      {!custom && <span className="text-step-10 text-text-4">default</span>}
+      <Gauge size={12} aria-hidden className={chipIconClass} />
+      <span className="hidden min-w-0 truncate @min-[440px]/composer:inline">{label}</span>
+      {/* Below 440 px the gauge alone says it; the caret space goes to the model chip. */}
+      <CaretDown
+        size={10}
+        weight="bold"
+        aria-hidden
+        className="hidden shrink-0 text-fg-3 @min-[440px]/composer:inline"
+      />
     </button>
   );
 
   return (
     <>
-      <Popover
+      <ComposerPopover
         trigger={trigger}
         open={open}
-        onOpenChange={setOpen}
-        side="bottom"
-        align="end"
-        aria-label="Execution quality for this chat"
-        className="w-80 p-0"
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setError(null);
+        }}
+        title="Execution quality"
       >
-        <div className="px-3 pb-1 pt-2.5">
-          <p className="text-step-11 font-semibold text-text-0">Execution quality</p>
-          <p className="text-step-10 text-text-3">
-            How hard the agents work on this chat's next turns: render QA, Vision, research and
-            thinking.
-          </p>
-        </div>
-        <div role="radiogroup" aria-label="Execution quality" className="flex flex-col py-1">
+        <PopoverHelp>
+          How hard the agents work on this chat’s next turns: render QA, Vision, research and
+          thinking.
+        </PopoverHelp>
+        <div role="radiogroup" aria-label="Execution quality" className="grid gap-px">
           <QualityRow
             row="default"
             title={
@@ -260,7 +268,7 @@ export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
             budget={describeBudget(clampExecutionBudget(quality.custom))}
             checked={checked === "custom"}
             disabled={locked || pending}
-            trailing={<PencilSimple size={11} aria-hidden className="text-text-4" />}
+            editable
             onSelect={() => {
               setOpen(false);
               setError(null);
@@ -269,14 +277,9 @@ export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
           />
         </div>
         {(locked || error) && (
-          <p
-            role={error ? "alert" : undefined}
-            className={cn("px-3 pb-2 text-step-10", error ? "text-danger" : "text-container")}
-          >
-            {error ?? LOCKED_REASON}
-          </p>
+          <PopoverHelp tone={error ? "error" : "warning"}>{error ?? LOCKED_REASON}</PopoverHelp>
         )}
-      </Popover>
+      </ComposerPopover>
       {editing && (
         <CustomQualityDialog
           initial={quality.custom}

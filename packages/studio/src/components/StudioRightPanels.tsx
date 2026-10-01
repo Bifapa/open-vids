@@ -12,10 +12,13 @@ import { useEditorRefreshAfterRevert } from "../agent/revertRefresh";
 import { useProjectAgentStore } from "../agent/agentContext";
 import { useEditorContextSource } from "../agent/editorContext";
 import { StoryPanel } from "../story/StoryPanel";
+import { SettingsDialog } from "./settings/SettingsDialog";
 import { studioStoryStore } from "../story/storyContext";
 import { SourcesPanel } from "../research/SourcesPanel";
 import { studioSourcesStore } from "../research/researchContext";
 import { useSourcesAutoRefresh } from "../research/useSourcesAutoRefresh";
+import { MediaPanel } from "../media/MediaPanel";
+import { MediaWorkspaceLayout } from "../media/MediaWorkspaceLayout";
 import { VariablesPanel } from "./panels/VariablesPanel";
 import { Dock } from "./dock/Dock";
 import { useDockLayoutStore } from "./dock/dockLayoutStore";
@@ -53,6 +56,7 @@ export function StudioRightPanels({
   onToggleElementHidden,
   onAutoGroupCarveSources,
   onAddMediaOverlay,
+  onAddAssetToTimeline,
 }: StudioRightPanelsProps) {
   const { previewIframeRef, projectId, activeCompPath, showToast, renderQueue } =
     useStudioShellContext();
@@ -343,9 +347,19 @@ export function StudioRightPanels({
       <Dock.Panel id="story">
         <StoryPanel projectId={projectId} agentStore={agentStore} />
       </Dock.Panel>
+      <Dock.Panel id="media">
+        <MediaPanel
+          projectId={projectId}
+          agentStore={agentStore}
+          onAddAssetToTimeline={onAddAssetToTimeline}
+          removeBackground={handleRemoveBackground}
+        />
+      </Dock.Panel>
+      <MediaWorkspaceLayout projectId={projectId} />
       <Dock.Panel id="sources">
         <SourcesPanel />
       </Dock.Panel>
+      <SettingsDialog agentStore={agentStore} />
     </>
   );
 }

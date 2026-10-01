@@ -1,6 +1,9 @@
 import { readPreviewMediaSrc } from "@hyperframes/core/studio-preview-mark";
 import { useEffect, useState } from "react";
+import { ImageSquare } from "@phosphor-icons/react";
 import { Check, ClipboardList } from "../../icons/SystemIcons";
+import { Button } from "../ui/Button";
+import { INSP_SUBHEAD } from "./inspectorStyles";
 import type { DomEditSelection } from "./domEditing";
 import {
   type BackgroundRemovalProgress,
@@ -158,83 +161,115 @@ export function FlatMediaSection({
     }
   };
 
+  const removeBackgroundBlock = isVisualMedia ? (
+    <div className="grid gap-1.5 border-t border-border-subtle pt-2">
+      <div className={INSP_SUBHEAD}>
+        Remove Background
+        <span className="font-normal text-fg-3">Transparent {isVideo ? "WebM" : "PNG"}</span>
+      </div>
+      <FlatSelectRow
+        label="Quality"
+        value={quality}
+        options={[
+          { value: "fast", label: "Fast" },
+          { value: "balanced", label: "Balanced" },
+          { value: "best", label: "Best" },
+        ]}
+        tier="explicitDefault"
+        onChange={(next) => setQuality(next as typeof quality)}
+      />
+      {isVideo && <FlatToggle label="BG plate" checked={createPlate} onChange={setCreatePlate} />}
+      {removeProgress && (
+        <div className="grid gap-1">
+          <div className="h-1 overflow-hidden rounded-xs bg-surface-3">
+            <div
+              className={`h-full rounded-xs transition-[width] duration-expand ${
+                removeProgress.status === "failed" ? "bg-error" : "bg-fg-2"
+              }`}
+              style={{ width: `${Math.max(0, Math.min(100, removeProgress.progress))}%` }}
+            />
+          </div>
+          <div className="flex justify-between gap-2 text-xs text-fg-3">
+            <span
+              className={`min-w-0 flex-1 truncate ${removeProgress.status === "failed" ? "text-error" : ""}`}
+            >
+              {removeProgress.error ?? removeProgress.stage ?? "Processing"}
+            </span>
+            <span className="font-mono text-num text-fg-2">
+              {Math.round(removeProgress.progress)}%
+            </span>
+          </div>
+        </div>
+      )}
+      <Button
+        size="sm"
+        data-flat-media-remove-bg="true"
+        className="justify-self-start"
+        icon={<ImageSquare size={12} aria-hidden="true" />}
+        disabled={!canRemoveBackground || removeBusy}
+        onClick={() => void runBackgroundRemoval()}
+        title={
+          canRemoveBackground
+            ? "Remove background and save a transparent asset"
+            : "Select a project-local image or video asset"
+        }
+      >
+        {removeBusy ? "Working" : "Remove BG"}
+      </Button>
+    </div>
+  ) : null;
+
   return (
-    <div className="space-y-1.5">
-      <div className="flex min-h-8 items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="h-5 w-8 shrink-0 rounded-[3px] bg-panel-surface" />
-          <span className="min-w-0 truncate font-mono text-[11px] text-panel-text-0">
-            {srcAttr}
-          </span>
+    <div className="grid gap-1.5">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5">
+        <span
+          className="min-w-0 truncate rounded-sm border border-border-subtle bg-bg-1 px-2 py-1 text-left font-mono text-num text-fg-2 [direction:rtl]"
+          title={srcAttr}
+        >
+          {srcAttr}
         </span>
-        <button
-          type="button"
+        <Button
+          size="sm"
           data-flat-media-copy="true"
+          icon={copied ? <Check size={12} /> : <ClipboardList size={12} />}
+          title="Copy file path"
           onClick={() => {
             void navigator.clipboard.writeText(absoluteSrc).then(() => {
               setCopied(true);
               setTimeout(() => setCopied(false), 1500);
             });
           }}
-          className="flex shrink-0 items-center gap-1 text-[10px] text-panel-text-3 hover:text-panel-text-1"
         >
-          {copied ? <Check size={11} /> : <ClipboardList size={11} />}
           {copied ? "Copied" : "Copy"}
-        </button>
+        </Button>
       </div>
       {isVisualMedia && (
-        <div className="ml-px border-l-2 border-panel-border-input py-1 pl-[10px]">
-          <div className="flex min-h-6 items-center justify-between">
-            <span className="flex items-baseline gap-[7px]">
-              <span className="text-[11px] font-semibold text-panel-text-1">Cutout</span>
-              <span className="font-mono text-[9px] text-panel-text-4">
-                transparent {isVideo ? "WebM" : "PNG"}
-              </span>
-            </span>
-            <button
-              type="button"
-              data-flat-media-remove-bg="true"
-              disabled={!canRemoveBackground || removeBusy}
-              onClick={() => void runBackgroundRemoval()}
-              className="flex items-center gap-1 text-[10px] font-medium text-panel-accent disabled:cursor-not-allowed disabled:opacity-50"
-              title={
-                canRemoveBackground
-                  ? "Remove background and save a transparent asset"
-                  : "Select a project-local image or video asset"
-              }
-            >
-              {removeBusy ? "Working" : "Remove BG"}
-            </button>
-          </div>
+        <>
           <FlatSelectRow
-            label="Quality"
-            value={quality}
-            options={["fast", "balanced", "best"]}
-            tier="explicitDefault"
-            onChange={(next) => setQuality(next as typeof quality)}
+            label="Fit"
+            value={objectFit}
+            options={["contain", "cover", "fill", "none", "scale-down"]}
+            tier={objectFit === "contain" ? "default" : "explicitCustom"}
+            onChange={(next) => void onSetStyle("object-fit", next)}
           />
-          {isVideo && (
-            <FlatToggle label="BG plate" checked={createPlate} onChange={setCreatePlate} />
-          )}
-          {removeProgress && (
-            <div className="mt-1 space-y-1">
-              <div className="flex items-center justify-between text-[10px] text-panel-text-4">
-                <span className="min-w-0 flex-1 truncate">
-                  {removeProgress.error ?? removeProgress.stage ?? "Processing"}
-                </span>
-                <span>{Math.round(removeProgress.progress)}%</span>
-              </div>
-              <div className="h-1 overflow-hidden rounded-full bg-panel-hover">
-                <div
-                  className={`h-full rounded-full ${
-                    removeProgress.status === "failed" ? "bg-red-400" : "bg-panel-accent"
-                  }`}
-                  style={{ width: `${Math.max(0, Math.min(100, removeProgress.progress))}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
+          <FlatSelectRow
+            label="Position"
+            value={objectPosition}
+            options={[
+              "center",
+              "top",
+              "bottom",
+              "left",
+              "right",
+              "left top",
+              "right top",
+              "left bottom",
+              "right bottom",
+            ]}
+            tier={objectPosition === "center" ? "default" : "explicitCustom"}
+            onChange={(next) => void onSetStyle("object-position", next)}
+          />
+        </>
       )}
       {(isVideo || isAudio) && (
         <>
@@ -281,6 +316,29 @@ export function FlatMediaSection({
               }
             />
           </div>
+          {(isAudio || hasAudio) && (
+            <MediaFadeSliders
+              fadeIn={fadeIn}
+              fadeOut={fadeOut}
+              fadeMax={fadeMax}
+              onSetAttribute={onSetAttribute}
+            />
+          )}
+          <FlatSlider
+            label="Media start"
+            value={Math.round(mediaStart * 100)}
+            min={0}
+            max={mediaStartMax * 100}
+            tier={mediaStart === 0 ? "default" : "explicitCustom"}
+            displayValue={formatTimingValue(mediaStart)}
+            onCommit={(next) => void onSetAttribute(mediaStartAttr, (next / 100).toFixed(2))}
+            onCommitText={(text) => {
+              const seconds = parseSecondsInput(text);
+              if (seconds === null) return false;
+              void onSetAttribute(mediaStartAttr, Math.min(seconds, mediaStartMax).toFixed(2));
+              return true;
+            }}
+          />
           <div className="flex items-center gap-1">
             <div className="min-w-0 flex-1">
               <FlatSlider
@@ -289,7 +347,7 @@ export function FlatMediaSection({
                 min={0}
                 max={1000}
                 tier={playbackRate === 1 ? "default" : "explicitCustom"}
-                displayValue={`${formatNumericValue(playbackRate)}x`}
+                displayValue={`${formatNumericValue(playbackRate)}×`}
                 onCommit={(next) => {
                   const speed = fromUnit(RATE_RANGE, next / 1000);
                   if (rate?.automated) {
@@ -327,29 +385,6 @@ export function FlatMediaSection({
               onChange={(id) => id && rate.onApplyPreset(id as SpeedPresetId)}
             />
           )}
-          <FlatSlider
-            label="Media start"
-            value={Math.round(mediaStart * 100)}
-            min={0}
-            max={mediaStartMax * 100}
-            tier={mediaStart === 0 ? "default" : "explicitCustom"}
-            displayValue={formatTimingValue(mediaStart)}
-            onCommit={(next) => void onSetAttribute(mediaStartAttr, (next / 100).toFixed(2))}
-            onCommitText={(text) => {
-              const seconds = parseSecondsInput(text);
-              if (seconds === null) return false;
-              void onSetAttribute(mediaStartAttr, Math.min(seconds, mediaStartMax).toFixed(2));
-              return true;
-            }}
-          />
-          {(isAudio || hasAudio) && (
-            <MediaFadeSliders
-              fadeIn={fadeIn}
-              fadeOut={fadeOut}
-              fadeMax={fadeMax}
-              onSetAttribute={onSetAttribute}
-            />
-          )}
           <FlatToggle
             label="Loop"
             checked={hasLoop}
@@ -377,34 +412,7 @@ export function FlatMediaSection({
           )}
         </>
       )}
-      {isVisualMedia && (
-        <>
-          <FlatSelectRow
-            label="Fit"
-            value={objectFit}
-            options={["contain", "cover", "fill", "none", "scale-down"]}
-            tier={objectFit === "contain" ? "default" : "explicitCustom"}
-            onChange={(next) => void onSetStyle("object-fit", next)}
-          />
-          <FlatSelectRow
-            label="Position"
-            value={objectPosition}
-            options={[
-              "center",
-              "top",
-              "bottom",
-              "left",
-              "right",
-              "left top",
-              "right top",
-              "left bottom",
-              "right bottom",
-            ]}
-            tier={objectPosition === "center" ? "default" : "explicitCustom"}
-            onChange={(next) => void onSetStyle("object-position", next)}
-          />
-        </>
-      )}
+      {removeBackgroundBlock}
     </div>
   );
 }

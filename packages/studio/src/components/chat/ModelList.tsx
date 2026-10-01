@@ -6,7 +6,7 @@ import { sameModel } from "../../agent/agentSelectors";
 import { cn } from "../ui/cn";
 import { buildModelRows, type ModelRow } from "./modelRows";
 
-const ROW_HEIGHT = 30;
+const ROW_HEIGHT = 28;
 const GROUP_HEIGHT = 24;
 const VIEWPORT_HEIGHT = 260;
 
@@ -35,6 +35,8 @@ interface ModelListProps {
   includeDefault?: boolean;
   /** Multi-select: these rows are checked instead of `explicit`, and picking one toggles it. */
   selected?: readonly ModelSelection[];
+  /** Width (and anything else) of the list; a fixed 320 px column by default. */
+  className?: string;
 }
 
 /** Searchable, provider-grouped model list. ~1200 rows: only the visible ones are in the DOM. */
@@ -45,6 +47,7 @@ export function ModelList({
   onSelect,
   includeDefault = true,
   selected,
+  className,
 }: ModelListProps) {
   const [query, setQuery] = useState("");
   const rows = useMemo(
@@ -91,7 +94,7 @@ export function ModelList({
   };
 
   return (
-    <div className="flex w-80 flex-col gap-2">
+    <div className={cn("flex w-80 flex-col gap-1.5", className)}>
       <input
         type="text"
         role="combobox"
@@ -104,7 +107,7 @@ export function ModelList({
         placeholder={`Search ${models.length} models…`}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={onKeyDown}
-        className="h-ctl w-full rounded-md border border-border-input bg-input px-2 text-step-11 text-text-1 outline-hidden placeholder:text-text-5 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
+        className="h-ctl-sm w-full rounded-sm border border-border bg-bg-0 px-2 text-sm text-fg outline-hidden placeholder:text-fg-3 hover:border-border-strong focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
       />
       <div
         ref={scrollRef}
@@ -116,7 +119,7 @@ export function ModelList({
         style={{ height: VIEWPORT_HEIGHT }}
       >
         {rows.length === 0 ? (
-          <p className="px-2 py-3 text-step-11 text-text-3">No model matches “{query}”.</p>
+          <p className="px-2 py-3 text-sm text-fg-3">No model matches “{query}”.</p>
         ) : (
           <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((item) => {
@@ -129,7 +132,7 @@ export function ModelList({
                     key={`group-${row.provider}`}
                     role="presentation"
                     style={style}
-                    className="absolute left-0 top-0 flex w-full items-end px-2 pb-1 text-step-10 font-semibold uppercase tracking-wide text-text-4"
+                    className="absolute left-0 top-0 flex w-full items-end px-2 pb-1 text-2xs font-semibold uppercase tracking-wide text-fg-3"
                   >
                     {row.provider}
                   </div>
@@ -153,8 +156,8 @@ export function ModelList({
                   onMouseMove={() => setActive(item.index)}
                   onClick={() => choose(row)}
                   className={cn(
-                    "absolute left-0 top-0 flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-step-11 text-text-1",
-                    item.index === active && "bg-hover text-text-0",
+                    "absolute left-0 top-0 flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-sm text-fg",
+                    item.index === active && "bg-accent text-accent-ink",
                   )}
                 >
                   <span className="min-w-0 flex-1 truncate">
@@ -163,10 +166,25 @@ export function ModelList({
                       : row.model.name}
                   </span>
                   {row.kind === "model" && row.model.reasoning && (
-                    <span className="shrink-0 text-step-10 text-text-4">reasoning</span>
+                    <span
+                      className={cn(
+                        "shrink-0 text-xs",
+                        item.index === active ? "text-accent-ink" : "text-fg-3",
+                      )}
+                    >
+                      reasoning
+                    </span>
                   )}
                   {chosen && (
-                    <Check size={12} weight="bold" aria-hidden className="shrink-0 text-accent" />
+                    <Check
+                      size={12}
+                      weight="bold"
+                      aria-hidden
+                      className={cn(
+                        "shrink-0",
+                        item.index === active ? "text-accent-ink" : "text-fg",
+                      )}
+                    />
                   )}
                 </div>
               );

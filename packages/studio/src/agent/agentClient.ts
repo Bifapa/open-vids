@@ -4,9 +4,11 @@ import {
   SPECIALIST_IDS,
   isQaReport,
   isRecord,
+  parseAgentIntake,
   type ActiveTurnInfo,
   type AgentErrorBody,
   type AgentErrorCode,
+  type AgentIntake,
   type AgentModelCatalog,
   type AgentSettings,
   type ChatState,
@@ -79,6 +81,12 @@ export interface AgentClient {
     turnId: string,
     request: RevertTurnRequest,
   ): Promise<RevertTurnResponse>;
+  /** Undo revert: puts a reverted turn's changes back (same request and response as a revert). */
+  unrevertTurn(
+    chatId: string,
+    turnId: string,
+    request: RevertTurnRequest,
+  ): Promise<RevertTurnResponse>;
   /** Same-origin URL for the chat event stream, resuming after `afterSeq`. */
   chatEventsUrl(chatId: string, afterSeq: number): string;
   projectEventsUrl(): string;
@@ -95,6 +103,8 @@ export interface AgentClient {
   getQaReport(reportId: string): Promise<QaReport>;
   /** Same-origin URL of a project-relative render (`renders/<file>`). */
   renderFileUrl(renderPath: string): string;
+  /** The project's start-from-chat intake, handed out once (Studio server); null when there is none. */
+  claimIntake(): Promise<AgentIntake | null>;
 }
 
 // ── Response guards ──────────────────────────────────────────────────────────
@@ -334,6 +344,13 @@ export function createAgentClient(
         isRevertTurnResponse,
         request,
       ),
+    unrevertTurn: (chatId, turnId, request) =>
+      call(
+        "POST",
+        `/chats/${enc(chatId)}/turns/${enc(turnId)}/unrevert`,
+        isRevertTurnResponse,
+        request,
+      ),
     chatEventsUrl: (chatId, afterSeq) =>
       `${base(`/chats/${enc(chatId)}/events`)}?after=${afterSeq}`,
     projectEventsUrl: () => base("/events"),
@@ -348,5 +365,13 @@ export function createAgentClient(
       request("GET", buildProjectApiPath(projectId, `/qa/reports/${enc(reportId)}`), isQaReport),
     renderFileUrl: (renderPath) =>
       buildProjectApiPath(projectId, `/renders/file/${enc(renderPath.replace(/^renders\//, ""))}`),
+    claimIntake: async () => {
+      // 204 (no intake) reads as an empty object.
+      const payload = await call("POST", "/intake/claim", isRecord, {});
+      if (Object.keys(payload).length === 0) return null;
+      const parsed = parseAgentIntake(payload);
+      if (!parsed.ok) throw new AgentApiError("bad_response", parsed.message);
+      return parsed.value;
+    },
   };
 }

@@ -1,6 +1,6 @@
 import { memo, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { FilmSlate, LockSimple } from "@phosphor-icons/react";
+import { CaretRight, Check, LockSimple, PencilSimple, WarningCircle } from "@phosphor-icons/react";
 import type { StoryFrameRef, StoryNode } from "@hyperframes/agent-protocol";
 import { cn } from "../components/ui";
 import { projectFileUrl, storyFrameUrl } from "./storyClient";
@@ -11,6 +11,7 @@ import {
   MISSING_KIND_LABELS,
   NARRATIVE_ROLE_LABELS,
   STORY_KIND_STYLES,
+  materialRole,
 } from "./storyKinds";
 import { SyncBadges } from "./SyncBadges";
 import {
@@ -32,21 +33,21 @@ function cardFrame(node: StoryNode): StoryFrameRef | null {
   return null;
 }
 
-function cardImage(node: StoryNode, projectId: string): string | null {
+export function cardImage(node: StoryNode, projectId: string): string | null {
   if (node.kind === "picture") return projectFileUrl(projectId, node.asset);
   const frame = cardFrame(node);
   return frame ? storyFrameUrl(projectId, frame.source, frame.time) : null;
 }
 
-function Thumb({ src, node }: { src: string | null; node: StoryNode }) {
+/** A card's picture, or the kind's glyph when there is none (music, motion) or it fails to load. */
+export function Thumb({ src, node }: { src: string | null; node: StoryNode }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const style = STORY_KIND_STYLES[node.kind];
-  const KindIcon = style.icon;
+  const KindIcon = STORY_KIND_STYLES[node.kind].icon;
   if (!src || failedSrc === src) {
     return (
-      <div className={cn("flex h-full w-full items-center justify-center", style.tint)}>
-        <KindIcon size={22} className={cn(style.text, "opacity-70")} aria-hidden />
-      </div>
+      <span className="hf-sg-placeholder">
+        <KindIcon size={node.kind === "chapter" ? 22 : 14} aria-hidden />
+      </span>
     );
   }
   return (
@@ -57,32 +58,28 @@ function Thumb({ src, node }: { src: string | null; node: StoryNode }) {
       decoding="async"
       draggable={false}
       onError={() => setFailedSrc(src)}
-      className="h-full w-full object-cover"
     />
   );
 }
 
-/** Lock and "edited by you" marks, shared by both card kinds. */
-function Marks({ node }: { node: StoryNode }) {
+/** Lock and "edited by you" marks, shared by both card kinds. Neutral ink: the accent is selection only. */
+function Marks({ node, lock = true }: { node: StoryNode; lock?: boolean }) {
   const edited = node.userEdited.map((field) => FIELD_LABELS[field] ?? field);
   const byYou = node.createdBy === "user" || edited.length > 0;
+  if (!byYou && !(lock && node.locked)) return null;
   return (
-    <span className="flex shrink-0 items-center gap-1">
+    <span className="hf-sg-marks">
       {byYou && (
         <span
-          className="size-1.5 rounded-full bg-selection"
+          role="img"
           title={edited.length > 0 ? `Edited by you: ${edited.join(", ")}` : "Added by you"}
           aria-label={edited.length > 0 ? "Edited by you" : "Added by you"}
-          role="img"
-        />
+        >
+          <PencilSimple size={11} aria-hidden />
+        </span>
       )}
-      {node.locked && (
-        <LockSimple
-          size={11}
-          weight="fill"
-          className="text-text-2"
-          aria-label="Locked: the agent will not change it"
-        />
+      {lock && node.locked && (
+        <LockSimple size={11} weight="fill" aria-label="Locked: the agent will not change it" />
       )}
     </span>
   );
@@ -91,16 +88,15 @@ function Marks({ node }: { node: StoryNode }) {
 function ChapterCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
   const { node, facts, projectId, number } = data;
   if (node.kind !== "chapter") return null;
-  const style = STORY_KIND_STYLES.chapter;
   const onTimeline = facts?.timeline ?? null;
   const material = facts?.materialDuration;
+  const role = NARRATIVE_ROLE_LABELS[node.narrativeRole];
   return (
     <div
       className={cn(
-        "w-[232px] overflow-hidden rounded-lg border border-t-2 border-border-input bg-surface text-left shadow-menu",
-        style.border,
-        selected && "ring-2 ring-selection",
-        node.locked && "border-dashed",
+        "hf-sg-node hf-sg-ch hf-k-chapter",
+        selected && "hf-sel",
+        node.locked && "hf-locked",
       )}
       data-story-node={node.id}
     >
@@ -108,77 +104,97 @@ function ChapterCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
         id={HANDLES.sequenceIn}
         type="target"
         position={Position.Left}
-        className="hf-story-handle-sequence"
+        className="hf-story-handle-sequence hf-story-nodrag"
         aria-label="Plays after"
       />
       <Handle
         id={HANDLES.sequenceOut}
         type="source"
         position={Position.Right}
-        className="hf-story-handle-sequence"
+        className="hf-story-handle-sequence hf-story-nodrag"
         aria-label="Plays before"
       />
       <Handle
         id={HANDLES.material}
         type="target"
         position={Position.Bottom}
-        className="hf-story-handle-material"
+        className="hf-story-handle-material hf-story-nodrag"
         aria-label="Attach material"
       />
-      <div className="relative aspect-video w-full bg-bg-2">
+      <div className="hf-sg-frame">
         <Thumb src={cardImage(node, projectId)} node={node} />
-        <span className="absolute left-1.5 top-1.5 rounded-sm bg-bg-0/80 px-1.5 py-0.5 text-step-10 font-semibold tabular-nums text-text-0">
-          {number !== null ? `#${number}` : "–"}
-        </span>
-        <span
-          className="absolute bottom-1.5 right-1.5 rounded-sm bg-bg-0/80 px-1.5 py-0.5 text-step-10 font-medium tabular-nums text-text-0"
-          title={
-            material !== undefined && material !== null
-              ? `Planned ${formatDuration(node.estimatedDuration)} · A-roll ${formatDuration(material)} after cleanup`
-              : `Planned ${formatDuration(node.estimatedDuration)}`
-          }
-        >
-          {formatDuration(node.estimatedDuration)}
-        </span>
-        {onTimeline && (
-          <span
-            className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-sm bg-accent/90 px-1.5 py-0.5 text-step-10 font-semibold text-bg-0"
-            title={`On the timeline ${formatDuration(onTimeline.start)}–${formatDuration(onTimeline.end)} (${onTimeline.clips} clips)`}
-          >
-            <FilmSlate size={10} weight="bold" aria-hidden />
-            On timeline
-          </span>
-        )}
-      </div>
-      <div className="flex flex-col gap-0.5 px-2.5 pb-2 pt-1.5">
-        <div className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-step-12 font-semibold text-text-0">
-            {node.title}
-          </span>
-          <Marks node={node} />
-        </div>
-        <div className="flex items-center gap-1.5 text-step-10 text-text-3">
-          <span className={cn("font-medium", style.text)}>
-            {NARRATIVE_ROLE_LABELS[node.narrativeRole]}
-          </span>
-          {node.status !== "approved" && (
-            <span className={node.status === "needs_material" ? "text-danger" : undefined}>
-              · {node.status === "needs_material" ? "needs material" : "proposed"}
+        <span className="hf-sg-num">{number !== null ? String(number).padStart(2, "0") : "–"}</span>
+        <span className="hf-sg-flags">
+          {node.status === "needs_material" && (
+            <span className="hf-sg-flag hf-warn">
+              <span className="hf-sg-flag-label">Needs material</span>
             </span>
           )}
-          {material !== undefined && material !== null && (
-            <span className="ml-auto tabular-nums">A-roll {formatDuration(material)}</span>
+          <SyncBadges badges={data.sync} variant="flag" />
+          {onTimeline && data.sync.length === 0 && (
+            <span
+              className="hf-sg-flag hf-ok"
+              title={`On the timeline ${formatDuration(onTimeline.start)}–${formatDuration(onTimeline.end)} (${onTimeline.clips} clips)`}
+            >
+              <Check weight="bold" aria-label="On the timeline" />
+            </span>
           )}
+          {node.locked && (
+            <span className="hf-sg-flag hf-lock" title="Locked: the agent will not change it">
+              <LockSimple weight="fill" aria-label="Locked" />
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="hf-sg-body">
+        <div className="hf-sg-row">
+          <span className="hf-sg-title" title={node.title}>
+            {node.title}
+          </span>
+          <Marks node={node} lock={false} />
+          <span
+            className="hf-sg-dur"
+            title={
+              material !== undefined && material !== null
+                ? `Planned ${formatDuration(node.estimatedDuration)} · A-roll ${formatDuration(material)} after cleanup`
+                : `Planned ${formatDuration(node.estimatedDuration)}`
+            }
+          >
+            {formatDuration(node.estimatedDuration)}
+          </span>
         </div>
-        <p className="truncate text-step-11 text-text-2">
+        <p className="hf-sg-desc">
+          <b>{node.status === "proposed" ? `${role} · proposed` : role}</b> ·{" "}
           {node.description || node.purpose || "No description yet"}
         </p>
-        <SyncBadges badges={data.sync} className="pt-0.5" />
       </div>
     </div>
   );
 }
 
+/** The meta line after the role: length, still, track, preset or what is needed. */
+function materialDetail(node: StoryNode): string {
+  switch (node.kind) {
+    case "video":
+      return node.sourceOut !== null
+        ? formatDuration(node.sourceOut - node.sourceIn)
+        : fileName(node.asset);
+    case "picture":
+      return "Still";
+    case "music":
+      return node.asset ? fileName(node.asset) : "No track chosen yet";
+    case "motion":
+      return node.duration !== null ? formatDuration(node.duration) : node.preset;
+    case "missing":
+      return node.neededDuration !== null
+        ? `${MISSING_KIND_LABELS[node.mediaKind]} · ${formatDuration(node.neededDuration)}`
+        : MISSING_KIND_LABELS[node.mediaKind];
+    case "chapter":
+      return "";
+  }
+}
+
+/** The full story behind a material card, for its tooltip. */
 function materialLine(node: StoryNode): string {
   switch (node.kind) {
     case "video":
@@ -201,20 +217,22 @@ function materialLine(node: StoryNode): string {
 }
 
 function MaterialCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
-  const { node, projectId } = data;
+  const { node, projectId, uses } = data;
   const research = useStoryResearch();
   if (node.kind === "chapter") return null;
   const resolution = resolutionOf(node);
   const style = STORY_KIND_STYLES[node.kind];
   const KindIcon = style.icon;
-  const visual = node.kind === "video" || node.kind === "picture";
+  const missing = node.kind === "missing";
+  const find = missing && research ? research : null;
+  const first = uses[0];
   return (
     <div
       className={cn(
-        "w-[184px] overflow-hidden rounded-lg border border-t-2 border-border-input bg-surface text-left shadow-menu",
-        style.border,
-        node.kind === "missing" && "border-dashed",
-        selected && "ring-2 ring-selection",
+        "hf-sg-node hf-sg-m",
+        style.kindClass,
+        missing && "hf-sg-miss",
+        selected && "hf-sel",
       )}
       data-story-node={node.id}
     >
@@ -222,39 +240,54 @@ function MaterialCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
         id={HANDLES.attach}
         type="source"
         position={Position.Top}
-        className="hf-story-handle-material"
+        className="hf-story-handle-material hf-story-nodrag"
         aria-label="Attach to a chapter"
       />
-      {visual && (
-        <div className="aspect-video w-full bg-bg-2">
-          <Thumb src={cardImage(node, projectId)} node={node} />
+      <div className="hf-sg-mrow" title={materialLine(node)}>
+        <span className="hf-sg-thumb">
+          {missing ? (
+            <WarningCircle size={14} aria-hidden />
+          ) : (
+            <>
+              <Thumb src={cardImage(node, projectId)} node={node} />
+              <span className="hf-sg-type">
+                <KindIcon size={10} weight="bold" aria-hidden />
+              </span>
+            </>
+          )}
+        </span>
+        <span className="hf-sg-txt">
+          <span className="hf-sg-name">{node.title}</span>
+          <span className="hf-sg-meta">
+            <b>{materialRole(node)}</b> · {materialDetail(node)}
+          </span>
+        </span>
+        <Marks node={node} />
+      </div>
+      {node.kind === "motion" &&
+        (first ? (
+          <div className="hf-sg-use">
+            <CaretRight size={10} weight="bold" aria-hidden />
+            Use in <b>{first.number !== null ? String(first.number).padStart(2, "0") : "–"}</b>
+            <span>
+              {first.title}
+              {uses.length > 1 ? ` +${uses.length - 1}` : ""}
+            </span>
+          </div>
+        ) : (
+          <div className="hf-sg-use hf-idle">Connect to a chapter to use it</div>
+        ))}
+      {(resolution || find || data.sync.length > 0) && (
+        <div className="hf-sg-extra">
+          {resolution && (
+            <ResolvedCardLine node={node} resolution={resolution} research={research} />
+          )}
+          {find && node.kind === "missing" && (
+            <FindWithResearchButton node={node} research={find} block />
+          )}
+          <SyncBadges badges={data.sync} />
         </div>
       )}
-      <div className="flex flex-col gap-0.5 px-2.5 py-2">
-        <div className="flex items-center gap-1.5">
-          <span
-            className={cn(
-              "flex size-4 shrink-0 items-center justify-center rounded-sm",
-              style.tint,
-            )}
-          >
-            <KindIcon size={11} weight="bold" className={style.text} aria-hidden />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-step-11 font-semibold text-text-0">
-            {node.title}
-          </span>
-          <Marks node={node} />
-        </div>
-        <p className="truncate text-step-10 text-text-3" title={materialLine(node)}>
-          <span className={cn("font-medium", style.text)}>{style.label}</span> ·{" "}
-          {materialLine(node)}
-        </p>
-        {resolution && <ResolvedCardLine node={node} resolution={resolution} research={research} />}
-        {node.kind === "missing" && research && (
-          <FindWithResearchButton node={node} research={research} className="mt-1" />
-        )}
-        <SyncBadges badges={data.sync} className="pt-0.5" />
-      </div>
     </div>
   );
 }

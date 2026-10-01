@@ -19,7 +19,7 @@ import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useAutoExpandKeyframedClips } from "./useAutoExpandKeyframedClips";
-import { GUTTER, LABEL_COL_W, TRACKS_LEFT_PAD } from "./timelineLayout";
+import { GUTTER, LABEL_COL_W } from "./timelineLayout";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
 import { ClipContentOnceShown } from "./timelineClipChildren";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
@@ -32,11 +32,7 @@ import {
 import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { TimelineRazorGuideOverlay, useTimelineRazorInteraction } from "./TimelineRazorInteraction";
-import {
-  getEffectiveTimelineDuration,
-  getTimelinePreviewElement,
-  timelineNeedsLabelColumn,
-} from "./timelineViewModel";
+import { getEffectiveTimelineDuration, getTimelinePreviewElement } from "./timelineViewModel";
 import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
 import { useTimelineTicks } from "./useTimelineTicks";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
@@ -104,12 +100,8 @@ export function useTimelineProviderState({
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
-  const labelMode = useMemo(
-    () => timelineNeedsLabelColumn(gsapAnimations, timelineElements),
-    [gsapAnimations, timelineElements],
-  );
-  // The label column provides pre-t=0 space; otherwise keep TRACKS_LEFT_PAD after the gutter.
-  const contentOrigin = labelMode ? LABEL_COL_W + GUTTER : GUTTER + TRACKS_LEFT_PAD;
+  // Every row wears a track head (kind code, name, controls); t=0 sits a GUTTER past it.
+  const contentOrigin = LABEL_COL_W + GUTTER;
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatDragging = usePlayerStore((s) => s.beatDragging);
@@ -428,7 +420,7 @@ export function useTimelineProviderState({
     minor,
     pps,
     contentOrigin,
-    contentGutter: labelMode ? GUTTER : 0,
+    contentGutter: GUTTER,
     trackContentWidth: displayContentWidth,
     totalH: displayLayout.totalH,
     effectiveDuration,
@@ -541,7 +533,6 @@ export function useTimelineProviderState({
     viewport: {
       ref: setScrollRef,
       tabIndex: -1,
-      labelMode,
       zoomMode,
       onScroll: (e) => {
         lastScrollLeftRef.current = e.currentTarget.scrollLeft;

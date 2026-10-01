@@ -3,8 +3,10 @@ import type { ZoomMode } from "../store/playerStore";
 import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 
 /* ── Layout constants ──────────────────────────────────────────────── */
-export const GUTTER = 32;
-export const LABEL_COL_W = 232;
+/** Lane surface between the track-head column and t=0: room for a 0% diamond. */
+export const GUTTER = 12;
+/** The track-head column (kind code, name, clip count, row controls). */
+export const LABEL_COL_W = 224;
 export const TRACK_H = 48;
 export const LANE_H = 28;
 export const RULER_H = 24;
@@ -60,28 +62,17 @@ export function getTimelineLaneTop(laneIndex: number): number {
  */
 export const INSERT_BOUNDARY_BAND = CLIP_Y / TRACK_H;
 /**
- * Breathing room INSIDE the scroll area (CapCut-style), threaded through every
- * track-row y computation via {@link getTimelineRowTop} — never inline a magic
- * offset; a track row's top is always ruler + top pad + cumulative row heights.
+ * Breathing room INSIDE the scroll area, threaded through every track-row y
+ * computation via {@link getTimelineRowTop} — never inline a magic offset; a
+ * track row's top is always ruler + top pad + cumulative row heights.
  *
- * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track
- *   (~half a track height) so the first clip isn't jammed under the ruler.
+ * - TRACKS_TOP_PAD: a strip between the (sticky) ruler and the first track, so
+ *   a clip can be dropped above the top lane to open a new track there.
  * - TRACKS_BOTTOM_PAD: empty space below the last track (~1.5 track heights),
  *   enough to comfortably drag a clip into the void to create a new bottom lane.
  */
-export const TRACKS_TOP_PAD = 50;
+export const TRACKS_TOP_PAD = 16;
 export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
-/**
- * Breathing room LEFT of t=0 (CapCut-style), inside the scroll content — the
- * horizontal sibling of TRACKS_TOP_PAD: empty lane surface between the sticky
- * gutter and where the ruler's 00:00 / the clips actually start, scrolling
- * WITH the content. Time↔pixel mapping: content x = GUTTER + TRACKS_LEFT_PAD
- * + t·pps, and every pointer→time inverse subtracts it symmetrically. The
- * lanes and the ruler realize it as a plain flow spacer between the sticky
- * gutter cell and the time-mapped content div, so all content-relative math
- * (clip left = t·pps, beat lines, lane-menu time) is untouched.
- */
-export const TRACKS_LEFT_PAD = 48;
 
 export interface TimelineTrackHeightClip {
   clipId: string;

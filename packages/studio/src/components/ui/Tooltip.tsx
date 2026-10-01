@@ -6,10 +6,13 @@
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
 import { cloneElement, useId, useRef, useState, type ReactElement } from "react";
 import { cn } from "./cn";
+import { Kbd } from "./Kbd";
 import { floatingMotion } from "./Menu";
 
 interface TooltipProps {
   label: string;
+  /** The action's key, drawn as a key cap after the label ("⌘E"). */
+  shortcut?: string;
   /** A single element, wrapped in a box-less span so a disabled one still gets hover. */
   children: ReactElement<{ "aria-describedby"?: string }>;
   /** Hover delay in ms. */
@@ -21,7 +24,7 @@ interface TooltipProps {
 const SIDE_OFFSET = 6;
 const VIEWPORT_MARGIN = 8;
 
-export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipProps) {
+export function Tooltip({ label, shortcut, children, delay = 400, side = "top" }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLSpanElement>(null);
   const tooltipId = useId();
@@ -45,11 +48,13 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
             id={tooltipId}
             role="tooltip"
             className={cn(
-              "pointer-events-none rounded-md border border-border-input bg-surface px-2 py-1 text-step-10 font-medium text-text-1 whitespace-nowrap shadow-menu",
+              "pointer-events-none inline-flex items-center gap-2 rounded-sm border border-border bg-tip-bg px-2 py-1",
+              "text-xs text-fg whitespace-nowrap shadow-tip",
               floatingMotion("duration-tooltip"),
             )}
           >
             {label}
+            {shortcut ? <Kbd className="border-border-strong">{shortcut}</Kbd> : null}
           </BaseTooltip.Popup>
         </BaseTooltip.Positioner>
       </BaseTooltip.Portal>

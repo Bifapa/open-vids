@@ -1,115 +1,640 @@
-/* The Story canvas: React Flow in Studio's tokens. Colours come from theme.css only. */
+/*
+ * The Story Graph canvas: React Flow in the prototype's Story workspace look (openvids-story.css). Colours come
+ * from theme.css tokens only, so the canvas flips with the light theme. Kind hues (--k-*) are identity, the accent
+ * is selection.
+ *
+ * --hf-k is the zoom-compensation factor (1 at ≥100%, 1/zoom below): card text, chips, ports and edge strokes are
+ * sized as token × --hf-k so they keep their on-screen size when the graph is zoomed out, while the card geometry
+ * (and so layout and edge routing) never changes. Caps keep the enlarged text inside the fixed card boxes.
+ */
 
 .hf-story-flow.react-flow {
-  --xy-background-color: var(--color-bg-1);
-  --xy-background-pattern-color: var(--color-text-5);
-  --xy-edge-stroke: var(--color-text-3);
-  --xy-edge-stroke-selected: var(--color-selection);
-  --xy-edge-label-background-color: var(--color-bg-2);
-  --xy-edge-label-color: var(--color-text-2);
-  --xy-connectionline-stroke: var(--color-selection);
+  --hf-k: max(1, calc(1 / var(--hf-z, 1)));
+  --hf-zt: min(calc(var(--text-sm) * var(--hf-k)), 36px);
+  --hf-zb: min(calc(var(--text-xs) * var(--hf-k)), 30px);
+  --hf-zm: min(calc(var(--text-num) * var(--hf-k)), 26px);
+  --hf-dot: color-mix(in oklch, var(--color-fg) 9%, transparent);
+  --hf-edge: color-mix(in oklch, var(--color-fg-3) 55%, var(--color-stage));
+  --hf-node-bg: var(--color-bg-1);
+
+  --xy-background-color: var(--color-stage);
+  --xy-background-pattern-color: var(--hf-dot);
+  --xy-edge-stroke: var(--hf-edge);
+  --xy-edge-stroke-selected: var(--color-accent);
+  --xy-edge-label-background-color: var(--color-bg-1);
+  --xy-edge-label-color: var(--color-fg-2);
+  --xy-connectionline-stroke: var(--color-fg-2);
   --xy-connectionline-stroke-width: 1.5;
-  --xy-handle-background-color: var(--color-bg-2);
-  --xy-handle-border-color: var(--color-text-3);
-  --xy-controls-button-background-color: var(--color-surface);
-  --xy-controls-button-background-color-hover: var(--color-hover);
-  --xy-controls-button-color: var(--color-text-2);
-  --xy-controls-button-color-hover: var(--color-text-0);
-  --xy-controls-button-border-color: var(--color-border-input);
-  --xy-controls-box-shadow: none;
-  --xy-minimap-background-color: var(--color-bg-2);
-  --xy-minimap-mask-background-color: color-mix(in oklab, var(--color-bg-0) 60%, transparent);
-  --xy-minimap-mask-stroke-color: var(--color-border-input);
+  --xy-handle-background-color: var(--hf-node-bg);
+  --xy-handle-border-color: var(--color-border-strong);
+  --xy-minimap-background-color: var(--color-bg-1);
+  --xy-minimap-mask-background-color: color-mix(in oklch, var(--color-stage) 70%, transparent);
+  --xy-minimap-mask-stroke-color: var(--color-border-strong);
+  --xy-minimap-node-background-color: var(--color-surface-3);
+  --xy-selection-background-color: var(--color-accent-soft);
+  --xy-selection-border: 1px solid var(--color-accent-line);
   --xy-attribution-background-color: transparent;
+  background: var(--color-stage);
 }
 
-.hf-story-flow .react-flow__controls {
-  border: 1px solid var(--color-border-input);
-  border-radius: 6px;
-  overflow: hidden;
+:root[data-theme="light"] .hf-story-flow.react-flow {
+  --hf-node-bg: var(--color-bg-0);
+}
+
+.hf-story-flow.hf-story-pan .react-flow__pane,
+.hf-story-flow.hf-story-pan .react-flow__node {
+  cursor: grab;
+}
+
+.hf-story-flow.hf-story-pan .react-flow__pane.dragging {
+  cursor: grabbing;
 }
 
 .hf-story-flow .react-flow__minimap {
-  border: 1px solid var(--color-border-input);
-  border-radius: 6px;
   overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-raise);
 }
 
+/* ---- Ports: 10 px on screen at every zoom, centred on the card edge ---- */
 .hf-story-flow .react-flow__handle {
-  width: 10px;
-  height: 10px;
+  --hf-pd: calc(10px * var(--hf-k));
+  width: var(--hf-pd);
+  height: var(--hf-pd);
+  min-width: 0;
+  min-height: 0;
   border-width: 1.5px;
+  border-color: var(--color-border-strong);
+  background: var(--hf-node-bg);
   transition:
     border-color 120ms ease-out,
-    background-color 120ms ease-out,
-    transform 120ms ease-out;
+    background-color 120ms ease-out;
 }
 
-.hf-story-flow .react-flow__handle.hf-story-handle-sequence {
-  border-color: var(--color-accent);
-}
-
-.hf-story-flow .react-flow__handle.hf-story-handle-material {
-  border-color: var(--color-text-2);
-  border-style: dashed;
+.hf-story-flow .react-flow__node:hover .react-flow__handle,
+.hf-story-flow .react-flow__node.selected .react-flow__handle {
+  border-color: var(--color-fg-3);
 }
 
 .hf-story-flow .react-flow__handle:hover,
+.hf-story-flow .react-flow__handle.connectingfrom,
 .hf-story-flow .react-flow__handle.connectingto.valid {
-  background: var(--color-selection);
-  border-color: var(--color-selection);
-  transform: translate(var(--hf-handle-shift-x, 0), var(--hf-handle-shift-y, 0)) scale(1.25);
+  border-color: var(--color-fg);
+  background: var(--color-fg);
 }
 
 .hf-story-flow .react-flow__handle.connectingto:not(.valid) {
-  background: var(--color-danger);
-  border-color: var(--color-danger);
+  border-color: var(--color-error);
+  background: var(--color-error);
 }
 
-.hf-story-flow .react-flow__handle-left,
-.hf-story-flow .react-flow__handle-right {
-  --hf-handle-shift-y: -50%;
+/* Material ports read as the attach point; sequence ports as the play-order joints. */
+.hf-story-flow .react-flow__handle.hf-story-handle-material {
+  border-style: dashed;
 }
 
-.hf-story-flow .react-flow__handle-left {
-  --hf-handle-shift-x: -50%;
+/* The play-order spine runs at the frame's upper third, as in the prototype, not through the title. */
+.hf-story-flow .react-flow__handle.hf-story-handle-sequence {
+  top: 66px;
 }
 
-.hf-story-flow .react-flow__handle-right {
-  --hf-handle-shift-x: 50%;
+/* ---- Edges ---- */
+.hf-story-flow .react-flow__edge-path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.hf-story-flow .react-flow__handle-top,
-.hf-story-flow .react-flow__handle-bottom {
-  --hf-handle-shift-x: -50%;
+.hf-story-flow .react-flow__edge.hf-sg-spine .react-flow__edge-path {
+  stroke: var(--color-border-strong);
+  stroke-width: calc(2px * var(--hf-k));
 }
 
-.hf-story-flow .react-flow__handle-top {
-  --hf-handle-shift-y: -50%;
+.hf-story-flow .react-flow__edge.hf-sg-link .react-flow__edge-path {
+  stroke: var(--hf-el, var(--hf-edge));
+  stroke-width: calc(1.5px * var(--hf-k));
 }
 
-.hf-story-flow .react-flow__handle-bottom {
-  --hf-handle-shift-y: 50%;
+.hf-story-flow .react-flow__edge.hf-sg-link.hf-k-motion {
+  --hf-el: var(--color-k-motion-l);
 }
 
-/* Edge styles are inline (per kind); a selected edge still reads as selected. */
+.hf-story-flow .react-flow__edge.hf-sg-link.hf-k-missing {
+  --hf-el: var(--color-fg-disabled);
+}
+
+.hf-story-flow .react-flow__edge.hf-sg-link.hf-k-missing .react-flow__edge-path {
+  stroke-dasharray: calc(4px * var(--hf-k)) calc(4px * var(--hf-k));
+}
+
+.hf-story-flow .react-flow__edge.hf-rel .react-flow__edge-path,
+.hf-story-flow .react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--color-fg-2);
+}
+
 .hf-story-flow .react-flow__edge.selected .react-flow__edge-path {
-  stroke: var(--color-selection) !important;
-  stroke-width: 2.25 !important;
+  stroke: var(--color-accent);
+  stroke-width: calc(2px * var(--hf-k));
+}
+
+.hf-story-flow.hf-focus .react-flow__edge:not(.hf-rel):not(.selected) {
+  opacity: 0.4;
 }
 
 .hf-story-flow .react-flow__edge-textbg {
   rx: 4px;
+  fill: var(--color-bg-1);
+  stroke: var(--color-border);
 }
 
+.hf-story-flow .react-flow__edge-text {
+  fill: var(--color-fg-2);
+  font: 500 var(--hf-zm) var(--font-ui);
+}
+
+.hf-story-flow .react-flow__connection-path {
+  stroke-dasharray: calc(5px * var(--hf-k)) calc(4px * var(--hf-k));
+}
+
+/* ---- Cards (shared) ---- */
 .hf-story-flow .react-flow__node:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: 10px;
+  outline: none;
 }
 
-/* Nodes are cards: the canvas itself stays a canvas while the agent owns it. */
+.hf-sg-node {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--hf-node-bg, var(--color-bg-1));
+  box-shadow: var(--shadow-raise);
+  color: var(--color-fg);
+  text-align: left;
+  user-select: none;
+}
+
+.hf-sg-node:hover {
+  border-color: var(--color-border-strong);
+}
+
+/* Nodes keep a neutral focus ring: the accent is reserved for selection. */
+.react-flow__node:focus-visible .hf-sg-node {
+  box-shadow:
+    0 0 0 2px var(--color-stage),
+    0 0 0 4px var(--color-fg);
+}
+
+.hf-sg-node.hf-sel {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 2px var(--color-accent),
+    var(--shadow-raise);
+}
+
+.react-flow__node:focus-visible .hf-sg-node.hf-sel {
+  box-shadow:
+    0 0 0 2px var(--color-accent),
+    0 0 0 4px var(--color-stage),
+    0 0 0 6px var(--color-fg);
+}
+
+.react-flow__node.dragging .hf-sg-node {
+  box-shadow:
+    0 0 0 2px var(--color-accent),
+    var(--shadow-lift);
+}
+
+.hf-story-flow.hf-focus .react-flow__node:not(.selected):not(.hf-rel) .hf-sg-node {
+  opacity: 0.7;
+}
+
+/* ---- Chapter card ---- */
+.hf-sg-ch {
+  width: 232px;
+  min-height: 202px;
+}
+
+.hf-sg-frame {
+  position: relative;
+  height: 130px;
+  margin: 3px 3px 0;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-1);
+}
+
+.hf-sg-frame::after,
+.hf-sg-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--color-edge-hi);
+  pointer-events: none;
+}
+
+.hf-sg-frame > img,
+.hf-sg-thumb > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hf-sg-placeholder {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-fg-3);
+}
+
+.hf-sg-num {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  display: inline-flex;
+  height: 1.65em;
+  align-items: center;
+  padding: 0 0.55em;
+  border-radius: var(--radius-xs);
+  background: var(--color-on-media-bg);
+  color: var(--color-on-media);
+  font: 600 var(--hf-zb) / 1 var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.hf-sg-flags {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  display: flex;
+  max-width: calc(100% - 52px);
+  overflow: hidden;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.hf-sg-flag {
+  display: inline-flex;
+  height: 1.7em;
+  min-width: 1.7em;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  padding: 0 0.5em;
+  border-radius: var(--radius-xs);
+  background: var(--color-on-media-bg);
+  color: var(--color-on-media-2);
+  font: 500 var(--hf-zm) / 1 var(--font-ui);
+  white-space: nowrap;
+}
+
+.hf-sg-flag > svg {
+  width: 1.15em;
+  height: 1.15em;
+}
+
+.hf-sg-flag.hf-lock {
+  color: var(--color-on-media);
+}
+
+.hf-sg-flag.hf-ok {
+  color: var(--color-on-media-ok);
+}
+
+.hf-sg-flag.hf-warn {
+  color: var(--color-on-media-warn);
+}
+
+.hf-sg-flag.hf-warn::before {
+  content: "";
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.hf-sg-body {
+  padding: 8px 10px 10px;
+}
+
+.hf-sg-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.hf-sg-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--color-fg);
+  font-size: max(var(--text-base), var(--hf-zt));
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hf-sg-dur {
+  flex: none;
+  color: var(--color-fg-2);
+  font: 500 var(--hf-zb) / 1.25 var(--font-mono);
+}
+
+.hf-sg-desc {
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--color-fg-3);
+  font-size: max(var(--text-xs), var(--hf-zm));
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  text-wrap: pretty;
+}
+
+.hf-sg-desc b {
+  color: var(--color-fg-2);
+  font-weight: 500;
+}
+
+.hf-sg-ch.hf-locked {
+  background: color-mix(in oklch, var(--hf-node-bg) 70%, var(--color-bg-0));
+}
+
+.hf-sg-ch.hf-locked .hf-sg-frame > img {
+  filter: saturate(0.55) brightness(0.82);
+}
+
+/* ---- Material cards ---- */
+.hf-k-chapter {
+  --hf-kh: var(--color-surface-3);
+  --hf-kb: var(--color-bg-1);
+  --hf-kl: var(--color-border-strong);
+}
+
+.hf-k-video {
+  --hf-kh: var(--color-k-video-h);
+  --hf-kb: var(--color-k-video-b);
+  --hf-kl: var(--color-k-video-l);
+}
+
+.hf-k-image {
+  --hf-kh: var(--color-k-image-h);
+  --hf-kb: var(--color-k-image-b);
+  --hf-kl: var(--color-k-image-l);
+}
+
+.hf-k-audio {
+  --hf-kh: var(--color-k-audio-h);
+  --hf-kb: var(--color-k-audio-b);
+  --hf-kl: var(--color-k-audio-l);
+}
+
+.hf-k-motion {
+  --hf-kh: var(--color-k-motion-h);
+  --hf-kb: var(--color-k-motion-b);
+  --hf-kl: var(--color-k-motion-l);
+}
+
+.hf-k-missing {
+  --hf-kh: var(--color-surface-1);
+  --hf-kb: transparent;
+  --hf-kl: var(--color-fg-disabled);
+}
+
+.hf-sg-m {
+  width: 184px;
+}
+
+.hf-sg-mrow {
+  display: flex;
+  height: 48px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 6px;
+}
+
+.hf-sg-thumb {
+  position: relative;
+  width: 58px;
+  height: 34px;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--hf-kb);
+}
+
+.hf-sg-thumb .hf-sg-placeholder {
+  color: var(--hf-kl);
+}
+
+.hf-sg-type {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  z-index: 1;
+  display: flex;
+  width: 15px;
+  height: 13px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  background: var(--hf-kh);
+  color: var(--color-clip-ink);
+}
+
+.hf-sg-txt {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.hf-sg-name {
+  overflow: hidden;
+  color: var(--color-fg);
+  font-size: max(var(--text-sm), var(--hf-zb));
+  font-weight: 500;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hf-sg-meta {
+  overflow: hidden;
+  color: var(--color-fg-3);
+  font-size: max(var(--text-xs), var(--hf-zm));
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hf-sg-meta b {
+  color: var(--color-fg-2);
+  font-weight: 500;
+}
+
+.hf-sg-marks {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-fg-3);
+}
+
+.hf-sg-extra {
+  display: grid;
+  gap: 4px;
+  padding: 0 6px 6px;
+}
+
+/* Motion: "use this preset in this chapter". */
+.hf-sg-use {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 4px 4px;
+  overflow: hidden;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-k-motion-b);
+  color: var(--color-fg-2);
+  font-size: max(var(--text-xs), var(--hf-zm));
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.hf-sg-use > svg {
+  flex: none;
+  color: var(--color-fg-3);
+}
+
+.hf-sg-use b {
+  color: var(--color-fg);
+  font: 600 max(var(--text-xs), var(--hf-zm)) / 18px var(--font-mono);
+}
+
+.hf-sg-use span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hf-sg-use.hf-idle {
+  background: transparent;
+  color: var(--color-fg-3);
+}
+
+/* Missing asset: a dashed slot waiting for material. */
+.hf-sg-node.hf-sg-miss {
+  border-style: dashed;
+  border-color: var(--color-fg-disabled);
+  background: color-mix(in oklch, var(--hf-node-bg) 55%, transparent);
+  box-shadow: none;
+}
+
+.hf-sg-node.hf-sg-miss:hover {
+  border-color: var(--color-fg-3);
+}
+
+.hf-sg-node.hf-sg-miss.hf-sel {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+.hf-sg-miss .hf-sg-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--color-border-strong);
+  background: transparent;
+  color: var(--color-warning);
+}
+
+.hf-sg-miss .hf-sg-thumb::after {
+  display: none;
+}
+
+.hf-sg-miss .hf-sg-name {
+  color: var(--color-fg-2);
+}
+
+/* ---- Level of detail: keep card geometry, trade detail for legibility ---- */
+.hf-story-flow.hf-lod-mid .hf-sg-desc,
+.hf-story-flow.hf-lod-far .hf-sg-desc,
+.hf-story-flow.hf-lod-mid .hf-sg-meta,
+.hf-story-flow.hf-lod-far .hf-sg-meta,
+.hf-story-flow.hf-lod-mid .hf-sg-use,
+.hf-story-flow.hf-lod-far .hf-sg-use,
+.hf-story-flow.hf-lod-mid .hf-sg-extra,
+.hf-story-flow.hf-lod-far .hf-sg-extra {
+  display: none;
+}
+
+.hf-story-flow.hf-lod-mid .hf-sg-title,
+.hf-story-flow.hf-lod-far .hf-sg-title {
+  display: -webkit-box;
+  line-height: 1.15;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.hf-story-flow.hf-lod-far .hf-sg-dur,
+.hf-story-flow.hf-lod-mid .hf-sg-flag-label,
+.hf-story-flow.hf-lod-far .hf-sg-flag-label {
+  display: none;
+}
+
+.hf-story-flow.hf-lod-far .hf-sg-frame {
+  height: 96px;
+}
+
+.hf-story-flow.hf-lod-far .hf-sg-thumb {
+  width: 26px;
+}
+
+.hf-story-flow.hf-lod-far .hf-sg-node {
+  border-color: var(--color-border-strong);
+}
+
+/* While the agent owns the story the canvas stays a canvas: nothing connects. */
 .hf-story-flow.hf-story-readonly .react-flow__handle {
   opacity: 0.35;
   pointer-events: none;
+}
+
+/* ---- Story timeline: one section per chapter, in play order ---- */
+.hf-sg-ts {
+  container-type: inline-size;
+}
+
+/* Far out, transition notes would pile up between the cards; the inspector still has them. */
+.hf-story-flow.hf-lod-far .react-flow__edge-textwrapper {
+  display: none;
+}
+
+@container (max-width: 170px) {
+  .hf-sg-ts-badges,
+  .hf-sg-ts-dur {
+    display: none;
+  }
+}
+
+@container (max-width: 90px) {
+  .hf-sg-ts-title {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-story-flow .react-flow__handle {
+    transition: none;
+  }
 }

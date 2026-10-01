@@ -7,7 +7,14 @@ import {
   PROP_UNITS,
   clampPropertyValue,
 } from "./gsapAnimationConstants";
-import { P } from "./panelTokens";
+import { fieldBase, fieldSizes } from "../ui/Input";
+import {
+  INSP_CHIP,
+  INSP_MINI_BUTTON,
+  INSP_SELECT,
+  inspSwitchKnob,
+  inspSwitchTrack,
+} from "./inspectorStyles";
 
 export const BOOLEAN_PROPS = new Set(["visibility"]);
 const STRING_PROPS = new Set(["filter", "clipPath"]);
@@ -46,7 +53,7 @@ function RemoveButton({ onClick, title }: { onClick: () => void; title: string }
     <button
       type="button"
       onClick={onClick}
-      className="relative shrink-0 rounded-sm p-1.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400 active:scale-[0.95]"
+      className={`${INSP_MINI_BUTTON} hover:text-error`}
       title={title}
       aria-label={title}
     >
@@ -80,31 +87,20 @@ export function PropertyRow({
   if (BOOLEAN_PROPS.has(prop)) {
     const isVisible = val === "visible" || val === 1;
     return (
-      <div className="flex items-center gap-1">
-        <div className="min-w-0 flex-1 flex items-center gap-2 px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800">
-          <span className="flex-1 text-[11px] font-medium text-neutral-500">
-            {PROP_LABELS[prop] ?? prop}
-          </span>
+      <div className="grid grid-cols-[minmax(0,72px)_minmax(0,1fr)_auto] items-center gap-1">
+        <span className="min-w-0 truncate text-sm text-fg-3">{PROP_LABELS[prop] ?? prop}</span>
+        <span className="flex min-w-0 items-center">
           <button
             type="button"
             role="switch"
             aria-checked={isVisible}
             onClick={() => onCommit(isVisible ? "hidden" : "visible")}
-            className="shrink-0 rounded-full transition-colors duration-200 relative"
-            style={{ width: 28, height: 16, background: isVisible ? P.accent : P.borderInput }}
+            className={inspSwitchTrack(isVisible)}
             title={isVisible ? "Visible — click to hide" : "Hidden — click to show"}
           >
-            <span
-              className="absolute top-[2px] left-0 rounded-full transition-transform duration-200"
-              style={{
-                width: 12,
-                height: 12,
-                background: isVisible ? P.white : P.textMuted,
-                transform: isVisible ? "translateX(14px)" : "translateX(2px)",
-              }}
-            />
+            <span className={inspSwitchKnob(isVisible)} />
           </button>
-        </div>
+        </span>
         <RemoveButton onClick={onRemove} title={removeTitle} />
       </div>
     );
@@ -113,32 +109,28 @@ export function PropertyRow({
     const presets =
       prop === "filter" ? FILTER_PRESETS : prop === "clipPath" ? CLIP_PATH_PRESETS : [];
     return (
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-1">
-          <div className="min-w-0 flex-1 flex items-center gap-2 px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800">
-            <span className="shrink-0 text-[11px] font-medium text-neutral-500">
-              {PROP_LABELS[prop] ?? prop}
-            </span>
-            <input
-              type="text"
-              defaultValue={String(val)}
-              className="flex-1 bg-transparent text-[11px] text-neutral-200 outline-hidden"
-              onBlur={(e) => onCommit(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.blur();
-              }}
-            />
-          </div>
+      <div className="grid gap-1">
+        <div className="grid grid-cols-[minmax(0,72px)_minmax(0,1fr)_auto] items-center gap-1">
+          <span className="min-w-0 truncate text-sm text-fg-3">{PROP_LABELS[prop] ?? prop}</span>
+          <input
+            type="text"
+            defaultValue={String(val)}
+            className={`${fieldBase} ${fieldSizes.sm} min-w-0 font-mono text-num`}
+            onBlur={(e) => onCommit(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+          />
           <RemoveButton onClick={onRemove} title={removeTitle} />
         </div>
         {presets.length > 0 && (
-          <div className="flex gap-1 pl-1">
+          <div className="flex flex-wrap gap-1 pl-[76px]">
             {presets.map((p) => (
               <button
                 key={p.value}
                 type="button"
                 onClick={() => onCommit(p.value)}
-                className="px-1.5 py-0.5 rounded-sm text-[9px] font-medium text-neutral-500 bg-neutral-800/50 hover:bg-neutral-800 hover:text-neutral-300 transition-colors"
+                className={INSP_CHIP}
               >
                 {p.label}
               </button>
@@ -189,7 +181,7 @@ export function AddPropertyTrigger({
     return (
       <select
         autoFocus
-        className="min-w-0 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-100 outline-hidden"
+        className={`${INSP_SELECT} w-auto`}
         defaultValue=""
         onChange={(e) => {
           if (e.target.value) onAdd(e.target.value);

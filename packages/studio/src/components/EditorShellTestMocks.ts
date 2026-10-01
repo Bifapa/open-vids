@@ -2,6 +2,8 @@ import React from "react";
 import { vi } from "vitest";
 
 vi.mock("../contexts/StudioContext", () => ({
+  // The inspector's empty state reads the composition facts when a shell is present.
+  useStudioShellContextOptional: () => null,
   useStudioPlaybackContext: () => ({
     captionEditMode: false,
     refreshKey: 0,

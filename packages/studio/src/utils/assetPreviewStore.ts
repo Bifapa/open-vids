@@ -19,8 +19,10 @@ interface AssetPreviewState {
   previewAsset: string | null;
   /** projectId for which the preview was opened (used to build the serve URL). */
   previewProjectId: string | null;
+  /** The Media panel's add-at-playhead action for the previewed asset, when it offers one. */
+  previewInsert: ((asset: string) => void) | null;
   /** Open a media preview for the given asset. */
-  setPreviewAsset: (asset: string, projectId: string) => void;
+  setPreviewAsset: (asset: string, projectId: string, insert?: (asset: string) => void) => void;
   /** Close the preview overlay. */
   clearPreviewAsset: () => void;
 }
@@ -28,6 +30,8 @@ interface AssetPreviewState {
 export const useAssetPreviewStore = create<AssetPreviewState>((set) => ({
   previewAsset: null,
   previewProjectId: null,
-  setPreviewAsset: (asset, projectId) => set({ previewAsset: asset, previewProjectId: projectId }),
-  clearPreviewAsset: () => set({ previewAsset: null, previewProjectId: null }),
+  previewInsert: null,
+  setPreviewAsset: (asset, projectId, insert) =>
+    set({ previewAsset: asset, previewProjectId: projectId, previewInsert: insert ?? null }),
+  clearPreviewAsset: () => set({ previewAsset: null, previewProjectId: null, previewInsert: null }),
 }));

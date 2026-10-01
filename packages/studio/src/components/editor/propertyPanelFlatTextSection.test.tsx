@@ -227,7 +227,7 @@ describe("FlatTextFieldEditor controls", () => {
     const alignButtons = segmentedRowButtons(host, "Align");
     const rightButton = alignButtons.find((button) => button.textContent === "R");
     expect(rightButton).not.toBeUndefined();
-    expect(rightButton?.className).toContain("border-panel-accent");
+    expect(rightButton?.getAttribute("aria-pressed")).toBe("true");
     // Clicking the option that's already visually active for "end" must NOT
     // rewrite it to the physical "right" — that would destroy the logical
     // semantics and break RTL content, where "end" and "right" differ.

@@ -3,15 +3,15 @@ import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimation
 const STYLES = {
   classic: {
     method:
-      "rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white",
-    cancel: "px-1.5 text-[11px] text-neutral-500 hover:text-neutral-300",
-    trigger: "text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-200",
+      "h-ctl-sm rounded-sm border border-border bg-surface-1 px-2.5 text-sm font-medium text-fg-2 transition-colors hover:border-border-strong hover:bg-surface-2 hover:text-fg",
+    cancel: "px-1.5 text-sm text-fg-3 hover:text-fg-2",
+    trigger: "text-sm font-medium text-fg-2 transition-colors hover:text-fg",
   },
   flat: {
     method:
-      "rounded-lg border border-panel-border-input bg-panel-input px-2.5 py-1.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:border-panel-text-4 hover:text-panel-text-0",
-    cancel: "px-1.5 text-[11px] text-panel-text-3 hover:text-panel-text-1",
-    trigger: "text-[11px] font-medium text-panel-text-3 transition-colors hover:text-panel-text-1",
+      "rounded-lg border border-border bg-surface-1 px-2.5 py-1.5 text-sm font-medium text-fg-2 transition-colors hover:border-panel-text-4 hover:text-fg",
+    cancel: "px-1.5 text-sm text-fg-3 hover:text-fg",
+    trigger: "text-sm font-medium text-fg-3 transition-colors hover:text-fg",
   },
 };
 

@@ -181,8 +181,8 @@ function fontSourceRank(source: FontSource): number {
 /* ------------------------------------------------------------------ */
 
 export const FIELD =
-  "min-w-0 rounded-md bg-panel-input px-3 py-[7px] text-panel-text-1 transition-colors focus-within:ring-1 focus-within:ring-panel-accent/30";
-export const LABEL = "text-[11px] font-medium text-panel-text-3";
+  "min-w-0 min-h-ctl-sm rounded-sm border border-border bg-surface-1 px-2 py-[3px] text-sm text-fg transition-colors hover:border-border-strong focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-accent";
+export const LABEL = "text-sm text-fg-3";
 export const RESPONSIVE_GRID = "grid grid-cols-[repeat(auto-fit,minmax(118px,1fr))] gap-3";
 export const EMPTY_STYLES: Record<string, string> = {};
 

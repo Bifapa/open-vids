@@ -179,9 +179,6 @@ describe("TimelineClip", () => {
       "var(--test-clip-border-active)",
     );
     expect(clip.style.getPropertyValue("--clip-handle")).toBe("var(--test-handle)");
-    expect(clip.querySelector<HTMLElement>(".timeline-clip__handle-bar")?.style.background).toBe(
-      "var(--clip-handle)",
-    );
     act(() => root.unmount());
   });
 

@@ -1,7 +1,7 @@
 import { memo, type RefObject } from "react";
 import { useSettledScrollLeft } from "./useSettledScrollLeft";
 import type { TimelineTheme } from "./timelineTheme";
-import { RULER_H, getTimelineBeatEntries } from "./timelineLayout";
+import { LABEL_COL_W, RULER_H, getTimelineBeatEntries } from "./timelineLayout";
 import { formatTimelineTickLabel } from "./timelineRulerGeometry";
 import { usePlayerStore } from "../store/playerStore";
 import { secondsToFrame } from "../lib/time";
@@ -23,7 +23,7 @@ interface TimelineRulerProps {
   scrollRef?: RefObject<HTMLDivElement | null>;
 }
 
-const TICK_LABEL_INSET_PX = 5;
+const TICK_LABEL_INSET_PX = 4;
 
 // Index of the major tick whose label starts under the track-header corner, which
 // covers ruler x < scrollLeft; -1 when none does.
@@ -66,7 +66,7 @@ const HeaderSlicedLabelMask = memo(function HeaderSlicedLabelMask({
       className="absolute pointer-events-none"
       style={{
         left: labelLeft,
-        top: 4,
+        top: 3,
         height: 12,
         // Up to the next label, so only this label's text band is covered.
         width: next === undefined ? 80 : (next - major[index]!) * pps - TICK_LABEL_INSET_PX,
@@ -134,7 +134,7 @@ export const TimelineRuler = memo(function TimelineRuler({
       </svg>
 
       {/* Ruler — sticky so the timestamps stay visible while the tracks scroll
-          vertically. Opaque background (plus the label-column corner block) so clips
+          vertically. Opaque head surface (plus the head-column corner) so clips
           scrolling underneath don't bleed through; z-index sits above the track
           rows and drag overlays but below the playhead (z 100). */}
       <div
@@ -142,24 +142,19 @@ export const TimelineRuler = memo(function TimelineRuler({
         style={{ height: RULER_H, width: contentOrigin + trackContentWidth, zIndex: 70 }}
       >
         <div
-          className="sticky left-0 z-12 shrink-0"
-          style={{
-            width: contentOrigin,
-            // Ruler corner uses the panel surface — same as the ruler strip itself.
-            background: theme.shellBackground,
-          }}
-        />
-        {/* Breathing pad before 00:00 is folded into contentOrigin (see
-            Timeline.tsx: GUTTER + TRACKS_LEFT_PAD), so no separate pad div. */}
+          className="sticky left-0 z-12 shrink-0 border-b border-border-subtle"
+          style={{ width: contentOrigin, background: theme.gutterBackground }}
+        >
+          {/* The head column's edge, carried up through the corner. */}
+          <div
+            aria-hidden="true"
+            className="absolute top-0 bottom-0 w-px bg-border-subtle"
+            style={{ left: Math.min(contentOrigin, LABEL_COL_W) - 1 }}
+          />
+        </div>
         <div
-          className="relative overflow-hidden"
-          style={{
-            height: RULER_H,
-            width: trackContentWidth,
-            // Ruler background = the panel surface token — no bottom border,
-            // no tick lines (CapCut-style clean ruler, labels only).
-            background: theme.shellBackground,
-          }}
+          className="relative overflow-hidden border-b border-border-subtle"
+          style={{ height: RULER_H, width: trackContentWidth, background: theme.gutterBackground }}
         >
           {/* Each 1px tick line is shifted -0.5px so its CENTER sits exactly on
               t * pps — matching the playhead line, which is also centered on
@@ -172,7 +167,7 @@ export const TimelineRuler = memo(function TimelineRuler({
               className="absolute bottom-0"
               style={{ left: t * pps - 0.5 }}
             >
-              <div className="w-px h-2" style={{ background: theme.tickMinor }} />
+              <div className="h-1 w-px" style={{ background: theme.tickMinor }} />
             </div>
           ))}
 
@@ -180,23 +175,21 @@ export const TimelineRuler = memo(function TimelineRuler({
             <div
               key={`M-${t}`}
               data-timeline-grid-cell="major"
-              className="absolute top-0"
+              className="absolute top-0 bottom-0"
               style={{ left: t * pps - 0.5 }}
             >
               <span
-                className="absolute font-mono tabular-nums leading-none whitespace-nowrap"
-                style={{
-                  color: theme.tickText,
-                  left: TICK_LABEL_INSET_PX,
-                  top: 5,
-                  fontSize: 10,
-                }}
+                className="absolute font-mono text-2xs leading-3 tabular-nums whitespace-nowrap"
+                style={{ color: theme.tickText, left: TICK_LABEL_INSET_PX, top: 3 }}
               >
                 {timeDisplayMode === "frame"
                   ? secondsToFrame(t)
                   : formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
               </span>
-              <div className="w-px" style={{ height: RULER_H, background: theme.tickMajor }} />
+              <div
+                className="absolute bottom-0 left-0 h-[9px] w-px"
+                style={{ background: theme.tickMajor }}
+              />
             </div>
           ))}
           {scrollRef && (
@@ -204,7 +197,7 @@ export const TimelineRuler = memo(function TimelineRuler({
               scrollRef={scrollRef}
               major={major}
               pps={pps}
-              background={theme.shellBackground}
+              background={theme.gutterBackground}
             />
           )}
         </div>

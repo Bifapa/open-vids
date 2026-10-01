@@ -1,5 +1,9 @@
+import { ListChecks } from "@phosphor-icons/react";
+import { cn } from "../ui/cn";
+
 const ERROR_PULSES_BEFORE_IDLE = 3;
 
+/** The panel foot's Checks control, in the prototype status bar's `.sb-checks` style. */
 export function SidebarLintButton({
   onLint,
   linting,
@@ -12,35 +16,30 @@ export function SidebarLintButton({
   hasError?: boolean;
 }) {
   return (
-    <div className="border-t border-neutral-800 p-2 shrink-0">
+    <div className="flex h-7 shrink-0 items-center border-t border-border-subtle bg-bg-0 px-1.5">
       <button
         type="button"
         onClick={onLint}
         disabled={linting}
-        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] font-medium text-neutral-500 enabled:hover:text-amber-300 enabled:hover:bg-neutral-800 enabled:active:scale-[0.98] transition-colors disabled:opacity-40"
+        className={cn(
+          "inline-flex h-5 items-center gap-1.5 rounded-xs px-1.5 text-xs text-fg-3 transition-colors duration-hover",
+          "enabled:hover:bg-surface-2 enabled:hover:text-fg disabled:text-fg-disabled",
+          "outline-hidden focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+        )}
       >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="M9 11l3 3L22 4" />
-          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-        </svg>
-        {linting ? "Linting…" : "Lint"}
+        <ListChecks size={12} aria-hidden />
+        {linting ? "Checking…" : "Run Checks"}
         {!linting && findingCount != null && findingCount > 0 && (
           <span
             key={findingCount}
             data-lint-badge={hasError ? "error" : "warning"}
             style={hasError ? { animationIterationCount: ERROR_PULSES_BEFORE_IDLE } : undefined}
-            className={
+            className={cn(
+              "inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-1 text-2xs font-semibold tabular-nums",
               hasError
-                ? "ml-1 min-w-[16px] rounded-full bg-panel-danger/25 px-1 text-[9px] font-bold text-panel-danger animate-pulse motion-reduce:animate-none"
-                : "ml-1 min-w-[16px] rounded-full bg-amber-500/20 px-1 text-[9px] font-bold text-amber-400"
-            }
+                ? "bg-error-soft text-error animate-pulse motion-reduce:animate-none"
+                : "bg-warning-soft text-warning",
+            )}
           >
             {findingCount}
             <span className="sr-only">

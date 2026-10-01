@@ -1,35 +1,48 @@
-//! Home-screen HTTP plumbing: request reading, routing, thumbnails.
+//! Home-screen HTTP plumbing: request reading, routing, static assets.
 //!
 //! `home.rs` owns the listener lifetime; this module owns everything that
-//! happens per connection:
+//! happens per connection. Pages and assets (open, no token):
 //!
-//! - `GET /` — the home page (token injected into the script).
-//! - `GET /api/recents` — recents with `missing` flags for gone folders.
-//! - `POST /api/pick-open` — native folder picker → validation → open.
-//! - `POST /api/pick-parent` — native folder picker for the create form.
-//! - `POST /api/create` — scaffold a project, then open it.
-//! - `POST /api/open` — open a recent by id.
-//! - `POST /api/rename` — rename the folder on disk + update recents.
-//! - `POST /api/remove` — drop a recent.
-//! - `POST /api/trash` — move the folder to the OS Trash + drop the recent.
-//! - `GET /api/open-state` — what the background open is doing.
+//! - `GET /` — the Projects page (token + boot state injected).
+//! - `GET /settings` — the Settings window document (framed by the page).
+//! - `GET /assets/<file>` — the page's CSS / JS / SVG (compiled in).
 //! - `GET /thumb/<file>` — cached thumbnail bytes.
+//!
+//! API (`/api/*`, token required — see `home_auth`):
+//!
+//! - `GET /api/recents` — recents + `missing`, duration, clip count.
+//! - `GET /api/open-state` — what the background open is doing.
+//! - `POST /api/open {id, workspace?}` — open a recent.
+//! - `POST /api/pick-open` — native folder picker → validation → open.
+//! - `POST /api/pick-parent` — native folder picker for a location.
+//! - `POST /api/create` — scaffold a project, then open it.
+//! - `POST /api/name-status` — does `<parent>/<name>` already have content.
+//! - `POST /api/rename`, `/api/trash`, `/api/remove`, `/api/recents/restore`,
+//!   `/api/duplicate`, `/api/reveal`, `/api/locate` — project actions.
+//! - `GET /api/locations` — candidate parent folders.
+//! - `GET|PUT /api/preferences` — the shared app preferences file.
+//! - `POST /api/files/pick`, `/api/files/dropped` — files for the composer.
+//! - `POST /api/start/name`, `/api/start` — start a project from the composer.
+//! - `GET /api/agent/models`, `GET|PUT /api/agent/settings` — agent runtime.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use super::home_api::{self, respond_json};
 use super::home_auth::{self, Head, HomeToken, TOKEN_HEADER};
-use super::recents::{RecentEntry, RecentsStore};
+use super::recents::RecentsStore;
 use super::structure::validate_structure;
 
-const PAGE: &str = include_str!("home.html");
+const PAGE: &str = include_str!("home_page/index.html");
+const SETTINGS_PAGE: &str = include_str!("home_page/settings.html");
 const TOKEN_PLACEHOLDER: &str = "__OPENVids_TOKEN__";
+const BOOT_PLACEHOLDER: &str = "\"__OV_BOOT__\"";
 const BODY_LIMIT: usize = 64 * 1024;
 
-/// What the background open is doing (polled by the page's loading overlay).
+/// What the background open is doing (polled by the page's loading state).
 #[derive(Debug, Clone, Default)]
 pub enum OpenPhase {
     #[default]
@@ -43,7 +56,10 @@ pub enum OpenPhase {
     },
 }
 
-pub type Opener = Arc<dyn Fn(PathBuf) + Send + Sync>;
+/// Runs the real project open. The second argument is the Studio workspace
+/// to activate (`openvidsWorkspace`), when the open asks for one.
+pub type Opener = Arc<dyn Fn(PathBuf, Option<String>) + Send + Sync>;
+pub type PrefsListener = Arc<dyn Fn(&serde_json::Value) + Send + Sync>;
 
 /// Shared mutable home state behind the listener thread.
 pub struct HomeInner {
@@ -54,6 +70,11 @@ pub struct HomeInner {
     /// Id of the project currently loaded in the Studio window, if any.
     /// Set when an open completes, cleared by Show All Projects.
     pub current_id: Option<String>,
+    /// Skip the launch intro on the next page load: the window is coming
+    /// back from a project, or a project is opening at launch.
+    pub skip_intro: bool,
+    /// Told about every preferences change made through the page.
+    pub prefs_listener: Option<PrefsListener>,
 }
 
 impl HomeInner {
@@ -65,15 +86,27 @@ impl HomeInner {
             open_phase: OpenPhase::Idle,
             opener: None,
             current_id: None,
+            skip_intro: false,
+            prefs_listener: None,
         })
     }
 }
 
+/// Stable cached-thumbnail file name for a project folder.
+pub fn thumb_name_for(dir: &Path, ext: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    dir.to_string_lossy().hash(&mut hasher);
+    format!("{:016x}.{ext}", hasher.finish())
+}
+
 pub fn serve_one(mut stream: TcpStream, state: &Arc<Mutex<HomeInner>>, token: &str, port: u16) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
-    let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
+    // Start/duplicate copy files and pickers wait on the user: no write
+    // deadline short enough to cut those responses off.
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(30)));
     let request = read_request(&mut stream);
-    let Some((head, raw_target, body)) = request else {
+    let Some((head, body)) = request else {
         respond(&mut stream, 400, "text/plain", b"bad request");
         return;
     };
@@ -87,12 +120,12 @@ pub fn serve_one(mut stream: TcpStream, state: &Arc<Mutex<HomeInner>>, token: &s
         respond(&mut stream, 403, "text/plain", b"bad token");
         return;
     }
-    route(stream, state, token, &head, &raw_target, &body);
+    route(stream, state, token, &head, &body);
 }
 
 // ── Request reading ─────────────────────────────────────────────────────────
 
-fn read_request(stream: &mut TcpStream) -> Option<(Head, String, Vec<u8>)> {
+fn read_request(stream: &mut TcpStream) -> Option<(Head, Vec<u8>)> {
     let mut raw = Vec::new();
     let mut buf = [0u8; 4096];
     loop {
@@ -104,7 +137,6 @@ fn read_request(stream: &mut TcpStream) -> Option<(Head, String, Vec<u8>)> {
         if let Some(end) = find_header_end(&raw) {
             let head_text = String::from_utf8_lossy(&raw[..end]).into_owned();
             let head = Head::parse(&head_text)?;
-            let raw_target = request_target(&head_text);
             let content_len = head
                 .header("content-length")
                 .and_then(|v| v.parse::<usize>().ok())
@@ -119,7 +151,7 @@ fn read_request(stream: &mut TcpStream) -> Option<(Head, String, Vec<u8>)> {
                 body.extend_from_slice(&buf[..n]);
             }
             body.truncate(content_len);
-            return Some((head, raw_target, body));
+            return Some((head, body));
         }
         if raw.len() > 16 * 1024 {
             return None;
@@ -132,15 +164,6 @@ fn find_header_end(raw: &[u8]) -> Option<usize> {
     raw.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4)
 }
 
-fn request_target(head_text: &str) -> String {
-    head_text
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .unwrap_or("/")
-        .to_string()
-}
-
 // ── Routing ─────────────────────────────────────────────────────────────────
 
 fn route(
@@ -148,86 +171,115 @@ fn route(
     state: &Arc<Mutex<HomeInner>>,
     token: &str,
     head: &Head,
-    raw_target: &str,
     body: &[u8],
 ) {
     let path = percent_decode(&head.path);
-    if head.method.eq_ignore_ascii_case("GET") && (path == "/" || path == "/index.html") {
-        let page = PAGE.replace(TOKEN_PLACEHOLDER, token);
-        respond(
-            &mut stream,
-            200,
-            "text/html; charset=utf-8",
-            page.as_bytes(),
-        );
-        return;
-    }
-    if head.method.eq_ignore_ascii_case("GET") && path.starts_with("/thumb/") {
-        serve_thumb(&mut stream, state, &path);
-        return;
-    }
-    if head.method.eq_ignore_ascii_case("GET") && path == "/api/recents" {
-        serve_recents(&mut stream, state);
-        return;
-    }
-    if head.method.eq_ignore_ascii_case("GET") && path == "/api/open-state" {
-        serve_open_state(&mut stream, state);
-        return;
-    }
-    if path == "/api/pick-open" && head.method.eq_ignore_ascii_case("POST") {
-        handle_pick_open(&mut stream, state);
-        return;
-    }
-    if path == "/api/pick-parent" && head.method.eq_ignore_ascii_case("POST") {
-        handle_pick_parent(&mut stream);
-        return;
-    }
-    if path == "/api/create" && head.method.eq_ignore_ascii_case("POST") {
-        super::home_create::handle_create(&mut stream, state, body);
-        return;
-    }
-    if path == "/api/open" && head.method.eq_ignore_ascii_case("POST") {
-        handle_open(&mut stream, state, body);
-        return;
-    }
-    if path == "/api/rename" && head.method.eq_ignore_ascii_case("POST") {
-        super::home_project::handle_rename(&mut stream, state, body);
-        return;
-    }
-    if path == "/api/remove" && head.method.eq_ignore_ascii_case("POST") {
-        let id = json_field(body, "id").unwrap_or_default();
-        let removed = state
-            .lock()
-            .ok()
-            .map(|mut inner| inner.recents.remove(&id))
-            .unwrap_or(false);
-        if removed {
-            respond(&mut stream, 200, "application/json", br#"{"ok":true}"#);
-        } else {
-            respond(
-                &mut stream,
-                404,
-                "application/json",
-                br#"{"error":"unknown project"}"#,
-            );
+    let method = head.method.to_ascii_uppercase();
+    let s = &mut stream;
+    match (method.as_str(), path.as_str()) {
+        ("GET", "/") | ("GET", "/index.html") => serve_page(s, state, token),
+        ("GET", "/settings") => {
+            let page = SETTINGS_PAGE.replace(TOKEN_PLACEHOLDER, token);
+            respond(s, 200, "text/html; charset=utf-8", page.as_bytes());
         }
-        return;
+        ("GET", p) if p.starts_with("/assets/") => serve_asset(s, &p["/assets/".len()..]),
+        ("GET", p) if p.starts_with("/thumb/") => serve_thumb(s, state, p),
+        ("GET", "/api/recents") => home_api::serve_recents(s, state),
+        ("GET", "/api/open-state") => serve_open_state(s, state),
+        ("GET", "/api/locations") => home_api::serve_locations(s, state),
+        ("GET", "/api/preferences") => home_api::serve_prefs(s),
+        ("PUT", "/api/preferences") => home_api::handle_prefs_update(s, state, body),
+        ("GET", "/api/agent/models") => home_api::proxy_agent(s, "GET", "/v1/models", None),
+        ("GET", "/api/agent/settings") => home_api::proxy_agent(s, "GET", "/v1/settings", None),
+        ("PUT", "/api/agent/settings") => {
+            home_api::proxy_agent(s, "PATCH", "/v1/settings", Some(body))
+        }
+        ("POST", "/api/pick-open") => handle_pick_open(s, state),
+        ("POST", "/api/pick-parent") => handle_pick_parent(s),
+        ("POST", "/api/create") => super::home_create::handle_create(s, state, body),
+        ("POST", "/api/name-status") => home_api::handle_name_status(s, body),
+        ("POST", "/api/open") => handle_open(s, state, body),
+        ("POST", "/api/rename") => super::home_project::handle_rename(s, state, body),
+        ("POST", "/api/remove") => home_api::handle_remove(s, state, body),
+        ("POST", "/api/recents/restore") => home_api::handle_restore(s, state, body),
+        ("POST", "/api/trash") => super::home_project::handle_trash(s, state, body),
+        ("POST", "/api/duplicate") => home_api::handle_duplicate(s, state, body),
+        ("POST", "/api/reveal") => home_api::handle_reveal(s, state, body),
+        ("POST", "/api/locate") => home_api::handle_locate(s, state, body),
+        ("POST", "/api/files/pick") => home_api::handle_pick_files(s),
+        ("POST", "/api/files/dropped") => home_api::handle_dropped(s, body),
+        ("POST", "/api/start/name") => home_api::handle_start_name(s, state, body),
+        ("POST", "/api/start") => home_api::handle_start(s, state, body),
+        _ => respond(s, 404, "text/plain", b"not found"),
     }
-    if path == "/api/trash" && head.method.eq_ignore_ascii_case("POST") {
-        super::home_project::handle_trash(&mut stream, state, body);
-        return;
-    }
-    let _ = raw_target;
-    respond(&mut stream, 404, "text/plain", b"not found");
 }
 
-pub fn begin_open(state: &Arc<Mutex<HomeInner>>, id: String, dir: PathBuf) {
+/// The page, with the token and the boot state (intro flag + preferences)
+/// it needs before first paint.
+fn serve_page(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, token: &str) {
+    let skip_intro = state
+        .lock()
+        .ok()
+        .map(|mut inner| {
+            let opening = matches!(inner.open_phase, OpenPhase::Opening { .. });
+            let skip = inner.skip_intro || opening;
+            inner.skip_intro = false;
+            skip
+        })
+        .unwrap_or(true);
+    let boot = serde_json::json!({
+        "intro": !skip_intro,
+        "prefs": super::prefs::load(&super::prefs::prefs_path()),
+        "version": env!("CARGO_PKG_VERSION"),
+    });
+    // `<` cannot close the inline script: JSON-escape it.
+    let boot = boot.to_string().replace('<', "\\u003c");
+    let page = PAGE
+        .replace(TOKEN_PLACEHOLDER, token)
+        .replace(BOOT_PLACEHOLDER, &boot);
+    respond(stream, 200, "text/html; charset=utf-8", page.as_bytes());
+}
+
+fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
+    const CSS: &str = "text/css; charset=utf-8";
+    const JS: &str = "text/javascript; charset=utf-8";
+    const SVG: &str = "image/svg+xml";
+    Some(match name {
+        "ov.css" => (CSS, include_bytes!("home_page/ov.css")),
+        "home.css" => (CSS, include_bytes!("home_page/home.css")),
+        "composer.css" => (CSS, include_bytes!("home_page/composer.css")),
+        "settings.css" => (CSS, include_bytes!("home_page/settings.css")),
+        "shared.js" => (JS, include_bytes!("home_page/shared.js")),
+        "home.js" => (JS, include_bytes!("home_page/home.js")),
+        "sheets.js" => (JS, include_bytes!("home_page/sheets.js")),
+        "composer.js" => (JS, include_bytes!("home_page/composer.js")),
+        "settings.js" => (JS, include_bytes!("home_page/settings.js")),
+        "logo-intro.svg" => (SVG, include_bytes!("home_page/logo-intro.svg")),
+        "logo-intro-light.svg" => (SVG, include_bytes!("home_page/logo-intro-light.svg")),
+        _ => return None,
+    })
+}
+
+fn serve_asset(stream: &mut TcpStream, name: &str) {
+    match asset(name) {
+        Some((content_type, bytes)) => respond(stream, 200, content_type, bytes),
+        None => respond(stream, 404, "text/plain", b"no such asset"),
+    }
+}
+
+/// Mark an open as started and hand it to the opener (lib.rs).
+pub fn begin_open(
+    state: &Arc<Mutex<HomeInner>>,
+    id: String,
+    dir: PathBuf,
+    workspace: Option<String>,
+) {
     let opener = state.lock().ok().and_then(|mut inner| {
         inner.open_phase = OpenPhase::Opening { label: id.clone() };
         inner.opener.clone()
     });
     if let Some(opener) = opener {
-        opener(dir);
+        opener(dir, workspace);
     }
 }
 
@@ -247,57 +299,29 @@ fn serve_thumb(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, path: &str
     }
 }
 
-fn serve_recents(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
-    let payload = state.lock().ok().map(|inner| {
-        let recents: Vec<serde_json::Value> = inner
-            .recents
-            .entries()
-            .iter()
-            .map(|e: &RecentEntry| {
-                serde_json::json!({
-                    "id": e.id,
-                    "dir": e.dir.to_string_lossy(),
-                    "last_opened": e.last_opened,
-                    "thumb": e.thumb,
-                    "width": e.width,
-                    "height": e.height,
-                    "missing": !e.dir.is_dir(),
-                })
-            })
-            .collect();
-        serde_json::json!({ "recents": recents }).to_string()
-    });
-    match payload {
-        Some(json) => respond(stream, 200, "application/json", json.as_bytes()),
-        None => respond(stream, 500, "text/plain", b"state poisoned"),
-    }
-}
-
 fn serve_open_state(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
     let payload = state.lock().ok().map(|inner| match &inner.open_phase {
-        OpenPhase::Idle => serde_json::json!({ "phase": "idle" }).to_string(),
-        OpenPhase::Opening { label } => {
-            serde_json::json!({ "phase": "opening", "label": label }).to_string()
-        }
+        OpenPhase::Idle => serde_json::json!({ "phase": "idle" }),
+        OpenPhase::Opening { label } => serde_json::json!({ "phase": "opening", "label": label }),
         OpenPhase::Failed { label, error } => {
-            serde_json::json!({ "phase": "failed", "label": label, "error": error }).to_string()
+            serde_json::json!({ "phase": "failed", "label": label, "error": error })
         }
     });
     match payload {
-        Some(json) => respond(stream, 200, "application/json", json.as_bytes()),
+        Some(json) => respond_json(stream, 200, &json),
         None => respond(stream, 500, "text/plain", b"state poisoned"),
     }
 }
 
 fn handle_pick_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
     match rfd::FileDialog::new()
-        .set_title("Open HyperFrames Project Folder")
+        .set_title("Open Project")
         .pick_folder()
     {
         None => respond(stream, 200, "application/json", br#"{"cancelled":true}"#),
         Some(dir) => match validate_structure(&dir) {
             Ok(project) => {
-                begin_open(state, project.id.clone(), project.dir.clone());
+                begin_open(state, project.id.clone(), project.dir.clone(), None);
                 respond(
                     stream,
                     200,
@@ -305,10 +329,15 @@ fn handle_pick_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
                     br#"{"cancelled":false,"opening":true}"#,
                 );
             }
-            Err(err) => {
-                let payload = serde_json::json!({ "error": err.to_string() }).to_string();
-                respond(stream, 400, "application/json", payload.as_bytes());
-            }
+            Err(err) => respond_json(
+                stream,
+                400,
+                &serde_json::json!({
+                    "error": home_api::not_a_project_message(&dir, &err.to_string()),
+                    "invalid": true,
+                    "path": super::prefs::abbreviate_home(&dir),
+                }),
+            ),
         },
     }
 }
@@ -319,20 +348,21 @@ fn handle_pick_parent(stream: &mut TcpStream) {
         .pick_folder()
     {
         None => respond(stream, 200, "application/json", br#"{"cancelled":true}"#),
-        Some(parent) => {
-            let payload = serde_json::json!({ "parent": parent.to_string_lossy() });
-            respond(
-                stream,
-                200,
-                "application/json",
-                payload.to_string().as_bytes(),
-            );
-        }
+        Some(parent) => respond_json(
+            stream,
+            200,
+            &serde_json::json!({
+                "parent": parent.to_string_lossy(),
+                "path": super::prefs::abbreviate_home(&parent),
+            }),
+        ),
     }
 }
 
 fn handle_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
     let id = json_field(body, "id");
+    let workspace = json_field(body, "workspace")
+        .filter(|w| super::prefs::WORKSPACES.contains(&w.as_str()));
     let found = state.lock().ok().and_then(|inner| {
         inner
             .recents
@@ -345,22 +375,18 @@ fn handle_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8
                 let payload = serde_json::json!({
                     "error": format!("{} no longer exists — remove it from recents", entry.dir.display())
                 });
-                respond(
-                    stream,
-                    410,
-                    "application/json",
-                    payload.to_string().as_bytes(),
-                );
+                respond_json(stream, 410, &payload);
             } else {
                 match validate_structure(&entry.dir) {
                     Ok(project) => {
-                        begin_open(state, project.id.clone(), project.dir.clone());
+                        begin_open(state, project.id.clone(), project.dir.clone(), workspace);
                         respond(stream, 200, "application/json", br#"{"opening":true}"#);
                     }
-                    Err(err) => {
-                        let payload = serde_json::json!({ "error": err.to_string() }).to_string();
-                        respond(stream, 400, "application/json", payload.as_bytes());
-                    }
+                    Err(err) => respond_json(
+                        stream,
+                        400,
+                        &serde_json::json!({ "error": err.to_string() }),
+                    ),
                 }
             }
         }
@@ -400,30 +426,33 @@ fn content_type_for(name: &str) -> &'static str {
 }
 
 fn percent_decode(path: &str) -> String {
-    let mut out = String::with_capacity(path.len());
+    let mut out: Vec<u8> = Vec::with_capacity(path.len());
     let mut bytes = path.as_bytes().iter();
     while let Some(&b) = bytes.next() {
         if b == b'%' {
             let hi = bytes.next().copied().unwrap_or(b'0');
             let lo = bytes.next().copied().unwrap_or(b'0');
             let hex = |c: u8| (c as char).to_digit(16).unwrap_or(0) as u8;
-            out.push((hex(hi) * 16 + hex(lo)) as char);
+            out.push(hex(hi) * 16 + hex(lo));
         } else {
-            out.push(b as char);
+            out.push(b);
         }
     }
-    out
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn status_line(code: u16) -> &'static str {
     match code {
         200 => "HTTP/1.1 200 OK",
+        204 => "HTTP/1.1 204 No Content",
         400 => "HTTP/1.1 400 Bad Request",
+        401 => "HTTP/1.1 401 Unauthorized",
         403 => "HTTP/1.1 403 Forbidden",
         404 => "HTTP/1.1 404 Not Found",
         409 => "HTTP/1.1 409 Conflict",
         410 => "HTTP/1.1 410 Gone",
-        500 => "HTTP/1.1 500 Internal Server Error",
+        502 => "HTTP/1.1 502 Bad Gateway",
+        503 => "HTTP/1.1 503 Service Unavailable",
         _ => "HTTP/1.1 500 Internal Server Error",
     }
 }
@@ -438,4 +467,28 @@ pub fn respond(stream: &mut TcpStream, code: u16, content_type: &'static str, bo
     let _ = stream.write_all(head.as_bytes());
     let _ = stream.write_all(body);
     let _ = stream.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_decoding_keeps_utf8() {
+        assert_eq!(percent_decode("/thumb/a%20b.jpg"), "/thumb/a b.jpg");
+        assert_eq!(percent_decode("/x/%E2%80%94"), "/x/—");
+    }
+
+    #[test]
+    fn every_asset_the_page_links_is_compiled_in() {
+        for page in [PAGE, SETTINGS_PAGE] {
+            for chunk in page.split("/assets/").skip(1) {
+                let name: String = chunk
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-')
+                    .collect();
+                assert!(asset(&name).is_some(), "missing asset {name}");
+            }
+        }
+    }
 }

@@ -14,6 +14,8 @@ import {
   type HfAudioEqBand,
 } from "@hyperframes/core/audio-fx-eq";
 import { FX_FAMILY_TYPE, fxFamilyTint } from "./propertyPanelFxFamily.js";
+import { X } from "@phosphor-icons/react";
+import { INSP_CARD, INSP_FOCUS_INSET, INSP_MINI_BUTTON } from "./inspectorStyles";
 
 export interface FxEqModuleProps {
   eqId: string;
@@ -85,9 +87,10 @@ function Fader({
   return (
     <div className="hf-fx-eq-band flex min-w-0 flex-1 flex-col items-center gap-1">
       <div className="relative h-[74px] w-full">
-        <span className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-panel-border-input" />
+        <span className="pointer-events-none absolute inset-x-1 top-1/2 h-px bg-border-strong" />
+        <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-surface-3" />
         <span
-          className="pointer-events-none absolute left-1/2 w-[3px] -translate-x-1/2 rounded-xs bg-panel-accent"
+          className="pointer-events-none absolute left-1/2 w-[3px] -translate-x-1/2 rounded-xs bg-fg-2"
           style={
             // `value`, not `band.gain`: mid-drag across zero the fill would
             // otherwise keep pointing the way it started.
@@ -110,12 +113,12 @@ function Fader({
           onBlur={settle}
         />
       </div>
-      <span className="hf-fx-eq-name w-full truncate text-center font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
+      <span className="hf-fx-eq-name w-full truncate text-center text-xs text-fg-3">
         {band.name}
       </span>
       <span
-        className={`hf-fx-eq-value font-mono text-[9px] tabular-nums ${
-          moved ? "text-panel-accent" : "text-panel-text-2"
+        className={`hf-fx-eq-value font-mono text-num tabular-nums ${
+          moved ? "text-fg" : "text-fg-3"
         }`}
       >
         {moved ? shown(value) : "0"}
@@ -139,7 +142,7 @@ export function FxEqModule({
 
   return (
     <div
-      className="hf-fx-node hf-fx-eq-module rounded-[4px] border border-l-2 border-panel-border-input"
+      className={`hf-fx-node hf-fx-eq-module ${INSP_CARD} border-l-2`}
       data-fx-node="eq"
       data-fx-family="smart"
       // Scroll anchor for a revealed EQ-band automation lane.
@@ -148,30 +151,39 @@ export function FxEqModule({
       // ear on a control surface, not three filters they configured.
       style={{ borderLeftColor: fxFamilyTint({ type: "eq", fromEq: "eq" }) }}
     >
-      <div className="hf-fx-node-head flex items-center gap-1.5 px-1.5 py-1">
+      <div className="hf-fx-node-head flex min-h-9 items-center gap-1 py-0.5 pl-1.5 pr-1">
+        <span className="grid min-w-0 flex-1 gap-px rounded-xs px-1 py-[3px] transition-colors hover:bg-surface-2">
+          <button
+            type="button"
+            className={`hf-fx-node-name min-w-0 truncate rounded-xs text-left text-sm font-medium leading-[15px] text-fg ${INSP_FOCUS_INSET} ${FX_FAMILY_TYPE.smart}`}
+            aria-expanded={open}
+            onClick={onToggleOpen}
+          >
+            Tone
+          </button>
+          {/* Closed, it reads like every other module: a sentence about the
+              sound rather than a list of values. */}
+          {!open ? (
+            <span className="hf-fx-eq-summary truncate text-xs text-fg-3">
+              {audioEqSummary(bands)}
+            </span>
+          ) : null}
+        </span>
+        <span className="shrink-0 font-mono text-2xs text-fg-3">{bands.length}-band</span>
         <button
           type="button"
-          className={`hf-fx-node-name flex-1 text-left text-[11px] text-panel-text-0 ${FX_FAMILY_TYPE.smart}`}
-          aria-expanded={open}
-          onClick={onToggleOpen}
-        >
-          Tone
-        </button>
-        <span className="font-mono text-[9px] text-panel-text-2">{bands.length}-band</span>
-        <button
-          type="button"
-          className="hf-fx-remove px-1 text-[11px] text-panel-text-2 hover:text-panel-danger"
+          className={`hf-fx-remove ${INSP_MINI_BUTTON} hover:text-error`}
           aria-label="Remove Tone"
           disabled={disabled}
           onClick={onRemove}
         >
-          ×
+          <X size={12} aria-hidden="true" />
         </button>
       </div>
 
       {open ? (
-        <div className="hf-fx-eq-body px-2 pb-2">
-          <div className="flex gap-1.5">
+        <div className="hf-fx-eq-body grid gap-1 border-t border-border-subtle p-2">
+          <div className="flex gap-1.5 rounded-sm border border-border-subtle bg-bg-0 px-1 pt-1.5 pb-1">
             {bands.map((band) => (
               <Fader
                 key={band.name}
@@ -182,18 +194,12 @@ export function FxEqModule({
               />
             ))}
           </div>
-          <div className="mt-1.5 flex justify-between font-mono text-[8px] tracking-wide text-panel-text-2">
-            <span>CUT</span>
-            <span>BOOST</span>
+          <div className="flex justify-between px-0.5 text-2xs text-fg-3">
+            <span>Cut</span>
+            <span>Boost</span>
           </div>
         </div>
-      ) : (
-        // Closed, it reads like every other module: a sentence about the sound
-        // rather than a list of values.
-        <p className="hf-fx-eq-summary px-2 pb-1.5 text-[11px] text-panel-text-2">
-          {audioEqSummary(bands)}
-        </p>
-      )}
+      ) : null}
     </div>
   );
 }

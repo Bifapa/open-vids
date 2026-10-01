@@ -1,4 +1,5 @@
 import { RotateCcw } from "../../icons/SystemIcons";
+import { INSP_MINI_BUTTON, INSP_ROW, INSP_SELECT } from "./inspectorStyles";
 import {
   VALUE_TIER_LABEL_CLASS,
   VALUE_TIER_VALUE_CLASS,
@@ -47,41 +48,26 @@ export function FlatSelectRow({
       ? [{ value, label: value }, ...normalizedOptions]
       : normalizedOptions;
   return (
-    <div className="group flex min-h-[30px] items-center justify-between">
-      <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
-      <span className="flex items-center gap-2">
-        <label
-          className={`flex items-center gap-1.5 border-b pb-px ${
-            tier === "explicitCustom"
-              ? "border-panel-accent/30 group-hover:border-panel-accent/70"
-              : "border-panel-border-input/50 group-hover:border-panel-border-input"
-          }`}
+    <div className={label ? `group ${INSP_ROW}` : "group flex min-h-ctl-sm items-center"}>
+      {label && (
+        <span className={`min-w-0 truncate text-sm ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
+      )}
+      <span className="flex min-w-0 flex-1 items-center gap-1">
+        <select
+          value={value}
+          disabled={disabled}
+          aria-label={ariaLabel || label || undefined}
+          onChange={(e) => {
+            onChange(e.target.value);
+          }}
+          className={`${INSP_SELECT} ${VALUE_TIER_VALUE_CLASS[tier]}`}
         >
-          <select
-            value={value}
-            disabled={disabled}
-            aria-label={ariaLabel || label || undefined}
-            onChange={(e) => {
-              onChange(e.target.value);
-            }}
-            className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-hidden disabled:cursor-not-allowed ${VALUE_TIER_VALUE_CLASS[tier]}`}
-          >
-            {renderedOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="currentColor"
-            className="shrink-0 text-panel-text-5"
-          >
-            <path d="M2 3l3 4 3-4z" />
-          </svg>
-        </label>
+          {renderedOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
         {tier === "explicitCustom" && onReset && (
           <button
             type="button"
@@ -91,9 +77,9 @@ export function FlatSelectRow({
             onClick={() => {
               onReset();
             }}
-            className="shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`${INSP_MINI_BUTTON} opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
           >
-            <RotateCcw size={11} />
+            <RotateCcw size={12} />
           </button>
         )}
       </span>

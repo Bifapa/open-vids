@@ -6,6 +6,7 @@ import {
   isSpecialistId,
   isThinkingEffort,
   type AgentId,
+  type ChatIntent,
   type ChatMode,
   type PlanStepStatus,
   type SpecialistId,
@@ -17,6 +18,7 @@ import { buildAnalysisTools } from "../analysis/tools.js";
 import { buildEditingTools } from "../editing/tools.js";
 import { buildStoryTools, timelineWritesAllowed, type StoryTurnMode } from "../story/tools.js";
 import { buildResearchTools, type KnownCandidate } from "../research/tools.js";
+import { changesProject } from "../intent.js";
 import { buildQaTools } from "../qa/tools.js";
 
 export const TOOL_NAMES = {
@@ -39,6 +41,7 @@ export type ToolExecutor = (
   name: string,
   args: unknown,
   signal: AbortSignal,
+  progress?: (percent: number) => void,
 ) => Promise<HostToolResult>;
 
 /** What a turn makes available; decides which tools an agent gets and what their schemas allow. */
@@ -57,6 +60,8 @@ export interface ToolAvailability {
   mode?: ChatMode;
   /** The Story workspace action of the turn (`review`, `build`, `rebuild`), if any. */
   storyAction?: StoryAction | null;
+  /** What the user wants from the turn (default `edit`). Plan and Ask turns get no project-changing tools. */
+  intent?: ChatIntent;
   /**
    * The runtime has a research host and the user's Asset Search policy could be read: Research gets the search and
    * import tools and the Director the read-only sources tool (whichever the chat's team and the turn allow).
@@ -140,16 +145,27 @@ export function buildHostTools(
       })
     : [];
   const qa = availability.qa ? buildQaTools(agent, execute) : [];
-  if (agent !== "director")
-    return [
-      ...editing,
-      ...analysis,
-      ...story,
-      ...research,
-      ...qa,
-      ...(availability.jev ? [jevTool(execute)] : []),
-    ];
+  const allTools =
+    agent === "director"
+      ? directorTools(availability, execute, [...editing, ...analysis, ...story, ...research])
+      : [
+          ...editing,
+          ...analysis,
+          ...story,
+          ...research,
+          ...qa,
+          ...(availability.jev ? [jevTool(execute)] : []),
+        ];
+  // A Plan or Ask turn never changes the project: its project-changing tools are not offered at all.
+  if ((availability.intent ?? "edit") === "edit") return allTools;
+  return allTools.filter((tool) => !changesProject(tool.name));
+}
 
+function directorTools(
+  availability: ToolAvailability,
+  execute: ToolExecutor,
+  projectTools: HostTool[],
+): HostTool[] {
   const planAgents: AgentId[] = ["director", ...availability.enabled];
   if (availability.jev) planAgents.push("jev");
   const tools: HostTool[] = [
@@ -259,7 +275,7 @@ export function buildHostTools(
       },
     );
   }
-  tools.push(...editing, ...analysis, ...story, ...research);
+  tools.push(...projectTools);
   if (availability.jev) tools.push(jevTool(execute));
   return tools;
 }

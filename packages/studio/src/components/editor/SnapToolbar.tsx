@@ -1,35 +1,18 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-icons/react";
+import { memo, useEffect } from "react";
+import { CaretDown, FrameCorners, Path } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../player/store/playerStore";
-import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
+import { IconButton, Menu, MenuCheckboxItem, MenuSeparator, NumberField, Tooltip } from "../ui";
+import { usePreviewGuidesStore, type PreviewSnapPreferences } from "./previewGuidesStore";
 
-export const SnapToolbar = memo(function SnapToolbar() {
-  const [gridPopoverOpen, setGridPopoverOpen] = useState(false);
-  const { state, actions } = usePreviewOverlayContext();
-  const { snapPrefs: prefs, rulerVisible, safeMarginsVisible } = state;
-  // Motion-path "set destination" toggle — shown only when the selected element
-  // can take a path; arms a single canvas click to place it (MotionPathOverlay).
-  const motionPathCreateAvailable = usePlayerStore((s) => s.motionPathCreateAvailable);
-  const motionPathArmed = usePlayerStore((s) => s.motionPathArmed);
-  const setMotionPathArmed = usePlayerStore((s) => s.setMotionPathArmed);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const gridButtonRef = useRef<HTMLButtonElement>(null);
+const GRID_SPACING_MIN = 10;
+const GRID_SPACING_MAX = 500;
 
-  const updatePrefs = useCallback(
-    (patch: Partial<typeof prefs>) => {
-      actions.setSnapPrefs(patch);
-    },
-    [actions],
-  );
+function setSnapPrefs(patch: Partial<PreviewSnapPreferences>) {
+  usePreviewGuidesStore.getState().setSnapPrefs(patch);
+}
 
-  const toggleSnap = useCallback(() => {
-    updatePrefs({ snapEnabled: !prefs.snapEnabled });
-  }, [prefs.snapEnabled, updatePrefs]);
-
-  const toggleGrid = useCallback(() => {
-    updatePrefs({ gridVisible: !prefs.gridVisible });
-  }, [prefs.gridVisible, updatePrefs]);
-
+/** S toggles snapping and G the grid, unless something else already claimed the key. */
+function useSnapShortcutKeys(prefs: PreviewSnapPreferences) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -39,160 +22,133 @@ export const SnapToolbar = memo(function SnapToolbar() {
       if (t instanceof HTMLIFrameElement) return;
       if (e.key === "s" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        updatePrefs({ snapEnabled: !prefs.snapEnabled });
+        setSnapPrefs({ snapEnabled: !prefs.snapEnabled });
       }
       if (e.key === "g" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        updatePrefs({ gridVisible: !prefs.gridVisible });
+        setSnapPrefs({ gridVisible: !prefs.gridVisible });
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [prefs.gridVisible, prefs.snapEnabled, updatePrefs]);
+  }, [prefs.gridVisible, prefs.snapEnabled]);
+}
 
-  useEffect(() => {
-    if (!gridPopoverOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (popoverRef.current?.contains(target) || gridButtonRef.current?.contains(target)) return;
-      setGridPopoverOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [gridPopoverOpen]);
+/**
+ * The viewer head's canvas tools: safe areas with a Guides & snapping menu
+ * (rulers, grid, grid spacing, snapping) and, while the selection can take a
+ * path, the motion-destination toggle.
+ */
+export const SnapToolbar = memo(function SnapToolbar() {
+  const prefs = usePreviewGuidesStore((s) => s.snapPrefs);
+  const rulerVisible = usePreviewGuidesStore((s) => s.rulerVisible);
+  const safeMarginsVisible = usePreviewGuidesStore((s) => s.safeMarginsVisible);
+  const toggleGuide = usePreviewGuidesStore((s) => s.toggle);
+  // Motion-path "set destination" toggle — shown only when the selected element
+  // can take a path; arms a single canvas click to place it (MotionPathOverlay).
+  const motionPathCreateAvailable = usePlayerStore((s) => s.motionPathCreateAvailable);
+  const motionPathArmed = usePlayerStore((s) => s.motionPathArmed);
+  const setMotionPathArmed = usePlayerStore((s) => s.setMotionPathArmed);
+  useSnapShortcutKeys(prefs);
 
   return (
-    <div
-      className="absolute top-2 right-2 z-50 flex items-center gap-1"
-      onPointerDown={(e) => e.stopPropagation()}
-    >
+    <>
+      <span className="inline-flex shrink-0" role="group" aria-label="Guides">
+        <Tooltip label={safeMarginsVisible ? "Hide safe areas" : "Show safe areas"}>
+          <IconButton
+            size="sm"
+            className="rounded-r-none"
+            aria-label="Toggle safe margins"
+            aria-pressed={safeMarginsVisible}
+            icon={<FrameCorners size={14} weight={safeMarginsVisible ? "fill" : "regular"} />}
+            onClick={() => toggleGuide("safeMarginsVisible")}
+          />
+        </Tooltip>
+        <Menu
+          align="end"
+          aria-label="Guides and snapping"
+          className="min-w-[236px]"
+          trigger={
+            <IconButton
+              size="sm"
+              className="w-3.5 rounded-l-none"
+              aria-label="Guides and snapping options"
+              icon={<CaretDown size={10} weight="bold" />}
+            />
+          }
+        >
+          <MenuCheckboxItem
+            checked={safeMarginsVisible}
+            onCheckedChange={() => toggleGuide("safeMarginsVisible")}
+          >
+            Safe Areas
+          </MenuCheckboxItem>
+          <MenuCheckboxItem
+            aria-label="Toggle ruler"
+            checked={rulerVisible}
+            onCheckedChange={() => toggleGuide("rulerVisible")}
+          >
+            Rulers
+          </MenuCheckboxItem>
+          <MenuCheckboxItem
+            checked={prefs.gridVisible}
+            onCheckedChange={() => setSnapPrefs({ gridVisible: !prefs.gridVisible })}
+          >
+            Grid
+          </MenuCheckboxItem>
+          <MenuCheckboxItem
+            checked={prefs.snapToGrid}
+            onCheckedChange={() => setSnapPrefs({ snapToGrid: !prefs.snapToGrid })}
+          >
+            Snap to Grid
+          </MenuCheckboxItem>
+          <MenuCheckboxItem
+            checked={prefs.snapEnabled}
+            onCheckedChange={() => setSnapPrefs({ snapEnabled: !prefs.snapEnabled })}
+          >
+            Snap to Elements
+          </MenuCheckboxItem>
+          <MenuSeparator />
+          <div
+            className="flex h-ctl items-center justify-between gap-2 pr-1 pl-2 text-sm text-fg"
+            // Keeps digits typed in the spacing field away from the menu's typeahead.
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") event.stopPropagation();
+            }}
+          >
+            <span>Grid Spacing</span>
+            <NumberField
+              label="Grid spacing in pixels"
+              className="w-[76px]"
+              value={prefs.gridSpacing}
+              min={GRID_SPACING_MIN}
+              max={GRID_SPACING_MAX}
+              step={10}
+              unit="px"
+              onCommit={(next) => {
+                if (next >= GRID_SPACING_MIN && next <= GRID_SPACING_MAX) {
+                  setSnapPrefs({ gridSpacing: next });
+                }
+              }}
+            />
+          </div>
+        </Menu>
+      </span>
       {motionPathCreateAvailable && (
-        <button
-          type="button"
-          className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
-            motionPathArmed
-              ? "bg-studio-accent/20 text-studio-accent"
-              : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
-          }`}
-          onClick={() => setMotionPathArmed(!motionPathArmed)}
-          title={
+        <Tooltip
+          label={
             motionPathArmed ? "Click the canvas to set the destination" : "Set motion destination"
           }
-          aria-label="Set motion destination"
         >
-          <Path size={16} weight={motionPathArmed ? "fill" : "regular"} />
-        </button>
+          <IconButton
+            size="sm"
+            aria-label="Set motion destination"
+            aria-pressed={motionPathArmed}
+            icon={<Path size={14} weight={motionPathArmed ? "bold" : "regular"} />}
+            onClick={() => setMotionPathArmed(!motionPathArmed)}
+          />
+        </Tooltip>
       )}
-      {(
-        [
-          ["rulerVisible", "Ruler", Ruler],
-          ["safeMarginsVisible", "Safe margins", FrameCorners],
-        ] as const
-      ).map(([key, label, Icon]) => {
-        const visible = key === "rulerVisible" ? rulerVisible : safeMarginsVisible;
-        const toggle = key === "rulerVisible" ? actions.toggleRulers : actions.toggleSafeMargins;
-        return (
-          <button
-            key={key}
-            type="button"
-            className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
-              visible
-                ? "bg-studio-accent/20 text-studio-accent"
-                : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
-            }`}
-            onClick={toggle}
-            title={`${label} ${visible ? "on" : "off"}`}
-            aria-label={`Toggle ${label.toLowerCase()}`}
-            aria-pressed={visible}
-          >
-            <Icon size={16} weight={visible ? "fill" : "regular"} />
-          </button>
-        );
-      })}
-      <button
-        type="button"
-        className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
-          prefs.snapEnabled
-            ? "bg-studio-accent/20 text-studio-accent"
-            : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
-        }`}
-        onClick={toggleSnap}
-        title={prefs.snapEnabled ? "Snap enabled (S)" : "Snap disabled (S)"}
-        aria-label="Toggle snap"
-      >
-        <MagnetStraight size={16} weight={prefs.snapEnabled ? "fill" : "regular"} />
-      </button>
-
-      <div className="relative">
-        <button
-          ref={gridButtonRef}
-          type="button"
-          className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
-            prefs.gridVisible
-              ? "bg-studio-accent/20 text-studio-accent"
-              : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
-          }`}
-          onClick={toggleGrid}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setGridPopoverOpen((v) => !v);
-          }}
-          title={
-            prefs.gridVisible
-              ? "Grid visible (G) — right-click for spacing options"
-              : "Grid hidden (G) — right-click for spacing options"
-          }
-          aria-label="Toggle grid"
-        >
-          <GridFour size={16} weight={prefs.gridVisible ? "fill" : "regular"} />
-        </button>
-        <button
-          type="button"
-          className="absolute -right-0.5 -bottom-0.5 rounded-sm p-0.5 text-white/50 hover:text-white/90 bg-black/50"
-          onClick={() => setGridPopoverOpen((v) => !v)}
-          title="Grid options"
-          aria-label="Grid options"
-          aria-expanded={gridPopoverOpen}
-        >
-          <svg width="7" height="7" viewBox="0 0 8 8" fill="currentColor" aria-hidden="true">
-            <path d="M1 2.5l3 3 3-3z" />
-          </svg>
-        </button>
-
-        {gridPopoverOpen && (
-          <div
-            ref={popoverRef}
-            className="absolute right-0 top-full mt-1 rounded-lg bg-neutral-800 border border-neutral-700 p-3 shadow-xl min-w-[180px]"
-          >
-            <label className="flex items-center justify-between text-xs text-white/80 mb-2">
-              <span>Grid spacing</span>
-              <input
-                type="number"
-                min={10}
-                max={500}
-                step={10}
-                value={prefs.gridSpacing}
-                onChange={(e) => {
-                  const val = Number.parseInt(e.target.value, 10);
-                  if (Number.isFinite(val) && val >= 10 && val <= 500) {
-                    updatePrefs({ gridSpacing: val });
-                  }
-                }}
-                className="w-16 rounded-sm bg-neutral-900 border border-neutral-600 px-1.5 py-0.5 text-xs text-white text-right tabular-nums outline-hidden focus:border-studio-accent"
-              />
-            </label>
-            <label className="flex items-center gap-2 text-xs text-white/80 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={prefs.snapToGrid}
-                onChange={() => updatePrefs({ snapToGrid: !prefs.snapToGrid })}
-                className="accent-studio-accent"
-              />
-              <span>Snap to grid</span>
-            </label>
-          </div>
-        )}
-      </div>
-    </div>
+    </>
   );
 });

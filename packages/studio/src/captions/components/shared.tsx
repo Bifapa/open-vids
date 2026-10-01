@@ -2,26 +2,26 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
 export const inputCls =
-  "w-full bg-neutral-900 border border-neutral-800 rounded-sm px-1.5 py-0.5 text-2xs text-neutral-200 font-mono outline-hidden focus:border-studio-accent disabled:opacity-40 disabled:cursor-not-allowed";
+  "h-ctl-sm w-full rounded-sm border border-border bg-surface-1 px-1.5 text-right font-mono text-num text-fg outline-hidden transition-colors placeholder:font-ui placeholder:text-fg-3 hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:text-fg-disabled";
 
+/** `.sect-label` + a stack of `.frow` rows. */
 export function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="mb-3">
-      <div className="flex items-center gap-1.5 mt-2 mb-1.5">
-        <span className="text-2xs font-medium text-neutral-500 uppercase tracking-wider">
-          {label}
-        </span>
+    <div className="grid gap-1.5 pb-3">
+      <div className="flex min-w-0 items-baseline gap-1.5 pt-1 text-xs font-semibold text-fg-2">
+        {label}
       </div>
-      <div className="space-y-1">{children}</div>
+      <div className="grid gap-1.5">{children}</div>
     </div>
   );
 }
 
+/** `.frow`: a 72px label column and the field. */
 export function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-2xs text-neutral-600 w-14 text-right shrink-0">{label}</span>
-      <div className="flex-1 min-w-0">{children}</div>
+    <div className="grid min-h-ctl-sm grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
+      <span className="min-w-0 truncate text-sm text-fg-3">{label}</span>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }

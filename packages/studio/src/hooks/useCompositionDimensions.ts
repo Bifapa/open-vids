@@ -2,7 +2,7 @@ import { useEffect, useState, type RefObject } from "react";
 import { useLivePreviewIframe } from "../player/store/previewIframeStore";
 import { readPreviewCompositionSize } from "../utils/previewCompositionSize";
 import { useMountEffect } from "./useMountEffect";
-import type { CompositionDimensions } from "../components/renders/RenderQueue";
+import type { CompositionDimensions } from "../components/renders/RenderSettingsForm";
 import { acceptStudioRuntimeMessage } from "../player/lib/runtimeProtocol";
 
 function readCompositionSizeMessage(data: unknown): CompositionDimensions | null {

@@ -33,27 +33,13 @@ function renderHeader(overrides: Partial<Parameters<typeof PropertyPanelFlatHead
 }
 
 describe("PropertyPanelFlatHeader", () => {
-  it("renders name, meta, and the mint text-type icon", () => {
+  it("renders name, meta, and the text kind chip", () => {
     const { host, root } = renderHeader();
     expect(host.textContent).toContain("Mono Label");
     expect(host.textContent).toContain(".mono-label · div");
     const icon = host.querySelector('[data-flat-header-icon="true"]');
-    expect(icon?.className).toContain("text-panel-accent");
+    expect(icon?.getAttribute("data-kind")).toBe("text");
     act(() => root.unmount());
-  });
-
-  it("colors the media icon cyan and the other icon amber", () => {
-    const { host: mediaHost, root: mediaRoot } = renderHeader({ elementKind: "media" });
-    expect(mediaHost.querySelector('[data-flat-header-icon="true"]')?.className).toContain(
-      "text-panel-media",
-    );
-    act(() => mediaRoot.unmount());
-
-    const { host: otherHost, root: otherRoot } = renderHeader({ elementKind: "other" });
-    expect(otherHost.querySelector('[data-flat-header-icon="true"]')?.className).toContain(
-      "text-panel-container",
-    );
-    act(() => otherRoot.unmount());
   });
 
   it("fires onCopy and onClear from their action buttons", () => {

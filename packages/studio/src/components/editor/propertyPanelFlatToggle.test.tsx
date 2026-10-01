@@ -27,8 +27,6 @@ describe("FlatToggle", () => {
     const { host, root } = renderInto(
       <FlatToggle label="Loop" checked={false} onChange={onChange} />,
     );
-    const label = host.querySelector('[data-flat-toggle-label="true"]');
-    expect(label?.className).toContain("text-panel-text-3");
     const pill = host.querySelector<HTMLButtonElement>('[data-flat-toggle="true"]');
     expect(pill).not.toBeNull();
     act(() => pill?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -39,10 +37,8 @@ describe("FlatToggle", () => {
   it("renders the on state with an emphasized label and mint knob, and fires onChange(false) on click", () => {
     const onChange = vi.fn();
     const { host, root } = renderInto(<FlatToggle label="Loop" checked onChange={onChange} />);
-    const label = host.querySelector('[data-flat-toggle-label="true"]');
-    expect(label?.className).toContain("text-panel-text-2");
-    const knob = host.querySelector('[data-flat-toggle-knob="true"]');
-    expect(knob?.className).toContain("bg-panel-accent");
+    const pillOn = host.querySelector('[data-flat-toggle="true"]');
+    expect(pillOn?.getAttribute("aria-checked")).toBe("true");
     const pill = host.querySelector<HTMLButtonElement>('[data-flat-toggle="true"]');
     act(() => pill?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onChange).toHaveBeenCalledWith(false);

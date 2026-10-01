@@ -1,4 +1,5 @@
 import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
+import { INSP_SUBHEAD } from "./inspectorStyles";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { resolveValueTier } from "./propertyPanelValueTier";
@@ -130,7 +131,7 @@ export function LayoutGeometryRows({
     onConvertToKeyframes,
   };
   return (
-    <>
+    <div className="grid grid-cols-2 gap-1.5">
       <FlatRow
         label="X"
         value={formatPxMetricValue(displayX)}
@@ -138,6 +139,7 @@ export function LayoutGeometryRows({
         disabled={manualOffsetEditingDisabled}
         tooltip={readOnlyTooltip}
         onCommit={(next) => commitManualOffset("x", next)}
+        inline
         suffix={<KeyframeGutter property="x" displayValue={displayX} {...gutterProps} />}
       />
       <FlatRow
@@ -147,6 +149,7 @@ export function LayoutGeometryRows({
         disabled={manualOffsetEditingDisabled}
         tooltip={readOnlyTooltip}
         onCommit={(next) => commitManualOffset("y", next)}
+        inline
         suffix={<KeyframeGutter property="y" displayValue={displayY} {...gutterProps} />}
       />
       <FlatRow
@@ -156,6 +159,7 @@ export function LayoutGeometryRows({
         disabled={manualSizeEditingDisabled}
         tooltip={readOnlyTooltip}
         onCommit={(next) => commitManualSize("width", next)}
+        inline
         suffix={<KeyframeGutter property="width" displayValue={displayW} {...gutterProps} />}
       />
       <FlatRow
@@ -165,6 +169,7 @@ export function LayoutGeometryRows({
         disabled={manualSizeEditingDisabled}
         tooltip={readOnlyTooltip}
         onCommit={(next) => commitManualSize("height", next)}
+        inline
         suffix={<KeyframeGutter property="height" displayValue={displayH} {...gutterProps} />}
       />
       <FlatRow
@@ -174,9 +179,10 @@ export function LayoutGeometryRows({
         disabled={manualRotationEditingDisabled}
         tooltip={readOnlyTooltip}
         onCommit={(next) => commitManualRotation(next.replace("°", ""))}
+        inline
         suffix={<KeyframeGutter property="rotation" displayValue={displayR} {...gutterProps} />}
       />
-    </>
+    </div>
   );
 }
 
@@ -211,9 +217,10 @@ export function LayoutFlexBlock({
   if (!isFlex) return null;
   const direction = styles["flex-direction"] || "row";
   return (
-    <div className="border-l-2 border-panel-border-input py-0.5 pl-[10px]">
-      <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-        Flex
+    <div className="grid gap-1.5 pt-1">
+      <div className={INSP_SUBHEAD}>
+        Flex{" "}
+        <span className="font-mono text-num font-normal text-fg-3">display: {styles.display}</span>
       </div>
       <FlatSegmentedRow
         label="Direction"
@@ -301,10 +308,8 @@ export function LayoutTransform3DBlock({
   onLivePreviewProps?: (element: DomEditSelection, props: Record<string, number>) => void;
 }) {
   return (
-    <div className="border-t border-panel-hairline pt-2.5">
-      <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-        3D Transform
-      </div>
+    <div className="grid gap-1.5 pt-1">
+      <div className={INSP_SUBHEAD}>3D Transform</div>
       <PropertyPanel3dTransform
         gsapRuntimeValues={gsapRuntimeValues}
         gsapAnimId={gsapAnimId}
@@ -361,7 +366,7 @@ export function FlatLayoutSection({
   ...geometry
 }: FlatLayoutSectionProps) {
   return (
-    <div className="space-y-1.5">
+    <div className="grid gap-1.5">
       <LayoutGeometryRows element={element} {...geometry} />
       <LayoutZIndexRow styles={styles} onSetStyle={onSetStyle} />
       <LayoutFlexBlock styles={styles} onSetStyle={onSetStyle} disabled={disabled} />

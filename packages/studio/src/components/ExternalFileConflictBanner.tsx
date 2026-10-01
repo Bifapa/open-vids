@@ -1,8 +1,12 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { Copy, DownloadSimple, File, PencilSimple, X } from "@phosphor-icons/react";
 import type {
   ExternalFileChangeBlockedState,
   ExternalFileChangeCoordinatorHandle,
 } from "../hooks/useExternalFileChangeCoordinator";
+import { StudioBanner } from "./StudioBanner";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
 import { useDialogBehavior } from "./ui/useDialogBehavior";
 
 function errorMessage(error: unknown): string {
@@ -18,6 +22,104 @@ function downloadText(filename: string, content: string): void {
   URL.revokeObjectURL(url);
 }
 
+/** The prototype's diff dialog chrome (`.float.diff-dlg`): head, note, body. */
+function ReviewDialog({
+  titleId,
+  title,
+  note,
+  wide,
+  onClose,
+  children,
+}: {
+  titleId: string;
+  title: string;
+  note: string;
+  wide: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useDialogBehavior({ open: true, onClose, containerRef });
+  return (
+    <div
+      className="hf-backdrop-in fixed inset-0 z-110 flex items-center justify-center bg-scrim px-6 py-12"
+      onClick={onClose}
+    >
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={`flex max-h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-bg-1 text-sm text-fg shadow-pop outline-hidden ${
+          wide ? "max-w-[880px]" : "max-w-[640px]"
+        }`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex h-head shrink-0 items-center gap-1.5 border-b border-border-subtle pl-3 pr-1">
+          <h2 id={titleId} className="m-0 min-w-0 flex-1 truncate text-sm font-semibold">
+            {title}
+          </h2>
+          <IconButton
+            size="sm"
+            aria-label="Close"
+            onClick={onClose}
+            icon={<X size={12} aria-hidden />}
+          />
+        </div>
+        <p className="mx-3 mb-2.5 mt-3 text-sm leading-[17px] text-fg-2 text-pretty">{note}</p>
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** One side of the review: a labelled read-only source with its own Copy and Download. */
+function VersionColumn({
+  title,
+  icon,
+  content,
+  filename,
+}: {
+  title: string;
+  icon: ReactNode;
+  content: string;
+  filename: string;
+}) {
+  return (
+    <section
+      aria-label={title}
+      className="min-w-0 overflow-hidden rounded-md border border-border-subtle bg-bg-0"
+    >
+      <div className="flex h-7 items-center gap-1.5 border-b border-border-subtle bg-bg-1 pl-2.5 pr-1 text-xs font-semibold text-fg-2">
+        <span className="text-fg-3">{icon}</span>
+        <h3 className="m-0 min-w-0 flex-1 truncate text-xs font-semibold">{title}</h3>
+        <Button
+          size="xs"
+          variant="ghost"
+          icon={<Copy size={12} aria-hidden />}
+          onClick={() => void navigator.clipboard.writeText(content)}
+        >
+          Copy
+        </Button>
+        <Button
+          size="xs"
+          variant="ghost"
+          icon={<DownloadSimple size={12} aria-hidden />}
+          onClick={() => downloadText(filename, content)}
+        >
+          Download
+        </Button>
+      </div>
+      <textarea
+        readOnly
+        value={content}
+        className="block h-80 w-full resize-y border-0 bg-transparent px-2.5 py-1.5 font-mono text-num leading-[18px] text-fg-2 outline-hidden"
+      />
+    </section>
+  );
+}
+
 function ConflictReview({
   conflict,
   onClose,
@@ -25,139 +127,30 @@ function ConflictReview({
   conflict: Extract<ExternalFileChangeBlockedState, { status: "conflict" }>;
   onClose: () => void;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  useDialogBehavior({ open: true, onClose, containerRef });
-  const external = conflict.error.currentContent ?? "(The server did not return file contents.)";
-  const studio = conflict.error.attemptedContent;
-
+  const path = conflict.error.filePath;
   return (
-    <div
-      className="fixed inset-0 z-110 flex items-center justify-center bg-black/70 px-5 backdrop-blur-xs"
-      onClick={onClose}
+    <ReviewDialog
+      titleId="external-conflict-title"
+      title={`Review both versions of ${path}`}
+      note="Reviewing or exporting does not change either version."
+      wide
+      onClose={onClose}
     >
-      <div
-        ref={containerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="external-conflict-title"
-        tabIndex={-1}
-        className="max-h-[88vh] w-full max-w-5xl overflow-auto rounded-xl border border-amber-400/30 bg-neutral-950 p-5 text-neutral-100 shadow-2xl outline-hidden"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 id="external-conflict-title" className="text-base font-semibold">
-              Review both versions of {conflict.error.filePath}
-            </h2>
-            <p className="mt-1 text-xs text-neutral-400">
-              Reviewing or exporting does not change either version.
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="rounded-sm px-2 py-1 text-neutral-400">
-            Close
-          </button>
-        </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          {[
-            { title: "File on disk", content: external, suffix: "external" },
-            { title: "Unsaved Studio version", content: studio, suffix: "studio" },
-          ].map((side) => (
-            <section key={side.suffix} aria-label={side.title}>
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">{side.title}</h3>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="rounded-sm border border-neutral-700 px-2 py-1 text-[11px]"
-                    onClick={() => void navigator.clipboard.writeText(side.content)}
-                  >
-                    Copy
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-sm border border-neutral-700 px-2 py-1 text-[11px]"
-                    onClick={() =>
-                      downloadText(`${conflict.error.filePath}.${side.suffix}.html`, side.content)
-                    }
-                  >
-                    Download
-                  </button>
-                </div>
-              </div>
-              <textarea
-                readOnly
-                value={side.content}
-                className="h-80 w-full resize-y rounded-sm border border-neutral-800 bg-neutral-900 p-3 font-mono text-[11px] leading-relaxed text-neutral-300"
-              />
-            </section>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FailedDraftReview({
-  path,
-  content,
-  onClose,
-}: {
-  path: string;
-  content: string;
-  onClose: () => void;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  useDialogBehavior({ open: true, onClose, containerRef });
-  return (
-    <div
-      className="fixed inset-0 z-110 flex items-center justify-center bg-black/70 px-5 backdrop-blur-xs"
-      onClick={onClose}
-    >
-      <div
-        ref={containerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="failed-draft-title"
-        tabIndex={-1}
-        className="max-h-[88vh] w-full max-w-3xl overflow-auto rounded-xl border border-amber-400/30 bg-neutral-950 p-5 text-neutral-100 shadow-2xl outline-hidden"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 id="failed-draft-title" className="text-base font-semibold">
-              Recover unsaved Studio draft for {path}
-            </h2>
-            <p className="mt-1 text-xs text-neutral-400">
-              Copy or download this draft before choosing to discard it.
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="rounded-sm px-2 py-1 text-neutral-400">
-            Close
-          </button>
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            className="rounded-sm border border-neutral-700 px-2 py-1 text-[11px]"
-            onClick={() => void navigator.clipboard.writeText(content)}
-          >
-            Copy
-          </button>
-          <button
-            type="button"
-            className="rounded-sm border border-neutral-700 px-2 py-1 text-[11px]"
-            onClick={() => downloadText(`${path}.studio.html`, content)}
-          >
-            Download
-          </button>
-        </div>
-        <textarea
-          readOnly
-          value={content}
-          className="mt-2 h-80 w-full resize-y rounded-sm border border-neutral-800 bg-neutral-900 p-3 font-mono text-[11px] leading-relaxed text-neutral-300"
+      <div className="grid gap-2 md:grid-cols-2">
+        <VersionColumn
+          title="File on disk"
+          icon={<File size={12} aria-hidden />}
+          content={conflict.error.currentContent ?? "(The server did not return file contents.)"}
+          filename={`${path}.external.html`}
+        />
+        <VersionColumn
+          title="Unsaved Studio version"
+          icon={<PencilSimple size={12} aria-hidden />}
+          content={conflict.error.attemptedContent}
+          filename={`${path}.studio.html`}
         />
       </div>
-    </div>
+    </ReviewDialog>
   );
 }
 
@@ -172,83 +165,90 @@ export function ExternalFileConflictBanner({
 
   const conflict = blocked.status === "conflict" ? blocked : null;
   const failure = blocked.status === "failed" ? blocked : null;
+  const overwrite = (message: string) => {
+    if (window.confirm(message)) void coordinator.keepStudioFile();
+  };
   return (
     <>
-      <div
-        role="alert"
-        className="absolute left-1/2 top-14 z-94 flex max-w-[calc(100vw-32px)] -translate-x-1/2 flex-wrap items-center gap-3 rounded-md border border-amber-400/30 bg-amber-950/95 px-4 py-2 text-[12px] font-medium text-amber-50 shadow-lg"
+      <StudioBanner
+        tone={conflict ? "warn" : "err"}
+        zIndex="z-94"
+        actions={
+          <>
+            {conflict && (
+              <Button size="sm" onClick={() => setReviewing(true)}>
+                Review or export both
+              </Button>
+            )}
+            {failure?.studioContent != null && (
+              <Button size="sm" onClick={() => setReviewing(true)}>
+                Review or export Studio draft
+              </Button>
+            )}
+            {failure && !failure.recovered && failure.studioContent != null && (
+              <Button size="sm" onClick={() => void coordinator.retry()}>
+                Retry save
+              </Button>
+            )}
+            <Button size="sm" onClick={() => void coordinator.useExternalFile()}>
+              Discard Studio edits and reload file
+            </Button>
+            {conflict && (
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() =>
+                  overwrite(
+                    "Overwrite the externally changed file with the Studio version? The server will preserve its normal backup before writing.",
+                  )
+                }
+              >
+                Overwrite file with Studio version
+              </Button>
+            )}
+            {failure?.recovered && failure.studioContent != null && (
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() =>
+                  overwrite(
+                    "Overwrite the file with the recovered Studio draft? The current file will be preserved by the server's normal backup before writing.",
+                  )
+                }
+              >
+                Overwrite file with recovered Studio draft
+              </Button>
+            )}
+          </>
+        }
       >
-        <span>
-          {conflict
-            ? `${conflict.error.filePath} changed outside Studio. Preview is paused so neither version is lost.`
-            : `Studio could not safely finish local saves: ${errorMessage(blocked.error)}. Preview is paused.`}
-        </span>
-        {conflict && (
-          <button type="button" onClick={() => setReviewing(true)} className="underline">
-            Review or export both
-          </button>
+        {conflict ? (
+          <>
+            <strong>{conflict.error.filePath}</strong> changed on disk while you have unsaved edits.
+            Preview is paused so neither version is lost.
+          </>
+        ) : (
+          `Studio could not safely finish local saves: ${errorMessage(blocked.error)}. Preview is paused.`
         )}
-        {failure?.studioContent != null && (
-          <button type="button" onClick={() => setReviewing(true)} className="underline">
-            Review or export Studio draft
-          </button>
-        )}
-        {failure && !failure.recovered && failure.studioContent != null && (
-          <button type="button" onClick={() => void coordinator.retry()} className="underline">
-            Retry save
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => void coordinator.useExternalFile()}
-          className="rounded-sm border border-amber-200/30 px-2 py-1"
-        >
-          Discard Studio edits and reload file
-        </button>
-        {conflict && (
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Overwrite the externally changed file with the Studio version? The server will preserve its normal backup before writing.",
-                )
-              ) {
-                void coordinator.keepStudioFile();
-              }
-            }}
-            className="rounded-sm border border-red-300/40 px-2 py-1 text-red-100"
-          >
-            Overwrite file with Studio version
-          </button>
-        )}
-        {failure?.recovered && failure.studioContent != null && (
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Overwrite the file with the recovered Studio draft? The current file will be preserved by the server's normal backup before writing.",
-                )
-              ) {
-                void coordinator.keepStudioFile();
-              }
-            }}
-            className="rounded-sm border border-red-300/40 px-2 py-1 text-red-100"
-          >
-            Overwrite file with recovered Studio draft
-          </button>
-        )}
-      </div>
+      </StudioBanner>
       {reviewing && conflict && (
         <ConflictReview conflict={conflict} onClose={() => setReviewing(false)} />
       )}
       {reviewing && failure?.studioContent != null && (
-        <FailedDraftReview
-          path={failure.path}
-          content={failure.studioContent}
+        <ReviewDialog
+          titleId="failed-draft-title"
+          title={`Recover unsaved Studio draft for ${failure.path}`}
+          note="Copy or download this draft before choosing to discard it."
+          wide={false}
           onClose={() => setReviewing(false)}
-        />
+        >
+          <VersionColumn
+            title="Unsaved Studio draft"
+            icon={<PencilSimple size={12} aria-hidden />}
+            content={failure.studioContent}
+            filename={`${failure.path}.studio.html`}
+          />
+        </ReviewDialog>
       )}
     </>
   );

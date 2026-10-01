@@ -413,7 +413,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
 
   return (
     <div
-      className="flex flex-col h-full overflow-y-auto text-white"
+      className="flex flex-col h-full overflow-y-auto text-fg"
       onKeyDown={(e) => {
         // In-panel undo — scoped so it never fights the app-level file undo.
         if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
@@ -428,26 +428,26 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
       {persistError && (
         <div
           role="alert"
-          className="flex items-center justify-between gap-2 px-3 py-2 bg-red-950/40 border-b border-red-500/40"
+          className="flex items-center justify-between gap-2 border-b border-error/35 bg-error-soft px-3 py-2"
         >
-          <span className="text-[11px] text-red-300">Changes not saved</span>
+          <span className="text-sm text-error">Changes not saved</span>
           <button
             type="button"
             disabled={retrying}
             onClick={handleRetryPersist}
-            className="px-2 py-0.5 text-[10px] rounded-sm bg-red-600 text-white enabled:hover:bg-red-500 enabled:active:scale-[0.97] disabled:opacity-50 transition-colors"
+            className="h-ctl-xs rounded-sm bg-error px-2 text-xs text-accent-ink transition-colors enabled:hover:bg-error/90 disabled:opacity-50"
           >
             {retrying ? "Retrying…" : "Retry"}
           </button>
         </div>
       )}
       {undoDepth > 0 && (
-        <div className="flex items-center justify-end px-3 py-1 border-b border-neutral-800/60">
+        <div className="flex items-center justify-end border-b border-border-subtle px-3 py-1">
           <button
             type="button"
             onClick={handleUndo}
             title="Undo last slideshow edit (⌘Z)"
-            className="px-2 py-0.5 text-[10px] rounded-sm text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 active:scale-[0.97] transition-colors"
+            className="h-ctl-xs rounded-sm px-2 text-xs text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
           >
             Undo ({undoDepth})
           </button>
@@ -493,9 +493,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
               onRemoveFragment={handleRemoveFragment}
             />
           ) : (
-            <p className="px-3 py-2 text-[11px] text-neutral-500 italic">
-              Select a scene above to inspect
-            </p>
+            <p className="m-0 px-3 py-2 text-sm text-fg-3">Select a scene above to inspect</p>
           )}
         </>
       )}

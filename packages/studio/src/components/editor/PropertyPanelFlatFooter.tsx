@@ -1,3 +1,6 @@
+import { Record as RecordIcon, Sparkle, Stop } from "@phosphor-icons/react";
+import { Button, Kbd } from "../ui";
+
 export function PropertyPanelFlatFooter({
   onAskAgent,
   recordingState,
@@ -15,53 +18,50 @@ export function PropertyPanelFlatFooter({
     : "Record gesture (R)";
 
   return (
-    // No border-t here: every possible element immediately above this footer
-    // in the new fixed-headers + scrollable-open-section layout (a collapsed
-    // FlatGroupHeader, or the open group's scrollable body wrapper) already
-    // draws its own border-b in normal document flow — nothing here is
-    // `position: sticky` anymore, so there's no rounding seam to seal (see
-    // p11-scrollable-open-section-report.md).
-    <div className="flex items-center justify-between bg-panel-bg px-4 py-[11px]">
-      <button
-        type="button"
+    // The 1px line is a shadow, not a border: when the sections fill the body,
+    // the last collapsed header's own bottom border sits exactly there.
+    <div className="relative flex shrink-0 flex-wrap gap-1.5 bg-bg-0 px-3 py-2 shadow-[0_-1px_0_var(--color-border-subtle)]">
+      <Button
+        variant="ghost"
+        size="sm"
         data-flat-footer-ask="true"
+        disabled={!onAskAgent}
+        icon={<Sparkle size={12} />}
+        className="min-w-0 flex-auto"
         onClick={() => {
           onAskAgent?.();
         }}
-        disabled={!onAskAgent}
-        className="flex items-center gap-[7px] text-[11px] font-medium text-panel-text-2 disabled:cursor-not-allowed"
       >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          className="text-panel-accent"
-        >
-          <path d="M8 1l1.4 4.6L14 7l-4.6 1.4L8 13l-1.4-4.6L2 7l4.6-1.4z" />
-        </svg>
-        Ask agent about this element
-      </button>
+        Ask Agent About This Element
+      </Button>
       {onToggleRecording && (
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
           data-flat-footer-record="true"
           aria-label={recordTitle}
           title={recordTitle}
+          aria-pressed={recording}
+          icon={
+            recording ? (
+              <Stop size={12} weight="fill" className="text-error" />
+            ) : (
+              <RecordIcon size={12} className="text-fg-2" />
+            )
+          }
+          className={`min-w-0 flex-auto justify-start ${recording ? "border-error/60" : ""}`}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             onToggleRecording();
           }}
-          className={recording ? "text-panel-danger animate-pulse" : "text-panel-danger"}
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-            {recording ? (
-              <rect x="2" y="2" width="10" height="10" rx="1.5" />
-            ) : (
-              <circle cx="7" cy="7" r="6" />
-            )}
-          </svg>
-        </button>
+          <span className="truncate">
+            {recording
+              ? `Stop Recording ${(recordingDuration ?? 0).toFixed(1)}s`
+              : "Record Gesture"}
+          </span>
+          {!recording && <Kbd className="ml-auto">R</Kbd>}
+        </Button>
       )}
     </div>
   );

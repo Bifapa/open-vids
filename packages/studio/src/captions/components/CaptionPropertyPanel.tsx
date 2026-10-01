@@ -1,8 +1,13 @@
 import { memo, useCallback, useState } from "react";
 import { useCaptionStore } from "../store";
-import type { CaptionStyle } from "../types";
+import type { CaptionSegment, CaptionStyle } from "../types";
 import { CaptionAnimationPanel } from "./CaptionAnimationPanel";
 import { Section, Row, NumberField } from "./shared";
+import { INSP_CHIP } from "../../components/editor/inspectorStyles";
+
+/** A `.seg` segment: neutral, the selected one lifts to surface-3. */
+const CAPTION_TAB =
+  "h-[22px] rounded-sm text-sm text-fg-3 transition-colors hover:bg-surface-1 hover:text-fg-2 focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent aria-selected:bg-surface-3 aria-selected:text-fg";
 
 /** True when the given style key differs across the selected segments. */
 function isMixedValue(
@@ -42,6 +47,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
   const selectedGroupId = useCaptionStore((s) => s.selectedGroupId);
   const updateSelectedStyle = useCaptionStore((s) => s.updateSelectedStyle);
   const updateGroupStyle = useCaptionStore((s) => s.updateGroupStyle);
+  const selectSegment = useCaptionStore((s) => s.selectSegment);
 
   const [activeTab, setActiveTab] = useState<"style" | "animation">("style");
 
@@ -63,6 +69,12 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
 
   const groupStyle = ownerGroupId ? model?.groups.get(ownerGroupId)?.style : undefined;
   const segmentOverrides = firstSegment?.style ?? {};
+  // The words of the line being edited, as chips: click selects one, ⇧-click adds.
+  const ownerWords: CaptionSegment[] = [];
+  for (const id of ownerGroupId ? (model?.groups.get(ownerGroupId)?.segmentIds ?? []) : []) {
+    const segment = model?.segments.get(id);
+    if (segment) ownerWords.push(segment);
+  }
 
   // Merge group style with segment overrides for display
   const effectiveStyle: Partial<CaptionStyle> = {
@@ -187,8 +199,8 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
   // Empty state — after all hooks
   if (selectedSegmentIds.size === 0) {
     return (
-      <div className="flex items-center justify-center h-full px-4 text-center">
-        <p className="text-xs text-neutral-500">Select caption words to edit their style</p>
+      <div className="flex h-full items-center justify-center px-4 text-center">
+        <p className="m-0 text-sm text-fg-3">Select caption words to edit their style</p>
       </div>
     );
   }
@@ -211,25 +223,45 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
   const countLabel = selectedSegmentIds.size === 1 ? "1 word" : `${selectedSegmentIds.size} words`;
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-neutral-800 shrink-0">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-2xs text-neutral-500">{countLabel}</span>
+      <div className="grid shrink-0 gap-1.5 border-b border-border-subtle px-3 py-2">
+        <div className="flex min-w-0 items-baseline gap-1.5 text-xs font-semibold text-fg-2">
+          Words
+          <span className="truncate font-normal text-fg-3">
+            {countLabel} · Click to select · ⇧-click to add
+          </span>
         </div>
+        {ownerWords.length > 0 && (
+          <div className="flex min-w-0 flex-wrap gap-1" data-caption-word-chips="true">
+            {ownerWords.map((segment) => (
+              <button
+                key={segment.id}
+                type="button"
+                aria-pressed={selectedSegmentIds.has(segment.id)}
+                data-edited={
+                  segment.style && Object.keys(segment.style).length > 0 ? "" : undefined
+                }
+                onClick={(event) => selectSegment(segment.id, event.shiftKey)}
+                className={`${INSP_CHIP} data-edited:after:absolute data-edited:after:top-[3px] data-edited:after:right-[3px] data-edited:after:size-1 data-edited:after:rounded-full data-edited:after:bg-fg-3`}
+              >
+                {segment.text}
+              </button>
+            ))}
+          </div>
+        )}
         {/* Tab switcher */}
-        <div className="flex gap-1" role="tablist" aria-label="Caption editing tabs">
+        <div
+          className="grid grid-cols-2 gap-px rounded-md border border-border bg-bg-1 p-0.5"
+          role="tablist"
+          aria-label="Caption editing tabs"
+        >
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === "style"}
             onClick={() => setActiveTab("style")}
-            className={[
-              "flex-1 py-0.5 rounded-sm text-2xs font-medium transition-colors",
-              activeTab === "style"
-                ? "bg-studio-accent/20 text-studio-accent border border-studio-accent/50"
-                : "text-neutral-500 border border-neutral-800 hover:text-neutral-300 hover:border-neutral-600",
-            ].join(" ")}
+            className={CAPTION_TAB}
           >
             Style
           </button>
@@ -238,12 +270,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
             role="tab"
             aria-selected={activeTab === "animation"}
             onClick={() => setActiveTab("animation")}
-            className={[
-              "flex-1 py-0.5 rounded-sm text-2xs font-medium transition-colors",
-              activeTab === "animation"
-                ? "bg-studio-accent/20 text-studio-accent border border-studio-accent/50"
-                : "text-neutral-500 border border-neutral-800 hover:text-neutral-300 hover:border-neutral-600",
-            ].join(" ")}
+            className={CAPTION_TAB}
           >
             Animation
           </button>

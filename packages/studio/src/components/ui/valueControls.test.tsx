@@ -171,14 +171,14 @@ describe("value control classes", () => {
   });
 
   it("boxes every value control, so an input reads as an input", () => {
-    // R10. The three text-shaped controls carry a real border and a background
-    // that differs from the panel behind them.
+    // R10. The text-shaped controls and the switch carry a real border and a
+    // raised fill that differs from the panel behind them.
     const host = render(allFive());
-    const boxes = [...host.querySelectorAll(".border-border-input")];
+    const boxes = [...host.querySelectorAll(".bg-surface-1")];
 
     expect(boxes.length).toBe(4); // Input, NumberField, Select trigger, Toggle
     for (const box of boxes) {
-      expect([...box.classList]).toContain("bg-input");
+      expect([...box.classList]).toContain("border");
     }
   });
 });

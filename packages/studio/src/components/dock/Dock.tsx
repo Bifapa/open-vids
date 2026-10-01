@@ -18,13 +18,13 @@ import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/s
 import { installDockAccessibility } from "./dockAccessibility";
 import { DockStripActions } from "./DockStripActions";
 import { DockTab } from "./DockTab";
+import { DockWindowMenu } from "./DockWindowMenu";
 import { installTabFill } from "./dockTabFill";
 import { addRegisteredPanel, applySideMinimums, buildEditLayout } from "./dockLayout";
 import { DOCK_PANEL_COMPONENT } from "./dockLayoutSchema";
 import { useDockLayoutStore, type DockController, type DockSnapshot } from "./dockLayoutStore";
 import {
   PANEL_DEFINITIONS,
-  PANEL_IDS,
   isPanelId,
   panelsInZone,
   type PanelDefinition,
@@ -102,6 +102,32 @@ function createController(api: DockviewApi): DockController {
     const position = { referencePanel: reopen.near, direction: reopen.direction };
     addRegisteredPanel(api, id, hasAnchor ? position : undefined);
   };
+  // dockview hands a re-shown group whatever its neighbours left over, and hiding one group first
+  // widens the next before it is hidden. So the first hide records every showing group's size, and
+  // the last show puts the whole arrangement back; showing only some restores just those.
+  const savedSizes = new Map<string, { width: number; height: number }>();
+  const setGroupVisible = (id: PanelId, visible: boolean) => {
+    const group = api.getPanel(id)?.group;
+    if (!group || group.api.isVisible === visible) return;
+    if (!visible) {
+      const record = savedSizes.size === 0 ? api.groups : [group];
+      for (const each of record) {
+        if (each.api.isVisible && !savedSizes.has(each.id)) {
+          savedSizes.set(each.id, { width: each.width, height: each.height });
+        }
+      }
+      group.api.setVisible(false);
+      return;
+    }
+    group.api.setVisible(true);
+    if (api.groups.every((each) => each.api.isVisible)) {
+      for (const [groupId, size] of savedSizes) api.getGroup(groupId)?.api.setSize(size);
+      savedSizes.clear();
+      return;
+    }
+    const size = savedSizes.get(group.id);
+    if (size) group.api.setSize(size);
+  };
   return {
     open,
     activate: (id) => {
@@ -113,7 +139,7 @@ function createController(api: DockviewApi): DockController {
       if (panel) api.removePanel(panel);
     },
     setTitle: (id, title) => api.getPanel(id)?.api.setTitle(title),
-    setGroupVisible: (id, visible) => api.getPanel(id)?.group.api.setVisible(visible),
+    setGroupVisible,
     reset: () => buildEditLayout(api, window.innerWidth),
   };
 }
@@ -160,8 +186,6 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
       const store = useDockLayoutStore.getState();
       store.attach(createController(api));
       store.sync(snapshot(api));
-      const pending = store.takePendingActivation();
-      if (pending) api.getPanel(pending)?.api.setActive();
 
       let timer: ReturnType<typeof setTimeout> | undefined;
       const persist = () => {
@@ -189,6 +213,14 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
         api.onDidActivePanelChange(onDockChange),
         api.onDidLayoutChange(onDockChange),
       ];
+      // After the subscriptions, so the store syncs; through the store, so a panel the restored
+      // layout lacks is opened and its group shown. Saved at once: a remount (StrictMode, HMR)
+      // restores the stored layout, and must find the requested panel in front.
+      const pending = store.takePendingActivation();
+      if (pending) {
+        store.activatePanel(pending);
+        writeStudioUiPreferences({ dockLayout: api.toJSON() }, undefined, projectId);
+      }
       disposeRef.current = () => {
         clearTimeout(timer);
         for (const subscription of subscriptions) subscription.dispose();
@@ -203,17 +235,19 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
 
   return (
     <SlotsContext.Provider value={{ slots, registerSlot }}>
-      <DockviewReact
-        key={projectId ?? ""}
-        className="hf-dock flex-1 min-h-0"
-        components={COMPONENTS}
-        defaultTabComponent={DockTab}
-        rightHeaderActionsComponent={DockStripActions}
-        defaultRenderer="always"
-        disableFloatingGroups
-        disableTabsOverflowList
-        onReady={onReady}
-      />
+      <div className="hf-dock-frame">
+        <DockviewReact
+          key={projectId ?? ""}
+          className="hf-dock min-h-0 min-w-0 flex-1"
+          components={COMPONENTS}
+          defaultTabComponent={DockTab}
+          rightHeaderActionsComponent={DockStripActions}
+          defaultRenderer="always"
+          disableFloatingGroups
+          disableTabsOverflowList
+          onReady={onReady}
+        />
+      </div>
       {children}
     </SlotsContext.Provider>
   );
@@ -233,67 +267,4 @@ function Panel({ id, title, children }: { id: PanelId; title?: string; children:
   return element && shown ? createPortal(children, element) : null;
 }
 
-function WindowMenu() {
-  const openPanels = useDockLayoutStore((state) => state.openPanels);
-  const togglePanel = useDockLayoutStore((state) => state.togglePanel);
-  const resetLayout = useDockLayoutStore((state) => state.resetLayout);
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [open]);
-
-  return (
-    <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="h-7 px-2.5 rounded-md text-[11px] font-medium text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
-      >
-        Window
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-8 z-50 w-44 rounded-md border border-neutral-800 bg-neutral-900 py-1 shadow-lg"
-        >
-          {PANEL_IDS.map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={openPanels.has(id)}
-              onClick={() => togglePanel(id)}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-neutral-300 hover:bg-neutral-800"
-            >
-              <span className="w-3 text-panel-accent">{openPanels.has(id) ? "✓" : ""}</span>
-              {PANEL_DEFINITIONS[id].title}
-            </button>
-          ))}
-          <div className="my-1 border-t border-neutral-800" />
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              resetLayout();
-              setOpen(false);
-            }}
-            className="w-full px-3 py-1.5 text-left text-[11px] text-neutral-300 hover:bg-neutral-800"
-          >
-            Reset layout
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export const Dock = { Root, Panel, WindowMenu };
+export const Dock = { Root, Panel, WindowMenu: DockWindowMenu };

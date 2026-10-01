@@ -1,4 +1,4 @@
-import { ArrowLeft, CaretRight } from "@phosphor-icons/react";
+import { ArrowLeft } from "@phosphor-icons/react";
 
 export interface CompositionLevel {
   /** Unique id — "master" or composition file path */
@@ -20,7 +20,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
   return (
     <nav
       aria-label="Composition navigation"
-      className="flex items-center gap-1 px-2 h-8 border-b border-neutral-800/50 bg-neutral-900/50 shrink-0"
+      className="flex h-head shrink-0 items-center gap-0.5 border-t border-border-subtle bg-bg-1 px-1.5"
     >
       {/* Back button — always goes to parent */}
       <button
@@ -28,7 +28,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
         onClick={() => {
           onNavigate(stack.length - 2);
         }}
-        className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-[0.98] transition-colors"
+        className="flex size-ctl-sm items-center justify-center rounded-sm text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
         title="Back (Esc, or double-click empty timeline)"
         aria-label="Back to parent composition"
       >
@@ -40,16 +40,22 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
         const isLast = i === stack.length - 1;
         return (
           <span key={level.id} className="flex items-center gap-1">
-            {i > 0 && <CaretRight size={10} className="text-neutral-600 shrink-0" />}
+            {i > 0 && (
+              <span aria-hidden="true" className="mx-0.5 text-sm text-fg-3">
+                ›
+              </span>
+            )}
             {isLast ? (
-              <span className="text-xs text-neutral-200 font-medium">{level.label}</span>
+              <span aria-current="location" className="px-1.5 text-sm font-medium text-fg">
+                {level.label}
+              </span>
             ) : (
               <button
                 type="button"
                 onClick={() => {
                   onNavigate(i);
                 }}
-                className="text-xs text-neutral-500 hover:text-neutral-200 transition-colors"
+                className="rounded-sm px-1.5 text-sm text-fg-2 transition-colors hover:bg-surface-1 hover:text-fg"
               >
                 {level.label}
               </button>

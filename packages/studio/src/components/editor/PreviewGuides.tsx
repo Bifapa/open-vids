@@ -1,11 +1,15 @@
 import { memo, useRef, type RefObject } from "react";
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { RULER_GUTTER_PX } from "./previewGuidesStore";
-import { SAFE_BOX_PERCENTS, safeBoxInsetPercent } from "../../utils/previewSafeMargins";
+import {
+  SAFE_BOX_PERCENTS,
+  TITLE_SAFE_PERCENT,
+  safeBoxInsetPercent,
+} from "../../utils/previewSafeMargins";
 import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
 
 const TICKS = Array.from({ length: 11 }, (_, i) => i * 10);
-const INK = "color-mix(in srgb, white 70%, transparent)";
+const INK = "color-mix(in oklch, var(--color-on-media) 45%, transparent)";
 
 /** Ruler and safe-margin boxes drawn over the preview pane, never inside the composition. */
 export const PreviewGuides = memo(function PreviewGuides() {
@@ -39,7 +43,7 @@ function ActiveGuides({ iframeRef, rulerVisible, safeMarginsVisible }: ActiveGui
         <>
           <div
             data-testid="preview-ruler-top"
-            className="absolute bg-black/70"
+            className="absolute border-b border-on-media/45 bg-tip-bg/82"
             style={{
               left: rect.left,
               top: rect.top - RULER_GUTTER_PX,
@@ -50,8 +54,8 @@ function ActiveGuides({ iframeRef, rulerVisible, safeMarginsVisible }: ActiveGui
             {TICKS.map((pct) => (
               <span
                 key={pct}
-                className="absolute bottom-0 border-l text-[9px] leading-none tabular-nums pl-0.5 h-2.5"
-                style={{ left: `${pct}%`, borderColor: INK, color: INK }}
+                className="absolute bottom-0 h-2.5 border-l pl-0.5 font-mono text-[9px] leading-none tabular-nums text-on-media-2"
+                style={{ left: `${pct}%`, borderColor: INK }}
               >
                 {pct}
               </span>
@@ -59,7 +63,7 @@ function ActiveGuides({ iframeRef, rulerVisible, safeMarginsVisible }: ActiveGui
           </div>
           <div
             data-testid="preview-ruler-left"
-            className="absolute bg-black/70"
+            className="absolute border-r border-on-media/45 bg-tip-bg/82"
             style={{
               left: rect.left - RULER_GUTTER_PX,
               top: rect.top,
@@ -70,8 +74,8 @@ function ActiveGuides({ iframeRef, rulerVisible, safeMarginsVisible }: ActiveGui
             {TICKS.map((pct) => (
               <span
                 key={pct}
-                className="absolute right-0 border-t text-[9px] leading-none tabular-nums pt-0.5 w-2.5"
-                style={{ top: `${pct}%`, borderColor: INK, color: INK }}
+                className="absolute right-0 w-2.5 border-t pt-0.5 font-mono text-[9px] leading-none tabular-nums text-on-media-2"
+                style={{ top: `${pct}%`, borderColor: INK }}
               >
                 {pct}
               </span>
@@ -101,13 +105,13 @@ const EDGE_MIDPOINTS = [
   { edge: "right", style: { top: "50%", right: -(TICK_PX + 1) / 2, width: TICK_PX, height: 1 } },
 ] as const;
 
-/** One thin white box inset from every edge, with a tick at the midpoint of each edge. */
+/** One thin box inset from every edge (title safe dashed), with a tick at the midpoint of each edge. */
 function SafeBox({ boxPercent }: { boxPercent: number }) {
   const inset = `${safeBoxInsetPercent(boxPercent)}%`;
   return (
     <div
       data-testid={`preview-safe-${boxPercent}`}
-      className="absolute border border-white/90"
+      className={`absolute border border-on-media/40 ${boxPercent === TITLE_SAFE_PERCENT ? "border-dashed" : ""}`}
       style={{
         left: inset,
         top: inset,
@@ -116,7 +120,7 @@ function SafeBox({ boxPercent }: { boxPercent: number }) {
       }}
     >
       {EDGE_MIDPOINTS.map(({ edge, style }) => (
-        <span key={edge} className="absolute bg-white/90" style={style} />
+        <span key={edge} className="absolute bg-on-media/50" style={style} />
       ))}
     </div>
   );

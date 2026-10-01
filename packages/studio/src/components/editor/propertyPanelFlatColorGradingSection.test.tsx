@@ -727,7 +727,7 @@ describe("FlatColorGradingSection — HDR banner and Apply scope", () => {
         }}
       />,
     );
-    expect(host.textContent).toContain("SDR preview");
+    expect(host.textContent).toContain("SDR Preview");
     act(() => root.unmount());
   });
 
@@ -781,7 +781,7 @@ describe("FlatColorGradingSection — HDR banner and Apply scope", () => {
         }}
       />,
     );
-    expect(host.textContent).not.toContain("SDR preview");
+    expect(host.textContent).not.toContain("SDR Preview");
     act(() => root.unmount());
   });
 

@@ -27,14 +27,14 @@ import {
 import { SyncBadges } from "./SyncBadges";
 
 const ACTION_TONES: Record<StorySyncAction, string> = {
-  rebuild: "text-container",
-  add: "text-container",
-  remove: "text-danger",
-  keep_edited: "text-selection",
-  keep_locked: "text-text-2",
-  shift: "text-text-2",
-  keep: "text-text-4",
-  skip: "text-text-4",
+  rebuild: "text-warning",
+  add: "text-warning",
+  remove: "text-error",
+  keep_edited: "text-fg",
+  keep_locked: "text-fg-2",
+  shift: "text-fg-2",
+  keep: "text-fg-3",
+  skip: "text-fg-3",
 };
 
 /** How many unrelated clips the dialog names before it only counts them. */
@@ -54,9 +54,9 @@ function sectionBadges(report: StorySyncReport, section: StorySyncSection): Sync
 function UnitRow({ unit, action }: { unit: StorySyncUnit; action: StorySyncAction }) {
   return (
     <li className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-2 text-step-10">
-        <span className="w-14 shrink-0 text-text-3">{SYNC_ROLE_LABELS[unit.role]}</span>
-        <span className="min-w-0 flex-1 truncate text-text-1" title={unit.reasons.join("; ")}>
+      <div className="flex items-center gap-2 text-xs">
+        <span className="w-14 shrink-0 text-fg-3">{SYNC_ROLE_LABELS[unit.role]}</span>
+        <span className="min-w-0 flex-1 truncate text-fg" title={unit.reasons.join("; ")}>
           {unit.title}
         </span>
         <span
@@ -96,23 +96,23 @@ function SectionPlan({
   );
   return (
     <li
-      className="flex flex-col gap-1 rounded-md border border-border bg-bg-1 px-2.5 py-2"
+      className="grid gap-1.5 rounded-md border border-border-subtle bg-bg-0 px-2.5 py-2"
       data-sync-section={section.chapter}
     >
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="min-w-0 flex-1 truncate text-step-11 font-semibold text-text-0">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-fg">
           {section.title}
         </span>
         <SyncBadges badges={sectionBadges(report, section)} />
-        <span className="shrink-0 text-step-10 tabular-nums text-text-3">
+        <span className="shrink-0 font-mono text-num text-fg-3">
           {formatSpan(section.current)} → {formatSpan(section.next)}
         </span>
       </div>
       {section.reasons.length > 0 && (
-        <p className="text-step-10 text-text-3">{section.reasons.join(" · ")}</p>
+        <p className="-mt-1 text-xs text-fg-3">{section.reasons.join(" · ")}</p>
       )}
       {onlyMoves ? (
-        <p className="text-step-10 text-text-3">Moves as a whole; its clips stay as they are.</p>
+        <p className="text-xs text-fg-3">Moves as a whole; its clips stay as they are.</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {worthListing.map(({ unit, action }) => (
@@ -175,7 +175,7 @@ export function RebuildDialog({
         <>
           Only what the story changed is regenerated; the rest of the timeline stays as it is.
           Duration{" "}
-          <span className="tabular-nums text-text-1">
+          <span className="font-mono text-fg-2">
             {formatDuration(report.duration.current)} → {formatDuration(report.duration.next)}
           </span>
           .
@@ -185,7 +185,7 @@ export function RebuildDialog({
       footer={
         <>
           {startBlocker && (
-            <span className="mr-auto text-step-10 text-text-3" role="status">
+            <span className="mr-auto text-xs text-fg-3" role="status">
               {startBlocker}
             </span>
           )}
@@ -206,9 +206,7 @@ export function RebuildDialog({
     >
       <DialogGroup title="Sections">
         {chosen.length === 0 ? (
-          <p className="text-step-11 text-text-3">
-            Nothing to rebuild: the timeline matches the story.
-          </p>
+          <p className="text-sm text-fg-3">Nothing to rebuild: the timeline matches the story.</p>
         ) : (
           <ol className="flex flex-col gap-1.5">
             {chosen.map((section) => (
@@ -227,12 +225,9 @@ export function RebuildDialog({
         <DialogGroup title="Also applies">
           <ul className="flex flex-col gap-0.5">
             {alsoApplies.map((section) => (
-              <li
-                key={section.chapter}
-                className="flex items-center gap-2 text-step-10 text-text-2"
-              >
+              <li key={section.chapter} className="flex items-center gap-2 text-xs text-fg-2">
                 <span className="min-w-0 flex-1 truncate">{section.title}</span>
-                <span className="shrink-0 tabular-nums text-text-3">
+                <span className="shrink-0 font-mono text-num text-fg-3">
                   {section.change === "removed"
                     ? "Comes off the timeline"
                     : `Moves ${formatSpan(section.current)} → ${formatSpan(section.next)}`}
@@ -255,7 +250,7 @@ export function RebuildDialog({
 
       {moving.length > 0 && (
         <DialogGroup title="Other clips">
-          <p className="text-step-10 text-text-2">
+          <p className="text-xs leading-[15px] text-fg-2">
             {moving.length} {moving.length === 1 ? "clip" : "clips"} no section owns will move with
             their section:{" "}
             {moving

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings — OpenVids</title>
+    <link rel="stylesheet" href="/assets/ov.css" />
+    <link rel="stylesheet" href="/assets/composer.css" />
+    <link rel="stylesheet" href="/assets/settings.css" />
+    <script>
+      window.OV_TOKEN = "__OPENVids_TOKEN__";
+    </script>
+    <script src="/assets/shared.js"></script>
+    <script>
+      /* The theme the page underneath shows (?theme=), before first paint. */
+      OV.applyTheme(new URLSearchParams(location.search).get("theme") || "system");
+    </script>
+  </head>
+  <body class="st-body">
+    <div
+      class="window st-win"
+      id="win"
+      role="dialog"
+      aria-labelledby="stTitle"
+      data-density="default"
+    >
+      <header class="titlebar st-titlebar">
+        <div class="tl-group">
+          <button type="button" class="tl close" aria-label="Close Settings"></button
+          ><span class="tl min" aria-hidden="true"></span
+          ><span class="tl max" aria-hidden="true"></span>
+        </div>
+        <span class="st-title" id="stTitle">Settings</span>
+      </header>
+      <div class="st-layout">
+        <nav class="st-nav" id="stNav" aria-label="Settings sections"></nav>
+        <main class="st-main" id="stMain" tabindex="-1"></main>
+      </div>
+    </div>
+    <script>
+      OV.mountSprite();
+    </script>
+    <script src="/assets/settings.js"></script>
+  </body>
+</html>

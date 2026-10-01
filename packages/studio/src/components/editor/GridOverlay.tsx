@@ -22,15 +22,16 @@ export const GridOverlay = memo(function GridOverlay() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute"
+      className="pointer-events-none absolute [--grid-ink:color-mix(in_oklch,var(--color-on-media)_18%,transparent)]"
       style={{
         left: compositionLeft,
         top: compositionTop,
         width: compositionWidth,
         height: compositionHeight,
+        // Neutral grid over media (prototype `.v-grid`: on-media at 18%).
         backgroundImage: [
-          `repeating-linear-gradient(90deg, rgba(255,255,255,0.12) 0px, rgba(255,255,255,0.12) 1px, transparent 1px, transparent ${overlaySpacingX}px)`,
-          `repeating-linear-gradient(0deg, rgba(255,255,255,0.12) 0px, rgba(255,255,255,0.12) 1px, transparent 1px, transparent ${overlaySpacingY}px)`,
+          `repeating-linear-gradient(90deg, var(--grid-ink) 0px, var(--grid-ink) 1px, transparent 1px, transparent ${overlaySpacingX}px)`,
+          `repeating-linear-gradient(0deg, var(--grid-ink) 0px, var(--grid-ink) 1px, transparent 1px, transparent ${overlaySpacingY}px)`,
         ].join(", "),
         backgroundSize: `${overlaySpacingX}px ${overlaySpacingY}px`,
       }}

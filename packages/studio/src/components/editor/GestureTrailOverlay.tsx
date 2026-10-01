@@ -20,7 +20,8 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
   canvasRect,
   compositionSize,
   mode,
-  accentColor = "#3CE6AC",
+  // Recording ink (prototype `.v-trail`): the record colour, not the accent.
+  accentColor = "var(--color-error)",
 }: GestureTrailOverlayProps) {
   const trailPoints = useMemo(() => {
     if (!canvasRect) return "";
@@ -69,6 +70,8 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
         top: canvasRect.top,
         width: canvasRect.width,
         height: canvasRect.height,
+        // SVG presentation attributes can't read var(); strokes use currentColor.
+        color: accentColor,
       }}
       viewBox={
         trail && trail.length > 1
@@ -80,7 +83,7 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
         <polyline
           points={trailPoints}
           fill="none"
-          stroke={accentColor}
+          stroke="currentColor"
           strokeWidth="2"
           strokeOpacity="0.6"
           strokeLinecap="round"
@@ -94,7 +97,7 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
             <polyline
               points={trailPoints}
               fill="none"
-              stroke={accentColor}
+              stroke="currentColor"
               strokeWidth="1"
               strokeOpacity="0.2"
               strokeDasharray="4 3"
@@ -105,7 +108,7 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
             <polyline
               points={simplifiedPath}
               fill="none"
-              stroke={accentColor}
+              stroke="currentColor"
               strokeWidth="2"
               strokeOpacity="0.8"
               strokeLinecap="round"
@@ -121,7 +124,7 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
                 height="8"
                 rx="1"
                 transform="rotate(45)"
-                fill={accentColor}
+                fill="currentColor"
                 fillOpacity="0.9"
               />
             </g>

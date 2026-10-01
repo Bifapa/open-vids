@@ -52,7 +52,7 @@ describe("studio theme", () => {
   it("emits the semantic palette as custom properties and as utilities", async () => {
     const css = await build("studio.css", ["bg-accent", "text-text-2", "border-border"]);
 
-    expect(rootVariables(css).get("--color-accent")).toBe("#3ce6ac");
+    expect(rootVariables(css).get("--color-accent")).toBe("oklch(74% 0.155 55)");
     expect(css).toContain(".bg-accent {");
     expect(css).toContain("background-color: var(--color-accent)");
   });
@@ -84,19 +84,57 @@ describe("studio theme", () => {
     expect(css).toContain(".text-accent {");
   });
 
-  it("keeps selection, playhead and accent as three distinct colors", () => {
-    const accent = declaredValue("--color-accent");
-    const selection = declaredValue("--color-selection");
-    const playhead = declaredValue("--color-playhead");
-
-    expect(new Set([accent, selection, playhead]).size).toBe(3);
+  it("makes selection the accent and keeps the playhead tellable apart from both", () => {
+    // The OpenVids system has one accent for primary action, selection and focus,
+    // so selection aliases it rather than holding a second hue that could drift.
+    // The playhead stays the primary ink, so a selected clip and the playhead differ.
+    expect(declaredValue("--color-selection")).toBe("var(--color-accent)");
+    expect(declaredValue("--color-playhead")).not.toBe(declaredValue("--color-selection"));
+    expect(declaredValue("--color-playhead")).not.toBe(declaredValue("--color-accent"));
   });
 
-  it("names every micro type step in use and leaves the Tailwind sizes alone", async () => {
+  it("overrides every base colour for the light theme", () => {
+    // Derived tokens (`var()` / `color-mix()`) follow the base ones on their own;
+    // a literal base colour without a light value would stay dark in light mode.
+    const lightSource = readFileSync(path.join(STYLES_DIR, "theme-light.css"), "utf8");
+    const light = new Set([...lightSource.matchAll(/\n\s*(--[\w-]+):/g)].map(([, name]) => name));
+    const literalBases = [...themeSource.matchAll(/\n\s*(--color-[\w-]+):\s*(oklch\([^;]+);/g)].map(
+      ([, name]) => name,
+    );
+    // Chips over imagery look the same in both themes; the stock palette is upstream's.
+    const themeAgnostic =
+      /^--color-(on-media(-[a-z0-9]+)?|(amber|blue|cyan|emerald|green|orange|pink|purple|red|rose|sky|violet)-\d+)$/;
+
+    expect(literalBases.length).toBeGreaterThan(30);
+    for (const name of literalBases) {
+      if (themeAgnostic.test(name)) continue;
+      expect(light.has(name), `${name} has no light value`).toBe(true);
+    }
+  });
+
+  it("switches the light palette on with the document attribute", async () => {
+    const css = await build("studio.css", ["bg-bg-0"]);
+
+    expect(css).toMatch(/:root\[data-theme="light"\] \{[\s\S]*?--color-bg-0: oklch\(99%/);
+  });
+
+  it("names every micro type step in use and re-points Tailwind's sizes onto the OpenVids scale", async () => {
     const steps = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+    const roles = {
+      "2xs": "10px",
+      num: "10.5px",
+      xs: "11px",
+      sm: "12px",
+      base: "12.5px",
+      md: "13px",
+      tc: "14px",
+      lg: "15px",
+    };
     const css = await build(
       "studio.css",
-      steps.map((step) => `text-step-${step}`).concat(["text-xs", "text-sm", "text-lg"]),
+      steps
+        .map((step) => `text-step-${step}`)
+        .concat(Object.keys(roles).map((role) => `text-${role}`)),
     );
     const vars = rootVariables(css);
 
@@ -104,9 +142,10 @@ describe("studio theme", () => {
       expect(vars.get(`--text-step-${step}`)).toBe(`${step}px`);
       expect(css).toContain(`.text-step-${step} {`);
     }
-    expect(vars.get("--text-xs")).toBe("0.75rem");
-    expect(vars.get("--text-sm")).toBe("0.875rem");
-    expect(vars.get("--text-lg")).toBe("1.125rem");
+    for (const [role, size] of Object.entries(roles)) {
+      expect(vars.get(`--text-${role}`)).toBe(size);
+      expect(css).toContain(`.text-${role} {`);
+    }
   });
 
   it("opens menus from a visible shape and closes them faster", () => {
@@ -138,7 +177,9 @@ describe("studio theme", () => {
         ),
       ].map(([, name, value]) => [name, value.trim()]),
     );
-    const legacy = [...themeSource.matchAll(/\n\s*(--color-[a-z]+-(?:50|\d00|950)):\s*([^;]+);/g)];
+    const legacy = [...themeSource.matchAll(/\n\s*(--color-[a-z]+-(?:50|\d00|950)):\s*([^;]+);/g)]
+      // The neutral ramp is re-pointed onto the role tokens so it follows the light theme.
+      .filter(([, name]) => !name.startsWith("--color-neutral-"));
 
     expect(legacy.length).toBeGreaterThan(0);
     for (const [, name, value] of legacy) {
@@ -150,8 +191,9 @@ describe("studio theme", () => {
   it("keeps the deprecated JS preset in step with the CSS it shadows", () => {
     const colors = studioPreset.theme.extend.colors;
 
-    expect(colors.studio.accent.toLowerCase()).toBe(declaredValue("--color-accent"));
-    expect(colors.panel.surface.toLowerCase()).toBe(declaredValue("--color-surface"));
+    expect(colors.studio.accent).toBe(declaredValue("--color-accent"));
+    expect(colors.panel.surface).toBe(declaredValue("--color-bg-1"));
+    expect(colors.panel["border-input"]).toBe(declaredValue("--color-border"));
   });
 
   it("reads the icon defaults off the theme rather than hard-coding them", () => {

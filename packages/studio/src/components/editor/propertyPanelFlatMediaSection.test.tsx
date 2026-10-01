@@ -106,7 +106,7 @@ describe("FlatMediaSection — cutout", () => {
         />,
       );
     });
-    expect(host.textContent).toContain("transparent WebM");
+    expect(host.textContent).toContain("Transparent WebM");
     const removeBgButton = host.querySelector<HTMLButtonElement>(
       '[data-flat-media-remove-bg="true"]',
     );
@@ -245,7 +245,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const rateTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[1];
+    const rateTrack = host.querySelector('[data-flat-slider-track="true"][aria-label="Speed"]')!;
     Object.defineProperty(rateTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
@@ -276,7 +276,9 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const mediaStartTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[2];
+    const mediaStartTrack = host.querySelector(
+      '[data-flat-slider-track="true"][aria-label="Media start"]',
+    )!;
     Object.defineProperty(mediaStartTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });

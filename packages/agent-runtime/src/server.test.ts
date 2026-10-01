@@ -70,6 +70,11 @@ describe("runtime HTTP server", () => {
         headers: { [AGENT_HEADERS.token]: "Bearer runtime-secret" },
       });
       expect(unscoped.status).toBe(400);
+      // Global routes (Home calls them before any project is open) need only the token.
+      const tokenOnly = { [AGENT_HEADERS.token]: "Bearer runtime-secret" };
+      expect((await app.request("/v1/models", { headers: tokenOnly })).status).toBe(200);
+      expect((await app.request("/v1/settings", { headers: tokenOnly })).status).toBe(200);
+      expect((await app.request("/v1/settings")).status).toBe(401);
 
       const badDirectory = await app.request("/v1/chats", {
         headers: { ...headers, [AGENT_HEADERS.projectDir]: join(root, "missing") },

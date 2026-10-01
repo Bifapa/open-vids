@@ -1,8 +1,11 @@
 import { ArrowCounterClockwise, Check, WarningCircle } from "@phosphor-icons/react";
 import type { RevertMode, TurnSummary } from "@hyperframes/agent-protocol";
-import type { RevertUi } from "../../agent/agentStore";
+import type { RevertUi } from "../../agent/agentRevertSlice";
 import { describeTurnError } from "../../agent/agentErrors";
 import { Button } from "../ui/Button";
+import { cn } from "../ui/cn";
+import { Spinner } from "../ui/Status";
+import { chatLink, noteBoxWarn } from "./chatStyles";
 
 const MAX_FILES_SHOWN = 6;
 
@@ -12,16 +15,16 @@ function TurnStatusNote({ turn }: { turn: TurnSummary }) {
       ? describeTurnError(turn.error.code, turn.error.message)
       : "The agent ran into a problem and stopped.";
     return (
-      <p role="alert" className="flex items-start gap-1.5 text-step-11 text-danger">
-        <WarningCircle size={13} weight="fill" aria-hidden className="mt-px shrink-0" />
+      <p role="alert" className="flex items-start gap-1.5 text-xs leading-4 text-error">
+        <WarningCircle aria-hidden weight="fill" className="mt-px size-icon-sm shrink-0" />
         <span>{message}</span>
       </p>
     );
   }
-  if (turn.status === "aborted") return <p className="text-step-11 text-text-3">Stopped.</p>;
+  if (turn.status === "aborted") return <p className="text-xs leading-4 text-fg-3">Stopped.</p>;
   if (turn.status === "interrupted") {
     return (
-      <p className="text-step-11 text-container">
+      <p className="text-xs leading-4 text-warning">
         Interrupted. The agent stopped before it finished; anything it already changed is kept.
       </p>
     );
@@ -31,37 +34,50 @@ function TurnStatusNote({ turn }: { turn: TurnSummary }) {
 
 function ConflictChoices({
   files,
-  onRevert,
+  undo,
+  onChoose,
   onCancel,
 }: {
   files: string[];
-  onRevert: (mode: RevertMode) => void;
+  /** The conflict came from Undo revert, not from the revert. */
+  undo: boolean;
+  onChoose: (mode: RevertMode) => void;
   onCancel: () => void;
 }) {
   const shown = files.slice(0, MAX_FILES_SHOWN);
   return (
     <div
       role="group"
-      aria-label="Revert conflict"
-      className="flex flex-col gap-2 rounded-md border border-container/40 bg-container/5 p-2"
+      aria-label={undo ? "Undo revert conflict" : "Revert conflict"}
+      className={cn(noteBoxWarn, "basis-full gap-1.5 px-[9px] py-2 text-xs leading-[15px]")}
     >
-      <p className="text-step-11 text-text-1">
-        These files changed after this run, so reverting them would also undo your later edits:
+      <p>
+        {undo
+          ? "These files changed after the revert, so undoing it would also undo your later edits:"
+          : "These files changed after this run, so reverting them would also undo your later edits:"}
       </p>
-      <ul className="flex flex-col gap-0.5 font-mono text-step-10 text-text-2">
+      <ul className="grid gap-px text-fg-2">
         {shown.map((file) => (
-          <li key={file} className="truncate" title={file}>
+          <li key={file} title={file} className="truncate font-mono text-num leading-[14px]">
             {file}
           </li>
         ))}
         {files.length > shown.length && <li>and {files.length - shown.length} more</li>}
       </ul>
       <div className="flex flex-wrap gap-1.5">
-        <Button size="sm" variant="secondary" onClick={() => onRevert("keep-later-edits")}>
-          Revert untouched files
+        <Button
+          size="sm"
+          title="Keeps your later edits to these files"
+          onClick={() => onChoose("keep-later-edits")}
+        >
+          {undo ? "Undo for untouched files" : "Revert untouched files"}
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => onRevert("just-this")}>
-          Revert anyway
+        <Button
+          size="sm"
+          title="Also undoes your later edits to these files"
+          onClick={() => onChoose("just-this")}
+        >
+          {undo ? "Undo anyway" : "Revert anyway"}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           Cancel
@@ -77,63 +93,124 @@ interface TurnFooterProps {
   /** Why reverting is not possible right now (another run is active), or null. */
   blockedReason: string | null;
   onRevert: (mode?: RevertMode) => void;
+  onUnrevert: (mode?: RevertMode) => void;
   onDismissRevert: () => void;
 }
 
-/** Below a finished turn: how it ended, and the one reversible checkpoint it owns. */
+/**
+ * Below a finished turn: how it ended, and the one reversible checkpoint it owns — "Revert this turn · N files
+ * changed", the conflict choices, then "Reverted · Undo".
+ */
 export function TurnFooter({
   turn,
   revert,
   blockedReason,
   onRevert,
+  onUnrevert,
   onDismissRevert,
 }: TurnFooterProps) {
   const checkpoint = turn.checkpoint;
   const revertible = checkpoint?.status === "ready" && checkpoint.entryIds.length > 0;
+  const files = checkpoint?.files ?? [];
+  const pending = revert?.status === "pending";
 
-  let checkpointRow = null;
+  let row = null;
   if (revert?.status === "conflict") {
-    checkpointRow = (
-      <ConflictChoices files={revert.files} onRevert={onRevert} onCancel={onDismissRevert} />
+    const undo = revert.action === "unrevert";
+    row = (
+      <ConflictChoices
+        files={revert.files}
+        undo={undo}
+        onChoose={undo ? onUnrevert : onRevert}
+        onCancel={onDismissRevert}
+      />
     );
   } else if (checkpoint?.status === "reverted") {
-    checkpointRow = (
-      <p className="flex items-center gap-1 text-step-11 text-text-3">
-        <Check size={12} weight="bold" aria-hidden className="text-accent" />
-        Reverted
-      </p>
+    const kept = checkpoint.keptFiles ?? [];
+    const undoable = (checkpoint.revertEntryIds?.length ?? 0) > 0;
+    row = (
+      <>
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-fg-2">
+          <Check aria-hidden weight="bold" className="size-icon-sm text-fg-3" />
+          Reverted
+        </span>
+        {kept.length > 0 && (
+          <span title={kept.join("\n")} className="text-xs leading-4 text-fg-3 tabular-nums">
+            Kept later edits to {kept.length} {kept.length === 1 ? "file" : "files"}
+          </span>
+        )}
+        {undoable &&
+          (pending ? (
+            <span className="inline-flex items-center gap-1 text-xs text-fg-3" role="status">
+              <Spinner size="sm" />
+              Undoing…
+            </span>
+          ) : (
+            <button
+              type="button"
+              aria-label="Undo revert"
+              disabled={blockedReason !== null}
+              title={blockedReason ?? "Put this turn's changes back"}
+              onClick={() => onUnrevert()}
+              className={cn(
+                chatLink,
+                "text-xs disabled:cursor-default disabled:text-fg-disabled disabled:no-underline",
+              )}
+            >
+              Undo
+            </button>
+          ))}
+      </>
     );
   } else if (revertible) {
-    checkpointRow = (
-      <div className="flex flex-wrap items-center gap-2">
+    row = (
+      <>
         <Button
           size="sm"
           variant="ghost"
-          icon={<ArrowCounterClockwise size={12} aria-hidden />}
-          loading={revert?.status === "pending"}
+          icon={<ArrowCounterClockwise aria-hidden className="size-icon-sm" />}
+          loading={pending}
           disabled={blockedReason !== null}
-          title={blockedReason ?? undefined}
+          title={blockedReason ?? "Restore the files this turn changed"}
           onClick={() => onRevert()}
+          className="-ml-2 text-fg-2"
         >
           Revert this turn
         </Button>
-        {revert?.status === "error" && (
-          <span role="alert" className="text-step-11 text-danger">
-            {revert.message}
+        {files.length > 0 && (
+          <span
+            title={files.join("\n")}
+            data-testid="turn-files"
+            className="min-w-0 truncate text-xs leading-4 text-fg-3 tabular-nums"
+          >
+            {files.length} {files.length === 1 ? "file" : "files"} changed
+            <span className="@max-[299px]/chat:hidden">
+              {" · "}
+              {files.map((file) => file.split("/").pop() ?? file).join(", ")}
+            </span>
           </span>
         )}
-      </div>
+      </>
     );
   } else if (checkpoint?.status === "ready") {
-    checkpointRow = <p className="text-step-11 text-text-4">No project changes</p>;
+    row = <span className="text-xs leading-4 text-fg-3">No project changes</span>;
   } else if (checkpoint?.status === "unavailable") {
-    checkpointRow = <p className="text-step-11 text-text-4">This run can’t be reverted.</p>;
+    row = <span className="text-xs leading-4 text-fg-3">This run can’t be reverted.</span>;
   }
 
   return (
-    <div className="flex flex-col gap-1.5" data-testid="turn-footer">
+    <div className="grid gap-1" data-testid="turn-footer">
       <TurnStatusNote turn={turn} />
-      {checkpointRow}
+      {row && (
+        <div className="flex min-h-ctl-sm min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          {row}
+        </div>
+      )}
+      {revert?.status === "error" && (
+        <p role="alert" className="text-xs leading-4 text-error">
+          {revert.message}
+        </p>
+      )}
     </div>
   );
 }

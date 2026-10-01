@@ -18,6 +18,11 @@ import {
   SliderControl,
 } from "./propertyPanelPrimitives";
 import { ColorField } from "./propertyPanelColor";
+import { buttonBase, buttonSizes, buttonVariants } from "../ui/Button";
+import { INSP_MINI_BUTTON } from "./inspectorStyles";
+
+/** The prototype's secondary `.btn.sm` for the fill editors' actions. */
+const FILL_BUTTON = `${buttonBase} ${buttonVariants.secondary} ${buttonSizes.sm}`;
 
 /* ------------------------------------------------------------------ */
 /*  Asset path helpers                                                 */
@@ -117,7 +122,7 @@ export function ImageFillField({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="grid gap-2">
       <div className="grid min-w-0 gap-1.5">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
           <span className={LABEL}>Project asset</span>
@@ -125,11 +130,7 @@ export function ImageFillField({
             type="button"
             disabled={disabled || uploading}
             onClick={() => fileInputRef.current?.click()}
-            className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors ${
-              disabled || uploading
-                ? "cursor-not-allowed text-neutral-600"
-                : "cursor-pointer hover:border-neutral-600 hover:text-white"
-            }`}
+            className={`${FILL_BUTTON} max-w-full`}
           >
             <Plus size={12} className="shrink-0" />
             <span className="truncate">{uploading ? "Uploading…" : "Upload image"}</span>
@@ -148,18 +149,18 @@ export function ImageFillField({
           />
         </div>
         {uploadError && (
-          <div className="text-[10px] text-red-400" role="alert">
+          <div className="text-xs text-error" role="alert">
             {uploadError}
           </div>
         )}
         {imageAssets.length > 0 ? (
-          <div className="space-y-3">
+          <div className="grid gap-1.5">
             {selectedAsset && (
-              <div className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/80">
+              <div className="overflow-hidden rounded-sm border border-border-subtle bg-bg-1">
                 <img
                   src={buildProjectApiPath(projectId, `/preview/${selectedAsset}`)}
                   alt={selectedAsset.split("/").pop() ?? selectedAsset}
-                  className="h-28 w-full object-contain bg-neutral-950/80"
+                  className="h-28 w-full bg-bg-1 object-contain"
                 />
               </div>
             )}
@@ -175,7 +176,7 @@ export function ImageFillField({
                   }
                   onCommit(`url("${toProjectRootAssetPath(next)}")`);
                 }}
-                className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600"
+                className="min-w-0 w-full appearance-none bg-transparent text-sm font-medium text-fg outline-hidden disabled:cursor-not-allowed disabled:text-fg-disabled"
               >
                 <option value="">None</option>
                 {imageAssets.map((asset) => (
@@ -187,7 +188,7 @@ export function ImageFillField({
             </div>
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-neutral-800 bg-neutral-900/50 px-3 py-3 text-[11px] leading-5 text-neutral-500">
+          <div className="rounded-xl border border-dashed border-border bg-surface-1/50 px-3 py-3 text-sm leading-5 text-fg-3">
             No image assets yet. Upload one here and Studio will also add it to the Assets tab.
           </div>
         )}
@@ -254,7 +255,7 @@ export function GradientField({
       <div className={`${FIELD} space-y-3 p-3`}>
         <div
           ref={previewRef}
-          className="relative h-11 overflow-hidden rounded-lg border border-neutral-700"
+          className="relative h-11 overflow-hidden rounded-lg border border-border"
           style={previewStyle}
           onClick={(event) => {
             if (disabled) return;
@@ -282,9 +283,9 @@ export function GradientField({
                   position: Math.max(0, Math.min(100, Math.round(stop.position + delta))),
                 });
               }}
-              className="absolute top-1/2 h-4 w-4 -translate-y-1/2 cursor-ew-resize rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)] outline-hidden focus-visible:ring-2 focus-visible:ring-studio-accent"
+              className="hf-insp-puck absolute top-1/2 size-3.5 -translate-y-1/2 cursor-ew-resize rounded-full outline-hidden focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
               style={{
-                left: `calc(${stop.position}% - 8px)`,
+                left: `calc(${stop.position}% - 7px)`,
                 backgroundColor: stop.color,
               }}
               onClick={(event) => event.stopPropagation()}
@@ -324,7 +325,7 @@ export function GradientField({
               { label: "Conic", value: "conic" },
             ]}
           />
-          <label className="flex items-center gap-2 text-[11px] font-medium text-neutral-400">
+          <label className="flex items-center gap-2 text-sm text-fg-2">
             <input
               type="checkbox"
               checked={parsed.repeating}
@@ -332,7 +333,7 @@ export function GradientField({
               onChange={(e) => {
                 patch({ repeating: e.target.checked });
               }}
-              className="h-4 w-4 rounded-sm border-neutral-700 bg-neutral-950 text-panel-accent focus:ring-panel-accent"
+              className="size-3.5 accent-fg"
             />
             Repeat
           </label>
@@ -348,9 +349,9 @@ export function GradientField({
                 })),
               });
             }}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
+            className={FILL_BUTTON}
           >
-            <ReverseGradientIcon size={16} />
+            <ReverseGradientIcon size={14} />
             Reverse
           </button>
         </div>
@@ -433,17 +434,17 @@ export function GradientField({
             disabled={disabled || parsed.stops.length >= 6}
             onClick={() => addStop()}
             title={parsed.stops.length >= 6 ? "Maximum 6 stops" : "Add a gradient stop"}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:text-neutral-600"
+            className={FILL_BUTTON}
           >
             <Plus size={12} />
             Add stop
           </button>
         </div>
-        <div className="space-y-3">
+        <div className="grid gap-1.5">
           {parsed.stops.map((stop, index) => (
             <div
               key={`stop-editor-${index}`}
-              className="grid min-w-0 grid-cols-[minmax(0,1fr)_68px_28px] gap-2"
+              className="grid min-w-0 grid-cols-[minmax(0,1fr)_64px_auto] items-end gap-1"
             >
               <ColorField
                 label={`Stop ${index + 1}`}
@@ -465,7 +466,7 @@ export function GradientField({
                 type="button"
                 disabled={disabled || parsed.stops.length <= 2}
                 onClick={() => removeStop(index)}
-                className="mt-[22px] flex h-10 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-950 text-neutral-400 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-700"
+                className={`${INSP_MINI_BUTTON} mb-0.5 hover:text-error`}
                 aria-label={`Remove stop ${index + 1}`}
               >
                 <X size={12} />

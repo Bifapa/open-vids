@@ -31,7 +31,7 @@ const plan = (first: "running" | "done", second: "pending" | "failed"): Executio
   updatedAt: 1,
 });
 
-it("folds a delegated turn: Main keeps the plan and one row per delegation, a crumb opens that agent's work", async () => {
+it("folds a delegated turn: Main keeps the plan and one row per delegation, a row opens that agent's work", async () => {
   mounted = mountChat(
     {},
     { chat: chatState({ chat: summary({ enabledAgents: ["editor", "vision"] }) }) },
@@ -145,27 +145,25 @@ it("folds a delegated turn: Main keeps the plan and one row per delegation, a cr
   expect(donePlan?.querySelector("[aria-expanded]")?.getAttribute("aria-expanded")).toBe("false");
   expect(donePlan?.querySelector("[data-step-status]")).toBeNull();
 
-  const nav = host.querySelector('nav[aria-label="Agent threads"]');
-  if (!nav) throw new Error("no breadcrumbs");
-  expect([...nav.querySelectorAll("button")].map((crumb) => crumb.textContent)).toEqual([
+  // Main shows no breadcrumbs; a delegation row opens the agent's thread: its task and reply, nobody else's.
+  const nav = () => host.querySelector('nav[aria-label="Agent threads"]');
+  expect(nav()).toBeNull();
+  await click(rows()[0]);
+  expect([...(nav()?.querySelectorAll("button") ?? [])].map((crumb) => crumb.textContent)).toEqual([
     "Main",
     "Editor",
-    "Vision",
   ]);
-
-  // A crumb opens the agent's thread: its task and its reply, nobody else's, no Main rows.
-  await click(buttonWithText(nav, "Editor"));
-  expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe("Editor");
+  expect(nav()?.querySelector('[aria-current="page"]')?.textContent).toBe("Editor");
   expect(log()?.textContent).toContain("Cut the intro to three seconds.");
   expect(log()?.textContent).toContain("Cut to 3.0s.");
   expect(log()?.textContent).not.toContain("Check the title card is legible.");
   expect(rows()).toHaveLength(0);
 
-  // Main is the clean chat again; a delegation row opens its own agent's thread.
-  await click(buttonWithText(nav, "Main"));
+  // The Main crumb returns to the clean chat; the other row opens its own agent's thread.
+  await click(buttonWithText(nav() ?? host, "Main"));
   expect(rows()).toHaveLength(2);
   await click(rows()[1]);
-  expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe("Vision");
+  expect(nav()?.querySelector('[aria-current="page"]')?.textContent).toBe("Vision");
   expect(log()?.textContent).toContain("Check the title card is legible.");
   expect(log()?.textContent).toContain("Frame 12 could not be read.");
 });

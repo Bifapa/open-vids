@@ -1,14 +1,16 @@
 /**
  * A deliberately small Markdown subset for assistant text: paragraphs, headings, bullet and
- * numbered lists, fenced code, and inline code, bold and links. It produces a tree, never HTML,
- * so nothing the model writes can become markup; the renderer turns the tree into React elements.
+ * numbered lists, fenced code, and inline code, bold, links and timecodes. It produces a tree, never
+ * HTML, so nothing the model writes can become markup; the renderer turns the tree into React elements.
  */
 
 export type Inline =
   | { kind: "text"; text: string }
   | { kind: "code"; text: string }
   | { kind: "strong"; text: string }
-  | { kind: "link"; text: string; href: string };
+  | { kind: "link"; text: string; href: string }
+  /** `0:42`, `1:05.5`, `00:01:23`: a point in the composition the reader can jump to. */
+  | { kind: "timecode"; text: string; seconds: number };
 
 export type Block =
   | { kind: "paragraph"; inline: Inline[] }
@@ -29,9 +31,10 @@ export function safeHref(raw: string): string | null {
   return ALLOWED_PROTOCOLS.has(url.protocol) ? url.href : null;
 }
 
-// code | bold | [text](url) | bare http(s) URL, leftmost match first.
+// code | bold | [text](url) | bare http(s) URL | timecode, leftmost match first. A timecode is
+// [h:]m:ss[.fff] standing alone (not part of a longer number, ratio or address).
 const INLINE =
-  /`([^`\n]+)`|\*\*([^*\n]+)\*\*|\[([^\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"])/g;
+  /`([^`\n]+)`|\*\*([^*\n]+)\*\*|\[([^\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"])|(?<![\w:.])(?:(\d{1,2}):)?(\d{1,2}):([0-5]\d)(?:\.(\d{1,3}))?(?![\w:]|\.\d)/g;
 
 export function parseInline(source: string): Inline[] {
   const out: Inline[] = [];
@@ -40,7 +43,8 @@ export function parseInline(source: string): Inline[] {
     if (end > last) out.push({ kind: "text", text: source.slice(last, end) });
   };
   for (const match of source.matchAll(INLINE)) {
-    const [whole, code, strong, linkText, linkTarget, bareUrl] = match;
+    const [whole, code, strong, linkText, linkTarget, bareUrl, hours, minutes, secs, fraction] =
+      match;
     const index = match.index ?? 0;
     if (code !== undefined) {
       pushText(index);
@@ -58,6 +62,14 @@ export function parseInline(source: string): Inline[] {
       if (!href) continue;
       pushText(index);
       out.push({ kind: "link", text: bareUrl, href });
+    } else if (minutes !== undefined && secs !== undefined) {
+      pushText(index);
+      const seconds =
+        Number(hours ?? 0) * 3600 +
+        Number(minutes) * 60 +
+        Number(secs) +
+        (fraction ? Number(`0.${fraction}`) : 0);
+      out.push({ kind: "timecode", text: whole, seconds });
     }
     last = index + whole.length;
   }

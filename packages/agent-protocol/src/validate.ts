@@ -1,4 +1,6 @@
 import type {
+  AgentIntake,
+  AgentIntakeFile,
   CreateChatRequest,
   RevertTurnRequest,
   SetJevApiKeyRequest,
@@ -7,14 +9,16 @@ import type {
   UpdateAgentSettingsRequest,
   UpdateChatRequest,
 } from "./api.js";
-import { REVERT_MODES } from "./api.js";
+import { INTAKE_FILE_KINDS, REVERT_MODES } from "./api.js";
 import {
+  CHAT_INTENTS,
   CHAT_MODES,
   JEV_CREDENTIAL_MODES,
   MANUAL_EDIT_POLICIES,
   SPECIALIST_IDS,
   STORY_ACTIONS,
   THINKING_EFFORTS,
+  isChatIntent,
   isSpecialistId,
   type EditorClipSummary,
   type EditorContext,
@@ -353,6 +357,11 @@ export function parseUpdateChat(body: unknown): Parsed<UpdateChatRequest> {
     if (!activeMode) return fail(`activeMode must be one of: ${CHAT_MODES.join(", ")}`);
     value.activeMode = activeMode;
   }
+  if (body.intent !== undefined) {
+    if (!isChatIntent(body.intent))
+      return fail(`intent must be one of: ${CHAT_INTENTS.join(", ")}`);
+    value.intent = body.intent;
+  }
   if (body.executionQuality !== undefined) {
     if (body.executionQuality === null) value.executionQuality = null;
     else {
@@ -516,6 +525,13 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
     storyAction = STORY_ACTIONS.find((known) => known === body.storyAction);
     if (!storyAction) return fail(`storyAction must be one of: ${STORY_ACTIONS.join(", ")}`);
   }
+  let intent: StartTurnRequest["intent"];
+  if (body.intent !== undefined) {
+    if (!isChatIntent(body.intent))
+      return fail(`intent must be one of: ${CHAT_INTENTS.join(", ")}`);
+    if (storyAction && body.intent !== "edit") return fail("a story action always runs as edit");
+    intent = body.intent;
+  }
   let storyOptions: StoryActionOptions | undefined;
   if (body.storyOptions !== undefined) {
     if (storyAction !== "build" && storyAction !== "rebuild" && storyAction !== "resolve")
@@ -540,6 +556,7 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
       ...(references.value && { references: references.value }),
       ...(editorContext.value && { editorContext: editorContext.value }),
       ...(mode && { mode }),
+      ...(intent && { intent }),
       ...(storyAction && { storyAction }),
       ...(storyOptions && { storyOptions }),
     },
@@ -611,4 +628,86 @@ export function parseRevertTurn(body: unknown): Parsed<RevertTurnRequest> {
   if (body.mode === undefined) return { ok: true, value: {} };
   const mode = REVERT_MODES.find((known) => known === body.mode);
   return mode ? { ok: true, value: { mode } } : fail("unknown revert mode");
+}
+
+const INTAKE_FILES = 200;
+
+/** A model written as `{provider, modelId}` or as the `provider/modelId` string the Projects page may use. */
+function parseIntakeModel(value: unknown): Parsed<ModelSelection | null> {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  if (typeof value === "string") {
+    const slash = value.indexOf("/");
+    const provider = value.slice(0, slash).trim();
+    const modelId = value.slice(slash + 1).trim();
+    return slash > 0 && provider && modelId
+      ? { ok: true, value: { provider, modelId } }
+      : fail("model must be {provider, modelId} or provider/modelId");
+  }
+  const model = parseModelSelection(value);
+  return model ? { ok: true, value: model } : fail("model must be {provider, modelId}");
+}
+
+function parseIntakeFile(value: unknown, index: number): Parsed<AgentIntakeFile> {
+  const field = `files[${index}]`;
+  if (!isRecord(value)) return fail(`${field} must be an object`);
+  const path = nonEmpty(value.path)?.replaceAll("\\", "/");
+  if (!path || path.startsWith("/") || path.split("/").includes(".."))
+    return fail(`${field}.path must be a project-relative path`);
+  const kind = INTAKE_FILE_KINDS.find((known) => known === value.kind) ?? "other";
+  const size = typeof value.size === "number" && value.size >= 0 ? value.size : 0;
+  const name = nonEmpty(value.name) ?? path.slice(path.lastIndexOf("/") + 1);
+  return { ok: true, value: { path, name, size, kind } };
+}
+
+/** The intake file Home writes for a project started from the Projects page chat (see {@link AgentIntake}). */
+export function parseAgentIntake(value: unknown): Parsed<AgentIntake> {
+  if (!isRecord(value)) return fail("intake must be an object");
+  if (value.version !== 1) return fail("unsupported intake version");
+  const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
+  if (prompt.length > LIMITS.promptChars)
+    return fail(`prompt is longer than ${LIMITS.promptChars} characters`);
+  const intent = value.intent === undefined ? "edit" : value.intent;
+  if (!isChatIntent(intent)) return fail(`intent must be one of: ${CHAT_INTENTS.join(", ")}`);
+  const model = parseIntakeModel(value.model);
+  if (!model.ok) return model;
+  const thinking = parseOptionalThinking(value.thinking);
+  if (!thinking.ok) return thinking;
+  const agents = value.agents ?? [];
+  if (!Array.isArray(agents) || !agents.every(isSpecialistId))
+    return fail(`agents must list specialists from: ${SPECIALIST_IDS.join(", ")}`);
+  let agentOverrides: Partial<Record<SpecialistId, SpecialistConfig>> | undefined;
+  if (value.agentOverrides !== undefined && value.agentOverrides !== null) {
+    if (!isRecord(value.agentOverrides)) return fail("agentOverrides must be an object");
+    agentOverrides = {};
+    for (const [id, raw] of Object.entries(value.agentOverrides)) {
+      if (!isSpecialistId(id)) return fail(`unknown specialist: ${id}`);
+      const config = parseSpecialistConfig(raw, `agentOverrides.${id}`);
+      if (!config.ok) return config;
+      agentOverrides[id] = config.value;
+    }
+  }
+  const rawFiles = value.files ?? [];
+  if (!Array.isArray(rawFiles) || rawFiles.length > INTAKE_FILES)
+    return fail(`files must be an array of at most ${INTAKE_FILES} files`);
+  const files: AgentIntakeFile[] = [];
+  for (const [index, raw] of rawFiles.entries()) {
+    const file = parseIntakeFile(raw, index);
+    if (!file.ok) return file;
+    files.push(file.value);
+  }
+  if (!prompt && files.length === 0) return fail("an intake needs a prompt or files");
+  return {
+    ok: true,
+    value: {
+      version: 1,
+      prompt,
+      intent,
+      model: model.value,
+      thinking: thinking.value ?? null,
+      agents: SPECIALIST_IDS.filter((id) => agents.includes(id)),
+      ...(agentOverrides && { agentOverrides }),
+      files,
+      createdAt: typeof value.createdAt === "string" ? value.createdAt : "",
+    },
+  };
 }

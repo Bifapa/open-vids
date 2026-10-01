@@ -1,7 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "OpenVids grants the webview no native access. The window loads http://127.0.0.1 — a remote origin as far as Tauri is concerned — and this capability deliberately declares no `remote` block, so that document is denied every IPC command. Every file read, write, upload and delete the editor performs already goes through the Studio HTTP API, which runs in the sidecar process with full OS access, so nothing is lost. Deliberately empty: adding any permission here would be the only way the webview could reach the host, so the list stays empty unless a specific need appears.",
+  "description": "OpenVids grants the webview window dragging only. The window loads http://127.0.0.1 pages (the Projects home and Studio) — remote origins as far as Tauri is concerned — and the overlay titlebar has no native title bar to grab, so those pages mark their titlebars with data-tauri-drag-region and need start_dragging (plus internal_toggle_maximize for the macOS double-click zoom). Nothing else: every file read, write, upload and delete already goes through the home and Studio HTTP APIs, which run in Rust or the sidecar with full OS access.",
   "windows": ["main"],
-  "permissions": []
+  "remote": {
+    "urls": ["http://127.0.0.1:*", "http://localhost:*"]
+  },
+  "permissions": ["core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize"]
 }

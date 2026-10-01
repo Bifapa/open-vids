@@ -137,7 +137,7 @@ export function MediaSection({
         {srcAttr && (
           <div className="min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-[11px] font-medium text-neutral-500">Source</div>
+              <div className="text-sm font-medium text-fg-3">Source</div>
               <button
                 type="button"
                 onClick={() => {
@@ -146,27 +146,24 @@ export function MediaSection({
                     setTimeout(() => setCopied(false), 1500);
                   });
                 }}
-                className="flex h-6 items-center gap-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-200"
+                className="flex h-6 items-center gap-1 rounded-lg border border-border bg-neutral-950 px-2 text-xs font-medium text-fg-2 transition-colors hover:border-neutral-600 hover:text-fg"
               >
                 {copied ? <Check size={11} /> : <ClipboardList size={11} />}
                 <span>{copied ? "Copied" : "Copy"}</span>
               </button>
             </div>
-            <div
-              className="mt-1 truncate text-[11px] font-medium text-neutral-300"
-              title={absoluteSrc}
-            >
+            <div className="mt-1 truncate text-sm font-medium text-fg-2" title={absoluteSrc}>
               {absoluteSrc}
             </div>
           </div>
         )}
 
         {isVisualMedia && (
-          <div className="grid min-w-0 max-w-full gap-2 overflow-hidden rounded-md bg-panel-input/30 p-2">
+          <div className="grid min-w-0 max-w-full gap-2 overflow-hidden rounded-md bg-surface-1/30 p-2">
             <div className="flex min-w-0 items-center justify-between gap-2">
               <div className="min-w-0">
                 <div className={LABEL}>Cutout</div>
-                <div className="mt-0.5 truncate text-[10px] text-panel-text-4">
+                <div className="mt-0.5 truncate text-xs text-fg-3">
                   Create transparent {isVideo ? "WebM video" : "PNG image"}
                 </div>
               </div>
@@ -177,7 +174,7 @@ export function MediaSection({
                   event.stopPropagation();
                   void runBackgroundRemoval();
                 }}
-                className="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-panel-input px-2.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-surface-1 px-2.5 text-sm font-medium text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
                 title={
                   canRemoveBackground
                     ? "Remove background and save a transparent asset"
@@ -208,7 +205,7 @@ export function MediaSection({
                       { label: "Off", value: "off" },
                     ]}
                   />
-                  <span className="text-[10px] leading-tight text-panel-text-4">
+                  <span className="text-xs leading-tight text-fg-3">
                     Optional hole-cut background copy.
                   </span>
                 </div>
@@ -219,7 +216,7 @@ export function MediaSection({
 
             {removeProgress && (
               <div className="space-y-1">
-                <div className="flex min-w-0 items-center justify-between gap-2 text-[10px] text-panel-text-4">
+                <div className="flex min-w-0 items-center justify-between gap-2 text-xs text-fg-3">
                   <span className="min-w-0 flex-1 truncate">
                     {removeProgress.error ?? removeProgress.stage ?? "Processing"}
                   </span>
@@ -238,7 +235,7 @@ export function MediaSection({
 
             {removeProgress?.status === "complete" && removeProgress.outputPath && (
               <div
-                className="truncate text-[10px] font-medium text-panel-text-3"
+                className="truncate text-xs font-medium text-fg-3"
                 title={removeProgress.outputPath}
               >
                 Applied {removeProgress.outputPath}

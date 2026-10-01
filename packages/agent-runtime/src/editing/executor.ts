@@ -105,12 +105,17 @@ export class TurnEditing {
     return this.lastRenderOutput;
   }
 
-  execute(name: string, args: unknown, callSignal: AbortSignal): Promise<HostToolResult> {
+  execute(
+    name: string,
+    args: unknown,
+    callSignal: AbortSignal,
+    progress?: (percent: number) => void,
+  ): Promise<HostToolResult> {
     if (!this.accepting)
       return Promise.resolve(refuse("The turn is finishing; editing is closed."));
     if (!isEditingToolName(name)) return Promise.resolve(refuse(`Unknown editing tool ${name}.`));
     const signal = AbortSignal.any([callSignal, this.options.turnSignal, this.stop.signal]);
-    const call = this.run(name, args, signal).catch((error: unknown): HostToolResult => {
+    const call = this.run(name, args, signal, progress).catch((error: unknown): HostToolResult => {
       if (error instanceof EditingError) return refuse(formatError(error));
       return refuse(`internal: ${errorMessage(error, "The editing call failed")}`);
     });
@@ -149,6 +154,7 @@ export class TurnEditing {
     name: EditingToolName,
     args: unknown,
     signal: AbortSignal,
+    progress?: (percent: number) => void,
   ): Promise<HostToolResult> {
     const { host, editorContext } = this.options;
     switch (name) {
@@ -194,7 +200,7 @@ export class TurnEditing {
         const output = await host.render(
           { ...(composition && { composition }), quality },
           signal,
-          () => undefined,
+          (update) => progress?.(update.progress),
         );
         this.lastRenderOutput = {
           path: output.path,

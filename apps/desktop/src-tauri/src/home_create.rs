@@ -21,30 +21,40 @@ pub fn handle_create(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
             return;
         }
     };
+    // The default location (`~/Movies/OpenVids`) may not exist yet on a
+    // fresh machine; it is ours to create. Any other parent must exist.
+    let prefs = super::prefs::load(&super::prefs::prefs_path());
+    let defaults = super::prefs::new_project(&prefs);
+    if params.parent == defaults.location {
+        let _ = std::fs::create_dir_all(&params.parent);
+    }
+    let workspace = serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.get("workspace").and_then(|w| w.as_str()).map(str::to_string))
+        .filter(|w| super::prefs::WORKSPACES.contains(&w.as_str()))
+        .unwrap_or(defaults.open_in);
+    match scaffold_blank(&params) {
+        Ok(dest) => {
+            let name = params.name.clone();
+            begin_open(state, name, dest, Some(workspace));
+            respond(stream, 200, "application/json", br#"{"opening":true}"#);
+        }
+        Err(error) => {
+            let payload = serde_json::json!({ "error": error }).to_string();
+            respond(stream, 400, "application/json", payload.as_bytes());
+        }
+    }
+}
+
+/// Scaffold a blank project from the template this build resolves.
+pub fn scaffold_blank(params: &super::create::CreateParams) -> Result<PathBuf, String> {
     let staged = std::env::var("OPENVids_TEST_TEMPLATES")
         .ok()
         .map(PathBuf::from)
         .or_else(production_templates_dir);
-    let Some(index) = super::create::blank_template_index(staged.as_deref()) else {
-        respond(
-            stream,
-            500,
-            "application/json",
-            br#"{"error":"project template unavailable"}"#,
-        );
-        return;
-    };
-    match super::create::scaffold(&index, &params) {
-        Ok(dest) => {
-            let name = params.name.clone();
-            begin_open(state, name, dest);
-            respond(stream, 200, "application/json", br#"{"opening":true}"#);
-        }
-        Err(err) => {
-            let payload = serde_json::json!({ "error": err.to_string() }).to_string();
-            respond(stream, 400, "application/json", payload.as_bytes());
-        }
-    }
+    let index = super::create::blank_template_index(staged.as_deref())
+        .ok_or_else(|| "project template unavailable".to_string())?;
+    super::create::scaffold(&index, params).map_err(|err| err.to_string())
 }
 
 fn parse_create(body: &[u8]) -> Result<super::create::CreateParams, String> {
@@ -82,7 +92,7 @@ fn parse_create(body: &[u8]) -> Result<super::create::CreateParams, String> {
         .and_then(|v| v.as_f64())
         .unwrap_or(10.0);
     Ok(super::create::CreateParams {
-        parent: PathBuf::from(parent),
+        parent: super::prefs::expand_tilde(parent),
         name,
         fps,
         width,

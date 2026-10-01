@@ -1,0 +1,591 @@
+/* The "Start a new project" composer — the intake form of the prototype Chat panel
+   (openvids-chat.css): composer, file chips, chips, popovers, busy and drop states. */
+
+.ov-chat {
+  container: ov-chat / inline-size;
+  position: relative;
+  --ovc-pad: 12px;
+  --ovc-line: 18px;
+}
+.ov-chat-pane {
+  position: relative;
+  min-height: 0;
+  background: var(--bg-0);
+}
+
+/* Focus for chat-only controls (shared primitives bring their own ring) */
+.ov-chat :is(.ov-chat-crumb, .ov-chat-thinking-toggle, .ov-chat-plan-head):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* ---- Agent monogram (identity by letter + name, never by hue). Also used by Settings → Agents. ---- */
+.ov-chat-mono {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  color: var(--fg-2);
+  font: 600 var(--text-2xs)/1 var(--font-mono);
+  letter-spacing: 0;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* ---- Context chips (askAgent): kind icon + label; detail in the tooltip. Removable in the composer only. ---- */
+.ov-chat-ctx-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.ov-chat-ctx-list[hidden] {
+  display: none;
+}
+.ov-chat-ctx {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  height: var(--h-sm);
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  color: var(--fg-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1;
+}
+.ov-chat-ctx > .ic {
+  --s: var(--ic-sm);
+  flex: none;
+  color: var(--fg-3);
+}
+.ov-chat-ctx-label {
+  min-width: 0;
+  max-width: 22ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ov-chat-ctx:hover {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+.ov-chat-ctx:has(.ov-chat-ctx-x) {
+  padding-right: 1px;
+}
+.ov-chat-ctx-x {
+  flex: none;
+  color: var(--fg-3);
+}
+.ov-chat-ctx-x:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.ov-chat-user-message .ov-chat-ctx {
+  background: var(--bg-1);
+}
+.ov-chat-attach {
+  padding: 6px 6px 0;
+}
+
+.ov-chat-suggestions {
+  display: grid;
+  gap: 1px;
+  margin: 0 -6px;
+}
+.ov-chat-suggestion {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--h-row-sm);
+  padding: 6px;
+  background: transparent;
+  color: var(--fg-2);
+  font-size: var(--text-sm);
+  line-height: 16px;
+  text-align: left;
+}
+.ov-chat-suggestion .ic {
+  --s: var(--ic-sm);
+  margin-top: 2px;
+  color: var(--fg-3);
+}
+.ov-chat-suggestion:hover {
+  color: var(--fg);
+}
+.ov-chat-suggestion:hover .ic {
+  color: var(--fg-2);
+}
+
+/* ==========================================================================
+   Composer
+   ========================================================================== */
+.ov-chat-composer {
+  flex: none;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin: 0 8px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  transition: border-color 0.12s;
+}
+.ov-chat-body + .ov-chat-composer {
+  margin-top: 0;
+}
+.ov-chat-composer:hover {
+  border-color: var(--border-strong);
+}
+.ov-chat-composer:has(.ov-chat-textarea:focus-visible) {
+  border-color: var(--border-strong);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.ov-chat-textarea {
+  display: block;
+  width: 100%;
+  min-height: var(--h-row);
+  max-height: calc(var(--ovc-line) * 8 + 12px);
+  padding: 8px 10px 4px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  overflow-y: auto;
+  background: transparent;
+  color: var(--fg);
+  font: 400 var(--text-base)/var(--ovc-line) var(--font-ui);
+  field-sizing: content;
+  scrollbar-color: var(--surface-3) transparent;
+}
+.ov-chat-textarea::placeholder {
+  color: var(--fg-3);
+  opacity: 1;
+}
+.ov-chat-textarea:focus-visible {
+  outline: 0;
+}
+.ov-chat-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 4px 4px;
+}
+.ov-chat-spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* Composer sits at the panel bottom: tooltips open upward and stay inside the panel */
+.ov-chat-composer [data-tip]::after {
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  transform: none;
+}
+.ov-chat-composer
+  :is(
+    .ov-chat-spacer ~ [data-tip],
+    .ov-chat-send[data-tip],
+    [data-tip][data-tip-align="end"]
+  )::after {
+  left: auto;
+  right: 0;
+}
+
+/* Model / Agents / Mode selectors: .tool-btn (24px) at metadata weight */
+.ov-chat-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ov-chat-chip .ic {
+  --s: var(--ic-sm);
+  color: var(--fg-3);
+}
+.ov-chat-chip .ov-chat-chip-caret {
+  --s: var(--ic-xs);
+}
+.ov-chat-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.ov-chat-chip:hover .ic,
+.ov-chat-chip[aria-expanded="true"] .ic {
+  color: var(--fg-2);
+}
+.ov-chat-chip:not([data-chip="model"]) {
+  flex-shrink: 0;
+}
+/* Default width: model + mode chips read by label + caret; their leading icon returns at narrow (icon-only) and wide */
+.ov-chat-chip:is([data-chip="model"], [data-chip="mode"]) > .ic:not(.ov-chat-chip-caret) {
+  display: none;
+}
+
+/* Send: the single primary in the panel (.btn-primary toggled by updateComposer in send mode); Stop / Steer stay neutral .btn */
+.ov-chat-send {
+  flex: none;
+  gap: 5px;
+  min-width: var(--h-sm);
+  padding: 0 5px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.ov-chat-send .kbd {
+  height: 14px;
+  padding: 0 3px;
+  font-size: var(--text-2xs);
+}
+.ov-chat-send:not([data-mode]) .ov-chat-send-label,
+.ov-chat-send[data-mode="send"] .ov-chat-send-label,
+.ov-chat-send:not([data-mode]) .kbd,
+.ov-chat-send[data-mode="send"] .kbd {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.ov-chat-send[data-mode="stop"] {
+  padding: 0 6px 0 5px;
+}
+.ov-chat-send[data-mode="stop"] .kbd {
+  border-color: var(--border-strong);
+  color: var(--fg-2);
+}
+.ov-chat-send[data-mode="steer"] {
+  padding: 0 7px 0 6px;
+}
+
+/* ==========================================================================
+   Popovers (agents / agent settings / model / mode) — children of the panel.
+   Surface = shared .popover (same as .menu). Header = .float-head + .float-title (32px, sm/600):
+   popovers here are titled dialogs with a back button, so they follow the floating-panel header
+   rather than the untitled .menu-label used inside plain context menus.
+   ========================================================================== */
+.ov-chat-popover {
+  position: absolute;
+  z-index: 60;
+  left: 8px;
+  bottom: 76px;
+  width: min(280px, calc(100% - 16px));
+  max-height: calc(100% - 72px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 4px;
+  font-size: var(--text-sm);
+  scrollbar-color: var(--surface-3) transparent;
+  animation: ov-chat-pop 0.12s ease-out;
+}
+.ov-chat-popover[data-kind="mode"] {
+  width: min(248px, calc(100% - 16px));
+}
+@keyframes ov-chat-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.ov-chat-pop-head {
+  margin: -4px -4px 4px;
+}
+.ov-chat-pop-head:has(.ov-chat-pop-back) {
+  padding-left: 4px;
+}
+.ov-chat-pop-back {
+  flex: none;
+}
+.ov-chat-pop-body {
+  display: grid;
+  gap: 1px;
+}
+
+.ov-chat-agent-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 8px;
+  min-height: var(--h-row-lg);
+  padding: 4px 4px 4px 6px;
+}
+.ov-chat-agent-info {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.ov-chat-agent-name {
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ov-chat-agent-role {
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ov-chat-agent-row.is-off .ov-chat-agent-name {
+  color: var(--fg-2);
+}
+.ov-chat-agent-row.is-off .ov-chat-mono {
+  background: transparent;
+  color: var(--fg-3);
+}
+.ov-chat-agent-always {
+  grid-column: 3 / -1;
+  padding-right: 4px;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.ov-chat-field {
+  display: grid;
+  gap: 5px;
+  padding: 6px 6px 4px;
+}
+.ov-chat-field > label,
+.ov-chat-field > .ov-chat-field-label {
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+.ov-chat-effort {
+  display: flex;
+  width: 100%;
+}
+.ov-chat-effort button {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  padding: 0 4px;
+}
+.ov-chat-help {
+  margin: 0;
+  padding: 2px 6px 6px;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 15px;
+  text-wrap: pretty;
+}
+
+.ov-chat-mode-item {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 6px;
+  row-gap: 1px;
+  align-items: center;
+  width: 100%;
+  padding: 5px 8px 6px 4px;
+  background: transparent;
+  text-align: left;
+}
+.ov-chat-mode-check {
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg);
+  visibility: hidden;
+}
+.ov-chat-mode-check .ic {
+  --s: var(--ic-sm);
+}
+.ov-chat-mode-item[aria-checked="true"] .ov-chat-mode-check {
+  visibility: visible;
+}
+.ov-chat-mode-name {
+  grid-column: 2;
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 16px;
+}
+.ov-chat-mode-desc {
+  grid-column: 2;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 14px;
+  text-wrap: pretty;
+}
+
+/* ==========================================================================
+   Intake (opts.intake) — composer-only panel that starts a project (Projects page).
+   The panel sits mid-page, so popovers are placed by JS (up or down) and the panel
+   lifts above later page sections while one is open.
+   ========================================================================== */
+.ov-chat.is-intake {
+  display: flex;
+  flex-direction: column;
+}
+.ov-chat.is-intake:has(.ov-chat-popover) {
+  z-index: 30;
+}
+.ov-chat.is-intake .ov-chat-pane {
+  flex: none;
+  gap: 8px;
+  background: transparent;
+}
+.ov-chat.is-intake .ov-chat-composer {
+  margin: 0;
+  border-radius: var(--r-lg);
+}
+.ov-chat.is-intake .ov-chat-textarea {
+  min-height: calc(var(--ovc-line) * 3 + 16px);
+  padding: 12px 14px 6px;
+}
+.ov-chat.is-intake .ov-chat-attach {
+  padding: 10px 10px 0;
+}
+.ov-chat.is-intake .ov-chat-controls {
+  gap: 4px;
+  padding: 4px 8px 8px;
+}
+.ov-chat.is-intake .ov-chat-popover {
+  max-height: none;
+}
+.ov-chat-popover[data-side="bottom"] {
+  animation-name: ov-chat-pop-down;
+}
+@keyframes ov-chat-pop-down {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Start: labeled primary + ↵ once there is a prompt or a file; busy swaps in a spinner and the busy label */
+.ov-chat-send:is([data-mode="start"], [data-mode="busy"]) {
+  padding: 0 6px 0 9px;
+}
+.ov-chat-send[data-mode="start"] > .ic {
+  display: none;
+}
+.ov-chat-send[data-mode="busy"] {
+  padding: 0 9px 0 8px;
+}
+.ov-chat-send[data-mode="busy"] .kbd {
+  display: none;
+}
+.ov-chat-send .spinner {
+  width: 10px;
+  height: 10px;
+}
+
+/* Busy: everything reads as paused, nothing is interactive */
+.ov-chat-composer.is-busy,
+.ov-chat-composer.is-busy:hover {
+  border-color: var(--border);
+}
+.ov-chat-composer.is-busy .ov-chat-textarea {
+  color: var(--fg-2);
+  cursor: default;
+}
+.ov-chat-chip[disabled] .ic {
+  color: var(--fg-disabled);
+}
+.ov-chat-suggestion[disabled] {
+  color: var(--fg-disabled);
+  pointer-events: none;
+}
+.ov-chat-suggestion[disabled] .ic {
+  color: var(--fg-disabled);
+}
+.ov-chat-ctx-x[disabled] {
+  visibility: hidden;
+}
+.ov-chat-suggestions[hidden] {
+  display: none;
+}
+
+/* Drop target: dashed accent border + a quiet overlay label over the prompt */
+.ov-chat-composer.is-drop,
+.ov-chat-composer.is-drop:hover {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 5%, var(--bg-1));
+}
+.ov-chat-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: inherit;
+  background: color-mix(in oklch, var(--bg-1) 86%, transparent);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  pointer-events: none;
+}
+.ov-chat-drop .ic {
+  --s: var(--ic-lg);
+  color: var(--fg-2);
+}
+.ov-chat-composer.is-drop .ov-chat-drop {
+  display: flex;
+}
+
+/* ==========================================================================
+
+/* Wide composer (the intake panel is 720 px): full chip labels with their icons */
+@container ov-chat (min-width: 440px) {
+  .ov-chat {
+    --ovc-line: 19px;
+  }
+  .ov-chat-chip-label {
+    max-width: 160px;
+  }
+  .ov-chat-chip:is([data-chip="model"], [data-chip="mode"]) > .ic:not(.ov-chat-chip-caret) {
+    display: inline-block;
+  }
+}
+
+/* Popover rows that are not interactive (loading / unavailable notes) */
+.ov-chat-pop-note {
+  margin: 0;
+  padding: 6px 6px 8px;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 15px;
+  text-wrap: pretty;
+}
+.ov-chat-pop-note .spinner {
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+.ov-chat-agent-row .sw {
+  justify-self: end;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-chat-popover {
+    animation: none;
+  }
+}

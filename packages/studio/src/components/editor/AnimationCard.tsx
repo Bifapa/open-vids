@@ -1,4 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CaretDown } from "@phosphor-icons/react";
+import { INSP_MINI_LABEL } from "./inspectorStyles";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { SUPPORTED_EASES, SUPPORTED_PROPS } from "@hyperframes/core/gsap-constants";
 import { RESPONSIVE_GRID } from "./propertyPanelHelpers";
@@ -168,17 +170,15 @@ export const AnimationCard = memo(function AnimationCard({
     setKeys.every((k) => k === "x" || k === "y" || k === "immediateRender")
   )
     return (
-      <div className="border-b border-neutral-800 pb-2">
-        <div className="flex items-center gap-2 py-1.5">
-          <span className="rounded-sm bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
-            Position
-          </span>
-          <span className="text-[11px] text-neutral-500">
-            x: {Math.round(Number(animation.properties.x ?? 0))}, y:{" "}
-            {Math.round(Number(animation.properties.y ?? 0))}
-          </span>
-          <span className="ml-auto text-[9px] text-neutral-600">drag to move</span>
-        </div>
+      <div className="flex min-h-7 items-center gap-2 rounded-md border border-border-subtle bg-bg-1 px-2">
+        <span className="rounded-xs bg-surface-3 px-1.5 text-xs font-medium leading-[18px] text-fg-2">
+          Position
+        </span>
+        <span className="font-mono text-num text-fg-3">
+          x: {Math.round(Number(animation.properties.x ?? 0))}, y:{" "}
+          {Math.round(Number(animation.properties.y ?? 0))}
+        </span>
+        <span className="ml-auto text-2xs text-fg-3">drag to move</span>
       </div>
     );
 
@@ -186,26 +186,24 @@ export const AnimationCard = memo(function AnimationCard({
     <div
       ref={cardRef}
       data-flat-effect-card={flat ? "true" : undefined}
-      className={
-        flat
-          ? "border-b border-l-2 border-panel-accent/40 border-b-panel-hairline pb-3 pl-2"
-          : "border-b border-neutral-800 pb-3"
-      }
+      className={`grid min-w-0 gap-1.5 rounded-md border bg-bg-1 p-2 ${
+        expanded ? "border-border-strong" : "border-border"
+      }`}
     >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-2 py-1.5 active:scale-[0.99]"
+        className="-m-1 flex min-w-0 items-center gap-1.5 rounded-sm p-1 text-left transition-colors hover:bg-surface-1 focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent"
       >
         <span
-          className="rounded-sm bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-panel-accent"
+          className="shrink-0 rounded-xs bg-surface-3 px-1.5 text-xs font-medium leading-[18px] text-fg"
           title={METHOD_TOOLTIPS[animation.method]}
         >
           {methodLabel}
         </span>
         <span
-          className={`text-[11px] font-medium ${flat ? "text-panel-text-3" : "text-neutral-400"}`}
+          className="min-w-0 truncate font-mono text-num text-fg-2"
           title="When this effect plays"
         >
           {typeof animation.position === "number"
@@ -213,35 +211,28 @@ export const AnimationCard = memo(function AnimationCard({
             : animation.position}{" "}
           – {typeof endTime === "number" ? `${parseFloat(endTime.toFixed(3))}s` : endTime}
         </span>
-        <span
-          className={`ml-auto text-[10px] ${flat ? "text-panel-text-3" : "text-neutral-500"}`}
-          title={easeName}
-        >
+        <span className="ml-auto min-w-0 truncate text-xs text-fg-3" title={easeName}>
           {easeLabel}
         </span>
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 10 10"
-          fill="currentColor"
-          className={`shrink-0 transition-transform ${flat ? "text-panel-text-5" : "text-neutral-500"} ${expanded ? "" : "-rotate-90"}`}
-        >
-          <path d="M2 3l3 4 3-4z" />
-        </svg>
+        <CaretDown
+          size={12}
+          aria-hidden="true"
+          className={`shrink-0 text-fg-3 transition-transform ${expanded ? "" : "-rotate-90"}`}
+        />
       </button>
 
       {expanded && (
-        <div className="pt-2">
-          <div className="space-y-3">
+        <div className="border-t border-border-subtle pt-2">
+          <div className="grid gap-2">
             <ComputedTweenNotice
               provenance={animation.provenance}
               onUnroll={onUnroll ? () => onUnroll(animation.id) : undefined}
             />
             <div className="flex items-start gap-2">
               <div className="flex-1">
-                <p className="text-[10px] leading-relaxed text-neutral-400 italic">{summary}</p>
+                <p className="m-0 text-xs leading-[15px] text-fg-2">{summary}</p>
                 {animation.keyframes && (
-                  <p className="mt-1 text-[9px] text-neutral-500">
+                  <p className="mt-1 text-2xs text-fg-3">
                     <span
                       className="inline-block w-2 h-2 mr-1 align-middle"
                       style={{
@@ -260,7 +251,7 @@ export const AnimationCard = memo(function AnimationCard({
                   setCopied(true);
                   setTimeout(() => setCopied(false), 1500);
                 }}
-                className="shrink-0 rounded-sm px-1.5 py-0.5 text-[9px] font-medium text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+                className="shrink-0 rounded-sm px-1.5 py-0.5 text-2xs font-medium text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg"
                 title="Copy description to clipboard — paste into agent prompts"
               >
                 {copied ? "Copied" : "Copy"}
@@ -350,11 +341,9 @@ export const AnimationCard = memo(function AnimationCard({
             )}
 
             {animation.method === "fromTo" && (
-              <div className="space-y-1">
-                <p className="text-[9px] font-semibold uppercase tracking-wider text-orange-400/70">
-                  From
-                </p>
-                <div className="space-y-1.5">
+              <div className="grid gap-1">
+                <p className={`m-0 ${INSP_MINI_LABEL}`}>From</p>
+                <div className="grid gap-1.5">
                   {Object.entries(animation.fromProperties ?? {}).map(([prop, val]) => (
                     <PropertyRow
                       key={prop}
@@ -375,20 +364,18 @@ export const AnimationCard = memo(function AnimationCard({
                     onAdd={(prop) => onAddFromProperty?.(animation.id, prop)}
                     onOpen={() => setAddingFromProp(true)}
                     onClose={() => setAddingFromProp(false)}
-                    buttonClassName="text-[11px] font-medium text-orange-400/70 transition-colors hover:text-orange-300"
+                    buttonClassName="text-sm font-medium text-fg-2 transition-colors hover:text-fg"
                   />
                 </div>
               </div>
             )}
 
             {animation.method === "fromTo" && Object.keys(animation.properties).length > 0 && (
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-panel-accent/70">
-                To
-              </p>
+              <p className={`m-0 ${INSP_MINI_LABEL}`}>To</p>
             )}
 
             {Object.keys(animation.properties).length > 0 && (
-              <div className="space-y-1.5">
+              <div className="grid gap-1.5">
                 {Object.entries(animation.properties).map(([prop, val]) => (
                   <PropertyRow
                     key={prop}
@@ -409,7 +396,7 @@ export const AnimationCard = memo(function AnimationCard({
               (animation.properties.x != null ||
                 animation.properties.y != null ||
                 animation.keyframes) && (
-                <div className="border-t border-neutral-800 pt-3">
+                <div className="border-t border-border-subtle pt-2">
                   <ArcPathControls
                     arcPath={
                       animation.arcPath ?? { enabled: false, autoRotate: false, segments: [] }
@@ -438,7 +425,7 @@ export const AnimationCard = memo(function AnimationCard({
                 </div>
               )}
 
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-0.5">
               <AddPropertyTrigger
                 adding={addingProp}
                 available={availableProps}
@@ -447,12 +434,12 @@ export const AnimationCard = memo(function AnimationCard({
                 onAdd={(prop) => onAddProperty(animation.id, prop)}
                 onOpen={() => setAddingProp(true)}
                 onClose={() => setAddingProp(false)}
-                buttonClassName="text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-200"
+                buttonClassName="text-sm font-medium text-fg-2 transition-colors hover:text-fg"
               />
               <button
                 type="button"
                 onClick={() => onDeleteAnimation(animation.id)}
-                className="ml-auto text-[11px] font-medium text-red-400 transition-colors hover:text-red-300"
+                className="ml-auto rounded-sm px-1.5 text-sm font-medium text-error transition-colors hover:bg-error-soft"
                 title="Remove this animation"
               >
                 Remove

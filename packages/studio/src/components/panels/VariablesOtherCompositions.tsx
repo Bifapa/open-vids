@@ -37,7 +37,7 @@ function CompositionSection({
   return (
     <div className="space-y-1.5">
       <p
-        className="truncate text-[9px] font-medium uppercase tracking-wider text-neutral-500"
+        className="truncate text-2xs font-medium uppercase tracking-wider text-fg-3"
         title={group.path}
       >
         {group.path}
@@ -46,12 +46,10 @@ function CompositionSection({
         const key = `${group.path}::${decl.id}`;
         const editing = editingKey === key;
         return (
-          <div key={key} className="space-y-1.5 rounded-lg border border-neutral-800/70 p-2">
+          <div key={key} className="space-y-1.5 rounded-md border border-border/70 p-2">
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-[10px] font-medium text-neutral-300">
-                {decl.label}
-              </span>
-              <span className="rounded-sm bg-neutral-800 px-1 py-px font-mono text-[8px] text-neutral-500">
+              <span className="truncate text-xs font-medium text-fg-2">{decl.label}</span>
+              <span className="rounded-sm bg-surface-2 px-1 py-px font-mono text-[8px] text-fg-3">
                 {decl.type}
               </span>
               <span className="ml-auto flex items-center gap-1">
@@ -68,7 +66,7 @@ function CompositionSection({
                 />
               </span>
             </div>
-            {decl.description && <p className="text-[9px] text-neutral-500">{decl.description}</p>}
+            {decl.description && <p className="text-2xs text-fg-3">{decl.description}</p>}
             {editing && (
               <DeclarationForm
                 initial={draftFromDeclaration(decl)}
@@ -137,8 +135,8 @@ export function VariablesOtherCompositions({
   if (groups.length === 0) return null;
 
   return (
-    <div className="space-y-3 border-t border-neutral-800 pt-3">
-      <p className="text-[9px] font-medium uppercase tracking-wider text-neutral-600">
+    <div className="space-y-3 border-t border-border pt-3">
+      <p className="text-2xs font-medium uppercase tracking-wider text-fg-disabled">
         Other compositions
       </p>
       {groups.map((group) => (

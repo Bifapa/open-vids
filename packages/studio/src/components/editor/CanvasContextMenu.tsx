@@ -120,7 +120,7 @@ function ZActionIcon({ action }: { action: ZAction }) {
       strokeWidth="1.2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="mr-2 shrink-0"
+      className="shrink-0 text-fg-3 group-hover/item:text-current group-disabled/item:text-current"
       aria-hidden="true"
     >
       {Z_ACTION_ICONS[action].map((d) => (
@@ -161,7 +161,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   // groups contribute height (keeps positioning correct when a group is hidden).
   const menuWidth = 200;
   const menuHeight =
-    8 + (hasZActions ? Z_ACTIONS.length * 28 : 0) + (hasDivider ? 1 : 0) + (hasDelete ? 28 : 0) + 8; // padding + items + divider + delete + padding
+    8 + (hasZActions ? Z_ACTIONS.length * 24 : 0) + (hasDivider ? 9 : 0) + (hasDelete ? 24 : 0); // padding + items + divider + delete
   const overflowY = y + menuHeight - window.innerHeight;
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
   const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
@@ -212,7 +212,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className="fixed z-200 min-w-[200px] rounded-lg border border-border bg-menu-bg/94 p-1 shadow-pop backdrop-blur-xl backdrop-saturate-120"
       style={{ left: adjustedX, top: adjustedY }}
       onPointerDown={stopBubble}
       onMouseDown={stopBubble}
@@ -230,10 +230,10 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
             <button
               key={action}
               type="button"
-              className={`w-full flex items-center px-3 py-1.5 text-xs text-left ${
+              className={`group/item flex h-ctl-sm w-full items-center gap-2 rounded-sm px-2 text-left text-sm ${
                 enabled
-                  ? "text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-                  : "text-neutral-600 cursor-not-allowed"
+                  ? "cursor-pointer text-fg hover:bg-accent hover:text-accent-ink"
+                  : "cursor-not-allowed text-fg-disabled"
               }`}
               disabled={!enabled}
               // Act on pointerDown, not click: a pointerDown that reaches the
@@ -255,12 +255,12 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
           );
         })}
 
-      {hasDivider && <div className="my-1 border-t border-neutral-700/60" />}
+      {hasDivider && <div role="separator" className="mx-1.5 my-1 h-px bg-border" />}
 
       {hasDelete && (
         <button
           type="button"
-          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
+          className="group/item flex h-ctl-sm w-full cursor-pointer items-center justify-between gap-6 rounded-sm px-2 text-left text-sm text-error hover:bg-error hover:text-bg-0"
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.preventDefault();
@@ -269,7 +269,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
           }}
         >
           <span>Delete</span>
-          <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
+          <span className="text-xs text-fg-3 group-hover/item:text-current">⌫</span>
         </button>
       )}
     </div>,

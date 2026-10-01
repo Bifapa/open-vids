@@ -1,0 +1,452 @@
+/* Projects page — layout and page-only widgets, from the prototype's openvids-projects.html.
+   Shared primitives come from ov.css; the start composer from composer.css. */
+
+/* ---- Desktop window: the page IS the window (no drawn frame); the native traffic
+   lights float over the titlebar, so .tl-group only reserves their width. ---- */
+.window {
+  border-radius: 0;
+  height: 100vh;
+}
+.window::after {
+  display: none;
+}
+body {
+  background: var(--bg-0);
+}
+.tl-group {
+  width: 52px;
+  height: 12px;
+  flex: none;
+}
+.titlebar .brand svg {
+  pointer-events: none;
+}
+
+[hidden] {
+  display: none !important;
+}
+#body > .row-head {
+  margin: 0 14px 2px;
+}
+.is-list .group-head {
+  top: calc(var(--head-h) + var(--h-list-head) + 1px);
+}
+.row-name .link {
+  font-size: var(--text-xs);
+}
+.card,
+.row {
+  scroll-margin-top: 96px;
+  scroll-margin-bottom: 12px;
+}
+.head-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+#body {
+  padding-bottom: var(--sp-5);
+}
+
+/* ---- Home: Last Opened strip · Start chat · Recent Projects, all in the one #main scroller ---- */
+.lo {
+  container: lo / inline-size;
+  padding: var(--sp-4) 14px 0;
+}
+.lo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-height: var(--h-sm);
+  padding: 0 0 4px 6px;
+}
+.lo-head h2 {
+  margin: 0;
+}
+.lo-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px 8px;
+}
+@container lo (max-width: 960px) {
+  .lo-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .lo-strip > :nth-child(n + 5) {
+    display: none;
+  }
+}
+@container lo (max-width: 760px) {
+  .lo-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .lo-strip > :nth-child(n + 4) {
+    display: none;
+  }
+}
+.lo-card {
+  cursor: default;
+}
+.lo-card:focus-visible .thumb-more {
+  display: inline-flex;
+}
+
+.start {
+  padding: var(--sp-6) var(--sp-5) var(--sp-8);
+}
+.start.is-hero {
+  padding-top: 14vh;
+}
+.start-col {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.start h2 {
+  margin: 0;
+  text-align: center;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.start-hint {
+  max-width: 520px;
+  margin: 6px auto var(--sp-4);
+  text-align: center;
+  color: var(--fg-3);
+  font-size: var(--text-sm);
+  line-height: 17px;
+  text-wrap: pretty;
+}
+.start-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: var(--sp-2);
+  padding: 0 var(--sp-1);
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 16px;
+  white-space: nowrap;
+}
+.start-foot > .ic {
+  --s: var(--ic-sm);
+  flex: none;
+}
+.start-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-2);
+  font: var(--text-num)/16px var(--font-mono);
+}
+.start-foot .link {
+  flex: none;
+  font-size: var(--text-xs);
+}
+.start-foot .link[aria-expanded="true"] {
+  color: var(--fg);
+}
+.start-files {
+  flex: none;
+  margin-left: auto;
+  padding-left: var(--sp-3);
+  font: var(--text-num)/16px var(--font-mono);
+}
+
+.recent {
+  margin-top: var(--sp-2);
+}
+.recent-note {
+  padding: var(--sp-6) var(--sp-5);
+  text-align: center;
+}
+.recent-note h2 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg-2);
+}
+.recent-note p {
+  margin: 4px 0 0;
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+}
+
+/* ---- New Project / Open Project / Move to Trash sheets (shared .sheet, .loc, .pick from openvids.css) ---- */
+.sheet .sel {
+  height: var(--h-md);
+  border-radius: var(--r-md);
+  background-color: var(--bg-0);
+}
+.sheet .sel:disabled {
+  color: var(--fg-3);
+  border-color: var(--border-subtle);
+}
+.sheet .input:focus-visible,
+.sheet .sel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.sheet .input[aria-invalid="true"],
+.sheet .sel[aria-invalid="true"] {
+  border-color: var(--error);
+}
+.sheet .np-f {
+  display: grid;
+  gap: 5px;
+  color: var(--fg-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+.np-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+.np-row[hidden] {
+  display: none;
+}
+.np-err {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  color: var(--error);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 15px;
+}
+.np-err:empty {
+  display: none;
+}
+.np-err .ic {
+  --s: var(--ic-sm);
+  flex: none;
+  margin-top: 1px;
+}
+.np-span {
+  grid-column: 1 / -1;
+  margin-top: calc(var(--sp-2) * -1);
+}
+.sheet .np-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font: var(--text-num)/16px var(--font-mono);
+  color: var(--fg-3);
+}
+.sheet .np-path {
+  font: var(--text-num)/16px var(--font-mono);
+  color: var(--fg-2);
+  word-break: break-all;
+}
+.loc .btn[aria-expanded="true"] {
+  background: var(--surface-3);
+}
+.btn-danger {
+  background: var(--error);
+  border-color: transparent;
+  color: var(--bg-0);
+  font-weight: 600;
+}
+.btn-danger:hover {
+  background: oklch(from var(--error) calc(l - 0.08) c h);
+  border-color: transparent;
+}
+.btn-danger:active {
+  background: oklch(from var(--error) calc(l - 0.12) c h);
+}
+.menu-item.is-danger:not(:hover):not(:focus-visible),
+.menu-item.is-danger:not(:hover):not(:focus-visible) .ic {
+  color: var(--error);
+}
+
+/* ---- Launch splash: the landing intro cut, sized to the window. The logo records itself
+   (openvids-logo-intro[-light].svg, 3.0 s), a seam draws, the window splits open onto Projects. ---- */
+.launch {
+  --ease-cut: cubic-bezier(0.76, 0, 0.24, 1);
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  place-items: center;
+  animation: launch-failsafe 0s linear 9s forwards;
+}
+.is-launching .launch {
+  display: grid;
+}
+.launch-half {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50.2%;
+  background: var(--bg-0);
+  transition: transform 1.05s var(--ease-cut);
+}
+.launch-half.top {
+  top: 0;
+}
+.launch-half.bot {
+  bottom: 0;
+}
+.launch-seam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--fg);
+  transform: scaleX(0);
+  transition:
+    transform 0.38s var(--ease-cut),
+    opacity 0.5s 0.5s;
+}
+.launch-core {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 30px;
+  transition:
+    opacity 0.45s,
+    transform 1s var(--ease-cut),
+    filter 0.5s;
+}
+.launch-core img {
+  width: min(540px, 72vw);
+  height: auto;
+}
+.launch-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 500 12px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--fg-3);
+}
+.launch-tc {
+  color: var(--fg);
+}
+.launch-rec {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--error);
+  animation: launch-rec 1.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+.launch-skip {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: 14px;
+  transition: opacity 0.3s;
+}
+.launch.cut .launch-seam {
+  transform: scaleX(1);
+}
+.launch.cut .launch-core {
+  opacity: 0;
+  transform: scale(1.04);
+  filter: blur(8px);
+}
+.launch.cut .launch-skip {
+  opacity: 0;
+}
+.launch.out {
+  pointer-events: none;
+}
+.launch.out .launch-half.top {
+  transform: translate3d(0, -100%, 0);
+}
+.launch.out .launch-half.bot {
+  transform: translate3d(0, 100%, 0);
+}
+.launch.out .launch-seam {
+  opacity: 0;
+}
+@keyframes launch-rec {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--error) 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 9px color-mix(in oklab, var(--error) 0%, transparent);
+  }
+}
+@keyframes launch-failsafe {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* ---- Opening a project: the window stays on Projects until Studio answers ---- */
+.opening {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  background: var(--scrim);
+  animation: st-fade 0.14s ease-out;
+}
+.opening-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+  max-width: 420px;
+  padding: 12px 16px;
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--text-sm);
+}
+.opening-card .name {
+  font-size: var(--text-sm);
+}
+@keyframes st-fade {
+  from {
+    background: transparent;
+  }
+}
+
+/* ---- Toast with an error tone ---- */
+.toast.is-error {
+  border-color: color-mix(in oklch, var(--error) 45%, var(--border));
+}
+.toast.is-error > span:first-child::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--error);
+  vertical-align: 1px;
+}
+
+/* ---- Real thumbnails: cached first-frame captures fill the 16:9 frame ---- */
+.thumb > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---- Open Project error sheet ---- */
+.sheet .np-path {
+  margin-top: -4px;
+}
+
+/* ---- Settings window frame over the page ---- */
+.ov-settings-frame {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}

@@ -9,7 +9,10 @@ import {
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { Plus, RotateCcw, X } from "../../icons/SystemIcons";
-import { FLAT_PREVIEW_GRID, FlatSlider } from "./propertyPanelFlatPrimitives";
+import { CaretDown } from "@phosphor-icons/react";
+import { Button } from "../ui/Button";
+import { INSP_MINI_BUTTON, inspPreviewCard } from "./inspectorStyles";
+import { FlatSlider } from "./propertyPanelFlatPrimitives";
 import type {
   ColorGradingPresetPreviews,
   ColorGradingPreviewOptions,
@@ -45,7 +48,7 @@ export function FlatEffectsAccessory({
         event.stopPropagation();
         onCommitColorGrading({ ...grading, effects: { ...DEFAULT_EFFECTS }, palette: null });
       }}
-      className="shrink-0 text-panel-text-3 hover:text-panel-text-1"
+      className={INSP_MINI_BUTTON}
     >
       <RotateCcw size={12} />
     </button>
@@ -139,8 +142,8 @@ export function FlatEffectsSection({
     const fallback = kind === "art" ? ["#1a1a1a", "#f5f5dc"] : ["#000000", "#ffffff"];
     const palette = grading.palette;
     return (
-      <div data-flat-effects-palette="true" className="space-y-2 py-1">
-        <div className="grid grid-cols-3 gap-1">
+      <div data-flat-effects-palette="true" className="grid gap-1.5 pt-0.5">
+        <div className="grid grid-cols-4 gap-1">
           {HF_COLOR_GRADING_PALETTES.map((preset) => {
             const selected =
               palette?.length === preset.colors.length &&
@@ -155,47 +158,49 @@ export function FlatEffectsSection({
                 onClick={() => {
                   onCommitColorGrading({ ...grading, palette: [...preset.colors] });
                 }}
-                className={`min-w-0 border p-1 text-left ${
+                className={`grid min-w-0 gap-0.5 rounded-xs border bg-surface-1 p-0.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent ${
                   selected
-                    ? "border-panel-accent bg-panel-accent/10"
-                    : "border-panel-hairline hover:border-panel-border-input"
+                    ? "border-accent text-fg shadow-[inset_0_0_0_1px_var(--color-accent)]"
+                    : "border-border-subtle text-fg-2 hover:border-border-strong hover:text-fg"
                 }`}
               >
-                <span className="mb-1 flex h-3 overflow-hidden rounded-[2px]">
+                <span className="flex h-3 overflow-hidden rounded-[2px]">
                   {preset.colors.map((color) => (
                     <span key={color} className="flex-1" style={{ backgroundColor: color }} />
                   ))}
                 </span>
-                <span className="block truncate text-[8px] text-panel-text-3">{preset.label}</span>
+                <span className="block truncate px-0.5 text-2xs leading-3">{preset.label}</span>
               </button>
             );
           })}
         </div>
         {!palette ? (
-          <button
-            type="button"
+          <Button
+            size="sm"
             data-flat-effects-add-palette="true"
+            className="justify-self-start"
+            icon={<Plus size={12} />}
             onClick={() => {
               onCommitColorGrading({ ...grading, palette: fallback });
             }}
-            className="flex min-h-[28px] items-center gap-1 text-[10px] font-medium text-panel-accent hover:text-panel-accent/80"
           >
-            <Plus size={11} /> Custom palette
-          </button>
+            Custom palette
+          </Button>
         ) : (
           <>
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-panel-text-3">Custom palette</span>
+            <div className="flex min-h-6 items-center justify-between">
+              <span className="text-sm text-fg-3">Custom palette</span>
               <button
                 type="button"
                 title="Use default palette"
+                aria-label="Use default palette"
                 onClick={() => onCommitColorGrading({ ...grading, palette: null })}
-                className="text-panel-text-4 hover:text-panel-text-1"
+                className={INSP_MINI_BUTTON}
               >
-                <RotateCcw size={11} />
+                <RotateCcw size={12} />
               </button>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1">
               {palette.map((color, index) => (
                 <span key={`${index}-${color}`} className="group/swatch relative">
                   <input
@@ -207,7 +212,7 @@ export function FlatEffectsSection({
                       nextPalette[index] = event.target.value;
                       onCommitColorGrading({ ...grading, palette: nextPalette });
                     }}
-                    className="h-6 w-6 cursor-pointer rounded-xs border border-panel-border-input bg-transparent p-0"
+                    className="size-[22px] cursor-pointer rounded-xs border border-border bg-transparent p-0 transition-transform hover:scale-105 hover:border-fg-2"
                   />
                   {palette.length > 2 && (
                     <button
@@ -219,7 +224,7 @@ export function FlatEffectsSection({
                           palette: palette.filter((_, colorIndex) => colorIndex !== index),
                         })
                       }
-                      className="absolute -right-1 -top-1 hidden h-3.5 w-3.5 items-center justify-center rounded-full bg-panel-bg text-panel-text-2 shadow-sm group-hover/swatch:flex"
+                      className="absolute -right-1 -top-1 hidden size-3.5 items-center justify-center rounded-full border border-border bg-bg-1 text-fg-2 shadow-raise group-hover/swatch:flex"
                     >
                       <X size={8} />
                     </button>
@@ -236,9 +241,9 @@ export function FlatEffectsSection({
                       palette: [...palette, palette.at(-1) ?? "#ffffff"],
                     })
                   }
-                  className="flex h-6 w-6 items-center justify-center rounded-xs border border-panel-border-input text-panel-text-4 hover:text-panel-text-1"
+                  className="flex size-[22px] items-center justify-center rounded-xs border border-dashed border-border text-fg-3 hover:border-border-strong hover:text-fg"
                 >
-                  <Plus size={11} />
+                  <Plus size={12} />
                 </button>
               )}
             </div>
@@ -249,9 +254,9 @@ export function FlatEffectsSection({
   };
 
   return (
-    <div className="space-y-2" data-flat-effects-section="true">
+    <div className="grid gap-1.5" data-flat-effects-section="true">
       {activeEffects.length > 0 && (
-        <div data-flat-effects-active-list="true" className="space-y-1">
+        <div data-flat-effects-active-list="true" className="grid gap-1">
           {activeEffects.map((effect) => {
             const selected = selectedEffect?.key === effect.key;
             return (
@@ -261,15 +266,19 @@ export function FlatEffectsSection({
                 data-flat-effect-active={effect.key}
                 aria-pressed={selected}
                 onClick={() => setSelectedKey(effect.key)}
-                className={`flex min-h-[30px] w-full items-center justify-between border px-2 text-left text-[10px] transition-colors ${
-                  selected
-                    ? "border-panel-accent bg-panel-accent/10 text-panel-text-0"
-                    : "border-panel-hairline bg-panel-bg-soft text-panel-text-3 hover:border-panel-border-input hover:text-panel-text-1"
+                className={`flex min-h-[30px] w-full items-center gap-1.5 rounded-sm border bg-bg-1 px-2 text-left text-sm text-fg transition-colors focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent ${
+                  selected ? "border-border-strong" : "border-border hover:bg-surface-1"
                 }`}
               >
-                <span>{effect.label}</span>
-                <span className="text-[9px] text-panel-text-5">
-                  {selected ? "Editing" : "Active"}
+                <CaretDown
+                  size={12}
+                  aria-hidden="true"
+                  className={`shrink-0 text-fg-3 transition-transform ${selected ? "" : "-rotate-90"}`}
+                />
+                <span className="min-w-0 flex-1 truncate">{effect.label}</span>
+                <span className="font-mono text-num text-fg-3">
+                  {effect.masterFormat?.(grading.effects[effect.key]) ??
+                    `${Math.round(grading.effects[effect.key] * 100)}%`}
                 </span>
               </button>
             );
@@ -280,28 +289,30 @@ export function FlatEffectsSection({
       {selectedEffect && (
         <div
           data-flat-effect-editor={selectedEffect.key}
-          className="space-y-1 border-l-2 border-panel-border-input pl-2.5"
+          className="grid gap-1.5 rounded-sm border border-border bg-bg-1 p-2"
         >
-          <div className="flex min-h-[26px] items-center justify-between gap-2">
-            <span className="text-[11px] font-medium text-panel-text-1">
+          <div className="flex min-h-6 items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-sm font-medium text-fg">
               {selectedEffect.label}
             </span>
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-0.5">
               <button
                 type="button"
                 title={`Reset ${selectedEffect.label}`}
+                aria-label={`Reset ${selectedEffect.label}`}
                 onClick={() => applyEffect(selectedEffect)}
-                className="text-panel-text-4 hover:text-panel-text-1"
+                className={INSP_MINI_BUTTON}
               >
-                <RotateCcw size={11} />
+                <RotateCcw size={12} />
               </button>
               <button
                 type="button"
                 title={`Remove ${selectedEffect.label}`}
+                aria-label={`Remove ${selectedEffect.label}`}
                 onClick={() => removeEffect(selectedEffect)}
-                className="text-panel-text-4 hover:text-red-300"
+                className={`${INSP_MINI_BUTTON} hover:text-error`}
               >
-                <X size={11} />
+                <X size={12} />
               </button>
             </span>
           </div>
@@ -339,44 +350,51 @@ export function FlatEffectsSection({
         </div>
       )}
 
-      <button
-        type="button"
+      <Button
+        size="sm"
         data-flat-effects-add-toggle="true"
+        className="justify-self-start aria-expanded:border-border-strong aria-expanded:bg-surface-3"
         aria-expanded={catalogOpen}
+        icon={<Plus size={12} />}
         onClick={() => setCatalogOpen((open) => !open)}
-        className="flex min-h-[30px] items-center gap-1 text-[10px] font-medium text-panel-accent hover:text-panel-accent/80"
       >
-        <Plus size={11} /> Add effect
-      </button>
+        Add effect
+      </Button>
 
       {catalogOpen && (
-        <div data-flat-effects-catalog="true" className="space-y-2">
-          <div
-            role="tablist"
-            aria-label="Effect families"
-            className="grid grid-cols-4 gap-px overflow-hidden border border-panel-hairline bg-panel-hairline"
-          >
-            {EFFECT_GROUPS.map((group) => (
-              <button
-                key={group.label}
-                type="button"
-                role="tab"
-                aria-selected={catalogGroup === group.label}
-                data-flat-effect-group={group.label}
-                onClick={() => setCatalogGroup(group.label)}
-                className={`min-h-[25px] min-w-0 truncate bg-panel-bg px-2 text-[9px] ${
-                  catalogGroup === group.label
-                    ? "font-medium text-panel-accent"
-                    : "text-panel-text-4 hover:text-panel-text-1"
-                }`}
-              >
-                {group.label}
-              </button>
-            ))}
+        <div data-flat-effects-catalog="true" className="grid gap-1.5">
+          <div role="tablist" aria-label="Effect families" className="flex flex-wrap gap-0.5">
+            {EFFECT_GROUPS.map((group) => {
+              const activeInGroup = group.effects.filter(
+                (effect) => grading.effects[effect.key] > 0.0001,
+              ).length;
+              return (
+                <button
+                  key={group.label}
+                  type="button"
+                  role="tab"
+                  aria-selected={catalogGroup === group.label}
+                  data-flat-effect-group={group.label}
+                  onClick={() => setCatalogGroup(group.label)}
+                  className={`inline-flex h-[22px] min-w-0 items-center rounded-sm px-2 text-xs transition-colors focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent ${
+                    catalogGroup === group.label
+                      ? "bg-surface-2 text-fg hover:bg-surface-3"
+                      : "text-fg-3 hover:bg-surface-1 hover:text-fg"
+                  }`}
+                >
+                  <span className="truncate">{group.label}</span>
+                  {activeInGroup > 0 && (
+                    <span className="ml-1 rounded-pill bg-surface-3 px-[5px] text-2xs leading-[14px] text-fg">
+                      {activeInGroup}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           {EFFECT_GROUPS.filter((group) => group.label === catalogGroup).map((group) => (
-            <section key={group.label} className="space-y-1" role="tabpanel">
-              <div className={FLAT_PREVIEW_GRID}>
+            <section key={group.label} className="grid gap-1" role="tabpanel">
+              <div className="grid grid-cols-3 gap-1.5">
                 {group.presets?.map((presetId) => {
                   const preset = HF_COLOR_GRADING_EFFECT_PRESETS.find(
                     (candidate) => candidate.id === presetId,
@@ -397,14 +415,10 @@ export function FlatEffectsSection({
                         onPreview: onPreviewColorGrading,
                         onCommit: onCommitColorGrading,
                       })}
-                      className={`min-w-0 overflow-hidden border text-left text-[10px] transition-colors ${
-                        selected
-                          ? "border-panel-accent bg-panel-accent/10 text-panel-text-0"
-                          : "border-panel-hairline bg-panel-bg-soft text-panel-text-3 hover:border-panel-border-input hover:text-panel-text-1"
-                      }`}
+                      className={inspPreviewCard(selected)}
                     >
                       <span
-                        className="flex w-full items-center justify-center overflow-hidden bg-black/20"
+                        className="flex w-full items-center justify-center overflow-hidden bg-bg-1"
                         style={{
                           aspectRatio: `${presetPreviews.width} / ${presetPreviews.height}`,
                         }}
@@ -415,16 +429,18 @@ export function FlatEffectsSection({
                             src={preview}
                             alt=""
                             draggable={false}
-                            className="block h-full w-full object-contain"
+                            className="block h-full w-full object-cover"
                           />
                         ) : (
                           <span
                             data-flat-effect-preset-placeholder={presetPreviews.status}
-                            className="h-full w-full bg-panel-bg-soft"
+                            className="h-full w-full bg-surface-1"
                           />
                         )}
                       </span>
-                      <span className="block truncate px-2 py-1.5">{preset.label}</span>
+                      <span className="block truncate px-[5px] pt-[3px] pb-1 text-2xs leading-[13px]">
+                        {preset.label}
+                      </span>
                     </button>
                   );
                 })}
@@ -454,15 +470,11 @@ export function FlatEffectsSection({
                           applyEffect(effect);
                         }
                       }}
-                      className={`min-w-0 overflow-hidden border text-left text-[10px] transition-colors ${
-                        active
-                          ? "border-panel-accent bg-panel-accent/10 text-panel-text-1"
-                          : "border-panel-hairline bg-panel-bg-soft text-panel-text-3 hover:border-panel-border-input hover:text-panel-text-1"
-                      }`}
+                      className={inspPreviewCard(active)}
                     >
                       <span
                         data-flat-effect-preview-frame={effect.key}
-                        className="flex w-full items-center justify-center overflow-hidden bg-black/20"
+                        className="flex w-full items-center justify-center overflow-hidden bg-bg-1"
                         style={{ aspectRatio: `${previews.width} / ${previews.height}` }}
                       >
                         {preview ? (
@@ -471,16 +483,18 @@ export function FlatEffectsSection({
                             src={preview}
                             alt=""
                             draggable={false}
-                            className="block h-full w-full object-contain"
+                            className="block h-full w-full object-cover"
                           />
                         ) : (
                           <span
                             data-flat-effect-preview-placeholder={previews.status}
-                            className="h-full w-full bg-panel-bg-soft"
+                            className="h-full w-full bg-surface-1"
                           />
                         )}
                       </span>
-                      <span className="block truncate px-2 py-1.5">{effect.label}</span>
+                      <span className="block truncate px-[5px] pt-[3px] pb-1 text-2xs leading-[13px]">
+                        {effect.label}
+                      </span>
                     </button>
                   );
                 })}

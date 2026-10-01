@@ -10,6 +10,7 @@
  */
 
 import type { HfAudioFxChain, HfAudioFxNode } from "@hyperframes/core/audio-fx";
+import { INSP_MINI_LABEL } from "./inspectorStyles";
 import { readAudioEqBands } from "@hyperframes/core/audio-fx-eq";
 import { DEFAULT_CARVE, type HfCarveSettings } from "@hyperframes/core/audio-carve";
 import { FxCarveModule, type AudioTrackOption } from "./propertyPanelFxCarveModule.js";
@@ -107,13 +108,17 @@ export function FxRackChain({
   signalPath,
 }: FxRackChainProps) {
   return (
-    <div className="hf-fx-chain space-y-1">
+    <div className="hf-fx-chain grid gap-1">
       {/* The rack IS the signal path, and saying so costs two lines. Without
           them the order reads as a list, which is the one reading that makes
           "move up" look cosmetic — it is the most consequential control here. */}
-      <p className="hf-fx-term flex items-baseline gap-1.5 px-1.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
-        <span className="hf-fx-term-cap text-panel-text-1">In</span>
-        <span>{signalPath.inLabel}</span>
+      <p
+        className={`hf-fx-term flex min-h-[18px] items-center gap-1.5 after:h-px after:flex-1 after:bg-border-subtle ${INSP_MINI_LABEL}`}
+      >
+        <span className="hf-fx-term-cap">In</span>
+        <span className="max-w-[70%] truncate font-normal normal-case tracking-normal">
+          {signalPath.inLabel}
+        </span>
       </p>
       {/* Carve leads the rack, which is also where its effects sit in the signal
           path — corrective work before anything the author added. Present
@@ -151,7 +156,7 @@ export function FxRackChain({
         />
       ))}
       {handBuiltCount === 0 && eqIds.length === 0 ? (
-        <p className="hf-fx-empty py-1 text-[11px] text-panel-text-2">
+        <p className="hf-fx-empty py-1 text-xs text-fg-3">
           {showCarve
             ? `No other effects on this ${signalPath.subject}.`
             : `No effects on this ${signalPath.subject}.`}
@@ -194,9 +199,13 @@ export function FxRackChain({
           );
         })
       )}
-      <p className="hf-fx-term hf-fx-term-out flex items-baseline gap-1.5 px-1.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
-        <span className="hf-fx-term-cap text-panel-text-1">Out</span>
-        <span>{signalPath.outLabel}</span>
+      <p
+        className={`hf-fx-term hf-fx-term-out flex min-h-[18px] items-center gap-1.5 after:h-px after:flex-1 after:bg-border-subtle ${INSP_MINI_LABEL}`}
+      >
+        <span className="hf-fx-term-cap">Out</span>
+        <span className="max-w-[70%] truncate font-normal normal-case tracking-normal">
+          {signalPath.outLabel}
+        </span>
       </p>
     </div>
   );

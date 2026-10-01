@@ -1,5 +1,5 @@
-// (consumers land in the sidebar/panels PR later in this stack)
 import { type InputHTMLAttributes } from "react";
+import { cn } from "./cn";
 
 interface SearchInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
   /** Accessible name — placeholder alone is not one. */
@@ -7,13 +7,19 @@ interface SearchInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "
 }
 
 /**
- * Shared search input — one visual system (panel-input tokens) for every
- * panel search box, with a required accessible name.
+ * Shared search input, the prototype's `.field`: an inset well on the panel
+ * background with a leading magnifier, so every panel search reads the same and
+ * carries a required accessible name.
  */
-export function SearchInput({ className = "", ...props }: SearchInputProps) {
+export function SearchInput({ className, ...props }: SearchInputProps) {
   return (
     <div
-      className={`flex items-center gap-1.5 rounded-md bg-panel-input px-2.5 py-[5px] ${className}`}
+      className={cn(
+        "flex h-ctl-sm min-w-0 items-center gap-1.5 rounded-md border border-border bg-bg-0 px-2 text-fg-3",
+        "transition-[border-color] ease-standard duration-focus hover:border-border-strong",
+        "focus-within:border-border-strong focus-within:outline-solid focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-accent",
+        className,
+      )}
     >
       <svg
         width="12"
@@ -23,14 +29,7 @@ export function SearchInput({ className = "", ...props }: SearchInputProps) {
         className="shrink-0"
         aria-hidden="true"
       >
-        <circle
-          cx="116"
-          cy="116"
-          r="76"
-          stroke="currentColor"
-          strokeWidth="22"
-          className="text-panel-text-5"
-        />
+        <circle cx="116" cy="116" r="76" stroke="currentColor" strokeWidth="22" />
         <line
           x1="170"
           y1="170"
@@ -39,12 +38,11 @@ export function SearchInput({ className = "", ...props }: SearchInputProps) {
           stroke="currentColor"
           strokeWidth="22"
           strokeLinecap="round"
-          className="text-panel-text-5"
         />
       </svg>
       <input
         type="text"
-        className="min-w-0 w-full bg-transparent text-[11px] text-panel-text-1 outline-hidden placeholder:text-panel-text-5"
+        className="h-full min-w-0 w-full bg-transparent text-sm text-fg outline-hidden placeholder:text-fg-3"
         {...props}
       />
     </div>

@@ -44,6 +44,8 @@ interface DockLayoutState extends DockSnapshot {
   closePanel: (id: PanelId) => void;
   togglePanel: (id: PanelId) => void;
   setZoneVisible: (zone: PanelZone, visible: boolean) => void;
+  /** Hides or shows the whole group holding `id` (the titlebar's Timeline toggle). */
+  setGroupVisible: (id: PanelId, visible: boolean) => void;
   resetLayout: () => void;
 }
 
@@ -92,6 +94,10 @@ export const useDockLayoutStore = create<DockLayoutState>((set, get) => ({
     for (const id of panelsInZone(zone)) {
       if (openPanels.has(id)) controller?.setGroupVisible(id, visible);
     }
+  },
+  setGroupVisible: (id, visible) => {
+    const { controller, openPanels } = get();
+    if (openPanels.has(id)) controller?.setGroupVisible(id, visible);
   },
   resetLayout: () => get().controller?.reset(),
 }));

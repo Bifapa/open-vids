@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type CSSProperties } from "react";
 import { TimelineRulerPart } from "./TimelineRulerPart";
 import { PlayheadIndicator } from "./PlayheadIndicator";
 import { TimelinePlayheadLayer } from "./TimelinePlayheadLayer";
@@ -41,11 +41,14 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
   const draggedClipHeight = Math.min(draggedRowHeight, TRACK_H) - CLIP_Y * 2;
   const beatDragging = props.beatDragging;
   const { draggedElement, snapGuide, multiDragPreview } = props;
+  // Lanes draw one hairline per major ruler tick from this width (.timeline-lane).
+  const canvasStyle: CSSProperties & { "--timeline-grid-w": string } = {
+    height: props.totalH,
+    width: props.contentOrigin + props.trackContentWidth,
+    "--timeline-grid-w": `${Math.max(props.majorTickInterval * props.pps, 1)}px`,
+  };
   return (
-    <div
-      className="relative"
-      style={{ height: props.totalH, width: props.contentOrigin + props.trackContentWidth }}
-    >
+    <div className="relative" style={canvasStyle}>
       <TimelineRulerPart />
 
       {/* Breathing room between the sticky ruler and the first track lane — the
@@ -72,7 +75,7 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
           new bottom track comfortably (see TRACKS_BOTTOM_PAD / getTimelineCanvasHeight). */}
       <div aria-hidden="true" style={{ height: props.rowsVirtualized ? 0 : TRACKS_BOTTOM_PAD }} />
 
-      {/* Gap strips — loud dashed fill for the gap(s) a hovered "Close gap(s)"
+      {/* Gap strips — dashed accent for the gap(s) a hovered "Close gap(s)"
           menu row would collapse; a quiet tint for every gap on the selected
           clip's lane. Geometry mirrors the drop placeholder (row top + clip
           inset) so strips sit exactly where a clip body would. */}
@@ -89,14 +92,14 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
         return visibleIntervals.map((gap) => (
           <div
             key={`gap-${strip.kind}-${strip.track}-${gap.start}`}
-            className="pointer-events-none absolute"
+            className={`pointer-events-none absolute rounded-xs ${
+              loud ? "border border-dashed border-accent bg-accent-soft" : "bg-accent/6"
+            }`}
             style={{
               top: getTimelineRowTop(rowIndex, props.rowHeights) + CLIP_Y,
               left: props.contentOrigin + gap.start * props.pps,
               width: Math.max((gap.end - gap.start) * props.pps, 2),
               height: TRACK_H - CLIP_Y * 2,
-              background: loud ? "var(--timeline-accent-soft)" : "var(--timeline-accent-faint)",
-              borderRadius: 4,
               zIndex: 25,
             }}
           />

@@ -71,8 +71,8 @@ export function FlatSliderReadout({
           e.stopPropagation();
         }}
         onBlur={() => commit(false)}
-        className={`w-11 shrink-0 rounded-[3px] border bg-panel-surface px-1 text-right font-mono text-[10px] text-panel-text-0 outline-none ${
-          invalid ? "border-red-400" : "border-panel-accent"
+        className={`h-ctl-sm w-14 shrink-0 rounded-sm border bg-surface-1 px-1.5 text-right font-mono text-num text-fg outline-2 outline-offset-1 ${
+          invalid ? "border-error outline-error" : "border-border-strong outline-accent"
         }`}
       />
     );
@@ -92,9 +92,9 @@ export function FlatSliderReadout({
           begin();
         }
       }}
-      className={`w-11 shrink-0 text-right font-mono text-[10px] ${
-        tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
-      } ${editable ? "cursor-text rounded-[3px] hover:bg-panel-hover hover:text-panel-text-0" : ""}`}
+      className={`flex h-ctl-sm w-14 shrink-0 items-center justify-end overflow-hidden rounded-sm border border-border bg-surface-1 px-1.5 font-mono text-num tabular-nums whitespace-nowrap ${
+        tier === "explicitCustom" ? "text-fg" : "text-fg-2"
+      } ${editable ? "cursor-text transition-colors hover:border-border-strong hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent" : ""}`}
     >
       {displayValue}
     </span>

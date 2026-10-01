@@ -8,7 +8,7 @@ import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
 import { commitWholePropertyOffset } from "../../hooks/gsapWholePropertyOffsetCommit";
 import { nearestPointOnPath, type MotionNodeRef } from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
-import { ACCENT, MotionPathNode } from "./MotionPathNode";
+import { PATH_INK, MotionPathNode } from "./MotionPathNode";
 import {
   KeyframeDiamondContextMenu,
   type KeyframeDiamondContextMenuState,
@@ -243,7 +243,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
           strokeWidth={1.5}
           strokeDasharray="3 3"
           vectorEffect="non-scaling-stroke"
-          style={{ stroke: ACCENT }}
+          style={{ stroke: PATH_INK }}
           opacity={0.85}
         />
       </svg>
@@ -515,7 +515,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
         <polyline
           points={points}
           fill="none"
-          style={{ stroke: ACCENT }}
+          style={{ stroke: PATH_INK }}
           strokeWidth={1.5}
           strokeDasharray="5 5"
           strokeLinejoin="round"
@@ -536,7 +536,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
             strokeDasharray="2 2"
             vectorEffect="non-scaling-stroke"
             className="pointer-events-none"
-            style={{ stroke: ACCENT }}
+            style={{ stroke: PATH_INK }}
           />
         )}
         {abs.map((p, i) => (

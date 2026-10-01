@@ -1,3 +1,5 @@
+import { cn } from "./ui/cn";
+
 interface StudioToastProps {
   message: string;
   tone?: "error" | "info";
@@ -6,6 +8,7 @@ interface StudioToastProps {
   onDismiss?: () => void;
 }
 
+/** The prototype's toast: a raised `surface-2` card; an error keeps the card and inks the text. */
 export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastProps) {
   const isError = tone === "error";
   return (
@@ -14,31 +17,17 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
       className={`motion-reduce:animate-none ${leaving ? "hf-toast-exit" : "hf-toast-enter"}`}
     >
       <div
-        className="relative flex max-w-[min(420px,calc(100vw-48px))] items-center gap-3 overflow-hidden rounded-2xl py-3 pl-4 pr-2 text-[12px]"
-        style={{
-          background: isError
-            ? "linear-gradient(135deg, rgba(127,29,29,0.55), rgba(80,10,10,0.45))"
-            : "linear-gradient(135deg, rgba(38,38,38,0.55), rgba(23,23,23,0.45))",
-          backdropFilter: "blur(16px) saturate(1.6)",
-          WebkitBackdropFilter: "blur(16px) saturate(1.6)",
-          border: `1px solid ${isError ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.08)"}`,
-          boxShadow: [
-            "0 8px 32px rgba(0,0,0,0.35)",
-            `inset 0 1px 0 ${isError ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.06)"}`,
-            `inset 0 -1px 0 rgba(0,0,0,0.15)`,
-          ].join(", "),
-        }}
+        className={cn(
+          "relative flex max-w-[min(560px,calc(100vw-48px))] items-center gap-3 overflow-hidden rounded-lg border bg-surface-2 py-1.5 pl-3 pr-1.5 text-sm shadow-pop",
+          isError ? "border-error/50 text-error" : "border-border-strong text-fg",
+        )}
       >
-        <span
-          className={`min-w-0 wrap-break-word leading-5 ${isError ? "text-red-200" : "text-neutral-200"}`}
-        >
-          {message}
-        </span>
+        <span className="min-w-0 wrap-break-word py-0.5">{message}</span>
         {onDismiss && (
           <button
             type="button"
             onClick={onDismiss}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
+            className="flex size-ctl-xs shrink-0 items-center justify-center rounded-sm text-fg-3 transition-colors duration-hover hover:bg-surface-3 hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
             aria-label="Dismiss"
           >
             <svg
@@ -48,6 +37,7 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"
+              aria-hidden="true"
             >
               <path d="M2 2l6 6M8 2l-6 6" />
             </svg>

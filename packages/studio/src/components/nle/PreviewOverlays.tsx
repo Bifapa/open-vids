@@ -4,7 +4,6 @@ import { useCaptionStore } from "../../captions/store";
 import { DomEditOverlay } from "../editor/DomEditOverlay";
 import { TopologyLens } from "../editor/TopologyLens";
 import { MotionPathOverlay } from "../editor/MotionPathOverlay";
-import { SnapToolbar } from "../editor/SnapToolbar";
 import { GridOverlay } from "../editor/GridOverlay";
 import { usePreviewReadOnly } from "../editor/previewReadOnlyContext";
 import { useCompositionDimensions } from "../../hooks/useCompositionDimensions";
@@ -318,7 +317,6 @@ export function PreviewOverlays({
         onToggleRecording={onToggleRecording}
         onMarqueeSelect={applyMarqueeSelection}
       />
-      <SnapToolbar />
       {!readOnly && (
         <MotionPathOverlay
           iframeRef={previewIframeRef}
@@ -332,7 +330,7 @@ export function PreviewOverlays({
         <button
           type="button"
           onClick={enterCaptionMode}
-          className="absolute top-2 left-1/2 -translate-x-1/2 z-60 rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-2xs text-neutral-300 transition-colors hover:border-studio-accent/50 hover:text-studio-accent focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-studio-accent"
+          className="absolute top-2.5 left-1/2 z-60 h-ctl-sm -translate-x-1/2 rounded-pill bg-on-media-bg px-3 text-xs text-on-media-2 transition-colors hover:text-on-media focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         >
           Edit captions
         </button>

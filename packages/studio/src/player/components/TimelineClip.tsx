@@ -1,4 +1,12 @@
 import { memo, type CSSProperties, type ReactNode } from "react";
+import {
+  FilmStrip,
+  Image as ImageIcon,
+  Shapes,
+  Stack,
+  Subtitles,
+  Waveform,
+} from "@phosphor-icons/react";
 import type { TimelineElement } from "../store/playerStore";
 import {
   clipWidthLadder,
@@ -10,6 +18,15 @@ import type { TimelineEditCapabilities } from "./timelineEditing";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { TimelineClipFades } from "./TimelineClipFades";
+import { timelineClipKind, type TimelineClipKind } from "./timelineTrackIdentity";
+
+const CLIP_KIND_ICON: Record<TimelineClipKind, typeof FilmStrip> = {
+  video: FilmStrip,
+  image: ImageIcon,
+  audio: Waveform,
+  motion: Shapes,
+  caption: Subtitles,
+};
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -66,8 +83,11 @@ export const TimelineClip = memo(function TimelineClip({
   const displayLabel = el.label || el.id || el.tag;
   const ladder = clipWidthLadder(widthPx);
   const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
-  const showLabel = ladder === "labeled";
-  const showDefaultText = !hasCustomContent && ladder === "labeled";
+  const kind = timelineClipKind(el);
+  // The kind strip names the clip; a caption is nothing but its strip.
+  const showHead = ladder === "labeled" || (kind === "caption" && ladder === "picture");
+  const showDefaultText = !hasCustomContent && ladder === "labeled" && kind !== "caption";
+  const KindIcon = CLIP_KIND_ICON[kind];
   const startLabel = el.start.toFixed(1);
   const endLabel = (el.start + el.duration).toFixed(1);
   const themeVariables = {
@@ -83,8 +103,10 @@ export const TimelineClip = memo(function TimelineClip({
   const isAudioClip = isAudioTimelineElement(el);
   const clipClassName = [
     "timeline-clip",
+    `k-${kind}`,
     "absolute",
     hasCustomContent ? "overflow-visible" : "overflow-hidden",
+    showHead ? "has-head" : "",
     isSelected ? "is-selected" : "",
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
@@ -139,7 +161,7 @@ export const TimelineClip = memo(function TimelineClip({
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
     >
-      {/* Left trim handle */}
+      {/* Trim handles: a 14px hit area, drawn as the 7px edge strip. */}
       {showHandles && capabilities.canTrimStart && (
         <div
           aria-hidden="true"
@@ -154,22 +176,9 @@ export const TimelineClip = memo(function TimelineClip({
             zIndex: 4,
           }}
         >
-          <div
-            className="timeline-clip__handle-bar"
-            style={{
-              position: "absolute",
-              left: 4,
-              top: 6,
-              bottom: 6,
-              width: 2,
-              borderRadius: 1,
-              background: "var(--clip-handle)",
-              opacity: handleOpacity * 0.6,
-            }}
-          />
+          <div className="timeline-clip__handle-bar" style={{ left: 0 }} />
         </div>
       )}
-      {/* Right trim handle */}
       {showHandles && capabilities.canTrimEnd && (
         <div
           aria-hidden="true"
@@ -184,22 +193,16 @@ export const TimelineClip = memo(function TimelineClip({
             zIndex: 4,
           }}
         >
-          <div
-            className="timeline-clip__handle-bar"
-            style={{
-              position: "absolute",
-              right: 4,
-              top: 6,
-              bottom: 6,
-              width: 2,
-              borderRadius: 1,
-              background: "var(--clip-handle)",
-              opacity: handleOpacity * 0.6,
-            }}
-          />
+          <div className="timeline-clip__handle-bar" style={{ right: 0 }} />
         </div>
       )}
-      {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
+      {showHead && (
+        <span className="timeline-clip__head" aria-hidden="true">
+          <KindIcon className="timeline-clip__icon" weight="bold" />
+          <span className="timeline-clip__label">{displayLabel}</span>
+          {isComposition && <Stack className="timeline-clip__icon ml-auto" weight="bold" />}
+        </span>
+      )}
       {showDefaultText && (
         <span className="timeline-clip__timecode">
           {startLabel}-{endLabel}s

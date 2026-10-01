@@ -1,7 +1,12 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Input, Toggle, cn, fieldBase } from "../components/ui";
+import { CaretDown, PencilSimple, type Icon } from "@phosphor-icons/react";
+import { Input, Toggle, cn } from "../components/ui";
 import { formatDuration, formatTime, parseDuration } from "./storyFormat";
 
+/** Which inspector sections the user folded, by title; kept while the app runs, like the prototype's. */
+const folded = new Set<string>();
+
+/** A collapsible inspector section: the prototype's `.sec` (caret header, 6 px rhythm body). */
 export function Section({
   title,
   children,
@@ -11,45 +16,127 @@ export function Section({
   children: ReactNode;
   aside?: ReactNode;
 }) {
+  const [open, setOpen] = useState(() => !folded.has(title));
+  const bodyId = useId();
   return (
-    <section className="flex flex-col gap-2 border-b border-border px-3 py-3 last:border-b-0">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-step-10 font-semibold uppercase tracking-wide text-text-3">{title}</h3>
-        {aside}
+    <section className="border-b border-border-subtle last:border-b-0">
+      <div className="flex items-center pr-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={() => {
+            if (open) folded.add(title);
+            else folded.delete(title);
+            setOpen(!open);
+          }}
+          className="flex h-[30px] min-w-0 flex-1 items-center gap-1 pl-2 pr-2.5 text-left text-sm font-semibold text-fg outline-hidden hover:bg-surface-1 focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+        >
+          <CaretDown
+            size={12}
+            weight="bold"
+            className={cn(
+              "shrink-0 text-fg-3 transition-transform duration-press",
+              !open && "-rotate-90",
+            )}
+            aria-hidden
+          />
+          <span className="truncate">{title}</span>
+        </button>
+        {open && aside}
       </div>
-      {children}
+      <div id={bodyId} hidden={!open} className="grid gap-1.5 px-3 pt-0.5 pb-3">
+        {children}
+      </div>
     </section>
   );
 }
 
-/** A labelled row; `edited` marks a field the user set by hand (agents keep it). */
+/**
+ * The head of the inspector: the kind's type chip, the selection's name and a line of where it sits
+ * (prototype `.insp-head`).
+ */
+export function InspectorHead({
+  icon: KindIcon,
+  chip,
+  number,
+  name,
+  sub,
+}: {
+  icon: Icon;
+  /** The kind's chip classes (STORY_KIND_STYLES[kind].chip). */
+  chip: string;
+  /** A chapter shows its place in the order instead of the icon. */
+  number?: string;
+  name: string;
+  sub: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 border-b border-border-subtle px-3 py-2.5">
+      <span
+        className={cn(
+          "flex size-7 shrink-0 items-center justify-center rounded-sm",
+          chip,
+          number !== undefined && "font-mono text-xs font-semibold",
+        )}
+      >
+        {number ?? <KindIcon size={14} aria-hidden />}
+      </span>
+      <div className="min-w-0">
+        <div className="truncate text-md font-semibold tracking-[-0.005em] text-fg" title={name}>
+          {name}
+        </div>
+        <div className="mt-px truncate text-xs tabular-nums text-fg-3">{sub}</div>
+      </div>
+    </div>
+  );
+}
+
+/** "Set by you": the agent keeps this field. */
+function EditedMark() {
+  return (
+    <span title="Set by you: the agent keeps it" className="inline-flex text-fg-3">
+      <PencilSimple size={10} aria-label="Set by you" />
+    </span>
+  );
+}
+
+/**
+ * A labelled row: label on the left (72 px), control on the right, an optional hint under the control (prototype
+ * `.frow`). `top` aligns the label with the first line of a multi-line control; `edited` marks a field the user set
+ * by hand (agents keep it).
+ */
 export function Field({
   label,
   edited,
   children,
   hint,
+  top,
 }: {
   label: string;
   edited?: boolean;
   children: ReactNode;
   hint?: string;
+  top?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="flex items-center gap-1.5 text-step-10 font-medium text-text-2">
-        {label}
-        {edited && (
-          <span
-            className="flex items-center gap-1 text-selection"
-            title="Set by you: the agent keeps it"
-          >
-            <span className="size-1.5 rounded-full bg-selection" aria-hidden />
-            you
-          </span>
+    <div
+      className={cn(
+        "grid min-h-6 grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1",
+        top ? "items-start" : "items-center",
+      )}
+    >
+      <span
+        className={cn(
+          "flex min-w-0 items-center gap-1 text-sm whitespace-nowrap text-fg-3",
+          top && "leading-6",
         )}
+      >
+        <span className="truncate">{label}</span>
+        {edited && <EditedMark />}
       </span>
-      {children}
-      {hint && <span className="text-step-10 text-text-4">{hint}</span>}
+      <div className="min-w-0">{children}</div>
+      {hint && <span className="col-start-2 text-xs text-fg-3">{hint}</span>}
     </div>
   );
 }
@@ -104,8 +191,9 @@ export function TextAreaField({
         }
       }}
       className={cn(
-        fieldBase,
-        "h-auto min-h-14 resize-y py-1.5 leading-snug text-text-1 placeholder:text-text-5 disabled:cursor-not-allowed",
+        "min-h-12 w-full resize-y rounded-sm border border-border bg-surface-1 px-2 py-[5px] text-sm leading-4 text-fg outline-hidden",
+        "placeholder:text-fg-disabled hover:border-border-strong focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+        "disabled:cursor-not-allowed disabled:border-border-subtle disabled:bg-transparent disabled:text-fg-2",
       )}
     />
   );
@@ -180,15 +268,37 @@ export function ToggleRow({
 }) {
   const id = useId();
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex min-w-0 flex-col">
-        <span id={id} className="flex items-center gap-1.5 text-step-11 font-medium text-text-1">
+    <div className="grid gap-1">
+      <div className="flex min-h-6 items-center justify-between gap-3">
+        <span id={id} className="flex items-center gap-1 text-sm text-fg-3">
           {label}
-          {edited && <span className="size-1.5 rounded-full bg-selection" title="Set by you" />}
+          {edited && <EditedMark />}
         </span>
-        {description && <span className="text-step-10 text-text-3">{description}</span>}
+        <Toggle label={label} checked={checked} onCommit={onCommit} disabled={disabled} />
       </div>
-      <Toggle label={label} checked={checked} onCommit={onCommit} disabled={disabled} />
+      {description && <span className="text-xs leading-[15px] text-fg-3">{description}</span>}
+    </div>
+  );
+}
+
+/** A quiet line of guidance under a control, with a leading glyph (prototype `.hint-note`). */
+export function HintNote({
+  icon: HintIcon,
+  tone,
+  children,
+}: {
+  icon: Icon;
+  tone?: "warning";
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[14px_minmax(0,1fr)] gap-1.5 text-xs leading-[15px] text-pretty text-fg-3">
+      <HintIcon
+        size={12}
+        className={cn("mt-px", tone === "warning" && "text-warning")}
+        aria-hidden
+      />
+      <span>{children}</span>
     </div>
   );
 }
@@ -204,11 +314,11 @@ export function EditedChips({
   if (fields.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1" aria-label="Set by you">
-      <span className="text-step-10 text-text-3">Set by you:</span>
+      <span className="text-xs text-fg-3">Set by you:</span>
       {fields.map((field) => (
         <span
           key={field}
-          className="rounded-sm border border-selection/40 bg-selection/10 px-1.5 py-0.5 text-step-10 font-medium text-selection"
+          className="inline-flex h-4 items-center rounded-xs bg-surface-2 px-[5px] text-2xs font-medium text-fg-2"
         >
           {labels[field] ?? field}
         </span>

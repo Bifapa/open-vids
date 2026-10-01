@@ -39,20 +39,27 @@
 //!
 //! ## What the webview is allowed to do
 //!
-//! Nothing beyond the web platform. There is no `withGlobalTauri`, and the
-//! capability in `capabilities/main.json` declares no `remote` block, so the
-//! `http://127.0.0.1` document — a remote origin as far as Tauri is concerned —
-//! is granted no IPC at all. Every file read, write, upload and delete already
-//! goes through the Studio HTTP API, which runs in the sidecar with full OS
-//! access, so the webview needs no filesystem, shell or process capability.
+//! Move its own window, nothing more. There is no `withGlobalTauri`; the
+//! capability in `capabilities/main.json` grants the loopback pages (remote
+//! origins as far as Tauri is concerned) only window dragging and the
+//! double-click zoom, for their `data-tauri-drag-region` titlebars under the
+//! overlay title bar. Every file read, write, upload and delete goes through
+//! the home or Studio HTTP API, which run with full OS access, so the webview
+//! needs no filesystem, shell or process capability.
 
+mod agent_proxy;
 mod create;
+mod drop_paths;
 mod home;
+mod home_api;
 mod home_auth;
 mod home_create;
 mod home_project;
 mod home_routes;
+mod intake;
+mod prefs;
 mod project;
+mod project_meta;
 mod recents;
 mod sidecar;
 mod structure;
@@ -163,8 +170,15 @@ fn register_dev_project(_projects_dir: &Path, _dir: &Path, _id: &str) -> std::io
 /// than a new request. Restarting is also what stops the previous process
 /// group's Chrome instances from lingering. The home server is untouched: it
 /// keeps serving the Projects page underneath for the way back.
-fn open_project(app: &tauri::AppHandle, dir: PathBuf) -> Result<String, String> {
+fn open_project(
+    app: &tauri::AppHandle,
+    dir: PathBuf,
+    workspace: Option<String>,
+) -> Result<String, String> {
     let project = structure::validate_structure(&dir).map_err(|e| e.to_string())?;
+    // Resolved before locking the state: the window lookup may need the
+    // main thread.
+    let theme = resolved_theme(app);
 
     let target = {
         let app_state = app.state::<Mutex<AppState>>();
@@ -186,8 +200,13 @@ fn open_project(app: &tauri::AppHandle, dir: PathBuf) -> Result<String, String> 
                 register_dev_project(&projects_dir, &project.dir, &project.id)
                     .map_err(|e| format!("could not register the project: {e}"))?;
                 state.studio_origin = Some(origin.clone());
-                let home = sidecar::urlencode(&state.home_origin);
-                format!("{origin}/?openvidsHome={home}#project/{}", project.id)
+                sidecar::studio_url(
+                    &origin,
+                    &project.id,
+                    &state.home_origin,
+                    theme,
+                    workspace.as_deref(),
+                )
             }
             Mode::Prod => {
                 let resource_root = resource_root(app)?;
@@ -202,7 +221,13 @@ fn open_project(app: &tauri::AppHandle, dir: PathBuf) -> Result<String, String> 
                     std::sync::Arc::new(|line| eprintln!("{line}"));
                 let started = sidecar::start(&launcher, &bun, &cli, &project.dir, logger)
                     .map_err(|e| e.to_string())?;
-                let url = started.project_url(&project.id, &state.home_origin);
+                let url = sidecar::studio_url(
+                    &started.origin(),
+                    &project.id,
+                    &state.home_origin,
+                    theme,
+                    workspace.as_deref(),
+                );
                 state.studio_origin = Some(started.origin());
                 state.studio = Some(started);
                 url
@@ -364,7 +389,16 @@ pub fn run() {
         .menu(build_menu)
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "open_project" {
-                pick_and_open(app);
+                // On the Projects page, ⌘O is the page's own Open Project…
+                // (its invalid-folder sheet and opening state); the menu
+                // accelerator consumes the key, so hand it over by script.
+                if window_is_on_home(app) {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.eval("window.ovHome && window.ovHome.openProject()");
+                    }
+                } else {
+                    pick_and_open(app);
+                }
             }
             if event.id().as_ref() == "show_home" {
                 show_home(app);
@@ -398,9 +432,33 @@ pub fn run() {
                     if staged.join("blank").join("index.html").is_file() {
                         home_create::set_staged_templates(staged);
                     }
+                    agent_proxy::set_production_launch(
+                        root.join("bun"),
+                        root.join("agent-runtime").join("main.ts"),
+                    );
                 }
             }
             home.set_opener(home_opener(handle.clone()));
+            let theme_handle = handle.clone();
+            home.set_prefs_listener(std::sync::Arc::new(move |prefs| {
+                if let Some(window) = theme_handle.get_webview_window("main") {
+                    let _ = window.set_theme(window_theme(prefs));
+                }
+            }));
+            let preferences = prefs::load(&prefs::prefs_path());
+            // What opens at launch: a project named on the command line, else
+            // the last project when Settings › On launch says so. Marked as
+            // opening before the window loads, so the page skips its intro.
+            let launch_project = requested_project().or_else(|| {
+                prefs::reopen_last(&preferences)
+                    .then(|| home.last_project())
+                    .flatten()
+            });
+            if launch_project.is_some() {
+                home.set_open_phase(OpenPhase::Opening {
+                    label: String::new(),
+                });
+            }
 
             let mut state = if dev {
                 let origin = app
@@ -443,10 +501,25 @@ pub fn run() {
                 .parse()
                 .map_err(|e| format!("invalid window URL {initial_url:?}: {e}"))?;
             let home_origin = initial_url.clone();
-            WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url))
+            let mut window = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url))
                 .title("OpenVids")
                 .inner_size(1600.0, 1000.0)
                 .min_inner_size(1100.0, 700.0)
+                .theme(window_theme(&preferences));
+            // Overlay titlebar (contract 8): the traffic lights float over the
+            // pages' own 52 px titlebar at its 20 px inset, vertically centred
+            // (AppKit offsets the y inset by its own title-bar metrics: 28
+            // puts the 12 px lights at y = 20, measured in the running window).
+            // Pages mark drag areas with `data-tauri-drag-region`; the
+            // capability grants only window dragging (and double-click zoom).
+            #[cfg(target_os = "macos")]
+            {
+                window = window
+                    .title_bar_style(tauri::TitleBarStyle::Overlay)
+                    .hidden_title(true)
+                    .traffic_light_position(tauri::LogicalPosition::new(20.0, 28.0));
+            }
+            window
                 // Tauri otherwise swallows OS file drops and re-emits them as
                 // its own drag-drop event. Studio imports assets through the
                 // browser's own HTML5 drop (`e.dataTransfer.files` in
@@ -475,8 +548,8 @@ pub fn run() {
                 })
                 .build()?;
 
-            if let Some(dir) = requested_project() {
-                open_project_async(&handle, dir);
+            if let Some(dir) = launch_project {
+                open_project_async(&handle, dir, None);
             }
             Ok(())
         })
@@ -497,6 +570,7 @@ pub fn run() {
                         state.studio = None;
                     }
                 }
+                agent_proxy::shutdown();
             }
         });
 }
@@ -506,7 +580,7 @@ pub fn run() {
 /// runs on a blocking worker rather than the async runtime's event loop.
 /// The home page's loading overlay polls `/api/open-state` while this runs;
 /// failures there surface as an inline toast, not a stuck spinner.
-fn open_project_async(app: &tauri::AppHandle, dir: PathBuf) {
+fn open_project_async(app: &tauri::AppHandle, dir: PathBuf, workspace: Option<String>) {
     let handle = app.clone();
     // Mark the phase before the blocking work starts so the home page —
     // which the window still shows — can report "opening" immediately.
@@ -524,7 +598,7 @@ fn open_project_async(app: &tauri::AppHandle, dir: PathBuf) {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        match open_project(&handle, dir) {
+        match open_project(&handle, dir, workspace) {
             Ok(url) => log_line(&format!("opened {url}")),
             Err(err) => {
                 log_line(&format!("could not open the project: {err}"));
@@ -541,8 +615,46 @@ fn open_project_async(app: &tauri::AppHandle, dir: PathBuf) {
     });
 }
 
-fn home_opener(app: tauri::AppHandle) -> std::sync::Arc<dyn Fn(PathBuf) + Send + Sync> {
-    std::sync::Arc::new(move |dir| open_project_async(&app, dir))
+fn home_opener(app: tauri::AppHandle) -> home_routes::Opener {
+    std::sync::Arc::new(move |dir, workspace| open_project_async(&app, dir, workspace))
+}
+
+/// The native window theme for the preferences: fixed for Dark / Light,
+/// following macOS for Match system.
+fn window_theme(preferences: &serde_json::Value) -> Option<tauri::Theme> {
+    match prefs::theme(preferences) {
+        "dark" => Some(tauri::Theme::Dark),
+        "light" => Some(tauri::Theme::Light),
+        _ => None,
+    }
+}
+
+/// `dark` or `light` for Studio's first paint (`openvidsTheme`): the
+/// preference, or for Match system the appearance macOS reports now.
+fn resolved_theme(app: &tauri::AppHandle) -> &'static str {
+    match prefs::theme(&prefs::load(&prefs::prefs_path())) {
+        "light" => "light",
+        "dark" => "dark",
+        _ => match app.get_webview_window("main").map(|w| w.theme()) {
+            Some(Ok(tauri::Theme::Light)) => "light",
+            _ => "dark",
+        },
+    }
+}
+
+/// Whether the main window currently shows the Projects page.
+fn window_is_on_home(app: &tauri::AppHandle) -> bool {
+    let home = {
+        let app_state = app.state::<Mutex<AppState>>();
+        let Ok(state) = app_state.lock() else {
+            return false;
+        };
+        state.home_origin.clone()
+    };
+    app.get_webview_window("main")
+        .and_then(|w| w.url().ok())
+        .map(|url| normalize_origin(&url) == home)
+        .unwrap_or(false)
 }
 
 /// Back to the Projects home screen: navigate the window to the home server
@@ -637,10 +749,10 @@ fn pick_and_open(app: &tauri::AppHandle) {
     let handle = app.clone();
     std::thread::spawn(move || {
         let picked = rfd::FileDialog::new()
-            .set_title("Open HyperFrames Project Folder")
+            .set_title("Open Project")
             .pick_folder();
         if let Some(dir) = picked {
-            open_project_async(&handle, dir);
+            open_project_async(&handle, dir, None);
         }
     });
 }
@@ -650,13 +762,16 @@ mod back_navigation_tests {
     use super::*;
 
     #[test]
-    fn studio_url_carries_the_home_origin_before_the_hash() {
+    fn studio_url_carries_home_theme_and_workspace_before_the_hash() {
         let home = "http://127.0.0.1:57035";
         let studio_origin = "http://127.0.0.1:5210";
-        let built = crate::sidecar::project_url_for_test(studio_origin, "my-video", home);
         assert_eq!(
-            built,
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035#project/my-video"
+            sidecar::studio_url(studio_origin, "my video", home, "dark", None),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark#project/my%20video"
+        );
+        assert_eq!(
+            sidecar::studio_url(studio_origin, "v", home, "light", Some("media")),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=light&openvidsWorkspace=media#project/v"
         );
     }
 

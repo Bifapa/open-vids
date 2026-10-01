@@ -232,38 +232,34 @@ export const FileTree = memo(function FileTree({
   );
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* FILES header with action buttons */}
+    <div className="flex h-full min-h-0 flex-col bg-bg-0">
+      {/* Files header with the new-file / new-folder actions (prototype `.ft-head`) */}
       {hasFileOps && (
-        <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-neutral-800/50 shrink-0">
-          <span className="text-[10px] font-semibold tracking-wider text-neutral-600 uppercase">
-            Files
-          </span>
-          <div className="flex items-center gap-0.5">
-            <button
-              onClick={() => handleNewFile("")}
-              className="p-1.5 rounded-sm hover:bg-neutral-800 text-neutral-600 hover:text-neutral-400 active:scale-[0.97] transition-colors"
-              title="New File"
-              aria-label="New File"
-            >
-              <Plus size={12} weight="bold" />
-            </button>
-            <button
-              onClick={() => handleNewFolder("")}
-              className="p-1.5 rounded-sm hover:bg-neutral-800 text-neutral-600 hover:text-neutral-400 active:scale-[0.97] transition-colors"
-              title="New Folder"
-              aria-label="New Folder"
-            >
-              <FolderSimplePlus size={12} weight="duotone" />
-            </button>
-          </div>
+        <div className="flex h-list-head shrink-0 items-center gap-1 pl-3 pr-1.5 text-xs font-semibold text-fg-2">
+          <span className="min-w-0 flex-1">Files</span>
+          <button
+            onClick={() => handleNewFile("")}
+            className="flex size-ctl-xs items-center justify-center rounded-sm text-fg-3 transition-colors duration-hover hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+            title="New File"
+            aria-label="New File"
+          >
+            <Plus size={12} weight="bold" />
+          </button>
+          <button
+            onClick={() => handleNewFolder("")}
+            className="flex size-ctl-xs items-center justify-center rounded-sm text-fg-3 transition-colors duration-hover hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+            title="New Folder"
+            aria-label="New Folder"
+          >
+            <FolderSimplePlus size={12} />
+          </button>
         </div>
       )}
 
       <div
-        className={`flex-1 overflow-y-auto py-1 transition-colors ${
+        className={`flex-1 overflow-y-auto px-1.5 pb-1 transition-colors ${
           dragOverFolder === ""
-            ? "bg-[#3CE6AC]/5 outline-solid outline-1 outline-[#3CE6AC]/30 -outline-offset-1"
+            ? "bg-accent/5 outline-solid outline-1 -outline-offset-1 outline-accent/40"
             : ""
         }`}
         onContextMenu={handleRootContextMenu}
@@ -292,7 +288,7 @@ export const FileTree = memo(function FileTree({
             />
           )}
         {children.length === 0 && !inlineInput && (
-          <div className="px-3 py-4 text-center text-[11px] text-neutral-600">
+          <div className="px-3 py-4 text-center text-xs text-fg-3">
             No files yet{hasFileOps ? " — use + above to create one" : ""}.
           </div>
         )}

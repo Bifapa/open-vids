@@ -1,6 +1,7 @@
-import { Plus, Trash } from "@phosphor-icons/react";
+import { LockSimple, LockSimpleOpen, Plus, Trash } from "@phosphor-icons/react";
 import {
   MISSING_MEDIA_KINDS,
+  storyOrder,
   type AssetKind,
   type MotionNode,
   type StoryGraph,
@@ -17,19 +18,17 @@ import {
 import {
   EditedChips,
   Field,
+  HintNote,
+  InspectorHead,
   Section,
   TextAreaField,
   TimeField,
   ToggleRow,
 } from "./inspectorFields";
 import type { StorySelection } from "./storyStore";
-import { fileName, formatDuration } from "./storyFormat";
-import {
-  FIELD_LABELS,
-  MISSING_KIND_LABELS,
-  PLACEMENT_LABELS,
-  STORY_KIND_STYLES,
-} from "./storyKinds";
+import { fileName } from "./storyFormat";
+import { FIELD_LABELS, MISSING_KIND_LABELS, STORY_KIND_STYLES, materialRole } from "./storyKinds";
+import { UsedInSlots } from "./StorySlots";
 import type { StoryLibrary } from "./useStoryLibrary";
 import { MissingResearchSection, ResolutionSection } from "./StoryProvenance";
 
@@ -39,6 +38,8 @@ export interface MaterialInspectorProps {
   library: StoryLibrary;
   readOnly: boolean;
   onChange: (next: StoryMaterialNode) => void;
+  /** Deletes attachments (a "Used in" row's detach). */
+  onRemove: (ids: string[]) => void;
   onSelect: (selection: StorySelection) => void;
 }
 
@@ -53,50 +54,6 @@ function assetOptions(
   const paths = library.assets.filter((asset) => asset.kind === kind).map((asset) => asset.path);
   if (current && !paths.includes(current)) paths.unshift(current);
   return paths.map((path) => ({ value: path, label: fileName(path) }));
-}
-
-function UsedIn({
-  graph,
-  nodeId,
-  onSelect,
-}: {
-  graph: StoryGraph;
-  nodeId: string;
-  onSelect: (selection: StorySelection) => void;
-}) {
-  const rows = graph.attachments.flatMap((attachment) => {
-    if (attachment.node !== nodeId) return [];
-    const chapter = graph.nodes.find((node) => node.id === attachment.chapter);
-    return chapter ? [{ attachment, chapter }] : [];
-  });
-  return (
-    <Section title="Used in">
-      {rows.length === 0 ? (
-        <p className="text-step-10 text-text-4">
-          Not attached yet: drag from the card’s top handle to a chapter.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {rows.map(({ attachment, chapter }) => (
-            <li key={attachment.id}>
-              <button
-                type="button"
-                onClick={() => onSelect({ nodes: [], edges: [attachment.id] })}
-                className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-step-11 text-text-1 outline-hidden hover:bg-hover focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
-              >
-                <span className="min-w-0 flex-1 truncate">{chapter.title}</span>
-                <span className="shrink-0 text-step-10 text-text-3">
-                  {attachment.offset !== null
-                    ? `at ${formatDuration(attachment.offset)}`
-                    : PLACEMENT_LABELS[attachment.placement]}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Section>
-  );
 }
 
 function InputsEditor({
@@ -119,7 +76,7 @@ function InputsEditor({
     <div className="flex flex-col gap-1">
       {entries.map(([key, value], index) => (
         <div key={key} className="flex items-center gap-1">
-          <div className="w-20 shrink-0">
+          <div className="w-16 shrink-0">
             <Input
               aria-label={`Input ${index + 1} name`}
               value={key}
@@ -167,7 +124,7 @@ function KindFields({
   library,
   readOnly,
   onChange,
-}: Omit<MaterialInspectorProps, "graph" | "onSelect">) {
+}: Omit<MaterialInspectorProps, "graph" | "onSelect" | "onRemove">) {
   const edited = new Set(node.userEdited);
   switch (node.kind) {
     case "video":
@@ -182,30 +139,28 @@ function KindFields({
               onCommit={(asset) => onChange({ ...node, asset, previewFrame: null })}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="In" edited={edited.has("sourceIn")}>
-              <TimeField
-                label="Source in"
-                value={node.sourceIn}
-                precise
-                disabled={readOnly}
-                validate={(time) => node.sourceOut === null || time < node.sourceOut}
-                onCommit={(time) => time !== null && onChange({ ...node, sourceIn: time })}
-              />
-            </Field>
-            <Field label="Out" edited={edited.has("sourceOut")}>
-              <TimeField
-                label="Source out"
-                value={node.sourceOut}
-                precise
-                optional
-                placeholder="End"
-                disabled={readOnly}
-                validate={(time) => time > node.sourceIn}
-                onCommit={(time) => onChange({ ...node, sourceOut: time })}
-              />
-            </Field>
-          </div>
+          <Field label="In" edited={edited.has("sourceIn")}>
+            <TimeField
+              label="Source in"
+              value={node.sourceIn}
+              precise
+              disabled={readOnly}
+              validate={(time) => node.sourceOut === null || time < node.sourceOut}
+              onCommit={(time) => time !== null && onChange({ ...node, sourceIn: time })}
+            />
+          </Field>
+          <Field label="Out" edited={edited.has("sourceOut")}>
+            <TimeField
+              label="Source out"
+              value={node.sourceOut}
+              precise
+              optional
+              placeholder="End"
+              disabled={readOnly}
+              validate={(time) => time > node.sourceIn}
+              onCommit={(time) => onChange({ ...node, sourceOut: time })}
+            />
+          </Field>
         </>
       );
     case "picture":
@@ -235,36 +190,34 @@ function KindFields({
               onCommit={(asset) => onChange({ ...node, asset: asset === NO_TRACK ? null : asset })}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Volume" edited={edited.has("volume")}>
-              <NumberField
-                label="Volume"
-                value={Math.round(node.volume * 100)}
-                unit="%"
-                min={0}
-                max={100}
-                step={5}
-                disabled={readOnly}
-                onCommit={(percent) =>
-                  onChange({ ...node, volume: Math.min(1, Math.max(0, percent / 100)) })
+          <Field label="Volume" edited={edited.has("volume")}>
+            <NumberField
+              label="Volume"
+              value={Math.round(node.volume * 100)}
+              unit="%"
+              min={0}
+              max={100}
+              step={5}
+              disabled={readOnly}
+              onCommit={(percent) =>
+                onChange({ ...node, volume: Math.min(1, Math.max(0, percent / 100)) })
+              }
+            />
+          </Field>
+          <Field label="BPM" edited={edited.has("bpm")}>
+            <Input
+              aria-label="Tempo"
+              value={node.bpm === null ? "" : String(node.bpm)}
+              placeholder="–"
+              disabled={readOnly}
+              onCommit={(text) => {
+                const bpm = text.trim() === "" ? null : Number(text);
+                if (bpm === null || (Number.isFinite(bpm) && bpm >= 20 && bpm <= 400)) {
+                  onChange({ ...node, bpm });
                 }
-              />
-            </Field>
-            <Field label="BPM" edited={edited.has("bpm")}>
-              <Input
-                aria-label="Tempo"
-                value={node.bpm === null ? "" : String(node.bpm)}
-                placeholder="–"
-                disabled={readOnly}
-                onCommit={(text) => {
-                  const bpm = text.trim() === "" ? null : Number(text);
-                  if (bpm === null || (Number.isFinite(bpm) && bpm >= 20 && bpm <= 400)) {
-                    onChange({ ...node, bpm });
-                  }
-                }}
-              />
-            </Field>
-          </div>
+              }}
+            />
+          </Field>
         </>
       );
     case "motion": {
@@ -303,7 +256,7 @@ function KindFields({
               onCommit={(duration) => onChange({ ...node, duration })}
             />
           </Field>
-          <Field label="Inputs" edited={edited.has("inputs")}>
+          <Field label="Inputs" edited={edited.has("inputs")} top>
             <InputsEditor
               node={node}
               disabled={readOnly}
@@ -331,7 +284,7 @@ function KindFields({
               }}
             />
           </Field>
-          <Field label="What is needed" edited={edited.has("need")}>
+          <Field label="Needed" edited={edited.has("need")} top>
             <TextAreaField
               label="What is needed"
               value={node.need}
@@ -356,19 +309,29 @@ function KindFields({
 }
 
 export function MaterialInspector(props: MaterialInspectorProps) {
-  const { node, graph, readOnly, onChange, onSelect } = props;
+  const { node, graph, readOnly, onChange, onSelect, onRemove } = props;
   const style = STORY_KIND_STYLES[node.kind];
   const edited = new Set(node.userEdited);
+  const order = storyOrder(graph).chapters;
   return (
     <>
-      <Section title={style.label}>
-        <ToggleRow
-          label="Locked"
-          description="The agent will not change it, or attach and detach it."
-          checked={node.locked}
-          disabled={readOnly}
-          onCommit={(locked) => onChange({ ...node, locked })}
+      <InspectorHead
+        icon={style.icon}
+        chip={style.chip}
+        name={node.title}
+        sub={`${style.label} · ${materialRole(node)}`}
+      />
+      <Section title={node.kind === "motion" ? "Use in chapter" : "Used in"}>
+        <UsedInSlots
+          graph={graph}
+          order={order}
+          nodeId={node.id}
+          readOnly={readOnly}
+          onSelect={onSelect}
+          onDetach={(attachment) => onRemove([attachment])}
         />
+      </Section>
+      <Section title={node.kind === "missing" ? "Needed" : "Properties"}>
         <EditedChips fields={node.userEdited} labels={FIELD_LABELS} />
         <Field label="Title" edited={edited.has("title")}>
           <Input
@@ -380,7 +343,7 @@ export function MaterialInspector(props: MaterialInspectorProps) {
         </Field>
         <KindFields node={node} library={props.library} readOnly={readOnly} onChange={onChange} />
         {node.kind !== "missing" && (
-          <Field label="Usage" edited={edited.has("usageIntent")}>
+          <Field label="Usage" edited={edited.has("usageIntent")} top>
             <TextAreaField
               label="Usage intent"
               value={node.usageIntent}
@@ -397,7 +360,19 @@ export function MaterialInspector(props: MaterialInspectorProps) {
       ) : (
         <ResolutionSection node={node} />
       )}
-      <UsedIn graph={graph} nodeId={node.id} onSelect={onSelect} />
+      <Section title="Lock">
+        <ToggleRow
+          label="Locked"
+          checked={node.locked}
+          disabled={readOnly}
+          onCommit={(locked) => onChange({ ...node, locked })}
+        />
+        <HintNote icon={node.locked ? LockSimple : LockSimpleOpen}>
+          {node.locked
+            ? "The agent will not change it, or attach and detach it."
+            : "Lock it to keep the agent from changing, attaching or detaching it."}
+        </HintNote>
+      </Section>
     </>
   );
 }

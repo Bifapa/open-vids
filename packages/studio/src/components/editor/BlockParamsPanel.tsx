@@ -3,6 +3,18 @@ import type { BlockParam } from "@hyperframes/core/registry";
 import { useFileManagerContextOptional } from "../../contexts/FileManagerContext";
 import { useStudioPlaybackContext } from "../../contexts/StudioContext";
 import { serializeStudioFileMutation } from "../../utils/studioFileMutationCoordinator";
+import { Check } from "../../icons/SystemIcons";
+import { fieldBase, fieldSizes } from "../ui/Input";
+import {
+  INSP_MINI_BUTTON,
+  INSP_ROW,
+  INSP_ROW_LABEL,
+  INSP_SELECT,
+  rangeFillStyle,
+} from "./inspectorStyles";
+
+/** A 24px inspector field. */
+const BLOCK_FIELD = `${fieldBase} ${fieldSizes.sm} w-full min-w-0 text-fg`;
 
 interface BlockParamsPanelProps {
   blockName: string;
@@ -131,18 +143,18 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
   useEffect(() => () => flushRef.current(), []);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
-        <div className="text-[11px] font-semibold text-neutral-200 truncate">{blockTitle}</div>
+    <div className="flex h-full flex-col bg-bg-0">
+      <div className="flex h-[30px] shrink-0 items-center justify-between gap-2 border-b border-border-subtle pr-1.5 pl-3">
+        <div className="truncate text-sm font-semibold text-fg">{blockTitle}</div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close block parameters"
-          className="p-1.5 -m-1 text-neutral-500 hover:text-neutral-300 active:scale-[0.97] transition-colors"
+          className={INSP_MINI_BUTTON}
         >
           <svg
-            width="14"
-            height="14"
+            width="12"
+            height="12"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -156,15 +168,30 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        <div className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
-          Parameters
+      <div className="grid flex-1 content-start gap-1.5 overflow-y-auto p-3">
+        <div className="flex min-w-0 items-baseline justify-between gap-1.5 text-xs font-semibold text-fg-2">
+          Block Parameters
+          {commitState.tone === "saving" && (
+            <span className="font-normal text-fg-3" role="status">
+              Saving…
+            </span>
+          )}
+          {commitState.tone === "saved" && (
+            <span
+              className="inline-flex min-w-0 items-center gap-1 truncate font-normal text-fg-3"
+              role="status"
+              title={`Saved to ${compositionPath}`}
+            >
+              <Check size={10} className="shrink-0 text-success" aria-hidden="true" />
+              Saved
+            </span>
+          )}
         </div>
         {params.length === 0 && (
-          <div className="text-[10px] text-neutral-500">This block has no editable parameters.</div>
+          <div className="text-sm text-fg-3">This block has no editable parameters.</div>
         )}
         {!fileManager && params.length > 0 && (
-          <div className="text-[10px] text-amber-400/90">
+          <div className="rounded-sm border border-warning/35 bg-warning-soft px-2 py-1.5 text-xs text-fg-2">
             Block params can't be edited here — no project file access.
           </div>
         )}
@@ -177,18 +204,8 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
             onChange={(v) => handleChange(param.key, v)}
           />
         ))}
-        {commitState.tone === "saving" && (
-          <div className="text-[10px] text-neutral-500" role="status">
-            Saving…
-          </div>
-        )}
-        {commitState.tone === "saved" && (
-          <div className="text-[10px] text-emerald-500/90" role="status">
-            Saved to {compositionPath}
-          </div>
-        )}
         {commitState.tone === "error" && (
-          <div className="text-[10px] text-red-400" role="alert">
+          <div className="text-xs text-error" role="alert">
             {commitState.message}
           </div>
         )}
@@ -209,18 +226,18 @@ function ParamControl({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="space-y-1">
-      <label className="text-[10px] font-medium text-neutral-400">{param.label}</label>
+    <div className={INSP_ROW}>
+      <label className={INSP_ROW_LABEL}>{param.label}</label>
 
       {param.type === "color" && (
-        <div className="flex items-center gap-2">
+        <div className="grid min-w-0 grid-cols-[24px_minmax(0,1fr)] items-center gap-1.5">
           <input
             type="color"
             value={value}
             disabled={disabled}
             aria-label={`${param.label} color`}
             onChange={(e) => onChange(e.target.value)}
-            className="w-7 h-7 rounded-sm border border-neutral-700 bg-transparent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            className="size-6 cursor-pointer rounded-sm border border-border bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-50"
           />
           <input
             type="text"
@@ -228,13 +245,13 @@ function ParamControl({
             disabled={disabled}
             aria-label={`${param.label} value`}
             onChange={(e) => onChange(e.target.value)}
-            className="flex-1 bg-neutral-900 border border-neutral-800 rounded-sm px-2 py-1 text-[10px] text-neutral-200 font-mono focus:outline-hidden focus:border-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className={`${BLOCK_FIELD} font-mono text-num`}
           />
         </div>
       )}
 
       {param.type === "number" && (
-        <div className="flex items-center gap-2">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_56px] items-center gap-1.5">
           <input
             type="range"
             min={param.min ?? 0}
@@ -244,9 +261,12 @@ function ParamControl({
             disabled={disabled}
             aria-label={param.label}
             onChange={(e) => onChange(e.target.value)}
-            className="flex-1 disabled:cursor-not-allowed disabled:opacity-50"
+            className="hf-insp-rng"
+            style={rangeFillStyle(Number(value), param.min ?? 0, param.max ?? 100)}
           />
-          <span className="text-[10px] text-neutral-400 w-8 text-right tabular-nums">{value}</span>
+          <span className="flex h-[22px] items-center justify-end rounded-sm border border-border bg-surface-1 px-1.5 font-mono text-num tabular-nums text-fg">
+            {value}
+          </span>
         </div>
       )}
 
@@ -257,7 +277,7 @@ function ParamControl({
           disabled={disabled}
           aria-label={param.label}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-neutral-900 border border-neutral-800 rounded-sm px-2 py-1 text-[10px] text-neutral-200 focus:outline-hidden focus:border-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className={`${BLOCK_FIELD} text-sm`}
         />
       )}
 
@@ -267,7 +287,7 @@ function ParamControl({
           disabled={disabled}
           aria-label={param.label}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-neutral-900 border border-neutral-800 rounded-sm px-2 py-1 text-[10px] text-neutral-200 focus:outline-hidden focus:border-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className={INSP_SELECT}
         >
           {param.options.map((opt) => (
             <option key={opt.value} value={opt.value}>

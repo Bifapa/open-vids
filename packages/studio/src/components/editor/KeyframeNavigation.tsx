@@ -86,7 +86,7 @@ function ArrowLeft({ disabled }: { disabled: boolean }) {
     >
       <path
         d="M5 1L1 5L5 9"
-        stroke="#a3a3a3"
+        stroke="currentColor"
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -106,7 +106,7 @@ function ArrowRight({ disabled }: { disabled: boolean }) {
     >
       <path
         d="M1 1L5 5L1 9"
-        stroke="#a3a3a3"
+        stroke="currentColor"
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -171,14 +171,17 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
     // own spacing/inline exception: centred 24px targets here would overlap each
     // other AND the diamond, and one control swallowing its neighbour's clicks is
     // a worse 2.5.8 failure than a small target. Do not "fix" these to 24.
-    <div className="flex h-5 items-center gap-0.5">
+    <div
+      data-kf-state={diamondState === "active" ? "on" : diamondState}
+      className="group/kfg flex h-ctl-sm items-center gap-0.5 text-fg-3"
+    >
       <button
         type="button"
         disabled={!prevKf}
         onClick={() => prevKf && onSeek(prevKf.percentage)}
         title="Previous keyframe"
         aria-label={`Previous ${property} keyframe`}
-        className="relative flex h-5 w-3 items-center justify-center disabled:cursor-default before:absolute before:-inset-1.5 before:content-['']"
+        className="relative flex h-5 w-3 items-center justify-center rounded-xs hover:text-fg disabled:cursor-default group-data-[kf-state=ghost]/kfg:invisible before:absolute before:-inset-1.5 before:content-['']"
       >
         <ArrowLeft disabled={!prevKf} />
       </button>
@@ -200,7 +203,7 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
         onClick={() => nextKf && onSeek(nextKf.percentage)}
         title="Next keyframe"
         aria-label={`Next ${property} keyframe`}
-        className="relative flex h-5 w-3 items-center justify-center disabled:cursor-default before:absolute before:-inset-1.5 before:content-['']"
+        className="relative flex h-5 w-3 items-center justify-center rounded-xs hover:text-fg disabled:cursor-default group-data-[kf-state=ghost]/kfg:invisible before:absolute before:-inset-1.5 before:content-['']"
       >
         <ArrowRight disabled={!nextKf} />
       </button>

@@ -7,6 +7,8 @@
  * thing to read.
  */
 
+import { CaretDown } from "@phosphor-icons/react";
+import { INSP_FOCUS_INSET } from "./inspectorStyles";
 import {
   applyAudioFxProfile,
   audioFxProfileStrength,
@@ -54,7 +56,7 @@ function FxNodeDerivedKnob({
   if (!derived) return null;
   return (
     <>
-      <div className="hf-fx-params space-y-0.5 border-t border-panel-border-input px-1.5 py-1.5">
+      <div className="hf-fx-params space-y-0.5 border-t border-border px-1.5 py-1.5">
         <FxParamRow
           param={derived}
           value={audioFxProfileStrength(node.type, params)}
@@ -66,7 +68,7 @@ function FxNodeDerivedKnob({
         />
       </div>
       {profile ? (
-        <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-[9px] text-panel-text-2">
+        <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-2xs text-fg-2">
           <span className="truncate">{profile.ends.low}</span>
           <span className="truncate text-right">{profile.ends.high}</span>
         </p>
@@ -123,7 +125,7 @@ function FxNodePrimaryKnob({
           where the control is; this tells them which way to move it, which is
           the question they actually have. */}
       {copy?.primaryEnds ? (
-        <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-[9px] text-panel-text-2">
+        <p className="hf-fx-node-ends flex justify-between gap-2 px-2 pb-1.5 text-2xs text-fg-3">
           <span className="truncate">{copy.primaryEnds.low}</span>
           <span className="truncate text-right">{copy.primaryEnds.high}</span>
         </p>
@@ -187,7 +189,7 @@ export function FxNodeOpenBody({
     <>
       {/* What it is for, before what it is made of. */}
       {copy?.does ? (
-        <p className="hf-fx-node-does border-t border-panel-border-input px-1.5 py-1 text-[10px] text-panel-text-2">
+        <p className="hf-fx-node-does border-t border-border-subtle px-2 py-1.5 text-xs leading-[15px] text-fg-3">
           {copy.does}
         </p>
       ) : null}
@@ -227,16 +229,22 @@ export function FxNodeOpenBody({
       {oneKnob ? (
         <button
           type="button"
-          className="hf-fx-node-details flex w-full items-center gap-1 border-t border-panel-border-input px-1.5 py-1 text-left font-mono text-[9px] uppercase tracking-wide text-panel-text-2 hover:text-panel-text-0"
+          className={`hf-fx-node-details flex h-6 w-full items-center gap-1 border-t border-border-subtle px-2 text-left text-xs font-semibold text-fg-2 transition-colors hover:bg-surface-1 hover:text-fg ${INSP_FOCUS_INSET}`}
           aria-expanded={details}
           onClick={onToggleDetails}
         >
-          <span aria-hidden="true">{details ? "▾" : "▸"}</span>
-          Details — {registryDef.label}
+          <CaretDown
+            size={12}
+            aria-hidden="true"
+            className={`shrink-0 text-fg-3 transition-transform ${details ? "" : "-rotate-90"}`}
+          />
+          Details
+          <span className="min-w-0 truncate font-normal text-fg-3">{registryDef.label}</span>
         </button>
       ) : (
-        <p className="hf-fx-node-mechanism border-t border-panel-border-input px-1.5 pt-1 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
-          Details — {registryDef.label}
+        <p className="hf-fx-node-mechanism flex h-6 items-center gap-1 border-t border-border-subtle px-2 text-xs font-semibold text-fg-2">
+          Details
+          <span className="min-w-0 truncate font-normal text-fg-3">{registryDef.label}</span>
         </p>
       )}
       {details || !oneKnob ? (

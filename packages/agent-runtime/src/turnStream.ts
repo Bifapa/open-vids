@@ -51,6 +51,10 @@ export class TurnEventWriter {
   constructor(private readonly options: StreamOptions) {}
 
   accept(event: BackendEvent): void {
+    if (event.type === "tool.progress") {
+      this.progressTool(event.toolCallId, event.progress);
+      return;
+    }
     if (event.type === "text.delta" || event.type === "thinking.delta") {
       this.acceptDelta(event.type === "text.delta" ? "text" : "thinking", event.delta);
       return;
@@ -245,6 +249,15 @@ export class TurnEventWriter {
     this.publishActivity(group.activity);
   }
 
+  /** A labelled tool's own determinate progress (a render): published when the whole percent changes. */
+  private progressTool(toolCallId: string, progress: number): void {
+    const group = this.toolGroups.get(toolCallId);
+    if (!group || !group.closed || group.activity.status !== "running") return;
+    const percent = Math.max(0, Math.min(100, Math.round(progress)));
+    if (group.activity.progress === percent) return;
+    this.publishActivity({ ...group.activity, progress: percent });
+  }
+
   private endTool(toolCallId: string, ok: boolean): void {
     const group = this.toolGroups.get(toolCallId);
     if (!group) return;
@@ -267,7 +280,8 @@ export class TurnEventWriter {
   }
 
   private finishActivity(group: ActivityGroup, status: "done" | "failed"): void {
-    this.publishActivity({ ...group.activity, status, endedAt: this.options.now() });
+    const { progress: _progress, ...rest } = group.activity;
+    this.publishActivity({ ...rest, status, endedAt: this.options.now() });
   }
 
   private publishActivity(activity: Activity): void {

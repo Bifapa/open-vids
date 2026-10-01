@@ -1,44 +1,63 @@
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
-import { cn } from "../components/ui";
+import type { PanelId } from "../components/dock/panelRegistry";
+import { SegmentedControl } from "../components/ui";
+import { takeOpenvidsWorkspaceParam } from "../utils/openvidsHost";
 
-const WORKSPACES = [
-  { id: "edit", label: "Edit", panel: "preview" },
-  { id: "story", label: "Story", panel: "story" },
+export type Workspace = "media" | "story" | "edit";
+
+/** Each workspace is the centre panel it brings to the front; prototype order. */
+export const WORKSPACE_PANELS = {
+  media: "media",
+  story: "story",
+  edit: "preview",
+} as const satisfies Record<Workspace, PanelId>;
+
+const OPTIONS = [
+  { value: "media", label: "Media", title: "Media workspace" },
+  { value: "story", label: "Story", title: "Story workspace" },
+  { value: "edit", label: "Edit", title: "Edit workspace" },
 ] as const;
 
+export function isWorkspace(value: unknown): value is Workspace {
+  return value === "media" || value === "story" || value === "edit";
+}
+
 /**
- * Edit | Story in the Studio header: brings the preview or the Story canvas to the front of the centre dock.
- * Everything else (Chat, the library, the inspector) stays where it is.
+ * Opens the workspace the desktop asked for with `openvidsWorkspace` (a new project, a start from
+ * chat). Before the dock mounts the store keeps it as the pending activation.
  */
-export function WorkspaceSwitch() {
-  const storyShown = useDockLayoutStore((state) => state.visiblePanels.has("story"));
+export function applyBootWorkspace(): void {
+  const requested = takeOpenvidsWorkspaceParam();
+  if (isWorkspace(requested)) {
+    useDockLayoutStore.getState().activatePanel(WORKSPACE_PANELS[requested]);
+  }
+}
+
+/** The workspace whose centre panel is showing; Edit when neither Media nor Story is. */
+export function useCurrentWorkspace(): Workspace {
+  return useDockLayoutStore((state) =>
+    state.visiblePanels.has("media")
+      ? "media"
+      : state.visiblePanels.has("story")
+        ? "story"
+        : "edit",
+  );
+}
+
+/**
+ * Media | Story | Edit in the titlebar: brings the Media library, the Story canvas or the preview to
+ * the front of the centre dock. Everything else (Chat, the library, the inspector) stays where it is.
+ */
+export function WorkspaceSwitch({ className }: { className?: string }) {
+  const current = useCurrentWorkspace();
   const activatePanel = useDockLayoutStore((state) => state.activatePanel);
-  const current = storyShown ? "story" : "edit";
   return (
-    <div
-      role="radiogroup"
-      aria-label="Workspace"
-      className="flex h-ctl items-center gap-0.5 rounded-md border border-border-strong bg-bg-2 p-0.5"
-    >
-      {WORKSPACES.map((workspace) => {
-        const checked = workspace.id === current;
-        return (
-          <button
-            key={workspace.id}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            onClick={() => activatePanel(workspace.panel)}
-            className={cn(
-              "h-full rounded-sm px-2.5 text-step-11 font-medium outline-hidden transition-colors duration-hover",
-              "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
-              checked ? "bg-hover text-text-0" : "text-text-3 hover:text-text-1",
-            )}
-          >
-            {workspace.label}
-          </button>
-        );
-      })}
-    </div>
+    <SegmentedControl
+      label="Workspace"
+      value={current}
+      options={OPTIONS}
+      onChange={(next) => activatePanel(WORKSPACE_PANELS[next])}
+      className={className}
+    />
   );
 }

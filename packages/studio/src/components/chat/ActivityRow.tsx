@@ -1,115 +1,177 @@
-import { useId, useState } from "react";
-import {
-  CaretRight,
-  Check,
-  CircleNotch,
-  Eye,
-  Lightning,
-  MagnifyingGlass,
-  PencilSimple,
-  WarningCircle,
-  type Icon,
-} from "@phosphor-icons/react";
-import type { Activity, ActivityCategory } from "@hyperframes/agent-protocol";
+import { useId, useState, type ReactNode } from "react";
+import { Check, WarningCircle, X } from "@phosphor-icons/react";
+import type { Activity, AgentId } from "@hyperframes/agent-protocol";
 import { cn } from "../ui/cn";
+import { Meter, Spinner, StatusDot } from "../ui/Status";
+import { AgentMonogram, chatAgentName } from "./AgentMonogram";
+import { chatFocus } from "./chatStyles";
+import { formatElapsed } from "./relativeTime";
+import { useNow } from "./useNow";
 
-const CATEGORY_ICONS: Record<ActivityCategory, Icon> = {
-  inspect: Eye,
-  search: MagnifyingGlass,
-  edit: PencilSimple,
-  other: Lightning,
+/** How a Working-list row reads: running, done, failed, stopped before it ran, or waiting. */
+export type WorkState = "running" | "done" | "failed" | "skipped" | "pending";
+
+export const WORK_STATE_TEXT: Record<WorkState, string> = {
+  running: "in progress",
+  done: "done",
+  failed: "failed",
+  skipped: "stopped",
+  pending: "waiting",
 };
 
-const STATUS_TEXT: Record<Activity["status"], string> = {
-  running: "In progress",
-  done: "Done",
-  failed: "Failed",
-};
-
-function StatusGlyph({ status }: { status: Activity["status"] }) {
-  if (status === "running") {
-    return (
-      <CircleNotch
-        size={12}
-        weight="bold"
-        aria-hidden
-        className="animate-spin text-text-3 motion-reduce:animate-none"
-      />
-    );
+export function WorkGlyph({ state }: { state: WorkState }) {
+  switch (state) {
+    case "running":
+      return <Spinner size="sm" />;
+    case "done":
+      return <Check aria-hidden weight="bold" className="size-icon-sm text-success" />;
+    case "failed":
+      return <WarningCircle aria-hidden weight="fill" className="size-icon-sm text-error" />;
+    case "skipped":
+      return <X aria-hidden className="size-icon-sm" />;
+    case "pending":
+      return <StatusDot tone="off" />;
   }
-  if (status === "failed")
-    return <WarningCircle size={12} weight="fill" aria-hidden className="text-danger" />;
-  return <Check size={12} weight="bold" aria-hidden className="text-accent" />;
 }
 
-/** One product-level unit of work ("Reading 3 files"). Never shows a raw tool name. */
-export function ActivityRow({ activity }: { activity: Activity }) {
+/** The row grid every Working-list entry shares: monogram · "Agent — step" · glyph · elapsed. */
+export const workRowGrid = cn(
+  "grid w-full min-h-row-sm grid-cols-[16px_minmax(0,1fr)_auto_auto] items-center gap-x-2 gap-y-[5px] @max-[299px]/chat:gap-x-1.5",
+  "rounded-md border border-transparent px-1.5 py-[5px] text-left text-sm leading-4",
+);
+
+export const WORK_ROW_TONE: Record<WorkState, string> = {
+  running: "text-fg-2",
+  pending: "text-fg-2",
+  done: "text-fg-3",
+  failed: "text-fg-2",
+  skipped: "text-fg-disabled",
+};
+
+export const WORK_AGENT_TONE: Record<WorkState, string> = {
+  running: "text-fg",
+  pending: "text-fg",
+  done: "text-fg-2",
+  failed: "text-fg",
+  skipped: "text-fg-3",
+};
+
+/** The trailing half of a row: the state glyph and how long the work took (live while it runs). */
+export function WorkTail({
+  state,
+  startedAt,
+  endedAt,
+}: {
+  state: WorkState;
+  startedAt: number;
+  endedAt: number | undefined;
+}) {
+  const now = useNow(state === "running" && endedAt === undefined);
+  return (
+    <>
+      <span
+        aria-hidden
+        className={cn(
+          "inline-flex w-3.5 items-center justify-center",
+          state === "skipped" ? "text-fg-disabled" : "text-fg-3",
+        )}
+      >
+        <WorkGlyph state={state} />
+      </span>
+      <span className="min-w-[30px] text-right font-mono text-num leading-[14px] text-fg-3 tabular-nums">
+        {formatElapsed((endedAt ?? now) - startedAt)}
+      </span>
+    </>
+  );
+}
+
+/** "Editor — building rough cut": who is working, then what. */
+export function WorkText({
+  agent,
+  state,
+  children,
+}: {
+  agent: AgentId;
+  state: WorkState;
+  children: ReactNode;
+}) {
+  return (
+    <span className="min-w-0 [overflow-wrap:anywhere]">
+      <b className={cn("font-medium", WORK_AGENT_TONE[state])}>{chatAgentName(agent)}</b>
+      {" — "}
+      {children}
+    </span>
+  );
+}
+
+const ACTIVITY_STATE: Record<Activity["status"], WorkState> = {
+  running: "running",
+  done: "done",
+  failed: "failed",
+};
+
+/**
+ * One product-level unit of an agent's own work ("Reading 3 files") as a Working-list row; never a raw tool
+ * name. A render that reports progress gets a determinate meter. Targets open on request.
+ */
+export function ActivityRow({ activity, agent }: { activity: Activity; agent: AgentId }) {
   const [open, setOpen] = useState(false);
   const listId = useId();
-  const CategoryIcon = CATEGORY_ICONS[activity.category];
+  const state = ACTIVITY_STATE[activity.status];
+  const progress =
+    state === "running" && activity.progress !== undefined
+      ? Math.round(Math.min(100, Math.max(0, activity.progress)))
+      : null;
+  const phrase = progress === null ? activity.label : `${activity.label} · ${progress}%`;
   const expandable = activity.targets.length > 0;
 
   const body = (
     <>
-      <CategoryIcon size={13} aria-hidden className="shrink-0 text-text-3" />
-      <span className="min-w-0 flex-1 truncate text-left text-text-2">{activity.label}</span>
-      {activity.count > 1 && (
-        <span
-          aria-hidden
-          className="shrink-0 rounded-sm bg-surface px-1 text-step-10 tabular-nums text-text-3"
-        >
-          {activity.count}
-        </span>
-      )}
-      <StatusGlyph status={activity.status} />
-      <span className="sr-only">{STATUS_TEXT[activity.status]}</span>
-      {expandable && (
-        <CaretRight
-          size={10}
-          weight="bold"
-          aria-hidden
-          className={cn(
-            "shrink-0 text-text-4 transition-transform duration-expand",
-            open && "rotate-90",
-          )}
+      <AgentMonogram agent={agent} />
+      <WorkText agent={agent} state={state}>
+        {phrase}
+      </WorkText>
+      <span className="sr-only">, {WORK_STATE_TEXT[state]}</span>
+      <WorkTail state={state} startedAt={activity.startedAt} endedAt={activity.endedAt} />
+      {progress !== null && (
+        <Meter
+          value={progress / 100}
+          label={`${activity.label} ${progress}%`}
+          data-testid="activity-progress"
+          className="col-start-2 col-end-[-1]"
         />
       )}
     </>
   );
 
-  const rowClass = "flex w-full items-center gap-1.5 rounded-sm px-1.5 py-1 text-step-11";
   return (
-    <div className="rounded-md border border-hairline bg-bg-2">
+    <li data-activity-status={activity.status}>
       {expandable ? (
         <button
           type="button"
           aria-expanded={open}
           aria-controls={listId}
           onClick={() => setOpen((value) => !value)}
-          className={cn(
-            rowClass,
-            "cursor-pointer outline-hidden transition-colors duration-hover hover:bg-hover/50",
-            "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent",
-          )}
+          className={cn(workRowGrid, WORK_ROW_TONE[state], "hover:text-fg", chatFocus)}
         >
           {body}
         </button>
       ) : (
-        <div className={rowClass}>{body}</div>
+        <div className={cn(workRowGrid, WORK_ROW_TONE[state])}>{body}</div>
       )}
       {open && expandable && (
-        <ul id={listId} className="border-t border-hairline px-2 py-1">
+        <ul id={listId} className="mb-1 ml-[30px] grid gap-px">
           {activity.targets.map((target) => (
             <li
               key={target}
-              className="truncate py-0.5 font-mono text-step-10 text-text-3"
               title={target}
+              className="truncate font-mono text-num leading-[14px] text-fg-3"
             >
               {target}
             </li>
           ))}
         </ul>
       )}
-    </div>
+    </li>
   );
 }

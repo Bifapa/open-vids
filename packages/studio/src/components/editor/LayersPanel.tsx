@@ -393,25 +393,26 @@ export const LayersPanel = memo(function LayersPanel() {
 
   if (layers.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center bg-panel-bg px-6 text-center">
-        <Layers size={18} className="mb-3 text-panel-text-5" />
-        <p className="text-sm font-medium text-panel-text-1">No layers</p>
-        <p className="mt-1 text-xs text-neutral-500">Load a composition to see its element tree</p>
+      <div className="flex h-full flex-col items-center justify-center bg-bg-0 px-6 text-center">
+        <Layers size={18} className="mb-3 text-fg-disabled" />
+        <p className="text-sm font-medium text-fg">No layers</p>
+        <p className="mt-1 text-xs text-fg-3">Load a composition to see its element tree</p>
       </div>
     );
   }
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg"
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-bg-0 text-sm text-fg"
       onPointerLeave={() => handleLayerHover(null)}
     >
-      <div className="border-b border-panel-border px-3 py-2 text-[11px] text-panel-text-3">
-        {layers.length} layer{layers.length === 1 ? "" : "s"}
+      <div className="flex h-list-head shrink-0 items-center gap-1.5 border-b border-border-subtle px-3 text-xs">
+        <span className="font-semibold text-fg-2">Layers</span>
+        <span className="tabular-nums text-fg-3">{layers.length}</span>
       </div>
       <div
         ref={scrollContainerRef}
-        className="relative min-h-0 flex-1 overflow-y-auto py-1"
+        className="relative min-h-0 flex-1 overflow-y-auto px-1.5 py-1"
         onPointerMove={handleContainerPointerMove}
         onPointerUp={handleContainerPointerUp}
         onPointerCancel={handleContainerPointerUp}
@@ -420,7 +421,7 @@ export const LayersPanel = memo(function LayersPanel() {
           <button
             type="button"
             onClick={() => setActiveGroupElement(null)}
-            className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-[11px] text-panel-text-3 hover:bg-panel-hover/40 hover:text-panel-text-1"
+            className="flex h-row-sm w-full items-center gap-1.5 rounded-md px-2 text-left text-sm text-fg-3 hover:bg-surface-1 hover:text-fg"
           >
             <span aria-hidden="true">←</span>
             <span className="truncate">
@@ -452,12 +453,12 @@ export const LayersPanel = memo(function LayersPanel() {
                   handleSelectLayer(layer);
                 }
               }}
-              className={`group flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors ${
+              className={`group flex h-row-sm w-full items-center gap-1.5 rounded-md border pr-2 text-left outline-hidden transition-colors focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent ${
                 isDragged
-                  ? "opacity-40"
+                  ? "border-transparent opacity-40"
                   : selected
-                    ? "bg-panel-accent/14 text-panel-accent"
-                    : "text-panel-text-2 hover:bg-panel-hover/40 hover:text-panel-text-1"
+                    ? "border-accent-line bg-accent-soft text-fg"
+                    : "border-transparent text-fg hover:bg-surface-1"
               } ${dragKey ? "cursor-grabbing" : "cursor-pointer"}`}
               style={{ paddingLeft: 8 + layer.depth * 16 }}
               title={
@@ -474,7 +475,7 @@ export const LayersPanel = memo(function LayersPanel() {
                   onClick={(e) => toggleCollapse(layer.key, e)}
                   aria-expanded={!isCollapsed}
                   aria-label={isCollapsed ? "Expand children" : "Collapse children"}
-                  className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-neutral-500 hover:text-neutral-300 before:absolute before:-inset-1.5 before:content-['']"
+                  className="relative flex size-4 shrink-0 items-center justify-center rounded-xs text-fg-3 hover:text-fg before:absolute before:-inset-1.5 before:content-['']"
                 >
                   <svg
                     width="8"
@@ -490,19 +491,19 @@ export const LayersPanel = memo(function LayersPanel() {
                 <span className="w-4 shrink-0" />
               )}
               <span
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[8px] font-bold uppercase ${
-                  selected
-                    ? "bg-panel-accent/18 text-panel-accent"
-                    : isCompHost
-                      ? "bg-panel-accent/40 text-panel-accent"
-                      : "bg-panel-hover text-panel-text-4"
+                className={`flex h-[18px] min-w-[22px] shrink-0 items-center justify-center rounded-xs px-1 font-mono text-2xs font-semibold ${
+                  isCompHost
+                    ? "border border-k-motion-l bg-k-motion-h text-clip-ink"
+                    : selected
+                      ? "bg-surface-3 text-fg"
+                      : "bg-surface-2 text-fg-2"
                 }`}
               >
                 {getTagBadge(layer.tagName)}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[11px]">{layer.label}</span>
+              <span className="min-w-0 flex-1 truncate text-sm">{layer.label}</span>
               {hasChildren && (
-                <span className="text-[9px] tabular-nums text-panel-text-5">
+                <span className="font-mono text-num tabular-nums text-fg-3">
                   {layer.childCount}
                 </span>
               )}
@@ -511,7 +512,7 @@ export const LayersPanel = memo(function LayersPanel() {
         })}
         {insertionLineY != null && (
           <div
-            className="pointer-events-none absolute left-2 right-2 h-0.5 bg-studio-accent"
+            className="pointer-events-none absolute left-2 right-2 h-0.5 rounded-full bg-accent"
             style={{ top: insertionLineY }}
           />
         )}

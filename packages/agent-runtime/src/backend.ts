@@ -40,7 +40,9 @@ export type BackendEvent =
        */
       label?: string;
     }
-  | { type: "tool.end"; toolCallId: string; ok: boolean };
+  | { type: "tool.end"; toolCallId: string; ok: boolean }
+  /** A running host tool's determinate progress, 0–100 (a render). */
+  | { type: "tool.progress"; toolCallId: string; progress: number };
 
 /** An image a tool shows to the model (base64, without a data-URL prefix). */
 export interface HostToolImage {
@@ -67,7 +69,12 @@ export interface HostTool {
   description: string;
   /** JSON Schema of the arguments object. */
   parameters: Record<string, unknown>;
-  execute(args: unknown, signal: AbortSignal): Promise<HostToolResult>;
+  /** `progress` reports determinate progress (0–100) of a long call, such as a render; optional for the backend. */
+  execute(
+    args: unknown,
+    signal: AbortSignal,
+    progress?: (percent: number) => void,
+  ): Promise<HostToolResult>;
   /** The activity row this call shows, from its (untrusted) arguments; null or absent keeps the call hidden. */
   activity?(args: unknown): { category: BackendToolKind; label: string } | null;
 }
@@ -115,6 +122,11 @@ export interface OpenBackendSessionInput {
   hostTools: HostTool[];
   /** Explicit credentials for this session only (Jev's API-key mode); never shared with other sessions. */
   credentials?: { provider: string; apiKey: string };
+  /**
+   * Asked before each call of the harness's own project-file tools (by tool name, e.g. `edit`, `write`); a string
+   * refuses the call with that reason. The runtime uses it to keep Plan and Ask turns from changing files.
+   */
+  fileWriteRefusal?: (toolName: string) => string | null;
 }
 
 export interface AgentBackend {

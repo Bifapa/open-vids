@@ -303,14 +303,12 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   }
 
   const classicPanel = (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-bg-0 text-fg">
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-neutral-100">
-              {element.label}
-            </div>
-            <div className="mt-0.5 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
+            <div className="truncate text-md font-semibold text-fg">{element.label}</div>
+            <div className="mt-0.5 truncate text-sm text-fg-3">{sourceLabel}</div>
           </div>
           <InspectorHeaderActions
             element={element}
@@ -535,7 +533,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
               onLivePreviewProps={createGsapLivePreview(iframeRef)}
             />
             <div className="mt-3">
-              <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
+              <div className="mb-2 text-xs font-medium uppercase tracking-wider text-fg-disabled">
                 Stacking
               </div>
               <MetricField

@@ -12,8 +12,13 @@ import { usePreviewVariablesStore } from "../../hooks/previewVariablesStore";
  * without giving anything a second reader.
  */
 export const RenderQueuePanel = memo(function RenderQueuePanel() {
-  const { projectId, compositionDimensions, waitForPendingDomEditSaves, renderQueue } =
-    useStudioShellContext();
+  const {
+    projectId,
+    activeCompPath,
+    compositionDimensions,
+    waitForPendingDomEditSaves,
+    renderQueue,
+  } = useStudioShellContext();
 
   return (
     <RenderQueue
@@ -43,6 +48,10 @@ export const RenderQueuePanel = memo(function RenderQueuePanel() {
         });
       }}
       compositionDimensions={compositionDimensions}
+      // No active path means the root composition, which the server renders by default.
+      compositionLabel={(activeCompPath ?? "index.html")
+        .replace(/^.*\//, "")
+        .replace(/\.html$/, "")}
       isRendering={renderQueue.isRendering}
     />
   );

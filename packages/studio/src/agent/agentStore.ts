@@ -3,7 +3,6 @@ import {
   applyChatEvent,
   isNextEvent,
   isRecord,
-  isThinkingEffort,
   type ActiveTurnInfo,
   type AgentModelCatalog,
   type ChatEvent,
@@ -11,19 +10,18 @@ import {
   type ChatState,
   type ChatSummary,
   type EditorContext,
-  type ModelSelection,
   type ProjectEvent,
-  type RevertMode,
   type StoryAction,
   type StoryActionOptions,
-  type ThinkingEffort,
-  type TurnSummary,
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import { AgentApiError, isActiveTurn, type AgentClient } from "./agentClient";
-import { describeAgentError, describeAgentFailure } from "./agentErrors";
-import { findModel, runningTurn } from "./agentSelectors";
+import { describeAgentError } from "./agentErrors";
+import { runningTurn } from "./agentSelectors";
+import { draftCreation, mergeDraftChoices } from "./agentDraftChat";
+import { createAgentComposerSlice, type AgentComposerSlice } from "./agentComposerSlice";
 import { createAgentQaSlice, type AgentQaSlice } from "./agentQaSlice";
+import { createAgentRevertSlice, type AgentRevertSlice } from "./agentRevertSlice";
 import {
   createAgentSettingsSlice,
   type ActionResult,
@@ -38,7 +36,10 @@ import {
 import { storyTurnRequest } from "./storyTurn";
 
 export type AgentAvailability = "loading" | "ready" | "unavailable";
+/** `chat` with no `chatId` is the new-chat draft: the chat is created when its first message is sent. */
 export type AgentView = "history" | "chat";
+/** Where the draft's prompt is kept in `drafts` until the draft becomes a chat. */
+export const NEW_CHAT_DRAFT = "draft:new";
 export type PendingAction = "create" | "send" | "steer" | "abort" | null;
 
 /** A plain-language message the UI shows inline; dismissed by the user or the next action. */
@@ -46,14 +47,8 @@ export interface AgentNotice {
   message: string;
 }
 
-export interface RevertUi {
-  status: "pending" | "conflict" | "error";
-  /** Files that changed after the turn, for a conflict. */
-  files: string[];
-  message?: string;
-}
-
-export interface AgentState extends AgentSettingsSlice, AgentQaSlice {
+export interface AgentState
+  extends AgentSettingsSlice, AgentQaSlice, AgentRevertSlice, AgentComposerSlice {
   availability: AgentAvailability;
   unavailableMessage: string | null;
   chats: ChatSummary[];
@@ -71,30 +66,30 @@ export interface AgentState extends AgentSettingsSlice, AgentQaSlice {
   drafts: Record<string, string>;
   pending: PendingAction;
   notice: AgentNotice | null;
-  reverts: Record<string, RevertUi>;
 
   init(): Promise<void>;
   retry(): Promise<void>;
   refreshChats(): Promise<void>;
   openChat(chatId: string): Promise<void>;
+  /** Creates a chat and opens it (Story's Plan with AI). The chat panel's New chat is `startDraft`. */
   newChat(): Promise<void>;
+  /** Shows the new-chat draft; its first sent message creates the chat (prototype "New chat"). */
+  startDraft(): void;
   closeChat(): void;
   renameChat(title: string): Promise<void>;
-  setModel(model: ModelSelection | null): Promise<void>;
-  setThinking(thinking: ThinkingEffort | null): Promise<void>;
   setDraft(text: string): void;
-  /** The open chat's mode for its next turns (PATCH `activeMode`). */
-  setMode(mode: ChatMode): Promise<void>;
   /**
    * Runs Review with AI / Build Story / Rebuild affected as a story-mode turn of the open chat (a new chat when
    * none is open), with the user's choices for a build or rebuild.
    */
   runStoryAction(action: StoryAction, options?: StoryActionOptions): Promise<ActionResult>;
-  /** Starts a turn, or steers the live one when the chat is running. */
-  send(): Promise<void>;
+  /**
+   * Starts a turn, or steers the live one when the chat is running; from the draft, creates the chat first and
+   * opens it. `mode` is the new turn's mode (story while the Story workspace is shown); true once the server
+   * took the message.
+   */
+  send(options?: { mode?: ChatMode }): Promise<boolean>;
   abort(): Promise<void>;
-  revert(turnId: string, mode?: RevertMode): Promise<void>;
-  dismissRevert(turnId: string): void;
   dismissNotice(): void;
   dispose(): void;
 }
@@ -104,7 +99,7 @@ export interface AgentStoreDeps {
   openEventSource: EventSourceFactory;
   /** Read at send/steer time only. May throw or return null; the prompt then goes without context. */
   captureEditorContext?: () => EditorContext | null;
-  /** Called once a revert returned `{ok:true}`: the project files were rewritten, refresh the editor. */
+  /** Called once a revert or Undo revert returned `{ok:true}`: the project files were rewritten, refresh the editor. */
   onTurnReverted?: () => void | Promise<void>;
   /** Called when a turn of the open chat ends (completed, failed or aborted): pick up renders it produced. */
   onTurnEnded?: () => void;
@@ -138,16 +133,6 @@ function upsertChat(chats: ChatSummary[], chat: ChatSummary): ChatSummary[] {
   return [chat, ...rest].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-function replaceTurn(turns: TurnSummary[], turn: TurnSummary): TurnSummary[] {
-  return turns.map((existing) => (existing.id === turn.id ? turn : existing));
-}
-
-function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
-  const rest = { ...record };
-  delete rest[key];
-  return rest;
-}
-
 export function createAgentStore(deps: AgentStoreDeps): AgentStore {
   const { client, openEventSource } = deps;
   let projectStream: StreamHandle | null = null;
@@ -161,11 +146,6 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
     const closeChatStream = () => {
       chatStream?.close();
       chatStream = null;
-    };
-
-    const patchChat = (chatId: string, update: (state: ChatState) => ChatState) => {
-      const current = get().chat;
-      if (current?.chat.id === chatId) set({ chat: update(current) });
     };
 
     const applySummary = (summary: ChatSummary) => {
@@ -276,9 +256,16 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       fail(error, message);
     };
 
-    /** A config edit from a settings surface: the surface shows the failure itself, not the composer. */
+    /**
+     * A config edit from a settings surface (the surface shows a failure itself, not the composer). In the new-chat
+     * draft it only changes the draft's choices, which the chat is created with.
+     */
     const updateOpenChat = async (request: UpdateChatRequest): Promise<ActionResult> => {
       const chatId = get().chatId;
+      if (!chatId && get().view === "chat") {
+        set((state) => ({ draftChoices: mergeDraftChoices(state.draftChoices, request) }));
+        return { ok: true };
+      }
       if (!chatId) return { ok: false, message: "Open a chat first." };
       try {
         applySummary(await client.updateChat(chatId, request));
@@ -301,6 +288,43 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       }
     };
 
+    /** The draft's first message: the chat is created now, the turn started, then the chat opened. */
+    const sendFromDraft = async (text: string, options?: { mode?: ChatMode }) => {
+      set({ pending: "send", notice: null });
+      let created: ChatSummary | null = null;
+      let failure: unknown = null;
+      try {
+        const { create, update } = draftCreation(get().draftChoices);
+        created = await client.createChat(create);
+        // The chips' other choices land before the first turn, so it already runs with them.
+        if (update) created = await client.updateChat(created.id, update);
+        applySummary(created);
+        await client.startTurn(created.id, {
+          prompt: text,
+          editorContext: captureContext(),
+          ...options,
+        });
+      } catch (error) {
+        failure = error;
+      }
+      const chatId = created?.id ?? null;
+      // Unsent text follows the draft into its chat, so it is still in the box there.
+      set((state) => ({
+        pending: null,
+        draftChoices: chatId ? {} : state.draftChoices,
+        drafts: chatId
+          ? { ...state.drafts, [NEW_CHAT_DRAFT]: "", [chatId]: failure === null ? "" : text }
+          : state.drafts,
+      }));
+      if (chatId && !disposed && get().view === "chat" && get().chatId === null) {
+        await get().openChat(chatId);
+      }
+      if (failure === null) return true;
+      if (chatId) await onActionError(failure, chatId);
+      else fail(failure);
+      return false;
+    };
+
     return {
       ...createAgentSettingsSlice({
         client,
@@ -310,6 +334,14 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         updateOpenChat,
       }),
       ...createAgentQaSlice({ client }),
+      ...createAgentRevertSlice({ client, set, get, onTurnReverted: deps.onTurnReverted }),
+      ...createAgentComposerSlice({
+        client,
+        set,
+        get,
+        isDisposed: () => disposed,
+        updateOpenChat,
+      }),
       availability: "loading",
       unavailableMessage: null,
       chats: [],
@@ -325,7 +357,6 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       drafts: {},
       pending: null,
       notice: null,
-      reverts: {},
 
       async init() {
         set({ availability: "loading", unavailableMessage: null });
@@ -343,6 +374,8 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
           models: models.status === "fulfilled" ? models.value : null,
           modelsFailed: models.status === "rejected",
         });
+        // With no chat yet, the panel opens on the new-chat draft rather than an empty list.
+        if (list.value.chats.length === 0 && get().chatId === null) set({ view: "chat" });
         openProjectStream();
       },
 
@@ -409,6 +442,20 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         }
       },
 
+      startDraft() {
+        chatEpoch += 1;
+        closeChatStream();
+        set({
+          view: "chat",
+          chatId: null,
+          chat: null,
+          chatLoading: false,
+          chatError: null,
+          notice: null,
+          draftChoices: {},
+        });
+      },
+
       closeChat() {
         chatEpoch += 1;
         closeChatStream();
@@ -434,50 +481,27 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         }
       },
 
-      async setModel(model) {
-        const { chatId, chat, models } = get();
-        if (!chatId || !chat) return;
-        // A model that cannot take the chat's current effort resets it to the default.
-        const info = findModel(models, model);
-        const effort = chat.chat.thinking;
-        const dropEffort = info && effort && effort !== "off" && !info.efforts.includes(effort);
-        try {
-          applySummary(
-            await client.updateChat(chatId, { model, ...(dropEffort ? { thinking: null } : {}) }),
-          );
-        } catch (error) {
-          await onActionError(error, chatId);
-        }
-      },
-
-      async setThinking(thinking) {
-        const chatId = get().chatId;
-        if (!chatId || (thinking !== null && !isThinkingEffort(thinking))) return;
-        try {
-          applySummary(await client.updateChat(chatId, { thinking }));
-        } catch (error) {
-          await onActionError(error, chatId);
-        }
-      },
-
       setDraft(text) {
-        const chatId = get().chatId;
-        if (chatId) set((state) => ({ drafts: { ...state.drafts, [chatId]: text } }));
+        const key = get().chatId ?? NEW_CHAT_DRAFT;
+        set((state) => ({ drafts: { ...state.drafts, [key]: text } }));
       },
 
-      async send() {
-        const { chatId, chat, drafts, pending } = get();
-        const text = chatId ? (drafts[chatId] ?? "").trim() : "";
-        if (!chatId || !chat || !text || pending) return;
+      async send(options) {
+        const { chatId, chat, drafts, pending, view } = get();
+        const text = (drafts[chatId ?? NEW_CHAT_DRAFT] ?? "").trim();
+        if (!text || pending) return false;
+        if (!chatId) return view === "chat" ? sendFromDraft(text, options) : false;
+        if (!chat) return false;
         const running = runningTurn(chat);
         set({ pending: running ? "steer" : "send", notice: null });
         const editorContext = captureContext();
         try {
           if (running) await client.steerTurn(chatId, running.id, { text, editorContext });
-          else await client.startTurn(chatId, { prompt: text, editorContext });
+          else await client.startTurn(chatId, { prompt: text, editorContext, ...options });
           set((state) => ({ drafts: { ...state.drafts, [chatId]: "" } }));
           // Server-authoritative: the turn arrives on the stream. If the stream is down, ask.
           if (get().streamStatus !== "open") await resync(chatId);
+          return true;
         } catch (error) {
           const finishedFirst = error instanceof AgentApiError && error.code === "turn_not_active";
           await onActionError(
@@ -487,18 +511,9 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
               ? "The agent had just finished. Your message is still in the box; send it to start a new run."
               : undefined,
           );
+          return false;
         } finally {
           set({ pending: null });
-        }
-      },
-
-      async setMode(mode) {
-        const { chatId, chat } = get();
-        if (!chatId || !chat || chat.chat.activeMode === mode) return;
-        try {
-          applySummary(await client.updateChat(chatId, { activeMode: mode }));
-        } catch (error) {
-          await onActionError(error, chatId);
         }
       },
 
@@ -540,46 +555,6 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         }
       },
 
-      async revert(turnId, mode) {
-        const chatId = get().chatId;
-        if (!chatId) return;
-        set((state) => ({
-          reverts: { ...state.reverts, [turnId]: { status: "pending", files: [] } },
-        }));
-        try {
-          const result = await client.revertTurn(chatId, turnId, mode ? { mode } : {});
-          if (result.ok) {
-            patchChat(chatId, (state) => ({
-              ...state,
-              turns: replaceTurn(state.turns, result.turn),
-            }));
-            set((state) => ({ reverts: withoutKey(state.reverts, turnId) }));
-            // Only a completed revert changed files on disk; a conflict or failure changed nothing.
-            try {
-              await deps.onTurnReverted?.();
-            } catch {
-              // The revert itself succeeded; a failed editor refresh must not turn it into an error.
-            }
-          } else {
-            set((state) => ({
-              reverts: {
-                ...state.reverts,
-                [turnId]: { status: "conflict", files: result.conflict.files },
-              },
-            }));
-          }
-        } catch (error) {
-          const message =
-            error instanceof AgentApiError
-              ? describeAgentFailure(error.code, error.message)
-              : describeAgentFailure("internal");
-          set((state) => ({
-            reverts: { ...state.reverts, [turnId]: { status: "error", files: [], message } },
-          }));
-        }
-      },
-
-      dismissRevert: (turnId) => set((state) => ({ reverts: withoutKey(state.reverts, turnId) })),
       dismissNotice: () => set({ notice: null }),
 
       dispose() {

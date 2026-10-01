@@ -242,14 +242,23 @@ describe("TurnRunner", () => {
     }
   });
 
-  it("handles revert success, conflict and partial completion", async () => {
+  it("handles revert success, conflict and partial completion, then undoes the revert", async () => {
     const fixture = await createRuntimeFixture();
     try {
       const chat = await fixture.chats.create({});
       fixture.checkpoints.nextEntryIds = ["older", "newer"];
+      fixture.checkpoints.entryFiles = {
+        older: ["index.html"],
+        newer: ["captions.html", "index.html"],
+        "undo-older": ["index.html"],
+      };
       fixture.backend.promptScript = async () => "completed";
       const turn = await fixture.turns.start(chat.id, { prompt: "Change two files" });
       await finishTurn(fixture, chat.id);
+      expect(fixture.chats.get(chat.id)?.turns[0]?.checkpoint?.files).toEqual([
+        "captions.html",
+        "index.html",
+      ]);
 
       fixture.checkpoints.nextRevertOutcome = { ok: false, conflict: { files: ["index.html"] } };
       const conflict = await fixture.turns.revert(chat.id, turn.id, "just-this");
@@ -261,24 +270,51 @@ describe("TurnRunner", () => {
         status: 503,
       });
 
+      // The newer entry was undone before the older one hit a conflict: only the older one remains.
       fixture.checkpoints.nextRevertOutcome = {
         ok: false,
         conflict: { files: ["scene.html"] },
         remainingEntryIds: ["older"],
+        undoEntryIds: ["undo-newer"],
       };
       const partial = await fixture.turns.revert(chat.id, turn.id);
       expect(partial).toEqual({ ok: false, conflict: { files: ["scene.html"] } });
-      expect(fixture.chats.get(chat.id)?.turns[0]?.checkpoint?.entryIds).toEqual(["older"]);
+      expect(fixture.chats.get(chat.id)?.turns[0]?.checkpoint).toMatchObject({
+        entryIds: ["older"],
+        revertedEntryIds: ["newer"],
+        revertEntryIds: ["undo-newer"],
+      });
 
-      const success = await fixture.turns.revert(chat.id, turn.id);
+      // Without a mode the host is asked to stop at conflicts; the user's choice is passed through.
+      const success = await fixture.turns.revert(chat.id, turn.id, "keep-later-edits");
       expect(success).toMatchObject({ ok: true, turn: { checkpoint: { status: "reverted" } } });
       expect(fixture.checkpoints.revertCalls[2]).toEqual({
         entryIds: ["older", "newer"],
-        mode: "keep-later-edits",
+        mode: undefined,
       });
       expect(fixture.checkpoints.revertCalls[3]).toEqual({
         entryIds: ["older"],
         mode: "keep-later-edits",
+      });
+      // undo-newer touched nothing the fake knows; undo-older restored index.html: captions.html was kept.
+      expect(fixture.chats.get(chat.id)?.turns[0]?.checkpoint).toMatchObject({
+        status: "reverted",
+        revertedEntryIds: ["older", "newer"],
+        revertEntryIds: ["undo-newer", "undo-older"],
+        keptFiles: ["captions.html"],
+      });
+
+      const undone = await fixture.turns.unrevert(chat.id, turn.id);
+      expect(fixture.checkpoints.revertCalls[4]).toEqual({
+        entryIds: ["undo-newer", "undo-older"],
+        mode: undefined,
+      });
+      expect(undone).toMatchObject({ ok: true });
+      const restored = fixture.chats.get(chat.id)?.turns[0]?.checkpoint;
+      expect(restored).toMatchObject({ status: "ready", entryIds: ["older", "newer"] });
+      expect(restored?.revertEntryIds).toBeUndefined();
+      await expect(fixture.turns.unrevert(chat.id, turn.id)).rejects.toMatchObject({
+        code: "revert_unavailable",
       });
     } finally {
       await fixture.cleanup();
@@ -414,5 +450,42 @@ describe("TurnRunner", () => {
         await fixture.cleanup();
       }
     });
+  });
+
+  it("shows a running tool's progress on its activity and drops it once the tool ends", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({});
+      fixture.backend.promptScript = async (input) => {
+        const call = { toolCallId: "render-1" };
+        input.onEvent({
+          type: "tool.start",
+          ...call,
+          kind: "other",
+          targets: [],
+          label: "Rendering video",
+        });
+        input.onEvent({ type: "tool.progress", ...call, progress: 41.6 });
+        input.onEvent({ type: "tool.progress", ...call, progress: 41.9 });
+        input.onEvent({ type: "tool.progress", ...call, progress: 140 });
+        input.onEvent({ type: "tool.end", ...call, ok: true });
+        return "completed";
+      };
+      await fixture.turns.start(chat.id, { prompt: "Render it" });
+      await finishTurn(fixture, chat.id);
+      const published = fixture.chats
+        .events(chat.id)
+        .flatMap((event) => (event.type === "activity.updated" ? [event.activity] : []));
+      // 41.6 and 41.9 round to the same percent: published once; past 100 is clamped.
+      expect(published.map((activity) => activity.progress)).toEqual([
+        undefined,
+        42,
+        100,
+        undefined,
+      ]);
+      expect(published.at(-1)).toMatchObject({ status: "done", label: "Rendering video" });
+    } finally {
+      await fixture.cleanup();
+    }
   });
 });

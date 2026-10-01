@@ -26,7 +26,6 @@ function inputs(overrides: Partial<TimelineMetaBuilderInputs> = {}): TimelineMet
     viewport: {
       ref: vi.fn(),
       tabIndex: -1,
-      labelMode: false,
       zoomMode: "fit",
       onScroll: vi.fn(),
       onFocus: vi.fn(),
@@ -71,15 +70,6 @@ describe("buildTimelineMeta", () => {
     const meta = buildTimelineMeta(inputs());
     expect(meta.containerProps.className).toContain("cursor-default");
     expect(meta.containerProps.className).not.toContain("ring");
-  });
-
-  it("uses the label-column inset only in label mode", () => {
-    const fit = buildTimelineMeta(inputs());
-    const labels = buildTimelineMeta(
-      inputs({ viewport: { ...inputs().viewport, labelMode: true } }),
-    );
-    expect(fit.viewportProps["data-timeline-auto-scroll-left-inset"]).toBe(0);
-    expect(labels.viewportProps["data-timeline-auto-scroll-left-inset"]).toBe(120);
   });
 });
 

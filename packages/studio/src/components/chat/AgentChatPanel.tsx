@@ -1,17 +1,19 @@
-import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { ChatCircleDots } from "@phosphor-icons/react";
 import { AgentStoreProvider, useAgentStore } from "../../agent/agentContext";
-import type { AgentStore } from "../../agent/agentStore";
+import type { ChatSummary } from "@hyperframes/agent-protocol";
+import { NEW_CHAT_DRAFT, type AgentStore } from "../../agent/agentStore";
 import { Button } from "../ui/Button";
+import { ChatHeader } from "./ChatHeader";
 import { ChatView } from "./ChatView";
 import { HistoryView } from "./HistoryView";
 
 function Calm({ title, detail, action }: { title: string; detail?: string; action?: ReactNode }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <ChatCircleDots size={22} aria-hidden className="text-text-4" />
-      <p className="text-step-12 font-medium text-text-1">{title}</p>
-      {detail && <p className="max-w-[26ch] text-step-11 text-text-3">{detail}</p>}
+      <ChatCircleDots aria-hidden className="size-icon-xl text-fg-3" />
+      <p className="text-sm font-medium text-fg-2">{title}</p>
+      {detail && <p className="max-w-[26ch] text-xs text-fg-3">{detail}</p>}
       {action}
     </div>
   );
@@ -45,13 +47,26 @@ class PanelBoundary extends Component<{ children: ReactNode }, { failed: boolean
   }
 }
 
-/** Everything under the store: availability states, then the history or chat view. */
+/** Everything under the store: availability states, then the context row over the history or chat view. */
 export function AgentChatBody() {
   const availability = useAgentStore((state) => state.availability);
   const message = useAgentStore((state) => state.unavailableMessage);
   const view = useAgentStore((state) => state.view);
   const retry = useAgentStore((state) => state.retry);
   const title = useAgentStore((state) => state.chat?.chat.title);
+  const chatId = useAgentStore((state) => state.chatId);
+  const chats = useAgentStore((state) => state.chats);
+
+  // History returns to where it was opened from: a chat, or the new-chat draft. Opened straight from a fresh
+  // panel it is about the most recent chat. The context row shows that chat meanwhile (prototype).
+  const [lastVisited, setLastVisited] = useState<string | null>(null);
+  useEffect(() => {
+    if (view === "chat") setLastVisited(chatId ?? NEW_CHAT_DRAFT);
+  }, [view, chatId]);
+  const visited = chats.find((chat) => chat.id === lastVisited) ?? null;
+  let contextChat: ChatSummary | null = null;
+  if (view === "chat") contextChat = chats.find((chat) => chat.id === chatId) ?? null;
+  else if (lastVisited !== NEW_CHAT_DRAFT) contextChat = visited ?? chats[0] ?? null;
 
   // After a view switch, focus lands on the new view instead of on a control that just left.
   const regionRef = useRef<HTMLDivElement>(null);
@@ -81,10 +96,11 @@ export function AgentChatBody() {
       ref={regionRef}
       tabIndex={-1}
       role="region"
-      aria-label={view === "chat" ? `Chat: ${title ?? ""}` : "Chat history"}
-      className="h-full min-h-0 outline-hidden"
+      aria-label={view === "chat" ? `Chat: ${title ?? ""}` : "Chats"}
+      className="flex h-full min-h-0 flex-col outline-hidden"
     >
-      {view === "chat" ? <ChatView /> : <HistoryView />}
+      <ChatHeader contextChat={contextChat} />
+      {view === "chat" ? <ChatView /> : <HistoryView selectedId={visited?.id ?? null} />}
     </div>
   );
 }
@@ -95,7 +111,7 @@ export function AgentChatBody() {
  */
 export function AgentChatPanel({ store }: { store: AgentStore | null }) {
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-1 text-text-1">
+    <div data-chat-panel className="@container/chat flex h-full min-h-0 flex-col bg-bg-0 text-fg">
       <PanelBoundary>
         {store ? (
           <AgentStoreProvider store={store}>

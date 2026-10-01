@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { StudioBanner } from "./StudioBanner";
+import { Button } from "./ui/Button";
 
 interface ServedProject {
   id: string;
@@ -57,32 +59,24 @@ export function ProjectUnreachableBanner({ projectId }: ProjectUnreachableBanner
   const soleProject = served.length === 1 && served[0].id !== projectId ? served[0] : null;
   const servedLabel = soleProject?.title ?? soleProject?.id;
 
-  return (
-    <div
-      role="alert"
-      className="hf-backdrop-in absolute left-1/2 top-14 z-92 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-3 rounded-md border border-amber-500/30 bg-amber-950/85 px-4 py-2 text-[12px] font-medium text-amber-100 shadow-lg shadow-black/30"
+  // Reloading re-runs the mount-time hash check, which rewrites the hash to
+  // the project this server actually serves. That is the same fallback a fresh
+  // load performs, so the button promises nothing beyond what a reload does.
+  return soleProject ? (
+    <StudioBanner
+      tone="warn"
+      actions={
+        <Button size="sm" onClick={() => window.location.reload()}>
+          Open {servedLabel}
+        </Button>
+      }
     >
-      {soleProject ? (
-        <>
-          <span>
-            This Studio is serving <strong>{servedLabel}</strong>. This tab was opened for{" "}
-            <strong>{projectId}</strong>.
-          </span>
-          {/* Reloading re-runs the mount-time hash check, which rewrites the hash
-              to the project this server actually serves. That is the same
-              fallback a fresh load performs, so the button promises nothing
-              beyond what a reload already does. */}
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="shrink-0 rounded-sm border border-amber-300/20 px-2 py-1 text-[11px] text-amber-100 transition-colors hover:bg-amber-400/10 active:scale-[0.98]"
-          >
-            Open {servedLabel}
-          </button>
-        </>
-      ) : (
-        <span>Couldn&apos;t open this project — it may have been renamed, moved, or deleted.</span>
-      )}
-    </div>
+      This Studio is serving <strong>{servedLabel}</strong>. This tab was opened for{" "}
+      <strong>{projectId}</strong>.
+    </StudioBanner>
+  ) : (
+    <StudioBanner tone="warn">
+      Couldn&apos;t open this project — it may have been renamed, moved, or deleted.
+    </StudioBanner>
   );
 }

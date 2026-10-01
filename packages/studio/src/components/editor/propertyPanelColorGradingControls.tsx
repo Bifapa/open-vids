@@ -323,7 +323,7 @@ export function ColorGradingControls({
         <select
           value={String(grading.preset ?? "neutral")}
           onChange={(event) => applyPreset(event.target.value)}
-          className="w-full min-w-0 rounded-md bg-panel-input px-3 py-2 text-[11px] font-medium text-panel-text-1 outline-hidden"
+          className="w-full min-w-0 rounded-md bg-surface-1 px-3 py-2 text-sm font-medium text-fg outline-hidden"
         >
           {HF_COLOR_GRADING_PRESETS.map((preset) => (
             <option key={preset.id} value={preset.id}>
@@ -345,23 +345,23 @@ export function ColorGradingControls({
         onReset={() => actions.setIntensityPercent(100)}
       />
 
-      <div className="min-w-0 rounded-md border border-panel-border/70 bg-panel-input/15">
+      <div className="min-w-0 rounded-md border border-border-subtle/70 bg-surface-1/15">
         <button
           type="button"
-          className="flex h-8 w-full min-w-0 items-center gap-1.5 px-2 text-left text-[11px] font-medium text-panel-text-3 transition-colors hover:bg-panel-hover/60 hover:text-panel-text-1"
+          className="flex h-8 w-full min-w-0 items-center gap-1.5 px-2 text-left text-sm font-medium text-fg-3 transition-colors hover:bg-surface-2/60 hover:text-fg"
           onClick={() => setLutOpen((value) => !value)}
           aria-expanded={lutOpen}
         >
           {lutOpen ? (
-            <ChevronDown size={11} className="shrink-0 text-panel-text-5" />
+            <ChevronDown size={11} className="shrink-0 text-fg-disabled" />
           ) : (
-            <ChevronRight size={11} className="shrink-0 text-panel-text-5" />
+            <ChevronRight size={11} className="shrink-0 text-fg-disabled" />
           )}
           <span className="min-w-0 flex-1 truncate">Custom LUT</span>
           {grading.lut && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-studio-accent" />}
         </button>
         {lutOpen && (
-          <div className="grid gap-1.5 border-t border-panel-border/60 p-1.5">
+          <div className="grid gap-1.5 border-t border-border-subtle/60 p-1.5">
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_28px] gap-2">
               <select
                 value={selectedLut}
@@ -372,7 +372,7 @@ export function ColorGradingControls({
                     nextSrc && grading.lut?.src === nextSrc ? grading.lut.intensity : 1,
                   );
                 }}
-                className="w-full min-w-0 rounded-md bg-panel-input px-3 py-2 text-[11px] font-medium text-panel-text-1 outline-hidden"
+                className="w-full min-w-0 rounded-md bg-surface-1 px-3 py-2 text-sm font-medium text-fg outline-hidden"
                 title="Uploaded .cube LUT"
               >
                 <option value="">None</option>
@@ -393,7 +393,7 @@ export function ColorGradingControls({
                   event.stopPropagation();
                   lutInputRef.current?.click();
                 }}
-                className="flex h-8 w-8 items-center justify-center rounded-md bg-panel-input text-panel-text-4 transition-colors hover:bg-panel-hover hover:text-panel-text-1 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-surface-1 text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
                 title={lutImporting ? "Importing…" : "Import .cube LUT"}
                 aria-label="Import .cube LUT"
                 aria-busy={lutImporting}
@@ -425,17 +425,17 @@ export function ColorGradingControls({
               />
             </div>
             {lutImportError && (
-              <div className="text-[10px] text-red-400" role="alert">
+              <div className="text-xs text-red-400" role="alert">
                 {lutImportError}
               </div>
             )}
             {grading.lut && (
               <div className="grid gap-2">
                 {selectedProjectLut && (
-                  <div className="flex min-w-0 items-start gap-2 text-[10px] leading-4 text-panel-text-3">
+                  <div className="flex min-w-0 items-start gap-2 text-xs leading-4 text-fg-3">
                     <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-studio-accent" />
                     <span className="min-w-0 flex-1 truncate" title={selectedProjectLut}>
-                      <span className="font-medium text-panel-text-2">Uploaded LUT</span>
+                      <span className="font-medium text-fg-2">Uploaded LUT</span>
                       {` · ${selectedProjectLut}`}
                     </span>
                   </div>
@@ -509,7 +509,7 @@ export function ColorGradingControls({
           )}
         </div>
         {detailSettings && (
-          <div className="grid min-w-0 gap-1.5 rounded-md border border-panel-border bg-panel-input/40 p-1.5 shadow-xl shadow-black/20">
+          <div className="grid min-w-0 gap-1.5 rounded-md border border-border-subtle bg-surface-1/40 p-1.5 shadow-xl shadow-black/20">
             <div className="flex min-w-0 items-center gap-2 px-0.5">
               <span className={`${LABEL} min-w-0 flex-1 truncate`}>
                 {detailSettings === "vignette" ? "Vignette settings" : "Grain settings"}
@@ -519,7 +519,7 @@ export function ColorGradingControls({
                 aria-label="Close settings"
                 title="Close settings"
                 onClick={() => setDetailSettings(null)}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-panel-text-5 transition-colors hover:bg-panel-hover hover:text-panel-text-1"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-disabled transition-colors hover:bg-surface-2 hover:text-fg"
               >
                 <X size={11} />
               </button>

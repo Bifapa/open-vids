@@ -134,20 +134,36 @@ describe("SnapToolbar keyboard shortcuts", () => {
 });
 
 describe("SnapToolbar ruler and safe-margin toggles", () => {
-  it.each([
-    ["Toggle ruler", "rulerVisible"],
-    ["Toggle safe margins", "safeMarginsVisible"],
-  ])("%s flips %s and remembers it", (label, key) => {
+  it("the safe-areas button flips safeMarginsVisible and remembers it", () => {
     usePreviewGuidesStore.setState({ rulerVisible: false, safeMarginsVisible: false });
     const { root } = renderToolbar();
-    const button = () => document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+    const button = () =>
+      document.querySelector<HTMLButtonElement>('[aria-label="Toggle safe margins"]');
     expect(button()?.getAttribute("aria-pressed")).toBe("false");
 
     act(() => button()?.click());
 
     expect(button()?.getAttribute("aria-pressed")).toBe("true");
     const stored = window.localStorage.getItem("hf-studio-ui-preferences") ?? "{}";
-    expect(JSON.parse(stored)[key]).toBe(true);
+    expect(JSON.parse(stored).safeMarginsVisible).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("the Guides menu's Rulers item flips rulerVisible and remembers it", async () => {
+    usePreviewGuidesStore.setState({ rulerVisible: false, safeMarginsVisible: false });
+    const { root } = renderToolbar();
+    const trigger = document.querySelector<HTMLButtonElement>(
+      '[aria-label="Guides and snapping options"]',
+    );
+    await act(async () => trigger?.click());
+    const rulers = document.querySelector<HTMLElement>('[aria-label="Toggle ruler"]');
+    expect(rulers?.getAttribute("aria-checked")).toBe("false");
+
+    await act(async () => rulers?.click());
+
+    expect(usePreviewGuidesStore.getState().rulerVisible).toBe(true);
+    const stored = window.localStorage.getItem("hf-studio-ui-preferences") ?? "{}";
+    expect(JSON.parse(stored).rulerVisible).toBe(true);
     act(() => root.unmount());
   });
 });

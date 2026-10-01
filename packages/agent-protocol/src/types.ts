@@ -146,6 +146,18 @@ export const CHAT_MODES = ["normal", "story"] as const;
 export type ChatMode = (typeof CHAT_MODES)[number];
 
 /**
+ * What the user wants from a turn (the composer's Mode chip): `plan` — the Director proposes a plan first and changes
+ * nothing (the user proceeds with an Edit turn); `edit` — the agents act on the project; `ask` — the Director answers
+ * only. Plan and Ask turns never change the project: the runtime withholds and refuses every project-changing tool.
+ */
+export const CHAT_INTENTS = ["plan", "edit", "ask"] as const;
+export type ChatIntent = (typeof CHAT_INTENTS)[number];
+
+export function isChatIntent(value: unknown): value is ChatIntent {
+  return typeof value === "string" && (CHAT_INTENTS as readonly string[]).includes(value);
+}
+
+/**
  * A Story workspace action run as a turn: `review` — the Director reviews the current (user-edited) graph;
  * `build` — the whole story is built into the timeline; `rebuild` — only the sections the graph changed since the
  * last build are rebuilt; `resolve` — the Research specialist looks for the material of the story's Missing Asset
@@ -186,6 +198,8 @@ export interface ChatSummary {
   status: ChatStatus;
   lastTaskSummary: string | null;
   activeMode: ChatMode;
+  /** The chat's intent for its next turns (the Mode chip); absent (chats from before intents) = `edit`. */
+  intent?: ChatIntent;
   /** Explicit choice for this chat; null means "runtime default". */
   mainAgentModel: ModelSelection | null;
   /** Explicit choice for this chat; null means "runtime default". */
@@ -218,9 +232,17 @@ export interface TurnCheckpoint {
   status: CheckpointStatus;
   /** Project-history entries the turn produced, oldest first. Empty when the turn changed nothing. */
   entryIds: string[];
+  /** Project-relative files the turn's entries changed, sorted; absent on turns from before it was recorded. */
+  files?: string[];
   createdAt: number;
   closedAt?: number;
   revertedAt?: number;
+  /** History entries the revert wrote, oldest first: undoing them is "Undo revert". */
+  revertEntryIds?: string[];
+  /** The turn's own entries a revert has undone, oldest first: they are in effect again after "Undo revert". */
+  revertedEntryIds?: string[];
+  /** Files the revert left as they were because they changed after the turn (Revert untouched files). */
+  keptFiles?: string[];
   /** Why a checkpoint could not be taken. */
   reason?: string;
   /**
@@ -250,6 +272,8 @@ export interface TurnSummary {
   plan?: ExecutionPlan;
   /** The chat mode the turn ran in (absent on turns from before modes existed = `normal`). */
   mode?: ChatMode;
+  /** What the user wanted from the turn (absent on turns from before intents = `edit`). */
+  intent?: ChatIntent;
   /** The Story workspace action the turn ran, if any. */
   storyAction?: StoryAction;
   /** The user's choices for that action (build/rebuild). */
@@ -488,6 +512,8 @@ export interface Activity {
   count: number;
   /** Project-relative targets, capped by the producer. */
   targets: string[];
+  /** Determinate progress 0–100 of a running activity that reports it (a render); absent otherwise. */
+  progress?: number;
   startedAt: number;
   endedAt?: number;
 }

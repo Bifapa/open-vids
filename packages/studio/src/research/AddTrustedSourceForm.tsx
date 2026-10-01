@@ -63,9 +63,9 @@ export function AddTrustedSourceForm({
     <form
       aria-label="Add trusted source"
       onSubmit={(event) => void submit(event)}
-      className="flex flex-col gap-2 rounded-md border border-border-input bg-bg-2 p-2.5"
+      className="flex flex-col gap-1.5"
     >
-      <label htmlFor={nameId} className="text-step-10 font-medium text-text-2">
+      <label htmlFor={nameId} className="text-xs text-fg-3">
         Name
       </label>
       <div className={fieldBase}>
@@ -78,7 +78,7 @@ export function AddTrustedSourceForm({
           className={fieldText}
         />
       </div>
-      <label htmlFor={domainsId} className="text-step-10 font-medium text-text-2">
+      <label htmlFor={domainsId} className="mt-0.5 text-xs text-fg-3">
         Domains
       </label>
       <textarea
@@ -87,15 +87,19 @@ export function AddTrustedSourceForm({
         rows={2}
         placeholder={"archive.example.org, media.example.org"}
         onChange={(event) => setDomainsText(event.target.value)}
-        className={cn(fieldBase, "h-auto min-h-12 resize-y py-1.5 leading-snug", fieldText)}
+        className={cn(
+          fieldBase,
+          "h-auto min-h-12 resize-y py-1.5 font-mono text-num leading-snug",
+          fieldText,
+        )}
       />
-      <span className="text-step-10 text-text-4">
+      <span className="text-xs text-fg-3">
         Separate with commas or new lines. A domain covers its subdomains.
       </span>
-      <fieldset className="flex flex-wrap items-center gap-3">
-        <legend className="mb-1 text-step-10 font-medium text-text-2">Offers</legend>
+      <fieldset className="mt-0.5 flex flex-wrap items-center gap-3">
+        <legend className="mb-1 text-xs text-fg-3">Offers</legend>
         {RESEARCH_MEDIA_KINDS.map((kind) => (
-          <label key={kind} className="flex items-center gap-1.5 text-step-11 text-text-1">
+          <label key={kind} className="flex items-center gap-1.5 text-sm text-fg">
             <input
               type="checkbox"
               checked={kinds.includes(kind)}
@@ -107,11 +111,11 @@ export function AddTrustedSourceForm({
         ))}
       </fieldset>
       {problem && (
-        <p role="alert" className="text-step-10 text-danger">
+        <p role="alert" className="text-xs text-error">
           {problem}
         </p>
       )}
-      <div className="flex justify-end gap-2">
+      <div className="mt-0.5 flex justify-end gap-1.5">
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>

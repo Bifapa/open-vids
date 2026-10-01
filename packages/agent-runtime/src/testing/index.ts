@@ -22,7 +22,7 @@ interface FakeWindow {
  */
 export class FakeCheckpointHost implements CheckpointHost {
   readonly windows: FakeWindow[] = [];
-  readonly revertCalls: Array<{ entryIds: string[]; mode: RevertMode }> = [];
+  readonly revertCalls: Array<{ entryIds: string[]; mode: RevertMode | undefined }> = [];
   readonly recoveryCalls: Array<{ label: string; startedAt: number; transactionId?: string }> = [];
   nextBeginError: Error | null = null;
   nextEndError: Error | null = null;
@@ -30,6 +30,8 @@ export class FakeCheckpointHost implements CheckpointHost {
   nextRevertError: Error | null = null;
   nextRevertOutcome: RevertOutcome | null = null;
   nextEntryIds: string[] = [];
+  /** Files each history entry changed, for {@link files}. */
+  entryFiles: Record<string, string[]> = {};
   private sequence = 0;
 
   constructor(private readonly now: () => number = Date.now) {}
@@ -84,7 +86,7 @@ export class FakeCheckpointHost implements CheckpointHost {
   async revert(
     _scope: ProjectScope,
     entryIds: readonly string[],
-    mode: RevertMode,
+    mode: RevertMode | undefined,
   ): Promise<RevertOutcome> {
     this.revertCalls.push({ entryIds: [...entryIds], mode });
     if (this.nextRevertError) {
@@ -94,7 +96,11 @@ export class FakeCheckpointHost implements CheckpointHost {
     }
     const outcome = this.nextRevertOutcome;
     this.nextRevertOutcome = null;
-    return outcome ?? { ok: true };
+    return outcome ?? { ok: true, undoEntryIds: entryIds.map((id) => `undo-${id}`).reverse() };
+  }
+
+  async files(_scope: ProjectScope, entryIds: readonly string[]): Promise<string[]> {
+    return [...new Set(entryIds.flatMap((id) => this.entryFiles[id] ?? []))].sort();
   }
 
   async recover(

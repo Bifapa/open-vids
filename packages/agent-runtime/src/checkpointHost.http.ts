@@ -66,20 +66,25 @@ export class HttpCheckpointHost implements CheckpointHost {
   async revert(
     scope: ProjectScope,
     entryIds: readonly string[],
-    mode: RevertMode,
+    mode: RevertMode | undefined,
   ): Promise<RevertOutcome> {
+    const undoEntryIds: string[] = [];
     for (let index = entryIds.length - 1; index >= 0; index -= 1) {
       const entryId = entryIds[index];
       if (!entryId) continue;
       const result = await this.request(scope, "POST", "/undo", {
         entryId,
         who: DIRECTOR,
-        mode,
+        ...(mode && { mode }),
       });
       if (!isRecord(result) || typeof result.ok !== "boolean") {
         throw new Error("Studio returned an invalid history undo result");
       }
-      if (result.ok) continue;
+      if (result.ok) {
+        if (isRecord(result.entry) && typeof result.entry.id === "string")
+          undoEntryIds.push(result.entry.id);
+        continue;
+      }
       const conflict = isRecord(result.conflict) ? result.conflict : null;
       const files =
         conflict && Array.isArray(conflict.files)
@@ -89,9 +94,28 @@ export class HttpCheckpointHost implements CheckpointHost {
         ok: false,
         conflict: { files },
         remainingEntryIds: entryIds.slice(0, index + 1),
+        undoEntryIds,
       };
     }
-    return { ok: true };
+    return { ok: true, undoEntryIds };
+  }
+
+  async files(scope: ProjectScope, entryIds: readonly string[]): Promise<string[]> {
+    if (entryIds.length === 0) return [];
+    const response = await this.request(scope, "GET", "");
+    if (!isRecord(response) || !Array.isArray(response.entries)) {
+      throw new Error("Studio returned an invalid history list");
+    }
+    const wanted = new Set(entryIds);
+    const paths = new Set<string>();
+    for (const entry of response.entries) {
+      if (!isRecord(entry) || typeof entry.id !== "string" || !wanted.has(entry.id)) continue;
+      if (!Array.isArray(entry.files)) continue;
+      for (const file of entry.files) {
+        if (isRecord(file) && typeof file.path === "string") paths.add(file.path);
+      }
+    }
+    return [...paths].sort();
   }
 
   async recover(

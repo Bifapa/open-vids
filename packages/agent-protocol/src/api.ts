@@ -3,6 +3,7 @@ import type {
   AgentErrorCode,
   AgentModelInfo,
   AgentSettings,
+  ChatIntent,
   ChatMode,
   ChatState,
   ChatSummary,
@@ -76,6 +77,8 @@ export interface UpdateChatRequest {
   agentOverrides?: Partial<Record<SpecialistId, SpecialistConfig | null>>;
   /** The chat's mode for its next turns. */
   activeMode?: ChatMode;
+  /** The chat's intent (Plan / Edit / Ask) for its next turns. */
+  intent?: ChatIntent;
   /** The chat's own Execution Quality; null returns the chat to the global default. */
   executionQuality?: ExecutionQuality | null;
 }
@@ -86,6 +89,11 @@ export interface StartTurnRequest {
   editorContext?: EditorContext;
   /** Mode of this turn; defaults to the chat's `activeMode`. A story action implies `story`. */
   mode?: ChatMode;
+  /**
+   * What the user wants from this turn; defaults to the chat's `intent`, else `edit`. Plan and Ask turns change
+   * nothing. A story action always runs as `edit`.
+   */
+  intent?: ChatIntent;
   /** Run a Story workspace action (Review with AI / Build Story / Rebuild affected sections) as this turn. */
   storyAction?: StoryAction;
   /** The user's choices for a `build` or `rebuild` action; refused with any other action. */
@@ -121,6 +129,33 @@ export type RevertTurnResponse =
   | { ok: false; conflict: { files: string[] } };
 
 export type GetChatResponse = ChatState;
+
+export const INTAKE_FILE_KINDS = ["video", "audio", "image", "font", "other"] as const;
+export type IntakeFileKind = (typeof INTAKE_FILE_KINDS)[number];
+
+export interface AgentIntakeFile {
+  /** Project-relative path of the imported copy (e.g. `assets/interview.mov`). */
+  path: string;
+  name: string;
+  size: number;
+  kind: IntakeFileKind;
+}
+
+/**
+ * A project started from the Projects page chat: Home writes it to `<project>/.hyperframes/agent/intake.json` after
+ * importing the files; Studio claims it once (`POST .../agent/intake/claim`) and starts the first turn from it.
+ */
+export interface AgentIntake {
+  version: 1;
+  prompt: string;
+  intent: ChatIntent;
+  model: ModelSelection | null;
+  thinking: ThinkingEffort | null;
+  agents: SpecialistId[];
+  agentOverrides?: Partial<Record<SpecialistId, SpecialistConfig>>;
+  files: AgentIntakeFile[];
+  createdAt: string;
+}
 
 // ── Global agent settings ────────────────────────────────────────────────────
 

@@ -15,7 +15,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "./cn";
 
 export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
-export type ButtonSize = "sm" | "md" | "lg";
+export type ButtonSize = "xs" | "sm" | "md" | "lg";
 
 /** Forces one interactive look for a gallery shot. CSS-only; see the header. */
 export type PreviewState = "hover" | "active" | "focus";
@@ -32,53 +32,64 @@ interface ButtonProps extends ButtonBaseProps {
 }
 
 /**
- * Shared by Button and IconButton. `disabled:` keeps pointer events alive so a
- * wrapping Tooltip can still explain why the control is disabled.
+ * Shared by Button and IconButton. Every variant carries a 1px border (transparent
+ * where the variant has none) so the four line up at one height. `disabled:`
+ * keeps pointer events alive so a wrapping Tooltip can still explain why the
+ * control is disabled.
  */
 export const buttonBase = cn(
-  "inline-flex items-center justify-center select-none cursor-pointer whitespace-nowrap",
-  "transition-[background-color,border-color,color,filter,transform] ease-out-quint duration-press",
-  "disabled:opacity-40 disabled:cursor-not-allowed",
+  "inline-flex items-center justify-center select-none cursor-pointer whitespace-nowrap border",
+  "transition-[background-color,border-color,color] ease-standard duration-press",
+  "disabled:cursor-not-allowed",
   "outline-hidden",
   "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
   "data-[preview-state=focus]:outline-solid data-[preview-state=focus]:outline-2 data-[preview-state=focus]:outline-offset-1 data-[preview-state=focus]:outline-accent",
 );
 
 /**
- * One entry per variant. The `data-[preview-state=…]` half of each string
- * repeats the `hover:` and `active:` half exactly; the test pairs them.
+ * One entry per variant, the prototype's `.btn` family. The `data-[preview-state=…]`
+ * half of each string repeats the `hover:` and `active:` half exactly; the test
+ * pairs them. Disabled controls go flat (no fill, a subtle edge, disabled ink)
+ * rather than fading, so their label stays readable.
  */
 export const buttonVariants: Record<ButtonVariant, string> = {
   primary: cn(
-    "bg-accent text-bg-0 font-semibold",
-    "enabled:hover:brightness-110 data-[preview-state=hover]:brightness-110",
-    "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
+    "border-transparent bg-accent text-accent-ink font-semibold",
+    "enabled:hover:bg-accent-hover data-[preview-state=hover]:bg-accent-hover",
+    "enabled:active:bg-accent-press data-[preview-state=active]:bg-accent-press",
+    "disabled:border-border-subtle disabled:bg-surface-1 disabled:text-fg-disabled",
   ),
   secondary: cn(
-    "bg-transparent text-text-1 font-medium border border-border-strong",
-    "enabled:hover:bg-hover enabled:hover:text-text-0 data-[preview-state=hover]:bg-hover data-[preview-state=hover]:text-text-0",
-    "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
+    "border-border bg-surface-1 text-fg font-medium",
+    "enabled:hover:border-border-strong enabled:hover:bg-surface-2 data-[preview-state=hover]:border-border-strong data-[preview-state=hover]:bg-surface-2",
+    "enabled:active:bg-surface-3 data-[preview-state=active]:bg-surface-3",
+    "disabled:border-border-subtle disabled:bg-transparent disabled:text-fg-disabled",
   ),
   danger: cn(
-    "bg-danger text-text-0 font-medium",
-    "enabled:hover:brightness-110 data-[preview-state=hover]:brightness-110",
-    "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
+    "border-transparent bg-error text-bg-0 font-semibold",
+    "enabled:hover:bg-error/90 data-[preview-state=hover]:bg-error/90",
+    "enabled:active:bg-error/80 data-[preview-state=active]:bg-error/80",
+    "disabled:border-border-subtle disabled:bg-surface-1 disabled:text-fg-disabled",
   ),
   ghost: cn(
-    "bg-transparent text-text-2 font-medium",
-    "enabled:hover:bg-hover enabled:hover:text-text-0 data-[preview-state=hover]:bg-hover data-[preview-state=hover]:text-text-0",
-    "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
+    "border-transparent bg-transparent text-fg-2 font-medium",
+    "enabled:hover:bg-surface-2 enabled:hover:text-fg data-[preview-state=hover]:bg-surface-2 data-[preview-state=hover]:text-fg",
+    "enabled:active:bg-surface-3 data-[preview-state=active]:bg-surface-3",
+    "aria-pressed:bg-surface-3 aria-pressed:text-fg",
+    "disabled:text-fg-disabled",
   ),
 };
 
 /**
- * The three control heights, 24 / 28 / 32 px, from `--spacing-ctl-*`.
+ * The four control heights, 20 / 24 / 28 / 32 px, from `--spacing-ctl-*`.
+ * Panels use `sm`, window forms `md`, a prominent action `lg`.
  * Exported so the Capture download `<a href>` can wear the same recipe as a Button.
  */
 export const buttonSizes: Record<ButtonSize, string> = {
-  sm: "h-ctl-sm px-2 gap-1 rounded-sm text-step-11",
-  md: "h-ctl px-3 gap-1.5 rounded-md text-step-12",
-  lg: "h-ctl-lg px-4 gap-2 rounded-md text-step-13",
+  xs: "h-ctl-xs px-1.5 gap-1 rounded-sm text-xs",
+  sm: "h-ctl-sm px-2 gap-1 rounded-sm text-sm",
+  md: "h-ctl px-2.5 gap-1.5 rounded-md text-sm",
+  lg: "h-ctl-lg px-3.5 gap-1.5 rounded-md text-sm",
 };
 
 function Spinner() {

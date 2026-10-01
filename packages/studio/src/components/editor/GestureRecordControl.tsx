@@ -71,10 +71,10 @@ export function GestureRecordBadge({
       type="button"
       aria-label={label}
       title={label}
-      className={`pointer-events-auto absolute z-20 flex h-7 w-7 items-center justify-center rounded-full border shadow-lg transition-colors ${
+      className={`pointer-events-auto absolute z-20 flex size-ctl items-center justify-center rounded-full border shadow-tip transition-colors ${
         recording
-          ? "border-red-400/60 bg-red-500 text-white animate-pulse"
-          : "border-studio-accent/60 bg-neutral-950 text-studio-accent hover:bg-neutral-900"
+          ? "animate-pulse border-error/60 bg-error text-bg-0 motion-reduce:animate-none"
+          : "border-border bg-menu-bg/94 text-error backdrop-blur-xl hover:border-border-strong hover:bg-surface-2"
       }`}
       style={{
         left: Math.max(0, rect.left + rect.width + 8),

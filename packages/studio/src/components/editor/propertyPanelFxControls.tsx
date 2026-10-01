@@ -8,7 +8,15 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChartLine } from "@phosphor-icons/react";
 import { Tooltip } from "../ui/Tooltip";
+import {
+  INSP_FX_LABEL,
+  INSP_MINI_BUTTON,
+  INSP_SELECT,
+  INSP_VALUE_BOX,
+  rangeFillStyle,
+} from "./inspectorStyles";
 import type {
   HfAudioFxDef,
   HfAudioFxNumberParam,
@@ -85,19 +93,15 @@ export function AutomationToggle({
 }) {
   if (!onAutomate && !onRemoveAutomation) return null;
   return (
-    <Tooltip label={automated ? "Automated" : "Automate"}>
+    <Tooltip label={automated ? "Automated" : "Automation lane"}>
       <button
         type="button"
-        className={`hf-fx-automate w-[16px] shrink-0 rounded-[3px] border font-mono text-[9px] leading-none ${
-          automated
-            ? "border-panel-accent text-panel-accent"
-            : "border-panel-border-input text-panel-text-2 hover:text-panel-text-0"
-        }`}
+        className={`hf-fx-automate ${INSP_MINI_BUTTON} aria-pressed:bg-surface-3 aria-pressed:text-fg aria-pressed:shadow-[inset_0_0_0_1px_var(--color-border-strong)]`}
         aria-pressed={automated}
         aria-label={automated ? `Remove ${label} automation` : `Automate ${label}`}
         onClick={() => (automated ? onRemoveAutomation?.(paramKey) : onAutomate?.(paramKey))}
       >
-        A
+        <ChartLine size={12} aria-hidden="true" />
       </button>
     </Tooltip>
   );
@@ -187,7 +191,7 @@ export function FxParamRow({
 
   if (param.kind === "enum") {
     return (
-      <label className="hf-fx-row flex min-h-6 items-center gap-2" title={param.hint}>
+      <label className="hf-fx-row flex min-h-6 items-center gap-1.5" title={param.hint}>
         {/* Wraps rather than truncating. These names are whole questions — "How
             big the space is" — so 86px of truncation left "How big the sp…", and
             three rows of that read as the same word four times. A title only
@@ -195,11 +199,9 @@ export function FxParamRow({
             whole column at rest. `wrap-break-word` so a long single token breaks
             instead of widening the column. The row keeps `title={param.hint}`:
             the name and the explanation are different questions. */}
-        <span className="hf-fx-label w-[86px] shrink-0 wrap-break-word text-[10px] leading-tight text-panel-text-2">
-          {param.label}
-        </span>
+        <span className={`hf-fx-label ${INSP_FX_LABEL}`}>{param.label}</span>
         <select
-          className="hf-fx-select min-w-0 flex-1 rounded-[3px] bg-panel-surface px-1 py-0.5 font-mono text-[10px] text-panel-text-0"
+          className={`hf-fx-select ${INSP_SELECT} flex-1`}
           value={String(value)}
           disabled={disabled}
           onChange={(e) => {
@@ -230,20 +232,17 @@ export function FxParamRow({
 
   return (
     <label
-      className={`hf-fx-row flex min-h-6 items-center gap-2${automated ? " hf-fx-row-automated" : ""}`}
+      className={`hf-fx-row flex min-h-6 items-center gap-1.5${automated ? " hf-fx-row-automated" : ""}`}
       title={param.hint}
       data-automated={automated ? "" : undefined}
     >
       {/* See the enum row above for why the name wraps instead of truncating. */}
-      <span
-        className={`hf-fx-label w-[86px] shrink-0 wrap-break-word text-[10px] leading-tight ${
-          automated ? "text-panel-accent" : "text-panel-text-2"
-        }`}
-      >
+      <span className={`hf-fx-label ${INSP_FX_LABEL} ${automated ? "text-fg" : ""}`}>
         {param.label}
       </span>
       <input
-        className="hf-fx-slider h-1 min-w-0 flex-1 accent-panel-accent"
+        className="hf-fx-slider hf-insp-rng min-w-0 flex-1"
+        style={rangeFillStyle(toSlider(param, current), param.min, param.max)}
         type="range"
         min={param.min}
         max={param.max}
@@ -258,7 +257,7 @@ export function FxParamRow({
         onBlur={commit}
       />
       <input
-        className="hf-fx-number w-[54px] shrink-0 rounded-[3px] bg-panel-surface px-1 py-0.5 text-right font-mono text-[10px] text-panel-text-0"
+        className={`hf-fx-number ${INSP_VALUE_BOX} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
         type="number"
         min={param.min}
         max={param.max}
@@ -287,7 +286,7 @@ export function FxParamRow({
         }}
       />
       {param.unit ? (
-        <span className="hf-fx-unit w-[22px] shrink-0 font-mono text-[9px] text-panel-text-2">
+        <span className="hf-fx-unit -ml-1 w-[22px] shrink-0 font-mono text-2xs text-fg-3">
           {param.unit}
         </span>
       ) : null}
@@ -338,7 +337,7 @@ export function FxParams({
     [params, onCommit],
   );
   return (
-    <div className="hf-fx-params space-y-0.5 border-t border-panel-border-input px-1.5 py-1.5">
+    <div className="hf-fx-params grid gap-1.5 border-t border-border-subtle p-2">
       {def.params.map((p) => {
         // Only a parameter the registry marks automatable has an AudioParam
         // behind it for an envelope to write to.

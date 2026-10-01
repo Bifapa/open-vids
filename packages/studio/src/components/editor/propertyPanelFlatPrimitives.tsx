@@ -1,7 +1,10 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { CaretDown } from "@phosphor-icons/react";
 import { RotateCcw } from "../../icons/SystemIcons";
+import { cn, fieldBase } from "../ui";
 import { CommitField } from "./propertyPanelPrimitives";
 import { FlatSliderReadout } from "./propertyPanelFlatSliderReadout";
+import { INSP_FOCUS_INSET, INSP_MINI_BUTTON } from "./inspectorStyles";
 import {
   VALUE_TIER_LABEL_CLASS,
   VALUE_TIER_VALUE_CLASS,
@@ -26,6 +29,7 @@ export function FlatRow({
   onPreview,
   onCommit,
   onReset,
+  inline,
 }: {
   label: string;
   value: string;
@@ -40,19 +44,38 @@ export function FlatRow({
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void | Promise<unknown>;
   onReset?: () => void;
+  /** Compact form for paired grids (Layout X/Y, W/H): the label sits inside
+   *  the field as a prefix instead of in a label column. */
+  inline?: boolean;
 }) {
   return (
-    <div className="group flex min-h-[30px] items-center justify-between gap-3" title={tooltip}>
-      <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
-      <span className="flex min-w-0 shrink-0 items-center gap-1.5">
+    <div
+      className={
+        inline
+          ? "group flex min-h-ctl-sm min-w-0 items-center gap-0.5"
+          : "group grid min-h-ctl-sm grid-cols-[72px_minmax(0,1fr)] items-center gap-2"
+      }
+      title={tooltip}
+    >
+      {!inline && (
+        <span className={`min-w-0 truncate text-sm ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
+      )}
+      <span className={`flex min-w-0 items-center ${inline ? "flex-1 gap-0.5" : "gap-1"}`}>
         <span
           data-flat-row-value="true"
-          className={`min-w-0 border-b pb-px font-mono text-[11px] ${VALUE_TIER_VALUE_CLASS[tier]} ${
-            tier === "explicitCustom"
-              ? "border-panel-accent/30 group-hover:border-panel-accent/70"
-              : "border-panel-border-input/50 group-hover:border-panel-border-input"
-          }`}
+          className={cn(
+            fieldBase,
+            "flex-1 font-mono",
+            inline &&
+              "gap-1 pl-1.5 group-has-[[data-kf-state=on]]:border-border-strong group-has-[[data-kf-state=on]]:bg-surface-2",
+            VALUE_TIER_VALUE_CLASS[tier],
+          )}
         >
+          {inline && (
+            <span className="shrink-0 select-none font-ui text-xs font-medium text-fg-3">
+              {label}
+            </span>
+          )}
           <CommitField
             value={value}
             disabled={disabled}
@@ -63,6 +86,7 @@ export function FlatRow({
               return onCommit(nextValue);
             }}
           />
+          {dropdown && <CaretDown size={12} aria-hidden="true" className="shrink-0 text-fg-3" />}
         </span>
         {suffix}
         {tier === "explicitCustom" && onReset && (
@@ -73,21 +97,10 @@ export function FlatRow({
             onClick={() => {
               onReset();
             }}
-            className="shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100"
+            className={`${INSP_MINI_BUTTON} opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
           >
-            <RotateCcw size={11} />
+            <RotateCcw size={12} />
           </button>
-        )}
-        {dropdown && (
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="currentColor"
-            className="shrink-0 text-panel-text-5"
-          >
-            <path d="M2 3l3 4 3-4z" />
-          </svg>
         )}
       </span>
     </div>
@@ -124,11 +137,11 @@ export function FlatSegmentedRow({
   onChange: (nextKey: string) => void;
 }) {
   return (
-    <div className="flex min-h-[32px] items-center justify-between">
-      <span className="text-[11px] text-panel-text-3">{label}</span>
-      <span className="flex items-center gap-0.5">
+    <div className="grid min-h-ctl-sm grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
+      <span className="min-w-0 truncate text-sm text-fg-3">{label}</span>
+      <span className="flex min-w-0 gap-0.5 rounded-md border border-border bg-bg-0 p-0.5">
         {options.map((option, index) => (
-          <span key={option.key} className="flex items-center">
+          <span key={option.key} className="flex min-w-0 flex-1 items-center gap-0.5">
             <button
               type="button"
               data-flat-segment="true"
@@ -138,15 +151,17 @@ export function FlatSegmentedRow({
               onClick={() => {
                 onChange(option.key);
               }}
-              className={`px-1.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed ${
+              className={`flex h-[18px] min-w-0 flex-1 items-center justify-center truncate rounded-sm px-1 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:text-fg-disabled ${
                 option.active
-                  ? "border-b-2 border-panel-accent text-panel-text-0"
-                  : "border-b-2 border-transparent text-panel-text-4 hover:text-panel-text-2"
+                  ? "bg-surface-3 text-fg shadow-[inset_0_0_0_1px_var(--color-border-strong)]"
+                  : "text-fg-3 hover:bg-surface-2 hover:text-fg"
               }`}
             >
               {option.node}
             </button>
-            {spacerAfterIndex === index && <span className="w-3" aria-hidden="true" />}
+            {spacerAfterIndex === index && (
+              <span className="mx-0.5 h-3 w-px shrink-0 bg-border" aria-hidden="true" />
+            )}
           </span>
         ))}
       </span>
@@ -188,48 +203,45 @@ export function FlatGroupHeader({
    *  that sibling actually changed — gating explicitly avoids that replay. */
   animateEntrance?: boolean;
 }) {
+  const enter = animateEntrance ? "hf-flat-group-enter " : "";
   if (!isOpen) {
     return (
       <button
         type="button"
         data-flat-group-collapsed="true"
+        aria-expanded={false}
         onClick={onToggleOpen}
-        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex min-h-10 w-full shrink-0 items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-4 text-left`}
+        className={`${enter}flex h-[30px] w-full shrink-0 items-center gap-1 border-b border-border-subtle pl-2 pr-2.5 text-left transition-colors hover:bg-surface-1 ${INSP_FOCUS_INSET}`}
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="text-[12px] font-medium text-panel-text-2">{title}</span>
-          {summary && (
-            <span className="min-w-0 truncate font-mono text-[9px] text-panel-text-4">
-              {summary}
-            </span>
-          )}
+        <CaretDown size={12} aria-hidden="true" className="shrink-0 -rotate-90 text-fg-3" />
+        <span data-flat-group-title="true" className="shrink-0 text-sm font-semibold text-fg">
+          {title}
         </span>
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          fill="currentColor"
-          className="shrink-0 text-panel-text-5"
-        >
-          <path d="M4 2l4 4-4 4z" />
-        </svg>
+        {summary && <span className="ml-1.5 min-w-0 truncate text-xs text-fg-3">{summary}</span>}
       </button>
     );
   }
 
   return (
-    <div
-      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex min-h-10 shrink-0 items-center justify-between bg-panel-bg px-4`}
-    >
-      <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
-      <span className="flex items-center gap-2.5 text-panel-text-5">
-        {accessory}
-        <button type="button" onClick={onToggleOpen} title="Collapse" className="text-panel-text-3">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-            <path d="M2 4l4 4 4-4z" />
-          </svg>
-        </button>
-      </span>
+    <div className={`${enter}flex h-[30px] shrink-0 items-center`}>
+      <button
+        type="button"
+        title="Collapse"
+        aria-expanded
+        onClick={onToggleOpen}
+        className={`flex h-full min-w-0 flex-1 items-center gap-1 pl-2 pr-2.5 text-left transition-colors hover:bg-surface-1 ${INSP_FOCUS_INSET}`}
+      >
+        <CaretDown size={12} aria-hidden="true" className="shrink-0 text-fg-3" />
+        <span
+          data-flat-group-title="true"
+          className="min-w-0 truncate text-sm font-semibold text-fg"
+        >
+          {title}
+        </span>
+      </button>
+      {accessory && (
+        <span className="flex shrink-0 items-center gap-1 pr-2 text-fg-3">{accessory}</span>
+      )}
     </div>
   );
 }
@@ -414,8 +426,8 @@ export function FlatSlider({
   };
 
   return (
-    <div className="flex min-h-[28px] items-center gap-2.5">
-      <span className="w-[86px] shrink-0 text-[11px] text-panel-text-3">{label}</span>
+    <div className="flex min-h-ctl-sm items-center gap-1.5">
+      <span className="w-[72px] shrink-0 truncate text-sm text-fg-3">{label}</span>
       <div
         data-flat-slider-track="true"
         role="slider"
@@ -510,25 +522,27 @@ export function FlatSlider({
           cancelDrag(e.currentTarget);
         }}
       >
-        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-panel-hover">
+        <div className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-surface-3">
           {centerTick && (
             <div
               data-flat-slider-center-tick="true"
-              className="absolute left-1/2 -top-px h-1 w-px -translate-x-1/2 bg-panel-text-5"
+              className="absolute left-1/2 top-1/2 h-[9px] w-px -translate-x-1/2 -translate-y-1/2 bg-border-strong"
             />
           )}
-          {tier === "explicitCustom" && (
-            <div
-              data-flat-slider-fill="true"
-              className="absolute inset-y-0 left-0 rounded-full bg-panel-text-5"
-              style={{ width: `${clampedPct}%` }}
-            />
-          )}
+          <div
+            data-flat-slider-fill="true"
+            className="absolute inset-y-0 rounded-full bg-fg-3"
+            style={
+              centerTick
+                ? { left: `${Math.min(50, clampedPct)}%`, width: `${Math.abs(clampedPct - 50)}%` }
+                : { left: 0, width: `${clampedPct}%` }
+            }
+          />
         </div>
         <div
           data-flat-slider-knob="true"
-          className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
-            tier === "explicitCustom" ? "h-2 w-2 bg-white" : "h-[7px] w-[7px] bg-panel-text-4"
+          className={`absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/45 bg-fg transition-colors ${
+            disabled ? "opacity-50" : "hover:bg-fg-2"
           }`}
           style={{ left: `${clampedPct}%` }}
         />
@@ -541,7 +555,7 @@ export function FlatSlider({
         onCommitText={onCommitText}
       />
       {(centerTick || onReset) && (
-        <span data-flat-slider-reset-slot="true" className="w-3.5 shrink-0">
+        <span data-flat-slider-reset-slot="true" className="flex w-5 shrink-0 justify-center">
           {tier === "explicitCustom" && onReset && (
             <button
               type="button"
@@ -551,9 +565,9 @@ export function FlatSlider({
               onClick={() => {
                 onReset();
               }}
-              className="text-panel-text-3 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
+              className={INSP_MINI_BUTTON}
             >
-              <RotateCcw size={11} />
+              <RotateCcw size={12} />
             </button>
           )}
         </span>

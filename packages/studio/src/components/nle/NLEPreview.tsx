@@ -485,7 +485,7 @@ export const NLEPreview = memo(function NLEPreview({
     <div className="flex flex-col h-full min-h-0">
       <div
         ref={viewportRef}
-        className="relative flex-1 flex items-center justify-center overflow-hidden min-h-0 outline-hidden focus:ring-1 focus:ring-studio-accent/40 bg-[var(--studio-preview-bg,var(--color-neutral-950))]"
+        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-stage outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
         tabIndex={0}
         aria-label="Composition preview"
       >
@@ -495,7 +495,7 @@ export const NLEPreview = memo(function NLEPreview({
         >
           <div
             ref={stageRef}
-            className="relative shrink-0 pointer-events-auto"
+            className="pointer-events-auto relative shrink-0"
             style={{
               width: `${stageSize.width}px`,
               height: `${stageSize.height}px`,
@@ -567,7 +567,7 @@ export const NLEPreview = memo(function NLEPreview({
         </div>
         <div
           ref={hudRef}
-          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 rounded-lg px-4 py-2 text-sm font-mono tabular-nums text-white/90 bg-black/60 backdrop-blur-xs shadow-lg"
+          className="pointer-events-none absolute top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-on-media-bg px-3 py-1.5 font-mono text-num tabular-nums text-on-media shadow-tip"
           style={{ opacity: 0, transition: "opacity 200ms ease-in" }}
           aria-live="polite"
         />

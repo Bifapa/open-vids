@@ -53,4 +53,6 @@ export interface StudioRightPanelsProps extends StudioEditPersistenceProps {
   onToggleElementHidden?: ToggleHiddenHandler;
   onAutoGroupCarveSources?: (clipIds: readonly string[], groupId: string) => Promise<void>;
   onAddMediaOverlay?: AddMediaOverlayHandler;
+  /** Adds a project asset to the timeline at the playhead (the Media workspace's "Add at Playhead" and drop tray). */
+  onAddAssetToTimeline?: (path: string) => void;
 }

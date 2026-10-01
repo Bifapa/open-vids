@@ -30,6 +30,25 @@ describe("parseInline", () => {
     expect(parseInline("[click](javascript:alert(1))")).toEqual([{ kind: "text", text: "click" }]);
   });
 
+  it("turns standalone timecodes into seek points, but not ports, ratios or longer numbers", () => {
+    const timecodes = (text: string) =>
+      parseInline(text).flatMap((node) =>
+        node.kind === "timecode" ? [[node.text, node.seconds]] : [],
+      );
+    expect(timecodes("Cut at 0:42, hold to 1:05.5 and end 01:02:03.")).toEqual([
+      ["0:42", 42],
+      ["1:05.5", 65.5],
+      ["01:02:03", 3723],
+    ]);
+    expect(timecodes("Range 0:12–0:18.")).toEqual([
+      ["0:12", 12],
+      ["0:18", 18],
+    ]);
+    expect(
+      timecodes("See http://127.0.0.1:5407/a, a 16:9 frame, 1:2:3:4, 12:345 and `0:42`."),
+    ).toEqual([]);
+  });
+
   it("keeps markup-looking text as text", () => {
     const nodes = parseInline('<img src=x onerror="alert(1)"> and <script>alert(1)</script>');
     expect(nodes).toEqual([

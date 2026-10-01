@@ -38,9 +38,9 @@ describe("AudioWaveform", () => {
     drawWaveformCanvas(canvas, [0.25, 1], false, 0, 1);
     expect(fillRect).toHaveBeenCalledTimes(4);
     expect(fillRect.mock.calls.map(([x, y, width, height]) => [x, y, width, height])).toEqual([
-      [0, 18, 3, 2],
-      [0, 15, 3, 5],
-      [3, 18, 3, 2],
+      [0, 9.5, 3, 1],
+      [0, 7.5, 3, 5],
+      [3, 9.5, 3, 1],
       [3, 0, 3, 20],
     ]);
   });

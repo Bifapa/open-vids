@@ -20,17 +20,15 @@ pub fn refresh_thumbnail_async(app: &tauri::AppHandle, dir: PathBuf, id: String)
     let handle = app.clone();
     std::thread::spawn(move || {
         // Give the Studio server a head start: it was just spawned (prod) or
-        // hot-reloading a new symlink (dev). Poll briefly, then give up —
-        // the card placeholder covers the gap.
-        let origin = loop {
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            let origin = handle
-                .try_state::<Mutex<AppState>>()
-                .and_then(|s| s.lock().ok().and_then(|s| s.studio_origin.clone()));
-            match origin {
-                Some(origin) => break origin,
-                None => return,
-            }
+        // hot-reloading a new symlink (dev). If no project is open by then,
+        // give up — the card placeholder covers the gap; fetch_bytes retries
+        // the connection itself.
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let Some(origin) = handle
+            .try_state::<Mutex<AppState>>()
+            .and_then(|s| s.lock().ok().and_then(|s| s.studio_origin.clone()))
+        else {
+            return;
         };
         let url = format!(
             "{}/api/projects/{}/thumbnail/index.html?t=0.5&format=jpeg",
@@ -114,7 +112,7 @@ fn fetch_bytes(url: &str) -> Option<(Vec<u8>, String)> {
 
 /// Decode a `Transfer-Encoding: chunked` body. Returns None on malformed
 /// framing rather than garbage bytes.
-fn decode_chunked(raw: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn decode_chunked(raw: &[u8]) -> Option<Vec<u8>> {
     let mut out = Vec::new();
     let mut pos = 0;
     loop {

@@ -83,7 +83,7 @@ export function DomEditGroupChrome({
         <div
           key={item.key}
           aria-hidden="true"
-          className="pointer-events-none absolute rounded-xl border border-studio-accent/70"
+          className="pointer-events-none absolute rounded-xl border border-accent"
           style={{
             left: item.rect.left,
             top: item.rect.top,
@@ -94,7 +94,7 @@ export function DomEditGroupChrome({
       ))}
       <div
         data-dom-edit-selection-box="true"
-        className="pointer-events-auto absolute rounded-xl border border-studio-accent shadow-[0_0_0_1px_rgba(60,230,172,0.3)]"
+        className="pointer-events-auto absolute rounded-xl border-[1.5px] border-accent"
         style={{
           left: groupBounds.left,
           top: groupBounds.top,
@@ -233,7 +233,7 @@ export function DomEditSelectionChrome({
         >
           {cropOutlineInsetPx && (
             <div
-              className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
+              className="pointer-events-none absolute rounded-md border-[1.5px] border-accent"
               style={{
                 left: cropOutlineInsetPx.left,
                 top: cropOutlineInsetPx.top,
@@ -254,7 +254,7 @@ export function DomEditSelectionChrome({
             def.handle !== "se" && !selection.capabilities.canApplyManualOffset ? null : (
               <div
                 key={def.handle}
-                className="pointer-events-auto absolute flex h-4 w-4 items-center justify-center"
+                className="group/handle pointer-events-auto absolute flex h-4 w-4 items-center justify-center"
                 style={{
                   ...resizeHandleStyle(def, overlayRect, cropOutlineInsetPx ?? undefined),
                   // Cursor rotates with the object: bucket the corner's base
@@ -266,7 +266,7 @@ export function DomEditSelectionChrome({
                   gestures.startGesture("resize", e, { resizeHandle: def.handle });
                 }}
               >
-                <div className="pointer-events-none h-[12px] w-[12px] rounded-full border-[1.5px] border-studio-accent bg-white shadow-[0_0_3px_rgba(0,0,0,0.45)]" />
+                <div className="pointer-events-none size-2 rounded-[1.5px] border-[1.5px] border-accent bg-fg transition-colors group-hover/handle:bg-[color-mix(in_oklch,var(--color-fg)_80%,var(--color-accent))]" />
               </div>
             ),
           )}

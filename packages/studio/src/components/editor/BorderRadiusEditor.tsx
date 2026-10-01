@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { MetricField } from "./propertyPanelPrimitives";
-import { formatNumericValue, parseNumericValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
+import { formatNumericValue, parseNumericValue } from "./propertyPanelHelpers";
+import { INSP_MINI_BUTTON } from "./inspectorStyles";
 
 type Corner = "tl" | "tr" | "br" | "bl";
 
@@ -65,34 +66,55 @@ export function BorderRadiusEditor({
   const path = buildRoundedRectPath(PREVIEW_W, PREVIEW_H, sTL, sTR, sBR, sBL);
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3">
+    <div className="grid gap-1.5">
+      <div className="flex items-center gap-1.5">
         <svg
           width={PREVIEW_W}
           height={PREVIEW_H}
           viewBox={`0 0 ${PREVIEW_W} ${PREVIEW_H}`}
-          className="shrink-0"
+          className="shrink-0 text-fg-3"
         >
-          <path
-            d={path}
-            fill="rgba(255,255,255,0.06)"
-            stroke="rgba(255,255,255,0.24)"
-            strokeWidth={1.5}
+          <path d={path} fill="var(--color-surface-2)" stroke="currentColor" strokeWidth={1.5} />
+          <circle
+            cx={sTL}
+            cy={sTL}
+            r={3}
+            fill={linked ? "var(--color-fg-2)" : "var(--color-accent)"}
           />
-          <circle cx={sTL} cy={sTL} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
-          <circle cx={PREVIEW_W - sTR} cy={sTR} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
+          <circle
+            cx={PREVIEW_W - sTR}
+            cy={sTR}
+            r={3}
+            fill={linked ? "var(--color-fg-2)" : "var(--color-accent)"}
+          />
           <circle
             cx={PREVIEW_W - sBR}
             cy={PREVIEW_H - sBR}
             r={3}
-            fill={linked ? "#3b82f6" : "#a78bfa"}
+            fill={linked ? "var(--color-fg-2)" : "var(--color-accent)"}
           />
-          <circle cx={sBL} cy={PREVIEW_H - sBL} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
+          <circle
+            cx={sBL}
+            cy={PREVIEW_H - sBL}
+            r={3}
+            fill={linked ? "var(--color-fg-2)" : "var(--color-accent)"}
+          />
         </svg>
-
+        <div className="min-w-0 flex-1">
+          {linked && (
+            <MetricField
+              label="All"
+              value={formatNumericValue(tl)}
+              disabled={disabled}
+              liveCommit
+              onCommit={(next) => handleCornerCommit("tl", next)}
+            />
+          )}
+        </div>
         <button
           type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+          className={INSP_MINI_BUTTON}
+          aria-pressed={linked}
           onClick={handleToggleLinked}
           disabled={disabled}
           title={linked ? "Unlink corners" : "Link all corners"}
@@ -123,16 +145,8 @@ export function BorderRadiusEditor({
         </button>
       </div>
 
-      {linked ? (
-        <MetricField
-          label="All"
-          value={formatNumericValue(tl)}
-          disabled={disabled}
-          liveCommit
-          onCommit={(next) => handleCornerCommit("tl", next)}
-        />
-      ) : (
-        <div className={RESPONSIVE_GRID}>
+      {!linked && (
+        <div className="grid grid-cols-2 gap-1.5">
           <MetricField
             label="TL"
             value={formatNumericValue(tl)}

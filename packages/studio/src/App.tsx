@@ -1,6 +1,6 @@
 import { useOwnPreviewIframe, usePreviewIframeStore } from "./player/store/previewIframeStore";
 import { buildProjectApiPath } from "./utils/projectRouting";
-import { useState, useCallback, useRef, useMemo, useLayoutEffect } from "react";
+import { useState, useCallback, useRef, useMemo, useLayoutEffect, useEffect } from "react";
 import { useDismissingTabSetter, useRightPanelIntent } from "./hooks/useRightPanelIntents";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { usePlayerStore } from "./player";
@@ -35,7 +35,6 @@ import { deleteSelectedKeyframes } from "./hooks/timelineEditingHelpers";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
 import { useRenderClipContent } from "./hooks/useRenderClipContent";
 import { useConsoleErrorCapture } from "./hooks/useConsoleErrorCapture";
-import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
@@ -48,6 +47,8 @@ import {
 } from "./hooks/useStudioContextValue";
 import type { DomEditSelection } from "./components/editor/domEditing";
 import { StudioHeader } from "./components/StudioHeader";
+import { StudioStatusBar } from "./components/shell/StudioStatusBar";
+import { applyBootWorkspace } from "./story/WorkspaceSwitch";
 import { useGestureCommit } from "./hooks/useGestureCommit";
 import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
 import { StudioLeftPanels } from "./components/StudioLeftPanels";
@@ -342,12 +343,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   });
   const compositionDimensions = useCompositionDimensions(previewIframeRef);
   const lint = useLintModal(projectId, refreshKey);
-  const frameCapture = useFrameCapture({
-    projectId,
-    activeCompPath,
-    showToast,
-    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
-  });
   const {
     consoleErrors,
     setConsoleErrors,
@@ -384,17 +379,14 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     [appHotkeys, resetConsoleErrors, refreshPreviewDocumentVersion],
   );
   const rightPanel = useRightPanelIntent();
-  const { inspectorPanelActive, shouldShowMotionPath, shouldShowSelectedDomBounds } =
-    useInspectorState(
-      rightPanel,
-      isPlaying,
-      domEditSession.domEditSelection,
-      gestureState === "recording",
-    );
-  // The dock has no separate "railed by window width" state (it shrinks
-  // panels, never auto-hides the group), so rightCollapsed is already the
-  // value that decides whether the panel is actually showing.
-  const inspectorButtonActive = !panelLayout.rightCollapsed && inspectorPanelActive;
+  const { shouldShowMotionPath, shouldShowSelectedDomBounds } = useInspectorState(
+    rightPanel,
+    isPlaying,
+    domEditSession.domEditSelection,
+    gestureState === "recording",
+  );
+  // Once per page load: the workspace the desktop opened this project on.
+  useEffect(() => applyBootWorkspace(), []);
   useStudioUrlState({
     projectId,
     activeCompPath,
@@ -455,18 +447,11 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
           <FileManagerProvider value={fileManager}>
             <DomEditProvider value={domEditSession}>
               <div
-                className="flex flex-col h-full w-full bg-neutral-950 relative"
+                className="flex flex-col h-full w-full bg-bg-0 relative"
                 onDragOver={fileDrop.onDragOver}
                 onDrop={fileDrop.onDrop}
               >
                 <StudioHeader
-                  captureFrameHref={frameCapture.captureFrameHref}
-                  captureFrameFilename={frameCapture.captureFrameFilename}
-                  handleCaptureFrameClick={frameCapture.handleCaptureFrameClick}
-                  refreshCaptureFrameTime={frameCapture.refreshCaptureFrameTime}
-                  capturing={frameCapture.capturing}
-                  inspectorButtonActive={inspectorButtonActive}
-                  inspectorPanelActive={inspectorPanelActive}
                   onExport={() => {
                     void (async () => {
                       await previewPersistence.waitForPendingDomEditSaves();
@@ -525,6 +510,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                         onToggleElementHidden={timelineEditing.handleToggleElementHidden}
                         onAutoGroupCarveSources={timelineEditing.handleAutoGroupCarveSources}
                         onAddMediaOverlay={handleAddMediaOverlay}
+                        onAddAssetToTimeline={handleAddAssetAtPlayhead}
                       />
                     </>
                   }
@@ -573,6 +559,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                     ) : undefined
                   }
                 />
+                <StudioStatusBar />
                 <StudioOverlays
                   projectId={projectId}
                   projectDir={fileManager.projectDir}

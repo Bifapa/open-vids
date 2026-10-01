@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { HfColorCurvePoint, HfHueCurvePoint } from "@hyperframes/core/color-grading";
 import { RotateCcw } from "../../icons/SystemIcons";
+import { Button } from "../ui/Button";
+import { INSP_MINI_BUTTON } from "./inspectorStyles";
 import {
   CurveGraph,
   formatPointValue,
@@ -86,8 +88,8 @@ export function ColorCurves({
     (selectedIndex === 0 || selectedIndex === points.length - 1);
 
   return (
-    <div data-color-curves="true" className="space-y-2">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-panel-hairline">
+    <div data-color-curves="true" className="grid gap-1.5">
+      <div className="flex min-w-0 flex-wrap gap-px rounded-md border border-border bg-bg-1 p-0.5">
         {TABS.map((candidate) => (
           <button
             key={candidate.key}
@@ -100,10 +102,10 @@ export function ColorCurves({
               setActiveKey(candidate.key);
               setSelectedIndex(null);
             }}
-            className={`border-b-2 px-0.5 py-1 text-[9px] ${
+            className={`h-[18px] min-w-0 flex-1 truncate rounded-sm px-1 text-xs transition-colors focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent disabled:text-fg-disabled ${
               candidate.key === tab.key
-                ? "border-panel-accent text-panel-text-1"
-                : "border-transparent text-panel-text-4 hover:text-panel-text-2"
+                ? "bg-surface-3 text-fg"
+                : "text-fg-3 hover:bg-surface-1 hover:text-fg-2"
             }`}
           >
             {candidate.label}
@@ -122,7 +124,7 @@ export function ColorCurves({
         onSettle={transaction.settle}
         onCancel={transaction.cancel}
       />
-      <div className="flex min-h-7 items-end gap-2">
+      <div className="flex min-h-7 items-end gap-1.5">
         {selectedPoint ? (
           <>
             <GradingNumberField
@@ -133,7 +135,7 @@ export function ColorCurves({
               max={tab.kind === "rgb" ? 1 : 359.999}
               disabled={disabled || endpointSelected}
               labelClassName="min-w-0 flex-1"
-              labelTextClassName="block text-[8px] uppercase text-panel-text-5"
+              labelTextClassName="block text-2xs text-fg-3"
               inputClassName="block w-full"
               onBegin={transaction.begin}
               onPreview={(next) => updateSelected("input", next)}
@@ -148,24 +150,24 @@ export function ColorCurves({
               max={tab.max}
               disabled={disabled}
               labelClassName="min-w-0 flex-1"
-              labelTextClassName="block text-[8px] uppercase text-panel-text-5"
+              labelTextClassName="block text-2xs text-fg-3"
               inputClassName="block w-full"
               onBegin={transaction.begin}
               onPreview={(next) => updateSelected("output", next)}
               onSettle={transaction.settle}
               onCancel={transaction.cancel}
             />
-            <button
-              type="button"
+            <Button
+              size="xs"
+              variant="ghost"
               disabled={disabled || endpointSelected}
               onClick={deleteSelected}
-              className="pb-0.5 text-[9px] text-panel-text-4 hover:text-panel-text-1 disabled:opacity-30"
             >
               Delete
-            </button>
+            </Button>
           </>
         ) : (
-          <span className="flex-1 text-[9px] text-panel-text-5">
+          <span className="flex-1 self-center text-xs text-fg-3">
             Click the graph or press Enter to add a point
           </span>
         )}
@@ -175,9 +177,9 @@ export function ColorCurves({
           title={`Reset ${tab.label} curve`}
           disabled={disabled}
           onClick={resetActive}
-          className="pb-0.5 text-panel-text-4 hover:text-panel-text-1 disabled:opacity-40"
+          className={INSP_MINI_BUTTON}
         >
-          <RotateCcw size={11} />
+          <RotateCcw size={12} />
         </button>
       </div>
     </div>

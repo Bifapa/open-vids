@@ -5,6 +5,8 @@ import {
   type NormalizedHfColorGradingSecondary,
 } from "@hyperframes/core/color-grading";
 import { Eyedropper, Plus, Trash } from "../../icons/SystemIcons";
+import { Button } from "../ui/Button";
+import { INSP_CHIP, INSP_MINI_BUTTON, INSP_MINI_LABEL } from "./inspectorStyles";
 import { FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatToggle } from "./propertyPanelFlatToggle";
 import type { ColorGradingCapturedFrame } from "./useColorGradingPreviews";
@@ -118,8 +120,8 @@ export function PropertyPanelColorSecondary({
   };
 
   return (
-    <div className="space-y-1.5" data-flat-grade-secondary="true">
-      <div className="flex items-center justify-between gap-2">
+    <div className="grid gap-1.5" data-flat-grade-secondary="true">
+      <div className="flex min-h-6 items-center justify-between gap-2">
         <span className="flex items-center gap-1">
           {secondaries.map((_, index) => (
             <button
@@ -132,24 +134,20 @@ export function PropertyPanelColorSecondary({
                 setSamplePixels(null);
                 setCaptureError(null);
               }}
-              className={`h-6 min-w-6 border-b-2 px-1 font-mono text-[10px] ${
-                activeIndex === index
-                  ? "border-panel-accent text-panel-text-0"
-                  : "border-transparent text-panel-text-4 hover:text-panel-text-2"
-              }`}
+              className={INSP_CHIP}
             >
               {index + 1}
             </button>
           ))}
         </span>
-        <span className="flex items-center gap-2">
+        <span className="flex items-center gap-0.5">
           <button
             type="button"
             aria-label="Add secondary color selection"
             title="Add secondary color selection"
             disabled={secondaries.length >= SECONDARY_CAPABILITIES.max}
             onClick={addSecondary}
-            className="text-panel-text-3 hover:text-panel-text-1 disabled:opacity-35"
+            className={INSP_MINI_BUTTON}
           >
             <Plus size={12} />
           </button>
@@ -159,7 +157,7 @@ export function PropertyPanelColorSecondary({
             title="Remove selected secondary"
             disabled={!selected}
             onClick={removeSelected}
-            className="text-panel-text-3 hover:text-panel-text-1 disabled:opacity-35"
+            className={`${INSP_MINI_BUTTON} hover:text-error`}
           >
             <Trash size={12} />
           </button>
@@ -167,14 +165,14 @@ export function PropertyPanelColorSecondary({
       </div>
 
       {!selected ? (
-        <button
-          type="button"
+        <Button
+          size="sm"
           title="Add color selection"
+          icon={<Plus size={12} />}
           onClick={addSecondary}
-          className="w-full border border-dashed border-panel-border-input px-2 py-2 text-[10px] text-panel-text-4 hover:border-panel-accent/50 hover:text-panel-text-2"
         >
           Add a color selection
-        </button>
+        </Button>
       ) : (
         <>
           <FlatToggle
@@ -182,8 +180,10 @@ export function PropertyPanelColorSecondary({
             checked={selected.enabled}
             onChange={(enabled) => replaceSelected({ ...selected, enabled })}
           />
-          <button
-            type="button"
+          <Button
+            size="sm"
+            className="justify-self-start"
+            icon={<Eyedropper size={12} />}
             disabled={sampling}
             onClick={async () => {
               setSampling(true);
@@ -204,24 +204,22 @@ export function PropertyPanelColorSecondary({
                 setSampling(false);
               }
             }}
-            className="flex min-h-7 items-center gap-1.5 text-[10px] font-medium text-panel-accent hover:text-panel-accent/80 disabled:opacity-50"
           >
-            <Eyedropper size={12} />
             {sampling ? "Capturing frame" : "Sample color from frame"}
-          </button>
+          </Button>
           {captureError && (
-            <p role="alert" className="text-[9px] leading-4 text-red-300">
+            <p role="alert" className="text-xs leading-4 text-error">
               {captureError}
             </p>
           )}
           {sampleFrame && samplePixels && (
-            <div className="space-y-1">
-              <div className="flex gap-2 text-[9px]">
+            <div className="grid gap-1">
+              <div className="flex gap-1">
                 <button
                   type="button"
                   aria-pressed={!showMatte}
                   onClick={() => setShowMatte(false)}
-                  className={!showMatte ? "text-panel-accent" : "text-panel-text-4"}
+                  className={INSP_CHIP}
                 >
                   Source
                 </button>
@@ -229,7 +227,7 @@ export function PropertyPanelColorSecondary({
                   type="button"
                   aria-pressed={showMatte}
                   onClick={() => setShowMatte(true)}
-                  className={showMatte ? "text-panel-accent" : "text-panel-text-4"}
+                  className={INSP_CHIP}
                 >
                   Selection matte
                 </button>
@@ -241,12 +239,12 @@ export function PropertyPanelColorSecondary({
                   height={sampleFrame.height}
                   role="img"
                   aria-label="Selected color matte"
-                  className="block h-auto w-full border border-panel-hairline bg-black"
+                  className="block h-auto w-full rounded-sm border border-border bg-bg-1"
                 />
               ) : (
                 <button
                   type="button"
-                  className="block w-full overflow-hidden border border-panel-hairline bg-black"
+                  className="block w-full cursor-crosshair overflow-hidden rounded-sm border border-border bg-bg-1"
                   title="Click a color to initialize this selection"
                   aria-label="Sample color from captured frame"
                   onClick={(event) => {
@@ -274,9 +272,7 @@ export function PropertyPanelColorSecondary({
             </div>
           )}
 
-          <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-            Qualifier
-          </div>
+          <div className={`mt-1 ${INSP_MINI_LABEL}`}>Qualifier</div>
           <FlatSlider
             label="Hue"
             value={selected.key.hue.center}
@@ -410,9 +406,7 @@ export function PropertyPanelColorSecondary({
             ];
           })}
 
-          <div className="pt-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-            Correction
-          </div>
+          <div className={`mt-1 ${INSP_MINI_LABEL}`}>Correction</div>
           {CORRECTION_CONTROLS.map(([key, label, scale, suffix]) => {
             const limit = SECONDARY_CAPABILITIES.correction[key];
             const value = selected.correction[key] * scale;

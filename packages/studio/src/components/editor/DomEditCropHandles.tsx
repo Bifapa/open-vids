@@ -288,16 +288,16 @@ export function DomEditCropHandles({
               top: cropRect.top,
               width: cropRect.width,
               height: cropRect.height,
-              boxShadow: "0 0 0 100000px rgba(8, 8, 12, 0.6)",
+              boxShadow: "0 0 0 100000px color-mix(in oklch, var(--color-tip-bg) 70%, transparent)",
             }}
           />
         </div>
       )}
-      {/* Dashed clip outline on the crop boundary, with a rule-of-thirds grid
-          shown while dragging. */}
+      {/* Clip outline on the crop boundary (prototype `.v-crop-box`), with a
+          rule-of-thirds grid shown while dragging. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute border border-dashed border-studio-accent"
+        className="pointer-events-none absolute outline-[1.5px] -outline-offset-[0.75px] outline-on-media outline-solid"
         style={{
           left: cropRect.left,
           top: cropRect.top,
@@ -307,10 +307,10 @@ export function DomEditCropHandles({
       >
         {dragging && (
           <>
-            <div className="absolute inset-y-0 left-1/3 w-px bg-studio-accent/40" />
-            <div className="absolute inset-y-0 left-2/3 w-px bg-studio-accent/40" />
-            <div className="absolute inset-x-0 top-1/3 h-px bg-studio-accent/40" />
-            <div className="absolute inset-x-0 top-2/3 h-px bg-studio-accent/40" />
+            <div className="absolute inset-y-0 left-1/3 w-px bg-on-media/35" />
+            <div className="absolute inset-y-0 left-2/3 w-px bg-on-media/35" />
+            <div className="absolute inset-x-0 top-1/3 h-px bg-on-media/35" />
+            <div className="absolute inset-x-0 top-2/3 h-px bg-on-media/35" />
           </>
         )}
       </div>
@@ -323,7 +323,7 @@ export function DomEditCropHandles({
           aria-label="Reposition crop"
           title="Reposition crop"
           data-dom-edit-crop-handle="true"
-          className="pointer-events-auto absolute rounded-full border-2 border-studio-accent bg-studio-accent/30 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+          className="pointer-events-auto absolute rounded-full border-2 border-on-media bg-on-media/30 shadow-[0_0_0_1px_var(--color-on-media-bg)]"
           style={{
             left: cropRect.left + cropRect.width / 2,
             top: cropRect.top + cropRect.height / 2,
@@ -375,7 +375,7 @@ export function DomEditCropHandles({
             onPointerCancel={cancelCropGesture}
           >
             <span
-              className="pointer-events-none rounded-full bg-studio-accent/90 shadow-[0_0_0_1px_rgba(0,0,0,0.4)] transition-opacity duration-100"
+              className="pointer-events-none rounded-[1px] bg-on-media shadow-[0_0_0_1px_var(--color-on-media-bg)] transition-opacity duration-100"
               style={{
                 width: m.pillWidth,
                 height: m.pillHeight,

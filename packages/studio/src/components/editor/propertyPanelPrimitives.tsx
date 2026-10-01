@@ -57,15 +57,14 @@ export function MetricField({
   const scrubProps =
     scrub && !disabled
       ? ({
-          className:
-            "shrink-0 text-[11px] font-medium text-neutral-500 cursor-ew-resize select-none",
+          className: "shrink-0 text-sm font-medium text-fg-3 cursor-ew-resize select-none",
           onPointerDown: handleScrubPointerDown,
           onPointerMove: handleScrubPointerMove,
           onPointerUp: handleScrubPointerUp,
           onPointerCancel: handleScrubPointerUp,
           onLostPointerCapture: handleScrubPointerUp,
         } as const)
-      : ({ className: "shrink-0 text-[11px] font-medium text-neutral-500" } as const);
+      : ({ className: "shrink-0 text-sm font-medium text-fg-3" } as const);
 
   return (
     <div className={FIELD} title={tooltip}>
@@ -77,7 +76,7 @@ export function MetricField({
           liveCommit={liveCommit}
           onCommit={onCommit}
         />
-        {suffix && <span className="shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
+        {suffix && <span className="shrink-0 text-xs text-fg-disabled">{suffix}</span>}
       </div>
     </div>
   );
@@ -182,7 +181,7 @@ export function SliderControl({
         // and the thumb 10px, only the pointer box grows.
         className="h-6 min-w-0 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-panel-border [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0C0C0E,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
       />
-      <div className="min-w-[44px] rounded-md bg-panel-input px-2 py-1.5 text-right text-[11px] font-medium text-panel-text-1 tabular-nums">
+      <div className="min-w-[44px] rounded-md bg-surface-1 px-2 py-1.5 text-right text-sm font-medium text-fg tabular-nums">
         {formatDisplayValue?.(draft) ?? displayValue}
       </div>
     </div>
@@ -206,7 +205,7 @@ export function SegmentedControl({
     <div
       role="group"
       aria-label={trackName}
-      className="grid min-w-0 gap-[2px] rounded-md bg-panel-input p-[2px]"
+      className="grid min-w-0 gap-[2px] rounded-md bg-surface-1 p-[2px]"
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
       {options.map((option) => (
@@ -218,10 +217,8 @@ export function SegmentedControl({
             onChange(option.value);
           }}
           aria-pressed={option.value === value}
-          className={`min-w-0 truncate rounded px-2 py-[5px] text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
-            option.value === value
-              ? "bg-panel-hover text-white"
-              : "text-panel-text-4 hover:text-panel-text-2"
+          className={`min-w-0 truncate rounded px-2 py-[5px] text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+            option.value === value ? "bg-surface-3 text-fg" : "text-fg-3 hover:text-fg-2"
           }`}
         >
           {option.label}
@@ -247,14 +244,14 @@ export function SelectField({
   const renderedOptions = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <label className={`${FIELD} flex items-center gap-3`}>
-      <span className="shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
+      <span className="shrink-0 text-sm font-medium text-fg-3">{label}</span>
       <select
         value={value}
         disabled={disabled}
         onChange={(e) => {
           onChange(e.target.value);
         }}
-        className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600"
+        className="min-w-0 w-full appearance-none bg-transparent text-sm font-medium text-fg outline-hidden disabled:cursor-not-allowed disabled:text-fg-disabled"
       >
         {renderedOptions.map((option) => (
           <option key={option} value={option}>
@@ -286,7 +283,7 @@ export function Section({
       height="10"
       viewBox="0 0 10 10"
       fill="currentColor"
-      className={`shrink-0 text-panel-text-5 transition-transform duration-150 ${
+      className={`shrink-0 text-fg-disabled transition-transform duration-150 ${
         collapsed ? "-rotate-90" : ""
       }`}
     >
@@ -296,7 +293,7 @@ export function Section({
 
   const section = slugifyPanelSectionTitle(title);
   return (
-    <section className="min-w-0 border-t border-panel-border" data-panel-section={section}>
+    <section className="min-w-0 border-t border-border-subtle" data-panel-section={section}>
       <div className="flex w-full items-center gap-2 px-4 py-2.5">
         <button
           type="button"
@@ -304,7 +301,7 @@ export function Section({
           aria-expanded={!collapsed}
           className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
         >
-          <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>
+          <h3 className="text-sm font-semibold text-fg">{title}</h3>
           {collapseIcon}
         </button>
         {accessory && <div className="flex shrink-0 items-center">{accessory}</div>}

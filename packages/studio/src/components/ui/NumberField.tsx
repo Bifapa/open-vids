@@ -6,7 +6,7 @@
 import { NumberField as BaseNumberField } from "@base-ui/react/number-field";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "./cn";
-import { fieldBase, fieldText } from "./Input";
+import { fieldBase, fieldSizes, fieldText, type FieldSize } from "./Input";
 import type { PreviewState } from "./Button";
 
 export interface NumberFieldProps {
@@ -22,6 +22,8 @@ export interface NumberFieldProps {
   max?: number;
   step?: number;
   disabled?: boolean;
+  /** `sm` in panels (default), `md` in window forms. */
+  size?: FieldSize;
   className?: string;
   "data-preview-state"?: PreviewState;
 }
@@ -35,6 +37,7 @@ export function NumberField({
   max,
   step,
   disabled,
+  size = "sm",
   className,
   "data-preview-state": previewState,
 }: NumberFieldProps) {
@@ -85,7 +88,7 @@ export function NumberField({
       onValueCommitted={(next) => commit(next)}
     >
       <BaseNumberField.Group
-        className={cn(fieldBase, className)}
+        className={cn(fieldBase, fieldSizes[size], "gap-1 pr-1.5", className)}
         aria-invalid={invalid || undefined}
         data-preview-state={previewState}
       >
@@ -93,7 +96,7 @@ export function NumberField({
           ref={inputRef}
           aria-label={label}
           aria-invalid={invalid || undefined}
-          className={cn(fieldText, "tabular-nums")}
+          className={cn(fieldText, "text-right font-mono tabular-nums")}
           onKeyDown={(event) => {
             if (event.key !== "Enter") return;
             event.preventDefault();
@@ -108,7 +111,7 @@ export function NumberField({
           }}
         />
         {unit && (
-          <span className="shrink-0 select-none text-step-10 text-text-4" aria-hidden="true">
+          <span className="shrink-0 select-none text-xs text-fg-3" aria-hidden="true">
             {unit}
           </span>
         )}

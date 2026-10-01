@@ -16,15 +16,14 @@ import {
   TRACK_H,
   RULER_H,
   CLIP_Y,
-  TRACKS_LEFT_PAD,
+  LABEL_COL_W,
   createTimelineRowGeometry,
   getTimelineRowTop,
 } from "./timelineLayout";
 
-// Canvas-space time origin used by the breathing-pad (default) test cases: right
-// edge of the sticky gutter + the left pad. Other cases pass GUTTER or LABEL_COL_W
-// directly as contentOrigin to test the plain/keyframe-label-column origins.
-const ORIGIN = GUTTER + TRACKS_LEFT_PAD;
+// Canvas-space time origin: the track-head column plus the gutter before t=0.
+// Other cases pass GUTTER or LABEL_COL_W directly as contentOrigin.
+const ORIGIN = LABEL_COL_W + GUTTER;
 
 describe("isTimelineRulerPress", () => {
   const rectTop = 500; // scroll container's viewport top

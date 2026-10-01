@@ -63,7 +63,7 @@ export function Popover({
             aria-label={ariaLabel}
             initialFocus={initialFocus}
             data-preview-state={previewState}
-            className={cn(popupSurface, "p-3 text-step-11 text-text-1 shadow-popover", className)}
+            className={cn(popupSurface, "p-3 text-sm text-fg shadow-pop", className)}
           >
             {children}
           </BasePopover.Popup>

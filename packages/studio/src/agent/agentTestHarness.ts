@@ -2,6 +2,7 @@ import { vi, type Mock } from "vitest";
 import { DEFAULT_EXECUTION_QUALITY, qaCounts } from "@hyperframes/agent-protocol";
 import type {
   ActiveTurnInfo,
+  AgentIntake,
   AgentRun,
   AgentSettings,
   ChatEvent,
@@ -295,6 +296,8 @@ export interface FakeClientData {
   settings?: AgentSettings;
   /** Stored QA reports by id; an unknown id answers 404. */
   qaReports?: Record<string, QaReport>;
+  /** What the intake claim hands out (once); none when absent. */
+  intake?: AgentIntake;
 }
 
 export const EMPTY_LIST: ListChatsResponse = { chats: [], activeTurn: null };
@@ -344,13 +347,15 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
     listModels: vi.fn(async () => data.models ?? CATALOG),
     createChat: vi.fn(async () => summary({ id: "new" })),
     getChat: vi.fn(async () => state),
-    updateChat: vi.fn(async (_id, request) => ({
+    updateChat: vi.fn(async (chatId, request) => ({
       ...state.chat,
+      id: chatId,
       ...(request.title !== undefined ? { title: request.title } : {}),
       ...(request.model !== undefined ? { mainAgentModel: request.model } : {}),
       ...(request.thinking !== undefined ? { thinking: request.thinking } : {}),
       ...(request.enabledAgents !== undefined ? { enabledAgents: request.enabledAgents } : {}),
       ...(request.activeMode !== undefined ? { activeMode: request.activeMode } : {}),
+      ...(request.intent !== undefined ? { intent: request.intent } : {}),
       ...(request.executionQuality !== undefined
         ? { executionQuality: request.executionQuality }
         : {}),
@@ -359,6 +364,7 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
     steerTurn: vi.fn(async () => ({ messageId: "m9" })),
     abortTurn: vi.fn(async () => undefined),
     revertTurn: vi.fn(async () => data.revert ?? { ok: true, turn: turn({ status: "completed" }) }),
+    unrevertTurn: vi.fn(async () => ({ ok: true, turn: turn({ status: "completed" }) })),
     chatEventsUrl: vi.fn((chatId, after) => `/agent/chats/${chatId}/events?after=${after}`),
     projectEventsUrl: vi.fn(() => "/agent/events"),
     getSettings: vi.fn(async () => data.settings ?? SETTINGS),
@@ -375,6 +381,11 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
     renderFileUrl: vi.fn(
       (renderPath) => `/api/projects/p1/renders/file/${renderPath.replace(/^renders\//, "")}`,
     ),
+    claimIntake: vi.fn(async () => {
+      const intake = data.intake ?? null;
+      data.intake = undefined;
+      return intake;
+    }),
   };
   return client;
 }
