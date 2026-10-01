@@ -40,6 +40,7 @@ describe("app preferences route", () => {
       path,
       JSON.stringify({
         theme: "neon",
+        language: "klingon",
         onLaunch: "last",
         confirmTrash: "yes",
         density: "huge",
@@ -52,6 +53,7 @@ describe("app preferences route", () => {
     expect(await get()).toEqual({
       version: 1,
       theme: "system",
+      language: "system",
       onLaunch: "last",
       confirmTrash: true,
       density: "default",
@@ -67,6 +69,13 @@ describe("app preferences route", () => {
         extra: true,
       },
     });
+  });
+
+  it("stores the language choice", async () => {
+    const response = await put({ language: "en" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ language: "en" });
+    expect(stored()).toMatchObject({ language: "en" });
   });
 
   it("stores density and the update choice, merging updates key by key", async () => {
@@ -121,6 +130,7 @@ describe("app preferences route", () => {
 
   it.each([
     [{ theme: "neon" }, "theme"],
+    [{ language: "xx" }, "language"],
     [{ onLaunch: "never" }, "onLaunch"],
     [{ confirmTrash: 1 }, "confirmTrash"],
     [{ density: "huge" }, "density"],

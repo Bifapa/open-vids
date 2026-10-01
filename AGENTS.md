@@ -55,6 +55,7 @@ bunx oxfmt --check <files> # Check formatting
 
 - `apps/desktop`: Tauri 2 desktop shell wrapping the loopback Studio editor.
 - `registry/`: Built-in blocks, components, and templates library.
+- `locales/`: UI strings (`en.json` source of truth, `index.json` language list). New user-facing text is added as a key there and rendered through `t()` (Studio `src/i18n`, home page `i18n.js`); check with `bun run locales:check`.
 - `skills/` + `skills-manifest.json`: Agent skills for composition workflows and authoring.
 - `themes/`: Curated styling, palette, and typography themes.
 - `packages/studio/src/webmcp`: WebMCP integration for in-editor agent interaction and tool execution.

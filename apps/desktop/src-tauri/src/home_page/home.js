@@ -313,7 +313,11 @@
   }
   /* The Start composer above is the empty page's call to action; Recent keeps only a quiet note. */
   const emptyHtml = () =>
-    '<div class="recent-note"><h2>No recent projects</h2><p>Projects you create or open appear here.</p></div>';
+    '<div class="recent-note"><h2>' +
+    esc(OVI18N.t("home.recent.empty.title")) +
+    "</h2><p>" +
+    esc(OVI18N.t("home.recent.empty.description")) +
+    "</p></div>";
   const noResults = () =>
     '<div class="empty inline"><h2>No matches</h2><p>Nothing in Recent matches “' +
     esc(S.q.trim()) +
@@ -402,7 +406,7 @@
       '<span class="hint"><span class="kbd">⌘F</span>Search</span>',
     ];
     let left;
-    if (S.loading) left = "Loading projects…";
+    if (S.loading) left = esc(OVI18N.t("home.status.loading"));
     else if (sel)
       left =
         ic("folder", 12) +
@@ -415,10 +419,11 @@
             "Not found</span>"
           : "");
     else
-      left =
-        S.items.length +
-        (S.items.length === 1 ? " project" : " projects") +
-        (miss ? " · " + miss + " not found" : "");
+      left = esc(
+        [OVI18N.t("home.status.projects", { count: S.items.length })]
+          .concat(miss ? [OVI18N.t("home.status.missing", { count: miss })] : [])
+          .join(" · "),
+      );
     $("#statusbar").innerHTML =
       '<div class="sb-left">' +
       left +
@@ -1064,6 +1069,8 @@
       encodeURIComponent(OV.themePref()) +
       "&density=" +
       encodeURIComponent(OV.densityPref()) +
+      "&language=" +
+      encodeURIComponent(OVI18N.preference()) +
       (section ? "&section=" + section : "");
     /* Hidden until its document has loaded: a frame whose page has no styles yet paints an opaque white
        canvas over the dark window (its colour scheme differs from ours), which flashed on every open. */
@@ -1088,6 +1095,7 @@
     if (!settingsFrame || e.source !== settingsFrame.contentWindow || !e.data) return;
     if (e.data.type === "ov-settings-close") closeSettings();
     else if (e.data.type === "ov-theme") OV.applyTheme(e.data.pref);
+    else if (e.data.type === "ov-language") OVI18N.setLanguage(e.data.pref);
     else if (e.data.type === "ov-density") OV.applyDensity(e.data.pref);
     else if (e.data.type === "ov-prefs") applyPrefs(e.data.prefs);
     else if (e.data.type === "ov-agents") composer.reloadAgents();
@@ -1097,6 +1105,8 @@
     prefs = next || prefs;
     OV.applyTheme(prefs.theme);
     OV.applyDensity(prefs.density);
+    if (prefs.language && prefs.language !== OVI18N.preference())
+      OVI18N.setLanguage(prefs.language);
     if (!composer.isBusy()) {
       start.loc = null;
       initStartLocation();
@@ -1564,6 +1574,10 @@
   initStartLocation();
   render();
   load();
+  /* The catalog finished loading, or the language changed: redraw the translated parts (static markup is re-applied by OVI18N). */
+  window.addEventListener("ov-language", () => {
+    render();
+  });
   /* Opening at launch (Reopen last project / a project named on the command line): show it until Studio is up. */
   api("/api/open-state")
     .then((st) => {

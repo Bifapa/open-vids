@@ -15,6 +15,7 @@
       window.OV_BOOT = "__OV_BOOT__";
     </script>
     <script src="/assets/shared.js"></script>
+    <script src="/assets/i18n.js"></script>
     <script>
       /* Theme and density before first paint (Settings → Appearance), then the launch intro gate: it plays on a cold start
    and on reload; Rust skips it when the window comes back from a project or opens one at launch, and it
@@ -23,6 +24,8 @@
         var boot = window.OV_BOOT || {};
         OV.applyTheme(boot.prefs && boot.prefs.theme);
         OV.applyDensity(boot.prefs && boot.prefs.density);
+        /* Language: the server injects the catalog (OV_BOOT.locales), so the first paint is already translated. */
+        OVI18N.init(boot.prefs && boot.prefs.language, boot.locales);
         /* First-run onboarding: decided here, before first paint, so Projects never flashes first. It shows until
    setup is finished (or skipped), and when Help › Welcome asked for it. ?onboarding=1|0 forces it (review). */
         var ob = new URLSearchParams(location.search).get("onboarding");
@@ -279,7 +282,10 @@
 
         <section class="recent" id="recent" aria-labelledby="recentTitle">
           <div class="content-head">
-            <h1 id="recentTitle">Recent Projects <span class="count num" id="count"></span></h1>
+            <h1 id="recentTitle">
+              <span data-i18n="home.recent.title">Recent Projects</span>
+              <span class="count num" id="count"></span>
+            </h1>
             <div class="head-tools">
               <button
                 class="tool-btn"

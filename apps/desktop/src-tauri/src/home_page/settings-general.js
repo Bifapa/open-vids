@@ -97,20 +97,34 @@
       group(
         "App",
         row(
-          "On launch",
+          OVI18N.t("settings.language.label"),
           null,
           select(
             opts(
-              [
-                ["last", "Reopen last project"],
-                ["projects", "Show Projects"],
-              ],
-              prefs.onLaunch,
+              [["system", OVI18N.t("settings.language.system")]].concat(
+                OVI18N.languages().map((l) => [l.code, l.name]),
+              ),
+              prefs.language || "system",
             ),
-            "launch",
-            "On launch",
+            "language",
+            OVI18N.t("settings.language.label"),
           ),
         ) +
+          row(
+            "On launch",
+            null,
+            select(
+              opts(
+                [
+                  ["last", "Reopen last project"],
+                  ["projects", "Show Projects"],
+                ],
+                prefs.onLaunch,
+              ),
+              "launch",
+              "On launch",
+            ),
+          ) +
           row(
             "Confirm before moving projects to Trash",
             null,
@@ -225,6 +239,18 @@
   };
   CHANGE["np-fps"] = (t) => savePrefs({ newProject: { fps: Number(t.value) } });
   CHANGE.launch = (t) => savePrefs({ onLaunch: t.value });
+  CHANGE.language = (t) => {
+    const prev = (S.prefs && S.prefs.language) || "system";
+    if (t.value === prev) return;
+    OVI18N.setLanguage(t.value);
+    OVS.post({ type: "ov-language", pref: t.value });
+    savePrefs({ language: t.value }, () => {
+      OVI18N.setLanguage(prev);
+      OVS.post({ type: "ov-language", pref: prev });
+    });
+  };
+  /* The catalog loaded or the language changed: the General page's language row follows. */
+  window.addEventListener("ov-language", () => OVS.render(true));
 
   OVS.loadPrefs = loadPrefs;
 })();

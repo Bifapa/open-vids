@@ -1,3 +1,4 @@
+import languagesJson from "../../../../locales/index.json";
 import { mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -14,9 +15,12 @@ import { replaceFileAtomically } from "../helpers/atomicFile.js";
  * - unknown keys (another side's, a newer app's) are kept: an update is a deep merge into the stored document;
  * - writes are atomic (temp file + rename).
  *
+ * Known top-level keys: `version`, `theme`, `language`, `onLaunch`, `confirmTrash`, `density`,
+ * `newProject`, `updates`, `onboarding`. `language` is `"system"` or a code from
+ * `locales/index.json`.
+ *
  * The file is re-read on every request: the desktop may have changed it since.
  */
-
 export const APP_THEMES = ["system", "dark", "light"] as const;
 export const NEW_PROJECT_WORKSPACES = ["media", "story", "edit"] as const;
 export const LAUNCH_MODES = ["projects", "last"] as const;
@@ -25,6 +29,26 @@ export const NEW_PROJECT_FPS = [24, 25, 30, 60] as const;
 export const MAX_FRAME_SIZE = 8192;
 const MAX_LOCATION_LENGTH = 1024;
 const PREFERENCES_FILE = "preferences.json";
+
+interface LocaleIndexEntry {
+  code: string;
+  name: string;
+}
+
+function isLocaleIndexEntry(value: unknown): value is LocaleIndexEntry {
+  return isRecord(value) && typeof value.code === "string" && typeof value.name === "string";
+}
+
+function localeCodes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const codes: string[] = [];
+  for (const entry of value) {
+    if (isLocaleIndexEntry(entry)) codes.push(entry.code);
+  }
+  return codes;
+}
+
+export const APP_LANGUAGES: readonly string[] = ["system", ...localeCodes(languagesJson)];
 
 export type AppTheme = (typeof APP_THEMES)[number];
 export type NewProjectWorkspace = (typeof NEW_PROJECT_WORKSPACES)[number];
@@ -54,6 +78,7 @@ export interface OnboardingPreferences {
 export interface AppPreferences {
   version: 1;
   theme: AppTheme;
+  language: string;
   newProject: NewProjectPreferences;
   confirmTrash: boolean;
   onLaunch: LaunchMode;
@@ -66,6 +91,7 @@ export function defaultAppPreferences(): AppPreferences {
   return {
     version: 1,
     theme: "system",
+    language: "system",
     newProject: {
       location: "~/Movies/OpenVids",
       openIn: "media",
@@ -94,6 +120,7 @@ const oneOf =
     choices.some((choice) => choice === value);
 
 const isTheme = oneOf(APP_THEMES);
+const isLanguage = oneOf(APP_LANGUAGES);
 const isWorkspace = oneOf(NEW_PROJECT_WORKSPACES);
 const isLaunchMode = oneOf(LAUNCH_MODES);
 const isDensity = oneOf(APP_DENSITIES);
@@ -128,6 +155,7 @@ function normalize(stored: Document): Document & AppPreferences {
     ...stored,
     version: 1,
     theme: isTheme(stored.theme) ? stored.theme : base.theme,
+    language: isLanguage(stored.language) ? stored.language : base.language,
     onLaunch: isLaunchMode(stored.onLaunch) ? stored.onLaunch : base.onLaunch,
     confirmTrash:
       typeof stored.confirmTrash === "boolean" ? stored.confirmTrash : base.confirmTrash,
@@ -147,6 +175,7 @@ function normalize(stored: Document): Document & AppPreferences {
 
 const KNOWN_TOP: Record<string, (value: unknown) => boolean> = {
   theme: isTheme,
+  language: isLanguage,
   onLaunch: isLaunchMode,
   confirmTrash: (value) => typeof value === "boolean",
   density: isDensity,

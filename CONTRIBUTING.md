@@ -52,6 +52,35 @@ eslint, prettier or biome.
   or Studio HTTP APIs, not through new Tauri capabilities.
 - Add or update tests next to the code you change.
 
+## Localization
+
+User-facing text lives in `locales/` (`locales/en.json` is the source of truth,
+`locales/index.json` is the language list). Run `bun run locales:check` after changing them.
+
+### How to add a language
+
+1. Add `locales/<code>.json` with the same flat dot keys as `locales/en.json`, and one line
+   with `{ "code": "<code>", "name": "<native name>" }` in `locales/index.json`.
+2. Use the language's native name for `name` (for example `"Deutsch"`, not `"German"`).
+3. Run `bun run locales:check`.
+
+Translations may be partial: keys missing from a locale fall back to the English string
+(the checker reports them as warnings), but keys that are not in `en.json`, messages that
+do not parse, and arguments that differ from `en` fail the check.
+
+### How to add a string
+
+1. Add a flat dot key grouped by area: `area.component.purpose` (for example
+   `studio.statusBar.hint.play`). Keep keys stable; never reuse a key for a different sentence.
+2. Write ICU MessageFormat: plurals need at least `one` and `other` (Russian also needs `few`
+   and `many`), and use `#` for the count (for example
+   `{count, plural, one {# project} other {# projects}}`).
+3. Never assemble sentences from fragments or concatenate pieces: pass values as params and let
+   each locale order them (for example `{fps} fps`, not `"fps: " + fps`).
+4. Render through `t()`: in Studio via `useTranslation` from `src/i18n`, on the home page via
+   `OVI18N.t()`.
+5. Run `bun run locales:check`.
+
 ## Commits and pull requests
 
 - Keep a pull request to one topic and describe what changed and how you checked it.

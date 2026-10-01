@@ -5,7 +5,9 @@ import { Input } from "../ui/Input";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { Select, type SelectOption } from "../ui/Select";
 import { Toggle } from "../ui/Toggle";
+import { LANGUAGES, useTranslation } from "../../i18n";
 import {
+  APP_LANGUAGES,
   NEW_PROJECT_FPS,
   useAppPreferences,
   type AppPreferencesPatch,
@@ -116,6 +118,7 @@ function LocationField({
 
 /** App-wide defaults from the preferences file the Projects page shares. */
 export function GeneralSection() {
+  const { t } = useTranslation();
   const preferences = useAppPreferences((state) => state.preferences);
   const loadFailed = useAppPreferences((state) => state.loadFailed);
   const error = useAppPreferences((state) => state.error);
@@ -188,6 +191,22 @@ export function GeneralSection() {
         </SettingsRow>
       </SettingsGroup>
       <SettingsGroup label="App">
+        <SettingsRow label={t("settings.language.label")}>
+          <Select
+            size="md"
+            label={t("settings.language.label")}
+            className="min-w-[150px]"
+            value={preferences.language}
+            options={[
+              { value: "system", label: t("settings.language.system") },
+              ...LANGUAGES.map(({ code, name }) => ({ value: code, label: name })),
+            ]}
+            onCommit={(next) => {
+              const language = APP_LANGUAGES.find((code) => code === next);
+              if (language) save({ language });
+            }}
+          />
+        </SettingsRow>
         <SettingsRow label="On launch">
           <Select
             size="md"

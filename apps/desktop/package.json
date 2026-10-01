@@ -12,6 +12,7 @@
     "stage": "bun run scripts/stage-runtime.mjs",
     "build": "bun run build:hyperframes && bun run stage && tauri build --config src-tauri/tauri.prod.conf.json",
     "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml --all-targets",
-    "clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings"
+    "clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "test": "node --test tests/*.test.mjs"
   }
 }

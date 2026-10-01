@@ -88,20 +88,24 @@ impl StudioServer {
 /// the directory name, so the fragment is the only thing that can name it.
 /// The query carries what the desktop tells Studio (contract 2): `openvidsHome`
 /// (where the Projects page lives, for the header's back button),
-/// `openvidsTheme` (the resolved theme for first paint) and, when the open asks
-/// for one, `openvidsWorkspace`. A query survives View > Reload (it outlives
-/// hash rewrites) and the prod Hono server ignores it via its SPA fallback.
+/// `openvidsTheme` (the resolved theme for first paint), `openvidsLanguage`
+/// (the raw `language` preference — `system` or a locale code — which Studio
+/// resolves itself) and, when the open asks for one, `openvidsWorkspace`. A
+/// query survives View > Reload (it outlives hash rewrites) and the prod
+/// Hono server ignores it via its SPA fallback.
 pub fn studio_url(
     studio_origin: &str,
     project_id: &str,
     home_origin: &str,
     theme: &str,
+    language: &str,
     workspace: Option<&str>,
 ) -> String {
     let mut query = format!(
-        "openvidsHome={}&openvidsTheme={}",
+        "openvidsHome={}&openvidsTheme={}&openvidsLanguage={}",
         urlencode(home_origin),
-        urlencode(theme)
+        urlencode(theme),
+        urlencode(language)
     );
     if let Some(workspace) = workspace {
         query.push_str(&format!("&openvidsWorkspace={}", urlencode(workspace)));

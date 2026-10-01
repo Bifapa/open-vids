@@ -1,0 +1,23 @@
+{
+  "settings.language.label": "Language",
+  "settings.language.system": "System",
+  "home.recent.title": "Recent Projects",
+  "home.recent.empty.title": "No recent projects",
+  "home.recent.empty.description": "Projects you create or open appear here.",
+  "home.status.loading": "Loading projects…",
+  "home.status.projects": "{count, plural, one {# project} other {# projects}}",
+  "home.status.missing": "{count, plural, one {# not found} other {# not found}}",
+  "studio.statusBar.hint.play": "Play",
+  "studio.statusBar.hint.blade": "Blade",
+  "studio.statusBar.hint.split": "Split",
+  "studio.statusBar.hint.panCanvas": "Drag canvas to pan",
+  "studio.statusBar.hint.scrollZoom": "Scroll to zoom",
+  "studio.statusBar.hint.delete": "Delete",
+  "studio.statusBar.hint.preview": "Preview",
+  "studio.statusBar.hint.search": "Search",
+  "studio.statusBar.hint.dragToTimeline": "Drag to Timeline or Story",
+  "studio.statusBar.snapOn": "Snap on",
+  "studio.statusBar.snapOff": "Snap off",
+  "studio.statusBar.chapters": "{count, plural, one {# chapter} other {# chapters}}",
+  "studio.statusBar.fps": "{fps} fps"
+}

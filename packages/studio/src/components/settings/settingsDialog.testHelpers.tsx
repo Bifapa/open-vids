@@ -27,6 +27,7 @@ export const PREFERENCES: AppPreferences = {
   confirmTrash: true,
   onLaunch: "projects",
   density: "default",
+  language: "system",
   updates: { autoCheck: true },
 };
 

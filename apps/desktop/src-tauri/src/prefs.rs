@@ -29,6 +29,7 @@ pub fn defaults() -> Value {
     json!({
         "version": 1,
         "theme": "system",
+        "language": "system",
         "newProject": {
             "location": "~/Movies/OpenVids",
             "openIn": "media",
@@ -142,6 +143,8 @@ fn normalize(stored: Value) -> Value {
     out.insert("version".into(), json!(1));
     let theme = pick_str(out.get("theme"), &THEMES, "system");
     out.insert("theme".into(), json!(theme));
+    let language = pick_language(out.get("language"));
+    out.insert("language".into(), json!(language));
     let launch = pick_str(out.get("onLaunch"), &LAUNCH_MODES, "projects");
     out.insert("onLaunch".into(), json!(launch));
     let confirm = out
@@ -213,6 +216,16 @@ fn pick_str(value: Option<&Value>, allowed: &[&str], fallback: &str) -> String {
         .to_string()
 }
 
+/// The `language` preference: `"system"` or a code from `locales/index.json`.
+/// Anything else (including a non-string) reads as `"system"`.
+fn pick_language(value: Option<&Value>) -> String {
+    value
+        .and_then(Value::as_str)
+        .filter(|s| *s == "system" || super::locales::LOCALE_CODES.contains(s))
+        .unwrap_or("system")
+        .to_string()
+}
+
 fn pick_size(value: Option<&Value>) -> Option<u64> {
     value
         .and_then(Value::as_u64)
@@ -265,6 +278,13 @@ pub fn reopen_last(prefs: &Value) -> bool {
     prefs["onLaunch"].as_str() == Some("last")
 }
 
+/// The raw `language` preference (`"system"` or a locale code): Studio and
+/// the home page resolve `"system"` themselves. Normalized on read, so this
+/// is always a supported value.
+pub fn language(prefs: &Value) -> &str {
+    prefs["language"].as_str().unwrap_or("system")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,11 +307,13 @@ mod tests {
         let path = tmp("invalid");
         std::fs::write(
             &path,
-            br#"{"theme":"neon","onLaunch":"last","density":"huge","updates":{"autoCheck":"sometimes","channel":"beta"},"future":{"x":1},"newProject":{"fps":23,"width":0,"height":1920,"openIn":"story","extra":true}}"#,
+            br#"{"theme":"neon","language":"klingon","onLaunch":"last","density":"huge","updates":{"autoCheck":"sometimes","channel":"beta"},"future":{"x":1},"newProject":{"fps":23,"width":0,"height":1920,"openIn":"story","extra":true}}"#,
         )
         .unwrap();
         let prefs = load(&path);
         assert_eq!(prefs["theme"], "system");
+        assert_eq!(prefs["language"], "system");
+        assert_eq!(language(&prefs), "system");
         assert_eq!(prefs["onLaunch"], "last");
         assert_eq!(prefs["density"], "default");
         assert_eq!(prefs["updates"]["autoCheck"], true);
@@ -340,6 +362,31 @@ mod tests {
         let next = update(&path, &json!({"density":"huge"})).unwrap();
         assert_eq!(next["density"], "default");
         assert_eq!(next["updates"]["autoCheck"], false);
+    }
+
+    #[test]
+    fn language_defaults_to_system_and_round_trips_listed_codes() {
+        let path = tmp("language");
+        assert_eq!(load(&path)["language"], "system");
+        assert_eq!(language(&load(&path)), "system");
+        // Unknown keys survive alongside a language change.
+        std::fs::write(&path, br#"{"future":{"x":1}}"#).unwrap();
+        let next = update(&path, &json!({"language":"en"})).unwrap();
+        assert_eq!(next["language"], "en");
+        assert_eq!(language(&next), "en");
+        assert_eq!(next["future"]["x"], 1);
+        assert_eq!(load(&path), next);
+        let next = update(&path, &json!({"language":"system"})).unwrap();
+        assert_eq!(next["language"], "system");
+        assert_eq!(language(&next), "system");
+        // A non-string or an unlisted code never lands: it reads as `system`.
+        for bad in [r#""klingon""#, "7", "null", "true"] {
+            std::fs::write(&path, format!(r#"{{"language":{bad}}}"#)).unwrap();
+            assert_eq!(load(&path)["language"], "system", "{bad}");
+        }
+        std::fs::write(&path, br#"{"language":"en"}"#).unwrap();
+        let next = update(&path, &json!({"language":"klingon"})).unwrap();
+        assert_eq!(next["language"], "system");
     }
 
     #[test]

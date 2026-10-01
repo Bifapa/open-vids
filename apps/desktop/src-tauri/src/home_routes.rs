@@ -1,11 +1,15 @@
 //! Home-screen HTTP plumbing: request reading, routing, static assets.
 //!
 //! `home.rs` owns the listener lifetime; this module owns everything that
-//! happens per connection. Pages and assets (open, no token):
+//! happens per connection. Pages, assets and locales (open, no token):
 //!
 //! - `GET /` — the Projects page (token + boot state injected).
 //! - `GET /settings` — the Settings window document (framed by the page).
 //! - `GET /assets/<file>` — the page's CSS / JS / SVG (compiled in).
+//! - `GET /locales/index.json`, `GET /locales/<code>.json` — the locale
+//!   catalog (`locales/` at the repo root, compiled in; 404 for unknown
+//!   codes). Both pages also get the catalog injected, so the first paint
+//!   is already translated.
 //! - `GET /thumb/<file>` — cached thumbnail bytes.
 //!
 //! API (`/api/*`, token required — see `home_auth`):
@@ -44,11 +48,11 @@ use super::home_api::{self, respond_json};
 use super::home_auth::{self, Head, HomeToken, TOKEN_HEADER};
 use super::recents::RecentsStore;
 use super::structure::validate_structure;
-
 const PAGE: &str = include_str!("home_page/index.html");
 const SETTINGS_PAGE: &str = include_str!("home_page/settings.html");
 const TOKEN_PLACEHOLDER: &str = "__OPENVids_TOKEN__";
 const BOOT_PLACEHOLDER: &str = "\"__OV_BOOT__\"";
+const LOCALES_PLACEHOLDER: &str = "\"__OV_LOCALES__\"";
 const BODY_LIMIT: usize = 64 * 1024;
 
 /// What the background open is doing (polled by the page's loading state).
@@ -191,11 +195,15 @@ fn route(
     let s = &mut stream;
     match (method.as_str(), path.as_str()) {
         ("GET", "/") | ("GET", "/index.html") => serve_page(s, state, token),
-        ("GET", "/settings") => {
-            let page = SETTINGS_PAGE.replace(TOKEN_PLACEHOLDER, token);
-            respond(s, 200, "text/html; charset=utf-8", page.as_bytes());
-        }
+        ("GET", "/settings") => serve_settings_page(s, token),
         ("GET", p) if p.starts_with("/assets/") => serve_asset(s, &p["/assets/".len()..]),
+        ("GET", "/locales/index.json") => respond(
+            s,
+            200,
+            "application/json; charset=utf-8",
+            super::locales::INDEX_JSON.as_bytes(),
+        ),
+        ("GET", p) if p.starts_with("/locales/") => serve_locale(s, &p["/locales/".len()..]),
         ("GET", p) if p.starts_with("/thumb/") => serve_thumb(s, state, p),
         ("GET", "/api/recents") => home_api::serve_recents(s, state),
         ("GET", "/api/open-state") => serve_open_state(s, state),
@@ -261,10 +269,12 @@ fn serve_page(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, token: &str
             (skip, std::mem::take(&mut inner.pending_onboarding))
         })
         .unwrap_or((true, false));
+    let prefs = super::prefs::load(&super::prefs::prefs_path());
     let boot = serde_json::json!({
         "intro": !skip_intro,
         "openOnboarding": open_onboarding,
-        "prefs": super::prefs::load(&super::prefs::prefs_path()),
+        "prefs": prefs,
+        "locales": boot_locales(&prefs),
         "version": env!("CARGO_PKG_VERSION"),
     });
     // `<` cannot close the inline script: JSON-escape it.
@@ -273,6 +283,51 @@ fn serve_page(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, token: &str
         .replace(TOKEN_PLACEHOLDER, token)
         .replace(BOOT_PLACEHOLDER, &boot);
     respond(stream, 200, "text/html; charset=utf-8", page.as_bytes());
+}
+
+/// The Settings window document, with the token and the locale catalog its
+/// first paint needs (`window.OV_LOCALES`). Same `locales` object as `boot`.
+fn serve_settings_page(stream: &mut TcpStream, token: &str) {
+    let prefs = super::prefs::load(&super::prefs::prefs_path());
+    // `<` cannot close the inline script: JSON-escape it.
+    let locales = boot_locales(&prefs).to_string().replace('<', "\\u003c");
+    let page = SETTINGS_PAGE
+        .replace(TOKEN_PLACEHOLDER, token)
+        .replace(LOCALES_PLACEHOLDER, &locales);
+    respond(stream, 200, "text/html; charset=utf-8", page.as_bytes());
+}
+
+/// What the pages get injected so the first paint is already translated:
+/// the language list plus `en` and the preferred locale's messages.
+fn boot_locales(prefs: &serde_json::Value) -> serde_json::Value {
+    let language = super::prefs::language(prefs);
+    let code = if language == "system" {
+        "en"
+    } else {
+        language
+    };
+    serde_json::json!({
+        "index": super::locales::index_value(),
+        "messages": super::locales::boot_messages(code),
+    })
+}
+
+/// One compiled locale file: `GET /locales/<code>.json`. Anything that is
+/// not a plain `<code>.json` file name is a 404, never a filesystem read.
+fn serve_locale(stream: &mut TcpStream, name: &str) {
+    let code = name.strip_suffix(".json").unwrap_or_default();
+    let ok = name.ends_with(".json")
+        && !code.is_empty()
+        && !code.contains('/')
+        && !code.contains('\\')
+        && !code.contains("..")
+        && code
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    match ok.then(|| super::locales::locale_json(code)).flatten() {
+        Some(body) => respond(stream, 200, "application/json; charset=utf-8", body.as_bytes()),
+        None => respond(stream, 404, "text/plain", b"no such locale"),
+    }
 }
 
 fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
@@ -285,6 +340,7 @@ fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
         "composer.css" => (CSS, include_bytes!("home_page/composer.css")),
         "settings.css" => (CSS, include_bytes!("home_page/settings.css")),
         "shared.js" => (JS, include_bytes!("home_page/shared.js")),
+        "i18n.js" => (JS, include_bytes!("home_page/i18n.js")),
         "home.js" => (JS, include_bytes!("home_page/home.js")),
         "sheets.js" => (JS, include_bytes!("home_page/sheets.js")),
         "composer.js" => (JS, include_bytes!("home_page/composer.js")),
@@ -551,5 +607,21 @@ mod tests {
                 assert!(asset(&name).is_some(), "missing asset {name}");
             }
         }
+    }
+
+    #[test]
+    fn locales_catalog_is_embedded_and_looks_up_by_code() {
+        assert!(super::super::locales::LOCALE_CODES.contains(&"en"));
+        let en = super::super::locales::locale_json("en").expect("en is listed");
+        assert!(en.contains("settings.language.label"));
+        assert!(super::super::locales::locale_json("xx").is_none());
+        assert!(super::super::locales::locale_json("../prefs").is_none());
+        let index: serde_json::Value =
+            serde_json::from_str(super::super::locales::INDEX_JSON).expect("index parses");
+        assert_eq!(
+            index.as_array().map(Vec::len),
+            Some(super::super::locales::LOCALE_CODES.len())
+        );
+        assert!(asset("i18n.js").is_some());
     }
 }

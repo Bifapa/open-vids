@@ -1,6 +1,7 @@
 import { Folder } from "@phosphor-icons/react";
 import { isChapter } from "@hyperframes/agent-protocol";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { usePlayerStore } from "../../player";
 import { STUDIO_PREVIEW_FPS } from "../../player/lib/time";
 import { useStoryStore } from "../../story/storyContext";
@@ -10,25 +11,25 @@ import { Kbd } from "../ui";
 interface Hint {
   /** The key cap, when the hint is a shortcut. */
   keys?: string;
-  label: string;
+  label: TranslationKey;
 }
 
 /** The shortcuts each workspace really answers to (ours, not the prototype's wish list). */
 const HINTS: Record<Workspace, readonly Hint[]> = {
   edit: [
-    { keys: "Space", label: "Play" },
-    { keys: "B", label: "Blade" },
-    { keys: "S", label: "Split" },
+    { keys: "Space", label: "studio.statusBar.hint.play" },
+    { keys: "B", label: "studio.statusBar.hint.blade" },
+    { keys: "S", label: "studio.statusBar.hint.split" },
   ],
   story: [
-    { label: "Drag canvas to pan" },
-    { label: "Scroll to zoom" },
-    { keys: "⌫", label: "Delete" },
+    { label: "studio.statusBar.hint.panCanvas" },
+    { label: "studio.statusBar.hint.scrollZoom" },
+    { keys: "⌫", label: "studio.statusBar.hint.delete" },
   ],
   media: [
-    { keys: "Space", label: "Preview" },
-    { keys: "⌘F", label: "Search" },
-    { label: "Drag to Timeline or Story" },
+    { keys: "Space", label: "studio.statusBar.hint.preview" },
+    { keys: "⌘F", label: "studio.statusBar.hint.search" },
+    { label: "studio.statusBar.hint.dragToTimeline" },
   ],
 };
 
@@ -39,6 +40,7 @@ function homeRelative(path: string): string {
 
 /** The window's bottom line: where the project lives, then the shown workspace's hints and state. */
 export function StudioStatusBar() {
+  const { t } = useTranslation();
   const { projectDir } = useFileManagerContext();
   const workspace = useCurrentWorkspace();
   const snap = usePlayerStore((state) => state.timelineSnapEnabled);
@@ -62,16 +64,18 @@ export function StudioStatusBar() {
         {HINTS[workspace].map((hint) => (
           <span key={hint.label} className="inline-flex items-center gap-[5px]">
             {hint.keys ? <Kbd>{hint.keys}</Kbd> : null}
-            {hint.label}
+            {t(hint.label)}
           </span>
         ))}
-        {workspace === "edit" ? <span>{snap ? "Snap on" : "Snap off"}</span> : null}
+        {workspace === "edit" ? (
+          <span>{t(snap ? "studio.statusBar.snapOn" : "studio.statusBar.snapOff")}</span>
+        ) : null}
         {workspace === "story" ? (
-          <span className="font-mono">
-            {chapters} {chapters === 1 ? "chapter" : "chapters"}
-          </span>
+          <span className="font-mono">{t("studio.statusBar.chapters", { count: chapters })}</span>
         ) : (
-          <span className="font-mono">{STUDIO_PREVIEW_FPS} fps</span>
+          <span className="font-mono">
+            {t("studio.statusBar.fps", { fps: STUDIO_PREVIEW_FPS })}
+          </span>
         )}
       </div>
     </footer>

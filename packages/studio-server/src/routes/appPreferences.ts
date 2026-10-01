@@ -6,8 +6,8 @@ import { AppPreferencesStore, InvalidPreferencesError } from "../app/preferences
 const MAX_BODY_BYTES = 16 * 1024;
 
 /**
- * `GET/PUT /app/preferences`: the app preferences file the desktop shares (theme, new-project defaults,
- * launch and trash behaviour). PUT takes a partial document, deep-merged into the stored one; both answer with
+ * `GET/PUT /app/preferences`: the app preferences file the desktop shares (theme, language,
+ * new-project defaults, launch and trash behaviour). PUT takes a partial document, deep-merged into the stored one; both answer with
  * the effective preferences. Errors are `{ error: { code, message } }`.
  */
 export function registerAppPreferencesRoutes(

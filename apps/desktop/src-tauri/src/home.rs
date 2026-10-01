@@ -691,4 +691,39 @@ esac
         let (code, _) = get(&origin, "/thumb/missing.jpg", None);
         assert_eq!(code, 404);
     }
+
+    #[test]
+    fn locales_routes_serve_the_compiled_catalog() {
+        let (_server, origin) = spawn("locales");
+        // Token-free GETs (like `/assets/*`): plain `fetch` from the page.
+        let (code, body) = get(&origin, "/locales/index.json", None);
+        assert_eq!(code, 200);
+        let index: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(index.as_array().unwrap().iter().any(|e| e["code"] == "en"));
+        let (code, body) = get(&origin, "/locales/en.json", None);
+        assert_eq!(code, 200);
+        let en: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(en.get("settings.language.label").is_some());
+        for bad in ["/locales/xx.json", "/locales/../prefs.rs", "/locales/en.JSON"] {
+            let (code, _) = get(&origin, bad, None);
+            assert_eq!(code, 404, "{bad}");
+        }
+    }
+
+    #[test]
+    fn pages_carry_the_locale_catalog_for_first_paint() {
+        let (_server, origin) = spawn("locales-boot");
+        let (code, body) = get(&origin, "/", None);
+        assert_eq!(code, 200);
+        let page = String::from_utf8_lossy(&body).into_owned();
+        assert!(page.contains("\"locales\""), "boot has no locales object");
+        assert!(page.contains("\"messages\""), "boot has no messages");
+        assert!(page.contains("settings.language.label"), "boot has no en strings");
+        assert!(!page.contains("__OV_BOOT__"), "boot placeholder leaked");
+        let (code, body) = get(&origin, "/settings", None);
+        assert_eq!(code, 200);
+        let settings = String::from_utf8_lossy(&body).into_owned();
+        assert!(settings.contains("settings.language.label"), "settings has no strings");
+        assert!(!settings.contains("__OV_LOCALES__"), "locales placeholder leaked");
+    }
 }

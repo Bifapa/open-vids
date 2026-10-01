@@ -6,6 +6,7 @@ import { EXECUTION_BUDGETS } from "@hyperframes/agent-protocol";
 import type { AgentStore } from "../../agent/agentStore";
 import { cleanupMounted } from "../ui/mountHost.testHelpers";
 import { useAppPreferences } from "./appPreferences";
+import { i18n, startI18n } from "../../i18n";
 import { openSettings, useSettingsDialog } from "./settingsStore";
 import {
   PREFERENCES,
@@ -187,8 +188,47 @@ it("saves the automatic update check and keeps the frame rates the editor can ho
   ).toEqual(["24 fps", "25 fps", "30 fps", "60 fps"]);
 });
 
-it("reads preferences written before density and the update choice existed", async () => {
-  const { density: _density, updates: _updates, ...old } = PREFERENCES;
+it("switches the app language from General: saved and in the store", async () => {
+  const fetchMock = stubPreferencesFetch();
+  vi.stubGlobal("navigator", { languages: ["en-US"] });
+  const stopI18n = startI18n("");
+  try {
+    mount();
+    await act(async () => openSettings("general"));
+    await settle();
+
+    const trigger = document.body.querySelector<HTMLElement>('[aria-label="Language"]');
+    expect(trigger?.textContent).toBe("System");
+    await click(trigger);
+    const names = [...document.body.querySelectorAll('[role="option"]')].map((option) =>
+      option.textContent?.replace("✓", ""),
+    );
+    expect(names).toEqual(["System", "English"]);
+    // System is highlighted when the list opens; English is the row under it.
+    for (const key of ["ArrowDown", "Enter"]) {
+      await act(async () => {
+        (document.activeElement ?? document.body).dispatchEvent(
+          new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+        );
+      });
+    }
+    await settle();
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/app/preferences",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ language: "en" }) }),
+    );
+    expect(useAppPreferences.getState().preferences?.language).toBe("en");
+    await settle();
+    expect(document.body.querySelector('[aria-label="Language"]')?.textContent).toBe("English");
+  } finally {
+    stopI18n();
+    await act(async () => void (await i18n.changeLanguage("en")));
+  }
+});
+
+it("reads preferences written before density, language and the update choice existed", async () => {
+  const { density: _density, language: _language, updates: _updates, ...old } = PREFERENCES;
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => Response.json(old)),

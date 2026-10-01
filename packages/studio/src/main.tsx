@@ -5,10 +5,12 @@ import { StudioApp } from "./App";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { readIconTokens } from "./styles/iconTokens";
 import { startAppTheme } from "./components/settings/appTheme";
+import { startI18n } from "./i18n";
 import { prefetchPreviewForHash } from "./utils/previewPrefetch";
 import "./styles/studio.css";
 
 startAppTheme();
+startI18n();
 prefetchPreviewForHash(window.location.hash);
 window.addEventListener("hashchange", () => prefetchPreviewForHash(window.location.hash));
 

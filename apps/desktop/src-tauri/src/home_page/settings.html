@@ -9,14 +9,21 @@
     <link rel="stylesheet" href="/assets/settings.css" />
     <script>
       window.OV_TOKEN = "__OPENVids_TOKEN__";
+      window.OV_LOCALES = "__OV_LOCALES__";
     </script>
     <script src="/assets/shared.js"></script>
+    <script src="/assets/i18n.js"></script>
     <script>
       /* The theme and density the page underneath shows (?theme=, ?density=), before first paint. */
       OV.applyTheme(new URLSearchParams(location.search).get("theme") || "system");
       /* Always framed over the page: transparent from the first paint, not only once settings.js has run. */
       document.documentElement.classList.add("st-embed");
       OV.applyDensity(new URLSearchParams(location.search).get("density") || "default");
+      /* The language the page underneath shows (?language=: the raw preference); the server injects the catalog. */
+      OVI18N.init(
+        new URLSearchParams(location.search).get("language") || "system",
+        window.OV_LOCALES && typeof window.OV_LOCALES === "object" ? window.OV_LOCALES : undefined,
+      );
     </script>
   </head>
   <body class="st-body">

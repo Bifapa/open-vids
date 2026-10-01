@@ -64,6 +64,7 @@ mod home_routes;
 mod home_system;
 mod install_job;
 mod intake;
+mod locales;
 mod prefs;
 mod project;
 mod project_meta;
@@ -185,8 +186,10 @@ fn open_project(
 ) -> Result<String, String> {
     let project = structure::validate_structure(&dir).map_err(|e| e.to_string())?;
     // Resolved before locking the state: the window lookup may need the
-    // main thread.
+    // main thread. The raw `language` preference goes along so Studio can
+    // pick the language before preferences load (it resolves `system` itself).
     let theme = resolved_theme(app);
+    let language = prefs::language(&prefs::load(&prefs::prefs_path())).to_string();
 
     let target = {
         let app_state = app.state::<Mutex<AppState>>();
@@ -213,6 +216,7 @@ fn open_project(
                     &project.id,
                     &state.home_origin,
                     theme,
+                    &language,
                     workspace.as_deref(),
                 )
             }
@@ -234,6 +238,7 @@ fn open_project(
                     &project.id,
                     &state.home_origin,
                     theme,
+                    &language,
                     workspace.as_deref(),
                 );
                 state.studio_origin = Some(started.origin());
@@ -860,16 +865,16 @@ mod back_navigation_tests {
     use super::*;
 
     #[test]
-    fn studio_url_carries_home_theme_and_workspace_before_the_hash() {
+    fn studio_url_carries_home_theme_language_and_workspace_before_the_hash() {
         let home = "http://127.0.0.1:57035";
         let studio_origin = "http://127.0.0.1:5210";
         assert_eq!(
-            sidecar::studio_url(studio_origin, "my video", home, "dark", None),
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark#project/my%20video"
+            sidecar::studio_url(studio_origin, "my video", home, "dark", "system", None),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system#project/my%20video"
         );
         assert_eq!(
-            sidecar::studio_url(studio_origin, "v", home, "light", Some("media")),
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=light&openvidsWorkspace=media#project/v"
+            sidecar::studio_url(studio_origin, "v", home, "light", "ru", Some("media")),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=light&openvidsLanguage=ru&openvidsWorkspace=media#project/v"
         );
     }
 

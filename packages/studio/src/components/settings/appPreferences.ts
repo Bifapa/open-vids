@@ -1,5 +1,6 @@
 import { isRecord } from "@hyperframes/agent-protocol";
 import { create } from "zustand";
+import { LANGUAGE_CODES, SYSTEM_LANGUAGE } from "../../i18n/languages";
 
 /**
  * The app preferences file the desktop's Projects home and Studio share (`~/.openvids/app/preferences.json`),
@@ -12,6 +13,8 @@ export const NEW_PROJECT_WORKSPACES = ["media", "story", "edit"] as const;
 export const LAUNCH_MODES = ["projects", "last"] as const;
 export const NEW_PROJECT_FPS = [24, 25, 30, 60] as const;
 export const APP_DENSITIES = ["default", "compact"] as const;
+/** `system` follows the OS; the rest come from the shared locale catalog (`locales/index.json`). */
+export const APP_LANGUAGES: readonly string[] = [SYSTEM_LANGUAGE, ...LANGUAGE_CODES];
 
 export type AppTheme = (typeof APP_THEMES)[number];
 export type NewProjectWorkspace = (typeof NEW_PROJECT_WORKSPACES)[number];
@@ -39,6 +42,8 @@ export interface AppPreferences {
   confirmTrash: boolean;
   onLaunch: LaunchMode;
   density: AppDensity;
+  /** `system` or a language code from the locale catalog; the server validates it, so Studio takes any string. */
+  language: string;
   updates: UpdatePreferences;
 }
 
@@ -48,10 +53,12 @@ export interface AppPreferencesPatch {
   confirmTrash?: boolean;
   onLaunch?: LaunchMode;
   density?: AppDensity;
+  language?: string;
   updates?: Partial<UpdatePreferences>;
 }
 
 export const DEFAULT_DENSITY: AppDensity = "default";
+export const DEFAULT_LANGUAGE = SYSTEM_LANGUAGE;
 export const DEFAULT_UPDATES: UpdatePreferences = { autoCheck: true };
 
 const oneOf =
@@ -76,9 +83,13 @@ function isNewProjectPreferences(value: unknown): value is NewProjectPreferences
   );
 }
 
-/** The keys every version of the file has. `density` and `updates` came later and are filled in when missing. */
-function hasCoreFields(value: unknown): value is Omit<AppPreferences, "density" | "updates"> & {
+/** The keys every version of the file has. `density`, `language` and `updates` came later and are filled in when missing. */
+function hasCoreFields(value: unknown): value is Omit<
+  AppPreferences,
+  "density" | "language" | "updates"
+> & {
   density?: unknown;
+  language?: unknown;
   updates?: unknown;
 } {
   return (
@@ -97,7 +108,7 @@ function hasCoreFields(value: unknown): value is Omit<AppPreferences, "density" 
  */
 export function parseAppPreferences(value: unknown): AppPreferences | null {
   if (!hasCoreFields(value)) return null;
-  const { density, updates } = value;
+  const { density, language, updates } = value;
   return {
     version: 1,
     theme: value.theme,
@@ -105,6 +116,7 @@ export function parseAppPreferences(value: unknown): AppPreferences | null {
     confirmTrash: value.confirmTrash,
     onLaunch: value.onLaunch,
     density: isAppDensity(density) ? density : DEFAULT_DENSITY,
+    language: typeof language === "string" && language !== "" ? language : DEFAULT_LANGUAGE,
     updates: {
       autoCheck:
         isRecord(updates) && typeof updates.autoCheck === "boolean"
