@@ -1,7 +1,10 @@
 import type { DragEventHandler } from "react";
+import { MarkLoader } from "../../components/ui/MarkLoader";
 import { GUTTER, RULER_H } from "./timelineLayout";
 
 interface TimelineEmptyStateProps {
+  /** The composition is still loading: its clips are not known yet, so this is not an empty project. */
+  loading?: boolean;
   isDragOver: boolean;
   onFileDrop?: boolean;
   onDragOver: DragEventHandler<HTMLDivElement>;
@@ -10,6 +13,7 @@ interface TimelineEmptyStateProps {
 }
 
 export function TimelineEmptyState({
+  loading,
   isDragOver,
   onFileDrop,
   onDragOver,
@@ -47,8 +51,9 @@ export function TimelineEmptyState({
       </div>
       {/* Empty drop zone */}
       <div className="flex-1 flex items-center justify-center">
+        {loading && !isDragOver && <MarkLoader label="Loading timeline…" />}
         <div
-          className={`flex items-center gap-3 px-6 py-3 border border-dashed rounded-lg transition-colors duration-150 ${
+          className={`${loading && !isDragOver ? "hidden" : "flex"} items-center gap-3 px-6 py-3 border border-dashed rounded-lg transition-colors duration-150 ${
             isDragOver ? "border-studio-accent/60 bg-studio-accent/6" : "border-neutral-700/50"
           }`}
         >

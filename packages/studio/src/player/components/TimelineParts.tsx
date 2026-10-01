@@ -53,8 +53,8 @@ export function TimelineRazorGuide() {
 export { TimelineOverlays } from "./TimelineOverlays";
 
 export function TimelineEmptyStatePart() {
-  const { meta } = useTimelineContext();
-  return <TimelineEmptyState {...meta.emptyState} />;
+  const { state, meta } = useTimelineContext();
+  return <TimelineEmptyState {...meta.emptyState} loading={!state.timelineReady} />;
 }
 
 export function TimelineShortcutHint() {
