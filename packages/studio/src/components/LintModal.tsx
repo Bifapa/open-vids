@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CheckCircle, Copy, FileCode, Lightning, Terminal, Warning } from "@phosphor-icons/react";
+import { formatNumber, useTranslation } from "../i18n";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { Badge, Button, Dialog } from "./ui";
 
@@ -27,7 +28,7 @@ export function LintModal({
   findings,
   projectId,
   projectDir,
-  title = "Checks",
+  kind = "checks",
   promptIntro = "Fix these lint issues",
   onClose,
 }: {
@@ -35,17 +36,20 @@ export function LintModal({
   projectId: string;
   /** Real on-disk project directory for the agent prompt (not the browser URL). */
   projectDir?: string | null;
-  /** Dialog title — parameterize so console errors don't masquerade as lint results. */
-  title?: string;
+  /** Which findings these are — console errors must not masquerade as lint results. */
+  kind?: "checks" | "console";
   /** First line of the copied agent prompt. */
   promptIntro?: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const errors = findings.filter((f) => f.severity === "error").length;
   const warnings = findings.length - errors;
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   // Console errors carry no file: their group is the runtime, not a source file.
-  const looseLabel = title === "Checks" ? "Composition" : "Runtime Errors";
+  const title = kind === "checks" ? t("shell.lint.title.checks") : t("shell.lint.title.console");
+  const looseLabel =
+    kind === "checks" ? t("shell.lint.group.composition") : t("shell.lint.group.runtime");
 
   const handleCopyToAgent = async () => {
     const lines = findings.map((f) => {
@@ -68,8 +72,8 @@ export function LintModal({
       title={title}
       meta={
         findings.length > 0
-          ? `${errors} error${errors === 1 ? "" : "s"} · ${warnings} warning${warnings === 1 ? "" : "s"}`
-          : "No issues"
+          ? t("shell.lint.summary", { errors, warnings })
+          : t("shell.lint.noIssues")
       }
       className="w-[min(640px,calc(100vw-2rem))] max-h-[min(720px,calc(100vh-6rem))]"
       footer={
@@ -77,7 +81,7 @@ export function LintModal({
           <>
             {copyState === "failed" && (
               <span role="alert" className="mr-auto text-xs text-error">
-                Copy failed — check clipboard permissions
+                {t("shell.lint.copyFailed")}
               </span>
             )}
             <Button
@@ -86,7 +90,7 @@ export function LintModal({
               icon={<Copy size={12} aria-hidden />}
               onClick={() => void handleCopyToAgent()}
             >
-              {copyState === "copied" ? "Copied!" : "Copy to Agent"}
+              {copyState === "copied" ? t("shell.lint.copied") : t("shell.lint.copyToAgent")}
             </Button>
           </>
         ) : undefined
@@ -95,8 +99,8 @@ export function LintModal({
       {findings.length === 0 ? (
         <div className="grid justify-items-center gap-1.5 py-8 text-center">
           <CheckCircle size={20} weight="fill" className="text-success" aria-hidden />
-          <p className="m-0 font-semibold text-fg">All checks passed</p>
-          <p className="m-0 text-xs text-fg-3">No errors or warnings found.</p>
+          <p className="m-0 font-semibold text-fg">{t("shell.lint.allPassed")}</p>
+          <p className="m-0 text-xs text-fg-3">{t("shell.lint.noneFound")}</p>
         </div>
       ) : (
         <div className="-mx-3 -my-3 pb-2 pt-1">
@@ -114,7 +118,7 @@ export function LintModal({
                 <span className={file ? "font-mono text-num font-medium" : undefined}>
                   {file ?? looseLabel}
                 </span>
-                <span className="font-normal text-fg-3">{group.length}</span>
+                <span className="font-normal text-fg-3">{formatNumber(group.length)}</span>
               </h3>
               {group.map((finding, index) => (
                 <article
@@ -126,7 +130,9 @@ export function LintModal({
                     className="justify-self-start"
                   >
                     <Warning size={11} weight="bold" aria-hidden />
-                    {finding.severity === "error" ? "Error" : "Warning"}
+                    {finding.severity === "error"
+                      ? t("shell.lint.severity.error")
+                      : t("shell.lint.severity.warning")}
                   </Badge>
                   <p className="m-0 text-sm leading-[17px] text-fg text-pretty">
                     {finding.message}

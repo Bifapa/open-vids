@@ -1,6 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { ListBullets, SquaresFour } from "@phosphor-icons/react";
+import { useTranslation } from "../../i18n";
 import { SearchInput } from "../ui/SearchInput";
 import { SegmentedControl, cn } from "../ui";
 import { MEDIA_EXT, FONT_EXT } from "@hyperframes/core/media-types";
@@ -39,20 +40,6 @@ interface AssetsTabProps {
 }
 
 type MediaScope = "local" | "global";
-
-const SCOPE_OPTIONS = [
-  { value: "local", label: "This Project" },
-  {
-    value: "global",
-    label: "All Projects",
-    title: "Reusable assets from your other OpenVids projects",
-  },
-] as const;
-
-const LAYOUT_OPTIONS = [
-  { value: "grid", label: "Grid", icon: <SquaresFour size={14} aria-hidden="true" /> },
-  { value: "list", label: "List", icon: <ListBullets size={14} aria-hidden="true" /> },
-] as const;
 
 /** An OS file drag (not an asset dragged out of this panel). */
 function isFileDrag(e: React.DragEvent): boolean {
@@ -138,6 +125,7 @@ export const AssetsTab = memo(function AssetsTab({
   onRename,
   onAddAssetToTimeline,
 }: AssetsTabProps) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<CopyFeedback>(null);
@@ -272,9 +260,30 @@ export const AssetsTab = memo(function AssetsTab({
   // The usage filter stays offered while it hides something, so it can be cleared.
   const offerUsage = (usageCounts.used > 0 && usageCounts.unused > 0) || usageFilter !== "all";
   const filterOptions = [
-    { value: "all" as const, label: "All" },
-    ...presentCategories.map((cat) => ({ value: cat, label: FILTER_LABELS[cat] })),
+    { value: "all" as const, label: t("common.all") },
+    ...presentCategories.map((cat) => ({ value: cat, label: t(FILTER_LABELS[cat]) })),
   ];
+  const scopeOptions = [
+    { value: "local" as const, label: t("sidebar.assets.scopeLocal") },
+    {
+      value: "global" as const,
+      label: t("sidebar.assets.scopeGlobal"),
+      title: t("sidebar.assets.scopeGlobalHint"),
+    },
+  ];
+  const layoutOptions = [
+    {
+      value: "grid" as const,
+      label: t("sidebar.assets.layoutGrid"),
+      icon: <SquaresFour size={14} aria-hidden="true" />,
+    },
+    {
+      value: "list" as const,
+      label: t("sidebar.assets.layoutList"),
+      icon: <ListBullets size={14} aria-hidden="true" />,
+    },
+  ];
+  const searchLabel = local ? t("sidebar.assets.searchLocal") : t("sidebar.assets.searchGlobal");
 
   return (
     <div
@@ -294,10 +303,10 @@ export const AssetsTab = memo(function AssetsTab({
     >
       <div className="mx-2 mt-2 flex shrink-0">
         <SegmentedControl
-          label="Media scope"
+          label={t("sidebar.assets.scopeLabel")}
           size="sm"
           value={viewMode}
-          options={SCOPE_OPTIONS}
+          options={scopeOptions}
           onChange={setViewMode}
           className="flex w-full [&>button]:flex-1"
         />
@@ -307,17 +316,17 @@ export const AssetsTab = memo(function AssetsTab({
         <SearchInput
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={local ? "Search media" : "Search all projects"}
-          aria-label={local ? "Search media" : "Search all projects"}
+          placeholder={searchLabel}
+          aria-label={searchLabel}
           disabled={local && noMedia}
           className="h-ctl flex-1"
         />
         {local && (
           <SegmentedControl
-            label="Asset view"
+            label={t("sidebar.assets.viewLabel")}
             variant="icon"
             value={layout}
-            options={LAYOUT_OPTIONS}
+            options={layoutOptions}
             onChange={setLayout}
             disabled={noMedia}
           />
@@ -347,7 +356,7 @@ export const AssetsTab = memo(function AssetsTab({
 
       {local && !noMedia && (
         <SegmentedControl
-          label="Filter by type"
+          label={t("sidebar.assets.filterByType")}
           size="sm"
           value={activeFilter}
           options={filterOptions}
@@ -375,8 +384,8 @@ export const AssetsTab = memo(function AssetsTab({
             const items = categorized[cat];
             const rows = layout === "list" || cat === "audio" || cat === "fonts";
             return (
-              <section key={cat} aria-label={CATEGORY_LABELS[cat]}>
-                <SectionLabel count={items.length}>{CATEGORY_LABELS[cat]}</SectionLabel>
+              <section key={cat} aria-label={t(CATEGORY_LABELS[cat])}>
+                <SectionLabel count={items.length}>{t(CATEGORY_LABELS[cat])}</SectionLabel>
                 <div
                   className={cn(
                     "px-2",

@@ -6,6 +6,7 @@ import type {
   ProviderInfo,
 } from "@hyperframes/agent-protocol";
 import type { Loadable } from "../../agent/agentSettingsSlice";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { ModelList } from "../chat/ModelList";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
@@ -22,11 +23,11 @@ const triggerClass = cn(
 );
 
 /** The short state of a provider in the picker's list (the full wording lives in Models & Providers). */
-const STATE_LABELS: Record<ProviderInfo["status"], { label: string; className: string }> = {
-  connected: { label: "Connected", className: "text-success" },
-  error: { label: "Error", className: "text-error" },
-  signin_required: { label: "Sign-in required", className: "text-warning" },
-  not_configured: { label: "Not set up", className: "text-fg-3" },
+const STATE_LABELS: Record<ProviderInfo["status"], { label: TranslationKey; className: string }> = {
+  connected: { label: "settings.providers.badge.connected", className: "text-success" },
+  error: { label: "settings.providers.badge.error", className: "text-error" },
+  signin_required: { label: "settings.providers.badge.signinRequired", className: "text-warning" },
+  not_configured: { label: "settings.studio.st.notSetUp", className: "text-fg-3" },
 };
 
 /**
@@ -46,11 +47,12 @@ export function JevProviderPicker({
   onSelect: (provider: string) => void;
   onRetry: () => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const list = providers?.status === "ready" ? providers.value : null;
   const ordered = list ? splitProviders(list) : null;
   const known = list?.find((provider) => provider.id === value);
-  const label = known?.name ?? value ?? "Choose a provider";
+  const label = known?.name ?? value ?? t("settings.jev.provider.choose");
 
   return (
     <Popover
@@ -58,12 +60,12 @@ export function JevProviderPicker({
       onOpenChange={setOpen}
       side="bottom"
       align="end"
-      aria-label="Jev providers"
+      aria-label={t("settings.studio.jev.providersAria")}
       className="w-64 p-1"
       trigger={
         <button
           type="button"
-          aria-label={`Jev provider: ${label}`}
+          aria-label={t("settings.studio.jev.providerAria", { label })}
           className={cn(triggerClass, warn && "border-warning/55")}
         >
           <span className={cn("min-w-0 flex-1 truncate", value === null && "text-fg-3")}>
@@ -77,16 +79,16 @@ export function JevProviderPicker({
         <div className="flex flex-col items-start gap-1.5 p-2">
           <p className="m-0 text-sm text-fg-2">{providers.message}</p>
           <Button size="sm" onClick={onRetry}>
-            Try again
+            {t("common.tryAgain")}
           </Button>
         </div>
       ) : !list ? (
-        <p className="m-0 p-2 text-sm text-fg-3">Loading providers…</p>
+        <p className="m-0 p-2 text-sm text-fg-3">{t("settings.loading.providers")}</p>
       ) : list.length === 0 ? (
-        <p className="m-0 p-2 text-sm text-fg-3">The agent knows no providers.</p>
+        <p className="m-0 p-2 text-sm text-fg-3">{t("settings.studio.jev.noProviders")}</p>
       ) : (
         <ul
-          aria-label="Providers"
+          aria-label={t("settings.providers.group.providers")}
           className="m-0 flex max-h-64 list-none flex-col overflow-y-auto p-0"
         >
           {[...(ordered?.shown ?? []), ...(ordered?.rest ?? [])].map((provider) => (
@@ -102,7 +104,7 @@ export function JevProviderPicker({
               >
                 <span className="min-w-0 flex-1 truncate">{provider.name}</span>
                 <span className={cn("text-xs", STATE_LABELS[provider.status].className)}>
-                  {STATE_LABELS[provider.status].label}
+                  {t(STATE_LABELS[provider.status].label)}
                 </span>
                 <Check
                   aria-hidden
@@ -129,13 +131,14 @@ export function JevModelPicker({
   jev: JevSettingsValue;
   onSelect: (model: AgentModelInfo) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const list = models?.status === "ready" ? models.value : null;
   const current = list?.find((model) => model.modelId === jev.modelId) ?? null;
-  let label = current?.name ?? jev.modelId ?? "Choose a model";
-  if (!jev.provider) label = "Choose a provider first";
-  else if (models?.status === "failed") label = "Models unavailable";
-  else if (!list) label = "Loading models…";
+  let label = current?.name ?? jev.modelId ?? t("settings.jev.model.choose");
+  if (!jev.provider) label = t("settings.jev.model.chooseProviderFirst");
+  else if (models?.status === "failed") label = t("settings.jev.model.unavailable");
+  else if (!list) label = t("settings.providers.models.loading");
 
   return (
     <Popover
@@ -143,11 +146,11 @@ export function JevModelPicker({
       onOpenChange={setOpen}
       side="bottom"
       align="end"
-      aria-label="Jev models"
+      aria-label={t("settings.studio.jev.modelsAria")}
       trigger={
         <button
           type="button"
-          aria-label={`Jev model: ${label}`}
+          aria-label={t("settings.studio.jev.modelAria", { label })}
           disabled={!list || list.length === 0}
           className={triggerClass}
         >

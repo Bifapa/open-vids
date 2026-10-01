@@ -1,5 +1,6 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { DownloadSimple, Plus } from "@phosphor-icons/react";
+import { formatNumber, useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -151,6 +152,7 @@ function CompCard({
   contentRevision: number;
   previewBooted: boolean;
 }) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
   const [stageSize, setStageSize] = useState(DEFAULT_PREVIEW_STAGE);
   const [livePreviewLoaded, setLivePreviewLoaded] = useState(false);
@@ -191,6 +193,9 @@ function CompCard({
     setLivePreviewLoaded(false);
   };
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
+  const renderLabel = isRendering
+    ? t("sidebar.compositions.renderBusy")
+    : t("sidebar.compositions.render", { name });
   const previewUrl = compositionPreviewUrl(projectId, comp);
   const thumbnailUrl = compositionCardThumbnailUrl(projectId, comp, contentRevision);
   const thumbnailFailed = failedThumbnailUrl === thumbnailUrl;
@@ -219,7 +224,7 @@ function CompCard({
       role="button"
       tabIndex={0}
       draggable
-      aria-label={`Open composition ${name}`}
+      aria-label={t("sidebar.compositions.open", { name })}
       aria-pressed={isActive}
       onDragStart={(event) => {
         draggedRef.current = true;
@@ -254,7 +259,7 @@ function CompCard({
       <div className="relative h-9 w-16 shrink-0 overflow-hidden rounded-xs bg-bg-1 shadow-[inset_0_0_0_1px_var(--color-border-subtle)]">
         {thumbnailFailed ? (
           <div className="absolute inset-0 flex items-center justify-center px-1 text-center text-2xs leading-tight text-fg-3">
-            Preview unavailable
+            {t("sidebar.compositions.previewUnavailable")}
           </div>
         ) : !previewBooted ? null : (
           <img
@@ -298,7 +303,7 @@ function CompCard({
                 setStageSize(DEFAULT_PREVIEW_STAGE);
               }
             }}
-            title={`${name} preview`}
+            title={t("sidebar.compositions.previewTitle", { name })}
             tabIndex={-1}
           />
         )}
@@ -311,19 +316,19 @@ function CompCard({
           <span className="min-w-0 truncate">{name}</span>
           {isRoot && (
             <span
-              aria-label="Root composition — opens automatically on load"
-              title="Root composition — opens automatically on load"
+              aria-label={t("sidebar.compositions.rootHint")}
+              title={t("sidebar.compositions.rootHint")}
               className="inline-flex h-[15px] shrink-0 items-center rounded-xs bg-surface-3 px-1 text-2xs font-semibold text-fg-2"
             >
-              Root
+              {t("sidebar.compositions.root")}
             </span>
           )}
           {lintInfo && lintInfo.count > 0 && (
             <span
-              aria-label={`${lintInfo.count} lint finding${lintInfo.count === 1 ? "" : "s"}`}
+              aria-label={t("sidebar.compositions.lintCount", { count: lintInfo.count })}
               className="inline-flex h-[15px] min-w-[15px] shrink-0 items-center justify-center rounded-pill bg-warning-soft px-1 text-2xs font-semibold tabular-nums text-warning"
             >
-              {lintInfo.count}
+              {formatNumber(lintInfo.count)}
             </span>
           )}
         </div>
@@ -340,10 +345,10 @@ function CompCard({
           )}
         >
           {onAddToTimeline && (
-            <Tooltip label="Add to timeline at playhead">
+            <Tooltip label={t("sidebar.compositions.addTooltip")}>
               <button
                 type="button"
-                aria-label={`Add ${name} to timeline at playhead`}
+                aria-label={t("sidebar.compositions.addLabel", { name })}
                 onClick={(event) => {
                   event.stopPropagation();
                   onAddToTimeline();
@@ -355,10 +360,10 @@ function CompCard({
             </Tooltip>
           )}
           {onRender && (
-            <Tooltip label={isRendering ? "A render is already in progress" : `Render ${name}`}>
+            <Tooltip label={renderLabel}>
               <button
                 type="button"
-                aria-label={isRendering ? "A render is already in progress" : `Render ${name}`}
+                aria-label={renderLabel}
                 disabled={isRendering}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -388,12 +393,13 @@ export const CompositionsTab = memo(function CompositionsTab({
   isRendering,
   lintFindingsByFile,
 }: CompositionsTabProps) {
+  const { t } = useTranslation();
   const thumbnailRevisions = usePlayerStore((state) => state.thumbnailRevisions);
   const previewBooted = usePlayerStore((state) => state.previewBooted);
   if (compositions.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center px-4">
-        <p className="text-center text-xs text-fg-3">No compositions found</p>
+        <p className="text-center text-xs text-fg-3">{t("sidebar.compositions.none")}</p>
       </div>
     );
   }
@@ -401,8 +407,10 @@ export const CompositionsTab = memo(function CompositionsTab({
   return (
     <div className="flex-1 overflow-y-auto bg-bg-0 pb-1">
       <div className="flex h-list-head items-baseline gap-1.5 px-3 pt-2 text-xs font-semibold text-fg-2">
-        Compositions
-        <span className="font-normal tabular-nums text-fg-3">{compositions.length}</span>
+        {t("sidebar.compositions.title")}
+        <span className="font-normal tabular-nums text-fg-3">
+          {formatNumber(compositions.length)}
+        </span>
       </div>
       <div className="grid gap-px px-1.5">
         {compositions.map((comp) => (

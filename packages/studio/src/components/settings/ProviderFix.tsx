@@ -1,4 +1,5 @@
 import type { ProviderInfo } from "@hyperframes/agent-protocol";
+import { useTranslation } from "../../i18n";
 import { providerIssue } from "./providerStatus";
 import { SettingsLink, SettingsStatus } from "./settingsLayout";
 import { useSettingsDialog } from "./settingsStore";
@@ -8,6 +9,7 @@ import { useSettingsDialog } from "./settingsStore";
  * (prototype: "Google has an error · Fix"). Nothing for a connected provider or one the runtime has not listed.
  */
 export function ProviderFix({ provider }: { provider: ProviderInfo | undefined }) {
+  const { t } = useTranslation();
   const issue = provider ? providerIssue(provider) : null;
   if (!provider || !issue) return null;
   return (
@@ -17,7 +19,7 @@ export function ProviderFix({ provider }: { provider: ProviderInfo | undefined }
         <span className="whitespace-nowrap">
           ·{" "}
           <SettingsLink onClick={() => useSettingsDialog.getState().showProvider(provider.id)}>
-            Fix
+            {t("settings.provider.fix")}
           </SettingsLink>
         </span>
       </span>

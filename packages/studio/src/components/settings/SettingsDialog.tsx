@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import { useStore } from "zustand";
 import { AgentStoreProvider } from "../../agent/agentContext";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import type { AgentStore } from "../../agent/agentStore";
 import { AssetSearchPolicyView } from "../../research/AssetSearchPolicyView";
 import { cn } from "../ui/cn";
@@ -27,23 +28,51 @@ import { SettingsPage, SettingsUnavailable } from "./settingsLayout";
 import { SETTINGS_SECTIONS, useSettingsDialog, type SettingsSection } from "./settingsStore";
 import "./settings.css";
 
-const SECTION_META: Record<SettingsSection, { group: string; label: string; icon: ReactNode }> = {
-  general: { group: "App", label: "General", icon: <GearSix /> },
-  appearance: { group: "App", label: "Appearance", icon: <CircleHalf /> },
-  agents: { group: "AI", label: "Agents", icon: <UsersThree /> },
-  providers: { group: "AI", label: "Models & Providers", icon: <Plug /> },
-  jev: { group: "AI", label: "Jev", icon: <Lightning /> },
-  assets: { group: "Workflow", label: "Asset Search", icon: <ImageSquare /> },
-  execution: { group: "Workflow", label: "Execution", icon: <Gauge /> },
+const SECTION_META: Record<
+  SettingsSection,
+  { group: TranslationKey; label: TranslationKey; icon: ReactNode }
+> = {
+  general: {
+    group: "settings.nav.group.app",
+    label: "settings.section.general",
+    icon: <GearSix />,
+  },
+  appearance: {
+    group: "settings.nav.group.app",
+    label: "settings.section.appearance",
+    icon: <CircleHalf />,
+  },
+  agents: {
+    group: "settings.nav.group.ai",
+    label: "settings.section.agents",
+    icon: <UsersThree />,
+  },
+  providers: {
+    group: "settings.nav.group.ai",
+    label: "settings.section.providers",
+    icon: <Plug />,
+  },
+  jev: { group: "settings.nav.group.ai", label: "settings.section.jev", icon: <Lightning /> },
+  assets: {
+    group: "settings.nav.group.workflow",
+    label: "settings.section.assets",
+    icon: <ImageSquare />,
+  },
+  execution: {
+    group: "settings.nav.group.workflow",
+    label: "settings.section.execution",
+    icon: <Gauge />,
+  },
 };
 
 /** How many providers need the user (a failed check, an expired sign-in); nothing while that is unknown. */
 function IssueBadge({ store }: { store: AgentStore }) {
+  const { t } = useTranslation();
   const providers = useStore(store, (state) => state.providers);
   const count = providers?.status === "ready" ? providerIssueCount(providers.value) : 0;
   if (count === 0) return null;
   return (
-    <Pill tone="warning" aria-label={`${count} need attention`}>
+    <Pill tone="warning" aria-label={t("settings.nav.needAttention", { count })}>
       {count}
     </Pill>
   );
@@ -58,6 +87,7 @@ function SettingsNav({
   agentStore: AgentStore | null;
   onSelect: (section: SettingsSection) => void;
 }) {
+  const { t } = useTranslation();
   // Up and Down walk the sections, as in the prototype; Tab leaves the list.
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -71,7 +101,7 @@ function SettingsNav({
 
   return (
     <nav
-      aria-label="Settings sections"
+      aria-label={t("settings.nav.label")}
       onKeyDown={onKeyDown}
       className="flex flex-col gap-px overflow-y-auto border-r border-border-subtle bg-bg-1 p-2"
     >
@@ -89,7 +119,7 @@ function SettingsNav({
                   index === 0 ? "pt-1" : "pt-3",
                 )}
               >
-                {meta.group}
+                {t(meta.group)}
               </div>
             )}
             <button
@@ -107,7 +137,7 @@ function SettingsNav({
               )}
             >
               {meta.icon}
-              <span className="min-w-0 flex-1 truncate">{meta.label}</span>
+              <span className="min-w-0 flex-1 truncate">{t(meta.label)}</span>
               {id === "providers" && agentStore && <IssueBadge store={agentStore} />}
             </button>
           </div>
@@ -118,7 +148,8 @@ function SettingsNav({
 }
 
 function AgentSettingsGate({ store, children }: { store: AgentStore | null; children: ReactNode }) {
-  if (!store) return <SettingsUnavailable message="Connecting to the agent…" />;
+  const { t } = useTranslation();
+  if (!store) return <SettingsUnavailable message={t("settings.studio.connecting")} />;
   return <AgentStoreProvider store={store}>{children}</AgentStoreProvider>;
 }
 
@@ -129,6 +160,7 @@ function SectionBody({
   section: SettingsSection;
   agentStore: AgentStore | null;
 }) {
+  const { t } = useTranslation();
   switch (section) {
     case "general":
       return <GeneralSection />;
@@ -154,10 +186,7 @@ function SectionBody({
       );
     case "assets":
       return (
-        <SettingsPage
-          title="Asset Search"
-          lede="Applies to all projects. Only the Research agent searches outside the project, and only as allowed here."
-        >
+        <SettingsPage title={t("settings.section.assets")} lede={t("settings.studio.assetsLede")}>
           <AssetSearchPolicyView variant="settings" className="mt-5 p-0" />
         </SettingsPage>
       );
@@ -176,12 +205,13 @@ function SectionBody({
  * through the open project's agent store; General and Appearance edit the app preferences file.
  */
 export function SettingsDialog({ agentStore }: { agentStore: AgentStore | null }) {
+  const { t } = useTranslation();
   const open = useSettingsDialog((state) => state.open);
   const section = useSettingsDialog((state) => state.section);
   const returnFocus = useSettingsDialog((state) => state.returnFocus);
   const setSection = useSettingsDialog((state) => state.setSection);
   const close = useSettingsDialog((state) => state.close);
-  const label = SECTION_META[section].label;
+  const label = t(SECTION_META[section].label);
 
   // The sidebar's issue badge needs the provider list before Models & Providers is ever opened.
   useEffect(() => {
@@ -217,7 +247,7 @@ export function SettingsDialog({ agentStore }: { agentStore: AgentStore | null }
           <header className="group/tl relative flex select-none items-center border-b border-border-subtle bg-bg-1 px-5">
             <div className="flex items-center gap-2">
               <BaseDialog.Close
-                aria-label="Close Settings"
+                aria-label={t("settings.window.close")}
                 className="grid size-3 place-items-center rounded-full bg-error p-0 text-accent-ink outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
                 <X
@@ -230,8 +260,8 @@ export function SettingsDialog({ agentStore }: { agentStore: AgentStore | null }
               <span aria-hidden className="size-3 rounded-full bg-surface-3" />
             </div>
             <BaseDialog.Title className="pointer-events-none absolute left-1/2 m-0 -translate-x-1/2 text-md font-semibold text-fg">
-              <span className="sr-only">Settings: </span>
-              {label}
+              <span aria-hidden>{label}</span>
+              <span className="sr-only">{t("settings.studio.titleSr", { section: label })}</span>
             </BaseDialog.Title>
           </header>
           <div className="grid min-h-0 grid-cols-[196px_minmax(0,1fr)]">

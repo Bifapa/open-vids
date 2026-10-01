@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from "react";
+import { formatNumber, useTranslation } from "../i18n";
 import type { StudioRightPanelsProps } from "./StudioRightPanels.types";
 
 import { PropertyPanel } from "./editor/PropertyPanel";
@@ -58,6 +59,7 @@ export function StudioRightPanels({
   onAddMediaOverlay,
   onAddAssetToTimeline,
 }: StudioRightPanelsProps) {
+  const { t } = useTranslation();
   const { previewIframeRef, projectId, activeCompPath, showToast, renderQueue } =
     useStudioShellContext();
   const { captionEditMode, refreshKey } = useStudioPlaybackContext();
@@ -212,7 +214,7 @@ export function StudioRightPanels({
     // it. Checked here as well as in the panel because the button is not the
     // only caller.
     if (!canHideSelections(domEditGroupSelections)) {
-      showToast("Audio can't be hidden — use the group's own controls", "info");
+      showToast(t("shell.rightPanel.audioCantHide"), "info");
       return;
     }
     const { elements } = usePlayerStore.getState();
@@ -322,7 +324,11 @@ export function StudioRightPanels({
       </Dock.Panel>
       <Dock.Panel
         id="renders"
-        title={renderJobs.length > 0 ? `Renders (${renderJobs.length})` : undefined}
+        title={
+          renderJobs.length > 0
+            ? t("shell.rightPanel.rendersTitle", { count: formatNumber(renderJobs.length) })
+            : undefined
+        }
       >
         <RenderQueuePanel />
       </Dock.Panel>

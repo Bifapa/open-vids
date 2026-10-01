@@ -1,6 +1,7 @@
 import { useCallback, useSyncExternalStore, type ReactNode } from "react";
 import { ArrowsClockwise, CornersIn, CornersOut, DotsThree, X } from "@phosphor-icons/react";
 import type { IDockviewHeaderActionsProps } from "dockview-react";
+import { useTranslation } from "../../i18n";
 import { PreviewHeadTools } from "../nle/PreviewHeadTools";
 import { IconButton, Menu, MenuCheckboxItem, MenuItem, MenuSeparator } from "../ui";
 import { useDockLayoutStore } from "./dockLayoutStore";
@@ -27,6 +28,7 @@ export function DockStripActions({
   panels,
   activePanel,
 }: IDockviewHeaderActionsProps) {
+  const { t } = useTranslation();
   const subscribe = useCallback(
     (onChange: () => void) => {
       const subscription = containerApi.onDidMaximizedGroupChange(onChange);
@@ -52,15 +54,21 @@ export function DockStripActions({
       {maximized ? (
         <IconButton
           size="sm"
-          aria-label="Restore panel"
+          aria-label={t("shell.dock.restoreLabel")}
           icon={<CornersIn size={14} />}
           onClick={toggleMaximized}
         />
       ) : null}
       <Menu
         align="end"
-        aria-label="Panel options"
-        trigger={<IconButton size="sm" aria-label="Panel options" icon={<DotsThree size={16} />} />}
+        aria-label={t("shell.dock.panelOptions")}
+        trigger={
+          <IconButton
+            size="sm"
+            aria-label={t("shell.dock.panelOptions")}
+            icon={<DotsThree size={16} />}
+          />
+        }
       >
         {menuPanels.map((id) => (
           <MenuCheckboxItem
@@ -68,7 +76,7 @@ export function DockStripActions({
             checked={openPanels.has(id)}
             onCheckedChange={() => togglePanel(id)}
           >
-            {PANEL_DEFINITIONS[id].title}
+            {t(PANEL_DEFINITIONS[id].title)}
           </MenuCheckboxItem>
         ))}
         {menuPanels.length > 0 ? <MenuSeparator /> : null}
@@ -77,15 +85,18 @@ export function DockStripActions({
             icon={
               maximized ? <CornersIn size={14} aria-hidden /> : <CornersOut size={14} aria-hidden />
             }
-            label={maximized ? "Restore Panel" : "Maximize Panel"}
+            label={maximized ? t("shell.dock.restorePanel") : t("shell.dock.maximizePanel")}
           />
         </MenuItem>
         <MenuItem onClick={() => api.close()}>
-          <Row icon={<X size={14} aria-hidden />} label="Close Panel" />
+          <Row icon={<X size={14} aria-hidden />} label={t("shell.dock.closePanel")} />
         </MenuItem>
         <MenuSeparator />
         <MenuItem onClick={resetLayout}>
-          <Row icon={<ArrowsClockwise size={14} aria-hidden />} label="Reset Layout" />
+          <Row
+            icon={<ArrowsClockwise size={14} aria-hidden />}
+            label={t("shell.dock.resetLayout")}
+          />
         </MenuItem>
       </Menu>
     </div>

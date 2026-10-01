@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { formatNumber, useTranslation, type TranslationKey } from "../i18n";
 import {
   CornersOut,
   Cursor,
@@ -124,6 +125,31 @@ function isKeyframeable(element: TimelineElement | undefined): boolean {
   return element?.tag !== "audio";
 }
 
+type KeyframeToggle = ReturnType<typeof resolveKeyframeToggleState>;
+
+function keyframeTooltipKey(toggle: KeyframeToggle, enabled: boolean): TranslationKey {
+  const P = "shell.timelineToolbar.keyframe.tooltip.";
+  if (toggle.pathEndpoint) return `${P}endpoint`;
+  if (!enabled) return `${P}select`;
+  if (toggle.isMotionPath) {
+    if (toggle.willExtend) return `${P}extendPath`;
+    return toggle.state === "active" ? `${P}removeWaypoint` : `${P}addWaypoint`;
+  }
+  if (toggle.state === "active") return `${P}remove`;
+  if (toggle.state === "inactive") return toggle.willExtend ? `${P}addExtend` : `${P}add`;
+  return `${P}default`;
+}
+
+function keyframeLabelKey(toggle: KeyframeToggle): TranslationKey {
+  const P = "shell.timelineToolbar.keyframe.label.";
+  if (toggle.pathEndpoint) return `${P}endpoint`;
+  if (toggle.isMotionPath) {
+    if (toggle.state === "active") return `${P}removeWaypoint`;
+    return toggle.willExtend ? `${P}extendPath` : `${P}addWaypoint`;
+  }
+  return toggle.state === "active" ? `${P}remove` : `${P}add`;
+}
+
 function useKeyframeToggle(session?: DomEditSessionSlice) {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
@@ -152,6 +178,7 @@ export function TimelineToolbar({
   history,
   showAddBeat = true,
 }: TimelineToolbarProps) {
+  const { t } = useTranslation();
   const activeTool = usePlayerStore((s) => s.activeTool);
   const setActiveTool = usePlayerStore((s) => s.setActiveTool);
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
@@ -180,13 +207,8 @@ export function TimelineToolbar({
     manualZoomPercent,
     timelineFitPps,
   );
-  const {
-    state: keyframeState,
-    isMotionPath: keyframeIsMotionPath,
-    pathEndpoint: keyframePathEndpoint,
-    willExtend: keyframeWillExtend,
-    onToggle: onToggleKeyframe,
-  } = useKeyframeToggle(domEditSession);
+  const { onToggle: onToggleKeyframe, ...keyframeToggle } = useKeyframeToggle(domEditSession);
+  const keyframeState = keyframeToggle.state;
 
   // Wire the "Add keyframe (K)" shortcut the toolbar advertises. Active only when
   // there's a keyframeable selection; otherwise K stays JKL-pause in playback.
@@ -223,36 +245,18 @@ export function TimelineToolbar({
     currentTime < splitTarget.start + splitTarget.duration;
   const canAddBeat = beatAnalysisReady && canAddBeatAt(currentTime);
   const thumbnailsLabel = thumbnailsVisible
-    ? "Hide thumbnails — labels only"
-    : "Show thumbnails — posters stay visible; richer previews appear on interaction";
-  const keyframeTooltip = keyframePathEndpoint
-    ? "Motion path endpoints cannot be removed"
-    : !onToggleKeyframe
-      ? "Select an animated element to add keyframes"
-      : keyframeIsMotionPath
-        ? keyframeWillExtend
-          ? "Extend motion path to playhead (K)"
-          : keyframeState === "active"
-            ? "Remove waypoint from motion path (K)"
-            : "Add waypoint to motion path (K)"
-        : keyframeState === "active"
-          ? "Remove keyframe at playhead (K)"
-          : keyframeState === "inactive"
-            ? keyframeWillExtend
-              ? "Add keyframe at playhead, extends animation (K)"
-              : "Add keyframe at playhead (K)"
-            : "Add keyframe (K)";
-  const keyframeLabel = keyframePathEndpoint
-    ? "Motion path endpoint"
-    : keyframeIsMotionPath
-      ? keyframeState === "active"
-        ? "Remove motion path waypoint"
-        : keyframeWillExtend
-          ? "Extend motion path to playhead"
-          : "Add motion path waypoint"
-      : keyframeState === "active"
-        ? "Remove keyframe at playhead"
-        : "Add keyframe at playhead";
+    ? t("shell.timelineToolbar.thumbnails.hide")
+    : t("shell.timelineToolbar.thumbnails.show");
+  const keyframeTooltip = t(keyframeTooltipKey(keyframeToggle, Boolean(onToggleKeyframe)), {
+    key: "K",
+  });
+  const keyframeLabel = t(keyframeLabelKey(keyframeToggle));
+  const zoomValueText =
+    zoomMode === "fit"
+      ? t("shell.timelineToolbar.zoomFit")
+      : t("shell.timelineToolbar.zoomPercent", {
+          percent: formatNumber(displayedTimelineZoomPercent),
+        });
 
   // Controls stay mounted and fade to disabled rather than unmounting, so the
   // head never shifts under the pointer mid-task.
@@ -264,23 +268,23 @@ export function TimelineToolbar({
           <span aria-hidden="true" className={toolbarSep} />
         </>
       )}
-      <div role="group" aria-label="Tools" className={segGroup}>
-        <Tooltip label="Selection tool (V)">
+      <div role="group" aria-label={t("shell.timelineToolbar.toolsLabel")} className={segGroup}>
+        <Tooltip label={t("shell.timelineToolbar.select.tooltip", { key: "V" })}>
           <button
             type="button"
             onClick={() => setActiveTool("select")}
-            aria-label="Selection tool"
+            aria-label={t("shell.timelineToolbar.select.label")}
             aria-pressed={activeTool === "select"}
             className={segButton}
           >
             <Cursor className="size-icon-sm" aria-hidden="true" />
           </button>
         </Tooltip>
-        <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
+        <Tooltip label={t("shell.timelineToolbar.razor.tooltip", { key: "B" })}>
           <button
             type="button"
             onClick={() => setActiveTool("razor")}
-            aria-label="Razor tool"
+            aria-label={t("shell.timelineToolbar.razor.label")}
             aria-pressed={activeTool === "razor"}
             className={segButton}
           >
@@ -288,11 +292,16 @@ export function TimelineToolbar({
           </button>
         </Tooltip>
       </div>
-      <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
+      <Tooltip
+        label={t(
+          timelineSnapEnabled ? "shell.timelineToolbar.snap.on" : "shell.timelineToolbar.snap.off",
+          { key: "N" },
+        )}
+      >
         <button
           type="button"
           onClick={() => setTimelineSnapEnabled(!timelineSnapEnabled)}
-          aria-label="Toggle timeline snapping"
+          aria-label={t("shell.timelineToolbar.snap.label")}
           aria-pressed={timelineSnapEnabled}
           className={timelineSnapEnabled ? flatActive : flatIdle}
         >
@@ -302,14 +311,14 @@ export function TimelineToolbar({
       <Tooltip
         label={
           rippleEditEnabled
-            ? "Ripple on — keeps the main track gapless"
-            : "Ripple off — deleting a main-track clip leaves a gap"
+            ? t("shell.timelineToolbar.ripple.on")
+            : t("shell.timelineToolbar.ripple.off")
         }
       >
         <button
           type="button"
           onClick={() => setRippleEditEnabled(!rippleEditEnabled)}
-          aria-label="Toggle ripple edit"
+          aria-label={t("shell.timelineToolbar.ripple.label")}
           aria-pressed={rippleEditEnabled}
           className={rippleEditEnabled ? flatActive : flatIdle}
         >
@@ -317,21 +326,25 @@ export function TimelineToolbar({
         </button>
       </Tooltip>
       <span aria-hidden="true" className={toolbarSep} />
-      <div role="group" aria-label="Edit at playhead" className="flex items-center gap-0.5">
+      <div
+        role="group"
+        aria-label={t("shell.timelineToolbar.editGroupLabel")}
+        className="flex items-center gap-0.5"
+      >
         {onSplitElement && (
           <Tooltip
             label={
               canSplit
-                ? "Split at playhead (S)"
+                ? t("shell.timelineToolbar.split.tooltip", { key: "S" })
                 : splittable
-                  ? "Move the playhead inside the clip to split"
-                  : "Select a clip to split"
+                  ? t("shell.timelineToolbar.split.moveInside")
+                  : t("shell.timelineToolbar.split.selectClip")
             }
           >
             <button
               type="button"
               disabled={!canSplit}
-              aria-label="Split at playhead"
+              aria-label={t("shell.timelineToolbar.split.label")}
               onClick={() => {
                 if (canSplit && splitTarget) onSplitElement(splitTarget, currentTime);
               }}
@@ -384,14 +397,14 @@ export function TimelineToolbar({
         <Tooltip
           label={
             autoKeyframeEnabled
-              ? "Auto-record manual edits as keyframes (click to turn off)"
-              : "Manual edits will not be recorded as keyframes (click to turn on)"
+              ? t("shell.timelineToolbar.autoRecord.on")
+              : t("shell.timelineToolbar.autoRecord.off")
           }
         >
           <button
             type="button"
             onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
-            aria-label="Auto-record manual edits as keyframes"
+            aria-label={t("shell.timelineToolbar.autoRecord.label")}
             aria-pressed={autoKeyframeEnabled}
             className={autoKeyframeEnabled ? `${flatBtn} bg-error-soft text-error` : flatIdle}
           >
@@ -406,16 +419,16 @@ export function TimelineToolbar({
           <Tooltip
             label={
               !beatAnalysisReady
-                ? "Add a music track with beat analysis to place beats"
+                ? t("shell.timelineToolbar.beat.noAnalysis")
                 : canAddBeat
-                  ? "Add beat at playhead"
-                  : "A beat already exists at the playhead"
+                  ? t("shell.timelineToolbar.beat.add")
+                  : t("shell.timelineToolbar.beat.exists")
             }
           >
             <button
               type="button"
               disabled={!canAddBeat}
-              aria-label="Add beat at playhead"
+              aria-label={t("shell.timelineToolbar.beat.add")}
               onClick={() => {
                 if (canAddBeat) addBeatAtCompositionTime(currentTime);
               }}
@@ -428,11 +441,17 @@ export function TimelineToolbar({
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
         {projectHasAudio && (
-          <Tooltip label={audioMetersVisible ? "Hide audio meters" : "Show audio meters"}>
+          <Tooltip
+            label={t(
+              audioMetersVisible
+                ? "shell.timelineToolbar.meters.hide"
+                : "shell.timelineToolbar.meters.show",
+            )}
+          >
             <button
               type="button"
               onClick={() => setAudioMetersVisible(!audioMetersVisible)}
-              aria-label="Toggle audio meters"
+              aria-label={t("shell.timelineToolbar.meters.label")}
               aria-pressed={audioMetersVisible}
               className={audioMetersVisible ? flatActive : flatIdle}
             >
@@ -452,10 +471,10 @@ export function TimelineToolbar({
           </button>
         </Tooltip>
         <span aria-hidden="true" className={toolbarSep} />
-        <Tooltip label="Zoom out">
+        <Tooltip label={t("shell.timelineToolbar.zoomOut")}>
           <button
             type="button"
-            aria-label="Zoom out"
+            aria-label={t("shell.timelineToolbar.zoomOut")}
             onClick={() => {
               setZoomMode("manual");
               setManualZoomPercent(
@@ -472,9 +491,9 @@ export function TimelineToolbar({
           min="0"
           max="100"
           value={timelineZoomPercentToSlider(displayedTimelineZoomPercent, timelineFitPps)}
-          title={zoomMode === "fit" ? "Fit" : `${displayedTimelineZoomPercent}%`}
-          aria-label="Timeline zoom"
-          aria-valuetext={zoomMode === "fit" ? "Fit" : `${displayedTimelineZoomPercent}%`}
+          title={zoomValueText}
+          aria-label={t("shell.timelineToolbar.zoomLabel")}
+          aria-valuetext={zoomValueText}
           onChange={(e) => {
             setZoomMode("manual");
             setManualZoomPercent(
@@ -484,10 +503,10 @@ export function TimelineToolbar({
           // h-6 is the 24x24 pointer target; the visible track stays 3px.
           className="mx-0.5 h-6 w-[84px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[3px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-surface-3 [&::-webkit-slider-thumb]:-mt-[4.5px] [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-bg-0 [&::-webkit-slider-thumb]:bg-fg [&::-webkit-slider-thumb:active]:cursor-grabbing"
         />
-        <Tooltip label="Zoom in">
+        <Tooltip label={t("shell.timelineToolbar.zoomIn")}>
           <button
             type="button"
-            aria-label="Zoom in"
+            aria-label={t("shell.timelineToolbar.zoomIn")}
             onClick={() => {
               setZoomMode("manual");
               setManualZoomPercent(
@@ -499,10 +518,10 @@ export function TimelineToolbar({
             <MagnifyingGlassPlus className="size-icon-md" aria-hidden="true" />
           </button>
         </Tooltip>
-        <Tooltip label="Fit timeline to width">
+        <Tooltip label={t("shell.timelineToolbar.fitToWidth")}>
           <button
             type="button"
-            aria-label="Fit timeline to width"
+            aria-label={t("shell.timelineToolbar.fitToWidth")}
             aria-pressed={zoomMode === "fit"}
             onClick={() => setZoomMode("fit")}
             className={zoomMode === "fit" ? flatActive : flatIdle}

@@ -9,6 +9,7 @@ import { SidebarLintButton } from "./sidebar/SidebarLintButton";
 import { Dock } from "./dock/Dock";
 import { useDockLayoutStore } from "./dock/dockLayoutStore";
 import { isMediaFile } from "@hyperframes/core/media-types";
+import { useTranslation } from "../i18n";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { getPersistedRenderSettings } from "./renders/renderSettings";
@@ -171,10 +172,11 @@ function CodeBody({
   revealOffset: React.ComponentProps<typeof SourceEditor>["revealOffset"];
   onChange: (content: string) => void;
 }) {
+  const { t } = useTranslation();
   if (!editingFile) {
     return (
       <div className="flex h-full items-center justify-center bg-bg-0 text-sm text-fg-3">
-        Select a file to edit
+        {t("shell.code.selectFile")}
       </div>
     );
   }
@@ -186,7 +188,7 @@ function CodeBody({
   if (editingFile.content == null) {
     return (
       <div className="flex h-full items-center justify-center bg-bg-0 text-xs text-fg-3">
-        Loading {editingFile.path}…
+        {t("shell.code.loading", { path: editingFile.path })}
       </div>
     );
   }

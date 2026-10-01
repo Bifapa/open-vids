@@ -1,6 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { X } from "@phosphor-icons/react";
 import type { IDockviewPanelHeaderProps } from "dockview-react";
+import { useTranslation } from "../../i18n";
 
 /** Centre panels the titlebar's Media | Story | Edit switch brings forward; dock.css hides them while not shown. */
 const WORKSPACE_PANELS: Record<string, true> = { preview: true, media: true, story: true };
@@ -10,6 +11,7 @@ const WORKSPACE_PANELS: Record<string, true> = { preview: true, media: true, sto
  * hover, keyed on dockview's own tab class so it swaps in the frame the tab changes.
  */
 export function DockTab({ api }: IDockviewPanelHeaderProps) {
+  const { t } = useTranslation();
   const subscribe = useCallback(
     (onChange: () => void) => {
       const subscription = api.onDidTitleChange(onChange);
@@ -25,7 +27,7 @@ export function DockTab({ api }: IDockviewPanelHeaderProps) {
       <div
         role="button"
         tabIndex={-1}
-        aria-label={`Close ${title}`}
+        aria-label={t("shell.dock.closeTab", { title })}
         className="hf-dock-tab-close"
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {

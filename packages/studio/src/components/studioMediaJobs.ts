@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type {
   BackgroundRemovalProgress,
   BackgroundRemovalResult,
@@ -35,7 +36,7 @@ function parseProgressEvent(event: Event): BackgroundRemovalProgress | Error {
 function getCompleteProgressResult(
   progress: BackgroundRemovalProgress,
 ): BackgroundRemovalResult | Error {
-  if (!progress.outputPath) return new Error("Background removal finished without an output path");
+  if (!progress.outputPath) return new Error(t("shell.mediaJob.noOutput"));
   return {
     outputPath: progress.outputPath,
     backgroundOutputPath: progress.backgroundOutputPath,
@@ -50,7 +51,7 @@ function getTerminalProgressResult(
     case "complete":
       return getCompleteProgressResult(progress);
     case "failed":
-      return new Error(progress.error || "Background removal failed");
+      return new Error(progress.error || t("shell.mediaJob.failed"));
     default:
       return null;
   }
@@ -109,12 +110,12 @@ export function waitForMediaJob(
     events.onopen = clearReconnectTimer;
     events.onerror = () => {
       if (events.readyState === EventSource.CLOSED) {
-        finishReject(new Error("Lost connection to background-removal job"));
+        finishReject(new Error(t("shell.mediaJob.lostConnection")));
         return;
       }
       if (reconnectTimer === null) {
         reconnectTimer = window.setTimeout(() => {
-          finishReject(new Error("Lost connection to background-removal job"));
+          finishReject(new Error(t("shell.mediaJob.lostConnection")));
         }, MEDIA_JOB_RECONNECT_TIMEOUT_MS);
       }
     };

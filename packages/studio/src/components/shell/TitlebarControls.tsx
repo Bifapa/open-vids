@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowUUpLeft, ArrowUUpRight } from "@phosphor-icons/react";
 import { useStudioShellContext } from "../../contexts/StudioContext";
+import { useTranslation } from "../../i18n";
 import { useStoryStore } from "../../story/storyContext";
 import { useSaveActivityStore } from "../../utils/saveActivity";
 import { useDockLayoutStore } from "../dock/dockLayoutStore";
@@ -17,6 +18,7 @@ export function TitlebarSeparator() {
 
 /** Saved / Saving… / Not saved beside the project name, from every project write and the Story graph. */
 export function SaveState() {
+  const { t } = useTranslation();
   const { writeBlockedReason } = useStudioShellContext();
   const writing = useSaveActivityStore((state) => state.pending > 0);
   const story = useStoryStore((state) => state.saveState);
@@ -38,22 +40,27 @@ export function SaveState() {
       role="status"
       data-testid="save-state"
       data-state={state}
-      title={failed ? (writeBlockedReason ?? "The story could not be saved") : undefined}
+      title={failed ? (writeBlockedReason ?? t("shell.titlebar.saveFailed")) : undefined}
       className="inline-flex shrink-0 items-center gap-[5px] text-xs whitespace-nowrap text-fg-3"
     >
       <StatusDot tone={failed ? "warn" : shownBusy ? "running" : "ok"} />
-      {failed ? "Not saved" : shownBusy ? "Saving…" : "Saved"}
+      {failed
+        ? t("shell.titlebar.notSaved")
+        : shownBusy
+          ? t("shell.titlebar.saving")
+          : t("shell.titlebar.saved")}
     </span>
   );
 }
 
 /** Undo / Redo with the step they would take, over the shell's edit history. */
 export function HistoryButtons() {
+  const { t } = useTranslation();
   const { editHistory, handleUndo, handleRedo } = useStudioShellContext();
   const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
   const steps = [
     {
-      verb: "Undo",
+      verb: "undo",
       can: editHistory.canUndo,
       step: editHistory.undoLabel,
       run: handleUndo,
@@ -61,7 +68,7 @@ export function HistoryButtons() {
       Icon: ArrowUUpLeft,
     },
     {
-      verb: "Redo",
+      verb: "redo",
       can: editHistory.canRedo,
       step: editHistory.redoLabel,
       run: handleRedo,
@@ -72,7 +79,9 @@ export function HistoryButtons() {
   return (
     <>
       {steps.map(({ verb, can, step, run, shortcut, Icon }) => {
-        const label = step ? `${verb} ${step}` : verb;
+        const label = step
+          ? t(verb === "undo" ? "shell.titlebar.undoStep" : "shell.titlebar.redoStep", { step })
+          : t(verb === "undo" ? "common.undo" : "common.redo");
         return (
           <Tooltip key={verb} label={label} shortcut={shortcut} side="bottom">
             <IconButton
@@ -129,6 +138,7 @@ function showZone(zone: Exclude<PanelZone, "center">) {
  * the dock. Hiding keeps every panel open in its place, so turning a zone back on restores it as it was.
  */
 export function PanelToggles() {
+  const { t } = useTranslation();
   const visiblePanels = useDockLayoutStore((state) => state.visiblePanels);
   const leftShown = panelsInZone("left").some((id) => visiblePanels.has(id));
   const rightShown = panelsInZone("right").some((id) => visiblePanels.has(id));
@@ -136,14 +146,14 @@ export function PanelToggles() {
   const toggles = [
     {
       side: "left",
-      label: "Left panel",
+      label: t("shell.titlebar.leftPanel"),
       pressed: leftShown,
       toggle: () =>
         leftShown ? useDockLayoutStore.getState().setZoneVisible("left", false) : showZone("left"),
     },
     {
       side: "bottom",
-      label: "Timeline",
+      label: t("shell.titlebar.timeline"),
       pressed: timelineShown,
       toggle: () => {
         const store = useDockLayoutStore.getState();
@@ -153,7 +163,7 @@ export function PanelToggles() {
     },
     {
       side: "right",
-      label: "Right panel",
+      label: t("shell.titlebar.rightPanel"),
       pressed: rightShown,
       toggle: () =>
         rightShown
@@ -164,7 +174,7 @@ export function PanelToggles() {
   return (
     <div
       role="group"
-      aria-label="Panels"
+      aria-label={t("shell.titlebar.panels")}
       className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-bg-0 p-0.5"
     >
       {toggles.map(({ side, label, pressed, toggle }) => (

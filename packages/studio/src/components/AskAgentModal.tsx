@@ -1,5 +1,6 @@
 import { useState, useRef, type CSSProperties } from "react";
 import { CaretRight, X } from "@phosphor-icons/react";
+import { Trans, useTranslation } from "../i18n";
 import { useMountEffect } from "../hooks/useMountEffect";
 import { type AgentModalAnchorPoint, clampNumber } from "../utils/studioHelpers";
 import { Button } from "./ui/Button";
@@ -46,6 +47,7 @@ export function AskAgentModal({
   onSubmit,
   onClose,
 }: AskAgentModalProps) {
+  const { t } = useTranslation();
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -81,7 +83,7 @@ export function AskAgentModal({
         ref={containerRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Copy prompt to AI agent"
+        aria-label={t("shell.askAgent.dialogLabel")}
         tabIndex={-1}
         className={`flex flex-col overflow-hidden rounded-lg border border-border bg-bg-1 text-sm text-fg shadow-pop outline-hidden ${
           anchorPoint ? "fixed" : ""
@@ -90,13 +92,13 @@ export function AskAgentModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex h-head shrink-0 items-center gap-1.5 border-b border-border-subtle pl-3 pr-1">
-          <h3 className="m-0 shrink-0 text-sm font-semibold">Ask Agent</h3>
+          <h3 className="m-0 shrink-0 text-sm font-semibold">{t("shell.askAgent.title")}</h3>
           <span className="min-w-0 flex-1 truncate text-xs text-fg-3" title={selectionLabel}>
             {selectionLabel}
           </span>
           <IconButton
             size="sm"
-            aria-label="Close"
+            aria-label={t("common.close")}
             onClick={onClose}
             icon={<X size={12} aria-hidden />}
           />
@@ -105,7 +107,7 @@ export function AskAgentModal({
           <textarea
             ref={inputRef}
             className="h-24 w-full resize-none rounded-sm border border-border bg-surface-1 px-2 py-[5px] text-sm leading-4 text-fg placeholder:text-fg-3 hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
-            placeholder="Describe what you want to change…"
+            placeholder={t("shell.askAgent.placeholder")}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
@@ -122,7 +124,7 @@ export function AskAgentModal({
                   aria-hidden
                   className="transition-transform duration-expand group-open:rotate-90"
                 />
-                Context included in prompt
+                {t("shell.askAgent.context")}
               </summary>
               <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md border border-border-subtle bg-bg-0 px-2.5 py-2 font-mono text-num leading-4 text-fg-3">
                 {contextPreview}
@@ -132,10 +134,15 @@ export function AskAgentModal({
         </div>
         <div className="flex min-h-11 items-center gap-1.5 border-t border-border-subtle py-2 pl-3 pr-2.5">
           <span className="mr-auto flex items-center gap-1 text-xs text-fg-3">
-            <Kbd>{navigator.platform.includes("Mac") ? "⌘↵" : "Ctrl+↵"}</Kbd> to copy
+            <Trans
+              i18nKey="shell.askAgent.copyShortcut"
+              components={{
+                shortcut: <Kbd>{navigator.platform.includes("Mac") ? "⌘↵" : "Ctrl+↵"}</Kbd>,
+              }}
+            />
           </span>
           <Button variant="primary" size="sm" disabled={!value.trim()} onClick={handleSubmit}>
-            Copy Prompt
+            {t("shell.askAgent.copyPrompt")}
           </Button>
         </div>
       </div>

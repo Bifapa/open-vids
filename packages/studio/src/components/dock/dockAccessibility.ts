@@ -1,4 +1,5 @@
 import type { DockviewApi } from "dockview-react";
+import { i18n, t } from "../../i18n";
 
 const SASH_STEP = 16;
 const SASH_STEP_SHIFT = 64;
@@ -19,7 +20,10 @@ function decorateSashes(root: HTMLElement) {
     sash.tabIndex = 0;
     sash.setAttribute("role", "separator");
     sash.setAttribute("aria-orientation", axis === "horizontal" ? "vertical" : "horizontal");
-    sash.setAttribute("aria-label", axis === "horizontal" ? "Resize columns" : "Resize rows");
+    sash.setAttribute(
+      "aria-label",
+      axis === "horizontal" ? t("shell.dock.resizeColumns") : t("shell.dock.resizeRows"),
+    );
   }
 }
 
@@ -78,6 +82,7 @@ function onTabKeyDown(event: KeyboardEvent, tab: HTMLElement, api: DockviewApi) 
 export function installDockAccessibility(api: DockviewApi, root: HTMLElement): () => void {
   const decorate = () => decorateSashes(root);
   decorate();
+  i18n.on("languageChanged", decorate);
   const subscriptions = [
     api.onDidLayoutChange(decorate),
     api.onDidLayoutFromJSON(decorate),
@@ -93,6 +98,7 @@ export function installDockAccessibility(api: DockviewApi, root: HTMLElement): (
   root.addEventListener("keydown", onKeyDown, true);
   return () => {
     root.removeEventListener("keydown", onKeyDown, true);
+    i18n.off("languageChanged", decorate);
     for (const subscription of subscriptions) subscription.dispose();
   };
 }

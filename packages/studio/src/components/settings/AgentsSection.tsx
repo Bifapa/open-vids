@@ -1,5 +1,4 @@
 import {
-  AGENT_DISPLAY_NAMES,
   SPECIALIST_IDS,
   isThinkingEffort,
   type AgentModelCatalog,
@@ -12,6 +11,7 @@ import {
 } from "@hyperframes/agent-protocol";
 import { useEffect, type ReactNode } from "react";
 import { useAgentStore } from "../../agent/agentContext";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { effortChoices, resolveModel } from "../../agent/agentSelectors";
 import { AllowedModels } from "../chat/AgentConfigFields";
 import { EFFORT_LABELS, type ConfigDefaults } from "../chat/agentLabels";
@@ -33,14 +33,41 @@ import {
 } from "./settingsLayout";
 import { useAgentSettingsEditor } from "./useAgentSettingsEditor";
 
-/** One line per agent, as short as the prototype's so it fits its column untruncated. */
-const SETTINGS_BLURBS: Record<"director" | SpecialistId, string> = {
-  director: "Plans the edit and delegates",
-  editor: "Cuts clips & handles timing",
-  vision: "Reviews pacing & framing",
-  motion: "Builds titles & transitions",
-  research: "Finds assets & references",
-  audio: "Balances dialogue & music",
+/** How each agent shows in a row: name, monogram and one line, as short as the prototype's so it fits untruncated. */
+const AGENT_TEXT: Record<
+  "director" | SpecialistId,
+  { name: TranslationKey; mono: TranslationKey; blurb: TranslationKey }
+> = {
+  director: {
+    name: "settings.agent.director.name",
+    mono: "settings.agent.director.mono",
+    blurb: "settings.agent.director.role",
+  },
+  editor: {
+    name: "settings.agent.editor.name",
+    mono: "settings.agent.editor.mono",
+    blurb: "settings.agent.editor.role",
+  },
+  vision: {
+    name: "settings.agent.vision.name",
+    mono: "settings.agent.vision.mono",
+    blurb: "settings.agent.vision.role",
+  },
+  motion: {
+    name: "settings.agent.motion.name",
+    mono: "settings.agent.motion.mono",
+    blurb: "settings.agent.motion.role",
+  },
+  research: {
+    name: "settings.agent.research.name",
+    mono: "settings.agent.research.mono",
+    blurb: "settings.studio.ag.blurbResearch",
+  },
+  audio: {
+    name: "settings.agent.audio.name",
+    mono: "settings.agent.audio.mono",
+    blurb: "settings.agent.audio.role",
+  },
 };
 
 /** Agent, Model, Thinking effort, On — the prototype's `.st-agents` columns. */
@@ -63,15 +90,6 @@ function providerOf(
   const selection = resolveModel(config.model, catalog, fallback).selection;
   return providers?.find((provider) => provider.id === selection?.provider);
 }
-
-/** "MD" for Motion Designer, "E" for Editor. */
-const monogram = (name: string) =>
-  name
-    .split(/\s+/)
-    .map((word) => word[0] ?? "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 
 /** A model change drops a thinking effort the new model cannot take, as the chat header does. */
 function withModel<T extends ModelConfig>(
@@ -99,32 +117,49 @@ function EffortSelect({
   defaults: ConfigDefaults;
   onChange: (thinking: ModelConfig["thinking"]) => void;
 }) {
+  const { t } = useTranslation();
   const { info } = resolveModel(config.model, catalog, defaults.model);
   const efforts = effortChoices(info);
   const options = [
     {
       value: "default",
-      label: defaults.thinking ? `Default (${EFFORT_LABELS[defaults.thinking]})` : "Default",
+      label: defaults.thinking
+        ? t("chat.effort.defaultWith", { effort: t(EFFORT_LABELS[defaults.thinking]) })
+        : t("settings.agents.effort.default"),
     },
-    ...efforts.map((effort) => ({ value: effort, label: EFFORT_LABELS[effort] })),
+    ...efforts.map((effort) => ({ value: effort, label: t(EFFORT_LABELS[effort]) })),
   ];
   if (config.thinking && !efforts.includes(config.thinking)) {
-    options.push({ value: config.thinking, label: EFFORT_LABELS[config.thinking] });
+    options.push({ value: config.thinking, label: t(EFFORT_LABELS[config.thinking]) });
   }
   return (
     <Select
       size="md"
-      label={`${name} thinking effort`}
+      label={t("settings.agents.effortAria", { agent: name })}
       className="w-full min-w-0"
       disabled={efforts.length === 0}
       value={config.thinking ?? "default"}
-      options={efforts.length === 0 ? [{ value: "default", label: "Not adjustable" }] : options}
+      options={
+        efforts.length === 0
+          ? [{ value: "default", label: t("settings.studio.ag.notAdjustable") }]
+          : options
+      }
       onCommit={(next) => onChange(isThinkingEffort(next) ? next : null)}
     />
   );
 }
 
-function AgentCell({ name, blurb, off }: { name: string; blurb: string; off?: boolean }) {
+function AgentCell({
+  name,
+  mono,
+  blurb,
+  off,
+}: {
+  name: string;
+  mono: string;
+  blurb: string;
+  off?: boolean;
+}) {
   return (
     <div className="flex min-w-0 items-center gap-2.5">
       <span
@@ -134,7 +169,7 @@ function AgentCell({ name, blurb, off }: { name: string; blurb: string; off?: bo
           off ? "bg-transparent text-fg-3" : "bg-surface-2 text-fg-2",
         )}
       >
-        {monogram(name)}
+        {mono}
       </span>
       <div className="grid min-w-0 gap-px">
         <span className={cn("text-base font-medium leading-4", off ? "text-fg-2" : "text-fg")}>
@@ -181,13 +216,19 @@ function SpecialistRow({
   provider: ProviderInfo | undefined;
   onCommit: (next: SpecialistDefaults) => void;
 }) {
-  const name = AGENT_DISPLAY_NAMES[id];
+  const { t } = useTranslation();
+  const name = t(AGENT_TEXT[id].name);
   return (
     <div className={cn(AGENT_GRID, "min-h-row-lg py-row-pad")} data-agent-row={id}>
-      <AgentCell name={name} blurb={SETTINGS_BLURBS[id]} off={!value.enabledByDefault} />
+      <AgentCell
+        name={name}
+        mono={t(AGENT_TEXT[id].mono)}
+        blurb={t(AGENT_TEXT[id].blurb)}
+        off={!value.enabledByDefault}
+      />
       <ModelCell provider={provider}>
         <ModelPicker
-          name={`${name} model`}
+          name={t("settings.agents.modelAria", { agent: name })}
           catalog={catalog}
           catalogFailed={catalogFailed}
           explicit={value.model}
@@ -205,7 +246,7 @@ function SpecialistRow({
         onChange={(thinking) => onCommit({ ...value, thinking })}
       />
       <Toggle
-        label={`${name} on in new chats`}
+        label={t("settings.studio.ag.onNew", { agent: name })}
         checked={value.enabledByDefault}
         className="justify-self-end"
         onCommit={(enabledByDefault) => onCommit({ ...value, enabledByDefault })}
@@ -216,6 +257,8 @@ function SpecialistRow({
 
 /** What the Director and each specialist run in new chats, and whether a specialist starts enabled. */
 export function AgentsSection() {
+  const { t } = useTranslation();
+  const directorName = t(AGENT_TEXT.director.name);
   const editor = useAgentSettingsEditor();
   const { settings, catalog, catalogFailed, runtimeDefaults, commit } = editor;
   const providers = useAgentStore((state) => state.providers);
@@ -227,17 +270,17 @@ export function AgentsSection() {
 
   if (!settings) {
     return (
-      <SettingsPage title="Agents">
+      <SettingsPage title={t("settings.section.agents")}>
         <SettingsUnavailable
           message={
             editor.settingsFailed
-              ? "Agent settings are unavailable right now."
-              : "Loading agent settings…"
+              ? t("settings.studio.ag.unavailable")
+              : t("settings.studio.ag.loading")
           }
           action={
             editor.settingsFailed ? (
               <Button size="sm" onClick={() => void editor.loadSettings()}>
-                Try again
+                {t("common.tryAgain")}
               </Button>
             ) : undefined
           }
@@ -276,17 +319,17 @@ export function AgentsSection() {
 
   return (
     <SettingsPage
-      title="Agents"
+      title={t("settings.section.agents")}
       meta={<SaveStatus status={editor.status} failed={editor.failed} />}
     >
       <SettingsGroup
-        label="Defaults for new chats"
+        label={t("settings.agents.group.defaults")}
         action={
           <SettingsLink disabled={!resettable} onClick={resetAll}>
-            Reset to defaults
+            {t("settings.agents.reset")}
           </SettingsLink>
         }
-        footer="Per-chat changes in the Chat panel override these. Models come from connected providers."
+        footer={t("settings.agents.foot")}
       >
         <div
           aria-hidden
@@ -295,16 +338,20 @@ export function AgentsSection() {
             "h-list-head rounded-t-md bg-bg-0 text-xs text-fg-3 [&>:last-child]:justify-self-end",
           )}
         >
-          <span>Agent</span>
-          <span>Model</span>
-          <span>Thinking effort</span>
-          <span>On</span>
+          <span>{t("settings.agents.col.agent")}</span>
+          <span>{t("settings.agents.col.model")}</span>
+          <span>{t("settings.agents.col.effort")}</span>
+          <span>{t("settings.agents.col.on")}</span>
         </div>
         <div className={cn(AGENT_GRID, "min-h-row-lg py-row-pad")} data-agent-row="director">
-          <AgentCell name="Director" blurb={SETTINGS_BLURBS.director} />
+          <AgentCell
+            name={directorName}
+            mono={t(AGENT_TEXT.director.mono)}
+            blurb={t(AGENT_TEXT.director.blurb)}
+          />
           <ModelCell provider={directorProvider}>
             <ModelPicker
-              name="Director model"
+              name={t("settings.agents.modelAria", { agent: directorName })}
               catalog={catalog}
               catalogFailed={catalogFailed}
               explicit={director.model}
@@ -321,15 +368,20 @@ export function AgentsSection() {
             />
           </ModelCell>
           <EffortSelect
-            name="Director"
+            name={directorName}
             config={director}
             catalog={catalog}
             defaults={runtimeDefaults}
             onChange={(thinking) => commit({ director: { model: director.model, thinking } })}
           />
-          <Tooltip label="The Director is always on" side="left">
+          <Tooltip label={t("settings.studio.ag.alwaysOnTip")} side="left">
             <span className="justify-self-end">
-              <Toggle label="Director, always on" checked disabled onCommit={() => {}} />
+              <Toggle
+                label={t("settings.agents.director.alwaysOn.aria")}
+                checked
+                disabled
+                onCommit={() => {}}
+              />
             </span>
           </Tooltip>
         </div>
@@ -352,21 +404,21 @@ export function AgentsSection() {
         ))}
       </SettingsGroup>
       <SettingsGroup
-        label="Director may also use"
-        note="Extra models the Director may pick for a single task"
-        footer="The Director may lower a specialist's thinking for a task, never raise it."
+        label={t("settings.studio.ag.mayUse")}
+        note={t("settings.studio.ag.mayUseNote")}
+        footer={t("settings.studio.ag.mayUseFoot")}
       >
         {SPECIALIST_IDS.map((id) => {
           const value = settings.specialists[id];
-          const name = AGENT_DISPLAY_NAMES[id];
+          const name = t(AGENT_TEXT[id].name);
           return (
             <SettingsRow
               key={id}
               label={name}
               hint={
                 value.allowedModels.length === 0
-                  ? `None: ${name} always runs on its own model.`
-                  : `One of these may run a single ${name} task.`
+                  ? t("settings.studio.ag.noneAllowed", { agent: name })
+                  : t("settings.studio.ag.someAllowed", { agent: name })
               }
             >
               <AllowedModels

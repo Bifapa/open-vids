@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Pause, Play, Waveform } from "@phosphor-icons/react";
 import { classifyWebAudioMediaRoute } from "@hyperframes/core/runtime/web-audio-route";
+import { useTranslation } from "../../i18n";
 import { IconButton, cn } from "../ui";
 import { ContextMenu } from "./AssetContextMenu";
 import {
@@ -48,6 +49,7 @@ export function AudioRow({
   onRename?: (oldPath: string, newPath: string) => void;
   onAddAssetToTimeline?: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [playing, setPlaying] = useState(false);
   const [bars, setBars] = useState<number[]>([]);
@@ -58,7 +60,7 @@ export function AudioRow({
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const animRef = useRef<number>(0);
   const name = basename(asset);
-  const subtype = getAudioSubtype(asset);
+  const subtype = t(getAudioSubtype(asset));
   const serveUrl = resolveMediaPreviewUrl(asset, projectId);
   const isCopied = copyFeedback?.path === asset && copyFeedback.ok;
   const activation = useAssetActivation(asset, projectId, used, onAddAssetToTimeline);
@@ -173,7 +175,7 @@ export function AudioRow({
         role="button"
         tabIndex={0}
         title={filename(asset)}
-        aria-label={`${name} — open, drag to timeline, right-click for actions`}
+        aria-label={t("sidebar.asset.rowLabel", { name })}
         {...activation}
         onDragStart={(e) => writeAssetDragData(e, asset)}
         onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
@@ -185,7 +187,9 @@ export function AudioRow({
       >
         <IconButton
           size="xs"
-          aria-label={playing ? `Pause preview of ${name}` : `Play preview of ${name}`}
+          aria-label={t(playing ? "sidebar.audio.pausePreview" : "sidebar.audio.playPreview", {
+            name,
+          })}
           aria-pressed={playing}
           icon={playing ? <Pause size={12} weight="fill" /> : <Play size={12} weight="fill" />}
           onClick={(e) => {
@@ -226,7 +230,9 @@ export function AudioRow({
         {used && <UsedDot />}
         <CopyChip feedback={copyFeedback} asset={asset} />
         <span className="shrink-0 text-xs text-fg-3 tabular-nums">
-          {durationLabel ? `${subtype} · ${durationLabel}` : subtype}
+          {durationLabel
+            ? t("sidebar.audio.subtypeDuration", { subtype, duration: durationLabel })
+            : subtype}
         </span>
       </div>
 

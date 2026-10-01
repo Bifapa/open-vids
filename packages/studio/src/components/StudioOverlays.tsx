@@ -56,7 +56,7 @@ export function StudioOverlays({
           findings={consoleErrors}
           projectId={projectId}
           projectDir={projectDir}
-          title="Console errors in preview"
+          kind="console"
           promptIntro="Fix these runtime console errors from the composition preview"
           onClose={clearConsoleErrors}
         />

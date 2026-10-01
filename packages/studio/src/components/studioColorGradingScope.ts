@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { patchMediaColorGradingInHtml } from "./editor/colorGradingScopePatch";
 import { hasRelativeLutSource } from "./studioMediaJobs";
@@ -55,10 +56,7 @@ export async function applyColorGradingScopeUpdate({
 }: ApplyColorGradingScopeOptions): Promise<ColorGradingScopeResult> {
   await waitForPendingDomEditSaves();
   if (scope === "project" && hasRelativeLutSource(value)) {
-    showToast(
-      "Project-wide color grading cannot copy relative LUT paths. Apply to this file or use a URL/data LUT.",
-      "error",
-    );
+    showToast(t("shell.colorGrading.relativeLut"), "error");
     return EMPTY_COLOR_GRADING_SCOPE_RESULT;
   }
 
@@ -71,19 +69,21 @@ export async function applyColorGradingScopeUpdate({
   const paths = colorGradingScopePaths(scope, selectedSourceFile, compositionPaths);
   const changedPaths = await saveProjectFilesWithHistory({
     projectId,
-    label: value ? "Apply color grading" : "Clear color grading",
+    label: value ? t("shell.colorGrading.applyLabel") : t("shell.colorGrading.clearLabel"),
     files: Object.fromEntries(paths.map((path) => [path, patchGrading])),
     readFile: readProjectFile,
     writeFile: writeProjectFile,
     recordEdit,
   });
   if (changedPaths.length === 0) {
-    showToast("No color grading changed", "info");
+    showToast(t("shell.colorGrading.unchanged"), "info");
     return EMPTY_COLOR_GRADING_SCOPE_RESULT;
   }
   reloadPreview();
   showToast(
-    `${value ? "Applied" : "Cleared"} color grading on ${changedElements} media item${changedElements === 1 ? "" : "s"}`,
+    t(value ? "shell.colorGrading.applied" : "shell.colorGrading.cleared", {
+      count: changedElements,
+    }),
     "info",
   );
   return { changedFiles: changedPaths.length, changedElements };

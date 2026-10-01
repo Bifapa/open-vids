@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowsClockwise, CaretDown } from "@phosphor-icons/react";
 import { useAgentStore, useAgentStoreApi } from "../../agent/agentContext";
+import { formatNumber, useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Status";
 import { ProviderRow } from "./ProviderRow";
 import { signInFlows } from "./ProviderSignIn";
-import { modelUsers, splitProviders, syncedAgo } from "./providerStatus";
+import { modelUsers, splitProviders, syncedLabel } from "./providerStatus";
 import { SettingsGroup, SettingsPage, SettingsUnavailable } from "./settingsLayout";
 import { useSettingsDialog } from "./settingsStore";
 import { useOAuthSignIns } from "./useOAuthSignIns";
@@ -28,6 +29,7 @@ function useNow(intervalMs: number): number {
  * Sign-in with an account is done in OMP, which OpenVids only reads.
  */
 export function ProvidersSection() {
+  const { t } = useTranslation();
   const store = useAgentStoreApi();
   const providers = useAgentStore((state) => state.providers);
   const syncedAt = useAgentStore((state) => state.providersSyncedAt);
@@ -120,13 +122,15 @@ export function ProvidersSection() {
 
   if (!list) {
     return (
-      <SettingsPage title="Models & Providers">
+      <SettingsPage title={t("settings.section.providers")}>
         <SettingsUnavailable
-          message={providers?.status === "failed" ? providers.message : "Loading providers…"}
+          message={
+            providers?.status === "failed" ? providers.message : t("settings.loading.providers")
+          }
           action={
             providers?.status === "failed" ? (
               <Button size="sm" onClick={() => void loadProviders()}>
-                Try again
+                {t("common.tryAgain")}
               </Button>
             ) : undefined
           }
@@ -146,21 +150,21 @@ export function ProvidersSection() {
       models={catalog ? catalog.models.filter((model) => model.provider === provider.id) : null}
       users={users}
       onSaveKey={async (apiKey) => {
-        const failure = await run(provider.id, "Connecting…", () =>
+        const failure = await run(provider.id, t("settings.studio.pv.connecting"), () =>
           setProviderApiKey(provider.id, apiKey),
         );
         if (failure === null) setOpen((current) => new Set(current).add(provider.id));
         return failure;
       }}
       onRemoveKey={() => {
-        void run(provider.id, "Removing…", () => setProviderApiKey(provider.id, null)).then(
-          (failure) => {
-            if (failure) setProblem(failure);
-            else setOpen((current) => new Set([...current].filter((id) => id !== provider.id)));
-          },
-        );
+        void run(provider.id, t("settings.jev.busy.removing"), () =>
+          setProviderApiKey(provider.id, null),
+        ).then((failure) => {
+          if (failure) setProblem(failure);
+          else setOpen((current) => new Set([...current].filter((id) => id !== provider.id)));
+        });
       }}
-      onRetry={() => void refresh(provider.id, "Checking…")}
+      onRetry={() => void refresh(provider.id, t("settings.providers.busy.checking"))}
       onRefresh={() => void refresh(null, "")}
       signIn={
         signInFlows(provider).length === 0
@@ -176,9 +180,9 @@ export function ProvidersSection() {
             }
       }
       onSignOut={() => {
-        void run(provider.id, "Signing out…", () => signOutProvider(provider.id)).then(
-          (failure) => failure && setProblem(failure),
-        );
+        void run(provider.id, t("settings.providers.busy.signingOut"), () =>
+          signOutProvider(provider.id),
+        ).then((failure) => failure && setProblem(failure));
       }}
     />
   );
@@ -188,17 +192,19 @@ export function ProvidersSection() {
       {syncing ? (
         <>
           <Spinner />
-          Syncing…
+          {t("settings.providers.syncing")}
         </>
       ) : (
-        <span>{syncedAt === null ? "Not synced yet" : `Synced ${syncedAgo(syncedAt, now)}`}</span>
+        <span>
+          {syncedAt === null ? t("settings.providers.notSynced") : syncedLabel(syncedAt, now)}
+        </span>
       )}
       <Button
         disabled={syncing || busy !== null}
         icon={<ArrowsClockwise aria-hidden className="size-icon-md" />}
         onClick={() => void refresh(null, "")}
       >
-        Refresh
+        {t("settings.providers.refresh")}
       </Button>
     </>
   );
@@ -206,13 +212,16 @@ export function ProvidersSection() {
   return (
     <div ref={pageRef}>
       <SettingsPage
-        title="Models & Providers"
+        title={t("settings.section.providers")}
         meta={meta}
-        lede="Models come from OMP, API keys and sign-ins made here. Agents and Jev can only use connected providers."
+        lede={t("settings.studio.pv.lede")}
       >
         <SettingsGroup
-          label="Providers"
-          note={`${connected} of ${list.length} connected`}
+          label={t("settings.providers.group.providers")}
+          note={t("settings.providers.connectedCount", {
+            connected: formatNumber(connected),
+            total: formatNumber(list.length),
+          })}
           footer={
             problem ? (
               <span role="alert" className="text-error">
@@ -235,8 +244,12 @@ export function ProvidersSection() {
                   aria-hidden
                   className={`size-icon-sm text-fg-3 transition-transform duration-hover ${showAll ? "rotate-180" : ""}`}
                 />
-                {showAll ? "Show fewer providers" : "Show all providers"}
-                {!showAll && <span className="text-xs text-fg-3">{rest.length} more</span>}
+                {showAll ? t("settings.studio.pv.showFewer") : t("settings.studio.pv.showAll")}
+                {!showAll && (
+                  <span className="text-xs text-fg-3">
+                    {t("settings.studio.pv.more", { count: formatNumber(rest.length) })}
+                  </span>
+                )}
               </button>
             </>
           )}

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Copy } from "@phosphor-icons/react";
 import type { OAuthFlow, OAuthLoginState, ProviderInfo } from "@hyperframes/agent-protocol";
+import { t, useTranslation, type TranslationKey } from "../../i18n";
 import { ExternalLink } from "../../research/researchUi";
 import { openExternalUrl, parseHttpsUrl } from "../../utils/openExternalUrl";
 import { Button } from "../ui/Button";
@@ -19,10 +20,10 @@ export interface ProviderSignInControls {
   cancel: () => void;
 }
 
-const FLOW_LABELS: Record<OAuthFlow, string> = {
-  browser: "In your browser",
-  device: "With a code",
-  paste: "Paste a code",
+const FLOW_LABELS: Record<OAuthFlow, TranslationKey> = {
+  browser: "settings.studio.si.browser",
+  device: "settings.studio.si.device",
+  paste: "settings.studio.si.paste",
 };
 
 /** The flows the provider offers, first (the default) first; empty when it has no in-app sign-in. */
@@ -32,16 +33,15 @@ export function signInFlows(provider: ProviderInfo): OAuthFlow[] {
 
 /** The row's one-word state while a sign-in is under way, or null when none is. */
 export function signInBusyLabel(view: SignInView): string | null {
-  if (view.busy === "starting") return "Starting sign-in…";
-  if (view.busy === "cancelling") return "Cancelling…";
+  if (view.busy === "starting") return t("settings.signin.state.starting");
+  if (view.busy === "cancelling") return t("settings.studio.si.cancelling");
   const login = view.login;
   if (!isRunningLogin(login)) return null;
-  if (login.status === "needs_input") return "Waiting for your answer…";
-  return login.flow === "browser" ? "Waiting for browser…" : "Waiting for sign-in…";
+  if (login.status === "needs_input") return t("settings.studio.si.needsInput");
+  return login.flow === "browser"
+    ? t("settings.signin.state.waitingBrowser")
+    : t("settings.studio.si.waitSignin");
 }
-
-export const SIGN_IN_STORAGE_NOTE =
-  "A sign-in made here is used instead of the one from your OMP setup until you sign out. It is kept in a private database on this Mac and never written to OMP.";
 
 /**
  * The way in: pick the method when the provider offers more than one (the first is the default) and start the
@@ -54,6 +54,7 @@ export function SignInStart({
   provider: ProviderInfo;
   controls: ProviderSignInControls;
 }) {
+  const { t } = useTranslation();
   const flows = signInFlows(provider);
   const [flow, setFlow] = useState<OAuthFlow | null>(flows[0] ?? null);
   const chosen = provider.oauth?.flows.find((info) => info.flow === flow);
@@ -64,23 +65,24 @@ export function SignInStart({
       <div className="flex flex-wrap items-center gap-2">
         {flows.length > 1 && (
           <SegmentedControl
-            label={`${provider.name} sign-in method`}
+            label={t("settings.signin.methodAria", { provider: provider.name })}
             value={flow ?? flows[0]}
-            options={flows.map((value) => ({ value, label: FLOW_LABELS[value] }))}
+            options={flows.map((value) => ({ value, label: t(FLOW_LABELS[value]) }))}
             onChange={setFlow}
           />
         )}
         <Button disabled={starting} onClick={() => controls.start(flow)}>
-          Sign in…
+          {t("settings.signin.start")}
         </Button>
       </div>
       {chosen?.fixedPort && chosen.callbackPort !== null && (
         <p className="m-0 text-xs leading-[15px] text-fg-3 text-pretty">
-          This sign-in needs port {chosen.callbackPort} to be free. If another app is using it,
-          choose another method.
+          {t("settings.studio.si.port", { port: chosen.callbackPort })}
         </p>
       )}
-      <p className="m-0 text-xs leading-[15px] text-fg-3 text-pretty">{SIGN_IN_STORAGE_NOTE}</p>
+      <p className="m-0 text-xs leading-[15px] text-fg-3 text-pretty">
+        {t("settings.studio.si.storageNote")}
+      </p>
       {controls.view.failure && controls.view.login === null && (
         <p role="alert" className="m-0 text-xs text-error">
           {controls.view.failure}
@@ -92,6 +94,7 @@ export function SignInStart({
 
 /** The short code of a device sign-in, large, with a button that copies it. */
 function DeviceCode({ code }: { code: string }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -105,13 +108,13 @@ function DeviceCode({ code }: { code: string }) {
   return (
     <div className="flex items-center gap-2">
       <span
-        aria-label="Sign-in code"
+        aria-label={t("settings.studio.si.codeAria")}
         className="rounded-md border border-border bg-bg-0 px-3 py-1.5 font-mono text-md font-semibold tracking-[0.12em] text-fg select-all"
       >
         {code}
       </span>
       <Button icon={<Copy aria-hidden className="size-icon-sm" />} onClick={copy}>
-        {copied ? "Copied" : "Copy code"}
+        {copied ? t("common.copied") : t("settings.studio.si.copyCode")}
       </Button>
     </div>
   );
@@ -127,6 +130,7 @@ function PromptForm({
   busy: boolean;
   onSubmit: (text: string) => Promise<string | null>;
 }) {
+  const { t } = useTranslation();
   const prompt = login.prompt;
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -136,7 +140,7 @@ function PromptForm({
   const send = async () => {
     const answer = text.trim();
     // A required prompt may take a blank answer as its default; the paste fallback needs something to send.
-    if (!answer && prompt.optional) return setError("Paste the code or address first.");
+    if (!answer && prompt.optional) return setError(t("settings.signin.error.pasteFirst"));
     // Nothing of the answer stays in this component, whatever the outcome.
     setText("");
     setError(null);
@@ -175,7 +179,7 @@ function PromptForm({
           />
         </div>
         <Button type="submit" disabled={busy}>
-          Submit
+          {t("settings.studio.si.submit")}
         </Button>
       </div>
       {error && (
@@ -191,11 +195,11 @@ function PromptForm({
 function endedMessage(login: OAuthLoginState): string {
   switch (login.status) {
     case "cancelled":
-      return "The sign-in was cancelled.";
+      return t("settings.studio.si.cancelled");
     case "expired":
-      return "The sign-in wasn't finished in time.";
+      return t("settings.studio.si.expired");
     default:
-      return login.error ?? "The sign-in didn't complete.";
+      return login.error ?? t("settings.studio.si.incomplete");
   }
 }
 
@@ -211,6 +215,7 @@ export function SignInProgress({
   provider: ProviderInfo;
   controls: ProviderSignInControls;
 }) {
+  const { t } = useTranslation();
   const { view } = controls;
   const login = view.login;
   if (!login) return null;
@@ -224,7 +229,7 @@ export function SignInProgress({
         </p>
         <div>
           <Button disabled={view.busy !== null} onClick={() => controls.start(login.flow)}>
-            Try again
+            {t("common.tryAgain")}
           </Button>
         </div>
       </div>
@@ -239,7 +244,7 @@ export function SignInProgress({
       {login.deviceCode ? (
         <>
           <p className="m-0 text-xs leading-[15px] text-fg-2 text-pretty">
-            Open the page below and enter this code to sign in to {provider.name}.
+            {t("settings.studio.si.openPage", { provider: provider.name })}
           </p>
           <DeviceCode code={login.deviceCode} />
         </>
@@ -250,13 +255,13 @@ export function SignInProgress({
       )}
       {login.authUrl && !url && (
         <p className="m-0 text-xs leading-[15px] text-warning text-pretty">
-          The sign-in address isn't a secure (https) link, so it wasn't opened.
+          {t("settings.studio.si.insecure")}
         </p>
       )}
       {url && (
         <div className="flex min-w-0 items-center gap-2">
           <Button disabled={busy} onClick={() => openExternalUrl(login.authUrl)}>
-            Open again
+            {t("settings.signin.openAgain")}
           </Button>
           <ExternalLink href={url.href} className="text-xs">
             {url.host}
@@ -269,7 +274,7 @@ export function SignInProgress({
       {!login.deviceCode && !login.instructions && !url && login.status === "pending" && (
         <p className="m-0 inline-flex items-center gap-1.5 text-xs text-fg-3">
           <Spinner />
-          {waiting ?? "Waiting…"}
+          {waiting ?? t("settings.studio.si.waiting")}
         </p>
       )}
       {login.prompt && (
@@ -287,7 +292,7 @@ export function SignInProgress({
       )}
       <div>
         <Button variant="ghost" disabled={view.busy === "cancelling"} onClick={controls.cancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
       </div>
     </div>

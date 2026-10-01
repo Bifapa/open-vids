@@ -3,6 +3,7 @@
  * trigger, empty / no-match bodies, OS drop overlay, usage filter menu + strip.
  */
 import type { ReactNode } from "react";
+import { Trans, formatNumber, useTranslation, type TranslationKey } from "../../i18n";
 import { DownloadSimple, FilmStrip, FunnelSimple } from "@phosphor-icons/react";
 import {
   Button,
@@ -19,10 +20,10 @@ export type UsageFilter = "all" | "used" | "unused";
 
 const USAGE_FILTERS: readonly UsageFilter[] = ["all", "used", "unused"];
 
-const USAGE_LABELS: Record<UsageFilter, string> = {
-  all: "All Media",
-  used: "In Use",
-  unused: "Unused",
+const USAGE_LABELS: Record<UsageFilter, TranslationKey> = {
+  all: "sidebar.usage.all",
+  used: "sidebar.usage.used",
+  unused: "sidebar.usage.unused",
 };
 
 function isUsageFilter(value: unknown): value is UsageFilter {
@@ -32,10 +33,11 @@ function isUsageFilter(value: unknown): value is UsageFilter {
 /** Import trigger. An import is an await, so the button owns the pending state
  *  instead of leaving the author clicking a control that looks idle. */
 export function ImportButton({ importing, onClick }: { importing: boolean; onClick: () => void }) {
+  const { t } = useTranslation();
   return (
-    <Tooltip label={importing ? "Importing…" : "Import media…"}>
+    <Tooltip label={importing ? t("sidebar.import.busyTooltip") : t("sidebar.import.tooltip")}>
       <IconButton
-        aria-label={importing ? "Importing media" : "Import media"}
+        aria-label={importing ? t("sidebar.import.busyLabel") : t("sidebar.import.label")}
         aria-busy={importing}
         disabled={importing}
         onClick={onClick}
@@ -50,23 +52,22 @@ export function SectionLabel({ children, count }: { children: ReactNode; count: 
   return (
     <div className="flex items-baseline gap-1.5 px-3 pt-2.5 pb-1 text-xs leading-[14px] font-semibold text-fg-2">
       {children}
-      <span className="font-normal text-fg-3 tabular-nums">{count}</span>
+      <span className="font-normal text-fg-3 tabular-nums">{formatNumber(count)}</span>
     </div>
   );
 }
 
 /** A project with no media yet: what goes here and how to bring it in. */
 export function MediaEmpty({ onImport }: { onImport?: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-full items-center justify-center px-6 py-6">
       <div className="-mt-[8vh] flex max-w-60 flex-col items-center gap-1.5 text-center">
         <div className="mb-1.5 flex size-9 items-center justify-center rounded-lg border border-border bg-surface-1 text-fg-3">
           <FilmStrip size={20} aria-hidden="true" />
         </div>
-        <h2 className="text-lg font-semibold text-fg">No media yet</h2>
-        <p className="text-sm text-fg-3 [text-wrap:pretty]">
-          Import footage, images, audio and fonts, or drop files here.
-        </p>
+        <h2 className="text-lg font-semibold text-fg">{t("sidebar.empty.title")}</h2>
+        <p className="text-sm text-fg-3 [text-wrap:pretty]">{t("sidebar.empty.description")}</p>
         {onImport && (
           <Button
             className="mt-2.5"
@@ -74,7 +75,7 @@ export function MediaEmpty({ onImport }: { onImport?: () => void }) {
             icon={<DownloadSimple size={14} aria-hidden="true" />}
             onClick={onImport}
           >
-            Import Media…
+            {t("sidebar.empty.import")}
           </Button>
         )}
       </div>
@@ -90,14 +91,17 @@ export function NoMatch({
   searchQuery: string;
   onClearSearch: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center gap-2 px-3 py-[18px] text-center text-sm text-fg-3">
       <p>
-        {searchQuery ? `No media matches “${searchQuery}”.` : "Nothing here with these filters."}
+        {searchQuery
+          ? t("sidebar.noMatch.search", { query: searchQuery })
+          : t("sidebar.noMatch.filters")}
       </p>
       {searchQuery && (
         <Button size="sm" variant="secondary" onClick={onClearSearch}>
-          Clear search
+          {t("sidebar.noMatch.clear")}
         </Button>
       )}
     </div>
@@ -106,6 +110,7 @@ export function NoMatch({
 
 /** OS file drag over the panel: the drop target, dashed in the accent. */
 export function DropOverlay() {
+  const { t } = useTranslation();
   return (
     <div
       aria-hidden="true"
@@ -113,8 +118,8 @@ export function DropOverlay() {
     >
       <div className="grid justify-items-center gap-1 text-center text-fg">
         <DownloadSimple size={20} className="mb-1 text-accent" />
-        <b className="text-md font-semibold">Drop to import</b>
-        <span className="text-xs text-fg-3">Video, images, audio and fonts</span>
+        <b className="text-md font-semibold">{t("sidebar.drop.title")}</b>
+        <span className="text-xs text-fg-3">{t("sidebar.drop.kinds")}</span>
       </div>
     </div>
   );
@@ -130,14 +135,15 @@ export function UsageMenu({
   counts: { all: number; used: number; unused: number };
   onChange: (next: UsageFilter) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Menu
-      aria-label="Show media"
+      aria-label={t("sidebar.usage.menuLabel")}
       align="end"
       trigger={
         <IconButton
-          aria-label="Filter by usage"
-          title="Filter by usage"
+          aria-label={t("sidebar.usage.filterBy")}
+          title={t("sidebar.usage.filterBy")}
           aria-pressed={value !== "all"}
           icon={<FunnelSimple size={14} />}
         />
@@ -152,8 +158,8 @@ export function UsageMenu({
         {USAGE_FILTERS.map((filter) => (
           <MenuRadioItem key={filter} value={filter}>
             <span className="flex min-w-36 items-center justify-between gap-4">
-              {USAGE_LABELS[filter]}
-              <MenuShortcut>{counts[filter]}</MenuShortcut>
+              {t(USAGE_LABELS[filter])}
+              <MenuShortcut>{formatNumber(counts[filter])}</MenuShortcut>
             </span>
           </MenuRadioItem>
         ))}
@@ -172,13 +178,18 @@ export function UsageStrip({
   count: number;
   onShowAll: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="mx-2 mb-1 flex min-h-ctl-sm shrink-0 items-center gap-1.5 rounded-sm bg-surface-1 pr-0.5 pl-2 text-xs text-fg-2">
       <span className="min-w-0 flex-1 truncate">
-        Showing <b className="font-semibold text-fg">{USAGE_LABELS[value]}</b> · {count}
+        <Trans
+          i18nKey="sidebar.usage.showing"
+          values={{ filter: t(USAGE_LABELS[value]), count: formatNumber(count) }}
+          components={{ b: <b className="font-semibold text-fg" /> }}
+        />
       </span>
       <Button size="xs" variant="ghost" onClick={onShowAll}>
-        Show All
+        {t("sidebar.usage.showAll")}
       </Button>
     </div>
   );

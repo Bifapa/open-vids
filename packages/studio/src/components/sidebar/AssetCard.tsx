@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { FilmStrip, Image } from "@phosphor-icons/react";
+import { useTranslation } from "../../i18n";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
 import { Badge, cn } from "../ui";
 import { VIDEO_EXT, IMAGE_EXT } from "@hyperframes/core/media-types";
@@ -42,20 +43,22 @@ export function writeAssetDragData(e: React.DragEvent, asset: string): void {
  *  feedback — it renders only once a copy has succeeded or failed, and never
  *  as an idle affordance for something the tile itself does not do. */
 export function CopyChip({ feedback, asset }: { feedback: CopyFeedback; asset: string }) {
+  const { t } = useTranslation();
   if (feedback?.path !== asset) return null;
   return (
     <Badge role="status" size="sm" tone={feedback.ok ? "success" : "error"}>
-      {feedback.ok ? "Copied" : "Copy failed"}
+      {feedback.ok ? t("common.copied") : t("sidebar.asset.copyFailed")}
     </Badge>
   );
 }
 
 /** The "in use" mark of a row: a quiet dot, named for assistive tech. */
 export function UsedDot() {
+  const { t } = useTranslation();
   return (
-    <span title="In use" className="inline-flex shrink-0">
+    <span title={t("sidebar.asset.inUse")} className="inline-flex shrink-0">
       <span aria-hidden="true" className="size-1.5 rounded-full bg-fg-3" />
-      <span className="sr-only">In use</span>
+      <span className="sr-only">{t("sidebar.asset.inUse")}</span>
     </span>
   );
 }
@@ -318,6 +321,7 @@ export function AssetCard({
   onRename,
   onAddAssetToTimeline,
 }: AssetCardProps) {
+  const { t } = useTranslation();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [hovered, setHovered] = useState(false);
   const isCopied = copyFeedback?.path === asset && copyFeedback.ok;
@@ -352,7 +356,7 @@ export function AssetCard({
         role="button"
         tabIndex={0}
         title={fullName}
-        aria-label={`${name} — open, drag to timeline, right-click for actions`}
+        aria-label={t("sidebar.asset.rowLabel", { name })}
         {...activation}
         onDragStart={(e) => writeAssetDragData(e, asset)}
         onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
@@ -385,10 +389,10 @@ export function AssetCard({
               )}
               {used && (
                 <span
-                  title="In use"
+                  title={t("sidebar.asset.inUse")}
                   className="absolute top-[5px] right-[5px] size-1.5 rounded-full bg-on-media shadow-[0_0_0_1.5px_var(--color-on-media-bg)]"
                 >
-                  <span className="sr-only">In use</span>
+                  <span className="sr-only">{t("sidebar.asset.inUse")}</span>
                 </span>
               )}
             </div>
@@ -451,6 +455,7 @@ export function FontRow({
   onRename,
   onAddAssetToTimeline,
 }: FontRowProps) {
+  const { t } = useTranslation();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const name = basename(asset);
   const isCopied = copyFeedback?.path === asset && copyFeedback.ok;
@@ -462,7 +467,7 @@ export function FontRow({
         role="button"
         tabIndex={0}
         title={filename(asset)}
-        aria-label={`${name} — copy path, drag to timeline, right-click for actions`}
+        aria-label={t("sidebar.asset.fontRowLabel", { name })}
         onClick={() => onCopy(asset)}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
@@ -484,7 +489,9 @@ export function FontRow({
         </span>
         <span className={cn(ASSET_NAME_CLASS, "flex-1 text-base")}>{name}</span>
         <CopyChip feedback={copyFeedback} asset={asset} />
-        <span className="shrink-0 text-xs text-fg-3">{used ? "In use" : "Unused"}</span>
+        <span className="shrink-0 text-xs text-fg-3">
+          {used ? t("sidebar.asset.inUse") : t("sidebar.usage.unused")}
+        </span>
       </div>
 
       {contextMenu && (

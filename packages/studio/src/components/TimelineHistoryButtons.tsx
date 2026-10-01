@@ -1,3 +1,4 @@
+import { useTranslation } from "../i18n";
 import { useStudioShellContextOptional } from "../contexts/StudioContext";
 import { RotateCcw, RotateCw } from "../icons/SystemIcons";
 import { historyTooltipLabel } from "../utils/studioHelpers";
@@ -12,13 +13,14 @@ interface HistoryButtonProps {
 }
 
 function HistoryButton({ action, can, label, onClick }: HistoryButtonProps) {
+  const { t } = useTranslation();
   const Icon = action === "undo" ? RotateCcw : RotateCw;
   const enabled = Boolean(onClick) && can;
   return (
     <Tooltip label={historyTooltipLabel(action, label)}>
       <button
         type="button"
-        aria-label={action === "undo" ? "Undo" : "Redo"}
+        aria-label={action === "undo" ? t("common.undo") : t("common.redo")}
         disabled={!enabled}
         className={enabled ? flatIdle : flatDisabled}
         onClick={() => {

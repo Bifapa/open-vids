@@ -14,6 +14,7 @@ import {
   type DockviewReadyEvent,
   type IDockviewPanelProps,
 } from "dockview-react";
+import { useTranslation } from "../../i18n";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { installDockAccessibility } from "./dockAccessibility";
 import { DockStripActions } from "./DockStripActions";
@@ -254,11 +255,12 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
 }
 
 function Panel({ id, title, children }: { id: PanelId; title?: string; children: ReactNode }) {
+  const { t } = useTranslation();
   const element = useSlots().slots[id];
   const visible = useDockLayoutStore((state) => state.visiblePanels.has(id));
   const controller = useDockLayoutStore((state) => state.controller);
   const open = useDockLayoutStore((state) => state.openPanels.has(id));
-  const label = title ?? PANEL_DEFINITIONS[id].title;
+  const label = title ?? t(PANEL_DEFINITIONS[id].title);
   useEffect(() => {
     if (open) controller?.setTitle(id, label);
   }, [controller, id, label, open]);

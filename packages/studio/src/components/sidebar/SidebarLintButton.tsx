@@ -1,4 +1,5 @@
 import { ListChecks } from "@phosphor-icons/react";
+import { formatNumber, useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 
 const ERROR_PULSES_BEFORE_IDLE = 3;
@@ -15,6 +16,7 @@ export function SidebarLintButton({
   findingCount?: number;
   hasError?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex h-7 shrink-0 items-center border-t border-border-subtle bg-bg-0 px-1.5">
       <button
@@ -28,7 +30,7 @@ export function SidebarLintButton({
         )}
       >
         <ListChecks size={12} aria-hidden />
-        {linting ? "Checking…" : "Run Checks"}
+        {linting ? t("sidebar.lint.checking") : t("sidebar.lint.run")}
         {!linting && findingCount != null && findingCount > 0 && (
           <span
             key={findingCount}
@@ -41,9 +43,11 @@ export function SidebarLintButton({
                 : "bg-warning-soft text-warning",
             )}
           >
-            {findingCount}
+            <span aria-hidden="true">{formatNumber(findingCount)}</span>
             <span className="sr-only">
-              {hasError ? " lint findings, including errors" : " lint findings, warnings only"}
+              {t(hasError ? "sidebar.lint.findingsErrors" : "sidebar.lint.findingsWarnings", {
+                count: findingCount,
+              })}
             </span>
           </span>
         )}

@@ -4,6 +4,7 @@ import type {
   ExternalFileChangeBlockedState,
   ExternalFileChangeCoordinatorHandle,
 } from "../hooks/useExternalFileChangeCoordinator";
+import { Trans, useTranslation } from "../i18n";
 import { StudioBanner } from "./StudioBanner";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
@@ -38,6 +39,7 @@ function ReviewDialog({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   useDialogBehavior({ open: true, onClose, containerRef });
   return (
@@ -62,7 +64,7 @@ function ReviewDialog({
           </h2>
           <IconButton
             size="sm"
-            aria-label="Close"
+            aria-label={t("common.close")}
             onClick={onClose}
             icon={<X size={12} aria-hidden />}
           />
@@ -86,6 +88,7 @@ function VersionColumn({
   content: string;
   filename: string;
 }) {
+  const { t } = useTranslation();
   return (
     <section
       aria-label={title}
@@ -100,7 +103,7 @@ function VersionColumn({
           icon={<Copy size={12} aria-hidden />}
           onClick={() => void navigator.clipboard.writeText(content)}
         >
-          Copy
+          {t("common.copy")}
         </Button>
         <Button
           size="xs"
@@ -108,7 +111,7 @@ function VersionColumn({
           icon={<DownloadSimple size={12} aria-hidden />}
           onClick={() => downloadText(filename, content)}
         >
-          Download
+          {t("common.download")}
         </Button>
       </div>
       <textarea
@@ -127,24 +130,25 @@ function ConflictReview({
   conflict: Extract<ExternalFileChangeBlockedState, { status: "conflict" }>;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const path = conflict.error.filePath;
   return (
     <ReviewDialog
       titleId="external-conflict-title"
-      title={`Review both versions of ${path}`}
-      note="Reviewing or exporting does not change either version."
+      title={t("shell.fileConflict.reviewTitle", { path })}
+      note={t("shell.fileConflict.reviewNote")}
       wide
       onClose={onClose}
     >
       <div className="grid gap-2 md:grid-cols-2">
         <VersionColumn
-          title="File on disk"
+          title={t("shell.fileConflict.fileOnDisk")}
           icon={<File size={12} aria-hidden />}
-          content={conflict.error.currentContent ?? "(The server did not return file contents.)"}
+          content={conflict.error.currentContent ?? t("shell.fileConflict.noContents")}
           filename={`${path}.external.html`}
         />
         <VersionColumn
-          title="Unsaved Studio version"
+          title={t("shell.fileConflict.unsavedVersion")}
           icon={<PencilSimple size={12} aria-hidden />}
           content={conflict.error.attemptedContent}
           filename={`${path}.studio.html`}
@@ -159,6 +163,7 @@ export function ExternalFileConflictBanner({
 }: {
   coordinator: ExternalFileChangeCoordinatorHandle;
 }) {
+  const { t } = useTranslation();
   const [reviewing, setReviewing] = useState(false);
   const blocked = coordinator.blocked;
   if (!blocked) return null;
@@ -177,58 +182,51 @@ export function ExternalFileConflictBanner({
           <>
             {conflict && (
               <Button size="sm" onClick={() => setReviewing(true)}>
-                Review or export both
+                {t("shell.fileConflict.reviewBoth")}
               </Button>
             )}
             {failure?.studioContent != null && (
               <Button size="sm" onClick={() => setReviewing(true)}>
-                Review or export Studio draft
+                {t("shell.fileConflict.reviewDraft")}
               </Button>
             )}
             {failure && !failure.recovered && failure.studioContent != null && (
               <Button size="sm" onClick={() => void coordinator.retry()}>
-                Retry save
+                {t("shell.fileConflict.retrySave")}
               </Button>
             )}
             <Button size="sm" onClick={() => void coordinator.useExternalFile()}>
-              Discard Studio edits and reload file
+              {t("shell.fileConflict.discard")}
             </Button>
             {conflict && (
               <Button
                 size="sm"
                 variant="danger"
-                onClick={() =>
-                  overwrite(
-                    "Overwrite the externally changed file with the Studio version? The server will preserve its normal backup before writing.",
-                  )
-                }
+                onClick={() => overwrite(t("shell.fileConflict.confirmOverwrite"))}
               >
-                Overwrite file with Studio version
+                {t("shell.fileConflict.overwrite")}
               </Button>
             )}
             {failure?.recovered && failure.studioContent != null && (
               <Button
                 size="sm"
                 variant="danger"
-                onClick={() =>
-                  overwrite(
-                    "Overwrite the file with the recovered Studio draft? The current file will be preserved by the server's normal backup before writing.",
-                  )
-                }
+                onClick={() => overwrite(t("shell.fileConflict.confirmOverwriteDraft"))}
               >
-                Overwrite file with recovered Studio draft
+                {t("shell.fileConflict.overwriteDraft")}
               </Button>
             )}
           </>
         }
       >
         {conflict ? (
-          <>
-            <strong>{conflict.error.filePath}</strong> changed on disk while you have unsaved edits.
-            Preview is paused so neither version is lost.
-          </>
+          <Trans
+            i18nKey="shell.fileConflict.changed"
+            values={{ path: conflict.error.filePath }}
+            components={{ b: <strong /> }}
+          />
         ) : (
-          `Studio could not safely finish local saves: ${errorMessage(blocked.error)}. Preview is paused.`
+          t("shell.fileConflict.failed", { error: errorMessage(blocked.error) })
         )}
       </StudioBanner>
       {reviewing && conflict && (
@@ -237,13 +235,13 @@ export function ExternalFileConflictBanner({
       {reviewing && failure?.studioContent != null && (
         <ReviewDialog
           titleId="failed-draft-title"
-          title={`Recover unsaved Studio draft for ${failure.path}`}
-          note="Copy or download this draft before choosing to discard it."
+          title={t("shell.fileConflict.recoverTitle", { path: failure.path })}
+          note={t("shell.fileConflict.recoverNote")}
           wide={false}
           onClose={() => setReviewing(false)}
         >
           <VersionColumn
-            title="Unsaved Studio draft"
+            title={t("shell.fileConflict.unsavedDraft")}
             icon={<PencilSimple size={12} aria-hidden />}
             content={failure.studioContent}
             filename={`${failure.path}.studio.html`}

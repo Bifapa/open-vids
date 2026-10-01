@@ -10,6 +10,7 @@ import {
 import { NLEProvider, useNLEContext } from "./nle/NLEContext";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
+import { useTranslation } from "../i18n";
 import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import { usePlayerStore, type TimelineElement } from "../player";
@@ -117,6 +118,7 @@ export function EditorShell({
   readOnlyPreview = false,
   readOnlyPreviewReason,
 }: EditorShellProps) {
+  const { t } = useTranslation();
   const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef, showToast } =
     useStudioShellContext();
   const { refreshKey, captionEditMode, refreshPreviewDocumentVersion, timelineElements } =
@@ -131,8 +133,8 @@ export function EditorShell({
   const selectedElementId = usePlayerStore((state) => state.selectedElementId);
   const selectedElementIds = usePlayerStore((state) => state.selectedElementIds);
   const reportTimelineSelectionNotFound = useCallback(() => {
-    showToast("The selected clip is not available in the preview yet.", "info");
-  }, [showToast]);
+    showToast(t("shell.editor.clipNotInPreview"), "info");
+  }, [showToast, t]);
 
   useTimelineSelectionPreviewSync({
     selectedElementId,

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Info, X } from "@phosphor-icons/react";
+import { Trans, useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { Kbd } from "../ui/Kbd";
@@ -14,6 +15,7 @@ export function PromptPreviewModal({
   prompt: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [value, setValue] = useState(prompt);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [entered, setEntered] = useState(false);
@@ -59,17 +61,17 @@ export function PromptPreviewModal({
         ref={containerRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`Ask agent — ${title}`}
+        aria-label={t("sidebar.prompt.dialogLabel", { title })}
         tabIndex={-1}
         className="flex max-h-full w-[min(560px,100%)] flex-col overflow-hidden rounded-lg border border-border bg-bg-1 text-sm text-fg shadow-pop outline-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex h-head shrink-0 items-center gap-1.5 border-b border-border-subtle pl-3 pr-1">
-          <h3 className="m-0 shrink-0 text-sm font-semibold">Copy Prompt</h3>
+          <h3 className="m-0 shrink-0 text-sm font-semibold">{t("sidebar.prompt.title")}</h3>
           <span className="min-w-0 flex-1 truncate text-xs text-fg-3">{title}</span>
           <IconButton
             size="sm"
-            aria-label="Close"
+            aria-label={t("common.close")}
             onClick={onClose}
             icon={<X size={12} aria-hidden />}
           />
@@ -77,7 +79,7 @@ export function PromptPreviewModal({
         <div className="grid min-h-0 flex-1 gap-2 overflow-y-auto p-3">
           <p className="m-0 grid grid-cols-[14px_minmax(0,1fr)] gap-1.5 text-xs leading-[15px] text-fg-3">
             <Info size={12} className="mt-px" aria-hidden />
-            Edit the prompt below, then copy and paste it into your AI agent.
+            {t("sidebar.prompt.hint")}
           </p>
           <textarea
             ref={textareaRef}
@@ -91,15 +93,20 @@ export function PromptPreviewModal({
         </div>
         <div className="flex min-h-11 shrink-0 items-center gap-1.5 border-t border-border-subtle py-2 pl-3 pr-2.5">
           <span className="mr-auto flex items-center gap-1 text-xs text-fg-3">
-            <Kbd>{navigator.platform.includes("Mac") ? "⌘↵" : "Ctrl+↵"}</Kbd> to copy
+            <Trans
+              i18nKey="shell.askAgent.copyShortcut"
+              components={{
+                shortcut: <Kbd>{navigator.platform.includes("Mac") ? "⌘↵" : "Ctrl+↵"}</Kbd>,
+              }}
+            />
           </span>
           {copyState === "failed" && (
             <span role="alert" className="text-xs text-error">
-              Copy failed
+              {t("sidebar.prompt.copyFailed")}
             </span>
           )}
           <Button variant="primary" size="sm" onClick={() => void handleCopy()}>
-            {copyState === "copied" ? "Copied!" : "Copy Prompt"}
+            {copyState === "copied" ? t("sidebar.prompt.copied") : t("shell.askAgent.copyPrompt")}
           </Button>
         </div>
       </div>

@@ -1,12 +1,28 @@
 import {
-  AGENT_DISPLAY_NAMES,
   SPECIALIST_IDS,
+  type AgentId,
   type AgentModelCatalog,
   type AgentSettings,
   type ModelSelection,
   type ProviderInfo,
 } from "@hyperframes/agent-protocol";
 import { resolveModel } from "../../agent/agentSelectors";
+import { formatDate, t, type TranslationKey } from "../../i18n";
+
+/** The catalog key of each agent's name; Jev is a product name and stays as it is. */
+const AGENT_NAME_KEYS = {
+  director: "settings.agent.director.name",
+  editor: "settings.agent.editor.name",
+  vision: "settings.agent.vision.name",
+  motion: "settings.agent.motion.name",
+  research: "settings.agent.research.name",
+  audio: "settings.agent.audio.name",
+} as const satisfies Partial<Record<AgentId, TranslationKey>>;
+
+/** What an agent is called in Settings. */
+export function agentName(id: AgentId): string {
+  return id === "jev" ? "Jev" : t(AGENT_NAME_KEYS[id]);
+}
 
 /** The providers people know, in the order the prototype lists them. They lead the list even when not set up. */
 export const WELL_KNOWN_PROVIDERS = [
@@ -59,23 +75,25 @@ export function providerIssue(provider: ProviderInfo): string | null {
     case "connected":
       return null;
     case "signin_required":
-      return `${provider.name} needs sign-in`;
+      return t("settings.provider.issue.signinRequired", { name: provider.name });
     case "error":
-      return `${provider.name} has an error`;
+      return t("settings.provider.issue.error", { name: provider.name });
     case "not_configured":
-      return `${provider.name} isn't set up`;
+      return t("settings.studio.pv.issueNotSetUp", { name: provider.name });
   }
 }
 
-/** "just now", "2 min ago", "3 h ago", then the date. */
-export function syncedAgo(syncedAt: number, now: number): string {
+/** "Synced just now", "Synced 2 min ago", "Synced 3 h ago", then "Synced" and the date. */
+export function syncedLabel(syncedAt: number, now: number): string {
   const seconds = Math.max(0, Math.round((now - syncedAt) / 1000));
-  if (seconds < 45) return "just now";
+  if (seconds < 45) return t("settings.providers.synced.justNow");
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return t("settings.providers.synced.minutes", { count: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return new Date(syncedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (hours < 24) return t("settings.providers.synced.hours", { count: hours });
+  return t("settings.providers.synced.date", {
+    date: formatDate(syncedAt, { month: "short", day: "numeric" }),
+  });
 }
 
 /** The key a model is listed under: `provider/modelId`. */
@@ -88,24 +106,24 @@ export const modelKey = (model: ModelSelection) => `${model.provider}/${model.mo
 export function modelUsers(
   settings: AgentSettings | null,
   catalog: AgentModelCatalog | null,
-): Map<string, string[]> {
-  const users = new Map<string, string[]>();
+): Map<string, AgentId[]> {
+  const users = new Map<string, AgentId[]>();
   if (!settings) return users;
-  const add = (selection: ModelSelection | null, name: string) => {
+  const add = (selection: ModelSelection | null, agent: AgentId) => {
     if (!selection) return;
     const key = modelKey(selection);
-    users.set(key, [...(users.get(key) ?? []), name]);
+    users.set(key, [...(users.get(key) ?? []), agent]);
   };
   const fallback = catalog?.defaultModel ?? null;
-  add(resolveModel(settings.director.model, catalog, fallback).selection, "Director");
+  add(resolveModel(settings.director.model, catalog, fallback).selection, "director");
   for (const id of SPECIALIST_IDS) {
     const specialist = settings.specialists[id];
     if (!specialist.enabledByDefault) continue;
-    add(resolveModel(specialist.model, catalog, fallback).selection, AGENT_DISPLAY_NAMES[id]);
+    add(resolveModel(specialist.model, catalog, fallback).selection, id);
   }
   const { jev } = settings;
   if (jev.enabled && jev.provider && jev.modelId) {
-    add({ provider: jev.provider, modelId: jev.modelId }, "Jev");
+    add({ provider: jev.provider, modelId: jev.modelId }, "jev");
   }
   return users;
 }

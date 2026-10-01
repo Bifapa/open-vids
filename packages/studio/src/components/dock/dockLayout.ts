@@ -1,5 +1,6 @@
 import type { Direction, DockviewApi } from "dockview-react";
 import { DOCK_PANEL_COMPONENT } from "./dockLayoutSchema";
+import { t } from "../../i18n";
 import { PANEL_DEFINITIONS, isPanelId, type PanelId } from "./panelRegistry";
 
 const MIN_PREVIEW_W = 360;
@@ -77,7 +78,7 @@ export function addRegisteredPanel(
   return api.addPanel({
     id,
     component: DOCK_PANEL_COMPONENT,
-    title: PANEL_DEFINITIONS[id].title,
+    title: t(PANEL_DEFINITIONS[id].title),
     renderer: "always",
     ...minimumSize(id),
     ...(position ? { position } : {}),

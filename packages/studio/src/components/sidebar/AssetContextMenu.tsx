@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Copy, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
+import { Trans, useTranslation } from "../../i18n";
 import { Button, cn, fieldBase, fieldText, popupSurface } from "../ui";
 import { filename } from "./assetHelpers";
 
@@ -72,6 +73,7 @@ export function ContextMenu({
   onRename?: (oldPath: string, newPath: string) => void;
   onAddAtPlayhead?: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
   const [mode, setMode] = useState<"menu" | "confirm-delete" | "rename">("menu");
@@ -132,13 +134,13 @@ export function ContextMenu({
       return;
     }
     if (!isValidAssetName(trimmed)) {
-      setRenameError("Name can't contain / or ..");
+      setRenameError(t("sidebar.contextMenu.invalidName"));
       return;
     }
     const dir = asset.includes("/") ? asset.slice(0, asset.lastIndexOf("/") + 1) : "";
     onRename?.(asset, `${dir}${trimmed}`);
     onClose();
-  }, [renameDraft, asset, onRename, onClose]);
+  }, [renameDraft, asset, onRename, onClose, t]);
 
   const name = filename(asset);
 
@@ -156,7 +158,7 @@ export function ContextMenu({
       <div
         ref={menuRef}
         role="menu"
-        aria-label={`Actions for ${name}`}
+        aria-label={t("sidebar.contextMenu.label", { name })}
         className={cn(popupSurface, "absolute min-w-44 p-1 shadow-pop", mode !== "menu" && "w-60")}
         style={{ left: pos.x, top: pos.y }}
         onClick={(e) => e.stopPropagation()}
@@ -171,7 +173,7 @@ export function ContextMenu({
                   onClose();
                 }}
               >
-                Insert at Playhead
+                {t("sidebar.contextMenu.insert")}
               </MenuRow>
             )}
             <MenuRow
@@ -181,11 +183,11 @@ export function ContextMenu({
                 onClose();
               }}
             >
-              Copy Path
+              {t("sidebar.contextMenu.copyPath")}
             </MenuRow>
             {onRename && (
               <MenuRow icon={<PencilSimple size={14} />} onClick={() => setMode("rename")}>
-                Rename
+                {t("common.rename")}
               </MenuRow>
             )}
             {onDelete && (
@@ -196,7 +198,7 @@ export function ContextMenu({
                   danger
                   onClick={() => setMode("confirm-delete")}
                 >
-                  Delete…
+                  {t("sidebar.contextMenu.delete")}
                 </MenuRow>
               </>
             )}
@@ -205,16 +207,20 @@ export function ContextMenu({
         {mode === "confirm-delete" && (
           <div
             role="group"
-            aria-label={`Confirm deleting ${name}`}
+            aria-label={t("sidebar.contextMenu.confirmLabel", { name })}
             className="flex flex-col gap-1.5 px-1.5 pt-1 pb-0.5 text-sm text-fg"
           >
             <p className="leading-[17px] [overflow-wrap:anywhere]">
-              Delete <b className="font-semibold">{name}</b>?
+              <Trans
+                i18nKey="sidebar.contextMenu.confirmTitle"
+                values={{ name }}
+                components={{ b: <b className="font-semibold" /> }}
+              />
             </p>
-            <p className="text-xs text-fg-3">The file is removed from the project folder.</p>
+            <p className="text-xs text-fg-3">{t("sidebar.contextMenu.confirmNote")}</p>
             <div className="flex justify-end gap-1.5">
               <Button size="sm" variant="ghost" onClick={() => setMode("menu")}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 size="sm"
@@ -224,7 +230,7 @@ export function ContextMenu({
                   onClose();
                 }}
               >
-                Delete
+                {t("common.delete")}
               </Button>
             </div>
           </div>
@@ -246,7 +252,7 @@ export function ContextMenu({
                     setMode("menu");
                   }
                 }}
-                aria-label={`Rename ${name}`}
+                aria-label={t("sidebar.contextMenu.renameLabel", { name })}
                 aria-invalid={renameError ? true : undefined}
                 spellCheck={false}
                 className={fieldText}
@@ -259,10 +265,10 @@ export function ContextMenu({
             )}
             <div className="flex items-center justify-end gap-1.5">
               <Button size="sm" variant="ghost" onClick={() => setMode("menu")}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button size="sm" variant="primary" onClick={commitRename}>
-                Rename
+                {t("common.rename")}
               </Button>
             </div>
           </div>

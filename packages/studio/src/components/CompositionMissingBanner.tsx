@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from "../i18n";
 import { StudioBanner } from "./StudioBanner";
 import { Button } from "./ui/Button";
 import { useDockLayoutStore } from "./dock/dockLayoutStore";
@@ -23,6 +24,7 @@ interface CompositionMissingBannerProps {
  * banner is the only thing that explains the failure while that catches up.
  */
 export function CompositionMissingBanner({ path }: CompositionMissingBannerProps) {
+  const { t } = useTranslation();
   return (
     <StudioBanner
       tone="warn"
@@ -31,11 +33,15 @@ export function CompositionMissingBanner({ path }: CompositionMissingBannerProps
           size="sm"
           onClick={() => useDockLayoutStore.getState().activatePanel("compositions")}
         >
-          Show All Compositions
+          {t("shell.compositionMissing.showAll")}
         </Button>
       }
     >
-      <strong>{path}</strong> is no longer on disk. Select another composition to keep editing.
+      <Trans
+        i18nKey="shell.compositionMissing.message"
+        values={{ path }}
+        components={{ b: <strong /> }}
+      />
     </StudioBanner>
   );
 }

@@ -1,5 +1,6 @@
 import { isRecord } from "@hyperframes/agent-protocol";
 import { create } from "zustand";
+import { i18n } from "../../i18n/instance";
 import { LANGUAGE_CODES, SYSTEM_LANGUAGE } from "../../i18n/languages";
 
 /**
@@ -133,18 +134,18 @@ async function requestPreferences(init?: RequestInit): Promise<AppPreferences> {
   try {
     response = await fetch(PREFERENCES_URL, init);
   } catch {
-    throw new Error("Couldn't reach the Studio server.");
+    throw new Error(i18n.t("settings.studio.pref.unreachable"));
   }
   const body: unknown = await response.json().catch(() => undefined);
   if (!response.ok) {
     const message =
       isRecord(body) && isRecord(body.error) && typeof body.error.message === "string"
         ? body.error.message
-        : `Saving preferences failed (${response.status}).`;
+        : i18n.t("settings.studio.pref.saveStatus", { status: response.status });
     throw new Error(message);
   }
   const preferences = parseAppPreferences(body);
-  if (!preferences) throw new Error("Unexpected preferences from the Studio server.");
+  if (!preferences) throw new Error(i18n.t("settings.studio.pref.unexpected"));
   return preferences;
 }
 
@@ -202,7 +203,7 @@ export const useAppPreferences = create<AppPreferencesState>((set, get) => ({
       set((state) => ({
         preferences: before,
         saving: state.saving - 1,
-        error: error instanceof Error ? error.message : "Saving preferences failed.",
+        error: error instanceof Error ? error.message : i18n.t("settings.studio.pref.saveFailed"),
       }));
     }
   },

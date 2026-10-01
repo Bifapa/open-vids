@@ -9,6 +9,7 @@
 import { Dialog as BaseDialog } from "@base-ui/react/dialog";
 import { X } from "@phosphor-icons/react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { useTranslation } from "../../i18n";
 import { cn } from "./cn";
 import { IconButton } from "./IconButton";
 
@@ -46,6 +47,7 @@ export function Dialog({
   finalFocus,
   className,
 }: DialogProps) {
+  const { t } = useTranslation();
   return (
     <BaseDialog.Root
       open={open}
@@ -84,7 +86,11 @@ export function Dialog({
             ) : null}
             <BaseDialog.Close
               render={
-                <IconButton aria-label="Close" size="sm" icon={<X size={12} aria-hidden />} />
+                <IconButton
+                  aria-label={t("common.close")}
+                  size="sm"
+                  icon={<X size={12} aria-hidden />}
+                />
               }
             />
           </div>

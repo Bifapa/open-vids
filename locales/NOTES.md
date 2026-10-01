@@ -584,3 +584,47 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `chat.qa.groupTitle` — Heading of a group of issues: status word and the number of issues in it.
 - `chat.qa.checkLine` — E.g. `Audio check skipped.`; {status} is a lowercase word that agrees with a feminine check name in Russian.
 - `chat.qa.showRange` — Tooltip of a time range link; {composition} is the composition file name.
+
+## studio-shell
+
+- `settings.studio.titleSr` — Visually hidden prefix of the dialog title for screen readers; {section} is the open section name.
+- `shell.askAgent.copyShortcut` — <shortcut/> is the keyboard shortcut (⌘↵ or Ctrl+↵).
+- `shell.colorGrading.applyLabel` — Name of the undo-history entry.
+- `shell.colorGrading.clearLabel` — Name of the undo-history entry.
+- `shell.dock.closeTab` — {title} is a panel name.
+- `shell.dock.panel.catalog` — Panel with the catalog of ready-made blocks.
+- `shell.dock.panel.code` — Panel with the source code editor and file tree.
+- `shell.dock.window` — Titlebar menu that opens or closes panels.
+- `shell.header.projects` — Button in the titlebar that goes back to the Projects screen.
+- `shell.history.redoActionTooltip` — {action} is the name of the edit that was undone, e.g. "Move layer".
+- `shell.history.undoActionTooltip` — {action} is the name of the last edit, e.g. "Move layer".
+- `shell.lint.copyToAgent` — Copies the findings as a ready-made prompt for an AI agent.
+- `shell.lint.group.composition` — Heading of the group of checks that belong to no file.
+- `shell.lint.group.runtime` — Heading of the group of preview console errors.
+- `shell.lint.severity.error` — Badge on a finding.
+- `shell.lint.severity.warning` — Badge on a finding.
+- `shell.projectUnreachable.open` — Button; {project} is another project's name.
+- `shell.rightPanel.rendersTitle` — Tab title of the Renders panel with the number of jobs.
+- `shell.timelineToolbar.zoomFit` — Value of the timeline zoom slider when it fits the whole timeline to the width.
+- `shell.titlebar.panels` — Group of three toggles that show or hide the left panel, the timeline and the right panel.
+- `shell.titlebar.redoStep` — {step} is the name of the edit that was undone.
+- `shell.titlebar.saveFailed` — Tooltip of the save indicator; "story" is the Story graph (Story mode).
+- `shell.titlebar.undoStep` — {step} is the name of the last edit, e.g. "Move layer".
+- `sidebar.asset.copyFailed` — Badge on an asset row after copying its path failed.
+- `sidebar.asset.fontRowLabel` — Accessible name of a font file row; {name} is the file name.
+- `sidebar.asset.rowLabel` — Accessible name of an audio file row; {name} is the file name.
+- `sidebar.audioSubtype.audio` — Short tag on an audio file row: generic audio.
+- `sidebar.audioSubtype.bgm` — Short tag on an audio file row: background music.
+- `sidebar.audioSubtype.sfx` — Short tag on an audio file row: sound effect.
+- `sidebar.audioSubtype.voice` — Short tag on an audio file row: voice recording.
+- `sidebar.blocks.category.data` — Category of charts and data visualisations.
+- `sidebar.blocks.category.social` — Category of ready-made social-media overlays (lower thirds, handles).
+- `sidebar.blocks.durationSeconds` — Block length in seconds.
+- `sidebar.compositions.previewTitle` — Title of the small preview frame of a composition card.
+- `sidebar.compositions.root` — Small badge on the project's root composition card.
+- `sidebar.filter.audio` — Short label of a filter segment.
+- `sidebar.filter.fonts` — Short label of a filter segment.
+- `sidebar.filter.images` — Short label of a filter segment (images), must stay short.
+- `sidebar.filter.video` — Short label of a filter segment.
+- `sidebar.lint.findingsErrors` — Screen-reader text next to the number badge on the Checks button.
+- `sidebar.lint.findingsWarnings` — Screen-reader text next to the number badge on the Checks button.

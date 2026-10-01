@@ -1,18 +1,19 @@
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { useAppPreferences, type AppDensity, type AppTheme } from "./appPreferences";
 import { SettingsGroup, SettingsPage, SettingsRow, SettingsUnavailable } from "./settingsLayout";
 
-const THEME_TILES: { value: AppTheme; label: string }[] = [
-  { value: "system", label: "Match system" },
-  { value: "dark", label: "Dark" },
-  { value: "light", label: "Light" },
+const THEME_TILES: { value: AppTheme; label: TranslationKey }[] = [
+  { value: "system", label: "settings.appearance.theme.system" },
+  { value: "dark", label: "settings.appearance.theme.dark" },
+  { value: "light", label: "settings.appearance.theme.light" },
 ];
 
-const DENSITY_OPTIONS: { value: AppDensity; label: string }[] = [
-  { value: "compact", label: "Compact" },
-  { value: "default", label: "Default" },
+const DENSITY_OPTIONS: { value: AppDensity; label: TranslationKey }[] = [
+  { value: "compact", label: "settings.appearance.density.compact" },
+  { value: "default", label: "settings.appearance.density.default" },
 ];
 
 /**
@@ -20,9 +21,9 @@ const DENSITY_OPTIONS: { value: AppDensity; label: string }[] = [
  * `theme-compact.css`): Settings rows, sidebar items (the media library, Settings), the player bar and the
  * two-line list rows built on `row-lg`. Panels' own rows and the inspector keep their sizes, so the hint says so.
  */
-const DENSITY_HINTS: Record<AppDensity, string> = {
-  compact: "Tighter rows, sidebar items and the player bar",
-  default: "Comfortable rows, sidebar items and the player bar",
+const DENSITY_HINTS: Record<AppDensity, TranslationKey> = {
+  compact: "settings.studio.ap.hintCompact",
+  default: "settings.studio.ap.hintDefault",
 };
 
 /**
@@ -30,6 +31,7 @@ const DENSITY_HINTS: Record<AppDensity, string> = {
  * the store) and save.
  */
 export function AppearanceSection() {
+  const { t } = useTranslation();
   const preferences = useAppPreferences((state) => state.preferences);
   const loadFailed = useAppPreferences((state) => state.loadFailed);
   const error = useAppPreferences((state) => state.error);
@@ -38,13 +40,17 @@ export function AppearanceSection() {
 
   if (!preferences) {
     return (
-      <SettingsPage title="Appearance">
+      <SettingsPage title={t("settings.section.appearance")}>
         <SettingsUnavailable
-          message={loadFailed ? "Preferences are unavailable right now." : "Loading preferences…"}
+          message={
+            loadFailed
+              ? t("settings.studio.general.unavailable")
+              : t("settings.loading.preferences")
+          }
           action={
             loadFailed ? (
               <Button size="sm" onClick={() => void load()}>
-                Try again
+                {t("common.tryAgain")}
               </Button>
             ) : undefined
           }
@@ -54,10 +60,10 @@ export function AppearanceSection() {
   }
 
   return (
-    <SettingsPage title="Appearance">
-      <SettingsGroup label="Interface">
-        <SettingsRow label="Theme">
-          <div role="group" aria-label="Theme" className="flex gap-2.5">
+    <SettingsPage title={t("settings.section.appearance")}>
+      <SettingsGroup label={t("settings.appearance.group.interface")}>
+        <SettingsRow label={t("settings.appearance.theme")}>
+          <div role="group" aria-label={t("settings.appearance.theme")} className="flex gap-2.5">
             {THEME_TILES.map(({ value, label }) => (
               <button
                 key={value}
@@ -82,16 +88,19 @@ export function AppearanceSection() {
                     aria-hidden
                   />
                 )}
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
         </SettingsRow>
-        <SettingsRow label="Density" hint={DENSITY_HINTS[preferences.density]}>
+        <SettingsRow
+          label={t("settings.appearance.density")}
+          hint={t(DENSITY_HINTS[preferences.density])}
+        >
           <SegmentedControl
-            label="Interface density"
+            label={t("settings.appearance.density.aria")}
             value={preferences.density}
-            options={DENSITY_OPTIONS}
+            options={DENSITY_OPTIONS.map(({ value, label }) => ({ value, label: t(label) }))}
             onChange={(density) => void update({ density })}
           />
         </SettingsRow>

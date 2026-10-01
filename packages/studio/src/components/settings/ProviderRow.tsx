@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { CaretRight } from "@phosphor-icons/react";
-import type { AgentModelInfo, ProviderInfo } from "@hyperframes/agent-protocol";
+import type { AgentModelInfo, AgentId, ProviderInfo } from "@hyperframes/agent-protocol";
+import { Trans, t, useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
 import { IconButton } from "../ui/IconButton";
@@ -14,7 +15,7 @@ import {
   type ProviderSignInControls,
 } from "./ProviderSignIn";
 import { SettingsLink } from "./settingsLayout";
-import { modelKey } from "./providerStatus";
+import { agentName, modelKey } from "./providerStatus";
 import { isRunningLogin } from "./useOAuthSignIns";
 
 /** What the row says about a provider, from the status the runtime reported. */
@@ -29,64 +30,73 @@ interface RowLook {
 const MODELS_SHOWN = 8;
 
 function describe(provider: ProviderInfo): RowLook {
-  const models = `${provider.modelCount} ${provider.modelCount === 1 ? "model" : "models"}`;
   switch (provider.status) {
     case "connected": {
       const via = provider.keyless
-        ? "Local, no key needed"
+        ? t("settings.studio.pv.viaLocal")
         : provider.credentialSource === "api-key"
-          ? "API key saved in OpenVids"
+          ? t("settings.studio.pv.viaKey")
           : provider.credentialSource === "oauth"
-            ? "Signed in here"
-            : "From your OMP setup";
-      return { dot: "ok", tone: "success", badge: "Connected", sub: `${via} · ${models}` };
+            ? t("settings.studio.pv.viaOauth")
+            : t("settings.providers.via.omp");
+      return {
+        dot: "ok",
+        tone: "success",
+        badge: t("settings.providers.badge.connected"),
+        sub: t("settings.providers.sub.connected", { via, count: provider.modelCount }),
+      };
     }
     case "signin_required":
       return {
         dot: "warn",
         tone: "warning",
-        badge: "Sign-in required",
-        sub: provider.error ?? "The sign-in expired",
+        badge: t("settings.providers.badge.signinRequired"),
+        sub: provider.error ?? t("settings.studio.pv.signinExpired"),
       };
     case "error":
       return {
         dot: "error",
         tone: "error",
-        badge: "Error",
-        sub: provider.error ?? "The last check failed",
+        badge: t("settings.providers.badge.error"),
+        sub: provider.error ?? t("settings.studio.pv.checkFailed"),
       };
     case "not_configured":
       return {
         dot: "off",
         tone: "neutral",
-        badge: "Not configured",
-        sub: provider.oauth ? "Sign in or add an API key" : "Add an API key to use its models",
+        badge: t("settings.providers.badge.notConfigured"),
+        sub: provider.oauth ? t("settings.studio.pv.signinOrKey") : t("settings.studio.pv.addKey"),
       };
   }
 }
 
 function KeyForm({
   provider,
-  label,
+  replace,
   note,
   onSave,
 }: {
   provider: ProviderInfo;
-  /** Placeholder and field name: "API key" or "Replace API key". */
-  label: string;
+  /** Whether the key replaces a saved one (the field is then named "Replace API key"). */
+  replace: boolean;
   note: ReactNode;
   /** Resolves to the failure message, or null when the key was saved. */
   onSave: (apiKey: string) => Promise<string | null>;
 }) {
+  const { t } = useTranslation();
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const errorId = useId();
+  const ownKeyLabel = replace;
+  const label = replace
+    ? t("settings.providers.key.replace")
+    : t("settings.providers.key.placeholder");
 
   const submit = async () => {
     const trimmed = key.trim();
-    if (!trimmed) return setError("Paste an API key first.");
-    if (/\s/.test(trimmed)) return setError("An API key can't contain spaces.");
+    if (!trimmed) return setError(t("settings.key.error.empty"));
+    if (/\s/.test(trimmed)) return setError(t("settings.studio.key.spaces"));
     setError(null);
     setSaving(true);
     const failure = await onSave(trimmed);
@@ -114,7 +124,11 @@ function KeyForm({
             autoComplete="off"
             spellCheck={false}
             placeholder={label}
-            aria-label={`${provider.name} ${label}`}
+            aria-label={
+              ownKeyLabel
+                ? t("settings.providers.key.replaceAria", { provider: provider.name })
+                : t("settings.providers.key.aria", { provider: provider.name })
+            }
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : undefined}
             disabled={saving}
@@ -127,7 +141,7 @@ function KeyForm({
           />
         </div>
         <Button type="submit" disabled={saving}>
-          Connect
+          {t("settings.providers.connect")}
         </Button>
       </form>
       {error && (
@@ -148,14 +162,15 @@ function ProviderModels({
 }: {
   provider: ProviderInfo;
   models: readonly AgentModelInfo[] | null;
-  users: ReadonlyMap<string, string[]>;
+  users: ReadonlyMap<string, AgentId[]>;
 }) {
+  const { t } = useTranslation();
   const [all, setAll] = useState(false);
   if (!models) {
-    return <p className="m-0 text-xs text-fg-3">Models unavailable right now.</p>;
+    return <p className="m-0 text-xs text-fg-3">{t("settings.studio.pv.modelsUnavailable")}</p>;
   }
   if (models.length === 0) {
-    return <p className="m-0 text-xs text-fg-3">No usable models listed yet. Refresh to check.</p>;
+    return <p className="m-0 text-xs text-fg-3">{t("settings.studio.pv.noModels")}</p>;
   }
   const byName = (a: AgentModelInfo, b: AgentModelInfo) => a.name.localeCompare(b.name);
   const used = models.filter((model) => users.has(modelKey(model))).sort(byName);
@@ -166,7 +181,7 @@ function ProviderModels({
   return (
     <div className="grid gap-1">
       <dl
-        aria-label={`${provider.name} models`}
+        aria-label={t("settings.studio.pv.modelsAria", { provider: provider.name })}
         className="m-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-t border-dashed border-border-subtle py-1 text-sm"
       >
         {shown.map((model) => {
@@ -177,7 +192,7 @@ function ProviderModels({
                 {model.name}
               </dt>
               <dd className="m-0 py-1 text-right text-xs text-fg-3">
-                {who ? who.join(", ") : "Not used"}
+                {who ? who.map(agentName).join(", ") : t("settings.providers.models.notUsed")}
               </dd>
             </div>
           );
@@ -185,7 +200,9 @@ function ProviderModels({
       </dl>
       {shown.length < models.length && (
         <div className="text-xs">
-          <SettingsLink onClick={() => setAll(true)}>Show all {models.length} models</SettingsLink>
+          <SettingsLink onClick={() => setAll(true)}>
+            {t("settings.providers.models.showAll", { count: models.length })}
+          </SettingsLink>
         </div>
       )}
     </div>
@@ -201,7 +218,7 @@ export interface ProviderRowProps {
   /** The provider's usable models; null when the catalog could not be read. */
   models: readonly AgentModelInfo[] | null;
   /** Who runs each model by default, by `provider/modelId`. */
-  users: ReadonlyMap<string, string[]>;
+  users: ReadonlyMap<string, AgentId[]>;
   onSaveKey: (apiKey: string) => Promise<string | null>;
   onRemoveKey: () => void;
   onRetry: () => void;
@@ -210,9 +227,6 @@ export interface ProviderRowProps {
   signIn: ProviderSignInControls | null;
   onSignOut: () => void;
 }
-
-const KEY_STORAGE_NOTE =
-  "Stored in a private file on this Mac that only you can read. Not in the macOS Keychain, and not shared with OMP.";
 
 /** One provider of the list (prototype `.st-prov`): state, what it needs, and its details when opened. */
 export function ProviderRow({
@@ -229,7 +243,9 @@ export function ProviderRow({
   signIn,
   onSignOut,
 }: ProviderRowProps) {
+  const { t } = useTranslation();
   const look = describe(provider);
+  const keyStorageNote = t("settings.studio.pv.keyStorageNote");
   const bodyId = useId();
   const ownKey = provider.credentialSource === "api-key";
   const setUp = provider.status === "not_configured";
@@ -244,12 +260,14 @@ export function ProviderRow({
 
   // "Sign in…" starts the default flow, or opens the row to choose when there are several.
   const signInButton = canSignIn ? (
-    <Button onClick={() => (flows.length > 1 ? onToggle() : signIn.start(null))}>Sign in…</Button>
+    <Button onClick={() => (flows.length > 1 ? onToggle() : signIn.start(null))}>
+      {t("settings.signin.start")}
+    </Button>
   ) : null;
-  const keyButton = <Button onClick={onToggle}>Use an API key</Button>;
+  const keyButton = <Button onClick={onToggle}>{t("settings.providers.useKey")}</Button>;
 
   let action: ReactNode = null;
-  if (provider.status === "error") action = <Button onClick={onRetry}>Retry</Button>;
+  if (provider.status === "error") action = <Button onClick={onRetry}>{t("common.retry")}</Button>;
   else if (provider.status === "signin_required" && !open && !provider.keyless) {
     action = (
       <>
@@ -264,7 +282,7 @@ export function ProviderRow({
         {keyButton}
       </>
     ) : (
-      <Button onClick={onToggle}>Set up</Button>
+      <Button onClick={onToggle}>{t("settings.providers.setUp")}</Button>
     );
   }
 
@@ -272,12 +290,12 @@ export function ProviderRow({
   if (open) {
     const removeLink = ownKey ? (
       <div>
-        <SettingsLink onClick={onRemoveKey}>Remove API key</SettingsLink>
+        <SettingsLink onClick={onRemoveKey}>{t("settings.studio.pv.removeKey")}</SettingsLink>
       </div>
     ) : null;
     const replaceNote = ownKey
-      ? KEY_STORAGE_NOTE
-      : `A key saved here is used instead of the one from your OMP setup. ${KEY_STORAGE_NOTE}`;
+      ? keyStorageNote
+      : t("settings.studio.pv.keyReplaceNote", { note: keyStorageNote });
     // A sign-in under way takes the body; one that ended shows its reason above the usual options.
     const signInStart =
       canSignIn && !ended ? <SignInStart provider={provider} controls={signIn} /> : null;
@@ -294,20 +312,25 @@ export function ProviderRow({
             {removeLink}
             {signedHere && (
               <p className="m-0 text-xs leading-[15px] text-fg-3 text-pretty">
-                You signed in to {provider.name} here.{" "}
-                <SettingsLink onClick={onSignOut}>Sign out</SettingsLink> removes it from OpenVids;
-                it doesn't revoke access at {provider.name}.
+                <Trans
+                  i18nKey="settings.studio.pv.signedHere"
+                  values={{ provider: provider.name }}
+                  components={{ action: <SettingsLink onClick={onSignOut}>{null}</SettingsLink> }}
+                />
               </p>
             )}
             {!provider.keyless && !ownKey && !signedHere && (
               <p className="m-0 text-xs leading-[15px] text-fg-3 text-pretty">
-                This credential comes from your OMP setup, so it can only be changed there.
+                {t("settings.studio.pv.fromOmp")}
               </p>
             )}
             {!provider.keyless && !provider.verified && (
               <p className="m-0 text-xs leading-[15px] text-fg-3 text-pretty">
-                Not checked with {provider.name} yet.{" "}
-                <SettingsLink onClick={onRefresh}>Refresh</SettingsLink> to check.
+                <Trans
+                  i18nKey="settings.studio.pv.notChecked"
+                  values={{ provider: provider.name }}
+                  components={{ action: <SettingsLink onClick={onRefresh}>{null}</SettingsLink> }}
+                />
               </p>
             )}
           </>
@@ -317,16 +340,11 @@ export function ProviderRow({
         status = (
           <>
             <pre className="m-0 whitespace-pre-wrap rounded-sm border border-border-subtle bg-bg-0 px-2 py-1.5 font-mono text-xs leading-[15px] text-fg-2">
-              {provider.error ?? "The last check failed."}
+              {provider.error ?? t("settings.studio.pv.lastCheckFailed")}
             </pre>
             {signInStart}
             {!provider.keyless && (
-              <KeyForm
-                provider={provider}
-                label={ownKey ? "Replace API key" : "API key"}
-                note={replaceNote}
-                onSave={onSaveKey}
-              />
+              <KeyForm provider={provider} replace={ownKey} note={replaceNote} onSave={onSaveKey} />
             )}
             {removeLink}
           </>
@@ -337,37 +355,31 @@ export function ProviderRow({
           <>
             <p className="m-0 text-xs leading-[15px] text-fg-3 text-pretty">
               {canSignIn ? (
-                <>
-                  The {provider.name} sign-in expired. Sign in again here, or use an API key
-                  instead.
-                </>
+                t("settings.studio.pv.expiredHere", { provider: provider.name })
               ) : (
-                <>
-                  {provider.name} is signed in through OMP, which OpenVids can only read. Sign in
-                  again there, then <SettingsLink onClick={onRefresh}>Refresh</SettingsLink> — or
-                  use an API key instead.
-                </>
+                <Trans
+                  i18nKey="settings.studio.pv.expiredOmp"
+                  values={{ provider: provider.name }}
+                  components={{ action: <SettingsLink onClick={onRefresh}>{null}</SettingsLink> }}
+                />
               )}
             </p>
             {signInStart}
             {!provider.keyless && (
-              <KeyForm provider={provider} label="API key" note={replaceNote} onSave={onSaveKey} />
+              <KeyForm provider={provider} replace={false} note={replaceNote} onSave={onSaveKey} />
             )}
           </>
         );
         break;
       case "not_configured":
         status = provider.keyless ? (
-          <p className="m-0 text-xs text-fg-3">{provider.name} needs no key.</p>
+          <p className="m-0 text-xs text-fg-3">
+            {t("settings.studio.pv.needsNoKey", { provider: provider.name })}
+          </p>
         ) : (
           <>
             {signInStart}
-            <KeyForm
-              provider={provider}
-              label="API key"
-              note={KEY_STORAGE_NOTE}
-              onSave={onSaveKey}
-            />
+            <KeyForm provider={provider} replace={false} note={keyStorageNote} onSave={onSaveKey} />
           </>
         );
         break;
@@ -408,7 +420,12 @@ export function ProviderRow({
           )}
           {expandable && (
             <IconButton
-              aria-label={`${open ? "Hide" : "Show"} ${provider.name} details`}
+              aria-label={t(
+                open ? "settings.providers.hideDetails" : "settings.providers.showDetails",
+                {
+                  provider: provider.name,
+                },
+              )}
               aria-expanded={open}
               aria-controls={open ? bodyId : undefined}
               icon={

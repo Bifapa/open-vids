@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { File, FilmStrip, Globe, Image, MusicNotes, type Icon } from "@phosphor-icons/react";
+import { Trans, formatNumber, useTranslation } from "../../i18n";
 import { cn } from "../ui";
 import { ASSET_ITEM_CLASS, ASSET_THUMB_CLASS } from "./assetHelpers";
 
@@ -63,6 +64,7 @@ function groupByType(rows: GlobalAssetRow[]): Array<[string, GlobalAssetRow[]]> 
 }
 
 export function GlobalAssetsView({ searchQuery }: { searchQuery: string }) {
+  const { t } = useTranslation();
   const [records, setRecords] = useState<GlobalAssetRecord[] | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -85,16 +87,17 @@ export function GlobalAssetsView({ searchQuery }: { searchQuery: string }) {
   if (records === null) {
     return (
       <p role="status" className="px-3 py-[18px] text-center text-sm text-fg-3">
-        Loading reusable assets…
+        {t("sidebar.global.loading")}
       </p>
     );
   }
   if (total === 0) {
     return (
       <p className="px-3 py-[18px] text-center text-sm text-fg-3 [text-wrap:pretty]">
-        No assets in the global cache yet. Resolved media is promoted to{" "}
-        <code className="font-mono text-num text-fg-2">~/.media</code> and becomes reusable across
-        projects.
+        <Trans
+          i18nKey="sidebar.global.empty"
+          components={{ code: <code className="font-mono text-num text-fg-2" /> }}
+        />
       </p>
     );
   }
@@ -103,13 +106,19 @@ export function GlobalAssetsView({ searchQuery }: { searchQuery: string }) {
       <div className="mx-3 mt-1.5 mb-0.5 flex gap-1.5 text-xs leading-[15px] text-fg-3 [text-wrap:pretty]">
         <Globe size={12} className="mt-px shrink-0" aria-hidden="true" />
         <span>
-          <b className="font-medium text-fg-2">{total} reusable across all projects</b> — media
-          resolved in your projects, kept in <code className="font-mono text-num">~/.media</code>.
+          <Trans
+            i18nKey="sidebar.global.summary"
+            values={{ count: total }}
+            components={{
+              b: <b className="font-medium text-fg-2" />,
+              code: <code className="font-mono text-num" />,
+            }}
+          />
         </span>
       </div>
       {rows.length === 0 ? (
         <p className="px-3 py-[18px] text-center text-sm text-fg-3">
-          No reusable assets match &ldquo;{searchQuery}&rdquo;.
+          {t("sidebar.global.noMatch", { query: searchQuery })}
         </p>
       ) : (
         groupByType(rows).map(([type, group]) => {
@@ -118,7 +127,9 @@ export function GlobalAssetsView({ searchQuery }: { searchQuery: string }) {
             <section key={type} aria-label={type}>
               <div className="flex items-baseline gap-1.5 px-3 pt-2.5 pb-1 text-xs font-semibold text-fg-2 capitalize">
                 {type}
-                <span className="font-normal text-fg-3 tabular-nums">{group.length}</span>
+                <span className="font-normal text-fg-3 tabular-nums">
+                  {formatNumber(group.length)}
+                </span>
               </div>
               <div className="flex flex-col gap-px px-2">
                 {group.map((row) => (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OAuthFlow, OAuthLoginState } from "@hyperframes/agent-protocol";
 import type { OAuthResult } from "../../agent/agentSettingsSlice";
+import { t } from "../../i18n";
 import { openExternalUrl } from "../../utils/openExternalUrl";
 
 /** How often a running sign-in is asked where it is. */
@@ -88,9 +89,7 @@ export function useOAuthSignIns(actions: SignInActions) {
         busy: null,
         // A sign-in the runtime forgot is not running any more: stop asking about it.
         ...(result.gone && { login: null }),
-        failure: result.gone
-          ? "This sign-in is no longer running. Start it again."
-          : result.message,
+        failure: result.gone ? t("settings.studio.si.gone") : result.message,
       });
     },
     [patch],

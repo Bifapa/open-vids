@@ -1,4 +1,5 @@
 import { ArrowsClockwise } from "@phosphor-icons/react";
+import { useTranslation } from "../i18n";
 import { StudioBanner } from "./StudioBanner";
 import { Button } from "./ui/Button";
 
@@ -10,12 +11,13 @@ interface SaveQueuePausedBannerProps {
 
 /** Alert shown when the DOM-edit save queue circuit breaker pauses persistence. */
 export function SaveQueuePausedBanner({ message, onRetry }: SaveQueuePausedBannerProps) {
+  const { t } = useTranslation();
   return (
     <StudioBanner
       tone="err"
       actions={
         <Button size="sm" icon={<ArrowsClockwise size={12} aria-hidden />} onClick={onRetry}>
-          Retry Saving
+          {t("shell.saveQueue.retry")}
         </Button>
       }
     >

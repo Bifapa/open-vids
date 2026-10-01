@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { isThinkingEffort, type UpdateAgentSettingsRequest } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
+import { useTranslation } from "../../i18n";
 import { effortChoices } from "../../agent/agentSelectors";
 import { EFFORT_LABELS } from "../chat/agentLabels";
 import { Button } from "../ui/Button";
@@ -21,12 +22,11 @@ import { useAgentSettingsEditor } from "./useAgentSettingsEditor";
 
 type JevPatch = NonNullable<UpdateAgentSettingsRequest["jev"]>;
 
-/** What Jev is for; the prototype's lede, kept true to a Jev that shows up as a thread in the chats it works in. */
-const JEV_LEDE =
-  "A fast worker for short, high-volume jobs. Agents hand it small, well-defined tasks; it never leads a chat.";
-
 /** Jev, the shared fast worker: on/off, which model it runs, and whose credentials it uses. */
 export function JevSection() {
+  const { t } = useTranslation();
+  // What Jev is for; the prototype's lede, kept true to a Jev that shows up as a thread in the chats it works in.
+  const lede = t("settings.studio.jev.lede");
   const editor = useAgentSettingsEditor();
   const jev = editor.settings?.jev;
   const providers = useAgentStore((state) => state.providers);
@@ -45,15 +45,15 @@ export function JevSection() {
 
   if (!jev) {
     return (
-      <SettingsPage title="Jev" lede={JEV_LEDE}>
+      <SettingsPage title={t("settings.section.jev")} lede={lede}>
         <SettingsUnavailable
           message={
-            editor.settingsFailed ? "Agent settings are unavailable right now." : "Loading Jev…"
+            editor.settingsFailed ? t("settings.studio.ag.unavailable") : t("settings.loading.jev")
           }
           action={
             editor.settingsFailed ? (
               <Button size="sm" onClick={() => void editor.loadSettings()}>
-                Try again
+                {t("common.tryAgain")}
               </Button>
             ) : undefined
           }
@@ -78,20 +78,20 @@ export function JevSection() {
 
   return (
     <SettingsPage
-      title="Jev"
-      lede={JEV_LEDE}
+      title={t("settings.section.jev")}
+      lede={lede}
       meta={<SaveStatus status={editor.status} failed={editor.failed} />}
     >
-      <SettingsGroup label="Worker">
-        <SettingsRow label="Use Jev" hint="Off: agents do Jev's small tasks themselves.">
+      <SettingsGroup label={t("settings.jev.group.worker")}>
+        <SettingsRow label={t("settings.jev.use")} hint={t("settings.studio.jev.useHint")}>
           <Toggle
-            label="Use Jev"
+            label={t("settings.jev.use")}
             checked={jev.enabled}
             onCommit={(enabled) => onCommit({ enabled })}
           />
         </SettingsRow>
         <SettingsRow
-          label="Provider"
+          label={t("settings.jev.provider")}
           hint={connectionIssue ? <ProviderFix provider={provider} /> : undefined}
         >
           <JevProviderPicker
@@ -102,7 +102,7 @@ export function JevSection() {
             onSelect={(id) => onCommit({ provider: id, modelId: null, thinking: null })}
           />
         </SettingsRow>
-        <SettingsRow label="Model">
+        <SettingsRow label={t("settings.agents.col.model")}>
           <JevModelPicker
             models={models}
             jev={jev}
@@ -118,15 +118,15 @@ export function JevSection() {
           />
         </SettingsRow>
         {efforts.length > 0 && (
-          <SettingsRow label="Thinking">
+          <SettingsRow label={t("settings.studio.jev.thinking")}>
             <Select
               size="md"
-              label="Jev thinking"
+              label={t("settings.studio.jev.thinkingAria")}
               className="w-56"
               value={jev.thinking ?? "default"}
               options={[
-                { value: "default", label: "Default" },
-                ...efforts.map((effort) => ({ value: effort, label: EFFORT_LABELS[effort] })),
+                { value: "default", label: t("settings.agents.effort.default") },
+                ...efforts.map((effort) => ({ value: effort, label: t(EFFORT_LABELS[effort]) })),
               ]}
               onCommit={(next) => onCommit({ thinking: isThinkingEffort(next) ? next : null })}
             />

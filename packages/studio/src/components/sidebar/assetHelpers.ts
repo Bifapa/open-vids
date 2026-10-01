@@ -1,3 +1,4 @@
+import type { TranslationKey } from "../../i18n";
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT } from "@hyperframes/core/media-types";
 
 export type MediaCategory = "audio" | "images" | "video" | "fonts";
@@ -10,12 +11,13 @@ export function getCategory(path: string): MediaCategory | null {
   return null;
 }
 
-export function getAudioSubtype(path: string): string {
+/** The catalog key of the short tag an audio row wears (BGM, SFX, Voice, Audio). */
+export function getAudioSubtype(path: string): TranslationKey {
   const lower = path.toLowerCase();
-  if (lower.includes("/bgm/") || lower.includes("/music/")) return "BGM";
-  if (lower.includes("/sfx/") || lower.includes("/sound")) return "SFX";
-  if (lower.includes("/voice/") || lower.includes("/narrat")) return "Voice";
-  return "Audio";
+  if (lower.includes("/bgm/") || lower.includes("/music/")) return "sidebar.audioSubtype.bgm";
+  if (lower.includes("/sfx/") || lower.includes("/sound")) return "sidebar.audioSubtype.sfx";
+  if (lower.includes("/voice/") || lower.includes("/narrat")) return "sidebar.audioSubtype.voice";
+  return "sidebar.audioSubtype.audio";
 }
 
 export function basename(path: string): string {
@@ -51,19 +53,19 @@ export function formatDuration(seconds: number): string {
 }
 
 /** Section headings, in the order the panel lists them. */
-export const CATEGORY_LABELS: Record<MediaCategory, string> = {
-  video: "Video",
-  images: "Images",
-  audio: "Audio",
-  fonts: "Fonts",
+export const CATEGORY_LABELS: Record<MediaCategory, TranslationKey> = {
+  video: "sidebar.category.video",
+  images: "sidebar.category.images",
+  audio: "sidebar.category.audio",
+  fonts: "sidebar.category.fonts",
 };
 
 /** Type filter segment labels (the prototype's All · Video · Image · Audio · Fonts). */
-export const FILTER_LABELS: Record<MediaCategory, string> = {
-  video: "Video",
-  images: "Image",
-  audio: "Audio",
-  fonts: "Fonts",
+export const FILTER_LABELS: Record<MediaCategory, TranslationKey> = {
+  video: "sidebar.filter.video",
+  images: "sidebar.filter.images",
+  audio: "sidebar.filter.audio",
+  fonts: "sidebar.filter.fonts",
 };
 
 export const FILTER_ORDER: MediaCategory[] = ["video", "images", "audio", "fonts"];

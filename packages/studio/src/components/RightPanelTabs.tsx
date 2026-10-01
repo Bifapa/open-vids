@@ -3,6 +3,7 @@
  * panel's state; in the legacy split inspector two can be open, only one holds `aria-selected`.
  */
 
+import { useTranslation } from "../i18n";
 import { Tab, Tabs, TabsList, Tooltip, cn } from "./ui";
 
 export interface RightPanelTabDescriptor {
@@ -27,6 +28,7 @@ export function RightPanelTabs({
   /** False when `onSelect` toggles a pane, so an arrow key only moves focus. */
   activateOnFocus?: boolean;
 }) {
+  const { t } = useTranslation();
   // `null` when the layout holds a tab this strip does not show (block params),
   // which leaves every tab unselected, exactly as the old buttons did.
   const value = tabs.find((tab) => tab.active)?.id ?? null;
@@ -39,7 +41,7 @@ export function RightPanelTabs({
       }}
     >
       <TabsList
-        aria-label="Inspector panels"
+        aria-label={t("shell.rightPanel.tabsLabel")}
         activateOnFocus={activateOnFocus}
         className="flex min-w-0 items-center gap-1 overflow-hidden rounded-none border-b border-border-strong bg-transparent px-3 py-2"
       >

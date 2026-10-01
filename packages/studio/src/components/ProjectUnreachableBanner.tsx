@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Trans, useTranslation } from "../i18n";
 import { StudioBanner } from "./StudioBanner";
 import { Button } from "./ui/Button";
 
@@ -29,6 +30,7 @@ interface ProjectUnreachableBannerProps {
  * `docs/hyperframes/plans/sdk/2026-09-20-stale-project-id-remaining-doors-plan.md` §C.
  */
 export function ProjectUnreachableBanner({ projectId }: ProjectUnreachableBannerProps) {
+  const { t } = useTranslation();
   const [served, setServed] = useState<ServedProject[] | null>(null);
 
   useEffect(() => {
@@ -67,16 +69,17 @@ export function ProjectUnreachableBanner({ projectId }: ProjectUnreachableBanner
       tone="warn"
       actions={
         <Button size="sm" onClick={() => window.location.reload()}>
-          Open {servedLabel}
+          {t("shell.projectUnreachable.open", { project: servedLabel })}
         </Button>
       }
     >
-      This Studio is serving <strong>{servedLabel}</strong>. This tab was opened for{" "}
-      <strong>{projectId}</strong>.
+      <Trans
+        i18nKey="shell.projectUnreachable.sole"
+        values={{ served: servedLabel, project: projectId }}
+        components={{ b: <strong /> }}
+      />
     </StudioBanner>
   ) : (
-    <StudioBanner tone="warn">
-      Couldn&apos;t open this project — it may have been renamed, moved, or deleted.
-    </StudioBanner>
+    <StudioBanner tone="warn">{t("shell.projectUnreachable.generic")}</StudioBanner>
   );
 }

@@ -5,7 +5,7 @@ import { Input } from "../ui/Input";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { Select, type SelectOption } from "../ui/Select";
 import { Toggle } from "../ui/Toggle";
-import { LANGUAGES, useTranslation } from "../../i18n";
+import { LANGUAGES, useTranslation, type TranslationKey } from "../../i18n";
 import {
   APP_LANGUAGES,
   NEW_PROJECT_FPS,
@@ -17,11 +17,13 @@ import {
 } from "./appPreferences";
 import { SettingsGroup, SettingsPage, SettingsRow, SettingsUnavailable } from "./settingsLayout";
 
-const WORKSPACE_OPTIONS: { value: NewProjectWorkspace; label: string }[] = [
-  { value: "media", label: "Media" },
-  { value: "story", label: "Story" },
-  { value: "edit", label: "Edit" },
-];
+const WORKSPACE_LABELS: Record<NewProjectWorkspace, TranslationKey> = {
+  media: "settings.general.openIn.media",
+  story: "settings.general.openIn.story",
+  edit: "settings.general.openIn.edit",
+};
+
+const WORKSPACES = ["media", "story", "edit"] as const satisfies readonly NewProjectWorkspace[];
 
 const FORMATS: { width: number; height: number; label: string }[] = [
   { width: 1920, height: 1080, label: "1920 × 1080 · 16:9" },
@@ -30,15 +32,12 @@ const FORMATS: { width: number; height: number; label: string }[] = [
   { width: 1080, height: 1080, label: "1080 × 1080 · 1:1" },
 ];
 
-const FPS_OPTIONS: SelectOption[] = NEW_PROJECT_FPS.map((fps) => ({
-  value: String(fps),
-  label: `${fps} fps`,
-}));
+const LAUNCH_LABELS: Record<LaunchMode, TranslationKey> = {
+  last: "settings.general.onLaunch.last",
+  projects: "settings.general.onLaunch.projects",
+};
 
-const LAUNCH_OPTIONS: { value: LaunchMode; label: string }[] = [
-  { value: "last", label: "Reopen last project" },
-  { value: "projects", label: "Show Projects" },
-];
+const LAUNCH_MODES = ["last", "projects"] as const satisfies readonly LaunchMode[];
 
 /** A format the file holds that is not one of the presets is still shown, as itself. */
 function formatOptions({ width, height }: NewProjectPreferences): SelectOption[] {
@@ -60,6 +59,7 @@ function LocationField({
   location: string;
   onCommit: (location: string) => void;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [invalid, setInvalid] = useState(false);
   // Set synchronously by the commit that runs on blur, read by the wrapper's blur right after it.
@@ -80,7 +80,7 @@ function LocationField({
         <Input
           size="md"
           autoFocus
-          aria-label="New project location"
+          aria-label={t("settings.studio.general.locationLabel")}
           value={location}
           invalid={invalid}
           spellCheck={false}
@@ -96,7 +96,7 @@ function LocationField({
         />
         {invalid && (
           <p role="alert" className="m-0 text-xs text-error">
-            Use a full folder path, like ~/Movies/OpenVids.
+            {t("settings.studio.general.locationInvalid")}
           </p>
         )}
       </div>
@@ -111,7 +111,7 @@ function LocationField({
         <FolderSimple aria-hidden className="size-icon-sm shrink-0 text-fg-3" />
         <span className="truncate">{location}</span>
       </span>
-      <Button onClick={() => setEditing(true)}>Change…</Button>
+      <Button onClick={() => setEditing(true)}>{t("settings.studio.general.change")}</Button>
     </>
   );
 }
@@ -127,13 +127,17 @@ export function GeneralSection() {
 
   if (!preferences) {
     return (
-      <SettingsPage title="General">
+      <SettingsPage title={t("settings.section.general")}>
         <SettingsUnavailable
-          message={loadFailed ? "Preferences are unavailable right now." : "Loading preferences…"}
+          message={
+            loadFailed
+              ? t("settings.studio.general.unavailable")
+              : t("settings.loading.preferences")
+          }
           action={
             loadFailed ? (
               <Button size="sm" onClick={() => void load()}>
-                Try again
+                {t("common.tryAgain")}
               </Button>
             ) : undefined
           }
@@ -143,30 +147,42 @@ export function GeneralSection() {
   }
 
   const { newProject } = preferences;
+  const workspaceOptions = WORKSPACES.map((value) => ({
+    value,
+    label: t(WORKSPACE_LABELS[value]),
+  }));
+  const fpsOptions: SelectOption[] = NEW_PROJECT_FPS.map((fps) => ({
+    value: String(fps),
+    label: t("settings.general.fps", { fps }),
+  }));
+  const launchOptions = LAUNCH_MODES.map((value) => ({ value, label: t(LAUNCH_LABELS[value]) }));
   const save = (patch: AppPreferencesPatch) => void update(patch);
   const saveProject = (patch: Partial<NewProjectPreferences>) => save({ newProject: patch });
 
   return (
-    <SettingsPage title="General">
-      <SettingsGroup label="New projects" note="Changes apply to projects you create next">
-        <SettingsRow label="Location">
+    <SettingsPage title={t("settings.section.general")}>
+      <SettingsGroup
+        label={t("settings.general.group.newProjects")}
+        note={t("settings.general.newProjectsNote")}
+      >
+        <SettingsRow label={t("settings.general.location")}>
           <LocationField
             location={newProject.location}
             onCommit={(location) => saveProject({ location })}
           />
         </SettingsRow>
-        <SettingsRow label="Open in">
+        <SettingsRow label={t("settings.general.openIn")}>
           <SegmentedControl
-            label="Open new projects in"
+            label={t("settings.general.openIn.aria")}
             value={newProject.openIn}
-            options={WORKSPACE_OPTIONS}
+            options={workspaceOptions}
             onChange={(openIn) => saveProject({ openIn })}
           />
         </SettingsRow>
-        <SettingsRow label="Format">
+        <SettingsRow label={t("settings.general.format")}>
           <Select
             size="md"
-            label="Default format"
+            label={t("settings.general.format.aria")}
             className="min-w-[150px]"
             value={`${newProject.width}x${newProject.height}`}
             options={formatOptions(newProject)}
@@ -176,13 +192,13 @@ export function GeneralSection() {
             }}
           />
         </SettingsRow>
-        <SettingsRow label="Frame rate">
+        <SettingsRow label={t("settings.general.frameRate")}>
           <Select
             size="md"
-            label="Default frame rate"
+            label={t("settings.general.frameRate.aria")}
             className="min-w-[150px]"
             value={String(newProject.fps)}
-            options={FPS_OPTIONS}
+            options={fpsOptions}
             onCommit={(next) => {
               const fps = NEW_PROJECT_FPS.find((choice) => String(choice) === next);
               if (fps) saveProject({ fps });
@@ -190,7 +206,7 @@ export function GeneralSection() {
           />
         </SettingsRow>
       </SettingsGroup>
-      <SettingsGroup label="App">
+      <SettingsGroup label={t("settings.general.group.app")}>
         <SettingsRow label={t("settings.language.label")}>
           <Select
             size="md"
@@ -207,29 +223,29 @@ export function GeneralSection() {
             }}
           />
         </SettingsRow>
-        <SettingsRow label="On launch">
+        <SettingsRow label={t("settings.general.onLaunch")}>
           <Select
             size="md"
-            label="On launch"
+            label={t("settings.general.onLaunch")}
             className="min-w-[150px]"
             value={preferences.onLaunch}
-            options={LAUNCH_OPTIONS}
+            options={launchOptions}
             onCommit={(next) => {
-              const onLaunch = LAUNCH_OPTIONS.find((option) => option.value === next)?.value;
+              const onLaunch = LAUNCH_MODES.find((mode) => mode === next);
               if (onLaunch) save({ onLaunch });
             }}
           />
         </SettingsRow>
-        <SettingsRow label="Confirm before moving projects to Trash">
+        <SettingsRow label={t("settings.general.confirmTrash")}>
           <Toggle
-            label="Confirm before moving projects to Trash"
+            label={t("settings.general.confirmTrash")}
             checked={preferences.confirmTrash}
             onCommit={(confirmTrash) => save({ confirmTrash })}
           />
         </SettingsRow>
-        <SettingsRow label="Check for updates automatically">
+        <SettingsRow label={t("settings.general.autoUpdate")}>
           <Toggle
-            label="Check for updates automatically"
+            label={t("settings.general.autoUpdate")}
             checked={preferences.updates.autoCheck}
             onCommit={(autoCheck) => save({ updates: { autoCheck } })}
           />

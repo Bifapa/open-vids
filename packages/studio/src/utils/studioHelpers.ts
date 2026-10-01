@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { buildProjectApiPath } from "./projectRouting";
 import { isTypingTarget } from "./typingTarget";
 import type { TimelineElement } from "../player/store/playerStore";
@@ -127,8 +128,14 @@ export function historyTooltipLabel(
   lastAction: string | null | undefined,
 ): string {
   const shortcut = getHistoryShortcutLabel(action);
-  const verb = action === "undo" ? "Undo" : "Redo";
-  return lastAction ? `${verb} ${lastAction} (${shortcut})` : `${verb} (${shortcut})`;
+  if (action === "undo") {
+    return lastAction
+      ? t("shell.history.undoActionTooltip", { action: lastAction, shortcut })
+      : t("shell.history.undoTooltip", { shortcut });
+  }
+  return lastAction
+    ? t("shell.history.redoActionTooltip", { action: lastAction, shortcut })
+    : t("shell.history.redoTooltip", { shortcut });
 }
 
 export type ElementMatchSelection = Pick<

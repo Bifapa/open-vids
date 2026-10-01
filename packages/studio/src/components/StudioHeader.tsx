@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { CaretLeft, Export, GearSix } from "@phosphor-icons/react";
+import { useTranslation } from "../i18n";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { readOpenvidsHomeOrigin } from "../utils/openvidsHost";
@@ -26,12 +27,13 @@ export interface StudioHeaderProps {
  * only after validation keeps one trusted navigation path.
  */
 function OpenvidsBackOrLogo({ homeOrigin }: { homeOrigin: string | null }) {
+  const { t } = useTranslation();
   if (!homeOrigin) return <OpenvidsLogo height={18} className="shrink-0 text-fg" />;
   return (
-    <Tooltip label="Back to Projects" side="bottom">
+    <Tooltip label={t("shell.header.backTooltip")} side="bottom">
       <button
         type="button"
-        aria-label="Back to projects"
+        aria-label={t("shell.header.backLabel")}
         data-testid="openvids-back"
         onClick={() => {
           window.location.href = homeOrigin;
@@ -39,7 +41,7 @@ function OpenvidsBackOrLogo({ homeOrigin }: { homeOrigin: string | null }) {
         className="inline-flex h-ctl-sm shrink-0 items-center gap-1 rounded-sm pr-1.5 pl-2 text-sm text-fg-2 transition-colors duration-hover hover:bg-surface-2 hover:text-fg outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
       >
         <CaretLeft size={12} weight="bold" aria-hidden />
-        Projects
+        {t("shell.header.projects")}
       </button>
     </Tooltip>
   );
@@ -52,6 +54,7 @@ function OpenvidsBackOrLogo({ homeOrigin }: { homeOrigin: string | null }) {
  * and the bar itself drags the window.
  */
 export function StudioHeader({ onExport }: StudioHeaderProps) {
+  const { t } = useTranslation();
   const { projectId, renderQueue } = useStudioShellContext();
   const { setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const homeOrigin = useMemo(() => readOpenvidsHomeOrigin(), []);
@@ -78,7 +81,11 @@ export function StudioHeader({ onExport }: StudioHeaderProps) {
       <SaveState />
       <WorkspaceSwitch className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
       <div data-tauri-drag-region className="min-w-0 flex-1 self-stretch" />
-      <div role="toolbar" aria-label="Editor toolbar" className="flex items-center gap-2">
+      <div
+        role="toolbar"
+        aria-label={t("shell.header.toolbarLabel")}
+        className="flex items-center gap-2"
+      >
         <HistoryButtons />
         <TitlebarSeparator />
         <PanelToggles />
@@ -87,10 +94,10 @@ export function StudioHeader({ onExport }: StudioHeaderProps) {
         <Tooltip
           label={
             ffmpegMissing
-              ? "FFmpeg is not installed. Opens the Renders panel with the install command."
+              ? t("shell.header.export.ffmpegMissing")
               : isRendering
-                ? "A render is already in progress"
-                : "Render and export this composition"
+                ? t("shell.header.export.busy")
+                : t("shell.header.export.hint")
           }
           side="bottom"
         >
@@ -113,13 +120,13 @@ export function StudioHeader({ onExport }: StudioHeaderProps) {
               onExport?.();
             }}
           >
-            {isRendering ? "Rendering…" : "Export"}
+            {isRendering ? t("shell.header.rendering") : t("shell.header.export")}
           </Button>
         </Tooltip>
         <TitlebarSeparator />
-        <Tooltip label="Settings" side="bottom">
+        <Tooltip label={t("shell.header.settings")} side="bottom">
           <IconButton
-            aria-label="Settings"
+            aria-label={t("shell.header.settings")}
             icon={<GearSix size={14} />}
             onClick={() => openSettings()}
           />

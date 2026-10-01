@@ -1,6 +1,7 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Check, DotsThree, Info, Plus, Sparkle, WarningCircle } from "@phosphor-icons/react";
+import { Trans, useTranslation, type TranslationKey } from "../../i18n";
 import { SearchInput } from "../ui/SearchInput";
 import { IconButton } from "../ui/IconButton";
 import { Menu, MenuItem } from "../ui/Menu";
@@ -14,6 +15,20 @@ import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { useMediaLoadSlot } from "../../hooks/useMediaLoadSlot";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
+
+/** The catalog key of each registry category's name. */
+const CATEGORY_LABEL_KEYS = {
+  captions: "sidebar.blocks.category.captions",
+  "code-animation": "sidebar.blocks.category.code-animation",
+  vfx: "sidebar.blocks.category.vfx",
+  transitions: "sidebar.blocks.category.transitions",
+  effects: "sidebar.blocks.category.effects",
+  "text-effects": "sidebar.blocks.category.text-effects",
+  social: "sidebar.blocks.category.social",
+  data: "sidebar.blocks.category.data",
+  scenes: "sidebar.blocks.category.scenes",
+} as const satisfies Record<BlockCategory, TranslationKey>;
+
 export interface BlockPreviewInfo {
   videoUrl?: string;
   posterUrl?: string;
@@ -26,6 +41,7 @@ interface BlocksTabProps {
 }
 
 export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }: BlocksTabProps) {
+  const { t } = useTranslation();
   const { loading, error, search, setSearch, category, setCategory, filteredBlocks } =
     useBlockCatalog();
   const [promptModal, setPromptModal] = useState<{ title: string; prompt: string } | null>(null);
@@ -34,7 +50,7 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-xs text-fg-3">
         <Spinner size="sm" />
-        Loading catalog…
+        {t("sidebar.blocks.loading")}
       </div>
     );
   }
@@ -53,18 +69,22 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
         <SearchInput
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search blocks, captions, transitions…"
-          aria-label="Search blocks"
+          placeholder={t("sidebar.blocks.searchPlaceholder")}
+          aria-label={t("sidebar.blocks.searchLabel")}
         />
       </div>
 
       {/* Category chips wrap like the prototype's, so every category stays in view. */}
       <div className="flex shrink-0 flex-wrap gap-1 px-2 pb-1.5">
-        <CategoryChip label="All" active={category === null} onClick={() => setCategory(null)} />
+        <CategoryChip
+          label={t("common.all")}
+          active={category === null}
+          onClick={() => setCategory(null)}
+        />
         {BLOCK_CATEGORIES.map((cat) => (
           <CategoryChip
             key={cat.id}
-            label={cat.label}
+            label={t(CATEGORY_LABEL_KEYS[cat.id])}
             active={category === cat.id}
             onClick={() => setCategory(category === cat.id ? null : cat.id)}
           />
@@ -76,15 +96,16 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
           <p className="m-0 mb-2 grid grid-cols-[14px_minmax(0,1fr)] gap-1.5 text-xs leading-[15px] text-fg-3">
             <Info size={12} className="mt-px" aria-hidden />
             <span>
-              VFX blocks use WebGL via HTML-in-Canvas. Enable{" "}
-              <span className="font-mono text-num text-fg-2">chrome://flags/#html-in-canvas</span>{" "}
-              for preview.
+              <Trans
+                i18nKey="sidebar.blocks.vfxNote"
+                components={{ flag: <span className="font-mono text-num text-fg-2" /> }}
+              />
             </span>
           </p>
         )}
         {filteredBlocks.length === 0 ? (
           <div className="flex h-32 items-center justify-center text-xs text-fg-3">
-            No blocks match your search
+            {t("sidebar.blocks.empty")}
           </div>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-x-1 gap-y-1.5">
@@ -286,6 +307,7 @@ function BlockCard({
   onShowPrompt?: (info: { title: string; prompt: string }) => void;
   onPreview?: (preview: BlockPreviewInfo | null) => void;
 }) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
   const [addState, setAddState] = useState<"idle" | "adding" | "added" | "failed">("idle");
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -368,18 +390,19 @@ function BlockCard({
     ],
   );
 
-  const categoryLabel = BLOCK_CATEGORIES.find((c) => c.id === category)?.label ?? category;
+  const known = BLOCK_CATEGORIES.some((c) => c.id === category);
+  const categoryLabel = known ? t(CATEGORY_LABEL_KEYS[category]) : category;
   const meta = [categoryLabel];
-  if (duration != null) meta.push(`${duration}s`);
+  if (duration != null) meta.push(t("sidebar.blocks.durationSeconds", { seconds: duration }));
   if (needsWebGL) meta.push("WebGL");
   const addLabel =
     addState === "adding"
-      ? "Adding…"
+      ? t("sidebar.blocks.adding")
       : addState === "added"
-        ? "Added"
+        ? t("sidebar.blocks.added")
         : addState === "failed"
-          ? "Couldn't add"
-          : "Add to composition at current time";
+          ? t("sidebar.blocks.addFailed")
+          : t("sidebar.blocks.addHint");
 
   return (
     <div
@@ -427,11 +450,11 @@ function BlockCard({
           <Menu
             side="bottom"
             align="end"
-            aria-label={`${title} actions`}
+            aria-label={t("sidebar.blocks.menuLabel", { title })}
             trigger={
               <IconButton
                 size="xs"
-                aria-label={`Actions for ${title}`}
+                aria-label={t("sidebar.blocks.actionsFor", { title })}
                 icon={<DotsThree size={14} weight="bold" aria-hidden />}
                 className="bg-on-media-bg text-on-media hover:bg-on-media-bg hover:text-on-media"
               />
@@ -439,11 +462,11 @@ function BlockCard({
           >
             {onAdd && (
               <MenuItem icon={<Plus size={14} aria-hidden />} onClick={handleAdd}>
-                Add at Playhead
+                {t("sidebar.blocks.addAtPlayhead")}
               </MenuItem>
             )}
             <MenuItem icon={<Sparkle size={14} aria-hidden />} onClick={handleShowPrompt}>
-              Copy Prompt…
+              {t("sidebar.blocks.copyPrompt")}
             </MenuItem>
           </Menu>
         </div>

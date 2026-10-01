@@ -1,3 +1,4 @@
+import { useTranslation } from "../i18n";
 import { cn } from "./ui/cn";
 
 interface StudioToastProps {
@@ -10,6 +11,7 @@ interface StudioToastProps {
 
 /** The prototype's toast: a raised `surface-2` card; an error keeps the card and inks the text. */
 export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastProps) {
+  const { t } = useTranslation();
   const isError = tone === "error";
   return (
     <div
@@ -28,7 +30,7 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
             type="button"
             onClick={onDismiss}
             className="flex size-ctl-xs shrink-0 items-center justify-center rounded-sm text-fg-3 transition-colors duration-hover hover:bg-surface-3 hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
-            aria-label="Dismiss"
+            aria-label={t("common.dismiss")}
           >
             <svg
               width="10"
