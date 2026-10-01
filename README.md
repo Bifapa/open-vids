@@ -34,7 +34,7 @@ The Chat panel talks to the OpenVids Agent Runtime (`packages/agent-runtime`), w
 - **Render QA and Execution Quality** — after an agent turn changes the project, the runtime renders a preview and checks the rendered file: deterministic checks on the Studio server (black/frozen picture, audio holes and silence, flash clips, gaps, clips past their media, cuts inside a word, caption/text collisions and out-of-frame layout) plus Vision's review of rendered frames (content fit, wrong B-roll). While fixable issues remain the Director delegates corrections and the next pass re-renders and re-checks — at most the chat's pass limit (Execution Quality Fast / Balanced / Best / Custom, default 2 passes, 0–5). Each pass is a durable report in `.hyperframes/qa/reports/`; the chat shows a Render QA card with fixed / persisting / new issues.
 - **One prompt = one checkpoint** — every file an agent changes during a turn is recorded in project history as that turn; **Revert this turn**, Stop and crash recovery undo the whole edit (QA corrections and imported assets with their provenance included; the download cache stays). Renders in `renders/` and QA reports are kept; a report of a reverted state reads "outdated".
 
-Details: `packages/agent-runtime/README.md`; product docs and roadmap live in [aiezq/docs_open_vids](https://github.com/aiezq/docs_open_vids).
+Details: `packages/agent-runtime/README.md`.
 
 ## Requirements
 

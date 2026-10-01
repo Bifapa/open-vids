@@ -2,7 +2,7 @@
   "name": "@openvids/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "OpenVids — Tauri shell for HyperFrames Studio",
+  "description": "OpenVids — agent-native desktop video editor",
   "type": "module",
   "scripts": {
     "tauri": "tauri",
