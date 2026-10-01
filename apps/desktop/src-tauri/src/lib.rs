@@ -331,7 +331,12 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             name: Some("OpenVids".into()),
             version: Some(env!("CARGO_PKG_VERSION").into()),
             comments: Some("Agent-native desktop video editor".into()),
-            credits: Some("Built on HyperFrames by HeyGen, used under the Apache License 2.0.".into()),
+            website: Some("https://openvids.ai".into()),
+            website_label: Some("openvids.ai".into()),
+            credits: Some(
+                "openvids.ai\nBuilt on HyperFrames by HeyGen, used under the Apache License 2.0."
+                    .into(),
+            ),
             ..Default::default()
         }),
     )?;

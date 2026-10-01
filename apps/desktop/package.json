@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "OpenVids — agent-native desktop video editor",
+  "homepage": "https://openvids.ai",
   "type": "module",
   "scripts": {
     "tauri": "tauri",
