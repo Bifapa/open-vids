@@ -1,6 +1,53 @@
 # OpenVids
 
-OpenVids is a standalone, agent-native desktop video editor: write HTML, render video. It began as an initial HyperFrames snapshot and is developed here as its own app — no npm distribution, no cloud backend.
+OpenVids is an open-source desktop video editor for macOS that you work in together with AI agents. You describe the video in chat; the agents cut footage, build the timeline, add captions and motion graphics, then render the result and check it. Everything runs on your machine, and the project is a folder of plain files you can open and edit by hand.
+
+It began as a snapshot of [HyperFrames](https://github.com/heygen-com/hyperframes) (HeyGen, Apache-2.0) and is developed here as its own app, with no npm distribution and no cloud backend.
+
+## What it does
+
+- **Edit by chat.** A Director agent plans the work and hands it to specialists (Editor, Vision, Motion Designer, Research, Audio). Their edits land in the project files, so the timeline and preview update while they work.
+- **Long recordings.** Transcription with word timestamps, speaker detection, pauses, shots and retakes are analysed locally and reused across turns to build a rough cut.
+- **Story mode.** Lay the video out as a graph of sections, review it with AI, and build or rebuild the affected parts of the timeline.
+- **Research with licenses.** Agents can find and import outside material from trusted sources, and every import keeps its origin, author and license.
+- **Render QA.** After a turn the result is rendered and checked for black or frozen picture, audio holes, layout problems and wrong footage, and the agents correct what they find.
+- **One prompt, one checkpoint.** Every turn can be reverted as a whole.
+- **A full manual editor.** Timeline, preview, inspector and code view work without the agents.
+
+## Status
+
+OpenVids is at an early stage (version 0.1.0).
+
+- macOS 11 or later only. Builds have been made on Apple Silicon.
+- There are no prebuilt downloads yet: you build the app from source.
+- Builds are ad-hoc signed and not notarized.
+- Rendering and thumbnails need Chrome and FFmpeg installed on the machine; OpenVids does not ship them.
+- The local Studio server is unauthenticated on loopback while a project is open. See [SECURITY.md](SECURITY.md).
+
+## Getting started
+
+Install the tools listed under [Requirements](#requirements), then:
+
+```bash
+git clone https://github.com/bazodev/open-vids.git
+cd open-vids
+bun install
+bun run desktop:dev      # run the app in development mode
+```
+
+To build the application bundle (`OpenVids.app` and a `.dmg`):
+
+```bash
+bun run desktop:build
+```
+
+### Models for the agents
+
+Agent Chat uses the providers, sign-ins and model catalog of your existing [oh-my-pi](https://github.com/can1357/oh-my-pi) setup in `~/.omp/agent`; OpenVids reads it and never writes to it. Which model each agent uses is chosen in OpenVids settings. The manual editor works without any of this.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security problems are reported privately, as described in [SECURITY.md](SECURITY.md).
 
 ## Architecture
 
