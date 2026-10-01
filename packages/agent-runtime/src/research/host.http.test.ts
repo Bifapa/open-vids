@@ -484,6 +484,8 @@ describe("a stopped turn and its import over HTTP", () => {
       storyOptions: null,
       intent: "edit",
       userTexts: () => [],
+      turnUserTexts: () => [],
+      askBeforeDownloads: false,
       model: () => null,
     });
   }

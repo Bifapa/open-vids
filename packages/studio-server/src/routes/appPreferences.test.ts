@@ -42,6 +42,9 @@ describe("app preferences route", () => {
         theme: "neon",
         onLaunch: "last",
         confirmTrash: "yes",
+        density: "huge",
+        updates: { autoCheck: "sometimes", channel: "beta" },
+        onboarding: { completedAt: "yesterday", step: "models" },
         future: { x: 1 },
         newProject: { fps: 23, width: 0, height: 1920, openIn: "story", location: "", extra: true },
       }),
@@ -51,6 +54,9 @@ describe("app preferences route", () => {
       theme: "system",
       onLaunch: "last",
       confirmTrash: true,
+      density: "default",
+      updates: { autoCheck: true, channel: "beta" },
+      onboarding: { completedAt: null, step: "models" },
       future: { x: 1 },
       newProject: {
         fps: 24,
@@ -61,6 +67,33 @@ describe("app preferences route", () => {
         extra: true,
       },
     });
+  });
+
+  it("stores density and the update choice, merging updates key by key", async () => {
+    writeFileSync(path, JSON.stringify({ updates: { channel: "beta" } }));
+    const response = await put({ density: "compact", updates: { autoCheck: false } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      density: "compact",
+      updates: { autoCheck: false, channel: "beta" },
+    });
+    expect(stored()).toMatchObject({ density: "compact", updates: { autoCheck: false } });
+  });
+
+  it("stores when the onboarding was finished, keeps its other keys, and can reset it", async () => {
+    writeFileSync(path, JSON.stringify({ onboarding: { step: "models" } }));
+    expect(await get()).toMatchObject({ onboarding: { completedAt: null, step: "models" } });
+    const done = await put({ onboarding: { completedAt: 1790000000000 } });
+    expect(done.status).toBe(200);
+    expect(await done.json()).toMatchObject({
+      onboarding: { completedAt: 1790000000000, step: "models" },
+    });
+    // An update that does not name it leaves it alone.
+    expect(await (await put({ theme: "dark" })).json()).toMatchObject({
+      onboarding: { completedAt: 1790000000000 },
+    });
+    const reset = await put({ onboarding: { completedAt: null } });
+    expect(await reset.json()).toMatchObject({ onboarding: { completedAt: null, step: "models" } });
   });
 
   it("reads a corrupt file as the defaults", async () => {
@@ -90,6 +123,13 @@ describe("app preferences route", () => {
     [{ theme: "neon" }, "theme"],
     [{ onLaunch: "never" }, "onLaunch"],
     [{ confirmTrash: 1 }, "confirmTrash"],
+    [{ density: "huge" }, "density"],
+    [{ updates: { autoCheck: "yes" } }, "updates.autoCheck"],
+    [{ updates: true }, "updates"],
+    [{ onboarding: { completedAt: "now" } }, "onboarding.completedAt"],
+    [{ onboarding: { completedAt: 0 } }, "onboarding.completedAt"],
+    [{ onboarding: { completedAt: 1.5 } }, "onboarding.completedAt"],
+    [{ onboarding: false }, "onboarding"],
     [{ newProject: { fps: 23.976 } }, "newProject.fps"],
     [{ newProject: { width: 9000 } }, "newProject.width"],
     [{ newProject: { height: 1.5 } }, "newProject.height"],

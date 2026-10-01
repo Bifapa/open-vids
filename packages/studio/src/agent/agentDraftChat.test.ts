@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { EXECUTION_BUDGETS } from "@hyperframes/agent-protocol";
-import { draftChatSummary } from "./agentDraftChat";
+import { draftChatSummary, draftCreation } from "./agentDraftChat";
 import { createAgentStore, type AgentStore } from "./agentStore";
 import { SETTINGS, createFakeClient, createSourceLog, type FakeClient } from "./agentTestHarness";
 
@@ -73,18 +73,47 @@ describe("new-chat draft choices", () => {
     expect(store.getState().chatId).toBe("new");
   });
 
-  it("creates a plain chat when nothing was chosen", async () => {
+  it("creates a chat in the default chat mode when nothing was chosen", async () => {
     const { store, client } = await draftStore();
     store.getState().setDraft("Hello");
     await store.getState().send();
     expect(client.createChat).toHaveBeenCalledWith({});
-    expect(client.updateChat).not.toHaveBeenCalled();
+    // Settings → Execution → Autonomy: new chats start in Plan unless that was changed.
+    expect(client.updateChat).toHaveBeenCalledWith("new", { intent: "plan" });
+  });
+
+  it("starts the draft, and the chat it creates, in the configured default mode", async () => {
+    const settings = {
+      ...SETTINGS,
+      autonomy: { ...SETTINGS.autonomy, defaultIntent: "ask" as const },
+    };
+    const client = createFakeClient({ settings });
+    store = createAgentStore({ client, openEventSource: createSourceLog().open });
+    await store.getState().init();
+    expect(draftChatSummary(store.getState().draftChoices, settings).intent).toBe("ask");
+
+    store.getState().setDraft("What is in the intro?");
+    await store.getState().send();
+    expect(client.updateChat).toHaveBeenCalledWith("new", { intent: "ask" });
+  });
+
+  it("lets a mode chosen in the draft win over the default, and falls back to Edit before settings load", async () => {
+    const { store, client } = await draftStore();
+    await store.getState().setIntent("edit");
+    expect(draftChatSummary(store.getState().draftChoices, SETTINGS).intent).toBe("edit");
+    store.getState().setDraft("Hello");
+    await store.getState().send();
+    expect(client.updateChat).toHaveBeenCalledWith("new", { intent: "edit" });
+
+    // No settings (the runtime could not provide them): the draft shows Edit and sends no intent of its own.
+    expect(draftChatSummary({}, null).intent).toBe("edit");
+    expect(draftCreation({}, null).update).toBeNull();
   });
 
   it("starts where a new chat would, and resets the effort a newly chosen model cannot take", async () => {
     const { store } = await draftStore();
     const fresh = draftChatSummary(store.getState().draftChoices, SETTINGS);
-    expect(fresh.intent).toBe("edit");
+    expect(fresh.intent).toBe("plan");
     expect(fresh.mainAgentModel).toBeNull();
     expect(fresh.executionQuality).toBeNull();
 

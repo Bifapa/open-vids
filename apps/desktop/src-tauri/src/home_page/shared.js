@@ -209,7 +209,9 @@
   };
 
   /* ---- API: every /api call carries the per-launch token ---- */
-  function api(path, body, method) {
+  /* A 2xx answer whose body has a string `error` is a refusal unless `opts.plainBody` says the body is data
+     (an OAuthLoginState carries its own `error` text). */
+  function api(path, body, method, opts) {
     const m = method || (body === undefined ? "GET" : "POST");
     return fetch(path, {
       method: m,
@@ -225,7 +227,10 @@
           return {};
         })
         .then(function (data) {
-          if (!res.ok || (data && data.error && typeof data.error === "string")) {
+          if (
+            !res.ok ||
+            (!(opts && opts.plainBody) && data && data.error && typeof data.error === "string")
+          ) {
             const err = new Error(
               (data && data.error && (data.error.message || data.error)) ||
                 "request failed (" + res.status + ")",
@@ -253,6 +258,16 @@
       if (themePref === "system") applyTheme(themePref);
     });
 
+  /* ---- Density: Settings → Appearance → Density (Compact / Default). Set on :root so the Projects page and the
+     Settings window share the token rules in ov.css; the Settings window also mirrors it on its own #win. ---- */
+  let densityPref = "default";
+  function applyDensity(pref) {
+    if (pref === "compact" || pref === "default") densityPref = pref;
+    document.documentElement.dataset.density = densityPref;
+    const win = document.getElementById("win");
+    if (win && win.hasAttribute("data-density")) win.dataset.density = densityPref;
+  }
+
   window.OV = {
     ic: ic,
     mountSprite: mountSprite,
@@ -269,6 +284,10 @@
     applyTheme: applyTheme,
     themePref: function () {
       return themePref;
+    },
+    applyDensity: applyDensity,
+    densityPref: function () {
+      return densityPref;
     },
   };
 })();

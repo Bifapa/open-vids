@@ -1,0 +1,12 @@
+/* Compact density: Settings → Appearance → Density sets `data-density="compact"` on the
+ * document element (applied at boot like the theme, see components/settings/appTheme.ts).
+ * It is only token overrides, as in the prototype's `.st-win[data-density="compact"]`:
+ * the two-line row steps down to the thumbnail-row height, sidebar items lose 2 px, and
+ * the vertical padding of Settings rows halves. Everything sized by `h-nav`,
+ * `h-row-lg`, `min-h-row-lg` or `py-row-pad` follows; fixed pixel sizes do not. */
+
+:root[data-density="compact"] {
+  --spacing-nav: 24px;
+  --spacing-row-lg: 34px;
+  --spacing-row-pad: 3px;
+}

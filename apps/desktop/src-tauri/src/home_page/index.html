@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="/assets/ov.css" />
     <link rel="stylesheet" href="/assets/composer.css" />
     <link rel="stylesheet" href="/assets/home.css" />
+    <link rel="stylesheet" href="/assets/settings.css" />
+    <link rel="stylesheet" href="/assets/onboarding.css" />
     <script>
       /* Per-launch token (every /api call) and the boot state Rust injects: intro flag + preferences. */
       window.OV_TOKEN = "__OPENVids_TOKEN__";
@@ -14,12 +16,19 @@
     </script>
     <script src="/assets/shared.js"></script>
     <script>
-      /* Theme before first paint (Settings → Appearance), then the launch intro gate: it plays on a cold start
+      /* Theme and density before first paint (Settings → Appearance), then the launch intro gate: it plays on a cold start
    and on reload; Rust skips it when the window comes back from a project or opens one at launch, and it
    never plays under reduced motion. ?intro=1 forces it (review). */
       (function () {
         var boot = window.OV_BOOT || {};
         OV.applyTheme(boot.prefs && boot.prefs.theme);
+        OV.applyDensity(boot.prefs && boot.prefs.density);
+        /* First-run onboarding: decided here, before first paint, so Projects never flashes first. It shows until
+   setup is finished (or skipped), and when Help › Welcome asked for it. ?onboarding=1|0 forces it (review). */
+        var ob = new URLSearchParams(location.search).get("onboarding");
+        var done = !!(boot.prefs && boot.prefs.onboarding && boot.prefs.onboarding.completedAt);
+        if (ob === "1" || (ob !== "0" && (boot.openOnboarding || !done)))
+          document.documentElement.classList.add("is-onboarding");
         var force = new URLSearchParams(location.search).get("intro") === "1";
         if (
           !force &&
@@ -84,7 +93,8 @@
           /* The window underneath stays unreachable until the split: no Tab stops, no ⌘N / ⌘O behind the splash. */
           const lock = (on) => {
             for (const el of win.children)
-              if (el !== launch && el.tagName !== "SCRIPT") el.inert = on;
+              if (el !== launch && el.id !== "ob" && el.tagName !== "SCRIPT")
+                el.inert = on || root.classList.contains("is-onboarding");
           };
           document.addEventListener("DOMContentLoaded", () => {
             if (!open) lock(true);
@@ -287,6 +297,11 @@
       </main>
 
       <footer class="statusbar" id="statusbar"></footer>
+      <div class="ob" id="ob" role="dialog" aria-modal="true" aria-label="Set up OpenVids">
+        <div class="ob-scroll-host" id="obMain">
+          <div class="ob-loading"><i class="spinner" aria-hidden="true"></i></div>
+        </div>
+      </div>
       <div id="layer"></div>
     </div>
 

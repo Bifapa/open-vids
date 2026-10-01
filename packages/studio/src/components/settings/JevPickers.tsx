@@ -11,6 +11,7 @@ import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
 import { fieldBase, fieldSizes } from "../ui/Input";
 import { Popover } from "../ui/Popover";
+import { splitProviders } from "./providerStatus";
 
 /** The window-form select look (prototype `.st-win .sel`) on a popover trigger. */
 const triggerClass = cn(
@@ -20,20 +21,36 @@ const triggerClass = cn(
   "disabled:cursor-not-allowed disabled:border-border-subtle disabled:bg-transparent disabled:text-fg-disabled",
 );
 
+/** The short state of a provider in the picker's list (the full wording lives in Models & Providers). */
+const STATE_LABELS: Record<ProviderInfo["status"], { label: string; className: string }> = {
+  connected: { label: "Connected", className: "text-success" },
+  error: { label: "Error", className: "text-error" },
+  signin_required: { label: "Sign-in required", className: "text-warning" },
+  not_configured: { label: "Not set up", className: "text-fg-3" },
+};
+
+/**
+ * Any provider can be chosen, connected or not: Jev may bring its own API key, so a provider the agents are not set
+ * up on is still a valid choice. `warn` puts the prototype's warning edge on the trigger.
+ */
 export function JevProviderPicker({
   providers,
   value,
+  warn,
   onSelect,
   onRetry,
 }: {
   providers: Loadable<ProviderInfo[]> | null;
   value: string | null;
+  warn?: boolean;
   onSelect: (provider: string) => void;
   onRetry: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const list = providers?.status === "ready" ? providers.value : null;
-  const label = value ?? "Choose a provider";
+  const ordered = list ? splitProviders(list) : null;
+  const known = list?.find((provider) => provider.id === value);
+  const label = known?.name ?? value ?? "Choose a provider";
 
   return (
     <Popover
@@ -44,7 +61,11 @@ export function JevProviderPicker({
       aria-label="Jev providers"
       className="w-64 p-1"
       trigger={
-        <button type="button" aria-label={`Jev provider: ${label}`} className={triggerClass}>
+        <button
+          type="button"
+          aria-label={`Jev provider: ${label}`}
+          className={cn(triggerClass, warn && "border-warning/55")}
+        >
           <span className={cn("min-w-0 flex-1 truncate", value === null && "text-fg-3")}>
             {label}
           </span>
@@ -68,7 +89,7 @@ export function JevProviderPicker({
           aria-label="Providers"
           className="m-0 flex max-h-64 list-none flex-col overflow-y-auto p-0"
         >
-          {list.map((provider) => (
+          {[...(ordered?.shown ?? []), ...(ordered?.rest ?? [])].map((provider) => (
             <li key={provider.id}>
               <button
                 type="button"
@@ -79,11 +100,9 @@ export function JevProviderPicker({
                 }}
                 className="flex h-ctl-sm w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-fg outline-hidden hover:bg-surface-2 focus-visible:bg-surface-2"
               >
-                <span className="min-w-0 flex-1 truncate">{provider.id}</span>
-                <span
-                  className={cn("text-xs", provider.authenticated ? "text-success" : "text-fg-3")}
-                >
-                  {provider.authenticated ? "Signed in" : "Not signed in"}
+                <span className="min-w-0 flex-1 truncate">{provider.name}</span>
+                <span className={cn("text-xs", STATE_LABELS[provider.status].className)}>
+                  {STATE_LABELS[provider.status].label}
                 </span>
                 <Check
                   aria-hidden

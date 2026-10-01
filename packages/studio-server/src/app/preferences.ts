@@ -20,6 +20,7 @@ import { replaceFileAtomically } from "../helpers/atomicFile.js";
 export const APP_THEMES = ["system", "dark", "light"] as const;
 export const NEW_PROJECT_WORKSPACES = ["media", "story", "edit"] as const;
 export const LAUNCH_MODES = ["projects", "last"] as const;
+export const APP_DENSITIES = ["default", "compact"] as const;
 export const NEW_PROJECT_FPS = [24, 25, 30, 60] as const;
 export const MAX_FRAME_SIZE = 8192;
 const MAX_LOCATION_LENGTH = 1024;
@@ -28,6 +29,7 @@ const PREFERENCES_FILE = "preferences.json";
 export type AppTheme = (typeof APP_THEMES)[number];
 export type NewProjectWorkspace = (typeof NEW_PROJECT_WORKSPACES)[number];
 export type LaunchMode = (typeof LAUNCH_MODES)[number];
+export type AppDensity = (typeof APP_DENSITIES)[number];
 export type NewProjectFps = (typeof NEW_PROJECT_FPS)[number];
 
 export interface NewProjectPreferences {
@@ -38,6 +40,16 @@ export interface NewProjectPreferences {
   fps: NewProjectFps;
 }
 
+/** Update behaviour. Only the choice is stored: the updater itself does not exist yet. */
+export interface UpdatePreferences {
+  autoCheck: boolean;
+}
+
+/** First-run onboarding: when it was finished (ms since the epoch), `null` while it has not been. */
+export interface OnboardingPreferences {
+  completedAt: number | null;
+}
+
 /** The effective preferences. Unknown keys of the stored document ride along in responses. */
 export interface AppPreferences {
   version: 1;
@@ -45,6 +57,9 @@ export interface AppPreferences {
   newProject: NewProjectPreferences;
   confirmTrash: boolean;
   onLaunch: LaunchMode;
+  density: AppDensity;
+  updates: UpdatePreferences;
+  onboarding: OnboardingPreferences;
 }
 
 export function defaultAppPreferences(): AppPreferences {
@@ -60,6 +75,9 @@ export function defaultAppPreferences(): AppPreferences {
     },
     confirmTrash: true,
     onLaunch: "projects",
+    density: "default",
+    updates: { autoCheck: true },
+    onboarding: { completedAt: null },
   };
 }
 
@@ -78,7 +96,10 @@ const oneOf =
 const isTheme = oneOf(APP_THEMES);
 const isWorkspace = oneOf(NEW_PROJECT_WORKSPACES);
 const isLaunchMode = oneOf(LAUNCH_MODES);
+const isDensity = oneOf(APP_DENSITIES);
 const isFps = oneOf(NEW_PROJECT_FPS);
+const isTimestamp = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 const isFrameSize = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_FRAME_SIZE;
 const isLocation = (value: unknown): value is string =>
@@ -101,6 +122,8 @@ function normalize(stored: Document): Document & AppPreferences {
     height: isFrameSize(project.height) ? project.height : base.newProject.height,
     fps: isFps(project.fps) ? project.fps : base.newProject.fps,
   };
+  const updates = isRecord(stored.updates) ? stored.updates : {};
+  const onboarding = isRecord(stored.onboarding) ? stored.onboarding : {};
   return {
     ...stored,
     version: 1,
@@ -108,6 +131,16 @@ function normalize(stored: Document): Document & AppPreferences {
     onLaunch: isLaunchMode(stored.onLaunch) ? stored.onLaunch : base.onLaunch,
     confirmTrash:
       typeof stored.confirmTrash === "boolean" ? stored.confirmTrash : base.confirmTrash,
+    density: isDensity(stored.density) ? stored.density : base.density,
+    updates: {
+      ...updates,
+      autoCheck:
+        typeof updates.autoCheck === "boolean" ? updates.autoCheck : base.updates.autoCheck,
+    },
+    onboarding: {
+      ...onboarding,
+      completedAt: isTimestamp(onboarding.completedAt) ? onboarding.completedAt : null,
+    },
     newProject,
   };
 }
@@ -116,6 +149,7 @@ const KNOWN_TOP: Record<string, (value: unknown) => boolean> = {
   theme: isTheme,
   onLaunch: isLaunchMode,
   confirmTrash: (value) => typeof value === "boolean",
+  density: isDensity,
   version: (value) => value === 1,
 };
 
@@ -125,6 +159,14 @@ const KNOWN_NEW_PROJECT: Record<string, (value: unknown) => boolean> = {
   width: isFrameSize,
   height: isFrameSize,
   fps: isFps,
+};
+
+const KNOWN_UPDATES: Record<string, (value: unknown) => boolean> = {
+  autoCheck: (value) => typeof value === "boolean",
+};
+
+const KNOWN_ONBOARDING: Record<string, (value: unknown) => boolean> = {
+  completedAt: (value) => value === null || isTimestamp(value),
 };
 
 /** Refuses a patch whose known keys carry invalid values; unknown keys pass untouched. */
@@ -141,6 +183,24 @@ export function validatePreferencesPatch(patch: unknown): Document {
     for (const [key, check] of Object.entries(KNOWN_NEW_PROJECT)) {
       if (key in project && !check(project[key])) {
         throw new InvalidPreferencesError(`Invalid value for "newProject.${key}"`);
+      }
+    }
+  }
+  if ("updates" in patch) {
+    const updates = patch.updates;
+    if (!isRecord(updates)) throw new InvalidPreferencesError(`"updates" must be an object`);
+    for (const [key, check] of Object.entries(KNOWN_UPDATES)) {
+      if (key in updates && !check(updates[key])) {
+        throw new InvalidPreferencesError(`Invalid value for "updates.${key}"`);
+      }
+    }
+  }
+  if ("onboarding" in patch) {
+    const onboarding = patch.onboarding;
+    if (!isRecord(onboarding)) throw new InvalidPreferencesError(`"onboarding" must be an object`);
+    for (const [key, check] of Object.entries(KNOWN_ONBOARDING)) {
+      if (key in onboarding && !check(onboarding[key])) {
+        throw new InvalidPreferencesError(`Invalid value for "onboarding.${key}"`);
       }
     }
   }

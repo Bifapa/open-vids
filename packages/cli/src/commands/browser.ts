@@ -1,3 +1,5 @@
+import { readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
@@ -9,6 +11,7 @@ export const examples: Example[] = [
   ["Purge a stale/partial download and re-download", "hyperframes browser ensure --force"],
   ["Print the Chrome executable path", "hyperframes browser path"],
   ["Remove cached Chrome download", "hyperframes browser clear"],
+  ["Progress as JSON lines, for a supervising app", "hyperframes browser ensure --json"],
 ];
 import { formatBytes } from "../ui/format.js";
 import {
@@ -16,9 +19,60 @@ import {
   findBrowser,
   clearBrowser,
   managedChromeVersion,
+  releaseOwnedBrowserInstallLock,
   CACHE_DIR,
   isLinuxArm,
 } from "../browser/manager.js";
+
+/**
+ * `browser ensure --json`: one JSON object per line on stdout, for a supervising app.
+ *
+ *   {"event":"start"}
+ *   {"event":"progress","downloaded":123,"total":456}      (only while a download runs)
+ *   {"event":"done","path":"…","source":"cache"|"download"|"env"}
+ *   {"event":"error","message":"…"}                         (exit code 1)
+ *
+ * Resolves like a render does (the pinned managed Chrome, `preferManagedChrome`), so "done" means a render
+ * can start. SIGTERM/SIGINT release the install lock before exiting, so a cancelled install does not make
+ * the next one wait for the lock to go stale.
+ */
+async function runEnsureJson(): Promise<void> {
+  const emit = (event: Record<string, unknown>) =>
+    process.stdout.write(`${JSON.stringify(event)}\n`);
+  const onSignal = () => {
+    releaseOwnedBrowserInstallLock();
+    // The unfinished archive the installer was writing; the next run would clear it as corrupt anyway.
+    try {
+      const archives = join(CACHE_DIR, "chrome-headless-shell");
+      for (const name of readdirSync(archives)) {
+        if (name.endsWith(".zip")) rmSync(join(archives, name), { force: true });
+      }
+    } catch {
+      // Nothing was downloaded yet.
+    }
+    process.exit(130);
+  };
+  process.once("SIGTERM", onSignal);
+  process.once("SIGINT", onSignal);
+  emit({ event: "start" });
+  let lastEmit = 0;
+  try {
+    const result = await ensureBrowser({
+      preferManagedChrome: true,
+      onProgress: (downloaded, total) => {
+        const now = Date.now();
+        // Throttled: a progress event per chunk would be thousands of lines.
+        if (now - lastEmit < 200 && downloaded < total) return;
+        lastEmit = now;
+        emit({ event: "progress", downloaded, total });
+      },
+    });
+    emit({ event: "done", path: result.executablePath, source: result.source });
+  } catch (err) {
+    emit({ event: "error", message: err instanceof Error ? err.message : String(err) });
+    failCommand(1, err);
+  }
+}
 
 async function runEnsure(options?: { force?: boolean }): Promise<void> {
   clack.intro(c.bold("hyperframes browser ensure"));
@@ -165,6 +219,12 @@ export default defineCommand({
         "ensure only: purge any cached download (including a stale/partial one) and re-download from scratch",
       default: false,
     },
+    json: {
+      type: "boolean",
+      description:
+        "ensure only: report progress as one JSON object per line (for a supervising app)",
+      default: false,
+    },
   },
   async run({ args }) {
     const subcommand = args.subcommand;
@@ -191,7 +251,7 @@ ${c.bold("EXAMPLES:")}
 
     switch (subcommand) {
       case "ensure":
-        return runEnsure({ force: args.force });
+        return args.json ? runEnsureJson() : runEnsure({ force: args.force });
       case "path":
         return runPath();
       case "clear":

@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { AGENT_PROTOCOL_VERSION } from "@hyperframes/agent-protocol";
 import { createOmpBackend } from "./omp/index.ts";
@@ -14,15 +15,21 @@ const token = process.env.OPENVIDS_AGENT_TOKEN;
 if (!token) throw new Error("OPENVIDS_AGENT_TOKEN is required");
 const port = parsePort(process.env.OPENVIDS_AGENT_PORT);
 const parentPid = parseParentPid(process.env.OPENVIDS_AGENT_PARENT_PID);
+const settings = new AgentSettingsStore();
 const app = createRuntimeApp({
-  backend: createOmpBackend(),
+  // Provider keys the user entered in OpenVids are read on use, so a key saved by another runtime process applies here too.
+  backend: createOmpBackend({
+    providerKeys: () => settings.providerApiKeys(),
+    // Sign-ins made in the app are stored (and refreshed) here, never in OMP's database.
+    authDbPath: join(settings.dir, "auth.db"),
+  }),
   checkpoints: new HttpCheckpointHost(),
   editing: (scope) => new HttpEditingHost(scope),
   analysis: (scope) => new HttpAnalysisHost(scope),
   story: (scope) => new HttpStoryHost(scope),
   research: (scope) => new HttpResearchHost(scope),
   qa: (scope) => new HttpQaHost(scope),
-  settings: new AgentSettingsStore(),
+  settings,
   token,
 });
 

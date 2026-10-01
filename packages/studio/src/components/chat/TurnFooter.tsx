@@ -1,7 +1,8 @@
 import { ArrowCounterClockwise, Check, WarningCircle } from "@phosphor-icons/react";
 import type { RevertMode, TurnSummary } from "@hyperframes/agent-protocol";
 import type { RevertUi } from "../../agent/agentRevertSlice";
-import { describeTurnError } from "../../agent/agentErrors";
+import { describeTurnError, isNoModelMessage } from "../../agent/agentErrors";
+import { ConnectModelButton, NO_MODEL_TITLE } from "./ConnectModel";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
 import { Spinner } from "../ui/Status";
@@ -14,6 +15,15 @@ function TurnStatusNote({ turn }: { turn: TurnSummary }) {
     const message = turn.error
       ? describeTurnError(turn.error.code, turn.error.message)
       : "The agent ran into a problem and stopped.";
+    // "No model" is not a breakage: say so calmly and put the way to fix it right here.
+    if (isNoModelMessage(message)) {
+      return (
+        <div role="alert" className="grid justify-items-start gap-1.5 text-xs leading-4 text-fg-2">
+          <span>{NO_MODEL_TITLE}.</span>
+          <ConnectModelButton />
+        </div>
+      );
+    }
     return (
       <p role="alert" className="flex items-start gap-1.5 text-xs leading-4 text-error">
         <WarningCircle aria-hidden weight="fill" className="mt-px size-icon-sm shrink-0" />

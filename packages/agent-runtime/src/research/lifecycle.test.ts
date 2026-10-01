@@ -33,6 +33,7 @@ async function callDirect(
 describe("research writes inside the turn", () => {
   it("waits for an import that is in flight when the turn ends, refuses later calls, and only then closes the checkpoint", async () => {
     const fixture = await createRuntimeFixture();
+    await fixture.settings.update({ autonomy: { askBeforeDownloads: false } });
     try {
       const chat = await fixture.chats.create({}, ["research"]);
       const gate = Promise.withResolvers<void>();
@@ -87,6 +88,7 @@ describe("research writes inside the turn", () => {
 
   it("aborts an in-flight import when the user stops the turn, and still waits for it before the checkpoint closes", async () => {
     const fixture = await createRuntimeFixture();
+    await fixture.settings.update({ autonomy: { askBeforeDownloads: false } });
     try {
       const chat = await fixture.chats.create({}, ["research"]);
       const gate = Promise.withResolvers<void>();

@@ -15,6 +15,7 @@
 //! - `POST /api/open {id, workspace?}` — open a recent.
 //! - `POST /api/pick-open` — native folder picker → validation → open.
 //! - `POST /api/pick-parent` — native folder picker for a location.
+//! - `POST /api/open-external {url}` — open an `https://` URL in the default browser.
 //! - `POST /api/create` — scaffold a project, then open it.
 //! - `POST /api/name-status` — does `<parent>/<name>` already have content.
 //! - `POST /api/rename`, `/api/trash`, `/api/remove`, `/api/recents/restore`,
@@ -24,6 +25,14 @@
 //! - `POST /api/files/pick`, `/api/files/dropped` — files for the composer.
 //! - `POST /api/start/name`, `/api/start` — start a project from the composer.
 //! - `GET /api/agent/models`, `GET|PUT /api/agent/settings` — agent runtime.
+//! - `/api/agent/providers…` (keys, in-app sign-in start/sign-out),
+//!   `/api/agent/oauth/logins/<id>[/input|/cancel]` (sign-in poll, answer,
+//!   cancel), `POST /api/agent/jev/{api-key,test}` — more agent-runtime
+//!   pass-throughs (`home_agent`).
+//! - `/api/research/{policy,sources…}` — the global Asset Search policy
+//!   (`home_research`).
+//! - `GET /api/system/check`, `/api/system/install/chrome[/cancel]` — the
+//!   first-run System check and the Chrome installer (`home_system`).
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -75,6 +84,9 @@ pub struct HomeInner {
     pub skip_intro: bool,
     /// Told about every preferences change made through the page.
     pub prefs_listener: Option<PrefsListener>,
+    /// Help › Welcome to OpenVids… was chosen while a project was showing: the
+    /// next load of the page opens the onboarding (read once, see `serve_page`).
+    pub pending_onboarding: bool,
 }
 
 impl HomeInner {
@@ -88,6 +100,7 @@ impl HomeInner {
             current_id: None,
             skip_intro: false,
             prefs_listener: None,
+            pending_onboarding: false,
         })
     }
 }
@@ -194,6 +207,27 @@ fn route(
         ("PUT", "/api/agent/settings") => {
             home_api::proxy_agent(s, "PATCH", "/v1/settings", Some(body))
         }
+        ("GET", "/api/agent/providers") => home_api::proxy_agent(s, "GET", "/v1/providers", None),
+        ("POST", "/api/agent/providers/refresh") => {
+            home_api::proxy_agent(s, "POST", "/v1/providers/refresh", Some(body))
+        }
+        (_, p) if p.starts_with("/api/agent/providers/") => {
+            super::home_agent::handle_provider_route(s, &method, p, body)
+        }
+        (_, p) if super::home_agent::owns_oauth_login(p) => {
+            super::home_agent::handle_oauth_login_route(s, &method, p, body)
+        }
+        ("POST", "/api/agent/jev/api-key") => {
+            home_api::proxy_agent(s, "POST", "/v1/settings/jev/api-key", Some(body))
+        }
+        ("POST", "/api/agent/jev/test") => {
+            home_api::proxy_agent(s, "POST", "/v1/settings/jev/test", Some(body))
+        }
+        (_, p) if super::home_research::owns(p) => {
+            super::home_research::handle(s, &method, p, body)
+        }
+        (_, p) if super::home_system::owns(p) => super::home_system::handle(s, &method, p),
+        ("POST", "/api/open-external") => home_api::handle_open_external(s, body),
         ("POST", "/api/pick-open") => handle_pick_open(s, state),
         ("POST", "/api/pick-parent") => handle_pick_parent(s),
         ("POST", "/api/create") => super::home_create::handle_create(s, state, body),
@@ -217,18 +251,19 @@ fn route(
 /// The page, with the token and the boot state (intro flag + preferences)
 /// it needs before first paint.
 fn serve_page(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, token: &str) {
-    let skip_intro = state
+    let (skip_intro, open_onboarding) = state
         .lock()
         .ok()
         .map(|mut inner| {
             let opening = matches!(inner.open_phase, OpenPhase::Opening { .. });
             let skip = inner.skip_intro || opening;
             inner.skip_intro = false;
-            skip
+            (skip, std::mem::take(&mut inner.pending_onboarding))
         })
-        .unwrap_or(true);
+        .unwrap_or((true, false));
     let boot = serde_json::json!({
         "intro": !skip_intro,
+        "openOnboarding": open_onboarding,
         "prefs": super::prefs::load(&super::prefs::prefs_path()),
         "version": env!("CARGO_PKG_VERSION"),
     });
@@ -253,7 +288,23 @@ fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
         "home.js" => (JS, include_bytes!("home_page/home.js")),
         "sheets.js" => (JS, include_bytes!("home_page/sheets.js")),
         "composer.js" => (JS, include_bytes!("home_page/composer.js")),
+        "settings-core.js" => (JS, include_bytes!("home_page/settings-core.js")),
+        "settings-general.js" => (JS, include_bytes!("home_page/settings-general.js")),
+        "settings-agents.js" => (JS, include_bytes!("home_page/settings-agents.js")),
+        "settings-providers.js" => (JS, include_bytes!("home_page/settings-providers.js")),
+        "settings-signin.js" => (JS, include_bytes!("home_page/settings-signin.js")),
+        "settings-jev.js" => (JS, include_bytes!("home_page/settings-jev.js")),
+        "settings-assets.js" => (JS, include_bytes!("home_page/settings-assets.js")),
+        "settings-execution.js" => (JS, include_bytes!("home_page/settings-execution.js")),
         "settings.js" => (JS, include_bytes!("home_page/settings.js")),
+        "onboarding.css" => (CSS, include_bytes!("home_page/onboarding.css")),
+        "onboarding.js" => (JS, include_bytes!("home_page/onboarding.js")),
+        "onboarding-welcome.js" => (JS, include_bytes!("home_page/onboarding-welcome.js")),
+        "onboarding-models.js" => (JS, include_bytes!("home_page/onboarding-models.js")),
+        "onboarding-system.js" => (JS, include_bytes!("home_page/onboarding-system.js")),
+        "onboarding-project.js" => (JS, include_bytes!("home_page/onboarding-project.js")),
+        "mark-loader.svg" => (SVG, include_bytes!("home_page/mark-loader.svg")),
+        "mark-loader-light.svg" => (SVG, include_bytes!("home_page/mark-loader-light.svg")),
         "logo-intro.svg" => (SVG, include_bytes!("home_page/logo-intro.svg")),
         "logo-intro-light.svg" => (SVG, include_bytes!("home_page/logo-intro-light.svg")),
         _ => return None,
@@ -444,15 +495,25 @@ fn percent_decode(path: &str) -> String {
 fn status_line(code: u16) -> &'static str {
     match code {
         200 => "HTTP/1.1 200 OK",
+        201 => "HTTP/1.1 201 Created",
+        202 => "HTTP/1.1 202 Accepted",
         204 => "HTTP/1.1 204 No Content",
         400 => "HTTP/1.1 400 Bad Request",
         401 => "HTTP/1.1 401 Unauthorized",
         403 => "HTTP/1.1 403 Forbidden",
         404 => "HTTP/1.1 404 Not Found",
+        405 => "HTTP/1.1 405 Method Not Allowed",
+        408 => "HTTP/1.1 408 Request Timeout",
         409 => "HTTP/1.1 409 Conflict",
         410 => "HTTP/1.1 410 Gone",
+        413 => "HTTP/1.1 413 Payload Too Large",
+        415 => "HTTP/1.1 415 Unsupported Media Type",
+        422 => "HTTP/1.1 422 Unprocessable Entity",
+        429 => "HTTP/1.1 429 Too Many Requests",
+        501 => "HTTP/1.1 501 Not Implemented",
         502 => "HTTP/1.1 502 Bad Gateway",
         503 => "HTTP/1.1 503 Service Unavailable",
+        504 => "HTTP/1.1 504 Gateway Timeout",
         _ => "HTTP/1.1 500 Internal Server Error",
     }
 }

@@ -284,7 +284,7 @@
   z-index: 60;
   left: 8px;
   bottom: 76px;
-  width: min(280px, calc(100% - 16px));
+  width: min(320px, calc(100% - 16px));
   max-height: calc(100% - 72px);
   overflow-y: auto;
   overflow-x: hidden;
@@ -314,6 +314,8 @@
 }
 .ov-chat-pop-body {
   display: grid;
+  /* minmax(0, …): a long model name or five effort buttons must not widen the column past the popover. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 1px;
 }
 
@@ -364,6 +366,7 @@
 
 .ov-chat-field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 5px;
   padding: 6px 6px 4px;
 }
@@ -378,10 +381,11 @@
   width: 100%;
 }
 .ov-chat-effort button {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   width: auto;
   min-width: 0;
   padding: 0 4px;
+  white-space: nowrap;
 }
 .ov-chat-help {
   margin: 0;
@@ -588,4 +592,33 @@
   .ov-chat-popover {
     animation: none;
   }
+}
+
+/* No model connected: an inline note above the controls, with the button that opens Settings → Models & Providers */
+.ov-chat-nomodel {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 var(--sp-2) var(--sp-1);
+  padding: 4px 4px 4px var(--sp-2);
+  border-radius: var(--r-md);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: var(--text-xs);
+}
+.ov-chat-nomodel[hidden] {
+  display: none;
+}
+.ov-chat-nomodel .ic {
+  --s: var(--ic-sm);
+  flex: none;
+}
+.ov-chat-nomodel-text {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+.ov-chat-nomodel .btn {
+  flex: none;
+  color: var(--fg);
 }

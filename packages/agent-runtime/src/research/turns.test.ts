@@ -72,6 +72,7 @@ function storyWithMissing(): StoryGraph {
 describe("the Research team in a turn", () => {
   it("tells the Director the policy and gives Research its policy block and tools, stamped with turn, agent and model", async () => {
     const fixture = await createRuntimeFixture();
+    await fixture.settings.update({ autonomy: { askBeforeDownloads: false } });
     try {
       const chat = await fixture.chats.create({}, ["research"]);
       await fixture.chats.update(chat.id, {

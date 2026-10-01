@@ -13,6 +13,7 @@ import {
   type TestJevResponse,
 } from "@hyperframes/agent-protocol";
 import type { AgentBackend } from "../backend.js";
+import { autonomyTeamLines } from "../autonomy.js";
 import { errorMessage } from "../errors.js";
 import type { JevRuntime, TurnAgentSetup } from "./orchestrator.js";
 import { jevInstructions } from "./roles.js";
@@ -70,6 +71,10 @@ export function resolveTurnSetup(input: {
     ...(input.editorContext && { editorContext: input.editorContext }),
     execution: { preset: quality.preset, budget: resolveExecutionBudget(quality) },
     qaAvailable: input.qaAvailable,
+    autonomy: {
+      askBeforeLockedEdits: settings.autonomy.askBeforeLockedEdits,
+      askBeforeDownloads: settings.autonomy.askBeforeDownloads,
+    },
   };
 }
 
@@ -107,6 +112,7 @@ export function renderTeam(setup: TurnAgentSetup): string {
       visionEnabled: setup.enabled.includes("vision"),
     }),
   );
+  lines.push(...autonomyTeamLines(setup.autonomy));
   lines.push(
     setup.jev
       ? `Jev fast worker: available (${describeModel(setup.jev.model)}).`

@@ -48,19 +48,27 @@
 //! needs no filesystem, shell or process capability.
 
 mod agent_proxy;
+mod chrome_install;
+mod cli_runner;
 mod create;
 mod drop_paths;
+mod ffmpeg_install;
 mod home;
+mod home_agent;
 mod home_api;
 mod home_auth;
 mod home_create;
 mod home_project;
+mod home_research;
 mod home_routes;
+mod home_system;
+mod install_job;
 mod intake;
 mod prefs;
 mod project;
 mod project_meta;
 mod recents;
+mod research_policy;
 mod sidecar;
 mod structure;
 mod thumbnails;
@@ -384,7 +392,12 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ],
     )?;
 
-    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window])
+    // Help › Welcome to OpenVids… reopens the first-run onboarding (see
+    // `show_onboarding`). The id is what `set_help_menu` finds again in `setup`.
+    let welcome = MenuItem::with_id(app, "welcome", "Welcome to OpenVids…", true, None::<&str>)?;
+    let help = Submenu::with_id_and_items(app, "help", "Help", true, &[&welcome])?;
+
+    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window, &help])
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────────
@@ -407,6 +420,9 @@ pub fn run() {
             }
             if event.id().as_ref() == "show_home" {
                 show_home(app);
+            }
+            if event.id().as_ref() == "welcome" {
+                show_onboarding(app);
             }
             if event.id().as_ref() == "reload" {
                 if let Some(window) = app.get_webview_window("main") {
@@ -440,6 +456,11 @@ pub fn run() {
                     agent_proxy::set_production_launch(
                         root.join("bun"),
                         root.join("agent-runtime").join("main.ts"),
+                    );
+                    cli_runner::set_production_launch(
+                        root.join("bun"),
+                        root.join("serve.mjs"),
+                        root.join("hyperframes").join("cli.js"),
                     );
                 }
             }
@@ -540,6 +561,20 @@ pub fn run() {
                 // spawns a worker: the sidecar teardown (up to a 3 s SIGTERM
                 // grace in `sidecar::terminate`) happens on that thread, never
                 // on the navigation callback.
+                // `target="_blank"` links and `window.open` from Studio or
+                // the home page (source homepages, license links, provider
+                // sign-in pages): never a second app window. A plain https
+                // address goes to the default browser, anything else is dropped.
+                .on_new_window(|url, _features| {
+                    if let Ok(url) = home_api::parse_external_url(url.as_str()) {
+                        std::thread::spawn(move || {
+                            if let Err(err) = home_api::open_external(&url) {
+                                eprintln!("[shell] could not open the browser: {err}");
+                            }
+                        });
+                    }
+                    tauri::webview::NewWindowResponse::Deny
+                })
                 .on_navigation(move |url| {
                     if normalize_origin(url) != home_origin {
                         return true;
@@ -552,6 +587,9 @@ pub fn run() {
                     true
                 })
                 .build()?;
+
+            #[cfg(target_os = "macos")]
+            set_help_menu(&handle);
 
             if let Some(dir) = launch_project {
                 open_project_async(&handle, dir, None);
@@ -576,6 +614,8 @@ pub fn run() {
                     }
                 }
                 agent_proxy::shutdown();
+                chrome_install::shutdown();
+                ffmpeg_install::shutdown();
             }
         });
 }
@@ -680,6 +720,43 @@ fn show_home(app: &tauri::AppHandle) {
                 eprintln!("[openvids] could not show the home screen: {error}");
             }
         }
+    }
+}
+
+/// Help › Welcome to OpenVids…: open the first-run onboarding on the Projects
+/// page.
+///
+/// - On the Projects page: the page's own script opens it
+///   (`window.ovHome.openOnboarding()`), handed over by `eval` exactly like
+///   ⌘O hands `openProject()` to the page.
+/// - Showing a project: the window goes back to the Projects page (the same
+///   navigation Show All Projects does, with the same cleanup) and the next
+///   load of that page opens the onboarding: the request is stored in the home
+///   state and handed to the page in its boot state (`OV_BOOT.openOnboarding`,
+///   read once). Nothing is evaluated into a page that is still loading.
+fn show_onboarding(app: &tauri::AppHandle) {
+    if window_is_on_home(app) {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.eval(
+                "window.ovHome && window.ovHome.openOnboarding && window.ovHome.openOnboarding()",
+            );
+        }
+        return;
+    }
+    if let Some(state) = app.try_state::<Mutex<AppState>>() {
+        if let Ok(state) = state.lock() {
+            state.home.request_onboarding();
+        }
+    }
+    show_home(app);
+}
+
+/// Tell macOS which submenu is Help (it adds the menu search field to it).
+#[cfg(target_os = "macos")]
+fn set_help_menu(app: &tauri::AppHandle) {
+    use tauri::menu::MenuItemKind;
+    if let Some(MenuItemKind::Submenu(help)) = app.menu().and_then(|menu| menu.get("help")) {
+        let _ = help.set_as_help_menu_for_nsapp();
     }
 }
 

@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactNode } from "react";
+import { useEffect, type KeyboardEvent, type ReactNode } from "react";
 import { Dialog as BaseDialog } from "@base-ui/react/dialog";
 import {
   CircleHalf,
@@ -6,18 +6,23 @@ import {
   Gauge,
   ImageSquare,
   Lightning,
+  Plug,
   UsersThree,
   X,
 } from "@phosphor-icons/react";
+import { useStore } from "zustand";
 import { AgentStoreProvider } from "../../agent/agentContext";
 import type { AgentStore } from "../../agent/agentStore";
 import { AssetSearchPolicyView } from "../../research/AssetSearchPolicyView";
 import { cn } from "../ui/cn";
+import { Pill } from "../ui/Status";
 import { AgentsSection } from "./AgentsSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { ExecutionSection } from "./ExecutionSection";
 import { GeneralSection } from "./GeneralSection";
 import { JevSection } from "./JevSection";
+import { providerIssueCount } from "./providerStatus";
+import { ProvidersSection } from "./ProvidersSection";
 import { SettingsPage, SettingsUnavailable } from "./settingsLayout";
 import { SETTINGS_SECTIONS, useSettingsDialog, type SettingsSection } from "./settingsStore";
 import "./settings.css";
@@ -26,16 +31,31 @@ const SECTION_META: Record<SettingsSection, { group: string; label: string; icon
   general: { group: "App", label: "General", icon: <GearSix /> },
   appearance: { group: "App", label: "Appearance", icon: <CircleHalf /> },
   agents: { group: "AI", label: "Agents", icon: <UsersThree /> },
+  providers: { group: "AI", label: "Models & Providers", icon: <Plug /> },
   jev: { group: "AI", label: "Jev", icon: <Lightning /> },
   assets: { group: "Workflow", label: "Asset Search", icon: <ImageSquare /> },
   execution: { group: "Workflow", label: "Execution", icon: <Gauge /> },
 };
 
+/** How many providers need the user (a failed check, an expired sign-in); nothing while that is unknown. */
+function IssueBadge({ store }: { store: AgentStore }) {
+  const providers = useStore(store, (state) => state.providers);
+  const count = providers?.status === "ready" ? providerIssueCount(providers.value) : 0;
+  if (count === 0) return null;
+  return (
+    <Pill tone="warning" aria-label={`${count} need attention`}>
+      {count}
+    </Pill>
+  );
+}
+
 function SettingsNav({
   section,
+  agentStore,
   onSelect,
 }: {
   section: SettingsSection;
+  agentStore: AgentStore | null;
   onSelect: (section: SettingsSection) => void;
 }) {
   // Up and Down walk the sections, as in the prototype; Tab leaves the list.
@@ -88,6 +108,7 @@ function SettingsNav({
             >
               {meta.icon}
               <span className="min-w-0 flex-1 truncate">{meta.label}</span>
+              {id === "providers" && agentStore && <IssueBadge store={agentStore} />}
             </button>
           </div>
         );
@@ -119,6 +140,12 @@ function SectionBody({
           <AgentsSection />
         </AgentSettingsGate>
       );
+    case "providers":
+      return (
+        <AgentSettingsGate store={agentStore}>
+          <ProvidersSection />
+        </AgentSettingsGate>
+      );
     case "jev":
       return (
         <AgentSettingsGate store={agentStore}>
@@ -127,8 +154,11 @@ function SectionBody({
       );
     case "assets":
       return (
-        <SettingsPage title="Asset Search">
-          <AssetSearchPolicyView className="mt-4 p-0" />
+        <SettingsPage
+          title="Asset Search"
+          lede="Applies to all projects. Only the Research agent searches outside the project, and only as allowed here."
+        >
+          <AssetSearchPolicyView variant="settings" className="mt-5 p-0" />
         </SettingsPage>
       );
     case "execution":
@@ -152,6 +182,11 @@ export function SettingsDialog({ agentStore }: { agentStore: AgentStore | null }
   const setSection = useSettingsDialog((state) => state.setSection);
   const close = useSettingsDialog((state) => state.close);
   const label = SECTION_META[section].label;
+
+  // The sidebar's issue badge needs the provider list before Models & Providers is ever opened.
+  useEffect(() => {
+    if (open) void agentStore?.getState().loadProviders();
+  }, [open, agentStore]);
 
   return (
     <BaseDialog.Root
@@ -200,7 +235,7 @@ export function SettingsDialog({ agentStore }: { agentStore: AgentStore | null }
             </BaseDialog.Title>
           </header>
           <div className="grid min-h-0 grid-cols-[196px_minmax(0,1fr)]">
-            <SettingsNav section={section} onSelect={setSection} />
+            <SettingsNav section={section} agentStore={agentStore} onSelect={setSection} />
             <main
               key={section}
               tabIndex={-1}

@@ -4,8 +4,11 @@ import type {
   CreateChatRequest,
   RevertTurnRequest,
   SetJevApiKeyRequest,
+  SetProviderApiKeyRequest,
+  StartOAuthLoginRequest,
   StartTurnRequest,
   SteerTurnRequest,
+  SubmitOAuthLoginInputRequest,
   UpdateAgentSettingsRequest,
   UpdateChatRequest,
 } from "./api.js";
@@ -15,6 +18,8 @@ import {
   CHAT_MODES,
   JEV_CREDENTIAL_MODES,
   MANUAL_EDIT_POLICIES,
+  OAUTH_FLOWS,
+  OAUTH_LOGIN_STATUSES,
   SPECIALIST_IDS,
   STORY_ACTIONS,
   THINKING_EFFORTS,
@@ -23,10 +28,12 @@ import {
   type EditorClipSummary,
   type EditorContext,
   type EditorPreviewElement,
+  type AutonomySettings,
   type MediaSource,
   type MessageReference,
   type ModelConfig,
   type ModelSelection,
+  type OAuthLoginState,
   type SpecialistConfig,
   type SpecialistDefaults,
   type SpecialistId,
@@ -46,6 +53,7 @@ export const LIMITS = {
   allowedModels: 32,
   providerChars: 200,
   apiKeyChars: 4_096,
+  oauthInputChars: 8_192,
 } as const;
 
 const fail = (message: string): { ok: false; message: string } => ({ ok: false, message });
@@ -469,16 +477,110 @@ export function parseUpdateAgentSettings(body: unknown): Parsed<UpdateAgentSetti
     if (!quality.ok) return quality;
     value.executionQuality = quality.value;
   }
+  if (body.autonomy !== undefined) {
+    const autonomy = parseAutonomy(body.autonomy);
+    if (!autonomy.ok) return autonomy;
+    value.autonomy = autonomy.value;
+  }
   return Object.keys(value).length > 0 ? { ok: true, value } : fail("nothing to update");
 }
 
-export function parseSetJevApiKey(body: unknown): Parsed<SetJevApiKeyRequest> {
+function parseAutonomy(raw: unknown): Parsed<Partial<AutonomySettings>> {
+  if (!isRecord(raw)) return fail("autonomy must be an object");
+  const autonomy: Partial<AutonomySettings> = {};
+  if (raw.defaultIntent !== undefined) {
+    if (!isChatIntent(raw.defaultIntent))
+      return fail(`autonomy.defaultIntent must be one of: ${CHAT_INTENTS.join(", ")}`);
+    autonomy.defaultIntent = raw.defaultIntent;
+  }
+  if (raw.askBeforeLockedEdits !== undefined) {
+    if (typeof raw.askBeforeLockedEdits !== "boolean")
+      return fail("autonomy.askBeforeLockedEdits must be a boolean");
+    autonomy.askBeforeLockedEdits = raw.askBeforeLockedEdits;
+  }
+  if (raw.askBeforeDownloads !== undefined) {
+    if (typeof raw.askBeforeDownloads !== "boolean")
+      return fail("autonomy.askBeforeDownloads must be a boolean");
+    autonomy.askBeforeDownloads = raw.askBeforeDownloads;
+  }
+  return { ok: true, value: autonomy };
+}
+
+function parseApiKeyBody(body: unknown): Parsed<{ apiKey: string | null }> {
   if (!isRecord(body)) return fail("body must be an object");
   if (body.apiKey === null) return { ok: true, value: { apiKey: null } };
   const key = nonEmpty(body.apiKey)?.trim();
   if (!key || key.length > LIMITS.apiKeyChars || /\s/.test(key))
     return fail("apiKey must be a non-empty string without whitespace, or null");
   return { ok: true, value: { apiKey: key } };
+}
+
+export function parseSetJevApiKey(body: unknown): Parsed<SetJevApiKeyRequest> {
+  return parseApiKeyBody(body);
+}
+
+export function parseSetProviderApiKey(body: unknown): Parsed<SetProviderApiKeyRequest> {
+  return parseApiKeyBody(body);
+}
+
+/** Provider ids are short slugs (`anthropic`, `openai-codex`, `llama.cpp`); this also keeps path traversal and `__proto__` out. */
+const PROVIDER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+export function isProviderId(value: unknown): value is string {
+  return typeof value === "string" && PROVIDER_ID_PATTERN.test(value);
+}
+
+/** A sign-in id as the runtime issues it (32 lowercase hex characters); also what a proxy may let into a path. */
+const OAUTH_LOGIN_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
+
+export function isOAuthLoginId(value: unknown): value is string {
+  return typeof value === "string" && OAUTH_LOGIN_ID_PATTERN.test(value);
+}
+
+/** The body of `POST /providers/:provider/oauth/login`: absent, empty, or `{flow}`. */
+export function parseStartOAuthLogin(body: unknown): Parsed<StartOAuthLoginRequest> {
+  if (body === undefined || body === null) return { ok: true, value: {} };
+  if (!isRecord(body)) return fail("body must be an object");
+  if (body.flow === undefined || body.flow === null) return { ok: true, value: {} };
+  const flow = OAUTH_FLOWS.find((known) => known === body.flow);
+  return flow
+    ? { ok: true, value: { flow } }
+    : fail(`flow must be one of: ${OAUTH_FLOWS.join(", ")}`);
+}
+
+/** The pasted answer of a sign-in prompt (a code or a full redirect URL). The text is never echoed in a message. */
+export function parseSubmitOAuthLoginInput(body: unknown): Parsed<SubmitOAuthLoginInputRequest> {
+  if (!isRecord(body)) return fail("body must be an object");
+  // A blank answer is an answer: some prompts take it as their default (GitHub Copilot's Enterprise domain).
+  if (typeof body.text !== "string" || body.text.length > LIMITS.oauthInputChars)
+    return fail(`text must be a string of at most ${LIMITS.oauthInputChars} characters`);
+  return { ok: true, value: { text: body.text.trim() } };
+}
+
+/** Whether a runtime answer is a well-formed sign-in state (for clients that check what they receive). */
+export function isOAuthLoginState(value: unknown): value is OAuthLoginState {
+  if (!isRecord(value)) return false;
+  const nullableText = (field: unknown) => field === null || typeof field === "string";
+  const prompt = value.prompt;
+  return (
+    isOAuthLoginId(value.id) &&
+    typeof value.provider === "string" &&
+    OAUTH_LOGIN_STATUSES.some((status) => status === value.status) &&
+    OAUTH_FLOWS.some((flow) => flow === value.flow) &&
+    nullableText(value.authUrl) &&
+    nullableText(value.instructions) &&
+    nullableText(value.deviceCode) &&
+    nullableText(value.progress) &&
+    nullableText(value.error) &&
+    typeof value.startedAt === "number" &&
+    typeof value.expiresAt === "number" &&
+    (prompt === null ||
+      (isRecord(prompt) &&
+        typeof prompt.message === "string" &&
+        nullableText(prompt.placeholder) &&
+        typeof prompt.secret === "boolean" &&
+        typeof prompt.optional === "boolean"))
+  );
 }
 
 function parseReferences(value: unknown): Parsed<MessageReference[] | undefined> {

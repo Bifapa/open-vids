@@ -130,6 +130,58 @@ pub fn handle_reveal(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
     }
 }
 
+// ── External links ───────────────────────────────────────────────────────────
+
+/// Longest address the page may ask to open.
+const MAX_EXTERNAL_URL_LEN: usize = 4096;
+
+/// The one kind of address `POST /api/open-external` opens: a plain `https://`
+/// URL with a host and no embedded credentials. The webview has no IPC and a
+/// link or `window.open` from the loopback page never reaches the default
+/// browser, so the page asks the shell; everything else (`file:`, `javascript:`,
+/// `http:`, custom schemes, `-flag` lookalikes) is refused here.
+pub fn parse_external_url(raw: &str) -> Result<url::Url, &'static str> {
+    if raw.is_empty() || raw.len() > MAX_EXTERNAL_URL_LEN || raw.chars().any(char::is_control) {
+        return Err("not a valid address");
+    }
+    let parsed = url::Url::parse(raw).map_err(|_| "not a valid address")?;
+    if parsed.scheme() != "https" {
+        return Err("only https addresses can be opened");
+    }
+    if parsed.host_str().map_or(true, str::is_empty) {
+        return Err("the address has no host");
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("the address must not carry credentials");
+    }
+    Ok(parsed)
+}
+
+/// `POST /api/open-external {url}` → open an `https://` URL in the user's
+/// default browser. The URL is passed as one argument to `open` / `xdg-open`
+/// (no shell), in its normalised serialisation.
+/// Hand a checked address ([`parse_external_url`]) to the default browser.
+pub fn open_external(url: &url::Url) -> std::io::Result<std::process::ExitStatus> {
+    #[cfg(target_os = "macos")]
+    let opener = "/usr/bin/open";
+    #[cfg(not(target_os = "macos"))]
+    let opener = "xdg-open";
+    std::process::Command::new(opener).arg(url.as_str()).status()
+}
+
+pub fn handle_open_external(stream: &mut TcpStream, body: &[u8]) {
+    let raw = str_field(&body_json(body), "url").unwrap_or_default().to_string();
+    let url = match parse_external_url(&raw) {
+        Ok(url) => url,
+        Err(why) => return error(stream, 400, why),
+    };
+    match open_external(&url) {
+        Ok(status) if status.success() => respond_json(stream, 200, &json!({ "ok": true })),
+        Ok(status) => error(stream, 500, format!("The browser could not be opened ({status})")),
+        Err(err) => error(stream, 500, format!("The browser could not be opened: {err}")),
+    }
+}
+
 /// Names a duplicate may take: `X copy`, `X copy 2`, … (Finder's pattern).
 fn duplicate_name(name: &str, parent: &Path) -> String {
     intake::unique_name(&format!("{name} copy"), |n| parent.join(n).exists())
@@ -589,6 +641,48 @@ pub fn proxy_agent(stream: &mut TcpStream, method: &str, runtime_path: &str, bod
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_plain_https_addresses_are_opened() {
+        for ok in [
+            "https://claude.ai/oauth/authorize?client_id=x&state=y",
+            "https://github.com/login/device",
+            "HTTPS://Example.com/a b",
+            "https://localhost:1455/auth",
+        ] {
+            let url = parse_external_url(ok).expect(ok);
+            assert_eq!(url.scheme(), "https", "{ok}");
+        }
+        for bad in [
+            "",
+            "http://example.com",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "data:text/html,x",
+            "ftp://example.com",
+            "vscode://open",
+            "-a Calculator",
+            "--help",
+            "example.com",
+            "//example.com",
+            "https://",
+            "https://user:pw@example.com",
+            "https://user@example.com",
+            "https://exa\nmple.com",
+            "https://example.com/\u{0}",
+        ] {
+            assert!(parse_external_url(bad).is_err(), "{bad:?}");
+        }
+        let long = format!("https://example.com/{}", "a".repeat(MAX_EXTERNAL_URL_LEN));
+        assert!(parse_external_url(&long).is_err());
+    }
+
+    #[test]
+    fn the_opened_address_is_the_normalised_https_url() {
+        let url = parse_external_url("https://Example.com/a b?x=1").unwrap();
+        assert!(url.as_str().starts_with("https://example.com/"));
+        assert!(!url.as_str().starts_with('-'));
+    }
 
     #[test]
     fn duplicate_names_follow_finder() {

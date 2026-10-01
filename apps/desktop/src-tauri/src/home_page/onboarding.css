@@ -1,0 +1,325 @@
+/* First-run onboarding. There is no prototype screen for it: it is built from the app's own parts — the
+   Settings window's boxes and rows (settings.css: .st-box .st-row .st-label .st-foot …), the shared buttons,
+   badges, status dots and switches (ov.css) — in a calm, compact column inside the Projects window, under its
+   titlebar. The overlay sits below the launch splash (z 50) so the splash's split opens onto it. */
+
+.ob {
+  display: none;
+  position: absolute;
+  inset: 52px 0 0 0;
+  z-index: 45;
+  background: var(--bg-0);
+}
+html.is-onboarding .ob {
+  display: block;
+}
+/* The row metrics the Settings window sets on .st-win, here for the same rows. */
+.ob {
+  --row-h: var(--h-row-lg);
+  --row-py: 6px;
+}
+:root[data-density="compact"] .ob {
+  --row-h: var(--h-row);
+  --row-py: 3px;
+}
+/* The Projects toolbar is unreachable while the setup is up: hide it rather than show dead controls. */
+html.is-onboarding .tb-tools {
+  visibility: hidden;
+}
+#obMain {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-color: var(--surface-3) transparent;
+}
+.ob-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--fg-3);
+}
+
+.ob-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
+.ob-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
+.ob-page.is-enter {
+  animation: ob-in 0.16s ease-out;
+}
+.ob-scroll {
+  flex: 1;
+}
+@keyframes ob-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---- Step indicator ---- */
+.ob-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-0);
+  padding: var(--sp-4) var(--sp-6) var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ob-steps {
+  max-width: 640px;
+  margin: 0 auto;
+}
+.ob-steps ol {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ob-steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.ob-steps li + li::before {
+  content: "";
+  width: 24px;
+  height: 1px;
+  background: var(--border);
+}
+.ob-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--h-md);
+  padding: 0 var(--sp-2) 0 4px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg-3);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.ob-step:hover {
+  background: var(--surface-1);
+  color: var(--fg);
+}
+.ob-step:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.ob-step.is-current {
+  color: var(--fg);
+  font-weight: 500;
+}
+.ob-num {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  font: 600 var(--text-2xs) / 1 var(--font-mono);
+}
+.ob-step.is-current .ob-num {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.ob-step.is-done .ob-num {
+  border-color: transparent;
+  background: var(--success-soft);
+  color: var(--success);
+}
+.ob-num .ic {
+  --s: var(--ic-xs);
+  stroke-width: 2.4;
+}
+
+/* ---- Content ---- */
+.ob-scroll {
+  padding: var(--sp-6) var(--sp-6) var(--sp-8);
+}
+.ob-col {
+  max-width: 640px;
+  margin: 0 auto;
+}
+.ob-col > h1 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  outline: 0;
+}
+.ob-col > .st-lede {
+  margin-top: var(--sp-1);
+}
+.ob-mark {
+  display: block;
+  height: 28px;
+  margin-bottom: var(--sp-3);
+  color: var(--fg);
+}
+.ob-col .st-group {
+  margin-top: var(--sp-5);
+}
+.ob-col .st-foot {
+  margin-top: var(--sp-2);
+}
+.ob-facts .st-row {
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  padding-block: var(--sp-3);
+}
+.ob-facts .ic {
+  --s: var(--ic-lg);
+  margin-top: 1px;
+  color: var(--fg-3);
+}
+.ob-facts .st-label > b {
+  font-weight: 500;
+}
+.ob-facts .st-label > span {
+  line-height: 16px;
+}
+
+/* Connected summary (step 2) and the review rows (step 4) are .st-prov rows: dot | label | control. */
+.ob-names {
+  font-weight: 500;
+}
+.ob-col .st-prov .st-label > b {
+  font-weight: 500;
+}
+
+/* ---- System check rows ---- */
+.ob-tool {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px var(--sp-4);
+  min-height: var(--row-h);
+  padding: var(--row-py) var(--sp-3);
+  box-sizing: border-box;
+}
+.ob-tool + .ob-tool {
+  border-top: 1px solid var(--border-subtle);
+}
+.ob-tool .st-label > b {
+  font-weight: 500;
+}
+.ob-tool .st-label > .mono {
+  color: var(--fg-3);
+  font-size: var(--text-num);
+  overflow-wrap: anywhere;
+}
+.ob-tool-extra {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--sp-2);
+}
+.ob-tool-extra .st-foot,
+.ob-tool-extra .st-field-err {
+  margin: 0;
+}
+.ob-cmd {
+  flex: 1;
+  min-width: 0;
+  height: var(--h-md);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-2);
+  font: var(--text-num) var(--font-mono);
+  user-select: all;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ob-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.ob-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s linear;
+}
+.ob-detail {
+  margin: 0;
+  color: var(--fg-3);
+  font: var(--text-num) / 15px var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ob-loader {
+  display: block;
+  height: 22px;
+  width: auto;
+}
+.ob-run {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.ob-run .st-preset-note {
+  min-width: 0;
+  white-space: normal;
+}
+
+/* ---- Footer ---- */
+.ob-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-6);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-1);
+}
+.ob-foot-in {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+.ob-foot .push {
+  margin-left: auto;
+}
+.ob-foot .link {
+  font-size: var(--text-sm);
+}
+.ob-foot-note {
+  margin: 0 auto 0 var(--sp-4);
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-page.is-enter {
+    animation: none;
+  }
+  .ob-bar > i {
+    transition: none;
+  }
+}

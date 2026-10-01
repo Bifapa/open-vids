@@ -1,4 +1,11 @@
-import type { AgentModelCatalog, AgentModelInfo, ProviderInfo } from "@hyperframes/agent-protocol";
+import type {
+  AgentModelCatalog,
+  AgentModelInfo,
+  ListProvidersResponse,
+  OAuthFlow,
+  OAuthLoginState,
+  ProviderInfo,
+} from "@hyperframes/agent-protocol";
 import type {
   AgentBackend,
   BackendPromptInput,
@@ -6,7 +13,10 @@ import type {
   BackendSession,
   HostToolResult,
   OpenBackendSessionInput,
+  RefreshProvidersOptions,
 } from "../backend.js";
+import { RuntimeError } from "../errors.js";
+import { OAuthLogins, type LoginRunner } from "../oauthLogins.js";
 
 /** Scripts one prompt; `session.input.agent` says which agent (director, a specialist, jev) is being prompted. */
 export type PromptScript = (
@@ -22,14 +32,63 @@ export class ScriptedAgentBackend implements AgentBackend {
   steerError: Error | null = null;
   catalog: AgentModelCatalog = { models: [], defaultModel: null, defaultThinking: null };
   providers: ProviderInfo[] = [];
+  providersSyncedAt: number | null = null;
+  /** What each `refreshProviders` call asked for, oldest first. */
+  readonly refreshes: RefreshProvidersOptions[] = [];
+  /** Runs inside `refreshProviders` (a test changes `providers` as the real backend would after a key change). */
+  onRefresh: (options: RefreshProvidersOptions) => void | Promise<void> = () => {};
   providerModels: AgentModelInfo[] = [];
+  /** Providers that offer an in-app sign-in; any other is refused the way the real backend refuses it. */
+  oauthProviders = new Set<string>();
+  /** Runs inside each sign-in the way the SDK's login would (calls `onAuth`, awaits a prompt, resolves or throws). */
+  loginRunner: LoginRunner = async () => {};
+  /** Runs after a sign-in succeeded (a test updates `providers` as the real backend would). */
+  onSignedIn: (provider: string) => void | Promise<void> = () => {};
+  /** Runs inside `signOutOAuth`. */
+  onSignOut: (provider: string) => void | Promise<void> = () => {};
+  readonly logins = new OAuthLogins({
+    run: (loginId, controller) => this.loginRunner(loginId, controller),
+    onSucceeded: async (provider) => {
+      await this.onSignedIn(provider);
+    },
+    firstStateWaitMs: 50,
+  });
 
   async listModels(): Promise<AgentModelCatalog> {
     return structuredClone(this.catalog);
   }
 
-  async listProviders(): Promise<ProviderInfo[]> {
-    return structuredClone(this.providers);
+  async listProviders(): Promise<ListProvidersResponse> {
+    return { providers: structuredClone(this.providers), syncedAt: this.providersSyncedAt };
+  }
+
+  async refreshProviders(options: RefreshProvidersOptions = {}): Promise<ListProvidersResponse> {
+    this.refreshes.push(options);
+    await this.onRefresh(options);
+    return this.listProviders();
+  }
+
+  async startOAuthLogin(provider: string, flow?: OAuthFlow): Promise<OAuthLoginState> {
+    if (!this.oauthProviders.has(provider))
+      throw new RuntimeError("invalid_request", `${provider} has no in-app sign-in.`, 400);
+    return this.logins.start({ provider, loginId: `${provider}-login`, flow: flow ?? "browser" });
+  }
+
+  getOAuthLogin(id: string): OAuthLoginState {
+    return this.logins.get(id);
+  }
+
+  submitOAuthLoginInput(id: string, text: string): OAuthLoginState {
+    return this.logins.submit(id, text);
+  }
+
+  cancelOAuthLogin(id: string): Promise<OAuthLoginState> {
+    return this.logins.cancel(id);
+  }
+
+  async signOutOAuth(provider: string): Promise<ListProvidersResponse> {
+    await this.onSignOut(provider);
+    return this.listProviders();
   }
 
   async listProviderModels(provider: string): Promise<AgentModelInfo[]> {
@@ -49,6 +108,7 @@ export class ScriptedAgentBackend implements AgentBackend {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    await this.logins.dispose();
   }
 }
 

@@ -59,13 +59,15 @@ export function SectionHeading({
   title,
   note,
   aside,
+  className,
 }: {
   title: string;
   note?: ReactNode;
   aside?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex min-h-ctl-sm items-center justify-between gap-2 px-0.5">
+    <div className={cn("flex min-h-ctl-sm items-center justify-between gap-2 px-0.5", className)}>
       <h3 className="flex min-w-0 items-baseline gap-1.5 text-xs leading-[14px] font-semibold text-fg-2">
         {title}
         {note != null && (

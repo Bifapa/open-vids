@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ChatState } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
-import { describeTurnError } from "../../agent/agentErrors";
+import { describeTurnError, isNoModelMessage } from "../../agent/agentErrors";
+import { NO_MODEL_TITLE } from "./ConnectModel";
 import { activeThread, runningTurn } from "../../agent/agentSelectors";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
@@ -32,7 +33,9 @@ function statusSentence(chat: ChatState | null): string {
   if (last.status === "completed") return "The agent finished";
   if (last.status === "aborted") return "The agent stopped";
   if (last.status === "failed") {
-    return last.error ? describeTurnError(last.error.code, last.error.message) : "The agent failed";
+    const message = last.error && describeTurnError(last.error.code, last.error.message);
+    if (message && isNoModelMessage(message)) return NO_MODEL_TITLE;
+    return message ?? "The agent failed";
   }
   return "";
 }

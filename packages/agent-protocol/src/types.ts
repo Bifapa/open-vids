@@ -115,6 +115,24 @@ export interface JevSettings {
   apiKeyConfigured: boolean;
 }
 
+/**
+ * How much the agents may do without asking (Settings → Execution → Autonomy).
+ *
+ * - `defaultIntent`: the Mode chip a new chat's composer starts with. The runtime only stores it; Studio applies it.
+ * - `askBeforeLockedEdits`: material the user locked or set by hand (locked timeline clips, locked Story nodes, the
+ *   user's decisions) is NEVER changed by an agent, whatever this says (the editing and story services refuse it).
+ *   `true`: an agent that needs such a change stops work on that item and asks the user first. `false`: it leaves the
+ *   item as it is, carries on with the rest and reports what it left untouched afterwards.
+ * - `askBeforeDownloads`: `true`: Research may search and inspect, but `import_asset` and `read_website` with `save`
+ *   are refused until the user has approved in the turn (an explicit download/import instruction or a yes, or the
+ *   Story workspace's "Find missing material" action). `false`: agents import what fits without asking.
+ */
+export interface AutonomySettings {
+  defaultIntent: ChatIntent;
+  askBeforeLockedEdits: boolean;
+  askBeforeDownloads: boolean;
+}
+
 /** Global (per-user) agent settings: defaults for new chats plus the Jev worker. */
 export interface AgentSettings {
   director: ModelConfig;
@@ -122,15 +140,137 @@ export interface AgentSettings {
   jev: JevSettings;
   /** Execution Quality of chats that have not chosen their own. */
   executionQuality: ExecutionQuality;
+  autonomy: AutonomySettings;
 }
 
 /** Per-chat specialist overrides; a missing entry means "use the global default". */
 export type SpecialistOverrides = Partial<Record<SpecialistId, SpecialistConfig>>;
 
+/**
+ * What the runtime can honestly tell about a provider:
+ * - `connected`: credentials exist (or the provider needs none) and nothing is known to be wrong.
+ * - `not_configured`: no credentials.
+ * - `error`: credentials exist, but the provider's live model list could not be fetched with them (see `error`).
+ *   The provider's models stay usable; the message says why it is suspect.
+ * - `signin_required`: no usable credentials, and an OMP sign-in of this provider was torn down because its token
+ *   refresh failed definitively (expired or revoked). Only detected after such a failed refresh, never predicted.
+ */
+export const PROVIDER_STATUSES = [
+  "connected",
+  "not_configured",
+  "error",
+  "signin_required",
+] as const;
+export type ProviderStatus = (typeof PROVIDER_STATUSES)[number];
+
+/**
+ * Where the provider's credential comes from: `omp` (the user's OMP login, key, environment variable or models.yml,
+ * read-only), `api-key` (an API key stored in OpenVids' own private credentials file) or `oauth` (a sign-in made inside
+ * OpenVids, stored in OpenVids' own private auth database and refreshed there). A key or sign-in stored in OpenVids
+ * takes precedence over what OMP has for the same provider; an API key wins over a sign-in.
+ */
+export const PROVIDER_CREDENTIAL_SOURCES = ["omp", "api-key", "oauth"] as const;
+export type ProviderCredentialSource = (typeof PROVIDER_CREDENTIAL_SOURCES)[number];
+
+/**
+ * How an in-app sign-in reaches the user. `browser`: the runtime listens on a loopback port and the user approves in
+ * their browser (a pasted redirect URL is accepted as a fallback). `device`: the user opens a verification page and
+ * enters a short code while the runtime polls. `paste`: the user signs in in the browser and pastes the code or the
+ * redirect URL back.
+ */
+export const OAUTH_FLOWS = ["browser", "device", "paste"] as const;
+export type OAuthFlow = (typeof OAUTH_FLOWS)[number];
+
+export interface OAuthFlowInfo {
+  flow: OAuthFlow;
+  /** The loopback port a `browser` flow prefers; null for flows without a callback server. */
+  callbackPort: number | null;
+  /** The provider accepts only that exact port: when it is taken the sign-in fails with a clear message. */
+  fixedPort: boolean;
+}
+
+/** The in-app sign-ins a provider offers, the first being the default. */
+export interface ProviderOAuthInfo {
+  flows: OAuthFlowInfo[];
+}
+
 export interface ProviderInfo {
   id: string;
-  /** True when the runtime already has credentials for this provider. */
+  /** True when the runtime already has credentials for this provider (or it needs none). */
   authenticated: boolean;
+  /** Human-readable provider name ("Anthropic"). */
+  name: string;
+  status: ProviderStatus;
+  /** Null when there is no credential, or the provider is keyless (`keyless`). */
+  credentialSource: ProviderCredentialSource | null;
+  /** A human-readable reason when `status` is `error` or `signin_required`; otherwise null. */
+  error: string | null;
+  /** How many models the catalog lists for this provider; usable only while `authenticated`. */
+  modelCount: number;
+  /** A local or keyless provider that works without any credential. */
+  keyless: boolean;
+  /**
+   * True when a live model list was fetched from the provider with its credential in this runtime, so the credential
+   * is known to work. False means "not checked" (cached or bundled catalog, no listing endpoint), not "bad".
+   */
+  verified: boolean;
+  /**
+   * The in-app sign-in this provider offers, or null when it has none (it is key-only, or the runtime cannot store
+   * sign-ins in this setup). Always sent by the runtime; optional so older clients' fixtures stay valid.
+   */
+  oauth?: ProviderOAuthInfo | null;
+}
+
+// ── In-app OAuth sign-in ─────────────────────────────────────────────────────
+
+/**
+ * Where a sign-in is: `pending` (started; the user must act in the browser or with the device code, or the runtime is
+ * still working), `needs_input` (the runtime waits for the user to answer `prompt`), `succeeded`, `failed` (`error`
+ * says why), `cancelled` (the user or a restart stopped it) or `expired` (nobody finished it in time).
+ */
+export const OAUTH_LOGIN_STATUSES = [
+  "pending",
+  "needs_input",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "expired",
+] as const;
+export type OAuthLoginStatus = (typeof OAUTH_LOGIN_STATUSES)[number];
+
+/** Something the sign-in asks the user to type or paste. The answer is never echoed back by any route. */
+export interface OAuthLoginPrompt {
+  message: string;
+  placeholder: string | null;
+  /** The answer is a secret: the UI should mask it. */
+  secret: boolean;
+  /**
+   * The sign-in continues without an answer (the authorization URL is already out and the browser callback may still
+   * complete it): a pasted code is a fallback, and `status` stays `pending`. False: the sign-in waits (`needs_input`).
+   */
+  optional: boolean;
+}
+
+export interface OAuthLoginState {
+  /** Opaque, unguessable id of this sign-in; poll and cancel with it. */
+  id: string;
+  provider: string;
+  status: OAuthLoginStatus;
+  flow: OAuthFlow;
+  /** The authorization or verification URL the user must open. The runtime never opens a browser itself. */
+  authUrl: string | null;
+  /** What to tell the user ("Enter code: ABCD-1234", "Complete login in your browser…"), as the provider words it. */
+  instructions: string | null;
+  /** The short code to enter at `authUrl` (device flows), when it could be told apart from the instructions. */
+  deviceCode: string | null;
+  /** The latest progress line ("Waiting for browser authentication…"). */
+  progress: string | null;
+  prompt: OAuthLoginPrompt | null;
+  /** One line, set when `status` is `failed`. Never contains a token or a code. */
+  error: string | null;
+  startedAt: number;
+  /** When an unfinished sign-in is given up (epoch ms). */
+  expiresAt: number;
 }
 
 // ── Chats and turns ──────────────────────────────────────────────────────────
@@ -156,6 +296,13 @@ export type ChatIntent = (typeof CHAT_INTENTS)[number];
 export function isChatIntent(value: unknown): value is ChatIntent {
   return typeof value === "string" && (CHAT_INTENTS as readonly string[]).includes(value);
 }
+
+/** Autonomy of a user who never changed it: new chats start in Plan, and agents ask before locked edits and downloads. */
+export const DEFAULT_AUTONOMY_SETTINGS: Readonly<AutonomySettings> = {
+  defaultIntent: "plan",
+  askBeforeLockedEdits: true,
+  askBeforeDownloads: true,
+};
 
 /**
  * A Story workspace action run as a turn: `review` — the Director reviews the current (user-edited) graph;
@@ -588,6 +735,7 @@ export const AGENT_ERROR_CODES = [
   "chat_busy",
   "project_busy",
   "model_unavailable",
+  "login_not_found",
   "checkpoint_unavailable",
   "revert_conflict",
   "revert_unavailable",

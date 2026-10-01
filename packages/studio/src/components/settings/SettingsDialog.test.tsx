@@ -2,87 +2,41 @@
 
 import { act } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import {
-  EXECUTION_BUDGETS,
-  type AgentSettings,
-  type UpdateAgentSettingsRequest,
-} from "@hyperframes/agent-protocol";
-import { CATALOG, SETTINGS, createFakeClient, createSourceLog } from "../../agent/agentTestHarness";
-import { createAgentStore, type AgentStore } from "../../agent/agentStore";
-import { cleanupMounted, mountHost } from "../ui/mountHost.testHelpers";
-import { useAppPreferences, type AppPreferences } from "./appPreferences";
-import { SettingsDialog } from "./SettingsDialog";
+import { EXECUTION_BUDGETS } from "@hyperframes/agent-protocol";
+import type { AgentStore } from "../../agent/agentStore";
+import { cleanupMounted } from "../ui/mountHost.testHelpers";
+import { useAppPreferences } from "./appPreferences";
 import { openSettings, useSettingsDialog } from "./settingsStore";
-
-const PREFERENCES: AppPreferences = {
-  version: 1,
-  theme: "dark",
-  newProject: {
-    location: "~/Movies/OpenVids",
-    openIn: "media",
-    width: 1920,
-    height: 1080,
-    fps: 24,
-  },
-  confirmTrash: true,
-  onLaunch: "projects",
-};
+import {
+  PREFERENCES,
+  buttonNamed,
+  click,
+  mountSettings,
+  radio,
+  resetDialog,
+  resetPreferences,
+  settle,
+  stubPreferencesFetch,
+} from "./settingsDialog.testHelpers";
 
 let store: AgentStore | undefined;
 
 beforeEach(() => {
-  useAppPreferences.setState({
-    preferences: PREFERENCES,
-    loadFailed: false,
-    error: null,
-    saving: 0,
-  });
+  resetPreferences();
 });
 
 afterEach(() => {
   store?.getState().dispose();
   store = undefined;
-  act(() => useSettingsDialog.setState({ open: false, section: "general", returnFocus: null }));
+  resetDialog();
   cleanupMounted();
   vi.unstubAllGlobals();
 });
 
-async function settle() {
-  await act(async () => {
-    for (let index = 0; index < 8; index += 1) await Promise.resolve();
-  });
-}
-
-async function click(element: Element | null | undefined) {
-  if (!element) throw new Error("nothing to click");
-  await act(async () => {
-    element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-  });
-  await settle();
-}
-
-const radio = (group: string, label: string) =>
-  [
-    ...document.body.querySelectorAll<HTMLButtonElement>(
-      `[role="radiogroup"][aria-label="${group}"] [role="radio"]`,
-    ),
-  ].find((button) => button.textContent?.trim() === label);
-
-function mountSettings(settings: AgentSettings = SETTINGS) {
-  let saved = settings;
-  const client = createFakeClient({ settings });
-  client.updateSettings.mockImplementation(async (request: UpdateAgentSettingsRequest) => {
-    if (request.executionQuality) saved = { ...saved, executionQuality: request.executionQuality };
-    return saved;
-  });
-  store = createAgentStore({ client, openEventSource: createSourceLog().open });
-  store.setState({ availability: "ready", models: CATALOG, settings });
-  mountHost(<SettingsDialog agentStore={store} />);
-  return { client, agentStore: store };
-}
+const mount = () => mountSettings(undefined, (created) => (store = created));
 
 it("opens on the asked section and walks sections with the arrow keys", async () => {
-  mountSettings();
+  mount();
   await act(async () => openSettings("execution"));
   await settle();
   const dialog = document.body.querySelector('[data-testid="settings-dialog"]');
@@ -100,7 +54,7 @@ it("opens on the asked section and walks sections with the arrow keys", async ()
 });
 
 it("edits the global default execution quality, custom budget included", async () => {
-  const { client, agentStore } = mountSettings();
+  const { client, agentStore } = mount();
   await act(async () => openSettings("execution"));
   await settle();
 
@@ -116,7 +70,7 @@ it("edits the global default execution quality, custom budget included", async (
 
   // Custom shows the whole budget; every change saves a clamped budget.
   const more = document.body.querySelector<HTMLButtonElement>(
-    '[role="group"][aria-label="Render QA passes"] button[aria-label="More"]',
+    '[role="group"][aria-label="Autonomous QA passes"] button[aria-label="More"]',
   );
   await click(more);
   expect(client.updateSettings).toHaveBeenLastCalledWith({
@@ -145,7 +99,7 @@ it("applies a theme at once, saves it, and puts the old one back when the save f
     return Response.json({ ...PREFERENCES, ...(typeof patch === "object" ? patch : {}) });
   });
   vi.stubGlobal("fetch", fetchMock);
-  mountSettings();
+  mount();
   await act(async () => openSettings("appearance"));
   await settle();
 
@@ -174,7 +128,7 @@ it("saves new-project defaults as a partial update", async () => {
     Response.json({ ...PREFERENCES, newProject: { ...PREFERENCES.newProject, openIn: "story" } }),
   );
   vi.stubGlobal("fetch", fetchMock);
-  mountSettings();
+  mount();
   await act(async () => openSettings("general"));
   await settle();
 
@@ -185,4 +139,125 @@ it("saves new-project defaults as a partial update", async () => {
     expect.objectContaining({ body: JSON.stringify({ newProject: { openIn: "story" } }) }),
   );
   expect(useAppPreferences.getState().preferences?.newProject.openIn).toBe("story");
+});
+
+it("saves density as its own preference", async () => {
+  const fetchMock = stubPreferencesFetch();
+  mount();
+  await act(async () => openSettings("appearance"));
+  await settle();
+
+  expect(radio("Interface density", "Default")?.getAttribute("aria-checked")).toBe("true");
+  expect(document.body.textContent).toContain("Comfortable rows, sidebar items and the player bar");
+  await click(radio("Interface density", "Compact"));
+  expect(fetchMock).toHaveBeenLastCalledWith(
+    "/api/app/preferences",
+    expect.objectContaining({ method: "PUT", body: JSON.stringify({ density: "compact" }) }),
+  );
+  expect(useAppPreferences.getState().preferences?.density).toBe("compact");
+  expect(radio("Interface density", "Compact")?.getAttribute("aria-checked")).toBe("true");
+  expect(document.body.textContent).toContain("Tighter rows, sidebar items and the player bar");
+});
+
+it("saves the automatic update check and keeps the frame rates the editor can honour", async () => {
+  const fetchMock = stubPreferencesFetch();
+  mount();
+  await act(async () => openSettings("general"));
+  await settle();
+
+  const toggle = document.body.querySelector<HTMLElement>(
+    '[role="switch"][aria-label="Check for updates automatically"]',
+  );
+  expect(toggle?.getAttribute("aria-checked")).toBe("true");
+  await click(toggle);
+  expect(fetchMock).toHaveBeenLastCalledWith(
+    "/api/app/preferences",
+    expect.objectContaining({ body: JSON.stringify({ updates: { autoCheck: false } }) }),
+  );
+  expect(useAppPreferences.getState().preferences?.updates.autoCheck).toBe(false);
+
+  // 23.976 and 29.97 are not offered: Studio's preview and export cannot play them.
+  const fps = document.body.querySelector<HTMLElement>('[aria-label="Default frame rate"]');
+  expect(fps?.textContent).toBe("24 fps");
+  await click(fps);
+  expect(
+    [...document.body.querySelectorAll('[role="option"]')].map((o) =>
+      o.textContent?.replace("✓", ""),
+    ),
+  ).toEqual(["24 fps", "25 fps", "30 fps", "60 fps"]);
+});
+
+it("reads preferences written before density and the update choice existed", async () => {
+  const { density: _density, updates: _updates, ...old } = PREFERENCES;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json(old)),
+  );
+  useAppPreferences.setState({ preferences: null });
+  await useAppPreferences.getState().load();
+  expect(useAppPreferences.getState().preferences).toEqual(PREFERENCES);
+});
+
+it("edits the Autonomy group, each setting saved at once with a hint that says what it does", async () => {
+  const { client, agentStore } = mount();
+  await act(async () => openSettings("execution"));
+  await settle();
+
+  // Defaults: Plan, and ask before locked edits and downloads.
+  expect(radio("Default chat mode", "Plan")?.getAttribute("aria-checked")).toBe("true");
+  expect(document.body.textContent).toContain("Proposes a plan first");
+  expect(document.body.textContent).toContain(
+    "Agents stop and ask first. They never change locked sections on their own.",
+  );
+
+  await click(radio("Default chat mode", "Ask"));
+  expect(client.updateSettings).toHaveBeenLastCalledWith({ autonomy: { defaultIntent: "ask" } });
+  expect(agentStore.getState().settings?.autonomy.defaultIntent).toBe("ask");
+  expect(document.body.textContent).toContain("Answers only");
+
+  const locked = document.body.querySelector<HTMLElement>(
+    '[role="switch"][aria-label="Ask before changing locked or hand-edited sections"]',
+  );
+  await click(locked);
+  expect(client.updateSettings).toHaveBeenLastCalledWith({
+    autonomy: { askBeforeLockedEdits: false },
+  });
+  expect(locked?.getAttribute("aria-checked")).toBe("false");
+  // Off never means "change them": the agent leaves the item alone and reports it.
+  expect(document.body.textContent).toContain(
+    "Agents skip locked or hand-edited items, carry on, and tell you afterwards.",
+  );
+
+  const downloads = document.body.querySelector<HTMLElement>(
+    '[role="switch"][aria-label="Ask before downloading assets"]',
+  );
+  expect(document.body.textContent).toContain("Agents list what they found and wait for approval");
+  await click(downloads);
+  expect(client.updateSettings).toHaveBeenLastCalledWith({
+    autonomy: { askBeforeDownloads: false },
+  });
+  expect(agentStore.getState().settings?.autonomy).toEqual({
+    defaultIntent: "ask",
+    askBeforeLockedEdits: false,
+    askBeforeDownloads: false,
+  });
+});
+
+it("turns a fixed preset into Custom, started from it, when the QA passes change", async () => {
+  const { client } = mount();
+  await act(async () => openSettings("execution"));
+  await settle();
+
+  const fewer = document.body.querySelector<HTMLButtonElement>(
+    '[role="group"][aria-label="Autonomous QA passes"] button[aria-label="Fewer"]',
+  );
+  await click(fewer);
+  expect(client.updateSettings).toHaveBeenLastCalledWith({
+    executionQuality: {
+      preset: "custom",
+      custom: { ...EXECUTION_BUDGETS.balanced, qaPasses: EXECUTION_BUDGETS.balanced.qaPasses - 1 },
+    },
+  });
+  expect(radio("Default execution quality", "Custom")?.getAttribute("aria-checked")).toBe("true");
+  expect(buttonNamed("Customize")).toBeUndefined();
 });

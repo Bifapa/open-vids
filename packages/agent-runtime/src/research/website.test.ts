@@ -17,6 +17,8 @@ function executor(overrides: Partial<TurnResearchOptions> = {}) {
     storyOptions: null,
     intent: "edit",
     userTexts: () => ["вот ссылка https://www.linear.app/features — сделай моушн"],
+    turnUserTexts: () => ["вот ссылка https://www.linear.app/features — сделай моушн"],
+    askBeforeDownloads: false,
     model: () => "anthropic/claude-haiku",
     ...overrides,
   });
@@ -223,6 +225,7 @@ describe("read_website in a running turn", () => {
 
   it("gives Motion the tool and stamps a saved read with the turn and the caller", async () => {
     const fixture = await createRuntimeFixture();
+    await fixture.settings.update({ autonomy: { askBeforeDownloads: false } });
     try {
       const chat = await fixture.chats.create({}, ["motion"]);
       fixture.backend.promptScript = async (_input, session) => {

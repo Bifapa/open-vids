@@ -13,6 +13,8 @@ import type {
   ChatSummary,
   ListChatsResponse,
   AgentModelCatalog,
+  OAuthLoginState,
+  ProviderInfo,
   RevertTurnResponse,
   QaIssue,
   QaPassState,
@@ -338,7 +340,44 @@ export const SETTINGS: AgentSettings = {
     apiKeyConfigured: false,
   },
   executionQuality: DEFAULT_EXECUTION_QUALITY,
+  autonomy: { defaultIntent: "plan", askBeforeLockedEdits: true, askBeforeDownloads: true },
 };
+
+/** A provider as the runtime reports it: connected through the user's OMP setup unless overridden. */
+export function providerInfo(overrides: Partial<ProviderInfo> = {}): ProviderInfo {
+  const id = overrides.id ?? "anthropic";
+  return {
+    id,
+    name: id.charAt(0).toUpperCase() + id.slice(1),
+    authenticated: true,
+    status: "connected",
+    credentialSource: "omp",
+    error: null,
+    modelCount: 2,
+    keyless: false,
+    verified: true,
+    ...overrides,
+  };
+}
+
+/** A sign-in as the runtime reports it: started, waiting for the user's browser. */
+export function oauthLogin(overrides: Partial<OAuthLoginState> = {}): OAuthLoginState {
+  return {
+    id: "login-0001",
+    provider: "anthropic",
+    status: "pending",
+    flow: "browser",
+    authUrl: "https://claude.example/oauth/authorize?state=abc",
+    instructions: null,
+    deviceCode: null,
+    progress: "Waiting for browser authentication…",
+    prompt: null,
+    error: null,
+    startedAt: 1000,
+    expiresAt: 601_000,
+    ...overrides,
+  };
+}
 
 export function createFakeClient(data: FakeClientData = {}): FakeClient {
   const state = data.chat ?? chatState();
@@ -371,8 +410,23 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
     updateSettings: vi.fn(async () => data.settings ?? SETTINGS),
     setJevApiKey: vi.fn(async () => data.settings ?? SETTINGS),
     testJev: vi.fn(async (): Promise<TestJevResponse> => ({ ok: false, message: "Jev is off." })),
-    listProviders: vi.fn(async () => ({ providers: [] })),
+    listProviders: vi.fn(async () => ({ providers: [], syncedAt: null })),
+    refreshProviders: vi.fn(async () => ({ providers: [], syncedAt: null })),
+    setProviderApiKey: vi.fn(async () => ({ providers: [], syncedAt: null })),
     listProviderModels: vi.fn(async () => ({ models: [] })),
+    startOAuthLogin: vi.fn(async () => {
+      throw new AgentApiError("invalid_request", "no sign-in", 400);
+    }),
+    getOAuthLogin: vi.fn(async () => {
+      throw new AgentApiError("internal", "gone", 404);
+    }),
+    submitOAuthLoginInput: vi.fn(async () => {
+      throw new AgentApiError("invalid_request", "no prompt", 409);
+    }),
+    cancelOAuthLogin: vi.fn(async () => {
+      throw new AgentApiError("internal", "gone", 404);
+    }),
+    logoutProvider: vi.fn(async () => ({ providers: [], syncedAt: null })),
     getQaReport: vi.fn(async (reportId) => {
       const report = data.qaReports?.[reportId];
       if (!report) throw new AgentApiError("internal", "report not found", 404);

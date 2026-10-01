@@ -1,7 +1,8 @@
 import type { Context } from "hono";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { realpath, stat } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { Hono } from "hono";
 import type {
   AgentErrorCode,
@@ -15,11 +16,16 @@ import {
   AGENT_RUNTIME_PREFIX,
   SSE_EVENTS,
   encodeSseMessage,
+  isOAuthLoginId,
+  isProviderId,
   parseCreateChat,
   parseRevertTurn,
   parseSetJevApiKey,
+  parseSetProviderApiKey,
+  parseStartOAuthLogin,
   parseStartTurn,
   parseSteerTurn,
+  parseSubmitOAuthLoginInput,
   parseUpdateAgentSettings,
   parseUpdateChat,
 } from "@hyperframes/agent-protocol";
@@ -124,7 +130,59 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
   );
 
   app.get(`${AGENT_RUNTIME_PREFIX}/providers`, async (context) =>
-    context.json({ providers: await options.backend.listProviders() }),
+    context.json(await options.backend.listProviders()),
+  );
+
+  app.post(`${AGENT_RUNTIME_PREFIX}/providers/refresh`, async (context) =>
+    context.json(await options.backend.refreshProviders()),
+  );
+
+  app.post(`${AGENT_RUNTIME_PREFIX}/providers/:provider/api-key`, async (context) => {
+    const provider = context.req.param("provider");
+    if (!isProviderId(provider))
+      throw new RuntimeError("invalid_request", "Provider id is not valid", 400);
+    const parsed = parseSetProviderApiKey(await readBody(context));
+    if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+    const { apiKey } = parsed.value;
+    if (apiKey !== null) {
+      const known = (await options.backend.listProviders()).providers;
+      if (!known.some((candidate) => candidate.id === provider))
+        throw new RuntimeError("invalid_request", `Unknown provider ${provider}`, 400);
+    }
+    await options.settings.setProviderApiKey(provider, apiKey);
+    // A new key is checked against the provider's live model list; a removed one needs no network.
+    return context.json(
+      await options.backend.refreshProviders(
+        apiKey === null ? { provider, offline: true } : { provider },
+      ),
+    );
+  });
+
+  // In-app OAuth sign-in: start + poll (never held open), so a UI polls `oauth/logins/:id`. Global: token only.
+  app.post(`${AGENT_RUNTIME_PREFIX}/providers/:provider/oauth/login`, async (context) => {
+    const provider = providerParam(context);
+    const parsed = parseStartOAuthLogin(await readBody(context));
+    if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+    return context.json(await options.backend.startOAuthLogin(provider, parsed.value.flow));
+  });
+
+  app.post(`${AGENT_RUNTIME_PREFIX}/providers/:provider/oauth/logout`, async (context) =>
+    context.json(await options.backend.signOutOAuth(providerParam(context))),
+  );
+
+  app.get(`${AGENT_RUNTIME_PREFIX}/oauth/logins/:loginId`, (context) =>
+    context.json(options.backend.getOAuthLogin(loginParam(context))),
+  );
+
+  app.post(`${AGENT_RUNTIME_PREFIX}/oauth/logins/:loginId/input`, async (context) => {
+    const loginId = loginParam(context);
+    const parsed = parseSubmitOAuthLoginInput(await readBody(context));
+    if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+    return context.json(options.backend.submitOAuthLoginInput(loginId, parsed.value.text));
+  });
+
+  app.post(`${AGENT_RUNTIME_PREFIX}/oauth/logins/:loginId/cancel`, async (context) =>
+    context.json(await options.backend.cancelOAuthLogin(loginParam(context))),
   );
 
   app.get(`${AGENT_RUNTIME_PREFIX}/providers/:provider/models`, async (context) =>
@@ -158,9 +216,13 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
       // Without a catalog only API-key mode can be tested; resolveJev reports the rest.
     }
     const jev = resolveJev(settings, await options.settings.jevApiKey(), catalog);
-    return context.json(
-      await testJev(options.backend, context.get("project").scope.projectDir, jev, now),
-    );
+    // The test needs no project: it runs in an empty scratch directory, so the agent can read nothing of the user's.
+    const scratch = await realpath(await mkdtemp(join(tmpdir(), "openvids-jev-test-")));
+    try {
+      return context.json(await testJev(options.backend, scratch, jev, now));
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
   });
 
   app.get(`${AGENT_RUNTIME_PREFIX}/chats`, (context) => {
@@ -382,10 +444,29 @@ function isGlobalRoute(path: string): boolean {
     rest === "health" ||
     rest === "models" ||
     rest === "providers" ||
+    rest === "providers/refresh" ||
     /^providers\/[^/]+\/models$/.test(rest) ||
+    /^providers\/[^/]+\/api-key$/.test(rest) ||
+    /^providers\/[^/]+\/oauth\/(?:login|logout)$/.test(rest) ||
+    /^oauth\/logins\/[^/]+(?:\/(?:input|cancel))?$/.test(rest) ||
     rest === "settings" ||
-    rest === "settings/jev/api-key"
+    rest === "settings/jev/api-key" ||
+    rest === "settings/jev/test"
   );
+}
+
+function providerParam(context: Context<RuntimeEnvironment>): string {
+  const provider = context.req.param("provider");
+  if (!isProviderId(provider))
+    throw new RuntimeError("invalid_request", "Provider id is not valid", 400);
+  return provider;
+}
+
+function loginParam(context: Context<RuntimeEnvironment>): string {
+  const loginId = context.req.param("loginId");
+  if (!isOAuthLoginId(loginId))
+    throw new RuntimeError("login_not_found", "This sign-in was not found", 404);
+  return loginId;
 }
 
 async function resolveScope(headers: Headers): Promise<ProjectScope> {

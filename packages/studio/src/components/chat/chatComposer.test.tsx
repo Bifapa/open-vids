@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chatState, runningChatState, summary } from "../../agent/agentTestHarness";
+import { SETTINGS, chatState, runningChatState, summary } from "../../agent/agentTestHarness";
 import { useComposerContextStore } from "../../agent/composerContext";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { useDockLayoutStore, type DockController } from "../dock/dockLayoutStore";
@@ -98,6 +98,59 @@ describe("mode chip", () => {
 
     expect(mounted.client.updateChat).toHaveBeenCalledWith("c1", { intent: "ask" });
     expect(byLabel(mounted.host, "Mode: Ask — Answers only")).not.toBeNull();
+  });
+
+  it("starts a new chat in the default chat mode from Settings, and creates the chat in it", async () => {
+    const settings = {
+      ...SETTINGS,
+      autonomy: { ...SETTINGS.autonomy, defaultIntent: "ask" as const },
+    };
+    mounted = mountChat({ view: "chat", chatId: null, chat: null, settings });
+    expect(byLabel(mounted.host, "Mode: Ask — Answers only")).not.toBeNull();
+
+    await type(textarea(mounted.host), "What is in the intro?");
+    await pressKey(textarea(mounted.host), "Enter");
+    await settle();
+    // The chat runs in the mode its composer showed.
+    expect(mounted.client.updateChat).toHaveBeenCalledWith("new", { intent: "ask" });
+    expect(mounted.client.startTurn).toHaveBeenCalledWith(
+      "new",
+      expect.objectContaining({ prompt: "What is in the intro?" }),
+    );
+  });
+
+  it("lets the user pick another mode in a new chat than the default", async () => {
+    mounted = mountChat({ view: "chat", chatId: null, chat: null, settings: SETTINGS });
+    expect(byLabel(mounted.host, "Mode: Plan — Proposes a plan first")).not.toBeNull();
+
+    await click(byLabel(mounted.host, "Mode: Plan — Proposes a plan first"));
+    await settle();
+    await click(byLabel(document.body, "Edit mode: Acts on the timeline"));
+    expect(byLabel(mounted.host, "Mode: Edit — Acts on the timeline")).not.toBeNull();
+
+    await type(textarea(mounted.host), "Trim the intro");
+    await pressKey(textarea(mounted.host), "Enter");
+    await settle();
+    expect(mounted.client.updateChat).toHaveBeenCalledWith("new", { intent: "edit" });
+  });
+
+  it("keeps the mode an existing chat already has, whatever the default is", async () => {
+    const settings = {
+      ...SETTINGS,
+      autonomy: { ...SETTINGS.autonomy, defaultIntent: "ask" as const },
+    };
+    mounted = mountChat({
+      view: "chat",
+      chatId: "c1",
+      chat: chatState({ chat: summary({ intent: "plan" }) }),
+      settings,
+    });
+    expect(byLabel(mounted.host, "Mode: Plan — Proposes a plan first")).not.toBeNull();
+    unmountChat(mounted);
+
+    // A chat that never chose one runs as Edit (the runtime's own fallback), not as the new default.
+    mounted = mountChat({ view: "chat", chatId: "c1", chat: chatState(), settings });
+    expect(byLabel(mounted.host, "Mode: Edit — Acts on the timeline")).not.toBeNull();
   });
 
   it("cannot change the intent while the chat's turn runs", async () => {

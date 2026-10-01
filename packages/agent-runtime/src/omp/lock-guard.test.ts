@@ -256,4 +256,25 @@ describe("the tool_call guard bound to a session", () => {
       (await guard({ toolName: "write", input: { path: "../escape.html", content: "x" } }))?.reason,
     ).toContain("resolves outside this project");
   });
+
+  it("tells the agent to stop and ask, or to leave the clip and carry on, by the user's autonomy setting", async () => {
+    await writeFile(path.join(projectDir, "index.html"), LOCKED_HTML);
+    const input = edit("color: white", "color: hotpink");
+    const ask = projectToolCallGuard(projectDir, undefined, () => true);
+    const leave = projectToolCallGuard(projectDir, undefined, () => false);
+
+    const asked = (await ask({ toolName: "edit", input }))?.reason ?? "";
+    const left = (await leave({ toolName: "edit", input }))?.reason ?? "";
+    expect(asked).toContain("wait for their answer");
+    expect(asked).not.toContain("do not stop to ask");
+    expect(left).toContain("do not stop to ask");
+    expect(left).not.toContain("wait for their answer");
+    // The lock holds either way: both refuse the call.
+    expect(asked).toContain('"#title"');
+    expect(left).toContain('"#title"');
+    // With no setting at all the agent is told to ask.
+    expect((await projectToolCallGuard(projectDir)({ toolName: "edit", input }))?.reason).toContain(
+      "wait for their answer",
+    );
+  });
 });

@@ -28,6 +28,7 @@ import {
   SettingsRow,
   SettingsUnavailable,
 } from "./settingsLayout";
+import { AutonomyGroup } from "./AutonomyGroup";
 import { useAgentSettingsEditor } from "./useAgentSettingsEditor";
 
 type BudgetField = (typeof BUDGET_FIELDS)[number]["field"];
@@ -50,7 +51,7 @@ function PassesStepper({ value, onChange }: { value: number; onChange: (next: nu
   return (
     <div
       role="group"
-      aria-label="Render QA passes"
+      aria-label="Autonomous QA passes"
       className="inline-flex h-ctl items-center gap-0.5 rounded-md border border-border bg-bg-0 p-0.5"
     >
       <button
@@ -96,9 +97,6 @@ function CustomBudgetRows({
   };
   return (
     <>
-      <SettingsRow label="Render QA passes" hint={passesHint(value.qaPasses)}>
-        <PassesStepper value={value.qaPasses} onChange={(next) => setField("qaPasses", next)} />
-      </SettingsRow>
       {BUDGET_FIELDS.filter(({ field }) => field !== "qaPasses").map(({ field, label, hint }) => {
         const { min, max } = EXECUTION_BUDGET_RANGES[field];
         const unused = qaOff && QA_ONLY[field];
@@ -144,9 +142,9 @@ function CustomBudgetRows({
  */
 export function ExecutionSection() {
   const editor = useAgentSettingsEditor();
-  const quality = editor.settings?.executionQuality;
+  const settings = editor.settings;
 
-  if (!quality) {
+  if (!settings) {
     return (
       <SettingsPage title="Execution">
         <SettingsUnavailable
@@ -167,12 +165,17 @@ export function ExecutionSection() {
     );
   }
 
+  const { executionQuality: quality, autonomy } = settings;
   const save = (executionQuality: ExecutionQuality) => editor.commit({ executionQuality });
   const custom = quality.preset === "custom";
+  const budget = resolveExecutionBudget(quality);
   const blurb =
     quality.preset === "custom"
       ? "Your own budget, field by field."
       : `${EXECUTION_PRESET_LABELS[quality.preset]}: ${EXECUTION_PRESET_BLURBS[quality.preset]}.`;
+  // Changing the passes of a fixed preset makes it Custom, started from that preset's budget.
+  const setPasses = (qaPasses: number) =>
+    save({ preset: "custom", custom: clampExecutionBudget({ ...budget, qaPasses }) });
 
   return (
     <SettingsPage
@@ -191,6 +194,9 @@ export function ExecutionSection() {
             onChange={(preset) => save({ preset, custom: quality.custom })}
           />
         </SettingsRow>
+        <SettingsRow label="Autonomous QA passes" hint={passesHint(budget.qaPasses)}>
+          <PassesStepper value={budget.qaPasses} onChange={setPasses} />
+        </SettingsRow>
         {custom ? (
           <CustomBudgetRows
             value={quality.custom}
@@ -199,7 +205,7 @@ export function ExecutionSection() {
         ) : (
           <div className="flex items-start gap-4 px-3 py-2 text-xs leading-[15px] text-fg-3">
             <span data-testid="default-quality-detail" className="min-w-0 flex-1 text-pretty">
-              {describeBudget(resolveExecutionBudget(quality))}.
+              {describeBudget(budget)}.
             </span>
             <span className="shrink-0">
               <SettingsLink onClick={() => save({ preset: "custom", custom: quality.custom })}>
@@ -209,6 +215,7 @@ export function ExecutionSection() {
           </div>
         )}
       </SettingsGroup>
+      <AutonomyGroup autonomy={autonomy} onChange={(autonomy) => editor.commit({ autonomy })} />
     </SettingsPage>
   );
 }

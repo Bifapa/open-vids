@@ -48,6 +48,7 @@ async function boot(search: string, answer: Promise<Response>) {
 }
 
 const theme = () => document.documentElement.dataset.theme;
+const density = () => document.documentElement.dataset.density;
 /** Lets the preferences read (fetch, then the body) land. */
 async function settle() {
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
@@ -55,6 +56,7 @@ async function settle() {
 
 afterEach(() => {
   delete document.documentElement.dataset.theme;
+  delete document.documentElement.dataset.density;
   vi.unstubAllGlobals();
 });
 
@@ -91,4 +93,32 @@ it("keeps an explicit theme when the system appearance changes", async () => {
   await settle();
   scheme.set(false);
   expect(theme()).toBe("light");
+});
+
+it("applies the saved density when the preferences arrive, and follows a change at once", async () => {
+  fakeColorScheme(false);
+  await boot("", Promise.resolve(Response.json({ ...preferences("dark"), density: "compact" })));
+  expect(density()).toBeUndefined();
+  await settle();
+  expect(density()).toBe("compact");
+
+  // Settings → Appearance → Density: the store changes, the document follows before the save answers.
+  const { useAppPreferences } = await import("./appPreferences");
+  const saved = Promise.withResolvers<Response>();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => saved.promise),
+  );
+  const update = useAppPreferences.getState().update({ density: "default" });
+  expect(density()).toBe("default");
+  saved.resolve(Response.json({ ...preferences("dark"), density: "default" }));
+  await update;
+  expect(density()).toBe("default");
+});
+
+it("reads preferences that predate density as Default density", async () => {
+  fakeColorScheme(false);
+  await boot("", Promise.resolve(Response.json(preferences("dark"))));
+  await settle();
+  expect(density()).toBe("default");
 });

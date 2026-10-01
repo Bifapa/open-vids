@@ -9,6 +9,7 @@
  * of the base ones, so they follow the light overrides without being repeated. */
 
 @import "./theme-light.css";
+@import "./theme-compact.css";
 
 @theme static {
   /* ---------------------------------------------------------------- colour */
@@ -293,6 +294,8 @@
   --spacing-row-sm: 28px;
   --spacing-row: 34px;
   --spacing-row-lg: 40px;
+  /* Vertical padding of a Settings row (`py-row-pad`); Compact density halves it. */
+  --spacing-row-pad: 6px;
   /* Icon boxes: `size-icon-md`. xs inside ≤ 16 px chips, sm inline with text,
    * md 24–28 px buttons, menus and nav, lg the default glyph, xl empty states. */
   --spacing-icon-xs: 10px;

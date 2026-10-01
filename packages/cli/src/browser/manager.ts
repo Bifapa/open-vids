@@ -571,6 +571,20 @@ export function findSystemBrowser(): BrowserResult | undefined {
 // --- Public API -------------------------------------------------------------
 
 /**
+ * The browser a render can start with right now, without downloading: the
+ * `HYPERFRAMES_BROWSER_PATH` override, or the pinned headless shell in the
+ * HyperFrames cache (`ensureBrowser({ preferManagedChrome: true })` resolves to
+ * exactly these two before it would download). A system Chrome or somebody
+ * else's puppeteer cache does not count here. Never downloads or purges.
+ */
+export async function findReadyManagedBrowser(): Promise<BrowserResult | undefined> {
+  const fromEnv = findFromEnv();
+  if (fromEnv) return fromEnv;
+  if (isLinuxArm()) return findSystemBrowser();
+  return (await findFromHyperframesCache()).result;
+}
+
+/**
  * Find an existing browser without downloading.
  * Resolution: env var -> cached download -> system Chrome.
  */

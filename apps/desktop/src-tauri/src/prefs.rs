@@ -20,6 +20,7 @@ use serde_json::{json, Map, Value};
 pub const THEMES: [&str; 3] = ["system", "dark", "light"];
 pub const WORKSPACES: [&str; 3] = ["media", "story", "edit"];
 pub const LAUNCH_MODES: [&str; 2] = ["projects", "last"];
+pub const DENSITIES: [&str; 2] = ["default", "compact"];
 pub const FPS_CHOICES: [u64; 4] = [24, 25, 30, 60];
 const MAX_SIZE: u64 = 8192;
 
@@ -36,7 +37,10 @@ pub fn defaults() -> Value {
             "fps": 24
         },
         "confirmTrash": true,
-        "onLaunch": "projects"
+        "onLaunch": "projects",
+        "density": "default",
+        "updates": { "autoCheck": true },
+        "onboarding": { "completedAt": null }
     })
 }
 
@@ -145,6 +149,32 @@ fn normalize(stored: Value) -> Value {
         .and_then(Value::as_bool)
         .unwrap_or(true);
     out.insert("confirmTrash".into(), json!(confirm));
+    let density = pick_str(out.get("density"), &DENSITIES, "default");
+    out.insert("density".into(), json!(density));
+
+    // Update behaviour: only the choice is stored, the updater does not exist yet.
+    let mut updates = match out.remove("updates") {
+        Some(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+    let auto_check = updates
+        .get("autoCheck")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    updates.insert("autoCheck".into(), json!(auto_check));
+    out.insert("updates".into(), Value::Object(updates));
+
+    // First-run onboarding: when it was finished (ms since the epoch), else null.
+    let mut onboarding = match out.remove("onboarding") {
+        Some(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+    let completed_at = onboarding
+        .get("completedAt")
+        .and_then(Value::as_u64)
+        .filter(|ms| *ms > 0);
+    onboarding.insert("completedAt".into(), json!(completed_at));
+    out.insert("onboarding".into(), Value::Object(onboarding));
 
     let mut np = match out.remove("newProject") {
         Some(Value::Object(map)) => map,
@@ -257,12 +287,15 @@ mod tests {
         let path = tmp("invalid");
         std::fs::write(
             &path,
-            br#"{"theme":"neon","onLaunch":"last","future":{"x":1},"newProject":{"fps":23,"width":0,"height":1920,"openIn":"story","extra":true}}"#,
+            br#"{"theme":"neon","onLaunch":"last","density":"huge","updates":{"autoCheck":"sometimes","channel":"beta"},"future":{"x":1},"newProject":{"fps":23,"width":0,"height":1920,"openIn":"story","extra":true}}"#,
         )
         .unwrap();
         let prefs = load(&path);
         assert_eq!(prefs["theme"], "system");
         assert_eq!(prefs["onLaunch"], "last");
+        assert_eq!(prefs["density"], "default");
+        assert_eq!(prefs["updates"]["autoCheck"], true);
+        assert_eq!(prefs["updates"]["channel"], "beta");
         assert_eq!(prefs["future"]["x"], 1);
         assert_eq!(prefs["newProject"]["fps"], 24);
         assert_eq!(prefs["newProject"]["width"], 1920);
@@ -292,6 +325,51 @@ mod tests {
             .filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().ends_with(".tmp"))
             .count();
         assert_eq!(leftovers, 0);
+    }
+
+    #[test]
+    fn density_and_the_update_choice_are_stored_and_merged() {
+        let path = tmp("density");
+        std::fs::write(&path, br#"{"updates":{"channel":"beta"}}"#).unwrap();
+        let next = update(&path, &json!({"density":"compact","updates":{"autoCheck":false}})).unwrap();
+        assert_eq!(next["density"], "compact");
+        assert_eq!(next["updates"]["autoCheck"], false);
+        assert_eq!(next["updates"]["channel"], "beta");
+        assert_eq!(load(&path), next);
+        // An invalid density never lands: it reads back as the default.
+        let next = update(&path, &json!({"density":"huge"})).unwrap();
+        assert_eq!(next["density"], "default");
+        assert_eq!(next["updates"]["autoCheck"], false);
+    }
+
+    #[test]
+    fn onboarding_defaults_to_not_completed_and_keeps_unknown_keys() {
+        let path = tmp("onboarding");
+        assert_eq!(load(&path)["onboarding"], json!({"completedAt": null}));
+        let done = update(&path, &json!({"onboarding": {"completedAt": 1790000000000u64}})).unwrap();
+        assert_eq!(done["onboarding"]["completedAt"], 1790000000000u64);
+        // Unknown keys inside the group survive; a later patch that leaves
+        // completedAt out keeps it.
+        std::fs::write(
+            &path,
+            br#"{"onboarding":{"completedAt":1790000000000,"step":"models"}}"#,
+        )
+        .unwrap();
+        let next = update(&path, &json!({"theme": "dark"})).unwrap();
+        assert_eq!(next["onboarding"]["completedAt"], 1790000000000u64);
+        assert_eq!(next["onboarding"]["step"], "models");
+        // Invalid values read as not completed.
+        for bad in [r#""yes""#, "true", "0", "-5", "1.5", "[]"] {
+            std::fs::write(&path, format!(r#"{{"onboarding":{{"completedAt":{bad}}}}}"#)).unwrap();
+            assert_eq!(load(&path)["onboarding"]["completedAt"], Value::Null, "{bad}");
+        }
+        std::fs::write(&path, br#"{"onboarding":"done"}"#).unwrap();
+        assert_eq!(load(&path)["onboarding"], json!({"completedAt": null}));
+        // It can be reset (to show the onboarding again) with an explicit null.
+        let reset = update(&path, &json!({"onboarding": {"completedAt": 5}})).unwrap();
+        assert_eq!(reset["onboarding"]["completedAt"], 5);
+        let reset = update(&path, &json!({"onboarding": {"completedAt": null}})).unwrap();
+        assert_eq!(reset["onboarding"]["completedAt"], Value::Null);
     }
 
     #[test]

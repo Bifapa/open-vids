@@ -8,6 +8,7 @@ import {
   AGENT_PROTOCOL_VERSION,
   EXECUTION_BUDGETS,
   isRecord,
+  type ProviderInfo,
 } from "@hyperframes/agent-protocol";
 import { createRuntimeApp, type RuntimeApp } from "./server.js";
 import { AgentSettingsStore } from "./settings.js";
@@ -234,6 +235,371 @@ describe("runtime HTTP server", () => {
         await call("/v1/settings/jev/api-key", "POST", { apiKey: null }),
       );
       expect(removed.jev).toMatchObject({ apiKeyConfigured: false });
+    } finally {
+      await app.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("serves the provider list, stores a provider key without a project and never returns it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openvids-agent-providers-"));
+    const settingsDir = join(root, "settings");
+    const settings = new AgentSettingsStore(settingsDir);
+    const backend = new ScriptedAgentBackend();
+    const provider = (id: string, status: ProviderInfo["status"]): ProviderInfo => ({
+      id,
+      name: id,
+      authenticated: status === "connected",
+      status,
+      credentialSource: null,
+      error: null,
+      modelCount: 3,
+      keyless: false,
+      verified: false,
+    });
+    backend.providers = [provider("anthropic", "not_configured"), provider("openai", "connected")];
+    backend.providersSyncedAt = 1_700_000_000_000;
+    // The real backend reads the stored keys on refresh; the scripted one reflects them the same way.
+    backend.onRefresh = async () => {
+      const keys = await settings.providerApiKeys();
+      backend.providers = backend.providers.map((entry) =>
+        entry.id === "anthropic"
+          ? keys.has("anthropic")
+            ? { ...entry, authenticated: true, status: "connected", credentialSource: "api-key" }
+            : provider("anthropic", "not_configured")
+          : entry,
+      );
+      backend.providersSyncedAt = 1_700_000_001_000;
+    };
+    const app = createRuntimeApp({
+      backend,
+      checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
+      analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
+      research: () => new FakeResearchHost(),
+      qa: () => new FakeQaHost(),
+      settings,
+      token: "runtime-secret",
+    });
+    // Global routes: the token alone, no project headers.
+    const call = (path: string, method = "GET", body?: unknown, token = "runtime-secret") =>
+      app.request(path, {
+        method,
+        headers: { [AGENT_HEADERS.token]: `Bearer ${token}`, "content-type": "application/json" },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+      });
+    try {
+      const listed = await responseObject(await call("/v1/providers"));
+      expect(listed.syncedAt).toBe(1_700_000_000_000);
+      expect(listed.providers).toEqual(backend.providers);
+
+      expect((await call("/v1/providers/anthropic/api-key", "POST", {}, "wrong")).status).toBe(401);
+      expect((await call("/v1/providers/refresh", "POST", undefined, "wrong")).status).toBe(401);
+
+      const saved = await call("/v1/providers/anthropic/api-key", "POST", {
+        apiKey: "sk-ant-very-secret",
+      });
+      expect(saved.status).toBe(200);
+      const savedText = await saved.text();
+      expect(savedText).not.toContain("sk-ant-very-secret");
+      expect(JSON.parse(savedText)).toMatchObject({
+        syncedAt: 1_700_000_001_000,
+        providers: [
+          { id: "anthropic", status: "connected", credentialSource: "api-key" },
+          { id: "openai", status: "connected" },
+        ],
+      });
+      // The key is applied on top of OMP's credentials by the backend, which re-checked that provider live.
+      expect(backend.refreshes).toEqual([{ provider: "anthropic" }]);
+      expect((await settings.providerApiKeys()).get("anthropic")).toBe("sk-ant-very-secret");
+      expect((await stat(join(settingsDir, "provider-credentials.json"))).mode & 0o777).toBe(0o600);
+      for (const path of ["/v1/providers", "/v1/settings", "/v1/models"])
+        expect(await (await call(path)).text()).not.toContain("sk-ant-very-secret");
+
+      // A forced refresh asks the backend for everything.
+      const refreshed = await call("/v1/providers/refresh", "POST");
+      expect(refreshed.status).toBe(200);
+      expect(backend.refreshes.at(-1)).toEqual({});
+
+      // Removing a key needs no network.
+      const removed = await responseObject(
+        await call("/v1/providers/anthropic/api-key", "POST", { apiKey: null }),
+      );
+      expect(removed.providers).toMatchObject([
+        { id: "anthropic", status: "not_configured", credentialSource: null },
+        { id: "openai", status: "connected" },
+      ]);
+      expect(backend.refreshes.at(-1)).toEqual({ provider: "anthropic", offline: true });
+      expect((await settings.providerApiKeys()).size).toBe(0);
+
+      // Bad requests change nothing.
+      const refreshCount = backend.refreshes.length;
+      expect((await call("/v1/providers/anthropic/api-key", "POST", {})).status).toBe(400);
+      expect(
+        (await call("/v1/providers/anthropic/api-key", "POST", { apiKey: "a b" })).status,
+      ).toBe(400);
+      expect((await call("/v1/providers/anthropic/api-key", "POST", { apiKey: 5 })).status).toBe(
+        400,
+      );
+      expect(
+        (await call("/v1/providers/nonesuch/api-key", "POST", { apiKey: "sk-1" })).status,
+      ).toBe(400);
+      expect((await call("/v1/providers/.._x/api-key", "POST", { apiKey: "sk-1" })).status).toBe(
+        400,
+      );
+      expect((await call("/v1/providers/anthropic/api-key", "GET")).status).toBe(404);
+      expect((await settings.providerApiKeys()).size).toBe(0);
+      expect(backend.refreshes.length).toBe(refreshCount);
+
+      // The Jev check needs no project: global, and it still reports what is missing while Jev is off.
+      expect(await responseObject(await call("/v1/settings/jev/test", "POST", {}))).toMatchObject({
+        ok: false,
+      });
+    } finally {
+      await app.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("drives an in-app sign-in over global routes: start, poll, answer, cancel, sign out, without echoing a code", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openvids-agent-oauth-"));
+    const backend = new ScriptedAgentBackend();
+    backend.oauthProviders.add("anthropic");
+    backend.oauthProviders.add("github-copilot");
+    const signedOut: string[] = [];
+    backend.onSignOut = (provider) => void signedOut.push(provider);
+    const listener = { open: false };
+    const answers: string[] = [];
+    backend.loginRunner = async (loginId, controller) => {
+      listener.open = true;
+      try {
+        if (loginId === "github-copilot-login") {
+          answers.push(await controller.onPrompt({ message: "GitHub Enterprise domain?" }));
+          controller.onAuth({
+            url: "https://github.example/device",
+            instructions: "Enter code: ABCD-1234",
+          });
+        } else {
+          controller.onAuth({ url: "https://claude.example/authorize?state=s" });
+          answers.push(await controller.onPrompt({ message: "Paste the code", secret: true }));
+        }
+        await new Promise<never>((_resolve, reject) =>
+          controller.signal.addEventListener("abort", () => reject(new Error("stopped")), {
+            once: true,
+          }),
+        );
+      } finally {
+        listener.open = false;
+      }
+    };
+    const app = createRuntimeApp({
+      backend,
+      checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
+      analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
+      research: () => new FakeResearchHost(),
+      qa: () => new FakeQaHost(),
+      settings: new AgentSettingsStore(join(root, "settings")),
+      token: "runtime-secret",
+    });
+    // Global routes: the token alone, no project headers.
+    const call = (path: string, method = "GET", body?: unknown, token = "runtime-secret") =>
+      app.request(path, {
+        method,
+        headers: { [AGENT_HEADERS.token]: `Bearer ${token}`, "content-type": "application/json" },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+      });
+    try {
+      for (const [path, method] of [
+        ["/v1/providers/anthropic/oauth/login", "POST"],
+        ["/v1/providers/anthropic/oauth/logout", "POST"],
+        ["/v1/oauth/logins/abcdefgh12345678", "GET"],
+        ["/v1/oauth/logins/abcdefgh12345678/input", "POST"],
+        ["/v1/oauth/logins/abcdefgh12345678/cancel", "POST"],
+      ] as const)
+        expect((await call(path, method, method === "GET" ? undefined : {}, "wrong")).status).toBe(
+          401,
+        );
+
+      const started = await call("/v1/providers/anthropic/oauth/login", "POST");
+      expect(started.status).toBe(200);
+      const state = await responseObject(started);
+      expect(state).toMatchObject({
+        provider: "anthropic",
+        status: "pending",
+        flow: "browser",
+        authUrl: "https://claude.example/authorize?state=s",
+        prompt: { optional: true, secret: true },
+        error: null,
+      });
+      const id = String(state.id);
+      expect(listener.open).toBe(true);
+
+      // Starting again while it runs returns the same sign-in.
+      expect(
+        (await responseObject(await call("/v1/providers/anthropic/oauth/login", "POST", {}))).id,
+      ).toBe(id);
+      expect(await responseObject(await call(`/v1/oauth/logins/${id}`))).toMatchObject({
+        id,
+        status: "pending",
+      });
+
+      // The pasted answer reaches the runner and is never sent back.
+      const answered = await call(`/v1/oauth/logins/${id}/input`, "POST", {
+        text: "pasted-secret-code-123",
+      });
+      expect(answered.status).toBe(200);
+      expect(await answered.text()).not.toContain("pasted-secret-code-123");
+      expect(answers).toEqual(["pasted-secret-code-123"]);
+      expect(await (await call(`/v1/oauth/logins/${id}`)).text()).not.toContain(
+        "pasted-secret-code-123",
+      );
+      // Nothing is waiting for another answer.
+      expect((await call(`/v1/oauth/logins/${id}/input`, "POST", { text: "again" })).status).toBe(
+        409,
+      );
+      expect((await call(`/v1/oauth/logins/${id}/input`, "POST", {})).status).toBe(400);
+      expect((await call(`/v1/oauth/logins/${id}/input`, "POST", { text: 5 })).status).toBe(400);
+
+      // Cancelling stops the runner and frees its listener before answering.
+      const cancelled = await responseObject(await call(`/v1/oauth/logins/${id}/cancel`, "POST"));
+      expect(cancelled).toMatchObject({ id, status: "cancelled", prompt: null });
+      expect(listener.open).toBe(false);
+      expect(
+        (await responseObject(await call(`/v1/oauth/logins/${id}/cancel`, "POST"))).status,
+      ).toBe("cancelled");
+
+      // A required question comes first for a provider that asks one; the flow can be chosen.
+      const asked = await responseObject(
+        await call("/v1/providers/github-copilot/oauth/login", "POST", { flow: "device" }),
+      );
+      expect(asked).toMatchObject({ status: "needs_input", flow: "device", authUrl: null });
+      expect((asked.prompt as Record<string, unknown>).optional).toBe(false);
+      const next = await responseObject(
+        await call(`/v1/oauth/logins/${String(asked.id)}/input`, "POST", { text: "corp.example" }),
+      );
+      expect(next.status).toBe("pending");
+      await expect
+        .poll(
+          async () =>
+            (await responseObject(await call(`/v1/oauth/logins/${String(asked.id)}`))).deviceCode,
+        )
+        .toBe("ABCD-1234");
+      await call(`/v1/oauth/logins/${String(asked.id)}/cancel`, "POST");
+
+      // Sign out answers with the fresh provider list.
+      const out = await call("/v1/providers/anthropic/oauth/logout", "POST");
+      expect(out.status).toBe(200);
+      expect(await responseObject(out)).toHaveProperty("providers");
+      expect(signedOut).toEqual(["anthropic"]);
+
+      // Refusals.
+      const unsupported = await call("/v1/providers/google/oauth/login", "POST");
+      expect(unsupported.status).toBe(400);
+      expect(await responseObject(unsupported)).toMatchObject({
+        error: { code: "invalid_request" },
+      });
+      expect(
+        (await call("/v1/providers/anthropic/oauth/login", "POST", { flow: "telepathy" })).status,
+      ).toBe(400);
+      expect((await call("/v1/providers/.._x/oauth/login", "POST")).status).toBe(400);
+      expect((await call("/v1/providers/.._x/oauth/logout", "POST")).status).toBe(400);
+      const unknown = await call("/v1/oauth/logins/abcdefgh12345678");
+      expect(unknown.status).toBe(404);
+      expect(await responseObject(unknown)).toMatchObject({ error: { code: "login_not_found" } });
+      expect((await call("/v1/oauth/logins/x")).status).toBe(404);
+      expect((await call("/v1/providers/anthropic/oauth/login", "GET")).status).toBe(404);
+    } finally {
+      await app.dispose();
+      expect(listener.open).toBe(false);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("closes a sign-in's listener when the runtime shuts down", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openvids-agent-oauth-"));
+    const backend = new ScriptedAgentBackend();
+    backend.oauthProviders.add("anthropic");
+    const listener = { open: false };
+    backend.loginRunner = async (_id, controller) => {
+      listener.open = true;
+      controller.onAuth({ url: "https://claude.example/authorize" });
+      try {
+        await new Promise<never>((_resolve, reject) =>
+          controller.signal.addEventListener("abort", () => reject(new Error("stopped")), {
+            once: true,
+          }),
+        );
+      } finally {
+        listener.open = false;
+      }
+    };
+    const app = createRuntimeApp({
+      backend,
+      checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
+      analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
+      research: () => new FakeResearchHost(),
+      qa: () => new FakeQaHost(),
+      settings: new AgentSettingsStore(join(root, "settings")),
+      token: "runtime-secret",
+    });
+    try {
+      const response = await app.request("/v1/providers/anthropic/oauth/login", {
+        method: "POST",
+        headers: { [AGENT_HEADERS.token]: "Bearer runtime-secret" },
+      });
+      expect(response.status).toBe(200);
+      expect(listener.open).toBe(true);
+    } finally {
+      await app.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+    expect(listener.open).toBe(false);
+  });
+
+  it("stores the autonomy settings group, merges partial updates and rejects bad values", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openvids-agent-autonomy-"));
+    const app = createRuntimeApp({
+      backend: new ScriptedAgentBackend(),
+      checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
+      analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
+      research: () => new FakeResearchHost(),
+      qa: () => new FakeQaHost(),
+      settings: new AgentSettingsStore(join(root, "settings")),
+      token: "runtime-secret",
+    });
+    const call = (method: string, body?: unknown) =>
+      app.request("/v1/settings", {
+        method,
+        headers: {
+          [AGENT_HEADERS.token]: "Bearer runtime-secret",
+          "content-type": "application/json",
+        },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+      });
+    try {
+      expect((await responseObject(await call("GET"))).autonomy).toEqual({
+        defaultIntent: "plan",
+        askBeforeLockedEdits: true,
+        askBeforeDownloads: true,
+      });
+      const patched = await responseObject(
+        await call("PATCH", { autonomy: { defaultIntent: "edit", askBeforeLockedEdits: false } }),
+      );
+      expect(patched.autonomy).toEqual({
+        defaultIntent: "edit",
+        askBeforeLockedEdits: false,
+        askBeforeDownloads: true,
+      });
+      expect((await responseObject(await call("GET"))).autonomy).toEqual(patched.autonomy);
+      expect((await call("PATCH", { autonomy: { defaultIntent: "autopilot" } })).status).toBe(400);
+      expect((await call("PATCH", { autonomy: { askBeforeDownloads: "no" } })).status).toBe(400);
     } finally {
       await app.dispose();
       await rm(root, { recursive: true, force: true });

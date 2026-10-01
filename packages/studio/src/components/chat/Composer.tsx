@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { PaperPlaneRight, Stop, TreeStructure, X } from "@phosphor-icons/react";
 import { useAgentStore } from "../../agent/agentContext";
-import { activeThread, runningTurn } from "../../agent/agentSelectors";
+import { activeThread, hasNoUsableModel, runningTurn } from "../../agent/agentSelectors";
 import { draftChatSummary } from "../../agent/agentDraftChat";
 import { NEW_CHAT_DRAFT } from "../../agent/agentStore";
 import { useComposerContextStore } from "../../agent/composerContext";
@@ -9,6 +9,7 @@ import { useDockLayoutStore } from "../dock/dockLayoutStore";
 import { cn } from "../ui/cn";
 import { Kbd } from "../ui/Kbd";
 import { AgentsMenu } from "./AgentsMenu";
+import { ConnectModelButton, MANUAL_EDITOR_NOTE, NO_MODEL_TITLE } from "./ConnectModel";
 import { chatAgentName } from "./AgentMonogram";
 import { ComposerPortalContext, chipIconClass, chipLabelClass } from "./composerParts";
 import { ContextChips } from "./ContextChips";
@@ -33,6 +34,7 @@ export function Composer() {
   const chat = useAgentStore((state) => state.chat);
   const draftChoices = useAgentStore((state) => state.draftChoices);
   const settings = useAgentStore((state) => state.settings);
+  const models = useAgentStore((state) => state.models);
   const draft = useAgentStore((state) => state.drafts[state.chatId ?? NEW_CHAT_DRAFT] ?? "");
   const pending = useAgentStore((state) => state.pending);
   const notice = useAgentStore((state) => state.notice);
@@ -67,7 +69,9 @@ export function Composer() {
   const hasText = draft.trim().length > 0;
   // The new-chat draft has no chat yet: its first message creates it.
   const isDraft = chatId === null;
-  const canSubmit = hasText && !busy && !blockedBy && (chat !== null || isDraft);
+  // The runtime lists no usable model: nothing can run, and the panel says how to connect one.
+  const noModel = hasNoUsableModel(models);
+  const canSubmit = hasText && !busy && !blockedBy && !noModel && (chat !== null || isDraft);
   // The chips edit the open chat, or in the draft the choices its chat will be created with.
   const summary = chat?.chat ?? (isDraft ? draftChatSummary(draftChoices, settings) : null);
 
@@ -108,13 +112,15 @@ export function Composer() {
     void submit();
   };
 
-  const placeholder = blockedBy
-    ? "Waiting for the other chat…"
-    : running
-      ? "Steer the current task…"
-      : storyShown
-        ? "Describe the story you want, or what to change in it…"
-        : "Describe an edit…";
+  const placeholder = noModel
+    ? "Connect a model to write to the agents"
+    : blockedBy
+      ? "Waiting for the other chat…"
+      : running
+        ? "Steer the current task…"
+        : storyShown
+          ? "Describe the story you want, or what to change in it…"
+          : "Describe an edit…";
 
   const mode = running ? (hasText ? "steer" : "stop") : "send";
 
@@ -139,6 +145,17 @@ export function Composer() {
             >
               <X size={12} aria-hidden />
             </button>
+          </div>
+        )}
+        {noModel && chat !== null && chat.messages.length > 0 && (
+          <div
+            className="mx-3 mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-3"
+            data-testid="composer-no-model"
+          >
+            <span>
+              <span className="font-medium text-fg-2">{NO_MODEL_TITLE}.</span> {MANUAL_EDITOR_NOTE}
+            </span>
+            <ConnectModelButton />
           </div>
         )}
         {blockedBy && (
@@ -175,7 +192,7 @@ export function Composer() {
             ref={areaRef}
             rows={1}
             value={draft}
-            disabled={blockedBy !== null || (chat === null && !isDraft)}
+            disabled={blockedBy !== null || noModel || (chat === null && !isDraft)}
             placeholder={placeholder}
             spellCheck
             autoComplete="off"

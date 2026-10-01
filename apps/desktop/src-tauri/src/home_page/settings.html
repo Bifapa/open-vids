@@ -12,8 +12,9 @@
     </script>
     <script src="/assets/shared.js"></script>
     <script>
-      /* The theme the page underneath shows (?theme=), before first paint. */
+      /* The theme and density the page underneath shows (?theme=, ?density=), before first paint. */
       OV.applyTheme(new URLSearchParams(location.search).get("theme") || "system");
+      OV.applyDensity(new URLSearchParams(location.search).get("density") || "default");
     </script>
   </head>
   <body class="st-body">
@@ -40,6 +41,14 @@
     <script>
       OV.mountSprite();
     </script>
+    <script src="/assets/settings-core.js"></script>
+    <script src="/assets/settings-general.js"></script>
+    <script src="/assets/settings-agents.js"></script>
+    <script src="/assets/settings-providers.js"></script>
+    <script src="/assets/settings-signin.js"></script>
+    <script src="/assets/settings-jev.js"></script>
+    <script src="/assets/settings-assets.js"></script>
+    <script src="/assets/settings-execution.js"></script>
     <script src="/assets/settings.js"></script>
   </body>
 </html>

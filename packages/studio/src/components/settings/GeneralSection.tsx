@@ -208,6 +208,13 @@ export function GeneralSection() {
             onCommit={(confirmTrash) => save({ confirmTrash })}
           />
         </SettingsRow>
+        <SettingsRow label="Check for updates automatically">
+          <Toggle
+            label="Check for updates automatically"
+            checked={preferences.updates.autoCheck}
+            onCommit={(autoCheck) => save({ updates: { autoCheck } })}
+          />
+        </SettingsRow>
       </SettingsGroup>
       {error && (
         <p role="alert" className="mx-0.5 mt-2 text-xs text-error">

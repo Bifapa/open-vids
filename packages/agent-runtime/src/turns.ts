@@ -30,6 +30,7 @@ import type {
 import { Orchestrator, type TurnAgentSetup } from "./agents/orchestrator.js";
 import { directorInstructions, jevInstructions, specialistInstructions } from "./agents/roles.js";
 import { renderTeam, resolveTurnSetup } from "./agents/setup.js";
+import { isLockRefusal, lockedEditAdvice } from "./autonomy.js";
 import { buildHostTools, type ToolAvailability } from "./agents/tools.js";
 import { TurnEditing } from "./editing/executor.js";
 import { isEditingToolName } from "./editing/tools.js";
@@ -526,6 +527,13 @@ export class TurnRunner {
     return intentRefusal(run.intent, toolName);
   }
 
+  /** The user's "ask before changing locked sections" setting for the turn that is running (true when none is). */
+  private askBeforeLockedEdits(chatId: string): boolean {
+    const run = this.active;
+    if (!run || run.chatId !== chatId) return true;
+    return run.setup?.autonomy.askBeforeLockedEdits ?? true;
+  }
+
   /**
    * Closes every transaction a previous run could not: turns still "running" in the log (the runtime died mid-turn)
    * become "interrupted", and checkpoints still "active" (a turn ended while Studio was unreachable) are closed and
@@ -690,6 +698,8 @@ export class TurnRunner {
             storyOptions: run.storyOptions,
             intent: run.intent,
             userTexts: () => this.userTexts(run.chatId),
+            turnUserTexts: () => this.userTexts(run.chatId, run.turn.id),
+            askBeforeDownloads: setup.autonomy.askBeforeDownloads,
             model: () => this.researchModel(run, setup),
           })
         : null;
@@ -935,11 +945,14 @@ export class TurnRunner {
   }
 
   /** The model the Research run uses now (`provider/modelId`), recorded in the provenance of what it imports. */
-  /** Everything the user wrote in the chat (first prompts and steering of every turn): the links they sent. */
-  private userTexts(chatId: string): string[] {
+  /**
+   * Everything the user wrote in the chat (first prompts and steering of every turn): the links they sent. With a
+   * `turnId`, only what they wrote in that turn (its prompt and steering).
+   */
+  private userTexts(chatId: string, turnId?: string): string[] {
     const messages = this.chats.get(chatId)?.messages ?? [];
     return messages.flatMap((message) =>
-      message.role === "user"
+      message.role === "user" && (turnId === undefined || message.turnId === turnId)
         ? message.parts.flatMap((part) => (part.type === "text" ? [part.text] : []))
         : [],
     );
@@ -981,6 +994,7 @@ export class TurnRunner {
         instructions,
         hostTools,
         fileWriteRefusal: (toolName: string) => this.fileWriteRefusal(chatId, toolName),
+        askBeforeLockedEdits: () => this.askBeforeLockedEdits(chatId),
       }),
     });
   }
@@ -995,12 +1009,33 @@ export class TurnRunner {
       instructions: jevInstructions(),
       hostTools: [],
       fileWriteRefusal: (toolName: string) => this.fileWriteRefusal(chatId, toolName),
+      askBeforeLockedEdits: () => this.askBeforeLockedEdits(chatId),
       ...(credentials && { credentials }),
     });
   }
 
-  /** Host tools are bound to a session for many turns; each call goes to the orchestrator of the running turn. */
+  /**
+   * Host tools are bound to a session for many turns; each call goes to the orchestrator of the running turn. A
+   * refusal the editing or story service made because of a lock or a user decision carries the user's instruction for
+   * such items (stop and ask, or leave it and report; see autonomy.ts).
+   */
   private async dispatchTool(
+    chatId: string,
+    caller: AgentId,
+    name: string,
+    args: unknown,
+    signal: AbortSignal,
+    progress?: (percent: number) => void,
+  ): Promise<HostToolResult> {
+    const result = await this.dispatchToolCall(chatId, caller, name, args, signal, progress);
+    if (!result.isError || !isLockRefusal(result.text)) return result;
+    return {
+      ...result,
+      text: `${result.text}\n\n${lockedEditAdvice(this.askBeforeLockedEdits(chatId))}`,
+    };
+  }
+
+  private async dispatchToolCall(
     chatId: string,
     caller: AgentId,
     name: string,

@@ -41,12 +41,127 @@ never part of a checkpoint; the path guard also forbids it. A crash leaves a run
 runs) in the log; on load the runs and the turn are closed as `interrupted` and the checkpoint is
 recovered from project history.
 
-Global (per-user) agent settings — Director defaults, per-specialist defaults, Jev — live in
-`OPENVIDS_AGENT_SETTINGS_DIR` (default `~/.openvids/agent`): `settings.json` and
-`jev-credentials.json`, both mode 0600. The Jev API key is never returned by the API
+Global (per-user) agent settings — Director defaults, per-specialist defaults, Jev, Autonomy — live in
+`OPENVIDS_AGENT_SETTINGS_DIR` (default `~/.openvids/agent`): `settings.json`, `jev-credentials.json` and
+`provider-credentials.json`, all mode 0600 (the directory 0700), re-read from disk on every access so several runtime
+processes share them. The Jev API key is never returned by the API
 (`apiKeyConfigured` only) and is handed to one ephemeral backend session at a time, in a private
 in-memory credential store, so it never replaces the credentials other agents use. The global Execution Quality default
-(see Render QA and Execution Quality) is part of `settings.json`.
+(see Render QA and Execution Quality) and the Autonomy group (see Autonomy) are part of `settings.json`; a file
+from before either existed reads with its defaults and gains it on the next write. The per-provider API keys in
+`provider-credentials.json` are described under Providers and credentials.
+
+## Providers and credentials
+
+The model catalog and the credentials come from the user's OMP setup (`~/.omp/agent`, read-only for OpenVids) **plus the
+API keys the user enters in OpenVids**, so a user with no OMP login can still use the agents.
+
+- **Storage.** `provider-credentials.json` in the settings directory: `{"version":1,"apiKeys":{"<provider>":"<key>"}}`,
+  mode 0600. A key is never returned by any route, never logged and never put into an error message.
+- **Applying.** The OMP adapter applies the stored keys as the SDK's _runtime key overrides_
+  (`AuthStorage.keys.setRuntime`). That is an in-memory `Map` in the SDK: nothing is written to `~/.omp/agent` (checked in
+  the SDK source and by scanning a scratch home after setting a key). The override wins over every OMP credential of the
+  same provider, so a key saved here replaces the OMP login for that provider until it is removed. The catalog, every
+  agent session and Jev's provider-login mode use it (their credential layer is the shared one), and a key change takes
+  effect without a restart: the backend re-reads the file on every catalog/provider/session access (one small file),
+  applies the difference and rebuilds the catalog, so a key saved by the desktop's runtime reaches a project runtime too.
+  (Jev's own API-key mode still uses a private per-session store.) The SDK keeps its own files in the OMP agent
+  directory as it always did (`agent.db`, the `models.db` catalog cache, logs) — they hold no OpenVids key.
+- **Provider list** (`ProviderInfo`): `id`, `name` (plain display name), `authenticated`, `status`
+  (`connected` | `not_configured` | `error` | `signin_required`), `credentialSource` (`omp` | `api-key` | `oauth` | null), `error`
+  (a one-line reason), `modelCount`, `keyless` (a local provider that needs no credential) and `verified` (a live model
+  list was fetched with the credential in this process). Status is derived in `src/omp/provider-status.ts` from what the
+  SDK can tell: the winning layer of its credential cascade (`keys.source`), the registry's per-provider discovery state,
+  and the tombstones of torn-down OAuth credentials (`credentials.listDisabled`). `signin_required` is reported only
+  when such a tombstone exists (an OAuth refresh failed definitively) and nothing else authenticates the provider; a
+  logout (`deleted by user`) is not one, and an expired token that has not been refreshed yet is invisible. `error` means
+  the credential exists but the provider's live model list failed: the SDK swallows HTTP errors of built-in providers, so
+  a rejected key, no network and an outage look alike, which is why it is raised for OMP's own credentials only with an
+  explicit message or a 401/403 from a models.yml provider, and also for a key stored in OpenVids (the key the user just
+  typed) when the listing failed silently. While a refresh is running nothing is concluded. The models of an `error`
+  provider stay usable.
+- **Routes** (all global: token only, no project): `GET /v1/providers` → `{providers, syncedAt}`;
+  `POST /v1/providers/refresh` re-reads OMP's credentials and the stored keys and re-fetches every provider's live model
+  list; `POST /v1/providers/:provider/api-key` with `{"apiKey": string | null}` saves or removes the key, then refreshes
+  that provider (a new key is checked live — it can take up to the SDK's discovery timeout when the provider is
+  unreachable; a removal does not touch the network). Both answer with the fresh provider list. An unknown provider
+  (setting) or an invalid id is `400 invalid_request`. `POST /v1/settings/jev/test` is global too: it runs in an empty
+  scratch directory, so it needs no project.
+
+### In-app OAuth sign-in
+
+A provider that offers a sign-in (`ProviderInfo.oauth`, not null) can be signed in to from the app. The runtime drives the
+SDK's own login (`AuthStorage.oauth.login`) and **never opens a browser**: the UI or the desktop shell opens the URL the
+state carries.
+
+- **Where it is stored.** OpenVids' own `auth.db` (SQLite, `<settings dir>/auth.db`, directory 0700, files 0600, same
+  schema as OMP's), never `~/.omp/agent`. The SDK's `AuthStorage` takes one credential store, so `src/omp/layered-auth-store.ts`
+  presents two as one: OMP's `agent.db` and OpenVids' `auth.db`. Reads show both (a provider with an OpenVids sign-in is
+  shown with its OpenVids credentials only, so the sign-in replaces OMP's login for that provider until it is signed out).
+  New credentials, sign-out and everything about an OpenVids row — **token refresh**, disabling after a failed refresh,
+  refresh leases, rate-limit blocks — go to `auth.db` (ids of OpenVids rows are shifted by 10^12 so the two never collide).
+  The SDK's cache rows also live there. `credentialSource: "oauth"` marks a provider whose credential is such a sign-in
+  (an API key stored in OpenVids still wins over it). Sign-out blanks the tokens in the row and retires it; closing the
+  runtime checkpoints the write-ahead log. Providers are not told: a grant is revoked at the provider's account page.
+- **What still writes to OMP's database.** The layering never writes an OpenVids sign-in there. But a credential **OMP**
+  owns is still refreshed by the SDK in OMP's database, as it was before OpenVids layered anything (and as the SDK's
+  startup housekeeping does): OAuth refresh tokens rotate, so a refresh OMP's database never saw would invalidate the user's
+  OMP login. That is the one remaining write, and only for a login the user made with OMP.
+- **Both runtimes.** The home and project runtimes open the same `auth.db`; each polls both databases for another process's
+  commit (`pollExternalChanges`) when providers are listed and when a key is resolved, so a sign-in done in one is used by
+  the other without a restart. A sign-in's state (the polling surface) lives in the runtime that started it. Refresh of the
+  same credential by two runtimes is fenced by the SDK's refresh leases, which live in `auth.db` for OpenVids rows.
+- **When it is off.** `oauth` is null for every provider, and the start route answers 400, when OMP keeps its credentials in an
+  auth broker (`OMP_AUTH_BROKER_URL` or a `broker` entry in OMP's `config.yml`), when `XDG_DATA_HOME` is set (OMP's database
+  location is then not derivable), or when the layering could not be set up. OMP's credentials are then used exactly as before.
+- **Routes** (global, token only; start + poll, nothing is held open):
+  `POST /v1/providers/:provider/oauth/login` (optional body `{"flow":"browser"|"device"|"paste"}`) starts a sign-in, or returns
+  the one already running for that provider, and answers within 8 s with an `OAuthLoginState` (as soon as there is a URL or a
+  prompt to show; otherwise `pending` with `authUrl: null` and the UI polls). `GET /v1/oauth/logins/:id` polls.
+  `POST /v1/oauth/logins/:id/input` with `{"text"}` answers the prompt (a pasted code or redirect URL; never echoed).
+  `POST /v1/oauth/logins/:id/cancel` stops it (idempotent). `POST /v1/providers/:provider/oauth/logout` removes the OpenVids
+  sign-in and answers with the provider list (409 when OpenVids holds none: what OMP holds cannot be removed here).
+  Errors: 400 `invalid_request` (bad id or body, no sign-in for that provider, unsupported setup), 404 `login_not_found`,
+  409 `invalid_request` (nothing is waiting for an answer, nothing to sign out, too many sign-ins).
+- **States** (`OAuthLoginState.status`): `pending` (the user must act, or the runtime is working; an optional paste prompt
+  may be present), `needs_input` (a required prompt, e.g. GitHub Enterprise domain), `succeeded`, `failed` (`error`, one
+  line, tokens and query strings removed), `cancelled`, `expired`. A sign-in not finished in 10 minutes expires; a finished one
+  stays pollable for 10 minutes. Cancel, expiry and shutdown abort the SDK flow, whose `finally` closes the callback
+  listener; they wait at most 3 s for it. `dispose()` cancels every sign-in.
+- **Flows** (`ProviderOAuthInfo.flows`, the first is the default; read from the SDK's auth policies in
+  `src/omp/oauth-support.ts`). `browser`: the SDK listens on loopback (`127.0.0.1` and `::1` only) on the provider's port and
+  the user approves in the browser; if that port is taken it falls back to a random one, except where the provider insists
+  on its registered redirect (`fixedPort`; then a taken port is a failure with a clear message). Ports: `anthropic` 54545,
+  `openai-codex` 1455 (fixed; the Codex CLI uses the same port, hence its `device` alternative), `openrouter` 54549,
+  `google-gemini-cli` 8085, `google-antigravity` 51121, `devin` 59653, `gitlab-duo` 8080, `stencil` 54547. `device`: the user
+  opens `authUrl` and enters `deviceCode` (also in `instructions`) while the runtime polls: `github-copilot` (asks the
+  Enterprise domain first), `kimi-code`, `xai-oauth`, `muse-code`, `kilo`, `cursor`, `openai-codex` (second flow). `paste`:
+  `gitlab-duo-agent`, the user pastes the code or redirect URL back. Providers whose login is a pasted key, a prompt-driven
+  account/e-mail flow, needs a host-owned browser session or an OS URL-scheme handler (`zai`, `perplexity`, the Alibaba,
+  Xiaomi and Cloudflare logins) are not offered.
+
+## Autonomy
+
+`AgentSettings.autonomy` (`PATCH /v1/settings` with a partial `autonomy` group) holds three values, defaults `plan`, `true`,
+`true`:
+
+- `defaultIntent` (`plan` | `edit` | `ask`): the Mode chip a new chat's composer starts with. The runtime only stores it;
+  turns still use the intent the request or chat carries.
+- `askBeforeLockedEdits`: locks are never overridden — the editing and story services refuse a change to a locked or
+  hand-set item (and the file-tool guard refuses to rewrite a locked clip) whatever this says. The setting decides what the
+  agent does about it. On: the Director's `<team>` block, every delegated task (`<autonomy>`) and every such refusal
+  (`dispatchTool`: `locked` / `user_decision` tool errors; the OMP guard's refusal for `edit`/`write` of a locked clip) tell
+  it to stop work on that item, say what it wanted to change and why, and wait for the user. Off: the same places tell it to
+  leave the item alone, carry on and list what it left untouched in the final reply. It is an instruction to the model (the
+  refusal itself is enforced); it is read at the start of the turn.
+- `askBeforeDownloads`: **enforced** in the research executor. On: `import_asset` and `read_website` with `save` are refused
+  (before Studio is asked) until the user approved in the turn — the Story workspace's "Find missing material"
+  (`storyAction: "resolve"`), or a message of that turn (prompt or steering; never assistant text or tool results) that
+  tells the agents to download/import/fetch/grab, says yes/ok/go ahead, or says add/use/take it (English and Russian, a
+  negation such as "don't download" cancels it: `approvesDownload` in `src/autonomy.ts`, a deterministic text rule like the
+  long-render guard). Approval does not carry over to later turns. Searching, inspecting pages and reading a site's style
+  stay free. Research's task and the Director's brief state the rule and ask Research to report what it found and wait. Off:
+  imports run as before.
 
 ## Multi-agent orchestration
 
@@ -391,7 +506,7 @@ emits its own events), editing tools report labelled activity rows. Role
 instructions (system prompts) come from the runtime (`src/agents/roles.ts`). Edit mode is pinned to
 path-based `replace`; skills and rules are empty; only `<project>/AGENTS.md` (or `CLAUDE.md`) is
 loaded as context. Providers, auth and model catalog come from the user's existing OMP setup
-(`~/.omp/agent`); the runtime never writes to it. A `tool_call` guard (`src/omp/path-guard.ts`)
+(`~/.omp/agent`; the runtime never writes to it) plus the API keys stored in OpenVids (see Providers and credentials). A `tool_call` guard (`src/omp/path-guard.ts`)
 blocks every path outside the project or inside `.hyperframes/`, checks each target of OMP's `a;b` /
 `a,b` / `a b` / brace path fan-out, and fails closed for `edit`/`write` calls whose target it cannot
 read. The guard is bound through `preloadedPreparedExtensions`: OMP silently drops `extensions` when

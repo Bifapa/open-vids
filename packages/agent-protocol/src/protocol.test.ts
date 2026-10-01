@@ -1,22 +1,32 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_AUTONOMY_SETTINGS,
+  LIMITS,
+  PROVIDER_CREDENTIAL_SOURCES,
   SseParser,
   applyChatEvent,
   emptyChatState,
   encodeSseMessage,
   foldChatEvents,
   isNextEvent,
+  isOAuthLoginId,
+  isOAuthLoginState,
+  isProviderId,
   parseReference,
   parseRevertTurn,
   parseSetJevApiKey,
+  parseSetProviderApiKey,
+  parseStartOAuthLogin,
   parseStartTurn,
   parseSteerTurn,
+  parseSubmitOAuthLoginInput,
   parseUpdateAgentSettings,
   parseUpdateChat,
   type AgentRun,
   type AssistantMessage,
   type ChatEvent,
   type ChatSummary,
+  type OAuthLoginState,
   type TurnSummary,
 } from "./index.js";
 
@@ -493,5 +503,129 @@ describe("agent configuration validators", () => {
     });
     expect(parseSetJevApiKey({ apiKey: "sk 123" }).ok).toBe(false);
     expect(parseSetJevApiKey({ apiKey: null })).toEqual({ ok: true, value: { apiKey: null } });
+  });
+
+  it("accepts thinking off for the Director, specialists and Jev", () => {
+    expect(
+      parseUpdateAgentSettings({
+        director: { model: null, thinking: "off" },
+        specialists: {
+          vision: { model: null, thinking: "off", allowedModels: [], enabledByDefault: false },
+        },
+        jev: { thinking: "off" },
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        director: { model: null, thinking: "off" },
+        specialists: {
+          vision: { model: null, thinking: "off", allowedModels: [], enabledByDefault: false },
+        },
+        jev: { thinking: "off" },
+      },
+    });
+  });
+
+  it("validates the autonomy settings group", () => {
+    expect(DEFAULT_AUTONOMY_SETTINGS).toEqual({
+      defaultIntent: "plan",
+      askBeforeLockedEdits: true,
+      askBeforeDownloads: true,
+    });
+    expect(
+      parseUpdateAgentSettings({
+        autonomy: { defaultIntent: "ask", askBeforeDownloads: false },
+      }),
+    ).toEqual({
+      ok: true,
+      value: { autonomy: { defaultIntent: "ask", askBeforeDownloads: false } },
+    });
+    expect(parseUpdateAgentSettings({ autonomy: {} })).toEqual({
+      ok: true,
+      value: { autonomy: {} },
+    });
+    expect(parseUpdateAgentSettings({ autonomy: { defaultIntent: "yolo" } }).ok).toBe(false);
+    expect(parseUpdateAgentSettings({ autonomy: { askBeforeLockedEdits: "yes" } }).ok).toBe(false);
+    expect(parseUpdateAgentSettings({ autonomy: { askBeforeDownloads: 1 } }).ok).toBe(false);
+    expect(parseUpdateAgentSettings({ autonomy: [] }).ok).toBe(false);
+  });
+
+  it("validates a provider API key body and provider ids", () => {
+    expect(parseSetProviderApiKey({ apiKey: " sk-ant-123 " })).toEqual({
+      ok: true,
+      value: { apiKey: "sk-ant-123" },
+    });
+    expect(parseSetProviderApiKey({ apiKey: null })).toEqual({ ok: true, value: { apiKey: null } });
+    expect(parseSetProviderApiKey({ apiKey: "" }).ok).toBe(false);
+    expect(parseSetProviderApiKey({ apiKey: "sk 123" }).ok).toBe(false);
+    expect(parseSetProviderApiKey({ apiKey: 7 }).ok).toBe(false);
+    expect(parseSetProviderApiKey({}).ok).toBe(false);
+    expect(parseSetProviderApiKey(undefined).ok).toBe(false);
+    expect(parseSetProviderApiKey({ apiKey: "x".repeat(LIMITS.apiKeyChars + 1) }).ok).toBe(false);
+    const rejected = parseSetProviderApiKey({ apiKey: "secret value" });
+    expect(rejected.ok ? "" : rejected.message).not.toContain("secret");
+
+    for (const id of ["anthropic", "openai-codex", "llama.cpp", "zai", "a"])
+      expect(isProviderId(id)).toBe(true);
+    for (const id of ["", ".", "..", "__proto__", "a/b", "a b", "-x", "é", "x".repeat(65)])
+      expect(isProviderId(id)).toBe(false);
+    expect(isProviderId(undefined)).toBe(false);
+  });
+
+  it("validates the in-app sign-in requests and the state a runtime answers with", () => {
+    // A sign-in's credential source is its own value, next to OMP's and an API key.
+    expect(PROVIDER_CREDENTIAL_SOURCES).toEqual(["omp", "api-key", "oauth"]);
+
+    expect(parseStartOAuthLogin(undefined)).toEqual({ ok: true, value: {} });
+    expect(parseStartOAuthLogin(null)).toEqual({ ok: true, value: {} });
+    expect(parseStartOAuthLogin({})).toEqual({ ok: true, value: {} });
+    expect(parseStartOAuthLogin({ flow: "device" })).toEqual({
+      ok: true,
+      value: { flow: "device" },
+    });
+    expect(parseStartOAuthLogin({ flow: "telepathy" }).ok).toBe(false);
+    expect(parseStartOAuthLogin([]).ok).toBe(false);
+
+    expect(
+      parseSubmitOAuthLoginInput({ text: " http://localhost:54545/callback?code=abc " }),
+    ).toEqual({
+      ok: true,
+      value: { text: "http://localhost:54545/callback?code=abc" },
+    });
+    expect(parseSubmitOAuthLoginInput({ text: "   " })).toEqual({ ok: true, value: { text: "" } });
+    for (const body of [undefined, {}, { text: 5 }])
+      expect(parseSubmitOAuthLoginInput(body).ok).toBe(false);
+    const tooLong = parseSubmitOAuthLoginInput({ text: "x".repeat(LIMITS.oauthInputChars + 1) });
+    expect(tooLong.ok).toBe(false);
+    // A rejected answer is never quoted back.
+    const rejected = parseSubmitOAuthLoginInput({ text: "a".repeat(LIMITS.oauthInputChars + 1) });
+    expect(rejected.ok ? "" : rejected.message).not.toContain("aaaa");
+
+    for (const id of ["0123456789abcdef0123456789abcdef", "abcdefgh", "A_b-c-d-e-f"])
+      expect(isOAuthLoginId(id)).toBe(true);
+    for (const id of ["", "short", "a/b/c/d/e/f", "../../x-x-x-x", "a b c d e f g", "x".repeat(65)])
+      expect(isOAuthLoginId(id)).toBe(false);
+
+    const state: OAuthLoginState = {
+      id: "0123456789abcdef0123456789abcdef",
+      provider: "anthropic",
+      status: "pending",
+      flow: "browser",
+      authUrl: "https://claude.example/authorize",
+      instructions: null,
+      deviceCode: null,
+      progress: null,
+      prompt: { message: "Paste the code", placeholder: null, secret: true, optional: true },
+      error: null,
+      startedAt: 1,
+      expiresAt: 2,
+    };
+    expect(isOAuthLoginState(state)).toBe(true);
+    expect(isOAuthLoginState({ ...state, prompt: null })).toBe(true);
+    expect(isOAuthLoginState({ ...state, status: "done" })).toBe(false);
+    expect(isOAuthLoginState({ ...state, flow: "magic" })).toBe(false);
+    expect(isOAuthLoginState({ ...state, id: "x" })).toBe(false);
+    expect(isOAuthLoginState({ ...state, prompt: { message: "x" } })).toBe(false);
+    expect(isOAuthLoginState(null)).toBe(false);
   });
 });

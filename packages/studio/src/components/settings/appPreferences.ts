@@ -11,11 +11,13 @@ export const APP_THEMES = ["system", "dark", "light"] as const;
 export const NEW_PROJECT_WORKSPACES = ["media", "story", "edit"] as const;
 export const LAUNCH_MODES = ["projects", "last"] as const;
 export const NEW_PROJECT_FPS = [24, 25, 30, 60] as const;
+export const APP_DENSITIES = ["default", "compact"] as const;
 
 export type AppTheme = (typeof APP_THEMES)[number];
 export type NewProjectWorkspace = (typeof NEW_PROJECT_WORKSPACES)[number];
 export type LaunchMode = (typeof LAUNCH_MODES)[number];
 export type NewProjectFps = (typeof NEW_PROJECT_FPS)[number];
+export type AppDensity = (typeof APP_DENSITIES)[number];
 
 export interface NewProjectPreferences {
   location: string;
@@ -25,12 +27,19 @@ export interface NewProjectPreferences {
   fps: NewProjectFps;
 }
 
+export interface UpdatePreferences {
+  /** Stored only: the updater does not exist yet. */
+  autoCheck: boolean;
+}
+
 export interface AppPreferences {
   version: 1;
   theme: AppTheme;
   newProject: NewProjectPreferences;
   confirmTrash: boolean;
   onLaunch: LaunchMode;
+  density: AppDensity;
+  updates: UpdatePreferences;
 }
 
 export interface AppPreferencesPatch {
@@ -38,7 +47,12 @@ export interface AppPreferencesPatch {
   newProject?: Partial<NewProjectPreferences>;
   confirmTrash?: boolean;
   onLaunch?: LaunchMode;
+  density?: AppDensity;
+  updates?: Partial<UpdatePreferences>;
 }
+
+export const DEFAULT_DENSITY: AppDensity = "default";
+export const DEFAULT_UPDATES: UpdatePreferences = { autoCheck: true };
 
 const oneOf =
   <T extends string | number>(choices: readonly T[]) =>
@@ -49,6 +63,7 @@ export const isAppTheme = oneOf(APP_THEMES);
 const isWorkspace = oneOf(NEW_PROJECT_WORKSPACES);
 const isLaunchMode = oneOf(LAUNCH_MODES);
 const isFps = oneOf(NEW_PROJECT_FPS);
+export const isAppDensity = oneOf(APP_DENSITIES);
 
 function isNewProjectPreferences(value: unknown): value is NewProjectPreferences {
   return (
@@ -61,7 +76,11 @@ function isNewProjectPreferences(value: unknown): value is NewProjectPreferences
   );
 }
 
-export function isAppPreferences(value: unknown): value is AppPreferences {
+/** The keys every version of the file has. `density` and `updates` came later and are filled in when missing. */
+function hasCoreFields(value: unknown): value is Omit<AppPreferences, "density" | "updates"> & {
+  density?: unknown;
+  updates?: unknown;
+} {
   return (
     isRecord(value) &&
     value.version === 1 &&
@@ -70,6 +89,29 @@ export function isAppPreferences(value: unknown): value is AppPreferences {
     typeof value.confirmTrash === "boolean" &&
     isLaunchMode(value.onLaunch)
   );
+}
+
+/**
+ * The preferences in a document, or null when it is not one. A document written before density and the update
+ * choice existed reads as Default density and automatic update checks, which is what the server answers too.
+ */
+export function parseAppPreferences(value: unknown): AppPreferences | null {
+  if (!hasCoreFields(value)) return null;
+  const { density, updates } = value;
+  return {
+    version: 1,
+    theme: value.theme,
+    newProject: value.newProject,
+    confirmTrash: value.confirmTrash,
+    onLaunch: value.onLaunch,
+    density: isAppDensity(density) ? density : DEFAULT_DENSITY,
+    updates: {
+      autoCheck:
+        isRecord(updates) && typeof updates.autoCheck === "boolean"
+          ? updates.autoCheck
+          : DEFAULT_UPDATES.autoCheck,
+    },
+  };
 }
 
 const PREFERENCES_URL = "/api/app/preferences";
@@ -89,8 +131,9 @@ async function requestPreferences(init?: RequestInit): Promise<AppPreferences> {
         : `Saving preferences failed (${response.status}).`;
     throw new Error(message);
   }
-  if (!isAppPreferences(body)) throw new Error("Unexpected preferences from the Studio server.");
-  return body;
+  const preferences = parseAppPreferences(body);
+  if (!preferences) throw new Error("Unexpected preferences from the Studio server.");
+  return preferences;
 }
 
 export const appPreferencesClient = {
@@ -135,6 +178,7 @@ export const useAppPreferences = create<AppPreferencesState>((set, get) => ({
           ...before,
           ...patch,
           newProject: { ...before.newProject, ...patch.newProject },
+          updates: { ...before.updates, ...patch.updates },
         },
       });
     }

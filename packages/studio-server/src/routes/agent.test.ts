@@ -63,6 +63,55 @@ describe("agent gateway route", () => {
     });
   });
 
+  it("forwards the provider routes (list, refresh, save or remove a key) untouched, and never echoes a key", async () => {
+    const seen: Array<{ method: string; subPath: string; body: string }> = [];
+    const agent: AgentGateway = {
+      handle: async (request, context) => {
+        seen.push({
+          method: request.method,
+          subPath: context.subPath,
+          body: await request.text(),
+        });
+        return Response.json({ providers: [], syncedAt: null });
+      },
+      status: () => "stopped",
+      dispose: async () => {},
+    };
+    const api = createStudioApi(createAdapter(agent));
+    const post = (path: string, body?: unknown) =>
+      api.fetch(
+        new Request(`http://studio.test/projects/known/agent/${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          ...(body !== undefined && { body: JSON.stringify(body) }),
+        }),
+      );
+
+    expect(
+      (await api.fetch(new Request("http://studio.test/projects/known/agent/providers"))).status,
+    ).toBe(200);
+    expect((await post("providers/refresh")).status).toBe(200);
+    const saved = await post("providers/openrouter/api-key", { apiKey: "sk-or-secret" });
+    expect(saved.status).toBe(200);
+    expect(await saved.text()).not.toContain("sk-or-secret");
+    expect((await post("providers/openrouter/api-key", { apiKey: null })).status).toBe(200);
+
+    expect(seen).toEqual([
+      { method: "GET", subPath: "providers", body: "" },
+      { method: "POST", subPath: "providers/refresh", body: "" },
+      {
+        method: "POST",
+        subPath: "providers/openrouter/api-key",
+        body: JSON.stringify({ apiKey: "sk-or-secret" }),
+      },
+      {
+        method: "POST",
+        subPath: "providers/openrouter/api-key",
+        body: JSON.stringify({ apiKey: null }),
+      },
+    ]);
+  });
+
   it("returns project-not-found and runtime-unavailable responses without a gateway", async () => {
     const api = createStudioApi(noAgent);
     const missingProject = await api.fetch(

@@ -120,6 +120,14 @@ impl HomeServer {
         }
     }
 
+    /// Help › Welcome to OpenVids… while a project shows: the Projects page
+    /// the window is about to navigate to opens the onboarding on load.
+    pub fn request_onboarding(&self) {
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.pending_onboarding = true;
+        }
+    }
+
     /// Told about preference changes saved through the page (window theme).
     pub fn set_prefs_listener(&self, listener: PrefsListener) {
         if let Ok(mut inner) = self.inner.lock() {
@@ -408,6 +416,253 @@ mod tests {
         assert_eq!(code, 404);
         let (code, _) = post(&origin, "/api/trash", Some(&token), br#"{"id":"renamed"}"#);
         assert_eq!(code, 404);
+    }
+
+    fn send(origin: &str, method: &str, path: &str, token: Option<&str>, body: &[u8]) -> (u16, Vec<u8>) {
+        let addr = origin.trim_start_matches("http://");
+        let mut req = format!(
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n",
+            body.len()
+        );
+        if let Some(token) = token {
+            req.push_str(&format!("{TOKEN_HEADER}: {token}\r\n"));
+        }
+        req.push_str("\r\n");
+        raw(origin, &req, Some(body))
+    }
+
+    #[test]
+    fn research_policy_and_agent_provider_routes_are_gated_and_validated() {
+        let (server, origin) = spawn("research");
+        let token = server.token_for_test();
+        let research_dir = base("research-policy");
+        std::fs::create_dir_all(&research_dir).unwrap();
+        // The only test that reads this variable.
+        std::env::set_var("OPENVIDS_RESEARCH_DIR", &research_dir);
+
+        for (method, path) in [
+            ("GET", "/api/research/policy"),
+            ("PUT", "/api/research/policy"),
+            ("POST", "/api/research/sources"),
+            ("PATCH", "/api/research/sources/openverse"),
+            ("DELETE", "/api/research/sources/openverse"),
+            ("POST", "/api/research/sources/restore"),
+            ("GET", "/api/agent/providers"),
+            ("POST", "/api/agent/providers/refresh"),
+            ("GET", "/api/agent/providers/anthropic/models"),
+            ("POST", "/api/agent/providers/anthropic/api-key"),
+            ("POST", "/api/agent/jev/api-key"),
+            ("POST", "/api/agent/jev/test"),
+        ] {
+            let (code, _) = send(&origin, method, path, None, b"{}");
+            assert_eq!(code, 403, "{method} {path} needs the token");
+        }
+
+        // Provider ids are validated before anything is forwarded (no runtime needed).
+        for path in [
+            "/api/agent/providers/a%2Fb/models",
+            "/api/agent/providers/..%2Fsettings/api-key",
+            "/api/agent/providers/a%20b/models",
+        ] {
+            let (code, body) = send(&origin, "POST", path, Some(&token), br#"{"apiKey":"secret"}"#);
+            let (code2, _) = send(&origin, "GET", path, Some(&token), b"");
+            assert_eq!((code, code2), (400, 400), "{path}");
+            assert!(String::from_utf8_lossy(&body).contains("invalid provider id"));
+            assert!(!String::from_utf8_lossy(&body).contains("secret"));
+        }
+        let (code, _) = send(&origin, "GET", "/api/agent/providers/anthropic/api-key", Some(&token), b"");
+        assert_eq!(code, 405);
+
+        let json = |body: &[u8]| serde_json::from_slice::<serde_json::Value>(body).unwrap();
+        let (code, body) = send(&origin, "GET", "/api/research/policy", Some(&token), b"");
+        assert_eq!(code, 200);
+        let policy = json(&body);
+        assert_eq!(policy["mode"], "trusted");
+        assert_eq!(policy["sources"].as_array().unwrap().len(), 4);
+        assert_eq!(policy["websites"]["readLinkedPages"], true);
+
+        let (code, body) = send(&origin, "PUT", "/api/research/policy", Some(&token), br#"{"mode":"any","websites":{"readLinkedPages":false}}"#);
+        assert_eq!(code, 200);
+        assert_eq!(json(&body)["mode"], "any");
+        let (code, body) = send(&origin, "PUT", "/api/research/policy", Some(&token), b"{}");
+        assert_eq!(code, 400);
+        assert_eq!(json(&body)["error"]["code"], "invalid_request");
+
+        let (code, body) = send(&origin, "POST", "/api/research/sources", Some(&token), br#"{"name":"Pexels","domains":["https://www.pexels.com/x"]}"#);
+        assert_eq!(code, 200);
+        let policy = json(&body);
+        let added = policy["sources"].as_array().unwrap().last().unwrap().clone();
+        assert_eq!(added["domains"], serde_json::json!(["pexels.com"]));
+        let id = added["id"].as_str().unwrap().to_string();
+        let (code, body) = send(&origin, "POST", "/api/research/sources", Some(&token), br#"{"name":"Dup","domains":["pexels.com"]}"#);
+        assert_eq!(code, 409);
+        assert_eq!(json(&body)["error"]["code"], "conflict");
+
+        let (code, body) = send(&origin, "PATCH", &format!("/api/research/sources/{id}"), Some(&token), br#"{"enabled":false}"#);
+        assert_eq!(code, 200);
+        assert_eq!(json(&body)["sources"].as_array().unwrap().last().unwrap()["enabled"], false);
+        let (code, body) = send(&origin, "PATCH", "/api/research/sources/src-nope", Some(&token), br#"{"enabled":true}"#);
+        assert_eq!(code, 400);
+        assert_eq!(json(&body)["error"]["code"], "unknown_source");
+
+        let (code, body) = send(&origin, "DELETE", "/api/research/sources/openverse", Some(&token), b"");
+        assert_eq!(code, 200);
+        assert_eq!(json(&body)["removedBuiltIns"], serde_json::json!(["openverse"]));
+        let (code, body) = send(&origin, "POST", "/api/research/sources/restore", Some(&token), b"");
+        assert_eq!(code, 200);
+        assert_eq!(json(&body)["removedBuiltIns"], serde_json::json!([]));
+        let (code, _) = send(&origin, "DELETE", &format!("/api/research/sources/{id}"), Some(&token), b"");
+        assert_eq!(code, 200);
+        // The file on disk is what Studio's server reads.
+        let file: serde_json::Value = serde_json::from_slice(&std::fs::read(research_dir.join("policy.json")).unwrap()).unwrap();
+        assert_eq!(file["schema"], "openvids.research-policy/1");
+        assert_eq!(file["mode"], "any");
+    }
+
+    #[test]
+    fn system_routes_are_gated_and_drive_the_cli_and_the_chrome_install() {
+        let (server, origin) = spawn("system");
+        let token = server.token_for_test();
+        for (method, path) in [
+            ("GET", "/api/system/check"),
+            ("GET", "/api/system/install/chrome"),
+            ("POST", "/api/system/install/chrome"),
+            ("POST", "/api/system/install/chrome/cancel"),
+        ] {
+            let (code, _) = send(&origin, method, path, None, b"");
+            assert_eq!(code, 403, "{method} {path} needs the token");
+        }
+        let script = r#"
+case "$1" in
+  doctor)
+    echo '{"tools":{"ffmpeg":{"found":true,"path":"/usr/bin/ffmpeg","version":"7.1"},"ffprobe":{"found":false},"chrome":{"found":false}}}' ;;
+  browser)
+    echo '{"event":"start"}'
+    echo '{"event":"progress","downloaded":10,"total":100}'
+    sleep 30 ;;
+esac
+"#;
+        crate::cli_runner::tests::with_fake_cli(script, || {
+            crate::chrome_install::reset();
+            let json = |body: &[u8]| serde_json::from_slice::<serde_json::Value>(body).unwrap();
+            let (code, body) = send(&origin, "GET", "/api/system/check", Some(&token), b"");
+            assert_eq!(code, 200);
+            let check = json(&body);
+            assert_eq!(check["ffmpeg"]["found"], true);
+            assert_eq!(check["ffmpeg"]["version"], "7.1");
+            assert_eq!(check["chrome"]["found"], false);
+            assert_eq!(check["install"]["chrome"]["phase"], "idle");
+
+            let (code, _) = send(&origin, "DELETE", "/api/system/check", Some(&token), b"");
+            assert_eq!(code, 405);
+            let (code, _) = send(&origin, "GET", "/api/system/nope", Some(&token), b"");
+            assert_eq!(code, 404);
+
+            let (code, body) = send(&origin, "POST", "/api/system/install/chrome", Some(&token), b"");
+            assert_eq!(code, 200);
+            assert!(json(&body)["phase"].is_string());
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            loop {
+                let (_, body) = send(&origin, "GET", "/api/system/install/chrome", Some(&token), b"");
+                let state = json(&body);
+                if state["phase"] == "downloading" {
+                    assert_eq!((state["downloaded"].as_u64(), state["total"].as_u64()), (Some(10), Some(100)));
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline, "never downloading: {state}");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let (code, body) = send(&origin, "POST", "/api/system/install/chrome/cancel", Some(&token), b"");
+            assert_eq!(code, 200);
+            assert_eq!(json(&body)["phase"], "cancelled");
+            let (_, body) = send(&origin, "GET", "/api/system/check", Some(&token), b"");
+            assert_eq!(json(&body)["install"]["chrome"]["phase"], "cancelled");
+        });
+    }
+
+    #[test]
+    fn ffmpeg_install_routes_drive_brew_and_report_homebrew_in_the_check() {
+        let (server, origin) = spawn("ffmpeg-install");
+        let token = server.token_for_test();
+        for (method, path) in [
+            ("GET", "/api/system/install/ffmpeg"),
+            ("POST", "/api/system/install/ffmpeg"),
+            ("POST", "/api/system/install/ffmpeg/cancel"),
+        ] {
+            let (code, _) = send(&origin, method, path, None, b"");
+            assert_eq!(code, 403, "{method} {path} needs the token");
+        }
+        let json = |body: &[u8]| serde_json::from_slice::<serde_json::Value>(body).unwrap();
+        let cli = r#"echo '{"tools":{"ffmpeg":{"found":false},"ffprobe":{"found":false},"chrome":{"found":false}}}'"#;
+        crate::cli_runner::tests::with_fake_cli(cli, || {
+            crate::ffmpeg_install::reset();
+            // No Homebrew: the check says so, offers no button, and start is a clear 409.
+            std::env::set_var("OPENVIDS_BREW_PATH", "/definitely/not/brew");
+            let (_, body) = send(&origin, "GET", "/api/system/check", Some(&token), b"");
+            let check = json(&body);
+            assert_eq!(check["homebrew"]["found"], false);
+            assert_eq!(check["ffmpeg"]["canInstall"], false);
+            assert_eq!(check["ffprobe"]["installer"], serde_json::Value::Null);
+            let (code, body) = send(&origin, "POST", "/api/system/install/ffmpeg", Some(&token), b"");
+            assert_eq!(code, 409);
+            assert!(json(&body)["error"].as_str().unwrap().contains("https://brew.sh"));
+            let (code, body) = send(&origin, "GET", "/api/system/install/ffmpeg", Some(&token), b"");
+            assert_eq!((code, json(&body)["phase"].as_str()), (200, Some("idle")));
+
+            // With a (fake) Homebrew: the button is offered and the job streams and finishes.
+            let dir = std::env::temp_dir().join(format!("openvids-home-brew-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let brew = dir.join("brew");
+            std::fs::write(&brew, "#!/bin/sh\necho '==> Fetching ffmpeg'\nsleep 1\n").unwrap();
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&brew, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            std::env::set_var("OPENVIDS_BREW_PATH", &brew);
+            let (_, body) = send(&origin, "GET", "/api/system/check", Some(&token), b"");
+            let check = json(&body);
+            assert_eq!(check["homebrew"]["found"], true);
+            assert_eq!(check["ffmpeg"]["canInstall"], true);
+            assert_eq!(check["ffmpeg"]["installer"], "homebrew");
+            assert_eq!(check["ffprobe"]["canInstall"], true);
+
+            let (code, body) = send(&origin, "POST", "/api/system/install/ffmpeg", Some(&token), b"");
+            assert_eq!(code, 200);
+            assert_eq!(json(&body)["phase"], "installing");
+            let deadline = std::time::Instant::now() + Duration::from_secs(15);
+            loop {
+                let (_, body) = send(&origin, "GET", "/api/system/install/ffmpeg", Some(&token), b"");
+                let state = json(&body);
+                // The fake CLI says ffmpeg is still missing afterwards: brew "worked", the tool is not there.
+                if state["phase"] == "failed" {
+                    assert!(state["error"].as_str().unwrap().contains("not found afterwards"));
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline, "never finished: {state}");
+                std::thread::sleep(Duration::from_millis(30));
+            }
+            let (code, body) = send(&origin, "POST", "/api/system/install/ffmpeg/cancel", Some(&token), b"");
+            assert_eq!(code, 200);
+            assert_eq!(json(&body)["phase"], "failed");
+            let (code, _) = send(&origin, "DELETE", "/api/system/install/ffmpeg", Some(&token), b"");
+            assert_eq!(code, 405);
+            std::env::remove_var("OPENVIDS_BREW_PATH");
+            let _ = std::fs::remove_dir_all(&dir);
+        });
+    }
+
+    #[test]
+    fn the_onboarding_request_from_the_menu_reaches_the_page_once() {
+        let (server, origin) = spawn("onboarding-boot");
+        let flag = |origin: &str| {
+            let (_, body) = get(origin, "/", None);
+            let page = String::from_utf8_lossy(&body).into_owned();
+            page.contains("\"openOnboarding\":true")
+        };
+        assert!(!flag(&origin));
+        server.request_onboarding();
+        assert!(flag(&origin), "the page opened after the request gets the flag");
+        assert!(!flag(&origin), "and only that one");
     }
 
     #[test]

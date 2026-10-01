@@ -294,7 +294,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       let created: ChatSummary | null = null;
       let failure: unknown = null;
       try {
-        const { create, update } = draftCreation(get().draftChoices);
+        const { create, update } = draftCreation(get().draftChoices, get().settings);
         created = await client.createChat(create);
         // The chips' other choices land before the first turn, so it already runs with them.
         if (update) created = await client.updateChat(created.id, update);

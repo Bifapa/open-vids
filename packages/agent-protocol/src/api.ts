@@ -3,6 +3,7 @@ import type {
   AgentErrorCode,
   AgentModelInfo,
   AgentSettings,
+  AutonomySettings,
   ChatIntent,
   ChatMode,
   ChatState,
@@ -12,6 +13,7 @@ import type {
   MessageReference,
   ModelConfig,
   ModelSelection,
+  OAuthFlow,
   ProviderInfo,
   SpecialistConfig,
   SpecialistDefaults,
@@ -173,6 +175,8 @@ export interface UpdateAgentSettingsRequest {
     credentials?: JevCredentialMode;
   };
   executionQuality?: ExecutionQuality;
+  /** Fields omitted keep their value. */
+  autonomy?: Partial<AutonomySettings>;
 }
 
 /** Stores (string) or removes (null) the Jev API key. The response never contains the key. */
@@ -180,8 +184,29 @@ export interface SetJevApiKeyRequest {
   apiKey: string | null;
 }
 
+/**
+ * Stores (string) or removes (null) the API key OpenVids keeps for one provider (`POST /providers/:provider/api-key`).
+ * The key is never returned by any route.
+ */
+export interface SetProviderApiKeyRequest {
+  apiKey: string | null;
+}
+
+/** Starts a sign-in (`POST /providers/:provider/oauth/login`); an empty body picks the provider's default flow. */
+export interface StartOAuthLoginRequest {
+  flow?: OAuthFlow;
+}
+
+/** The user's answer to the prompt of a sign-in (`POST /oauth/logins/:id/input`): a pasted code or redirect URL. */
+export interface SubmitOAuthLoginInputRequest {
+  text: string;
+}
+
+/** The provider list; also the answer to saving/removing a provider key and to a forced refresh. */
 export interface ListProvidersResponse {
   providers: ProviderInfo[];
+  /** When (epoch ms) the model catalog last synced successfully with the providers; null if it never did. */
+  syncedAt: number | null;
 }
 
 /** Every model the runtime knows for one provider, with or without credentials (for Jev's API-key mode). */

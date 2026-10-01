@@ -173,10 +173,11 @@ describe("findFfBinary", () => {
     expect(findFfBinary("ffmpeg")).toBe(projectBinary);
   });
 
-  it("returns undefined when the binary is nowhere, and caches the miss until cleared", async () => {
+  it("returns undefined when the binary is nowhere, remembers the miss only briefly, and finds it once it appears", async () => {
     delete process.env.HYPERFRAMES_FFMPEG_PATH;
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });
     process.env.PATH = "";
+    let installed = false;
     const execFileSync = vi.fn(() => {
       throw new Error("not found");
     });
@@ -184,7 +185,7 @@ describe("findFfBinary", () => {
     vi.doMock("node:child_process", () => ({ execFileSync, default: { execFileSync } }));
     vi.doMock("node:fs", () => {
       const mocked = {
-        existsSync: () => false,
+        existsSync: (candidate: unknown) => installed && candidate === "/opt/homebrew/bin/ffmpeg",
         accessSync: () => {
           throw new Error("not executable");
         },
@@ -192,14 +193,30 @@ describe("findFfBinary", () => {
       };
       return { ...mocked, default: mocked };
     });
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
     const { findFfBinary, clearFfBinaryLookupCache } = await importFresh();
 
     expect(findFfBinary("ffmpeg")).toBeUndefined();
+    // Within the window the miss is answered without another lookup.
+    now += 500;
     expect(findFfBinary("ffmpeg")).toBeUndefined();
     expect(execFileSync).toHaveBeenCalledOnce();
 
+    // The binary is installed while this process keeps running: found without a restart.
+    installed = true;
+    now += 2_000;
+    expect(findFfBinary("ffmpeg")).toBe(resolve("/opt/homebrew/bin/ffmpeg"));
+    expect(execFileSync).toHaveBeenCalledTimes(2);
+
+    // A hit is cached for good: no further lookups, even if the file vanishes.
+    installed = false;
+    now += 60_000;
+    expect(findFfBinary("ffmpeg")).toBe(resolve("/opt/homebrew/bin/ffmpeg"));
+    expect(execFileSync).toHaveBeenCalledTimes(2);
+
     clearFfBinaryLookupCache();
     expect(findFfBinary("ffmpeg")).toBeUndefined();
-    expect(execFileSync).toHaveBeenCalledTimes(2);
+    expect(execFileSync).toHaveBeenCalledTimes(3);
   });
 });

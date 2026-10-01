@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from "react";
+import { Check, WarningCircle } from "@phosphor-icons/react";
 import { cn } from "../ui/cn";
 
 /** One Settings section: its heading, an optional lede under it and an optional meta line at the right. */
@@ -16,7 +17,7 @@ export function SettingsPage({
   return (
     <div className="mx-auto max-w-[640px]" data-settings-page={title}>
       <div className="mb-1 flex items-end justify-between gap-4">
-        <h1 className="m-0 text-lg font-semibold tracking-[-0.005em] text-fg">{title}</h1>
+        <h1 className="m-0 text-lg leading-4 font-semibold tracking-[-0.005em] text-fg">{title}</h1>
         {meta && (
           <span className="flex items-center gap-2 whitespace-nowrap text-xs text-fg-3">
             {meta}
@@ -80,7 +81,7 @@ export function SettingsRow({
   return (
     <div
       className={cn(
-        "grid min-h-row-lg grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 px-3 py-1.5",
+        "grid min-h-row-lg grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 px-3 py-row-pad",
         className,
       )}
     >
@@ -145,6 +146,41 @@ export function SaveStatus({ status, failed }: { status: string | null; failed: 
   return (
     <span aria-live="polite" className={cn("text-xs", failed ? "text-error" : "text-fg-3")}>
       {status && <span role={failed ? "alert" : undefined}>{status}</span>}
+    </span>
+  );
+}
+
+const STATUS_TONES = {
+  success: "text-success",
+  warning: "text-warning",
+  error: "text-error",
+} as const;
+
+/** A short status with its glyph (prototype `.status`): a check for success, an alert for warning and error. */
+export function SettingsStatus({
+  tone,
+  wrap,
+  className,
+  children,
+}: {
+  tone: keyof typeof STATUS_TONES;
+  /** Let a long message wrap instead of staying on one line. */
+  wrap?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  const Glyph = tone === "success" ? Check : WarningCircle;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 text-xs font-medium",
+        wrap ? "leading-[14px]" : "whitespace-nowrap",
+        STATUS_TONES[tone],
+        className,
+      )}
+    >
+      <Glyph aria-hidden className="size-icon-sm shrink-0" />
+      {children}
     </span>
   );
 }

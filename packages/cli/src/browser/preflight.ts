@@ -1,7 +1,14 @@
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import { ensureBrowser, findBrowser, type BrowserResult } from "./manager.js";
+import {
+  ensureBrowser,
+  findBrowser,
+  findReadyManagedBrowser,
+  findSystemBrowser,
+  managedChromeVersion,
+  type BrowserResult,
+} from "./manager.js";
 import { describeBrowserInstall, type BrowserInstallFacts } from "./installFacts.js";
 import { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV, getFFmpegInstallHint } from "./ffmpeg.js";
 import {
@@ -430,4 +437,65 @@ export async function runEnvironmentChecks(
     ...(ffmpeg.versionMajor != null ? { ffmpegVersionMajor: ffmpeg.versionMajor } : {}),
     ...(browserVersionMajor != null ? { browserVersionMajor } : {}),
   };
+}
+
+// ── Tool status (the desktop's first-run System check) ─────────────────────────
+
+export interface ToolStatus {
+  found: boolean;
+  path?: string;
+  /** `9.0.2` for FFmpeg/FFprobe; Chrome's build id when the managed headless shell is the one found. */
+  version?: string;
+  /** Chrome only: `env` (an explicit override) or `cache` (the build HyperFrames downloaded). */
+  source?: "env" | "cache" | "system";
+}
+
+export interface ToolStatusReport {
+  ffmpeg: ToolStatus;
+  ffprobe: ToolStatus;
+  /**
+   * `found`: a browser rendering can use without downloading anything (see `findReadyManagedBrowser`).
+   * `systemPath`: a system Chrome that exists but that rendering does not use, so the UI can say so.
+   */
+  chrome: ToolStatus & { systemPath?: string };
+}
+
+/** `9.0.2` out of `ffmpeg version 9.0.2-tessus Copyright …`. */
+export function ffVersionNumber(banner: string): string | undefined {
+  return banner.match(/\bversion\s+(\S+)/i)?.[1];
+}
+
+async function ffToolStatus(name: "ffmpeg" | "ffprobe"): Promise<ToolStatus> {
+  const path = findFfBinary(name, { configuredMustExist: true });
+  if (!path) return { found: false };
+  try {
+    const { stdout } = await runCancellableProcess(path, ["-version"], { timeoutMs: 5000 });
+    const version = ffVersionNumber(stdout.split("\n")[0] ?? "");
+    // A file that does not run is not "found": the UI would send the user on to a render that fails.
+    return { found: true, path, ...(version ? { version } : {}) };
+  } catch {
+    return { found: false, path };
+  }
+}
+
+/** One cheap, side-effect-free look at the three tools a render needs. Never downloads, installs or purges. */
+export async function collectToolStatus(): Promise<ToolStatusReport> {
+  const [ffmpeg, ffprobe] = await Promise.all([ffToolStatus("ffmpeg"), ffToolStatus("ffprobe")]);
+  let ready: BrowserResult | undefined;
+  try {
+    ready = await findReadyManagedBrowser();
+  } catch {
+    ready = undefined;
+  }
+  const system = findSystemBrowser();
+  const chrome: ToolStatusReport["chrome"] = ready
+    ? {
+        found: true,
+        path: ready.executablePath,
+        source: ready.source === "env" ? "env" : ready.source === "cache" ? "cache" : "system",
+        ...(ready.source === "cache" ? { version: managedChromeVersion() } : {}),
+      }
+    : { found: false };
+  if (system && system.executablePath !== chrome.path) chrome.systemPath = system.executablePath;
+  return { ffmpeg, ffprobe, chrome };
 }

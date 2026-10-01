@@ -211,7 +211,20 @@ function WebsitesBox({ state, enabled }: { state: AssetSearchPolicyState; enable
  * The global Asset Search policy: where the Research agent may search and download, for every project. The Studio
  * server enforces it; this is only where the user sets it. Mounted by the Sources panel and the Settings window.
  */
-export function AssetSearchPolicyView({ className }: { className?: string } = {}) {
+export function AssetSearchPolicyView({
+  className,
+  variant = "panel",
+}: {
+  className?: string;
+  /**
+   * `panel` (the Sources panel) opens with the "applies to all projects" note. `settings` is the Settings window's
+   * section: that sentence is the page's lede there, and the group labels sit on the window's tighter rhythm.
+   */
+  variant?: "panel" | "settings";
+} = {}) {
+  const inSettings = variant === "settings";
+  const section = cn("flex flex-col", !inSettings && "gap-1.5");
+  const heading = inSettings ? "min-h-0 pb-1.5" : undefined;
   const { client } = useResearchServices();
   const state = useAssetSearchPolicy(client);
   const [adding, setAdding] = useState(false);
@@ -227,10 +240,12 @@ export function AssetSearchPolicyView({ className }: { className?: string } = {}
 
   return (
     <div className={cn("flex flex-col gap-5 px-3 py-3", className)}>
-      <NoteBox icon={<Globe size={12} />}>
-        <b className="font-semibold">Applies to all projects.</b> The Research agent is the only one
-        that searches outside the project, and only as allowed here.
-      </NoteBox>
+      {!inSettings && (
+        <NoteBox icon={<Globe size={12} />}>
+          <b className="font-semibold">Applies to all projects.</b> The Research agent is the only
+          one that searches outside the project, and only as allowed here.
+        </NoteBox>
+      )}
       {state.error && <InlineError message={state.error} onDismiss={state.dismissError} />}
       {state.loading && !policy ? (
         <p role="status" className="text-sm text-fg-3">
@@ -247,12 +262,13 @@ export function AssetSearchPolicyView({ className }: { className?: string } = {}
         </Button>
       ) : (
         <>
-          <section className="flex flex-col gap-1.5">
-            <SectionHeading title="Search mode" />
+          <section className={section}>
+            <SectionHeading title="Search mode" className={heading} />
             <ModeSwitch state={state} />
           </section>
-          <section className="flex flex-col gap-1.5">
+          <section className={section}>
             <SectionHeading
+              className={heading}
               title="Trusted sources"
               note={`${onCount} of ${policy.sources.length} on${searchNote ? ` · ${searchNote}` : ""}`}
             />
@@ -319,8 +335,8 @@ export function AssetSearchPolicyView({ className }: { className?: string } = {}
               </p>
             )}
           </section>
-          <section className="flex flex-col gap-1.5">
-            <SectionHeading title="Websites" />
+          <section className={section}>
+            <SectionHeading title="Websites" className={heading} />
             <WebsitesBox state={state} enabled={policy.websites.readLinkedPages} />
           </section>
         </>

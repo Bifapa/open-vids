@@ -1,6 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { parseHTML } from "linkedom";
+import { lockedEditAdvice } from "../autonomy.ts";
 import { resolveProjectFileTargets } from "./path-guard.ts";
 
 /**
@@ -145,11 +146,15 @@ function lockedClipViolation(
   return null;
 }
 
-/** Null when the call may run; otherwise the message the agent sees. */
+/**
+ * Null when the call may run; otherwise the message the agent sees. `askFirst` is the user's "ask before changing locked
+ * sections" setting: it decides whether the message tells the agent to stop and ask or to leave the clip and carry on.
+ */
 export async function guardLockedClips(
   projectDir: string,
   input: unknown,
   toolName?: string,
+  askFirst = true,
 ): Promise<string | null> {
   if (toolName !== "edit" && toolName !== "write") return null;
 
@@ -185,7 +190,7 @@ export async function guardLockedClips(
       return `${display} could not be parsed to check it for locked timeline clips, so the ${toolName} was blocked.`;
     }
     if (violation) {
-      return `This ${toolName} would ${violation.action} the locked clip ${JSON.stringify(clipLabel(violation.clip))} in ${display}. The user locked it in the timeline (${LOCK_ATTRIBUTE}); leave it exactly as it is, or ask the user to unlock it first.`;
+      return `This ${toolName} would ${violation.action} the locked clip ${JSON.stringify(clipLabel(violation.clip))} in ${display}. The user locked it in the timeline (${LOCK_ATTRIBUTE}) and agents cannot change it. ${lockedEditAdvice(askFirst)}`;
     }
   }
   return null;

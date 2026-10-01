@@ -32,6 +32,14 @@ export function runningTurn(chat: ChatState | null): TurnSummary | null {
   return null;
 }
 
+/**
+ * The runtime answered and lists no usable model: no provider has credentials. Not the same as a catalog that is
+ * still loading or could not be read (`null`), nor as an agent that is unreachable (`availability`).
+ */
+export function hasNoUsableModel(catalog: AgentModelCatalog | null): boolean {
+  return catalog !== null && catalog.models.length === 0;
+}
+
 export function findModel(
   catalog: AgentModelCatalog | null,
   selection: ModelSelection | null,

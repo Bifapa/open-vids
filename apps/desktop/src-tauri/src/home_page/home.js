@@ -1062,6 +1062,8 @@
     f.src =
       "/settings?embed=1&theme=" +
       encodeURIComponent(OV.themePref()) +
+      "&density=" +
+      encodeURIComponent(OV.densityPref()) +
       (section ? "&section=" + section : "");
     f.addEventListener("load", () => f.contentWindow.focus());
     document.body.appendChild(f);
@@ -1080,15 +1082,20 @@
     if (!settingsFrame || e.source !== settingsFrame.contentWindow || !e.data) return;
     if (e.data.type === "ov-settings-close") closeSettings();
     else if (e.data.type === "ov-theme") OV.applyTheme(e.data.pref);
-    else if (e.data.type === "ov-prefs") {
-      prefs = e.data.prefs || prefs;
-      OV.applyTheme(prefs.theme);
-      if (!composer.isBusy()) {
-        start.loc = null;
-        initStartLocation();
-      }
-    } else if (e.data.type === "ov-agents") composer.reloadAgents();
+    else if (e.data.type === "ov-density") OV.applyDensity(e.data.pref);
+    else if (e.data.type === "ov-prefs") applyPrefs(e.data.prefs);
+    else if (e.data.type === "ov-agents") composer.reloadAgents();
   });
+  /* New preferences (from Settings or the onboarding): theme, density and the start composer's folder follow. */
+  function applyPrefs(next) {
+    prefs = next || prefs;
+    OV.applyTheme(prefs.theme);
+    OV.applyDensity(prefs.density);
+    if (!composer.isBusy()) {
+      start.loc = null;
+      initStartLocation();
+    }
+  }
   $("#settingsBtn").addEventListener("click", () => openSettings($("#settingsBtn")));
 
   /* ---------- events ---------- */
@@ -1500,6 +1507,7 @@
     onChange: refreshFoot,
     onSubmit: startProject,
     onAgentDefaults: (btn) => openSettings(btn, "agents"),
+    onConnectModel: (btn) => openSettings(btn, "providers"),
   });
   const busyComposer = composer.setBusy;
   composer.setBusy = (text) => {
@@ -1562,10 +1570,81 @@
         );
     })
     .catch(() => {});
+  /* ---------- First-run onboarding (onboarding*.js, loaded when it opens; the overlay markup is in index.html) ---------- */
+  const OB_SCRIPTS = [
+    "settings-core",
+    "settings-providers",
+    "settings-signin",
+    "onboarding",
+    "onboarding-welcome",
+    "onboarding-models",
+    "onboarding-system",
+    "onboarding-project",
+  ];
+  const loadScript = (name) =>
+    new Promise((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = "/assets/" + name + ".js";
+      el.onload = resolve;
+      el.onerror = () => reject(new Error("couldn’t load " + name));
+      document.head.appendChild(el);
+    });
+  let obLoad = null,
+    obReturn = null;
+  const onboardingOpen = () =>
+    document.documentElement.classList.contains("is-onboarding") ||
+    !!(window.OVOB && window.OVOB.isOpen());
+  function lockPage(on) {
+    for (const el of win.children)
+      if (el.id !== "ob" && el.id !== "launch" && el.tagName !== "SCRIPT") el.inert = on;
+  }
+  function openOnboarding(manual) {
+    if (window.OVOB && window.OVOB.isOpen()) return Promise.resolve();
+    if (settingsFrame) closeSettings();
+    closeMenu(false);
+    obReturn = document.activeElement;
+    document.documentElement.classList.add("is-onboarding");
+    lockPage(true);
+    obLoad =
+      obLoad ||
+      OB_SCRIPTS.reduce((p, name) => p.then(() => loadScript(name)), Promise.resolve()).catch(
+        (err) => {
+          obLoad = null;
+          throw err;
+        },
+      );
+    return obLoad
+      .then(() =>
+        window.OVOB.open({
+          manual,
+          host: {
+            prefs: () => prefs,
+            setPrefs: applyPrefs,
+            reloadAgents: () => composer.reloadAgents(),
+            closed(finished) {
+              if (finished || !obReturn || !obReturn.isConnected) composer.focus();
+              else obReturn.focus();
+              obReturn = null;
+            },
+          },
+        }),
+      )
+      .catch((err) => {
+        /* The setup can't be shown: don't trap the user behind a blank overlay. */
+        document.documentElement.classList.remove("is-onboarding");
+        lockPage(false);
+        toast(esc("Couldn’t open the setup: " + err.message), null, "error");
+      });
+  }
+  /* Decided by index.html before first paint: unfinished setup, or Help › Welcome asked for it. */
+  if (document.documentElement.classList.contains("is-onboarding"))
+    openOnboarding(!!(window.OV_BOOT && window.OV_BOOT.openOnboarding));
+
   /* ⌘O from the app menu lands here (the menu accelerator consumes the key). */
   window.ovHome = {
-    openProject: openPicker,
-    newProject: newSheet,
-    openSettings: () => openSettings($("#settingsBtn")),
+    openProject: () => !onboardingOpen() && openPicker(),
+    newProject: () => !onboardingOpen() && newSheet(),
+    openSettings: () => !onboardingOpen() && openSettings($("#settingsBtn")),
+    openOnboarding: () => openOnboarding(true),
   };
 })();

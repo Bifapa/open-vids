@@ -2,8 +2,10 @@ import type {
   AgentId,
   AgentModelCatalog,
   AgentModelInfo,
+  ListProvidersResponse,
   ModelSelection,
-  ProviderInfo,
+  OAuthFlow,
+  OAuthLoginState,
   ThinkingEffort,
 } from "@hyperframes/agent-protocol";
 
@@ -127,16 +129,52 @@ export interface OpenBackendSessionInput {
    * refuses the call with that reason. The runtime uses it to keep Plan and Ask turns from changing files.
    */
   fileWriteRefusal?: (toolName: string) => string | null;
+  /**
+   * Asked when the harness's own file tools hit a clip the user locked: `true` (the default) tells the agent to stop and
+   * ask the user, `false` to leave the clip alone and carry on. The lock itself is enforced either way.
+   */
+  askBeforeLockedEdits?: () => boolean;
+}
+
+/** What {@link AgentBackend.refreshProviders} does. */
+export interface RefreshProvidersOptions {
+  /** Refresh only this provider's live model list (a key was just saved); omitted: every provider. */
+  provider?: string;
+  /** Do not contact any provider: re-read credentials and rebuild the catalog from what is known (a key was removed). */
+  offline?: boolean;
 }
 
 export interface AgentBackend {
   /** Informational name reported by /health. */
   readonly name: string;
   listModels(): Promise<AgentModelCatalog>;
-  /** Providers the harness knows, with whether it already holds credentials for them. */
-  listProviders(): Promise<ProviderInfo[]>;
+  /**
+   * Providers the harness knows with their credential status, and when the catalog last synced. Re-reads the API keys
+   * OpenVids stores, so a key saved by another runtime process is applied before this answers.
+   */
+  listProviders(): Promise<ListProvidersResponse>;
+  /**
+   * Re-reads every credential source (the user's OMP login, the keys OpenVids stores), re-fetches the providers' live
+   * model lists, rebuilds the catalog every session and `listModels` use, and answers with the fresh provider list.
+   * Never throws for a provider that fails: that provider's status says so.
+   */
+  refreshProviders(options?: RefreshProvidersOptions): Promise<ListProvidersResponse>;
   /** Every model of one provider, with or without credentials. */
   listProviderModels(provider: string): Promise<AgentModelInfo[]>;
+  /**
+   * Starts an in-app OAuth sign-in for a provider (its default flow, or `flow`) and answers once the user has something to
+   * act on. One per provider at a time: a second start returns the one in progress. The credential goes to OpenVids' own
+   * store, never OMP's. Never opens a browser. Rejects with `invalid_request` when the provider has no in-app sign-in.
+   */
+  startOAuthLogin(provider: string, flow?: OAuthFlow): Promise<OAuthLoginState>;
+  /** A sign-in's state; rejects with `login_not_found` once it is unknown (or long finished). */
+  getOAuthLogin(id: string): OAuthLoginState;
+  /** Answers the prompt a sign-in is waiting on (a pasted code). */
+  submitOAuthLoginInput(id: string, text: string): OAuthLoginState;
+  /** Stops a sign-in and its callback listener; safe on a finished one. */
+  cancelOAuthLogin(id: string): Promise<OAuthLoginState>;
+  /** Removes the sign-in OpenVids stored for a provider (OMP's cannot be removed) and answers with the fresh list. */
+  signOutOAuth(provider: string): Promise<ListProvidersResponse>;
   openSession(input: OpenBackendSessionInput): Promise<BackendSession>;
   dispose(): Promise<void>;
 }

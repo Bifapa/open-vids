@@ -158,6 +158,8 @@ function research(overrides: Partial<TurnResearchOptions> = {}) {
     storyOptions: null,
     intent: "edit",
     userTexts: () => [],
+    turnUserTexts: () => [],
+    askBeforeDownloads: false,
     model: () => "anthropic/claude-haiku",
     ...overrides,
   });

@@ -439,6 +439,15 @@
  * OpenVids brand loader (BrandLoader). Shared by preview overlays that need a
  * calm, branded loading state instead of a generic spinner.
  */
+/* MarkLoader: one artwork per theme. */
+.hf-mark-loader-light,
+:root[data-theme="light"] .hf-mark-loader-dark {
+  display: none;
+}
+:root[data-theme="light"] .hf-mark-loader-light {
+  display: block;
+}
+
 .hf-loader {
   display: flex;
   flex-direction: column;

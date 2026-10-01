@@ -5,6 +5,7 @@ export const SETTINGS_SECTIONS = [
   "general",
   "appearance",
   "agents",
+  "providers",
   "jev",
   "assets",
   "execution",
@@ -17,7 +18,12 @@ interface SettingsDialogState {
   section: SettingsSection;
   /** Element that opened Settings; focus returns to it on close. */
   returnFocus: HTMLElement | null;
+  /** A provider the Models & Providers section should open when it shows (a "Fix" link sets it); it clears it. */
+  providerToOpen: string | null;
   setSection: (section: SettingsSection) => void;
+  /** Switches to Models & Providers with `provider`'s details open. */
+  showProvider: (provider: string) => void;
+  clearProviderToOpen: () => void;
   close: () => void;
 }
 
@@ -26,7 +32,10 @@ export const useSettingsDialog = create<SettingsDialogState>((set) => ({
   open: false,
   section: "general",
   returnFocus: null,
+  providerToOpen: null,
   setSection: (section) => set({ section }),
+  showProvider: (provider) => set({ section: "providers", providerToOpen: provider }),
+  clearProviderToOpen: () => set({ providerToOpen: null }),
   close: () => set({ open: false }),
 }));
 

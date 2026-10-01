@@ -127,6 +127,14 @@
   --shadow-tip: 0 6px 16px oklch(0% 0 0 / calc(0.45 * var(--sh)));
 }
 
+/* ---- Density: Settings → Appearance → Density. Compact tightens sidebar items and list rows on the Projects
+   page and in the Settings window (which adds its own row padding in settings.css). ---- */
+:root[data-density="compact"] {
+  --h-nav: 24px;
+  --h-row-sm: 26px;
+  --h-row-lg: 34px;
+}
+
 /* ---- Light theme: set on :root by openvids-theme.js from Settings → Appearance.
    .theme-light / .theme-dark render one region in a fixed palette (design-system sheet). ---- */
 :root[data-theme="light"],

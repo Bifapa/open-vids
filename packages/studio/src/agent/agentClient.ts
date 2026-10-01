@@ -1,9 +1,14 @@
 import {
   AGENT_ERROR_CODES,
   EXECUTION_QUALITY_PRESETS,
+  OAUTH_FLOWS,
+  PROVIDER_CREDENTIAL_SOURCES,
+  PROVIDER_STATUSES,
   SPECIALIST_IDS,
   isQaReport,
   isRecord,
+  isChatIntent,
+  isOAuthLoginState,
   parseAgentIntake,
   type ActiveTurnInfo,
   type AgentErrorBody,
@@ -11,6 +16,7 @@ import {
   type AgentIntake,
   type AgentModelCatalog,
   type AgentSettings,
+  type AutonomySettings,
   type ChatState,
   type ChatSummary,
   type CreateChatRequest,
@@ -18,14 +24,19 @@ import {
   type ListProviderModelsResponse,
   type ListProvidersResponse,
   type ModelConfig,
+  type OAuthLoginState,
+  type ProviderInfo,
   type QaReport,
   type RevertTurnRequest,
   type RevertTurnResponse,
   type SetJevApiKeyRequest,
+  type SetProviderApiKeyRequest,
+  type StartOAuthLoginRequest,
   type StartTurnRequest,
   type StartTurnResponse,
   type SteerTurnRequest,
   type SteerTurnResponse,
+  type SubmitOAuthLoginInputRequest,
   type TestJevResponse,
   type TurnSummary,
   type UpdateAgentSettingsRequest,
@@ -97,6 +108,31 @@ export interface AgentClient {
   setJevApiKey(request: SetJevApiKeyRequest): Promise<AgentSettings>;
   testJev(): Promise<TestJevResponse>;
   listProviders(): Promise<ListProvidersResponse>;
+  /** Re-reads every provider's credentials and live model list now; can take a while when one is unreachable. */
+  refreshProviders(): Promise<ListProvidersResponse>;
+  /**
+   * Stores (string) or removes (null) the API key OpenVids keeps for one provider. A new key is checked against the
+   * provider live (up to ~10 s when it is unreachable). The key never comes back.
+   */
+  setProviderApiKey(
+    provider: string,
+    request: SetProviderApiKeyRequest,
+  ): Promise<ListProvidersResponse>;
+  /**
+   * Starts the provider's in-app sign-in (the default flow unless `request.flow` names one). A second start for the
+   * same provider returns the sign-in that is already running. The runtime never opens a browser: the UI does.
+   */
+  startOAuthLogin(provider: string, request: StartOAuthLoginRequest): Promise<OAuthLoginState>;
+  /** Where a sign-in is now; answers 404 once a finished one has been forgotten. */
+  getOAuthLogin(loginId: string): Promise<OAuthLoginState>;
+  /** Answers the prompt of a sign-in (a code, a redirect URL or what the provider asked for); never echoed back. */
+  submitOAuthLoginInput(
+    loginId: string,
+    request: SubmitOAuthLoginInputRequest,
+  ): Promise<OAuthLoginState>;
+  cancelOAuthLogin(loginId: string): Promise<OAuthLoginState>;
+  /** Forgets a sign-in made in OpenVids. It does not revoke the grant at the provider. */
+  logoutProvider(provider: string): Promise<ListProvidersResponse>;
   /** Every model of one provider, signed in or not (Jev can bring its own key). */
   listProviderModels(provider: string): Promise<ListProviderModelsResponse>;
   /** One stored Render QA pass (Studio server, not the agent gateway); `current` is derived when read. */
@@ -191,11 +227,21 @@ function isExecutionQuality(value: unknown): boolean {
   );
 }
 
+function isAutonomy(value: unknown): value is AutonomySettings {
+  return (
+    isRecord(value) &&
+    isChatIntent(value.defaultIntent) &&
+    typeof value.askBeforeLockedEdits === "boolean" &&
+    typeof value.askBeforeDownloads === "boolean"
+  );
+}
+
 export function isAgentSettings(value: unknown): value is AgentSettings {
   if (!isRecord(value) || !isModelConfig(value.director)) return false;
   const { specialists, jev } = value;
   return (
     isExecutionQuality(value.executionQuality) &&
+    isAutonomy(value.autonomy) &&
     isRecord(specialists) &&
     SPECIALIST_IDS.every((id) => {
       const entry = specialists[id];
@@ -221,14 +267,43 @@ function isTestJevResponse(value: unknown): value is TestJevResponse {
   return value.ok === false && isString(value.message);
 }
 
-function isProvidersResponse(value: unknown): value is ListProvidersResponse {
+function isProviderOAuth(value: unknown): value is NonNullable<ProviderInfo["oauth"]> {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.flows) &&
+    value.flows.every(
+      (flow) =>
+        isRecord(flow) &&
+        OAUTH_FLOWS.some((known) => known === flow.flow) &&
+        (flow.callbackPort === null || isNumber(flow.callbackPort)) &&
+        typeof flow.fixedPort === "boolean",
+    )
+  );
+}
+
+function isProviderInfo(value: unknown): value is ProviderInfo {
+  return (
+    isRecord(value) &&
+    isString(value.id) &&
+    isString(value.name) &&
+    typeof value.authenticated === "boolean" &&
+    PROVIDER_STATUSES.some((status) => status === value.status) &&
+    (value.credentialSource === null ||
+      PROVIDER_CREDENTIAL_SOURCES.some((source) => source === value.credentialSource)) &&
+    (value.error === null || isString(value.error)) &&
+    isNumber(value.modelCount) &&
+    typeof value.keyless === "boolean" &&
+    typeof value.verified === "boolean" &&
+    (value.oauth === undefined || value.oauth === null || isProviderOAuth(value.oauth))
+  );
+}
+
+export function isProvidersResponse(value: unknown): value is ListProvidersResponse {
   return (
     isRecord(value) &&
     Array.isArray(value.providers) &&
-    value.providers.every(
-      (provider) =>
-        isRecord(provider) && isString(provider.id) && typeof provider.authenticated === "boolean",
-    )
+    value.providers.every(isProviderInfo) &&
+    (value.syncedAt === null || isNumber(value.syncedAt))
   );
 }
 
@@ -359,6 +434,18 @@ export function createAgentClient(
     setJevApiKey: (request) => call("POST", "/settings/jev/api-key", isAgentSettings, request),
     testJev: () => call("POST", "/settings/jev/test", isTestJevResponse, {}),
     listProviders: () => call("GET", "/providers", isProvidersResponse),
+    refreshProviders: () => call("POST", "/providers/refresh", isProvidersResponse),
+    setProviderApiKey: (provider, request) =>
+      call("POST", `/providers/${enc(provider)}/api-key`, isProvidersResponse, request),
+    startOAuthLogin: (provider, request) =>
+      call("POST", `/providers/${enc(provider)}/oauth/login`, isOAuthLoginState, request),
+    getOAuthLogin: (loginId) => call("GET", `/oauth/logins/${enc(loginId)}`, isOAuthLoginState),
+    submitOAuthLoginInput: (loginId, request) =>
+      call("POST", `/oauth/logins/${enc(loginId)}/input`, isOAuthLoginState, request),
+    cancelOAuthLogin: (loginId) =>
+      call("POST", `/oauth/logins/${enc(loginId)}/cancel`, isOAuthLoginState, {}),
+    logoutProvider: (provider) =>
+      call("POST", `/providers/${enc(provider)}/oauth/logout`, isProvidersResponse),
     listProviderModels: (provider) =>
       call("GET", `/providers/${enc(provider)}/models`, isProviderModelsResponse),
     getQaReport: (reportId) =>

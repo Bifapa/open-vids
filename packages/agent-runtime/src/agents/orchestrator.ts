@@ -22,6 +22,7 @@ import {
   type WorkerAgentId,
 } from "@hyperframes/agent-protocol";
 import type { BackendSession, HostToolResult } from "../backend.js";
+import { renderAutonomyBlock, type TurnAutonomy } from "../autonomy.js";
 import type { ChatService } from "../chats.js";
 import { errorMessage } from "../errors.js";
 import { renderPromptContext } from "../promptContext.js";
@@ -57,6 +58,8 @@ export interface TurnAgentSetup {
   execution: { preset: ExecutionQualityPreset; budget: ExecutionBudget };
   /** The runtime can run Render QA this turn (it has editing and QA hosts). */
   qaAvailable: boolean;
+  /** The user's Autonomy settings as the turn started (see autonomy.ts). */
+  autonomy: TurnAutonomy;
 }
 
 export interface OrchestratorDeps {
@@ -531,11 +534,18 @@ export class Orchestrator {
       `<task title=${JSON.stringify(input.title)} from=${JSON.stringify(AGENT_DISPLAY_NAMES[input.from])}>\n${input.task}\n</task>`,
       this.deps.setup.editorContext,
     );
-    // Research works under the user's Asset Search policy; it is stated with every task it gets.
-    const text =
+    // Research works under the user's Asset Search policy; it is stated with every task it gets. Every specialist is
+    // told what the user's Autonomy settings mean for locked material (and Research for downloads).
+    const autonomy =
+      input.agent === "jev" ? null : renderAutonomyBlock(this.deps.setup.autonomy, input.agent);
+    const research =
       input.agent === "research"
-        ? `${taskText}\n\n${renderResearchBlock(this.deps.setup.research, this.deps.setup.execution.budget.researchCandidates)}`
-        : taskText;
+        ? renderResearchBlock(
+            this.deps.setup.research,
+            this.deps.setup.execution.budget.researchCandidates,
+          )
+        : null;
+    const text = [taskText, research, autonomy].filter(Boolean).join("\n\n");
 
     // Queue the run before the first await, so concurrent delegations to one specialist line up in call order.
     const announced = Promise.withResolvers<boolean>();

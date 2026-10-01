@@ -2,9 +2,10 @@ import { useMemo, useRef } from "react";
 import { ArrowDown, ClosedCaptioning, FilmStrip, Scissors, type Icon } from "@phosphor-icons/react";
 import type { ChatState, TurnSummary } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
-import { mainThreadMessages, type ThreadId } from "../../agent/agentSelectors";
+import { hasNoUsableModel, mainThreadMessages, type ThreadId } from "../../agent/agentSelectors";
 import { cn } from "../ui/cn";
 import { AgentThread } from "./AgentThread";
+import { NoModelState } from "./ConnectModel";
 import { chatAgentName } from "./AgentMonogram";
 import { chatPadX, selItem } from "./chatStyles";
 import { AssistantBlock, UserMessageView } from "./Messages";
@@ -19,10 +20,16 @@ const SUGGESTIONS: { text: string; icon: Icon }[] = [
   { text: "Find B-roll for the opening", icon: FilmStrip },
 ];
 
-/** A new chat: a hint and a few starting prompts, just above the composer. Picking one fills the composer. */
+/**
+ * A new chat: a hint and a few starting prompts, just above the composer. Picking one fills the composer. With no
+ * usable model it is the "Connect a model" state instead.
+ */
 export function EmptyChat() {
   const setDraft = useAgentStore((state) => state.setDraft);
+  const noModel = useAgentStore((state) => hasNoUsableModel(state.models));
   const ref = useRef<HTMLDivElement>(null);
+  // Starting prompts are no use without a model: say what is missing and how to fix it instead.
+  if (noModel) return <NoModelState />;
   return (
     <div
       ref={ref}

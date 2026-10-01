@@ -610,7 +610,102 @@ html.st-embed {
   color: var(--fg-3);
   font-size: var(--text-sm);
 }
-/* "Default" (runtime default thinking) is wider than the prototype's "Off": give the effort column room. */
+/* The effort column holds five choices (Default and Off next to the prototype's Low / Med / High). */
 .st-agents .st-row {
-  grid-template-columns: minmax(0, 1fr) 152px 176px var(--h-md);
+  grid-template-columns: minmax(0, 1fr) 152px 212px var(--h-md);
+}
+
+/* ---- Additions for the real data (long provider and model lists, free-text notes, number fields) ---- */
+/* A radio list is followed by a row or a sub-block: keep the hairline the prototype's rows have between them. */
+.st-choice + .st-row,
+.st-choice + .st-sub {
+  border-top: 1px solid var(--border-subtle);
+}
+.st-inline .input {
+  flex: 1;
+  min-width: 0;
+}
+/* The "Show all providers" row sits between provider rows. */
+.st-prov + .st-sub,
+.st-prov-body + .st-sub,
+.st-sub + .st-prov {
+  border-top: 1px solid var(--border-subtle);
+}
+.st-prov .st-label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-models dt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-sub .st-err-log {
+  max-height: 160px;
+  overflow: auto;
+}
+/* Source rows: domains clip to one line; the license note may take two. */
+.st-src .st-label > span .mono {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-src .st-label > b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-src .lic {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-num {
+  width: 76px;
+  text-align: right;
+}
+.st-row.is-disabled .st-num {
+  color: var(--fg-disabled);
+}
+
+/* ---- In-app sign-in (settings-signin.js) ---- */
+.st-signin {
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: start;
+}
+.st-signin .st-foot {
+  margin: 0;
+}
+.st-code-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.st-code {
+  padding: 6px var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg);
+  font: 600 18px/22px var(--font-mono);
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+.st-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+}
+.st-actions .push {
+  margin-left: auto;
+}
+.st-signin-links {
+  display: inline-flex;
+  gap: var(--sp-3);
+  font-size: var(--text-xs);
 }

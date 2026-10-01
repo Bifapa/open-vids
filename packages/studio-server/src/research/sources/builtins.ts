@@ -3,6 +3,10 @@ import type { TrustedSource } from "@hyperframes/agent-protocol";
 /**
  * The built-in trusted sources, in display order. Each one has a connector that speaks its public API; the domains
  * are what trusted mode allows to be read (the API, the pages and the media files of the source).
+ *
+ * DUPLICATED in `apps/desktop/src-tauri/src/research_policy.rs` (`BUILT_INS`): the Projects page edits the same
+ * policy file without a Studio server. Change both lists together (a Rust test compares ids, names, connectors,
+ * homepages and domains).
  */
 export const BUILT_IN_SOURCES: readonly TrustedSource[] = [
   {

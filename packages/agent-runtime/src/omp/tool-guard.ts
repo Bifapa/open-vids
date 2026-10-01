@@ -18,12 +18,18 @@ export type ToolCallRefusal = (toolName: string) => string | null;
 export function projectToolCallGuard(
   projectDir: string,
   refusal?: ToolCallRefusal,
+  askBeforeLockedEdits?: () => boolean,
 ): (event: GuardedToolCall) => Promise<{ block: true; reason: string } | undefined> {
   return async (event) => {
     const reason =
       refusal?.(event.toolName) ??
       (await guardToolCallPaths(projectDir, event.input, event.toolName)) ??
-      (await guardLockedClips(projectDir, event.input, event.toolName));
+      (await guardLockedClips(
+        projectDir,
+        event.input,
+        event.toolName,
+        askBeforeLockedEdits?.() ?? true,
+      ));
     return reason ? { block: true, reason } : undefined;
   };
 }
@@ -31,8 +37,9 @@ export function projectToolCallGuard(
 export function projectBoundaryExtension(
   projectDir: string,
   refusal?: ToolCallRefusal,
+  askBeforeLockedEdits?: () => boolean,
 ): ExtensionFactory {
-  const guard = projectToolCallGuard(projectDir, refusal);
+  const guard = projectToolCallGuard(projectDir, refusal, askBeforeLockedEdits);
   return (pi) => {
     pi.on("tool_call", guard);
   };

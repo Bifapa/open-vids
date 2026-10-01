@@ -38,3 +38,11 @@ export function describeTurnError(code: AgentErrorCode, message: string): string
     ? message || describeAgentFailure(code)
     : describeAgentFailure(code, message);
 }
+
+/**
+ * The runtime's refusal to start a turn because no provider has credentials ("No authenticated OMP model is
+ * available. Sign in with OMP or configure a provider API key."). It means "connect a model", not "something broke".
+ */
+export function isNoModelMessage(message: string): boolean {
+  return /no authenticated omp model is available/i.test(message);
+}

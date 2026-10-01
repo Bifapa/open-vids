@@ -25,6 +25,9 @@
     xhigh: "X-High",
     max: "Max",
   };
+  /* The effort buttons share one row of a 320 px popover with up to seven choices: short labels there, full names
+     in the chip, tooltips and aria-labels. */
+  const EFFORT_SHORT = { minimal: "Min", medium: "Med", xhigh: "XHigh" };
   const MODES = Object.freeze([
     { name: "Plan", intent: "plan", description: "Proposes a plan first" },
     { name: "Edit", intent: "edit", description: "Acts on the timeline" },
@@ -143,7 +146,20 @@
     refs.drop = node("div", "ov-chat-drop");
     refs.drop.setAttribute("aria-hidden", "true");
     refs.drop.append(icon("import"), node("span", "", "Drop to add to the new project"));
-    refs.composer.append(label, refs.attach, refs.textarea, refs.drop);
+    /* No model connected (the catalog came back empty): say so here, with the way to fix it, rather than let
+       Start fail later inside the new project's chat. */
+    refs.noModel = node("div", "ov-chat-nomodel");
+    refs.noModel.hidden = true;
+    refs.noModel.setAttribute("role", "status");
+    refs.noModelButton = button("btn btn-sm", null);
+    refs.noModelButton.dataset.action = "connect-model";
+    refs.noModelButton.textContent = "Connect a model";
+    refs.noModel.append(
+      icon("alert"),
+      node("span", "ov-chat-nomodel-text", "Connect a model to use the agents."),
+      refs.noModelButton,
+    );
+    refs.composer.append(label, refs.attach, refs.textarea, refs.drop, refs.noModel);
 
     const controls = node("div", "ov-chat-controls");
     const chip = (kind, iconName, haspopup) => {
@@ -228,8 +244,10 @@
     }
 
     /* ---------- composer state ---------- */
+    const noModel = () => !!state.catalog && state.catalog.models.length === 0;
     function modelChipText() {
       if (!state.catalog && !state.catalogError) return "Loading…";
+      if (noModel()) return "No model";
       const m = currentModel();
       return (m ? shortName(m.name) : "Default model") + " · " + effortLabel(state.effort);
     }
@@ -255,7 +273,8 @@
       setTip(refs.modeButton, state.mode + " mode — " + modeOf().description);
       const hasText = !!refs.textarea.value.trim(),
         busy = !!state.busy,
-        ready = !busy && (hasText || state.files.length > 0);
+        ready = !busy && !noModel() && (hasText || state.files.length > 0);
+      refs.noModel.hidden = !noModel();
       const glyph = refs.send.firstElementChild;
       if (busy !== glyph.classList.contains("spinner"))
         glyph.replaceWith(busy ? node("i", "spinner") : icon("send"));
@@ -270,7 +289,9 @@
           ? state.busy
           : ready
             ? "Start the new project · Enter"
-            : "Describe the video or add files first",
+            : noModel()
+              ? "Connect a model first"
+              : "Describe the video or add files first",
       );
       refs.send.disabled = !ready;
       refs.send.classList.toggle("btn-primary", ready);
@@ -463,7 +484,8 @@
         .concat(EFFORTS.filter((e) => BASE_EFFORTS.includes(e) || supported.includes(e)))
         .forEach((e) => {
           const b = button("", effortLabel(e) + " thinking effort");
-          b.textContent = effortLabel(e);
+          b.textContent = (e && EFFORT_SHORT[e]) || effortLabel(e);
+          setTip(b, effortLabel(e));
           b.dataset.action = "effort";
           b.dataset.effort = e || "";
           if (agentId) b.dataset.agent = agentId;
@@ -725,6 +747,9 @@
         update();
         closePopover(true);
         notify();
+      } else if (a === "connect-model") {
+        closePopover(false);
+        if (opts.onConnectModel) opts.onConnectModel(refs.noModelButton);
       } else if (a === "agent-defaults") {
         closePopover(false);
         if (opts.onAgentDefaults) opts.onAgentDefaults(refs.modelButton);
@@ -828,6 +853,10 @@
     function submit() {
       const prompt = refs.textarea.value.trim();
       if (state.busy || (!prompt && !state.files.length)) return;
+      if (noModel()) {
+        refs.noModelButton.focus();
+        return;
+      }
       closePopover(false);
       const overrides = {};
       Object.keys(state.dirty).forEach((id) => {

@@ -27,6 +27,7 @@ import {
 } from "./format.js";
 import { formatWebsite } from "./formatWebsite.js";
 import { ResearchToolError, type ResearchHost } from "./host.js";
+import { approvesDownload, downloadApprovalRefusal } from "../autonomy.js";
 import { isLinkedSite, linkedSites } from "./linkedSites.js";
 import {
   RESEARCH_TOOL_NAMES,
@@ -54,6 +55,14 @@ export interface TurnResearchOptions {
    * search results or page contents. The websites linked in it are the only ones `read_website` may open.
    */
   userTexts: () => readonly string[];
+  /** What the user wrote in this turn only (its prompt and steering): the only place a download approval can come from. */
+  turnUserTexts: () => readonly string[];
+  /**
+   * The user's "ask before downloading assets" setting. When true, `import_asset` and `read_website` with `save` are
+   * refused until the user approved in this turn: a Story "Find missing material" action, or a message of the turn that
+   * tells the agents to download/import or says yes (`approvesDownload`). Never the model's own text.
+   */
+  askBeforeDownloads: boolean;
   /** The model the Research run uses (`provider/modelId`), recorded in the provenance. */
   model: () => string | null;
 }
@@ -200,6 +209,14 @@ export class TurnResearch {
     }
   }
 
+  /** Whether the user has approved downloading in this turn (always true when they do not want to be asked). */
+  private downloadsApproved(): boolean {
+    if (!this.options.askBeforeDownloads) return true;
+    // The Story workspace's "Find missing material" is the user's own request to fill those nodes with downloads.
+    if (this.options.turn.action === "resolve") return true;
+    return this.options.turnUserTexts().some(approvesDownload);
+  }
+
   /** In a resolve turn the user's list of Missing Asset nodes is the limit; the model cannot widen it. */
   private checkScope(missing: string): void {
     const { turn, storyOptions } = this.options;
@@ -241,6 +258,7 @@ export class TurnResearch {
         `This is a ${intent === "plan" ? "Plan" : "Ask"} turn: nothing in the project changes, so read_website cannot save files. Call it without save to read the style, and say that the files are saved when the user proceeds.`,
       );
     }
+    if (save && !this.downloadsApproved()) return refuse(downloadApprovalRefusal());
     const request: ReadWebsiteRequest = {
       url,
       ...(save && {
@@ -288,6 +306,7 @@ export class TurnResearch {
       }
       case RESEARCH_TOOL_NAMES.import: {
         const record = argsRecord(args);
+        if (!this.downloadsApproved()) return refuse(downloadApprovalRefusal());
         const candidate = optionalText(record, "candidate", 120);
         const url = optionalText(record, "url", RESEARCH_LIMITS.urlChars);
         if ((candidate === undefined) === (url === undefined))

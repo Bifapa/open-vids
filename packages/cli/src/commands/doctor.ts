@@ -9,7 +9,7 @@ import type { Example } from "./_examples.js";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { c } from "../ui/colors.js";
-import { parseToolVersion, runEnvironmentChecks } from "../browser/preflight.js";
+import { collectToolStatus, parseToolVersion, runEnvironmentChecks } from "../browser/preflight.js";
 import { KOKORO_MODULES, KOKORO_PIP, MUSICGEN_MODULES, MUSICGEN_PIP } from "../audio/providers.js";
 import { hasPythonModules, describeRejectedPythonOverride } from "../tts/python.js";
 import { VERSION } from "../version.js";
@@ -29,6 +29,10 @@ import { withMeta } from "../utils/jsonMeta.js";
 export const examples: Example[] = [
   ["Check system dependencies", "hyperframes doctor"],
   ["Output as JSON for CI / agents", "hyperframes doctor --json"],
+  [
+    "Only FFmpeg, FFprobe and Chrome, as JSON (what the desktop's first run asks)",
+    "hyperframes doctor --tools",
+  ],
 ];
 
 interface Check {
@@ -332,8 +336,18 @@ export default defineCommand({
   meta: { name: "doctor", description: "Check system dependencies and environment" },
   args: {
     json: { type: "boolean", description: "Output as JSON", default: false },
+    tools: {
+      type: "boolean",
+      description:
+        "Only report FFmpeg, FFprobe and the render browser (found, path, version) as one JSON object; never downloads anything",
+      default: false,
+    },
   },
   async run({ args }) {
+    if (args.tools) {
+      console.log(JSON.stringify(withMeta({ tools: await collectToolStatus() })));
+      return;
+    }
     const environment = await runEnvironmentChecks({ includeBrowser: true });
     const checks: Check[] = [
       { name: "Version", run: checkVersion },
