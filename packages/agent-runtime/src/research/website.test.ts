@@ -217,6 +217,8 @@ describe("read_website in a running turn", () => {
       expect(JSON.parse(results.activity?.text ?? "null")).toEqual({
         category: "inspect",
         label: "Reading linear.app",
+        labelCode: "reading_host",
+        labelParams: { host: "linear.app" },
       });
     } finally {
       await fixture.cleanup();
