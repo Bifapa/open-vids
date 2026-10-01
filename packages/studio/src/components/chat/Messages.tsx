@@ -107,7 +107,16 @@ function StreamingCaret() {
 function PartView({ part, live, caret }: { part: AssistantPart; live: boolean; caret: boolean }) {
   switch (part.type) {
     case "text":
-      return (
+      return part.interim ? (
+        <div
+          data-testid="interim-note"
+          className="flex flex-col gap-0.5 border-l-2 border-border-strong pl-2.5 text-text-3"
+        >
+          <span className="text-step-10 font-medium uppercase tracking-wide">Before render QA</span>
+          <MarkdownLite text={part.text} />
+          {caret && <StreamingCaret />}
+        </div>
+      ) : (
         <div>
           <MarkdownLite text={part.text} />
           {caret && <StreamingCaret />}

@@ -55,6 +55,7 @@ import {
   bareToken,
   emptyGraph,
   readStoredStory,
+  readStoredStoryOrNone,
   sameJson,
   writeStoredStory,
   type StoredStory,
@@ -177,7 +178,7 @@ export class StoryService {
   /** The graph with its order and per-node facts. Also sweeps orphaned analysis (throttled). */
   async view(project: ResolvedProject): Promise<StoryView> {
     await this.analysis.cleanOrphans(project);
-    return this.viewOf(project, readStoredStory(project.dir));
+    return this.viewOf(project, readStoredStoryOrNone(project.dir, false));
   }
 
   private async viewOf(project: ResolvedProject, stored: StoredStory | null): Promise<StoryView> {
@@ -345,7 +346,7 @@ export class StoryService {
   /** Studio saves the whole graph after a manual edit; authorship is worked out against the stored graph. */
   save(project: ResolvedProject, request: SaveStoryRequest): Promise<StoryView> {
     return this.lock(project, async () => {
-      const stored = readStoredStory(project.dir);
+      const stored = readStoredStoryOrNone(project.dir, request.baseVersion === null);
       if (
         (stored?.version ?? null) !==
         (request.baseVersion === null ? null : bareToken(request.baseVersion))

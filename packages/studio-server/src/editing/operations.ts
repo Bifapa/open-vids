@@ -142,14 +142,31 @@ function usedIds(model: CompositionModel): string[] {
   return [...model.document.querySelectorAll("[id]")].map((element) => element.id);
 }
 
-/** Studio's stacking rule: a new clip sits above every styled element already in the composition. */
+const CAPTIONS_HOST = '[data-track-kind="captions"]';
+/**
+ * The captions host stacks in its own band, above the clips an edit places: captions are read over the footage, so a
+ * B-roll shot, title or graphic added later must not cover them.
+ */
+const CAPTIONS_Z_BAND = 1000;
+
+function styledZIndex(element: Element): number | null {
+  const match = /(?:^|;)\s*z-index\s*:\s*(-?\d+)/i.exec(element.getAttribute("style") ?? "");
+  return match?.[1] ? Number.parseInt(match[1], 10) : null;
+}
+
+/** Studio's stacking rule: a new clip sits above every styled element already in the composition but the captions. */
 function nextZIndex(model: CompositionModel): number {
   let max = 0;
   for (const element of model.root.querySelectorAll("[style]")) {
-    const match = /(?:^|;)\s*z-index\s*:\s*(-?\d+)/i.exec(element.getAttribute("style") ?? "");
-    if (match?.[1]) max = Math.max(max, Number.parseInt(match[1], 10));
+    if (element.matches(CAPTIONS_HOST)) continue;
+    max = Math.max(max, styledZIndex(element) ?? max);
   }
   return max + 1;
+}
+
+/** Where the captions host stacks: in its band, and above everything else even when the band is outgrown. */
+function captionsZIndex(model: CompositionModel): number {
+  return Math.max(CAPTIONS_Z_BAND, nextZIndex(model));
 }
 
 function maxTrack(model: CompositionModel): number {
@@ -222,11 +239,16 @@ function applyGsap(batch: Batch, shifts: readonly Gsap[]): void {
 
 // ── add ──────────────────────────────────────────────────────────────────────
 
-/** An explicit frame wins; an explicit fit fills the canvas; otherwise the asset keeps its size, centred. */
+/**
+ * An explicit frame wins; an explicit fit fills the canvas. Otherwise footage (video) fills the frame, scaled to fit,
+ * as a Studio drop does — a 720p recording in a 1080p composition must not play as a centred postage stamp — and a
+ * picture keeps its size, centred (a logo stays a logo).
+ */
 function clipGeometry(
   op: { frame?: ClipFrame; fit?: ClipFit },
   facts: { width: number | null; height: number | null },
   canvas: { width: number; height: number },
+  kind: string,
 ): { left: number; top: number; width: number; height: number } {
   if (op.frame) {
     return {
@@ -236,7 +258,8 @@ function clipGeometry(
       height: Math.round(op.frame.height),
     };
   }
-  if (op.fit !== undefined) return { left: 0, top: 0, width: canvas.width, height: canvas.height };
+  if (op.fit !== undefined || kind === "video")
+    return { left: 0, top: 0, width: canvas.width, height: canvas.height };
   const natural = facts.width && facts.height ? { width: facts.width, height: facts.height } : null;
   return fitTimelineAssetGeometry(natural, canvas);
 }
@@ -301,7 +324,7 @@ async function addClip(
     throw new EditFailure("unsupported", "frame applies to video and images, not audio");
   }
   const model = await loadModel(env, batch.html);
-  const geometry = clipGeometry(op, facts, canvasOf(model));
+  const geometry = clipGeometry(op, facts, canvasOf(model), kind);
   const hfId = `hf-${randomUUID()}`;
   const markup = buildTimelineAssetInsertHtml({
     id: buildTimelineAssetId(assetPath, usedIds(model)),
@@ -366,7 +389,7 @@ async function addSequence(
   }
 
   const model = await loadModel(env, batch.html);
-  const geometry = clipGeometry(op, facts, canvasOf(model));
+  const geometry = clipGeometry(op, facts, canvasOf(model), kind);
   const zIndex = nextZIndex(model);
   const src = resolveTimelineAssetSrc(env.compositionPath, assetPath);
   const taken = new Set(usedIds(model));
@@ -600,6 +623,10 @@ async function applyCaptions(
       duration: round3(duration),
       ...(op.track !== undefined && { trackIndex: op.track }),
     });
+    // Re-applied captions return on top of whatever was placed since they were made.
+    const z = styledZIndex(existing.element);
+    if (z === null || z < nextZIndex(model))
+      setStyle(existing.element, "z-index", String(captionsZIndex(model)));
     commit(batch, model);
     return { op: op.op, clipId: existing.id, newClipId: null };
   }
@@ -618,7 +645,7 @@ async function applyCaptions(
   host.setAttribute("data-height", String(canvas.height));
   host.setAttribute(
     "style",
-    `position: absolute; left: 0px; top: 0px; width: ${canvas.width}px; height: ${canvas.height}px; z-index: ${nextZIndex(model)}`,
+    `position: absolute; left: 0px; top: 0px; width: ${canvas.width}px; height: ${canvas.height}px; z-index: ${captionsZIndex(model)}`,
   );
   model.root.appendChild(host);
   commit(batch, model);

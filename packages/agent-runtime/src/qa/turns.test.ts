@@ -958,8 +958,9 @@ describe("render QA in a turn", () => {
         await fixture.turns.start(chatId, { prompt: "Tighten the intro" });
         await settled(fixture, chatId);
 
-        // One render by the Director (high), one after the correction; pass 1 reused the first.
-        expect(fixture.editing.renderRequests).toEqual([{ quality: "high" }, { quality: "draft" }]);
+        // One render by the Director (high), one after the correction in the same quality (it replaces the
+        // deliverable); pass 1 reused the first.
+        expect(fixture.editing.renderRequests).toEqual([{ quality: "high" }, { quality: "high" }]);
         expect(fixture.qa.checkRequests.map((request) => request.render)).toEqual([
           "renders/final.mp4",
           "renders/final.mp4",
@@ -989,9 +990,57 @@ describe("render QA in a turn", () => {
         await settled(fixture, chatId);
         expect(fixture.editing.renderRequests).toEqual([
           { quality: "standard" },
-          { quality: "draft" },
+          { quality: "standard" },
         ]);
         expect(fixture.qa.reports[0]?.fingerprint).toBe("fp-b");
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it("checks the render a turn made even when the project itself did not change", async () => {
+      const fixture = await createRuntimeFixture();
+      try {
+        const chatId = await qaChat(fixture, quality(2));
+        fixture.qa.checkResults = [cleanCheck({ issues: [BLACK_SUBJECT] }), cleanCheck()];
+        const start = fixture.qa.fingerprint;
+        const director = directorScript(fixture, {
+          // "Render the final video": no edit, only a render of the project as it is (the model names the main
+          // composition explicitly, as real Directors do).
+          first: async (session) => {
+            await session.callTool("render_video", { quality: "high", composition: "index.html" });
+          },
+        });
+        script(fixture, { director: director.run, vision: visionScript([]) });
+        await fixture.turns.start(chatId, { prompt: "Render the final video in high quality" });
+        await settled(fixture, chatId);
+
+        expect(fixture.qa.reports[0]).toMatchObject({
+          fingerprint: start,
+          render: { origin: "turn" },
+        });
+        // The black stretch is corrected and the deliverable re-rendered in the user's quality.
+        expect(director.seen.corrections).toHaveLength(1);
+        expect(fixture.editing.renderRequests).toEqual([
+          { composition: "index.html", quality: "high" },
+          { quality: "high" },
+        ]);
+        expect(fixture.chats.get(chatId)?.turns[0]?.qa?.status).toBe("passed");
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it("stays silent when a turn neither changed nor rendered the project", async () => {
+      const fixture = await createRuntimeFixture();
+      try {
+        const chatId = await qaChat(fixture, quality(2));
+        const director = directorScript(fixture, { first: async () => undefined });
+        script(fixture, { director: director.run });
+        await fixture.turns.start(chatId, { prompt: "What is in my project?" });
+        await settled(fixture, chatId);
+        expect(fixture.chats.get(chatId)?.turns[0]?.qa).toBeUndefined();
+        expect(fixture.editing.renderRequests).toEqual([]);
       } finally {
         await fixture.cleanup();
       }

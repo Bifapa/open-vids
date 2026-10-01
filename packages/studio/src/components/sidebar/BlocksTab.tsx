@@ -11,6 +11,7 @@ import {
 import { usePlayerStore } from "../../player";
 import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
+import { useMediaLoadSlot } from "../../hooks/useMediaLoadSlot";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 export interface BlockPreviewInfo {
   videoUrl?: string;
@@ -337,6 +338,10 @@ function BlockCard({
     [onAdd, addState],
   );
 
+  // The non-hover metadata video is a last-resort thumbnail; its load takes a
+  // shared slot so a long catalog never opens dozens of media assets at once.
+  const metadataSlot = useMediaLoadSlot(!hovered && !posterUrl && !!videoUrl);
+
   const { activeCompPath, compositionDimensions } = useStudioShellContext();
 
   const handleShowPrompt = useCallback(
@@ -396,12 +401,14 @@ function BlockCard({
           />
         ) : posterUrl ? (
           <img src={posterUrl} alt={title} loading="lazy" className="w-full h-full object-cover" />
-        ) : videoUrl ? (
+        ) : videoUrl && metadataSlot.granted ? (
           <video
             src={videoUrl}
             muted
             playsInline
             preload="metadata"
+            onLoadedMetadata={metadataSlot.release}
+            onError={metadataSlot.release}
             className="w-full h-full object-cover"
           />
         ) : (

@@ -8,6 +8,7 @@ import {
   type QaIssueDraft,
   type QaPassPhase,
   type QaPassState,
+  type QaRenderOrigin,
   type QaReport,
   type QaReportInput,
   type QaVisionRun,
@@ -24,7 +25,12 @@ import type { EditingHost, RenderQuality } from "../editing/host.js";
 import { LONG_RENDER_SECONDS } from "../editing/renderGuard.js";
 import { errorMessage } from "../errors.js";
 import type { TurnQa } from "./executor.js";
-import { renderCorrectionPrompt, renderFinalPrompt, renderVisionTask } from "./prompt.js";
+import {
+  renderCorrectionPrompt,
+  renderFinalPrompt,
+  renderSkippedPrompt,
+  renderVisionTask,
+} from "./prompt.js";
 
 /** Where the turn is in QA; the runner refuses tools accordingly (see `qaToolRefusal`). */
 export type QaPhase = "correction" | "final" | null;
@@ -35,6 +41,8 @@ export interface QaDirector {
   prompt(text: string): Promise<BackendPromptOutcome>;
   /** Re-prompts the Director with delegated runs it finished without collecting and with steering, as after its first reply. */
   settle(outcome: BackendPromptOutcome): Promise<BackendPromptOutcome>;
+  /** Marks the Director's text written so far in the turn's reply as an interim progress note. */
+  markInterim(): Promise<void>;
   /** Steering received while the Director was idle; it opens the next prompt. */
   takeSteering(): string[];
   setPhase(phase: QaPhase): void;
@@ -56,6 +64,11 @@ export interface QaLoopDeps {
   /** The project's fingerprint when the turn started; null when the QA service could not say. */
   startFingerprint: string | null;
   director: QaDirector;
+  /**
+   * The Director was told (`<render-qa-pending>`) that a check follows its reply. When QA then does not run although
+   * the project changed, its reply was interim and it is asked for the final answer.
+   */
+  instructed?: boolean;
   /** The turn's abort signal. */
   signal: AbortSignal;
   now: () => number;
@@ -75,6 +88,8 @@ interface RenderedPass {
   quality: RenderQuality;
   /** The project fingerprint the render was made from. */
   fingerprint: string;
+  /** `turn`: the Director's own render, reused; `qa`: rendered by QA for this pass. */
+  origin: QaRenderOrigin;
 }
 
 type PassResult =
@@ -116,6 +131,11 @@ function tooLongReason(duration: number): string {
  */
 export class QaLoop {
   private state: TurnQaState | null = null;
+  /** Previews this session rendered itself (never the Director's own render pass 1 reuses), in order. */
+  private readonly produced: string[] = [];
+  /** The latest render of the session that succeeded: what the final report names and cleanup keeps. */
+  private latestRender: string | null = null;
+  private finished = false;
 
   constructor(private readonly deps: QaLoopDeps) {}
 
@@ -134,6 +154,7 @@ export class QaLoop {
           () => undefined,
         );
       }
+      await this.finishSession();
       throw error;
     }
   }
@@ -164,7 +185,20 @@ export class QaLoop {
         "Render QA could not tell whether the project changed (Studio's QA service did not answer when the turn started).",
       );
     }
-    if (current === deps.startFingerprint) return outcome;
+    if (current === deps.startFingerprint) {
+      // Nothing changed — but a render this turn made of the project as it is (the user asked for a video file) is a
+      // deliverable, and a deliverable is checked like any edit.
+      const last = deps.renders.last();
+      if (last === null || last.fingerprint !== current) return outcome;
+      if (last.composition !== undefined) {
+        // `composition: "index.html"` names the main composition explicitly; any other composition is not checked.
+        const main = await deps.editing
+          .timeline(undefined, signal)
+          .then((snapshot) => snapshot.composition.path)
+          .catch(() => null);
+        if (last.composition !== main) return outcome;
+      }
+    }
     if (budget.qaPasses === 0) return this.skip(outcome, "Render QA is off");
 
     let duration: number;
@@ -191,6 +225,8 @@ export class QaLoop {
       reason: null,
     };
     await this.publish();
+    // QA really runs: what the Director said so far is an interim note, the final report follows the check.
+    await deps.director.markInterim();
 
     const history = {
       previous: [] as QaIssue[],
@@ -310,8 +346,14 @@ export class QaLoop {
       startFingerprint = after;
     }
 
-    await this.settleState(end.status, end.reason);
-    // The Director reports only now, after QA: no edit, delegation or render is allowed in this last prompt.
+    try {
+      await this.settleState(end.status, end.reason);
+    } finally {
+      await this.finishSession();
+    }
+    // The Director reports only now, after QA: no edit, delegation or render is allowed in this last prompt. What it
+    // wrote while correcting ("fixed, re-checking now") is progress, not the answer.
+    await deps.director.markInterim();
     deps.director.setPhase("final");
     try {
       const final = await deps.director.prompt(
@@ -379,7 +421,7 @@ export class QaLoop {
     let rendered: RenderedPass | null = null;
     let renderError: string | null = null;
     try {
-      rendered = await this.obtainRender(input.startFingerprint, input.mayReuse);
+      rendered = await this.obtainRender(input.startFingerprint, input.mayReuse, input.composition);
     } catch (error) {
       if (isAbort(signal, error)) return { kind: "aborted" };
       renderError = errorMessage(error, "The render failed");
@@ -480,6 +522,7 @@ export class QaLoop {
         height: rendered.height,
         hasAudio: rendered.hasAudio,
         quality: rendered.quality,
+        origin: rendered.origin,
       },
       renderError,
       checks,
@@ -512,22 +555,27 @@ export class QaLoop {
   /**
    * The render of a pass. Pass 1 reuses the Director's own render when it was made from the project as it is now
    * (nothing changed since it started); otherwise the composition is rendered in draft quality — or, when the user
-   * asked for a render, in the quality of the Director's last render (else standard), so the last QA render is the
-   * deliverable.
+   * asked for a render or the Director itself rendered a deliverable in this turn, in the quality of the Director's
+   * last render (else standard), so a correction never downgrades the file the user gets.
    */
-  private async obtainRender(startFingerprint: string, mayReuse: boolean): Promise<RenderedPass> {
+  private async obtainRender(
+    startFingerprint: string,
+    mayReuse: boolean,
+    composition: string,
+  ): Promise<RenderedPass> {
     const { deps } = this;
     const { signal } = deps;
     const last = deps.renders.last();
     if (
       mayReuse &&
       last &&
-      last.composition === undefined &&
+      (last.composition === undefined || last.composition === composition) &&
       last.fingerprint === startFingerprint
     ) {
       try {
         const media = await deps.editing.probe(last.path, signal);
         if (media.duration && media.width && media.height) {
+          this.latestRender = last.path;
           return {
             path: last.path,
             duration: media.duration,
@@ -536,6 +584,7 @@ export class QaLoop {
             hasAudio: media.hasAudio ?? null,
             quality: last.quality,
             fingerprint: startFingerprint,
+            origin: "turn",
           };
         }
       } catch (error) {
@@ -543,9 +592,15 @@ export class QaLoop {
         // The file cannot be read any more: render again.
       }
     }
-    const quality: RenderQuality = deps.renders.asked() ? (last?.quality ?? "standard") : "draft";
+    const quality: RenderQuality = last
+      ? last.quality
+      : deps.renders.asked()
+        ? "standard"
+        : "draft";
     const fingerprint = startFingerprint;
     const output = await deps.editing.render({ quality }, signal, () => undefined);
+    this.produced.push(output.path);
+    this.latestRender = output.path;
     return {
       path: output.path,
       duration: output.duration,
@@ -554,6 +609,7 @@ export class QaLoop {
       hasAudio: output.hasAudio,
       quality,
       fingerprint,
+      origin: "qa",
     };
   }
 
@@ -679,7 +735,18 @@ export class QaLoop {
       reason,
     };
     await this.publish();
-    return outcome;
+    if (!this.deps.instructed || outcome !== "completed" || this.deps.signal.aborted)
+      return outcome;
+    // The Director promised a check that is not coming: its reply so far is interim, the final answer follows now.
+    const { director } = this.deps;
+    await director.markInterim();
+    director.setPhase("final");
+    try {
+      const final = await director.prompt(renderSkippedPrompt(reason, director.takeSteering()));
+      return await director.settle(final);
+    } finally {
+      director.setPhase(null);
+    }
   }
 
   private async abort(): Promise<BackendPromptOutcome> {
@@ -693,8 +760,26 @@ export class QaLoop {
         pass.endedAt = now;
       }
     }
-    await this.settleState("aborted", "The turn was stopped while Render QA was running.");
+    try {
+      await this.settleState("aborted", "The turn was stopped while Render QA was running.");
+    } finally {
+      await this.finishSession();
+    }
     return "aborted";
+  }
+
+  /**
+   * Ends the QA session on the service once: its intermediate QA previews go, the latest successful render stays (the
+   * deliverable the final report names) and so does any render of the Director's own. Best-effort: the turn's
+   * outcome never depends on it (see `TurnQa.finishSession`), and it runs even after the turn was stopped.
+   */
+  private async finishSession(): Promise<void> {
+    if (this.finished || !this.state || this.state.passes.length === 0) return;
+    this.finished = true;
+    await this.deps.qa.finishSession(this.deps.turn.id, {
+      keep: this.latestRender,
+      ...(this.produced.length > 0 && { produced: [...this.produced] }),
+    });
   }
 
   private async settleState(status: TurnQaStatus, reason: string | null): Promise<void> {

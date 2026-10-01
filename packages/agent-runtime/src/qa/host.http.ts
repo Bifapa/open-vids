@@ -1,10 +1,13 @@
 import {
   isQaCheckResponse,
   isQaError,
+  isQaFinishResponse,
   isQaReport,
   isRecord,
   type QaCheckRequest,
   type QaCheckResponse,
+  type QaFinishRequest,
+  type QaFinishResponse,
   type QaFramesRequest,
   type QaFramesResponse,
   type QaReport,
@@ -24,6 +27,8 @@ export const QA_TIMEOUTS_MS = {
   check: 10 * 60_000,
   frames: 2 * 60_000,
   report: 30_000,
+  /** Deleting a few files and pruning the report folder. */
+  finish: 15_000,
 } as const;
 
 interface RequestOptions {
@@ -83,6 +88,25 @@ export class HttpQaHost implements QaHost {
       onTimeout: "Studio did not answer in time.",
     });
     if (!isQaReport(payload)) throw invalidResponse("report");
+    return payload;
+  }
+
+  async finishSession(
+    sessionId: string,
+    request: QaFinishRequest,
+    signal: AbortSignal,
+  ): Promise<QaFinishResponse> {
+    const payload = await this.request(
+      "POST",
+      `/sessions/${encodeURIComponent(sessionId)}/finish`,
+      {
+        body: request,
+        signal,
+        timeoutMs: QA_TIMEOUTS_MS.finish,
+        onTimeout: "Studio did not finish cleaning up in time.",
+      },
+    );
+    if (!isQaFinishResponse(payload)) throw invalidResponse("cleanup result");
     return payload;
   }
 

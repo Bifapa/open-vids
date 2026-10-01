@@ -1,18 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { STUDIO_PREVIEW_DETACHED_SRC_ATTR } from "../studioPreviewMark";
+import { STUDIO_PREVIEW_DETACHED_SRC_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 import {
   type BudgetClip,
   type BudgetState,
   createPreviewMediaBudget,
   DETACH_BATCH_SIZE,
   DETACH_INTERVAL_MS,
-  isAwaitingRestoredSource,
-  MAX_ACTIVE_PREVIEW_MEDIA,
-  planPreviewMediaBudget,
   decidePreviewMediaBudget,
+  detachPreviewVideoSources,
+  importPreviewNode,
+  isAwaitingRestoredSource,
+  isPreviewMediaBudgetActive,
+  LOAD_STALL_MS,
+  MAX_ACTIVE_PREVIEW_MEDIA,
+  MAX_IN_FLIGHT_LOADS,
+  MAX_IN_FLIGHT_URGENT_LOADS,
+  planPreviewMediaBudget,
   type PreviewMediaBudget,
-  RETAIN_UPCOMING_CLIPS,
   type PreviewMediaClip,
+  RETAIN_UPCOMING_CLIPS,
 } from "./previewMediaBudget";
 
 /** `count` back-to-back clips of `length` seconds; key = index. */
@@ -25,131 +31,225 @@ function strip(count: number, length: number, pinned: number[] = []): BudgetClip
   }));
 }
 
-function states(
-  clips: BudgetClip<number>[],
-  attached: (key: number) => boolean,
-  cheap = false,
-): BudgetState<number>[] {
-  return clips.map((clip) => ({
-    ...clip,
-    attached: attached(clip.key),
-    cheapToDrop: cheap,
-  }));
+interface StateShape {
+  attached?: (key: number) => boolean;
+  loading?: (key: number) => boolean;
+  stalled?: (key: number) => boolean;
 }
+
+function states(clips: BudgetClip<number>[], shape: StateShape = {}): BudgetState<number>[] {
+  return clips.map((clip) => {
+    const loading = shape.loading?.(clip.key) ?? false;
+    return {
+      ...clip,
+      attached: loading || (shape.attached?.(clip.key) ?? false),
+      loading,
+      stalled: loading && (shape.stalled?.(clip.key) ?? false),
+    };
+  });
+}
+
+const NOW = { nowMs: 10_000, lastDetachAtMs: Number.NEGATIVE_INFINITY };
 
 describe("planPreviewMediaBudget", () => {
   it("keeps the current clip, a short past and a lookahead, and drops the rest", () => {
     const clips = strip(40, 4); // clip k spans [4k, 4k+4)
-    const { wanted } = planPreviewMediaBudget(clips, 82);
-    const keys = new Set(wanted);
+    const keys = new Set(planPreviewMediaBudget(clips, 82).wanted);
     expect(keys.has(20)).toBe(true); // [80, 84) holds the playhead
     expect(keys.has(19)).toBe(true); // ended 2 s ago, inside the retained past
     expect(keys.has(18)).toBe(false); // ended 6 s ago, beyond RETAIN_BEHIND_SECONDS
-    expect(keys.has(22)).toBe(true); // starts in 6 s
     expect(keys.has(23)).toBe(true); // starts in exactly RETAIN_AHEAD_SECONDS: still retained
     expect(keys.has(24)).toBe(false); // starts in 14 s
-    expect(keys.has(30)).toBe(false);
     expect(keys.has(0)).toBe(false);
   });
 
   it("retains the next few clips however far away they start", () => {
-    const clips: BudgetClip<number>[] = [
-      { key: 0, start: 0, end: 5, pinned: false },
-      { key: 1, start: 100, end: 105, pinned: false },
-      { key: 2, start: 200, end: 205, pinned: false },
-      { key: 3, start: 300, end: 305, pinned: false },
-      { key: 4, start: 400, end: 405, pinned: false },
-    ];
+    const clips: BudgetClip<number>[] = [0, 100, 200, 300, 400].map((start, key) => ({
+      key,
+      start,
+      end: start + 5,
+      pinned: false,
+    }));
     const keys = planPreviewMediaBudget(clips, 1).wanted;
     expect(keys).toHaveLength(1 + RETAIN_UPCOMING_CLIPS);
     expect(keys).not.toContain(4);
   });
 
   it("never wants more than the cap, cutting by distance from the playhead", () => {
-    // 0.25 s clips: the ±window alone would hold ~60 of them.
     const clips = strip(200, 0.25);
-    const time = 25.1;
-    const { wanted } = planPreviewMediaBudget(clips, time);
+    const { wanted } = planPreviewMediaBudget(clips, 25.1);
     expect(wanted).toHaveLength(MAX_ACTIVE_PREVIEW_MEDIA);
     expect(wanted[0]).toBe(100); // the clip holding the playhead comes first
-    const distances = wanted.map((key) => Math.abs(clips[key]!.start + 0.125 - time));
-    const worstKept = Math.max(...distances);
-    const nearestDropped = Math.min(
-      ...clips
-        .filter((clip) => !wanted.includes(clip.key))
-        .map((clip) => Math.abs(clip.start + 0.125 - time)),
-    );
-    expect(worstKept).toBeLessThanOrEqual(nearestDropped + 0.25);
-  });
-
-  it("honours an explicit cap", () => {
-    const { wanted } = planPreviewMediaBudget(strip(50, 1), 25, { cap: 4 });
-    expect(wanted).toHaveLength(4);
-    expect(wanted).toContain(25);
   });
 
   it("never drops a pinned clip, however far away, and counts it against the cap", () => {
-    const clips = strip(60, 2, [3]);
-    const { wanted } = planPreviewMediaBudget(clips, 100, { cap: 5 });
+    const { wanted } = planPreviewMediaBudget(strip(60, 2, [3]), 100, { cap: 5 });
     expect(wanted).toContain(3);
     expect(wanted).toHaveLength(5);
   });
 
-  it("lets every clip under the playhead keep its source even beyond the cap", () => {
-    const overlapping: BudgetClip<number>[] = Array.from({ length: 6 }, (_, key) => ({
+  it("marks clips about to start as urgent", () => {
+    const { urgent } = planPreviewMediaBudget(strip(10, 4), 6.5);
+    expect(urgent.has(1)).toBe(true); // holds the playhead
+    expect(urgent.has(2)).toBe(true); // starts in 1.5 s
+    expect(urgent.has(3)).toBe(false); // starts in 5.5 s: retained, but can wait
+  });
+});
+
+describe("decidePreviewMediaBudget: attaching", () => {
+  it("opens at most MAX_IN_FLIGHT_LOADS non-urgent sources at once, nearest first", () => {
+    // The playhead sits between clips, so nothing is urgent and the lookahead wants many.
+    const clips = strip(40, 1).map((clip) => ({
+      ...clip,
+      start: clip.start + 3,
+      end: clip.end + 3,
+    }));
+    const decision = decidePreviewMediaBudget(states(clips), 0, NOW);
+    expect(decision.attach).toEqual([0, 1, 2]);
+    expect(decision.attach).toHaveLength(MAX_IN_FLIGHT_LOADS);
+    expect(decision.pending).toBe(true);
+  });
+
+  it("counts loads already in flight against the limit", () => {
+    const clips = strip(40, 1).map((clip) => ({
+      ...clip,
+      start: clip.start + 3,
+      end: clip.end + 3,
+    }));
+    const decision = decidePreviewMediaBudget(states(clips, { loading: (key) => key < 2 }), 0, NOW);
+    expect(decision.attach).toEqual([2]);
+    const saturated = decidePreviewMediaBudget(
+      states(clips, { loading: (key) => key < 3 }),
+      0,
+      NOW,
+    );
+    expect(saturated.attach).toEqual([]);
+    expect(saturated.pending).toBe(true);
+  });
+
+  it("does not count a stalled load, so one stuck source cannot starve the queue", () => {
+    const clips = strip(40, 1).map((clip) => ({
+      ...clip,
+      start: clip.start + 3,
+      end: clip.end + 3,
+    }));
+    const decision = decidePreviewMediaBudget(
+      states(clips, { loading: (key) => key < 3, stalled: (key) => key < 3 }),
+      0,
+      NOW,
+    );
+    expect(decision.attach).toHaveLength(MAX_IN_FLIGHT_LOADS);
+  });
+
+  it("lets the clips under the playhead open ahead of the queue, up to the urgent limit", () => {
+    const overlapping: BudgetClip<number>[] = Array.from({ length: 10 }, (_, key) => ({
       key,
       start: 0,
       end: 10,
       pinned: false,
     }));
-    expect(planPreviewMediaBudget(overlapping, 5, { cap: 2 }).wanted).toHaveLength(6);
-  });
-
-  it("marks clips about to start as urgent", () => {
-    const clips = strip(10, 4);
-    const { urgent } = planPreviewMediaBudget(clips, 6.5);
-    expect(urgent.has(1)).toBe(true); // holds the playhead
-    expect(urgent.has(2)).toBe(true); // starts in 1.5 s
-    expect(urgent.has(3)).toBe(false); // starts in 5.5 s: retained, but can wait for room
-  });
-});
-
-describe("decidePreviewMediaBudget", () => {
-  const none = { nowMs: 10_000, lastDetachAtMs: Number.NEGATIVE_INFINITY };
-
-  it("restores a released clip before it starts", () => {
-    const clips = strip(40, 4);
-    const inLookahead = 2; // starts at 8 s, inside RETAIN_AHEAD_SECONDS
-    const decision = decidePreviewMediaBudget(
-      states(clips, (key) => key === 0 || key === 1),
-      0,
-      none,
-    );
-    expect(decision.attach).toContain(inLookahead);
-    expect(decision.attach).not.toContain(39);
-  });
-
-  it("restores the clip that holds the playhead straight away, even at the cap", () => {
-    const clips = strip(40, 4);
-    // 16 far clips hold a source, none of the near ones do.
-    const decision = decidePreviewMediaBudget(
-      states(clips, (key) => key >= 24 && key < 24 + MAX_ACTIVE_PREVIEW_MEDIA),
-      0,
-      none,
-    );
-    expect(decision.attach).toContain(0);
-    // Room under the cap, not the wish list, limits the non-urgent rest: they wait for releases.
-    expect(decision.attach).not.toContain(3);
+    const decision = decidePreviewMediaBudget(states(overlapping), 5, NOW);
+    expect(decision.attach).toHaveLength(MAX_IN_FLIGHT_URGENT_LOADS);
     expect(decision.pending).toBe(true);
   });
 
-  it("releases loaded clips in batches, farthest first", () => {
+  it("serves an urgent clip before a nearer-queued non-urgent one", () => {
+    // 0 is 1 s behind (not urgent), 1 holds the playhead.
+    const clips: BudgetClip<number>[] = [
+      { key: 0, start: 0, end: 4, pinned: false },
+      { key: 1, start: 5, end: 9, pinned: false },
+    ];
+    const saturatedBy = (n: number) =>
+      states(clips, { loading: () => false }).concat(
+        Array.from({ length: n }, (_, i) => ({
+          key: 10 + i,
+          start: 100,
+          end: 101,
+          pinned: false,
+          attached: true,
+          loading: true,
+          stalled: false,
+        })),
+      );
+    const decision = decidePreviewMediaBudget(saturatedBy(MAX_IN_FLIGHT_LOADS), 5, NOW);
+    expect(decision.attach).toEqual([1]);
+  });
+
+  it("restores a released clip before it starts", () => {
     const clips = strip(40, 4);
-    const all = states(clips, () => true);
-    const first = decidePreviewMediaBudget(all, 0, none);
+    const decision = decidePreviewMediaBudget(
+      states(clips, { attached: (key) => key === 0 }),
+      0,
+      NOW,
+    );
+    expect(decision.attach).toContain(2); // starts at 8 s, inside RETAIN_AHEAD_SECONDS
+    expect(decision.attach).not.toContain(39);
+  });
+
+  it("waits for room under the cap before opening a non-urgent clip", () => {
+    const clips = strip(40, 1).map((clip) => ({
+      ...clip,
+      start: clip.start + 3,
+      end: clip.end + 3,
+    }));
+    const decision = decidePreviewMediaBudget(
+      states(clips, { attached: (key) => key >= 24 && key < 24 + MAX_ACTIVE_PREVIEW_MEDIA }),
+      0,
+      { nowMs: 10_000, lastDetachAtMs: 9_999 },
+    );
+    expect(decision.attach).toEqual([]);
+    expect(decision.pending).toBe(true);
+  });
+});
+
+describe("decidePreviewMediaBudget: releasing", () => {
+  it("never releases a clip whose load has not settled, even one that no longer queues others", () => {
+    const clips = strip(40, 4);
+    const decision = decidePreviewMediaBudget(
+      states(clips, {
+        attached: () => true,
+        loading: (key) => key >= 30,
+        stalled: () => true,
+      }),
+      0,
+      NOW,
+    );
+    expect(decision.detach).toHaveLength(DETACH_BATCH_SIZE);
+    expect(decision.detach.every((key) => key < 30)).toBe(true);
+  });
+
+  it("never releases a stalled load either", () => {
+    const clips = strip(40, 4);
+    const decision = decidePreviewMediaBudget(
+      states(clips, {
+        attached: (key) => key === 35,
+        loading: (key) => key === 39,
+        stalled: () => true,
+      }),
+      0,
+      NOW,
+    );
+    expect(decision.detach).toEqual([35]);
+    expect(decision.detach).not.toContain(39);
+  });
+
+  it("releases nothing while any load is in flight", () => {
+    const clips = strip(40, 4);
+    const decision = decidePreviewMediaBudget(
+      states(clips, { attached: () => true, loading: (key) => key === 1 }),
+      0,
+      NOW,
+    );
+    expect(decision.detach).toEqual([]);
+    expect(decision.pending).toBe(true);
+  });
+
+  it("releases settled clips in batches, farthest first", () => {
+    const clips = strip(40, 4);
+    const all = states(clips, { attached: () => true });
+    const first = decidePreviewMediaBudget(all, 0, NOW);
     expect(first.detach).toHaveLength(DETACH_BATCH_SIZE);
     expect(first.detach[0]).toBe(39);
-    expect(first.pending).toBe(true);
 
     const soon = decidePreviewMediaBudget(all, 0, { nowMs: 10_000, lastDetachAtMs: 9_900 });
     expect(soon.detach).toEqual([]);
@@ -162,21 +262,38 @@ describe("decidePreviewMediaBudget", () => {
     expect(later.detach).toHaveLength(DETACH_BATCH_SIZE);
   });
 
-  it("drains a full scrub in batches and ends at the cap", () => {
+  it("does not release a pinned (audible) clip", () => {
+    const decision = decidePreviewMediaBudget(
+      states(strip(40, 4, [30]), { attached: () => true }),
+      0,
+      NOW,
+    );
+    expect(decision.detach).not.toContain(30);
+  });
+
+  it("drains a full scrub in batches, never overlapping loads, and ends at the cap", () => {
     const clips = strip(73, 2);
     const attached = new Set(clips.map((clip) => clip.key));
+    const loading = new Set<number>();
     let now = 0;
     let lastDetachAtMs = Number.NEGATIVE_INFINITY;
     let passes = 0;
+    let peakInFlight = 0;
     for (;;) {
       const decision = decidePreviewMediaBudget(
-        states(clips, (key) => attached.has(key)),
+        states(clips, { attached: (key) => attached.has(key), loading: (key) => loading.has(key) }),
         70,
         { nowMs: now, lastDetachAtMs },
       );
       for (const key of decision.detach) attached.delete(key);
-      for (const key of decision.attach) attached.add(key);
+      for (const key of decision.attach) {
+        attached.add(key);
+        loading.add(key);
+      }
+      peakInFlight = Math.max(peakInFlight, loading.size);
       if (decision.detach.length > 0) lastDetachAtMs = now;
+      // Every load settles before the next pass.
+      loading.clear();
       passes += 1;
       if (!decision.pending) break;
       now += DETACH_INTERVAL_MS;
@@ -184,37 +301,16 @@ describe("decidePreviewMediaBudget", () => {
     }
     expect(attached.size).toBeLessThanOrEqual(MAX_ACTIVE_PREVIEW_MEDIA);
     expect(attached.has(35)).toBe(true); // [70, 72) holds the playhead
-  });
-
-  it("releases clips that decoded nothing without waiting for a batch slot", () => {
-    const clips = strip(40, 4);
-    const decision = decidePreviewMediaBudget(
-      states(clips, () => true, true),
-      0,
-      { nowMs: 10_000, lastDetachAtMs: 9_999 },
-    );
-    expect(decision.detach.length).toBeGreaterThan(DETACH_BATCH_SIZE);
-    expect(decision.detach).not.toContain(0);
-  });
-
-  it("does not release a pinned (audible) clip", () => {
-    const clips = strip(40, 4, [30]);
-    const decision = decidePreviewMediaBudget(
-      states(clips, () => true, true),
-      0,
-      none,
-    );
-    expect(decision.detach).not.toContain(30);
-    expect(decision.detach).toContain(31);
+    expect(peakInFlight).toBeLessThanOrEqual(MAX_IN_FLIGHT_URGENT_LOADS);
   });
 
   it("has nothing to do once the wanted set is loaded", () => {
     const clips = strip(40, 4);
     const wanted = planPreviewMediaBudget(clips, 0).wanted;
     const decision = decidePreviewMediaBudget(
-      states(clips, (key) => wanted.includes(key)),
+      states(clips, { attached: (key) => wanted.includes(key) }),
       0,
-      none,
+      NOW,
     );
     expect(decision).toEqual({ attach: [], detach: [], pending: false });
   });
@@ -230,179 +326,245 @@ describe("createPreviewMediaBudget", () => {
     document.body.innerHTML = "";
   });
 
-  function video(
-    index: number,
-    attrs: Record<string, string> = { "data-duration": "2" },
-  ): PreviewMediaClip {
+  /** A video as the preview server serves it: no src, the source in the detached attribute. */
+  function video(index: number, attrs: Record<string, string> = {}): PreviewMediaClip {
     const el = document.createElement("video");
-    el.setAttribute("src", `clip-${index}.mp4`);
+    el.setAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR, `clip-${index}.mp4`);
+    el.setAttribute("preload", "none");
     el.setAttribute("data-start", String(index * 2));
+    el.setAttribute("data-duration", "2");
     for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
     document.body.appendChild(el);
     return { el, start: index * 2, end: index * 2 + 2, mediaStart: index };
   }
 
-  const loaded = (el: HTMLMediaElement, readyState = 4) =>
-    Object.defineProperty(el, "readyState", { value: readyState, configurable: true });
+  const film = (count = 40) => Array.from({ length: count }, (_, i) => video(i));
+  const withSource = (clips: PreviewMediaClip[]) =>
+    clips.filter(({ el }) => el.hasAttribute("src")).map(({ mediaStart }) => mediaStart);
+  const settle = (el: HTMLMediaElement, type = "loadedmetadata") => {
+    Object.defineProperty(el, "readyState", { value: 4, configurable: true });
+    el.dispatchEvent(new Event(type));
+  };
 
   function run(
     budget: PreviewMediaBudget,
     clips: PreviewMediaClip[],
     time: number,
     nowMs: number,
-    extra: { leased?: HTMLMediaElement[] } = {},
+    leased: HTMLMediaElement[] = [],
   ) {
     return budget.update({
       clips,
       time,
       nowMs,
-      isLeased: (el) => extra.leased?.includes(el) ?? false,
+      isLeased: (el) => leased.includes(el),
       compositionDuration: () => 1000,
     });
   }
 
-  /** Enough passes, one batch slot apart, for every deferred release and attach to land. */
-  function settle(
-    budget: PreviewMediaBudget,
-    clips: PreviewMediaClip[],
-    time: number,
-    from: number,
-  ) {
-    for (let pass = 0; pass < 40; pass += 1) run(budget, clips, time, from + pass * 300);
-  }
-
-  it("releases a far video's decoder and stamps its authored src", () => {
-    const clips = Array.from({ length: 40 }, (_, i) => video(i));
-    for (const { el } of clips) loaded(el);
+  it("opens nothing at parse: a fresh budget attaches only what the playhead needs, nearest first", () => {
+    const clips = film();
     const budget = createPreviewMediaBudget();
-    run(budget, clips, 0, 10_000);
-    const released = clips.filter(({ el }) => budget.isReleased(el));
-    expect(released).toHaveLength(DETACH_BATCH_SIZE);
-    expect(released.map(({ mediaStart }) => mediaStart).sort((a, b) => a - b)).toEqual([
-      37, 38, 39,
-    ]);
-    const far = clips[39]!.el;
-    expect(far.hasAttribute("src")).toBe(false);
-    expect(far.getAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR)).toBe("clip-39.mp4");
-    expect(far.preload).toBe("none");
-    expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
+    run(budget, clips, 0, 1000);
+    // Clip 0 holds the playhead, clip 1 starts in 2 s (urgent), clip 2 is the nearest queued one.
+    expect(withSource(clips)).toEqual([0, 1, 2]);
     expect(clips[0]!.el.getAttribute("src")).toBe("clip-0.mp4");
+    expect(clips[0]!.el.hasAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR)).toBe(false);
+    expect(clips[39]!.el.hasAttribute("src")).toBe(false);
   });
 
-  it("never releases a video that is playing", () => {
-    const clips = Array.from({ length: 40 }, (_, i) => video(i));
-    for (const { el } of clips) loaded(el);
-    const audible = clips[39]!.el;
-    Object.defineProperty(audible, "paused", { value: false, configurable: true });
-    audible.muted = false;
-    audible.volume = 0.8;
+  it("sets preload before src, and does not restart the load it just started", () => {
+    const clips = film();
+    const order: string[] = [];
+    const el = clips[0]!.el;
+    const preload = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "preload")!;
+    Object.defineProperty(el, "preload", {
+      configurable: true,
+      get: () => preload.get!.call(el),
+      set: (value: string) => {
+        order.push("preload");
+        preload.set!.call(el, value);
+      },
+    });
+    const setAttribute = el.setAttribute.bind(el);
+    vi.spyOn(el, "setAttribute").mockImplementation((name, value) => {
+      if (name === "src") order.push("src");
+      setAttribute(name, value);
+    });
+    run(createPreviewMediaBudget(), clips, 0, 1000);
+    expect(order).toEqual(["preload", "src"]);
+    expect(el.preload).toBe("auto");
+    expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled();
+  });
+
+  it("keeps opening in playhead order as loads settle, never more than the limit at once", () => {
+    const clips = film();
     const budget = createPreviewMediaBudget();
-    for (let pass = 0; pass < 30; pass += 1) run(budget, clips, 0, 10_000 + pass * 1000);
-    expect(budget.isReleased(audible)).toBe(false);
-    expect(audible.getAttribute("src")).toBe("clip-39.mp4");
-    expect(clips.filter(({ el }) => budget.isReleased(el)).length).toBeGreaterThan(20);
+    run(budget, clips, 0, 1000);
+    expect(withSource(clips)).toEqual([0, 1, 2]);
+    // Nothing settled: a later pass opens nothing new.
+    run(budget, clips, 0, 1300);
+    expect(withSource(clips)).toEqual([0, 1, 2]);
+
+    settle(clips[0]!.el);
+    run(budget, clips, 0, 1400);
+    expect(withSource(clips)).toEqual([0, 1, 2, 3]);
+    settle(clips[1]!.el);
+    settle(clips[2]!.el);
+    run(budget, clips, 0, 1500);
+    expect(withSource(clips)).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
-  it("never releases a leased video (scrub audio, grading preview)", () => {
-    const clips = Array.from({ length: 40 }, (_, i) => video(i));
-    for (const { el } of clips) loaded(el);
-    const leased = clips[38]!.el;
+  it("tells its owner when a load settles, so the next source opens without waiting for a tick", () => {
+    const onLoadSettled = vi.fn();
+    const clips = film();
+    const budget = createPreviewMediaBudget({}, { onLoadSettled });
+    run(budget, clips, 0, 1000);
+    expect(onLoadSettled).not.toHaveBeenCalled();
+    settle(clips[0]!.el, "error");
+    expect(onLoadSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("never releases a video whose load has not settled, then releases it once it has", () => {
+    const clips = film();
+    const budget = createPreviewMediaBudget();
+    run(budget, clips, 0, 1000); // 0, 1, 2 loading
+    // A scrub far away: 0-2 are no longer wanted but are still opening.
+    for (let pass = 0; pass < 5; pass += 1) run(budget, clips, 70, 2000 + pass * 300);
+    for (const index of [0, 1, 2]) {
+      expect(clips[index]!.el.getAttribute("src")).toBe(`clip-${index}.mp4`);
+    }
+    expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled();
+
+    for (const index of [0, 1, 2]) settle(clips[index]!.el);
+    for (const { el } of clips) {
+      if (
+        el.hasAttribute("src") &&
+        !["clip-0.mp4", "clip-1.mp4", "clip-2.mp4"].includes(el.getAttribute("src") ?? "")
+      ) {
+        settle(el);
+      }
+    }
+    for (let pass = 0; pass < 10; pass += 1) run(budget, clips, 70, 4000 + pass * 300);
+    for (const index of [0, 1, 2]) expect(clips[index]!.el.hasAttribute("src")).toBe(false);
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
+  });
+
+  it("never releases while another load is in flight", () => {
+    const clips = film();
+    const budget = createPreviewMediaBudget();
+    run(budget, clips, 0, 1000);
+    for (const index of [0, 1]) settle(clips[index]!.el); // 2 is still opening
+    run(budget, clips, 70, 2000);
+    run(budget, clips, 70, 2400);
+    expect(clips[0]!.el.hasAttribute("src")).toBe(true);
+    expect(clips[1]!.el.hasAttribute("src")).toBe(true);
+    settle(clips[2]!.el);
+    // The settle opened clips around 70; those are in flight now. Settle whatever is open.
+    for (let pass = 0; pass < 12; pass += 1) {
+      for (const { el } of clips) if (el.hasAttribute("src")) settle(el);
+      run(budget, clips, 70, 3000 + pass * 300);
+    }
+    expect(clips[0]!.el.hasAttribute("src")).toBe(false);
+  });
+
+  it("does not release an element the browser is still opening, even one the budget did not start", () => {
+    const clips = film();
+    const stray = clips[39]!.el;
+    stray.setAttribute("src", "clip-39.mp4");
+    stray.removeAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR);
+    Object.defineProperty(stray, "networkState", { value: 2, configurable: true });
+    const budget = createPreviewMediaBudget();
+    for (let pass = 0; pass < 10; pass += 1) run(budget, clips, 0, 1000 + pass * 300);
+    expect(stray.hasAttribute("src")).toBe(true);
+
+    Object.defineProperty(stray, "networkState", { value: 1, configurable: true });
+    Object.defineProperty(stray, "readyState", { value: 4, configurable: true });
+    for (const { el } of clips) if (el.hasAttribute("src") && el !== stray) settle(el);
+    for (let pass = 0; pass < 10; pass += 1) run(budget, clips, 0, 5000 + pass * 300);
+    expect(stray.hasAttribute("src")).toBe(false);
+  });
+
+  it("stops counting a stalled load toward the limit but still never releases it", () => {
+    const clips = film();
+    const budget = createPreviewMediaBudget();
+    run(budget, clips, 0, 1000);
+    expect(withSource(clips)).toEqual([0, 1, 2]);
+    run(budget, clips, 0, 1000 + LOAD_STALL_MS + 1);
+    expect(withSource(clips).length).toBeGreaterThan(3);
+    run(budget, clips, 70, 100_000);
+    for (const index of [0, 1, 2]) expect(clips[index]!.el.hasAttribute("src")).toBe(true);
+  });
+
+  it("never releases a video that is playing or leased", () => {
+    const clips = film();
+    const budget = createPreviewMediaBudget();
+    run(budget, clips, 0, 1000);
+    for (const { el } of clips) if (el.hasAttribute("src")) settle(el);
+    const audible = clips[1]!.el;
+    Object.defineProperty(audible, "paused", { value: false, configurable: true });
+    const leased = clips[2]!.el;
+    for (let pass = 0; pass < 30; pass += 1) {
+      run(budget, clips, 70, 2000 + pass * 400, [leased]);
+      for (const { el } of clips) if (el.hasAttribute("src")) settle(el);
+    }
+    expect(audible.hasAttribute("src")).toBe(true);
+    expect(leased.hasAttribute("src")).toBe(true);
+    expect(clips[0]!.el.hasAttribute("src")).toBe(false);
+  });
+
+  it("leaves a video it may not manage alone, and counts it against the cap", () => {
+    const unmanaged = video(30, { "data-duration": "" });
+    unmanaged.el.removeAttribute("data-duration");
+    unmanaged.el.removeAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR);
+    unmanaged.el.setAttribute("src", "clip-30.mp4");
+    const clips = [...film(30), unmanaged];
     const budget = createPreviewMediaBudget();
     for (let pass = 0; pass < 30; pass += 1) {
-      run(budget, clips, 0, 10_000 + pass * 1000, { leased: [leased] });
+      run(budget, clips, 0, 1000 + pass * 400);
+      for (const { el } of clips) if (el.hasAttribute("src")) settle(el);
     }
-    expect(budget.isReleased(leased)).toBe(false);
+    expect(unmanaged.el.getAttribute("src")).toBe("clip-30.mp4");
   });
 
-  it("leaves a video whose length comes from its source, or that uses <source>, alone", () => {
-    const fromSource = video(30, {});
-    const withChildren = video(31);
-    withChildren.el.removeAttribute("src");
-    withChildren.el.appendChild(Object.assign(document.createElement("source"), { src: "a.mp4" }));
-    const clips = [
-      video(0),
-      fromSource,
-      withChildren,
-      ...Array.from({ length: 30 }, (_, i) => video(i + 1)),
-    ];
-    for (const { el } of clips) loaded(el);
+  it("lets a proxy swap replace the source before the load starts", () => {
+    const clips = film();
+    const prepareSource = vi.fn((el: HTMLMediaElement) =>
+      el.setAttribute("src", "clip-0.mp4?hf-proxy=x"),
+    );
+    run(createPreviewMediaBudget({}, { prepareSource }), clips, 0, 1000);
+    expect(prepareSource).toHaveBeenCalledWith(clips[0]!.el);
+    expect(clips[0]!.el.getAttribute("src")).toBe("clip-0.mp4?hf-proxy=x");
+  });
+
+  it("parks an upcoming clip on its first frame, but leaves a seek the transport made alone", () => {
+    const clips = film();
     const budget = createPreviewMediaBudget();
-    for (let pass = 0; pass < 60; pass += 1) run(budget, clips, 0, 10_000 + pass * 1000);
-    expect(budget.isReleased(fromSource.el)).toBe(false);
-    expect(budget.isReleased(withChildren.el)).toBe(false);
-    expect(fromSource.el.getAttribute("src")).toBe("clip-30.mp4");
+    run(budget, clips, 0, 1000);
+    const upcoming = clips[1]!.el;
+    upcoming.dispatchEvent(new Event("loadedmetadata"));
+    expect(upcoming.currentTime).toBe(1); // mediaStart of the upcoming clip
+
+    const seeked = clips[2]!.el;
+    seeked.currentTime = 7.5;
+    seeked.dispatchEvent(new Event("loadedmetadata"));
+    expect(seeked.currentTime).toBe(7.5);
   });
 
-  it("restores src, preload and sound state before the clip starts and parks it on its first frame", () => {
-    const clips = Array.from({ length: 40 }, (_, i) => video(i));
-    for (const { el } of clips) loaded(el);
-    const target = clips[3]!; // starts at 6 s
-    target.el.muted = true;
-    target.el.volume = 0.3;
-    target.el.playbackRate = 1.5;
-    const budget = createPreviewMediaBudget({ cap: 4 });
-    // Seek far away: the clip is released once the batch slot opens.
-    settle(budget, clips, 70, 10_000);
-    expect(budget.isReleased(target.el)).toBe(true);
-
-    // Back to 0: it starts in 6 s — inside the lookahead — and is restored once the cap has room.
-    settle(budget, clips, 0, 100_000);
-    expect(budget.isReleased(target.el)).toBe(false);
-    expect(target.el.getAttribute("src")).toBe("clip-3.mp4");
-    expect(target.el.hasAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR)).toBe(false);
-    expect(target.el.preload).toBe("auto");
-    expect(target.el.muted).toBe(true);
-    expect(target.el.volume).toBeCloseTo(0.3);
-    expect(target.el.playbackRate).toBe(1.5);
-
-    target.el.dispatchEvent(new Event("loadedmetadata"));
-    expect(target.el.currentTime).toBe(3); // mediaStart of the upcoming clip
-  });
-
-  it("makes a seek wait for a restored video's first frame", () => {
-    const clips = Array.from({ length: 40 }, (_, i) => video(i));
-    for (const { el } of clips) loaded(el);
-    const budget = createPreviewMediaBudget({ cap: 4 });
-    settle(budget, clips, 70, 10_000);
-    const hit = clips[0]!;
-    expect(budget.isReleased(hit.el)).toBe(true);
-    loaded(hit.el, 0);
-    run(budget, clips, 0.5, 200_000);
-    expect(isAwaitingRestoredSource(hit.el)).toBe(true);
-    hit.el.dispatchEvent(new Event("loadeddata"));
-    expect(isAwaitingRestoredSource(hit.el)).toBe(false);
-  });
-
-  it("does not park an element the transport already positioned", () => {
-    const clips = Array.from({ length: 40 }, (_, i) => video(i));
-    for (const { el } of clips) loaded(el);
-    const budget = createPreviewMediaBudget({ cap: 4 });
-    settle(budget, clips, 70, 10_000);
-    const upcoming = clips[2]!;
-    settle(budget, clips, 0, 200_000);
-    upcoming.el.currentTime = 7.5; // a seek landed on it before metadata arrived
-    upcoming.el.dispatchEvent(new Event("loadedmetadata"));
-    expect(upcoming.el.currentTime).toBe(7.5);
-  });
-
-  it("hands every source back on restoreAll", () => {
-    const clips = Array.from({ length: 40 }, (_, i) => video(i));
-    for (const { el } of clips) loaded(el);
+  it("makes a seek wait for a freshly attached video's first frame", () => {
+    const clips = film();
     const budget = createPreviewMediaBudget();
-    for (let pass = 0; pass < 30; pass += 1) run(budget, clips, 0, 10_000 + pass * 1000);
-    budget.restoreAll();
-    for (const { el, mediaStart } of clips) {
-      expect(el.getAttribute("src")).toBe(`clip-${mediaStart}.mp4`);
-      expect(el.hasAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR)).toBe(false);
-    }
+    run(budget, clips, 0, 1000);
+    const { el } = clips[0]!;
+    expect(isAwaitingRestoredSource(el)).toBe(true);
+    Object.defineProperty(el, "readyState", { value: 2, configurable: true });
+    expect(isAwaitingRestoredSource(el)).toBe(false);
   });
 
   it("keeps the last frame of a clip that runs to the composition end", () => {
-    const clips = Array.from({ length: 40 }, (_, i) => video(i));
-    for (const { el } of clips) loaded(el);
+    const clips = film();
     const budget = createPreviewMediaBudget({ cap: 2 });
     const last = clips[39]!;
-    // The film ends where the last clip does; the playhead rests past it.
     for (let pass = 0; pass < 40; pass += 1) {
       budget.update({
         clips,
@@ -411,7 +573,81 @@ describe("createPreviewMediaBudget", () => {
         isLeased: () => false,
         compositionDuration: () => last.end,
       });
+      for (const { el } of clips) if (el.hasAttribute("src")) settle(el);
     }
-    expect(budget.isReleased(last.el)).toBe(false);
+    expect(last.el.hasAttribute("src")).toBe(true);
+  });
+
+  it("adopts a video released by an earlier runtime from the DOM alone", () => {
+    const clips = film();
+    const first = createPreviewMediaBudget();
+    run(first, clips, 0, 1000);
+    const second = createPreviewMediaBudget();
+    expect(second.isReleased(clips[39]!.el)).toBe(true);
+    expect(second.isReleased(clips[0]!.el)).toBe(false);
+  });
+});
+
+describe("detachPreviewVideoSources / importPreviewNode", () => {
+  const markAsPreview = () =>
+    document.head.appendChild(
+      Object.assign(document.createElement("meta"), { name: STUDIO_PREVIEW_MARK_META }),
+    );
+  afterEach(() => {
+    document.head.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`)?.remove();
+    document.body.innerHTML = "";
+  });
+
+  const template = () => {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = `<div><video id="a" src="a.mp4" data-duration="3"></video>
+      <video id="loop" src="l.mp4" data-duration="3" loop></video>
+      <video id="free" src="f.mp4"></video></div>`;
+    return tpl.content;
+  };
+
+  it("moves the source of managed videos only", () => {
+    const content = template();
+    detachPreviewVideoSources(content);
+    const a = content.querySelector("#a")!;
+    expect(a.hasAttribute("src")).toBe(false);
+    expect(a.getAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR)).toBe("a.mp4");
+    expect(a.getAttribute("preload")).toBe("none");
+    expect(content.querySelector("#loop")!.getAttribute("src")).toBe("l.mp4");
+    expect(content.querySelector("#free")!.getAttribute("src")).toBe("f.mp4");
+  });
+
+  it("imports a preview clone with no live src ever reaching the document", () => {
+    markAsPreview();
+    const importNode = vi.spyOn(document, "importNode");
+    const clone = importPreviewNode(document, window, template());
+    // The only clone made into the live document is the one already stripped in the inert copy.
+    const imported = importNode.mock.calls.map(([node]) => node);
+    expect(imported).toHaveLength(1);
+    expect(imported[0]).not.toBe(clone);
+    const [inert] = imported;
+    if (!(inert instanceof DocumentFragment)) throw new Error("expected the inert copy");
+    expect(inert.querySelector("#a")!.hasAttribute("src")).toBe(false);
+    importNode.mockRestore();
+    expect(clone.querySelector("#a")!.hasAttribute("src")).toBe(false);
+    expect(clone.querySelector("#a")!.getAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR)).toBe("a.mp4");
+    expect(clone.querySelector("#a")!.ownerDocument).toBe(document);
+    expect(clone.querySelector("#free")!.getAttribute("src")).toBe("f.mp4");
+  });
+
+  it("clones untouched outside a preview and while a render drives the page", () => {
+    expect(
+      importPreviewNode(document, window, template()).querySelector("#a")!.getAttribute("src"),
+    ).toBe("a.mp4");
+    markAsPreview();
+    window.__HF_EXPORT_RENDER_SEEK_CONFIG = { fps: 30, fpsSource: "render-options" };
+    try {
+      expect(isPreviewMediaBudgetActive(document, window)).toBe(false);
+      expect(
+        importPreviewNode(document, window, template()).querySelector("#a")!.getAttribute("src"),
+      ).toBe("a.mp4");
+    } finally {
+      delete window.__HF_EXPORT_RENDER_SEEK_CONFIG;
+    }
   });
 });

@@ -18,6 +18,12 @@ export interface QaTimeline {
   hasAudio: ReadonlyMap<string, boolean | null>;
   /** Fresh cached transcripts of the media files clips play. */
   transcripts: ReadonlyMap<string, TranscriptArtifact>;
+  /**
+   * Measured silences (source seconds, from the level-based silence map) of those files. Word timestamps stretch over
+   * pauses, so a cut that lands in measured silence is not inside a word whatever the word timings say. Optional:
+   * absent means no silence map is known.
+   */
+  silences?: ReadonlyMap<string, readonly { start: number; end: number }[]>;
   /** Caption text and timing on the composition's timeline. */
   cues: readonly CaptionCue[];
   graph: StoryGraph | null;

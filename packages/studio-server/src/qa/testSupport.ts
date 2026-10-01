@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
@@ -37,6 +37,15 @@ const card = (seconds: number) => [
 /** Project media: a 6 s clip with a tone, a 2 s silent clip, and a 6 s card that never moves. */
 export function makeMedia(dir: string): void {
   ffmpeg([...moving(6), ...tone(6), ...encode, "-t", "6", join(dir, "a.mp4")]);
+  // A speaker who pauses inside their own clip: the tone is silent from 2 s to 4.5 s in the source itself.
+  ffmpeg([
+    ...moving(6),
+    ...tone(6, "volume=enable='between(t,2,4.5)':volume=0"),
+    ...encode,
+    "-t",
+    "6",
+    join(dir, "paused.mp4"),
+  ]);
   ffmpeg([...moving(2), ...encode, "-an", "-t", "2", join(dir, "short.mp4")]);
   ffmpeg([...card(6), ...tone(6), ...encode, "-t", "6", join(dir, "card.mp4")]);
   // The same card with faint temporal noise, kept at high quality: still to the eye, not to a −60 dB comparison.
@@ -171,7 +180,9 @@ export function createQaProject(options: {
     mkdirSync(dirname(path(relative)), { recursive: true });
     writeFileSync(path(relative), content);
   };
-  for (const name of ["a.mp4", "short.mp4", "card.mp4", "noisycard.mp4"]) {
+  // Whatever media the caller made (the fixed set from `makeMedia`, or only some of it as placeholders).
+  for (const name of ["a.mp4", "short.mp4", "card.mp4", "noisycard.mp4", "paused.mp4"]) {
+    if (!existsSync(join(options.media, name))) continue;
     mkdirSync(path("assets"), { recursive: true });
     copyFileSync(join(options.media, name), path(`assets/${name}`));
   }

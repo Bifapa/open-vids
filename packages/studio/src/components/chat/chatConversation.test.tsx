@@ -198,6 +198,25 @@ describe("messages", () => {
     expect(done.host.querySelector('[data-testid="streaming-caret"]')).toBeNull();
   });
 
+  it("labels an interim text part as a note before render QA and leaves the final report plain", () => {
+    const { host } = open(
+      withAssistant(
+        [
+          { type: "text", id: "a", text: "Edited the intro.", interim: true },
+          { type: "text", id: "b", text: "All checked: the render is ready." },
+        ],
+        "complete",
+      ),
+    );
+    const notes = [...host.querySelectorAll('[data-testid="interim-note"]')];
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.textContent).toContain("Before render QA");
+    expect(notes[0]?.textContent).toContain("Edited the intro.");
+    const final = host.textContent?.indexOf("All checked");
+    expect(final).toBeGreaterThan(host.textContent?.indexOf("Edited the intro.") ?? Infinity);
+    expect(host.textContent?.match(/Before render QA/g)).toHaveLength(1);
+  });
+
   it("marks steering messages and shows unknown references as neutral chips", () => {
     const steer: ChatMessage = {
       ...userMessage("m3", "Also add a title"),

@@ -204,13 +204,27 @@ function wordAround(words: readonly { start: number; end: number; text: string }
   return null;
 }
 
-/** A cut (clip start or end) that lands inside a spoken word of a clip whose source has a fresh transcript. */
+/** Seconds around a measured silence that still count as the pause (the level frames are 50 ms). */
+const SILENCE_EDGE_MARGIN = 0.05;
+
+function inSilence(silences: readonly { start: number; end: number }[], time: number): boolean {
+  return silences.some(
+    (range) => time >= range.start - SILENCE_EDGE_MARGIN && time <= range.end + SILENCE_EDGE_MARGIN,
+  );
+}
+
+/**
+ * A cut (clip start or end) that lands inside a spoken word of a clip whose source has a fresh transcript. Recognizer
+ * word timings stretch over the pauses after a word, so a cut that lands in the source's measured silence is a cut
+ * in a pause, not in the word, and is not reported.
+ */
 function cutsInsideWords(timeline: QaTimeline): QaIssueDraft[] {
   const issues: QaIssueDraft[] = [];
   for (const c of timeline.snapshot.clips) {
     if (!isAudible(timeline, c) || c.src === null) continue;
     const transcript = timeline.transcripts.get(c.src);
     if (!transcript || transcript.words.length === 0) continue;
+    const silences = timeline.silences?.get(c.src) ?? [];
     const rate = rateOf(timeline, c);
     const from = c.mediaStart ?? 0;
     const to = from + c.duration * rate;
@@ -222,7 +236,7 @@ function cutsInsideWords(timeline: QaTimeline): QaIssueDraft[] {
     ];
     for (const { edge, source, at, label } of edges) {
       const word = wordAround(transcript.words, source);
-      if (!word) continue;
+      if (!word || inSilence(silences, source)) continue;
       issues.push({
         kind: "awkward_cut",
         severity: "warning",

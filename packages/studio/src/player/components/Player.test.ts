@@ -438,4 +438,21 @@ describe("composition loading overlay", () => {
 
     iframe.remove();
   });
+
+  it("does not wait for a video the preview holds no source for", () => {
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument!;
+    const released = doc.createElement("video");
+    released.setAttribute("data-hf-detached-src", "assets/a.mp4");
+    doc.body.appendChild(released);
+
+    expect(hasUnloadedAssets(iframe, false)).toBe(false);
+
+    released.setAttribute("src", "assets/a.mp4");
+    released.removeAttribute("data-hf-detached-src");
+    expect(hasUnloadedAssets(iframe, false)).toBe(true);
+
+    iframe.remove();
+  });
 });

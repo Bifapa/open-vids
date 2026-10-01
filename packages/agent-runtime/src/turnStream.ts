@@ -41,6 +41,8 @@ export class TurnEventWriter {
   private tail: Promise<void> = Promise.resolve();
   private segment: TextSegment | null = null;
   private pending: PendingDelta | null = null;
+  /** Text parts of this message not yet turned into interim notes. */
+  private unmarkedTextParts: string[] = [];
   private flushTimer: StreamTimerHandle | null = null;
   private currentGroup: ActivityGroup | null = null;
   private readonly activityGroups = new Map<string, ActivityGroup>();
@@ -80,6 +82,28 @@ export class TurnEventWriter {
     this.segment = null;
   }
 
+  /**
+   * The reply written so far is an interim progress note (render QA starts and the final report follows it): marks
+   * every text part of the message as such. Resolves once the mark is durable.
+   */
+  async markTextInterim(): Promise<void> {
+    this.flushPending();
+    this.segment = null;
+    const partIds = this.unmarkedTextParts;
+    this.unmarkedTextParts = [];
+    if (partIds.length === 0) return;
+    this.enqueue(() =>
+      this.options.chats
+        .emit(this.options.chatId, {
+          type: "assistant.parts.interim",
+          messageId: this.options.messageId,
+          partIds,
+        })
+        .then(() => undefined),
+    );
+    await this.tail;
+  }
+
   async finish(status: AssistantMessageStatus): Promise<void> {
     this.flushPending();
     this.finishThinkingSegment();
@@ -99,6 +123,7 @@ export class TurnEventWriter {
       this.flushPending();
       this.finishThinkingSegment();
       this.segment = { kind, partId: this.options.ids() };
+      if (kind === "text") this.unmarkedTextParts.push(this.segment.partId);
     }
     const segment = this.segment;
     if (!segment) return;

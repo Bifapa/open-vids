@@ -248,6 +248,7 @@ export function qaReport(overrides: Partial<QaReport> = {}): QaReport {
       height: 1080,
       hasAudio: true,
       quality: "draft",
+      origin: "qa",
     },
     renderError: null,
     checks: [],

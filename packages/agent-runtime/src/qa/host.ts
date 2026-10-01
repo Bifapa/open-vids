@@ -2,6 +2,8 @@ import type {
   QaCheckRequest,
   QaCheckResponse,
   QaErrorCode,
+  QaFinishRequest,
+  QaFinishResponse,
   QaFramesRequest,
   QaFramesResponse,
   QaReport,
@@ -24,6 +26,15 @@ export interface QaHost {
   frames(request: QaFramesRequest, signal: AbortSignal): Promise<QaFramesResponse>;
   /** Stores one pass as a durable report; the service assigns its id. */
   saveReport(input: QaReportInput, signal: AbortSignal): Promise<QaReport>;
+  /**
+   * Ends the turn's QA session: the service deletes the intermediate preview renders QA made for it (and their
+   * frames) except `request.keep`, and applies its report retention. The runtime treats it as best-effort.
+   */
+  finishSession(
+    sessionId: string,
+    request: QaFinishRequest,
+    signal: AbortSignal,
+  ): Promise<QaFinishResponse>;
 }
 
 /** Failures that do not come from the QA service's validation: transport and cancellation. */

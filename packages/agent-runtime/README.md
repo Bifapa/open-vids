@@ -285,16 +285,18 @@ not suggested:
   `qaFramesPerMinute` / `qaMaxFrames` also go to the service to plan the frames Vision gets.
 
 **The loop** (`src/qa/loop.ts`, run by `TurnRunner` after the Director and its follow-ups finished). QA runs only when the
-Director's work completed, the project fingerprint differs from the one at turn start (`QaHost.state`), and the turn may
-write the timeline: normal turns and story `build` turns; a story `rebuild` turn is checked but report-only (no
-correction: only `rebuild_story` may write there); story review/resolve turns are never checked. With `qaPasses` 0 the
-turn records `skipped` ("Render QA is off") when the project changed. A composition over 180 s is not rendered unless the
-user asked for a render in this turn (→ `skipped` with the reason). Pass _k_ of _N_:
+Director's work completed, the turn may write the timeline (normal turns and story `build` turns; a story `rebuild` turn
+is checked but report-only — no correction: only `rebuild_story` may write there; story review/resolve turns are never
+checked) and either the project fingerprint differs from the one at turn start (`QaHost.state`) or the turn rendered the
+main composition (an export request on an unchanged project still gets its render checked). With `qaPasses` 0 the turn
+records `skipped` ("Render QA is off") when the project changed. A composition over 180 s is not rendered unless the user
+asked for a render in this turn (→ `skipped` with the reason). Pass _k_ of _N_:
 
 1. **Render** a preview (`draft`; when the user asked for a render, the quality of the Director's last `render_video`, else
-   `standard`, so the last QA render is the deliverable). Pass 1 reuses the Director's own render when the project had the
-   same fingerprint before that render started as when QA starts (`TurnEditing.lastRender`). A failed render is stored as a
-   report (`renderError` + a fixable `render_failed` issue owned by the Editor) and counts as a pass.
+   `standard`, so the last QA render is the deliverable; a re-render after a correction keeps the quality of the render it
+   replaces). Pass 1 reuses the Director's own render of the same composition when the project had the same fingerprint
+   before that render started as when QA starts (`TurnEditing.lastRender`). A failed render is stored as a report
+   (`renderError` + a fixable `render_failed` issue owned by the Editor) and counts as a pass.
 2. **Check** the render (`QaHost.check`: black/frozen frames, audio gaps, flash clips, missing files, layout) and get the
    frames to review.
 3. **Vision review**: a runtime-started Vision run "Render QA · pass _k_" (`Orchestrator.runInternal`; an ordinary run in
@@ -312,11 +314,36 @@ user asked for a render in this turn (→ `skipped` with the reason). Pass _k_ o
    correction that leaves the project fingerprint unchanged ends the loop (`issues_remain`); the loop never exceeds _N_
    renders (at most *N*−1 corrections).
 
+**The Director does not announce "done" before QA.** When QA can apply to a turn (QA host available, `qaPasses` > 0,
+`qaApplies(mode, action)`), the Director's first prompt and its follow-up prompts before QA end with a
+`<render-qa-pending>` block: the reply is an interim progress note, not the answer. The guarantee does not depend on the
+model obeying: when QA really starts, and again before the final prompt (so correction replies count too), the loop calls
+`TurnEventWriter.markTextInterim()`, which emits `assistant.parts.interim {messageId, partIds}` for the Director's text
+parts written so far (folded to `interim: true` on the text part; Studio labels them "Before render QA"). The
+`<render-qa-final>` prompt's reply is the final answer. When QA is skipped after the Director was told a check follows
+(the project did not change, or the composition is too long to render unasked), its reply is marked interim and a
+`<render-qa-skipped>` prompt asks for the real answer with the reason.
+
+**Reverted turns.** The Director's session keeps the messages of a turn the user reverted; the next turn's first prompt
+carries a `<reverted-turns>` block (`src/revertedTurns.ts`) listing the turns reverted since the previous turn started,
+so the Director does not describe their edits as present.
+
 Afterwards the Director gets one `<render-qa-final>` prompt (outcome, last render, fixed vs remaining issues) to report; in
 it `edit_timeline`, `build_rough_cut`, `build_story`, `rebuild_story`, `edit_story`, `render_video`, `delegate`, `jev`,
 `import_asset` and `resolve_missing_asset` are refused (`src/qa/phase.ts`). Steering sent during QA opens the next Director
 prompt. Aborting anywhere in QA cancels the render/check/frames/Vision run, marks the pass `aborted`, stores no report for
 it and finalizes the turn `aborted`; `TurnQa.shutdown` is awaited in `finalize` before the checkpoint closes.
+
+**Cleanup.** Every QA pass that renders leaves a preview in `renders/`. When the QA session ends (any status: `passed`,
+`issues_remain`, `failed`, or `aborted`) the loop calls `QaHost.finishSession` (`POST …/qa/sessions/:turnId/finish
+{keep, produced?}`): `keep` is the latest render that succeeded (the file the final report names), `produced` lists the
+previews QA itself rendered (so one a stopped pass made before its report was stored is not left behind). The Studio
+server deletes the session's intermediate QA previews with their job sidecar and frame cache, never the kept one and
+never a render a report records as the turn's own (`QaRenderInfo.origin: "turn"`, the Director's render pass 1 reuses),
+then applies its report retention (`studio-server/src/qa/retention.ts`: the reports of the 20 most recent sessions, of
+anything younger than 3 days and of a running session stay; older reports and orphaned frame caches go). The call uses
+its own signal (not the turn's, so it runs after an abort), is bounded by the host's timeout, and its failure is
+swallowed (`TurnQa.finishSession`): cleanup never fails a turn.
 
 `FakeQaHost` (`src/testing`) is the in-memory host for tests (the project's `fingerprint` and `bump()`, queued check
 results, `checkGate` / `framesGate` / `cancelDelay`, stored `reports`); the runtime fixture wires it.
@@ -355,7 +382,12 @@ loaded as context. Providers, auth and model catalog come from the user's existi
 blocks every path outside the project or inside `.hyperframes/`, checks each target of OMP's `a;b` /
 `a,b` / `a b` / brace path fan-out, and fails closed for `edit`/`write` calls whose target it cannot
 read. The guard is bound through `preloadedPreparedExtensions`: OMP silently drops `extensions` when
-`restrictToolNames` is set, so an inline `extensions` hook would not run.
+`restrictToolNames` is set, so an inline `extensions` hook would not run. The same hook
+(`src/omp/tool-guard.ts`) also keeps `edit`/`write` away from timeline-locked clips: for a project
+HTML file that contains `data-timeline-locked` elements it computes the content the call would leave
+(replace-mode `old_string`/`new_string`/`replace_all`, or the `write` content), and blocks the call if
+any locked element (matched by `data-hf-id`, else `id`) would be removed, changed or unlocked, or if
+the call cannot be interpreted (`src/omp/lock-guard.ts`).
 
 ## Develop
 

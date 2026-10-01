@@ -52,21 +52,29 @@ Preview media budget (`previewMediaBudget.ts`):
 
 - Only a page the Studio server marked as a preview (`<meta name="hyperframes-studio-preview">`)
   and that no render is driving (`__HF_EXPORT_RENDER_SEEK_CONFIG`, `__HF_RENDER_CAPTURE_MODE`)
-  runs it. A render, capture or `check` page never does, so their frames are unchanged.
-- A preview document with many `<video>` clips would keep one decoder per element alive. The budget
-  keeps a source only on videos that are playing, leased (scrub audio, grading preview), hold the
-  last frame of the film, sit inside the playhead's window (`RETAIN_BEHIND_SECONDS` behind,
-  `RETAIN_AHEAD_SECONDS` ahead, the next `RETAIN_UPCOMING_CLIPS`), capped at
-  `MAX_ACTIVE_PREVIEW_MEDIA` by distance from the playhead. Clips playing or under the playhead may
-  exceed the cap.
-- A released video loses its `src` (`load()` with no source; the authored value moves to
-  `data-hf-detached-src`, read back through `readPreviewMediaSrc`) and gets it back, with its
-  muted/volume/rate state, before it is needed. Loaded videos are released in batches of
-  `DETACH_BATCH_SIZE` per `DETACH_INTERVAL_MS`, farthest first, so a scrub never tears down a storm
-  of players; restores for clips that are playing or about to start are never deferred.
-- Only a `<video src>` with an authored `data-duration` is managed: a clip whose window comes from
-  the decoder's `duration`, `<source>` children and `<audio>` (owned by the Web Audio transport)
-  are left alone.
+  runs it. A render, capture, thumbnail or `check` page never does, so their frames are unchanged.
+- WebKit opens an AVURLAsset (a byte stream in the GPU process) for every `<video src>` the parser
+  meets, and deleting players whose asset is still opening deadlocked the WebContent process. So the
+  preview server serves every managed video with no `src` at parse (`detachPreviewVideos` in
+  studio-server: the source in `data-hf-detached-src`, `preload="none"`), and the runtime strips the
+  videos of compositions it mounts itself (`importPreviewNode`, scene swaps) the same way before they
+  reach the live document. What counts as managed is `isPreviewManagedVideo` (studioPreviewMark.ts):
+  a `<video src>` with an authored `data-duration`, no `<source>` children, no `loop`, no
+  `data-var-src`. `<audio>` and a clip whose length comes from the decoder are left alone.
+- The budget attaches a source only to videos that are playing, leased (scrub audio, grading
+  preview), hold the last frame of the film, sit inside the playhead's window
+  (`RETAIN_BEHIND_SECONDS` behind, `RETAIN_AHEAD_SECONDS` ahead, the next `RETAIN_UPCOMING_CLIPS`),
+  capped at `MAX_ACTIVE_PREVIEW_MEDIA` by distance from the playhead; clips playing or under the
+  playhead may exceed the cap. At most `MAX_IN_FLIGHT_LOADS` loads (attach until metadata, error or
+  abort) are in flight (`MAX_IN_FLIGHT_URGENT_LOADS` for the clips under or about to reach the
+  playhead), nearest first; a settling load plans the next attach.
+- A source is released (`src` removed, `load()`) only once its load has settled and no other load is
+  in flight, in batches of `DETACH_BATCH_SIZE` per `DETACH_INTERVAL_MS`, farthest first. A load that
+  stalls for `LOAD_STALL_MS` stops counting toward the limit but is still never released.
+- A paused playhead that keeps jumping is a scrub: sources are planned once it rests
+  `SCRUB_SETTLE_MS`, not for every stop on the way.
+- Everything that reads a clip's source from the preview document goes through
+  `readPreviewMediaSrc`; the DOM (`data-hf-detached-src` without `src`) is the only state.
 
 ## Build
 

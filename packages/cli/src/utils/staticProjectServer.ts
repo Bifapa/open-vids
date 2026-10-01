@@ -26,6 +26,16 @@ export interface StaticProjectServer {
 }
 
 /**
+ * Longest slice answered to an open-ended `bytes=N-` request. Chromium opens one such request per `<video>`
+ * and, once the element has buffered enough, stops reading it but keeps the connection until the element is
+ * released. Every video of a long edit cuts the same big source at a different offset, so a few dozen
+ * elements hold all six connections Chromium allows per host; the next seek then queues behind them and
+ * never lands (its `seeking` flag stays up, and every audit seek waits out the runtime's 5 s hold for it).
+ * A bounded 206 ends on its own and frees its connection; Chromium asks for the next slice when it needs it.
+ */
+export const OPEN_ENDED_RANGE_MAX_BYTES = 1024 * 1024;
+
+/**
  * Serve a file with HTTP Range support. Chromium needs byte-range seekability
  * to determine the duration of formats that carry it in a trailing/implicit
  * position (notably WAV, which otherwise reports `.duration` as `Infinity`
@@ -56,7 +66,11 @@ function serveFileWithRange(
   if (match) {
     const hasStart = match[1] !== "";
     start = hasStart ? Number(match[1]) : Math.max(0, size - Number(match[2]));
-    end = !hasStart ? last : match[2] !== "" ? Math.min(Number(match[2]), last) : last;
+    end = !hasStart
+      ? last
+      : match[2] !== ""
+        ? Math.min(Number(match[2]), last)
+        : Math.min(start + OPEN_ENDED_RANGE_MAX_BYTES - 1, last);
 
     if (start > end || start > last) {
       res.writeHead(416, { ...headers, "Content-Range": `bytes */${size}` });

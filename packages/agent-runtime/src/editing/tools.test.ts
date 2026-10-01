@@ -297,6 +297,19 @@ describe("editing tool results", () => {
     expect(result.text).toContain("400 clips");
   });
 
+  it("notes an untouched template placeholder so normal edits know it is not user content", async () => {
+    const { host, call } = editing();
+    host.timelineResult = snapshot([
+      clip("ph", { kind: "text", label: "Title", placeholder: true }),
+      clip("mine", { kind: "text", label: "My title" }),
+    ]);
+    const lines = (await call("inspect_timeline", {})).text.split("\n");
+    expect(lines.find((line) => line.startsWith("ph |"))).toContain(
+      "(template placeholder — not user content)",
+    );
+    expect(lines.find((line) => line.startsWith("mine |"))).not.toContain("placeholder");
+  });
+
   it("adds the user's playhead and selection, marked as captured when they sent the message", async () => {
     const context: EditorContext = {
       schemaVersion: 1,

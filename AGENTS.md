@@ -9,6 +9,7 @@ OpenVids is a standalone, agent-native desktop video editor derived from an init
 - **Core Constraints**:
   - Studio and the composition iframe rely on same-origin synchronous DOM access. Never move Studio to `tauri://`, never introduce a second wrapper editor UI, and do not migrate off Tauri without a concrete blocker.
   - Project and source files on disk are the single source of truth.
+  - Hard kills (SIGKILL, crash) are recovered, never cleaned up by handlers: history keeps open agent windows in `<history home>/open-windows.json` and files a dead owner's writes to the turn's own entry on the next start (so `Revert this turn` still works); the Studio server sweeps `renders/work-*` and `.*.hf-transaction-*` at start and the engine kills Chrome whose owner died (`<tmp>/hyperframes-browsers/<pid>.json`, `sweepOrphanBrowsers`). Keep new long-lived state recoverable the same way.
 
 ## Package Manager & Commands
 

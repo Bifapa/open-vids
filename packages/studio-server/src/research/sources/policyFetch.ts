@@ -11,6 +11,7 @@ import {
   mediaKindFromUrl,
 } from "./mediaTypes.js";
 import type { FetchedPage, ResearchHttp } from "./types.js";
+import { pinnedTransport, type TransportInit } from "./pinnedTransport.js";
 import { UrlGuard } from "./urlPolicy.js";
 
 /**
@@ -29,13 +30,13 @@ const DOWNLOAD_IDLE_MS = 30_000;
 const STREAM_MESSAGE =
   "Streamed or protected media (HLS/DASH manifests) is not downloaded; look for a plain video file instead.";
 
-/** The network call (injectable): a `fetch` that must not follow redirects itself. */
-export type Transport = (
-  url: string,
-  init: { headers: Record<string, string>; redirect: "manual"; signal: AbortSignal },
-) => Promise<Response>;
+/**
+ * The network call (injectable): a `fetch`-like that must not follow redirects itself and must connect only to
+ * `init.addresses`, the addresses the guard vetted for this hop, never to a fresh DNS answer.
+ */
+export type Transport = (url: string, init: TransportInit) => Promise<Response>;
 
-export const globalTransport: Transport = (url, init) => fetch(url, init);
+export const globalTransport: Transport = pinnedTransport;
 
 /** What one network operation may do: the policy in force and the exact hosts a candidate grant allows. */
 export interface FetchScope {
@@ -116,13 +117,14 @@ export class PolicyFetcher {
   ): Promise<{ response: Response; finalUrl: string }> {
     let current = rawUrl;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      const url = await this.check(current, scope);
+      const { url, addresses } = await this.guard.vet(current, scope.policy, scope.grants ?? []);
       let response: Response;
       try {
         response = await this.transport(url.toString(), {
           headers: { "user-agent": this.userAgent, ...headers },
           redirect: "manual",
           signal,
+          addresses,
         });
       } catch (error) {
         if (isResearchFailure(error)) throw error;

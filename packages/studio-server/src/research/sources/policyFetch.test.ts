@@ -16,7 +16,7 @@ import {
   httpStatus,
   type Answer,
 } from "../testSupport.js";
-import { PolicyFetcher } from "./policyFetch.js";
+import { PolicyFetcher, type Transport } from "./policyFetch.js";
 import { PolicyStore } from "./policyStore.js";
 import { UrlGuard, isPrivateAddress } from "./urlPolicy.js";
 
@@ -145,6 +145,83 @@ describe("trusted mode", () => {
     expect(await codeOf(page(policy, fetcher, "https://commons.wikimedia.org:8443/x"))).toContain(
       "blocked_by_policy",
     );
+  });
+});
+
+describe("address pinning (DNS rebinding)", () => {
+  /** A resolver that answers public the first time a host is asked and loopback ever after. */
+  function rebinding() {
+    const asked: string[] = [];
+    const dns = async (host: string): Promise<string[]> => {
+      asked.push(host);
+      return [asked.filter((entry) => entry === host).length === 1 ? "93.184.216.34" : "127.0.0.1"];
+    };
+    return { asked, dns };
+  }
+
+  function recording(answer: (url: string) => Response): {
+    calls: Array<{ url: string; addresses: readonly string[] }>;
+  } & {
+    transport: Transport;
+  } {
+    const calls: Array<{ url: string; addresses: readonly string[] }> = [];
+    const transport: Transport = async (url, init) => {
+      calls.push({ url, addresses: init.addresses });
+      return answer(url);
+    };
+    return { calls, transport };
+  }
+
+  it("hands the transport the addresses it vetted, so a later private answer is never connected to", async () => {
+    const store = new PolicyStore({ dir: join(dir, "policy") });
+    store.setMode("any");
+    const { asked, dns } = rebinding();
+    const net = recording(
+      () => new Response("<title>ok</title>", { headers: { "content-type": "text/html" } }),
+    );
+    const fetcher = new PolicyFetcher({ transport: net.transport, guard: new UrlGuard(dns) });
+    await fetcher.getPage("https://rebind.example/a", { policy: store.get() });
+    // One lookup, made by the guard; the connection uses its (public) answer, not a second lookup.
+    expect(asked).toEqual(["rebind.example"]);
+    expect(net.calls).toEqual([{ url: "https://rebind.example/a", addresses: ["93.184.216.34"] }]);
+    // The host now answers loopback: the next request is refused before any connection.
+    const message = await codeOf(
+      fetcher.getPage("https://rebind.example/b", { policy: store.get() }),
+    );
+    expect(message).toContain("blocked_by_policy");
+    expect(net.calls).toHaveLength(1);
+  });
+
+  it("pins every redirect hop to that hop's own vetted addresses, and stops a hop that resolves private", async () => {
+    const store = new PolicyStore({ dir: join(dir, "policy") });
+    store.setMode("any");
+    const dns = async (host: string) => [host === "inner.example" ? "10.1.2.3" : "93.184.216.34"];
+    const net = recording((url) =>
+      url.startsWith("https://start.example")
+        ? new Response(null, { status: 302, headers: { location: "https://inner.example/x" } })
+        : new Response("never reached"),
+    );
+    const fetcher = new PolicyFetcher({ transport: net.transport, guard: new UrlGuard(dns) });
+    const message = await codeOf(
+      fetcher.getPage("https://start.example/go", { policy: store.get() }),
+    );
+    expect(message).toContain("blocked_by_policy");
+    expect(message).toContain("inner.example");
+    expect(net.calls).toEqual([{ url: "https://start.example/go", addresses: ["93.184.216.34"] }]);
+  });
+
+  it("pins a public IP literal to itself", async () => {
+    const store = new PolicyStore({ dir: join(dir, "policy") });
+    store.setMode("any");
+    const net = recording(
+      () => new Response("<title>ok</title>", { headers: { "content-type": "text/html" } }),
+    );
+    const fetcher = new PolicyFetcher({
+      transport: net.transport,
+      guard: new UrlGuard(resolver()),
+    });
+    await fetcher.getPage("http://93.184.216.34/x", { policy: store.get() });
+    expect(net.calls).toEqual([{ url: "http://93.184.216.34/x", addresses: ["93.184.216.34"] }]);
   });
 });
 

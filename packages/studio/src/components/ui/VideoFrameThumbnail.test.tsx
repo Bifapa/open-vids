@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VideoFrameThumbnail } from "./VideoFrameThumbnail";
+import { MAX_CONCURRENT_MEDIA_ELEMENT_LOADS } from "../../utils/mediaLoadGate";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -102,13 +103,15 @@ describe("VideoFrameThumbnail", () => {
     vi.restoreAllMocks();
   });
 
-  const render = (props: { src: string; fallbackLabel?: string }) => {
-    act(() => root.render(<VideoFrameThumbnail {...props} />));
+  // The video is created once a media-load slot is granted (a microtask later),
+  // so renders are awaited inside an async act.
+  const render = async (props: { src: string; fallbackLabel?: string }) => {
+    await act(async () => root.render(<VideoFrameThumbnail {...props} />));
     return videos[videos.length - 1];
   };
 
-  it("renders the fallback label when the video errors", () => {
-    render({ src: "missing.mp4", fallbackLabel: "VIDEO" });
+  it("renders the fallback label when the video errors", async () => {
+    await render({ src: "missing.mp4", fallbackLabel: "VIDEO" });
     const video = videos[0];
     expect(video.src).toBe("missing.mp4");
     expect(video.loadCalls).toBe(1);
@@ -121,8 +124,8 @@ describe("VideoFrameThumbnail", () => {
     expect(video.loadCalls).toBe(2);
   });
 
-  it("does not loop when the cleared src fires a synthetic error", () => {
-    render({ src: "missing.mp4", fallbackLabel: "VIDEO" });
+  it("does not loop when the cleared src fires a synthetic error", async () => {
+    await render({ src: "missing.mp4", fallbackLabel: "VIDEO" });
     const video = videos[0];
     act(() => video.dispatch("error"));
     expect(video.loadCalls).toBe(2);
@@ -139,8 +142,8 @@ describe("VideoFrameThumbnail", () => {
     expect(container.textContent).toContain("VIDEO");
   });
 
-  it("keeps the extracted frame and stays inert after a post-seek synthetic error", () => {
-    render({ src: "clip.mp4" });
+  it("keeps the extracted frame and stays inert after a post-seek synthetic error", async () => {
+    await render({ src: "clip.mp4" });
     const video = videos[0];
 
     act(() => video.dispatch("loadedmetadata"));
@@ -161,10 +164,56 @@ describe("VideoFrameThumbnail", () => {
     expect(video.loadCalls).toBe(2);
   });
 
-  it("retries with a fresh video element when src changes", () => {
-    render({ src: "a.mp4" });
-    act(() => root.render(<VideoFrameThumbnail src="b.mp4" />));
+  it("retries with a fresh video element when src changes", async () => {
+    await render({ src: "a.mp4" });
+    await act(async () => root.render(<VideoFrameThumbnail src="b.mp4" />));
     expect(videos.length).toBe(2);
     expect(videos[1].src).toBe("b.mp4");
+  });
+
+  it("creates at most MAX_CONCURRENT_MEDIA_ELEMENT_LOADS videos when 10 thumbnails mount", async () => {
+    await act(async () =>
+      root.render(
+        <>
+          {Array.from({ length: 10 }, (_, i) => (
+            <VideoFrameThumbnail key={i} src={`clip-${i}.mp4`} />
+          ))}
+        </>,
+      ),
+    );
+    expect(videos).toHaveLength(MAX_CONCURRENT_MEDIA_ELEMENT_LOADS);
+
+    // Settling one probe (frame captured) lets exactly the next one start.
+    await act(async () => {
+      videos[0].dispatch("loadedmetadata");
+      videos[0].dispatch("seeked");
+    });
+    expect(videos).toHaveLength(MAX_CONCURRENT_MEDIA_ELEMENT_LOADS + 1);
+    expect(videos[MAX_CONCURRENT_MEDIA_ELEMENT_LOADS]?.src).toBe(
+      `clip-${MAX_CONCURRENT_MEDIA_ELEMENT_LOADS}.mp4`,
+    );
+
+    // An errored probe frees its slot too.
+    await act(async () => videos[1].dispatch("error"));
+    expect(videos).toHaveLength(MAX_CONCURRENT_MEDIA_ELEMENT_LOADS + 2);
+  });
+
+  it("cancels queued thumbnails on unmount without ever creating their video", async () => {
+    await act(async () =>
+      root.render(
+        <>
+          {Array.from({ length: 6 }, (_, i) => (
+            <VideoFrameThumbnail key={i} src={`clip-${i}.mp4`} />
+          ))}
+        </>,
+      ),
+    );
+    expect(videos).toHaveLength(MAX_CONCURRENT_MEDIA_ELEMENT_LOADS);
+
+    await act(async () => root.render(<VideoFrameThumbnail src="solo.mp4" />));
+    // The three live probes were torn down and freed their slots; the
+    // cancelled waiters never took one, so only the new thumbnail's video appears.
+    expect(videos).toHaveLength(MAX_CONCURRENT_MEDIA_ELEMENT_LOADS + 1);
+    expect(videos[MAX_CONCURRENT_MEDIA_ELEMENT_LOADS]?.src).toBe("solo.mp4");
   });
 });

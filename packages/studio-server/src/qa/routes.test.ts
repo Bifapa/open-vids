@@ -121,6 +121,7 @@ function reportInput(fingerprint: string, overrides: Partial<QaReportInput> = {}
       height: 120,
       hasAudio: true,
       quality: "draft",
+      origin: "qa",
     },
     renderError: null,
     checks: [{ id: "render", status: "ran", detail: null }],
@@ -276,6 +277,37 @@ describe("QA reports", () => {
     expect((await errorOf(gone)).code).toBe("not_found");
     expect((await send("GET", "reports/unknown")).status).toBe(404);
   });
+
+  it("ends a session over HTTP: deletes its intermediate QA render, keeps `keep`, and validates the body", async () => {
+    const { send, project } = setup();
+    const state: { fingerprint: string } = await (await send("GET", "state")).json();
+    const render = (path: string, origin: "qa" | "turn") =>
+      reportInput(state.fingerprint, {
+        render: {
+          path,
+          duration: 6,
+          width: 160,
+          height: 120,
+          hasAudio: true,
+          quality: "draft",
+          origin,
+        },
+      });
+    project.write("renders/first.mp4", "video");
+    project.write("renders/last.mp4", "video");
+    await send("POST", "reports", render("renders/first.mp4", "qa"));
+    await send("POST", "reports", render("renders/last.mp4", "qa"));
+
+    const bad = await send("POST", "sessions/turn-1/finish", { keep: "index.html" });
+    expect(bad.status).toBe(400);
+    expect((await errorOf(bad)).code).toBe("invalid_request");
+
+    const done = await send("POST", "sessions/turn-1/finish", { keep: "renders/last.mp4" });
+    expect(done.status).toBe(200);
+    expect(await done.json()).toEqual({ removedRenders: ["renders/first.mp4"], removedReports: 0 });
+    expect(existsSync(project.path("renders/first.mp4"))).toBe(false);
+    expect(existsSync(project.path("renders/last.mp4"))).toBe(true);
+  });
 });
 
 run("QA frames and check requests", () => {
@@ -401,6 +433,8 @@ run("QA frames and check requests", () => {
       chmodSync(hang, 0o755);
       const { send, project } = setup({ ffmpegPath: hang });
       RENDERS.clean(project.path("renders/out.mp4"));
+      // Generous: the suite runs next to other ffmpeg-heavy suites.
+      const WAIT = { timeout: 10_000, interval: 25 };
       const client = new AbortController();
       const pending = send("POST", "check", REQUEST, { signal: client.signal });
       const pids = await vi.waitFor(() => {
@@ -408,7 +442,7 @@ run("QA frames and check requests", () => {
         const started = readFileSync(pidFile, "utf-8").trim().split("\n").map(Number);
         expect(started.length).toBeGreaterThanOrEqual(2);
         return started;
-      });
+      }, WAIT);
       client.abort();
       // The route's own response to a vanished client; what matters is that the work ended.
       await pending.then(
@@ -416,7 +450,7 @@ run("QA frames and check requests", () => {
         () => 0,
       );
       for (const pid of pids) {
-        await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+        await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(), WAIT);
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });

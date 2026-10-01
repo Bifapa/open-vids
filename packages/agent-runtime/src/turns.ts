@@ -40,13 +40,15 @@ import { isStoryToolName, storyToolsFor, timelineWritesAllowed } from "./story/t
 import { TurnResearch } from "./research/executor.js";
 import { isResearchToolName } from "./research/tools.js";
 import { TurnQa } from "./qa/executor.js";
-import { QaLoop, type QaPhase } from "./qa/loop.js";
+import { QaLoop, qaApplies, type QaPhase } from "./qa/loop.js";
 import { qaPhaseRefusal } from "./qa/phase.js";
+import { renderInterimInstruction } from "./qa/prompt.js";
 import { isQaToolName } from "./qa/tools.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import type { CheckpointHandle, CheckpointHost } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
 import { renderPromptContext } from "./promptContext.js";
+import { renderRevertedTurns, revertedSinceLastPrompt } from "./revertedTurns.js";
 import { SessionManager } from "./sessionManager.js";
 import type { AgentSettingsStore } from "./settings.js";
 import { FileChatStore } from "./store/index.js";
@@ -675,7 +677,10 @@ export class TurnRunner {
        * The Director must hear back from every run it started, and from steering sent while it was idle: while either
        * is pending it is re-prompted (a bounded number of times) until it finishes with a reply.
        */
-      const settleDirector = async (first: BackendPromptOutcome): Promise<BackendPromptOutcome> => {
+      const settleDirector = async (
+        first: BackendPromptOutcome,
+        beforeQa = false,
+      ): Promise<BackendPromptOutcome> => {
         let outcome = first;
         let followUps = 0;
         while (
@@ -695,6 +700,7 @@ export class TurnRunner {
               `<delegated-results>\n${results}\n</delegated-results>\nThese delegated runs reported after your last reply.`,
             ...steering.map((text) => `<user-steering>\n${text}\n</user-steering>`),
             "Continue: adjust the plan and delegated work if needed, wait for any runs still working, then finish the user's request with a short reply.",
+            beforeQa && renderInterimInstruction(),
           ].filter(Boolean);
           outcome = await promptAgain(blocks.join("\n\n"));
         }
@@ -704,13 +710,28 @@ export class TurnRunner {
         run.mode === "story" && run.story
           ? `\n\n${renderStoryBlocks(await this.storyBlockInput(run, setup, run.story))}`
           : "";
+      // Earlier turns the user reverted since the Director's session last saw this chat: their edits are gone.
+      const chatState = this.chats.get(run.chatId);
+      const revertedBlock = chatState
+        ? renderRevertedTurns(
+            revertedSinceLastPrompt(chatState.turns, chatState.messages, run.turn.id),
+            this.now(),
+          )
+        : "";
+      const revertedBlocks = revertedBlock ? `\n\n${revertedBlock}` : "";
+      // Render QA will apply to this turn (it runs only if the project changed): every Director reply before it is interim.
+      const qaWillApply =
+        qa !== null &&
+        editingHost !== null &&
+        setup.execution.budget.qaPasses > 0 &&
+        qaApplies(run.mode, run.storyAction);
       const promptPromise = promptDirector(
-        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references)}${storyBlocks}`,
+        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references)}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
       );
       run.markPromptStarted();
       let outcome = await promptPromise;
       run.directorIdle = true;
-      outcome = await settleDirector(outcome);
+      outcome = await settleDirector(outcome, qaWillApply);
 
       // The Director's work is done: render QA renders, checks and (while passes are left) has the Director correct.
       if (qa && editingHost && outcome === "completed" && !run.forcedError && !signal.aborted) {
@@ -729,9 +750,11 @@ export class TurnRunner {
           mode: run.mode,
           action: run.storyAction,
           startFingerprint,
+          instructed: qaWillApply,
           director: {
             prompt: promptAgain,
-            settle: settleDirector,
+            settle: (after) => settleDirector(after),
+            markInterim: () => activeWriter.markTextInterim(),
             takeSteering: () => run.pendingSteering.splice(0),
             setPhase: (phase) => {
               run.qaPhase = phase;

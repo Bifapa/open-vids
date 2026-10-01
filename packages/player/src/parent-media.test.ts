@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { ParentMediaManager, type ProxyEntry } from "./parent-media";
 
 // A fake media element whose paused state is driven by play()/pause() stubs.
@@ -163,18 +163,33 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
   });
 });
 
+function addClip(
+  src: string,
+  attrs: Record<string, string> = {},
+  tag: "audio" | "video" = "audio",
+): HTMLMediaElement {
+  const el = document.createElement(tag);
+  if (src) el.setAttribute("src", src);
+  el.setAttribute("data-start", "0");
+  for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+  el.preload = "auto";
+  document.body.appendChild(el);
+  return el;
+}
+
+function finishLoad(entry: ProxyEntry, type: "loadedmetadata" | "error" = "loadedmetadata"): void {
+  entry.el.dispatchEvent(new Event(type));
+}
+
 describe("ParentMediaManager across documents", () => {
   afterEach(() => document.body.replaceChildren());
 
   it("drops the previous document's proxies on reset and keeps the audio-src one", () => {
     const mgr = makeManager();
     mgr.setupFromUrl("https://example.test/narration.mp3");
-    const track = document.createElement("audio");
-    track.setAttribute("src", "https://example.test/old-film.mp3");
-    track.setAttribute("data-start", "0");
-    track.preload = "auto";
-    document.body.appendChild(track);
+    addClip("https://example.test/old-film.mp3");
     mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
     expect(mgr.entries).toHaveLength(2);
     const oldProxy = mgr.entries[1].el;
 
@@ -186,13 +201,9 @@ describe("ParentMediaManager across documents", () => {
 
   it("keeps the audio-src track after a reset when the old document shared its URL", () => {
     const mgr = makeManager();
-    const track = document.createElement("audio");
-    track.setAttribute("src", "https://example.test/narration.mp3");
-    track.setAttribute("data-start", "2");
-    track.setAttribute("data-duration", "3");
-    track.preload = "auto";
-    document.body.appendChild(track);
+    addClip("https://example.test/narration.mp3", { "data-start": "2", "data-duration": "3" });
     mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
     mgr.setupFromUrl("https://example.test/narration.mp3");
     expect(mgr.entries).toHaveLength(1);
 
@@ -201,6 +212,203 @@ describe("ParentMediaManager across documents", () => {
     expect(mgr.entries.map((m) => [m.el.src, m.start, m.duration])).toEqual([
       ["https://example.test/narration.mp3", 0, Infinity],
     ]);
+  });
+});
+
+describe("ParentMediaManager lazy iframe proxies", () => {
+  afterEach(() => document.body.replaceChildren());
+
+  it("creates no proxy for iframe media while the runtime owns audio", async () => {
+    const mgr = makeManager();
+    addClip("https://example.test/a.mp4", {}, "video");
+    mgr.setupFromIframe(document);
+    expect(mgr.entries).toHaveLength(0);
+
+    // Late sources (preload flip / new nodes) are ignored as well.
+    addClip("https://example.test/b.mp4", {}, "video");
+    await Promise.resolve();
+    expect(mgr.entries).toHaveLength(0);
+    mgr.destroy();
+  });
+
+  it("promotion materializes the clips already present in the iframe document", () => {
+    const mgr = makeManager();
+    addClip("https://example.test/a.mp4", { "data-start": "1", "data-duration": "4" }, "video");
+    addClip("https://example.test/b.mp3");
+    mgr.setupFromIframe(document);
+    expect(mgr.entries).toHaveLength(0);
+
+    mgr.promoteToParentProxy(document);
+
+    expect(mgr.audioOwner).toBe("parent");
+    expect(mgr.entries.map((m) => [m.el.tagName, m.el.src, m.start, m.duration])).toEqual([
+      ["VIDEO", "https://example.test/a.mp4", 1, 4],
+      ["AUDIO", "https://example.test/b.mp3", 0, Infinity],
+    ]);
+    mgr.destroy();
+  });
+
+  it("adopts sources that appear after promotion", async () => {
+    const mgr = makeManager();
+    mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
+    expect(mgr.entries).toHaveLength(0);
+
+    addClip("https://example.test/late.mp3");
+    await Promise.resolve();
+
+    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://example.test/late.mp3"]);
+    mgr.destroy();
+  });
+
+  it("reads a released element's parked source only to skip it, and adopts it on re-attach", async () => {
+    const mgr = makeManager();
+    const released = addClip("", { "data-hf-detached-src": "https://example.test/a.mp4" }, "video");
+    released.preload = "none";
+    mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
+    expect(mgr.entries).toHaveLength(0);
+
+    released.setAttribute("src", "https://example.test/a.mp4");
+    released.removeAttribute("data-hf-detached-src");
+    released.preload = "auto";
+    await Promise.resolve();
+
+    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://example.test/a.mp4"]);
+    mgr.destroy();
+  });
+
+  it("removes a released element's proxy by its parked source", async () => {
+    const mgr = makeManager();
+    const clip = addClip("https://example.test/a.mp4", {}, "video");
+    mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
+    expect(mgr.entries).toHaveLength(1);
+
+    // The preview parks the source, then the node leaves the document.
+    clip.removeAttribute("src");
+    clip.setAttribute("data-hf-detached-src", "https://example.test/a.mp4");
+    clip.remove();
+    await Promise.resolve();
+
+    expect(mgr.entries).toHaveLength(0);
+    mgr.destroy();
+  });
+});
+
+describe("ParentMediaManager proxy load bound", () => {
+  afterEach(() => document.body.replaceChildren());
+
+  function promotedWith(count: number) {
+    const mgr = makeManager();
+    for (let i = 0; i < count; i++) addClip(`https://example.test/clip-${i}.mp4`, {}, "video");
+    mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
+    return mgr;
+  }
+
+  const srcs = (mgr: ParentMediaManager) => mgr.entries.map((m) => m.el.src.split("/").pop());
+
+  it("keeps at most three unsettled proxy loads and starts the rest FIFO as loads settle", () => {
+    const mgr = promotedWith(6);
+    expect(srcs(mgr)).toEqual(["clip-0.mp4", "clip-1.mp4", "clip-2.mp4"]);
+
+    finishLoad(mgr.entries[1]);
+    expect(srcs(mgr)).toEqual(["clip-0.mp4", "clip-1.mp4", "clip-2.mp4", "clip-3.mp4"]);
+
+    // A failed load frees its slot as well.
+    finishLoad(mgr.entries[0], "error");
+    expect(srcs(mgr)).toEqual([
+      "clip-0.mp4",
+      "clip-1.mp4",
+      "clip-2.mp4",
+      "clip-3.mp4",
+      "clip-4.mp4",
+    ]);
+
+    // A second settle event from the same proxy must not free another slot.
+    finishLoad(mgr.entries[1]);
+    expect(mgr.entries).toHaveLength(5);
+
+    finishLoad(mgr.entries[2]);
+    expect(srcs(mgr).at(-1)).toBe("clip-5.mp4");
+    mgr.destroy();
+  });
+
+  it("drives proxies that exist while later ones are still queued", () => {
+    const mgr = promotedWith(5);
+    expect(mgr.entries).toHaveLength(3);
+    mgr.updateMuted(true);
+    mgr.seekAll(2);
+    for (const m of mgr.entries) {
+      expect(m.el.muted).toBe(true);
+      expect(m.el.currentTime).toBe(2);
+    }
+    mgr.destroy();
+  });
+
+  it("a queued proxy starts playing when its load slot opens during playback", () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const mgr = makeManager({ isPaused: false });
+    for (let i = 0; i < 4; i++) addClip(`https://example.test/clip-${i}.mp4`, {}, "video");
+    mgr.promoteToParentProxy(document);
+    expect(mgr.entries).toHaveLength(3);
+    const playingBefore = play.mock.contexts.length;
+
+    finishLoad(mgr.entries[0]);
+
+    expect(mgr.entries).toHaveLength(4);
+    expect(play.mock.contexts.slice(playingBefore)).toContain(mgr.entries[3].el);
+    mgr.destroy();
+    play.mockRestore();
+  });
+
+  // A fresh, empty iframe document promoted after the drop: anything still queued
+  // from the old document would start now, because every load slot is free.
+  function promoteFreshDocument(mgr: ParentMediaManager): void {
+    const fresh = document.implementation.createHTMLDocument("fresh");
+    const clip = fresh.createElement("audio");
+    clip.setAttribute("src", "https://example.test/fresh.mp3");
+    clip.setAttribute("data-start", "0");
+    fresh.body.appendChild(clip);
+    mgr.promoteToParentProxy(fresh);
+  }
+
+  it("reset drops queued clips so they never start", () => {
+    const mgr = promotedWith(5);
+    mgr.resetForIframeLoad();
+    expect(mgr.entries).toHaveLength(0);
+
+    promoteFreshDocument(mgr);
+    expect(srcs(mgr)).toEqual(["fresh.mp3"]);
+    mgr.destroy();
+  });
+
+  it("destroy drops queued clips so they never start", () => {
+    const mgr = promotedWith(5);
+    mgr.destroy();
+    expect(mgr.entries).toHaveLength(0);
+
+    promoteFreshDocument(mgr);
+    expect(srcs(mgr)).toEqual(["fresh.mp3"]);
+    mgr.destroy();
+  });
+
+  it("skips a queued clip whose source was released while it waited", () => {
+    const mgr = makeManager();
+    const clips = [0, 1, 2, 3, 4].map((i) =>
+      addClip(`https://example.test/clip-${i}.mp4`, {}, "video"),
+    );
+    mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
+    expect(mgr.entries).toHaveLength(3);
+
+    clips[3].setAttribute("data-hf-detached-src", "https://example.test/clip-3.mp4");
+    clips[3].removeAttribute("src");
+    finishLoad(mgr.entries[0]);
+    // clip-3 is skipped; the freed slot goes to the next queued clip.
+    expect(srcs(mgr)).toEqual(["clip-0.mp4", "clip-1.mp4", "clip-2.mp4", "clip-4.mp4"]);
+    mgr.destroy();
   });
 });
 

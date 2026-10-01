@@ -13,6 +13,11 @@ import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
 import { basename, ext, truncateMiddle, formatDuration, type CopyFeedback } from "./assetHelpers";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
+import {
+  MEDIA_LOAD_SETTLE_TIMEOUT_MS,
+  acquireMediaLoad,
+  type MediaLoadRelease,
+} from "../../utils/mediaLoadGate";
 
 /** Drag payload writer shared by the asset tile and the font row: copy effect
  *  plus the timeline-asset MIME and a plain-text path fallback. */
@@ -60,41 +65,66 @@ function useProbedDuration(src: string, skip: boolean): number | null | undefine
     if (skip) return;
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const abort = new AbortController();
     // The in-flight probe element, so unmount cleanup can abort its network
     // fetch (clearing `src`) instead of leaving it to finish in the background.
     let liveVid: HTMLVideoElement | null = null;
+    // The media-load slot held by the in-flight probe; freed when it settles.
+    let releaseSlot: MediaLoadRelease | null = null;
+    let settleTimer: number | undefined;
 
     function teardown(vid: HTMLVideoElement) {
+      window.clearTimeout(settleTimer);
       vid.onloadedmetadata = null;
       vid.onerror = null;
       vid.src = "";
+      releaseSlot?.();
+      releaseSlot = null;
     }
 
     function probe(attempt: number) {
       if (cancelled) return;
-      const vid = document.createElement("video");
-      liveVid = vid;
-      vid.preload = "metadata";
-      vid.muted = true;
-      vid.onloadedmetadata = () => {
-        const d = Number.isFinite(vid.duration) && vid.duration > 0 ? vid.duration : null;
-        teardown(vid);
-        if (!cancelled) setDuration(d);
-      };
-      vid.onerror = () => {
-        teardown(vid);
-        if (!cancelled) {
-          if (attempt < 1) retryTimer = setTimeout(() => probe(attempt + 1), 50);
-          else setDuration(null);
-        }
-      };
-      vid.src = src;
+      acquireMediaLoad(abort.signal).then(
+        (release) => {
+          if (cancelled) {
+            release();
+            return;
+          }
+          releaseSlot = release;
+          const vid = document.createElement("video");
+          liveVid = vid;
+          vid.preload = "metadata";
+          vid.muted = true;
+          vid.onloadedmetadata = () => {
+            const d = Number.isFinite(vid.duration) && vid.duration > 0 ? vid.duration : null;
+            teardown(vid);
+            if (!cancelled) setDuration(d);
+          };
+          vid.onerror = () => {
+            teardown(vid);
+            if (!cancelled) {
+              if (attempt < 1) retryTimer = setTimeout(() => probe(attempt + 1), 50);
+              else setDuration(null);
+            }
+          };
+          // A stalled probe must not hold its slot forever.
+          settleTimer = window.setTimeout(() => {
+            teardown(vid);
+            if (!cancelled) setDuration(null);
+          }, MEDIA_LOAD_SETTLE_TIMEOUT_MS);
+          vid.src = src;
+        },
+        () => {
+          // Unmounted while queued — no slot was taken.
+        },
+      );
     }
 
     probe(0);
     return () => {
       cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
+      abort.abort();
+      clearTimeout(retryTimer);
       if (liveVid) teardown(liveVid);
     };
   }, [src, skip]);

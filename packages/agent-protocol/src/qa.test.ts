@@ -7,6 +7,7 @@ import {
   foldChatEvents,
   parseExecutionQuality,
   parseQaCheckRequest,
+  parseQaFinishRequest,
   parseQaFramesRequest,
   parseQaIssueDraft,
   parseQaReportInput,
@@ -253,6 +254,7 @@ describe("QA wire parsers", () => {
         height: 1080,
         hasAudio: true,
         quality: "draft",
+        origin: "qa",
       },
       renderError: null,
       checks: [{ id: "black_frames", status: "ran", detail: null }],
@@ -273,6 +275,32 @@ describe("QA wire parsers", () => {
     });
     expect(parseQaReportInput({ ...input, pass: 3 }).ok).toBe(false);
     expect(parseQaReportInput({ ...input, passLimit: 0 }).ok).toBe(false);
+    // A report stored before `origin` existed reads as the turn's own render: QA never deletes it.
+    const legacyRender = { path: "renders/p_1.mp4", duration: 12, width: 1920, height: 1080 };
+    expect(parseQaReportInput({ ...input, render: legacyRender })).toMatchObject({
+      ok: true,
+      value: { render: { origin: "turn" } },
+    });
+    expect(
+      parseQaReportInput({ ...input, render: { ...legacyRender, origin: "nonsense" } }),
+    ).toMatchObject({ ok: true, value: { render: { origin: "turn" } } });
+  });
+
+  it("accepts a finish request naming render files only", () => {
+    expect(parseQaFinishRequest({ keep: null })).toEqual({ ok: true, value: { keep: null } });
+    expect(parseQaFinishRequest({ keep: "renders/a.mp4", produced: ["renders/b.mp4"] })).toEqual({
+      ok: true,
+      value: { keep: "renders/a.mp4", produced: ["renders/b.mp4"] },
+    });
+    expect(parseQaFinishRequest({}).ok).toBe(false);
+    expect(parseQaFinishRequest({ keep: "../secret.mp4" }).ok).toBe(false);
+    expect(parseQaFinishRequest({ keep: null, produced: ["index.html"] }).ok).toBe(false);
+    expect(
+      parseQaFinishRequest({
+        keep: null,
+        produced: Array.from({ length: 33 }, (_, i) => `renders/p${i}.mp4`),
+      }).ok,
+    ).toBe(false);
   });
 });
 

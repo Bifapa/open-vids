@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import {
+  closeSync,
+  ftruncateSync,
+  mkdtempSync,
+  mkdirSync,
+  openSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VALID_CANVAS_RESOLUTIONS } from "@hyperframes/parsers";
@@ -497,6 +507,72 @@ describe("GET /projects/:id/renders/file/* — path safety", () => {
     const res = await app.request("http://localhost/projects/demo/renders/file/demo.mp4");
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("render-bytes");
+  });
+
+  describe("byte ranges", () => {
+    const url = "http://localhost/projects/demo/renders/file/demo.mp4";
+
+    function bytesApp(): Hono {
+      const { app, rendersDir } = buildApp();
+      writeFileSync(join(rendersDir, "demo.mp4"), "0123456789");
+      return app;
+    }
+
+    it.each([
+      ["bytes=2-5", "2345", "bytes 2-5/10"],
+      ["bytes=7-", "789", "bytes 7-9/10"],
+      ["bytes=-3", "789", "bytes 7-9/10"],
+      ["bytes=4-999", "456789", "bytes 4-9/10"],
+    ])("answers Range %s with 206 and exactly those bytes", async (range, body, contentRange) => {
+      const res = await bytesApp().request(url, { headers: { Range: range } });
+      expect(res.status).toBe(206);
+      expect(res.headers.get("Content-Range")).toBe(contentRange);
+      expect(res.headers.get("Content-Length")).toBe(String(body.length));
+      expect(await res.text()).toBe(body);
+    });
+
+    it("answers a range past the end with 416 and the file size", async () => {
+      const res = await bytesApp().request(url, { headers: { Range: "bytes=10-20" } });
+      expect(res.status).toBe(416);
+      expect(res.headers.get("Content-Range")).toBe("bytes */10");
+    });
+
+    it("serves the whole file, advertising ranges, when no usable Range is sent", async () => {
+      const app = bytesApp();
+      for (const headers of [{}, { Range: "bytes=0-1,3-4" }, { Range: "items=1-2" }]) {
+        const res = await app.request(url, { headers });
+        expect(res.status).toBe(200);
+        expect(res.headers.get("Accept-Ranges")).toBe("bytes");
+        expect(res.headers.get("Content-Length")).toBe("10");
+        expect(await res.text()).toBe("0123456789");
+      }
+    });
+
+    it("streams a render too large to buffer: a 3 GiB file answers a window and a cancelled full read", async () => {
+      const { app, rendersDir } = buildApp();
+      const big = join(rendersDir, "big.mp4");
+      const size = 3 * 1024 * 1024 * 1024;
+      const fd = openSync(big, "w");
+      try {
+        ftruncateSync(fd, size);
+        writeSync(fd, "WXYZ", 2 * 1024 * 1024 * 1024);
+      } finally {
+        closeSync(fd);
+      }
+      const base = "http://localhost/projects/demo/renders/file/big.mp4";
+
+      const window = await app.request(base, { headers: { Range: "bytes=2147483648-2147483651" } });
+      expect(window.status).toBe(206);
+      expect(window.headers.get("Content-Range")).toBe(`bytes 2147483648-2147483651/${size}`);
+      expect(await window.text()).toBe("WXYZ");
+
+      const full = await app.request(base);
+      expect(full.status).toBe(200);
+      expect(full.headers.get("Content-Length")).toBe(String(size));
+      const reader = full.body!.getReader();
+      expect((await reader.read()).value?.byteLength).toBeGreaterThan(0);
+      await reader.cancel();
+    });
   });
 
   it("rejects a file reached through a symlink inside rendersDir pointing outside it", async () => {

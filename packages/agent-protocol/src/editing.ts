@@ -92,6 +92,11 @@ export interface TimelineClip {
   compositionSrc: string | null;
   /** Locked clips cannot be edited. */
   locked: boolean;
+  /**
+   * The blank project template's placeholder clip, still untouched. Not user content: it may be removed or replaced,
+   * and Build Story / build_rough_cut remove it. Present only when true.
+   */
+  placeholder?: boolean;
   provenance: ClipProvenance | null;
 }
 
@@ -146,7 +151,7 @@ export type EditOperation =
       volume?: number;
       muted?: boolean;
       fit?: ClipFit;
-      /** Video/image: position and size; default fits the media inside the frame, centred. */
+      /** Video/image: position and size; default: a video fills the frame (scaled to fit), an image keeps its size (scaled down to fit), centred. */
       frame?: ClipFrame;
       /** Audio/video: linear gain ramps (seconds) at the clip's start and end. */
       fadeIn?: number;
@@ -170,7 +175,7 @@ export type EditOperation =
       volume?: number;
       muted?: boolean;
       fit?: ClipFit;
-      /** Video: position and size; default fits the media inside the frame, centred. */
+      /** Video: position and size; default fills the frame (scaled to fit). */
       frame?: ClipFrame;
       /** Short audio gain ramp (seconds, 0–0.1) at both edges of every clip, against clicks at cuts. */
       edgeFade?: number;

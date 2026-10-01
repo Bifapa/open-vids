@@ -1,5 +1,8 @@
 import type { QaIssueDraft, TimeRange, TimelineClip } from "@hyperframes/agent-protocol";
-import type { AudioLevels } from "../analysis/audioLevels.js";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { measureAudioLevels, type AudioLevels } from "../analysis/audioLevels.js";
 import { runFfmpeg } from "../analysis/ffmpeg.js";
 import { parseBlackdetect, parseFreezedetect } from "../analysis/ffmpegParse.js";
 import {
@@ -253,6 +256,114 @@ function audioHoleIssue(range: TimeRange, audible: readonly TimelineClip[]): QaI
     suggestion:
       "Close the gap (ripple the later clips) or fill it with a clip that has sound, such as room tone or music.",
   };
+}
+
+/** A render silence under an audible clip is dropped when the clip's source is silent over at least this much of it. */
+const SILENT_SOURCE_FRACTION = 0.8;
+/** The segment is decoded to mono 8 kHz PCM (what the level meter reads) before it is measured. */
+const SEGMENT_SAMPLE_RATE = 8000;
+
+function overlapSeconds(ranges: readonly TimeRange[], from: number, to: number): number {
+  return ranges.reduce(
+    (sum, range) => sum + Math.max(0, Math.min(range.end, to) - Math.max(range.start, from)),
+    0,
+  );
+}
+
+/**
+ * Whether the source file is silent over most of `[from, to]` (source seconds): from its cached level-based silence map
+ * when the analysis has one, else measured on that segment alone with the same level meter and threshold the render's
+ * silences come from (a peak-based detector would call room noise sound where the RMS level is far below −50 dBFS).
+ * Null when it could not be measured.
+ */
+async function sourceIsSilent(
+  file: string,
+  cached: readonly TimeRange[] | undefined,
+  from: number,
+  to: number,
+  options: FfmpegRunOptions,
+): Promise<boolean | null> {
+  const length = to - from;
+  if (length <= 0) return null;
+  if (cached) return overlapSeconds(cached, from, to) / length >= SILENT_SOURCE_FRACTION;
+  const dir = await mkdtemp(join(tmpdir(), "openvids-qa-segment-"));
+  try {
+    const segment = join(dir, "segment.wav");
+    await runFfmpeg(
+      [
+        "-ss",
+        from.toFixed(3),
+        "-t",
+        length.toFixed(3),
+        "-i",
+        file,
+        "-vn",
+        "-map",
+        "0:a:0",
+        "-ac",
+        "1",
+        "-ar",
+        String(SEGMENT_SAMPLE_RATE),
+        "-c:a",
+        "pcm_s16le",
+        segment,
+      ],
+      options,
+    );
+    const levels = await measureAudioLevels(segment, options);
+    const silent =
+      levels.frameDb.filter((level) => level < SILENCE_DB).length * levels.frameSeconds;
+    return silent / length >= SILENT_SOURCE_FRACTION;
+  } catch (error) {
+    if (options.signal.aborted) throw error;
+    return null;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Keeps the render silences that are suspicious. Under an audible clip a silence is only a problem when the clip's
+ * source is NOT silent there (a speaker pausing inside their own clip is natural, however long): every audible clip
+ * covering the silence is mapped to its source range and the silence is dropped when all of those sources are silent
+ * over most of it. A silence that no audible clip covers is left to the audio-hole rule, and a source that cannot be
+ * measured keeps the finding, since it was not shown to be silent.
+ */
+export async function withoutSilentSources(
+  silences: readonly TimeRange[],
+  timeline: QaTimeline,
+  sourcePath: (src: string) => string | null,
+  options: FfmpegRunOptions,
+): Promise<TimeRange[]> {
+  const audible = timeline.snapshot.clips.filter((clip) => isAudible(timeline, clip));
+  const kept: TimeRange[] = [];
+  for (const range of silences) {
+    const middle = (range.start + range.end) / 2;
+    const covering = audible.filter((clip) => clip.start <= middle && middle < clip.end);
+    let allSilent = covering.length > 0;
+    for (const clip of covering) {
+      const file = clip.src === null ? null : sourcePath(clip.src);
+      if (clip.src === null || !file) {
+        allSilent = false;
+        break;
+      }
+      const from = Math.max(range.start, clip.start);
+      const to = Math.min(range.end, clip.end);
+      const silent = await sourceIsSilent(
+        file,
+        timeline.silences?.get(clip.src),
+        sourceTime(timeline, clip, from),
+        sourceTime(timeline, clip, to),
+        options,
+      );
+      if (silent !== true) {
+        allSilent = false;
+        break;
+      }
+    }
+    if (!allSilent) kept.push(range);
+  }
+  return kept;
 }
 
 function silenceIssues(silences: readonly TimeRange[], timeline: QaTimeline): QaIssueDraft[] {

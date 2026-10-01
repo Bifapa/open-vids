@@ -11,6 +11,7 @@ import {
   type BundleOptions,
 } from "@hyperframes/core/compiler";
 import { STUDIO_PREVIEW_MARK_META } from "@hyperframes/core/studio-preview-mark";
+import { detachPreviewVideos } from "../helpers/detachedPreviewVideos.js";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
@@ -267,6 +268,13 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
 /** Captures screenshot right after a seek, so they get every image eager and no preview mark. */
 export const PREVIEW_CAPTURE_PARAM = "hf-capture";
 
+/**
+ * Salts the ETag (and with it the persisted preview document key) of a non-capture preview: the
+ * documents are served without `<video src>` (see detachPreviewVideos), so one built before that
+ * must not be revalidated or read back from the store.
+ */
+const PREVIEW_VIDEO_SOURCE_SALT = ":vs1";
+
 function injectStudioPreviewAugmentations(
   html: string,
   adapter: StudioApiAdapter,
@@ -422,6 +430,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mediaCodecProbeCache,
       );
       bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
+      if (!capture) bundled = detachPreviewVideos(bundled);
       rememberPreview(builtKey, bundled);
       if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
       return bundled;
@@ -448,7 +457,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
           fallback.compositionPath,
           mediaCodecProbeCache,
         );
-        return fallbackAugmented;
+        return capture ? fallbackAugmented : detachPreviewVideos(fallbackAugmented);
       }
       return null;
     }
@@ -465,7 +474,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const previewVariables = vars.values;
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
-    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
+    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : PREVIEW_VIDEO_SOURCE_SALT}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, {
@@ -525,7 +534,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // not revalidate to a 304 that skips the pin.
     const compPathHash = createHash("sha1").update(compPath).digest("hex");
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
-    const etag = `"comp:v2:${compPathHash}:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
+    const etag = `"comp:v2:${compPathHash}:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : PREVIEW_VIDEO_SOURCE_SALT}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, {
@@ -551,6 +560,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath, capture);
     if (previewVariables) html = injectPreviewVariables(html, previewVariables);
     html = await injectMediaCodecMap(html, adapter, project.dir, compPath, mediaCodecProbeCache);
+    if (!capture) html = detachPreviewVideos(html);
     return c.html(html, 200, previewCacheHeaders(etag));
   });
 

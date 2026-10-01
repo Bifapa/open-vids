@@ -289,6 +289,44 @@ describe("Story ↔ timeline sync ledger", () => {
     expect(readFileSync(join(f.project.dir, STORY_SYNC_PATH), "utf-8")).toBe(ledgerBytes);
   });
 
+  it("removes an untouched template placeholder on rebuild, reports it and keeps everything else", async () => {
+    const { f } = await built();
+    const html = f.made.read("index.html");
+    f.made.write(
+      "index.html",
+      html.replace(
+        /<div id="manual"/,
+        `<h1 id="title" data-hf-id="hf-ph" class="clip" data-start="0" data-duration="10" data-track-index="0" data-ov-placeholder="template">Title</h1><div id="manual"`,
+      ),
+    );
+    const result = await rebuild(f);
+    expect(result.changed).toBe(true);
+    expect(result.warnings).toContain(
+      'Removed the untouched template placeholder "Title" (0–10 s); it was not user content.',
+    );
+    const after = markup(f);
+    expect(after.has("hf-ph")).toBe(false);
+    expect(after.has("hf-manual")).toBe(true);
+
+    // Nothing left to do: the next rebuild writes nothing.
+    expect((await rebuild(f)).changed).toBe(false);
+  });
+
+  it("keeps a template placeholder the user has edited on rebuild", async () => {
+    const { f } = await built();
+    const html = f.made.read("index.html");
+    f.made.write(
+      "index.html",
+      html.replace(
+        /<div id="manual"/,
+        `<h1 id="title" data-hf-id="hf-ph" class="clip" data-start="0" data-duration="10" data-track-index="0" data-ov-placeholder="template">My own title</h1><div id="manual"`,
+      ),
+    );
+    const result = await rebuild(f);
+    expect(result.warnings.some((warning) => warning.includes("template placeholder"))).toBe(false);
+    expect(markup(f).has("hf-ph")).toBe(true);
+  });
+
   it("does not mistake Studio's id stamping of the captions file for an edit, but sees a real one", async () => {
     const { f } = await built();
     const file = "compositions/captions.html";
@@ -903,5 +941,55 @@ describe("a resolved Missing Asset node", () => {
     // Not a bed: the story's music beds are exactly the ones built before.
     expect(built.music).toEqual(bedsBefore);
     expect((await reportOf(f)).state).toBe("in_sync");
+  });
+});
+
+describe("clips locked on the timeline", () => {
+  const lock = (f: StoryFixture, id: string) =>
+    userEditsClip(f, id, (element) => element.setAttribute("data-timeline-locked", ""));
+
+  it("survive Rebuild byte-for-byte, even when their chapter is regenerated and the user's own clip is locked too", async () => {
+    const { f, ids } = await built();
+    const [cutaway] = sectionClips(f, ids.main, "b_roll");
+    if (!cutaway) throw new Error("fixture");
+    lock(f, cutaway);
+    lock(f, "hf-manual");
+    const before = markup(f);
+    await userSaves(f, (graph) => {
+      chapterOf(graph, ids.main).sourceRanges = [
+        { source: TALK, from: 2.6, to: 3.35, segment: null },
+      ];
+    });
+    const impact = await reportOf(f);
+    expect(
+      section(impact.sections, ids.main).units.find((unit) => unit.role === "b_roll"),
+    ).toMatchObject({
+      action: "keep_edited",
+    });
+
+    const result = await rebuild(f);
+    expect(result.rebuilt).toEqual([ids.main]);
+    const after = markup(f);
+    expect(after.get(cutaway)).toBe(before.get(cutaway));
+    expect(after.get("hf-manual")).toBe(before.get("hf-manual"));
+    expect(result.warnings.some((warning) => warning.includes("is locked on the timeline"))).toBe(
+      true,
+    );
+  });
+
+  it("survive a full Build Story", async () => {
+    const { f, ids } = await built();
+    const [introClip] = sectionClips(f, ids.intro, "a_roll");
+    const [cutaway] = sectionClips(f, ids.main, "b_roll");
+    if (!introClip || !cutaway) throw new Error("fixture");
+    lock(f, introClip);
+    lock(f, cutaway);
+    lock(f, "hf-manual");
+    const before = markup(f);
+    await f.service.build(f.project, { turnId: "turn-full" });
+    const after = markup(f);
+    for (const id of [introClip, cutaway, "hf-manual"]) {
+      expect(after.get(id), id).toBe(before.get(id));
+    }
   });
 });

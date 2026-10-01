@@ -122,7 +122,7 @@ export const STAGE_RECIPES: Record<ComputedStage, string> = {
   silence: "adaptive-rms/1",
   speakers: "diarization-merge/2",
   shots: "scene+black+freeze/2",
-  transcript: "sentences/2",
+  transcript: "sentences/3",
   takes: "takes/2",
   segments: "draft/2",
 };

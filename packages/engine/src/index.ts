@@ -95,6 +95,7 @@ export {
   type CaptureMode,
   type AcquiredBrowser,
 } from "./services/browserManager.js";
+export { sweepOrphanBrowsers } from "./services/orphanBrowsers.js";
 export {
   augmentProtocolTimeoutError,
   isProtocolTimeoutError,

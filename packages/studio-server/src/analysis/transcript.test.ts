@@ -176,3 +176,84 @@ describe("buildTranscript", () => {
     expect(lengths(48)).toEqual([45, 3]);
   });
 });
+
+describe("buildTranscript: recognizer hallucination loops", () => {
+  const LOOP = "This is a great team of people who work hard.";
+  const REAL = "Welcome to the briefing. I am your host today.";
+
+  it("keeps the first copy of a looped sentence, drops the rest and records it", () => {
+    const transcript = transcriptOf(`${LOOP} ${LOOP} ${LOOP} ${LOOP} ${LOOP} ${REAL}`);
+    expect(transcript.sentences.map((sentence) => sentence.text)).toEqual([
+      LOOP,
+      "Welcome to the briefing.",
+      "I am your host today.",
+    ]);
+    expect(transcript.words.map((word) => word.i)).toEqual(transcript.words.map((_, i) => i));
+    expect(transcript.hallucinations).toMatchObject({
+      runs: 1,
+      droppedSentences: 4,
+      droppedWords: 40,
+    });
+    expect(transcript.hallucinations?.note).toMatch(/This is a great team.*×5/);
+  });
+
+  it("drops the words of a loop that covers silence, copies and first alike", () => {
+    const transcript = transcriptOf(`${LOOP} ${LOOP} ${LOOP} ${REAL}`);
+    const first = transcript.sentences[0];
+    const silence = {
+      source: "media/talk.mp4",
+      thresholdDb: -40,
+      minSilence: 0.35,
+      silences: [{ start: 0, end: (first?.end ?? 0) + 0.1 }],
+      silenceSeconds: 0,
+    };
+    const filtered = buildTranscript(
+      "media/talk.mp4",
+      speak(`${LOOP} ${LOOP} ${LOOP} ${REAL}`),
+      "en",
+      null,
+      silence,
+    );
+    expect(filtered.sentences.map((sentence) => sentence.text)).toEqual([
+      "Welcome to the briefing.",
+      "I am your host today.",
+    ]);
+    expect(filtered.hallucinations?.droppedSentences).toBe(3);
+  });
+
+  it("treats near-identical copies as one loop and drops a half-sentence cut off at its start", () => {
+    const transcript = transcriptOf(
+      "people who work hard to make the most of this. " +
+        "This is a great team of people who work hard to make the most of this. " +
+        "This is a great team of people who work hard to make the most of these. " +
+        "This is a great team of people who work hard to make the most of this.",
+    );
+    expect(transcript.sentences).toHaveLength(1);
+    expect(transcript.sentences[0]?.text).toBe(
+      "This is a great team of people who work hard to make the most of this.",
+    );
+    expect(transcript.hallucinations?.droppedSentences).toBe(3);
+  });
+
+  it("keeps short repeats, twice-said sentences and repeats that are far apart", () => {
+    for (const script of [
+      "Okay. Okay. Okay. Okay. Okay.",
+      "Thank you. Thank you. Thank you very much.",
+      `${LOOP} ${LOOP} ${REAL}`,
+      `${LOOP} ${REAL} ${LOOP} ${REAL} ${LOOP}`,
+      `${LOOP} |9 ${LOOP} |9 ${LOOP}`,
+      // A speaker retaking a line pauses between takes; those are for the take analysis, not hallucinations.
+      `${LOOP} |1.0 ${LOOP} |1.0 ${LOOP}`,
+    ]) {
+      const transcript = transcriptOf(script);
+      expect(transcript.hallucinations).toBeUndefined();
+      expect(transcript.words).toHaveLength(
+        script.replace(/\|\S+/g, "").split(/\s+/).filter(Boolean).length,
+      );
+    }
+  });
+
+  it("does not record anything for a transcript without loops", () => {
+    expect(transcriptOf("Hello there. How are you?").hallucinations).toBeUndefined();
+  });
+});

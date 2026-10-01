@@ -404,6 +404,8 @@ export function formatBuiltCut(built: {
   clips: number;
   length: number;
   replacedClips: number;
+  /** Untouched template placeholder clips removed from the track. */
+  removedPlaceholders: number;
   /** Clips on other tracks that the cut left alone. */
   keptClips: number;
   /** The captions written with the cut, when asked. */
@@ -416,8 +418,12 @@ export function formatBuiltCut(built: {
     built.replacedClips > 0
       ? ` It replaced ${built.replacedClips} earlier ${built.replacedClips === 1 ? "clip" : "clips"} of ${plan.source}.`
       : "";
+  const placeholder =
+    built.removedPlaceholders > 0
+      ? ` It also removed the untouched template placeholder (${built.removedPlaceholders === 1 ? "a clip" : `${built.removedPlaceholders} clips`} that was not user content).`
+      : "";
   const lines = [
-    `Built ${plan.id} "${cell(plan.label)}" on ${timeline.composition.path}, track ${built.track}: ${built.clips} clips, ${clock(built.length)} long (${num(built.length)} s), composition length ${num(timeline.composition.duration)} s.${replaced} Timeline version ${timeline.version}. The Studio timeline and preview update by themselves.`,
+    `Built ${plan.id} "${cell(plan.label)}" on ${timeline.composition.path}, track ${built.track}: ${built.clips} clips, ${clock(built.length)} long (${num(built.length)} s), composition length ${num(timeline.composition.duration)} s.${replaced}${placeholder} Timeline version ${timeline.version}. The Studio timeline and preview update by themselves.`,
   ];
   if (built.problems.length > 0) {
     const rows = built.problems

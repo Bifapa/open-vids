@@ -89,3 +89,63 @@ export function isTrustedStudioHost(host: string | undefined): boolean {
   if (bind === "" || isLoopbackHost(bind)) return false;
   return hostMatchesBind(host, bind);
 }
+
+/**
+ * Is `origin` this server's own origin? It must name the very host the request
+ * was addressed to (same scheme-less host:port) and that host must be one the
+ * Studio trusts. Anything else — a foreign site, a sibling loopback port such as
+ * the desktop home server, `null` (sandboxed frame / file:) — is not us.
+ */
+export function isOwnStudioOrigin(origin: string, host: string | undefined): boolean {
+  if (!host) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  if (parsed.username !== "" || parsed.password !== "") return false;
+  return (
+    parsed.host.toLowerCase() === host.trim().toLowerCase() && isTrustedStudioHost(parsed.host)
+  );
+}
+
+export type StudioRequestVerdict = "ok" | "untrusted_host" | "cross_origin";
+
+/**
+ * Gate for every request the Studio server answers.
+ *
+ * 1. The `Host` must be a trusted one (DNS-rebinding guard). A request with no
+ *    `Host` header at all (in-process `app.request()`) falls back to the host of
+ *    the request URL, which the node adapter builds from that very header.
+ * 2. A state-changing request (anything but GET/HEAD/OPTIONS) that carries an
+ *    `Origin` must carry our own; one flagged `Sec-Fetch-Site: cross-site` is
+ *    refused outright. No `Origin` means a non-browser caller (CLI, the agent
+ *    runtime's loopback HTTP hosts), which a browser-facing CSRF defence does
+ *    not target and which can forge headers anyway.
+ */
+export function checkStudioRequest(request: {
+  method: string;
+  url: string;
+  host: string | undefined;
+  origin: string | undefined;
+  secFetchSite: string | undefined;
+}): StudioRequestVerdict {
+  let host = request.host;
+  if (host === undefined || host.trim() === "") {
+    try {
+      host = new URL(request.url).host;
+    } catch {
+      host = undefined;
+    }
+  }
+  if (!isTrustedStudioHost(host)) return "untrusted_host";
+  const method = request.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return "ok";
+  if (request.secFetchSite?.trim().toLowerCase() === "cross-site") return "cross_origin";
+  if (request.origin !== undefined && !isOwnStudioOrigin(request.origin, host)) {
+    return "cross_origin";
+  }
+  return "ok";
+}

@@ -31,7 +31,8 @@
     "@hyperframes/agent-protocol": "workspace:*",
     "@oh-my-pi/pi-catalog": "18.4.3",
     "@oh-my-pi/pi-coding-agent": "18.4.3",
-    "hono": "^4.0.0"
+    "hono": "^4.0.0",
+    "linkedom": "^0.18.12"
   },
   "devDependencies": {
     "@hyperframes/studio-server": "workspace:*",

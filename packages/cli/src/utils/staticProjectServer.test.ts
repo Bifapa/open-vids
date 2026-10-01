@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serveStaticProjectHtml, type StaticProjectServer } from "./staticProjectServer.js";
+import {
+  OPEN_ENDED_RANGE_MAX_BYTES,
+  serveStaticProjectHtml,
+  type StaticProjectServer,
+} from "./staticProjectServer.js";
 
 // `serveStaticProjectHtml` reaches these two studio-server helpers via a
 // absolute module regardless of which file's relative specifier reaches it).
@@ -167,6 +171,41 @@ describe("serveStaticProjectHtml range support", () => {
     const res = await fetch(`${url}tone.wav`, { headers: { Range: "bytes=99-200" } });
     expect(res.status).toBe(416);
     expect(res.headers.get("content-range")).toBe(`bytes */${body.length}`);
+  });
+
+  it("bounds an open-ended range so a media element cannot hold its connection to the end of the file", async () => {
+    // Chromium keeps an unread `bytes=N-` response open per <video>; only six connections per host exist.
+    const size = OPEN_ENDED_RANGE_MAX_BYTES * 3 + 10;
+    const { url } = await serveWith(Buffer.alloc(size, 0x61));
+    const start = OPEN_ENDED_RANGE_MAX_BYTES + 5;
+
+    const res = await fetch(`${url}tone.wav`, { headers: { Range: `bytes=${start}-` } });
+    const end = start + OPEN_ENDED_RANGE_MAX_BYTES - 1;
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe(`bytes ${start}-${end}/${size}`);
+    expect((await res.arrayBuffer()).byteLength).toBe(OPEN_ENDED_RANGE_MAX_BYTES);
+  });
+
+  it("serves the rest of the file for an open-ended range that fits the bound", async () => {
+    const size = OPEN_ENDED_RANGE_MAX_BYTES + 100;
+    const { url } = await serveWith(Buffer.alloc(size, 0x61));
+    const start = size - 50;
+
+    const res = await fetch(`${url}tone.wav`, { headers: { Range: `bytes=${start}-` } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe(`bytes ${start}-${size - 1}/${size}`);
+    expect((await res.arrayBuffer()).byteLength).toBe(50);
+  });
+
+  it("honors an explicit range end beyond the open-ended bound", async () => {
+    const size = OPEN_ENDED_RANGE_MAX_BYTES * 3;
+    const { url } = await serveWith(Buffer.alloc(size, 0x61));
+    const end = OPEN_ENDED_RANGE_MAX_BYTES * 2;
+
+    const res = await fetch(`${url}tone.wav`, { headers: { Range: `bytes=0-${end}` } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe(`bytes 0-${end}/${size}`);
+    expect((await res.arrayBuffer()).byteLength).toBe(end + 1);
   });
 });
 

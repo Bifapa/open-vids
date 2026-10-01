@@ -1,23 +1,37 @@
-import { STUDIO_PREVIEW_DETACHED_SRC_ATTR } from "../studioPreviewMark";
+import {
+  isPreviewManagedVideo,
+  STUDIO_PREVIEW_DETACHED_SRC_ATTR,
+  STUDIO_PREVIEW_MARK_META,
+} from "../studioPreviewMark";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
-import { isMediaElement } from "./domRealm";
+import { isElementNode, isMediaElement, isVideoElement } from "./domRealm";
+import { swappedElements } from "./proxySrc";
 
 /**
  * Preview media budget.
  *
- * A preview document of a long edit holds dozens to a hundred `<video>` elements. Every one of them
- * that has a source keeps a decoder (and, in WebKit, an AVFoundation player in the GPU process)
- * alive, and tearing many of them down at once — a scrub, a reload — deadlocked the WebContent
- * process against the synchronous audio-session IPC. The preview therefore keeps a source only on
- * the videos that are playing, that sit near the playhead, or that start soon; the rest release
- * their decoder (`src` removed, `load()`) and get it back before they are needed.
+ * A preview document of a long edit holds a hundred or more `<video>` elements. In WebKit every one
+ * that has a source opens an AVURLAsset: a byte stream in the GPU process, read through a resource
+ * loader. Opening dozens at once, and deleting players whose asset is still opening, deadlocked the
+ * WebContent process (its synchronous audio-session IPC waits on the GPU main thread, which waits in
+ * the resource loader's dealloc for the byte streams). So the preview never holds more than it
+ * needs, and never churns a load in progress:
+ *
+ * - The Studio server serves every managed video without a `src` (`data-hf-detached-src`,
+ *   `preload="none"`): nothing opens at parse. `isPreviewManagedVideo` is the rule.
+ * - This module attaches a source only to videos that are playing, near the playhead or starting
+ *   soon, at most `MAX_ACTIVE_PREVIEW_MEDIA` of them, at most `MAX_IN_FLIGHT_LOADS` opening at a
+ *   time (`MAX_IN_FLIGHT_URGENT_LOADS` for the clips the viewer is looking at), nearest first.
+ * - It releases a source (`src` removed, `load()`) only once its load has settled and no other load
+ *   is in flight, at most `DETACH_BATCH_SIZE` per `DETACH_INTERVAL_MS`, farthest first.
  *
  * The policy (`planPreviewMediaBudget`, `decidePreviewMediaBudget`) is pure. `createPreviewMediaBudget`
- * applies it to elements. Only a Studio preview uses it: a render drives every frame itself and
- * needs every source loaded, so the runtime never enables it there (see init.ts).
+ * applies it to elements; the DOM is the state (a video with `data-hf-detached-src` and no `src` is
+ * released). A render drives every frame itself and needs every source, so the runtime never
+ * activates this there (`isPreviewMediaBudgetActive`).
  */
 
-/** Videos allowed to hold a loaded source at once. Clips playing right now are exempt. */
+/** Videos allowed to hold a source at once. Clips playing or under the playhead are exempt. */
 export const MAX_ACTIVE_PREVIEW_MEDIA = 16;
 /** A clip that ended at most this long ago keeps its source (a short backward scrub stays instant). */
 export const RETAIN_BEHIND_SECONDS = 5;
@@ -25,9 +39,17 @@ export const RETAIN_BEHIND_SECONDS = 5;
 export const RETAIN_AHEAD_SECONDS = 10;
 /** The next clips to start keep their source however far away they start. */
 export const RETAIN_UPCOMING_CLIPS = 3;
-/** A clip starting within this long gets its source back at once, ahead of the cap. */
+/** A clip starting within this long is urgent: it may open ahead of the cap and the queue. */
 export const URGENT_AHEAD_SECONDS = 2;
-/** Loaded videos released per batch; teardown of many decoders at once is the hazard. */
+/** Element loads (attach until metadata, error or abort) allowed in flight at once. */
+export const MAX_IN_FLIGHT_LOADS = 3;
+/** A paused playhead that keeps jumping is a scrub: sources are planned once it rests this long. */
+export const SCRUB_SETTLE_MS = 120;
+/** The same for urgent clips: the ones under the playhead must not wait behind far-away loads. */
+export const MAX_IN_FLIGHT_URGENT_LOADS = 6;
+/** A load older than this no longer counts toward the limit (it still cannot be released). */
+export const LOAD_STALL_MS = 15_000;
+/** Settled videos released per batch; teardown of many players at once is the hazard. */
 export const DETACH_BATCH_SIZE = 3;
 export const DETACH_INTERVAL_MS = 250;
 /** The playback tick re-plans at most this often, unless the playhead jumped. */
@@ -35,8 +57,56 @@ export const PLAN_MIN_INTERVAL_MS = 100;
 export const PLAN_SEEK_JUMP_SECONDS = 0.25;
 
 const HAVE_NOTHING = 0;
+const NETWORK_LOADING = 2;
 /** Seek target already applied by the transport; do not override it. */
 const POSITIONED_EPSILON_SECONDS = 0.01;
+
+/** The Studio server marked this page a preview and no render is driving it. */
+export function isPreviewMediaBudgetActive(doc: Document, win: Window): boolean {
+  return (
+    doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null &&
+    !Reflect.get(win, "__HF_EXPORT_RENDER_SEEK_CONFIG") &&
+    !Reflect.get(win, "__HF_RENDER_CAPTURE_MODE")
+  );
+}
+
+function videosIn(root: Node): Element[] {
+  const videos: Element[] = [];
+  if (isElementNode(root) && root.localName === "video") videos.push(root);
+  for (let child = root.firstChild; child; child = child.nextSibling) {
+    if (!isElementNode(child)) continue;
+    if (child.localName === "video") videos.push(child);
+    videos.push(...child.querySelectorAll("video"));
+  }
+  return videos;
+}
+
+/**
+ * Serve managed videos without a source, as the preview server does for the main document: for
+ * compositions the runtime mounts itself (inline templates, fetched sub-compositions, scene swaps),
+ * before the nodes enter the live document where a `src` would open a player at once.
+ */
+export function detachPreviewVideoSources(root: Node): void {
+  for (const el of videosIn(root)) {
+    const src = el.getAttribute("src");
+    if (src === null || !isPreviewManagedVideo(el)) continue;
+    el.setAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR, src);
+    el.removeAttribute("src");
+    el.setAttribute("preload", "none");
+  }
+}
+
+/**
+ * `doc.importNode(node, true)` for a preview: a clone into the live document starts loading every
+ * `<video src>` at once, so the copy is made in an inert document, stripped of its managed videos'
+ * sources there, and only then imported.
+ */
+export function importPreviewNode<T extends Node>(doc: Document, win: Window, node: T): T {
+  if (!isPreviewMediaBudgetActive(doc, win)) return doc.importNode(node, true);
+  const copy = doc.implementation.createHTMLDocument("").importNode(node, true);
+  detachPreviewVideoSources(copy);
+  return doc.importNode(copy, true);
+}
 
 export interface BudgetClip<K> {
   key: K;
@@ -52,6 +122,8 @@ export interface BudgetOptions {
   aheadSeconds?: number;
   upcomingClips?: number;
   urgentAheadSeconds?: number;
+  maxInFlight?: number;
+  maxInFlightUrgent?: number;
 }
 
 export interface BudgetPlan<K> {
@@ -114,27 +186,32 @@ export function planPreviewMediaBudget<K>(
 }
 
 export interface BudgetState<K> extends BudgetClip<K> {
-  /** Holds a loaded source right now. */
+  /** Holds a source right now (loading, loaded or failed). */
   attached: boolean;
-  /** Releasing it tears no decoder down (nothing was decoded yet), so it needs no batching. */
-  cheapToDrop: boolean;
+  /** Its load has not settled (no metadata, no error yet): it cannot be released. */
+  loading: boolean;
+  /** Loading for longer than `LOAD_STALL_MS`: still cannot be released, but no longer queues others. */
+  stalled: boolean;
 }
 
 export interface BudgetDecision<K> {
   attach: K[];
   detach: K[];
-  /** Work was deferred (batching, cap room): run again after `DETACH_INTERVAL_MS`. */
+  /** Work was deferred (load slots, batching, cap room): run again when a load settles or after `DETACH_INTERVAL_MS`. */
   pending: boolean;
 }
 
 /**
  * What to attach and release in this pass.
  *
- * Releases of loaded videos go out in batches of `DETACH_BATCH_SIZE`, at most one batch per
- * `DETACH_INTERVAL_MS`, farthest first, so a scrub across the film never tears down a storm of
- * players. Attaches never wait for that: a clip that is playing or about to start gets its source
- * now; the rest wait for room under the cap, so the loaded count converges to the cap instead of
- * overshooting it by a whole window.
+ * Attaches go out nearest first, urgent clips (under the playhead, playing, starting within
+ * `URGENT_AHEAD_SECONDS`) ahead of the rest. At most `MAX_IN_FLIGHT_LOADS` loads are in flight
+ * (`MAX_IN_FLIGHT_URGENT_LOADS` when an urgent clip asks), and a clip that is not urgent also waits
+ * for room under the cap, so the loaded count converges to the cap instead of overshooting it.
+ *
+ * Releases touch only settled videos, and only while no load is in flight: a player deleted while
+ * any asset is still opening is what blocked the GPU process. They go out farthest first in batches
+ * of `DETACH_BATCH_SIZE`, at most one batch per `DETACH_INTERVAL_MS`.
  */
 export function decidePreviewMediaBudget<K>(
   clips: readonly BudgetState<K>[],
@@ -143,28 +220,34 @@ export function decidePreviewMediaBudget<K>(
   options: BudgetOptions = {},
 ): BudgetDecision<K> {
   const cap = options.cap ?? MAX_ACTIVE_PREVIEW_MEDIA;
+  const maxInFlight = options.maxInFlight ?? MAX_IN_FLIGHT_LOADS;
+  const maxInFlightUrgent = options.maxInFlightUrgent ?? MAX_IN_FLIGHT_URGENT_LOADS;
   const plan = planPreviewMediaBudget(clips, time, options);
   const wanted = new Set(plan.wanted);
   const byKey = new Map(clips.map((clip) => [clip.key, clip]));
+  let inFlight = clips.filter((clip) => clip.loading && !clip.stalled).length;
 
-  const unwanted = clips
-    .filter((clip) => clip.attached && !wanted.has(clip.key))
-    .sort((a, b) => (plan.distance.get(b.key) ?? 0) - (plan.distance.get(a.key) ?? 0));
-  const cheap = unwanted.filter((clip) => clip.cheapToDrop);
-  const costly = unwanted.filter((clip) => !clip.cheapToDrop);
   const batchOpen = timing.nowMs - timing.lastDetachAtMs >= DETACH_INTERVAL_MS;
-  const batch = batchOpen ? costly.slice(0, DETACH_BATCH_SIZE) : [];
-  const detach = [...cheap, ...batch].map((clip) => clip.key);
-  const deferredDetach = costly.length - batch.length;
+  const unwanted = clips
+    .filter((clip) => clip.attached && !clip.loading && !wanted.has(clip.key))
+    .sort((a, b) => (plan.distance.get(b.key) ?? 0) - (plan.distance.get(a.key) ?? 0));
+  const detach =
+    batchOpen && inFlight === 0 ? unwanted.slice(0, DETACH_BATCH_SIZE).map((clip) => clip.key) : [];
+  const deferredDetach = unwanted.length - detach.length;
 
-  const attachedAfter = clips.filter((clip) => clip.attached).length - detach.length;
-  let room = cap - attachedAfter;
+  let room = cap - (clips.filter((clip) => clip.attached).length - detach.length);
+  const waiting = plan.wanted.filter((key) => byKey.get(key)?.attached === false);
   const attach: K[] = [];
   let deferredAttach = 0;
-  for (const key of plan.wanted) {
-    if (byKey.get(key)?.attached !== false) continue;
-    if (plan.urgent.has(key) || room > 0) {
+  for (const key of [
+    ...waiting.filter((key) => plan.urgent.has(key)),
+    ...waiting.filter((key) => !plan.urgent.has(key)),
+  ]) {
+    const isUrgent = plan.urgent.has(key);
+    const slotFree = inFlight < (isUrgent ? maxInFlightUrgent : maxInFlight);
+    if (slotFree && (isUrgent || room > 0)) {
       attach.push(key);
+      inFlight += 1;
       room -= 1;
     } else {
       deferredAttach += 1;
@@ -191,141 +274,160 @@ export interface PreviewMediaBudgetUpdate {
   compositionDuration: () => number;
 }
 
-interface Stash {
-  src: string;
-  currentTime: number;
-  muted: boolean;
-  volume: number;
-  playbackRate: number;
+export interface PreviewMediaBudgetHooks {
+  /**
+   * Called with a video whose `src` was just set, before the browser starts loading it, so a proxy
+   * swap can replace the source (it may set `src` and call `load()` itself).
+   */
+  prepareSource?: (el: HTMLMediaElement) => void;
+  /** A load settled (metadata, error or abort): capacity is free, plan again. */
+  onLoadSettled?: () => void;
 }
 
-function hasExplicitDuration(el: HTMLMediaElement): boolean {
-  const duration = Number.parseFloat(el.dataset.duration ?? "");
-  return Number.isFinite(duration) && duration > 0;
-}
+const LOAD_SETTLE_EVENTS = ["loadedmetadata", "error", "abort"] as const;
+const FIRST_FRAME_EVENTS = ["loadeddata", "error", "abort"] as const;
 
-/**
- * Only a `<video src>` whose window is authored (`data-duration`) can be released: a clip that
- * takes its length from the source would change its window, and with it the composition, the
- * moment the decoder let go of `duration`. `<source>` children are left alone too — the Studio
- * reads the authored `src` attribute and re-creating children would rewrite the document.
- */
-function isReleasable(el: HTMLMediaElement): boolean {
-  return (
-    el.tagName === "VIDEO" &&
-    el.hasAttribute("src") &&
-    el.querySelector("source") === null &&
-    hasExplicitDuration(el)
-  );
-}
+/** Videos whose first frame has not arrived since the budget attached their source. */
+const awaitingFirstFrame = new WeakSet<HTMLMediaElement>();
 
-const SETTLE_EVENTS = ["loadeddata", "error", "abort", "emptied"] as const;
-
-/** Restored videos whose first frame has not arrived yet. */
-const awaitingSource = new WeakSet<HTMLMediaElement>();
-
-function settle(el: HTMLMediaElement): void {
-  awaitingSource.delete(el);
-  for (const type of SETTLE_EVENTS) el.removeEventListener(type, onSettle, true);
-}
-
-function onSettle(event: Event): void {
-  if (isMediaElement(event.currentTarget)) settle(event.currentTarget);
+function onFirstFrameSettled(event: Event): void {
+  const el = event.currentTarget;
+  if (!isMediaElement(el)) return;
+  awaitingFirstFrame.delete(el);
+  for (const type of FIRST_FRAME_EVENTS) el.removeEventListener(type, onFirstFrameSettled, true);
 }
 
 /**
- * A restored video whose first frame has not arrived: a seek into it must wait for the frame the
- * way a seek into a still-loading video does. Its `networkState` is still NO_SOURCE until the
- * browser runs resource selection, so the ordinary "is it loading" test cannot see it.
+ * A video whose source the budget just attached and whose first frame has not arrived: a seek into
+ * it must wait for the frame the way a seek into a still-loading video does. Its `networkState` is
+ * still NO_SOURCE until the browser runs resource selection, so the ordinary "is it loading" test
+ * cannot see it.
  */
 export function isAwaitingRestoredSource(el: HTMLMediaElement): boolean {
-  return awaitingSource.has(el) && el.readyState < el.HAVE_CURRENT_DATA;
+  return awaitingFirstFrame.has(el) && el.readyState < el.HAVE_CURRENT_DATA;
+}
+
+/** The DOM is the state: a managed video with a detached source and no `src` is released. */
+function isReleased(el: HTMLMediaElement): boolean {
+  return !el.hasAttribute("src") && el.hasAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR);
 }
 
 export interface PreviewMediaBudget {
-  /** Apply the budget for the playhead at `update.time`. `pending`: call again after DETACH_INTERVAL_MS. */
+  /** Apply the budget for the playhead at `input.time`. `pending`: plan again soon. */
   update(input: PreviewMediaBudgetUpdate): { pending: boolean };
-  /** Was this element's source released (so it must not be preloaded)? */
+  /** Holds no source (so it must not be preloaded, played or seeked yet). */
   isReleased(el: HTMLMediaElement): boolean;
-  /** Give every released video its source back (runtime teardown). */
-  restoreAll(): void;
 }
 
-export function createPreviewMediaBudget(options: BudgetOptions = {}): PreviewMediaBudget {
-  const stashes = new Map<HTMLMediaElement, Stash>();
+export function createPreviewMediaBudget(
+  options: BudgetOptions = {},
+  hooks: PreviewMediaBudgetHooks = {},
+): PreviewMediaBudget {
+  /** Loads the budget started, and when. Removed when they settle. */
+  const loads = new Map<HTMLMediaElement, number>();
+  /** Loading elements the budget did not start (a source present at parse) and when first seen. */
+  const strayLoads = new WeakMap<HTMLMediaElement, number>();
   let lastDetachAtMs = Number.NEGATIVE_INFINITY;
+
+  function settleLoad(el: HTMLMediaElement): void {
+    if (!loads.delete(el)) return;
+    for (const type of LOAD_SETTLE_EVENTS) el.removeEventListener(type, onLoadSettled, true);
+    hooks.onLoadSettled?.();
+  }
+
+  function onLoadSettled(event: Event): void {
+    if (isMediaElement(event.currentTarget)) settleLoad(event.currentTarget);
+  }
+
+  /** Since when the element's load has been in progress, or null once it has settled. */
+  function loadingSince(el: HTMLMediaElement, nowMs: number): number | null {
+    const started = loads.get(el);
+    if (started !== undefined) {
+      if (el.readyState > HAVE_NOTHING || el.error) {
+        settleLoad(el);
+        return null;
+      }
+      return started;
+    }
+    const opening =
+      el.hasAttribute("src") &&
+      el.readyState === HAVE_NOTHING &&
+      !el.error &&
+      el.networkState === NETWORK_LOADING;
+    if (!opening) {
+      strayLoads.delete(el);
+      return null;
+    }
+    const since = strayLoads.get(el) ?? nowMs;
+    strayLoads.set(el, since);
+    return since;
+  }
 
   function detach(el: HTMLMediaElement): void {
     const src = el.getAttribute("src");
     if (src === null) return;
-    stashes.set(el, {
-      src,
-      currentTime: el.currentTime,
-      muted: el.muted,
-      volume: el.volume,
-      playbackRate: el.playbackRate,
-    });
     el.pause();
     el.setAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR, src);
-    // `removeAttribute`, never `src = ""`: an empty src is an error event, not a released source.
+    // `removeAttribute`, never `src = ""`: an empty src is an error event, not a released source;
+    // removing the attribute does not reset the element, so `load()` is what frees the player.
     el.removeAttribute("src");
     el.preload = "none";
     el.load();
   }
 
-  /** `seekTo`: source time to park on once metadata arrives; `null` leaves that to the transport; absent restores where it was. */
-  function attach(el: HTMLMediaElement, seekTo?: number | null): void {
-    const stash = stashes.get(el);
-    if (!stash) return;
-    stashes.delete(el);
-    el.setAttribute("src", stash.src);
-    el.removeAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR);
-    // After `src`: whoever watches `preload` (the player's parent proxies) must find a source.
+  /** `seekTo`: source time to park on once metadata arrives; `null` leaves that to the transport. */
+  function attach(el: HTMLMediaElement, nowMs: number, seekTo: number | null): void {
+    const src = el.getAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR);
+    if (src === null) return;
+    // `preload` first: with "none" the browser never starts a load the new `src` asks for.
+    // Setting `src` starts the load itself; an explicit `load()` here would restart it.
     el.preload = "auto";
-    el.load();
-    // `load()` resets the rate to the default; the rest survives it but is restored all the same.
-    el.muted = stash.muted;
-    el.volume = stash.volume;
-    el.playbackRate = stash.playbackRate;
-    awaitingSource.add(el);
-    for (const type of SETTLE_EVENTS) el.addEventListener(type, onSettle, true);
-    const target = seekTo === undefined ? stash.currentTime : seekTo;
-    if (target === null || target <= POSITIONED_EPSILON_SECONDS) return;
+    el.setAttribute("src", src);
+    el.removeAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR);
+    hooks.prepareSource?.(el);
+    loads.set(el, nowMs);
+    for (const type of LOAD_SETTLE_EVENTS) el.addEventListener(type, onLoadSettled, true);
+    awaitingFirstFrame.add(el);
+    for (const type of FIRST_FRAME_EVENTS) el.addEventListener(type, onFirstFrameSettled, true);
+    if (seekTo === null || seekTo <= POSITIONED_EPSILON_SECONDS) return;
     el.addEventListener(
       "loadedmetadata",
       () => {
         // The transport may already have placed it (a seek into the clip): that position wins.
-        if (!el.seeking && el.currentTime < POSITIONED_EPSILON_SECONDS) el.currentTime = target;
+        if (!el.seeking && el.currentTime < POSITIONED_EPSILON_SECONDS) el.currentTime = seekTo;
       },
       { once: true },
     );
   }
 
   return {
-    /** Apply the budget for the playhead at `time`. `pending`: call again after DETACH_INTERVAL_MS. */
     update(input: PreviewMediaBudgetUpdate): { pending: boolean } {
-      for (const el of stashes.keys()) if (!el.isConnected) stashes.delete(el);
+      for (const el of loads.keys()) if (!el.isConnected) settleLoad(el);
 
       let compositionDuration: number | null = null;
       const managed: Array<BudgetState<PreviewMediaClip>> = [];
       for (const clip of input.clips) {
         const { el } = clip;
-        if (el.tagName !== "VIDEO" || !el.isConnected) continue;
-        const released = stashes.has(el);
+        if (!isVideoElement(el) || !el.isConnected) continue;
+        const released = isReleased(el);
         if (!released && !el.hasAttribute("src")) continue;
-        let pinned = input.isLeased(el) || (!released && (!isReleasable(el) || !el.paused));
+        const detachable = isPreviewManagedVideo(el) && !swappedElements.has(el);
+        // A video the budget may not release (unmanaged, proxy-swapped) still holds a source.
+        let pinned = input.isLeased(el) || (!released && (!detachable || !el.paused));
         if (!pinned && input.time >= clip.end) {
           // Past its end but still the picture on screen: the last frame of the film.
           compositionDuration ??= input.compositionDuration();
           pinned = isClipVisibleAt(input.time, clip.start, clip.end, compositionDuration);
         }
+        const since = released ? null : loadingSince(el, input.nowMs);
         managed.push({
           key: clip,
           start: clip.start,
           end: clip.end,
           pinned,
           attached: !released,
-          cheapToDrop: !released && el.readyState === HAVE_NOTHING,
+          loading: since !== null,
+          stalled: since !== null && input.nowMs - since > LOAD_STALL_MS,
         });
       }
 
@@ -336,24 +438,16 @@ export function createPreviewMediaBudget(options: BudgetOptions = {}): PreviewMe
         options,
       );
       for (const clip of decision.detach) {
-        if (clip.el.readyState !== HAVE_NOTHING) lastDetachAtMs = input.nowMs;
+        lastDetachAtMs = input.nowMs;
         detach(clip.el);
       }
       for (const clip of decision.attach) {
-        if (isInClipWindow(input.time, clip.start, clip.end)) attach(clip.el, null);
-        else attach(clip.el, input.time < clip.start ? clip.mediaStart : undefined);
+        if (isInClipWindow(input.time, clip.start, clip.end)) attach(clip.el, input.nowMs, null);
+        else attach(clip.el, input.nowMs, input.time < clip.start ? clip.mediaStart : null);
       }
       return { pending: decision.pending };
     },
 
-    /** Was this element's source released (so it must not be preloaded)? */
-    isReleased(el: HTMLMediaElement): boolean {
-      return stashes.has(el);
-    },
-
-    /** Give every released video its source back (runtime teardown). */
-    restoreAll(): void {
-      for (const el of [...stashes.keys()]) attach(el, null);
-    },
+    isReleased,
   };
 }

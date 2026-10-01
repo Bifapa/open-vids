@@ -157,16 +157,30 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         ...base,
         messages: mapAssistant(state.messages, event.messageId, (message) => {
           const existing = message.parts.find((part) => part.id === event.partId);
-          const text = existing?.type === "text" ? existing.text : "";
+          const previous = existing?.type === "text" ? existing : null;
           return {
             ...message,
             parts: upsertPart(message.parts, {
               type: "text",
               id: event.partId,
-              text: text + event.delta,
+              text: (previous?.text ?? "") + event.delta,
+              ...(previous?.interim && { interim: true as const }),
             }),
           };
         }),
+      };
+
+    case "assistant.parts.interim":
+      return {
+        ...base,
+        messages: mapAssistant(state.messages, event.messageId, (message) => ({
+          ...message,
+          parts: message.parts.map((part) =>
+            part.type === "text" && event.partIds.includes(part.id)
+              ? { ...part, interim: true as const }
+              : part,
+          ),
+        })),
       };
 
     case "thinking.updated":

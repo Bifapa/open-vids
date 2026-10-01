@@ -212,6 +212,35 @@ export interface FinalInput {
   steering: readonly string[];
 }
 
+/**
+ * The last block of a Director prompt given before QA, in a turn QA applies to: the reply it asks for is an interim
+ * progress note, not the answer (the prompt's end outweighs the system prompt for the models that ignore the latter).
+ */
+export function renderInterimInstruction(): string {
+  return [
+    `<render-qa-pending>`,
+    `The runtime renders and checks the result after your reply whenever this turn changed the project (by you or by your team) or rendered it, and sends you the outcome afterwards; the final report to the user comes after that check.`,
+    `So your reply now is an interim progress note, not the answer: say briefly what you did and that the result is about to be checked. Do NOT say or imply that the video or the work is done, ready, finished, complete or good to go — it is not until the check is over. (If this turn neither changed nor rendered the project, just answer the user normally.)`,
+    `</render-qa-pending>`,
+  ].join("\n");
+}
+
+/**
+ * The Director was told a check would follow, but QA did not run (off, too long to render unasked, service down):
+ * its earlier reply is interim, so it gets one more prompt for the real final answer.
+ */
+export function renderSkippedPrompt(reason: string, steering: readonly string[]): string {
+  return [
+    `<render-qa-skipped>`,
+    `Render QA did not run for this turn: ${reason}`,
+    `This is your final answer to the user: say briefly what was done, that the result was NOT rendered or checked and why (in plain words), and what they can do (e.g. ask for a render or an export to get it rendered and checked). Do not claim a render or a check that did not happen. Do not edit, delegate, render, import or build anything: those tools are refused now.`,
+    steeringBlocks(steering),
+    `</render-qa-skipped>`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 /** The prompt that asks the Director for the final report once QA is over. */
 export function renderFinalPrompt(input: FinalInput): string {
   const line = (issue: QaIssue) =>
@@ -231,7 +260,7 @@ export function renderFinalPrompt(input: FinalInput): string {
     input.open.length > 0
       ? `Still open (${input.open.length}):\n${input.open.map(line).join("\n")}`
       : "",
-    `Write the final report for the user now: what was done, where the render is, what QA fixed and what remains — specific and honest. Do not claim the result is flawless while issues are open, and do not claim a visual check that did not happen. Do not edit, delegate, render, import or build anything: those tools are refused now.`,
+    `This is your final answer to the user: write the final report for them now — what was done, where the render is, what QA fixed and what remains — specific and honest. Do not claim the result is flawless while issues are open, and do not claim a visual check that did not happen. Do not edit, delegate, render, import or build anything: those tools are refused now.`,
     steeringBlocks(input.steering),
     `</render-qa-final>`,
   ]

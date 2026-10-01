@@ -14,6 +14,7 @@ import { homedir } from "os";
 import { chromeMajorCeiling, exceedsChromeCeiling } from "./chromeHostCeiling.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
+import { forgetBrowserOwner, recordBrowserOwner, sweepOrphanBrowsers } from "./orphanBrowsers.js";
 import {
   BrowserLeasePool,
   type BrowserLaunchFingerprint,
@@ -689,9 +690,22 @@ export async function acquireBrowser(
   return browserLeasePool.acquire(createBrowserLaunchFingerprint(chromeArgs, config), enablePool);
 }
 
+/** Leaves a record that lets a later process kill this browser if its owner dies without closing it. */
+function trackBrowserOwner(browser: Browser): void {
+  try {
+    const pid = browser.process()?.pid;
+    if (pid === undefined) return;
+    recordBrowserOwner(pid);
+    browser.once("disconnected", () => forgetBrowserOwner(pid));
+  } catch {
+    // The registry only backs crash cleanup; a launch never fails for it.
+  }
+}
+
 async function launchBrowser(
   fingerprint: Readonly<BrowserLaunchFingerprint>,
 ): Promise<{ browser: Browser; captureMode: CaptureMode }> {
+  sweepOrphanBrowsers();
   const ppt = await getPuppeteer();
   let captureMode = fingerprint.requestedCaptureMode;
   let browser: Browser | undefined;
@@ -704,6 +718,7 @@ async function launchBrowser(
       timeout: fingerprint.browserTimeoutMs,
       protocolTimeout: fingerprint.protocolTimeoutMs,
     });
+    trackBrowserOwner(browser);
 
     const browserVersion = await browser.version().catch(() => "unknown");
     const gpuFlags = fingerprint.args.filter(
@@ -735,6 +750,7 @@ async function launchBrowser(
           timeout: fingerprint.browserTimeoutMs,
           protocolTimeout: fingerprint.protocolTimeoutMs,
         });
+        trackBrowserOwner(browser);
       }
     }
 

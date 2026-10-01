@@ -891,6 +891,54 @@ describe("openProjectHistory", () => {
     ]);
   });
 
+  it("gives a window its owner died holding (killed mid-turn) the writes it made, under its own id, label and start", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    const home = join(historyRoot, history.projectId);
+    const window = await history.beginWindow(agent, "Bigger title", 60_000);
+    write("index.html", "v2");
+    await history.claim(you, "sweep", []); // the write is filed to the window, as a watcher's sweep would
+    expect(
+      JSON.parse(readFileSync(join(home, "open-windows.json"), "utf-8")),
+      "an open window is on disk",
+    ).toMatchObject([{ id: window.id, label: "Bigger title", startedAt: window.startedAt }]);
+
+    // What the disk holds at the instant of a SIGKILL: the log without the window's entry, the record of the window.
+    const crashed = tempDir("hf-history-crash-");
+    cpSync(home, crashed, { recursive: true });
+    await window.close();
+    await history.close();
+    expect(existsSync(join(home, "open-windows.json")), "a close leaves no window behind").toBe(
+      false,
+    );
+    rmSync(home, { recursive: true });
+    cpSync(crashed, home, { recursive: true });
+    const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"]);
+    writeFileSync(join(home, "owner.pid"), dead.stdout);
+
+    const reopened = await open(projectDir, historyRoot, { ownerWaitMs: 0 });
+    expect(reopened.list()).toMatchObject([
+      {
+        id: window.id,
+        who: agent,
+        label: "Bigger title",
+        startedAt: window.startedAt,
+        files: [{ path: "index.html" }],
+      },
+    ]);
+    expect(existsSync(join(home, "open-windows.json")), "the record is spent once filed").toBe(
+      false,
+    );
+  });
+
+  it("ignores a damaged record of open windows", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await history.close();
+    writeFileSync(join(historyRoot, history.projectId, "open-windows.json"), '[{"id": 7}, {"trunc');
+    write("index.html", "v2");
+    const reopened = await open(projectDir, historyRoot);
+    expect(reopened.list().map((entry) => entry.who.kind)).toEqual(["outside"]);
+  });
+
   it("times each write by its file: oldest first, a copy that keeps an old mtime as now, a removal as now", async () => {
     const { history, write, projectDir, historyRoot } = await project({
       "a.html": "a1",

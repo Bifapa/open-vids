@@ -134,6 +134,7 @@ describe("HyperframesPlayer parent-frame media", () => {
     _ready?: boolean;
     _assetsReady?: boolean;
     _parentTickRaf?: number | null;
+    _parentMedia?: unknown[];
   };
 
   let player: PlayerElement;
@@ -307,6 +308,25 @@ describe("HyperframesPlayer parent-frame media", () => {
     expect(video.muted).toBe(false);
     expect(player._audioOwner).toBe("runtime");
     slideshow.remove();
+  });
+
+  it("creates iframe-media proxies only once autoplay is blocked", () => {
+    document.body.appendChild(player);
+    const iframe = player.shadowRoot?.querySelector("iframe");
+    if (!(iframe instanceof HTMLIFrameElement)) throw new Error("expected player iframe");
+    const iframeDoc = iframe.contentDocument;
+    if (!iframeDoc) throw new Error("expected player iframe document");
+    const video = iframeDoc.createElement("video");
+    video.setAttribute("src", "https://cdn.example.com/clip.mp4");
+    video.setAttribute("data-start", "0");
+    video.preload = "auto";
+    iframeDoc.body.appendChild(video);
+    expect(player._parentMedia).toHaveLength(0);
+
+    dispatchAutoplayBlockedFromPlayerFrame(player);
+
+    expect(player._audioOwner).toBe("parent");
+    expect(player._parentMedia).toHaveLength(1);
   });
 
   it("does not promote autoplay fallback inside audience slideshow", () => {

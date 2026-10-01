@@ -3,6 +3,8 @@ import type {
   QaCheckResponse,
   QaFramesRequest,
   QaFramesResponse,
+  QaFinishRequest,
+  QaFinishResponse,
   QaIssueDraft,
   QaReport,
   QaReportInput,
@@ -76,6 +78,11 @@ export class FakeQaHost implements QaHost {
   framesGate: Promise<void> | null = null;
   framesError: QaToolError | null = null;
   saveError: QaToolError | null = null;
+  /** A failing cleanup (the turn must not notice). */
+  finishError: Error | null = null;
+  readonly finishRequests: Array<{ sessionId: string; request: QaFinishRequest }> = [];
+  /** Whether the signal each `finishSession` call was given was already aborted when the call was made. */
+  readonly finishAbortedAtCall: boolean[] = [];
   /** While set, a held `check`/`frames` call that is aborted waits for it before it rejects (a slow cancellation). */
   cancelDelay: Promise<void> | null = null;
 
@@ -149,6 +156,17 @@ export class FakeQaHost implements QaHost {
     };
     this.reports.push(report);
     return structuredClone(report);
+  }
+
+  async finishSession(
+    sessionId: string,
+    request: QaFinishRequest,
+    signal: AbortSignal,
+  ): Promise<QaFinishResponse> {
+    this.finishRequests.push({ sessionId, request: structuredClone(request) });
+    this.finishAbortedAtCall.push(signal.aborted);
+    if (this.finishError) throw this.finishError;
+    return { removedRenders: [], removedReports: 0 };
   }
 
   private held(gate: Promise<void>, signal: AbortSignal, onCancel: () => void): Promise<void> {

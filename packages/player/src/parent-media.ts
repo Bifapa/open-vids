@@ -13,6 +13,27 @@ import { selectMediaObserverTargets } from "./mediaObserverScope.js";
 import { isRealmElement, isRealmHtmlMediaElement } from "./media-element-guards.js";
 import { isInClipWindow } from "@hyperframes/core/runtime/clip-window";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
+import {
+  STUDIO_PREVIEW_DETACHED_SRC_ATTR,
+  readPreviewMediaSrc,
+} from "@hyperframes/core/studio-preview-mark";
+
+/**
+ * Most iframe-media proxies whose load has not settled (loadedmetadata/error)
+ * at once. Every proxy with a live `src` opens its own platform media asset;
+ * hundreds of concurrent opens exhaust the decoder/IPC layer, so the rest wait
+ * in a FIFO queue and start as earlier ones settle.
+ */
+const MAX_CONCURRENT_PROXY_LOADS = 3;
+
+/** An iframe clip whose proxy has not been created yet. */
+interface PendingProxy {
+  src: string;
+  tag: "audio" | "video";
+  start: number;
+  duration: number;
+  source: HTMLMediaElement;
+}
 
 /** Minimum absolute drift before a currentTime correction is attempted. */
 const MIRROR_DRIFT_THRESHOLD_SECONDS = 0.05;
@@ -52,6 +73,10 @@ export class ParentMediaManager {
   private _mediaObserver?: MutationObserver;
   private _playbackErrorPosted = false;
   private _audioOwner: "runtime" | "parent" = "runtime";
+  /** Iframe clips waiting for a free load slot (FIFO). Parent ownership only. */
+  private _queue: PendingProxy[] = [];
+  /** Iframe-clip proxies whose load has not settled yet. */
+  private readonly _loading = new Set<ProxyEntry>();
   /** The proxy created from the `audio-src` attribute, tracked so it can be
    *  replaced or cleared instead of accumulating on every attribute change. */
   private _urlAudioEntry: ProxyEntry | null = null;
@@ -96,6 +121,8 @@ export class ParentMediaManager {
     this.pauseAll();
     for (const m of this._entries) if (m !== this._urlAudioEntry) m.el.src = "";
     this._entries = this._urlAudioEntry ? [this._urlAudioEntry] : [];
+    this._queue = [];
+    this._loading.clear();
     if (this._urlAudioSrc && !this._urlAudioEntry)
       this._urlAudioEntry = this._createEntry(this._urlAudioSrc, "audio", 0, Infinity);
     this.teardownObserver();
@@ -115,6 +142,8 @@ export class ParentMediaManager {
       m.el.src = "";
     }
     this._entries = [];
+    this._queue = [];
+    this._loading.clear();
     this._urlAudioEntry = null;
     this._urlAudioSrc = null;
     this._audioOwner = "runtime";
@@ -267,6 +296,11 @@ export class ParentMediaManager {
       for (const el of iframeDoc.querySelectorAll("video, audio")) {
         if (isRealmHtmlMediaElement(el)) el.muted = true;
       }
+      // Proxies for iframe clips exist only under parent ownership: bring the
+      // clips already in the document online (bounded by the load queue).
+      for (const el of iframeDoc.querySelectorAll("audio[data-start], video[data-start]")) {
+        if (isRealmHtmlMediaElement(el)) this._adoptIframeMedia(el);
+      }
     }
 
     // One-shot alignment — bypass jitter-coalescing gate.
@@ -370,45 +404,92 @@ export class ParentMediaManager {
     return entry;
   }
 
+  /** Hold a load slot for `entry` until it settles, then start the next queued clip. */
+  private _trackLoad(entry: ProxyEntry): void {
+    this._loading.add(entry);
+    const settle = () => {
+      entry.el.removeEventListener("loadedmetadata", settle);
+      entry.el.removeEventListener("error", settle);
+      if (this._loading.delete(entry)) this._pumpQueue();
+    };
+    entry.el.addEventListener("loadedmetadata", settle);
+    entry.el.addEventListener("error", settle);
+  }
+
+  /** Start queued clips while load slots are free. */
+  private _pumpQueue(): void {
+    while (this._loading.size < MAX_CONCURRENT_PROXY_LOADS) {
+      const next = this._queue.shift();
+      if (!next) return;
+      // The preview released this clip's source while it waited.
+      if (this._isReleased(next.source)) continue;
+      const entry = this._createEntry(next.src, next.tag, next.start, next.duration, next.source);
+      if (!entry) continue;
+      this._trackLoad(entry);
+      this._catchUp(entry);
+    }
+  }
+
+  /** A new proxy under parent ownership must join the playhead immediately. */
+  private _catchUp(entry: ProxyEntry): void {
+    if (this._audioOwner !== "parent") return;
+    this.mirrorTime(this._getCurrentTime(), { force: true });
+    if (!this._isPaused()) this._playEntryIfActive(entry);
+  }
+
+  /** The Studio preview dropped the element's decoder: no `src`, authored one parked. */
+  private _isReleased(iframeEl: HTMLMediaElement): boolean {
+    return (
+      iframeEl.getAttribute("src") === null &&
+      iframeEl.hasAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR)
+    );
+  }
+
   /** Resolve an iframe media element's source to an absolute URL, or null. */
   private _resolveIframeMediaSrc(iframeEl: HTMLMediaElement): string | null {
     const rawSrc =
-      iframeEl.getAttribute("src") || iframeEl.querySelector("source")?.getAttribute("src");
+      readPreviewMediaSrc(iframeEl) || iframeEl.querySelector("source")?.getAttribute("src");
     return rawSrc ? new URL(rawSrc, iframeEl.ownerDocument.baseURI).href : null;
   }
 
   private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
+    // Proxies for iframe clips are only ever audible under parent ownership;
+    // in runtime ownership they would just open an idle copy of every source.
+    if (this._audioOwner !== "parent") return;
     // Skip elements the preloader has demoted — the observer will re-trigger
     // when the preload attribute is promoted to "auto".
     if (iframeEl.preload === "metadata" || iframeEl.preload === "none") return;
+    // A released element has no source loaded; its re-attach flips preload to auto.
+    if (this._isReleased(iframeEl)) return;
 
     const src = this._resolveIframeMediaSrc(iframeEl);
     if (!src) return;
+    if (this._entries.some((m) => m.el.src === src)) return;
+    if (this._queue.some((q) => q.src === src)) return;
 
     const timing = readClipTiming(iframeEl);
-    const start = timing.start ?? 0;
-    const duration = timing.duration ?? Number.POSITIVE_INFINITY;
-    const tag = iframeEl.tagName === "VIDEO" ? ("video" as const) : ("audio" as const);
-
-    const created = this._createEntry(src, tag, start, duration, iframeEl);
-
-    // If already under parent ownership and playing, the new proxy must catch
-    // up immediately — bypass the jitter-coalescing gate.
-    if (created && this._audioOwner === "parent") {
-      this.mirrorTime(this._getCurrentTime(), { force: true });
-      if (!this._isPaused()) this._playEntryIfActive(created);
-    }
+    this._queue.push({
+      src,
+      tag: iframeEl.tagName === "VIDEO" ? "video" : "audio",
+      start: timing.start ?? 0,
+      duration: timing.duration ?? Number.POSITIVE_INFINITY,
+      source: iframeEl,
+    });
+    this._pumpQueue();
   }
 
   private _detachIframeMedia(iframeEl: HTMLMediaElement): void {
     const src = this._resolveIframeMediaSrc(iframeEl);
     if (!src) return;
+    this._queue = this._queue.filter((q) => q.src !== src);
     const idx = this._entries.findIndex((m) => m.el.src === src);
     if (idx === -1) return;
     const entry = this._entries[idx];
     entry.el.pause();
     entry.el.src = "";
+    this._loading.delete(entry);
     this._entries.splice(idx, 1);
+    this._pumpQueue();
   }
 
   private _observeDynamicMedia(doc: Document): void {

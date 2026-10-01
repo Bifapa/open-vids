@@ -232,10 +232,10 @@ describe.skipIf(!hasFfmpeg())(
         };
         const agent = session.input.agent;
         if (agent === "director") {
-          seen[input.text.includes("tighter") ? "analyze1" : "analyze2"] = (
+          seen[input.text.includes("What is in this recording?") ? "analyze2" : "analyze1"] = (
             await call("analyze_media", { source: SOURCE })
           ).text;
-          if (!input.text.includes("tighter")) return "completed";
+          if (input.text.includes("What is in this recording?")) return "completed";
           await call("delegate", {
             agent: "vision",
             title: "Check the flagged frames",

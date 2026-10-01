@@ -6,6 +6,7 @@ import {
   type AgentId,
   type QaCheckRequest,
   type QaCheckResponse,
+  type QaFinishRequest,
   type QaIssueDraft,
   type QaReport,
   type QaReportInput,
@@ -97,6 +98,24 @@ export class TurnQa {
 
   saveReport(input: QaReportInput, signal?: AbortSignal): Promise<QaReport> {
     return this.track(signal, (combined) => this.options.host.saveReport(input, combined));
+  }
+
+  /**
+   * Ends the turn's QA session on the service (deleting its intermediate preview renders). Best-effort and abort-safe:
+   * it runs even when the turn was stopped (the turn's signal is deliberately not part of it; only {@link shutdown}
+   * and the host's own timeout stop it), and a failure is swallowed: cleanup never fails a turn.
+   */
+  async finishSession(sessionId: string, request: QaFinishRequest): Promise<void> {
+    if (!this.accepting) return;
+    const call = this.options.host.finishSession(sessionId, request, this.stop.signal);
+    this.inflight.add(call);
+    try {
+      await call;
+    } catch {
+      // the service's retention deletes what this left behind sooner or later
+    } finally {
+      this.inflight.delete(call);
+    }
   }
 
   private track<T>(

@@ -145,6 +145,46 @@ describe("registerPreviewRoutes", () => {
     }
   });
 
+  it("serves managed videos without a src, and keeps every source in a capture", async () => {
+    const projectDir = createProjectDir();
+    const film =
+      '<!DOCTYPE html><html><head></head><body><div data-composition-id="main">' +
+      '<video id="a" src="a.mp4" data-start="0" data-duration="2"></video>' +
+      '<video id="b" src="b.mp4" data-start="2"></video></div></body></html>';
+    writeFileSync(join(projectDir, "index.html"), film);
+    writeFileSync(join(projectDir, "scene.html"), film);
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    for (const path of ["preview", "preview/comp/scene.html"]) {
+      const url = `http://localhost/projects/demo/${path}`;
+      const preview = await (await app.request(url)).text();
+      const capture = await (await app.request(`${url}?${PREVIEW_CAPTURE_PARAM}=1`)).text();
+      expect(preview, path).toMatch(/<video[^>]*data-hf-detached-src="a.mp4"[^>]*>/);
+      expect(preview, path).not.toMatch(/<video[^>]*\ssrc="a.mp4"/);
+      // A video whose length comes from its source keeps its src.
+      expect(preview, path).toMatch(/<video[^>]*\ssrc="b.mp4"/);
+      expect(capture, path).toMatch(/<video[^>]*\ssrc="a.mp4"/);
+      expect(capture, path).not.toContain("data-hf-detached-src");
+    }
+  });
+
+  it("does not revalidate or reuse a preview built before videos were served without src", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<!DOCTYPE html><html><head></head><body><video src="a.mp4" data-start="0" data-duration="2"></video></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const first = await app.request("http://localhost/projects/demo/preview");
+    const etag = first.headers.get("ETag") ?? "";
+    expect(etag).toMatch(/:vs1"$/);
+    const stale = await app.request("http://localhost/projects/demo/preview", {
+      headers: { "If-None-Match": etag.replace(":vs1", "") },
+    });
+    expect(stale.status).toBe(200);
+  });
+
   it("injects Studio GSAP motion manifest runtime into project preview", async () => {
     const projectDir = createProjectDir();
     writeFileSync(

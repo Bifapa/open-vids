@@ -20,6 +20,7 @@ import {
 } from "@hyperframes/agent-protocol";
 import { CAPTIONS_FILE } from "../editing/captions.js";
 import { aiEditTurn, clipState, clipStateChanges, type ClipState } from "../editing/clipState.js";
+import { isUntouchedTemplatePlaceholder } from "../editing/placeholder.js";
 import { clipLabel, readClipProvenance, type ClipNode } from "../editing/timeline.js";
 import { sameJson } from "./graphIo.js";
 import {
@@ -740,11 +741,17 @@ export function planSync(input: PlanInput): SyncPlan {
   }
   const unrelatedReport: StoryUnrelatedClip[] = [];
   const firstBuild = !ledger;
+  const placeholders: ClipNode[] = [];
   for (const clip of unrelated) {
     const home = ledger ? sectionAt(clip.start) : null;
     let delta = 0;
     if (home) delta = home.delta;
     else if (ledger && clip.start >= currentEnd - EPS) delta = tailDelta;
+    if (clip.id !== "" && isUntouchedTemplatePlaceholder(clip.element)) {
+      removals.add(clip);
+      placeholders.push(clip);
+      continue;
+    }
     if (full && firstBuild && isRawAroll(clip, intent.sources)) {
       removals.add(clip);
       continue;
@@ -764,6 +771,11 @@ export function planSync(input: PlanInput): SyncPlan {
         shift: moves.has(clip) ? delta : 0,
       });
     }
+  }
+  for (const clip of placeholders) {
+    warnings.push(
+      `Removed the untouched template placeholder "${clipLabel(clip)}" (${round3(clip.start)}–${round3(clip.end)} s); it was not user content.`,
+    );
   }
   for (const clip of staleStory) if (!clip.locked) removals.add(clip);
   const lockedLeft = staleStory.filter((clip) => clip.locked).length;

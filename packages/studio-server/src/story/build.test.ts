@@ -251,6 +251,57 @@ describe("Build Story", () => {
     expect(afterSecond.composition.duration).toBe(second.duration);
   });
 
+  describe("template placeholder", () => {
+    const placeholder = (text: string, attributes = "") =>
+      `<h1 id="title" data-hf-id="hf-ph" class="clip" data-start="0" data-duration="10" data-track-index="0" ${attributes}>${text}</h1>`;
+    const withClip = (clip: string) =>
+      BLANK_HTML.replace(`data-duration="0"></div>`, `data-duration="0">${clip}</div>`);
+    const MARKER = 'data-ov-placeholder="template"';
+    const REMOVED = /^Removed the untouched template placeholder "Title"/;
+
+    it("removes the untouched placeholder in the build's atomic write and reports it", async () => {
+      const f = story(withClip(placeholder("Title", MARKER)));
+      await referenceStory(f);
+      const result = await build(f);
+      expect(result.removedClips).toBe(1);
+      expect(result.keptClips).toBe(0);
+      expect(result.warnings.filter((warning) => REMOVED.test(warning))).toHaveLength(1);
+      expect((await timelineOf(f)).clips.some((clip) => clip.id === "hf-ph")).toBe(false);
+    });
+
+    it("keeps a placeholder whose text or attributes were changed", async () => {
+      for (const clip of [
+        placeholder("My own title", MARKER),
+        placeholder("Title", `${MARKER} style="color: red"`),
+        placeholder("Title", `${MARKER} data-volume="1"`),
+        placeholder("Title", `${MARKER} data-timeline-locked`),
+      ]) {
+        fixture?.cleanup();
+        const f = story(withClip(clip));
+        await referenceStory(f);
+        const result = await build(f);
+        expect(result.keptClips).toBe(1);
+        expect(result.warnings.some((warning) => REMOVED.test(warning))).toBe(false);
+        expect((await timelineOf(f)).clips.some((entry) => entry.id === "hf-ph")).toBe(true);
+      }
+    });
+
+    it("keeps a retimed placeholder and one without the marker", async () => {
+      const retimed = placeholder("Title", MARKER).replace(
+        'data-duration="10"',
+        'data-duration="4"',
+      );
+      for (const clip of [retimed, placeholder("Title")]) {
+        fixture?.cleanup();
+        const f = story(withClip(clip));
+        await referenceStory(f);
+        const result = await build(f);
+        expect(result.keptClips).toBe(1);
+        expect((await timelineOf(f)).clips.some((entry) => entry.id === "hf-ph")).toBe(true);
+      }
+    });
+  });
+
   it("uses a chapter's length without speech as its estimated duration and fills it with attached material", async () => {
     const f = story(BLANK_HTML);
     const made = await f.edit([

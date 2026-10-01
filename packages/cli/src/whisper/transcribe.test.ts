@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import {
+  buildWhisperArgs,
   dtwPresetForModel,
   parseDetectedLanguage,
   getPreparedWavDurationSeconds,
@@ -48,6 +49,43 @@ describe("dtwPresetForModel", () => {
       expect(dtwPresetForModel(model)).toBe(model);
     },
   );
+});
+
+describe("buildWhisperArgs", () => {
+  const base = {
+    modelPath: "/m/ggml-small.bin",
+    outputBase: "/out/transcript",
+    dtwPreset: "small",
+    wavPath: "/tmp/a.wav",
+  };
+
+  it("decodes every window without the previous text as context (no repetition loops)", () => {
+    const args = buildWhisperArgs({ ...base, language: null });
+    const at = args.indexOf("--max-context");
+    expect(at).toBeGreaterThan(-1);
+    expect(args[at + 1]).toBe("0");
+  });
+
+  it("keeps the model, word timing, output and input file, with the wav last", () => {
+    const args = buildWhisperArgs({ ...base, language: null });
+    expect(args.slice(args.indexOf("--model"), args.indexOf("--model") + 2)).toEqual([
+      "--model",
+      "/m/ggml-small.bin",
+    ]);
+    expect(args.slice(args.indexOf("--dtw"), args.indexOf("--dtw") + 2)).toEqual([
+      "--dtw",
+      "small",
+    ]);
+    expect(args).toContain("--output-json-full");
+    expect(args).toContain("--suppress-nst");
+    expect(args[args.length - 1]).toBe("/tmp/a.wav");
+    expect(args).not.toContain("--language");
+  });
+
+  it("passes the detected language before the input file", () => {
+    const args = buildWhisperArgs({ ...base, language: "ru" });
+    expect(args.slice(-3)).toEqual(["--language", "ru", "/tmp/a.wav"]);
+  });
 });
 
 describe("resolveWhisperTimeoutMs", () => {

@@ -585,6 +585,24 @@ describe("build_rough_cut", () => {
     );
   });
 
+  it("removes the untouched template placeholder on the target track with the previous cut, and leaves one on another track", async () => {
+    const { editing, call } = setup();
+    editing.timelineResult = timelineOf([
+      { ...clip("ph", null, 0, 0), placeholder: true },
+      { ...clip("ph-other", null, 4, 0), placeholder: true },
+      clip("c1", SAMPLE_SOURCE, 0, 0),
+    ]);
+    await call("plan_cut", { source: SAMPLE_SOURCE });
+    const result = await call("build_rough_cut", { plan: "cut-1" });
+
+    expect(editing.applyRequests[0]?.operations[0]).toEqual({
+      op: "remove_clip",
+      clips: ["c1", "ph"],
+    });
+    expect(result.text).toContain("removed the untouched template placeholder");
+    expect(result.text).toContain("Kept 1 clip on other tracks");
+  });
+
   it("maps kept material over black/frozen picture onto timeline times", async () => {
     const { host, call } = setup();
     host.overviewResult = {

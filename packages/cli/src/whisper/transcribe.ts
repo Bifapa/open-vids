@@ -439,6 +439,36 @@ export function prepareWav(inputPath: string, onProgress?: (message: string) => 
 }
 
 /**
+ * The whisper-cli arguments of one recognition run. `--max-context 0` decodes every 30 s window on its own audio: with
+ * the default (unbounded) context the text of a window seeds the next, so a hallucinated sentence over music or a title
+ * card is repeated window after window and carries on into the real speech that follows it (measured on a 26-minute
+ * briefing: 20 copies of one sentence from the first seconds, real words lost until the loop broke).
+ */
+export function buildWhisperArgs(params: {
+  modelPath: string;
+  outputBase: string;
+  dtwPreset: string;
+  language: string | null;
+  wavPath: string;
+}): string[] {
+  const args = [
+    "--model",
+    params.modelPath,
+    "--output-json-full",
+    "--output-file",
+    params.outputBase,
+    "--dtw",
+    params.dtwPreset,
+    "--suppress-nst",
+    "--max-context",
+    "0",
+  ];
+  if (params.language) args.push("--language", params.language);
+  args.push(params.wavPath);
+  return args;
+}
+
+/**
  * Transcribe an audio or video file and save transcript.json to the output directory.
  */
 export async function transcribe(
@@ -490,20 +520,13 @@ export async function transcribe(
   const outputBase = join(outputDir, "transcript");
   mkdirSync(outputDir, { recursive: true });
 
-  const whisperArgs = [
-    "--model",
-    effectiveModelPath,
-    "--output-json-full",
-    "--output-file",
+  const whisperArgs = buildWhisperArgs({
+    modelPath: effectiveModelPath,
     outputBase,
-    "--dtw",
-    dtwPresetForModel(effectiveModel),
-    "--suppress-nst",
-  ];
-  if (detectedLanguage) {
-    whisperArgs.push("--language", detectedLanguage);
-  }
-  whisperArgs.push(wavPath);
+    dtwPreset: dtwPresetForModel(effectiveModel),
+    language: detectedLanguage,
+    wavPath,
+  });
 
   const whisperTimeoutMs = resolveWhisperTimeoutMs(getPreparedWavDurationSeconds(wavPath), {
     model: effectiveModel,

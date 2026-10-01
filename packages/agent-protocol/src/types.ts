@@ -452,6 +452,8 @@ export interface TextPart {
   type: "text";
   id: string;
   text: string;
+  /** An interim progress note written before the turn's render QA; the final report after QA is not marked. */
+  interim?: true;
 }
 
 export interface ThinkingPart {

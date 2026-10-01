@@ -241,8 +241,16 @@ async function computeTranscript(stage: Stage): Promise<Computed> {
     throw new AnalysisFailure("failed", "The recognizer words are missing");
 
   const speakers = await loadFresh(stage, "speakers", isSpeakerMap);
+  // Read when fresh, not tracked as an input: it only tells a loop over silence from one over music or noise.
+  const silence = await loadFresh(stage, "silence", isSilenceMap);
   const turns = speakers && speakers.turns.length > 0 ? speakers.turns : null;
-  const artifact: TranscriptArtifact = buildTranscript(source.path, asr.words, asr.language, turns);
+  const artifact: TranscriptArtifact = buildTranscript(
+    source.path,
+    asr.words,
+    asr.language,
+    turns,
+    silence,
+  );
   return {
     kind: "artifact",
     artifact,
@@ -252,7 +260,7 @@ async function computeTranscript(stage: Stage): Promise<Computed> {
         speakers: speakers ? versionOf(manifest, "speakers") : null,
       },
       producer: asr.producer,
-      detail,
+      detail: [detail, artifact.hallucinations?.note].filter(Boolean).join("; ") || null,
     },
   };
 }

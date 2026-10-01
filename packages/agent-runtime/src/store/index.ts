@@ -132,6 +132,12 @@ function isChatEvent(value: unknown): value is ChatEvent {
         typeof value.partId === "string" &&
         typeof value.delta === "string"
       );
+    case "assistant.parts.interim":
+      return (
+        typeof value.messageId === "string" &&
+        Array.isArray(value.partIds) &&
+        value.partIds.every((id) => typeof id === "string")
+      );
     case "thinking.updated":
       return (
         typeof value.messageId === "string" &&
@@ -147,6 +153,8 @@ function isChatEvent(value: unknown): value is ChatEvent {
       return typeof value.turnId === "string" && isRecord(value.checkpoint);
     case "plan.updated":
       return typeof value.turnId === "string" && isRecord(value.plan);
+    case "qa.updated":
+      return typeof value.turnId === "string" && isRecord(value.qa);
     case "agent.started":
       return (
         isRecord(value.run) &&

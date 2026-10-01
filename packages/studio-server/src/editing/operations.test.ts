@@ -103,7 +103,7 @@ const clipOf = (clips: TimelineClip[], id: string) => {
 };
 
 describe("add_clip", () => {
-  it("places a video with its probed length, muted state and centered natural geometry", async () => {
+  it("places a video with its probed length, muted state, filling the frame like a Studio drop", async () => {
     withProject();
     const { results, timeline, changedFiles } = await apply([
       { op: "add_clip", asset: "assets/b.mp4", start: 10, track: 1 },
@@ -123,7 +123,8 @@ describe("add_clip", () => {
     expect(clip.zIndex).toBe(4);
     expect(changedFiles).toContain("index.html");
     const html = project?.read("index.html") ?? "";
-    expect(html).toContain("left: 320px; top: 180px; width: 1280px; height: 720px");
+    // The 1280×720 source fills the 1920×1080 frame (scaled), not a centred postage stamp.
+    expect(html).toContain("left: 0px; top: 0px; width: 1920px; height: 1080px");
     expect(timeline.composition.duration).toBe(15);
   });
 
@@ -703,6 +704,32 @@ describe("apply_captions", () => {
     ).toHaveLength(1);
     expect(project?.read("compositions/captions.html")).toContain("Two");
     expect(project?.read("compositions/captions.html")).not.toContain('"One"');
+  });
+
+  it("keeps the captions above clips placed after them, and lifts an old host buried under footage", async () => {
+    withProject();
+    const made = await apply([
+      { op: "apply_captions", preset: "coral", cues: [{ text: "One", start: 0, end: 1 }] },
+    ]);
+    const hostId = made.results[0]?.clipId ?? "";
+    const later = await apply([
+      { op: "add_clip", asset: "assets/b.mp4", start: 0, track: 3 },
+      { op: "add_text", text: "Title", start: 0, duration: 1, track: 4 },
+    ]);
+    const z = (id: string, clips: typeof later.timeline.clips) => clipOf(clips, id).zIndex ?? 0;
+    const host = z(hostId, later.timeline.clips);
+    for (const result of later.results)
+      expect(z(result.clipId ?? "", later.timeline.clips)).toBeLessThan(host);
+
+    // A host made before the band (z 2) under a B-roll shot comes back on top when captions are re-applied.
+    const html = project?.read("index.html") ?? "";
+    project?.write("index.html", html.replace(`z-index: ${host}`, "z-index: 2"));
+    const buried = await apply([
+      { op: "add_clip", asset: "assets/b.mp4", start: 0, track: 5 },
+      { op: "apply_captions", preset: "coral", cues: [{ text: "Two", start: 0, end: 1 }] },
+    ]);
+    const topClip = z(buried.results[0]?.clipId ?? "", buried.timeline.clips);
+    expect(z(hostId, buried.timeline.clips)).toBeGreaterThan(topClip);
   });
 
   it("refuses unknown presets and cues past the composition end, writing nothing", async () => {

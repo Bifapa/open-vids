@@ -2,16 +2,20 @@ import { preloadMedia } from "./preloadMedia";
 import {
   createPreviewMediaBudget,
   DETACH_INTERVAL_MS,
+  importPreviewNode,
+  isPreviewMediaBudgetActive,
   PLAN_MIN_INTERVAL_MS,
   PLAN_SEEK_JUMP_SECONDS,
+  SCRUB_SETTLE_MS,
 } from "./previewMediaBudget";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
 import { revealTimedClipsAfterFirstPass, SKIPPED_CLIP, skipsHiddenImages } from "./timedClipHide";
 import {
+  isPreviewManagedVideo,
+  STUDIO_PREVIEW_DETACHED_SRC_ATTR,
   STUDIO_PREVIEW_LAZY_ATTR,
-  STUDIO_PREVIEW_MARK_META,
   STUDIO_PREVIEW_UPCOMING_ATTR,
 } from "../studioPreviewMark";
 import { injectCompositionCssVariables } from "./getVariables";
@@ -2383,8 +2387,11 @@ export function initSandboxRuntimeModular(): void {
     // New media is weighed against the preview budget BEFORE it is told to load: a far-away clip
     // of a hundred-clip edit must not start a decoder only to drop it a moment later.
     enforcePreviewMediaBudget(true);
+    const budgetActive = isPreviewMediaBudgetActive(document, window);
     for (const mediaEl of toPreload) {
-      if (!previewMediaBudget.isReleased(mediaEl)) preloadMedia(mediaEl);
+      // The budget owns when a managed video loads; a `load()` here would restart the one it began.
+      if (budgetActive && isPreviewManagedVideo(mediaEl)) continue;
+      preloadMedia(mediaEl);
     }
   };
 
@@ -2796,6 +2803,9 @@ export function initSandboxRuntimeModular(): void {
   const pausedMediaLeases = new WeakSet<HTMLMediaElement>();
   const leasePausedMedia = (el: HTMLMediaElement): void => {
     pausedMediaLeases.add(el);
+    // The Studio is about to play a clip that may hold no source yet (a far-away video under the
+    // grading preview): attach it now, this runs before the caller's play().
+    enforcePreviewMediaBudget(true);
   };
   const releasePausedMedia = (el: HTMLMediaElement): void => {
     pausedMediaLeases.delete(el);
@@ -2875,23 +2885,48 @@ export function initSandboxRuntimeModular(): void {
     document.removeEventListener("play", onMediaPlayWakeTransport, true);
   });
 
-  // A Studio preview keeps a loaded source only on the videos near the playhead (see
-  // previewMediaBudget.ts). Only a page the Studio server marked as a preview does: a render or
-  // capture drives every frame itself and needs every source loaded.
-  const previewMediaBudget = createPreviewMediaBudget();
+  // A Studio preview attaches a source only to the videos near the playhead and opens at most a few
+  // at a time (see previewMediaBudget.ts). Only a page the Studio server marked as a preview does:
+  // a render or capture drives every frame itself and needs every source loaded.
+  let previewBudgetSettleTimerId: number | null = null;
+  const previewMediaBudget = createPreviewMediaBudget(
+    {},
+    {
+      // A released video's source is attached later: the codec map still decides its proxy swap.
+      prepareSource: maybeProxyProactively,
+      // A load settling frees a slot. Planned on its own task: settling can happen inside a pass.
+      onLoadSettled: () => {
+        if (previewBudgetSettleTimerId != null) return;
+        previewBudgetSettleTimerId = window.setTimeout(() => {
+          previewBudgetSettleTimerId = null;
+          runDeferredBudgetPass();
+        }, 0);
+      },
+    },
+  );
   let previewBudgetTimerId: number | null = null;
+  let previewBudgetScrubTimerId: number | null = null;
   let previewBudgetLastRunMs = Number.NEGATIVE_INFINITY;
   let previewBudgetLastTimeSeconds = Number.NaN;
-  const isPreviewMediaBudgetActive = (): boolean =>
-    !state.tornDown &&
-    document.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null &&
-    !window.__HF_EXPORT_RENDER_SEEK_CONFIG &&
-    !Reflect.get(window, "__HF_RENDER_CAPTURE_MODE");
   const enforcePreviewMediaBudget = (force: boolean) => {
-    if (!isPreviewMediaBudgetActive()) return;
+    if (state.tornDown || !isPreviewMediaBudgetActive(document, window)) return;
     const nowMs = performance.now();
     const timeSeconds = state.currentTime;
     const jumped = Math.abs(timeSeconds - previewBudgetLastTimeSeconds) > PLAN_SEEK_JUMP_SECONDS;
+    if (!force && jumped && !state.isPlaying) {
+      // A scrub lands somewhere new every few milliseconds: plan for where the playhead rests,
+      // not for every stop on the way, or a drag across the film would open a clip per stop.
+      if (previewBudgetScrubTimerId != null) window.clearTimeout(previewBudgetScrubTimerId);
+      previewBudgetScrubTimerId = window.setTimeout(() => {
+        previewBudgetScrubTimerId = null;
+        if (state.tornDown) return;
+        enforcePreviewMediaBudget(true);
+        // The seek's media pass skipped clips that held no source; run it again now they do.
+        state.mediaForceSyncNextTick = true;
+        syncMediaForCurrentState();
+      }, SCRUB_SETTLE_MS);
+      return;
+    }
     if (!force && !jumped && nowMs - previewBudgetLastRunMs < PLAN_MIN_INTERVAL_MS) return;
     previewBudgetLastRunMs = nowMs;
     previewBudgetLastTimeSeconds = timeSeconds;
@@ -2905,18 +2940,27 @@ export function initSandboxRuntimeModular(): void {
       isLeased: (el) => pausedMediaLeases.has(el),
       compositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
     });
-    // Deferred releases/attaches (batching, cap room) finish on a timer: a parked transport runs no ticks.
+    // Deferred work (load slots, release batches, cap room) finishes on a timer: a parked transport
+    // runs no ticks, and a settling load plans again on its own.
     if (pending) {
       previewBudgetTimerId = window.setTimeout(() => {
         previewBudgetTimerId = null;
-        enforcePreviewMediaBudget(true);
+        runDeferredBudgetPass();
       }, DETACH_INTERVAL_MS);
     }
   };
+  // A pass owed from earlier (a freed load slot, a deferred release): not while a scrub is still
+  // moving the playhead, whose own timer plans for where it comes to rest.
+  const runDeferredBudgetPass = () => {
+    if (previewBudgetScrubTimerId == null) enforcePreviewMediaBudget(true);
+  };
   runtimeCleanupCallbacks.push(() => {
     if (previewBudgetTimerId != null) window.clearTimeout(previewBudgetTimerId);
+    if (previewBudgetSettleTimerId != null) window.clearTimeout(previewBudgetSettleTimerId);
+    if (previewBudgetScrubTimerId != null) window.clearTimeout(previewBudgetScrubTimerId);
     previewBudgetTimerId = null;
-    previewMediaBudget.restoreAll();
+    previewBudgetSettleTimerId = null;
+    previewBudgetScrubTimerId = null;
   });
 
   const syncMediaForCurrentState = (timingRevision?: number) => {
@@ -2951,10 +2995,13 @@ export function initSandboxRuntimeModular(): void {
     // A leased element is not the transport's to touch while the clock is paused;
     // during playback the transport owns everything again. Filtered here rather
     // than out of `mediaClips` so the in-window bookkeeping below still records it
-    // and the pass after its release visits it normally.
-    const syncedClips = state.isPlaying
-      ? mediaClips
-      : mediaClips.filter((clip) => !pausedMediaLeases.has(clip.el));
+    // and the pass after its release visits it normally. A video the preview budget
+    // has not attached a source to yet (no free load slot) has nothing to sync.
+    const syncedClips = mediaClips.filter(
+      (clip) =>
+        !previewMediaBudget.isReleased(clip.el) &&
+        (state.isPlaying || !pausedMediaLeases.has(clip.el)),
+    );
 
     const forceSync = state.mediaForceSyncNextTick;
     if (forceSync) state.mediaForceSyncNextTick = false;
@@ -3259,6 +3306,7 @@ export function initSandboxRuntimeModular(): void {
         const attrs = MEDIA_URL_ATTRS.get(el.localName) ?? [];
         const values = [
           unproxiedMediaSrc(el),
+          el.getAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR),
           ...[...attrs, "poster", "srcset"].map((a) => el.getAttribute(a)),
         ];
         for (const value of values) if (value) urls.add(value);
@@ -3371,7 +3419,7 @@ export function initSandboxRuntimeModular(): void {
         .filter((el) => el.tagName === "STYLE")
         .forEach((el, i) => el.replaceWith(document.importNode(newStyles[i]!, true)));
       for (const el of oldParts) if (el !== oldHost) el.remove();
-      const host = document.importNode(newHost, true);
+      const host = importPreviewNode(document, window, newHost);
       keepUnchangedMedia(oldHost, host);
       oldHost.replaceWith(host);
       swappedHosts.push(host);

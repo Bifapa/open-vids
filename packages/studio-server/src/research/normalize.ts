@@ -62,7 +62,7 @@ async function ffprobeInspect(file: string, signal: AbortSignal): Promise<MediaI
   try {
     ({ stdout } = await run(
       binary,
-      ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", file],
+      ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", "--", file],
       { maxBuffer: 16 * 1024 * 1024, timeout: 60_000, signal, windowsHide: true },
     ));
   } catch (error) {

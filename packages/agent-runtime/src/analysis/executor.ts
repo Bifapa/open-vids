@@ -313,6 +313,7 @@ export class TurnAnalysis {
         clips,
         length: batch.length,
         replacedClips: batch.replacedClips,
+        removedPlaceholders: batch.removedPlaceholders,
         keptClips: batch.keptClips,
         captions: captions ? { preset: captions.preset, cues: captions.cues.length } : null,
         timeline: response.timeline,

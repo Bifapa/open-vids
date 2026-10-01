@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readOpenWindows, writeOpenWindows, type OpenWindowRecord } from "./openWindows.js";
 import { readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import {
   type Dirent,
@@ -99,6 +100,8 @@ export interface ClosedWindow {
   startedAt: number;
   lastWriteAt: number;
   idleMs: number;
+  /** When its owner last said it was still at work (renew). */
+  renewedAt?: number;
 }
 
 export const MAX_WINDOW_IDLE_MS = 10 * 60_000;
@@ -388,11 +391,51 @@ class Engine {
     await this.settleAll();
   }
 
+  /** The window a closing command left open, and the windows a dead owner (killed, crashed) never committed. */
   reopenClosedWindow(): void {
     const closed = this.options.closedWindow;
-    if (!closed || this.log.entries.some((entry) => entry.id === closed.id)) return;
-    const { id, who, label, startedAt, lastWriteAt, idleMs } = closed;
-    this.windows.push({ id, who, label, startedAt, lastWriteAt, idleMs, changes: new Map() });
+    const dead = readOpenWindows(this.home);
+    const reopened = [...(closed ? [closed] : []), ...dead];
+    for (const window of reopened) {
+      if (this.log.entries.some((entry) => entry.id === window.id)) continue;
+      if (this.windows.some((open) => open.id === window.id)) continue;
+      const { id, who, label, startedAt, lastWriteAt, renewedAt, idleMs } = window;
+      this.windows.push({
+        id,
+        who,
+        label,
+        startedAt,
+        lastWriteAt,
+        idleMs,
+        ...(renewedAt !== undefined && { renewedAt }),
+        changes: new Map(),
+      });
+    }
+  }
+
+  /** Keeps the open windows on disk: a process that dies holding one leaves it for the next to reopen. */
+  persistWindows(): void {
+    const open = this.windows.flatMap((window): OpenWindowRecord[] =>
+      window.idleMs === undefined || !Number.isFinite(window.idleMs)
+        ? []
+        : [
+            {
+              id: window.id,
+              who: window.who,
+              label: window.label,
+              startedAt: window.startedAt,
+              lastWriteAt: window.lastWriteAt ?? window.startedAt,
+              idleMs: window.idleMs,
+              ...(window.renewedAt !== undefined && { renewedAt: window.renewedAt }),
+            },
+          ],
+    );
+    try {
+      mkdirSync(this.home, { recursive: true });
+      writeOpenWindows(this.home, open);
+    } catch (error) {
+      this.options.onError?.(error instanceof Error ? error : new Error(String(error)));
+    }
   }
 
   async firstOpen(): Promise<void> {
@@ -771,6 +814,7 @@ class Engine {
       const window = { ...this.newGroup(who, label), idleMs };
       this.windows.push(window);
       this.touch(window, Date.now());
+      this.persistWindows();
       const close = () => this.queue(() => this.sweepAndEnd(window));
       const renew = () => this.renew(window);
       return { id: window.id, startedAt: window.startedAt, close, renew };
@@ -791,6 +835,7 @@ class Engine {
     if (window.expired || !this.windows.includes(window)) return false;
     window.renewedAt = Date.now();
     this.armIdle(window);
+    this.persistWindows();
     return true;
   }
 
@@ -816,6 +861,7 @@ class Engine {
     await this.commitClaim();
     this.windows = this.windows.filter((open) => open !== window);
     window.entry = (await this.commit(window)) ?? window.entry ?? null;
+    this.persistWindows();
     return window.entry;
   }
 

@@ -17,7 +17,6 @@ import {
   type AgentSession,
   type CreateAgentSessionOptions,
   type CustomTool,
-  type ExtensionFactory,
 } from "@oh-my-pi/pi-coding-agent";
 import { cfgDefaultThinkingLevel } from "@oh-my-pi/pi-coding-agent/session/settings";
 import type {
@@ -47,6 +46,7 @@ import {
 } from "./model-mapping.ts";
 import { hostToolContent } from "./tool-content.ts";
 import { guardToolCallPaths } from "./path-guard.ts";
+import { projectBoundaryExtension } from "./tool-guard.ts";
 
 const MODEL_CATALOG_TTL_MS = 60_000;
 const PROJECT_FILE_TOOLS = ["read", "grep", "glob", "find", "edit", "write"];
@@ -177,15 +177,6 @@ async function projectContextFiles(
     }
   }
   return [];
-}
-
-function projectBoundaryExtension(projectDir: string): ExtensionFactory {
-  return (pi) => {
-    pi.on("tool_call", async (event) => {
-      const reason = await guardToolCallPaths(projectDir, event.input, event.toolName);
-      return reason ? { block: true, reason } : undefined;
-    });
-  };
 }
 
 function chooseBackendModel(

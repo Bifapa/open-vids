@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { STORY_GRAPH_PATH, isChapter, type StoryGraph } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
@@ -93,6 +93,35 @@ describe("the stored graph", () => {
       operations: [{ op: "set_story", title: "Third" }],
     });
     expect((await f.graph()).title).toBe("Third");
+  });
+});
+
+describe("a damaged graph file", () => {
+  it("opens as an empty canvas for the user and is replaced, backed up, by their first save; the agent is refused", async () => {
+    const f = story();
+    await seeded(f);
+    const graph = await f.graph();
+    const file = join(f.project.dir, STORY_GRAPH_PATH);
+    writeFileSync(file, "not json {{{");
+
+    expect((await f.view()).graph).toBeNull();
+    await expect(f.edit([{ op: "set_story", title: "Agent" }])).rejects.toSatisfy(
+      (error: unknown) => isStoryFailure(error) && /not valid JSON/.test(error.error.message),
+    );
+    await expect(
+      f.service.save(f.project, { baseVersion: "sha256:stale", graph }),
+      "a client that believes it holds a graph is told to reload",
+    ).rejects.toSatisfy(
+      (error: unknown) => isStoryFailure(error) && error.error.code === "conflict",
+    );
+    expect(readFileSync(file, "utf-8"), "reads and refused writes leave the file alone").toBe(
+      "not json {{{",
+    );
+
+    const saved = await f.service.save(f.project, { baseVersion: null, graph });
+    expect(saved.graph?.nodes).toHaveLength(graph.nodes.length);
+    expect(readFileSync(`${file}.bak`, "utf-8")).toBe("not json {{{");
+    expect((await f.graph()).nodes).toHaveLength(graph.nodes.length);
   });
 });
 

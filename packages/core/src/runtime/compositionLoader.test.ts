@@ -109,6 +109,50 @@ describe("loadExternalCompositions", () => {
     ).toBe(false);
   });
 
+  it.each([
+    [
+      "a flattened composition root",
+      `<div data-composition-id="blk" data-width="100" data-height="50">CLIPS</div>`,
+    ],
+    [
+      "a template",
+      `<template id="blk-template"><div data-composition-id="blk">CLIPS</div></template>`,
+    ],
+    ["a bare body", `<p>CLIPS</p>`],
+  ])(
+    "mounts %s in a Studio preview without a live video src, and leaves other pages alone",
+    async (_shape, shell) => {
+      const clips = `<video id="a" src="assets/a.mp4" data-start="0" data-duration="3"></video><video id="free" src="assets/f.mp4"></video>`;
+      const mount = async () => {
+        document.body.innerHTML = `<div id="host" data-composition-src="https://example.com/blk.html" data-composition-id="blk"></div>`;
+        vi.spyOn(globalThis, "fetch").mockResolvedValue(
+          new Response(shell.replace("CLIPS", clips), { status: 200 }),
+        );
+        await loadExternalCompositions({ ...defaultParams });
+        return document.getElementById("host")!;
+      };
+
+      const plain = await mount();
+      expect(plain.querySelector("#a")!.getAttribute("src")).toBe("assets/a.mp4");
+
+      vi.restoreAllMocks();
+      document.head.appendChild(
+        Object.assign(document.createElement("meta"), { name: "hyperframes-studio-preview" }),
+      );
+      try {
+        const preview = await mount();
+        const managed = preview.querySelector("#a")!;
+        expect(managed.hasAttribute("src")).toBe(false);
+        expect(managed.getAttribute("data-hf-detached-src")).toBe("assets/a.mp4");
+        expect(managed.getAttribute("preload")).toBe("none");
+        // A clip whose length comes from its source is not managed.
+        expect(preview.querySelector("#free")!.getAttribute("src")).toBe("assets/f.mp4");
+      } finally {
+        document.head.querySelector('meta[name="hyperframes-studio-preview"]')?.remove();
+      }
+    },
+  );
+
   it("sizes a flattened inner root from a px-suffixed or fractional size", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/comp.html");

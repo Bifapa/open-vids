@@ -317,4 +317,102 @@ describe("TurnRunner", () => {
       await fixture.cleanup();
     }
   });
+
+  describe("reverted turns notice", () => {
+    async function runTurnWithEntries(
+      fixture: RuntimeFixture,
+      chatId: string,
+      prompt: string,
+      mode?: "story",
+    ) {
+      fixture.checkpoints.nextEntryIds = [`entry-for-${prompt}`];
+      const turn = await fixture.turns.start(chatId, { prompt, ...(mode && { mode }) });
+      await finishTurn(fixture, chatId);
+      return turn;
+    }
+    const lastPrompt = (fixture: RuntimeFixture): string =>
+      fixture.backend.sessions.at(-1)?.prompts.at(-1)?.text ?? "";
+
+    it("tells the Director once which earlier turns were reverted, before the interim instruction", async () => {
+      const fixture = await createRuntimeFixture({ sessionIdleMs: 60_000 });
+      try {
+        const chat = await fixture.chats.create({});
+        fixture.backend.promptScript = async () => "completed";
+        const first = await runTurnWithEntries(
+          fixture,
+          chat.id,
+          "Render the final video\nwith captions",
+        );
+        // No reverted predecessor, no block.
+        expect(lastPrompt(fixture)).not.toContain("<reverted-turns>");
+
+        expect(await fixture.turns.revert(chat.id, first.id)).toMatchObject({ ok: true });
+        await runTurnWithEntries(fixture, chat.id, "Tighten the intro");
+        const second = lastPrompt(fixture);
+        expect(second).toContain("<reverted-turns>");
+        expect(second).toContain(
+          '- "Render the final video with captions" (less than a minute ago)',
+        );
+        expect(second).toContain("renders/");
+        expect(second.indexOf("<reverted-turns>")).toBeGreaterThan(
+          second.indexOf("Tighten the intro"),
+        );
+        // The interim instruction stays the last block.
+        expect(second.indexOf("<reverted-turns>")).toBeLessThan(
+          second.indexOf("<render-qa-pending>"),
+        );
+        expect(second.trimEnd().endsWith("</render-qa-pending>")).toBe(true);
+
+        // Already announced: the next turn does not repeat it.
+        await runTurnWithEntries(fixture, chat.id, "Add music");
+        expect(lastPrompt(fixture)).not.toContain("<reverted-turns>");
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it("lists only turns reverted since the previous turn started, and truncates long prompts", async () => {
+      const fixture = await createRuntimeFixture({ sessionIdleMs: 60_000 });
+      try {
+        const chat = await fixture.chats.create({});
+        fixture.backend.promptScript = async () => "completed";
+        const first = await runTurnWithEntries(fixture, chat.id, "First change");
+        const second = await runTurnWithEntries(fixture, chat.id, `Second ${"x".repeat(200)}`);
+        await fixture.turns.revert(chat.id, first.id);
+        await fixture.turns.revert(chat.id, second.id);
+        await runTurnWithEntries(fixture, chat.id, "Third change");
+        const third = lastPrompt(fixture);
+        expect(third).toContain('"First change"');
+        expect(third).toContain(`"Second ${"x".repeat(113)}…"`);
+        expect(third).not.toContain("x".repeat(114));
+
+        const fourth = await runTurnWithEntries(fixture, chat.id, "Fourth change");
+        expect(lastPrompt(fixture)).not.toContain("<reverted-turns>");
+        await fixture.turns.revert(chat.id, fourth.id);
+        await runTurnWithEntries(fixture, chat.id, "Fifth change");
+        const fifth = lastPrompt(fixture);
+        expect(fifth).toContain('"Fourth change"');
+        expect(fifth).not.toContain('"First change"');
+        expect(fifth).not.toContain('"Second');
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it("also announces reverted turns in a story-mode turn", async () => {
+      const fixture = await createRuntimeFixture({ sessionIdleMs: 60_000 });
+      try {
+        const chat = await fixture.chats.create({});
+        fixture.backend.promptScript = async () => "completed";
+        const first = await runTurnWithEntries(fixture, chat.id, "Outline the story");
+        await fixture.turns.revert(chat.id, first.id);
+        await runTurnWithEntries(fixture, chat.id, "Review the chapters", "story");
+        const prompt = lastPrompt(fixture);
+        expect(prompt).toContain('- "Outline the story"');
+        expect(prompt).toContain("<reverted-turns>");
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+  });
 });

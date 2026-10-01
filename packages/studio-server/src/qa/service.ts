@@ -10,6 +10,8 @@ import {
   type QaCheckRun,
   type QaFramesRequest,
   type QaFramesResponse,
+  type QaFinishRequest,
+  type QaFinishResponse,
   type QaIssueDraft,
   type QaReport,
   type QaReportInput,
@@ -45,8 +47,10 @@ import {
   noAudioStreamIssue,
   silenceIssues,
   silentRuns,
+  withoutSilentSources,
   withoutStaticSources,
 } from "./renderChecks.js";
+import { enforceRetention, finishSession, type RetentionContext } from "./retention.js";
 import { planSamples } from "./samples.js";
 import { framesDirFor, listReports, readReport, writeReport } from "./store.js";
 import { timelineIssues } from "./timelineChecks.js";
@@ -159,6 +163,8 @@ interface CheckPart {
 export class QaService {
   private readonly facts: MediaFacts;
   private readonly shutdownController = new AbortController();
+  /** Sessions that saved a report and have not finished (their reports are exempt from retention). */
+  private readonly running = new Set<string>();
 
   constructor(
     private readonly adapter: StudioApiAdapter,
@@ -193,7 +199,7 @@ export class QaService {
 
     const [picture, audio, layout] = await Promise.all([
       this.checkPicture(project, renderFile, info, duration, timeline, signal),
-      this.checkAudio(renderFile, info, duration, timeline, signal),
+      this.checkAudio(project, renderFile, info, duration, timeline, signal),
       this.checkLayout(project, timeline, duration, signal),
     ]);
     if (signal.aborted) throw new QaFailure("cancelled", "The QA check was cancelled");
@@ -287,6 +293,7 @@ export class QaService {
       hasAudio.set(src, this.facts.peek(project.dir, src)?.hasAudio ?? null);
     }
     const transcripts = new Map<string, TranscriptArtifact>();
+    const silences = new Map<string, readonly { start: number; end: number }[]>();
     const played = snapshot.clips.filter((clip) => clip.kind === "video" || clip.kind === "audio");
     for (const src of new Set(played.flatMap((clip) => (clip.src === null ? [] : [clip.src])))) {
       if (missing.has(src) || signal.aborted) continue;
@@ -294,6 +301,7 @@ export class QaService {
         const data = await this.analysis.sourceData(project, src);
         if (data.transcript && data.transcript.words.length > 0)
           transcripts.set(src, data.transcript);
+        if (data.silence) silences.set(src, data.silence.silences);
       } catch {
         // not analysable (or not analysed): its cuts are simply not checked against speech
       }
@@ -310,6 +318,7 @@ export class QaService {
       missing,
       hasAudio,
       transcripts,
+      silences,
       cues: readCaptionCues(project.dir, snapshot.clips),
       graph,
     };
@@ -358,6 +367,7 @@ export class QaService {
   }
 
   private async checkAudio(
+    project: ResolvedProject,
     file: string,
     info: RenderFacts,
     duration: number,
@@ -377,13 +387,17 @@ export class QaService {
       };
     }
     try {
-      const levels = await measureAudioLevels(file, {
-        signal,
-        ffmpegPath: this.options.ffmpegPath,
-      });
+      const run = { signal, ffmpegPath: this.options.ffmpegPath };
+      const levels = await measureAudioLevels(file, run);
+      const suspicious = await withoutSilentSources(
+        silentRuns(levels, duration),
+        timeline,
+        (src) => resolveWithinProject(project.dir, src),
+        run,
+      );
       return {
         runs: [{ id: "audio", status: "ran", detail: null }],
-        issues: silenceIssues(silentRuns(levels, duration), timeline),
+        issues: silenceIssues(suspicious, timeline),
       };
     } catch (error) {
       return { runs: [failedRun("audio", error)], issues: [] };
@@ -487,8 +501,43 @@ export class QaService {
   // ── Reports ───────────────────────────────────────────────────────────────
 
   saveReport(project: ResolvedProject, input: QaReportInput): QaReport {
-    const now = this.options.now?.() ?? Date.now();
-    return writeReport(project.dir, input, now, resolveProjectSignature(this.adapter, project.dir));
+    const now = this.now();
+    const report = writeReport(
+      project.dir,
+      input,
+      now,
+      resolveProjectSignature(this.adapter, project.dir),
+    );
+    this.running.add(input.sessionId);
+    enforceRetention(this.retention(project, now));
+    return report;
+  }
+
+  /**
+   * Ends a QA session: its intermediate QA renders and their frames go (the render in `request.keep`, the one the
+   * final report names, and any render that is not QA's own stay), and the retention of old reports runs. Reports
+   * stay readable whether or not their render still exists.
+   */
+  finishSession(
+    project: ResolvedProject,
+    sessionId: string,
+    request: QaFinishRequest,
+  ): QaFinishResponse {
+    this.running.delete(sessionId);
+    return finishSession(this.retention(project, this.now()), sessionId, request);
+  }
+
+  private now(): number {
+    return this.options.now?.() ?? Date.now();
+  }
+
+  private retention(project: ResolvedProject, now: number): RetentionContext {
+    return {
+      projectDir: project.dir,
+      rendersDir: this.adapter.rendersDir(project),
+      now,
+      running: this.running,
+    };
   }
 
   listReports(project: ResolvedProject): QaReportList {

@@ -1893,7 +1893,7 @@ describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
       {
         path: vfrFixture,
         input: "testsrc2=s=64x64:d=10:rate=1/2",
-        filters: ["-vf", "select='eq(n,0)+eq(n,2)'", "-vsync", "vfr"],
+        filters: ["-vf", "select='eq(n,0)+eq(n,2)'", "-fps_mode", "vfr"],
       },
       {
         path: nonZeroStartFixture,
@@ -2083,7 +2083,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       "testsrc2=s=320x180:d=10:rate=60",
       "-vf",
       "select='not(between(n\\,30\\,89))*not(between(n\\,180\\,239))*not(between(n\\,330\\,389))*not(between(n\\,480\\,539))'",
-      "-vsync",
+      "-fps_mode",
       "vfr",
       "-c:v",
       "libx264",

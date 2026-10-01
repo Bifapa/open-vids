@@ -111,6 +111,13 @@ export function sourceForHost(policy: AssetSearchPolicy, host: string): TrustedS
 
 const blocked = (message: string) => new ResearchFailure("blocked_by_policy", message);
 
+/** A URL that passed the guard, with the public addresses its host resolved to at that moment. */
+export interface VettedUrl {
+  url: URL;
+  /** Every answer was checked public; a transport connects to these and never resolves the host again. */
+  addresses: string[];
+}
+
 /**
  * The URL rules of Asset Search, enforced for every page read, API call and download (and every redirect hop):
  * http(s) only, no credentials in the URL, no local or private network addresses (host names are resolved and every
@@ -120,11 +127,21 @@ const blocked = (message: string) => new ResearchFailure("blocked_by_policy", me
 export class UrlGuard {
   constructor(private readonly resolve: DnsResolver = systemResolver) {}
 
+  /** The URL check alone, for callers that only need a verdict. */
   async check(
     rawUrl: string,
     policy: AssetSearchPolicy,
     grants: readonly string[] = [],
   ): Promise<URL> {
+    return (await this.vet(rawUrl, policy, grants)).url;
+  }
+
+  /** The URL check plus the single resolution its verdict rests on, for a transport to pin. */
+  async vet(
+    rawUrl: string,
+    policy: AssetSearchPolicy,
+    grants: readonly string[] = [],
+  ): Promise<VettedUrl> {
     if (rawUrl.length > RESEARCH_LIMITS.urlChars) {
       throw new ResearchFailure(
         "invalid_request",
@@ -170,18 +187,17 @@ export class UrlGuard {
       if (explicitPort) throw blocked(`Port ${url.port} is not used by the trusted sources`);
     }
 
-    if (!literal) {
-      let addresses: string[];
-      try {
-        addresses = await this.resolve(host);
-      } catch {
-        throw new ResearchFailure("network", `Could not look up ${host}`);
-      }
-      if (addresses.length === 0) throw new ResearchFailure("network", `Could not look up ${host}`);
-      const privateAddress = addresses.find((address) => isPrivateAddress(address));
-      if (privateAddress)
-        throw blocked(`${host} points to a local or private network address (${privateAddress})`);
+    if (literal) return { url, addresses: [host] };
+    let addresses: string[];
+    try {
+      addresses = await this.resolve(host);
+    } catch {
+      throw new ResearchFailure("network", `Could not look up ${host}`);
     }
-    return url;
+    if (addresses.length === 0) throw new ResearchFailure("network", `Could not look up ${host}`);
+    const privateAddress = addresses.find((address) => isPrivateAddress(address));
+    if (privateAddress)
+      throw blocked(`${host} points to a local or private network address (${privateAddress})`);
+    return { url, addresses };
   }
 }

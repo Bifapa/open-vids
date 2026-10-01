@@ -137,6 +137,63 @@ describe("applyChatEvent", () => {
     const message = state?.messages[1];
     expect(message?.role === "assistant" && message.status).toBe("failed");
   });
+
+  describe("interim text parts", () => {
+    const interim = (seq: number, partIds: string[], messageId = "m2"): ChatEvent => ({
+      type: "assistant.parts.interim",
+      messageId,
+      partIds,
+      seq,
+      chatId: "c1",
+      ts: 30,
+    });
+    const delta = (seq: number, partId: string, text: string): ChatEvent => ({
+      type: "assistant.text.delta",
+      messageId: "m2",
+      partId,
+      delta: text,
+      seq,
+      chatId: "c1",
+      ts: 31,
+    });
+    const textParts = (events: ChatEvent[]) => {
+      const message = foldChatEvents(events)?.messages[1];
+      return message?.role === "assistant"
+        ? message.parts.flatMap((part) => (part.type === "text" ? [part] : []))
+        : [];
+    };
+
+    it("marks only the named text parts and keeps the mark when more text arrives", () => {
+      const [created, started] = log();
+      const events = [
+        created!,
+        started!,
+        delta(3, "a", "Done! "),
+        delta(4, "b", "Second."),
+        interim(5, ["a", "missing", "th"]),
+        delta(6, "a", "Ready."),
+        delta(7, "c", "Final report."),
+      ];
+      expect(textParts(events)).toEqual([
+        { type: "text", id: "a", text: "Done! Ready.", interim: true },
+        { type: "text", id: "b", text: "Second." },
+        { type: "text", id: "c", text: "Final report." },
+      ]);
+    });
+
+    it("leaves logs without the event untouched", () => {
+      const parts = textParts(log());
+      expect(parts).toEqual([{ type: "text", id: "tx", text: "Hello" }]);
+      expect("interim" in (parts[0] ?? {})).toBe(false);
+    });
+
+    it("ignores a mark for a message that does not exist", () => {
+      const [created, started] = log();
+      expect(
+        textParts([created!, started!, delta(3, "a", "Hi"), interim(4, ["a"], "nope")]),
+      ).toEqual([{ type: "text", id: "a", text: "Hi" }]);
+    });
+  });
 });
 
 describe("validators", () => {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   STORY_GRAPH_PATH,
@@ -48,6 +48,25 @@ export function readStoredStory(projectDir: string): StoredStory | null {
     );
   }
   return { graph: parsed.value, version: storyVersion(bytes) };
+}
+
+/**
+ * The same read for the user's own canvas: a damaged file reads as "no story yet", so Studio opens an empty canvas and
+ * the first save starts a new graph instead of the panel dead-ending on an error. With `keepDamaged` (a save about to
+ * replace it) the damaged bytes are first set aside as `graph.json.bak`. The agent's reads stay strict.
+ */
+export function readStoredStoryOrNone(
+  projectDir: string,
+  keepDamaged: boolean,
+): StoredStory | null {
+  try {
+    return readStoredStory(projectDir);
+  } catch (error) {
+    if (!(error instanceof StoryFailure)) throw error;
+    const abs = resolveWithinProject(projectDir, STORY_GRAPH_PATH);
+    if (keepDamaged && abs) copyFileSync(abs, `${abs}.bak`);
+    return null;
+  }
 }
 
 /** Writes the graph (pretty JSON, atomically) and returns its new version. No history claim: the caller decides. */

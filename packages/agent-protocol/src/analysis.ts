@@ -127,6 +127,17 @@ export interface TranscriptSentence {
   speaker: string | null;
 }
 
+/** What the transcript stage removed as recognizer hallucination: one sentence looped back to back. */
+export interface TranscriptHallucinations {
+  /** Runs of a repeated sentence found. */
+  runs: number;
+  /** Sentences and words removed (the first copy of a run stays unless the run sits in silence). */
+  droppedSentences: number;
+  droppedWords: number;
+  /** Human-readable summary: which sentence, how many copies, where. */
+  note: string;
+}
+
 export interface TranscriptArtifact {
   source: string;
   /** BCP-47-ish language code when known (`en`, `ru`). */
@@ -135,6 +146,8 @@ export interface TranscriptArtifact {
   sentences: TranscriptSentence[];
   /** Seconds covered by words. */
   speechSeconds: number;
+  /** Present only when a hallucination loop was removed from the recognizer's words. */
+  hallucinations?: TranscriptHallucinations;
 }
 
 export interface SpeakerInfo {

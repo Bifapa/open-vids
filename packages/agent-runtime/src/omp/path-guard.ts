@@ -238,6 +238,48 @@ export async function guardToolCallPaths(
   return null;
 }
 
+/** Hashline `read` headers (`[path#TAG]`) are accepted by OMP's file tools in place of a plain path. */
+const HASHLINE_HEADER = /^\[(.+)#[0-9A-Za-z]+\]$/;
+
+/**
+ * Every existing-or-new file inside the project (outside `.hyperframes`) that one `edit`/`write`
+ * call could be aimed at, across all the readings {@link pathVariants} considers. Canonical
+ * (symlinks resolved) absolute paths; targets the boundary guard rejects are skipped because
+ * {@link guardToolCallPaths} already blocks those calls.
+ */
+export async function resolveProjectFileTargets(
+  projectDir: string,
+  input: unknown,
+): Promise<string[]> {
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = await realpath(projectDir);
+  } catch {
+    return [];
+  }
+  const resolved = new Set<string>();
+  for (const original of extractPathArguments(input)) {
+    const raw = original.trim();
+    const header = HASHLINE_HEADER.exec(raw);
+    const variants = new Set(pathVariants(raw));
+    if (header?.[1]) for (const variant of pathVariants(header[1])) variants.add(variant);
+    for (const variant of variants) {
+      if (!variant || isUri(variant)) continue;
+      let canonical: string;
+      try {
+        canonical = await realpathWithMissingTail(path.resolve(projectDir, expandHome(variant)));
+      } catch {
+        continue;
+      }
+      if (!isWithin(canonicalRoot, canonical) || isHyperframesPath(canonicalRoot, canonical)) {
+        continue;
+      }
+      resolved.add(canonical);
+    }
+  }
+  return [...resolved];
+}
+
 export function projectRelativeTargets(projectDir: string, input: unknown): string[] {
   const targets: string[] = [];
   const root = path.resolve(projectDir);

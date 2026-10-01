@@ -4,6 +4,7 @@ import type { TimelineElement } from "../player/store/playerStore";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { TimelineAssetKind } from "@hyperframes/core/editing/timeline-asset";
 import { roundToCenti } from "./rounding";
+import { acquireMediaLoad, type MediaLoadRelease } from "./mediaLoadGate";
 
 export interface EditingFile {
   path: string;
@@ -342,6 +343,9 @@ export async function resolveDroppedAssetDuration(
 ): Promise<number> {
   if (kind === "image") return DEFAULT_TIMELINE_ASSET_DURATION.image;
 
+  // The probe element is created, and the 3s budget started, only once a
+  // media-load slot is granted.
+  const releaseSlot = await acquireMediaLoad();
   const media = document.createElement(kind === "video" ? "video" : "audio");
   media.preload = "metadata";
   media.src = buildProjectApiPath(projectId, `/preview/${assetPath}`);
@@ -372,6 +376,7 @@ export async function resolveDroppedAssetDuration(
 
   media.src = "";
   media.load();
+  releaseSlot();
   return duration;
 }
 
@@ -430,27 +435,43 @@ export async function resolveDroppedAssetDimensions(
   }
 
   return new Promise((resolve) => {
-    const video = document.createElement("video");
-    video.preload = "metadata";
     let settled = false;
+    let video: HTMLVideoElement | null = null;
+    let releaseSlot: MediaLoadRelease | null = null;
     const finalize = (value: { width: number; height: number } | null) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timeout);
-      video.onloadedmetadata = null;
-      video.onerror = null;
-      video.src = "";
-      video.load();
+      if (video) {
+        video.onloadedmetadata = null;
+        video.onerror = null;
+        video.src = "";
+        video.load();
+      }
+      releaseSlot?.();
       resolve(value);
     };
-    const timeout = window.setTimeout(() => finalize(null), 3000);
-    video.onloadedmetadata = () =>
-      finalize(
-        video.videoWidth > 0 && video.videoHeight > 0
-          ? { width: video.videoWidth, height: video.videoHeight }
-          : null,
-      );
-    video.onerror = () => finalize(null);
-    video.src = src;
+    // The probe budget starts once a slot is granted; the video is only
+    // created then, so a queued probe never opens a media asset early.
+    let timeout: number | undefined;
+    void acquireMediaLoad().then((release) => {
+      releaseSlot = release;
+      if (settled) {
+        release();
+        return;
+      }
+      const probe = document.createElement("video");
+      video = probe;
+      probe.preload = "metadata";
+      timeout = window.setTimeout(() => finalize(null), 3000);
+      probe.onloadedmetadata = () =>
+        finalize(
+          probe.videoWidth > 0 && probe.videoHeight > 0
+            ? { width: probe.videoWidth, height: probe.videoHeight }
+            : null,
+        );
+      probe.onerror = () => finalize(null);
+      probe.src = src;
+    });
   });
 }

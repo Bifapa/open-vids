@@ -1,6 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
+import { STUDIO_PREVIEW_DETACHED_SRC_ATTR } from "@hyperframes/core/studio-preview-mark";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
@@ -105,8 +106,13 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
     if (!win || !doc) return lastResult;
 
     for (const el of doc.querySelectorAll("video, audio")) {
+      // A video the preview holds no source for (see the runtime's preview media budget) has
+      // nothing to load: it is attached when the playhead nears it, not waited for here.
+      const holdsNoSource =
+        el.hasAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR) && !el.hasAttribute("src");
       if (
         isPreviewMediaElement(el) &&
+        !holdsNoSource &&
         !el.error &&
         el.networkState !== MEDIA_NETWORK_NO_SOURCE &&
         el.readyState < MEDIA_HAVE_FUTURE_DATA

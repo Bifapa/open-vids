@@ -87,6 +87,7 @@ const REPORT_INPUT: QaReportInput = {
     height: 1080,
     hasAudio: true,
     quality: "draft",
+    origin: "qa",
   },
   renderError: null,
   checks: [{ id: "render", status: "ran", detail: null }],
@@ -153,6 +154,25 @@ describe("HttpQaHost", () => {
     await expect(host.saveReport(REPORT_INPUT, signal())).rejects.toMatchObject({
       code: "studio_unavailable",
       message: "Studio returned an invalid report.",
+    });
+  });
+
+  it("ends a session through the session's finish route and rejects a malformed answer", async () => {
+    const { host, seen } = await studio({
+      [`POST ${PREFIX}/sessions/turn%2F1/finish`]: (_request, response) =>
+        json(response, 200, { removedRenders: ["renders/a.mp4"], removedReports: 2 }),
+      [`POST ${PREFIX}/sessions/turn-2/finish`]: (_request, response) =>
+        json(response, 200, { removedRenders: "all" }),
+    });
+    const request = { keep: "renders/b.mp4", produced: ["renders/a.mp4", "renders/b.mp4"] };
+    expect(await host.finishSession("turn/1", request, signal())).toEqual({
+      removedRenders: ["renders/a.mp4"],
+      removedReports: 2,
+    });
+    expect(seen[0]?.body).toEqual(request);
+    await expect(host.finishSession("turn-2", { keep: null }, signal())).rejects.toMatchObject({
+      code: "studio_unavailable",
+      message: "Studio returned an invalid cleanup result.",
     });
   });
 

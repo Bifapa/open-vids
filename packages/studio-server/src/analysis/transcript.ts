@@ -1,6 +1,8 @@
 import type {
+  SilenceMap,
   SpeakerTurn,
   TranscriptArtifact,
+  TranscriptHallucinations,
   TranscriptSentence,
   TranscriptWord,
 } from "@hyperframes/agent-protocol";
@@ -21,6 +23,22 @@ const SENTENCE_MAX_ORPHAN_WORDS = 2;
  */
 const SPEAKER_SPLIT_GAP_SECONDS = 0.25;
 const SPEAKER_SPLIT_MIN_WORDS = 3;
+
+/** A repeated sentence is a recognizer loop only when it has at least this many words: "Thank you." twice is speech. */
+const LOOP_MIN_WORDS = 5;
+/** ...and is said at least this many times in a row: a speaker repeats themselves twice, a looping recognizer keeps going. */
+const LOOP_MIN_COPIES = 3;
+/** Two sentences are "the same" when this share of their words match in order (1 = identical). */
+const LOOP_SIMILARITY = 0.85;
+/**
+ * Copies of a loop follow each other without a pause (a recognizer fills its windows); a speaker who repeats a line
+ * pauses between takes, and those retakes are for the take analysis to find, not for this filter to remove.
+ */
+const LOOP_MAX_GAP_SECONDS = 0.5;
+/** The first copy of a loop is dropped too when silence covers at least this share of it. */
+const LOOP_SILENT_SHARE = 0.5;
+/** Runs spelled out in the note before the rest is only counted. */
+const LOOP_NOTE_RUNS = 3;
 
 const CJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/u;
 const TERMINAL = /[.?!…。？！]["'”’)\]»」』]*$/u;
@@ -71,6 +89,164 @@ function normalizeWords(raw: SpeechTranscription["words"]): CleanWord[] {
     words.push(word);
   }
   return words;
+}
+
+/** Word index ranges (inclusive) of the sentences that terminal punctuation, pauses and the word limit give. */
+function sentenceSpans(words: readonly CleanWord[]): Array<[number, number]> {
+  // Boundaries that hold whatever the diarization says: punctuation, long pauses, the word limit.
+  const endsNaturally = (index: number): boolean => {
+    const word = words[index];
+    const next = words[index + 1];
+    return (
+      !word || !next || endsSentence(word.text) || next.start - word.end >= SENTENCE_GAP_SECONDS
+    );
+  };
+  /** Words left in the sentence after `index` when only punctuation and pauses end it, counted up to `limit`. */
+  const wordsLeft = (index: number, limit: number): number => {
+    let left = 0;
+    while (left < limit && !endsNaturally(index + left)) left++;
+    return left;
+  };
+  const spans: Array<[number, number]> = [];
+  let first = 0;
+  for (const [index, word] of words.entries()) {
+    const length = index - first + 1;
+    // The word limit never strands one or two words as a sentence of their own.
+    const overLimit =
+      length >= SENTENCE_MAX_WORDS &&
+      (length >= SENTENCE_MAX_WORDS + SENTENCE_MAX_ORPHAN_WORDS ||
+        wordsLeft(index, SENTENCE_MAX_ORPHAN_WORDS + 1) > SENTENCE_MAX_ORPHAN_WORDS);
+    if (word && (endsNaturally(index) || overLimit)) {
+      spans.push([first, index]);
+      first = index + 1;
+    }
+  }
+  return spans;
+}
+
+/** Lower-cased words without punctuation: "Great team!" and "great, team" read the same. */
+function loopTokens(words: readonly CleanWord[]): string[] {
+  return words
+    .map((word) => word.text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""))
+    .filter((token) => token.length > 0);
+}
+
+/** Share of the words two sentences have in common in order (longest common subsequence over the mean length). */
+function similarity(a: readonly string[], b: readonly string[]): number {
+  if (a.length === 0 || b.length === 0) return 0;
+  let previous = new Array<number>(b.length + 1).fill(0);
+  for (const x of a) {
+    const row = [0];
+    for (const [j, y] of b.entries()) {
+      row.push(x === y ? (previous[j] ?? 0) + 1 : Math.max(previous[j + 1] ?? 0, row[j] ?? 0));
+    }
+    previous = row;
+  }
+  return (2 * (previous[b.length] ?? 0)) / (a.length + b.length);
+}
+
+/** `part` is the tail (`end`) or the head (`start`) of `whole`, at least LOOP_MIN_WORDS long. */
+function isEdgeOf(
+  part: readonly string[],
+  whole: readonly string[],
+  edge: "start" | "end",
+): boolean {
+  if (part.length < LOOP_MIN_WORDS || part.length >= whole.length) return false;
+  const offset = edge === "end" ? whole.length - part.length : 0;
+  return part.every((token, i) => token === whole[offset + i]);
+}
+
+const overlap = (a: { start: number; end: number }, b: { start: number; end: number }): number =>
+  Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start));
+
+function describeLoop(text: string, copies: number, start: number, end: number): string {
+  const shown = text.length > 60 ? `${text.slice(0, 57).trimEnd()}…` : text;
+  return `"${shown}" ×${copies} at ${start.toFixed(1)}–${end.toFixed(1)} s`;
+}
+
+/**
+ * Removes recognizer hallucination loops: the same sentence (at least LOOP_MIN_WORDS words, LOOP_MIN_COPIES or more in
+ * a row, near-identical text) that a recognizer repeats window after window over music or noise. The first copy stays
+ * (the speech it may stand for), unless silence covers most of it; a half-sentence cut off at either end of the run
+ * goes with the copies. Repeats shorter than that, or said only twice, are speech and stay.
+ */
+function dropLoops(
+  words: CleanWord[],
+  silence: SilenceMap | null,
+): { words: CleanWord[]; report: TranscriptHallucinations | null } {
+  const spans = sentenceSpans(words);
+  const tokens = spans.map(([from, to]) => loopTokens(words.slice(from, to + 1)));
+  const timing = spans.map(([from, to]) => ({
+    start: words[from]?.start ?? 0,
+    end: words[to]?.end ?? 0,
+  }));
+  const follows = (a: number, b: number): boolean =>
+    (timing[b]?.start ?? 0) - (timing[a]?.end ?? 0) <= LOOP_MAX_GAP_SECONDS;
+
+  const dropped = new Set<number>();
+  const notes: string[] = [];
+  let runs = 0;
+  let droppedSentences = 0;
+  let index = 0;
+  while (index < spans.length) {
+    const head = tokens[index] ?? [];
+    let last = index;
+    if (head.length >= LOOP_MIN_WORDS) {
+      while (
+        last + 1 < spans.length &&
+        follows(last, last + 1) &&
+        similarity(tokens[last] ?? [], tokens[last + 1] ?? []) >= LOOP_SIMILARITY
+      )
+        last++;
+    }
+    const copies = last - index + 1;
+    if (copies < LOOP_MIN_COPIES) {
+      index = last + 1;
+      continue;
+    }
+
+    const fragments: number[] = [];
+    const before = index - 1;
+    if (before >= 0 && follows(before, index) && isEdgeOf(tokens[before] ?? [], head, "end"))
+      fragments.push(before);
+    const after = last + 1;
+    if (
+      after < spans.length &&
+      follows(last, after) &&
+      isEdgeOf(tokens[after] ?? [], tokens[last] ?? [], "start")
+    )
+      fragments.push(after);
+
+    const first = timing[index] ?? { start: 0, end: 0 };
+    let silent = 0;
+    for (const gap of silence?.silences ?? []) silent += overlap(gap, first);
+    const keepFirst = silent < LOOP_SILENT_SHARE * (first.end - first.start);
+    const removed = [...fragments, ...Array.from({ length: copies }, (_, k) => index + k)].filter(
+      (sentence) => sentence !== index || !keepFirst,
+    );
+    for (const sentence of removed) dropped.add(sentence);
+    runs++;
+    droppedSentences += removed.length;
+    const text = words
+      .slice(spans[index]?.[0], (spans[index]?.[1] ?? 0) + 1)
+      .map((word) => word.text)
+      .join(" ");
+    if (notes.length < LOOP_NOTE_RUNS)
+      notes.push(describeLoop(text, copies, first.start, timing[last]?.end ?? first.end));
+    index = last + 1;
+  }
+  if (runs === 0) return { words, report: null };
+
+  const kept: CleanWord[] = [];
+  for (const [sentence, [from, to]] of spans.entries()) {
+    if (!dropped.has(sentence)) kept.push(...words.slice(from, to + 1));
+  }
+  const droppedWords = words.length - kept.length;
+  const more = runs > notes.length ? `; ${runs - notes.length} more run(s)` : "";
+  const note =
+    `Dropped ${droppedWords} words of ${runs} repeated-sentence loop${runs === 1 ? "" : "s"} ` +
+    `(recognizer hallucination): ${notes.join("; ")}${more}.`;
+  return { words: kept, report: { runs, droppedSentences, droppedWords, note } };
 }
 
 /** Speaker of the turn that overlaps the word the most; the nearest turn when the word falls in a gap between turns. */
@@ -131,16 +307,20 @@ function dominantSpeaker(words: readonly TranscriptWord[]): string | null {
  * Builds the transcript artifact from a recognizer's words: cleans them up and groups them into sentences (terminal
  * punctuation, a pause of 1.2 s or more, 45 words, or a speaker change that has a pause of 0.25 s and three words on
  * each side). Each word first takes the speaker of the diarization turn it overlaps most; a sentence then belongs to
- * its duration-weighted majority speaker and every word in it carries that speaker.
+ * its duration-weighted majority speaker and every word in it carries that speaker. A sentence the recognizer looped
+ * (see `dropLoops`) is removed first and recorded in `hallucinations`; `silence` tells loops over silence from loops
+ * over music or noise.
  */
 export function buildTranscript(
   source: string,
   raw: SpeechTranscription["words"],
   language: string | null,
   turns: readonly SpeakerTurn[] | null,
+  silence: SilenceMap | null = null,
 ): TranscriptArtifact {
   const usableTurns = turns && turns.length > 0 ? turns : null;
-  const words: TranscriptWord[] = normalizeWords(raw).map((word, i) => ({
+  const loops = dropLoops(normalizeWords(raw), silence);
+  const words: TranscriptWord[] = loops.words.map((word, i) => ({
     i,
     text: word.text,
     start: word.start,
@@ -148,34 +328,7 @@ export function buildTranscript(
     speaker: usableTurns ? speakerOf(word, usableTurns) : null,
   }));
 
-  // Boundaries that hold whatever the diarization says: punctuation, long pauses, the word limit.
-  const endsNaturally = (index: number): boolean => {
-    const word = words[index];
-    const next = words[index + 1];
-    return (
-      !word || !next || endsSentence(word.text) || next.start - word.end >= SENTENCE_GAP_SECONDS
-    );
-  };
-  /** Words left in the sentence after `index` when only punctuation and pauses end it, counted up to `limit`. */
-  const wordsLeft = (index: number, limit: number): number => {
-    let left = 0;
-    while (left < limit && !endsNaturally(index + left)) left++;
-    return left;
-  };
-  const spans: Array<[number, number]> = [];
-  let first = 0;
-  for (const [index, word] of words.entries()) {
-    const length = index - first + 1;
-    // The word limit never strands one or two words as a sentence of their own.
-    const overLimit =
-      length >= SENTENCE_MAX_WORDS &&
-      (length >= SENTENCE_MAX_WORDS + SENTENCE_MAX_ORPHAN_WORDS ||
-        wordsLeft(index, SENTENCE_MAX_ORPHAN_WORDS + 1) > SENTENCE_MAX_ORPHAN_WORDS);
-    if (word && (endsNaturally(index) || overLimit)) {
-      spans.push([first, index]);
-      first = index + 1;
-    }
-  }
+  const spans = sentenceSpans(words);
 
   const sentences: TranscriptSentence[] = [];
   const close = (from: number, to: number) => {
@@ -217,5 +370,13 @@ export function buildTranscript(
 
   let speechSeconds = 0;
   for (const word of words) speechSeconds += word.end - word.start;
-  return { source, language, words, sentences, speechSeconds: round3(speechSeconds) };
+  const artifact: TranscriptArtifact = {
+    source,
+    language,
+    words,
+    sentences,
+    speechSeconds: round3(speechSeconds),
+  };
+  if (loops.report) artifact.hallucinations = loops.report;
+  return artifact;
 }

@@ -34,6 +34,11 @@ export type ChatEventPayload =
   /** A message added mid-turn (a steering instruction). */
   | { type: "message.appended"; message: ChatMessage }
   | { type: "assistant.text.delta"; messageId: string; partId: string; delta: string }
+  /**
+   * Text parts of a reply turned out to be an interim progress note: the runtime is about to check the result
+   * (render QA) and the final report follows it. Ids of parts that are not text are ignored.
+   */
+  | { type: "assistant.parts.interim"; messageId: string; partIds: string[] }
   | {
       type: "thinking.updated";
       messageId: string;

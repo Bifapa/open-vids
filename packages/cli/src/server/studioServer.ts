@@ -12,6 +12,7 @@ import { streamSSE } from "hono/streaming";
 import { realpath } from "@hyperframes/core";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { sweepRenderResidue } from "./renderResidue.js";
 import { fileURLToPath } from "node:url";
 import { resolve, join, basename, dirname, relative, sep } from "node:path";
 import { readBundleFile } from "./readBundleFile.js";
@@ -26,7 +27,7 @@ import {
   loadRuntimeSourceSignature,
 } from "./runtimeSource.js";
 import { VERSION as version } from "../version.js";
-import { isTrustedStudioHost } from "./hostGuard.js";
+import { checkStudioRequest } from "./hostGuard.js";
 import { isDevMode } from "../utils/env.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import type { ProjectLintResult } from "@hyperframes/lint";
@@ -446,6 +447,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     void histories.peek(projectDir)?.then((opened) => opened?.noteChange(changedPath));
   });
 
+  // A previous server killed mid-render (SIGKILL, crash) left scratch frames, a half-staged output and possibly its
+  // Chrome behind. Nothing of that belongs to this process, which has started no render yet.
+  sweepRenderResidue(join(projectDir, "renders"));
+  void import("@hyperframes/engine")
+    .then((engine) => engine.sweepOrphanBrowsers())
+    .catch(() => undefined);
+
   const inFlightRenders = new Map<AbortController, Promise<void>>();
   // Set synchronously by shutdown() before any await, so a render or
   // thumbnail request already queued behind it sees the flag instead of
@@ -805,6 +813,22 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   const app = new Hono();
 
+  // Every request — config probe, /api, static files, SPA — passes this gate first.
+  // Untrusted Host = DNS rebinding; foreign Origin / cross-site on a state-changing
+  // method = CSRF (CORS-simple POSTs reach the routes without a preflight).
+  app.use("*", async (c, next) => {
+    const verdict = checkStudioRequest({
+      method: c.req.method,
+      url: c.req.url,
+      host: c.req.header("host"),
+      origin: c.req.header("origin"),
+      secFetchSite: c.req.header("sec-fetch-site"),
+    });
+    if (verdict === "untrusted_host") return c.text("Forbidden host", 403);
+    if (verdict === "cross_origin") return c.text("Forbidden cross-origin request", 403);
+    await next();
+  });
+
   // Config probe endpoint — used by port detection to identify existing
   // HyperFrames instances and reuse them instead of spawning duplicates.
   // See portUtils.ts detectHyperframesServer() for the consumer.
@@ -1064,9 +1088,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     }
     let html = indexContent.toString("utf-8");
     // Inject the runtime env before the studio bundle runs. The env script is
-    // non-identifying; the Host check below keeps the rebinding guard live on
-    // this route so a rebound origin cannot use `/` as a probe.
-    void isTrustedStudioHost(c.req.header("host"));
+    // non-identifying.
     const headScript = buildRuntimeEnvScript();
     if (headScript) {
       html = html.replace("<head>", `<head>${headScript}`);

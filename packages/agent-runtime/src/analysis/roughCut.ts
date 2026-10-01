@@ -28,6 +28,8 @@ export interface RoughCutBatch {
   request: ApplyEditsRequest;
   /** Clips the batch replaces: the clips of the target track that play the plan's source. */
   replacedClips: number;
+  /** Untouched blank-template placeholder clips on the target track, removed with the cut (not user content). */
+  removedPlaceholders: number;
   /** Clips on other tracks (cutaways, B-roll, captions, manual additions): kept, positioned for the previous cut. */
   keptClips: number;
   /** Length of the finished cut on the timeline, seconds. */
@@ -67,7 +69,10 @@ export function roughCutBatch(input: {
   const replaced = timeline.clips
     .filter((clip) => clip.track === track && playsSource(clip.src, plan.source))
     .map((clip) => clip.id);
-  if (replaced.length > EDIT_LIMITS.removeClips) {
+  const placeholders = timeline.clips
+    .filter((clip) => clip.track === track && clip.placeholder === true)
+    .map((clip) => clip.id);
+  if (replaced.length + placeholders.length > EDIT_LIMITS.removeClips) {
     throw new EditingError(
       "invalid_request",
       `${replaced.length} clips of ${plan.source} are on track ${track}; remove some with edit_timeline first (a batch removes at most ${EDIT_LIMITS.removeClips}).`,
@@ -78,8 +83,8 @@ export function roughCutBatch(input: {
     0,
   );
   const operations: EditOperation[] = [
-    ...(replaced.length > 0
-      ? [{ op: "remove_clip", clips: replaced } satisfies EditOperation]
+    ...(replaced.length + placeholders.length > 0
+      ? [{ op: "remove_clip", clips: [...replaced, ...placeholders] } satisfies EditOperation]
       : []),
     {
       op: "add_sequence",
@@ -108,6 +113,7 @@ export function roughCutBatch(input: {
       operations,
     },
     replacedClips: replaced.length,
+    removedPlaceholders: placeholders.length,
     keptClips: timeline.clips.filter((clip) => clip.track !== track).length,
     length,
   };

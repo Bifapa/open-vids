@@ -103,22 +103,72 @@ function summaryOf(report: QaReport): QaReportSummary {
   };
 }
 
-/** The newest reports first; a damaged or foreign file in the folder is skipped, never an error. */
-export function listReports(projectDir: string, fingerprint: string): QaReportSummary[] {
+/** The ids of the report files in the folder, newest first (by the timestamp in the id); foreign files are not listed. */
+export function reportIds(projectDir: string): string[] {
   const dir = resolveWithinProject(projectDir, REPORTS_DIR);
   if (!dir || !existsSync(dir)) return [];
-  const ids = readdirSync(dir)
+  return readdirSync(dir)
     .filter((name) => name.endsWith(".json") && isReportId(name.slice(0, -5)))
     .map((name) => name.slice(0, -5))
     .sort()
     .reverse();
+}
+
+/** Deletes one report file (missing is fine). */
+export function removeReport(projectDir: string, id: string): void {
+  const file = isReportId(id) ? reportFile(projectDir, id) : null;
+  if (file) rmSync(file, { force: true });
+}
+
+/** When the report file was last written (ms); null when it is not there. */
+export function reportFileTime(projectDir: string, id: string): number | null {
+  const file = isReportId(id) ? reportFile(projectDir, id) : null;
+  try {
+    return file ? statSync(file).mtimeMs : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The moment in an id (`qa-YYYYMMDDHHMMSS-…`, UTC), ms. */
+export function reportIdTime(id: string): number {
+  const stamp = id.slice(3, 17);
+  const at = Date.parse(
+    `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(8, 10)}:${stamp.slice(10, 12)}:${stamp.slice(12, 14)}Z`,
+  );
+  return Number.isNaN(at) ? 0 : at;
+}
+
+/** The newest reports first; a damaged or foreign file in the folder is skipped, never an error. */
+export function listReports(projectDir: string, fingerprint: string): QaReportSummary[] {
   const reports: QaReportSummary[] = [];
-  for (const id of ids) {
+  for (const id of reportIds(projectDir)) {
     if (reports.length >= LIST_LIMIT) break;
     const report = readReport(projectDir, id, fingerprint);
     if (report) reports.push(summaryOf(report));
   }
   return reports.sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1));
+}
+
+/** The folder name of a render's frame cache: the render's file name without its extension. */
+export function renderStem(renderName: string): string {
+  return renderName.replace(/\.[^.]+$/, "");
+}
+
+/** The stems that have a frame cache folder. */
+export function frameCacheStems(projectDir: string): string[] {
+  const dir = resolveWithinProject(projectDir, FRAMES_DIR);
+  if (!dir || !existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+}
+
+/** Deletes the frame cache of one render stem (missing is fine). */
+export function removeFrameCache(projectDir: string, stem: string): void {
+  const dir =
+    stem && !stem.includes("/") ? resolveWithinProject(projectDir, `${FRAMES_DIR}/${stem}`) : null;
+  if (dir) rmSync(dir, { recursive: true, force: true });
 }
 
 /**
@@ -128,7 +178,7 @@ export function listReports(projectDir: string, fingerprint: string): QaReportSu
  * file is not that one any more.
  */
 export function framesDirFor(projectDir: string, renderName: string, renderFile: string): string {
-  const stem = renderName.replace(/\.[^.]+$/, "");
+  const stem = renderStem(renderName);
   const dir = pinWithinProject(projectDir, `${FRAMES_DIR}/${stem}`);
   if (!dir) throw new QaFailure("failed", "The QA frames folder is outside the project");
   const info = statSync(renderFile);

@@ -2,6 +2,7 @@ import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
   parseQaCheckRequest,
+  parseQaFinishRequest,
   parseQaFramesRequest,
   parseQaReportInput,
   type Parsed,
@@ -87,6 +88,18 @@ export function registerQaRoutes(
     tooLarge,
     route(async (project, c) =>
       service.saveReport(project, parsed(parseQaReportInput(await body(c)))),
+    ),
+  );
+
+  api.post(
+    "/projects/:id/qa/sessions/:sessionId/finish",
+    tooLarge,
+    route(async (project, c) =>
+      service.finishSession(
+        project,
+        c.req.param("sessionId") ?? "",
+        parsed(parseQaFinishRequest(await body(c))),
+      ),
     ),
   );
 

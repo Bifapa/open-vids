@@ -224,6 +224,78 @@ run("render checks", () => {
     expect(quiet).toMatchObject({ subject: "hf-bed", owner: "audio" });
   });
 
+  it("drops a render silence that is a pause in the clip's own source, and keeps one where the source has sound", async () => {
+    const clip = (src: string) => [
+      video("talk", src, 'data-start="0" data-duration="6" data-track-index="0"'),
+    ];
+    // No silence map in the analysis store: the source segment itself is measured.
+    const natural = setup({
+      duration: 6,
+      clips: clip("paused.mp4"),
+      render: RENDERS.silentStretch,
+    });
+    expect(
+      byCheck(await natural.service.check(natural.project.project, REQUEST), "audio.silence"),
+    ).toEqual([]);
+    const stuck = setup({ duration: 6, clips: clip("a.mp4"), render: RENDERS.silentStretch });
+    expect(
+      only(byCheck(await stuck.service.check(stuck.project.project, REQUEST), "audio.silence")),
+    ).toMatchObject({ subject: "hf-talk", owner: "editor" });
+
+    // The cached level-based silence map decides when there is one: it wins over what the file would measure.
+    const silenceMap = (silences: Array<{ start: number; end: number }>): QaAnalysis => ({
+      sourceData: async (_project, source) => ({
+        source,
+        kind: "video",
+        duration: 6,
+        transcript: null,
+        takes: null,
+        silence: { source, thresholdDb: -45, minSilence: 0.2, silences, silenceSeconds: 2.5 },
+        segments: null,
+        version: "v1",
+      }),
+    });
+    const mapped = setup({
+      duration: 6,
+      clips: clip("a.mp4"),
+      render: RENDERS.silentStretch,
+      analysis: silenceMap([{ start: 1.9, end: 4.6 }]),
+    });
+    expect(
+      byCheck(await mapped.service.check(mapped.project.project, REQUEST), "audio.silence"),
+    ).toEqual([]);
+    const elsewhere = setup({
+      duration: 6,
+      clips: clip("paused.mp4"),
+      render: RENDERS.silentStretch,
+      analysis: silenceMap([{ start: 0, end: 0.5 }]),
+    });
+    expect(
+      only(
+        byCheck(await elsewhere.service.check(elsewhere.project.project, REQUEST), "audio.silence"),
+      ),
+    ).toMatchObject({ subject: "hf-talk" });
+  });
+
+  it("maps the render silence to the clip's source time before judging the source", async () => {
+    // The clip plays its source from 1 s, so the render silence at 2–4.5 s is source 3–5.5 s. The source pause is
+    // 2–4.5 s: only 1.5 of those 2.5 s are silent in the source, so this is not a natural pause. Compared at the same
+    // numbers (no mapping) it would look like one.
+    const { service, project } = setup({
+      duration: 5,
+      clips: [
+        video(
+          "talk",
+          "paused.mp4",
+          'data-start="0" data-duration="5" data-media-start="1" data-track-index="0"',
+        ),
+      ],
+      render: RENDERS.silentStretch,
+    });
+    const response = await service.check(project.project, REQUEST);
+    expect(only(byCheck(response, "audio.silence"))).toMatchObject({ subject: "hf-talk" });
+  });
+
   it("reports a hole in the sound that no audible clip covers, between audible clips", async () => {
     // A-roll 0–2 s, nothing from 2 to 4.5 s, A-roll again 4.5–6 s; the render is silent from 2 s to 4.5 s.
     const aroll = setup({
@@ -428,6 +500,36 @@ run("timeline checks", () => {
     });
     expect(cut.message).toContain('"hello"');
     expect(statusOf(response, "timeline").detail).toContain("1 transcript");
+  });
+
+  it("does not call a cut in a measured pause a cut inside a word, however long the word's timing", async () => {
+    // Recognizer timings stretch "hello" over the pause after it (1.0–1.6); the level map measured silence at 1.25–1.6.
+    const paused: QaAnalysis = {
+      sourceData: async (project, source) => ({
+        ...(await analysis.sourceData(project, source)),
+        silence: {
+          source,
+          thresholdDb: -45,
+          minSilence: 0.2,
+          silences: [{ start: 1.25, end: 1.6 }],
+          silenceSeconds: 0.35,
+        },
+      }),
+    };
+    const { service, project } = setup({
+      duration: 6,
+      clips: [
+        video(
+          "talk",
+          "a.mp4",
+          'data-start="0" data-duration="1.5" data-media-start="1.3" data-track-index="0"',
+        ),
+      ],
+      render: RENDERS.clean,
+      analysis: paused,
+    });
+    const response = await service.check(project.project, REQUEST);
+    expect(byCheck(response, "timeline.cut_in_word")).toEqual([]);
   });
 
   it("does not look for cuts inside words without a fresh transcript, and says so", async () => {
@@ -775,19 +877,21 @@ run("cancellation", () => {
         () => null,
         (error: unknown) => error,
       );
+      // Generous: the suite runs next to other ffmpeg-heavy suites.
+      const WAIT = { timeout: 10_000, interval: 25 };
       // Both ffmpeg children (picture and audio) are running once each has written its pid.
       const pids = await vi.waitFor(() => {
         const started = readFileSync(pidFile, "utf-8").trim().split("\n").map(Number);
         expect(started.length).toBeGreaterThanOrEqual(2);
         return started;
-      });
+      }, WAIT);
       controller.abort();
       const error = await outcome;
       expect(error).toBeInstanceOf(QaFailure);
       expect(error).toMatchObject({ error: { code: "cancelled" } });
       expect(layoutAborted).toBe(true);
       for (const pid of pids) {
-        await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+        await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(), WAIT);
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });

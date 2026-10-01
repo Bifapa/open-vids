@@ -490,6 +490,14 @@ export interface QaCheckRun {
   detail: string | null;
 }
 
+/**
+ * Who produced a render QA looked at: `qa` — QA itself rendered it for a pass (an intermediate preview QA may delete
+ * when the session ends); `turn` — the Director's own render of the turn, reused by pass 1 (the user's file, never
+ * deleted by QA). A report written before this field existed reads as `turn`: when unsure, keep the file.
+ */
+export const QA_RENDER_ORIGINS = ["qa", "turn"] as const;
+export type QaRenderOrigin = (typeof QA_RENDER_ORIGINS)[number];
+
 export interface QaRenderInfo {
   /** Project-relative path of the rendered file. */
   path: string;
@@ -498,6 +506,7 @@ export interface QaRenderInfo {
   height: number;
   hasAudio: boolean | null;
   quality: string;
+  origin: QaRenderOrigin;
 }
 
 /**
@@ -612,6 +621,24 @@ export interface QaReportList {
   reports: QaReportSummary[];
 }
 
+/** Ends one QA session (the turn's QA): the session's intermediate QA renders go, `keep` stays. */
+export interface QaFinishRequest {
+  /** The render the final report names (the last successfully rendered pass); null when no pass rendered. */
+  keep: string | null;
+  /**
+   * Renders QA made in this session, including one a stopped pass made before its report was stored. The service
+   * still refuses to delete any of them that a report records as the turn's own, or that another session ends on.
+   */
+  produced?: string[];
+}
+
+export interface QaFinishResponse {
+  /** Project-relative paths of the renders that were deleted. */
+  removedRenders: string[];
+  /** Reports the retention policy deleted along the way. */
+  removedReports: number;
+}
+
 export interface QaStateResponse {
   fingerprint: string;
 }
@@ -693,6 +720,33 @@ export function parseQaFramesRequest(body: unknown): Parsed<QaFramesRequest> {
   };
 }
 
+/** At most this many renders in `produced`: a session makes one per pass. */
+const MAX_PRODUCED_RENDERS = 32;
+
+export function parseQaFinishRequest(body: unknown): Parsed<QaFinishRequest> {
+  if (!isRecord(body)) return fail("body must be an object");
+  if (body.keep !== null && !isRenderPath(body.keep))
+    return fail("keep must be a file in renders/ or null");
+  const produced = body.produced;
+  if (produced === undefined) return { ok: true, value: { keep: body.keep } };
+  if (
+    !Array.isArray(produced) ||
+    produced.length > MAX_PRODUCED_RENDERS ||
+    !produced.every(isRenderPath)
+  )
+    return fail(`produced must list at most ${MAX_PRODUCED_RENDERS} files in renders/`);
+  return { ok: true, value: { keep: body.keep, produced: produced.filter(isRenderPath) } };
+}
+
+export function isQaFinishResponse(value: unknown): value is QaFinishResponse {
+  return (
+    isRecord(value) &&
+    finite(value.removedReports) &&
+    Array.isArray(value.removedRenders) &&
+    value.removedRenders.every((path) => typeof path === "string")
+  );
+}
+
 function parseCheckRun(value: unknown): QaCheckRun | null {
   if (!isRecord(value)) return null;
   const id = QA_CHECK_IDS.find((known) => known === value.id);
@@ -706,6 +760,7 @@ function parseRenderInfo(value: unknown): QaRenderInfo | null {
   if (!finite(value.duration) || !finite(value.width) || !finite(value.height)) return null;
   const hasAudio = typeof value.hasAudio === "boolean" ? value.hasAudio : null;
   const quality = typeof value.quality === "string" ? value.quality.slice(0, 20) : "standard";
+  const origin = value.origin === "qa" ? "qa" : "turn";
   return {
     path: value.path,
     duration: value.duration,
@@ -713,6 +768,7 @@ function parseRenderInfo(value: unknown): QaRenderInfo | null {
     height: value.height,
     hasAudio,
     quality,
+    origin,
   };
 }
 

@@ -20,6 +20,11 @@ import {
   readRenderOverrides,
 } from "./getVariables";
 import { isElementNode, isHtmlElement, isLinkElement, isStyleElement } from "./domRealm";
+import {
+  detachPreviewVideoSources,
+  importPreviewNode,
+  isPreviewMediaBudgetActive,
+} from "./previewMediaBudget";
 
 type LoadExternalCompositionsParams = {
   injectedStyles: HTMLStyleElement[];
@@ -208,13 +213,22 @@ function stripExtractedCompositionAssets(node: ParentNode): void {
 }
 
 function prepareFlattenedInnerRoot(innerRoot: HTMLElement): HTMLElement {
-  const prepared = document.importNode(innerRoot, true) as HTMLElement;
+  const prepared = importPreviewNode(document, window, innerRoot);
   markFlattenedInnerRoot(prepared);
   const w = parseLayoutDimension(prepared.getAttribute("data-width"));
   const h = parseLayoutDimension(prepared.getAttribute("data-height"));
   prepared.style.width = w === null ? "100%" : `${w}px`;
   prepared.style.height = h === null ? "100%" : `${h}px`;
   return prepared;
+}
+
+/** A fallback body, parsed in an inert document so its managed videos never see a live `src`. */
+function previewBodyHtml(html: string): string {
+  if (!isPreviewMediaBudgetActive(document, window)) return html;
+  const body = document.implementation.createHTMLDocument("").body;
+  body.innerHTML = html;
+  detachPreviewVideoSources(body);
+  return body.innerHTML;
 }
 
 function resolveScriptSourceUrl(scriptSrc: string, compositionUrl: URL | null): string {
@@ -537,11 +551,11 @@ async function mountCompositionContent(params: {
     stripExtractedCompositionAssets(flattenedRoot);
     params.host.appendChild(flattenedRoot);
   } else if (params.hasTemplate) {
-    const mountedContent = document.importNode(contentNode, true);
+    const mountedContent = importPreviewNode(document, window, contentNode);
     stripExtractedCompositionAssets(mountedContent);
     params.host.appendChild(mountedContent);
   } else {
-    params.host.innerHTML = params.fallbackBodyInnerHtml;
+    params.host.innerHTML = previewBodyHtml(params.fallbackBodyInnerHtml);
     stripExtractedCompositionAssets(params.host);
   }
 

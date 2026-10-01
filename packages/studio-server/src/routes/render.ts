@@ -6,6 +6,7 @@ import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
 import { resolveWithinProject } from "../helpers/safePath.js";
+import { fileResponse } from "../helpers/fileResponse.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
@@ -198,14 +199,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     }
     const contentType = renderContentType(job.outputPath);
     const filename = job.outputPath.split("/").pop() ?? `render.mp4`;
-    const content = readFileSync(job.outputPath);
-    return new Response(content, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": contentDispositionHeader("inline", filename),
-        "Accept-Ranges": "bytes",
-        "Content-Length": String(content.length),
-      },
+    return fileResponse(job.outputPath, c.req.header("Range"), {
+      "Content-Type": contentType,
+      "Content-Disposition": contentDispositionHeader("inline", filename),
     });
   });
 
@@ -218,12 +214,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     }
     const contentType = renderContentType(job.outputPath);
     const filename = job.outputPath.split("/").pop() ?? `render.mp4`;
-    const content = readFileSync(job.outputPath);
-    return new Response(content, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": contentDispositionHeader("attachment", filename),
-      },
+    return fileResponse(job.outputPath, c.req.header("Range"), {
+      "Content-Type": contentType,
+      "Content-Disposition": contentDispositionHeader("attachment", filename),
     });
   });
 
@@ -260,14 +253,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (!fp) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
     const contentType = renderContentType(fp);
-    const content = readFileSync(fp);
-    return new Response(content, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": contentDispositionHeader("inline", filename),
-        "Accept-Ranges": "bytes",
-        "Content-Length": String(content.length),
-      },
+    return fileResponse(fp, c.req.header("Range"), {
+      "Content-Type": contentType,
+      "Content-Disposition": contentDispositionHeader("inline", filename),
     });
   });
 
