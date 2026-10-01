@@ -54,6 +54,7 @@ describe("composer", () => {
     expect(client.startTurn).toHaveBeenCalledWith("c1", {
       prompt: "Trim the intro",
       editorContext: undefined,
+      userLanguage: "en",
       mode: "normal",
     });
     expect(store.getState().drafts.c1).toBe("");
@@ -71,6 +72,7 @@ describe("composer", () => {
     expect(client.steerTurn).toHaveBeenCalledWith("c1", "t1", {
       text: "Make it shorter",
       editorContext: undefined,
+      userLanguage: "en",
     });
     expect(client.startTurn).not.toHaveBeenCalled();
 

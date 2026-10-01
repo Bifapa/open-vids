@@ -160,6 +160,7 @@ describe("Find with Research", () => {
       storyAction: "resolve",
       storyOptions: { missing: ["m1"] },
       editorContext: undefined,
+      userLanguage: "en",
     });
     expect(useDockLayoutStore.getState().pendingActivation).toBe("chat");
   });
