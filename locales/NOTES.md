@@ -1168,3 +1168,17 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `shell.history.redid` — {label} is the name of the edit that was redone.
 - `shell.history.razorInSubComposition` — {key} is the razor tool's shortcut key.
 - `layer.label.element` — Fallback name of a picked element that has no label or tag name.
+
+## desktop-native
+
+- `dialog.locate.title` — Native folder-picker window title; {name} is the project folder name being relinked.
+- `dialog.openProject.title` — Native folder-picker window title; same action as the home page Open sheet.
+- `menu.app.about` — First item of the macOS app menu; opens the About panel.
+- `menu.app.aboutComment` — About panel subtitle.
+- `menu.app.aboutCredits` — About panel credits; \n is a line break; OpenVids, HyperFrames, HeyGen and Apache License 2.0 stay untranslated.
+- `menu.app.name` — Product name; also the main window title. Never translated.
+- `menu.app.quit` — macOS convention is Завершить (not Закрыть) for quitting an app.
+- `menu.file.openProject` — Also the ⌘O menu item; the ellipsis means a dialog follows.
+- `menu.help.welcome` — Reopens the first-run onboarding.
+- `menu.view.reload` — Reloads the window document.
+- `menu.window.fullScreen` — Standard macOS wording; long in Russian, the Window menu must fit it.

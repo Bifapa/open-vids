@@ -62,6 +62,7 @@ mod home_project;
 mod home_research;
 mod home_routes;
 mod home_system;
+mod i18n;
 mod install_job;
 mod intake;
 mod locales;
@@ -311,7 +312,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let open = MenuItem::with_id(
         app,
         "open_project",
-        "Open Project Folder…",
+        i18n::t("menu.file.openProject"),
         true,
         Some("CmdOrCtrl+O"),
     )?;
@@ -320,89 +321,114 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let home = MenuItem::with_id(
         app,
         "show_home",
-        "Show All Projects",
+        i18n::t("menu.file.showAllProjects"),
         true,
         Some("CmdOrCtrl+Shift+O"),
     )?;
     let file = Submenu::with_items(
         app,
-        "File",
+        i18n::t("menu.file.title"),
         true,
         &[
             &open,
             &home,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, Some("Close Window"))?,
-            &PredefinedMenuItem::quit(app, Some("Quit OpenVids"))?,
+            &PredefinedMenuItem::close_window(app, Some(&i18n::t("menu.file.closeWindow")))?,
+            &PredefinedMenuItem::quit(app, Some(&i18n::t("menu.app.quit")))?,
         ],
     )?;
 
     let about = PredefinedMenuItem::about(
         app,
-        Some("About OpenVids"),
+        Some(&i18n::t("menu.app.about")),
         Some(AboutMetadata {
             name: Some("OpenVids".into()),
             version: Some(env!("CARGO_PKG_VERSION").into()),
-            comments: Some("Agent-native desktop video editor".into()),
+            comments: Some(i18n::t("menu.app.aboutComment")),
             website: Some("https://openvids.ai".into()),
             website_label: Some("openvids.ai".into()),
-            credits: Some(
-                "openvids.ai\nBuilt on HyperFrames by HeyGen, used under the Apache License 2.0."
-                    .into(),
-            ),
+            credits: Some(i18n::t("menu.app.aboutCredits")),
             ..Default::default()
         }),
     )?;
     let app_menu = Submenu::with_items(
         app,
-        "OpenVids",
+        i18n::t("menu.app.name"),
         true,
         &[
             &about,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::hide(app, Some("Hide OpenVids"))?,
-            &PredefinedMenuItem::hide_others(app, Some("Hide Others"))?,
+            &PredefinedMenuItem::hide(app, Some(&i18n::t("menu.app.hide")))?,
+            &PredefinedMenuItem::hide_others(app, Some(&i18n::t("menu.app.hideOthers")))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, Some("Quit OpenVids"))?,
+            &PredefinedMenuItem::quit(app, Some(&i18n::t("menu.app.quit")))?,
         ],
     )?;
 
     let edit = Submenu::with_items(
         app,
-        "Edit",
+        i18n::t("menu.edit.title"),
         true,
         &[
-            &PredefinedMenuItem::undo(app, Some("Undo"))?,
-            &PredefinedMenuItem::redo(app, Some("Redo"))?,
+            &PredefinedMenuItem::undo(app, Some(&i18n::t("menu.edit.undo")))?,
+            &PredefinedMenuItem::redo(app, Some(&i18n::t("menu.edit.redo")))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::cut(app, Some("Cut"))?,
-            &PredefinedMenuItem::copy(app, Some("Copy"))?,
-            &PredefinedMenuItem::paste(app, Some("Paste"))?,
-            &PredefinedMenuItem::select_all(app, Some("Select All"))?,
+            &PredefinedMenuItem::cut(app, Some(&i18n::t("menu.edit.cut")))?,
+            &PredefinedMenuItem::copy(app, Some(&i18n::t("menu.edit.copy")))?,
+            &PredefinedMenuItem::paste(app, Some(&i18n::t("menu.edit.paste")))?,
+            &PredefinedMenuItem::select_all(app, Some(&i18n::t("menu.edit.selectAll")))?,
         ],
     )?;
 
-    let reload = MenuItem::with_id(app, "reload", "Reload", true, Some("CmdOrCtrl+R"))?;
-    let view = Submenu::with_items(app, "View", true, &[&reload])?;
+    let reload = MenuItem::with_id(
+        app,
+        "reload",
+        i18n::t("menu.view.reload"),
+        true,
+        Some("CmdOrCtrl+R"),
+    )?;
+    let view = Submenu::with_items(app, i18n::t("menu.view.title"), true, &[&reload])?;
 
     let window = Submenu::with_items(
         app,
-        "Window",
+        i18n::t("menu.window.title"),
         true,
         &[
-            &PredefinedMenuItem::minimize(app, Some("Minimize"))?,
+            &PredefinedMenuItem::minimize(app, Some(&i18n::t("menu.window.minimize")))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::fullscreen(app, Some("Enter Full Screen"))?,
-            &PredefinedMenuItem::close_window(app, Some("Close Window"))?,
+            &PredefinedMenuItem::fullscreen(app, Some(&i18n::t("menu.window.fullScreen")))?,
+            &PredefinedMenuItem::close_window(app, Some(&i18n::t("menu.file.closeWindow")))?,
         ],
     )?;
 
     // Help › Welcome to OpenVids… reopens the first-run onboarding (see
     // `show_onboarding`). The id is what `set_help_menu` finds again in `setup`.
-    let welcome = MenuItem::with_id(app, "welcome", "Welcome to OpenVids…", true, None::<&str>)?;
-    let help = Submenu::with_id_and_items(app, "help", "Help", true, &[&welcome])?;
+    let welcome = MenuItem::with_id(
+        app,
+        "welcome",
+        i18n::t("menu.help.welcome"),
+        true,
+        None::<&str>,
+    )?;
+    let help =
+        Submenu::with_id_and_items(app, "help", i18n::t("menu.help.title"), true, &[&welcome])?;
 
     Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window, &help])
+}
+
+/// Rebuild the native menu in the current language. macOS owns the menu bar
+/// app-wide, so `AppHandle::set_menu` (which hops to the main thread) is the
+/// right call on every platform; `Window::set_menu` is a documented no-op on
+/// macOS. Best-effort: a failed rebuild keeps the previous menu.
+fn apply_language(app: &tauri::AppHandle) {
+    match build_menu(app) {
+        Ok(menu) => {
+            if let Err(error) = app.set_menu(menu) {
+                eprintln!("[openvids] could not apply the menu language: {error}");
+            }
+        }
+        Err(error) => eprintln!("[openvids] could not rebuild the menu: {error}"),
+    }
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────────
@@ -470,13 +496,70 @@ pub fn run() {
                 }
             }
             home.set_opener(home_opener(handle.clone()));
-            let theme_handle = handle.clone();
+            // Language + theme follower for preference changes. The home page
+            // calls this listener on `PUT /api/preferences`; the polling
+            // watcher below calls it for Studio-side writes. The last resolved
+            // language lives in memory only, so a restart re-reads the file.
+            let last_lang = std::sync::Arc::new(Mutex::new(i18n::active().to_string()));
+            let prefs_handle = handle.clone();
+            let prefs_lang = last_lang.clone();
             home.set_prefs_listener(std::sync::Arc::new(move |prefs| {
-                if let Some(window) = theme_handle.get_webview_window("main") {
+                if let Some(window) = prefs_handle.get_webview_window("main") {
                     let _ = window.set_theme(window_theme(prefs));
                 }
-                paint_window_background(&theme_handle);
+                paint_window_background(&prefs_handle);
+                let code = {
+                    let os: Vec<String> = sys_locale::get_locales().collect();
+                    i18n::resolve_for_prefs(prefs, &os)
+                };
+                let mut last = prefs_lang.lock().unwrap_or_else(|e| e.into_inner());
+                if *last != code {
+                    *last = code;
+                    apply_language(&prefs_handle);
+                }
             }));
+            // Studio writes the same preferences file through its own server,
+            // so Rust is never told. Poll the file mtime; on change, re-read
+            // and run the same listener the home page path runs — theme and
+            // language then follow no matter which page saved. Recoverable by
+            // design: a deleted or unreadable file just reads as defaults.
+            let watch_handle = handle.clone();
+            let watch_lang = last_lang.clone();
+            std::thread::spawn(move || {
+                let path = prefs::prefs_path();
+                let mut known: Option<std::time::SystemTime> = None;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let current = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+                    if current == known {
+                        continue;
+                    }
+                    known = current;
+                    let next = prefs::load(&path);
+                    let theme = window_theme(&next);
+                    let os: Vec<String> = sys_locale::get_locales().collect();
+                    let code = i18n::resolve_for_prefs(&next, &os);
+                    let changed = {
+                        let mut last = watch_lang.lock().unwrap_or_else(|e| e.into_inner());
+                        if *last == code {
+                            false
+                        } else {
+                            *last = code;
+                            true
+                        }
+                    };
+                    let moved = watch_handle.clone();
+                    let _ = watch_handle.run_on_main_thread(move || {
+                        if let Some(window) = moved.get_webview_window("main") {
+                            let _ = window.set_theme(theme);
+                        }
+                        paint_window_background(&moved);
+                        if changed {
+                            apply_language(&moved);
+                        }
+                    });
+                }
+            });
             let preferences = prefs::load(&prefs::prefs_path());
             // What opens at launch: a project named on the command line, else
             // the last project when Settings › On launch says so. Marked as
@@ -852,7 +935,7 @@ fn pick_and_open(app: &tauri::AppHandle) {
     let handle = app.clone();
     std::thread::spawn(move || {
         let picked = rfd::FileDialog::new()
-            .set_title("Open Project")
+            .set_title(i18n::t("dialog.openProject.title"))
             .pick_folder();
         if let Some(dir) = picked {
             open_project_async(&handle, dir, None);

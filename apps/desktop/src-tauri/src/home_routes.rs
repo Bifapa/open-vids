@@ -422,7 +422,7 @@ fn serve_open_state(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
 
 fn handle_pick_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
     match rfd::FileDialog::new()
-        .set_title("Open Project")
+        .set_title(super::i18n::t("dialog.openProject.title"))
         .pick_folder()
     {
         None => respond(stream, 200, "application/json", br#"{"cancelled":true}"#),
@@ -451,7 +451,7 @@ fn handle_pick_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
 
 fn handle_pick_parent(stream: &mut TcpStream) {
     match rfd::FileDialog::new()
-        .set_title("Choose Where to Create the Project")
+        .set_title(super::i18n::t("dialog.chooseLocation.title"))
         .pick_folder()
     {
         None => respond(stream, 200, "application/json", br#"{"cancelled":true}"#),

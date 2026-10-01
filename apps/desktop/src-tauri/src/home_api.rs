@@ -281,7 +281,10 @@ pub fn handle_locate(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
     let Some(entry) = find(state, &id) else {
         return error(stream, 404, "unknown project");
     };
-    let mut dialog = rfd::FileDialog::new().set_title(format!("Locate “{}”", entry.id));
+    let mut dialog = rfd::FileDialog::new().set_title(super::i18n::t_with(
+        "dialog.locate.title",
+        &[("name", &entry.id)],
+    ));
     if let Some(parent) = entry.dir.ancestors().skip(1).find(|p| p.is_dir()) {
         dialog = dialog.set_directory(parent);
     }
@@ -455,7 +458,7 @@ fn describe(paths: &[PathBuf]) -> Value {
 /// `POST /api/files/pick` — the native multi-file picker.
 pub fn handle_pick_files(stream: &mut TcpStream) {
     match rfd::FileDialog::new()
-        .set_title("Add Files to the New Project")
+        .set_title(super::i18n::t("dialog.addFiles.title"))
         .pick_files()
     {
         None => respond_json(stream, 200, &json!({ "cancelled": true, "files": [], "skipped": [] })),
