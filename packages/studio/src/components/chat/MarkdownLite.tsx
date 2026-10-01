@@ -1,9 +1,11 @@
 import { memo, type ReactNode } from "react";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { parseMarkdownLite, type Block, type Inline } from "./markdownParse";
 
 function InlineRun({ nodes }: { nodes: Inline[] }) {
+  const { t } = useTranslation();
   return (
     <>
       {nodes.map((node, index) => {
@@ -40,7 +42,7 @@ function InlineRun({ nodes }: { nodes: Inline[] }) {
                 key={index}
                 type="button"
                 data-testid="chat-timecode"
-                aria-label={`Show ${node.text} in the preview`}
+                aria-label={t("chat.markdown.showTimecode", { time: node.text })}
                 onClick={() => usePlayerStore.getState().requestSeek(node.seconds)}
                 className={cn(
                   "-mx-px inline rounded-xs px-0.5 font-mono text-xs text-fg tabular-nums",

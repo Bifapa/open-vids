@@ -15,6 +15,7 @@ import type {
   TurnSummary,
 } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
+import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { Badge, Spinner, type StatusTone } from "../ui/Status";
 import { chatFocus, chatMeasureWide } from "./chatStyles";
@@ -64,6 +65,7 @@ const STATUS_TONES: Record<TurnQaStatus, string> = {
 };
 
 function PassRow({ pass, refreshKey }: { pass: QaPassState; refreshKey: string }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const qaRenderUrl = useAgentStore((state) => state.qaRenderUrl);
   const reportDomId = useId();
@@ -97,13 +99,13 @@ function PassRow({ pass, refreshKey }: { pass: QaPassState; refreshKey: string }
             !expandable && "invisible",
           )}
         />
-        <span className="font-medium text-fg">Pass {pass.pass}</span>
+        <span className="font-medium text-fg">{t("chat.qa.pass", { pass: pass.pass })}</span>
         <span
           data-testid="qa-pass-phase"
           className={cn("inline-flex items-center gap-1", live ? "text-fg-2" : "text-fg-3")}
         >
           <PhaseGlyph phase={pass.phase} />
-          {QA_PASS_PHASE_LABELS[pass.phase]}
+          {t(QA_PASS_PHASE_LABELS[pass.phase])}
           {live ? "…" : ""}
         </span>
         {counts.map(({ key, text }) => {
@@ -118,7 +120,7 @@ function PassRow({ pass, refreshKey }: { pass: QaPassState; refreshKey: string }
         })}
         {pass.vision && pass.vision !== "ran" && (
           <span data-testid="qa-pass-vision" className="text-2xs text-fg-3">
-            {QA_VISION_STATUS_LABELS[pass.vision]}
+            {t(QA_VISION_STATUS_LABELS[pass.vision])}
           </span>
         )}
       </button>
@@ -153,18 +155,17 @@ function PassRow({ pass, refreshKey }: { pass: QaPassState; refreshKey: string }
  * with its counts. A pass opens its stored report.
  */
 export function RenderQaCard({ turn }: { turn: TurnSummary }) {
+  const { t } = useTranslation();
   const qa = turn.qa;
   if (!qa) return null;
   const limit =
-    qa.passLimit === 0
-      ? "QA off"
-      : `up to ${qa.passLimit} ${qa.passLimit === 1 ? "pass" : "passes"}`;
+    qa.passLimit === 0 ? t("chat.qa.limitOff") : t("chat.qa.limit", { count: qa.passLimit });
   // A revert changes the project; open reports read again and say they are outdated.
   const refreshKey = turn.checkpoint?.status ?? "none";
 
   return (
     <section
-      aria-label="Render QA"
+      aria-label={t("chat.qa.title")}
       data-testid="render-qa"
       data-qa-status={qa.status}
       className={cn(
@@ -174,16 +175,16 @@ export function RenderQaCard({ turn }: { turn: TurnSummary }) {
     >
       <div className="flex h-ctl items-center gap-[5px] pr-2 pl-2 text-sm">
         <ShieldCheck aria-hidden className="size-icon-sm shrink-0 text-fg-3" />
-        <span className="font-semibold text-fg">Render QA</span>
+        <span className="font-semibold text-fg">{t("chat.qa.title")}</span>
         <span className="min-w-0 flex-1 truncate text-xs text-fg-3">
-          {EXECUTION_PRESET_LABELS[qa.preset]} · {limit}
+          {t("chat.qa.summaryLine", { preset: t(EXECUTION_PRESET_LABELS[qa.preset]), limit })}
         </span>
         <span
           data-testid="render-qa-status"
           className={cn("inline-flex shrink-0 items-center gap-1 text-xs", STATUS_TONES[qa.status])}
         >
           <StatusGlyph status={qa.status} />
-          {TURN_QA_STATUS_LABELS[qa.status]}
+          {t(TURN_QA_STATUS_LABELS[qa.status])}
         </span>
       </div>
       {qa.reason && (

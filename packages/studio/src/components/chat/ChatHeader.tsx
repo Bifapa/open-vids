@@ -8,26 +8,39 @@ import { cn } from "../ui/cn";
 import { IconButton } from "../ui/IconButton";
 import { Menu, MenuItem, MenuSeparator } from "../ui/Menu";
 import { StatusDot, type StatusDotTone } from "../ui/Status";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { AgentCrumbs } from "./AgentCrumbs";
 import { chatFocus } from "./chatStyles";
 import { formatElapsed } from "./relativeTime";
 import { useNow } from "./useNow";
 
+type StatusKind = "queued" | "working" | "done" | "failed" | "stopped" | "interrupted" | "idle";
+
+const STATUS_LABELS: Record<StatusKind, TranslationKey> = {
+  queued: "chat.status.queued",
+  working: "chat.status.working",
+  done: "chat.status.done",
+  failed: "chat.status.failed",
+  stopped: "chat.status.stopped",
+  interrupted: "chat.status.interrupted",
+  idle: "chat.status.idle",
+};
+
 interface HeaderStatus {
-  label: string;
+  kind: StatusKind;
   tone: StatusDotTone;
   /** When the work being timed started; set only while it runs. */
   since: number | null;
 }
 
 const RUN_STATUS: Record<AgentRunStatus, Omit<HeaderStatus, "since">> = {
-  queued: { label: "Queued", tone: "off" },
-  running: { label: "Working", tone: "running" },
-  completed: { label: "Done", tone: "ok" },
-  failed: { label: "Failed", tone: "error" },
-  aborted: { label: "Stopped", tone: "off" },
-  cancelled: { label: "Stopped", tone: "off" },
-  interrupted: { label: "Interrupted", tone: "warn" },
+  queued: { kind: "queued", tone: "off" },
+  running: { kind: "working", tone: "running" },
+  completed: { kind: "done", tone: "ok" },
+  failed: { kind: "failed", tone: "error" },
+  aborted: { kind: "stopped", tone: "off" },
+  cancelled: { kind: "stopped", tone: "off" },
+  interrupted: { kind: "interrupted", tone: "warn" },
 };
 
 /** The open chat's state (or, in a subagent view, that agent's latest run). */
@@ -37,53 +50,56 @@ function liveStatus(chat: ChatState, thread: ThreadId): HeaderStatus {
     if (run) {
       const status = RUN_STATUS[run.status];
       return {
-        label: status.label,
+        kind: status.kind,
         tone: status.tone,
         since: run.status === "running" ? run.startedAt : null,
       };
     }
   }
   const running = runningTurn(chat);
-  if (running) return { label: "Working", tone: "running", since: running.startedAt };
+  if (running) return { kind: "working", tone: "running", since: running.startedAt };
   const last = chat.turns[chat.turns.length - 1];
-  if (!last) return { label: "Idle", tone: "off", since: null };
-  if (last.status === "failed") return { label: "Failed", tone: "error", since: null };
-  if (last.status === "interrupted") return { label: "Interrupted", tone: "warn", since: null };
-  if (last.status === "aborted") return { label: "Stopped", tone: "off", since: null };
-  return { label: "Done", tone: "ok", since: null };
+  if (!last) return { kind: "idle", tone: "off", since: null };
+  if (last.status === "failed") return { kind: "failed", tone: "error", since: null };
+  if (last.status === "interrupted") return { kind: "interrupted", tone: "warn", since: null };
+  if (last.status === "aborted") return { kind: "stopped", tone: "off", since: null };
+  return { kind: "done", tone: "ok", since: null };
 }
 
 /** A chat seen from the history list (no snapshot loaded). */
 function summaryStatus(summary: ChatSummary, since: number | null): HeaderStatus {
   switch (summary.status) {
     case "working":
-      return { label: "Working", tone: "running", since };
+      return { kind: "working", tone: "running", since };
     case "completed":
-      return { label: "Done", tone: "ok", since: null };
+      return { kind: "done", tone: "ok", since: null };
     case "failed":
-      return { label: "Failed", tone: "error", since: null };
+      return { kind: "failed", tone: "error", since: null };
     case "interrupted":
-      return { label: "Interrupted", tone: "warn", since: null };
+      return { kind: "interrupted", tone: "warn", since: null };
     case "idle":
-      return { label: "Idle", tone: "off", since: null };
+      return { kind: "idle", tone: "off", since: null };
   }
 }
 
 function StatusReadout({ status }: { status: HeaderStatus }) {
+  const { t } = useTranslation();
   const timing = status.since !== null;
   const now = useNow(timing);
   return (
     <span
       aria-live="polite"
       data-testid="chat-status"
-      data-status={status.label.toLowerCase()}
+      data-status={status.kind}
       className={cn(
         "inline-flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap tabular-nums",
         timing ? "text-fg-2" : "text-fg-3",
       )}
     >
       <StatusDot tone={status.tone} />
-      <span className={cn(timing && "@max-[299px]/chat:sr-only")}>{status.label}</span>
+      <span className={cn(timing && "@max-[299px]/chat:sr-only")}>
+        {t(STATUS_LABELS[status.kind])}
+      </span>
       {status.since !== null && (
         <>
           <span aria-hidden className="@max-[299px]/chat:hidden">
@@ -97,6 +113,7 @@ function StatusReadout({ status }: { status: HeaderStatus }) {
 }
 
 function RenameInput({ title, onDone }: { title: string; onDone: (value: string | null) => void }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => inputRef.current?.select(), []);
@@ -104,7 +121,7 @@ function RenameInput({ title, onDone }: { title: string; onDone: (value: string 
     <input
       ref={inputRef}
       value={draft}
-      aria-label="Chat title"
+      aria-label={t("chat.header.titleField")}
       maxLength={200}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={() => onDone(draft)}
@@ -127,6 +144,7 @@ function RenameInput({ title, onDone }: { title: string; onDone: (value: string 
  * new-chat draft.
  */
 export function ChatHeader({ contextChat }: { contextChat: ChatSummary | null }) {
+  const { t } = useTranslation();
   const view = useAgentStore((state) => state.view);
   const chat = useAgentStore((state) => state.chat);
   const activeTurn = useAgentStore((state) => state.activeTurn);
@@ -143,7 +161,7 @@ export function ChatHeader({ contextChat }: { contextChat: ChatSummary | null })
   const locked = inChat && runningTurn(chat) !== null;
   // While a chat loads (or history is open) the row shows the summary of the chat it is about.
   const shown = inChat ? chat.chat : contextChat;
-  let status: HeaderStatus = { label: "Idle", tone: "off", since: null };
+  let status: HeaderStatus = { kind: "idle", tone: "off", since: null };
   if (inChat) status = liveStatus(chat, thread);
   else if (shown) {
     status = summaryStatus(shown, activeTurn?.chatId === shown.id ? activeTurn.startedAt : null);
@@ -177,21 +195,21 @@ export function ChatHeader({ contextChat }: { contextChat: ChatSummary | null })
         <button
           type="button"
           onClick={showHistory}
-          title={view === "history" ? "Back to this chat" : "Open chat history"}
+          title={view === "history" ? t("chat.header.backToChat") : t("chat.header.openHistory")}
           className={cn(
             "inline-flex h-ctl-xs min-w-0 shrink items-center overflow-hidden rounded-sm px-1.5 text-left font-medium text-fg",
             "hover:bg-surface-2",
             chatFocus,
           )}
         >
-          <span className="truncate">{shown?.title ?? "New chat"}</span>
+          <span className="truncate">{shown?.title ?? t("chat.header.newChat")}</span>
         </button>
         {inChat && (
           <IconButton
             size="xs"
-            aria-label={`Rename chat: ${chat.chat.title}`}
+            aria-label={t("chat.header.renameLabel", { title: chat.chat.title })}
             aria-disabled={locked}
-            title={locked ? "The title can’t change while the agent is working" : "Rename chat"}
+            title={locked ? t("chat.header.renameLocked") : t("chat.header.rename")}
             icon={<PencilSimple aria-hidden className="size-icon-sm" />}
             onClick={startRename}
             className={cn(
@@ -215,38 +233,42 @@ export function ChatHeader({ contextChat }: { contextChat: ChatSummary | null })
       <div className="flex shrink-0 items-center">
         <IconButton
           size="sm"
-          aria-label="Chat history"
+          aria-label={t("chat.header.history")}
           aria-pressed={view === "history"}
-          title="Chat history"
+          title={t("chat.header.history")}
           icon={<ClockCounterClockwise aria-hidden className="size-icon-md" />}
           onClick={showHistory}
         />
         <IconButton
           size="sm"
-          aria-label="New chat"
-          title="New chat"
+          aria-label={t("chat.header.newChat")}
+          title={t("chat.header.newChat")}
           disabled={pending !== null}
           icon={<Plus aria-hidden className="size-icon-md" />}
           onClick={startDraft}
         />
         <Menu
           align="end"
-          aria-label="Chat options"
+          aria-label={t("chat.header.options")}
           trigger={
             <IconButton
               size="sm"
-              aria-label="Chat options"
-              title="Chat options"
+              aria-label={t("chat.header.options")}
+              title={t("chat.header.options")}
               icon={<DotsThree aria-hidden weight="bold" className="size-icon-md" />}
             />
           }
         >
           <MenuItem icon={<ClockCounterClockwise aria-hidden />} onClick={showHistory}>
-            {view === "history" ? "Back to chat" : "Chat history"}
+            {view === "history" ? t("chat.header.backToChatItem") : t("chat.header.history")}
           </MenuItem>
           <MenuSeparator />
-          <MenuItem onClick={() => openSettings("agents")}>Agent settings…</MenuItem>
-          <MenuItem onClick={() => openSettings("execution")}>Execution quality…</MenuItem>
+          <MenuItem onClick={() => openSettings("agents")}>
+            {t("chat.header.agentSettings")}
+          </MenuItem>
+          <MenuItem onClick={() => openSettings("execution")}>
+            {t("chat.header.executionQuality")}
+          </MenuItem>
         </Menu>
       </div>
     </header>

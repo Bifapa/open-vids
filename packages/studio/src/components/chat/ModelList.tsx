@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check } from "@phosphor-icons/react";
 import type { AgentModelInfo, ModelSelection } from "@hyperframes/agent-protocol";
 import { sameModel } from "../../agent/agentSelectors";
+import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { buildModelRows, type ModelRow } from "./modelRows";
 
@@ -49,6 +50,7 @@ export function ModelList({
   selected,
   className,
 }: ModelListProps) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const rows = useMemo(
     () => buildModelRows(models, query, includeDefault),
@@ -98,13 +100,13 @@ export function ModelList({
       <input
         type="text"
         role="combobox"
-        aria-label="Search models"
+        aria-label={t("chat.models.search")}
         aria-expanded
         aria-controls={listId}
         aria-activedescendant={rows[active] ? `${listId}-${active}` : undefined}
         aria-autocomplete="list"
         value={query}
-        placeholder={`Search ${models.length} models…`}
+        placeholder={t("chat.models.searchPlaceholder", { count: models.length })}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={onKeyDown}
         className="h-ctl-sm w-full rounded-sm border border-border bg-bg-0 px-2 text-sm text-fg outline-hidden placeholder:text-fg-3 hover:border-border-strong focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
@@ -113,13 +115,13 @@ export function ModelList({
         ref={scrollRef}
         id={listId}
         role="listbox"
-        aria-label="Models"
+        aria-label={t("chat.models.list")}
         aria-multiselectable={selected ? true : undefined}
         className="overflow-y-auto"
         style={{ height: VIEWPORT_HEIGHT }}
       >
         {rows.length === 0 ? (
-          <p className="px-2 py-3 text-sm text-fg-3">No model matches “{query}”.</p>
+          <p className="px-2 py-3 text-sm text-fg-3">{t("chat.models.noMatch", { query })}</p>
         ) : (
           <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((item) => {
@@ -162,7 +164,9 @@ export function ModelList({
                 >
                   <span className="min-w-0 flex-1 truncate">
                     {row.kind === "default"
-                      ? `Default${defaultName ? ` · ${defaultName}` : ""}`
+                      ? defaultName
+                        ? t("chat.model.defaultNamed", { name: defaultName })
+                        : t("common.default")
                       : row.model.name}
                   </span>
                   {row.kind === "model" && row.model.reasoning && (
@@ -172,7 +176,7 @@ export function ModelList({
                         item.index === active ? "text-accent-ink" : "text-fg-3",
                       )}
                     >
-                      reasoning
+                      {t("chat.models.reasoning")}
                     </span>
                   )}
                   {chosen && (

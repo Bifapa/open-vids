@@ -8,6 +8,7 @@ import {
 import { useAgentStore } from "../../agent/agentContext";
 import { describeTurnError } from "../../agent/agentErrors";
 import { agentThread, displayModelName, findModel } from "../../agent/agentSelectors";
+import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { EFFORT_LABELS, RUN_STATUS_LABELS } from "./agentLabels";
 import { chatAgentName } from "./AgentMonogram";
@@ -26,11 +27,15 @@ function RunMeta({
   caller: string | null;
   catalog: AgentModelCatalog | null;
 }) {
+  const { t } = useTranslation();
   const details = [
-    RUN_STATUS_LABELS[run.status],
-    run.model ? displayModelName(run.model, findModel(catalog, run.model)) : "Default model",
+    t(RUN_STATUS_LABELS[run.status]),
+    run.model
+      ? displayModelName(run.model, findModel(catalog, run.model))
+      : t("chat.run.defaultModel"),
   ];
-  if (run.thinking) details.push(`${EFFORT_LABELS[run.thinking]} thinking`);
+  if (run.thinking)
+    details.push(t("chat.run.thinking", { effort: t(EFFORT_LABELS[run.thinking]) }));
   if (run.endedAt !== undefined) details.push(formatDuration(run.endedAt - run.startedAt));
   return (
     <>
@@ -38,14 +43,11 @@ function RunMeta({
         · {details.join(" · ")}
       </span>
       {run.routedByDirector && (
-        <span
-          className="font-normal"
-          title="Main picked this model or effort for the task, within the limits you set."
-        >
-          · routed by Main
+        <span className="font-normal" title={t("chat.run.routedTitle")}>
+          · {t("chat.run.routed")}
         </span>
       )}
-      {caller && <span className="font-normal">· via {caller}</span>}
+      {caller && <span className="font-normal">· {t("chat.run.via", { name: caller })}</span>}
     </>
   );
 }
@@ -55,12 +57,15 @@ function RunMeta({
  * ("Task from Main") and any follow-ups, then its reply — activity list, findings, the Jev calls it made.
  */
 export function AgentThread({ chat, agent }: { chat: ChatState; agent: WorkerAgentId }) {
+  const { t } = useTranslation();
   const catalog = useAgentStore((state) => state.models);
   const threads = useMemo(() => agentThread(chat, agent), [chat, agent]);
   const name = chatAgentName(agent);
 
   if (threads.length === 0) {
-    return <p className="py-6 text-center text-xs text-fg-3">{name} has no tasks here.</p>;
+    return (
+      <p className="py-6 text-center text-xs text-fg-3">{t("chat.thread.noTasks", { name })}</p>
+    );
   }
   return (
     <>
@@ -72,7 +77,7 @@ export function AgentThread({ chat, agent }: { chat: ChatState; agent: WorkerAge
         return (
           <article
             key={run.id}
-            aria-label={`${name}: ${run.title}`}
+            aria-label={t("chat.thread.runLabel", { name, title: run.title })}
             data-run-id={run.id}
             className="grid min-w-0 gap-3.5 @max-[299px]/chat:gap-3 @min-[440px]/chat:gap-4"
           >
@@ -92,7 +97,11 @@ export function AgentThread({ chat, agent }: { chat: ChatState; agent: WorkerAge
                   }
                 />
               ) : (
-                <AssistantBlock key={message.id} message={message} workLabel={`${name} activity`} />
+                <AssistantBlock
+                  key={message.id}
+                  message={message}
+                  workLabel={t("chat.thread.activity", { name })}
+                />
               ),
             )}
             {run.status === "failed" && run.error && (

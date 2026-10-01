@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { Check, WarningCircle, X } from "@phosphor-icons/react";
 import type { Activity, AgentId } from "@hyperframes/agent-protocol";
+import { formatPercent, useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
 import { Meter, Spinner, StatusDot } from "../ui/Status";
 import { AgentMonogram, chatAgentName } from "./AgentMonogram";
@@ -11,12 +12,12 @@ import { useNow } from "./useNow";
 /** How a Working-list row reads: running, done, failed, stopped before it ran, or waiting. */
 export type WorkState = "running" | "done" | "failed" | "skipped" | "pending";
 
-export const WORK_STATE_TEXT: Record<WorkState, string> = {
-  running: "in progress",
-  done: "done",
-  failed: "failed",
-  skipped: "stopped",
-  pending: "waiting",
+export const WORK_STATE_TEXT: Record<WorkState, TranslationKey> = {
+  running: "chat.work.state.running",
+  done: "chat.work.state.done",
+  failed: "chat.work.state.failed",
+  skipped: "chat.work.state.skipped",
+  pending: "chat.work.state.pending",
 };
 
 export function WorkGlyph({ state }: { state: WorkState }) {
@@ -95,6 +96,7 @@ export function WorkText({
   state: WorkState;
   children: ReactNode;
 }) {
+  useTranslation();
   return (
     <span className="min-w-0 [overflow-wrap:anywhere]">
       <b className={cn("font-medium", WORK_AGENT_TONE[state])}>{chatAgentName(agent)}</b>
@@ -117,12 +119,17 @@ const ACTIVITY_STATE: Record<Activity["status"], WorkState> = {
 export function ActivityRow({ activity, agent }: { activity: Activity; agent: AgentId }) {
   const [open, setOpen] = useState(false);
   const listId = useId();
+  const { t } = useTranslation();
   const state = ACTIVITY_STATE[activity.status];
   const progress =
     state === "running" && activity.progress !== undefined
       ? Math.round(Math.min(100, Math.max(0, activity.progress)))
       : null;
-  const phrase = progress === null ? activity.label : `${activity.label} · ${progress}%`;
+  const percent = progress === null ? "" : formatPercent(progress / 100);
+  const phrase =
+    progress === null
+      ? activity.label
+      : t("chat.activity.withProgress", { label: activity.label, percent });
   const expandable = activity.targets.length > 0;
 
   const body = (
@@ -131,12 +138,12 @@ export function ActivityRow({ activity, agent }: { activity: Activity; agent: Ag
       <WorkText agent={agent} state={state}>
         {phrase}
       </WorkText>
-      <span className="sr-only">, {WORK_STATE_TEXT[state]}</span>
+      <span className="sr-only">, {t(WORK_STATE_TEXT[state])}</span>
       <WorkTail state={state} startedAt={activity.startedAt} endedAt={activity.endedAt} />
       {progress !== null && (
         <Meter
           value={progress / 100}
-          label={`${activity.label} ${progress}%`}
+          label={t("chat.activity.progressLabel", { label: activity.label, percent })}
           data-testid="activity-progress"
           className="col-start-2 col-end-[-1]"
         />

@@ -1,6 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { X } from "@phosphor-icons/react";
 import type { ReactNode, RefObject } from "react";
+import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { IconButton } from "../ui/IconButton";
 
@@ -32,6 +33,7 @@ export function ChatDialog({
   finalFocus,
   className,
 }: ChatDialogProps) {
+  const { t } = useTranslation();
   return (
     <Dialog.Root
       open={open}
@@ -62,7 +64,11 @@ export function ChatDialog({
             </div>
             <Dialog.Close
               render={
-                <IconButton aria-label="Close" size="sm" icon={<X size={12} aria-hidden />} />
+                <IconButton
+                  aria-label={t("common.close")}
+                  size="sm"
+                  icon={<X size={12} aria-hidden />}
+                />
               }
             />
           </div>

@@ -4,6 +4,7 @@ import {
   clampExecutionBudget,
   type ExecutionBudget,
 } from "@hyperframes/agent-protocol";
+import { t, useTranslation } from "../../i18n";
 import { NumberField } from "../ui/NumberField";
 import { ChoiceChips, type Choice } from "./ChoiceChips";
 import { DialogField } from "./ChatDialog";
@@ -11,18 +12,10 @@ import { BUDGET_FIELDS, THINKING_POLICY_HINTS, THINKING_POLICY_LABELS } from "./
 
 const PASS_RANGE = EXECUTION_BUDGET_RANGES.qaPasses;
 
-const PASS_CHOICES: Choice<string>[] = Array.from(
+const PASS_COUNTS = Array.from(
   { length: PASS_RANGE.max - PASS_RANGE.min + 1 },
-  (_, index) => {
-    const passes = PASS_RANGE.min + index;
-    return { value: String(passes), label: passes === 0 ? "Off" : String(passes) };
-  },
+  (_, index) => PASS_RANGE.min + index,
 );
-
-const THINKING_CHOICES = SPECIALIST_THINKING_POLICIES.map((policy) => ({
-  value: policy,
-  label: THINKING_POLICY_LABELS[policy],
-}));
 
 /** Fields that only matter while render QA runs. */
 export const QA_ONLY: Partial<Record<keyof ExecutionBudget, true>> = {
@@ -32,12 +25,9 @@ export const QA_ONLY: Partial<Record<keyof ExecutionBudget, true>> = {
 };
 
 export function passesHint(passes: number): string {
-  if (passes === 0) return "Render QA is off: the agent does not render and check its work.";
-  if (passes === 1) return "One render, checked and reported; no automatic correction.";
-  const corrections = passes - 1;
-  return `Up to ${passes} renders, each checked; at most ${corrections} ${
-    corrections === 1 ? "correction" : "corrections"
-  } in between.`;
+  if (passes === 0) return t("chat.quality.passesHint.off");
+  if (passes === 1) return t("chat.quality.passesHint.one");
+  return t("chat.quality.passesHint.many", { passes, corrections: passes - 1 });
 }
 
 /**
@@ -53,7 +43,16 @@ export function ExecutionBudgetFields({
   onChange: (next: ExecutionBudget) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const qaOff = value.qaPasses === 0;
+  const passChoices: Choice<string>[] = PASS_COUNTS.map((passes) => ({
+    value: String(passes),
+    label: passes === 0 ? t("chat.quality.passesOff") : String(passes),
+  }));
+  const thinkingChoices = SPECIALIST_THINKING_POLICIES.map((policy) => ({
+    value: policy,
+    label: t(THINKING_POLICY_LABELS[policy]),
+  }));
 
   const setField = (field: (typeof BUDGET_FIELDS)[number]["field"], next: number) => {
     const budget = { ...value };
@@ -63,11 +62,11 @@ export function ExecutionBudgetFields({
 
   return (
     <div className="flex flex-col gap-3">
-      <DialogField label="Render QA passes" hint={passesHint(value.qaPasses)}>
+      <DialogField label={t("chat.quality.field.qaPasses")} hint={passesHint(value.qaPasses)}>
         <ChoiceChips
-          label="Render QA passes"
+          label={t("chat.quality.field.qaPasses")}
           value={String(value.qaPasses)}
-          choices={PASS_CHOICES}
+          choices={passChoices}
           disabled={disabled}
           onChange={(next) => setField("qaPasses", Number(next))}
         />
@@ -75,17 +74,21 @@ export function ExecutionBudgetFields({
       <ul className="flex flex-col gap-2">
         {BUDGET_FIELDS.filter(({ field }) => field !== "qaPasses").map(({ field, label, hint }) => {
           const { min, max } = EXECUTION_BUDGET_RANGES[field];
+          const unused = qaOff && QA_ONLY[field];
           return (
             <li key={field} className="flex items-start gap-2" data-budget-field={field}>
               <div className="min-w-0 flex-1">
-                <p className="text-step-11 text-text-1">{label}</p>
+                <p className="text-step-11 text-text-1">{t(label)}</p>
                 <p className="text-step-10 leading-snug text-text-4">
-                  {hint} {min}–{max}.
-                  {qaOff && QA_ONLY[field] ? " Unused while render QA is off." : ""}
+                  {t(unused ? "chat.quality.rangeHintUnused" : "chat.quality.rangeHint", {
+                    hint: t(hint),
+                    min,
+                    max,
+                  })}
                 </p>
               </div>
               <NumberField
-                label={label}
+                label={t(label)}
                 value={value[field]}
                 min={min}
                 max={max}
@@ -99,13 +102,13 @@ export function ExecutionBudgetFields({
         })}
       </ul>
       <DialogField
-        label="Specialist thinking"
-        hint={THINKING_POLICY_HINTS[value.specialistThinking]}
+        label={t("chat.quality.thinking.field")}
+        hint={t(THINKING_POLICY_HINTS[value.specialistThinking])}
       >
         <ChoiceChips
-          label="Specialist thinking"
+          label={t("chat.quality.thinking.field")}
           value={value.specialistThinking}
-          choices={THINKING_CHOICES}
+          choices={thinkingChoices}
           disabled={disabled}
           onChange={(specialistThinking) => onChange({ ...value, specialistThinking })}
         />

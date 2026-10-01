@@ -492,3 +492,95 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `editor.cube.aria` — Screen-reader description of the 3D rotation cube. Key names (Shift, Alt) stay as on the keyboard.
 - `editor.colorGrading.waitingRuntime` — Color-grading status line: the preview runtime has not reported yet.
 - `editor.fx.groupWithCount` — An audio group name followed by its number of tracks.
+
+## studio-chat
+
+- `chat.effort.off` — Thinking effort level of a model; shown as a choice and inside `Sonnet · High` lines.
+- `chat.effort.xhigh` — Thinking effort level between High and Max.
+- `chat.run.status.aborted` — Agent run stopped by the user or the app.
+- `chat.plan.status.running` — Status of a plan step that is being worked on right now.
+- `chat.agent.main` — What the chat calls the Director, the lead agent of the conversation (Director is its role).
+- `chat.agent.name.vision` — Name of the agent that looks at frames; kept as the product name in English.
+- `chat.agent.name.motion` — Agent for titles, overlays and animation (a motion graphics designer).
+- `chat.agent.name.research` — Agent that searches for assets, facts and references.
+- `chat.quality.preset.custom` — Execution-quality preset with hand-set numbers.
+- `chat.quality.field.qaPasses` — Number of render-check passes per turn. QA = quality assurance of the rendered video.
+- `chat.quality.field.critiqueRounds` — Rounds in which the Vision agent critiques the render and may request more frames.
+- `chat.quality.summary.vision` — Part of a one-line budget summary; Vision is the agent name.
+- `chat.qa.status.running` — Status of the automatic render check while it is in progress.
+- `chat.qa.status.issuesRemain` — Render check finished and some issues are still open.
+- `chat.qa.kind.frozenFrames` — The picture stops moving while it should play.
+- `chat.qa.kind.awkwardCut` — A cut that lands badly (e.g. mid-word or mid-motion).
+- `chat.qa.kind.layoutOverlap` — Elements of the composition overlap each other.
+- `chat.qa.kind.incorrectBroll` — A B-roll clip that does not match what is said.
+- `chat.qa.issueStatus.new` — Status of a render-check issue compared to the previous pass: found for the first time.
+- `chat.qa.issueStatus.persisting` — Issue still present after the previous pass.
+- `chat.qa.checkStatus.ran` — Lowercase status after a check name, e.g. `Audio check ran`; the check name is a feminine noun in Russian.
+- `chat.qa.count.issues` — Count of unresolved render-check issues.
+- `chat.qa.count.new` — Count of issues found for the first time in this pass.
+- `chat.work.state.running` — Lowercase state of a Working-list row, read aloud by screen readers after the step name.
+- `chat.activity.progressLabel` — Accessible label of a progress bar: what is being done and how far.
+- `chat.effort.short.off` — Very short forms of the thinking effort levels for a narrow segmented control (about 5 letters).
+- `chat.effort.field` — How much the model reasons before answering (the `thinking` setting); levels: Off, Minimal, Low, Medium, High, Extra high, Max.
+- `chat.model.fieldLabel` — Accessible label of a model button: who it is for, then the chosen model.
+- `chat.field.model` — Label of a model selector field.
+- `chat.agents.chip` — Label of the composer chip: how many agents work in this chat (Main plus enabled specialists).
+- `chat.agents.settingsTooltip` — Tooltip of the gear button on an agent row.
+- `chat.agents.toggle` — Accessible label of the on/off switch of an agent.
+- `chat.agents.modelName` — Accessible name of the model field for an agent.
+- `chat.agentConfig.use` — Label of a field with two choices: Default (follow the global setting) or Custom for this chat.
+- `chat.agentConfig.hintDefault` — `Settings → Agents` is the path to the Agents section of the Settings dialog.
+- `chat.allowedModels.field` — Field listing extra AI models that the Director agent is allowed to route a specialist's task to.
+- `chat.field.thinking` — Field label for how much a model reasons (thinking effort), as in extended thinking of AI models.
+- `chat.field.thinkingGroup` — Accessible label of the thinking-effort choice group for an agent.
+- `chat.allowedModels.listLabel` — {name} is the name of a specialist agent (Editor, Motion, …).
+- `chat.crumbs.label` — Breadcrumb navigation between the main conversation and the work of individual agents (a thread = one agent's part of the chat).
+- `chat.duration.minutes` — How long a run or a thought took; `{seconds}` is already zero-padded to two digits (05).
+- `chat.run.routed` — Main is the lead agent of the chat (the Director); it chose the model for this sub-task.
+- `chat.run.via` — Who started this run when it was not the lead agent (e.g. a specialist that called Jev).
+- `chat.run.thinking` — Thinking effort level used for a run, e.g. `High thinking`.
+- `chat.status.idle` — Status of a chat in which nothing is running right now.
+- `chat.view.working` — Announced to screen readers; the four `chat.view.*` status sentences describe the state of the agent run.
+- `chat.composer.placeholder.steer` — While the agent is running, text sent from here redirects the running task.
+- `chat.composer.steer` — Button label: send a message that redirects the task the agent is currently doing.
+- `chat.composer.threadHint` — {viewing} and {target} are agent names; messages always go to the lead agent (Main).
+- `chat.composer.stop` — Button that stops the running agent task.
+- `chat.composer.sendTitle` — Tooltip of the send button; {key} is the key name Enter.
+- `chat.composer.blockedNamed` — Another chat in the same project holds the agent; {title} is that chat's title.
+- `chat.delegation.waiting` — Lowercase step text of a delegated task that has not started yet; shown after the agent name: `Editor — waiting to start`.
+- `chat.delegation.open` — {state} is a lowercase state word (in progress / done / failed / stopped / waiting).
+- `chat.quality.passesOff` — Choice for the number of render checks: zero, i.e. render QA is switched off.
+- `chat.quality.rangeHint` — {hint} is a sentence; {min}–{max} is the allowed range of the number field.
+- `chat.quality.customDialog.startFrom` — Followed by buttons with the preset names Fast / Balanced / Best: copies a preset's numbers into the editor.
+- `chat.quality.blurb.custom` — Short description beside the `Custom` execution-quality option: the numbers are set by the user.
+- `chat.history.title` — Heading of the list of the project's saved chats; a count of chats follows it.
+- `chat.empty.suggestion.pacing` — Starting prompt suggestions shown in an empty chat; clicking one puts this exact text into the message box, so write it as the user's request to the agent (imperative).
+- `chat.markdown.showTimecode` — A timecode in the agent's reply that jumps the preview to that moment; {time} is the timecode text.
+- `chat.reference.upload` — Fallback name of an attached file that has no name, when it was uploaded by the user.
+- `chat.intent.plan` — Tag on a user message that was sent in Plan mode (the agent only plans).
+- `chat.intent.ask` — Tag on a user message that was sent in Ask mode (the agent only answers questions).
+- `chat.message.steering` — Tag on a message that redirected an already running agent task.
+- `chat.message.you` — Author name of the user's own messages.
+- `chat.work.working` — Heading of the list of what the agent is doing right now (shown while it streams).
+- `chat.work.activity` — Heading of the list of what the agent did, after it finished.
+- `chat.work.workingEllipsis` — Shown before the agent has produced anything; the agent speaks in the first person only loosely — a neutral wording is fine.
+- `chat.message.beforeQa` — Label over a reply the agent wrote before the render check ran.
+- `chat.mainModel.title` — Model of the Main (lead) agent for this chat.
+- `chat.models.reasoning` — Small badge on a model row: the model supports extended thinking (reasoning).
+- `chat.models.defaultBadge` — Small lowercase badge next to the shown model: it was not chosen explicitly, it is the default.
+- `chat.agent.monogram.director` — One- or two-letter tile that stands for an agent next to its name (first letters of the role name). Keep it to 1-2 capital letters.
+- `chat.intent.edit` — Chat mode: the agent edits the timeline (the default). Sibling modes: Plan (proposes a plan first) and Ask (answers only).
+- `chat.mode.title` — Title of the menu for choosing the chat mode (Plan / Edit / Ask).
+- `chat.turn.reverted` — Shown after the user reverted an agent turn (restored the project files the turn changed).
+- `chat.turn.undo` — Link after `Reverted`: cancels the revert and puts the turn's changes back.
+- `chat.turn.revert` — Button under an agent turn: restores the files that turn changed. `Turn` = one request-and-response cycle with the agent.
+- `chat.turn.filesChanged` — Shown after the Revert button; a short list of file names may follow.
+- `chat.conflict.revertKeep` — Reverts only the files the user did not edit afterwards.
+- `chat.qa.pass` — One pass = one cycle render → check → (correction) of the automatic render check.
+- `chat.qa.limitOff` — Follows the preset name: `Balanced · QA off`. QA = render quality check.
+- `chat.qa.limit` — Follows the preset name: `Balanced · up to 2 passes`.
+- `chat.qa.sourceDeterministic` — The source is a check name; `deterministic` = a rule-based check, not an AI model.
+- `chat.qa.owner` — Which agent should fix the issue; shown after an arrow.
+- `chat.qa.groupTitle` — Heading of a group of issues: status word and the number of issues in it.
+- `chat.qa.checkLine` — E.g. `Audio check skipped.`; {status} is a lowercase word that agrees with a feminine check name in Russian.
+- `chat.qa.showRange` — Tooltip of a time range link; {composition} is the composition file name.

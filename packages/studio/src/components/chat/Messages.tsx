@@ -20,6 +20,7 @@ import type {
   TurnSummary,
   UserMessage,
 } from "@hyperframes/agent-protocol";
+import { formatNumber, t, useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
 import { Badge } from "../ui/Status";
 import { ActivityRow } from "./ActivityRow";
@@ -30,7 +31,10 @@ import { MarkdownLite } from "./MarkdownLite";
 import { formatClockTime } from "./relativeTime";
 import { ThinkingBlock } from "./ThinkingBlock";
 
-const seconds = (value: number) => `${Math.round(value * 10) / 10}s`;
+const seconds = (value: number) =>
+  t("chat.duration.seconds", {
+    seconds: formatNumber(Math.round(value * 10) / 10, { maximumFractionDigits: 1 }),
+  });
 
 /** The last segment of a path or URL: what a file chip names. */
 function baseName(path: string): string {
@@ -41,9 +45,15 @@ function baseName(path: string): string {
 export function referenceChipLabel(reference: MessageReference): string {
   switch (reference.kind) {
     case "editor-selection":
-      return reference.label ?? "Editor selection";
+      return reference.label ?? t("chat.reference.editorSelection");
     case "timeline-range":
-      return reference.label ?? `Timeline ${seconds(reference.start)}–${seconds(reference.end)}`;
+      return (
+        reference.label ??
+        t("chat.reference.timeline", {
+          start: seconds(reference.start),
+          end: seconds(reference.end),
+        })
+      );
     case "asset":
       return reference.label ?? baseName(reference.path);
     case "url":
@@ -53,7 +63,7 @@ export function referenceChipLabel(reference: MessageReference): string {
       if (reference.label) return reference.label;
       if (source.type === "project-path") return baseName(source.path);
       if (source.type === "url") return baseName(source.url);
-      return "Upload";
+      return t("chat.reference.upload");
     }
   }
 }
@@ -69,31 +79,32 @@ const REFERENCE_ICONS: Record<MessageReference["kind"], Icon> = {
   file: File,
 };
 
-const REFERENCE_KIND_NAMES: Record<MessageReference["kind"], string> = {
-  "editor-selection": "Selection",
-  "timeline-range": "Time range",
-  asset: "Asset",
-  url: "Link",
-  image: "Image",
-  video: "Video",
-  audio: "Audio",
-  file: "File",
+const REFERENCE_KIND_NAMES: Record<MessageReference["kind"], TranslationKey> = {
+  "editor-selection": "chat.reference.kind.selection",
+  "timeline-range": "chat.reference.kind.range",
+  asset: "chat.reference.kind.asset",
+  url: "chat.reference.kind.link",
+  image: "chat.reference.kind.image",
+  video: "chat.reference.kind.video",
+  audio: "chat.reference.kind.audio",
+  file: "chat.reference.kind.file",
 };
 
 /** A read-only context chip on a sent message: kind icon + label, detail in the tooltip. */
 function ReferenceChip({ reference }: { reference: MessageReference }) {
+  const { t } = useTranslation();
   const KindIcon = REFERENCE_ICONS[reference.kind];
   const label = referenceChipLabel(reference);
-  const kind = REFERENCE_KIND_NAMES[reference.kind];
+  const kind = t(REFERENCE_KIND_NAMES[reference.kind]);
   return (
     <span
       role="listitem"
-      title={`${label} — ${kind}`}
+      title={t("chat.reference.chipTitle", { label, kind })}
       className="inline-flex h-ctl-sm max-w-full min-w-0 items-center gap-[5px] rounded-sm border border-border bg-bg-1 pr-2 pl-1.5 text-xs leading-none font-medium text-fg-2"
     >
       <KindIcon aria-hidden className="size-icon-sm shrink-0 text-fg-3" />
       <span className="max-w-[22ch] min-w-0 truncate">{label}</span>
-      <span className="sr-only"> ({kind})</span>
+      <span className="sr-only"> {t("chat.reference.kindSr", { kind })}</span>
     </span>
   );
 }
@@ -125,7 +136,7 @@ function MessageHead({
   );
 }
 
-const INTENT_TAGS = { plan: "Plan", ask: "Ask" } as const;
+const INTENT_TAGS = { plan: "chat.intent.plan", ask: "chat.intent.ask" } as const;
 
 /** The user's message: set apart by a quiet surface fill; context chips above the text. */
 export function UserMessageView({
@@ -136,6 +147,7 @@ export function UserMessageView({
   /** The turn this message opened (absent for steering): tags how it ran. */
   turn?: TurnSummary;
 }) {
+  const { t } = useTranslation();
   const references: { id: string; reference: MessageReference }[] = [];
   const texts: { id: string; text: string }[] = [];
   for (const part of message.parts) {
@@ -148,17 +160,21 @@ export function UserMessageView({
       data-role="user"
       className={cn("grid min-w-0 gap-1 rounded-md bg-surface-1 px-2 pt-1.5 pb-[7px]", chatMeasure)}
     >
-      <MessageHead author="You" at={message.createdAt}>
+      <MessageHead author={t("chat.message.you")} at={message.createdAt}>
         {message.steering && (
           <Badge size="sm" data-testid="steering-tag">
-            Steering
+            {t("chat.message.steering")}
           </Badge>
         )}
         {turn?.mode === "story" && <Badge size="sm">Story</Badge>}
-        {intent && <Badge size="sm">{INTENT_TAGS[intent]}</Badge>}
+        {intent && <Badge size="sm">{t(INTENT_TAGS[intent])}</Badge>}
       </MessageHead>
       {references.length > 0 && (
-        <div role="list" aria-label="Attached context" className="flex min-w-0 flex-wrap gap-1">
+        <div
+          role="list"
+          aria-label={t("chat.message.attached")}
+          className="flex min-w-0 flex-wrap gap-1"
+        >
           {references.map(({ id, reference }) => (
             <ReferenceChip key={id} reference={reference} />
           ))}
@@ -178,11 +194,16 @@ export function UserMessageView({
 
 /** The instruction a delegated agent works from ("Task from Main"), or a follow-up to it. */
 export function TaskBrief({ message, meta }: { message: TaskMessage; meta?: ReactNode }) {
+  const { t } = useTranslation();
   const from = chatAgentName(message.from);
   return (
     <div data-role="task" className={cn(noteBox, "gap-[3px] px-[9px] pt-[7px] pb-2", chatMeasure)}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs font-medium text-fg-3">
-        <span>{message.steering ? `Follow-up from ${from}` : `Task from ${from}`}</span>
+        <span>
+          {message.steering
+            ? t("chat.message.followUpFrom", { name: from })
+            : t("chat.message.taskFrom", { name: from })}
+        </span>
         {meta}
       </div>
       {message.parts.map((part) => (
@@ -229,9 +250,10 @@ function WorkList({
   agent: AgentId;
   label: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <section
-      aria-label={label ?? "Activity"}
+      aria-label={label ?? t("chat.work.activity")}
       className={cn("mt-1.5 grid min-w-0 gap-0.5", chatMeasureWide)}
     >
       {label && <div className={cn(sectLabel, "h-ctl-xs items-center")}>{label}</div>}
@@ -249,10 +271,11 @@ function WorkList({
 }
 
 function TextView({ text, interim, caret }: { text: string; interim: boolean; caret: boolean }) {
+  const { t } = useTranslation();
   if (interim) {
     return (
       <div data-testid="interim-note" className={cn("grid gap-0.5", chatMeasure)}>
-        <span className="text-xs font-medium text-fg-3">Before render QA</span>
+        <span className="text-xs font-medium text-fg-3">{t("chat.message.beforeQa")}</span>
         <MarkdownLite text={text} className="text-fg-2" />
         {caret && <StreamingCaret />}
       </div>
@@ -280,6 +303,7 @@ export function AssistantBlock({
   /** Heading of the first Working list (default: "Working" while it streams, "Activity" after). */
   workLabel?: string;
 }) {
+  const { t } = useTranslation();
   const streaming = message.status === "streaming";
   const agent: AgentId = message.agent ?? "director";
   const lastTextId = [...message.parts].reverse().find((part) => part.type === "text")?.id;
@@ -294,7 +318,7 @@ export function AssistantBlock({
       className="grid min-w-0 gap-1"
       data-role="assistant"
       data-status={message.status}
-      aria-label={`${chatAgentName(agent)}'s reply`}
+      aria-label={t("chat.message.reply", { name: chatAgentName(agent) })}
     >
       <MessageHead agent={agent} author={chatAgentName(agent)} at={message.createdAt} />
       {groups.map((group, index) => (
@@ -305,7 +329,9 @@ export function AssistantBlock({
               parts={group.parts}
               agent={agent}
               label={
-                index === firstWork ? (workLabel ?? (streaming ? "Working" : "Activity")) : null
+                index === firstWork
+                  ? (workLabel ?? t(streaming ? "chat.work.working" : "chat.work.activity"))
+                  : null
               }
             />
           ) : group.part.type === "text" ? (
@@ -321,7 +347,9 @@ export function AssistantBlock({
       ))}
       {firstWork === -1 && plan && <div className="mt-1.5">{plan}</div>}
       {streaming && message.parts.length === 0 && (
-        <span className="animate-pulse text-xs text-fg-3 motion-reduce:animate-none">Working…</span>
+        <span className="animate-pulse text-xs text-fg-3 motion-reduce:animate-none">
+          {t("chat.work.workingEllipsis")}
+        </span>
       )}
     </article>
   );

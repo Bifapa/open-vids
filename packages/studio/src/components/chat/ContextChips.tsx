@@ -17,6 +17,7 @@ import {
 import { useEditorContextSource } from "../../agent/editorContext";
 import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
+import { useTranslation } from "../../i18n";
 import { usePlayerStore } from "../../player";
 import { studioStoryStore } from "../../story/storyContext";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
@@ -64,13 +65,14 @@ function useContextChips(): ContextChip[] {
  * it from the next message. Hidden when there is nothing to send.
  */
 export function ContextChips({ onRemoved }: { onRemoved: () => void }) {
+  const { t } = useTranslation();
   const chips = useContextChips();
   const exclude = useComposerContextStore((state) => state.exclude);
   if (chips.length === 0) return null;
   return (
     <div
       role="list"
-      aria-label="Context for the next message"
+      aria-label={t("chat.context.label")}
       data-testid="composer-context"
       className="flex min-w-0 flex-wrap gap-1 px-1.5 pt-1.5"
     >
@@ -80,14 +82,14 @@ export function ContextChips({ onRemoved }: { onRemoved: () => void }) {
           <span
             key={chip.key}
             role="listitem"
-            title={`${chip.label} · ${chip.detail}`}
+            title={t("chat.context.chipTitle", { label: chip.label, detail: chip.detail })}
             className="inline-flex h-ctl-sm max-w-full min-w-0 items-center gap-[5px] rounded-sm border border-border bg-surface-1 pr-px pl-1.5 text-xs leading-none font-medium text-fg-2 hover:border-border-strong hover:text-fg"
           >
             <Icon size={12} aria-hidden className="shrink-0 text-fg-3" />
             <span className="max-w-[22ch] min-w-0 truncate">{chip.label}</span>
             <button
               type="button"
-              aria-label={`Remove ${chip.label} from the next message`}
+              aria-label={t("chat.context.remove", { label: chip.label })}
               onClick={() => {
                 exclude(chip.key);
                 onRemoved();

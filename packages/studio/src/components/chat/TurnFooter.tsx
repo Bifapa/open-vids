@@ -2,7 +2,8 @@ import { ArrowCounterClockwise, Check, WarningCircle } from "@phosphor-icons/rea
 import type { RevertMode, TurnSummary } from "@hyperframes/agent-protocol";
 import type { RevertUi } from "../../agent/agentRevertSlice";
 import { describeTurnError, isNoModelMessage } from "../../agent/agentErrors";
-import { ConnectModelButton, NO_MODEL_TITLE } from "./ConnectModel";
+import { ConnectModelButton, NO_MODEL_SENTENCE } from "./ConnectModel";
+import { useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
 import { Spinner } from "../ui/Status";
@@ -11,15 +12,16 @@ import { chatLink, noteBoxWarn } from "./chatStyles";
 const MAX_FILES_SHOWN = 6;
 
 function TurnStatusNote({ turn }: { turn: TurnSummary }) {
+  const { t } = useTranslation();
   if (turn.status === "failed") {
     const message = turn.error
       ? describeTurnError(turn.error.code, turn.error.message)
-      : "The agent ran into a problem and stopped.";
+      : t("chat.turn.problem");
     // "No model" is not a breakage: say so calmly and put the way to fix it right here.
     if (isNoModelMessage(message)) {
       return (
         <div role="alert" className="grid justify-items-start gap-1.5 text-xs leading-4 text-fg-2">
-          <span>{NO_MODEL_TITLE}.</span>
+          <span>{t(NO_MODEL_SENTENCE)}</span>
           <ConnectModelButton />
         </div>
       );
@@ -31,13 +33,11 @@ function TurnStatusNote({ turn }: { turn: TurnSummary }) {
       </p>
     );
   }
-  if (turn.status === "aborted") return <p className="text-xs leading-4 text-fg-3">Stopped.</p>;
+  if (turn.status === "aborted") {
+    return <p className="text-xs leading-4 text-fg-3">{t("chat.turn.stopped")}</p>;
+  }
   if (turn.status === "interrupted") {
-    return (
-      <p className="text-xs leading-4 text-warning">
-        Interrupted. The agent stopped before it finished; anything it already changed is kept.
-      </p>
-    );
+    return <p className="text-xs leading-4 text-warning">{t("chat.turn.interrupted")}</p>;
   }
   return null;
 }
@@ -54,43 +54,42 @@ function ConflictChoices({
   onChoose: (mode: RevertMode) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const shown = files.slice(0, MAX_FILES_SHOWN);
   return (
     <div
       role="group"
-      aria-label={undo ? "Undo revert conflict" : "Revert conflict"}
+      aria-label={undo ? t("chat.conflict.undoLabel") : t("chat.conflict.revertLabel")}
       className={cn(noteBoxWarn, "basis-full gap-1.5 px-[9px] py-2 text-xs leading-[15px]")}
     >
-      <p>
-        {undo
-          ? "These files changed after the revert, so undoing it would also undo your later edits:"
-          : "These files changed after this run, so reverting them would also undo your later edits:"}
-      </p>
+      <p>{undo ? t("chat.conflict.undoIntro") : t("chat.conflict.revertIntro")}</p>
       <ul className="grid gap-px text-fg-2">
         {shown.map((file) => (
           <li key={file} title={file} className="truncate font-mono text-num leading-[14px]">
             {file}
           </li>
         ))}
-        {files.length > shown.length && <li>and {files.length - shown.length} more</li>}
+        {files.length > shown.length && (
+          <li>{t("chat.conflict.more", { count: files.length - shown.length })}</li>
+        )}
       </ul>
       <div className="flex flex-wrap gap-1.5">
         <Button
           size="sm"
-          title="Keeps your later edits to these files"
+          title={t("chat.conflict.keepHint")}
           onClick={() => onChoose("keep-later-edits")}
         >
-          {undo ? "Undo for untouched files" : "Revert untouched files"}
+          {undo ? t("chat.conflict.undoKeep") : t("chat.conflict.revertKeep")}
         </Button>
         <Button
           size="sm"
-          title="Also undoes your later edits to these files"
+          title={t("chat.conflict.anywayHint")}
           onClick={() => onChoose("just-this")}
         >
-          {undo ? "Undo anyway" : "Revert anyway"}
+          {undo ? t("chat.conflict.undoAnyway") : t("chat.conflict.revertAnyway")}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
       </div>
     </div>
@@ -119,6 +118,7 @@ export function TurnFooter({
   onUnrevert,
   onDismissRevert,
 }: TurnFooterProps) {
+  const { t } = useTranslation();
   const checkpoint = turn.checkpoint;
   const revertible = checkpoint?.status === "ready" && checkpoint.entryIds.length > 0;
   const files = checkpoint?.files ?? [];
@@ -142,32 +142,32 @@ export function TurnFooter({
       <>
         <span className="inline-flex items-center gap-1 text-xs font-medium text-fg-2">
           <Check aria-hidden weight="bold" className="size-icon-sm text-fg-3" />
-          Reverted
+          {t("chat.turn.reverted")}
         </span>
         {kept.length > 0 && (
           <span title={kept.join("\n")} className="text-xs leading-4 text-fg-3 tabular-nums">
-            Kept later edits to {kept.length} {kept.length === 1 ? "file" : "files"}
+            {t("chat.turn.keptEdits", { count: kept.length })}
           </span>
         )}
         {undoable &&
           (pending ? (
             <span className="inline-flex items-center gap-1 text-xs text-fg-3" role="status">
               <Spinner size="sm" />
-              Undoing…
+              {t("chat.turn.undoing")}
             </span>
           ) : (
             <button
               type="button"
-              aria-label="Undo revert"
+              aria-label={t("chat.turn.undoRevert")}
               disabled={blockedReason !== null}
-              title={blockedReason ?? "Put this turn's changes back"}
+              title={blockedReason ?? t("chat.turn.undoHint")}
               onClick={() => onUnrevert()}
               className={cn(
                 chatLink,
                 "text-xs disabled:cursor-default disabled:text-fg-disabled disabled:no-underline",
               )}
             >
-              Undo
+              {t("chat.turn.undo")}
             </button>
           ))}
       </>
@@ -181,11 +181,11 @@ export function TurnFooter({
           icon={<ArrowCounterClockwise aria-hidden className="size-icon-sm" />}
           loading={pending}
           disabled={blockedReason !== null}
-          title={blockedReason ?? "Restore the files this turn changed"}
+          title={blockedReason ?? t("chat.turn.revertHint")}
           onClick={() => onRevert()}
           className="-ml-2 text-fg-2"
         >
-          Revert this turn
+          {t("chat.turn.revert")}
         </Button>
         {files.length > 0 && (
           <span
@@ -193,7 +193,7 @@ export function TurnFooter({
             data-testid="turn-files"
             className="min-w-0 truncate text-xs leading-4 text-fg-3 tabular-nums"
           >
-            {files.length} {files.length === 1 ? "file" : "files"} changed
+            {t("chat.turn.filesChanged", { count: files.length })}
             <span className="@max-[299px]/chat:hidden">
               {" · "}
               {files.map((file) => file.split("/").pop() ?? file).join(", ")}
@@ -203,9 +203,9 @@ export function TurnFooter({
       </>
     );
   } else if (checkpoint?.status === "ready") {
-    row = <span className="text-xs leading-4 text-fg-3">No project changes</span>;
+    row = <span className="text-xs leading-4 text-fg-3">{t("chat.turn.noChanges")}</span>;
   } else if (checkpoint?.status === "unavailable") {
-    row = <span className="text-xs leading-4 text-fg-3">This run can’t be reverted.</span>;
+    row = <span className="text-xs leading-4 text-fg-3">{t("chat.turn.cannotRevert")}</span>;
   }
 
   return (

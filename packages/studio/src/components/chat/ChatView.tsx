@@ -3,6 +3,7 @@ import type { ChatState } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { describeTurnError, isNoModelMessage } from "../../agent/agentErrors";
 import { NO_MODEL_TITLE } from "./ConnectModel";
+import { t, useTranslation } from "../../i18n";
 import { activeThread, runningTurn } from "../../agent/agentSelectors";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
@@ -26,16 +27,16 @@ function statusSentence(chat: ChatState | null): string {
         }
       }
     }
-    return "The agent is working";
+    return t("chat.view.working");
   }
   const last = chat.turns[chat.turns.length - 1];
   if (!last) return "";
-  if (last.status === "completed") return "The agent finished";
-  if (last.status === "aborted") return "The agent stopped";
+  if (last.status === "completed") return t("chat.view.finished");
+  if (last.status === "aborted") return t("chat.view.stopped");
   if (last.status === "failed") {
     const message = last.error && describeTurnError(last.error.code, last.error.message);
-    if (message && isNoModelMessage(message)) return NO_MODEL_TITLE;
-    return message ?? "The agent failed";
+    if (message && isNoModelMessage(message)) return t(NO_MODEL_TITLE);
+    return message ?? t("chat.view.failed");
   }
   return "";
 }
@@ -68,10 +69,10 @@ function LoadFailure({
       <p className="text-sm text-fg-2">{message}</p>
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={onRetry}>
-          Try again
+          {t("common.tryAgain")}
         </Button>
         <Button size="sm" variant="ghost" onClick={onBack}>
-          Back to chats
+          {t("chat.view.backToChats")}
         </Button>
       </div>
     </div>
@@ -79,6 +80,7 @@ function LoadFailure({
 }
 
 export function ChatView() {
+  useTranslation();
   const chat = useAgentStore((state) => state.chat);
   const chatId = useAgentStore((state) => state.chatId);
   const loading = useAgentStore((state) => state.chatLoading);
@@ -104,7 +106,7 @@ export function ChatView() {
         </>
       ) : loading || !chat ? (
         <div className="flex flex-1 items-center justify-center text-xs text-fg-3" role="status">
-          Loading chat…
+          {t("chat.view.loading")}
         </div>
       ) : (
         <>
@@ -113,7 +115,7 @@ export function ChatView() {
               role="status"
               className="shrink-0 border-b border-border-subtle bg-warning-soft px-3 py-1 text-xs text-warning"
             >
-              Reconnecting to the agent…
+              {t("chat.view.reconnecting")}
             </p>
           )}
           {/* A new thread is a new page: it starts at its newest content. */}

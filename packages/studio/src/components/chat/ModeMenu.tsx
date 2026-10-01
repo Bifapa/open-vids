@@ -3,6 +3,7 @@ import { ChatCircleText, Check } from "@phosphor-icons/react";
 import { CHAT_INTENTS, type ChatIntent, type ChatSummary } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { runningTurn } from "../../agent/agentSelectors";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
 import {
   ChipCaret,
@@ -15,10 +16,13 @@ import {
 } from "./composerParts";
 
 /** The Mode chip's choices: what the next turns do. */
-export const INTENT_LABELS: Record<ChatIntent, { name: string; description: string }> = {
-  plan: { name: "Plan", description: "Proposes a plan first" },
-  edit: { name: "Edit", description: "Acts on the timeline" },
-  ask: { name: "Ask", description: "Answers only" },
+export const INTENT_LABELS: Record<
+  ChatIntent,
+  { name: TranslationKey; description: TranslationKey }
+> = {
+  plan: { name: "chat.intent.plan", description: "chat.mode.plan.description" },
+  edit: { name: "chat.intent.edit", description: "chat.mode.edit.description" },
+  ask: { name: "chat.intent.ask", description: "chat.mode.ask.description" },
 };
 
 /** Up/Down move between the choices, like the prototype's popover navigation. */
@@ -37,6 +41,7 @@ function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
 
 /** Plan / Edit / Ask: the chat's intent, persisted on the chat and applied to each turn it starts. */
 export function ModeMenu({ chat }: { chat: ChatSummary }) {
+  const { t } = useTranslation();
   const locked = useAgentStore((state) => runningTurn(state.chat) !== null);
   const setIntent = useAgentStore((state) => state.setIntent);
   const [open, setOpen] = useState(false);
@@ -55,8 +60,14 @@ export function ModeMenu({ chat }: { chat: ChatSummary }) {
     <button
       type="button"
       data-chip="mode"
-      aria-label={`Mode: ${current.name} — ${current.description}`}
-      title={`${current.name} mode — ${current.description}`}
+      aria-label={t("chat.mode.chipAria", {
+        name: t(current.name),
+        description: t(current.description),
+      })}
+      title={t("chat.mode.chipTitle", {
+        name: t(current.name),
+        description: t(current.description),
+      })}
       className={chipClass}
     >
       <ChatCircleText
@@ -64,7 +75,7 @@ export function ModeMenu({ chat }: { chat: ChatSummary }) {
         aria-hidden
         className={`${chipIconClass} hidden @min-[440px]/composer:inline @max-[299px]/composer:inline`}
       />
-      <span className={chipLabelClass}>{current.name}</span>
+      <span className={chipLabelClass}>{t(current.name)}</span>
       <ChipCaret />
     </button>
   );
@@ -77,10 +88,15 @@ export function ModeMenu({ chat }: { chat: ChatSummary }) {
         setOpen(next);
         if (!next) setError(null);
       }}
-      title="Mode"
+      title={t("chat.mode.title")}
       narrow
     >
-      <div role="menu" aria-label="Mode" onKeyDown={moveFocus} className="grid gap-px">
+      <div
+        role="menu"
+        aria-label={t("chat.mode.title")}
+        onKeyDown={moveFocus}
+        className="grid gap-px"
+      >
         {CHAT_INTENTS.map((option) => {
           const label = INTENT_LABELS[option];
           const checked = option === intent;
@@ -90,7 +106,10 @@ export function ModeMenu({ chat }: { chat: ChatSummary }) {
               type="button"
               role="menuitemradio"
               aria-checked={checked}
-              aria-label={`${label.name} mode: ${label.description}`}
+              aria-label={t("chat.mode.optionAria", {
+                name: t(label.name),
+                description: t(label.description),
+              })}
               disabled={locked}
               onClick={() => {
                 if (checked) setOpen(false);
@@ -113,17 +132,17 @@ export function ModeMenu({ chat }: { chat: ChatSummary }) {
                 <Check size={12} weight="bold" />
               </span>
               <span className="col-start-2 text-sm leading-4 font-medium text-fg">
-                {label.name}
+                {t(label.name)}
               </span>
               <span className="col-start-2 text-xs leading-[14px] text-pretty text-fg-3">
-                {label.description}
+                {t(label.description)}
               </span>
             </button>
           );
         })}
       </div>
       {(locked || error) && (
-        <PopoverHelp tone={error ? "error" : "warning"}>{error ?? LOCKED_REASON}</PopoverHelp>
+        <PopoverHelp tone={error ? "error" : "warning"}>{error ?? t(LOCKED_REASON)}</PopoverHelp>
       )}
     </ComposerPopover>
   );

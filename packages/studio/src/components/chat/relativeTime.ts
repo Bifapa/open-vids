@@ -1,3 +1,5 @@
+import { formatDate, t } from "../../i18n";
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
@@ -5,19 +7,22 @@ const DAY = 24 * HOUR;
 /** "just now", "5m ago", "2h ago", "3d ago"; a plain date once it is over a week old. */
 export function relativeTime(timestamp: number, now: number): string {
   const elapsed = Math.max(0, now - timestamp);
-  if (elapsed < MINUTE) return "just now";
-  if (elapsed < HOUR) return `${Math.floor(elapsed / MINUTE)}m ago`;
-  if (elapsed < DAY) return `${Math.floor(elapsed / HOUR)}h ago`;
-  if (elapsed < 7 * DAY) return `${Math.floor(elapsed / DAY)}d ago`;
-  return new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (elapsed < MINUTE) return t("chat.time.justNow");
+  if (elapsed < HOUR) return t("chat.time.minutesAgo", { count: Math.floor(elapsed / MINUTE) });
+  if (elapsed < DAY) return t("chat.time.hoursAgo", { count: Math.floor(elapsed / HOUR) });
+  if (elapsed < 7 * DAY) return t("chat.time.daysAgo", { count: Math.floor(elapsed / DAY) });
+  return formatDate(timestamp, { month: "short", day: "numeric" });
 }
 
 /** "12s", "1m 05s": how long a thought or run took. */
 export function formatDuration(ms: number): string {
   const seconds = Math.max(1, Math.round(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 60) return t("chat.duration.seconds", { seconds });
   const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
+  return t("chat.duration.minutes", {
+    minutes,
+    seconds: String(seconds % 60).padStart(2, "0"),
+  });
 }
 
 /** "00:42", "12:05", "1:02:09": a running or finished task's elapsed time, as the Working list shows it. */
@@ -31,9 +36,5 @@ export function formatElapsed(ms: number): string {
 
 /** "14:02": when a message was written, in the user's clock. */
 export function formatClockTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  });
+  return formatDate(timestamp, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 }

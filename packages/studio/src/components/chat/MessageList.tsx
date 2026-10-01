@@ -3,6 +3,7 @@ import { ArrowDown, ClosedCaptioning, FilmStrip, Scissors, type Icon } from "@ph
 import type { ChatState, TurnSummary } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { hasNoUsableModel, mainThreadMessages, type ThreadId } from "../../agent/agentSelectors";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
 import { AgentThread } from "./AgentThread";
 import { NoModelState } from "./ConnectModel";
@@ -14,10 +15,10 @@ import { RenderQaCard } from "./RenderQaCard";
 import { TurnFooter } from "./TurnFooter";
 import { useAutoScroll } from "./useAutoScroll";
 
-const SUGGESTIONS: { text: string; icon: Icon }[] = [
-  { text: "Tighten the pacing and cut the long pauses", icon: Scissors },
-  { text: "Add captions for the dialogue", icon: ClosedCaptioning },
-  { text: "Find B-roll for the opening", icon: FilmStrip },
+const SUGGESTIONS: { text: TranslationKey; icon: Icon }[] = [
+  { text: "chat.empty.suggestion.pacing", icon: Scissors },
+  { text: "chat.empty.suggestion.captions", icon: ClosedCaptioning },
+  { text: "chat.empty.suggestion.broll", icon: FilmStrip },
 ];
 
 /**
@@ -25,6 +26,7 @@ const SUGGESTIONS: { text: string; icon: Icon }[] = [
  * usable model it is the "Connect a model" state instead.
  */
 export function EmptyChat() {
+  const { t } = useTranslation();
   const setDraft = useAgentStore((state) => state.setDraft);
   const noModel = useAgentStore((state) => hasNoUsableModel(state.models));
   const ref = useRef<HTMLDivElement>(null);
@@ -36,16 +38,15 @@ export function EmptyChat() {
       className="flex min-h-full flex-1 flex-col justify-end gap-2.5 pt-4 pb-2.5 @min-[440px]/chat:px-1"
     >
       <p className="max-w-[36ch] text-sm leading-[17px] text-pretty text-fg-3">
-        Describe an edit. Agents work on this project’s timeline, and every prompt is one step you
-        can revert.
+        {t("chat.empty.hint")}
       </p>
       <div className="-mx-1.5 grid gap-px">
-        {SUGGESTIONS.map(({ text, icon: SuggestionIcon }) => (
+        {SUGGESTIONS.map(({ text: key, icon: SuggestionIcon }) => (
           <button
-            key={text}
+            key={key}
             type="button"
             onClick={() => {
-              setDraft(text);
+              setDraft(t(key));
               ref.current?.closest("[data-chat-panel]")?.querySelector("textarea")?.focus();
             }}
             className={cn(
@@ -57,7 +58,7 @@ export function EmptyChat() {
               aria-hidden
               className="mt-0.5 size-icon-sm shrink-0 text-fg-3 group-hover:text-fg-2"
             />
-            <span>{text}</span>
+            <span>{t(key)}</span>
           </button>
         ))}
       </div>
@@ -67,12 +68,13 @@ export function EmptyChat() {
 
 /** The clean conversation: prompts, Main's replies (with their plan and Working lists), QA, turn footers. */
 function MainThread({ chat }: { chat: ChatState }) {
+  const { t } = useTranslation();
   const reverts = useAgentStore((state) => state.reverts);
   const activeTurn = useAgentStore((state) => state.activeTurn);
   const revert = useAgentStore((state) => state.revert);
   const unrevert = useAgentStore((state) => state.unrevert);
   const dismissRevert = useAgentStore((state) => state.dismissRevert);
-  const blockedReason = activeTurn ? "Wait for the agent to finish before reverting." : null;
+  const blockedReason = activeTurn ? t("chat.revert.waitForAgent") : null;
 
   const rows = useMemo(() => {
     const byPrompt = new Map<string, TurnSummary>();
@@ -118,6 +120,7 @@ function MainThread({ chat }: { chat: ChatState }) {
 }
 
 export function MessageList({ chat, thread }: { chat: ChatState; thread: ThreadId }) {
+  const { t } = useTranslation();
   // Every folded event bumps `lastSeq`, so it is the one signal for "the content grew".
   const { ref, onScroll, detached, jumpToLatest } = useAutoScroll(chat.lastSeq);
 
@@ -129,7 +132,9 @@ export function MessageList({ chat, thread }: { chat: ChatState; thread: ThreadI
         role="log"
         aria-live="off"
         aria-label={
-          thread === "main" ? "Conversation" : `${chatAgentName(thread)}'s work in this chat`
+          thread === "main"
+            ? t("chat.list.conversation")
+            : t("chat.list.agentWork", { name: chatAgentName(thread) })
         }
         data-thread={thread}
         className={cn(
@@ -156,7 +161,7 @@ export function MessageList({ chat, thread }: { chat: ChatState; thread: ThreadI
           )}
         >
           <ArrowDown aria-hidden weight="bold" className="size-icon-sm" />
-          Jump to latest
+          {t("chat.list.jumpToLatest")}
         </button>
       )}
     </div>

@@ -7,6 +7,7 @@ import {
   type SpecialistConfig,
 } from "@hyperframes/agent-protocol";
 import { effortChoices, findModel, resolveModel, sameModel } from "../../agent/agentSelectors";
+import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { Popover } from "../ui/Popover";
 import { EFFORT_LABELS, type ConfigDefaults } from "./agentLabels";
@@ -38,6 +39,7 @@ export function AllowedModels({
   onChange: (next: ModelSelection[]) => void;
   bare?: boolean;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const toggle = (model: ModelSelection) =>
     onChange(
@@ -48,7 +50,7 @@ export function AllowedModels({
 
   const list = (
     <ul
-      aria-label={`Models the Director may also use for ${name}`}
+      aria-label={t("chat.allowedModels.listLabel", { name })}
       className={cn("flex flex-wrap gap-1", bare && "justify-end")}
     >
       {value.map((model) => {
@@ -58,12 +60,12 @@ export function AllowedModels({
           <li
             key={`${model.provider}/${model.modelId}`}
             className="inline-flex h-ctl-sm items-center gap-0.5 rounded-sm border border-border-input bg-input pl-2 pr-0.5 text-step-11 text-text-1"
-            title={known ? undefined : "Not signed in to this model's provider."}
+            title={known ? undefined : t("chat.allowedModels.notSignedIn")}
           >
             <span className={cn("max-w-40 truncate", !known && "text-text-3")}>{label}</span>
             <button
               type="button"
-              aria-label={`Remove ${label}`}
+              aria-label={t("chat.allowedModels.remove", { label })}
               disabled={disabled}
               onClick={() => toggle(model)}
               className="rounded-sm p-0.5 text-text-3 outline-hidden enabled:hover:text-text-0 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-40"
@@ -79,16 +81,16 @@ export function AllowedModels({
           onOpenChange={setOpen}
           side="bottom"
           align="start"
-          aria-label={`Models ${name} may also use`}
+          aria-label={t("chat.allowedModels.popoverLabel", { name })}
           trigger={
             <button
               type="button"
-              aria-label={`Add a model ${name} may also use`}
+              aria-label={t("chat.allowedModels.addLabel", { name })}
               disabled={disabled || !catalog || catalog.models.length === 0}
               className={chipButton}
             >
               <Plus size={11} aria-hidden />
-              Add
+              {t("common.add")}
             </button>
           }
         >
@@ -111,11 +113,11 @@ export function AllowedModels({
   if (bare) return list;
   return (
     <DialogField
-      label="Director may also use"
+      label={t("chat.allowedModels.field")}
       hint={
         value.length === 0
-          ? `None: the Director always runs ${name} on the model above.`
-          : `The Director may pick one of these for a single ${name} task.`
+          ? t("chat.allowedModels.hintNone", { name })
+          : t("chat.allowedModels.hintSome", { name })
       }
     >
       {list}
@@ -150,17 +152,20 @@ export function AgentConfigFields({
   disabled,
   disabledReason,
 }: AgentConfigFieldsProps) {
+  const { t } = useTranslation();
   const { info } = resolveModel(value.model, catalog, defaults.model);
   const efforts = effortChoices(info);
   const choices: Choice<string>[] = [
     {
       value: "default",
-      label: defaults.thinking ? `Default (${EFFORT_LABELS[defaults.thinking]})` : "Default",
+      label: defaults.thinking
+        ? t("chat.effort.defaultWith", { effort: t(EFFORT_LABELS[defaults.thinking]) })
+        : t("common.default"),
     },
-    ...efforts.map((effort) => ({ value: effort, label: EFFORT_LABELS[effort] })),
+    ...efforts.map((effort) => ({ value: effort, label: t(EFFORT_LABELS[effort]) })),
   ];
   if (value.thinking && !efforts.includes(value.thinking)) {
-    choices.push({ value: value.thinking, label: EFFORT_LABELS[value.thinking] });
+    choices.push({ value: value.thinking, label: t(EFFORT_LABELS[value.thinking]) });
   }
 
   // A model that cannot take the current effort resets it to the default, as the header does.
@@ -173,9 +178,9 @@ export function AgentConfigFields({
 
   return (
     <div className="flex flex-col gap-3">
-      <DialogField label="Model">
+      <DialogField label={t("chat.field.model")}>
         <ModelPicker
-          name={`${name} model`}
+          name={t("chat.agents.modelName", { name })}
           catalog={catalog}
           catalogFailed={catalogFailed}
           explicit={value.model}
@@ -186,16 +191,14 @@ export function AgentConfigFields({
         />
       </DialogField>
       <DialogField
-        label="Thinking"
-        hint={
-          withAllowedModels ? "The Director may lower this for a task, never raise it." : undefined
-        }
+        label={t("chat.field.thinking")}
+        hint={withAllowedModels ? t("chat.field.thinkingHint") : undefined}
       >
         {efforts.length === 0 ? (
-          <p className="text-step-11 text-text-3">This model has no adjustable thinking effort.</p>
+          <p className="text-step-11 text-text-3">{t("chat.effort.noneAdjustableLong")}</p>
         ) : (
           <ChoiceChips
-            label={`${name} thinking`}
+            label={t("chat.field.thinkingGroup", { name })}
             value={value.thinking ?? "default"}
             choices={choices}
             disabled={disabled}

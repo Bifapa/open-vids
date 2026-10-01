@@ -3,6 +3,7 @@ import { ChatCircleDots } from "@phosphor-icons/react";
 import { AgentStoreProvider, useAgentStore } from "../../agent/agentContext";
 import type { ChatSummary } from "@hyperframes/agent-protocol";
 import { NEW_CHAT_DRAFT, type AgentStore } from "../../agent/agentStore";
+import { useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import { ChatHeader } from "./ChatHeader";
 import { ChatView } from "./ChatView";
@@ -16,6 +17,21 @@ function Calm({ title, detail, action }: { title: string; detail?: string; actio
       {detail && <p className="max-w-[26ch] text-xs text-fg-3">{detail}</p>}
       {action}
     </div>
+  );
+}
+
+function PanelCrashed({ onReload }: { onReload: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Calm
+      title={t("chat.panel.crashed.title")}
+      detail={t("chat.panel.crashed.detail")}
+      action={
+        <Button size="sm" variant="secondary" onClick={onReload}>
+          {t("chat.panel.crashed.reload")}
+        </Button>
+      }
+    />
   );
 }
 
@@ -33,22 +49,13 @@ class PanelBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
   render() {
     if (!this.state.failed) return this.props.children;
-    return (
-      <Calm
-        title="Chat hit a problem"
-        detail="The editor is unaffected."
-        action={
-          <Button size="sm" variant="secondary" onClick={() => this.setState({ failed: false })}>
-            Reload chat
-          </Button>
-        }
-      />
-    );
+    return <PanelCrashed onReload={() => this.setState({ failed: false })} />;
   }
 }
 
 /** Everything under the store: availability states, then the context row over the history or chat view. */
 export function AgentChatBody() {
+  const { t } = useTranslation();
   const availability = useAgentStore((state) => state.availability);
   const message = useAgentStore((state) => state.unavailableMessage);
   const view = useAgentStore((state) => state.view);
@@ -77,15 +84,15 @@ export function AgentChatBody() {
     regionRef.current?.focus();
   }, [view]);
 
-  if (availability === "loading") return <Calm title="Loading chats…" />;
+  if (availability === "loading") return <Calm title={t("chat.panel.loading")} />;
   if (availability === "unavailable") {
     return (
       <Calm
-        title="Agent unavailable"
-        detail={message ?? "The agent isn't running right now. Your project is unaffected."}
+        title={t("chat.panel.unavailable.title")}
+        detail={message ?? t("chat.panel.unavailable.detail")}
         action={
           <Button size="sm" variant="secondary" onClick={() => void retry()}>
-            Retry
+            {t("common.retry")}
           </Button>
         }
       />
@@ -96,7 +103,11 @@ export function AgentChatBody() {
       ref={regionRef}
       tabIndex={-1}
       role="region"
-      aria-label={view === "chat" ? `Chat: ${title ?? ""}` : "Chats"}
+      aria-label={
+        view === "chat"
+          ? t("chat.panel.region.chat", { title: title ?? "" })
+          : t("chat.panel.region.history")
+      }
       className="flex h-full min-h-0 flex-col outline-hidden"
     >
       <ChatHeader contextChat={contextChat} />
@@ -110,6 +121,7 @@ export function AgentChatBody() {
  * (created by the dock, shared with the Story panel); null while it is being created.
  */
 export function AgentChatPanel({ store }: { store: AgentStore | null }) {
+  const { t } = useTranslation();
   return (
     <div data-chat-panel className="@container/chat flex h-full min-h-0 flex-col bg-bg-0 text-fg">
       <PanelBoundary>
@@ -118,7 +130,7 @@ export function AgentChatPanel({ store }: { store: AgentStore | null }) {
             <AgentChatBody />
           </AgentStoreProvider>
         ) : (
-          <Calm title="Loading chats…" />
+          <Calm title={t("chat.panel.loading")} />
         )}
       </PanelBoundary>
     </div>

@@ -1,6 +1,7 @@
 import { Plus } from "@phosphor-icons/react";
 import type { ChatStatus, ChatSummary } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
 import { Badge, StatusDot, type StatusTone } from "../ui/Status";
@@ -8,21 +9,22 @@ import { chatLink, chatPadX, noteBox, sectLabel, selItem } from "./chatStyles";
 import { relativeTime } from "./relativeTime";
 import { useNow } from "./useNow";
 
-const STATUS: Record<ChatStatus, { label: string; tone: StatusTone } | null> = {
+const STATUS: Record<ChatStatus, { label: TranslationKey; tone: StatusTone } | null> = {
   idle: null,
-  working: { label: "Working", tone: "neutral" },
-  interrupted: { label: "Interrupted", tone: "warning" },
-  completed: { label: "Done", tone: "success" },
-  failed: { label: "Failed", tone: "error" },
+  working: { label: "chat.status.working", tone: "neutral" },
+  interrupted: { label: "chat.status.interrupted", tone: "warning" },
+  completed: { label: "chat.status.done", tone: "success" },
+  failed: { label: "chat.status.failed", tone: "error" },
 };
 
 function ChatStatusBadge({ status }: { status: ChatStatus }) {
+  const { t } = useTranslation();
   const shown = STATUS[status];
   if (!shown) return null;
   return (
     <Badge size="sm" tone={shown.tone}>
       {status === "working" && <StatusDot tone="running" />}
-      {shown.label}
+      {t(shown.label)}
     </Badge>
   );
 }
@@ -75,6 +77,7 @@ function ChatRow({
 
 /** The project's saved chats, newest first; the chat the title row shows is selected. */
 export function HistoryView({ selectedId }: { selectedId: string | null }) {
+  const { t } = useTranslation();
   const chats = useAgentStore((state) => state.chats);
   const activeTurn = useAgentStore((state) => state.activeTurn);
   const pending = useAgentStore((state) => state.pending);
@@ -96,7 +99,7 @@ export function HistoryView({ selectedId }: { selectedId: string | null }) {
         )}
       >
         <h2 className={cn(sectLabel, "items-center truncate")}>
-          Chats
+          {t("chat.history.title")}
           <span className="font-normal text-fg-3 tabular-nums">{chats.length}</span>
         </h2>
         <Button
@@ -107,7 +110,7 @@ export function HistoryView({ selectedId }: { selectedId: string | null }) {
           disabled={pending !== null}
           onClick={startDraft}
         >
-          New chat
+          {t("chat.header.newChat")}
         </Button>
       </div>
       {(activeTurn || notice) && (
@@ -115,12 +118,13 @@ export function HistoryView({ selectedId }: { selectedId: string | null }) {
           {activeTurn && (
             <div role="status" className={cn(noteBox, "text-xs leading-[15px]")}>
               <p>
-                {working ? `“${working.title}”` : "A chat"} is working on this project. Other chats
-                can wait for it to finish.
+                {working
+                  ? t("chat.history.busyNamed", { title: working.title })
+                  : t("chat.history.busyOther")}
               </p>
               <div className="flex">
                 <Button size="sm" onClick={() => void openChat(activeTurn.chatId)}>
-                  Open
+                  {t("common.open")}
                 </Button>
               </div>
             </div>
@@ -139,7 +143,7 @@ export function HistoryView({ selectedId }: { selectedId: string | null }) {
                 onClick={dismissNotice}
                 className={cn(chatLink, "justify-self-start text-xs")}
               >
-                Dismiss
+                {t("common.dismiss")}
               </button>
             </div>
           )}
@@ -147,14 +151,14 @@ export function HistoryView({ selectedId }: { selectedId: string | null }) {
       )}
       {chats.length === 0 ? (
         <div className={cn("flex flex-1 flex-col justify-end gap-1 pt-4 pb-2.5", chatPadX)}>
-          <p className="text-sm font-medium text-fg-2">No chats yet</p>
+          <p className="text-sm font-medium text-fg-2">{t("chat.history.empty.title")}</p>
           <p className="max-w-[36ch] text-sm leading-[17px] text-pretty text-fg-3">
-            Start a chat to ask the agent about this project. Chats are saved with it.
+            {t("chat.history.empty.description")}
           </p>
         </div>
       ) : (
         <ul
-          aria-label="Saved chats"
+          aria-label={t("chat.history.list")}
           className="grid gap-px px-1.5 pb-2.5 @min-[440px]/chat:px-2.5 @min-[440px]/chat:pb-3"
         >
           {chats.map((chat) => (

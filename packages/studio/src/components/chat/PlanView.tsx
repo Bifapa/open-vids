@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { CaretRight, Check, Minus, WarningCircle } from "@phosphor-icons/react";
 import type { ExecutionPlan, PlanStepStatus } from "@hyperframes/agent-protocol";
+import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { StatusDot } from "../ui/Status";
 import { PLAN_STATUS_LABELS } from "./agentLabels";
@@ -35,6 +36,7 @@ const STEP_TEXT: Record<PlanStepStatus, string> = {
  * (the user can still open it). Informational only; nothing here waits for approval.
  */
 export function PlanView({ plan, live }: { plan: ExecutionPlan; live: boolean }) {
+  const { t } = useTranslation();
   const [choice, setChoice] = useState<boolean | null>(null);
   const open = choice ?? live;
   const listId = useId();
@@ -43,7 +45,7 @@ export function PlanView({ plan, live }: { plan: ExecutionPlan; live: boolean })
 
   return (
     <section
-      aria-label="Plan"
+      aria-label={t("chat.plan.title")}
       data-testid="turn-plan"
       className={cn(
         "overflow-hidden rounded-md border border-border-subtle bg-bg-1",
@@ -68,9 +70,9 @@ export function PlanView({ plan, live }: { plan: ExecutionPlan; live: boolean })
             open && "rotate-90",
           )}
         />
-        <span>Plan</span>
+        <span>{t("chat.plan.title")}</span>
         <span className="ml-auto text-xs font-normal whitespace-nowrap text-fg-3 tabular-nums">
-          {reached} of {plan.steps.length}
+          {t("chat.plan.progress", { reached, total: plan.steps.length })}
         </span>
       </button>
       {open && (
@@ -91,7 +93,7 @@ export function PlanView({ plan, live }: { plan: ExecutionPlan; live: boolean })
                 <StepMark status={step.status} />
               </span>
               <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{step.title}</span>
-              <span className="sr-only">{PLAN_STATUS_LABELS[step.status]}</span>
+              <span className="sr-only">{t(PLAN_STATUS_LABELS[step.status])}</span>
               {step.agent && step.agent !== "director" && (
                 <span className="shrink-0 text-xs font-normal text-fg-3">
                   {chatAgentName(step.agent)}

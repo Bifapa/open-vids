@@ -10,6 +10,7 @@ import {
 } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { resolveModel, runningTurn, sameModel } from "../../agent/agentSelectors";
+import { Trans, useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { IconButton } from "../ui/IconButton";
 import { Toggle } from "../ui/Toggle";
@@ -63,6 +64,7 @@ const rowClass =
  * thinking (its settings view), and the advanced per-chat config (allowed models) behind "More settings…".
  */
 export function AgentsMenu({ chat }: { chat: ChatSummary }) {
+  const { t } = useTranslation();
   const settings = useAgentStore((state) => state.settings);
   const catalog = useAgentStore((state) => state.models);
   const catalogFailed = useAgentStore((state) => state.modelsFailed);
@@ -110,12 +112,12 @@ export function AgentsMenu({ chat }: { chat: ChatSummary }) {
       ref={triggerRef}
       type="button"
       data-chip="agents"
-      aria-label={`Agents, ${count} enabled`}
-      title={`Agents · ${count}`}
+      aria-label={t("chat.agents.chipAria", { count })}
+      title={t("chat.agents.chip", { count })}
       className={chipClass}
     >
       <UsersThree size={12} aria-hidden className={chipIconClass} />
-      <span className={chipLabelClass}>Agents · {count}</span>
+      <span className={chipLabelClass}>{t("chat.agents.chip", { count })}</span>
       <ChipCaret />
     </button>
   );
@@ -123,13 +125,15 @@ export function AgentsMenu({ chat }: { chat: ChatSummary }) {
   const agent = view.kind === "list" ? null : view.agent;
   const title = agent
     ? view.kind === "model"
-      ? `${chatAgentName(agent)} · Model`
-      : `${chatAgentName(agent)} · Settings`
-    : "Agents";
+      ? t("chat.agents.modelTitle", { name: chatAgentName(agent) })
+      : t("chat.agents.settingsTitle", { name: chatAgentName(agent) })
+    : t("chat.agents.title");
   const back = agent
     ? {
         label:
-          view.kind === "model" ? `Back to ${chatAgentName(agent)} settings` : "Back to agents",
+          view.kind === "model"
+            ? t("chat.agents.backToSettings", { name: chatAgentName(agent) })
+            : t("chat.agents.backToAgents"),
         onBack: () =>
           setView(view.kind === "model" ? { kind: "settings", agent } : { kind: "list" }),
       }
@@ -158,9 +162,9 @@ export function AgentsMenu({ chat }: { chat: ChatSummary }) {
         />
       ) : (
         <>
-          <PopoverField label="Model">
+          <PopoverField label={t("chat.field.model")}>
             <ModelFieldButton
-              name={`${chatAgentName(agent)} model`}
+              name={t("chat.agents.modelName", { name: chatAgentName(agent) })}
               label={modelFieldLabel(catalog, catalogFailed, ownModel, modelFallback)}
               disabled={locked || pending || !catalog || catalog.models.length === 0}
               onOpen={() => setView({ kind: "model", agent })}
@@ -174,28 +178,32 @@ export function AgentsMenu({ chat }: { chat: ChatSummary }) {
             onChange={(effort) => void change(agent, { thinking: effort ?? global.thinking })}
           />
           <PopoverHelp>
-            Default follows your agent defaults.{" "}
-            <button
-              type="button"
-              className={linkClass}
-              onClick={() => {
-                onOpenChange(false);
-                setAdvanced(agent);
+            <Trans
+              i18nKey="chat.agents.defaultHelp"
+              components={{
+                action: (
+                  <button
+                    type="button"
+                    className={linkClass}
+                    onClick={() => {
+                      onOpenChange(false);
+                      setAdvanced(agent);
+                    }}
+                  />
+                ),
               }}
-            >
-              More settings…
-            </button>
+            />
           </PopoverHelp>
         </>
       );
   } else {
     body = (
-      <div role="group" aria-label="Available agents" className="grid gap-px">
+      <div role="group" aria-label={t("chat.agents.available")} className="grid gap-px">
         <div className={rowClass} data-agent="director">
           <AgentMonogram agent="director" />
-          <AgentInfo name={chatAgentName("director")} role="Coordinates this project" />
+          <AgentInfo name={chatAgentName("director")} role={t("chat.agents.directorRole")} />
           <span className="col-span-2 col-start-3 pr-1 text-xs whitespace-nowrap text-fg-3">
-            Always on
+            {t("chat.agents.alwaysOn")}
           </span>
         </div>
         {SPECIALIST_IDS.map((id) => {
@@ -207,13 +215,13 @@ export function AgentsMenu({ chat }: { chat: ChatSummary }) {
               <AgentInfo name={name} role={AGENT_BLURBS[id]} off={!on} />
               <IconButton
                 size="sm"
-                aria-label={`Settings for ${name}`}
-                title={`${name} settings`}
+                aria-label={t("chat.agents.settingsFor", { name })}
+                title={t("chat.agents.settingsTooltip", { name })}
                 icon={<SlidersHorizontal size={12} aria-hidden />}
                 onClick={() => setView({ kind: "settings", agent: id })}
               />
               <Toggle
-                label={`${name} agent`}
+                label={t("chat.agents.toggle", { name })}
                 checked={on}
                 disabled={locked || pending}
                 onCommit={(next) => void toggle(id, next)}
@@ -236,7 +244,7 @@ export function AgentsMenu({ chat }: { chat: ChatSummary }) {
       >
         {body}
         {(locked || error) && view.kind !== "model" && (
-          <PopoverHelp tone={error ? "error" : "warning"}>{error ?? LOCKED_REASON}</PopoverHelp>
+          <PopoverHelp tone={error ? "error" : "warning"}>{error ?? t(LOCKED_REASON)}</PopoverHelp>
         )}
       </ComposerPopover>
       {advanced && (

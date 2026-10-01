@@ -2,6 +2,7 @@ import type { AgentRunStatus } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { describeTurnError } from "../../agent/agentErrors";
 import { runCurrentStep } from "../../agent/agentSelectors";
+import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { AgentMonogram, chatAgentName } from "./AgentMonogram";
 import {
@@ -34,6 +35,7 @@ export function DelegationRow({ runId }: { runId: string }) {
     state.chat && run ? runCurrentStep(state.chat.messages, run) : null,
   );
   const selectThread = useAgentStore((state) => state.selectThread);
+  const { t } = useTranslation();
   if (!run) return null;
 
   const state = RUN_STATE[run.status];
@@ -43,7 +45,7 @@ export function DelegationRow({ runId }: { runId: string }) {
     outcome = describeTurnError(run.error.code, run.error.message);
   }
   let step = run.title;
-  if (run.status === "queued") step = "waiting to start";
+  if (run.status === "queued") step = t("chat.delegation.waiting");
   else if (state === "running") step = currentStep ?? run.title;
 
   return (
@@ -52,7 +54,7 @@ export function DelegationRow({ runId }: { runId: string }) {
         type="button"
         data-testid="delegation-row"
         data-run-id={run.id}
-        aria-label={`Open ${name}'s thread: ${step}, ${WORK_STATE_TEXT[state]}`}
+        aria-label={t("chat.delegation.open", { name, step, state: t(WORK_STATE_TEXT[state]) })}
         onClick={() => selectThread(run.agent)}
         className={cn(workRowGrid, WORK_ROW_TONE[state], selItem, "hover:text-fg", chatFocus)}
       >

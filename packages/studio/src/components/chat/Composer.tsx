@@ -7,9 +7,10 @@ import { NEW_CHAT_DRAFT } from "../../agent/agentStore";
 import { useComposerContextStore } from "../../agent/composerContext";
 import { useDockLayoutStore } from "../dock/dockLayoutStore";
 import { cn } from "../ui/cn";
+import { useTranslation } from "../../i18n";
 import { Kbd } from "../ui/Kbd";
 import { AgentsMenu } from "./AgentsMenu";
-import { ConnectModelButton, MANUAL_EDITOR_NOTE, NO_MODEL_TITLE } from "./ConnectModel";
+import { ConnectModelButton, MANUAL_EDITOR_NOTE, NO_MODEL_SENTENCE } from "./ConnectModel";
 import { chatAgentName } from "./AgentMonogram";
 import { ComposerPortalContext, chipIconClass, chipLabelClass } from "./composerParts";
 import { ContextChips } from "./ContextChips";
@@ -30,6 +31,7 @@ const sendClass = cn(
  * the project it explains and stays out of the way. It always talks to Main, even from an agent's thread.
  */
 export function Composer() {
+  const { t } = useTranslation();
   const chatId = useAgentStore((state) => state.chatId);
   const chat = useAgentStore((state) => state.chat);
   const draftChoices = useAgentStore((state) => state.draftChoices);
@@ -113,14 +115,14 @@ export function Composer() {
   };
 
   const placeholder = noModel
-    ? "Connect a model to write to the agents"
+    ? t("chat.composer.placeholder.noModel")
     : blockedBy
-      ? "Waiting for the other chat…"
+      ? t("chat.composer.placeholder.blocked")
       : running
-        ? "Steer the current task…"
+        ? t("chat.composer.placeholder.steer")
         : storyShown
-          ? "Describe the story you want, or what to change in it…"
-          : "Describe an edit…";
+          ? t("chat.composer.placeholder.story")
+          : t("chat.composer.placeholder.edit");
 
   const mode = running ? (hasText ? "steer" : "stop") : "send";
 
@@ -139,7 +141,7 @@ export function Composer() {
             <span>{notice.message}</span>
             <button
               type="button"
-              aria-label="Dismiss message"
+              aria-label={t("chat.composer.dismiss")}
               onClick={dismissNotice}
               className="shrink-0 rounded-xs text-fg-3 outline-hidden hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
             >
@@ -153,27 +155,32 @@ export function Composer() {
             data-testid="composer-no-model"
           >
             <span>
-              <span className="font-medium text-fg-2">{NO_MODEL_TITLE}.</span> {MANUAL_EDITOR_NOTE}
+              <span className="font-medium text-fg-2">{t(NO_MODEL_SENTENCE)}</span>{" "}
+              {t(MANUAL_EDITOR_NOTE)}
             </span>
             <ConnectModelButton />
           </div>
         )}
         {blockedBy && (
           <p className="mx-3 mb-1.5 text-xs text-fg-3" data-testid="composer-blocked">
-            {blockedTitle ? `“${blockedTitle}”` : "Another chat"} is working on this project. You
-            can write here once it finishes.{" "}
+            {blockedTitle
+              ? t("chat.composer.blockedNamed", { title: blockedTitle })
+              : t("chat.composer.blockedOther")}{" "}
             <button
               type="button"
               onClick={() => void openChat(blockedBy.chatId)}
               className="rounded-xs text-fg-2 underline decoration-border-strong underline-offset-2 outline-hidden hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
             >
-              Open it
+              {t("chat.composer.openBlocking")}
             </button>
           </p>
         )}
         {thread !== "main" && !blockedBy && (
           <p className="mx-3 mb-1 text-xs text-fg-3" data-testid="composer-thread-hint">
-            Viewing {chatAgentName(thread)}. Messages go to {chatAgentName("director")}.
+            {t("chat.composer.threadHint", {
+              viewing: chatAgentName(thread),
+              target: chatAgentName("director"),
+            })}
           </p>
         )}
         <div
@@ -185,7 +192,7 @@ export function Composer() {
         >
           <ContextChips onRemoved={() => areaRef.current?.focus({ preventScroll: true })} />
           <label htmlFor="chat-composer-textarea" className="sr-only">
-            Message the OpenVids agent
+            {t("chat.composer.label")}
           </label>
           <textarea
             id="chat-composer-textarea"
@@ -215,7 +222,7 @@ export function Composer() {
             {storyShown && !running && (
               <span
                 className="inline-flex h-ctl-sm shrink-0 items-center gap-1 rounded-sm px-1.5 text-xs font-medium text-fg-2"
-                title="Story workspace: the next turn plans the story and leaves the timeline alone"
+                title={t("chat.composer.storyChip")}
                 data-testid="composer-story-chip"
               >
                 <TreeStructure size={12} aria-hidden className={chipIconClass} />
@@ -227,8 +234,8 @@ export function Composer() {
               <button
                 key="stop"
                 type="button"
-                aria-label="Stop task"
-                title="Stop task · ⌘."
+                aria-label={t("chat.composer.stopTask")}
+                title={t("chat.composer.stopTaskTitle", { key: "⌘." })}
                 disabled={pending === "abort"}
                 onClick={() => void abort()}
                 className={cn(
@@ -239,15 +246,15 @@ export function Composer() {
                 )}
               >
                 <Stop size={12} weight="fill" aria-hidden />
-                <span>Stop</span>
+                <span>{t("chat.composer.stop")}</span>
                 <Kbd className="h-3.5 px-[3px] text-2xs @max-[439px]/composer:hidden">⌘.</Kbd>
               </button>
             ) : mode === "steer" ? (
               <button
                 key="steer"
                 type="button"
-                aria-label="Steer current task"
-                title="Steer current task"
+                aria-label={t("chat.composer.steerTask")}
+                title={t("chat.composer.steerTask")}
                 disabled={!canSubmit}
                 onClick={() => void submit()}
                 className={cn(
@@ -258,14 +265,14 @@ export function Composer() {
                 )}
               >
                 <PaperPlaneRight size={12} aria-hidden />
-                <span>Steer</span>
+                <span>{t("chat.composer.steer")}</span>
               </button>
             ) : (
               <button
                 key="send"
                 type="button"
-                aria-label="Send message"
-                title="Send · Enter to send"
+                aria-label={t("chat.composer.send")}
+                title={t("chat.composer.sendTitle", { key: "Enter" })}
                 disabled={!canSubmit}
                 onClick={() => void submit()}
                 className={cn(

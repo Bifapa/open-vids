@@ -13,6 +13,7 @@ import {
 import { useAgentStore } from "../../agent/agentContext";
 import { chatExecutionQuality, runningTurn } from "../../agent/agentSelectors";
 import { Button } from "../ui/Button";
+import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { ChatDialog } from "./ChatDialog";
 import {
@@ -96,6 +97,7 @@ function CustomQualityDialog({
   onSave: (budget: ExecutionBudget) => Promise<{ ok: true } | { ok: false; message: string }>;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(() => clampExecutionBudget(initial));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,31 +116,31 @@ function CustomQualityDialog({
       open
       onClose={onClose}
       finalFocus={finalFocus}
-      title="Custom execution quality"
-      description="How hard the agents work on this chat's next turns."
+      title={t("chat.quality.customDialog.title")}
+      description={t("chat.quality.customDialog.description")}
       className="w-[min(440px,calc(100vw-2rem))]"
       footer={
         <>
-          {locked && <span className="mr-auto text-xs text-warning">{LOCKED_REASON}</span>}
+          {locked && <span className="mr-auto text-xs text-warning">{t(LOCKED_REASON)}</span>}
           <Button size="sm" variant="ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             size="sm"
             variant="primary"
             loading={saving}
             disabled={locked}
-            title={locked ? LOCKED_REASON : undefined}
+            title={locked ? t(LOCKED_REASON) : undefined}
             onClick={() => void save()}
           >
-            Save
+            {t("common.save")}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-1 text-xs text-fg-3">
-          <span>Start from</span>
+          <span>{t("chat.quality.customDialog.startFrom")}</span>
           {FIXED_PRESETS.map((preset) => (
             <Button
               key={preset}
@@ -147,7 +149,7 @@ function CustomQualityDialog({
               disabled={locked}
               onClick={() => setDraft({ ...EXECUTION_BUDGETS[preset] })}
             >
-              {EXECUTION_PRESET_LABELS[preset]}
+              {t(EXECUTION_PRESET_LABELS[preset])}
             </Button>
           ))}
         </div>
@@ -167,6 +169,7 @@ function CustomQualityDialog({
  * Custom, or the global default. Each choice says what it changes; Custom opens an editor for the whole budget.
  */
 export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
+  const { t } = useTranslation();
   const settings = useAgentStore((state) => state.settings);
   const locked = useAgentStore((state) => runningTurn(state.chat) !== null);
   const setExecutionQuality = useAgentStore((state) => state.setExecutionQuality);
@@ -178,7 +181,7 @@ export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
 
   const { quality, custom } = chatExecutionQuality(chat, settings);
   const globalQuality = settings?.executionQuality ?? null;
-  const label = EXECUTION_PRESET_LABELS[quality.preset];
+  const label = t(EXECUTION_PRESET_LABELS[quality.preset]);
   const checked: Row = custom ? quality.preset : "default";
 
   const commit = async (next: ExecutionQuality | null) => {
@@ -196,8 +199,8 @@ export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
       ref={triggerRef}
       type="button"
       data-chip="quality"
-      aria-label={`Execution quality: ${label}${custom ? "" : " (default)"}`}
-      title={`Execution quality · ${label}${custom ? "" : " (default)"}`}
+      aria-label={t(custom ? "chat.quality.chipAria" : "chat.quality.chipAriaDefault", { label })}
+      title={t(custom ? "chat.quality.chipTitle" : "chat.quality.chipTitleDefault", { label })}
       className={chipClass}
     >
       <Gauge size={12} aria-hidden className={chipIconClass} />
@@ -221,21 +224,20 @@ export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
           setOpen(next);
           if (!next) setError(null);
         }}
-        title="Execution quality"
+        title={t("chat.quality.title")}
       >
-        <PopoverHelp>
-          How hard the agents work on this chat’s next turns: render QA, Vision, research and
-          thinking.
-        </PopoverHelp>
-        <div role="radiogroup" aria-label="Execution quality" className="grid gap-px">
+        <PopoverHelp>{t("chat.quality.help")}</PopoverHelp>
+        <div role="radiogroup" aria-label={t("chat.quality.title")} className="grid gap-px">
           <QualityRow
             row="default"
             title={
               globalQuality
-                ? `Default · ${EXECUTION_PRESET_LABELS[globalQuality.preset]}`
-                : "Default"
+                ? t("chat.quality.defaultNamed", {
+                    name: t(EXECUTION_PRESET_LABELS[globalQuality.preset]),
+                  })
+                : t("common.default")
             }
-            blurb="your global setting"
+            blurb={t("chat.quality.blurb.global")}
             budget={describeBudget(
               resolveExecutionBudget(globalQuality ?? DEFAULT_EXECUTION_QUALITY),
             )}
@@ -250,8 +252,8 @@ export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
             <QualityRow
               key={preset}
               row={preset}
-              title={EXECUTION_PRESET_LABELS[preset]}
-              blurb={EXECUTION_PRESET_BLURBS[preset]}
+              title={t(EXECUTION_PRESET_LABELS[preset])}
+              blurb={t(EXECUTION_PRESET_BLURBS[preset])}
               budget={describeBudget(EXECUTION_BUDGETS[preset])}
               checked={checked === preset}
               disabled={locked || pending}
@@ -263,8 +265,8 @@ export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
           ))}
           <QualityRow
             row="custom"
-            title="Custom"
-            blurb="your own budget"
+            title={t(EXECUTION_PRESET_LABELS.custom)}
+            blurb={t("chat.quality.blurb.custom")}
             budget={describeBudget(clampExecutionBudget(quality.custom))}
             checked={checked === "custom"}
             disabled={locked || pending}
@@ -277,7 +279,7 @@ export function ExecutionQualityMenu({ chat }: { chat: ChatSummary }) {
           />
         </div>
         {(locked || error) && (
-          <PopoverHelp tone={error ? "error" : "warning"}>{error ?? LOCKED_REASON}</PopoverHelp>
+          <PopoverHelp tone={error ? "error" : "warning"}>{error ?? t(LOCKED_REASON)}</PopoverHelp>
         )}
       </ComposerPopover>
       {editing && (

@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import type { AgentRun, WorkerAgentId } from "@hyperframes/agent-protocol";
 import type { ThreadId } from "../../agent/agentSelectors";
+import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { chatAgentName } from "./AgentMonogram";
 import { chatFocus } from "./chatStyles";
@@ -47,12 +48,16 @@ export function AgentCrumbs({
   active: WorkerAgentId;
   onSelect: (thread: ThreadId) => void;
 }) {
+  const { t } = useTranslation();
   const caller = callerOf(runs, active);
   const link = cn(crumbClass, "text-fg-3 hover:bg-surface-2 hover:text-fg");
   return (
-    <nav aria-label="Agent threads" className="flex min-w-0 shrink items-center overflow-hidden">
+    <nav
+      aria-label={t("chat.crumbs.label")}
+      className="flex min-w-0 shrink items-center overflow-hidden"
+    >
       <button type="button" className={link} onClick={() => onSelect("main")}>
-        Main
+        {chatAgentName("director")}
       </button>
       {caller && (
         <Fragment>
@@ -67,7 +72,7 @@ export function AgentCrumbs({
           <Sep className="hidden @max-[299px]/chat:inline" />
           <button
             type="button"
-            aria-label={`Open ${chatAgentName(caller)}'s thread`}
+            aria-label={t("chat.crumbs.openThread", { name: chatAgentName(caller) })}
             className={cn(
               link,
               "hidden min-w-ctl-xs justify-center px-1 @max-[299px]/chat:inline-flex",

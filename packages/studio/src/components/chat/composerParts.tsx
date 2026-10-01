@@ -9,6 +9,7 @@ import {
 } from "@hyperframes/agent-protocol";
 import { displayModelName, effortChoices, resolveModel } from "../../agent/agentSelectors";
 import { cn } from "../ui/cn";
+import { t, useTranslation, type TranslationKey } from "../../i18n";
 import { IconButton } from "../ui/IconButton";
 import { Popover } from "../ui/Popover";
 import { SegmentedControl, type SegmentedOption } from "../ui/SegmentedControl";
@@ -19,7 +20,7 @@ import { ModelList } from "./ModelList";
 export const ComposerPortalContext = createContext<HTMLElement | null>(null);
 
 /** Said wherever a control is locked by the running turn (the runtime refuses changes mid-run). */
-export const LOCKED_REASON = "Can't change while the agent is working.";
+export const LOCKED_REASON: TranslationKey = "chat.locked";
 
 /**
  * A composer selector (prototype `.tool-btn.ov-chat-chip`): 24 px, metadata weight, label + caret. Below 300 px
@@ -151,11 +152,11 @@ export function modelFieldLabel(
   explicit: ModelSelection | null,
   fallback: ModelSelection | null,
 ): string {
-  if (!catalog) return catalogFailed ? "Models unavailable" : "Loading models…";
+  if (!catalog) return t(catalogFailed ? "chat.model.unavailable" : "chat.model.loading");
   const resolved = resolveModel(explicit, catalog, fallback);
   const name = displayModelName(resolved.selection, resolved.info);
-  if (!resolved.selection) return "No model available";
-  return explicit === null ? `Default · ${name}` : name;
+  if (!resolved.selection) return t("chat.model.none");
+  return explicit === null ? t("chat.model.defaultNamed", { name }) : name;
 }
 
 /** The prototype's `.sel` as a button: opens the searchable model list in the popover. */
@@ -171,13 +172,14 @@ export function ModelFieldButton({
   disabled: boolean;
   onOpen: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
-      aria-label={`${name}: ${label}`}
+      aria-label={t("chat.model.fieldLabel", { name, label })}
       aria-haspopup="listbox"
       disabled={disabled}
-      title={disabled ? LOCKED_REASON : undefined}
+      title={disabled ? t(LOCKED_REASON) : undefined}
       onClick={onOpen}
       className={cn(
         "flex h-ctl-sm w-full min-w-0 items-center gap-1 rounded-sm border border-border bg-surface-1 pr-1.5 pl-2 text-left text-sm text-fg",
@@ -221,14 +223,14 @@ export function ModelChoice({
 }
 
 /** Six or more segments do not fit 264 px with full names. */
-const SHORT_EFFORT_LABELS: Record<ThinkingEffort, string> = {
-  off: "Off",
-  minimal: "Min",
-  low: "Low",
-  medium: "Med",
-  high: "High",
-  xhigh: "XHigh",
-  max: "Max",
+const SHORT_EFFORT_LABELS: Record<ThinkingEffort, TranslationKey> = {
+  off: "chat.effort.short.off",
+  minimal: "chat.effort.short.minimal",
+  low: "chat.effort.short.low",
+  medium: "chat.effort.short.medium",
+  high: "chat.effort.short.high",
+  xhigh: "chat.effort.short.xhigh",
+  max: "chat.effort.short.max",
 };
 
 /**
@@ -250,11 +252,12 @@ export function EffortField({
   disabled: boolean;
   onChange: (effort: ThinkingEffort | null) => void;
 }) {
+  const { t } = useTranslation();
   const choices = effortChoices(model);
   if (choices.length === 0) {
     return (
-      <PopoverField label="Thinking effort">
-        <span className="text-xs text-fg-3">This model has no adjustable thinking.</span>
+      <PopoverField label={t("chat.effort.field")}>
+        <span className="text-xs text-fg-3">{t("chat.effort.noneAdjustable")}</span>
       </PopoverField>
     );
   }
@@ -262,23 +265,25 @@ export function EffortField({
   const options: SegmentedOption<string>[] = [
     {
       value: "default",
-      label: "Default",
-      title: defaultEffort ? `Default (${EFFORT_LABELS[defaultEffort]})` : "Default",
+      label: t("common.default"),
+      title: defaultEffort
+        ? t("chat.effort.defaultWith", { effort: t(EFFORT_LABELS[defaultEffort]) })
+        : t("common.default"),
     },
     ...choices.map((effort) => ({
       value: effort,
-      label: labels[effort],
-      title: `${EFFORT_LABELS[effort]} thinking effort`,
+      label: t(labels[effort]),
+      title: t("chat.effort.levelTitle", { effort: t(EFFORT_LABELS[effort]) }),
     })),
   ];
   // A choice the model no longer lists still shows as chosen.
   if (value && !choices.includes(value)) {
-    options.push({ value, label: labels[value], title: EFFORT_LABELS[value] });
+    options.push({ value, label: t(labels[value]), title: t(EFFORT_LABELS[value]) });
   }
   return (
-    <PopoverField label="Thinking effort">
+    <PopoverField label={t("chat.effort.field")}>
       <SegmentedControl
-        label="Thinking effort"
+        label={t("chat.effort.field")}
         size="sm"
         value={value ?? "default"}
         options={options}

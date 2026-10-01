@@ -1,19 +1,21 @@
-import { AGENT_DISPLAY_NAMES, type AgentId } from "@hyperframes/agent-protocol";
+import type { AgentId } from "@hyperframes/agent-protocol";
+import { t, useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
+import { AGENT_NAME_KEYS } from "./agentLabels";
 
-const MONOGRAMS: Record<AgentId, string> = {
-  director: "M",
-  editor: "E",
-  vision: "V",
-  motion: "MD",
-  research: "R",
-  audio: "A",
-  jev: "J",
+const MONOGRAMS: Record<AgentId, TranslationKey> = {
+  director: "chat.agent.monogram.director",
+  editor: "chat.agent.monogram.editor",
+  vision: "chat.agent.monogram.vision",
+  motion: "chat.agent.monogram.motion",
+  research: "chat.agent.monogram.research",
+  audio: "chat.agent.monogram.audio",
+  jev: "chat.agent.monogram.jev",
 };
 
-/** What the chat calls an agent: the Director leads the conversation as "Main". */
+/** What the chat calls an agent: the Director leads the conversation as "Main". Call it while rendering. */
 export function chatAgentName(agent: AgentId): string {
-  return agent === "director" ? "Main" : AGENT_DISPLAY_NAMES[agent];
+  return t(agent === "director" ? "chat.agent.main" : AGENT_NAME_KEYS[agent]);
 }
 
 /** An agent's identity by letter (never by hue): a 16 px tile beside its name. Decorative. */
@@ -27,6 +29,7 @@ export function AgentMonogram({
   off?: boolean;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <span
       aria-hidden="true"
@@ -37,7 +40,7 @@ export function AgentMonogram({
         className,
       )}
     >
-      {MONOGRAMS[agent]}
+      {t(MONOGRAMS[agent])}
     </span>
   );
 }
