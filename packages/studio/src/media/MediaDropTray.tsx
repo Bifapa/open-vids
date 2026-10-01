@@ -2,18 +2,19 @@ import { useState, type DragEvent } from "react";
 import { ChartBarHorizontal, LockSimple, TreeStructure } from "@phosphor-icons/react";
 import type { StoryGraph } from "@hyperframes/agent-protocol";
 import { cn } from "../components/ui";
+import { useTranslation, type TranslationKey } from "../i18n";
 import { TIMELINE_ASSET_MIME } from "../utils/timelineAssetDrop";
 import { clock, type MediaItem } from "./mediaLibrary";
 import { chaptersInOrder } from "./mediaStoryDrop";
 
 export type DropTarget = { kind: "timeline" } | { kind: "story"; chapterId: string | null };
 
-const ROLE: Record<MediaItem["kind"], string> = {
-  video: "B-roll",
-  image: "picture",
-  audio: "music",
-  font: "font",
-};
+const CONNECTS = {
+  video: "media.drop.connects.video",
+  image: "media.drop.connects.image",
+  audio: "media.drop.connects.audio",
+  font: "media.drop.connects.font",
+} as const satisfies Record<MediaItem["kind"], TranslationKey>;
 
 function Zone({
   id,
@@ -28,6 +29,7 @@ function Zone({
   locked?: boolean;
   onDrop: () => void;
 }) {
+  const { t } = useTranslation();
   const [over, setOver] = useState(false);
   const accept = (event: DragEvent) => {
     if (!event.dataTransfer.types.includes(TIMELINE_ASSET_MIME)) return;
@@ -52,7 +54,9 @@ function Zone({
       )}
     >
       <b className="flex items-center gap-1 truncate font-medium">
-        {locked && <LockSimple className="size-icon-xs text-fg-3" aria-label="Locked" />}
+        {locked && (
+          <LockSimple className="size-icon-xs text-fg-3" aria-label={t("media.drop.locked")} />
+        )}
         {title}
       </b>
       <span className={cn("truncate text-xs text-fg-3 tabular-nums", over && "text-fg-2")}>
@@ -77,21 +81,22 @@ export function MediaDropTray({
   playhead: number;
   onDrop: (target: DropTarget) => void;
 }) {
+  const { t } = useTranslation();
   const chapters = graph ? chaptersInOrder(graph) : [];
   return (
     <div
-      aria-label="Drop targets"
+      aria-label={t("media.drop.targets")}
       data-testid="media-drop-tray"
       className="hf-media-tray absolute right-2.5 bottom-2.5 left-2.5 z-30 grid grid-cols-[168px_minmax(0,1fr)] gap-3 rounded-lg border border-border bg-menu-bg px-2.5 pt-2 pb-2.5 shadow-pop backdrop-blur-md"
     >
       <div className="grid min-w-0 content-start gap-1.5">
         <div className="flex items-center gap-1.5 px-0.5 text-xs font-semibold text-fg-2">
           <ChartBarHorizontal className="size-icon-sm text-fg-3" />
-          Timeline
+          {t("media.drop.timeline")}
         </div>
         <Zone
           id="timeline"
-          title="At Playhead"
+          title={t("media.drop.atPlayhead")}
           sub={clock(playhead)}
           onDrop={() => onDrop({ kind: "timeline" })}
         />
@@ -100,24 +105,28 @@ export function MediaDropTray({
         <div className="grid min-w-0 content-start gap-1.5">
           <div className="flex items-baseline gap-1.5 px-0.5 text-xs font-semibold text-fg-2">
             <TreeStructure className="size-icon-sm self-center text-fg-3" />
-            Story Graph
-            <span className="font-normal text-fg-3">· connects as {ROLE[item.kind]}</span>
+            {t("media.drop.storyGraph")}
+            <span className="font-normal text-fg-3">{t(CONNECTS[item.kind])}</span>
           </div>
           <div className="grid grid-cols-4 gap-1.5">
             {chapters.map((chapter) => (
               <Zone
                 key={chapter.id}
                 id={`chapter-${chapter.id}`}
-                title={chapter.title || "Untitled chapter"}
-                sub={chapter.estimatedDuration > 0 ? clock(chapter.estimatedDuration) : "Chapter"}
+                title={chapter.title || t("media.chapter.untitled")}
+                sub={
+                  chapter.estimatedDuration > 0
+                    ? clock(chapter.estimatedDuration)
+                    : t("media.drop.chapter")
+                }
                 locked={chapter.locked}
                 onDrop={() => onDrop({ kind: "story", chapterId: chapter.id })}
               />
             ))}
             <Zone
               id="unconnected"
-              title="Unconnected"
-              sub="Place later"
+              title={t("media.drop.unconnected")}
+              sub={t("media.drop.placeLater")}
               onDrop={() => onDrop({ kind: "story", chapterId: null })}
             />
           </div>

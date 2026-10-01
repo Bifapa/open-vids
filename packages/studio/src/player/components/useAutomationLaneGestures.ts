@@ -14,6 +14,7 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { AutomationRange, HfAutomationLane } from "@hyperframes/core/audio-automation";
 import { curveForDrag, formatValue, GRAB_PX, mergeInsertPoint } from "./automationLaneGeometry";
+import { formatNumber, formatPercent, t as translate } from "../../i18n";
 import { pointInSelection } from "./automationLaneSelection";
 import { capturePointer } from "./automationLanePointer";
 import { useAutomationEdgeStretch } from "./useAutomationEdgeStretch";
@@ -349,7 +350,7 @@ export function useAutomationLaneGestures({
       // Read out where the bend now sits along the segment, which is what the
       // pointer is choosing: a percentage means more here than a curve exponent
       // the author never types.
-      setHint(`bend ${Math.round(bend.viaX * 100)}%`);
+      setHint(translate("player.automation.bendHint", { percent: formatPercent(bend.viaX) }));
       commitPoints(
         // `curve` is dropped rather than carried: the via point supersedes it, and
         // leaving a stale exponent behind would make the segment's shape depend on
@@ -422,7 +423,12 @@ export function useAutomationLaneGestures({
       });
       shiftAxis.current = nextAxis;
       const next = lane.points.map((p, i) => (i === dragIndex ? { ...p, t, v } : p));
-      setHint(`${formatValue(range, v)} @ ${t.toFixed(2)}s`);
+      setHint(
+        translate("player.automation.pointHint", {
+          value: formatValue(range, v),
+          time: formatNumber(t, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        }),
+      );
       commitPoints(next, false);
     },
     [dragIndex, duration, lane, pointAt, range, commitPoints, snapTimes, xOf, yOf, moveGroup],

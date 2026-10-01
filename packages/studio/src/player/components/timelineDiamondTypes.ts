@@ -3,6 +3,7 @@
  * that file stays under the 600-line studio gate. Types and the shared
  * keyframe-identity helper live here; the rendering lives there.
  */
+import { formatNumber, formatPercent, t } from "../../i18n";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
 import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
@@ -97,7 +98,29 @@ export function keyframeTimeLabel(
   clipDuration: number,
   percentage: number,
 ): string {
-  return `${Number((clipStart + (clipDuration * percentage) / 100).toFixed(2))}s`;
+  return t("player.keyframe.time", {
+    seconds: formatNumber(clipStart + (clipDuration * percentage) / 100, {
+      maximumFractionDigits: 2,
+    }),
+  });
+}
+
+/** Where a keyframe authored outside the clip's own window is parked: `before` its start or `after` its end. */
+type KeyframeBoundary = "before" | "after" | null;
+
+/** A diamond's accessible name: its property group, time, and which side of the clip it is parked on. */
+export function keyframeAriaLabel(group: string, time: string, boundary: KeyframeBoundary): string {
+  if (boundary === "before") return t("player.keyframe.ariaBefore", { group, time });
+  if (boundary === "after") return t("player.keyframe.ariaAfter", { group, time });
+  return t("player.keyframe.aria", { group, time });
+}
+
+/** A diamond's tooltip: its clip percentage, and which side of the clip it is parked on. */
+export function keyframeTitle(percentage: number, boundary: KeyframeBoundary): string {
+  const percent = formatPercent(percentage / 100, 3);
+  if (boundary === "before") return t("player.keyframe.titleBefore", { percent });
+  if (boundary === "after") return t("player.keyframe.titleAfter", { percent });
+  return percent;
 }
 
 /**

@@ -1,5 +1,6 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "../../i18n";
 
 export const inputCls =
   "h-ctl-sm w-full rounded-sm border border-border bg-surface-1 px-1.5 text-right font-mono text-num text-fg outline-hidden transition-colors placeholder:font-ui placeholder:text-fg-3 hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:text-fg-disabled";
@@ -53,6 +54,7 @@ export function NumberField({
   ariaLabel,
   onCommit,
 }: NumberFieldProps) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<string | null>(null);
   const focusedRef = useRef(false);
 
@@ -82,7 +84,7 @@ export function NumberField({
       type="number"
       className={inputCls}
       value={display}
-      placeholder={mixed ? "Mixed" : undefined}
+      placeholder={mixed ? t("captions.field.mixed") : undefined}
       step={step}
       min={min}
       max={max}

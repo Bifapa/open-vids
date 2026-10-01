@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button, Dialog, Meter, SegmentedControl, Toggle } from "../components/ui";
+import { formatPercent, t as translate, useTranslation } from "../i18n";
 import type {
   BackgroundRemovalProgress,
   BackgroundRemovalResult,
@@ -18,9 +19,9 @@ export type RemoveBackground = (
 ) => Promise<BackgroundRemovalResult>;
 
 const QUALITIES = [
-  { value: "fast", label: "Fast" },
-  { value: "balanced", label: "Balanced" },
-  { value: "best", label: "Best" },
+  { value: "fast", label: "media.removeBackground.quality.fast" },
+  { value: "balanced", label: "media.removeBackground.quality.balanced" },
+  { value: "best", label: "media.removeBackground.quality.best" },
 ] as const;
 
 /**
@@ -36,6 +37,7 @@ export function RemoveBackgroundDialog({
   onClose: () => void;
   removeBackground: RemoveBackground;
 }) {
+  const { t } = useTranslation();
   const [quality, setQuality] = useState<Quality>("balanced");
   const [plate, setPlate] = useState(false);
   const [progress, setProgress] = useState<BackgroundRemovalProgress | null>(null);
@@ -52,7 +54,9 @@ export function RemoveBackgroundDialog({
       () => onClose(),
       (failure: unknown) => {
         setProgress(null);
-        setError(failure instanceof Error ? failure.message : "Background removal failed");
+        setError(
+          failure instanceof Error ? failure.message : translate("media.removeBackground.failed"),
+        );
       },
     );
   };
@@ -60,27 +64,27 @@ export function RemoveBackgroundDialog({
     <Dialog
       open
       onClose={onClose}
-      title="Remove Background"
+      title={t("media.removeBackground.title")}
       description={item.name}
       className="w-[420px]"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            {running ? "Hide" : "Cancel"}
+            {running ? t("media.removeBackground.hide") : t("common.cancel")}
           </Button>
           <Button variant="primary" onClick={start} loading={running} disabled={running}>
-            Remove Background
+            {t("media.removeBackground.submit")}
           </Button>
         </>
       }
     >
       <div className="grid gap-3.5 text-sm">
         <label className="grid gap-1.5 text-xs font-medium text-fg-2">
-          Quality
+          {t("media.removeBackground.qualityLabel")}
           <SegmentedControl
-            label="Quality"
+            label={t("media.removeBackground.qualityLabel")}
             value={quality}
-            options={QUALITIES}
+            options={QUALITIES.map((entry) => ({ value: entry.value, label: t(entry.label) }))}
             onChange={setQuality}
             disabled={running}
             className="justify-self-start"
@@ -89,13 +93,13 @@ export function RemoveBackgroundDialog({
         {item.kind === "video" && (
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-xs font-medium text-fg-2">
             <span>
-              Background plate
+              {t("media.removeBackground.plate")}
               <span className="mt-0.5 block font-normal text-fg-3">
-                Also keep the background without the subject, as its own video.
+                {t("media.removeBackground.plateHint")}
               </span>
             </span>
             <Toggle
-              label="Background plate"
+              label={t("media.removeBackground.plate")}
               checked={plate}
               onCommit={setPlate}
               disabled={running}
@@ -103,18 +107,19 @@ export function RemoveBackgroundDialog({
           </div>
         )}
         <p className="m-0 text-xs text-fg-3">
-          Writes a transparent {item.kind === "video" ? "video" : "image"} next to the original. The
-          original is kept.
+          {item.kind === "video"
+            ? t("media.removeBackground.writesVideo")
+            : t("media.removeBackground.writesImage")}
         </p>
         {progress && (
           <div className="grid gap-1.5">
             <div className="flex justify-between gap-2 text-xs text-fg-2">
-              <span>{progress.stage ?? "Removing background"}</span>
+              <span>{progress.stage ?? t("media.removeBackground.progress")}</span>
               <span className="font-mono text-num text-fg-3 tabular-nums">
-                {Math.round(progress.progress)}%
+                {formatPercent(progress.progress / 100)}
               </span>
             </div>
-            <Meter value={progress.progress / 100} label="Removing background" />
+            <Meter value={progress.progress / 100} label={t("media.removeBackground.progress")} />
           </div>
         )}
         {error && <p className="m-0 text-xs text-error">{error}</p>}

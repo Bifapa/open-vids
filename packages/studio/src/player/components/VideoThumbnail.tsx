@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
+import { useTranslation } from "../../i18n";
 import {
   createThumbnailKey,
   type ThumbnailPriority,
@@ -85,6 +86,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   sessionEpoch = 0,
   priority = "visible",
 }: VideoThumbnailProps) {
+  const { t } = useTranslation();
   const [container, setContainerRef] = useThumbnailStripSize();
   const requestFrameCount = quantizeThumbnailFrameCount(
     computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
@@ -153,7 +155,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       {snapshot.status === "error" && (
         <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/60">
           <span className="rounded-sm bg-black/50 px-1 text-[8px] text-neutral-500">
-            no preview
+            {t("player.thumbnail.noPreview")}
           </span>
         </div>
       )}

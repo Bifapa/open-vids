@@ -17,6 +17,7 @@ import { groupAutomationLanes } from "./automationLaneData";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import type { TimelineElement } from "../store/playerStore";
 import { useLivePlayheadTime } from "../../hooks/useLivePlayheadTime";
+import { useTranslation } from "../../i18n";
 
 export function TimelineGroupLaneLabels({
   groupElement,
@@ -41,6 +42,7 @@ export function TimelineGroupLaneLabels({
   // The LIVE playhead, not the row's `currentTime` prop — that one only moves
   // on seek, so the readout sat frozen while the curve was audibly working,
   // which is precisely the failure this number exists to prevent.
+  const { t } = useTranslation();
   const currentTime = useLivePlayheadTime();
   // The SAME source the curves and the reserved height use
   // (`TimelineGroupRow`), not raw `elementAutomationLanes`. Raw lanes are
@@ -54,6 +56,7 @@ export function TimelineGroupLaneLabels({
         const lane = laneGroup.entries[0]?.lane;
         if (!lane) return null;
         const parts = { name: laneGroup.name, param: laneGroup.param };
+        const laneName = parts.param ? `${parts.name} · ${parts.param}` : parts.name;
         // A group's clock is composition time (§1.3), so the playhead needs no
         // clip-local rebase here — unlike a clip's lane.
         const value = sampleAutomationLane(lane, currentTime);
@@ -63,7 +66,10 @@ export function TimelineGroupLaneLabels({
             tabIndex={-1}
             key={lane.target}
             data-group-lane-label={lane.target}
-            aria-label={`Show ${groupLabel} ${parts.name}${parts.param ? ` ${parts.param}` : ""} in the effect rack`}
+            aria-label={t("player.lanes.groupRevealAria", {
+              group: groupLabel,
+              lane: parts.param ? `${parts.name} ${parts.param}` : parts.name,
+            })}
             className="absolute left-0 flex items-center gap-1.5 overflow-hidden border-0 px-1.5 text-left text-[10px] text-[var(--timeline-text-secondary)] hover:text-[var(--timeline-text-solid)] focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[var(--timeline-accent)]"
             style={{
               top: top + index * AUTOMATION_LANE_H,
@@ -72,7 +78,7 @@ export function TimelineGroupLaneLabels({
               background: gutterBackground,
               borderLeft: `2px solid ${accentColor}`,
             }}
-            title={`${groupLabel} · ${parts.param ? `${parts.name} · ${parts.param}` : parts.name}`}
+            title={t("player.lanes.groupLaneTitle", { group: groupLabel, lane: laneName })}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();

@@ -166,7 +166,7 @@ describe("ShortcutsPanel", () => {
     };
     const withoutSplit = DEFAULT_SHORTCUT_SECTIONS.map((section) => ({
       ...section,
-      hints: section.hints.filter((hint) => hint.label !== "Split clip at playhead"),
+      hints: section.hints.filter((hint) => hint.label !== "player.shortcuts.hint.split"),
     }));
 
     expect(listed()).toContain("Split clip at playhead");

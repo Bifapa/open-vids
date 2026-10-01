@@ -1,4 +1,5 @@
 import { memo, useCallback } from "react";
+import { useTranslation } from "../../i18n";
 import { useCaptionStore } from "../store";
 import { usePlayerStore } from "../../player";
 
@@ -44,6 +45,7 @@ export const CaptionTimeline = memo(function CaptionTimeline({
   pixelsPerSecond,
   onSeek,
 }: CaptionTimelineProps) {
+  const { t } = useTranslation();
   const model = useCaptionStore((s) => s.model);
   const selectedSegmentIds = useCaptionStore((s) => s.selectedSegmentIds);
   const selectSegment = useCaptionStore((s) => s.selectSegment);
@@ -107,7 +109,7 @@ export const CaptionTimeline = memo(function CaptionTimeline({
               key={segId}
               role="button"
               tabIndex={0}
-              aria-label={`Caption word "${seg.text}"`}
+              aria-label={t("captions.timeline.word", { text: seg.text })}
               aria-pressed={isSelected}
               className={`absolute top-1 bottom-1 rounded flex items-center overflow-hidden cursor-pointer focus-visible:ring-1 focus-visible:ring-white outline-hidden${
                 isSelected ? " ring-1 ring-white/50 z-10" : ""

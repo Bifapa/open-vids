@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { formatNumber, useTranslation } from "../../i18n";
 import { timelineMenuItem, timelineMenuShortcut, timelineMenuSurface } from "./timelineMenuStyles";
 
 interface TrackGapContextMenuProps {
@@ -45,6 +46,7 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   onCloseAllGaps,
   onHoverAction,
 }: TrackGapContextMenuProps) {
+  const { t } = useTranslation();
   const menuRef = useContextMenuDismiss(onClose);
 
   const menuWidth = 200;
@@ -58,13 +60,13 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   const closeGapTitle = canCloseGap
     ? undefined
     : gapWidth == null
-      ? "No gap here"
-      : "A clip on this track can't be moved";
+      ? t("player.gap.none")
+      : t("player.gap.locked");
   const closeAllTitle = canCloseAllGaps
     ? undefined
     : hasAnyGaps
-      ? "A clip on this track can't be moved"
-      : "No gaps on this track";
+      ? t("player.gap.locked")
+      : t("player.gap.noneOnTrack");
 
   return createPortal(
     <div
@@ -85,8 +87,17 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
           onClose();
         }}
       >
-        <span>Close gap</span>
-        {gapWidth != null && <span className={timelineMenuShortcut}>{gapWidth.toFixed(2)}s</span>}
+        <span>{t("player.gap.close")}</span>
+        {gapWidth != null && (
+          <span className={timelineMenuShortcut}>
+            {t("player.gap.width", {
+              seconds: formatNumber(gapWidth, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              }),
+            })}
+          </span>
+        )}
       </button>
       <button
         type="button"
@@ -100,7 +111,7 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
           onClose();
         }}
       >
-        <span>Close all gaps</span>
+        <span>{t("player.gap.closeAll")}</span>
       </button>
     </div>,
     document.body,

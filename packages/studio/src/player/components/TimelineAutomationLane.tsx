@@ -28,6 +28,7 @@ import {
   type HfAutomationPoint,
 } from "@hyperframes/core/audio-automation";
 import type { TimelineEditOutcome } from "../../hooks/timelineEditPermission";
+import { t as translate, useTranslation } from "../../i18n";
 import { envelopePath, fromUnit, laneFor, PAD_X, toUnit, withLane } from "./automationLaneGeometry";
 import { useAutomationLaneGestures } from "./useAutomationLaneGestures";
 import { AutomationValueInput } from "./AutomationValueInput";
@@ -97,8 +98,8 @@ function pointCircleStyle(
 /** The svg's tooltip: what this lane's gestures actually are. */
 function laneTitle(readOnly: boolean | undefined): string {
   return readOnly
-    ? "Drag a box to select points, which also selects this clip; then double-click to add a point"
-    : "Double-click to add a point, drag to shape, double-click a point to type a value, right-click or Shift+click to remove it. Drag a line segment to move both endpoints. Drag the background to draw a box around points, then Delete to remove them or drag one to move them all. Alt-drag the line to curve it. Shift locks an axis mid-drag; Alt ignores the grid.";
+    ? translate("player.automation.laneTitleReadOnly")
+    : translate("player.automation.laneTitle");
 }
 
 /**
@@ -222,6 +223,7 @@ export function TimelineAutomationLane({
   onRangeSelect,
   onRangeClear,
 }: TimelineAutomationLaneProps) {
+  const { t } = useTranslation();
   const stored = laneFor(automation, target);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -462,7 +464,7 @@ export function TimelineAutomationLane({
         onDoubleClick={gestures.onDoubleClick}
         onContextMenu={onSvgContextMenu}
         role="group"
-        aria-label={`${range.label} automation`}
+        aria-label={t("player.automation.laneAria", { label: range.label })}
       >
         <title>{laneTitle(readOnly)}</title>
         {/* No plate behind the envelope: the lane used to darken its clip's width,

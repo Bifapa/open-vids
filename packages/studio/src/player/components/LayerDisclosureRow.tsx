@@ -1,4 +1,5 @@
 import { CaretRight } from "@phosphor-icons/react";
+import { useTranslation } from "../../i18n";
 import { TRACK_H } from "./timelineLayout";
 import { TrackClipCount } from "./TrackClipCount";
 import { TrackCode } from "./TimelineTrackPlainHeader";
@@ -23,6 +24,7 @@ export function LaneToggleButton({
   lanesId: string;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -30,8 +32,8 @@ export function LaneToggleButton({
       tabIndex={-1}
       aria-expanded={isExpanded}
       aria-controls={lanesId}
-      aria-label={`${isExpanded ? "Hide" : "Show"} ${name} lanes`}
-      title={`${isExpanded ? "Hide" : "Show"} lanes`}
+      aria-label={isExpanded ? t("player.lanes.hide", { name }) : t("player.lanes.show", { name })}
+      title={isExpanded ? t("player.lanes.hideTitle") : t("player.lanes.showTitle")}
       className={`flex h-ctl-xs w-4 shrink-0 items-center justify-center rounded-sm border-0 bg-transparent p-0 transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
         isExpanded ? "text-fg" : "text-fg-3"
       }`}

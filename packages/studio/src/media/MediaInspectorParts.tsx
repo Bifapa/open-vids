@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import type { AnalysisStage, StageState } from "@hyperframes/agent-protocol";
 import { StatusDot, cn, type StatusDotTone } from "../components/ui";
+import { formatNumber, t as translate, useTranslation, type TranslationKey } from "../i18n";
 import { resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
 import { fontFamilyFromAssetPath } from "../components/editor/fontAssets";
 import { MediaThumb } from "./MediaTiles";
@@ -50,19 +51,19 @@ type KvRow = readonly [label: string, value: ReactNode, style?: "mono" | "wrap"]
 
 export function Kv({ rows }: { rows: ReadonlyArray<KvRow | null> }) {
   return (
-    <dl className="m-0 grid grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1.5 text-sm">
+    <dl className="m-0 grid grid-cols-[var(--insp-label-w,72px)_minmax(0,1fr)] gap-x-2 gap-y-1.5 text-sm">
       {rows.flatMap((row) =>
         row
           ? [
-              <dt key={`${row[0]}-t`} className="text-fg-3">
+              <dt key={`${row[0]}-t`} className="min-w-0 text-fg-3">
                 {row[0]}
               </dt>,
               <dd
                 key={`${row[0]}-d`}
                 className={cn(
-                  "m-0 truncate text-fg tabular-nums",
+                  "m-0 min-w-0 break-words text-fg tabular-nums",
                   row[2] === "mono" && "font-mono text-num leading-4 text-fg-2",
-                  row[2] && "break-all whitespace-normal",
+                  row[2] && "break-all",
                 )}
               >
                 {row[1]}
@@ -110,7 +111,7 @@ export function MediaPreview({
         style={{ fontFamily: `"${fontFamilyFromAssetPath(item.path)}", var(--font-ui)` }}
       >
         <span className="text-[48px] leading-none font-medium">Aa</span>
-        <span className="text-md text-fg-2">The quick brown fox jumps over the lazy dog</span>
+        <span className="text-md text-fg-2">{translate("media.inspector.fontSample")}</span>
       </div>
     );
   } else if (timed) {
@@ -136,7 +137,7 @@ export function MediaPreview({
         />
         <button
           type="button"
-          aria-label={playing ? "Pause" : "Play"}
+          aria-label={playing ? translate("media.preview.pause") : translate("media.preview.play")}
           onClick={onTogglePlay}
           className="absolute bottom-2 left-2 inline-flex size-ctl items-center justify-center rounded-full bg-on-media-bg text-on-media focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         >
@@ -193,25 +194,48 @@ export function MediaPreview({
   );
 }
 
-const STAGE_ROWS: ReadonlyArray<{ stage: AnalysisStage; label: string; icon: ReactNode }> = [
-  { stage: "transcript", label: "Transcript", icon: <Subtitles className="size-icon-sm" /> },
-  { stage: "speakers", label: "Speakers", icon: <Users className="size-icon-sm" /> },
-  { stage: "silence", label: "Silence", icon: <SpeakerSimpleSlash className="size-icon-sm" /> },
-  { stage: "takes", label: "Take Issues", icon: <Scissors className="size-icon-sm" /> },
-  { stage: "vision", label: "Vision", icon: <Eye className="size-icon-sm" /> },
-  { stage: "shots", label: "Scene map", icon: <FilmStrip className="size-icon-sm" /> },
-];
+const STAGE_ROWS: ReadonlyArray<{ stage: AnalysisStage; label: TranslationKey; icon: ReactNode }> =
+  [
+    {
+      stage: "transcript",
+      label: "media.inspector.stage.transcript",
+      icon: <Subtitles className="size-icon-sm" />,
+    },
+    {
+      stage: "speakers",
+      label: "media.inspector.stage.speakers",
+      icon: <Users className="size-icon-sm" />,
+    },
+    {
+      stage: "silence",
+      label: "media.inspector.stage.silence",
+      icon: <SpeakerSimpleSlash className="size-icon-sm" />,
+    },
+    {
+      stage: "takes",
+      label: "media.inspector.stage.takes",
+      icon: <Scissors className="size-icon-sm" />,
+    },
+    {
+      stage: "vision",
+      label: "media.inspector.stage.vision",
+      icon: <Eye className="size-icon-sm" />,
+    },
+    {
+      stage: "shots",
+      label: "media.inspector.stage.shots",
+      icon: <FilmStrip className="size-icon-sm" />,
+    },
+  ];
 
-const STATUS_LOOK: Record<StageState["status"], { tone: StatusDotTone; text: string }> = {
-  fresh: { tone: "ok", text: "Ready" },
-  running: { tone: "running", text: "Running" },
-  missing: { tone: "off", text: "Not analyzed" },
-  stale: { tone: "warn", text: "Outdated" },
-  failed: { tone: "error", text: "Failed" },
-  unavailable: { tone: "off", text: "Unavailable" },
+const STATUS_LOOK: Record<StageState["status"], { tone: StatusDotTone; text: TranslationKey }> = {
+  fresh: { tone: "ok", text: "media.inspector.stageStatus.fresh" },
+  running: { tone: "running", text: "media.inspector.stageStatus.running" },
+  missing: { tone: "off", text: "media.inspector.stageStatus.missing" },
+  stale: { tone: "warn", text: "media.inspector.stageStatus.stale" },
+  failed: { tone: "error", text: "media.inspector.stageStatus.failed" },
+  unavailable: { tone: "off", text: "media.inspector.stageStatus.unavailable" },
 };
-
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 function stageDetail(stage: AnalysisStage, analysis: AssetAnalysis): string | null {
   const overview = analysis.overview;
@@ -221,21 +245,33 @@ function stageDetail(stage: AnalysisStage, analysis: AssetAnalysis): string | nu
       return overview.transcript?.language?.toUpperCase() ?? null;
     case "speakers":
       return overview.speakers
-        ? plural(overview.speakers.speakers.length, "speaker", "speakers")
+        ? translate("media.inspector.speakers", { count: overview.speakers.speakers.length })
         : null;
     case "silence":
       return overview.silence
-        ? `${plural(overview.silence.count, "pause", "pauses")} · ${overview.silence.totalSeconds.toFixed(1)} s`
+        ? translate("media.inspector.silence", {
+            count: overview.silence.count,
+            seconds: formatNumber(overview.silence.totalSeconds, {
+              minimumFractionDigits: 1,
+              maximumFractionDigits: 1,
+            }),
+          })
         : null;
     case "takes": {
       if (!overview.takes) return null;
       const found = Object.values(overview.takes.counts).reduce((sum, n) => sum + (n ?? 0), 0);
-      return found ? `${found} found` : "None found";
+      return found
+        ? translate("media.inspector.takesFound", { count: formatNumber(found) })
+        : translate("media.inspector.takesNone");
     }
     case "vision":
-      return overview.vision ? plural(overview.vision.notes.length, "note", "notes") : null;
+      return overview.vision
+        ? translate("media.inspector.visionNotes", { count: overview.vision.notes.length })
+        : null;
     case "shots":
-      return overview.shots ? plural(overview.shots.count, "shot", "shots") : null;
+      return overview.shots
+        ? translate("media.inspector.shots", { count: overview.shots.count })
+        : null;
     case "segments":
       return null;
   }
@@ -245,6 +281,7 @@ function stageDetail(stage: AnalysisStage, analysis: AssetAnalysis): string | nu
 const MAX_TAGS = 12;
 
 export function AnalysisRows({ item, analysis }: { item: MediaItem; analysis: AssetAnalysis }) {
+  const { t } = useTranslation();
   const tags = [...new Set((analysis.overview?.vision?.notes ?? []).flatMap((note) => note.tags))];
   return (
     <>
@@ -260,7 +297,7 @@ export function AnalysisRows({ item, analysis }: { item: MediaItem; analysis: As
               className="grid min-h-ctl-sm grid-cols-[16px_1fr_auto] items-center gap-2 text-sm text-fg"
             >
               <span className="text-fg-3">{row.icon}</span>
-              <span>{row.label}</span>
+              <span>{t(row.label)}</span>
               <span
                 title={state.detail ?? undefined}
                 className={cn(
@@ -269,7 +306,9 @@ export function AnalysisRows({ item, analysis }: { item: MediaItem; analysis: As
                 )}
               >
                 <StatusDot tone={look.tone} />
-                {detail ? `${look.text} · ${detail}` : look.text}
+                {detail
+                  ? t("media.inspector.stageStatusDetail", { status: t(look.text), detail })
+                  : t(look.text)}
               </span>
             </div>
           );
@@ -287,7 +326,7 @@ export function AnalysisRows({ item, analysis }: { item: MediaItem; analysis: As
           ))}
           {tags.length > MAX_TAGS && (
             <span className="inline-flex h-5 items-center px-1 text-xs text-fg-3">
-              +{tags.length - MAX_TAGS} more
+              {t("media.inspector.tagsMore", { count: formatNumber(tags.length - MAX_TAGS) })}
             </span>
           )}
         </div>
@@ -333,6 +372,7 @@ export function TranscriptList({
   analysis: AssetAnalysis;
   onSeek: (time: number) => void;
 }) {
+  const { t } = useTranslation();
   const speakers = (analysis.overview?.speakers?.speakers.length ?? 0) > 1;
   return (
     <div className="grid gap-1.5" data-testid="media-transcript">
@@ -351,7 +391,11 @@ export function TranscriptList({
           </span>
           {speakers && (
             <span
-              title={sentence.speaker ? `Speaker ${sentence.speaker.slice(1)}` : undefined}
+              title={
+                sentence.speaker
+                  ? t("media.inspector.speaker", { number: sentence.speaker.slice(1) })
+                  : undefined
+              }
               className="inline-flex h-[17px] items-center justify-center self-start rounded-xs bg-surface-2 font-mono text-num leading-none font-medium text-fg-2"
             >
               {sentence.speaker ?? "–"}

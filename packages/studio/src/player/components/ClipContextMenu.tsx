@@ -2,6 +2,7 @@ import { memo } from "react";
 import { createPortal } from "react-dom";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { canSplitElement } from "../../utils/timelineElementSplit";
+import { formatNumber, useTranslation } from "../../i18n";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { useMenuKeyboardNav } from "./menuKeyboardNav";
 import {
@@ -39,6 +40,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   onDuplicate,
   canPaste,
 }: ClipContextMenuProps) {
+  const { t } = useTranslation();
   const menuRef = useContextMenuDismiss(onClose);
   useMenuKeyboardNav(menuRef);
   // The right-clicked clip's own id: a member of the live multi-selection
@@ -58,8 +60,10 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   const splitLabel = !isSplittable
     ? null
     : canSplit
-      ? `Split at ${currentTime.toFixed(2)}s`
-      : "Split (move playhead inside clip)";
+      ? t("player.clipMenu.splitAt", {
+          time: formatNumber(currentTime, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        })
+      : t("player.clipMenu.splitDisabled");
 
   const clipboardItemCount = [onCopy, onPaste, onDuplicate].filter(Boolean).length;
   const rowCount = (splitLabel ? 1 : 0) + clipboardItemCount + 1; // + Delete, always present
@@ -74,7 +78,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
     <div
       ref={menuRef}
       role="menu"
-      aria-label="Clip actions"
+      aria-label={t("player.clipMenu.label")}
       className={timelineMenuSurface}
       style={{ left: adjustedX, top: adjustedY }}
     >
@@ -111,7 +115,11 @@ export const ClipContextMenu = memo(function ClipContextMenu({
                 onClose();
               }}
             >
-              <span>{selectionSize > 1 ? `Copy ${selectionSize} clips` : "Copy"}</span>
+              <span>
+                {selectionSize > 1
+                  ? t("player.clipMenu.copyClips", { count: selectionSize })
+                  : t("common.copy")}
+              </span>
               <span className={timelineMenuShortcut}>⌘C</span>
             </button>
           )}
@@ -127,7 +135,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
                 onClose();
               }}
             >
-              <span>Paste</span>
+              <span>{t("common.paste")}</span>
               <span className={timelineMenuShortcut}>⌘V</span>
             </button>
           )}
@@ -141,7 +149,11 @@ export const ClipContextMenu = memo(function ClipContextMenu({
                 onClose();
               }}
             >
-              <span>{selectionSize > 1 ? `Duplicate ${selectionSize} clips` : "Duplicate"}</span>
+              <span>
+                {selectionSize > 1
+                  ? t("player.clipMenu.duplicateClips", { count: selectionSize })
+                  : t("common.duplicate")}
+              </span>
               <span className={timelineMenuShortcut}>⌘D</span>
             </button>
           )}
@@ -158,7 +170,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
           onClose();
         }}
       >
-        <span>Delete</span>
+        <span>{t("common.delete")}</span>
         <span className={timelineMenuShortcut}>⌫</span>
       </button>
     </div>,

@@ -14,6 +14,7 @@ import {
   sectionItems,
   type MediaItem,
 } from "./mediaLibrary";
+import { t } from "../i18n";
 import { attachMediaToStory, chaptersInOrder } from "./mediaStoryDrop";
 import { sampleGraph } from "../story/storyTestHarness";
 
@@ -225,7 +226,7 @@ describe("searching media", () => {
     expect(matchItem(item, "TALK", index)).toEqual({ where: "name" });
     expect(matchItem(item, "timeline", index)).toEqual({
       where: "transcript",
-      text: "“The timeline grows faster”",
+      text: "The timeline grows faster",
       time: 12,
     });
     expect(matchItem(item, "speaker on", index)).toMatchObject({ where: "vision", time: 30 });
@@ -244,7 +245,12 @@ describe("searching media", () => {
 describe("sections", () => {
   it("groups by kind in a fixed order and drops empty kinds", () => {
     const sections = sectionItems(library(), "kind");
-    expect(sections.map((section) => section.label)).toEqual(["Video", "Images", "Audio", "Fonts"]);
+    expect(sections.map((section) => t(section.labelKey))).toEqual([
+      "Video",
+      "Images",
+      "Audio",
+      "Fonts",
+    ]);
     expect(paths(sections[1]?.items ?? [])).toEqual([
       "assets/research/gone.jpg",
       "assets/logo.png",

@@ -4,6 +4,7 @@ import {
   moveBeatCompositionTime,
   remapBeatAnalysisToComposition,
 } from "../../utils/beatEditActions";
+import { useTranslation } from "../../i18n";
 import { usePlayerStore } from "../store/playerStore";
 import { CLIP_Y, getTimelineBeatEntries } from "./timelineLayout";
 import type { TimelineTimeRange } from "../lib/timelineClipIndex";
@@ -370,6 +371,7 @@ export const BeatStrip = memo(function BeatStrip({
   pps: number;
   renderTimeRange?: TimelineTimeRange;
 }) {
+  const { t } = useTranslation();
   const activeActor = useSyncExternalStore(
     subscribeBeatDrag,
     getBeatDragSnapshot,
@@ -396,6 +398,7 @@ export const BeatStrip = memo(function BeatStrip({
     renderTimeRange,
     drag ? new Set([activeBeatIndex]) : undefined,
   );
+  const dragHint = t("player.beats.dragHint", { key: "⌥" });
 
   return (
     <div
@@ -413,7 +416,7 @@ export const BeatStrip = memo(function BeatStrip({
           <div
             key={`${t}-${i}`}
             className="absolute select-none"
-            title="Drag to move · ⌥-click to delete"
+            title={dragHint}
             draggable={false}
             style={{
               left: x - BEAT_HIT_W / 2,

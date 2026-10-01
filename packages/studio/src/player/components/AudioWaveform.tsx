@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import { useTranslation } from "../../i18n";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decimatePeaks, loudnessToOpacity } from "./audioWaveformPeaks";
 
@@ -154,6 +155,7 @@ export const AudioWaveform = memo(function AudioWaveform({
   muted = false,
   linked = false,
 }: AudioWaveformProps) {
+  const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -251,7 +253,7 @@ export const AudioWaveform = memo(function AudioWaveform({
               }}
             />
             <span className="relative rounded-sm bg-black/50 px-1 text-[8px] text-neutral-500">
-              waveform unavailable
+              {t("player.waveform.unavailable")}
             </span>
           </div>
         )}

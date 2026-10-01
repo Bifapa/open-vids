@@ -14,16 +14,17 @@ import {
   TextAa,
   TreeStructure,
 } from "@phosphor-icons/react";
-import type { LicenseStatus } from "@hyperframes/agent-protocol";
+import type { LicenseStatus, TakeIssueKind } from "@hyperframes/agent-protocol";
 import { Badge, Button, Menu, MenuItem, cn, type StatusTone } from "../components/ui";
+import { Trans, formatBytes, formatDate, useTranslation, type TranslationKey } from "../i18n";
 import { usePlayerStore } from "../player/store/playerStore";
 import { deriveUsedPaths } from "../components/sidebar/AssetsTab";
 import { studioStoryStore } from "../story/storyContext";
 import {
   KIND_LABELS,
+  KIND_SINGULAR_LABELS,
   clock,
   fileExtension,
-  formatBytes,
   needsAnalysis,
   resolutionLabel,
   type MediaItem,
@@ -54,12 +55,22 @@ const KIND_TINT: Record<MediaItem["kind"], string> = {
   font: "bg-k-caption-h border-k-caption-l",
 };
 
-const LICENSE_LOOK: Record<LicenseStatus, { tone: StatusTone; text: string }> = {
-  clear: { tone: "success", text: "Clear" },
-  attribution: { tone: "success", text: "Attribution" },
-  restricted: { tone: "warning", text: "Restricted" },
-  unknown: { tone: "neutral", text: "Unknown" },
+const LICENSE_LOOK: Record<LicenseStatus, { tone: StatusTone; text: TranslationKey }> = {
+  clear: { tone: "success", text: "media.license.clear" },
+  attribution: { tone: "success", text: "media.license.attribution" },
+  restricted: { tone: "warning", text: "media.license.restricted" },
+  unknown: { tone: "neutral", text: "media.license.unknown" },
 };
+
+const TAKE_KIND_LABELS = {
+  retake: "media.inspector.takeKind.retake",
+  false_start: "media.inspector.takeKind.false_start",
+  restart_cue: "media.inspector.takeKind.restart_cue",
+  stutter: "media.inspector.takeKind.stutter",
+  filler: "media.inspector.takeKind.filler",
+  black: "media.inspector.takeKind.black",
+  frozen: "media.inspector.takeKind.frozen",
+} as const satisfies Record<TakeIssueKind, TranslationKey>;
 
 function Head({
   icon,
@@ -105,17 +116,18 @@ export interface MediaInspectorProps {
 }
 
 function Overview({ items, waitingCount }: Pick<MediaInspectorProps, "items" | "waitingCount">) {
+  const { t } = useTranslation();
   const count = (kind: MediaItem["kind"]) => items.filter((item) => item.kind === kind).length;
   const external = items.filter((item) => item.provenance);
   const attention = external.filter((item) => (item.provenance?.issues.length ?? 0) > 0).length;
   const notAnalyzed = items.filter(needsAnalysis).length;
-  let analysis = "Up to date";
-  if (waitingCount) analysis = `${waitingCount} waiting`;
-  else if (notAnalyzed) analysis = `${notAnalyzed} not analyzed`;
+  let analysis = t("media.inspector.upToDate");
+  if (waitingCount) analysis = t("media.inspector.waiting", { count: waitingCount });
+  else if (notAnalyzed) analysis = t("media.inspector.notAnalyzed", { count: notAnalyzed });
   if (items.length === 0) {
     return (
       <div className="p-3 text-sm leading-[17px] text-fg-3">
-        Nothing to inspect yet. Imported media shows its file details, transcript and scenes here.
+        {t("media.inspector.emptyLibrary")}
       </div>
     );
   }
@@ -125,32 +137,34 @@ function Overview({ items, waitingCount }: Pick<MediaInspectorProps, "items" | "
         <Head
           icon={<SquaresFour className="size-icon-md" />}
           tint={KIND_TINT.video}
-          name="Media"
-          sub={`${items.length} items in this project`}
+          name={t("media.inspector.overviewTitle")}
+          sub={t("media.inspector.overviewSub", { count: items.length })}
         />
       </div>
-      <Section title="Library">
+      <Section title={t("media.inspector.section.library")}>
         <Kv
           rows={[
-            ["Video", count("video")],
-            ["Images", count("image")],
-            ["Audio", count("audio")],
-            ["Fonts", count("font")],
-            ["Analysis", analysis],
+            [t(KIND_LABELS.video), count("video")],
+            [t(KIND_LABELS.image), count("image")],
+            [t(KIND_LABELS.audio), count("audio")],
+            [t(KIND_LABELS.font), count("font")],
+            [t("media.inspector.row.analysis"), analysis],
             [
-              "External",
+              t("media.inspector.row.external"),
               <>
                 {external.length}
-                {attention > 0 && <span className="text-warning"> · {attention} need a check</span>}
+                {attention > 0 && (
+                  <span className="text-warning">
+                    {" "}
+                    {t("media.inspector.externalNeedCheck", { count: attention })}
+                  </span>
+                )}
               </>,
             ],
           ]}
         />
       </Section>
-      <div className="p-3 text-sm leading-[17px] text-fg-3">
-        Select an item to see its file details, transcript, scenes and source. Drag media onto the
-        Timeline or the Story Graph to use it.
-      </div>
+      <div className="p-3 text-sm leading-[17px] text-fg-3">{t("media.inspector.selectHint")}</div>
     </>
   );
 }
@@ -162,34 +176,37 @@ function SourceSection({
   item: MediaItem;
   onOpenSources: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   const record = item.provenance;
   if (!record) {
     return (
-      <Section title="Source">
+      <Section title={t("media.inspector.section.source")}>
         <Kv
           rows={[
-            ["Origin", "Imported"],
-            ["Location", item.path, "mono"],
+            [t("media.inspector.row.origin"), t("media.origin.imported")],
+            [t("media.inspector.row.location"), item.path, "mono"],
           ]}
         />
       </Section>
     );
   }
   const look = LICENSE_LOOK[record.licenseStatus];
-  const found = record.retrievedBy.agent === "user" ? "Downloaded by you" : "Found by Research";
+  const retrievedAt = formatDate(new Date(record.retrievedAt));
+  const found =
+    record.retrievedBy.agent === "user"
+      ? t("media.inspector.downloadedBy", { date: retrievedAt })
+      : t("media.inspector.foundBy", { date: retrievedAt });
   return (
-    <Section title="Source & License">
+    <Section title={t("media.inspector.section.sourceLicense")}>
       <div className="flex items-center gap-2">
-        {look && <Badge tone={look.tone}>{look.text}</Badge>}
-        <span className="truncate text-sm text-fg-3">
-          {found} · {new Date(record.retrievedAt).toLocaleDateString()}
-        </span>
+        {look && <Badge tone={look.tone}>{t(look.text)}</Badge>}
+        <span className="truncate text-sm text-fg-3">{found}</span>
       </div>
       <Kv
         rows={[
-          ["Source", record.source.name],
-          ["Author", record.author ?? "—"],
-          ["License", record.license],
+          [t("media.inspector.row.source"), record.source.name],
+          [t("media.inspector.row.author"), record.author ?? "—"],
+          [t("media.inspector.row.license"), record.license],
         ]}
       />
       {record.issues.length > 0 && (
@@ -203,7 +220,7 @@ function SourceSection({
             icon={<ArrowSquareOut />}
             onClick={() => window.open(record.pageUrl ?? "", "_blank", "noopener,noreferrer")}
           >
-            Open Original
+            {t("media.inspector.openOriginal")}
           </Button>
         )}
         <Button
@@ -212,7 +229,7 @@ function SourceSection({
           icon={<ShieldCheck />}
           onClick={() => onOpenSources(item.path)}
         >
-          License Details
+          {t("media.inspector.licenseDetails")}
         </Button>
       </div>
     </Section>
@@ -220,6 +237,7 @@ function SourceSection({
 }
 
 function UsageSection({ item }: { item: MediaItem }) {
+  const { t } = useTranslation();
   const elements = usePlayerStore((state) => state.elements);
   const graph = useStore(studioStoryStore, (state) => state.graph);
   const clips = elements.filter((element) => deriveUsedPaths([element]).has(item.path));
@@ -233,17 +251,13 @@ function UsageSection({ item }: { item: MediaItem }) {
   const compositions = item.provenance?.usedIn ?? [];
   const empty = clips.length === 0 && nodes.length === 0 && compositions.length === 0;
   return (
-    <Section title="Used In">
-      {empty && (
-        <p className="m-0 text-sm text-fg-3">
-          Not used yet. Drag it onto the Timeline or a Story chapter.
-        </p>
-      )}
+    <Section title={t("media.inspector.section.usedIn")}>
+      {empty && <p className="m-0 text-sm text-fg-3">{t("media.inspector.notUsed")}</p>}
       {clips.length > 0 && (
         <div className="flex min-h-ctl-sm items-center gap-2 text-sm">
           <ChartBarHorizontal className="size-icon-sm flex-none text-fg-3" />
           <span className="min-w-0 flex-1 truncate">
-            Timeline · {clips.length === 1 ? "1 clip" : `${clips.length} clips`}
+            {t("media.inspector.usedTimeline", { count: clips.length })}
           </span>
           <span className="font-mono text-num text-fg-3">
             {clock(Math.min(...clips.map((clip) => clip.start)))}
@@ -254,7 +268,7 @@ function UsageSection({ item }: { item: MediaItem }) {
         <div key={node.id} className="flex min-h-ctl-sm items-center gap-2 text-sm">
           <TreeStructure className="size-icon-sm flex-none text-fg-3" />
           <span className="min-w-0 flex-1 truncate">
-            {chapterTitles(node.id) || "Story Graph · unconnected"}
+            {chapterTitles(node.id) || t("media.inspector.usedUnconnected")}
           </span>
           <span className="text-xs text-fg-3">{node.title}</span>
         </div>
@@ -271,6 +285,7 @@ function UsageSection({ item }: { item: MediaItem }) {
 }
 
 function AssetInspector(props: MediaInspectorProps & { item: MediaItem }) {
+  const { t } = useTranslation();
   const { item, projectId } = props;
   const analysis = useAssetAnalysis(projectId, item);
   const mediaRef = useRef<HTMLVideoElement | null>(null);
@@ -308,7 +323,7 @@ function AssetInspector(props: MediaInspectorProps & { item: MediaItem }) {
 
   const resolution = resolutionLabel(item.width, item.height);
   const sub = [
-    KIND_LABELS[item.kind].replace(/s$/, ""),
+    t(KIND_SINGULAR_LABELS[item.kind]),
     item.duration != null && item.kind !== "image" ? clock(item.duration) : null,
     item.kind === "font"
       ? fileExtension(item.path)
@@ -345,12 +360,9 @@ function AssetInspector(props: MediaInspectorProps & { item: MediaItem }) {
         >
           <div className="flex items-center gap-1.5 font-semibold text-fg">
             <LinkBreak className="size-icon-sm text-warning" />
-            Offline
+            {t("media.status.offline")}
           </div>
-          <p className="m-0">
-            The file is no longer in the project. Research recorded where it came from; ask Research
-            in Chat to fetch it again.
-          </p>
+          <p className="m-0">{t("media.inspector.offlineHint")}</p>
         </div>
       )}
       {item.kind !== "font" && !item.offline && (
@@ -362,23 +374,25 @@ function AssetInspector(props: MediaInspectorProps & { item: MediaItem }) {
             disabled={!props.onAddToTimeline}
             onClick={() => props.onAddToTimeline?.(item.path)}
           >
-            Add at Playhead
+            {t("media.inspector.addAtPlayhead")}
           </Button>
           {graph && (
             <Menu
-              aria-label="Add to Story"
+              aria-label={t("media.inspector.addToStoryMenu")}
               trigger={
                 <Button size="sm" className="min-w-0 flex-1" icon={<TreeStructure />}>
-                  Add to Story
+                  {t("media.inspector.addToStory")}
                 </Button>
               }
             >
               {chapters.map((chapter) => (
                 <MenuItem key={chapter.id} onClick={() => props.onAddToStory(item, chapter.id)}>
-                  {chapter.title || "Untitled chapter"}
+                  {chapter.title || t("media.chapter.untitled")}
                 </MenuItem>
               ))}
-              <MenuItem onClick={() => props.onAddToStory(item, null)}>Unconnected</MenuItem>
+              <MenuItem onClick={() => props.onAddToStory(item, null)}>
+                {t("media.drop.unconnected")}
+              </MenuItem>
             </Menu>
           )}
         </div>
@@ -392,7 +406,7 @@ function AssetInspector(props: MediaInspectorProps & { item: MediaItem }) {
               icon={<Sparkle />}
               onClick={() => props.onAnalyze([item.path])}
             >
-              Analyze
+              {t("media.inspector.analyze")}
             </Button>
           )}
           {canRemoveBackground && (
@@ -402,24 +416,24 @@ function AssetInspector(props: MediaInspectorProps & { item: MediaItem }) {
               icon={<MagicWand />}
               onClick={() => setRemoving(true)}
             >
-              Remove Background…
+              {t("media.inspector.removeBackground")}
             </Button>
           )}
         </div>
       )}
       {item.kind !== "font" && <SourceSection item={item} onOpenSources={props.onOpenSources} />}
       {item.analysis && (
-        <Section title="Analysis">
+        <Section title={t("media.inspector.section.analysis")}>
           <AnalysisRows item={item} analysis={analysis} />
         </Section>
       )}
       {analysis.sentences.length > 0 && (
-        <Section title="Transcript">
+        <Section title={t("media.inspector.section.transcript")}>
           <TranscriptList analysis={analysis} onSeek={seek} />
         </Section>
       )}
       {takes.length > 0 && (
-        <Section title="Take Issues">
+        <Section title={t("media.inspector.section.takeIssues")}>
           <TimedList
             time={time}
             onSeek={seek}
@@ -429,8 +443,17 @@ function AssetInspector(props: MediaInspectorProps & { item: MediaItem }) {
               end: issue.end,
               body: (
                 <>
-                  <b className="font-semibold capitalize">{issue.kind.replaceAll("_", " ")}</b> ·{" "}
-                  {issue.action === "cut" ? "Safe to cut" : "Needs review"}
+                  <Trans
+                    i18nKey="media.inspector.takeLine"
+                    values={{
+                      kind: t(TAKE_KIND_LABELS[issue.kind]),
+                      action:
+                        issue.action === "cut"
+                          ? t("media.inspector.takeAction.cut")
+                          : t("media.inspector.takeAction.review"),
+                    }}
+                    components={{ b: <b className="font-semibold" /> }}
+                  />
                   <span className="block text-xs leading-[15px] text-fg-3">{issue.note}</span>
                 </>
               ),
@@ -439,7 +462,7 @@ function AssetInspector(props: MediaInspectorProps & { item: MediaItem }) {
         </Section>
       )}
       {segments.length > 0 && (
-        <Section title="Scenes">
+        <Section title={t("media.inspector.section.scenes")}>
           <TimedList
             time={time}
             onSeek={seek}
@@ -453,20 +476,25 @@ function AssetInspector(props: MediaInspectorProps & { item: MediaItem }) {
         </Section>
       )}
       {item.kind !== "font" && <UsageSection item={item} />}
-      <Section title="File">
+      <Section title={t("media.inspector.section.file")}>
         <Kv
           rows={[
-            ["File", item.name, "wrap"],
-            ["Location", item.path, "mono"],
-            ["Format", fileExtension(item.path)],
-            resolution && item.kind !== "audio" ? ["Resolution", resolution] : null,
+            [t("media.inspector.row.file"), item.name, "wrap"],
+            [t("media.inspector.row.location"), item.path, "mono"],
+            [t("media.inspector.row.format"), fileExtension(item.path)],
+            resolution && item.kind !== "audio"
+              ? [t("media.inspector.row.resolution"), resolution]
+              : null,
             item.duration != null && item.kind !== "image"
-              ? ["Duration", clock(item.duration)]
+              ? [t("media.inspector.row.duration"), clock(item.duration)]
               : null,
             item.kind === "video" && item.hasAudio != null
-              ? ["Audio", item.hasAudio ? "Yes" : "No audio"]
+              ? [
+                  t("media.inspector.row.audio"),
+                  item.hasAudio ? t("media.inspector.hasAudio") : t("media.inspector.noAudio"),
+                ]
               : null,
-            ["Size", formatBytes(item.bytes) ?? "—"],
+            [t("media.inspector.row.size"), item.bytes == null ? "—" : formatBytes(item.bytes)],
           ]}
         />
       </Section>

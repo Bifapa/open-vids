@@ -6,6 +6,7 @@ import {
 } from "@hyperframes/core/audio-fx";
 import { classifyAudioName } from "@hyperframes/core/audio-carve";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { useTranslation } from "../../i18n";
 import { VisibilityButton, PlainTrackHeader } from "./TimelineTrackPlainHeader";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
@@ -20,7 +21,7 @@ import { clipTimingStart } from "../../hooks/gsapShared";
 import { LaneToggleButton, LayerDisclosureRow } from "./LayerDisclosureRow";
 import { LABEL_COL_W, TRACK_H, getTimelineLaneTop } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
-import { trackDisplaySuffix } from "./timelineTrackDisplay";
+import { trackName } from "./timelineTrackDisplay";
 import { AutomationLaneHeaderRow, PropertyGroupHeaderRow } from "./trackHeaderLabelRows";
 import { useMemo } from "react";
 
@@ -107,6 +108,7 @@ export function TimelineTrackHeader({
   onSeek,
   rovingTargetId = null,
 }: TimelineTrackHeaderProps) {
+  const { t } = useTranslation();
   const clipPercentage = keyframeClip
     ? ((currentTime - keyframeClip.start) / keyframeClip.duration) * 100
     : 0;
@@ -209,7 +211,7 @@ export function TimelineTrackHeader({
   // slice's. Shared by both layouts so the name cannot change with the layout.
   const laneOwnerName =
     clipCount > 1
-      ? `Track${trackDisplaySuffix(trackDisplayNumber)}`
+      ? trackName(trackDisplayNumber)
       : (keyframeClip?.label ?? keyframeClip?.domId ?? keyframeClip?.id ?? trackLabel);
 
   // C1: the FX entry point. A single audio clip has one chain to point at; a
@@ -364,9 +366,7 @@ export function TimelineTrackHeader({
                         // button at all is the silent limit §5 forbids, so it gets the
                         // button and a reason instead.
                         refusal={
-                          isAudioTrack
-                            ? undefined
-                            : "Video audio can't be grouped yet — only audio clips can join a group."
+                          isAudioTrack ? undefined : t("player.track.videoAudioNotGroupable")
                         }
                         onGroupClips={groupUngroupedClips}
                       />

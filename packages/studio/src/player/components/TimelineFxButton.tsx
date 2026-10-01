@@ -18,6 +18,7 @@ import {
 } from "@hyperframes/core/audio-fx";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 import { TimelineFxPopover } from "../../components/editor/TimelineFxPopover.js";
+import { formatNumber, useTranslation } from "../../i18n";
 import { resolveFloatingPanelPosition } from "../../components/editor/floatingPanel.js";
 import {
   useAuditionTransport,
@@ -69,6 +70,7 @@ function GroupNameDialog({
   onCancel: () => void;
   onConfirm: (label: string) => void;
 }) {
+  const { t } = useTranslation();
   const [label, setLabel] = useState(defaultLabel ?? "Voiceover");
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Focused on open so the name can be typed over without a second click —
@@ -78,7 +80,7 @@ function GroupNameDialog({
     return (
       <div
         role="dialog"
-        aria-label="This track cannot be grouped"
+        aria-label={t("player.fx.refusedLabel")}
         className="z-200 w-64 rounded-md border border-[var(--timeline-tick-major)] bg-[var(--timeline-dialog-bg)] p-3 text-[11px] leading-snug text-[var(--timeline-text-soft)] shadow-xl"
         style={{ position: "fixed", ...groupDialogPosition(anchorRect) }}
         onPointerDown={(event) => event.stopPropagation()}
@@ -96,7 +98,7 @@ function GroupNameDialog({
   return (
     <div
       role="dialog"
-      aria-label="Name this group"
+      aria-label={t("player.fx.nameLabel")}
       className="z-200 w-64 rounded-md border border-[var(--timeline-tick-major)] bg-[var(--timeline-dialog-bg)] p-3 text-[11px] text-[var(--timeline-text-soft)] shadow-xl"
       style={{ position: "fixed", ...groupDialogPosition(anchorRect) }}
       onPointerDown={(event) => event.stopPropagation()}
@@ -108,34 +110,33 @@ function GroupNameDialog({
         if (event.key === "Enter") confirm();
       }}
     >
-      <p className="mb-1.5 font-medium text-[var(--timeline-text-solid)]">Name this group</p>
+      <p className="mb-1.5 font-medium text-[var(--timeline-text-solid)]">
+        {t("player.fx.nameLabel")}
+      </p>
       <input
         ref={inputRef}
         type="text"
-        aria-label="Group name"
+        aria-label={t("player.fx.nameInput")}
         value={label}
         onChange={(event) => setLabel(event.currentTarget.value)}
         className="w-full rounded-sm border border-[var(--timeline-border-strong)] bg-[var(--timeline-input-bg)] px-1.5 py-1 text-[11px] text-[var(--timeline-text-solid)] outline-hidden focus:border-[var(--timeline-accent)]"
       />
       {/* The sentence. No jargon, and it names both things a bus does. */}
-      <p className="mt-2 leading-snug">
-        Effects you add to the group apply to {clipCount === 2 ? "both" : `all ${clipCount}`} clips
-        at once, and they share one volume.
-      </p>
+      <p className="mt-2 leading-snug">{t("player.fx.groupExplain", { count: clipCount })}</p>
       <div className="mt-2.5 flex justify-end gap-1.5">
         <button
           type="button"
           className="rounded-sm border border-[var(--timeline-border-strong)] px-2 py-1 text-[10px] text-[var(--timeline-text-soft)] hover:bg-[var(--timeline-tick-major)]"
           onClick={onCancel}
         >
-          Cancel
+          {t("common.cancel")}
         </button>
         <button
           type="button"
           className="rounded-sm border border-[var(--timeline-accent)] bg-[var(--timeline-accent-button-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--timeline-accent)] hover:bg-[var(--timeline-accent-hover)]"
           onClick={confirm}
         >
-          Group
+          {t("player.fx.groupButton")}
         </button>
       </div>
     </div>
@@ -188,6 +189,7 @@ interface TimelineFxButtonGroupPointerProps {
 type TimelineFxButtonProps = TimelineFxButtonChainProps | TimelineFxButtonGroupPointerProps;
 
 export function TimelineFxButton(props: TimelineFxButtonProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -210,8 +212,8 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
           type="button"
           tabIndex={-1}
           ref={buttonRef}
-          aria-label="Effects — group these clips first"
-          title="Group these clips to add effects to all of them"
+          aria-label={t("player.fx.groupPointerAria")}
+          title={t("player.fx.groupPointerTitle")}
           className="flex h-ctl-xs items-center justify-center rounded-sm border-0 bg-transparent px-1 text-2xs leading-none font-semibold tracking-[0.02em] text-fg-2 hover:bg-surface-2 hover:text-fg"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
@@ -250,8 +252,12 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
         type="button"
         tabIndex={-1}
         ref={buttonRef}
-        aria-label={nodeCount > 0 ? `Effects — ${nodeCount} applied` : "Effects"}
-        title="Effects"
+        aria-label={
+          nodeCount > 0
+            ? t("player.fx.applied", { count: formatNumber(nodeCount) })
+            : t("player.fx.label")
+        }
+        title={t("player.fx.label")}
         className={`flex h-ctl-xs items-center justify-center gap-0.5 rounded-sm border-0 bg-transparent px-1 text-2xs leading-none font-semibold tracking-[0.02em] transition-colors hover:bg-surface-2 ${
           open || nodeCount > 0
             ? "text-fg shadow-[inset_0_0_0_1px_var(--color-border-strong)]"

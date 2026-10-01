@@ -3,6 +3,7 @@ import { BEAT_BAND_H } from "./BeatStrip";
 import { TimelineDiamondConnectors } from "./TimelineDiamondConnectors";
 import { LANE_H } from "./timelineLayout";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
+import { useTranslation } from "../../i18n";
 import { timelineKeyframeSelectionKey } from "./timelineKeyframeIdentity";
 import {
   beginTimelineKeyframeRetime,
@@ -13,7 +14,9 @@ import {
 import { timelineKeyframeFocusId } from "./timelineNavigationIdentity";
 import {
   DIAMOND_RATIO,
+  keyframeAriaLabel,
   keyframeTimeLabel,
+  keyframeTitle,
   keyframeTarget,
   type TimelineClipDiamondsProps,
   type TimelineDiamondKeyframe,
@@ -86,6 +89,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
   groupAware = false,
   globalEase = "none",
 }: TimelineDiamondLaneProps) {
+  const { t } = useTranslation();
   // Hooks must run before the early return below.
   // The retime itself lives on the stable scroll viewport (beginTimelineKeyframeRetime),
   // so a row unmounted by virtualization mid-drag does not drop the gesture.
@@ -343,7 +347,11 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             aria-current={atPlayhead ? "time" : undefined}
             data-keyframe-outside-clip={boundary ?? undefined}
             tabIndex={focusId === rovingTargetId ? 0 : -1}
-            aria-label={`${kf.propertyGroup ?? "Motion"} keyframe at ${keyframeTimeLabel(clipStart, clipDuration, kf.percentage)}${boundary ? ` (${boundary} clip)` : ""}`}
+            aria-label={keyframeAriaLabel(
+              kf.propertyGroup ?? t("player.keyframe.groupFallback"),
+              keyframeTimeLabel(clipStart, clipDuration, kf.percentage),
+              boundary,
+            )}
             aria-pressed={isKfSelected}
             style={{
               left: leftPx,
@@ -388,7 +396,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
               e.stopPropagation();
               onContextMenuKeyframe?.(e, target);
             }}
-            title={`${roundPct(kf.percentage)}%${boundary ? ` · ${boundary} clip` : ""}`}
+            title={keyframeTitle(roundPct(kf.percentage), boundary)}
           >
             <svg
               width={marker.visualSize}

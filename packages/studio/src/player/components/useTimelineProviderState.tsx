@@ -41,6 +41,7 @@ import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { useTranslation } from "../../i18n";
 import { resolveSnapGuide } from "./timelineSnapping";
 export function useTimelineProviderState({
   onSeek,
@@ -67,6 +68,7 @@ export function useTimelineProviderState({
   theme: themeOverrides,
   sessionEpoch = 0,
 }: TimelineProps = {}): TimelineContextValue {
+  const { t } = useTranslation();
   const {
     onMoveElement,
     onMoveElements,
@@ -516,7 +518,7 @@ export function useTimelineProviderState({
     },
     container: {
       ref: setContainerRef,
-      "aria-label": "Timeline track view",
+      "aria-label": t("player.timeline.trackView"),
       "data-timeline-element-count": timelineElements.length,
       isDragOver: assetDrop.isDragOver,
       activeTool,

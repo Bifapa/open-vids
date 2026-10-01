@@ -23,6 +23,7 @@ import {
 } from "@hyperframes/core/audio-automation";
 import { parseAudioFxChain, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import { isAudioOrVideoTimelineElement } from "../../utils/timelineInspector";
+import { formatNumber, t } from "../../i18n";
 import type { TimelineElement } from "../store/playerStore";
 
 const EMPTY: HfAutomation = { version: 1, lanes: [] };
@@ -156,9 +157,12 @@ function orderLanes(lanes: HfAutomationLane[], chain: HfAudioFxChain | null): Hf
 
 /** A frequency as an author reads it: 400 Hz, 1.6 kHz, 10 kHz. */
 export function formatHz(freq: number): string {
-  if (freq < 1000) return `${Math.round(freq)} Hz`;
+  if (freq < 1000) {
+    return t("player.automation.hz", { value: formatNumber(Math.round(freq)) });
+  }
   const k = freq / 1000;
-  return `${k >= 10 ? Math.round(k) : Number(k.toFixed(1))} kHz`;
+  const value = formatNumber(k >= 10 ? Math.round(k) : Number(k.toFixed(1)));
+  return t("player.automation.khz", { value });
 }
 
 /**

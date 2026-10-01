@@ -16,6 +16,7 @@ import {
   Tray,
 } from "@phosphor-icons/react";
 import { Meter, cn } from "../components/ui";
+import { formatNumber, useTranslation, type TranslationKey } from "../i18n";
 import {
   analysisRunning,
   inCollection,
@@ -28,62 +29,62 @@ import type { AnalysisQueueState } from "./useMediaLibrary";
 type NavKey = MediaCollection | "sources";
 
 const GROUPS: ReadonlyArray<{
-  label: string;
-  items: ReadonlyArray<{ key: NavKey; name: string; icon: ReactNode }>;
+  label: TranslationKey;
+  items: ReadonlyArray<{ key: NavKey; name: TranslationKey; icon: ReactNode }>;
 }> = [
   {
-    label: "Library",
+    label: "media.nav.group.library",
     items: [
-      { key: "all", name: "All Media", icon: <SquaresFour /> },
-      { key: "video", name: "Video", icon: <FilmStrip /> },
-      { key: "image", name: "Images", icon: <ImageIcon /> },
-      { key: "audio", name: "Audio", icon: <MusicNotes /> },
-      { key: "font", name: "Fonts", icon: <TextAa /> },
+      { key: "all", name: "media.collection.all", icon: <SquaresFour /> },
+      { key: "video", name: "media.kind.video", icon: <FilmStrip /> },
+      { key: "image", name: "media.kind.image", icon: <ImageIcon /> },
+      { key: "audio", name: "media.kind.audio", icon: <MusicNotes /> },
+      { key: "font", name: "media.kind.font", icon: <TextAa /> },
     ],
   },
   {
-    label: "Origin",
+    label: "media.nav.group.origin",
     items: [
-      { key: "imported", name: "Imported", icon: <Tray /> },
-      { key: "research", name: "Found by Research", icon: <Globe /> },
-      { key: "download", name: "Downloaded", icon: <DownloadSimple /> },
+      { key: "imported", name: "media.collection.imported", icon: <Tray /> },
+      { key: "research", name: "media.collection.research", icon: <Globe /> },
+      { key: "download", name: "media.collection.download", icon: <DownloadSimple /> },
     ],
   },
   {
-    label: "Smart Collections",
+    label: "media.nav.group.smart",
     items: [
-      { key: "unused", name: "Not Used Yet", icon: <Circle /> },
-      { key: "analysis", name: "Not Analyzed", icon: <Clock /> },
-      { key: "offline", name: "Offline", icon: <LinkBreak /> },
+      { key: "unused", name: "media.collection.unused", icon: <Circle /> },
+      { key: "analysis", name: "media.collection.analysis", icon: <Clock /> },
+      { key: "offline", name: "media.status.offline", icon: <LinkBreak /> },
     ],
   },
   {
-    label: "Project",
-    items: [{ key: "sources", name: "Sources & Licenses", icon: <ShieldCheck /> }],
+    label: "media.nav.group.project",
+    items: [{ key: "sources", name: "media.nav.sources", icon: <ShieldCheck /> }],
   },
 ];
 
-export const COLLECTION_NAMES: Record<MediaCollection, string> = {
-  all: "All Media",
-  video: "Video",
-  image: "Images",
-  audio: "Audio",
-  font: "Fonts",
-  imported: "Imported",
-  research: "Found by Research",
-  download: "Downloaded",
-  unused: "Not Used Yet",
-  analysis: "Not Analyzed",
-  offline: "Offline",
-};
+export const COLLECTION_LABELS = {
+  all: "media.collection.all",
+  video: "media.kind.video",
+  image: "media.kind.image",
+  audio: "media.kind.audio",
+  font: "media.kind.font",
+  imported: "media.collection.imported",
+  research: "media.collection.research",
+  download: "media.collection.download",
+  unused: "media.collection.unused",
+  analysis: "media.collection.analysis",
+  offline: "media.status.offline",
+} as const satisfies Record<MediaCollection, TranslationKey>;
 
-const STAGE_LABEL: Record<string, string> = {
-  transcript: "Transcript",
-  speakers: "Speakers",
-  silence: "Silence",
-  shots: "Scene map",
-  takes: "Take issues",
-  segments: "Scenes",
+const STAGE_LABELS: Partial<Record<string, TranslationKey>> = {
+  transcript: "media.analysis.stage.transcript",
+  speakers: "media.analysis.stage.speakers",
+  silence: "media.analysis.stage.silence",
+  shots: "media.analysis.stage.shots",
+  takes: "media.analysis.stage.takes",
+  segments: "media.analysis.stage.segments",
 };
 
 const fileOf = (path: string) => path.split("/").pop() ?? path;
@@ -97,6 +98,7 @@ function AnalysisCard({
   queue: AnalysisQueueState;
   onAnalyzeAll: () => void;
 }) {
+  const { t } = useTranslation();
   const following = queue.job ?? null;
   const pending = queue.waiting.length + (following || queue.starting ? 1 : 0);
   const external = items.find(analysisRunning);
@@ -105,51 +107,64 @@ function AnalysisCard({
   let body: ReactNode = null;
   if (pending > 0) {
     const source = following?.source ?? queue.starting ?? "";
-    head = <span className="font-normal text-fg-3">· {pending} waiting</span>;
+    const stageKey = following?.stage ? STAGE_LABELS[following.stage] : undefined;
+    head = (
+      <span className="font-normal text-fg-3">
+        {t("media.analysis.waiting", { count: formatNumber(pending) })}
+      </span>
+    );
     body = (
       <>
         <p className="m-0 truncate text-fg-3" title={source}>
-          {following?.stage ? (STAGE_LABEL[following.stage] ?? following.stage) : "Starting"} ·{" "}
-          {fileOf(source)}
+          {following?.stage
+            ? t("media.analysis.stageFile", {
+                stage: stageKey ? t(stageKey) : following.stage,
+                file: fileOf(source),
+              })
+            : t("media.analysis.startingFile", { file: fileOf(source) })}
         </p>
-        <Meter value={(following?.progress ?? 0) / 100} label="Analysis progress" />
+        <Meter value={(following?.progress ?? 0) / 100} label={t("media.analysis.progress")} />
       </>
     );
   } else if (external) {
-    head = <span className="font-normal text-fg-3">· running</span>;
+    head = <span className="font-normal text-fg-3">{t("media.analysis.running")}</span>;
     body = (
       <p className="m-0 truncate text-fg-3" title={external.path}>
         {external.name}
       </p>
     );
   } else if (notAnalyzed > 0) {
-    head = <span className="font-normal text-fg-3">· {notAnalyzed} not analyzed</span>;
+    head = (
+      <span className="font-normal text-fg-3">
+        {t("media.analysis.notAnalyzed", { count: formatNumber(notAnalyzed) })}
+      </span>
+    );
     body = (
       <button
         type="button"
         onClick={onAnalyzeAll}
         className="justify-self-start text-fg-2 underline underline-offset-2 hover:text-fg"
       >
-        Analyze all
+        {t("media.analysis.analyzeAll")}
       </button>
     );
   } else if (items.length === 0) {
-    body = <p className="m-0 text-fg-3">Import video or audio, then analyze it here.</p>;
+    body = <p className="m-0 text-fg-3">{t("media.analysis.empty")}</p>;
   } else {
-    head = <span className="font-normal text-fg-3">· up to date</span>;
+    head = <span className="font-normal text-fg-3">{t("media.analysis.upToDate")}</span>;
   }
   return (
     <div
       className="mx-2 mb-2 grid flex-none gap-1.5 rounded-md border border-border-subtle bg-bg-1 px-2.5 py-2 text-sm leading-[17px] text-fg-2"
       data-testid="media-analysis-status"
     >
-      <div className="flex items-center gap-1.5 font-semibold text-fg">
+      <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 font-semibold text-fg">
         {pending || external ? (
-          <MagnifyingGlass className="size-icon-sm text-fg-3" />
+          <MagnifyingGlass className="size-icon-sm flex-none self-center text-fg-3" />
         ) : (
-          <CheckCircle className="size-icon-sm text-fg-3" />
+          <CheckCircle className="size-icon-sm flex-none self-center text-fg-3" />
         )}
-        Analysis
+        {t("media.analysis.title")}
         {head}
       </div>
       {body}
@@ -171,13 +186,14 @@ export function MediaLibraryNav({
   queue: AnalysisQueueState;
   onAnalyzeAll: () => void;
 }) {
+  const { t } = useTranslation();
   const external = items.filter((item) => item.provenance);
   const attention = external.filter((item) => (item.provenance?.issues.length ?? 0) > 0).length;
   const empty = items.length === 0;
   return (
     <>
       <nav
-        aria-label="Collections"
+        aria-label={t("media.nav.label")}
         className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1.5 pt-1 pb-2.5"
         data-testid="media-library-nav"
       >
@@ -189,7 +205,7 @@ export function MediaLibraryNav({
                 index === 0 ? "pt-1" : "pt-3",
               )}
             >
-              {group.label}
+              {t(group.label)}
             </div>
             {group.items.map((entry) => {
               const key = entry.key;
@@ -215,16 +231,16 @@ export function MediaLibraryNav({
                   )}
                 >
                   {entry.icon}
-                  <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                  <span className="min-w-0 flex-1 truncate">{t(entry.name)}</span>
                   {warn ? (
                     <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-pill bg-warning-soft px-[5px] text-2xs leading-none font-semibold text-warning tabular-nums">
-                      {entry.key === "sources" ? attention : count}
+                      {formatNumber(entry.key === "sources" ? attention : count)}
                     </span>
                   ) : (
                     <span
                       className={cn("text-xs tabular-nums", selected ? "text-fg" : "text-fg-3")}
                     >
-                      {count}
+                      {formatNumber(count)}
                     </span>
                   )}
                 </button>

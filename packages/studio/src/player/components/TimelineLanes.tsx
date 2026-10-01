@@ -1,4 +1,5 @@
 import { Fragment, useId, useMemo } from "react";
+import { useTranslation } from "../../i18n";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
@@ -15,7 +16,7 @@ import {
   resolveTrackKeyframeClip,
   trackShowsBeatStrip,
 } from "./useTimelineTrackLayout";
-import { trackDisplayNumber, trackDisplaySuffix } from "./timelineTrackDisplay";
+import { trackDisplayNumber, trackName } from "./timelineTrackDisplay";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { getTimelineEditCapabilities } from "./timelineEditing";
 import { CLIP_Y, TRACK_H } from "./timelineLayout";
@@ -102,6 +103,7 @@ export function TimelineLanes({
 }: TimelineLanesProps) {
   // ponytail: One per-instance namespace prevents aria-controls and aria-owns
   // from resolving into a second timeline that renders the same logical rows.
+  const { t } = useTranslation();
   const lanesIdPrefix = `timeline-lanes${useId().replaceAll(":", "")}`;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
@@ -146,7 +148,7 @@ export function TimelineLanes({
   return (
     <div
       role="treegrid"
-      aria-label="Timeline tracks"
+      aria-label={t("player.track.timelineTracks")}
       aria-rowcount={logicalRows.length}
       aria-colcount={2}
       onFocus={keyboard.onFocus}
@@ -280,12 +282,7 @@ export function TimelineLanes({
               // What gets announced. `trackNum` is a fractional z-order sort
               // key, so it stays out of every label and in every callback.
               trackDisplayNumber={displayNumber}
-              trackLabel={
-                els[0]?.label ??
-                els[0]?.domId ??
-                els[0]?.id ??
-                `Track${trackDisplaySuffix(displayNumber)}`
-              }
+              trackLabel={els[0]?.label ?? els[0]?.domId ?? els[0]?.id ?? trackName(displayNumber)}
               lanesId={`${lanesId} ${automationLanesId}`}
               contentOrigin={contentOrigin}
               keyframeClip={keyframeClip}
@@ -362,7 +359,7 @@ export function TimelineLanes({
                     opacity: 0.5,
                   }}
                 >
-                  New track
+                  {t("player.track.new")}
                 </div>
               )}
               {renderElements.map((el) => {

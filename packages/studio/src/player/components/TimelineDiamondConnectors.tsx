@@ -1,6 +1,7 @@
 import { Fragment, useRef } from "react";
 import { KEYFRAME_DRAG_THRESHOLD_PX } from "../../components/editor/keyframeDrag";
 import { MiniCurveSvg } from "../../components/editor/EaseCurveSection";
+import { useTranslation } from "../../i18n";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
 import { keyframeTimeLabel, type TimelineDiamondKeyframe } from "./timelineDiamondTypes";
 import { timelineEaseFocusId } from "./timelineNavigationIdentity";
@@ -169,6 +170,7 @@ function SegmentEaseControl({
   // Swallowing pointerdown there made that grab a no-op. Instead the press falls
   // through to the clip (so the drag starts normally) and the button keeps only
   // the click, which we drop if the pointer actually travelled.
+  const { t } = useTranslation();
   const pressXRef = useRef<number | null>(null);
   return (
     <div
@@ -195,8 +197,8 @@ function SegmentEaseControl({
         data-keyframe-ease-button=""
         data-timeline-focus-id={focusId}
         tabIndex={focusId === rovingTargetId ? 0 : -1}
-        aria-label={`Edit ${ease} easing after ${afterLabel}`}
-        title={`Edit ${ease} easing`}
+        aria-label={t("player.keyframe.ease.aria", { ease, time: afterLabel })}
+        title={t("player.keyframe.ease.title", { ease })}
         // A visible 24x24 badge would collide with the diamonds either side, so
         // the WCAG 2.2 (2.5.8) target is met with a centered transparent
         // ::before overlay; the box stays 16x16. Where the segment is too narrow

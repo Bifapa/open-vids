@@ -23,6 +23,7 @@ import type {
   HfAutomationLane,
   HfAutomationPoint,
 } from "@hyperframes/core/audio-automation";
+import { formatNumber, t as translate } from "../../i18n";
 import { capturePointer } from "./automationLanePointer";
 import { retimeRange } from "./automationLaneSelection";
 
@@ -205,7 +206,13 @@ export function useAutomationEdgeStretch({
       }
       const newT0 = edge === "t0" ? current : origin.t0;
       const newT1 = edge === "t1" ? current : origin.t1;
-      onHint(`${newT0.toFixed(2)}s → ${newT1.toFixed(2)}s`);
+      const fixed2 = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+      onHint(
+        translate("player.automation.stretchHint", {
+          start: formatNumber(newT0, fixed2),
+          end: formatNumber(newT1, fixed2),
+        }),
+      );
       onRangeSelect?.(newT0, newT1, origin.v0, origin.v1);
       commitPoints(
         retimeRange({

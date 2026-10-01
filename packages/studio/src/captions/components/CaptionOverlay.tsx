@@ -1,4 +1,5 @@
 import { memo, useEffect, useState, useCallback, useRef } from "react";
+import { useTranslation } from "../../i18n";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { useCaptionStore } from "../store";
 import { usePlayerStore } from "../../player";
@@ -31,6 +32,7 @@ function syncToStore(segmentId: string, el: HTMLElement, iframeWin: Window) {
 }
 
 export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: CaptionOverlayProps) {
+  const { t } = useTranslation();
   const isEditMode = useCaptionStore((s) => s.isEditMode);
   const livePreviewIframe = useLivePreviewIframe();
   const model = useCaptionStore((s) => s.model);
@@ -408,7 +410,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       {wordBoxes.length === 0 && model && model.segments.size > 0 && (
         <div className="absolute inset-x-0 top-3 flex justify-center pointer-events-none">
           <span className="px-2.5 py-1 rounded-full bg-black/60 border border-neutral-700 text-2xs text-neutral-300">
-            No captions visible at this frame — scrub to a caption, or select one in the track below
+            {t("captions.overlay.noneVisible")}
           </span>
         </div>
       )}

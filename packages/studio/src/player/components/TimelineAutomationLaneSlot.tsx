@@ -14,6 +14,7 @@ import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { getTimelineLaneTop } from "./timelineLayout";
 import { groupAutomationLanes, isCarveLane } from "./automationLaneData";
 import { isAudioOrVideoTimelineElement } from "../../utils/timelineInspector";
+import { useTranslation } from "../../i18n";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import type { TimelineElement } from "../store/playerStore";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
@@ -54,6 +55,7 @@ function ClipAutomationLanes({
   currentTime: number;
   beatTimes?: readonly number[];
 }) {
+  const { t } = useTranslation();
   // Beats inside this clip, in the clip's own frame — the lane's times are
   // clip-local, and a beat outside the clip can never be snapped to anyway.
   const snapTimes = useMemo(
@@ -110,9 +112,9 @@ function ClipAutomationLanes({
             // — because "not editable" without that reads as broken.
             readOnlyNote={
               isCarveLane(lane.target, bound.chain)
-                ? "Owned by the voiceover carve — re-derived on every analysis. Change strength in the FX rack, or turn the carve off to edit these by hand."
+                ? t("player.automation.carveNote")
                 : bound.readOnly
-                  ? "Read-only here."
+                  ? t("player.automation.readOnlyNote")
                   : undefined
             }
             rangeSelection={

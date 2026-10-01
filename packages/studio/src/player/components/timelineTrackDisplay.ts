@@ -6,6 +6,7 @@
  * routes through here; the raw key stays in callbacks and lookups only.
  */
 
+import { formatNumber, t } from "../../i18n";
 /** Ascending distinct track keys, the row order the timeline renders in. */
 export function timelineTrackOrder(elements: readonly { track: number }[]): number[] {
   return [...new Set(elements.map((element) => element.track))].sort((a, b) => a - b);
@@ -32,4 +33,11 @@ export function trackDisplayNumber(trackOrder: readonly number[], track: number)
  */
 export function trackDisplaySuffix(displayNumber: number | null): string {
   return displayNumber === null ? "" : ` ${displayNumber}`;
+}
+
+/** A track's name when it has no label of its own: `Track 3`, or `Track` when it has no display row. */
+export function trackName(displayNumber: number | null): string {
+  return displayNumber === null
+    ? t("player.track.nameBare")
+    : t("player.track.name", { number: formatNumber(displayNumber) });
 }

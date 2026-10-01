@@ -1,6 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useCallback, useRef } from "react";
 import { useCaptionStore } from "../store";
+import { t } from "../../i18n";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import type { CaptionStyle } from "../types";
 import { studioWriteHeaders } from "../../utils/studioFileVersion";
@@ -108,7 +109,7 @@ export function useCaptionSync(projectId: string | null) {
       .catch(() => {
         // Caption auto-save is a data-loss path: surface it to the user.
         // pendingRef stays true so beforeunload still warns.
-        useCaptionStore.getState().setSyncError("Caption changes couldn't be saved");
+        useCaptionStore.getState().setSyncError(t("captions.sync.saveFailed"));
       });
   }, []);
 
@@ -227,9 +228,7 @@ export function useCaptionSync(projectId: string | null) {
       useCaptionStore.getState().setModel({ ...model, segments: newSegments });
     } catch {
       // File exists but is unreadable — previous edits would silently not load.
-      useCaptionStore
-        .getState()
-        .setSyncError("caption-overrides.json is corrupt — earlier caption edits didn't load");
+      useCaptionStore.getState().setSyncError(t("captions.sync.overridesCorrupt"));
     }
   }, []);
 

@@ -6,6 +6,7 @@
  * kept in its own file so the lane component stays about the pointer.
  */
 
+import { useTranslation } from "../../i18n";
 export interface AutomationValueInputProps {
   text: string;
   /** Left edge in the lane's own coordinates. */
@@ -26,6 +27,7 @@ export function AutomationValueInput({
   onCommit,
   onCancel,
 }: AutomationValueInputProps) {
+  const { t } = useTranslation();
   return (
     <input
       // pointer-events-auto: the lane band around it takes none, so that clips
@@ -44,7 +46,7 @@ export function AutomationValueInput({
       onChange={(e) => onChange(e.target.value)}
       onBlur={onCommit}
       value={text}
-      aria-label={`${label} value`}
+      aria-label={t("player.automation.valueAria", { label })}
       autoFocus
     />
   );

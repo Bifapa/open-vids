@@ -8,6 +8,7 @@
  * they are the seam.
  */
 
+import { useTranslation } from "../../i18n";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
@@ -34,6 +35,7 @@ function PropertyGroupNavigation({
   onSeek?: (time: number) => void;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   // The 12x20px glyph is all the lane row has room for, so the WCAG 24x24
   // target is met with a centered transparent ::before overlay instead of a
   // bigger box; focus-visible matches every other control in this header.
@@ -51,7 +53,7 @@ function PropertyGroupNavigation({
     <span className="flex shrink-0 items-center gap-0.5">
       <button
         type="button"
-        aria-label={`Previous ${label} keyframe`}
+        aria-label={t("player.lanes.prevKeyframe", { label })}
         disabled={!navigation.prevKeyframe}
         className={CHEVRON_BUTTON_CLASS}
         onClick={(event) => {
@@ -64,7 +66,7 @@ function PropertyGroupNavigation({
       {children}
       <button
         type="button"
-        aria-label={`Next ${label} keyframe`}
+        aria-label={t("player.lanes.nextKeyframe", { label })}
         disabled={!navigation.nextKeyframe}
         className={CHEVRON_BUTTON_CLASS}
         onClick={(event) => {
@@ -105,6 +107,7 @@ export function PropertyGroupHeaderRow({
   onSeek?: (time: number) => void;
   rovingTargetId: string | null;
 }) {
+  const { t } = useTranslation();
   const elementId = expandedElement.key ?? expandedElement.id;
   const { navigation, values, label, toggleTarget } = resolveLaneHeaderState(
     lane,
@@ -151,8 +154,16 @@ export function PropertyGroupHeaderRow({
         <button
           type="button"
           aria-pressed={!!navigation.currentKeyframe}
-          aria-label={`${navigation.currentKeyframe ? "Remove" : "Add"} ${label} keyframe`}
-          title={`${navigation.currentKeyframe ? "Remove" : "Add"} ${label} keyframe`}
+          aria-label={
+            navigation.currentKeyframe
+              ? t("player.lanes.removeKeyframe", { label })
+              : t("player.lanes.addKeyframe", { label })
+          }
+          title={
+            navigation.currentKeyframe
+              ? t("player.lanes.removeKeyframe", { label })
+              : t("player.lanes.addKeyframe", { label })
+          }
           // h-6 w-6 = the 24x24 WCAG 2.2 minimum target; the ◆ glyph stays 11px.
           className="flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-[#3CE6AC] focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
           onClick={(event) => {
@@ -227,6 +238,7 @@ export function AutomationLaneHeaderRow({
    *  button that looks live and does nothing. */
   onReveal?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       data-automation-lane-label={label}
@@ -259,8 +271,8 @@ export function AutomationLaneHeaderRow({
       <button
         type="button"
         tabIndex={-1}
-        aria-label={onReveal ? `Show ${label} in the effect rack` : undefined}
-        title={onReveal ? `Show ${label} in the effect rack` : label}
+        aria-label={onReveal ? t("player.lanes.revealInRack", { label }) : undefined}
+        title={onReveal ? t("player.lanes.revealInRack", { label }) : label}
         disabled={!onReveal}
         className="flex min-w-0 flex-1 flex-col justify-center rounded-sm border-0 bg-transparent p-0 text-left leading-tight enabled:hover:text-white focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
         onPointerDown={(event) => event.stopPropagation()}
@@ -286,9 +298,9 @@ export function AutomationLaneHeaderRow({
           <span
             data-automation-lane-also=""
             className="truncate text-[9px] text-[#F5C542]/80"
-            title={`${alsoAutomatedBy} is also fading this — the two multiply.`}
+            title={t("player.lanes.alsoFadingTitle", { name: alsoAutomatedBy })}
           >
-            {alsoAutomatedBy} is also fading this.
+            {t("player.lanes.alsoFading", { name: alsoAutomatedBy })}
           </span>
         ) : null}
       </button>
@@ -308,8 +320,8 @@ export function AutomationLaneHeaderRow({
       {onRemove && target !== null && !isCarve && (
         <button
           type="button"
-          aria-label={`Remove ${label} automation`}
-          title={`Remove ${label} automation`}
+          aria-label={t("player.lanes.removeAutomation", { label })}
+          title={t("player.lanes.removeAutomation", { label })}
           // h-6 w-6 is the 24x24 WCAG 2.2 target; the glyph stays small.
           className="flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-white/35 hover:text-white focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
           onPointerDown={(event) => event.stopPropagation()}

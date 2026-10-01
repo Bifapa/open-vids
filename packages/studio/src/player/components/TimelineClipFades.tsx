@@ -14,6 +14,7 @@ import {
 } from "@hyperframes/core/audio-fade";
 import type { TimelineElement } from "../store/playerStore";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { useTranslation } from "../../i18n";
 
 type FadeEdge = "in" | "out";
 
@@ -293,7 +294,9 @@ function FadeHandle({
   onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void;
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
 }) {
-  const label = direction === "in" ? "Fade in" : "Fade out";
+  const { t } = useTranslation();
+  const label = direction === "in" ? t("player.fade.in") : t("player.fade.out");
+  const seconds = formatFadeSeconds(value);
   return (
     <div
       role="slider"
@@ -302,9 +305,9 @@ function FadeHandle({
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={value}
-      aria-valuetext={`${formatFadeSeconds(value)}s`}
+      aria-valuetext={t("player.fade.seconds", { seconds })}
       data-testid={`clip-fade-handle-${direction}`}
-      title={`${label}: ${formatFadeSeconds(value)}s — drag to change`}
+      title={t("player.fade.title", { label, seconds })}
       style={style}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

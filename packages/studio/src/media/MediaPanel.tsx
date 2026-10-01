@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DownloadSimple } from "@phosphor-icons/react";
 import { IconButton, Tab, TabPanel, Tabs, TabsList } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { AgentChatPanel } from "../components/chat/AgentChatPanel";
 import type { AgentStore } from "../agent/agentStore";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
@@ -10,7 +11,7 @@ import { useResearchServices, useSourcesStore } from "../research/researchContex
 import { studioStoryStore } from "../story/storyContext";
 import { MediaBrowser } from "./MediaBrowser";
 import { MediaInspector } from "./MediaInspector";
-import { COLLECTION_NAMES, MediaLibraryNav, type NavKey } from "./MediaLibraryNav";
+import { COLLECTION_LABELS, MediaLibraryNav, type NavKey } from "./MediaLibraryNav";
 import { needsAnalysis, type MediaCollection, type MediaItem } from "./mediaLibrary";
 import { attachMediaToStory } from "./mediaStoryDrop";
 import { useMediaLibrary } from "./useMediaLibrary";
@@ -59,6 +60,7 @@ export function MediaPanel({
   onAddAssetToTimeline,
   removeBackground,
 }: MediaPanelProps) {
+  const { t } = useTranslation();
   const { assets, handleImportFiles, handleDeleteFile, handleRenameFile } = useFileManagerContext();
   const { showToast } = useStudioShellContext();
   const library = useMediaLibrary(projectId, assets);
@@ -100,15 +102,12 @@ export function MediaPanel({
         return;
       }
       if (!story.commit(() => result.graph)) {
-        showToast(
-          "The Story Graph is busy (an agent turn is running). Try again when it ends.",
-          "error",
-        );
+        showToast(t("media.story.busy"), "error");
         return;
       }
-      showToast(`Added ${item.name} to the Story Graph`, "info");
+      showToast(t("media.story.added", { name: item.name }), "info");
     },
-    [showToast],
+    [showToast, t],
   );
 
   const openSources = useCallback(
@@ -140,11 +139,11 @@ export function MediaPanel({
         head={
           <>
             <span className="inline-flex h-ctl-sm items-center px-2 text-sm font-medium text-fg">
-              Library
+              {t("media.panel.library")}
             </span>
             <span className="flex-1" />
             <IconButton
-              aria-label="Import Media…"
+              aria-label={t("media.import")}
               size="sm"
               icon={<DownloadSimple className="size-icon-md" />}
               onClick={() => fileInput.current?.click()}
@@ -181,13 +180,13 @@ export function MediaPanel({
           testId="media-browser-panel"
           className="h-full"
           head={
-            <TabsList aria-label="Browser">
-              <Tab value="media">Media</Tab>
+            <TabsList aria-label={t("media.panel.browserTabs")}>
+              <Tab value="media">{t("media.tab.media")}</Tab>
               <Tab value="sources">
-                Sources &amp; Licenses
+                {t("media.nav.sources")}
                 {sourcesAttention && (
                   <i
-                    aria-label="Needs a license check"
+                    aria-label={t("media.sources.needsCheck")}
                     className="ml-1 size-1.5 rounded-full bg-warning"
                   />
                 )}
@@ -200,7 +199,7 @@ export function MediaPanel({
               projectId={projectId}
               items={items}
               collection={collection}
-              collectionLabel={COLLECTION_NAMES[collection]}
+              collectionLabel={t(COLLECTION_LABELS[collection])}
               onResetCollection={() => setCollection("all")}
               searchIndex={library.searchIndex}
               loadSearchIndex={library.loadSearchIndex}
@@ -229,9 +228,9 @@ export function MediaPanel({
           testId="media-right"
           className="h-full"
           head={
-            <TabsList aria-label="Right panel">
-              <Tab value="inspector">Inspector</Tab>
-              <Tab value="chat">Chat</Tab>
+            <TabsList aria-label={t("media.panel.rightTabs")}>
+              <Tab value="inspector">{t("media.tab.inspector")}</Tab>
+              <Tab value="chat">{t("media.tab.chat")}</Tab>
             </TabsList>
           }
         >

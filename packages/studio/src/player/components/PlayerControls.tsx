@@ -5,6 +5,7 @@ import { CaretLeft, CaretRight, CornersIn, CornersOut, Repeat } from "@phosphor-
 import { formatFrameTime, formatTime, stepFrameTime, STUDIO_PREVIEW_FPS } from "../lib/time";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import { IconButton, Tooltip, buttonBase, cn } from "../../components/ui";
+import { useTranslation } from "../../i18n";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import type { ShortcutSection } from "./studioShortcuts";
@@ -66,6 +67,7 @@ export const PlayerControls = memo(function PlayerControls({
   onToggleFullscreen,
   shortcutSections,
 }: PlayerControlsProps) {
+  const { t } = useTranslation();
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const duration = usePlayerStore((s) => s.duration);
   const timelineReady = usePlayerStore((s) => s.timelineReady);
@@ -95,9 +97,9 @@ export const PlayerControls = memo(function PlayerControls({
 
   useEffect(() => {
     if (!timeDisplayRef.current) return;
-    const t = currentTimeRef.current;
+    const time = currentTimeRef.current;
     timeDisplayRef.current.textContent =
-      timeDisplayMode === "frame" ? formatFrameTime(t, duration) : formatTime(t);
+      timeDisplayMode === "frame" ? formatFrameTime(time, duration) : formatTime(time);
   }, [duration, timeDisplayMode]);
 
   useMountEffect(() => {
@@ -123,7 +125,11 @@ export const PlayerControls = memo(function PlayerControls({
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <Tooltip
-        label={timeDisplayMode === "time" ? "Show frame numbers" : "Show timecode"}
+        label={
+          timeDisplayMode === "time"
+            ? t("player.controls.showFrames")
+            : t("player.controls.showTimecode")
+        }
         side="top"
       >
         <button
@@ -145,19 +151,26 @@ export const PlayerControls = memo(function PlayerControls({
         </button>
       </Tooltip>
 
-      <div className="flex items-center gap-0.5" role="group" aria-label="Transport">
-        <Tooltip label="Previous frame" shortcut="←">
+      <div
+        className="flex items-center gap-0.5"
+        role="group"
+        aria-label={t("player.controls.transport")}
+      >
+        <Tooltip label={t("player.controls.prevFrame")} shortcut="←">
           <IconButton
-            aria-label="Previous frame"
+            aria-label={t("player.controls.prevFrame")}
             disabled={controlsDisabled}
             icon={<CaretLeft size={14} />}
             onClick={() => onSeek(stepFrameTime(currentTimeRef.current, -1, STUDIO_PREVIEW_FPS))}
           />
         </Tooltip>
-        <Tooltip label={isPlaying ? "Pause" : "Play"} shortcut="Space">
+        <Tooltip
+          label={isPlaying ? t("player.controls.pause") : t("player.controls.play")}
+          shortcut="Space"
+        >
           <button
             type="button"
-            aria-label={isPlaying ? "Pause" : "Play"}
+            aria-label={isPlaying ? t("player.controls.pause") : t("player.controls.play")}
             onClick={() => {
               onTogglePlay();
             }}
@@ -171,18 +184,20 @@ export const PlayerControls = memo(function PlayerControls({
             <PlayPauseMorphIcon playing={isPlaying} />
           </button>
         </Tooltip>
-        <Tooltip label="Next frame" shortcut="→">
+        <Tooltip label={t("player.controls.nextFrame")} shortcut="→">
           <IconButton
-            aria-label="Next frame"
+            aria-label={t("player.controls.nextFrame")}
             disabled={controlsDisabled}
             icon={<CaretRight size={14} />}
             onClick={() => onSeek(stepFrameTime(currentTimeRef.current, 1, STUDIO_PREVIEW_FPS))}
           />
         </Tooltip>
         <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
-        <Tooltip label="Loop playback" shortcut="⇧L">
+        <Tooltip label={t("player.controls.loop")} shortcut="⇧L">
           <IconButton
-            aria-label={loopEnabled ? "Disable loop playback" : "Enable loop playback"}
+            aria-label={
+              loopEnabled ? t("player.controls.loopDisable") : t("player.controls.loopEnable")
+            }
             aria-pressed={loopEnabled}
             disabled={disabled}
             icon={<Repeat size={16} />}
@@ -215,9 +230,18 @@ export const PlayerControls = memo(function PlayerControls({
           sections={shortcutSections}
         />
         {onToggleFullscreen && (
-          <Tooltip label={isFullscreen ? "Exit full screen" : "Full screen"} shortcut="F">
+          <Tooltip
+            label={
+              isFullscreen ? t("player.controls.fullscreenExit") : t("player.controls.fullscreen")
+            }
+            shortcut="F"
+          >
             <IconButton
-              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              aria-label={
+                isFullscreen
+                  ? t("player.controls.fullscreenExitAria")
+                  : t("player.controls.fullscreenEnterAria")
+              }
               aria-pressed={isFullscreen}
               icon={isFullscreen ? <CornersIn size={16} /> : <CornersOut size={16} />}
               onClick={() => onToggleFullscreen()}

@@ -7,6 +7,7 @@ import {
   Subtitles,
   Waveform,
 } from "@phosphor-icons/react";
+import { formatNumber, useTranslation } from "../../i18n";
 import type { TimelineElement } from "../store/playerStore";
 import {
   clipWidthLadder,
@@ -77,6 +78,7 @@ export const TimelineClip = memo(function TimelineClip({
   onContextMenu,
   children,
 }: TimelineClipProps) {
+  const { t } = useTranslation();
   const leftPx = el.start * pps;
   const widthPx = Math.max(el.duration * pps, 4);
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
@@ -88,8 +90,9 @@ export const TimelineClip = memo(function TimelineClip({
   const showHead = ladder === "labeled" || (kind === "caption" && ladder === "picture");
   const showDefaultText = !hasCustomContent && ladder === "labeled" && kind !== "caption";
   const KindIcon = CLIP_KIND_ICON[kind];
-  const startLabel = el.start.toFixed(1);
-  const endLabel = (el.start + el.duration).toFixed(1);
+  const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+  const startLabel = formatNumber(el.start, oneDecimal);
+  const endLabel = formatNumber(el.start + el.duration, oneDecimal);
   const themeVariables = {
     "--clip-bg": theme.clipBackground,
     "--clip-bg-active": theme.clipBackgroundActive,
@@ -145,14 +148,14 @@ export const TimelineClip = memo(function TimelineClip({
       data-active={isActive ? "" : undefined}
       aria-hidden={isGestureActor ? "true" : undefined}
       tabIndex={isGestureActor ? undefined : tabIndex}
-      aria-label={`${displayLabel}, ${startLabel} to ${endLabel} seconds`}
+      aria-label={t("player.clip.aria", { label: displayLabel, start: startLabel, end: endLabel })}
       aria-pressed={isGestureActor ? undefined : isSelected}
       className={clipClassName}
       style={style}
       title={
         isComposition
-          ? `${el.compositionSrc} • Double-click to open`
-          : `${displayLabel} • ${el.start.toFixed(1)}s – ${(el.start + el.duration).toFixed(1)}s`
+          ? t("player.clip.titleComposition", { src: el.compositionSrc ?? "" })
+          : t("player.clip.titleRange", { label: displayLabel, start: startLabel, end: endLabel })
       }
       onPointerEnter={onHoverStart}
       onPointerLeave={onHoverEnd}
@@ -205,7 +208,7 @@ export const TimelineClip = memo(function TimelineClip({
       )}
       {showDefaultText && (
         <span className="timeline-clip__timecode">
-          {startLabel}-{endLabel}s
+          {t("player.clip.range", { start: startLabel, end: endLabel })}
         </span>
       )}
       {children}

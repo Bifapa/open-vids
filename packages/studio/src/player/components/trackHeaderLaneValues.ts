@@ -10,6 +10,7 @@ import {
   type GsapAnimation,
   type PropertyGroupName,
 } from "@hyperframes/core/gsap-parser";
+import { t, type TranslationKey } from "../../i18n";
 
 export type LaneValues = Record<string, number | string>;
 
@@ -92,13 +93,25 @@ export function valuesAt(
   return values;
 }
 
+const GROUP_LABELS = {
+  position: "player.property.label.position",
+  scale: "player.property.label.scale",
+  size: "player.property.label.size",
+  rotation: "player.property.label.rotation",
+  visual: "player.property.label.visual",
+  other: "player.property.label.other",
+} as const satisfies Record<PropertyGroupName, TranslationKey>;
+
+/** The group's display name; an `other` group is named after its first animated property, as authored. */
 export function groupLabel(group: PropertyGroupName, properties: LaneValues): string {
   if (group === "visual" && ("opacity" in properties || "autoAlpha" in properties)) {
-    return "Opacity";
+    return t("player.property.label.opacity");
   }
-  if (group !== "other") return `${group[0]?.toUpperCase() ?? ""}${group.slice(1)}`;
+  if (group !== "other") return t(GROUP_LABELS[group]);
   const property = Object.keys(properties)[0];
-  return property ? `${property[0]?.toUpperCase() ?? ""}${property.slice(1)}` : "Other";
+  return property
+    ? `${property[0]?.toUpperCase() ?? ""}${property.slice(1)}`
+    : t(GROUP_LABELS.other);
 }
 
 function defaultValueReadout(values: LaneValues): string {

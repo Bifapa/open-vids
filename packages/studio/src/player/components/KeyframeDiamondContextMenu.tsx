@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { useTranslation } from "../../i18n";
 import { useMenuKeyboardNav } from "./menuKeyboardNav";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
@@ -57,6 +58,7 @@ export function KeyframeDiamondContextMenu({
   onCopyProperties,
   onMoveToPlayhead,
 }: KeyframeDiamondContextMenuProps) {
+  const { t } = useTranslation();
   const menuRef = useContextMenuDismiss(onClose);
   // The clicked diamond's identity, built once: the menu's mutating entries
   // all act on it, and they must not disagree about which keyframe was clicked.
@@ -99,7 +101,7 @@ export function KeyframeDiamondContextMenu({
     <div
       ref={menuRef}
       role="menu"
-      aria-label="Keyframe actions"
+      aria-label={t("player.keyframeMenu.label")}
       className={`${timelineMenuSurface} overflow-y-auto`}
       style={{ left: adjustedX, top: adjustedY, maxHeight: `calc(100vh - ${adjustedY + 8}px)` }}
     >
@@ -116,7 +118,7 @@ export function KeyframeDiamondContextMenu({
             onClose();
           }}
         >
-          Move to Playhead
+          {t("player.keyframeMenu.moveToPlayhead")}
         </button>
       )}
 
@@ -130,8 +132,10 @@ export function KeyframeDiamondContextMenu({
             onClose();
           }}
         >
-          <span>Edit Ease…</span>
-          <span className={timelineMenuShortcut}>{state.currentEase ?? "default"}</span>
+          <span>{t("player.keyframeMenu.editEase")}</span>
+          <span className={timelineMenuShortcut}>
+            {state.currentEase ?? t("player.keyframeMenu.easeDefault")}
+          </span>
         </button>
       )}
 
@@ -145,10 +149,10 @@ export function KeyframeDiamondContextMenu({
           }}
         >
           {copyStatus === "copied"
-            ? "Copied!"
+            ? t("player.keyframeMenu.copied")
             : copyStatus === "failed"
-              ? "Copy failed — check permissions"
-              : "Copy Properties"}
+              ? t("player.keyframeMenu.copyFailed")
+              : t("player.keyframeMenu.copyProperties")}
         </button>
       )}
 
@@ -163,7 +167,7 @@ export function KeyframeDiamondContextMenu({
             onClose();
           }}
         >
-          Delete Keyframe
+          {t("player.keyframeMenu.deleteKeyframe")}
         </button>
       )}
 
@@ -182,7 +186,7 @@ export function KeyframeDiamondContextMenu({
           onClose();
         }}
       >
-        Delete All Keyframes
+        {t("player.keyframeMenu.deleteAll")}
       </button>
     </div>,
     document.body,

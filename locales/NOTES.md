@@ -628,3 +628,190 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `sidebar.filter.video` — Short label of a filter segment.
 - `sidebar.lint.findingsErrors` — Screen-reader text next to the number badge on the Checks button.
 - `sidebar.lint.findingsWarnings` — Screen-reader text next to the number badge on the Checks button.
+
+## studio-player
+
+- `media.empty.research` — Research is the name of the research agent role (Russian: Исследователь); <action> is a button inside the sentence.
+- `media.noMatch.query` — {collection} is a collection name such as All Media or Video.
+- `media.noMatch.filter` — {collection} is a collection name such as All Media or Video.
+- `media.list.label` — Accessible name of the media list.
+- `media.column.format` — Column header of the media list view.
+- `media.column.origin` — Column header of the media list view.
+- `media.column.used` — Column header of the media list view.
+- `media.kind.video` — Plural group name of a kind of media file.
+- `media.kind.image` — Plural group name of a kind of media file.
+- `media.kind.audio` — Plural group name of a kind of media file.
+- `media.kind.font` — Plural group name of a kind of media file.
+- `media.kindSingular.video` — One media file's kind, shown under its name.
+- `media.kindSingular.image` — One media file's kind, shown under its name.
+- `media.kindSingular.audio` — One media file's kind, shown under its name.
+- `media.kindSingular.font` — One media file's kind, shown under its name.
+- `media.status.offline` — A media file whose source file is missing from the project.
+- `media.collection.all` — Name of a Media library collection (a filter on the left).
+- `media.collection.imported` — Name of a Media library collection (a filter on the left).
+- `media.collection.research` — Name of a Media library collection (a filter on the left).
+- `media.collection.download` — Name of a Media library collection (a filter on the left).
+- `media.collection.unused` — Name of a Media library collection (a filter on the left).
+- `media.collection.analysis` — Name of a Media library collection (a filter on the left).
+- `media.nav.group.origin` — Heading of the collections grouped by where the file came from.
+- `media.analysis.stage.transcript` — Name of the analysis step currently running.
+- `media.analysis.stage.speakers` — Name of the analysis step currently running.
+- `media.analysis.stage.silence` — Name of the analysis step currently running.
+- `media.analysis.stage.shots` — Name of the analysis step currently running.
+- `media.analysis.stage.takes` — Name of the analysis step currently running.
+- `media.analysis.stage.segments` — Name of the analysis step currently running.
+- `media.analysis.title` — Heading of the analysis status card under the collections.
+- `media.panel.library` — Title of the left column of the Media workspace.
+- `media.panel.browserTabs` — Accessible name of the tab list above the media browser.
+- `media.match.transcript` — A search hit in a transcript; {text} is the spoken sentence.
+- `media.match.vision` — A search hit in Vision analysis; {detail} is a tag or finding.
+- `media.origin.imported` — Where a file came from, in the list view's Origin column and the Inspector.
+- `media.origin.research` — Origin column cell: the file was found by the Research agent.
+- `media.row.audio` — Resolution column cell of an audio file.
+- `media.row.used` — Used column cell: the file is used in the project.
+- `media.filter.any` — Option of the Analysis filter in the Media toolbar.
+- `media.filter.transcribed` — Option of the Analysis filter in the Media toolbar.
+- `media.filter.vision` — Option of the Analysis filter in the Media toolbar.
+- `media.filter.scenes` — Option of the Analysis filter in the Media toolbar.
+- `media.filter.needs` — Option of the Analysis filter in the Media toolbar.
+- `media.sort.kind` — Option of the Sort menu in the Media toolbar.
+- `media.sort.name` — Option of the Sort menu in the Media toolbar.
+- `media.sort.duration` — Option of the Sort menu in the Media toolbar.
+- `media.sort.size` — Option of the Sort menu in the Media toolbar.
+- `media.sort.nameGroup` — Section heading when the list is sorted by name.
+- `media.sort.durationGroup` — Section heading when the list is sorted by duration.
+- `media.sort.sizeGroup` — Section heading when the list is sorted by file size.
+- `media.toolbar.analysis` — Label of the filter button; the chosen option follows it.
+- `media.toolbar.sort` — Label of the sort button; the chosen option follows it.
+- `media.toolbar.shownOf` — Count of items shown out of all items, while a filter is active.
+- `media.toolbar.view` — Heading of a menu group.
+- `media.drop.timeline` — Heading of a drop zone group.
+- `media.drop.chapter` — Subtitle of a Story chapter drop zone that has no duration.
+- `media.drop.unconnected` — Drop zone and menu item: put the media in the Story Graph without attaching it to a chapter.
+- `media.license.clear` — Badge: the license status of a downloaded file.
+- `media.inspector.row.analysis` — Label of a row in the Library overview.
+- `media.inspector.row.external` — Label of a row: how many files came from outside (Research or downloads).
+- `media.inspector.section.source` — Inspector section for an imported file.
+- `media.inspector.row.origin` — Label of a row: where the file came from.
+- `media.inspector.row.location` — Label of a row: the file's path in the project.
+- `media.inspector.row.source` — Label of a row: the website or provider the file was found on.
+- `media.inspector.openOriginal` — Opens the web page the file was downloaded from.
+- `media.inspector.addToStoryMenu` — Accessible name of the menu.
+- `media.inspector.addToStory` — Button that opens a menu of chapters.
+- `media.inspector.takeKind.retake` — Kind of problem found among takes, in the Take Issues list.
+- `media.inspector.takeKind.false_start` — Kind of problem found among takes, in the Take Issues list.
+- `media.inspector.takeKind.restart_cue` — Kind of problem found among takes, in the Take Issues list.
+- `media.inspector.takeKind.stutter` — Kind of problem found among takes, in the Take Issues list.
+- `media.inspector.takeKind.filler` — Kind of problem found among takes, in the Take Issues list.
+- `media.inspector.takeKind.black` — Kind of problem found among takes, in the Take Issues list.
+- `media.inspector.takeKind.frozen` — Kind of problem found among takes, in the Take Issues list.
+- `media.inspector.row.audio` — Label of a row: whether the video has an audio track.
+- `media.inspector.row.size` — Label of a row: the file size.
+- `media.inspector.takeLine` — {kind} is the kind of take problem (bold), {action} what to do about it.
+- `media.inspector.fontSample` — Specimen text shown in a font's preview. Use a pangram of the target language that covers its alphabet.
+- `media.inspector.stage.transcript` — Name of an analysis step in the Inspector's Analysis section.
+- `media.inspector.stage.speakers` — Name of an analysis step in the Inspector's Analysis section.
+- `media.inspector.stage.silence` — Name of an analysis step in the Inspector's Analysis section.
+- `media.inspector.stage.takes` — Name of an analysis step in the Inspector's Analysis section.
+- `media.inspector.stage.vision` — Name of an analysis step in the Inspector's Analysis section.
+- `media.inspector.stage.shots` — Name of an analysis step in the Inspector's Analysis section.
+- `media.inspector.stageStatus.fresh` — Status of an analysis step.
+- `media.inspector.stageStatus.running` — Status of an analysis step.
+- `media.inspector.stageStatus.missing` — Status of an analysis step.
+- `media.inspector.stageStatus.stale` — Status of an analysis step.
+- `media.inspector.stageStatus.failed` — Status of an analysis step.
+- `media.inspector.stageStatus.unavailable` — Status of an analysis step.
+- `media.inspector.silence` — {seconds} is the total length of the pauses, in seconds with one decimal.
+- `media.inspector.shots` — A shot is a continuous take between two cuts, detected in the footage.
+- `media.removeBackground.title` — Dialog title.
+- `media.removeBackground.submit` — Button that starts the job.
+- `media.removeBackground.hide` — Closes the dialog while the job keeps running.
+- `media.removeBackground.plate` — The background with the subject removed, kept as its own video.
+- `media.client.requestFailed` — {status} is an HTTP status code.
+- `captions.field.mixed` — Placeholder of a numeric field when the selected caption words have different values.
+- `captions.panel.words` — Heading above the selected caption words.
+- `captions.panel.selectionHint` — {key} is the Shift key symbol.
+- `captions.animation.phase.entrance` — Phase of a caption animation: how the words appear.
+- `captions.animation.phase.highlight` — Phase of a caption animation: how the spoken word is emphasised.
+- `captions.animation.phase.exit` — Phase of a caption animation: how the words disappear.
+- `captions.animation.row.ease` — Easing curve of an animation.
+- `captions.animation.row.stagger` — Delay between the animation of consecutive words.
+- `captions.animation.applyAll` — Copies this animation to every caption group.
+- `captions.sync.overridesCorrupt` — caption-overrides.json is a file name and stays as it is.
+- `player.controls.transport` — Accessible name of the group of play, previous frame, next frame and loop buttons.
+- `player.controls.fullscreen` — Tooltip of the button that makes the preview fill the screen.
+- `player.speed.normal` — {rate} is the playback rate, the × sign is the multiplication sign and stays.
+- `player.shortcuts.section.gestures` — Heading of a group in the keyboard shortcuts list.
+- `player.shortcuts.hint.razor` — Razor is the blade tool; Shift-click splits every track at once.
+- `player.shortcuts.hint.toggleHold` — Hold keeps the value until the next keyframe; bezier eases between keyframes.
+- `player.shortcuts.hint.recordRotationXY` — rotationX and rotationY are property names and stay in Latin.
+- `player.shortcuts.hint.recordXY` — x and y are property names.
+- `player.shortcuts.key.shiftClick` — A gesture shown on a keycap in the shortcuts list, with its modifier key symbol.
+- `player.shortcuts.key.drag` — A gesture shown on a keycap in the shortcuts list, with its modifier key symbol.
+- `player.shortcuts.key.scroll` — A gesture shown on a keycap in the shortcuts list, with its modifier key symbol.
+- `player.shortcuts.key.shiftDrag` — A gesture shown on a keycap in the shortcuts list, with its modifier key symbol.
+- `player.shortcuts.key.altDrag` — A gesture shown on a keycap in the shortcuts list, with its modifier key symbol.
+- `player.shortcuts.key.cmdDragVertical` — A gesture shown on a keycap in the shortcuts list, with its modifier key symbol.
+- `player.shortcuts.key.cmdScroll` — A gesture shown on a keycap in the shortcuts list, with its modifier key symbol.
+- `player.shortcuts.key.dragEdge` — A gesture shown on a keycap in the shortcuts list, with its modifier key symbol.
+- `player.shortcuts.key.dragCenter` — A gesture shown on a keycap in the shortcuts list, with its modifier key symbol.
+- `player.shortcuts.frameCount` — {count} is the total number of frames of the composition.
+- `player.shortcuts.in` — Label of the work area's start point.
+- `player.shortcuts.out` — Label of the work area's end point.
+- `player.edit.elementCount` — Number of timeline elements inside the selected time range.
+- `player.edit.placeholder` — Placeholder of a prompt field: the user describes an edit to the selected time range for an AI agent.
+- `player.edit.copyToAgent` — Copies the prompt together with the time range and its elements, to paste into an agent's chat.
+- `player.reload.failed` — {cause} is a short reason in lower case, such as the timeout message.
+- `player.reload.timeout` — A reason inserted into the preview reload failure message.
+- `player.automation.shape.rampUp` — A preset curve inserted into an automation lane (volume, effect parameter) over the selected time range.
+- `player.automation.shape.rampDown` — A preset curve inserted into an automation lane (volume, effect parameter) over the selected time range.
+- `player.automation.shape.swell` — A preset curve inserted into an automation lane (volume, effect parameter) over the selected time range.
+- `player.automation.shape.dip` — A preset curve inserted into an automation lane (volume, effect parameter) over the selected time range.
+- `player.automation.simplify` — Removes redundant points from the selected part of an automation curve.
+- `player.keyframeMenu.editEase` — Opens the easing curve of the keyframe in the inspector.
+- `player.keyframeMenu.easeDefault` — Shown next to Edit Ease when the keyframe has no explicit easing.
+- `player.lanes.hide` — Lanes are the property rows (keyframes, volume) under a clip on the timeline.
+- `player.beats.dragHint` — {key} is the Option key symbol.
+- `player.clip.aria` — {start} and {end} are positions on the timeline in seconds.
+- `player.clip.titleComposition` — {src} is the file path of a nested composition.
+- `player.clip.range` — Timecode range printed on a clip, in seconds.
+- `player.keyframe.time` — A time on the timeline in seconds.
+- `player.keyframe.groupFallback` — Used as the property name in a keyframe's accessible name when the keyframe has no property group.
+- `player.keyframe.ease.aria` — {ease} is an easing curve name such as power2.out.
+- `player.fade.in` — Handle on a clip's audio: fades the volume in at the start.
+- `player.fade.out` — Handle on a clip's audio: fades the volume out at the end.
+- `player.fade.seconds` — A fade length in seconds.
+- `player.fx.nameLabel` — Dialog title and accessible name: asks for the name of a group of audio clips.
+- `player.fx.groupExplain` — A bus: effects on the group process the mixed audio of its clips. {count} is the number of clips (2 or more).
+- `player.fx.groupButton` — Button that creates the group.
+- `player.lanes.groupRevealAria` — {group} is the group's name, {lane} the effect and parameter such as Peaking EQ Gain. The effect rack is the panel that lists a track's audio effects.
+- `player.property.label.position` — Name of an animated property group on the timeline (the row under a clip that shows its keyframes).
+- `player.property.label.scale` — Name of an animated property group on the timeline (the row under a clip that shows its keyframes).
+- `player.property.label.size` — Name of an animated property group on the timeline (the row under a clip that shows its keyframes).
+- `player.property.label.rotation` — Name of an animated property group on the timeline (the row under a clip that shows its keyframes).
+- `player.property.label.visual` — Name of an animated property group on the timeline (the row under a clip that shows its keyframes).
+- `player.property.label.opacity` — Name of an animated property group on the timeline (the row under a clip that shows its keyframes).
+- `player.property.label.other` — Name of an animated property group on the timeline (the row under a clip that shows its keyframes).
+- `player.property.group.position` — Lower-case name of an animated property group, used inside a sentence: {group} keyframes.
+- `player.property.group.scale` — Lower-case name of an animated property group, used inside a sentence: {group} keyframes.
+- `player.property.group.size` — Lower-case name of an animated property group, used inside a sentence: {group} keyframes.
+- `player.property.group.rotation` — Lower-case name of an animated property group, used inside a sentence: {group} keyframes.
+- `player.property.group.visual` — Lower-case name of an animated property group, used inside a sentence: {group} keyframes.
+- `player.property.group.other` — Lower-case name of an animated property group, used inside a sentence: {group} keyframes.
+- `player.lanes.keyframesAria` — {group} is a lower-case property group name in the genitive case in Russian.
+- `player.lanes.alsoFadingTitle` — Gain stages multiply: a group's volume curve and a clip's own curve on the same parameter.
+- `player.track.nameBare` — A track's name when its row number is unknown.
+- `player.track.timelineTracks` — Accessible name of the tree of all tracks on the timeline.
+- `player.track.new` — Shown in the drop indicator when a clip would create a new track.
+- `player.gap.close` — Context menu item on empty space of a timeline track: shifts the following clips left to remove the gap.
+- `player.gap.width` — Width of the gap in seconds.
+- `player.hint.editRange` — Follows a Shift keycap: hold Shift and drag on the timeline to select a time range to edit with an agent.
+- `player.automation.laneTitle` — Tooltip of an automation lane (a volume or effect curve under a clip) listing its gestures. Key names Shift, Alt and Delete are the keyboard keys.
+- `player.automation.laneAria` — {label} is the automated parameter, such as Volume.
+- `player.automation.carveNote` — The voiceover carve is an automatic effect that lowers the music under speech; it writes its own volume curves.
+- `player.automation.groupMove` — {delta} is the time shift in seconds with an explicit sign, such as +0.25.
+- `player.automation.bendHint` — How far along the segment the curve is bent while dragging.
+- `player.automation.pointHint` — {value} is the parameter value at the dragged point, {time} its position in seconds.
+- `player.waveform.unavailable` — Shown on an audio clip whose waveform could not be decoded.
+- `player.timeline.trackView` — Accessible name of the scrolling area that shows the timeline's tracks.
+- `player.clip.defaultLabel` — {tag} is an HTML tag name in lower case such as video or div; used when a clip has no name.

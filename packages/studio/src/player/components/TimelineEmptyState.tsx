@@ -1,5 +1,6 @@
 import type { DragEventHandler } from "react";
 import { MarkLoader } from "../../components/ui/MarkLoader";
+import { useTranslation } from "../../i18n";
 import { GUTTER, RULER_H } from "./timelineLayout";
 
 interface TimelineEmptyStateProps {
@@ -20,6 +21,7 @@ export function TimelineEmptyState({
   onDragLeave,
   onDrop,
 }: TimelineEmptyStateProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={`h-full border-t bg-[var(--timeline-shell-bg)] flex flex-col select-none transition-colors duration-150 ${
@@ -51,7 +53,7 @@ export function TimelineEmptyState({
       </div>
       {/* Empty drop zone */}
       <div className="flex-1 flex items-center justify-center">
-        {loading && !isDragOver && <MarkLoader label="Loading timeline…" />}
+        {loading && !isDragOver && <MarkLoader label={t("player.empty.loading")} />}
         <div
           className={`${loading && !isDragOver ? "hidden" : "flex"} items-center gap-3 px-6 py-3 border border-dashed rounded-lg transition-colors duration-150 ${
             isDragOver ? "border-studio-accent/60 bg-studio-accent/6" : "border-neutral-700/50"
@@ -74,7 +76,7 @@ export function TimelineEmptyState({
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              <span className="text-[13px] text-studio-accent">Drop media files to import</span>
+              <span className="text-[13px] text-studio-accent">{t("player.empty.dropImport")}</span>
             </>
           ) : (
             <>
@@ -96,9 +98,7 @@ export function TimelineEmptyState({
                 <path d="M2 17h20" />
               </svg>
               <span className="text-[13px] text-neutral-500">
-                {onFileDrop
-                  ? "Drop media here or describe your video to start"
-                  : "Describe your video to start creating"}
+                {onFileDrop ? t("player.empty.dropOrDescribe") : t("player.empty.describe")}
               </span>
             </>
           )}

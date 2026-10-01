@@ -5,6 +5,7 @@ import {
   type PropertyGroupName,
 } from "@hyperframes/core/gsap-parser";
 import { toClipKeyframes } from "../../hooks/gsapShared";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { synthesizeFlatTweenKeyframes } from "../../hooks/gsapTweenSynth";
 import { TimelineDiamondLane, type TimelineDiamondKeyframe } from "./TimelineClipDiamonds";
 import { LANE_H, getTimelineLaneTop } from "./timelineLayout";
@@ -44,6 +45,16 @@ export interface TimelinePropertyLanesProps {
  * without it `{ x, transformOrigin }` would draw a spurious "Other" lane.
  */
 const NON_ANIMATED_PROPERTIES = new Set(["transformOrigin", "_auto", "data"]);
+
+/** A property group's name inside a sentence ("position keyframes"). */
+const GROUP_NOUNS = {
+  position: "player.property.group.position",
+  scale: "player.property.group.scale",
+  size: "player.property.group.size",
+  rotation: "player.property.group.rotation",
+  visual: "player.property.group.visual",
+  other: "player.property.group.other",
+} as const satisfies Record<PropertyGroupName, TranslationKey>;
 
 function isAnimatedProperty(property: string): boolean {
   return !NON_ANIMATED_PROPERTIES.has(property);
@@ -197,6 +208,7 @@ export function TimelinePropertyLanes({
   onMoveKeyframe,
   suppressClickRef,
 }: TimelinePropertyLanesProps) {
+  const { t } = useTranslation();
   // Memoized: TimelineDiamondLane is React.memo'd, and rebuilding the lanes (and
   // a fresh keyframesData literal per lane) on every render would re-render every
   // diamond in every expanded clip on each playhead tick.
@@ -228,7 +240,7 @@ export function TimelinePropertyLanes({
           key={group}
           id={timelineLogicalRowCellId(id, timelinePropertyRowId(elementId, group), "content")}
           role="group"
-          aria-label={`${group} keyframes`}
+          aria-label={t("player.lanes.keyframesAria", { group: t(GROUP_NOUNS[group]) })}
           data-property-group={group}
           data-timeline-element-id={elementId}
           data-timeline-property-lane=""

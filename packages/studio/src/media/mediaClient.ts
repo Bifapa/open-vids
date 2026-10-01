@@ -12,6 +12,7 @@ import {
   type SourceAnalysisStatus,
   type TranscriptView,
 } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
 
 export interface MediaClient {
@@ -46,7 +47,7 @@ function errorMessage(body: unknown, status: number): string {
   if (isRecord(body) && isRecord(body.error) && typeof body.error.message === "string") {
     return body.error.message;
   }
-  return `Request failed (${status})`;
+  return t("media.client.requestFailed", { status });
 }
 
 async function request<T>(
@@ -57,7 +58,7 @@ async function request<T>(
   const response = await fetch(url, init);
   const body: unknown = await response.json().catch(() => undefined);
   if (!response.ok) throw new Error(errorMessage(body, response.status));
-  if (!guard(body)) throw new Error("Unexpected response from the Studio server");
+  if (!guard(body)) throw new Error(t("media.client.unexpectedResponse"));
   return body;
 }
 

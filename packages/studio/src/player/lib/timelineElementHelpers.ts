@@ -7,6 +7,7 @@
  * both the React hook and test environments.
  */
 
+import { t } from "../../i18n";
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
@@ -281,7 +282,7 @@ export function getTimelineElementDisplayLabel(input: {
   const id = input.id?.trim();
   if (id) return id;
   const tag = input.tag?.trim().toLowerCase();
-  return tag ? `${tag} clip` : "Timeline clip";
+  return tag ? t("player.clip.defaultLabel", { tag }) : t("player.clip.fallbackLabel");
 }
 
 // ---------------------------------------------------------------------------

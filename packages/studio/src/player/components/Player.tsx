@@ -5,6 +5,7 @@ import { STUDIO_PREVIEW_DETACHED_SRC_ATTR } from "@hyperframes/core/studio-previ
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { BrandLoader } from "../../components/ui";
+import { t as translate, useTranslation } from "../../i18n";
 import { usePlayerStore } from "../store/playerStore";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
@@ -62,17 +63,18 @@ function getShaderTransitionLoading(event: Event): boolean | null {
 
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
 const PREVIEW_BOOT_DEADLINE_MS = 5000;
-const DEFAULT_PREVIEW_ERROR = "The composition preview did not become ready.";
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
   return compositionLoading;
 }
 
 export function readPreviewErrorMessage(event: Event): string {
-  if (!(event instanceof CustomEvent) || !isRecord(event.detail)) return DEFAULT_PREVIEW_ERROR;
+  if (!(event instanceof CustomEvent) || !isRecord(event.detail)) {
+    return translate("player.preview.errorFallback");
+  }
   return typeof event.detail.message === "string" && event.detail.message.trim()
     ? event.detail.message
-    : DEFAULT_PREVIEW_ERROR;
+    : translate("player.preview.errorFallback");
 }
 
 function enableInteractiveIframe(player: HyperframesPlayerElement): void {
@@ -158,6 +160,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     },
     ref,
   ) => {
+    const { t } = useTranslation();
     const containerRef = useRef<HTMLDivElement>(null);
     const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -502,8 +505,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             onPointerDown={(event) => event.preventDefault()}
           >
             <BrandLoader
-              title="Loading composition"
-              detail="Preparing the Studio preview."
+              title={t("player.preview.loadingTitle")}
+              detail={t("player.preview.loadingDetail")}
               size={56}
             />
           </div>
@@ -523,8 +526,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           >
             <div className="flex flex-col items-center gap-3">
               <BrandLoader
-                title="Preparing preview assets"
-                detail="Waiting for media and motion assets before playback starts."
+                title={t("player.preview.assetsTitle")}
+                detail={t("player.preview.assetsDetail")}
                 size={56}
               />
               {assetWaitLong && (
@@ -533,7 +536,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
                   onClick={handleContinueAnyway}
                   className="h-ctl-sm rounded-sm border border-border bg-surface-1 px-2 text-sm font-medium text-fg transition-colors hover:border-border-strong hover:bg-surface-2"
                 >
-                  Continue anyway
+                  {t("player.preview.continueAnyway")}
                 </button>
               )}
             </div>
@@ -546,14 +549,14 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             data-testid="composition-preview-error"
           >
             <div className="max-w-sm">
-              <p className="text-md font-semibold text-fg">Preview failed to load</p>
+              <p className="text-md font-semibold text-fg">{t("player.preview.failedTitle")}</p>
               <p className="mt-1 text-sm text-fg-3">{previewError}</p>
               <button
                 type="button"
                 className="mt-4 h-ctl rounded-md bg-accent px-3 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent-hover"
                 onClick={() => retryPreviewRef.current?.()}
               >
-                Retry preview
+                {t("player.preview.retry")}
               </button>
             </div>
           </div>

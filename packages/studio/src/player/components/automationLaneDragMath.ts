@@ -9,6 +9,7 @@
  */
 
 import type { AutomationRange, HfAutomationLane } from "@hyperframes/core/audio-automation";
+import { formatNumber, t } from "../../i18n";
 import {
   applyShiftConstraint,
   dominantDragAxis,
@@ -168,7 +169,14 @@ export function computeGroupMove(input: {
       v0: group.selection.v0 + dv,
       v1: group.selection.v1 + dv,
     },
-    hint: `${group.indices.length} points ${dt >= 0 ? "+" : ""}${dt.toFixed(2)}s`,
+    hint: t("player.automation.groupMove", {
+      count: group.indices.length,
+      delta: formatNumber(dt, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+        signDisplay: "always",
+      }),
+    }),
   };
 }
 

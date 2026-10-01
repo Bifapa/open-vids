@@ -13,6 +13,7 @@ import type {
   VisionNote,
 } from "@hyperframes/agent-protocol";
 import { AUDIO_EXT, FONT_EXT, IMAGE_EXT, VIDEO_EXT } from "@hyperframes/core/media-types";
+import { formatBytes, t, type TranslationKey } from "../i18n";
 
 export type MediaKind = "video" | "image" | "audio" | "font";
 export type MediaOrigin = "imported" | "research" | "download";
@@ -37,12 +38,20 @@ export interface MediaItem {
 }
 
 export const KIND_ORDER: readonly MediaKind[] = ["video", "image", "audio", "font"];
-export const KIND_LABELS: Record<MediaKind, string> = {
-  video: "Video",
-  image: "Images",
-  audio: "Audio",
-  font: "Fonts",
-};
+export const KIND_LABELS = {
+  video: "media.kind.video",
+  image: "media.kind.image",
+  audio: "media.kind.audio",
+  font: "media.kind.font",
+} as const satisfies Record<MediaKind, TranslationKey>;
+
+/** One file's kind (`Image`), where `KIND_LABELS` names the group (`Images`). */
+export const KIND_SINGULAR_LABELS = {
+  video: "media.kindSingular.video",
+  image: "media.kindSingular.image",
+  audio: "media.kindSingular.audio",
+  font: "media.kindSingular.font",
+} as const satisfies Record<MediaKind, TranslationKey>;
 
 export function mediaKindOf(path: string): MediaKind | null {
   if (VIDEO_EXT.test(path)) return "video";
@@ -194,12 +203,12 @@ export function inCollection(item: MediaItem, collection: MediaCollection): bool
 
 export type AnalysisFilter = "any" | "transcribed" | "vision" | "scenes" | "needs";
 
-export const ANALYSIS_FILTERS: ReadonlyArray<{ value: AnalysisFilter; label: string }> = [
-  { value: "any", label: "Any" },
-  { value: "transcribed", label: "Transcribed" },
-  { value: "vision", label: "Vision Analyzed" },
-  { value: "scenes", label: "Scene Map Ready" },
-  { value: "needs", label: "Not Analyzed" },
+export const ANALYSIS_FILTERS: ReadonlyArray<{ value: AnalysisFilter; label: TranslationKey }> = [
+  { value: "any", label: "media.filter.any" },
+  { value: "transcribed", label: "media.filter.transcribed" },
+  { value: "vision", label: "media.filter.vision" },
+  { value: "scenes", label: "media.filter.scenes" },
+  { value: "needs", label: "media.filter.needs" },
 ];
 
 export function passesAnalysis(item: MediaItem, filter: AnalysisFilter): boolean {
@@ -238,13 +247,12 @@ export function matchItem(
   if (!query) return { where: "name" };
   if (item.name.toLowerCase().includes(query)) return { where: "name" };
   const sentence = analysis?.sentences.find((line) => line.text.toLowerCase().includes(query));
-  if (sentence) return { where: "transcript", text: `“${sentence.text}”`, time: sentence.start };
+  if (sentence) return { where: "transcript", text: sentence.text, time: sentence.start };
   for (const note of analysis?.vision ?? []) {
     const tag = note.tags.find((value) => value.replaceAll("_", " ").includes(query));
-    if (tag)
-      return { where: "vision", text: `Vision · ${tag.replaceAll("_", " ")}`, time: note.start };
+    if (tag) return { where: "vision", text: tag.replaceAll("_", " "), time: note.start };
     if (note.finding.toLowerCase().includes(query)) {
-      return { where: "vision", text: `Vision · ${note.finding}`, time: note.start };
+      return { where: "vision", text: note.finding, time: note.start };
     }
   }
   const record = item.provenance;
@@ -261,16 +269,23 @@ export function matchItem(
 
 export type MediaSort = "kind" | "name" | "duration" | "size";
 
-export const MEDIA_SORTS: ReadonlyArray<{ value: MediaSort; label: string; group: string }> = [
-  { value: "kind", label: "Kind", group: "" },
-  { value: "name", label: "Name", group: "By name" },
-  { value: "duration", label: "Duration", group: "Longest first" },
-  { value: "size", label: "Size", group: "Largest first" },
+export const MEDIA_SORTS: ReadonlyArray<{ value: MediaSort; label: TranslationKey }> = [
+  { value: "kind", label: "media.sort.kind" },
+  { value: "name", label: "media.sort.name" },
+  { value: "duration", label: "media.sort.duration" },
+  { value: "size", label: "media.sort.size" },
 ];
+
+/** The one section heading of a flat sort; the kind sort is headed by the kind names. */
+const FLAT_SORT_HEADINGS = {
+  name: "media.sort.nameGroup",
+  duration: "media.sort.durationGroup",
+  size: "media.sort.sizeGroup",
+} as const satisfies Record<Exclude<MediaSort, "kind">, TranslationKey>;
 
 export interface MediaSection {
   id: string;
-  label: string;
+  labelKey: TranslationKey;
   items: MediaItem[];
 }
 
@@ -281,7 +296,7 @@ export function sectionItems(items: readonly MediaItem[], sort: MediaSort): Medi
   if (sort === "kind") {
     return KIND_ORDER.flatMap((kind) => {
       const group = items.filter((item) => item.kind === kind).sort(byName);
-      return group.length ? [{ id: kind, label: KIND_LABELS[kind], items: group }] : [];
+      return group.length ? [{ id: kind, labelKey: KIND_LABELS[kind], items: group }] : [];
     });
   }
   const sorted = [...items].sort((a, b) => {
@@ -289,8 +304,7 @@ export function sectionItems(items: readonly MediaItem[], sort: MediaSort): Medi
     if (sort === "size") return (b.bytes ?? -1) - (a.bytes ?? -1) || byName(a, b);
     return byName(a, b);
   });
-  const label = MEDIA_SORTS.find((entry) => entry.value === sort)?.group ?? "";
-  return sorted.length ? [{ id: sort, label, items: sorted }] : [];
+  return sorted.length ? [{ id: sort, labelKey: FLAT_SORT_HEADINGS[sort], items: sorted }] : [];
 }
 
 // ── Labels ───────────────────────────────────────────────────────────────────
@@ -305,26 +319,13 @@ export function resolutionLabel(width: number | null, height: number | null): st
   return `${width}×${height}`;
 }
 
-export function formatBytes(bytes: number | null): string | null {
-  if (bytes == null) return null;
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
-}
-
 /** The card's one-line spec: resolution (or size) and format. */
 export function itemSpec(item: MediaItem): string {
   const format = fileExtension(item.path);
-  if (item.offline) return ["Offline", format].filter(Boolean).join(" · ");
+  if (item.offline) return [t("media.status.offline"), format].filter(Boolean).join(" · ");
   const parts =
     item.kind === "audio" || item.kind === "font"
-      ? [format, formatBytes(item.bytes)]
+      ? [format, item.bytes == null ? null : formatBytes(item.bytes)]
       : [resolutionLabel(item.width, item.height), format];
   return parts.filter(Boolean).join(" · ");
 }

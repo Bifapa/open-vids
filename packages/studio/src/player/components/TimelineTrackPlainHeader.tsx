@@ -1,8 +1,8 @@
 import type React from "react";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { formatNumber, useTranslation } from "../../i18n";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { TrackClipCount } from "./TrackClipCount";
-import { trackDisplaySuffix } from "./timelineTrackDisplay";
 
 /** The square 20px head control the eye, caret and spacers share. */
 export const TRACK_HEAD_BUTTON =
@@ -23,11 +23,17 @@ export function VisibilityButton({
   visible: boolean;
   onToggle: TimelineEditCallbacks["onToggleTrackHidden"];
 }) {
+  const { t } = useTranslation();
   if (!visible) return <span aria-hidden="true" className="size-ctl-xs shrink-0" />;
   // Display number in the text, real key in the callback. The two must not be
   // conflated in either direction.
-  const suffix = trackDisplaySuffix(trackDisplayNumber);
-  const label = hidden ? `Show track${suffix}` : `Hide track${suffix}`;
+  const number = trackDisplayNumber === null ? null : formatNumber(trackDisplayNumber);
+  let label: string;
+  if (hidden) {
+    label = number === null ? t("player.track.showBare") : t("player.track.show", { number });
+  } else {
+    label = number === null ? t("player.track.hideBare") : t("player.track.hide", { number });
+  }
   const Icon = hidden ? EyeSlash : Eye;
   return (
     <button

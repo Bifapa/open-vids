@@ -7,6 +7,7 @@
 import { memo } from "react";
 import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { useTranslation } from "../../i18n";
 import { AUTOMATION_SHAPES, type AutomationShapeId } from "./automationShapes";
 import { timelineMenuItem, timelineMenuSeparator, timelineMenuSurface } from "./timelineMenuStyles";
 
@@ -28,6 +29,7 @@ export const AutomationSelectionMenu = memo(function AutomationSelectionMenu({
   onSimplify,
   canSimplify,
 }: AutomationSelectionMenuProps) {
+  const { t } = useTranslation();
   const menuRef = useContextMenuDismiss(onClose);
   const row = `${timelineMenuItem(true)} disabled:cursor-not-allowed disabled:bg-transparent disabled:text-fg-disabled`;
   // Same edge-clamping precedent as TrackGapContextMenu: without it a
@@ -58,7 +60,7 @@ export const AutomationSelectionMenu = memo(function AutomationSelectionMenu({
             onClose();
           }}
         >
-          {shape.label}
+          {t(shape.label)}
         </button>
       ))}
       <div className={timelineMenuSeparator} />
@@ -66,13 +68,13 @@ export const AutomationSelectionMenu = memo(function AutomationSelectionMenu({
         type="button"
         className={row}
         disabled={!canSimplify}
-        title={canSimplify ? undefined : "Fewer than three points in the selection"}
+        title={canSimplify ? undefined : t("player.automation.simplifyDisabled")}
         onClick={() => {
           onSimplify();
           onClose();
         }}
       >
-        Simplify
+        {t("player.automation.simplify")}
       </button>
     </div>,
     document.body,

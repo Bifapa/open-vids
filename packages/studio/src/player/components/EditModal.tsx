@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { useTranslation } from "../../i18n";
 import { usePlayerStore } from "../store/playerStore";
 import { formatTime } from "../lib/time";
 import { buildPromptCopyText, buildTimelineAgentPrompt } from "./timelineEditing";
@@ -35,6 +36,7 @@ function writeDraft(key: string, value: string): void {
 }
 
 export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }: EditPopoverProps) {
+  const { t } = useTranslation();
   const elements = usePlayerStore((s) => s.elements);
   const start = Math.min(rangeStart, rangeEnd);
   const end = Math.max(rangeStart, rangeEnd);
@@ -138,7 +140,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
             </span>
           </div>
           <span className="text-[10px] text-neutral-600">
-            {elementsInRange.length} element{elementsInRange.length !== 1 ? "s" : ""}
+            {t("player.edit.elementCount", { count: elementsInRange.length })}
           </span>
         </div>
 
@@ -166,7 +168,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
                 handleCopy();
               }
             }}
-            placeholder="What should change?"
+            placeholder={t("player.edit.placeholder")}
             rows={2}
             className="w-full px-3 py-2 text-xs bg-neutral-800/60 border border-neutral-700/40 rounded-lg text-neutral-200 placeholder:text-neutral-600 resize-none focus:outline-hidden focus:border-studio-accent/40 transition-colors"
           />
@@ -175,7 +177,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
         {/* Action */}
         {copyError && (
           <p className="px-3 pb-2 text-[10px] text-red-400" role="alert">
-            Copy failed — check clipboard permissions and try again.
+            {t("player.edit.copyFailed")}
           </p>
         )}
         <div className="grid grid-cols-2 gap-2 px-3 pb-3">
@@ -188,7 +190,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
                 : "bg-neutral-800/70 text-neutral-200 border-neutral-700/50 hover:bg-neutral-800"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {copiedPromptOnly ? "Prompt Copied!" : "Copy Prompt"}
+            {copiedPromptOnly ? t("player.edit.promptCopied") : t("player.edit.copyPrompt")}
           </button>
           <button
             onClick={handleCopy}
@@ -198,7 +200,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
                 : "bg-studio-accent/15 text-studio-accent border border-studio-accent/25 hover:bg-studio-accent/25"
             }`}
           >
-            {copiedAgentPrompt ? "Copied!" : "Copy to Agent"}
+            {copiedAgentPrompt ? t("player.edit.copied") : t("player.edit.copyToAgent")}
             {!copiedAgentPrompt && (
               <span className="text-[9px] text-studio-accent/50 ml-1.5">Cmd+Enter</span>
             )}

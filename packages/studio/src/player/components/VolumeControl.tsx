@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { SpeakerHigh, SpeakerLow, SpeakerX } from "@phosphor-icons/react";
 import { IconButton } from "../../components/ui";
+import { formatPercent, useTranslation } from "../../i18n";
 
 interface VolumeControlProps {
   audioMuted: boolean;
@@ -18,9 +19,10 @@ export const VolumeControl = memo(function VolumeControl({
   setAudioMuted,
   setAudioVolume,
 }: VolumeControlProps) {
+  const { t } = useTranslation();
   const percentage = Math.round(audioVolume * 100);
   const silent = audioMuted || audioVolume === 0;
-  const muteLabel = silent ? "Unmute audio" : "Mute audio";
+  const muteLabel = silent ? t("player.volume.unmute") : t("player.volume.mute");
   const Icon = silent ? SpeakerX : audioVolume >= 0.5 ? SpeakerHigh : SpeakerLow;
 
   return (
@@ -46,8 +48,8 @@ export const VolumeControl = memo(function VolumeControl({
             step="1"
             value={percentage}
             disabled={disabled}
-            aria-label="Preview volume"
-            aria-valuetext={`${percentage}%`}
+            aria-label={t("player.volume.label")}
+            aria-valuetext={formatPercent(percentage / 100)}
             onChange={(event) => {
               const volume = Number(event.currentTarget.value) / 100;
               setAudioVolume(volume);
@@ -57,7 +59,7 @@ export const VolumeControl = memo(function VolumeControl({
           />
         </div>
         <span className="w-10 shrink-0 text-right font-mono text-num tabular-nums text-fg-2">
-          {percentage}%
+          {formatPercent(percentage / 100)}
         </span>
       </div>
 

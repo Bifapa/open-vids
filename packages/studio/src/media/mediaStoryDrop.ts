@@ -9,6 +9,7 @@ import {
   type ChapterNode,
   type StoryGraph,
 } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 import { addNode, connectNodes, newMaterial, newStoryId } from "../story/storyGraphOps";
 import type { MediaItem } from "./mediaLibrary";
 
@@ -31,10 +32,10 @@ export function attachMediaToStory(
   item: Pick<MediaItem, "kind" | "path" | "name">,
   chapterId: string | null,
 ): StoryDropResult {
-  if (item.kind === "font") return { ok: false, reason: "Fonts don't go into the Story Graph." };
+  if (item.kind === "font") return { ok: false, reason: t("media.story.noFonts") };
   const chapter = chapterId ? graph.nodes.find((node) => node.id === chapterId) : undefined;
   if (chapterId && (!chapter || !isChapter(chapter))) {
-    return { ok: false, reason: "That chapter no longer exists." };
+    return { ok: false, reason: t("media.story.noChapter") };
   }
   const attachedCount = chapter
     ? graph.attachments.filter((attachment) => attachment.chapter === chapter.id).length
@@ -51,7 +52,7 @@ export function attachMediaToStory(
     source: item.path,
     title: item.name.replace(/\.[^.]+$/, ""),
   });
-  if (!node) return { ok: false, reason: "That file can't become a story node." };
+  if (!node) return { ok: false, reason: t("media.story.noNode") };
   const added = addNode(graph, node);
   if (!added.ok || !chapter) return added;
   const connected = connectNodes(added.graph, { source: node.id, target: chapter.id });

@@ -3,6 +3,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { t } from "../../i18n";
 import { logReload } from "../../utils/reloadDebug";
 import {
   useTimelineSyncCallbacks,
@@ -98,7 +99,7 @@ export function useShadowPreviewReload({
       pendingSeekRef.current = null;
       setPreviewSlots(planShadowDiscard);
       thumbnailScheduler.setPreviewReloading(false);
-      const message = `The preview did not reload (${cause}). The previous preview is still showing.`;
+      const message = t("player.reload.failed", { cause });
       logReload("shadow-failed", { cause });
       console.error(`[studio] ${message}`);
       onReloadFailedRef.current?.(message);
@@ -207,7 +208,7 @@ export function useShadowPreviewReload({
           armReadyTimerRef.current(gen);
           return;
         }
-        failShadow(gen, "it took too long to load");
+        failShadow(gen, t("player.reload.timeout"));
       }, SHADOW_READY_TIMEOUT_MS);
     },
     [failShadow],

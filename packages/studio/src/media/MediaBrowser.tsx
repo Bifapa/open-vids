@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { DownloadSimple, FilmStrip } from "@phosphor-icons/react";
 import { useStore } from "zustand";
+import { Trans, formatNumber, useTranslation } from "../i18n";
 import { Button, Kbd, cn } from "../components/ui";
 import { ContextMenu } from "../components/sidebar/AssetContextMenu";
 import { usePlayerStore } from "../player/store/playerStore";
@@ -50,32 +51,35 @@ const INITIAL_VIEW: MediaViewState = {
 };
 
 function EmptyLibrary({ onImport }: { onImport: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-1 items-center justify-center" data-testid="media-empty">
       <div className="-mt-[6vh] flex max-w-[380px] flex-col items-center gap-1.5 text-center">
         <div className="mb-1.5 flex size-9 items-center justify-center rounded-lg border border-border bg-surface-1 text-fg-3">
           <FilmStrip size={20} />
         </div>
-        <h2 className="m-0 text-lg font-semibold">No media in this project yet</h2>
+        <h2 className="m-0 text-lg font-semibold">{t("media.empty.title")}</h2>
         <p className="m-0 max-w-[320px] text-sm leading-[17px] text-fg-3">
-          Import footage, images and audio, or drop files here. Imported files are copied into the
-          project's assets.
+          {t("media.empty.description")}
         </p>
         <div className="mt-2.5 flex gap-2">
           <Button variant="primary" icon={<DownloadSimple />} onClick={onImport}>
-            Import Media…
+            {t("media.import")}
           </Button>
         </div>
         <p className="mt-3.5 text-xs text-fg-3">
-          Need footage you don’t have?{" "}
-          <button
-            type="button"
-            className="text-fg-2 underline underline-offset-2 hover:text-fg"
-            onClick={showMediaChat}
-          >
-            Ask Research in Chat
-          </button>{" "}
-          — it adds what it finds here, with the source and license.
+          <Trans
+            i18nKey="media.empty.research"
+            components={{
+              action: (
+                <button
+                  type="button"
+                  className="text-fg-2 underline underline-offset-2 hover:text-fg"
+                  onClick={showMediaChat}
+                />
+              ),
+            }}
+          />
         </p>
       </div>
     </div>
@@ -83,6 +87,7 @@ function EmptyLibrary({ onImport }: { onImport: () => void }) {
 }
 
 export function MediaBrowser(props: MediaBrowserProps) {
+  const { t } = useTranslation();
   const { items, collection, searchIndex, loadSearchIndex, selectedPath, onSelect } = props;
   const [view, setView] = useState(INITIAL_VIEW);
   const [dragging, setDragging] = useState<MediaItem | null>(null);
@@ -160,8 +165,9 @@ export function MediaBrowser(props: MediaBrowserProps) {
   } else if (visible.length === 0) {
     body = (
       <div className="px-3 py-7 text-center text-sm text-fg-3" data-testid="media-no-match">
-        Nothing in {props.collectionLabel} matches
-        {view.query ? ` “${view.query}”` : " this filter"}.{" "}
+        {view.query
+          ? t("media.noMatch.query", { collection: props.collectionLabel, query: view.query })
+          : t("media.noMatch.filter", { collection: props.collectionLabel })}{" "}
         <button
           type="button"
           className="text-fg-2 underline underline-offset-2 hover:text-fg"
@@ -170,7 +176,7 @@ export function MediaBrowser(props: MediaBrowserProps) {
             props.onResetCollection();
           }}
         >
-          Clear filters
+          {t("media.noMatch.clear")}
         </button>
       </div>
     );
@@ -178,13 +184,15 @@ export function MediaBrowser(props: MediaBrowserProps) {
     body = sections.map((section) => (
       <div key={section.id}>
         <div className="hf-media-group flex items-baseline gap-1.5 px-3.5 pt-3 pb-1.5 text-xs leading-[14px] font-semibold text-fg-2">
-          {section.label}
-          <span className="font-normal text-fg-3 tabular-nums">{section.items.length}</span>
+          {t(section.labelKey)}
+          <span className="font-normal text-fg-3 tabular-nums">
+            {formatNumber(section.items.length)}
+          </span>
         </div>
         <div
           className={cn("hf-media-grid", TILE_SIZE_CLASSES[view.size])}
           role="listbox"
-          aria-label={section.label}
+          aria-label={t(section.labelKey)}
         >
           {section.items.map((item) => (
             <MediaCard
@@ -203,7 +211,7 @@ export function MediaBrowser(props: MediaBrowserProps) {
     ));
   } else {
     body = (
-      <div className="px-2.5 pb-1" role="listbox" aria-label="Media">
+      <div className="px-2.5 pb-1" role="listbox" aria-label={t("media.list.label")}>
         <div
           aria-hidden="true"
           className={cn(
@@ -211,19 +219,21 @@ export function MediaBrowser(props: MediaBrowserProps) {
             "sticky top-0 z-[4] mb-1 h-list-head border-b border-border-subtle bg-bg-0 text-xs text-fg-3",
           )}
         >
-          <span>Name</span>
-          <span className="justify-self-end">Duration</span>
-          <span>Resolution</span>
-          <span>Format</span>
-          <span>Origin</span>
-          <span>Analysis</span>
-          <span>Used</span>
+          <span>{t("media.column.name")}</span>
+          <span className="justify-self-end">{t("media.column.duration")}</span>
+          <span>{t("media.column.resolution")}</span>
+          <span>{t("media.column.format")}</span>
+          <span>{t("media.column.origin")}</span>
+          <span>{t("media.column.analysis")}</span>
+          <span>{t("media.column.used")}</span>
         </div>
         {sections.map((section) => (
           <div key={section.id}>
             <div className="flex items-baseline gap-1.5 px-1 pt-2.5 pb-1 text-xs font-semibold text-fg-2">
-              {section.label}
-              <span className="font-normal text-fg-3 tabular-nums">{section.items.length}</span>
+              {t(section.labelKey)}
+              <span className="font-normal text-fg-3 tabular-nums">
+                {formatNumber(section.items.length)}
+              </span>
             </div>
             {section.items.map((item) => (
               <MediaRow
@@ -288,7 +298,7 @@ export function MediaBrowser(props: MediaBrowserProps) {
       )}
       {osDrop && (
         <div className="pointer-events-none absolute inset-1 z-40 flex items-center justify-center rounded-lg border-[1.5px] border-dashed border-accent bg-accent-soft text-sm font-medium text-fg">
-          Drop to import into this project <Kbd className="ml-2">⌘I</Kbd>
+          {t("media.drop.importOverlay")} <Kbd className="ml-2">⌘I</Kbd>
         </div>
       )}
       {menu && (

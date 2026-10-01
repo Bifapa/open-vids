@@ -9,6 +9,7 @@ import {
   buttonVariants,
   cn,
 } from "../../components/ui";
+import { formatNumber, useTranslation } from "../../i18n";
 
 const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2] as const;
 
@@ -23,17 +24,18 @@ export const SpeedMenu = memo(function SpeedMenu({
   setPlaybackRate,
   disabled,
 }: SpeedMenuProps) {
+  const { t } = useTranslation();
   return (
     <Menu
       side="top"
       align="end"
-      aria-label="Playback speed options"
+      aria-label={t("player.speed.options")}
       className="min-w-[120px]"
       trigger={
         <button
           type="button"
           disabled={disabled}
-          aria-label="Playback speed"
+          aria-label={t("player.speed.label")}
           className={cn(
             buttonBase,
             buttonVariants.ghost,
@@ -42,7 +44,7 @@ export const SpeedMenu = memo(function SpeedMenu({
             playbackRate !== 1 && "text-fg",
           )}
         >
-          {playbackRate}×
+          {formatNumber(playbackRate)}×
           <CaretDown size={10} weight="bold" aria-hidden="true" />
         </button>
       }
@@ -55,7 +57,9 @@ export const SpeedMenu = memo(function SpeedMenu({
       >
         {SPEED_OPTIONS.map((rate) => (
           <MenuRadioItem key={rate} value={rate}>
-            {rate === 1 ? "1× (Normal)" : `${rate}×`}
+            {rate === 1
+              ? t("player.speed.normal", { rate: formatNumber(rate) })
+              : `${formatNumber(rate)}×`}
           </MenuRadioItem>
         ))}
       </MenuRadioGroup>

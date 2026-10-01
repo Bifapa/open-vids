@@ -20,6 +20,7 @@ import {
   cn,
 } from "../components/ui";
 import { SearchInput } from "../components/ui/SearchInput";
+import { formatNumber, useTranslation } from "../i18n";
 import { ANALYSIS_FILTERS, MEDIA_SORTS, type AnalysisFilter, type MediaSort } from "./mediaLibrary";
 
 export type MediaLayout = "grid" | "list";
@@ -60,8 +61,9 @@ export function MediaToolbar({
   /** The search field's wrapper; ⌘F focuses the input inside it. */
   searchRef: RefObject<HTMLDivElement | null>;
 }) {
-  const analysisLabel = ANALYSIS_FILTERS.find((entry) => entry.value === view.analysis)?.label;
-  const sortLabel = MEDIA_SORTS.find((entry) => entry.value === view.sort)?.label;
+  const { t } = useTranslation();
+  const analysisKey = ANALYSIS_FILTERS.find((entry) => entry.value === view.analysis)?.label;
+  const sortKey = MEDIA_SORTS.find((entry) => entry.value === view.sort)?.label;
   return (
     <div
       className="flex h-10 flex-none items-center gap-1.5 border-b border-border-subtle px-2"
@@ -71,8 +73,8 @@ export function MediaToolbar({
         <SearchInput
           value={view.query}
           onChange={(event) => onChange({ query: event.target.value })}
-          placeholder="Search names, transcripts, tags"
-          aria-label="Search media"
+          placeholder={t("media.toolbar.searchPlaceholder")}
+          aria-label={t("media.toolbar.search")}
           autoComplete="off"
           spellCheck={false}
           disabled={disabled}
@@ -81,7 +83,7 @@ export function MediaToolbar({
         {view.query && (
           <button
             type="button"
-            aria-label="Clear search"
+            aria-label={t("media.toolbar.clearSearch")}
             onClick={() => onChange({ query: "" })}
             className="absolute top-1/2 right-1.5 inline-flex size-[18px] -translate-y-1/2 items-center justify-center rounded-full bg-surface-3 text-fg"
           >
@@ -90,15 +92,15 @@ export function MediaToolbar({
         )}
       </div>
       <Menu
-        aria-label="Analysis filter"
+        aria-label={t("media.toolbar.analysisFilter")}
         trigger={
           <button
             type="button"
             disabled={disabled}
             className={cn(toolButton, view.analysis !== "any" && "bg-surface-2 text-fg")}
           >
-            <span className="text-fg-3">Analysis</span>
-            <span className="text-fg">{analysisLabel}</span>
+            <span className="text-fg-3">{t("media.toolbar.analysis")}</span>
+            <span className="text-fg">{analysisKey ? t(analysisKey) : null}</span>
             <CaretDown className="size-icon-xs text-fg-3" />
           </button>
         }
@@ -112,17 +114,17 @@ export function MediaToolbar({
         >
           {ANALYSIS_FILTERS.map((entry) => (
             <MenuRadioItem key={entry.value} value={entry.value}>
-              {entry.label}
+              {t(entry.label)}
             </MenuRadioItem>
           ))}
         </MenuRadioGroup>
       </Menu>
       <Menu
-        aria-label="Sort media"
+        aria-label={t("media.toolbar.sortMedia")}
         trigger={
           <button type="button" disabled={disabled} className={toolButton}>
-            <span className="text-fg-3">Sort</span>
-            <span className="text-fg">{sortLabel}</span>
+            <span className="text-fg-3">{t("media.toolbar.sort")}</span>
+            <span className="text-fg">{sortKey ? t(sortKey) : null}</span>
             <CaretDown className="size-icon-xs text-fg-3" />
           </button>
         }
@@ -136,20 +138,30 @@ export function MediaToolbar({
         >
           {MEDIA_SORTS.map((entry) => (
             <MenuRadioItem key={entry.value} value={entry.value}>
-              {entry.label}
+              {t(entry.label)}
             </MenuRadioItem>
           ))}
         </MenuRadioGroup>
       </Menu>
       <span className="flex-1" />
       <span className="text-xs whitespace-nowrap text-fg-3 tabular-nums" aria-live="polite">
-        {disabled ? "" : shown === total ? `${total} items` : `${shown} of ${total}`}
+        {disabled
+          ? ""
+          : shown === total
+            ? t("media.toolbar.items", { count: total })
+            : t("media.toolbar.shownOf", {
+                shown: formatNumber(shown),
+                total: formatNumber(total),
+              })}
       </span>
       {view.layout === "grid" && (
-        <span className="flex items-center gap-1 text-fg-3" title="Thumbnail size">
+        <span
+          className="flex items-center gap-1 text-fg-3"
+          title={t("media.toolbar.thumbnailSize")}
+        >
           <ImageSquare className="size-icon-sm" />
           <Slider
-            label="Thumbnail size"
+            label={t("media.toolbar.thumbnailSize")}
             value={view.size}
             min={0}
             max={TILE_SIZE_CLASSES.length - 1}
@@ -162,22 +174,30 @@ export function MediaToolbar({
         </span>
       )}
       <SegmentedControl
-        label="Browser view"
+        label={t("media.toolbar.browserView")}
         variant="icon"
         value={view.layout}
         disabled={disabled}
         onChange={(layout) => onChange({ layout })}
         options={[
-          { value: "grid", label: "Grid", icon: <SquaresFour className="size-icon-md" /> },
-          { value: "list", label: "List", icon: <ListBullets className="size-icon-md" /> },
+          {
+            value: "grid",
+            label: t("media.toolbar.grid"),
+            icon: <SquaresFour className="size-icon-md" />,
+          },
+          {
+            value: "list",
+            label: t("media.toolbar.list"),
+            icon: <ListBullets className="size-icon-md" />,
+          },
         ]}
       />
       <Menu
-        aria-label="View options"
+        aria-label={t("media.toolbar.viewOptions")}
         align="end"
         trigger={
           <IconButton
-            aria-label="View options"
+            aria-label={t("media.toolbar.viewOptions")}
             size="sm"
             disabled={disabled}
             icon={<DotsThree className="size-icon-md" weight="bold" />}
@@ -185,12 +205,12 @@ export function MediaToolbar({
         }
       >
         <MenuGroup>
-          <MenuGroupLabel>View</MenuGroupLabel>
+          <MenuGroupLabel>{t("media.toolbar.view")}</MenuGroupLabel>
           <MenuCheckboxItem
             checked={view.showAnalysis}
             onCheckedChange={(checked: boolean) => onChange({ showAnalysis: checked })}
           >
-            Show Analysis Icons
+            {t("media.toolbar.showAnalysisIcons")}
           </MenuCheckboxItem>
         </MenuGroup>
       </Menu>

@@ -9,6 +9,7 @@ import type {
 import { usePlayerStore } from "../player/store/playerStore";
 import { deriveUsedPaths } from "../components/sidebar/AssetsTab";
 import { studioStoryStore } from "../story/storyContext";
+import { t } from "../i18n";
 import { useSourcesStore } from "../research/researchContext";
 import { mediaClient } from "./mediaClient";
 import {
@@ -144,7 +145,7 @@ export function useMediaLibrary(projectId: string, assets: readonly string[]): M
     mediaClient.startAnalysis(projectId, source).then(
       (job) => setQueue((state) => ({ ...state, starting: null, job })),
       (error: unknown) => {
-        const message = error instanceof Error ? error.message : "Analysis couldn't start";
+        const message = error instanceof Error ? error.message : t("media.analysis.startFailed");
         setQueue((state) => ({ ...state, starting: null, error: message }));
       },
     );
@@ -161,7 +162,8 @@ export function useMediaLibrary(projectId: string, assets: readonly string[]): M
             return;
           }
           void refreshAnalysis();
-          const error = job.status === "failed" ? (job.error?.message ?? "Analysis failed") : null;
+          const error =
+            job.status === "failed" ? (job.error?.message ?? t("media.analysis.failed")) : null;
           setQueue((state) => (state.job?.id === job.id ? { ...state, job: null, error } : state));
         },
         () => setQueue((state) => (state.job?.id === jobId ? { ...state, job: null } : state)),

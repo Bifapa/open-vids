@@ -11,15 +11,16 @@ import {
   type HfAutomationLane,
   type HfAutomationPoint,
 } from "@hyperframes/core/audio-automation";
+import type { TranslationKey } from "../../i18n";
 import { fromUnit, toUnit } from "./automationLaneGeometry";
 
 export type AutomationShapeId = "ramp-up" | "ramp-down" | "swell" | "dip";
 
-export const AUTOMATION_SHAPES: ReadonlyArray<{ id: AutomationShapeId; label: string }> = [
-  { id: "ramp-up", label: "Ramp up" },
-  { id: "ramp-down", label: "Ramp down" },
-  { id: "swell", label: "Swell" },
-  { id: "dip", label: "Dip" },
+export const AUTOMATION_SHAPES: ReadonlyArray<{ id: AutomationShapeId; label: TranslationKey }> = [
+  { id: "ramp-up", label: "player.automation.shape.rampUp" },
+  { id: "ramp-down", label: "player.automation.shape.rampDown" },
+  { id: "swell", label: "player.automation.shape.swell" },
+  { id: "dip", label: "player.automation.shape.dip" },
 ];
 
 /** Ease used on the segments entering/leaving a swell or dip midpoint. */

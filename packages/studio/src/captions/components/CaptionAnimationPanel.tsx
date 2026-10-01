@@ -1,4 +1,5 @@
 import { memo, useCallback } from "react";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { useCaptionStore } from "../store";
 import type { CaptionAnimation } from "../types";
 import { rangeFillStyle } from "../../components/editor/inspectorStyles";
@@ -75,7 +76,7 @@ const ANIMATION_PIPELINE_WIRED = false;
 // ---------------------------------------------------------------------------
 
 interface AnimationPhaseProps {
-  label: string;
+  label: TranslationKey;
   presets: string[];
   animation: CaptionAnimation | null;
   showIntensity?: boolean;
@@ -91,6 +92,8 @@ function AnimationPhase({
   disabled,
   onChange,
 }: AnimationPhaseProps) {
+  const { t } = useTranslation();
+  const phase = t(label);
   const preset = animation?.preset ?? "none";
   const duration = animation?.duration ?? 0.2;
   const ease = animation?.ease ?? "power2.out";
@@ -98,12 +101,12 @@ function AnimationPhase({
   const intensity = animation?.intensity ?? 1;
 
   return (
-    <Section label={label}>
-      <Row label="Preset">
+    <Section label={phase}>
+      <Row label={t("captions.animation.row.preset")}>
         <select
           value={preset}
           disabled={disabled}
-          aria-label={`${label} preset`}
+          aria-label={t("captions.animation.aria.preset", { phase })}
           onChange={(e) => onChange({ preset: e.target.value })}
           className={inputCls}
         >
@@ -115,23 +118,23 @@ function AnimationPhase({
         </select>
       </Row>
 
-      <Row label="Duration">
+      <Row label={t("captions.animation.row.duration")}>
         <NumberField
           value={duration}
           step={0.05}
           min={0}
           max={2}
           disabled={disabled}
-          ariaLabel={`${label} duration`}
+          ariaLabel={t("captions.animation.aria.duration", { phase })}
           onCommit={(v) => onChange({ duration: v })}
         />
       </Row>
 
-      <Row label="Ease">
+      <Row label={t("captions.animation.row.ease")}>
         <select
           value={ease}
           disabled={disabled}
-          aria-label={`${label} ease`}
+          aria-label={t("captions.animation.aria.ease", { phase })}
           onChange={(e) => onChange({ ease: e.target.value })}
           className={inputCls}
         >
@@ -143,20 +146,20 @@ function AnimationPhase({
         </select>
       </Row>
 
-      <Row label="Stagger">
+      <Row label={t("captions.animation.row.stagger")}>
         <NumberField
           value={stagger}
           step={0.02}
           min={0}
           max={0.5}
           disabled={disabled}
-          ariaLabel={`${label} stagger`}
+          ariaLabel={t("captions.animation.aria.stagger", { phase })}
           onCommit={(v) => onChange({ stagger: v })}
         />
       </Row>
 
       {showIntensity && (
-        <Row label="Intensity">
+        <Row label={t("captions.animation.row.intensity")}>
           <div className="flex items-center gap-2">
             <input
               type="range"
@@ -165,7 +168,7 @@ function AnimationPhase({
               step={0.01}
               value={intensity}
               disabled={disabled}
-              aria-label={`${label} intensity`}
+              aria-label={t("captions.animation.aria.intensity", { phase })}
               onChange={(e) => {
                 const v = Number(e.target.value);
                 if (Number.isFinite(v)) onChange({ intensity: v });
@@ -188,6 +191,7 @@ function AnimationPhase({
 // ---------------------------------------------------------------------------
 
 export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
+  const { t } = useTranslation();
   const model = useCaptionStore((s) => s.model);
   const selectedGroupId = useCaptionStore((s) => s.selectedGroupId);
   const selectedSegmentIds = useCaptionStore((s) => s.selectedSegmentIds);
@@ -241,7 +245,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
   if (!group || !resolvedGroupId || !animation) {
     return (
       <div className="flex items-center justify-center h-full px-4 text-center">
-        <p className="m-0 text-sm text-fg-3">Select a caption word to edit animations</p>
+        <p className="m-0 text-sm text-fg-3">{t("captions.animation.empty")}</p>
       </div>
     );
   }
@@ -253,8 +257,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
       {gated && (
         <div className="shrink-0 mx-3 mt-2 px-2 py-1.5 rounded-sm border border-amber-500/30 bg-amber-500/10">
           <p className="text-2xs text-amber-300/90 leading-snug">
-            Animation editing isn&apos;t applied to playback or saved yet, so these controls are
-            disabled.
+            {t("captions.animation.gatedNote")}
           </p>
         </div>
       )}
@@ -262,7 +265,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-3 py-2">
         <AnimationPhase
-          label="Entrance"
+          label="captions.animation.phase.entrance"
           presets={ENTRANCE_PRESETS}
           animation={animation.entrance}
           disabled={gated}
@@ -270,7 +273,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
         />
 
         <AnimationPhase
-          label="Highlight"
+          label="captions.animation.phase.highlight"
           presets={HIGHLIGHT_PRESETS}
           animation={animation.highlight}
           showIntensity
@@ -279,7 +282,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
         />
 
         <AnimationPhase
-          label="Exit"
+          label="captions.animation.phase.exit"
           presets={EXIT_PRESETS}
           animation={animation.exit}
           disabled={gated}
@@ -293,10 +296,10 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
           type="button"
           onClick={handleApplyToAll}
           disabled={gated}
-          title={gated ? "Disabled until animation editing is applied to playback" : undefined}
+          title={gated ? t("captions.animation.applyAllDisabled") : undefined}
           className="h-ctl-sm w-full rounded-sm border border-border bg-surface-1 text-sm text-fg transition-colors hover:border-border-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:border-border-subtle disabled:bg-transparent disabled:text-fg-disabled"
         >
-          Apply to all groups
+          {t("captions.animation.applyAll")}
         </button>
       </div>
     </div>

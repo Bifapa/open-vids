@@ -1,4 +1,5 @@
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
+import { useTranslation } from "../../i18n";
 import { TRACK_H } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
 import { TimelineFxButton } from "./TimelineFxButton";
@@ -46,12 +47,13 @@ function GroupNameButton({
   memberCount: number;
   onOpenFxRack: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       tabIndex={-1}
-      aria-label={`Open ${label} effects`}
-      title="Open effects"
+      aria-label={t("player.group.openEffects", { label })}
+      title={t("player.group.openEffectsTitle")}
       // No `flex-1`: the row's control group owns the slack now (`ml-auto`), so
       // claiming it here would push the controls off the right edge — and the
       // count with them, since it rides inside this button.
@@ -74,7 +76,7 @@ function GroupNameButton({
       <span
         className="shrink-0 rounded-full bg-[var(--timeline-tick-major)] px-1 text-[9px] leading-[14px] tabular-nums text-[var(--timeline-handle)]"
         aria-hidden="true"
-        title={`${memberCount} tracks`}
+        title={t("player.group.memberCount", { count: memberCount })}
       >
         {memberCount}
       </span>
@@ -98,6 +100,7 @@ export function TimelineGroupHeader({
   columnWidth,
   theme,
 }: TimelineGroupHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div
       role="rowheader"
@@ -117,8 +120,12 @@ export function TimelineGroupHeader({
         type="button"
         tabIndex={-1}
         aria-expanded={isExpanded}
-        aria-label={`${isExpanded ? "Hide" : "Show"} ${label} tracks`}
-        title={`${isExpanded ? "Hide" : "Show"} tracks`}
+        aria-label={
+          isExpanded
+            ? t("player.group.hideTracks", { label })
+            : t("player.group.showTracks", { label })
+        }
+        title={isExpanded ? t("player.group.hideTracksTitle") : t("player.group.showTracksTitle")}
         // 13px mono, matching the property panel's preset-run caret
         // (`hf-fx-preset-run-caret`) — the same disclosure, so the same glyph
         // at the same size rather than a smaller one unique to this row.
@@ -159,8 +166,12 @@ export function TimelineGroupHeader({
             type="button"
             tabIndex={-1}
             aria-expanded={isLaneOpen}
-            aria-label={`${isLaneOpen ? "Hide" : "Show"} ${label} lanes`}
-            title={`${isLaneOpen ? "Hide" : "Show"} lanes`}
+            aria-label={
+              isLaneOpen
+                ? t("player.lanes.hide", { name: label })
+                : t("player.lanes.show", { name: label })
+            }
+            title={isLaneOpen ? t("player.lanes.hideTitle") : t("player.lanes.showTitle")}
             // Anchored right, matching every other header's lane toggle.
             className={`ml-auto flex h-6 items-center justify-center gap-0.5 rounded border-0 bg-transparent px-1 text-[11px] leading-none focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[var(--timeline-accent)] ${
               isLaneOpen
