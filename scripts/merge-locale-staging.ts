@@ -115,7 +115,7 @@ function merge(areas: string[]): void {
 
   if (conflicts.length > 0) {
     for (const conflict of conflicts) process.stderr.write(`CONFLICT ${conflict}\n`);
-    process.exit(1);
+    throw new Error(`${conflicts.length} conflict(s); nothing merged`);
   }
   writeCatalog(join(LOCALES, "en.json"), en);
   writeCatalog(join(LOCALES, "ru.json"), ru);
@@ -138,5 +138,10 @@ const areas =
 if (areas.length === 0) {
   process.stdout.write("Nothing to merge.\n");
 } else {
-  await withLock(() => merge(areas));
+  try {
+    await withLock(() => merge(areas));
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exit(1);
+  }
 }
