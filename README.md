@@ -124,4 +124,4 @@ Read `AGENTS.md` before making changes: Bun (never pnpm/npm), oxlint/oxfmt, no `
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE). Derived from an initial HyperFrames snapshot (HeyGen); prior-art and third-party attributions live in [CREDITS.md](CREDITS.md).
+Apache-2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). Copyright 2026 The OpenVids Authors. OpenVids is derived from an initial HyperFrames snapshot (Copyright 2026 HeyGen, Inc., Apache-2.0) and is not affiliated with HeyGen; prior-art and third-party attributions live in [CREDITS.md](CREDITS.md).

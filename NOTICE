@@ -1,0 +1,22 @@
+OpenVids
+Copyright 2026 The OpenVids Authors
+https://openvids.ai
+
+OpenVids is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product is a derivative work of HyperFrames
+(https://github.com/heygen-com/hyperframes),
+Copyright 2026 HeyGen, Inc., licensed under the Apache License, Version 2.0.
+
+OpenVids started from a snapshot of the HyperFrames source tree. Files taken
+from that snapshot have been modified by the OpenVids authors, and new files
+have been added, including the desktop shell (apps/desktop), the agent protocol
+and agent runtime (packages/agent-protocol, packages/agent-runtime) and the
+editing, analysis, story, research and render QA services. The history of this
+repository records every change made after the initial import.
+
+OpenVids is not affiliated with, endorsed by or sponsored by HeyGen, Inc.
+"HyperFrames" and "HeyGen" are names of their respective owner and are used
+here only to describe the origin of the code.
+
+Third-party components and their licenses are listed in CREDITS.md.
