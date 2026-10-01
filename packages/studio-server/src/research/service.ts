@@ -4,12 +4,13 @@ import { basename, posix } from "node:path";
 import {
   RESEARCH_ASSET_DIR,
   RESEARCH_LIMITS,
+  RESEARCH_MEDIA_KINDS,
   WEB_SOURCE_ID,
+  WEBSITE_SOURCE_ID,
   type AddTrustedSourceRequest,
   type CancelRequestState,
   type AssetCandidate,
   type AssetProvenance,
-  type AssetSearchMode,
   type AssetSearchPolicy,
   type AssetSearchRequest,
   type AssetSearchResult,
@@ -22,12 +23,15 @@ import {
   type InspectUrlResult,
   type LicenseInfo,
   type ProjectSourcesView,
+  type ReadWebsiteRequest,
+  type ReadWebsiteResult,
   type ResearchMediaKind,
   type ResolveMissingRequest,
   type ResolveMissingResult,
   type SourceSearchReport,
   type StoryError,
   type TrustedSource,
+  type UpdateAssetSearchPolicyRequest,
   type UpdateTrustedSourceRequest,
 } from "@hyperframes/agent-protocol";
 import { serialized } from "../analysis/store.js";
@@ -38,7 +42,7 @@ import { isInHiddenOrVendorDir, resolveWithinProject, walkDir } from "../helpers
 import { isStoryFailure, type StoryFailure } from "../story/errors.js";
 import { readStoredStory } from "../story/graphIo.js";
 import type { StoryService } from "../story/service.js";
-import type { ResolvedProject } from "../types.js";
+import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { CandidateRegistry } from "./candidates.js";
 import { ResearchCache, type CacheEntry } from "./cache.js";
 import { RequestRegistry, type RequestGuard } from "./requestRegistry.js";
@@ -64,8 +68,9 @@ import type {
   RawCandidate,
   WebSearchBackend,
 } from "./sources/types.js";
-import { sourceForHost } from "./sources/urlPolicy.js";
+import { UrlGuard, sourceForHost } from "./sources/urlPolicy.js";
 import { DuckDuckGoSearch } from "./sources/webSearch.js";
+import { WebsiteReader } from "./website.js";
 
 const DEFAULT_LIMIT = 6;
 const MAX_BYTES: Record<ResearchMediaKind, number> = {
@@ -85,6 +90,10 @@ export interface ResearchServiceOptions {
   webSearch?: WebSearchBackend;
   /** ffprobe/ffmpeg/sharp (tests inject fakes). */
   toolkit?: MediaToolkit;
+  /** Renders a page for the website style reader (the adapter's CLI child); without it the reader is unsupported. */
+  inspectWebsite?: StudioApiAdapter["inspectWebsite"];
+  /** The address rules of the website reader (tests inject a DNS resolver). */
+  websiteGuard?: UrlGuard;
   now?: () => number;
 }
 
@@ -133,9 +142,9 @@ function slugOf(text: string): string {
 }
 
 /** What a record knew about its media, as a candidate (a repeated import of the same URL needs no page read). */
-function candidateOfRecord(record: AssetProvenance): RawCandidate {
+function candidateOfRecord(record: AssetProvenance, mediaKind: ResearchMediaKind): RawCandidate {
   return {
-    mediaKind: record.mediaKind,
+    mediaKind,
     title: record.title,
     description: "",
     pageUrl: record.pageUrl,
@@ -202,6 +211,7 @@ export class ResearchService {
   private readonly now: () => number;
   private readonly registry = new CandidateRegistry();
   private readonly requests: RequestRegistry;
+  private readonly websites: WebsiteReader;
 
   constructor(private readonly options: ResearchServiceOptions) {
     this.store = options.store ?? new PolicyStore();
@@ -210,6 +220,14 @@ export class ResearchService {
     this.toolkit = options.toolkit ?? systemToolkit;
     this.now = options.now ?? Date.now;
     this.requests = new RequestRegistry(this.now);
+    this.websites = new WebsiteReader({
+      store: this.store,
+      guard: options.websiteGuard ?? new UrlGuard(),
+      inspect: options.inspectWebsite,
+      requests: this.requests,
+      lock: (project, task) => this.lock(project, task),
+      now: this.now,
+    });
   }
 
   // ── Policy ────────────────────────────────────────────────────────────────
@@ -218,8 +236,10 @@ export class ResearchService {
     return this.store.get();
   }
 
-  setMode(mode: AssetSearchMode): AssetSearchPolicy {
-    return this.store.setMode(mode);
+  updatePolicy(request: UpdateAssetSearchPolicyRequest): AssetSearchPolicy {
+    if (request.mode !== undefined) this.store.setMode(request.mode);
+    if (request.websites !== undefined) this.store.setWebsites(request.websites);
+    return this.store.get();
   }
 
   addSource(request: AddTrustedSourceRequest): AssetSearchPolicy {
@@ -506,6 +526,15 @@ export class ResearchService {
     }
   }
 
+  /** Reads a page the user linked and extracts its visual identity (see `WebsiteReader`). */
+  website(
+    project: ResolvedProject,
+    request: ReadWebsiteRequest,
+    client?: AbortSignal,
+  ): Promise<ReadWebsiteResult> {
+    return this.websites.read(project, request, client);
+  }
+
   /** Cancels the import or resolution with this `requestId`; the answer says whether it can still write. */
   cancel(project: ResolvedProject, requestId: string): CancelRequestState {
     return this.requests.cancel(project.dir, requestId);
@@ -720,13 +749,17 @@ export class ResearchService {
       return { found: { candidate, source, grants: issuer?.enabled === true ? grants : [] } };
     }
     const url = request.url ?? "";
-    const known = readLedger(project.dir).records.find((record) => record.originalUrl === url);
-    if (known) {
+    // Website references (screenshots, logos, fonts of a page) are not importable media: the URL names a page.
+    const known = readLedger(project.dir).records.find(
+      (record) => record.originalUrl === url && record.source.id !== WEBSITE_SOURCE_ID,
+    );
+    const knownKind = RESEARCH_MEDIA_KINDS.find((kind) => kind === known?.mediaKind);
+    if (known && knownKind) {
       const issuer = policy.sources.find((entry) => entry.id === known.source.id);
       const host = hostOf(url);
       return {
         found: {
-          candidate: candidateOfRecord(known),
+          candidate: candidateOfRecord(known, knownKind),
           source: known.source,
           grants:
             issuer?.enabled === true && issuer.connector !== "site" && host !== null ? [host] : [],

@@ -230,6 +230,7 @@ describe("multi-agent orchestration", () => {
         ...EDITOR_TOOLS,
         ...ANALYSIS_TOOLS_SOLO,
         "read_story",
+        "read_website",
       ]);
     } finally {
       await fixture.cleanup();

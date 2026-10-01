@@ -14,7 +14,9 @@ import { TurnResearch, type TurnResearchOptions } from "./executor.js";
 import { ResearchToolError } from "./host.js";
 import { RESEARCH_TOOL_NAMES } from "./tools.js";
 
-const RESEARCH_TOOLS = Object.values<string>(RESEARCH_TOOL_NAMES);
+const RESEARCH_TOOLS = Object.values<string>(RESEARCH_TOOL_NAMES).filter(
+  (name) => name !== "read_website",
+);
 const EXTERNAL_TOOLS = RESEARCH_TOOLS.filter((name) => name !== "read_sources");
 const TEAM: SpecialistId[] = ["editor", "vision", "motion", "audio", "research"];
 const NO_RESEARCH: SpecialistId[] = ["editor", "vision", "motion", "audio"];
@@ -30,14 +32,15 @@ function researchToolsOf(
   enabled: SpecialistId[],
   turn: Turn,
   research = true,
+  websites = false,
 ): string[] {
   return buildHostTools(
     agent,
-    { enabled, jev: true, editing: true, analysis: true, story: true, research, ...turn },
+    { enabled, jev: true, editing: true, analysis: true, story: true, research, websites, ...turn },
     async () => ({ text: "" }),
   )
     .map((tool) => tool.name)
-    .filter((name) => RESEARCH_TOOLS.includes(name));
+    .filter((name) => name === "read_website" || RESEARCH_TOOLS.includes(name));
 }
 
 describe("research tool availability", () => {
@@ -87,6 +90,60 @@ describe("research tool availability", () => {
   });
 });
 
+describe("read_website availability", () => {
+  it("is offered to the Director, Motion and Research, and to nobody else", () => {
+    for (const agent of AGENTS) {
+      const names = researchToolsOf(agent, TEAM, { mode: "normal" }, true, true);
+      expect(names.includes("read_website")).toBe(
+        ["director", "motion", "research"].includes(agent),
+      );
+    }
+  });
+
+  it("does not depend on Research being enabled or on the Asset Search policy being readable", () => {
+    expect(researchToolsOf("director", NO_RESEARCH, { mode: "normal" }, false, true)).toEqual([
+      "read_website",
+    ]);
+    expect(researchToolsOf("motion", NO_RESEARCH, { mode: "normal" }, false, true)).toEqual([
+      "read_website",
+    ]);
+    expect(researchToolsOf("director", TEAM, { mode: "normal" }, false, true)).toEqual([
+      "read_website",
+    ]);
+  });
+
+  it("is missing for a specialist that is not in the chat's team, and without a research host", () => {
+    expect(researchToolsOf("motion", ["editor"], { mode: "normal" }, false, true)).toEqual([]);
+    expect(researchToolsOf("director", TEAM, { mode: "normal" }, true, false)).toEqual([
+      "read_sources",
+    ]);
+  });
+
+  it("is offered in Plan and Ask turns (reading is harmless) but not in a story build or rebuild turn", () => {
+    for (const intent of ["plan", "ask"] as const) {
+      const names = buildHostTools(
+        "director",
+        {
+          enabled: TEAM,
+          jev: false,
+          editing: true,
+          analysis: true,
+          story: true,
+          websites: true,
+          intent,
+        },
+        async () => ({ text: "" }),
+      ).map((tool) => tool.name);
+      expect(names).toContain("read_website");
+    }
+    for (const storyAction of ["build", "rebuild"] as const) {
+      expect(researchToolsOf("director", TEAM, { mode: "story", storyAction }, true, true)).toEqual(
+        [],
+      );
+    }
+  });
+});
+
 // ── Executor ─────────────────────────────────────────────────────────────────
 
 function research(overrides: Partial<TurnResearchOptions> = {}) {
@@ -99,6 +156,8 @@ function research(overrides: Partial<TurnResearchOptions> = {}) {
     enabled: TEAM,
     turn: { mode: "normal", action: null },
     storyOptions: null,
+    intent: "edit",
+    userTexts: () => [],
     model: () => "anthropic/claude-haiku",
     ...overrides,
   });

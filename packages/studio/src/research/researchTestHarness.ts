@@ -89,6 +89,7 @@ export function policyFixture(overrides: Partial<AssetSearchPolicy> = {}): Asset
     mode: "trusted",
     sources: [trustedSource()],
     removedBuiltIns: [],
+    websites: { readLinkedPages: true },
     updatedAt: 1000,
     ...overrides,
   };

@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   ASSET_SEARCH_MODES,
+  DEFAULT_WEBSITE_POLICY,
   RESEARCH_LIMITS,
   RESEARCH_MEDIA_KINDS,
   isRecord,
@@ -13,6 +14,7 @@ import {
   type ResearchMediaKind,
   type TrustedSource,
   type UpdateTrustedSourceRequest,
+  type WebsitePolicy,
 } from "@hyperframes/agent-protocol";
 import { replaceFileAtomically } from "../../helpers/atomicFile.js";
 import { ResearchFailure } from "../errors.js";
@@ -34,6 +36,7 @@ interface StoredPolicy {
   builtIns: Record<string, BuiltInOverride>;
   userSources: TrustedSource[];
   removedBuiltIns: string[];
+  websites: WebsitePolicy;
   updatedAt: number;
 }
 
@@ -108,6 +111,13 @@ function storedPolicyOf(raw: unknown): StoredPolicy | null {
     if (source === null) return null;
     userSources.push(source);
   }
+  // A file written before the website reader existed has no `websites`: the default applies. A damaged value is not
+  // guessed at (the whole file is replaced by the defaults, see `load`).
+  let websites: WebsitePolicy = { ...DEFAULT_WEBSITE_POLICY };
+  if (raw.websites !== undefined) {
+    if (!isRecord(raw.websites) || typeof raw.websites.readLinkedPages !== "boolean") return null;
+    websites = { readLinkedPages: raw.websites.readLinkedPages };
+  }
   return {
     schema: POLICY_SCHEMA,
     mode: raw.mode,
@@ -116,6 +126,7 @@ function storedPolicyOf(raw: unknown): StoredPolicy | null {
     removedBuiltIns: raw.removedBuiltIns.filter(
       (id): id is string => typeof id === "string" && BUILT_IN_IDS.includes(id),
     ),
+    websites,
     updatedAt: raw.updatedAt,
   };
 }
@@ -185,6 +196,7 @@ export class PolicyStore {
       builtIns: {},
       userSources: [],
       removedBuiltIns: [],
+      websites: { ...DEFAULT_WEBSITE_POLICY },
       updatedAt: 0,
     };
   }
@@ -230,6 +242,7 @@ export class PolicyStore {
       mode: stored.mode,
       sources: [...builtIns, ...stored.userSources.map((source) => ({ ...source }))],
       removedBuiltIns: [...stored.removedBuiltIns],
+      websites: { ...stored.websites },
       updatedAt: stored.updatedAt,
     };
   }
@@ -246,6 +259,15 @@ export class PolicyStore {
       );
     }
     return this.save({ ...this.load(), mode });
+  }
+
+  /** Changes the Websites group; fields that are not given keep their value. */
+  setWebsites(update: Partial<WebsitePolicy>): AssetSearchPolicy {
+    const stored = this.load();
+    return this.save({
+      ...stored,
+      websites: { readLinkedPages: update.readLinkedPages ?? stored.websites.readLinkedPages },
+    });
   }
 
   addSource(request: AddTrustedSourceRequest): AssetSearchPolicy {

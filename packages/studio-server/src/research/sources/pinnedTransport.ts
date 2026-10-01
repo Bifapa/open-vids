@@ -4,7 +4,7 @@ import type { LookupFunction } from "node:net";
 import { Readable, pipeline } from "node:stream";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { webBody } from "../../helpers/nodeStream.js";
-import { isPrivateAddress } from "./urlPolicy.js";
+import { isPrivateAddress } from "./address.js";
 
 /** What a transport needs for one request: the addresses the URL guard vetted for this very hop. */
 export interface TransportInit {

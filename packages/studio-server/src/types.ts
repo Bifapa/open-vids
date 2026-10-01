@@ -3,6 +3,7 @@ import type { RegistryItem } from "@hyperframes/core";
 import type { BundleOptions } from "@hyperframes/core/compiler";
 import type { ProjectHistory } from "./history/projectHistory.js";
 import type { AgentGateway } from "./agent/gateway.js";
+import type { WebsiteStyle } from "@hyperframes/agent-protocol";
 
 /** Resolved info about a single project. */
 export interface ResolvedProject {
@@ -278,7 +279,42 @@ export interface StudioApiAdapter {
     times: number[];
     signal: AbortSignal;
   }): Promise<LayoutCheckResult | { unavailable: string }>;
+
+  /**
+   * Optional: renders a public web page in headless Chrome and extracts its visual identity (the website style
+   * reader). The adapter runs the browser outside this process; every request the page makes is held to the public
+   * address rules, and aborting the signal stops the browser. Resolves `{ error }` for a page that cannot be read.
+   */
+  inspectWebsite?(opts: { url: string; signal: AbortSignal }): Promise<WebsiteInspectionResult>;
 }
+
+export interface WebsiteFile {
+  /** A file name (no directories): `viewport.jpg`, `logo.svg`, `inter-var.woff2`. */
+  name: string;
+  mimeType: string;
+  data: Uint8Array;
+}
+
+export interface WebsiteInspection {
+  site: WebsiteStyle;
+  /** `viewport.jpg` and `fullpage.jpg`. */
+  screenshots: Array<WebsiteFile & { width: number; height: number }>;
+  /** The best logo whose bytes were captured (SVG or a raster image), and where it came from. */
+  logo: (WebsiteFile & { url: string }) | null;
+  /** Self-hosted font files the page actually uses. */
+  fonts: Array<
+    WebsiteFile & { family: string; weight: number; style: "normal" | "italic"; url: string }
+  >;
+}
+
+export type WebsiteInspectionResult =
+  | WebsiteInspection
+  | {
+      error: {
+        code: "blocked_by_policy" | "unavailable" | "network" | "unsupported";
+        message: string;
+      };
+    };
 
 /** One finding of the layout audit, engine-neutral (the CLI's `check` layout issue codes). */
 export interface LayoutCheckFinding {

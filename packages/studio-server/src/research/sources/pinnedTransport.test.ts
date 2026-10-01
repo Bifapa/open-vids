@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pinnedLookup, pinnedTransport } from "./pinnedTransport.js";
 
 // The test server lives on loopback, which the real guard refuses: treat it as public here only.
-vi.mock("./urlPolicy.js", () => ({
+vi.mock("./address.js", () => ({
   isPrivateAddress: (address: string) => address === "10.0.0.1",
 }));
 

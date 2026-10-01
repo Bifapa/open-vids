@@ -188,3 +188,41 @@ describe("the Asset Search policy", () => {
     expect(store.get().mode).toBe("trusted");
   });
 });
+
+describe("the Websites group of the policy", () => {
+  const stored = (extra: object) =>
+    JSON.stringify({
+      schema: "openvids.research-policy/1",
+      mode: "any",
+      builtIns: {},
+      userSources: [],
+      removedBuiltIns: [],
+      updatedAt: 1,
+      ...extra,
+    });
+
+  it("defaults to reading linked pages, for a new file and for one written before the setting existed", () => {
+    const store = new PolicyStore({ dir });
+    expect(store.get().websites).toEqual({ readLinkedPages: true });
+    writeFileSync(join(dir, "policy.json"), stored({}));
+    const old = store.get();
+    expect(old).toMatchObject({ mode: "any", websites: { readLinkedPages: true } });
+  });
+
+  it("keeps the switch across instances without touching the mode or the sources", () => {
+    const store = new PolicyStore({ dir });
+    store.setMode("any");
+    store.setWebsites({ readLinkedPages: false });
+    const again = new PolicyStore({ dir }).get();
+    expect(again).toMatchObject({ mode: "any", websites: { readLinkedPages: false } });
+    expect(again.sources).toHaveLength(4);
+    expect(new PolicyStore({ dir }).setWebsites({}).websites.readLinkedPages).toBe(false);
+  });
+
+  it("does not guess at a damaged value: the whole file is replaced by the defaults and kept as a backup", () => {
+    const store = new PolicyStore({ dir });
+    writeFileSync(join(dir, "policy.json"), stored({ websites: { readLinkedPages: "no" } }));
+    expect(store.get().mode).toBe("trusted");
+    expect(existsSync(join(dir, "policy.json.bak"))).toBe(true);
+  });
+});

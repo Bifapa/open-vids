@@ -1,16 +1,28 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { FilmStrip, Image, MusicNotes, WarningCircle, type Icon } from "@phosphor-icons/react";
-import type { ProjectSourceEntry, ResearchMediaKind } from "@hyperframes/agent-protocol";
+import {
+  FilmStrip,
+  Image,
+  MusicNotes,
+  TextAa,
+  WarningCircle,
+  type Icon,
+} from "@phosphor-icons/react";
+import {
+  WEBSITE_SOURCE_ID,
+  type ProjectSourceEntry,
+  type ProvenanceMediaKind,
+} from "@hyperframes/agent-protocol";
 import { Badge, cn } from "../components/ui";
 import { projectFileUrl, storyFrameUrl } from "../story/storyClient";
 import { LicenseChip } from "./LicenseChip";
 import { CONFIDENCE_LABELS, MEDIA_KIND_LABELS, retrievedByLabel, urlHost } from "./licenseLabels";
 import { ExternalLink } from "./researchUi";
 
-const KIND_ICONS: Record<ResearchMediaKind, Icon> = {
+const KIND_ICONS: Record<ProvenanceMediaKind, Icon> = {
   video: FilmStrip,
   picture: Image,
   audio: MusicNotes,
+  font: TextAa,
 };
 
 function thumbnailUrl(projectId: string, record: ProjectSourceEntry): string | null {
@@ -117,18 +129,29 @@ export function SourceRecord({
         </Row>
         {record.licenseBasis && <Row label="Found in">{record.licenseBasis}</Row>}
         <Row label="Source">
-          <Badge
-            size="sm"
-            tone={record.source.trusted ? "success" : "neutral"}
-            title={
-              record.source.trusted
-                ? "Found on a trusted source"
-                : "Found on the open web (Any source mode)"
-            }
-          >
-            {record.source.trusted ? "Trusted" : "Web"}
-          </Badge>
-          <span className="truncate">{record.source.name}</span>
+          {record.source.id === WEBSITE_SOURCE_ID ? (
+            <>
+              <Badge size="sm" title="Saved from a website you linked in chat (a style reference)">
+                Site
+              </Badge>
+              <span className="truncate">From {record.source.name}</span>
+            </>
+          ) : (
+            <>
+              <Badge
+                size="sm"
+                tone={record.source.trusted ? "success" : "neutral"}
+                title={
+                  record.source.trusted
+                    ? "Found on a trusted source"
+                    : "Found on the open web (Any source mode)"
+                }
+              >
+                {record.source.trusted ? "Trusted" : "Web"}
+              </Badge>
+              <span className="truncate">{record.source.name}</span>
+            </>
+          )}
         </Row>
         <Row label="Author">
           {record.author && record.authorUrl ? (

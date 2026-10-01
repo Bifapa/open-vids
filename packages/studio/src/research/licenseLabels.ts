@@ -2,7 +2,7 @@ import type {
   AssetProvenance,
   LicenseConfidence,
   LicenseStatus,
-  ResearchMediaKind,
+  ProvenanceMediaKind,
 } from "@hyperframes/agent-protocol";
 import type { StatusTone } from "../components/ui";
 
@@ -44,10 +44,11 @@ export const CONFIDENCE_LABELS: Record<LicenseConfidence, string> = {
   none: "No license information",
 };
 
-export const MEDIA_KIND_LABELS: Record<ResearchMediaKind, string> = {
+export const MEDIA_KIND_LABELS: Record<ProvenanceMediaKind, string> = {
   video: "Video",
   picture: "Pictures",
   audio: "Audio",
+  font: "Fonts",
 };
 
 /** "Research · Claude Haiku 4.5 · turn t-12" / "You": who brought the asset in. */

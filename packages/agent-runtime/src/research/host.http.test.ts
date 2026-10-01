@@ -10,6 +10,7 @@ import {
   sampleProvenance,
   sampleSearchResult,
   sampleSourcesView,
+  sampleWebsiteStyle,
 } from "../testing/research.js";
 import { ResearchToolError } from "./host.js";
 import { TurnResearch } from "./executor.js";
@@ -261,7 +262,49 @@ describe("HttpResearchHost", () => {
     controller.abort();
     await expect(pending).rejects.toMatchObject({ code: "aborted" });
   });
+
+  it("reads a website as a plain read, and saves it as a cancellable write with a request id", async () => {
+    const read = heldRoute();
+    const cancel = cancelRoute("cancelled");
+    const { host, seen } = await studio({
+      [`POST ${PROJECT}/website`]: (request, response) => {
+        const body = isRecord(request.body) ? request.body : {};
+        if (body.save === true) read.route(request, response);
+        else json(response, 200, sampleWebsiteResult(request.body));
+      },
+      [CANCEL_ROUTE]: cancel.route,
+    });
+
+    const plain = await host.website({ url: "https://linear.app" }, signal());
+    expect(plain.site.host).toBe("linear.app");
+    expect(seen[0]).toMatchObject({
+      method: "POST",
+      path: `${PROJECT}/website`,
+      body: { url: "https://linear.app" },
+    });
+    expect(seen[0]?.body).not.toHaveProperty("requestId");
+
+    const controller = new AbortController();
+    const pending = host.website({ url: "https://linear.app", save: true }, controller.signal);
+    const answer = await read.held;
+    controller.abort();
+    await cancel.arrived;
+    json(answer, 409, { error: { code: "cancelled", message: "The request was cancelled" } });
+    await expect(pending).rejects.toMatchObject({ code: "aborted" });
+    expect(seen[2]?.path).toBe(`${PROJECT}/requests/${requestIdOf(seen[1])}/cancel`);
+  });
 });
+
+/** What the website route answers for a read of `body.url`. */
+function sampleWebsiteResult(body: unknown) {
+  const url = isRecord(body) && typeof body.url === "string" ? body.url : "https://example.com/";
+  return {
+    site: { ...sampleWebsiteStyle(url), host: new URL(url).hostname },
+    screenshots: [
+      { name: "viewport.jpg", mimeType: "image/jpeg", data: "AAAA", width: 1440, height: 900 },
+    ],
+  };
+}
 
 const CANCEL_ROUTE = `POST ${PROJECT}/requests/:id/cancel`;
 
@@ -439,6 +482,8 @@ describe("a stopped turn and its import over HTTP", () => {
       enabled: ["research"],
       turn: { mode: "normal", action: null },
       storyOptions: null,
+      intent: "edit",
+      userTexts: () => [],
       model: () => null,
     });
   }

@@ -5,11 +5,12 @@ import { fileURLToPath } from "node:url";
 import type { AssetSearchMode } from "@hyperframes/agent-protocol";
 import { createStoryFixture, type StoryFixture } from "../story/testSupport.js";
 import type { MediaInspection, MediaToolkit } from "./normalize.js";
-import { ResearchService } from "./service.js";
+import { ResearchService, type ResearchServiceOptions } from "./service.js";
 import { PolicyFetcher, type Transport } from "./sources/policyFetch.js";
 import { PolicyStore } from "./sources/policyStore.js";
 import type { WebSearchBackend, WebSearchHit } from "./sources/types.js";
-import { UrlGuard, type DnsResolver } from "./sources/urlPolicy.js";
+import type { DnsResolver } from "./sources/address.js";
+import { UrlGuard } from "./sources/urlPolicy.js";
 
 export const PUBLIC_IP = "93.184.216.34";
 
@@ -186,7 +187,13 @@ export interface ResearchFixture {
 }
 
 export function createResearchFixture(
-  options: { mode?: AssetSearchMode; dns?: Record<string, string>; hits?: WebSearchHit[] } = {},
+  options: {
+    mode?: AssetSearchMode;
+    dns?: Record<string, string>;
+    hits?: WebSearchHit[];
+    /** The website reader's browser (the CLI child in production). */
+    inspectWebsite?: ResearchServiceOptions["inspectWebsite"];
+  } = {},
 ): ResearchFixture {
   const story = createStoryFixture();
   const policyDir = mkdtempSync(join(tmpdir(), "openvids-research-policy-"));
@@ -205,6 +212,8 @@ export function createResearchFixture(
     fetcher,
     webSearch: web,
     toolkit,
+    inspectWebsite: options.inspectWebsite,
+    websiteGuard: new UrlGuard(resolver(options.dns)),
   });
   return {
     story,

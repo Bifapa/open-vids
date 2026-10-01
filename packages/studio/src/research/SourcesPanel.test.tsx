@@ -149,6 +149,38 @@ describe("Project sources", () => {
     expect(shown).toEqual(["assets/research/city.jpg"]);
   });
 
+  it("labels a saved website reference by its site, with its kind", async () => {
+    await mount({
+      "GET /api/projects/p1/research/sources": () =>
+        sourcesView([
+          sourceEntry({
+            id: "prov-5",
+            asset: "assets/web/linear.app/inter-600.woff2",
+            mediaKind: "font",
+            title: "Inter 600",
+            source: { id: "website", name: "linear.app", trusted: false },
+            originalUrl: "https://linear.app/fonts/inter-600.woff2",
+            pageUrl: "https://linear.app/",
+            license: "Unknown",
+            licenseId: "unknown",
+            licenseUrl: null,
+            licenseConfidence: "none",
+            licenseStatus: "unknown",
+            licenseBasis: "",
+            attribution: "From linear.app (website reference)",
+            issues: ["License unknown"],
+            usedIn: [],
+          }),
+        ]),
+    });
+
+    const font = record("assets/web/linear.app/inter-600.woff2");
+    expect(font?.textContent).toContain("From linear.app");
+    expect(font?.textContent).toContain("Fonts");
+    expect(font?.textContent).not.toContain("Found on the open web");
+    expect(font?.textContent).toContain("License unknown");
+  });
+
   it("explains where researched assets come from when there are none", async () => {
     await mount({ "GET /api/projects/p1/research/sources": () => sourcesView([]) });
 
@@ -187,6 +219,45 @@ describe("Asset Search policy", () => {
     expect(
       host.querySelector('[data-testid="asset-search-mode-description"]')?.textContent,
     ).toContain("Provenance is still recorded");
+  });
+
+  it("switches reading the pages you link in chat with a PUT of the websites group", async () => {
+    let policy: AssetSearchPolicy = policyFixture();
+    await openPolicy({
+      "GET /api/research/policy": () => policy,
+      "PUT /api/research/policy": () => policy,
+    });
+    const switchOf = () =>
+      host.querySelector('[role="switch"][aria-label="Open links you send in chat"]');
+    expect(switchOf()?.getAttribute("aria-checked")).toBe("true");
+    expect(host.querySelector("[data-websites-group]")?.textContent).toContain(
+      "Only links from your own messages, plus other pages on the same site.",
+    );
+
+    policy = policyFixture({ websites: { readLinkedPages: false } });
+    await click(switchOf());
+
+    expect(requests).toContainEqual({
+      method: "PUT",
+      url: "/api/research/policy",
+      body: { websites: { readLinkedPages: false } },
+    });
+    expect(switchOf()?.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("keeps the switch where it was and shows the failure when the server refuses the change", async () => {
+    await openPolicy({
+      "GET /api/research/policy": () => policyFixture(),
+      "PUT /api/research/policy": () =>
+        new HttpReply(500, { error: { code: "internal", message: "Could not save the policy" } }),
+    });
+    const switchOf = () =>
+      host.querySelector('[role="switch"][aria-label="Open links you send in chat"]');
+    await click(switchOf());
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      "Could not save the policy",
+    );
+    expect(switchOf()?.getAttribute("aria-checked")).toBe("true");
   });
 
   it("turns a source off, and removes one only after confirming", async () => {

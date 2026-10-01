@@ -18,7 +18,8 @@ import {
 } from "../testSupport.js";
 import { PolicyFetcher, type Transport } from "./policyFetch.js";
 import { PolicyStore } from "./policyStore.js";
-import { UrlGuard, isPrivateAddress } from "./urlPolicy.js";
+import { isPrivateAddress } from "./address.js";
+import { UrlGuard } from "./urlPolicy.js";
 
 let dir = "";
 beforeEach(() => {

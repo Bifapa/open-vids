@@ -7,7 +7,7 @@ import {
   LICENSE_STATUSES,
   PROVENANCE_PATH,
   PROVENANCE_SCHEMA,
-  RESEARCH_MEDIA_KINDS,
+  PROVENANCE_MEDIA_KINDS,
   isRecord,
   type AssetProvenance,
   type ProvenanceLedger,
@@ -39,7 +39,7 @@ function recordOf(raw: unknown): AssetProvenance | null {
   const originalSha256 = text(raw.originalSha256);
   const contentType = text(raw.contentType);
   const licenseBasis = text(raw.licenseBasis);
-  const mediaKind = oneOf(RESEARCH_MEDIA_KINDS, raw.mediaKind);
+  const mediaKind = oneOf(PROVENANCE_MEDIA_KINDS, raw.mediaKind);
   const licenseId = oneOf(LICENSE_IDS, raw.licenseId);
   const licenseConfidence = oneOf(LICENSE_CONFIDENCES, raw.licenseConfidence);
   const licenseStatus = oneOf(LICENSE_STATUSES, raw.licenseStatus);

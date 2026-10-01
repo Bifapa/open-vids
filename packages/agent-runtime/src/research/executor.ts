@@ -6,8 +6,10 @@ import {
   type AssetCandidate,
   type AssetSearchPolicy,
   type AssetSearchRequest,
+  type ChatIntent,
   type ImportAssetRequest,
   type InspectUrlRequest,
+  type ReadWebsiteRequest,
   type ResearchMediaKind,
   type SpecialistId,
   type StoryActionOptions,
@@ -23,7 +25,9 @@ import {
   formatSearch,
   formatSources,
 } from "./format.js";
+import { formatWebsite } from "./formatWebsite.js";
 import { ResearchToolError, type ResearchHost } from "./host.js";
+import { isLinkedSite, linkedSites } from "./linkedSites.js";
 import {
   RESEARCH_TOOL_NAMES,
   isResearchToolName,
@@ -43,6 +47,13 @@ export interface TurnResearchOptions {
   turn: StoryTurnMode;
   /** The user's choices for a `resolve` turn: the Missing Asset nodes the turn may resolve. */
   storyOptions: StoryActionOptions | null;
+  /** What the user wants from the turn: a Plan or Ask turn never saves a website's files into the project. */
+  intent: ChatIntent;
+  /**
+   * What the user wrote in this chat so far: the first prompt, later messages and steering — never assistant text,
+   * search results or page contents. The websites linked in it are the only ones `read_website` may open.
+   */
+  userTexts: () => readonly string[];
   /** The model the Research run uses (`provider/modelId`), recorded in the provenance. */
   model: () => string | null;
 }
@@ -142,7 +153,7 @@ export class TurnResearch {
     if (!researchToolsFor(caller, enabled, turn).some((tool) => tool === name))
       return Promise.resolve(refuse(`${name} is not available to you in this turn.`));
     const signal = AbortSignal.any([callSignal, this.options.turnSignal, this.stop.signal]);
-    const call = this.run(name, args, signal).catch((error: unknown): HostToolResult => {
+    const call = this.run(name, args, signal, caller).catch((error: unknown): HostToolResult => {
       if (error instanceof ResearchToolError) {
         if (error.code === "write_unsettled") this.unsettled.push(`${name}: ${error.message}`);
         return refuse(formatResearchError(error));
@@ -200,10 +211,62 @@ export class TurnResearch {
     }
   }
 
+  /**
+   * Opens a page of a site the user linked. The scope is decided here, from the user's own messages, before Studio is
+   * asked; Studio then enforces the user's switch and that only public addresses are fetched.
+   */
+  private async readWebsite(
+    args: unknown,
+    signal: AbortSignal,
+    caller: AgentId,
+  ): Promise<HostToolResult> {
+    const { host, turnId, intent } = this.options;
+    const record = argsRecord(args);
+    const url = requiredText(record, "url", RESEARCH_LIMITS.urlChars);
+    const save = record.save === true;
+    if (record.save !== undefined && record.save !== null && typeof record.save !== "boolean")
+      throw invalid("save must be true or false");
+    const sites = linkedSites(this.options.userTexts());
+    if (!isLinkedSite(url, sites)) {
+      const linked =
+        sites.length > 0
+          ? `The user has linked: ${sites.join(", ")}.`
+          : "The user has not linked any website in this chat.";
+      return refuse(
+        `blocked_by_policy: ${url} is not a page of a website the user linked in this chat. ${linked} You may read only a site the user sent a link to (the same site, including www. and subdomains); ask the user for the link — do not guess, search for or try another address.`,
+      );
+    }
+    if (save && intent !== "edit") {
+      return refuse(
+        `This is a ${intent === "plan" ? "Plan" : "Ask"} turn: nothing in the project changes, so read_website cannot save files. Call it without save to read the style, and say that the files are saved when the user proceeds.`,
+      );
+    }
+    const request: ReadWebsiteRequest = {
+      url,
+      ...(save && {
+        save,
+        turnId,
+        agent: caller,
+        model: caller === "research" ? this.options.model() : null,
+      }),
+    };
+    try {
+      return formatWebsite(await host.website(request, signal));
+    } catch (error) {
+      if (error instanceof ResearchToolError && error.code === "blocked_by_policy") {
+        return refuse(
+          `blocked_by_policy: ${error.message} Reading linked websites is switched off in Settings → Asset Search → Websites; agents cannot change it. Tell the user, and continue without reading the site unless they enable it.`,
+        );
+      }
+      throw error;
+    }
+  }
+
   private async run(
     name: ResearchToolName,
     args: unknown,
     signal: AbortSignal,
+    caller: AgentId,
   ): Promise<HostToolResult> {
     const { host, turnId } = this.options;
     switch (name) {
@@ -255,6 +318,8 @@ export class TurnResearch {
       }
       case RESEARCH_TOOL_NAMES.sources:
         return { text: formatSources(await host.sources(signal)) };
+      case RESEARCH_TOOL_NAMES.website:
+        return this.readWebsite(args, signal, caller);
     }
   }
 }

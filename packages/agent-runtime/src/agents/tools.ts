@@ -67,6 +67,11 @@ export interface ToolAvailability {
    * import tools and the Director the read-only sources tool (whichever the chat's team and the turn allow).
    */
   research?: boolean;
+  /**
+   * The runtime has a research host: the Director, Motion and Research get `read_website` (a site the user linked) even
+   * when Research is off in the chat or the Asset Search policy could not be read.
+   */
+  websites?: boolean;
   /** A candidate the turn's searches returned, for the activity label of an import. */
   researchCandidate?: (id: string) => KnownCandidate | undefined;
   /** The display name of a trusted source in the user's policy, for the activity label of a search. */
@@ -135,15 +140,20 @@ export function buildHostTools(
   const story = availability.story
     ? buildStoryTools(agent, availability.enabled, turn, execute)
     : [];
-  const research = availability.research
-    ? buildResearchTools(agent, availability.enabled, turn, execute, {
-        ...(availability.researchCandidate && { candidate: availability.researchCandidate }),
-        ...(availability.researchSourceName && { sourceName: availability.researchSourceName }),
-        ...(availability.researchCandidates !== undefined && {
-          candidateLimit: availability.researchCandidates,
-        }),
-      })
-    : [];
+  const research =
+    availability.research || availability.websites
+      ? buildResearchTools(agent, availability.enabled, turn, execute, {
+          access: {
+            assets: availability.research === true,
+            websites: availability.websites === true,
+          },
+          ...(availability.researchCandidate && { candidate: availability.researchCandidate }),
+          ...(availability.researchSourceName && { sourceName: availability.researchSourceName }),
+          ...(availability.researchCandidates !== undefined && {
+            candidateLimit: availability.researchCandidates,
+          }),
+        })
+      : [];
   const qa = availability.qa ? buildQaTools(agent, execute) : [];
   const allTools =
     agent === "director"

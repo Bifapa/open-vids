@@ -8,6 +8,8 @@ import type {
   InspectUrlRequest,
   InspectUrlResult,
   ProjectSourcesView,
+  ReadWebsiteRequest,
+  ReadWebsiteResult,
   ResearchErrorCode,
   ResolveMissingRequest,
   ResolveMissingResult,
@@ -19,7 +21,7 @@ import type {
  *
  * The Studio server performs every search, page read and download, and it enforces the policy: a request never carries
  * a policy mode, and a request the policy does not allow is refused with `blocked_by_policy`. Reads and searches are
- * cancellable through their signal. An import or a resolution writes project files (the asset, its provenance record,
+ * cancellable through their signal. An import, a resolution or a saved website read writes project files (the asset, its provenance record,
  * the Story node), so the turn awaits its end before the checkpoint closes: aborting the signal of a write asks the
  * server to cancel it, but the host keeps waiting for the server's answer (the write may already be committing) and
  * only then settles. It settles without an answer only after a bounded wait, and then with `write_unsettled` when a
@@ -32,6 +34,12 @@ export interface ResearchHost {
   inspect(request: InspectUrlRequest, signal: AbortSignal): Promise<InspectUrlResult>;
   importAsset(request: ImportAssetRequest, signal: AbortSignal): Promise<ImportAssetResult>;
   resolve(request: ResolveMissingRequest, signal: AbortSignal): Promise<ResolveMissingResult>;
+  /**
+   * Reads a website's visual style (and screenshots). With `save` it also writes the screenshots, logo and fonts into
+   * `assets/web/<host>/` with provenance, so like an import it is awaited to its end before the checkpoint closes.
+   * The runtime decides which sites the user linked; the server enforces the user's switch and public-address rules.
+   */
+  website(request: ReadWebsiteRequest, signal: AbortSignal): Promise<ReadWebsiteResult>;
   /** The project's Sources/Licenses view. */
   sources(signal: AbortSignal): Promise<ProjectSourcesView>;
   /** What an export of the composition would ship: license warnings and credits. */

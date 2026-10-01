@@ -11,9 +11,12 @@ import type {
   InspectUrlResult,
   LicenseInfo,
   ProjectSourcesView,
+  ReadWebsiteRequest,
+  ReadWebsiteResult,
   ResolveMissingRequest,
   ResolveMissingResult,
   TrustedSource,
+  WebsiteStyle,
 } from "@hyperframes/agent-protocol";
 import { storyView } from "./story.js";
 import { ResearchToolError, type ResearchHost } from "../research/host.js";
@@ -49,8 +52,86 @@ export function researchPolicy(overrides: Partial<AssetSearchPolicy> = {}): Asse
       }),
     ],
     removedBuiltIns: [],
+    websites: { readLinkedPages: true },
     updatedAt: 1,
     ...overrides,
+  };
+}
+
+/** A website's extracted style as the server would answer it, for `url` (default https://example.com/). */
+export function sampleWebsiteStyle(url = "https://example.com/"): WebsiteStyle {
+  const host = new URL(url).hostname.replace(/^www\./, "");
+  return {
+    url,
+    finalUrl: url,
+    host,
+    title: "Example — build better",
+    description: "A fictional product site.",
+    themeColor: "#0b0b0f",
+    language: "en",
+    colors: [
+      { hex: "#0b0b0f", role: "background", count: 40 },
+      { hex: "#16161d", role: "surface", count: 12 },
+      { hex: "#f4f4f5", role: "text", count: 30 },
+      { hex: "#5e6ad2", role: "accent", count: 9 },
+    ],
+    fonts: [
+      {
+        family: "Inter",
+        weights: [400, 600],
+        source: "google",
+        url: null,
+        usedFor: ["heading", "body"],
+      },
+      {
+        family: "Brand Display",
+        weights: [700],
+        source: "self_hosted",
+        url: `https://${host}/fonts/brand.woff2`,
+        usedFor: ["heading"],
+      },
+    ],
+    textStyles: [
+      {
+        element: "h1",
+        sample: "Build better",
+        fontFamily: "Inter",
+        fontSizePx: 64,
+        fontWeight: 600,
+        lineHeightPx: 64,
+        letterSpacingPx: -1.5,
+        color: "#f4f4f5",
+      },
+    ],
+    radii: [{ px: 8, count: 14 }],
+    shadows: ["0 8px 24px rgba(0,0,0,0.4)"],
+    buttons: [
+      {
+        label: "Get started",
+        background: "#5e6ad2",
+        color: "#ffffff",
+        border: null,
+        radiusPx: 8,
+        fontSizePx: 14,
+        fontWeight: 600,
+        padding: "8px 16px",
+        shadow: null,
+      },
+    ],
+    tokens: [{ name: "--color-accent", value: "#5e6ad2" }],
+    motion: {
+      durationsMs: [150, 300],
+      easings: ["cubic-bezier(0.16, 1, 0.3, 1)"],
+      keyframes: ["fade-up"],
+      properties: ["opacity", "transform"],
+    },
+    logos: [{ source: "inline_svg", url, alt: "Example", width: 96, height: 24, captured: true }],
+    favicon: `https://${host}/favicon.ico`,
+    ogImage: null,
+    headings: ["Build better products"],
+    navLabels: ["Product", "Pricing"],
+    notes: [],
+    capturedAt: 1,
   };
 }
 
@@ -176,6 +257,8 @@ export class FakeResearchHost implements ResearchHost {
   /** When set, `search` answers with this result as is. */
   searchResult: AssetSearchResult | null = null;
   inspectResult: InspectUrlResult | null = null;
+  /** What `website` answers; default: {@link sampleWebsiteStyle} of the requested URL with two screenshots. */
+  websiteResult: ReadWebsiteResult | null = null;
   /** What `importAsset` answers; default: a fresh import of `assets/research/ocean-waves.mp4`. */
   importResult: ImportAssetResult | null = null;
   sourcesResult: ProjectSourcesView = sampleSourcesView();
@@ -194,6 +277,7 @@ export class FakeResearchHost implements ResearchHost {
   policyCalls = 0;
   readonly searchRequests: AssetSearchRequest[] = [];
   readonly inspectRequests: InspectUrlRequest[] = [];
+  readonly websiteRequests: ReadWebsiteRequest[] = [];
   readonly importRequests: ImportAssetRequest[] = [];
   readonly importFinished: ImportAssetRequest[] = [];
   /** The signal each import was given, so tests can see when the turn stopped waiting for it. */
@@ -241,6 +325,39 @@ export class FakeResearchHost implements ResearchHost {
         },
         candidates: this.searchCandidates,
         notes: [],
+      },
+    );
+  }
+
+  async website(request: ReadWebsiteRequest, signal: AbortSignal): Promise<ReadWebsiteResult> {
+    if (signal.aborted) throw aborted();
+    this.websiteRequests.push(request);
+    this.throwNextError();
+    const site = sampleWebsiteStyle(request.url);
+    const dir = `assets/web/${site.host}`;
+    return structuredClone(
+      this.websiteResult ?? {
+        site,
+        screenshots: [
+          { name: "viewport.jpg", mimeType: "image/jpeg", data: "AAAA", width: 1440, height: 900 },
+          { name: "fullpage.jpg", mimeType: "image/jpeg", data: "BBBB", width: 1440, height: 3000 },
+        ],
+        ...(request.save && {
+          saved: {
+            dir,
+            files: [`${dir}/viewport.jpg`, `${dir}/fullpage.jpg`, `${dir}/logo.svg`],
+            logo: `${dir}/logo.svg`,
+            screenshots: [`${dir}/viewport.jpg`, `${dir}/fullpage.jpg`],
+            fonts: [
+              {
+                family: "Brand Display",
+                weight: 700,
+                style: "normal",
+                path: `${dir}/brand-display-700.woff2`,
+              },
+            ],
+          },
+        }),
       },
     );
   }

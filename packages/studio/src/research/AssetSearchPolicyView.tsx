@@ -177,6 +177,36 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
   );
 }
 
+/** Whether agents may open the pages the user links in chat, as one switch row on the prototype's box. */
+function WebsitesBox({ state, enabled }: { state: AssetSearchPolicyState; enabled: boolean }) {
+  return (
+    <div className={BOX} data-websites-group>
+      <div className="grid grid-cols-[28px_minmax(0,1fr)] items-start gap-2.5 px-3 py-2.5">
+        <Toggle
+          className="mt-0.5"
+          label="Open links you send in chat"
+          checked={enabled}
+          disabled={state.pending !== null}
+          onCommit={(next) =>
+            void state.change("websites", (client) => client.setReadLinkedPages(next))
+          }
+        />
+        <div className="grid min-w-0 gap-px">
+          <span
+            className={cn("text-base leading-4 font-medium", enabled ? "text-fg" : "text-fg-3")}
+          >
+            Open links you send in chat
+          </span>
+          <span className="text-xs leading-[15px] text-fg-3 [text-wrap:pretty]">
+            Agents can read the pages you link — colors, fonts, logo, screenshots — to match a
+            site's style. Only links from your own messages, plus other pages on the same site.
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The global Asset Search policy: where the Research agent may search and download, for every project. The Studio
  * server enforces it; this is only where the user sets it. Mounted by the Sources panel and the Settings window.
@@ -288,6 +318,10 @@ export function AssetSearchPolicyView({ className }: { className?: string } = {}
                 All sources are off, so asset search will find nothing.
               </p>
             )}
+          </section>
+          <section className="flex flex-col gap-1.5">
+            <SectionHeading title="Websites" />
+            <WebsitesBox state={state} enabled={policy.websites.readLinkedPages} />
           </section>
         </>
       )}

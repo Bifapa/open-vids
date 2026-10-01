@@ -14,6 +14,7 @@ export const RESEARCH_TOOL_NAMES = {
   import: "import_asset",
   resolve: "resolve_missing_asset",
   sources: "read_sources",
+  website: "read_website",
 } as const;
 
 export type ResearchToolName = (typeof RESEARCH_TOOL_NAMES)[keyof typeof RESEARCH_TOOL_NAMES];
@@ -24,23 +25,45 @@ export function isResearchToolName(name: string): name is ResearchToolName {
 
 type Executor = (name: string, args: unknown, signal: AbortSignal) => Promise<HostToolResult>;
 
+/** Which groups of research tools a turn offers. */
+export interface ResearchAccess {
+  assets: boolean;
+  websites: boolean;
+}
+
+/** Who may read a website the user linked: the Director, and the specialists that style or find material. */
+const WEBSITE_READERS: readonly AgentId[] = ["director", "motion", "research"];
+
 /**
- * Which research tools an agent gets. Research is the only specialist that can look outside the project: it gets the
- * search, page-reading, import and resolution tools. The Director can read the project's sources and licenses (to
- * answer and to brief Research) but never searches or imports itself; no other specialist and not Jev get any. Without
- * Research enabled in the chat nobody gets a research tool, and a Story build or rebuild turn offers none.
+ * Which research tools an agent gets. Research is the only specialist that can look outside the project for material:
+ * it gets the search, page-reading, import and resolution tools. The Director can read the project's sources and
+ * licenses (to answer and to brief Research) but never searches or imports itself; no other specialist and not Jev get
+ * any. Without Research enabled in the chat nobody gets those tools, and a Story build or rebuild turn offers none.
+ *
+ * `read_website` (reading one site the user linked, for its style) is separate: the Director, Motion and Research get
+ * it whether or not Research is enabled, because it does not search or import. `access` says which groups the turn
+ * offers: the asset tools need the user's Asset Search policy to have been read, the website tool a research host.
+ * A specialist only gets it when it is in the chat's team.
  */
 export function researchToolsFor(
   agent: AgentId,
   enabled: readonly SpecialistId[],
   turn: StoryTurnMode,
+  access: ResearchAccess = { assets: true, websites: true },
 ): ResearchToolName[] {
-  if (!enabled.includes("research")) return [];
   if (turn.action === "build" || turn.action === "rebuild") return [];
-  const { search, inspect, import: importAsset, resolve, sources } = RESEARCH_TOOL_NAMES;
-  if (agent === "research") return [search, inspect, importAsset, resolve, sources];
-  if (agent === "director") return [sources];
-  return [];
+  const { search, inspect, import: importAsset, resolve, sources, website } = RESEARCH_TOOL_NAMES;
+  const tools: ResearchToolName[] = [];
+  if (access.assets && enabled.includes("research")) {
+    if (agent === "research") tools.push(search, inspect, importAsset, resolve, sources);
+    else if (agent === "director") tools.push(sources);
+  }
+  const reads =
+    access.websites &&
+    WEBSITE_READERS.includes(agent) &&
+    (agent === "director" || enabled.some((specialist) => specialist === agent));
+  if (reads) tools.push(website);
+  return tools;
 }
 
 // ── Descriptions ─────────────────────────────────────────────────────────────
@@ -52,6 +75,7 @@ const DESCRIPTIONS: Record<ResearchToolName, string> = {
   inspect_url: `Read one public web page or media URL and list the media it offers as importable candidates, with the page's own author and license information. Use it on a page a search pointed to, or a URL the user gave. Stream manifests (HLS/DASH) and protected media are not importable. ${POLICY_NOTE}`,
   import_asset: `Download a candidate (by the id from search_assets/inspect_url) — or a direct media URL — into the project under assets/research/ and record where it came from: URL, source, author and license are stored by the server from the source's own data, not from you. Converts the file for the editor when needed, and detects duplicates (an asset already in the project is reused, not downloaded again). Pass exactly one of "candidate" or "url". Pass "resolveMissing" (a Missing Asset node id from read_story) to resolve that node with the imported asset in the same step. Import only material that will actually be used. The import is part of this turn's checkpoint, so the user can revert it. ${POLICY_NOTE}`,
   resolve_missing_asset: `Resolve a Missing Asset node of the Story Graph with a media file that is already in the project (for example one imported earlier). The node becomes a video, picture or music node for that file and keeps its attachments. Refused for a locked node.`,
+  read_website: `Open one website the user linked in this chat and extract its visual identity: palette with roles (background, surface, text, accent), fonts and how to load them, type scale, corner radii, shadows, button styles, design tokens, motion character (durations, easing), logo, headings and navigation labels — plus a 1440×900 and a full-page screenshot you can look at. Use it when the user links a site and asks for its style, brand or look. Only sites the user linked are allowed (the same site, including www. and subdomains, and any of its pages); for any other address the call is refused — ask the user for the link, never guess one. With save: true the screenshots, the logo and the self-hosted fonts the page actually uses are saved under assets/web/<host>/ and recorded as website references with an unknown license; pass it when the result will be used in the video (not in a Plan or Ask turn). The user can switch website reading off in Settings → Asset Search → Websites; then the call fails and you cannot change that.`,
   read_sources: `Read the project's Sources and Licenses: every imported asset with its source, author, license (status and confidence), where the file is used and what needs the user's attention, plus the credit lines the project owes.`,
 };
 
@@ -127,6 +151,19 @@ const PARAMETERS: Record<ResearchToolName, Record<string, unknown>> = {
     additionalProperties: false,
   },
   read_sources: { type: "object", properties: {}, additionalProperties: false },
+  read_website: {
+    type: "object",
+    properties: {
+      url: str("The http(s) URL of a page of a site the user linked.", RESEARCH_LIMITS.urlChars),
+      save: {
+        type: "boolean",
+        description:
+          "Save the screenshots, logo and self-hosted fonts into assets/web/<host>/ (default false: read only).",
+      },
+    },
+    required: ["url"],
+    additionalProperties: false,
+  },
 };
 
 // ── Activity rows ────────────────────────────────────────────────────────────
@@ -144,6 +181,8 @@ export interface ResearchToolContext {
   sourceName?: (id: string) => string | undefined;
   /** The turn's budget of candidates per search: the default `limit` of search_assets and its maximum. */
   candidateLimit?: number;
+  /** Which groups are offered (default both). */
+  access?: ResearchAccess;
 }
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
@@ -215,6 +254,10 @@ function activity(
       return { category: "edit", label: "Resolving a missing asset" };
     case "read_sources":
       return { category: "inspect", label: "Reading project sources" };
+    case "read_website": {
+      const host = hostOf(text(record.url));
+      return { category: "inspect", label: host ? `Reading ${host}` : "Reading a website" };
+    }
   }
 }
 
@@ -226,7 +269,7 @@ export function buildResearchTools(
   execute: Executor,
   context: ResearchToolContext = {},
 ): HostTool[] {
-  return researchToolsFor(agent, enabled, turn).map((name) => ({
+  return researchToolsFor(agent, enabled, turn, context.access).map((name) => ({
     name,
     description: DESCRIPTIONS[name],
     parameters: PARAMETERS[name],

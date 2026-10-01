@@ -12,6 +12,7 @@ import {
   parseResolveRequest,
   parseSearchRequest,
   parseUpdateSource,
+  parseWebsiteRequest,
 } from "../research/requests.js";
 import { ResearchService, type ResearchServiceOptions } from "../research/service.js";
 import type { StoryService } from "../story/service.js";
@@ -44,7 +45,22 @@ export function registerResearchRoutes(
   story: StoryService,
   options: Omit<ResearchServiceOptions, "story"> = {},
 ): ResearchService {
-  const service = new ResearchService({ ...options, story });
+  const service = new ResearchService({
+    ...options,
+    story,
+    // The adapter is completed after the routes are registered, so its capability is looked up per request.
+    inspectWebsite:
+      options.inspectWebsite ??
+      (async (opts) =>
+        adapter.inspectWebsite
+          ? adapter.inspectWebsite(opts)
+          : {
+              error: {
+                code: "unsupported",
+                message: "This Studio cannot render web pages (no browser capability)",
+              },
+            }),
+  });
 
   const answer = async (
     c: Context,
@@ -80,7 +96,7 @@ export function registerResearchRoutes(
   api.get("/research/policy", (c) => answer(c, () => service.policy()));
 
   api.put("/research/policy", tooLarge, async (c) =>
-    answer(c, async () => service.setMode(parsePolicyUpdate(await body(c)).mode)),
+    answer(c, async () => service.updatePolicy(parsePolicyUpdate(await body(c)))),
   );
 
   api.post("/research/sources/restore", (c) => answer(c, () => service.restoreSources()));
@@ -130,6 +146,14 @@ export function registerResearchRoutes(
     tooLarge,
     inProject(async (project, c) =>
       service.resolve(project, parseResolveRequest(await body(c)), c.req.raw.signal),
+    ),
+  );
+
+  api.post(
+    "/projects/:id/research/website",
+    tooLarge,
+    inProject(async (project, c) =>
+      service.website(project, parseWebsiteRequest(await body(c)), c.req.raw.signal),
     ),
   );
 

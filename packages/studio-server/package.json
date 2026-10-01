@@ -61,6 +61,12 @@
       "import": "./src/helpers/proxyTranscoder.ts",
       "types": "./src/helpers/proxyTranscoder.ts"
     },
+    "./public-address": {
+      "bun": "./src/research/sources/address.ts",
+      "node": "./dist/research/sources/address.js",
+      "import": "./src/research/sources/address.ts",
+      "types": "./src/research/sources/address.ts"
+    },
     "./media-proxy-preview": {
       "bun": "./src/helpers/mediaProxyPreview.ts",
       "node": "./dist/helpers/mediaProxyPreview.js",

@@ -11,6 +11,7 @@ import {
   type InspectUrlRequest,
   type ResearchMediaKind,
   type ResolveMissingRequest,
+  type ReadWebsiteRequest,
   type UpdateAssetSearchPolicyRequest,
   type UpdateTrustedSourceRequest,
 } from "@hyperframes/agent-protocol";
@@ -50,14 +51,34 @@ function kind(value: unknown, field: string): ResearchMediaKind {
 }
 
 export function parsePolicyUpdate(raw: unknown): UpdateAssetSearchPolicyRequest {
-  const value = body(raw, ["mode"]);
-  const mode: AssetSearchMode | undefined = ASSET_SEARCH_MODES.find(
-    (entry) => entry === value.mode,
-  );
-  if (mode === undefined) {
-    throw new ResearchFailure("invalid_request", `mode must be ${ASSET_SEARCH_MODES.join(" or ")}`);
+  const value = body(raw, ["mode", "websites"]);
+  if (value.mode === undefined && value.websites === undefined) {
+    throw new ResearchFailure("invalid_request", "Give mode or websites");
   }
-  return { mode };
+  const request: UpdateAssetSearchPolicyRequest = {};
+  if (value.mode !== undefined) {
+    const mode: AssetSearchMode | undefined = ASSET_SEARCH_MODES.find(
+      (entry) => entry === value.mode,
+    );
+    if (mode === undefined) {
+      throw new ResearchFailure(
+        "invalid_request",
+        `mode must be ${ASSET_SEARCH_MODES.join(" or ")}`,
+      );
+    }
+    request.mode = mode;
+  }
+  if (value.websites !== undefined) {
+    const websites = body(value.websites, ["readLinkedPages"]);
+    if (websites.readLinkedPages === undefined) {
+      throw new ResearchFailure("invalid_request", "websites needs readLinkedPages");
+    }
+    if (typeof websites.readLinkedPages !== "boolean") {
+      throw new ResearchFailure("invalid_request", "readLinkedPages must be true or false");
+    }
+    request.websites = { readLinkedPages: websites.readLinkedPages };
+  }
+  return request;
 }
 
 function stringList(value: unknown, field: string): string[] {
@@ -182,6 +203,25 @@ export function parseResolveRequest(raw: unknown): ResolveMissingRequest {
     ...(value.turnId !== undefined && { turnId: text(value.turnId, "turnId", ID_CHARS * 2) }),
     ...(value.requestId !== undefined && {
       requestId: text(value.requestId, "requestId", ID_CHARS),
+    }),
+  };
+}
+
+export function parseWebsiteRequest(raw: unknown): ReadWebsiteRequest {
+  const value = body(raw, ["url", "save", "requestId", "turnId", "agent", "model"]);
+  if (value.save !== undefined && typeof value.save !== "boolean") {
+    throw new ResearchFailure("invalid_request", "save must be true or false");
+  }
+  return {
+    url: text(value.url, "url", RESEARCH_LIMITS.urlChars),
+    ...(value.save !== undefined && { save: value.save }),
+    ...(value.requestId !== undefined && {
+      requestId: text(value.requestId, "requestId", ID_CHARS),
+    }),
+    ...(value.turnId !== undefined && { turnId: text(value.turnId, "turnId", ID_CHARS * 2) }),
+    ...(value.agent !== undefined && { agent: agentOf(value.agent) }),
+    ...(value.model !== undefined && {
+      model: value.model === null ? null : text(value.model, "model", 200),
     }),
   };
 }

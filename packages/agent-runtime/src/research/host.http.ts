@@ -7,6 +7,7 @@ import {
   isImportAssetResult,
   isInspectUrlResult,
   isProjectSourcesView,
+  isReadWebsiteResult,
   isRecord,
   isResearchError,
   isResolveMissingResult,
@@ -20,6 +21,8 @@ import {
   type InspectUrlRequest,
   type InspectUrlResult,
   type ProjectSourcesView,
+  type ReadWebsiteRequest,
+  type ReadWebsiteResult,
   type ResolveMissingRequest,
   type ResolveMissingResult,
 } from "@hyperframes/agent-protocol";
@@ -36,6 +39,8 @@ export const RESEARCH_TIMEOUTS_MS = {
   inspect: 90_000,
   resolve: 60_000,
   importAsset: 15 * 60_000,
+  /** Chrome renders the page (30 s budget) and a save downloads logo and fonts. */
+  website: 120_000,
 } as const;
 
 /**
@@ -143,6 +148,19 @@ export class HttpResearchHost implements ResearchHost {
     return payload;
   }
 
+  async website(request: ReadWebsiteRequest, signal: AbortSignal): Promise<ReadWebsiteResult> {
+    const options = {
+      signal,
+      timeoutMs: this.timeoutsMs.website,
+      onTimeout: "The website did not finish loading in time.",
+    };
+    const payload = request.save
+      ? await this.write("website", request, options)
+      : await this.request("POST", `${this.project}/website`, { ...options, body: request });
+    if (!isReadWebsiteResult(payload)) throw invalidResponse("website result");
+    return payload;
+  }
+
   async sources(signal: AbortSignal): Promise<ProjectSourcesView> {
     const payload = await this.request("GET", `${this.project}/sources`, {
       signal,
@@ -177,7 +195,7 @@ export class HttpResearchHost implements ResearchHost {
   }
 
   /**
-   * An import or a resolution: it writes project files, so stopping it must not end with a write landing after the
+   * An import, a resolution or a saved website read: it writes project files, so stopping it must not end with a write landing after the
    * turn's checkpoint closed. The call carries a fresh request id; when the caller's signal aborts (the turn was
    * stopped) or the call times out, the host sends an explicit cancel and keeps waiting for the original request's
    * answer instead of dropping the connection:
@@ -191,8 +209,8 @@ export class HttpResearchHost implements ResearchHost {
    *   write, and a stuck Studio must not hold the turn (and the user's Stop) forever.
    */
   private async write(
-    path: "import" | "resolve",
-    request: ImportAssetRequest | ResolveMissingRequest,
+    path: "import" | "resolve" | "website",
+    request: ImportAssetRequest | ResolveMissingRequest | ReadWebsiteRequest,
     { signal, timeoutMs, onTimeout }: Omit<RequestOptions, "body">,
   ): Promise<unknown> {
     if (signal.aborted) throw aborted();
@@ -221,7 +239,7 @@ export class HttpResearchHost implements ResearchHost {
       throw new ResearchToolError(
         "write_unsettled",
         `The ${path} was cancelled but Studio did not say whether it wrote anything` +
-          ` (cancel answered ${state ?? "nothing"}); the asset may still appear in the project.`,
+          ` (cancel answered ${state ?? "nothing"}); the file may still appear in the project.`,
       );
     } finally {
       signal.removeEventListener("abort", onStop);

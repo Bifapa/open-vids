@@ -688,6 +688,8 @@ export class TurnRunner {
             enabled: setup.enabled,
             turn: { mode: run.mode, action: run.storyAction },
             storyOptions: run.storyOptions,
+            intent: run.intent,
+            userTexts: () => this.userTexts(run.chatId),
             model: () => this.researchModel(run, setup),
           })
         : null;
@@ -707,6 +709,7 @@ export class TurnRunner {
         analysis: run.analysis !== null,
         story: run.story !== null,
         research: run.research !== null && setup.research?.status === "ready",
+        websites: run.research !== null,
         researchCandidate: (id) => this.active?.research?.candidate(id),
         researchSourceName: (id) =>
           setup.research?.status === "ready"
@@ -932,6 +935,16 @@ export class TurnRunner {
   }
 
   /** The model the Research run uses now (`provider/modelId`), recorded in the provenance of what it imports. */
+  /** Everything the user wrote in the chat (first prompts and steering of every turn): the links they sent. */
+  private userTexts(chatId: string): string[] {
+    const messages = this.chats.get(chatId)?.messages ?? [];
+    return messages.flatMap((message) =>
+      message.role === "user"
+        ? message.parts.flatMap((part) => (part.type === "text" ? [part.text] : []))
+        : [],
+    );
+  }
+
   private researchModel(run: ActiveRun, setup: TurnAgentSetup): string | null {
     const running = run.orchestrator?.modelOf("research");
     if (running) return running;
@@ -1090,7 +1103,7 @@ export class TurnRunner {
           type: "assistant.text.delta",
           messageId: run.assistantMessage.id,
           partId: this.ids(),
-          delta: `\n\nNote: Studio did not confirm whether ${unsettled.length === 1 ? "an asset import" : `${unsettled.length} asset imports`} stopped with this turn wrote anything (${unsettled.join(", ")}). A file that still appears in assets/research is not part of this turn's checkpoint; check the Sources panel.`,
+          delta: `\n\nNote: Studio did not confirm whether ${unsettled.length === 1 ? "an asset import or website save" : `${unsettled.length} asset imports or website saves`} stopped with this turn wrote anything (${unsettled.join(", ")}). A file that still appears in assets/research or assets/web is not part of this turn's checkpoint; check the Sources panel.`,
         }),
       );
     }

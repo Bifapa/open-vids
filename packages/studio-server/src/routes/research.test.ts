@@ -1,12 +1,19 @@
 // @vitest-environment node
 import { Hono } from "hono";
-import { isAssetSearchPolicy, isAssetSearchResult } from "@hyperframes/agent-protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  isAssetSearchPolicy,
+  isAssetSearchResult,
+  isReadWebsiteResult,
+} from "@hyperframes/agent-protocol";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { WebsiteInspection } from "../types.js";
+import { UrlGuard } from "../research/sources/urlPolicy.js";
 import {
   createResearchFixture,
   fixtureText,
   json,
   media,
+  resolver,
   type ResearchFixture,
 } from "../research/testSupport.js";
 import { registerResearchRoutes } from "./research.js";
@@ -26,6 +33,7 @@ function app(options: Parameters<typeof createResearchFixture>[0] = {}) {
     fetcher: f.fetcher,
     webSearch: f.web,
     toolkit: f.toolkit,
+    websiteGuard: new UrlGuard(resolver(options.dns)),
   });
   const call = async (method: string, path: string, body?: unknown) => {
     const response = await api.request(path, {
@@ -175,5 +183,108 @@ describe("the research routes", () => {
     expect(await call("POST", "/projects/ghost/research/requests/req-9/cancel")).toMatchObject({
       status: 404,
     });
+  });
+});
+
+describe("the website reader routes", () => {
+  const inspection: WebsiteInspection = {
+    site: {
+      url: "https://example.com/",
+      finalUrl: "https://example.com/",
+      host: "example.com",
+      title: "Example",
+      description: "",
+      themeColor: null,
+      language: null,
+      colors: [],
+      fonts: [],
+      textStyles: [],
+      radii: [],
+      shadows: [],
+      buttons: [],
+      tokens: [],
+      motion: { durationsMs: [], easings: [], keyframes: [], properties: [] },
+      logos: [],
+      favicon: null,
+      ogImage: null,
+      headings: [],
+      navLabels: [],
+      notes: [],
+      capturedAt: 1,
+    },
+    screenshots: [
+      {
+        name: "viewport.jpg",
+        mimeType: "image/jpeg",
+        data: new TextEncoder().encode("jpeg"),
+        width: 1440,
+        height: 900,
+      },
+    ],
+    logo: null,
+    fonts: [],
+  };
+
+  it("serve and change the Websites switch through the policy routes", async () => {
+    const { call } = app();
+    expect((await call("GET", "/research/policy")).body).toMatchObject({
+      websites: { readLinkedPages: true },
+    });
+    expect(
+      (await call("PUT", "/research/policy", { websites: { readLinkedPages: false } })).body,
+    ).toMatchObject({ mode: "trusted", websites: { readLinkedPages: false } });
+    expect((await call("PUT", "/research/policy", { mode: "any" })).body).toMatchObject({
+      mode: "any",
+      websites: { readLinkedPages: false },
+    });
+    for (const bad of [{}, { websites: {} }, { websites: { readLinkedPages: "yes" } }]) {
+      expect(await call("PUT", "/research/policy", bad)).toMatchObject({
+        status: 400,
+        body: { error: { code: "invalid_request" } },
+      });
+    }
+  });
+
+  it("read a page through the adapter's browser, refuse it with 403 when the switch is off", async () => {
+    const { f, call } = app();
+    f.story.made.adapter.inspectWebsite = async () => inspection;
+    const read = await call("POST", "/projects/demo/research/website", {
+      url: "https://example.com/",
+    });
+    expect(read.status).toBe(200);
+    if (!isReadWebsiteResult(read.body)) throw new Error("not a website result");
+    expect(read.body.screenshots[0]?.data).toBe(Buffer.from("jpeg").toString("base64"));
+
+    await call("PUT", "/research/policy", { websites: { readLinkedPages: false } });
+    expect(
+      await call("POST", "/projects/demo/research/website", { url: "https://example.com/" }),
+    ).toMatchObject({ status: 403, body: { error: { code: "blocked_by_policy" } } });
+  });
+
+  it("answer bad requests and private addresses without opening a page, and an unknown project with 404", async () => {
+    const { f, call } = app();
+    const opened = vi.fn(async () => inspection);
+    f.story.made.adapter.inspectWebsite = opened;
+    const post = (body: unknown) => call("POST", "/projects/demo/research/website", body);
+    expect(await post({})).toMatchObject({ status: 400 });
+    expect(await post({ url: "https://example.com/", save: "yes" })).toMatchObject({ status: 400 });
+    expect(await post({ url: "https://example.com/", extra: 1 })).toMatchObject({ status: 400 });
+    expect(await post({ url: "ftp://example.com/" })).toMatchObject({ status: 400 });
+    expect(await post({ url: "http://169.254.169.254/" })).toMatchObject({
+      status: 403,
+      body: { error: { code: "blocked_by_policy" } },
+    });
+    expect(opened).not.toHaveBeenCalled();
+    expect(
+      (await call("POST", "/projects/ghost/research/website", { url: "https://example.com/" }))
+        .status,
+    ).toBe(404);
+  });
+
+  it("are unsupported without a browser capability", async () => {
+    const { call } = app();
+    expect(
+      await call("POST", "/projects/demo/research/website", { url: "https://example.com/" }),
+    ).toMatchObject({ status: 415, body: { error: { code: "unsupported" } } });
   });
 });

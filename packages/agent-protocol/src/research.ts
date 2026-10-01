@@ -62,18 +62,28 @@ export interface TrustedSource {
   homepage: string | null;
 }
 
+/** The Websites group of the policy: whether agents may read pages the user links in chat (see `website.ts`). */
+export interface WebsitePolicy {
+  /** Default `true`. Off: the website reader refuses every request. */
+  readLinkedPages: boolean;
+}
+
+export const DEFAULT_WEBSITE_POLICY: Readonly<WebsitePolicy> = { readLinkedPages: true };
+
 export interface AssetSearchPolicy {
   mode: AssetSearchMode;
   /** Built-in sources (minus the ones the user removed) and the user's own, in display order. */
   sources: TrustedSource[];
   /** Built-in source ids the user removed; they do not come back on an update (only by "Restore built-in sources"). */
   removedBuiltIns: string[];
+  websites: WebsitePolicy;
   updatedAt: number;
 }
 
-/** `PUT /api/research/policy`. */
+/** `PUT /api/research/policy` — any of the fields, at least one. */
 export interface UpdateAssetSearchPolicyRequest {
-  mode: AssetSearchMode;
+  mode?: AssetSearchMode;
+  websites?: Partial<WebsitePolicy>;
 }
 
 /** `POST /api/research/sources` — a user-defined trusted website. */
@@ -432,6 +442,10 @@ export interface CancelResearchRequestResult {
 
 // ── Provenance ───────────────────────────────────────────────────────────────
 
+/** What a provenance record can describe: researched media, plus fonts saved from a website reference. */
+export const PROVENANCE_MEDIA_KINDS = [...RESEARCH_MEDIA_KINDS, "font"] as const;
+export type ProvenanceMediaKind = (typeof PROVENANCE_MEDIA_KINDS)[number];
+
 export const PROVENANCE_PATH = ".hyperframes/research/provenance.json";
 export const PROVENANCE_SCHEMA = "openvids.provenance/1";
 /** Where imported assets are written (project-relative). */
@@ -442,7 +456,7 @@ export interface AssetProvenance {
   id: string;
   /** Project-relative path of the imported file. */
   asset: string;
-  mediaKind: ResearchMediaKind;
+  mediaKind: ProvenanceMediaKind;
   title: string;
   /** The media URL the bytes came from (as requested; before redirects). */
   originalUrl: string;
@@ -570,7 +584,9 @@ export function isAssetSearchPolicy(value: unknown): value is AssetSearchPolicy 
   return (
     isRecord(value) &&
     ASSET_SEARCH_MODES.some((mode) => mode === value.mode) &&
-    Array.isArray(value.sources)
+    Array.isArray(value.sources) &&
+    isRecord(value.websites) &&
+    typeof value.websites.readLinkedPages === "boolean"
   );
 }
 
