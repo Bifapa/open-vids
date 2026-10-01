@@ -271,7 +271,7 @@
                 : "onboarding.system.runIt",
             {},
             {
-              link: (inner) =>
+              action: (inner) =>
                 `<button type="button" class="link" data-act="ob-open-brew" data-fk="ob-open-brew">${inner}</button>`,
             },
           )}</p>`;

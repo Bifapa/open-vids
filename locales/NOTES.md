@@ -206,7 +206,7 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `onboarding.system.missing` — Status of a required tool that was not found.
 - `onboarding.system.brewRuns` — Keep the <code> tags around {command}.
 - `onboarding.system.runIt` — “it” is the command shown above the sentence; “Check again” is the button onboarding.system.checkAgain.
-- `onboarding.system.runItNoBrew` — Keep the <link> tags (a button that opens the Homebrew site).
+- `onboarding.system.runItNoBrew` — Keep the <action> tags (a button that opens the Homebrew site).
 - `onboarding.project.location.hint` — “Settings → General” names the Settings window and its section settings.section.general.
 - `onboarding.project.review` — Link next to a ready setup item (verb): go back to that step.
 - `onboarding.project.setUp` — Link next to a setup item that is not ready (verb): go to that step.
