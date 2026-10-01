@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Tab, TabPanel, Tabs, TabsList } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { AssetSearchPolicyView } from "./AssetSearchPolicyView";
 import { ProjectSources } from "./ProjectSources";
 import { useResearchServices } from "./researchContext";
@@ -11,6 +12,7 @@ type SourcesTab = "project" | "policy";
  * global Asset Search policy that decides where the Research agent may look.
  */
 export function SourcesPanel() {
+  const { t } = useTranslation();
   const { store } = useResearchServices();
   const [tab, setTab] = useState<SourcesTab>("project");
   // Opening the panel shows the records as they are now.
@@ -25,9 +27,9 @@ export function SourcesPanel() {
       data-studio-sources=""
     >
       <div className="flex h-head shrink-0 items-center border-b border-border-subtle px-2">
-        <TabsList aria-label="Sources and licenses">
-          <Tab value="project">Project Sources</Tab>
-          <Tab value="policy">Asset Search</Tab>
+        <TabsList aria-label={t("research.panel.label")}>
+          <Tab value="project">{t("research.tab.project")}</Tab>
+          <Tab value="policy">{t("research.tab.policy")}</Tab>
         </TabsList>
       </div>
       <TabPanel

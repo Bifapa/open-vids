@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { ActionResult } from "../agent/agentSettingsSlice";
+import { t } from "../i18n";
 import type { AgentState, AgentStore } from "../agent/agentStore";
 import type { StoryStore } from "./storyStore";
 
@@ -19,9 +20,9 @@ export interface StoryAgent {
 
 /** Why the agent cannot take a story action now, or null when it can. */
 export function agentBlocker(agent: StoryAgent): string | null {
-  if (!agent.available) return "The agent is unavailable";
-  if (agent.busy) return "The agent is working";
-  if (agent.pending) return "Starting…";
+  if (!agent.available) return t("story.agent.unavailable");
+  if (agent.busy) return t("story.agent.working");
+  if (agent.pending) return t("story.agent.starting");
   return null;
 }
 
@@ -30,7 +31,7 @@ export function researchBlocker(agent: StoryAgent): string | null {
   const busy = agentBlocker(agent);
   if (busy) return busy;
   if (agent.researchEnabled === false) {
-    return "Research is turned off in this chat: turn it on in the chat's Agents menu";
+    return t("story.agent.researchOff");
   }
   return null;
 }
@@ -57,14 +58,14 @@ export function useStoryAgent(agentStore: AgentStore | null): StoryAgent {
     runStoryAction: async (action, options) =>
       agentStore
         ? agentStore.getState().runStoryAction(action, options)
-        : { ok: false, message: "The agent is not ready yet." },
+        : { ok: false, message: t("story.agent.notReady") },
     planWithAi: async () => {
-      if (!agentStore) return { ok: false, message: "The agent is not ready yet." };
+      if (!agentStore) return { ok: false, message: t("story.agent.notReady") };
       if (!agentStore.getState().chatId) await agentStore.getState().newChat();
       if (!agentStore.getState().chatId) {
         return {
           ok: false,
-          message: agentStore.getState().notice?.message ?? "Couldn't open a chat.",
+          message: agentStore.getState().notice?.message ?? t("story.agent.chatFailed"),
         };
       }
       return { ok: true };

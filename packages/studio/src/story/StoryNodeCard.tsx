@@ -6,12 +6,13 @@ import { cn } from "../components/ui";
 import { projectFileUrl, storyFrameUrl } from "./storyClient";
 import { HANDLES, type StoryFlowNode } from "./storyFlow";
 import { fileName, formatDuration } from "./storyFormat";
+import { Trans, t as translate, useTranslation } from "../i18n";
 import {
-  FIELD_LABELS,
-  MISSING_KIND_LABELS,
-  NARRATIVE_ROLE_LABELS,
+  MISSING_KIND_KEYS,
+  NARRATIVE_ROLE_KEYS,
   STORY_KIND_STYLES,
-  materialRole,
+  fieldLabel,
+  materialRoleKey,
 } from "./storyKinds";
 import { SyncBadges } from "./SyncBadges";
 import {
@@ -64,7 +65,8 @@ export function Thumb({ src, node }: { src: string | null; node: StoryNode }) {
 
 /** Lock and "edited by you" marks, shared by both card kinds. Neutral ink: the accent is selection only. */
 function Marks({ node, lock = true }: { node: StoryNode; lock?: boolean }) {
-  const edited = node.userEdited.map((field) => FIELD_LABELS[field] ?? field);
+  const { t } = useTranslation();
+  const edited = node.userEdited.map(fieldLabel);
   const byYou = node.createdBy === "user" || edited.length > 0;
   if (!byYou && !(lock && node.locked)) return null;
   return (
@@ -72,25 +74,30 @@ function Marks({ node, lock = true }: { node: StoryNode; lock?: boolean }) {
       {byYou && (
         <span
           role="img"
-          title={edited.length > 0 ? `Edited by you: ${edited.join(", ")}` : "Added by you"}
-          aria-label={edited.length > 0 ? "Edited by you" : "Added by you"}
+          title={
+            edited.length > 0
+              ? t("story.card.editedByYouFields", { fields: edited.join(", ") })
+              : t("story.card.addedByYou")
+          }
+          aria-label={edited.length > 0 ? t("story.card.editedByYou") : t("story.card.addedByYou")}
         >
           <PencilSimple size={11} aria-hidden />
         </span>
       )}
       {lock && node.locked && (
-        <LockSimple size={11} weight="fill" aria-label="Locked: the agent will not change it" />
+        <LockSimple size={11} weight="fill" aria-label={t("story.card.lockedTip")} />
       )}
     </span>
   );
 }
 
 function ChapterCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
+  const { t } = useTranslation();
   const { node, facts, projectId, number } = data;
   if (node.kind !== "chapter") return null;
   const onTimeline = facts?.timeline ?? null;
   const material = facts?.materialDuration;
-  const role = NARRATIVE_ROLE_LABELS[node.narrativeRole];
+  const role = t(NARRATIVE_ROLE_KEYS[node.narrativeRole]);
   return (
     <div
       className={cn(
@@ -105,21 +112,21 @@ function ChapterCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
         type="target"
         position={Position.Left}
         className="hf-story-handle-sequence hf-story-nodrag"
-        aria-label="Plays after"
+        aria-label={t("story.card.handle.after")}
       />
       <Handle
         id={HANDLES.sequenceOut}
         type="source"
         position={Position.Right}
         className="hf-story-handle-sequence hf-story-nodrag"
-        aria-label="Plays before"
+        aria-label={t("story.card.handle.before")}
       />
       <Handle
         id={HANDLES.material}
         type="target"
         position={Position.Bottom}
         className="hf-story-handle-material hf-story-nodrag"
-        aria-label="Attach material"
+        aria-label={t("story.card.handle.attachMaterial")}
       />
       <div className="hf-sg-frame">
         <Thumb src={cardImage(node, projectId)} node={node} />
@@ -127,21 +134,25 @@ function ChapterCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
         <span className="hf-sg-flags">
           {node.status === "needs_material" && (
             <span className="hf-sg-flag hf-warn">
-              <span className="hf-sg-flag-label">Needs material</span>
+              <span className="hf-sg-flag-label">{t("story.status.needs_material")}</span>
             </span>
           )}
           <SyncBadges badges={data.sync} variant="flag" />
           {onTimeline && data.sync.length === 0 && (
             <span
               className="hf-sg-flag hf-ok"
-              title={`On the timeline ${formatDuration(onTimeline.start)}–${formatDuration(onTimeline.end)} (${onTimeline.clips} clips)`}
+              title={t("story.card.onTimelineTitle", {
+                start: formatDuration(onTimeline.start),
+                end: formatDuration(onTimeline.end),
+                count: onTimeline.clips,
+              })}
             >
-              <Check weight="bold" aria-label="On the timeline" />
+              <Check weight="bold" aria-label={t("story.card.onTimeline")} />
             </span>
           )}
           {node.locked && (
-            <span className="hf-sg-flag hf-lock" title="Locked: the agent will not change it">
-              <LockSimple weight="fill" aria-label="Locked" />
+            <span className="hf-sg-flag hf-lock" title={t("story.card.lockedTip")}>
+              <LockSimple weight="fill" aria-label={t("story.card.locked")} />
             </span>
           )}
         </span>
@@ -156,16 +167,19 @@ function ChapterCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
             className="hf-sg-dur"
             title={
               material !== undefined && material !== null
-                ? `Planned ${formatDuration(node.estimatedDuration)} · A-roll ${formatDuration(material)} after cleanup`
-                : `Planned ${formatDuration(node.estimatedDuration)}`
+                ? t("story.card.plannedWithRoll", {
+                    planned: formatDuration(node.estimatedDuration),
+                    roll: formatDuration(material),
+                  })
+                : t("story.card.planned", { planned: formatDuration(node.estimatedDuration) })
             }
           >
             {formatDuration(node.estimatedDuration)}
           </span>
         </div>
         <p className="hf-sg-desc">
-          <b>{node.status === "proposed" ? `${role} · proposed` : role}</b> ·{" "}
-          {node.description || node.purpose || "No description yet"}
+          <b>{node.status === "proposed" ? t("story.card.roleProposed", { role }) : role}</b> ·{" "}
+          {node.description || node.purpose || t("story.card.noDescription")}
         </p>
       </div>
     </div>
@@ -180,15 +194,18 @@ function materialDetail(node: StoryNode): string {
         ? formatDuration(node.sourceOut - node.sourceIn)
         : fileName(node.asset);
     case "picture":
-      return "Still";
+      return translate("story.card.still");
     case "music":
-      return node.asset ? fileName(node.asset) : "No track chosen yet";
+      return node.asset ? fileName(node.asset) : translate("story.card.noTrack");
     case "motion":
       return node.duration !== null ? formatDuration(node.duration) : node.preset;
     case "missing":
       return node.neededDuration !== null
-        ? `${MISSING_KIND_LABELS[node.mediaKind]} · ${formatDuration(node.neededDuration)}`
-        : MISSING_KIND_LABELS[node.mediaKind];
+        ? translate("story.card.kindDuration", {
+            kind: translate(MISSING_KIND_KEYS[node.mediaKind]),
+            duration: formatDuration(node.neededDuration),
+          })
+        : translate(MISSING_KIND_KEYS[node.mediaKind]);
     case "chapter":
       return "";
   }
@@ -204,19 +221,23 @@ function materialLine(node: StoryNode): string {
     case "picture":
       return fileName(node.asset);
     case "music":
-      return node.asset ? fileName(node.asset) : "No track chosen yet";
+      return node.asset ? fileName(node.asset) : translate("story.card.noTrack");
     case "motion":
       return node.duration !== null
         ? `${node.preset} · ${formatDuration(node.duration)}`
         : node.preset;
     case "missing":
-      return node.need || `${MISSING_KIND_LABELS[node.mediaKind]} needed`;
+      return (
+        node.need ||
+        translate("story.card.kindNeeded", { kind: translate(MISSING_KIND_KEYS[node.mediaKind]) })
+      );
     case "chapter":
       return "";
   }
 }
 
 function MaterialCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
+  const { t } = useTranslation();
   const { node, projectId, uses } = data;
   const research = useStoryResearch();
   if (node.kind === "chapter") return null;
@@ -241,7 +262,7 @@ function MaterialCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
         type="source"
         position={Position.Top}
         className="hf-story-handle-material hf-story-nodrag"
-        aria-label="Attach to a chapter"
+        aria-label={t("story.card.handle.attachToChapter")}
       />
       <div className="hf-sg-mrow" title={materialLine(node)}>
         <span className="hf-sg-thumb">
@@ -259,7 +280,7 @@ function MaterialCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
         <span className="hf-sg-txt">
           <span className="hf-sg-name">{node.title}</span>
           <span className="hf-sg-meta">
-            <b>{materialRole(node)}</b> · {materialDetail(node)}
+            <b>{t(materialRoleKey(node))}</b> · {materialDetail(node)}
           </span>
         </span>
         <Marks node={node} />
@@ -268,14 +289,20 @@ function MaterialCardImpl({ data, selected }: NodeProps<StoryFlowNode>) {
         (first ? (
           <div className="hf-sg-use">
             <CaretRight size={10} weight="bold" aria-hidden />
-            Use in <b>{first.number !== null ? String(first.number).padStart(2, "0") : "–"}</b>
+            <Trans
+              i18nKey="story.card.useIn"
+              values={{
+                number: first.number !== null ? String(first.number).padStart(2, "0") : "–",
+              }}
+              components={{ b: <b /> }}
+            />
             <span>
               {first.title}
               {uses.length > 1 ? ` +${uses.length - 1}` : ""}
             </span>
           </div>
         ) : (
-          <div className="hf-sg-use hf-idle">Connect to a chapter to use it</div>
+          <div className="hf-sg-use hf-idle">{t("story.card.connect")}</div>
         ))}
       {(resolution || find || data.sync.length > 0) && (
         <div className="hf-sg-extra">

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { buildProjectApiPath } from "./projectRouting";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
@@ -69,8 +70,8 @@ async function installRegistryItem({
     body: JSON.stringify({ blockName }),
   });
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Install failed" }));
-    showToast((error as { error?: string }).error || "Failed to install block");
+    const error = await response.json().catch(() => ({ error: t("app.block.installRejected") }));
+    showToast((error as { error?: string }).error || t("app.block.installFailed"));
     return null;
   }
   const { written, block } = (await response.json()) as {
@@ -79,7 +80,7 @@ async function installRegistryItem({
   };
   const compositionFile = written.find((file) => file.endsWith(".html")) ?? written[0];
   if (!compositionFile) {
-    showToast("Installed but no composition file was written");
+    showToast(t("app.block.noFile"));
     return null;
   }
   return { block, compositionFile };
@@ -234,7 +235,9 @@ export async function addBlockToProject(
     };
     await saveProjectFilesWithHistory({
       projectId,
-      label: `Add ${isBlock ? "block" : "component"}: ${block.title}`,
+      label: t(isBlock ? "app.history.addBlock" : "app.history.addComponent", {
+        title: block.title,
+      }),
       files: { [targetPath]: insertHost },
       readFile: readProjectFile,
       writeFile: writeProjectFile,
@@ -250,7 +253,7 @@ export async function addBlockToProject(
       hostKey: deriveTimelineStoreKeyForDomId(hostId, targetPath),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to add block";
+    const message = error instanceof Error ? error.message : t("app.block.addFailed");
     showToast(message);
     return null;
   }

@@ -17,6 +17,7 @@ import {
   type StoryNode,
   type StoryPoint,
 } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 
 export type StoryEditResult =
   | { ok: true; graph: StoryGraph; id: string }
@@ -78,7 +79,7 @@ export function newChapter(id: string, position: StoryPoint): ChapterNode {
     userEdited: [],
     id,
     kind: "chapter",
-    title: "New chapter",
+    title: t("story.graph.newChapter"),
     position,
     purpose: "",
     description: "",
@@ -118,7 +119,7 @@ export function newMaterial(
       return {
         ...base,
         kind: "video",
-        title: title || "Video",
+        title: title || t("story.kind.video"),
         asset: input.source,
         sourceIn: 0,
         sourceOut: null,
@@ -130,7 +131,7 @@ export function newMaterial(
       return {
         ...base,
         kind: "picture",
-        title: title || "Picture",
+        title: title || t("story.kind.picture"),
         asset: input.source,
         usageIntent: "",
       };
@@ -138,7 +139,7 @@ export function newMaterial(
       return {
         ...base,
         kind: "music",
-        title: title || "Music",
+        title: title || t("story.kind.music"),
         asset: input.source ?? null,
         bpm: null,
         volume: 0.3,
@@ -160,7 +161,7 @@ export function newMaterial(
       return {
         ...base,
         kind: "missing",
-        title: title || "Missing asset",
+        title: title || t("story.graph.missingTitle"),
         mediaKind: "video",
         need: "",
         neededDuration: null,
@@ -174,7 +175,7 @@ function touched(graph: StoryGraph, change: Partial<StoryGraph>): StoryGraph {
 
 export function addNode(graph: StoryGraph, node: StoryNode): StoryEditResult {
   if (graph.nodes.length >= STORY_LIMITS.nodes) {
-    return { ok: false, reason: `A story holds at most ${STORY_LIMITS.nodes} nodes.` };
+    return { ok: false, reason: t("story.graph.tooManyNodes", { max: STORY_LIMITS.nodes }) };
   }
   return { ok: true, graph: touched(graph, { nodes: [...graph.nodes, node] }), id: node.id };
 }
@@ -259,16 +260,19 @@ function makesCycle(edges: readonly StoryEdge[], from: string, to: string): bool
 export function connectNodes(graph: StoryGraph, connection: StoryConnection): StoryEditResult {
   const source = graph.nodes.find((node) => node.id === connection.source);
   const target = graph.nodes.find((node) => node.id === connection.target);
-  if (!source || !target) return { ok: false, reason: "That node no longer exists." };
-  if (source.id === target.id) return { ok: false, reason: "A node cannot connect to itself." };
+  if (!source || !target) return { ok: false, reason: t("story.connect.gone") };
+  if (source.id === target.id) return { ok: false, reason: t("story.connect.self") };
 
   if (isChapter(source) && isChapter(target)) {
     if (graph.edges.some((edge) => edge.from === source.id && edge.to === target.id)) {
-      return { ok: false, reason: `“${target.title}” already follows “${source.title}”.` };
+      return {
+        ok: false,
+        reason: t("story.connect.alreadyFollows", { target: target.title, source: source.title }),
+      };
     }
     const kept = graph.edges.filter((edge) => edge.from !== source.id && edge.to !== target.id);
     if (makesCycle(kept, source.id, target.id)) {
-      return { ok: false, reason: "That connection would make the story loop back on itself." };
+      return { ok: false, reason: t("story.connect.loop") };
     }
     const edge: StoryEdge = {
       id: newStoryId(graph, "e"),
@@ -283,10 +287,13 @@ export function connectNodes(graph: StoryGraph, connection: StoryConnection): St
 
   if (!isChapter(source) && isChapter(target)) {
     if (graph.attachments.some((item) => item.node === source.id && item.chapter === target.id)) {
-      return { ok: false, reason: `“${source.title}” is already attached to “${target.title}”.` };
+      return {
+        ok: false,
+        reason: t("story.connect.alreadyAttached", { source: source.title, target: target.title }),
+      };
     }
     if (graph.attachments.length >= STORY_LIMITS.attachments) {
-      return { ok: false, reason: "The story has too many attachments." };
+      return { ok: false, reason: t("story.connect.tooManyAttachments") };
     }
     const attachment: StoryAttachment = {
       id: newStoryId(graph, "a"),
@@ -305,7 +312,7 @@ export function connectNodes(graph: StoryGraph, connection: StoryConnection): St
   }
 
   if (isChapter(source)) {
-    return { ok: false, reason: "Drag from the material to the chapter it belongs to." };
+    return { ok: false, reason: t("story.connect.fromMaterial") };
   }
-  return { ok: false, reason: "Materials attach to chapters, not to each other." };
+  return { ok: false, reason: t("story.connect.materialsToChapters") };
 }

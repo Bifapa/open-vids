@@ -14,23 +14,26 @@ import {
   type TrustedSource,
 } from "@hyperframes/agent-protocol";
 import { Badge, Button, IconButton, Toggle, Tooltip, cn } from "../components/ui";
+import { Trans, useTranslation, type TranslationKey } from "../i18n";
 import { AddTrustedSourceForm } from "./AddTrustedSourceForm";
 import { MEDIA_KIND_LABELS } from "./licenseLabels";
 import { useResearchServices } from "./researchContext";
 import { ExternalLink, InlineError, NoteBox, SectionHeading } from "./researchUi";
 import { useAssetSearchPolicy, type AssetSearchPolicyState } from "./useAssetSearchPolicy";
 
-const MODE_COPY: Record<AssetSearchMode, { label: string; description: string }> = {
+const MODE_KEYS = {
   trusted: {
-    label: "Trusted sources only",
-    description: "Research searches and downloads only from the enabled sources below.",
+    label: "research.policy.mode.trusted",
+    description: "research.policy.mode.trusted.hint",
   },
   any: {
-    label: "Any source",
-    description:
-      "Any public web page may be searched and downloaded (trusted sources first). Provenance is still recorded.",
+    label: "research.policy.mode.any",
+    description: "research.policy.mode.any.hint",
   },
-};
+} as const satisfies Record<
+  AssetSearchMode,
+  { label: TranslationKey; description: TranslationKey }
+>;
 
 const MODE_ICONS: Record<AssetSearchMode, Icon> = { trusted: ShieldCheck, any: Globe };
 
@@ -39,9 +42,10 @@ const BOX = "overflow-hidden rounded-md border border-border-subtle bg-bg-1";
 
 /** Search mode as the prototype's radio list: a dot, a bold label with its glyph, and what the mode means. */
 function ModeSwitch({ state }: { state: AssetSearchPolicyState }) {
+  const { t } = useTranslation();
   const mode = state.policy?.mode ?? "trusted";
   return (
-    <div role="radiogroup" aria-label="Asset Search mode" className={BOX}>
+    <div role="radiogroup" aria-label={t("research.policy.modeAria")} className={BOX}>
       {ASSET_SEARCH_MODES.map((option) => {
         const checked = option === mode;
         const ModeIcon = MODE_ICONS[option];
@@ -73,13 +77,13 @@ function ModeSwitch({ state }: { state: AssetSearchPolicyState }) {
             />
             <span className="flex items-center gap-1 text-base leading-4 text-fg">
               <ModeIcon size={12} className="shrink-0 text-fg-3" aria-hidden />
-              {MODE_COPY[option].label}
+              {t(MODE_KEYS[option].label)}
             </span>
             <span
               className="col-start-2 text-xs leading-[14px] text-fg-3 [text-wrap:pretty]"
               data-testid={checked ? "asset-search-mode-description" : undefined}
             >
-              {MODE_COPY[option].description}
+              {t(MODE_KEYS[option].description)}
             </span>
           </button>
         );
@@ -89,6 +93,7 @@ function ModeSwitch({ state }: { state: AssetSearchPolicyState }) {
 }
 
 function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearchPolicyState }) {
+  const { t } = useTranslation();
   const [confirming, setConfirming] = useState(false);
   const busy = state.pending !== null;
   const notes = [source.description, source.licenseNote].filter(Boolean).join(" ");
@@ -99,7 +104,7 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
     >
       <div className="grid grid-cols-[28px_minmax(0,1fr)_28px] items-center gap-2.5">
         <Toggle
-          label={`Use ${source.name}`}
+          label={t("research.policy.use", { name: source.name })}
           checked={source.enabled}
           disabled={busy}
           onCommit={(enabled) =>
@@ -114,7 +119,7 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
             )}
           >
             <span className="truncate">{source.name}</span>
-            {source.builtIn && <Badge size="sm">Built-in</Badge>}
+            {source.builtIn && <Badge size="sm">{t("research.policy.builtIn")}</Badge>}
           </span>
           <span className="truncate text-xs leading-[14px] text-fg-3">
             {source.domains.length > 0 && (
@@ -123,9 +128,9 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
             {source.kinds.map((kind) => MEDIA_KIND_LABELS[kind]).join(" · ")}
           </span>
         </div>
-        <Tooltip label="Remove source" side="bottom">
+        <Tooltip label={t("research.policy.removeTip")} side="bottom">
           <IconButton
-            aria-label={`Remove ${source.name}`}
+            aria-label={t("research.policy.remove", { name: source.name })}
             size="md"
             disabled={busy}
             icon={<Trash size={14} aria-hidden />}
@@ -146,16 +151,23 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
       {confirming && (
         <div
           role="group"
-          aria-label={`Confirm removing ${source.name}`}
+          aria-label={t("research.policy.confirmAria", { name: source.name })}
           className="ml-[38px] flex flex-wrap items-center justify-between gap-2 rounded-sm bg-surface-1 px-2 py-1.5 text-xs text-fg-2"
         >
           <span>
-            Remove <b className="font-semibold text-fg">{source.name}</b>?
-            {source.builtIn && " Restore built-in sources brings it back."}
+            <Trans
+              i18nKey={
+                source.builtIn
+                  ? "research.policy.confirmRemoveBuiltIn"
+                  : "research.policy.confirmRemove"
+              }
+              values={{ name: source.name }}
+              components={{ b: <b className="font-semibold text-fg" /> }}
+            />
           </span>
           <span className="flex gap-1.5">
             <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-              Keep
+              {t("research.policy.keep")}
             </Button>
             <Button
               size="sm"
@@ -168,7 +180,7 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
                 if (failure === null) setConfirming(false);
               }}
             >
-              Remove
+              {t("common.remove")}
             </Button>
           </span>
         </div>
@@ -179,12 +191,13 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
 
 /** Whether agents may open the pages the user links in chat, as one switch row on the prototype's box. */
 function WebsitesBox({ state, enabled }: { state: AssetSearchPolicyState; enabled: boolean }) {
+  const { t } = useTranslation();
   return (
     <div className={BOX} data-websites-group>
       <div className="grid grid-cols-[28px_minmax(0,1fr)] items-start gap-2.5 px-3 py-2.5">
         <Toggle
           className="mt-0.5"
-          label="Open links you send in chat"
+          label={t("research.policy.readLinked")}
           checked={enabled}
           disabled={state.pending !== null}
           onCommit={(next) =>
@@ -195,11 +208,10 @@ function WebsitesBox({ state, enabled }: { state: AssetSearchPolicyState; enable
           <span
             className={cn("text-base leading-4 font-medium", enabled ? "text-fg" : "text-fg-3")}
           >
-            Open links you send in chat
+            {t("research.policy.readLinked")}
           </span>
           <span className="text-xs leading-[15px] text-fg-3 [text-wrap:pretty]">
-            Agents can read the pages you link — colors, fonts, logo, screenshots — to match a
-            site's style. Only links from your own messages, plus other pages on the same site.
+            {t("research.policy.readLinked.hint")}
           </span>
         </div>
       </div>
@@ -225,31 +237,34 @@ export function AssetSearchPolicyView({
   const inSettings = variant === "settings";
   const section = cn("flex flex-col", !inSettings && "gap-1.5");
   const heading = inSettings ? "min-h-0 pb-1.5" : undefined;
+  const { t } = useTranslation();
   const { client } = useResearchServices();
   const state = useAssetSearchPolicy(client);
   const [adding, setAdding] = useState(false);
   const { policy } = state;
   const removed = policy?.removedBuiltIns.length ?? 0;
   const onCount = policy?.sources.filter((source) => source.enabled).length ?? 0;
-  const searchNote =
+  const onCountKey =
     policy?.mode === "any"
-      ? "Searched first, then the rest of the web"
+      ? "research.policy.onCountAny"
       : onCount > 0
-        ? "Only these are searched"
-        : null;
+        ? "research.policy.onCountTrusted"
+        : "research.policy.onCount";
 
   return (
     <div className={cn("flex flex-col gap-5 px-3 py-3", className)}>
       {!inSettings && (
         <NoteBox icon={<Globe size={12} />}>
-          <b className="font-semibold">Applies to all projects.</b> The Research agent is the only
-          one that searches outside the project, and only as allowed here.
+          <Trans
+            i18nKey="research.policy.appliesNote"
+            components={{ b: <b className="font-semibold" /> }}
+          />
         </NoteBox>
       )}
       {state.error && <InlineError message={state.error} onDismiss={state.dismissError} />}
       {state.loading && !policy ? (
         <p role="status" className="text-sm text-fg-3">
-          Loading Asset Search settings…
+          {t("research.policy.loading")}
         </p>
       ) : !policy ? (
         <Button
@@ -258,27 +273,25 @@ export function AssetSearchPolicyView({
           variant="secondary"
           onClick={() => void state.reload()}
         >
-          Retry
+          {t("common.retry")}
         </Button>
       ) : (
         <>
           <section className={section}>
-            <SectionHeading title="Search mode" className={heading} />
+            <SectionHeading title={t("research.policy.groupMode")} className={heading} />
             <ModeSwitch state={state} />
           </section>
           <section className={section}>
             <SectionHeading
               className={heading}
-              title="Trusted sources"
-              note={`${onCount} of ${policy.sources.length} on${searchNote ? ` · ${searchNote}` : ""}`}
+              title={t("research.policy.groupSources")}
+              note={t(onCountKey, { on: onCount, total: policy.sources.length })}
             />
             <div className={BOX}>
               {policy.sources.length === 0 ? (
-                <p className="px-3 py-2.5 text-sm text-fg-3">
-                  No trusted sources. Add a website, or restore the built-in sources.
-                </p>
+                <p className="px-3 py-2.5 text-sm text-fg-3">{t("research.policy.empty")}</p>
               ) : (
-                <ul aria-label="Trusted sources">
+                <ul aria-label={t("research.policy.groupSources")}>
                   {policy.sources.map((source) => (
                     <SourceRow key={source.id} source={source} state={state} />
                   ))}
@@ -308,7 +321,7 @@ export function AssetSearchPolicyView({
                       disabled={state.pending !== null}
                       onClick={() => setAdding(true)}
                     >
-                      Add trusted source
+                      {t("research.policy.addSource")}
                     </Button>
                     {removed > 0 && (
                       <Button
@@ -321,7 +334,7 @@ export function AssetSearchPolicyView({
                           void state.change("restore", (research) => research.restoreSources())
                         }
                       >
-                        Restore built-in sources ({removed})
+                        {t("research.policy.restore", { count: removed })}
                       </Button>
                     )}
                   </div>
@@ -331,12 +344,12 @@ export function AssetSearchPolicyView({
             {policy.mode === "trusted" && onCount === 0 && (
               <p className="flex items-center gap-1 px-0.5 text-xs font-medium text-warning">
                 <WarningCircle size={12} weight="fill" aria-hidden />
-                All sources are off, so asset search will find nothing.
+                {t("research.policy.allOff")}
               </p>
             )}
           </section>
           <section className={section}>
-            <SectionHeading title="Websites" className={heading} />
+            <SectionHeading title={t("research.policy.groupWebsites")} className={heading} />
             <WebsitesBox state={state} enabled={policy.websites.readLinkedPages} />
           </section>
         </>

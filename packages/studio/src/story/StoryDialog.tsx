@@ -2,7 +2,8 @@ import { useId, useRef, type ReactNode } from "react";
 import { WarningCircle, X } from "@phosphor-icons/react";
 import { IconButton, cn } from "../components/ui";
 import { useDialogBehavior } from "../components/ui/useDialogBehavior";
-import { EDIT_AUTHOR_LABELS, describeEdit, type EditInSection } from "./storySync";
+import { useTranslation } from "../i18n";
+import { EDIT_AUTHOR_KEYS, describeEdit, type EditInSection } from "./storySync";
 
 /**
  * A modal over the Story panel only (the editor around it stays as it is): Escape and the backdrop close it,
@@ -22,6 +23,7 @@ export function StoryDialog({
   footer: ReactNode;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const { requestClose } = useDialogBehavior({ open: true, onClose, containerRef });
@@ -48,7 +50,7 @@ export function StoryDialog({
             {description && <p className="text-xs leading-[15px] text-fg-3">{description}</p>}
           </div>
           <IconButton
-            aria-label="Close"
+            aria-label={t("common.close")}
             size="sm"
             icon={<X size={12} aria-hidden />}
             onClick={onClose}
@@ -128,10 +130,11 @@ export function EditRows({
   limit?: number;
   showWhere?: boolean;
 }) {
+  const { t } = useTranslation();
   const shown = limit === undefined ? edits : edits.slice(0, limit);
   const more = edits.length - shown.length;
   return (
-    <ul className="flex flex-col gap-0.5" aria-label="Manual edits">
+    <ul className="flex flex-col gap-0.5" aria-label={t("story.dialog.manualEdits")}>
       {shown.map(({ edit, where }) => (
         <li
           key={`${edit.clip}-${edit.kind}`}
@@ -150,12 +153,14 @@ export function EditRows({
           />
           <span className="min-w-0 truncate">
             <span className="font-medium text-fg">{edit.label}</span> {describeEdit(edit)} ·{" "}
-            {EDIT_AUTHOR_LABELS[edit.by]}
+            {t(EDIT_AUTHOR_KEYS[edit.by])}
             {showWhere && <span className="text-fg-3"> · {where}</span>}
           </span>
         </li>
       ))}
-      {more > 0 && <li className="pl-3 text-xs text-fg-3">+{more} more</li>}
+      {more > 0 && (
+        <li className="pl-3 text-xs text-fg-3">{t("story.dialog.moreEdits", { count: more })}</li>
+      )}
     </ul>
   );
 }

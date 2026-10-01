@@ -887,3 +887,207 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `renders.error.loadHistoryStatus` — {status} is an HTTP status code.
 - `renders.error.unreachable` — {cause} is the technical error text; `hyperframes render` is a CLI command and stays untranslated.
 - `panels.variables.history.bindPromote` — Name of the undo step when promoting a property to a variable from the Design panel; {what} is a lowercase property noun such as "text color".
+
+## studio-story
+
+- `story.age.minutes` — {count} is minutes, 1 or more.
+- `story.age.hours` — {count} is hours.
+- `story.kind.chapter` — Node kind in the Story Graph (add menu, inspector).
+- `story.kind.missing` — Node kind: a placeholder for material the story needs but the project does not have yet.
+- `story.role.chapter` — Bold first word of a material card's meta line: what the material plays as in its chapters.
+- `story.role.sfx` — Short for sound effect; first word of a card's meta line.
+- `story.narrative.hook` — Narrative role of a chapter: the opening that grabs attention.
+- `story.narrative.setup` — Narrative role of a chapter: sets up the situation.
+- `story.narrative.story` — Narrative role of a chapter: a story told within the video (not the product mode Story).
+- `story.narrative.transition` — Narrative role of a chapter: a bridging chapter between parts.
+- `story.status.proposed` — Status of a chapter (feminine in Russian).
+- `story.placement.start` — Where a material plays within its chapter.
+- `story.field.title` — Names of node fields in 'Set by you' chips: the fields an agent will not change.
+- `story.field.narrativeRole` — Narrative role of a chapter.
+- `story.field.sourceIn` — In-point of a source clip.
+- `story.field.sourceOut` — Out-point of a source clip.
+- `story.agent.researchOff` — Research is the name of a specialist agent (Исследователь); Agents menu is the chat's agent picker (chat.agents.title).
+- `story.workspace.label` — Accessible name of the Media / Story / Edit switch in the title bar.
+- `story.workspace.story` — Product mode name: stays Story.
+- `story.error.http` — {status} is an HTTP status code.
+- `story.notice.conflict` — 'The story' is the video's story (the Story Graph), not the product mode.
+- `story.notice.reloadFailed` — {message} is an error text.
+- `story.notice.saveFailed` — {message} is an error text.
+- `story.graph.newChapter` — Default title of a chapter the user adds.
+- `story.graph.missingTitle` — Default title of a Missing Asset node the user adds.
+- `story.graph.tooManyNodes` — {max} is a number.
+- `story.connect.alreadyFollows` — Chapters in play order.
+- `story.connect.alreadyAttached` — {source} is a material, {target} a chapter.
+- `story.sync.action.keep` — What a rebuild does with a timeline unit (a group of clips built from one part of the story).
+- `story.sync.action.keep_edited` — The unit was edited by hand on the timeline; the rebuild keeps it.
+- `story.sync.action.keep_locked` — The chapter is locked; the rebuild keeps it.
+- `story.sync.change.unchanged` — Status of a section or unit compared with the timeline.
+- `story.sync.author.user` — Who made a manual edit on the timeline; follows the clip name and what was done.
+- `story.sync.authorCount.user` — Part of 'Edited on the timeline after the build: 2 by you · 1 by AI'.
+- `story.sync.edit.changed` — What was done to a clip on the timeline, after the clip name.
+- `story.sync.edit.changedFields` — {fields} are property names such as start, duration (not translated).
+- `story.sync.badge.lockedPending` — Badge on a locked chapter that changed since the build.
+- `story.sync.badge.lockedPending.detailReasons` — {reasons} is a sentence from the sync service.
+- `story.sync.badge.notBuilt` — Badge: a chapter that is not on the timeline yet.
+- `story.sync.badge.notBuilt.detail` — Rebuild affected is the toolbar button story.toolbar.rebuild.
+- `story.sync.badge.moves` — Badge: the section keeps its content but plays at another time after a rebuild.
+- `story.sync.badge.moves.detail` — {from} and {to} are time spans such as 0:12–0:31.
+- `story.sync.badge.edited` — {count} manual edits.
+- `story.sync.badge.edited.detail` — {authors} is e.g. '2 by you · 1 by AI'.
+- `story.sync.blocker.untracked` — Build Story is the toolbar button story.toolbar.build.
+- `story.dialog.manualEdits` — Accessible name of the list of clips the user edited by hand on the timeline.
+- `story.dialog.moreEdits` — Follows a list of edits that was cut short.
+- `story.fullBuild.title` — Dialog title; 'build' = compile the Story Graph into the timeline.
+- `story.fullBuild.rebuildToo` — {title} is a chapter title; the label of a checkbox.
+- `story.fullBuild.rebuildHint` — Rebuild affected is the toolbar button story.toolbar.rebuild.
+- `story.timeline.title` — Heading of the chapter's timeline section in the inspector and of the strip at the bottom of the Story workspace.
+- `story.timeline.onTimeline` — Field label: where the chapter plays on the timeline.
+- `story.timeline.notBuiltHint` — Build Story is the toolbar button story.toolbar.build.
+- `story.timeline.untracked` — Status: the timeline was built before sync tracking existed.
+- `story.timeline.movesTo` — Field label: the time span the section plays at after a rebuild.
+- `common.dismissMessage` — Accessible name of the × button of a notice.
+- `research.license.status.clear` — License status chip: public domain / CC0, free to use.
+- `research.license.status.attribution` — License status chip: free to use with a credit line.
+- `research.license.status.restricted` — License status chip: the license limits how the asset may be used.
+- `research.license.status.unknown` — License status chip: no license was found.
+- `research.license.chipTitle` — Tooltip of a license chip: the status word, then what it asks of the user.
+- `research.license.group.unknown` — Group heading in the Sources list.
+- `research.license.confidence.high` — How sure the importer is about the license it found.
+- `research.by.you` — Who brought an asset into the project: the user.
+- `research.by.turn` — A turn of the chat with the agent; {id} is its identifier.
+- `research.panel.label` — Accessible name of the tab list of the Sources & Licenses panel.
+- `research.error.http` — {status} is an HTTP status code.
+- `research.error.sourcesLoad` — {error} is the error text; may be empty.
+- `research.error.sourcesRefresh` — {error} is the error text.
+- `research.add.namePlaceholder` — Example name of a website, shown as a placeholder.
+- `research.add.domains` — Field label: website domains such as example.com.
+- `research.add.offers` — Legend of the checkboxes: what kinds of media the website offers (Video, Pictures, Audio, Fonts).
+- `research.export.title` — Title of the dialog shown before an export that uses researched material.
+- `research.export.creditsLabel` — Accessible name of the list of credit lines (author attributions) the export needs.
+- `research.row.foundIn` — Where the license was found (e.g. the page footer or metadata).
+- `research.row.retrieved` — When and by whom the asset was brought into the project.
+- `research.record.siteBadge` — Badge: the asset was saved from a website the user linked in chat.
+- `research.record.trusted` — Badge: the asset came from a trusted source.
+- `research.record.web` — Badge: the asset came from the open web.
+- `research.link.original` — Link label; {host} is a website host name.
+- `research.link.page` — Link label; {host} is a website host name.
+- `research.record.retrievedBy` — {date} is a date, {by} is who brought the asset in (You, or an agent name with model).
+- `research.record.issues` — Accessible name of the list of problems found with an asset.
+- `research.sources.summary` — Keep the <count> tags around the number and noun.
+- `research.sources.needCheck` — Follows the asset count: '3 assets from outside the project · 2 need a license check'.
+- `research.sources.searchMode` — Research is the name of the agent. Followed by the Change button.
+- `research.sources.changeMode` — Button after the search-mode sentence: opens the Asset Search settings.
+- `research.sources.groupAria` — {group} is a license status heading.
+- `research.policy.builtIn` — Badge on a trusted source that ships with OpenVids.
+- `research.policy.use` — Accessible name of the switch that enables a source.
+- `research.policy.remove` — Accessible name of the remove button.
+- `research.policy.confirmRemoveBuiltIn` — Restore built-in sources is the button research.policy.restore.
+- `research.policy.keep` — Button in the confirmation: do not remove the source.
+- `research.policy.groupWebsites` — Group of settings about reading pages the user links in chat.
+- `story.research.title` — Inspector section of a Missing Asset node; Research is the agent that finds material.
+- `story.research.intro` — {kind} is the needed media kind and {mode} the Asset Search mode; 'the turn' is the agent's last turn in the chat.
+- `story.research.openSources` — Sources & Licenses is the dock panel (shell.dock.panel.sources).
+- `story.research.foundBy` — Heading and card line: the agent Research found this material for a Missing Asset node.
+- `story.research.resolved` — Heading: the Missing Asset node was filled with real material.
+- `story.research.needed` — Row label: what the Missing Asset node asked for.
+- `story.research.confidence` — Row label: how sure the importer is about the license.
+- `story.research.chipTitleTrusted` — Tooltip of a license chip; {license} is a license name such as CC BY 4.0.
+- `story.research.cardFor` — Card line: what the material was needed for.
+- `story.research.webSource` — Card line: a source on the open web.
+- `story.strip.label` — Accessible name of the strip at the bottom of the Story workspace: one section per chapter.
+- `story.strip.built` — State of the story: its chapters were compiled into the timeline.
+- `story.strip.summary` — {duration} is a length such as 2:30; {status} is one of the story.strip state phrases.
+- `story.strip.sectionAria` — {number} is the chapter's place in the order (01, 02…).
+- `story.strip.openEdit` — Edit is the workspace (story.workspace.edit).
+- `story.slots.at` — Where a material plays in its chapter; {time} is a time such as 0:12.
+- `story.slots.none` — Shown when a chapter has no materials of a kind.
+- `story.slots.detach` — Accessible name of the button that detaches a material from a chapter.
+- `story.slots.detachFrom` — {title} is a chapter.
+- `story.add.laterTitle` — Option in the Music list of the Add menu: add a music node without a file.
+- `story.add.menuLabel` — Accessible name of the Add node pop-up.
+- `story.add.node` — Toolbar button of the Story Graph that adds a chapter or material.
+- `story.add.search` — Accessible name of the search field; {kind} is a node kind such as Video or Music.
+- `story.card.editedByYou` — Accessible name of the pencil mark on a node you edited.
+- `story.card.editedByYouFields` — {fields} is a comma-separated list of field names.
+- `story.card.handle.after` — Accessible name of the port on a chapter card's left side: connect the chapter that plays before this one.
+- `story.card.handle.before` — Accessible name of the port on a chapter card's right side.
+- `story.card.handle.attachMaterial` — Accessible name of the port at the bottom of a chapter card.
+- `story.card.handle.attachToChapter` — Accessible name of the port at the top of a material card.
+- `story.card.onTimelineTitle` — {start} and {end} are times such as 0:12.
+- `story.card.onTimeline` — Accessible name of the green check on a chapter that was built.
+- `story.card.plannedWithRoll` — Tooltip of a chapter's duration; the planned length and the A-roll length after removing pauses and retakes.
+- `story.card.roleProposed` — {role} is the chapter's narrative role; the chapter has not been approved yet.
+- `story.card.still` — Meta line of a picture card: it shows as a still image.
+- `story.card.kindNeeded` — {kind} is the media kind a Missing Asset node needs (Video, Music…).
+- `story.card.useIn` — Card line of a motion preset: the number of the chapter it is attached to, then its title.
+- `story.save.saved` — Status of the Story Graph next to the undo buttons.
+- `story.save.pending` — Edits are waiting to be saved.
+- `story.toolbar.title` — Heading of the toolbar; Story is the product mode.
+- `story.toolbar.selectTitle` — {key} is a keyboard key.
+- `story.toolbar.pan` — Tool that drags the whole canvas.
+- `story.toolbar.panTitle` — {key} is a keyboard key.
+- `story.toolbar.tidy` — Lays the Story Graph cards out in play order.
+- `story.toolbar.findTip` — A turn is one request-and-response cycle with the agent.
+- `story.toolbar.reviewed` — {age} is a relative time such as '3 min ago'.
+- `story.toolbar.rebuild` — Button: regenerate only the timeline sections whose chapters changed.
+- `story.toolbar.builtAt` — {age} is a relative time; {duration} is the timeline length such as 2:30.
+- `story.toolbar.build` — Button: compile the Story Graph into the timeline.
+- `story.empty.title` — Empty state of the Story workspace.
+- `story.inspector.setByYouTip` — Tooltip of the pencil mark next to a field you set by hand.
+- `story.inspector.setByYouLabel` — Label before the list of fields the agent will not change.
+- `story.inspector.overviewSub` — {duration} is the total length such as 2:30.
+- `story.inspector.section.story` — Inspector section with the title and brief of the story (the video's story, not the product mode).
+- `story.inspector.missing` — Row label: how many Missing Asset nodes the story has.
+- `story.inspector.locked` — Row label: how many nodes are locked against agent changes.
+- `story.inspector.lastPasses` — Section listing when the agent last reviewed and built the story.
+- `story.inspector.builtInto` — {age} is a relative time; {composition} is the timeline file the story was built into.
+- `story.inspector.sequence` — A link in the play order between two chapters.
+- `story.inspector.sequenceNote` — {from} and {to} are chapter titles.
+- `story.inspector.transitionPlaceholder` — Example of a transition note between two chapters.
+- `story.inspector.attachedTo` — {title} is a chapter title.
+- `story.inspector.attachment` — A link that attaches a material to a chapter.
+- `story.inspector.placement` — Where in the chapter the material plays (start, middle, end, throughout).
+- `story.inspector.at` — Field label: the exact time offset of a material from the chapter start.
+- `story.chapter.rangeSource` — Accessible name of a source file picker; a range is a stretch of an A-roll file used in the chapter.
+- `story.chapter.subtitle` — {start} and {end} are times such as 0:30.
+- `story.chapter.intent` — Field label: what the agent should aim for with this part of the chapter.
+- `story.chapter.durationHint` — {total} is the length of the whole story, such as 2:30.
+- `story.material.inputName` — A motion preset takes named inputs (key = value).
+- `story.material.inputValue` — {name} is the input's name.
+- `story.material.addInput` — Button that adds a named input to a motion preset.
+- `story.material.video` — Field label: the video file of a node.
+- `story.material.outPlaceholder` — Placeholder of the out-point: empty means up to the end of the file.
+- `story.material.needed` — Field label and section title of a Missing Asset node: what is needed.
+- `story.material.needPlaceholder` — Example of what a Missing Asset node asks for.
+- `story.material.subtitle` — {kind} is the node kind (Video, Music…), {role} what it plays as (B-roll, SFX…).
+- `story.rebuild.leavesStory` — Badge on a section whose chapter was deleted from the story.
+- `story.rebuild.titleOne` — Dialog title; {title} is a chapter title.
+- `story.rebuild.description` — {from} and {to} are times such as 2:30; keep the <mono> tags.
+- `story.rebuild.start` — Button that starts the rebuild.
+- `story.rebuild.alsoApplies` — Group of sections that are not rebuilt but still removed or moved.
+- `story.rebuild.movesSpan` — {from} and {to} are time spans such as 0:12–0:31.
+- `story.rebuild.otherClipsBody` — {clips} is a comma-separated list of clip names with their shifts.
+- `story.rebuild.clipShift` — A clip and how far it moves; {shift} is a signed number of seconds such as +1.5.
+- `story.rebuild.clipsMore` — {clips} is a comma-separated list; {count} the number of clips not listed.
+- `story.rebuild.replaceWarning` — A turn is one request-and-response cycle with the agent.
+- `agent.error.network` — Shown when a call to the local agent runtime fails. 'The agent' is the AI assistant that edits the project.
+- `agent.error.checkpoint_unavailable` — A checkpoint is a saved state of the project files that a run can be reverted to.
+- `agent.error.turn_not_found` — A run is one turn (request and response) of the chat with the agent.
+- `agent.error.http` — {status} is an HTTP status code.
+- `agent.qa.notStored` — A render-check (QA) report.
+- `agent.context.timelineRange` — Detail line of a context chip in the chat composer: a time range selected on the timeline.
+- `agent.context.element` — Label of a context chip: an element picked on the canvas.
+- `agent.context.storyNode` — Label of a context chip: the selected node of the Story Graph.
+- `app.history.deleteElement` — Undo/redo history label; also shown in a toast when the step is undone.
+- `app.history.editLayer` — Undo/redo history label.
+- `app.history.editSlideshow` — Undo/redo history label.
+- `app.history.addComposition` — Undo/redo history label.
+- `app.history.addBlock` — Undo/redo history label; {title} is the registry block's title.
+- `app.history.addComponent` — Undo/redo history label; {title} is the registry component's title.
+- `app.block.installRejected` — Fallback error text when the registry server gives no message.
+- `app.save.httpError` — {message} is what failed, {status} an HTTP status code and {detail} the server's own words.
+- `app.save.readFailed` — {path} is a project file path.
+- `app.save.autoSavePaused` — DOM edits are changes made to elements in the preview.
+- `app.cut.readFailed` — {path} is a project file; {status} is an HTTP status code.
+- `app.cut.conflict` — {detail} is the server's explanation.
+- `app.cut.serverStatus` — {status} is an HTTP status code.

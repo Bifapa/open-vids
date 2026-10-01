@@ -13,6 +13,7 @@ import {
   type ProvenanceMediaKind,
 } from "@hyperframes/agent-protocol";
 import { Badge, cn } from "../components/ui";
+import { formatDate, useTranslation } from "../i18n";
 import { projectFileUrl, storyFrameUrl } from "../story/storyClient";
 import { LicenseChip } from "./LicenseChip";
 import { CONFIDENCE_LABELS, MEDIA_KIND_LABELS, retrievedByLabel, urlHost } from "./licenseLabels";
@@ -81,11 +82,12 @@ export function SourceRecord({
   projectId: string;
   highlighted: boolean;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (highlighted) ref.current?.scrollIntoView?.({ block: "nearest" });
   }, [highlighted]);
-  const retrieved = new Date(record.retrievedAt).toLocaleDateString(undefined, {
+  const retrieved = formatDate(record.retrievedAt, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -106,7 +108,7 @@ export function SourceRecord({
             {record.title}
           </span>
           <span className="truncate text-xs text-fg-3" title={record.asset}>
-            {MEDIA_KIND_LABELS[record.mediaKind]} ·{" "}
+            {t(MEDIA_KIND_LABELS[record.mediaKind])} ·{" "}
             <span className="font-mono text-num">{record.asset}</span>
           </span>
         </div>
@@ -115,26 +117,30 @@ export function SourceRecord({
       {!record.present && (
         <span className="flex items-center gap-1 text-xs font-medium text-error">
           <WarningCircle size={12} weight="fill" aria-hidden />
-          File missing from the project
+          {t("research.record.missingFile")}
         </span>
       )}
       <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1.5 px-0.5 text-sm">
-        <Row label="License">
+        <Row label={t("research.row.license")}>
           {record.licenseUrl ? (
             <ExternalLink href={record.licenseUrl}>{record.license}</ExternalLink>
           ) : (
             <span>{record.license}</span>
           )}
-          <span className="text-xs text-fg-3">· {CONFIDENCE_LABELS[record.licenseConfidence]}</span>
+          <span className="text-xs text-fg-3">
+            · {t(CONFIDENCE_LABELS[record.licenseConfidence])}
+          </span>
         </Row>
-        {record.licenseBasis && <Row label="Found in">{record.licenseBasis}</Row>}
-        <Row label="Source">
+        {record.licenseBasis && <Row label={t("research.row.foundIn")}>{record.licenseBasis}</Row>}
+        <Row label={t("research.row.source")}>
           {record.source.id === WEBSITE_SOURCE_ID ? (
             <>
-              <Badge size="sm" title="Saved from a website you linked in chat (a style reference)">
-                Site
+              <Badge size="sm" title={t("research.record.siteTitle")}>
+                {t("research.record.siteBadge")}
               </Badge>
-              <span className="truncate">From {record.source.name}</span>
+              <span className="truncate">
+                {t("research.record.fromSite", { name: record.source.name })}
+              </span>
             </>
           ) : (
             <>
@@ -143,41 +149,46 @@ export function SourceRecord({
                 tone={record.source.trusted ? "success" : "neutral"}
                 title={
                   record.source.trusted
-                    ? "Found on a trusted source"
-                    : "Found on the open web (Any source mode)"
+                    ? t("research.record.trustedTitle")
+                    : t("research.record.webTitle")
                 }
               >
-                {record.source.trusted ? "Trusted" : "Web"}
+                {record.source.trusted ? t("research.record.trusted") : t("research.record.web")}
               </Badge>
               <span className="truncate">{record.source.name}</span>
             </>
           )}
         </Row>
-        <Row label="Author">
+        <Row label={t("research.row.author")}>
           {record.author && record.authorUrl ? (
             <ExternalLink href={record.authorUrl}>{record.author}</ExternalLink>
           ) : (
             <span className={cn(!record.author && "text-fg-3")}>
-              {record.author ?? "Not stated"}
+              {record.author ?? t("research.record.notStated")}
             </span>
           )}
         </Row>
-        <Row label="Links">
+        <Row label={t("research.row.links")}>
           <ExternalLink href={record.originalUrl}>
-            Original · {urlHost(record.originalUrl)}
+            {t("research.link.original", { host: urlHost(record.originalUrl) })}
           </ExternalLink>
           {record.pageUrl && (
-            <ExternalLink href={record.pageUrl}>Page · {urlHost(record.pageUrl)}</ExternalLink>
+            <ExternalLink href={record.pageUrl}>
+              {t("research.link.page", { host: urlHost(record.pageUrl) })}
+            </ExternalLink>
           )}
         </Row>
-        <Row label="Retrieved">
+        <Row label={t("research.row.retrieved")}>
           <span>
-            {retrieved} by {retrievedByLabel(record.retrievedBy)}
+            {t("research.record.retrievedBy", {
+              date: retrieved,
+              by: retrievedByLabel(record.retrievedBy),
+            })}
           </span>
         </Row>
-        {record.converted && <Row label="Converted">{record.converted}</Row>}
-        {record.need && <Row label="Needed for">{record.need}</Row>}
-        <Row label="Used in">
+        {record.converted && <Row label={t("research.row.converted")}>{record.converted}</Row>}
+        {record.need && <Row label={t("research.row.neededFor")}>{record.need}</Row>}
+        <Row label={t("research.row.usedIn")}>
           {record.usedIn.length > 0 ? (
             record.usedIn.map((composition) => (
               <span key={composition} className="font-mono text-num text-fg-2">
@@ -185,14 +196,14 @@ export function SourceRecord({
               </span>
             ))
           ) : (
-            <span className="text-fg-3">Not on a timeline yet</span>
+            <span className="text-fg-3">{t("research.record.notOnTimeline")}</span>
           )}
         </Row>
       </dl>
       {record.issues.length > 0 && (
         <ul
           className="flex flex-col gap-1 rounded-sm bg-warning-soft px-2 py-1.5"
-          aria-label="Issues"
+          aria-label={t("research.record.issues")}
         >
           {record.issues.map((issue) => (
             <li key={issue} className="flex items-start gap-1.5 text-xs text-warning">

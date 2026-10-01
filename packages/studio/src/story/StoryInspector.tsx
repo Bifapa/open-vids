@@ -10,6 +10,7 @@ import {
   type StoryNode,
 } from "@hyperframes/agent-protocol";
 import { Button, Input, Select } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { ChapterInspector } from "./ChapterInspector";
 import {
   Field,
@@ -23,7 +24,7 @@ import { MaterialInspector } from "./MaterialInspector";
 import { useStoryServices, useStoryStore } from "./storyContext";
 import { formatAge, formatDuration } from "./storyFormat";
 import { removeItems, replaceAttachment, replaceEdge, replaceNode } from "./storyGraphOps";
-import { PLACEMENT_LABELS, STORY_KIND_STYLES } from "./storyKinds";
+import { PLACEMENT_KEYS, STORY_KIND_STYLES } from "./storyKinds";
 import { Slot } from "./StorySlots";
 import type { StorySelection } from "./storyStore";
 import type { StoryLibrary } from "./useStoryLibrary";
@@ -67,6 +68,7 @@ function Overview({
   onGraph: (change: (graph: StoryGraph) => StoryGraph) => void;
   onSelect: (selection: StorySelection) => void;
 }) {
+  const { t } = useTranslation();
   const order = useMemo(() => storyOrder(graph), [graph]);
   const chapters = new Map(graph.nodes.filter(isChapter).map((node) => [node.id, node]));
   const total = order.chapters.reduce(
@@ -81,13 +83,16 @@ function Overview({
       <InspectorHead
         icon={STORY_KIND_STYLES.chapter.icon}
         chip={STORY_KIND_STYLES.chapter.chip}
-        name="Story Graph"
-        sub={`${order.chapters.length} chapters · ${formatDuration(total)}`}
+        name={t("story.toolbar.title")}
+        sub={t("story.inspector.overviewSub", {
+          count: order.chapters.length,
+          duration: formatDuration(total),
+        })}
       />
-      <Section title="Story">
-        <Field label="Title">
+      <Section title={t("story.inspector.section.story")}>
+        <Field label={t("story.field.title")}>
           <Input
-            aria-label="Story title"
+            aria-label={t("story.inspector.storyTitle")}
             value={graph.title}
             disabled={readOnly}
             onCommit={(title) =>
@@ -95,29 +100,35 @@ function Overview({
             }
           />
         </Field>
-        <Field label="Brief" top>
+        <Field label={t("story.inspector.brief")} top>
           <TextAreaField
-            label="Story brief"
+            label={t("story.inspector.storyBrief")}
             value={graph.brief}
             disabled={readOnly}
-            placeholder="What the video should achieve, in your words"
+            placeholder={t("story.inspector.briefPlaceholder")}
             onCommit={(brief) => onGraph((current) => ({ ...current, brief }))}
           />
         </Field>
         <dl className="m-0 grid grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1.5 text-sm">
-          <dt className="text-fg-3">Nodes</dt>
+          <dt className="text-fg-3">{t("story.inspector.nodes")}</dt>
           <dd className="m-0 tabular-nums text-fg">{graph.nodes.length}</dd>
-          <dt className="text-fg-3">Missing</dt>
+          <dt className="text-fg-3">{t("story.inspector.missing")}</dt>
           <dd className="m-0 text-fg">
-            {missing === 0 ? "None" : `${missing} asset${missing === 1 ? "" : "s"}`}
+            {missing === 0
+              ? t("story.inspector.none")
+              : t("story.inspector.missingCount", { count: missing })}
           </dd>
-          <dt className="text-fg-3">Locked</dt>
-          <dd className="m-0 text-fg">{locked === 0 ? "None" : `${locked} nodes`}</dd>
+          <dt className="text-fg-3">{t("story.inspector.locked")}</dt>
+          <dd className="m-0 text-fg">
+            {locked === 0
+              ? t("story.inspector.none")
+              : t("story.inspector.lockedCount", { count: locked })}
+          </dd>
         </dl>
       </Section>
-      <Section title="Play order">
+      <Section title={t("story.inspector.playOrder")}>
         {order.chapters.length === 0 ? (
-          <p className="text-sm text-fg-3">No chapters yet.</p>
+          <p className="text-sm text-fg-3">{t("story.inspector.noChapters")}</p>
         ) : (
           <ol className="grid gap-0.5">
             {order.chapters.map((id, index) => {
@@ -146,10 +157,12 @@ function Overview({
         ))}
       </Section>
       {(graph.review || graph.build) && (
-        <Section title="Last AI passes">
+        <Section title={t("story.inspector.lastPasses")}>
           {graph.review && (
             <div className="grid gap-0.5">
-              <span className="text-xs text-fg-3">Reviewed {formatAge(graph.review.at, now)}</span>
+              <span className="text-xs text-fg-3">
+                {t("story.toolbar.reviewed", { age: formatAge(graph.review.at, now) })}
+              </span>
               <p className="text-sm leading-[17px] whitespace-pre-wrap text-fg-2">
                 {graph.review.summary}
               </p>
@@ -158,8 +171,11 @@ function Overview({
           {graph.build && (
             <div className="grid gap-0.5">
               <span className="text-xs text-fg-3">
-                Built {formatAge(graph.build.at, now)} · {formatDuration(graph.build.duration)} into{" "}
-                {graph.build.composition}
+                {t("story.inspector.builtInto", {
+                  age: formatAge(graph.build.at, now),
+                  duration: formatDuration(graph.build.duration),
+                  composition: graph.build.composition,
+                })}
               </span>
               {graph.build.warnings.map((warning) => (
                 <p key={warning} className="text-xs text-warning">
@@ -171,8 +187,7 @@ function Overview({
         </Section>
       )}
       <p className="p-3 text-sm leading-[17px] text-pretty text-fg-3">
-        Select a chapter to edit its purpose, footage and timing. Drag a material’s top port onto a
-        chapter to attach it.
+        {t("story.inspector.overviewHint")}
       </p>
     </>
   );
@@ -191,31 +206,41 @@ function EdgeInspector({
   onChange: (next: StoryEdge) => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <InspectorHead
         icon={ArrowRight}
         chip={STORY_KIND_STYLES.chapter.chip}
-        name="Sequence"
+        name={t("story.inspector.sequence")}
         sub={`${titleOf(graph, edge.from)} → ${titleOf(graph, edge.to)}`}
       />
-      <Section title="Sequence">
+      <Section title={t("story.inspector.sequence")}>
         <p className="text-sm leading-[17px] text-fg-2">
-          “{titleOf(graph, edge.from)}” plays right before “{titleOf(graph, edge.to)}”.
+          {t("story.inspector.sequenceNote", {
+            from: titleOf(graph, edge.from),
+            to: titleOf(graph, edge.to),
+          })}
         </p>
-        <Field label="Transition">
+        <Field label={t("story.inspector.transition")}>
           <Input
-            aria-label="Transition"
+            aria-label={t("story.inspector.transition")}
             value={edge.transition}
             disabled={readOnly}
-            placeholder="Match cut on the keyboard, music rise…"
+            placeholder={t("story.inspector.transitionPlaceholder")}
             onCommit={(transition) => onChange({ ...edge, transition })}
           />
         </Field>
         <span className="text-xs text-fg-3">
-          {edge.createdBy === "user" ? "Connected by you" : "Suggested by the agent"}
+          {edge.createdBy === "user"
+            ? t("story.inspector.connectedByYou")
+            : t("story.inspector.suggestedByAgent")}
         </span>
-        <DeleteButton label="Disconnect" disabled={readOnly} onClick={onDelete} />
+        <DeleteButton
+          label={t("story.inspector.disconnect")}
+          disabled={readOnly}
+          onClick={onDelete}
+        />
       </Section>
     </>
   );
@@ -234,6 +259,7 @@ function AttachmentInspector({
   onChange: (next: StoryAttachment) => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const material = graph.nodes.find((node) => node.id === attachment.node);
   const style = STORY_KIND_STYLES[material?.kind ?? "chapter"];
   return (
@@ -242,17 +268,17 @@ function AttachmentInspector({
         icon={style.icon}
         chip={style.chip}
         name={titleOf(graph, attachment.node)}
-        sub={`Attached to ${titleOf(graph, attachment.chapter)}`}
+        sub={t("story.inspector.attachedTo", { title: titleOf(graph, attachment.chapter) })}
       />
-      <Section title="Attachment">
-        <Field label="Placement">
+      <Section title={t("story.inspector.attachment")}>
+        <Field label={t("story.inspector.placement")}>
           <Select
-            label="Placement"
+            label={t("story.inspector.placement")}
             value={attachment.placement}
             disabled={readOnly || attachment.offset !== null}
             options={ATTACHMENT_PLACEMENTS.map((placement) => ({
               value: placement,
-              label: PLACEMENT_LABELS[placement],
+              label: t(PLACEMENT_KEYS[placement]),
             }))}
             onCommit={(value) => {
               const placement = ATTACHMENT_PLACEMENTS.find((candidate) => candidate === value);
@@ -260,9 +286,9 @@ function AttachmentInspector({
             }}
           />
         </Field>
-        <Field label="At" hint="From the chapter start; overrides placement.">
+        <Field label={t("story.inspector.at")} hint={t("story.inspector.atHint")}>
           <TimeField
-            label="Offset"
+            label={t("story.inspector.offset")}
             value={attachment.offset}
             optional
             placeholder="–"
@@ -270,9 +296,9 @@ function AttachmentInspector({
             onCommit={(offset) => onChange({ ...attachment, offset })}
           />
         </Field>
-        <Field label="Length" hint="Empty: the material’s own.">
+        <Field label={t("story.inspector.length")} hint={t("story.inspector.lengthHint")}>
           <TimeField
-            label="Attachment length"
+            label={t("story.inspector.attachmentLength")}
             value={attachment.duration}
             optional
             placeholder="–"
@@ -282,9 +308,11 @@ function AttachmentInspector({
           />
         </Field>
         <span className="text-xs text-fg-3">
-          {attachment.createdBy === "user" ? "Attached by you" : "Suggested by the agent"}
+          {attachment.createdBy === "user"
+            ? t("story.inspector.attachedByYou")
+            : t("story.inspector.suggestedByAgent")}
         </span>
-        <DeleteButton label="Detach" disabled={readOnly} onClick={onDelete} />
+        <DeleteButton label={t("story.inspector.detach")} disabled={readOnly} onClick={onDelete} />
       </Section>
     </>
   );
@@ -299,6 +327,7 @@ export function StoryInspector({
   /** Opens the rebuild impact for one chapter's section. */
   onRebuildSection: (chapter: string) => void;
 }) {
+  const { t } = useTranslation();
   const { store } = useStoryServices();
   const graph = useStoryStore((state) => state.graph);
   const selection = useStoryStore((state) => state.selection);
@@ -323,12 +352,12 @@ export function StoryInspector({
         <InspectorHead
           icon={STORY_KIND_STYLES.chapter.icon}
           chip={STORY_KIND_STYLES.chapter.chip}
-          name="Selection"
-          sub={`${count} items selected`}
+          name={t("story.inspector.selection")}
+          sub={t("story.inspector.itemsSelected", { count })}
         />
         <div className="p-3">
           <DeleteButton
-            label="Delete"
+            label={t("common.delete")}
             disabled={readOnly}
             onClick={() => remove([...selection.nodes, ...selection.edges])}
           />
@@ -366,7 +395,11 @@ export function StoryInspector({
           />
         )}
         <div className="p-3">
-          <DeleteButton label="Delete node" disabled={readOnly} onClick={() => remove([node.id])} />
+          <DeleteButton
+            label={t("story.inspector.deleteNode")}
+            disabled={readOnly}
+            onClick={() => remove([node.id])}
+          />
         </div>
       </>
     );
@@ -401,7 +434,7 @@ export function StoryInspector({
 
   return (
     <aside
-      aria-label="Story inspector"
+      aria-label={t("story.inspector.label")}
       className="flex w-[320px] shrink-0 flex-col overflow-y-auto border-l border-border-subtle bg-bg-0 [scrollbar-color:var(--color-surface-3)_transparent] @max-[760px]/story:w-[264px]"
     >
       {body}

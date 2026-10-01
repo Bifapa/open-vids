@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 const STUDIO_SAVE_ATTEMPT_PROPERTY = "__studioSaveAttempt";
 
 export class StudioSaveHttpError extends Error {
@@ -78,7 +80,7 @@ function attachStudioSaveAttempt(error: unknown, attempt: number): unknown {
 export function getStudioSaveErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error;
-  return "Unknown save failure";
+  return t("app.save.unknown");
 }
 
 export function markStudioSaveErrorAlreadyToasted<T>(error: T): T {
@@ -136,8 +138,8 @@ export async function createStudioSaveHttpError(
   }
   const detail = body.trim().slice(0, 300);
   const message = detail
-    ? `${fallbackMessage} (${response.status}): ${detail}`
-    : `${fallbackMessage} (${response.status})`;
+    ? t("app.save.httpError", { message: fallbackMessage, status: response.status, detail })
+    : t("app.save.httpErrorNoDetail", { message: fallbackMessage, status: response.status });
   return new StudioSaveHttpError(message, response.status, options);
 }
 

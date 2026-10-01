@@ -2,6 +2,7 @@ import { useId, useRef, useState } from "react";
 import { Check, Copy, WarningCircle, X } from "@phosphor-icons/react";
 import type { ExportLicenseCheck } from "@hyperframes/agent-protocol";
 import { Button, IconButton } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { useDialogBehavior } from "../components/ui/useDialogBehavior";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { LicenseChip } from "./LicenseChip";
@@ -15,6 +16,7 @@ function ExportLicenseModal({
   check: ExportLicenseCheck;
   onDecide: (decision: ExportDecision) => void;
 }) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [copied, setCopied] = useState(false);
@@ -42,10 +44,10 @@ function ExportLicenseModal({
       >
         <header className="flex h-head shrink-0 items-center gap-1.5 border-b border-border-subtle pr-1 pl-3 select-none">
           <h2 id={titleId} className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {count === 1 ? "1 asset needs a license check" : `${count} assets need a license check`}
+            {t("research.export.title", { count })}
           </h2>
           <IconButton
-            aria-label="Close"
+            aria-label={t("common.close")}
             size="sm"
             icon={<X size={14} aria-hidden />}
             onClick={() => onDecide("cancel")}
@@ -53,12 +55,11 @@ function ExportLicenseModal({
         </header>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-3 [scrollbar-color:var(--color-surface-3)_transparent]">
           <NoteBox warn icon={<WarningCircle size={12} weight="fill" />}>
-            This export uses researched material whose license is unknown or restricted. You can
-            still export; check the licenses before you publish.
+            {t("research.export.note")}
           </NoteBox>
           <ul
             className="overflow-hidden rounded-md border border-border-subtle bg-bg-0"
-            aria-label="License warnings"
+            aria-label={t("research.export.warningsLabel")}
           >
             {check.warnings.map((warning) => (
               <li
@@ -84,9 +85,12 @@ function ExportLicenseModal({
             ))}
           </ul>
           {check.credits.length > 0 && (
-            <section className="flex flex-col gap-1.5" aria-label="Credits">
+            <section
+              className="flex flex-col gap-1.5"
+              aria-label={t("research.export.creditsLabel")}
+            >
               <SectionHeading
-                title="Credits this export needs"
+                title={t("research.export.creditsTitle")}
                 aside={
                   <Button
                     size="sm"
@@ -96,7 +100,7 @@ function ExportLicenseModal({
                       if (await copyTextToClipboard(check.credits.join("\n"))) setCopied(true);
                     }}
                   >
-                    {copied ? "Copied" : "Copy"}
+                    {copied ? t("common.copied") : t("common.copy")}
                   </Button>
                 }
               />
@@ -110,13 +114,13 @@ function ExportLicenseModal({
         </div>
         <footer className="flex min-h-11 shrink-0 items-center justify-end gap-1.5 border-t border-border-subtle py-2 pr-2.5 pl-3">
           <Button size="sm" variant="ghost" onClick={() => onDecide("cancel")}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button size="sm" variant="secondary" onClick={() => onDecide("review")}>
-            Review sources
+            {t("research.export.review")}
           </Button>
           <Button size="sm" variant="primary" onClick={() => onDecide("export")}>
-            Export anyway
+            {t("research.export.anyway")}
           </Button>
         </footer>
       </div>

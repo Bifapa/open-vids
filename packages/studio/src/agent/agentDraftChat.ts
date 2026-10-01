@@ -7,6 +7,7 @@ import {
   type SpecialistOverrides,
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 
 /** What the composer's chips chose in the new-chat draft, applied when its first message creates the chat. */
 export type DraftChoices = Omit<UpdateChatRequest, "title" | "activeMode">;
@@ -58,7 +59,7 @@ export function draftChatSummary(
   return {
     id: "",
     projectId: "",
-    title: "New chat",
+    title: t("chat.header.newChat"),
     createdAt: 0,
     updatedAt: 0,
     status: "idle",

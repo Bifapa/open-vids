@@ -4,6 +4,7 @@ import {
   StudioFileConflictError,
   type StudioSaveDrainResult,
 } from "./studioSaveDiagnostics";
+import { t } from "../i18n";
 
 interface DomEditSaveQueueOpenEvent {
   consecutiveFailures: number;
@@ -30,7 +31,7 @@ const DEFAULT_FAILURE_THRESHOLD = 5;
 
 export class DomEditSaveQueueOpenError extends Error {
   constructor() {
-    super("Auto-save is paused. Dismiss the warning to retry DOM edits.");
+    super(t("app.save.autoSavePaused"));
     this.name = "DomEditSaveQueueOpenError";
   }
 }

@@ -1,6 +1,7 @@
 import { ArrowsClockwise, Check } from "@phosphor-icons/react";
 import type { StoryNodeFacts, StorySyncReport } from "@hyperframes/agent-protocol";
 import { Badge, Button, Tooltip } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { Field, HintNote, Section } from "./inspectorFields";
 import { EditRows } from "./StoryDialog";
 import { formatDuration } from "./storyFormat";
@@ -24,12 +25,16 @@ export function ChapterTimelineSection({
   readOnly: boolean;
   onRebuild: (chapter: string) => void;
 }) {
+  const { t } = useTranslation();
   const onTimeline = facts?.timeline ?? null;
   const placed = onTimeline && (
-    <Field label="On timeline">
+    <Field label={t("story.timeline.onTimeline")}>
       <span className="px-0.5 font-mono text-sm text-fg">
         {formatDuration(onTimeline.start)} – {formatDuration(onTimeline.end)}
-        <span className="font-ui text-xs text-fg-3"> · {onTimeline.clips} clips</span>
+        <span className="font-ui text-xs text-fg-3">
+          {" "}
+          · {t("story.timeline.clips", { count: onTimeline.clips })}
+        </span>
       </span>
     </Field>
   );
@@ -38,17 +43,13 @@ export function ChapterTimelineSection({
   let status;
   let body = null;
   if (!report || report.state === "not_built") {
-    status = <Badge>Not built</Badge>;
-    body = <HintNote icon={ArrowsClockwise}>Build Story puts it on the timeline.</HintNote>;
+    status = <Badge>{t("story.sync.badge.notBuilt")}</Badge>;
+    body = <HintNote icon={ArrowsClockwise}>{t("story.timeline.notBuiltHint")}</HintNote>;
   } else if (report.state === "untracked") {
-    status = <Badge>Untracked</Badge>;
-    body = (
-      <HintNote icon={ArrowsClockwise}>
-        Built before sync tracking: Build Story takes the timeline over.
-      </HintNote>
-    );
+    status = <Badge>{t("story.timeline.untracked")}</Badge>;
+    body = <HintNote icon={ArrowsClockwise}>{t("story.timeline.untrackedHint")}</HintNote>;
   } else if (!section) {
-    status = <Badge>Not on the timeline</Badge>;
+    status = <Badge>{t("story.timeline.notOnTimeline")}</Badge>;
   } else {
     const badges = chapterBadges(report, chapter);
     const edits = sectionEdits(section);
@@ -60,20 +61,20 @@ export function ChapterTimelineSection({
       status = (
         <Badge tone="success">
           <Check size={11} weight="bold" aria-hidden />
-          In sync
+          {t("story.sync.change.unchanged")}
         </Badge>
       );
     } else {
       status = <SyncBadges badges={badges} />;
       const blocker = readOnly
-        ? "The agent is working"
+        ? t("story.agent.working")
         : needsRebuild
           ? null
-          : "Only edited on the timeline: nothing to rebuild";
+          : t("story.timeline.nothingToRebuild");
       body = (
         <>
           {(section.moved || section.change !== "unchanged") && (
-            <Field label="Moves to">
+            <Field label={t("story.timeline.movesTo")}>
               <span className="px-0.5 font-mono text-sm text-fg-2">
                 {formatSpan(section.current)} → {formatSpan(section.next)}
               </span>
@@ -87,13 +88,7 @@ export function ChapterTimelineSection({
           {edits.length > 0 && (
             <EditRows edits={edits.map((edit) => ({ edit, where: section.title }))} />
           )}
-          <Tooltip
-            label={
-              blocker ??
-              "Regenerate only this section's changed parts; you choose what happens to your edits"
-            }
-            side="left"
-          >
+          <Tooltip label={blocker ?? t("story.timeline.rebuildTip")} side="left">
             <Button
               size="sm"
               variant="secondary"
@@ -102,7 +97,7 @@ export function ChapterTimelineSection({
               onClick={() => onRebuild(chapter)}
               className="w-full"
             >
-              Rebuild this section
+              {t("story.timeline.rebuildSection")}
             </Button>
           </Tooltip>
         </>
@@ -111,8 +106,8 @@ export function ChapterTimelineSection({
   }
 
   return (
-    <Section title="Timeline">
-      <Field label="Status">
+    <Section title={t("story.timeline.title")}>
+      <Field label={t("story.field.status")}>
         <span className="flex min-w-0 flex-wrap items-center gap-1">{status}</span>
       </Field>
       {placed}

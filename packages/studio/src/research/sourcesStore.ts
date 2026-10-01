@@ -7,6 +7,7 @@
 
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { ProjectSourcesView } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 import type { ResearchClient } from "./researchClient";
 
 export type SourcesLoadStatus = "idle" | "loading" | "ready" | "error";
@@ -56,8 +57,7 @@ export function createSourcesStore(client: ResearchClient): SourcesStore {
         set({ view, status: "ready", error: null });
       } catch (error) {
         if (mine !== generation) return;
-        const message =
-          error instanceof Error ? error.message : "Couldn't load the project's sources";
+        const message = error instanceof Error ? error.message : t("research.error.sources");
         set((state) => ({ status: state.view ? "ready" : "error", error: message }));
       }
     },

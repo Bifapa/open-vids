@@ -8,6 +8,7 @@ import {
   type StoryErrorCode,
   type StoryView,
 } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
 
 export type StoryFailureCode = StoryErrorCode | "network" | "bad_response" | "http";
@@ -59,7 +60,7 @@ async function request<T>(
   } catch (error) {
     throw new StoryApiError(
       "network",
-      error instanceof Error ? error.message : "Network request failed",
+      error instanceof Error ? error.message : t("story.error.network"),
     );
   }
   const text = await response.text();
@@ -72,10 +73,14 @@ async function request<T>(
   if (!response.ok) {
     const error = isRecord(body) ? body.error : undefined;
     if (isStoryError(error)) throw new StoryApiError(error.code, error.message, response.status);
-    throw new StoryApiError("http", `Request failed (${response.status})`, response.status);
+    throw new StoryApiError(
+      "http",
+      t("story.error.http", { status: response.status }),
+      response.status,
+    );
   }
   if (!guard(body)) {
-    throw new StoryApiError("bad_response", "Unexpected response from the story service");
+    throw new StoryApiError("bad_response", t("story.error.badResponse"));
   }
   return body;
 }

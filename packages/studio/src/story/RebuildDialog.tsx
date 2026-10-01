@@ -9,11 +9,12 @@ import type {
   StorySyncUnit,
 } from "@hyperframes/agent-protocol";
 import { Button, cn } from "../components/ui";
+import { Trans, formatNumber, t as translate, useTranslation } from "../i18n";
 import { formatDuration } from "./storyFormat";
 import { Callout, ChoiceRow, DialogGroup, EditRows, StoryDialog } from "./StoryDialog";
 import {
-  SYNC_ACTION_LABELS,
-  SYNC_ROLE_LABELS,
+  SYNC_ACTION_KEYS,
+  SYNC_ROLE_KEYS,
   chapterBadges,
   conflictingEdits,
   formatSpan,
@@ -45,17 +46,18 @@ function sectionBadges(report: StorySyncReport, section: StorySyncSection): Sync
   return [
     {
       kind: "changed",
-      label: "Leaves the story",
-      detail: "The chapter is no longer in the story: its section comes off the timeline",
+      label: translate("story.rebuild.leavesStory"),
+      detail: translate("story.rebuild.leavesStory.detail"),
     },
   ];
 }
 
 function UnitRow({ unit, action }: { unit: StorySyncUnit; action: StorySyncAction }) {
+  const { t } = useTranslation();
   return (
     <li className="flex flex-col gap-0.5">
       <div className="flex items-center gap-2 text-xs">
-        <span className="w-14 shrink-0 text-fg-3">{SYNC_ROLE_LABELS[unit.role]}</span>
+        <span className="w-14 shrink-0 text-fg-3">{t(SYNC_ROLE_KEYS[unit.role])}</span>
         <span className="min-w-0 flex-1 truncate text-fg" title={unit.reasons.join("; ")}>
           {unit.title}
         </span>
@@ -63,7 +65,7 @@ function UnitRow({ unit, action }: { unit: StorySyncUnit; action: StorySyncActio
           className={cn("shrink-0 font-medium", ACTION_TONES[action])}
           data-unit-action={action}
         >
-          {SYNC_ACTION_LABELS[action]}
+          {t(SYNC_ACTION_KEYS[action])}
         </span>
       </div>
       {unit.edits.length > 0 && (
@@ -84,6 +86,7 @@ function SectionPlan({
   section: StorySyncSection;
   choice: RebuildChoice;
 }) {
+  const { t } = useTranslation();
   const planned = section.units.map((unit) => ({
     unit,
     action: plannedAction(unit, section, choice),
@@ -112,7 +115,7 @@ function SectionPlan({
         <p className="-mt-1 text-xs text-fg-3">{section.reasons.join(" · ")}</p>
       )}
       {onlyMoves ? (
-        <p className="text-xs text-fg-3">Moves as a whole; its clips stay as they are.</p>
+        <p className="text-xs text-fg-3">{t("story.rebuild.movesWhole")}</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {worthListing.map(({ unit, action }) => (
@@ -143,6 +146,7 @@ export function RebuildDialog({
   onClose: () => void;
   onStart: (options: StoryActionOptions) => void;
 }) {
+  const { t } = useTranslation();
   const policyName = useId();
   const [manualEdits, setManualEdits] = useState<ManualEditPolicy>("keep");
   const [allowLocked, setAllowLocked] = useState<string[]>([]);
@@ -166,20 +170,31 @@ export function RebuildDialog({
     );
   const moving = report.unrelated.filter((clip) => clip.shift !== 0);
   const single = chapters?.length === 1 ? titles.get(chapters[0]) : undefined;
-  const startBlocker = blocker ?? (count === 0 ? "Nothing to rebuild" : null);
+  const startBlocker = blocker ?? (count === 0 ? t("story.rebuild.nothing") : null);
+  const shown = moving.slice(0, UNRELATED_SHOWN).map((clip) =>
+    t("story.rebuild.clipShift", {
+      label: clip.label,
+      shift: formatNumber(clip.shift, {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+        signDisplay: "exceptZero",
+      }),
+    }),
+  );
+  const clips = shown.join(", ");
 
   return (
     <StoryDialog
-      title={single ? `Rebuild “${single}”` : "Rebuild affected sections"}
+      title={single ? t("story.rebuild.titleOne", { title: single }) : t("story.rebuild.title")}
       description={
-        <>
-          Only what the story changed is regenerated; the rest of the timeline stays as it is.
-          Duration{" "}
-          <span className="font-mono text-fg-2">
-            {formatDuration(report.duration.current)} → {formatDuration(report.duration.next)}
-          </span>
-          .
-        </>
+        <Trans
+          i18nKey="story.rebuild.description"
+          values={{
+            from: formatDuration(report.duration.current),
+            to: formatDuration(report.duration.next),
+          }}
+          components={{ mono: <span className="font-mono text-fg-2" /> }}
+        />
       }
       onClose={onClose}
       footer={
@@ -190,7 +205,7 @@ export function RebuildDialog({
             </span>
           )}
           <Button size="sm" variant="ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             size="sm"
@@ -199,14 +214,14 @@ export function RebuildDialog({
             icon={<ArrowsClockwise size={12} aria-hidden />}
             onClick={() => onStart(rebuildOptions(choice))}
           >
-            {`Rebuild ${count} ${count === 1 ? "section" : "sections"}`}
+            {t("story.rebuild.start", { count })}
           </Button>
         </>
       }
     >
-      <DialogGroup title="Sections">
+      <DialogGroup title={t("story.rebuild.sections")}>
         {chosen.length === 0 ? (
-          <p className="text-sm text-fg-3">Nothing to rebuild: the timeline matches the story.</p>
+          <p className="text-sm text-fg-3">{t("story.rebuild.upToDate")}</p>
         ) : (
           <ol className="flex flex-col gap-1.5">
             {chosen.map((section) => (
@@ -222,15 +237,18 @@ export function RebuildDialog({
       </DialogGroup>
 
       {alsoApplies.length > 0 && (
-        <DialogGroup title="Also applies">
+        <DialogGroup title={t("story.rebuild.alsoApplies")}>
           <ul className="flex flex-col gap-0.5">
             {alsoApplies.map((section) => (
               <li key={section.chapter} className="flex items-center gap-2 text-xs text-fg-2">
                 <span className="min-w-0 flex-1 truncate">{section.title}</span>
                 <span className="shrink-0 font-mono text-num text-fg-3">
                   {section.change === "removed"
-                    ? "Comes off the timeline"
-                    : `Moves ${formatSpan(section.current)} → ${formatSpan(section.next)}`}
+                    ? t("story.rebuild.comesOff")
+                    : t("story.rebuild.movesSpan", {
+                        from: formatSpan(section.current),
+                        to: formatSpan(section.next),
+                      })}
                 </span>
               </li>
             ))}
@@ -239,7 +257,7 @@ export function RebuildDialog({
       )}
 
       {sideUnits.length > 0 && (
-        <DialogGroup title="Music & captions">
+        <DialogGroup title={t("story.rebuild.musicCaptions")}>
           <ul className="flex flex-col gap-1">
             {sideUnits.map(({ unit, action }) => (
               <UnitRow key={`${unit.role}-${unit.node}`} unit={unit} action={action} />
@@ -249,47 +267,49 @@ export function RebuildDialog({
       )}
 
       {moving.length > 0 && (
-        <DialogGroup title="Other clips">
+        <DialogGroup title={t("story.rebuild.otherClips")}>
           <p className="text-xs leading-[15px] text-fg-2">
-            {moving.length} {moving.length === 1 ? "clip" : "clips"} no section owns will move with
-            their section:{" "}
-            {moving
-              .slice(0, UNRELATED_SHOWN)
-              .map(
-                (clip) => `${clip.label} (${clip.shift > 0 ? "+" : ""}${clip.shift.toFixed(1)} s)`,
-              )
-              .join(", ")}
-            {moving.length > UNRELATED_SHOWN && `, +${moving.length - UNRELATED_SHOWN} more`}.
+            {t("story.rebuild.otherClipsBody", {
+              count: moving.length,
+              clips:
+                moving.length > UNRELATED_SHOWN
+                  ? t("story.rebuild.clipsMore", {
+                      clips,
+                      count: moving.length - UNRELATED_SHOWN,
+                    })
+                  : clips,
+            })}
           </p>
         </DialogGroup>
       )}
 
       {conflicts.length > 0 && (
-        <DialogGroup title="Your edits on the timeline">
-          <div role="radiogroup" aria-label="Manual edits" className="flex flex-col">
+        <DialogGroup title={t("story.rebuild.yourEdits")}>
+          <div
+            role="radiogroup"
+            aria-label={t("story.dialog.manualEdits")}
+            className="flex flex-col"
+          >
             <ChoiceRow
               type="radio"
               name={policyName}
               checked={manualEdits === "keep"}
               onChange={() => setManualEdits("keep")}
-              label="Keep my edits (skip conflicting parts)"
-              description={`${conflicts.length} edited ${conflicts.length === 1 ? "part stays" : "parts stay"} as ${conflicts.length === 1 ? "it is" : "they are"}, even where the story changed them.`}
+              label={t("story.rebuild.keepEdits")}
+              description={t("story.rebuild.keepEditsHint", { count: conflicts.length })}
             />
             <ChoiceRow
               type="radio"
               name={policyName}
               checked={manualEdits === "replace"}
               onChange={() => setManualEdits("replace")}
-              label="Replace my edits"
-              description="Those parts are regenerated from the story."
+              label={t("story.rebuild.replaceEdits")}
+              description={t("story.rebuild.replaceEditsHint")}
             />
           </div>
           {manualEdits === "replace" && (
             <Callout>
-              <span>
-                {conflicts.length} manual {conflicts.length === 1 ? "edit" : "edits"} will be
-                replaced (Revert the turn to get them back):
-              </span>
+              <span>{t("story.rebuild.replaceWarning", { count: conflicts.length })}</span>
               <EditRows edits={conflicts} limit={5} showWhere />
             </Callout>
           )}
@@ -297,7 +317,7 @@ export function RebuildDialog({
       )}
 
       {lockable.length > 0 && (
-        <DialogGroup title="Locked chapters">
+        <DialogGroup title={t("story.rebuild.lockedGroup")}>
           <div className="flex flex-col">
             {lockable.map((chapter) => (
               <ChoiceRow
@@ -309,8 +329,8 @@ export function RebuildDialog({
                     checked ? [...current, chapter] : current.filter((id) => id !== chapter),
                   )
                 }
-                label={`Allow rebuilding “${titles.get(chapter) ?? chapter}”`}
-                description="Locked: it stays as built unless you allow it (it may still move in time)."
+                label={t("story.rebuild.allowLocked", { title: titles.get(chapter) ?? chapter })}
+                description={t("story.rebuild.lockedHint")}
               />
             ))}
           </div>

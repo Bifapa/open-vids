@@ -1,7 +1,9 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { CaretDown, PencilSimple, type Icon } from "@phosphor-icons/react";
 import { Input, Toggle, cn } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { formatDuration, formatTime, parseDuration } from "./storyFormat";
+import { fieldLabel } from "./storyKinds";
 
 /** Which inspector sections the user folded, by title; kept while the app runs, like the prototype's. */
 const folded = new Set<string>();
@@ -94,9 +96,10 @@ export function InspectorHead({
 
 /** "Set by you": the agent keeps this field. */
 function EditedMark() {
+  const { t } = useTranslation();
   return (
-    <span title="Set by you: the agent keeps it" className="inline-flex text-fg-3">
-      <PencilSimple size={10} aria-label="Set by you" />
+    <span title={t("story.inspector.setByYouTip")} className="inline-flex text-fg-3">
+      <PencilSimple size={10} aria-label={t("story.inspector.setByYou")} />
     </span>
   );
 }
@@ -304,23 +307,18 @@ export function HintNote({
 }
 
 /** "Set by you" chips: the fields an agent will not change on this node. */
-export function EditedChips({
-  fields,
-  labels,
-}: {
-  fields: readonly string[];
-  labels: Record<string, string>;
-}) {
+export function EditedChips({ fields }: { fields: readonly string[] }) {
+  const { t } = useTranslation();
   if (fields.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-1" aria-label="Set by you">
-      <span className="text-xs text-fg-3">Set by you:</span>
+    <div className="flex flex-wrap items-center gap-1" aria-label={t("story.inspector.setByYou")}>
+      <span className="text-xs text-fg-3">{t("story.inspector.setByYouLabel")}</span>
       {fields.map((field) => (
         <span
           key={field}
           className="inline-flex h-4 items-center rounded-xs bg-surface-2 px-[5px] text-2xs font-medium text-fg-2"
         >
-          {labels[field] ?? field}
+          {fieldLabel(field)}
         </span>
       ))}
     </div>

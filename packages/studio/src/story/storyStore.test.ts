@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StoryGraph } from "@hyperframes/agent-protocol";
 import { moveNodes, removeItems, replaceNode } from "./storyGraphOps";
-import { CONFLICT_NOTICE, createStoryStore, type StoryStore } from "./storyStore";
+import { conflictNotice, createStoryStore, type StoryStore } from "./storyStore";
 import {
   createFakeStoryServer,
   sampleGraph,
@@ -138,7 +138,7 @@ describe("conflicts and agent turns", () => {
     expect(state.version).toBe("sha256:0003");
     expect(state.past).toEqual([]);
     expect(state.future).toEqual([]);
-    expect(state.notice).toBe(CONFLICT_NOTICE);
+    expect(state.notice).toBe(conflictNotice());
     expect(state.saveState).toBe("saved");
   });
 

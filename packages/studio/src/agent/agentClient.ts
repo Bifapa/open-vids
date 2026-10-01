@@ -42,6 +42,7 @@ import {
   type UpdateAgentSettingsRequest,
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
 
 /** Why a gateway call failed, reduced to what the UI can act on. */
@@ -340,7 +341,11 @@ function failureFor(response: Response, body: unknown): AgentApiError {
     );
   }
   const code: AgentFailureCode = response.status === 503 ? "runtime_unavailable" : "internal";
-  return new AgentApiError(code, `Request failed (${response.status})`, response.status);
+  return new AgentApiError(
+    code,
+    t("agent.error.http", { status: response.status }),
+    response.status,
+  );
 }
 
 export interface AgentClientOptions {
@@ -370,17 +375,13 @@ export function createAgentClient(
     } catch (error) {
       throw new AgentApiError(
         "network",
-        error instanceof Error ? error.message : "Network request failed",
+        error instanceof Error ? error.message : t("agent.error.networkRequest"),
       );
     }
     const payload = await readJson(response);
     if (!response.ok) throw failureFor(response, payload);
     if (!guard(payload)) {
-      throw new AgentApiError(
-        "bad_response",
-        "Unexpected response from the agent",
-        response.status,
-      );
+      throw new AgentApiError("bad_response", t("agent.error.unexpectedResponse"), response.status);
     }
     return payload;
   }

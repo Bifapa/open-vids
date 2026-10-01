@@ -1,6 +1,7 @@
 import { Check, Question, Quotes, WarningCircle, type Icon } from "@phosphor-icons/react";
 import type { LicenseStatus } from "@hyperframes/agent-protocol";
 import { Badge, cn } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { LICENSE_STATUS_HINTS, LICENSE_STATUS_LABELS, LICENSE_STATUS_TONES } from "./licenseLabels";
 
 const STATUS_ICONS: Record<LicenseStatus, Icon> = {
@@ -28,12 +29,19 @@ export function LicenseChip({
   size?: "sm" | "md";
   className?: string;
 }) {
-  const statusLabel = LICENSE_STATUS_LABELS[status];
+  const { t } = useTranslation();
+  const statusLabel = t(LICENSE_STATUS_LABELS[status]);
   const StatusIcon = STATUS_ICONS[status];
   return (
     <Badge
       data-license-status={status}
-      title={title ?? `${statusLabel}: ${LICENSE_STATUS_HINTS[status]}`}
+      title={
+        title ??
+        t("research.license.chipTitle", {
+          status: statusLabel,
+          hint: t(LICENSE_STATUS_HINTS[status]),
+        })
+      }
       tone={LICENSE_STATUS_TONES[status]}
       size={size}
       className={cn("min-w-0 max-w-full", className)}

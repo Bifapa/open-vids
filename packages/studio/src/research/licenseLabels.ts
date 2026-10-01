@@ -5,21 +5,23 @@ import type {
   ProvenanceMediaKind,
 } from "@hyperframes/agent-protocol";
 import type { StatusTone } from "../components/ui";
+import { AGENT_NAME_KEYS } from "../components/chat/agentLabels";
+import { t, type TranslationKey } from "../i18n";
 
-export const LICENSE_STATUS_LABELS: Record<LicenseStatus, string> = {
-  clear: "Clear",
-  attribution: "Attribution",
-  restricted: "Restricted",
-  unknown: "Unknown",
-};
+export const LICENSE_STATUS_LABELS = {
+  clear: "research.license.status.clear",
+  attribution: "research.license.status.attribution",
+  restricted: "research.license.status.restricted",
+  unknown: "research.license.status.unknown",
+} as const satisfies Record<LicenseStatus, TranslationKey>;
 
 /** What each status asks of the user, for tooltips and the filter. */
-export const LICENSE_STATUS_HINTS: Record<LicenseStatus, string> = {
-  clear: "Public domain or CC0: free to use",
-  attribution: "Free to use with a credit line",
-  restricted: "Read the license: it limits how the asset may be used",
-  unknown: "No license found: check the source before publishing",
-};
+export const LICENSE_STATUS_HINTS = {
+  clear: "research.license.hint.clear",
+  attribution: "research.license.hint.attribution",
+  restricted: "research.license.hint.restricted",
+  unknown: "research.license.hint.unknown",
+} as const satisfies Record<LicenseStatus, TranslationKey>;
 
 /** Badge tone per status; restricted and unknown are the warned ones. */
 export const LICENSE_STATUS_TONES: Record<LicenseStatus, StatusTone> = {
@@ -30,32 +32,40 @@ export const LICENSE_STATUS_TONES: Record<LicenseStatus, StatusTone> = {
 };
 
 /** Group headings in the Sources list, most urgent first. */
-export const LICENSE_STATUS_GROUPS: ReadonlyArray<{ status: LicenseStatus; label: string }> = [
-  { status: "unknown", label: "No license found" },
-  { status: "restricted", label: "Needs a decision" },
-  { status: "attribution", label: "Needs a credit" },
-  { status: "clear", label: "Clear to use" },
+export const LICENSE_STATUS_GROUPS: ReadonlyArray<{
+  status: LicenseStatus;
+  label: TranslationKey;
+}> = [
+  { status: "unknown", label: "research.license.group.unknown" },
+  { status: "restricted", label: "research.license.group.restricted" },
+  { status: "attribution", label: "research.license.group.attribution" },
+  { status: "clear", label: "research.license.group.clear" },
 ];
 
-export const CONFIDENCE_LABELS: Record<LicenseConfidence, string> = {
-  high: "High confidence",
-  medium: "Medium confidence",
-  low: "Low confidence",
-  none: "No license information",
-};
+export const CONFIDENCE_LABELS = {
+  high: "research.license.confidence.high",
+  medium: "research.license.confidence.medium",
+  low: "research.license.confidence.low",
+  none: "research.license.confidence.none",
+} as const satisfies Record<LicenseConfidence, TranslationKey>;
 
-export const MEDIA_KIND_LABELS: Record<ProvenanceMediaKind, string> = {
-  video: "Video",
-  picture: "Pictures",
-  audio: "Audio",
-  font: "Fonts",
-};
+export const MEDIA_KIND_LABELS = {
+  video: "research.mediaKind.video",
+  picture: "research.mediaKind.picture",
+  audio: "research.mediaKind.audio",
+  font: "research.mediaKind.font",
+} as const satisfies Record<ProvenanceMediaKind, TranslationKey>;
 
 /** "Research · Claude Haiku 4.5 · turn t-12" / "You": who brought the asset in. */
 export function retrievedByLabel(by: AssetProvenance["retrievedBy"]): string {
-  if (by.agent === "user") return "You";
-  const agent = by.agent.charAt(0).toUpperCase() + by.agent.slice(1);
-  return [agent, by.model, by.turnId ? `turn ${by.turnId}` : null].filter(Boolean).join(" · ");
+  if (by.agent === "user") return t("research.by.you");
+  return [
+    t(AGENT_NAME_KEYS[by.agent]),
+    by.model,
+    by.turnId ? t("research.by.turn", { id: by.turnId }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** The host of a URL for a compact link label, or the URL itself when it does not parse. */

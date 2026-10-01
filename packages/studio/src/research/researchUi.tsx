@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ArrowSquareOut, WarningCircle, X } from "@phosphor-icons/react";
 import { cn } from "../components/ui";
+import { useTranslation } from "../i18n";
 
 /** A link that leaves Studio: opened outside the editor, the way Studio opens every external page. */
 export function ExternalLink({
@@ -33,6 +34,7 @@ export function ExternalLink({
 
 /** A failure the user can read and dismiss, in place of the control that failed: the prototype's error note. */
 export function InlineError({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
+  const { t } = useTranslation();
   return (
     <div
       role="alert"
@@ -43,7 +45,7 @@ export function InlineError({ message, onDismiss }: { message: string; onDismiss
       {onDismiss && (
         <button
           type="button"
-          aria-label="Dismiss message"
+          aria-label={t("common.dismissMessage")}
           onClick={onDismiss}
           className="shrink-0 rounded-sm text-fg-3 outline-hidden hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
         >

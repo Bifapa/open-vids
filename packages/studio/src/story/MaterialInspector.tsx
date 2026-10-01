@@ -15,6 +15,7 @@ import {
   Select,
   type SelectOption,
 } from "../components/ui";
+import { useTranslation } from "../i18n";
 import {
   EditedChips,
   Field,
@@ -27,7 +28,7 @@ import {
 } from "./inspectorFields";
 import type { StorySelection } from "./storyStore";
 import { fileName } from "./storyFormat";
-import { FIELD_LABELS, MISSING_KIND_LABELS, STORY_KIND_STYLES, materialRole } from "./storyKinds";
+import { MISSING_KIND_KEYS, STORY_KIND_STYLES, materialRoleKey } from "./storyKinds";
 import { UsedInSlots } from "./StorySlots";
 import type { StoryLibrary } from "./useStoryLibrary";
 import { MissingResearchSection, ResolutionSection } from "./StoryProvenance";
@@ -65,6 +66,7 @@ function InputsEditor({
   disabled: boolean;
   onChange: (inputs: Record<string, string>) => void;
 }) {
+  const { t } = useTranslation();
   const entries = Object.entries(node.inputs);
   const replace = (index: number, key: string, value: string) =>
     onChange(
@@ -78,7 +80,7 @@ function InputsEditor({
         <div key={key} className="flex items-center gap-1">
           <div className="w-16 shrink-0">
             <Input
-              aria-label={`Input ${index + 1} name`}
+              aria-label={t("story.material.inputName", { number: index + 1 })}
               value={key}
               disabled={disabled}
               onCommit={(name) => replace(index, name.trim(), value)}
@@ -86,14 +88,14 @@ function InputsEditor({
           </div>
           <div className="min-w-0 flex-1">
             <Input
-              aria-label={`Input ${key}`}
+              aria-label={t("story.material.inputValue", { name: key })}
               value={value}
               disabled={disabled}
               onCommit={(next) => replace(index, key, next)}
             />
           </div>
           <IconButton
-            aria-label={`Remove input ${key}`}
+            aria-label={t("story.material.inputRemove", { name: key })}
             size="sm"
             disabled={disabled}
             icon={<Trash size={12} aria-hidden />}
@@ -113,7 +115,7 @@ function InputsEditor({
           onChange({ ...node.inputs, [name]: "" });
         }}
       >
-        Input
+        {t("story.material.addInput")}
       </Button>
     </div>
   );
@@ -125,23 +127,24 @@ function KindFields({
   readOnly,
   onChange,
 }: Omit<MaterialInspectorProps, "graph" | "onSelect" | "onRemove">) {
+  const { t } = useTranslation();
   const edited = new Set(node.userEdited);
   switch (node.kind) {
     case "video":
       return (
         <>
-          <Field label="Video" edited={edited.has("asset")}>
+          <Field label={t("story.material.video")} edited={edited.has("asset")}>
             <Select
-              label="Video file"
+              label={t("story.material.videoFile")}
               value={node.asset}
               options={assetOptions(library, "video", node.asset)}
               disabled={readOnly}
               onCommit={(asset) => onChange({ ...node, asset, previewFrame: null })}
             />
           </Field>
-          <Field label="In" edited={edited.has("sourceIn")}>
+          <Field label={t("story.material.in")} edited={edited.has("sourceIn")}>
             <TimeField
-              label="Source in"
+              label={t("story.material.sourceIn")}
               value={node.sourceIn}
               precise
               disabled={readOnly}
@@ -149,13 +152,13 @@ function KindFields({
               onCommit={(time) => time !== null && onChange({ ...node, sourceIn: time })}
             />
           </Field>
-          <Field label="Out" edited={edited.has("sourceOut")}>
+          <Field label={t("story.material.out")} edited={edited.has("sourceOut")}>
             <TimeField
-              label="Source out"
+              label={t("story.material.sourceOut")}
               value={node.sourceOut}
               precise
               optional
-              placeholder="End"
+              placeholder={t("story.material.outPlaceholder")}
               disabled={readOnly}
               validate={(time) => time > node.sourceIn}
               onCommit={(time) => onChange({ ...node, sourceOut: time })}
@@ -165,9 +168,9 @@ function KindFields({
       );
     case "picture":
       return (
-        <Field label="Picture" edited={edited.has("asset")}>
+        <Field label={t("story.material.picture")} edited={edited.has("asset")}>
           <Select
-            label="Picture file"
+            label={t("story.material.pictureFile")}
             value={node.asset}
             options={assetOptions(library, "image", node.asset)}
             disabled={readOnly}
@@ -178,21 +181,21 @@ function KindFields({
     case "music":
       return (
         <>
-          <Field label="Track" edited={edited.has("asset")}>
+          <Field label={t("story.material.track")} edited={edited.has("asset")}>
             <Select
-              label="Music file"
+              label={t("story.material.musicFile")}
               value={node.asset ?? NO_TRACK}
               options={[
-                { value: NO_TRACK, label: "Not chosen yet" },
+                { value: NO_TRACK, label: t("story.material.notChosen") },
                 ...assetOptions(library, "audio", node.asset),
               ]}
               disabled={readOnly}
               onCommit={(asset) => onChange({ ...node, asset: asset === NO_TRACK ? null : asset })}
             />
           </Field>
-          <Field label="Volume" edited={edited.has("volume")}>
+          <Field label={t("story.material.volume")} edited={edited.has("volume")}>
             <NumberField
-              label="Volume"
+              label={t("story.material.volume")}
               value={Math.round(node.volume * 100)}
               unit="%"
               min={0}
@@ -206,7 +209,7 @@ function KindFields({
           </Field>
           <Field label="BPM" edited={edited.has("bpm")}>
             <Input
-              aria-label="Tempo"
+              aria-label={t("story.material.tempo")}
               value={node.bpm === null ? "" : String(node.bpm)}
               placeholder="–"
               disabled={readOnly}
@@ -230,9 +233,9 @@ function KindFields({
       }
       return (
         <>
-          <Field label="Preset" edited={edited.has("preset")}>
+          <Field label={t("story.material.preset")} edited={edited.has("preset")}>
             <Select
-              label="Motion preset"
+              label={t("story.material.motionPreset")}
               value={node.preset}
               options={presets}
               disabled={readOnly}
@@ -243,12 +246,12 @@ function KindFields({
             />
           </Field>
           <Field
-            label="Duration"
+            label={t("story.material.duration")}
             edited={edited.has("duration")}
-            hint="Empty: the preset’s own length."
+            hint={t("story.material.durationHint")}
           >
             <TimeField
-              label="Motion duration"
+              label={t("story.material.motionDuration")}
               value={node.duration}
               optional
               disabled={readOnly}
@@ -256,7 +259,7 @@ function KindFields({
               onCommit={(duration) => onChange({ ...node, duration })}
             />
           </Field>
-          <Field label="Inputs" edited={edited.has("inputs")} top>
+          <Field label={t("story.material.inputs")} edited={edited.has("inputs")} top>
             <InputsEditor
               node={node}
               disabled={readOnly}
@@ -269,13 +272,13 @@ function KindFields({
     case "missing":
       return (
         <>
-          <Field label="Needed media" edited={edited.has("mediaKind")}>
+          <Field label={t("story.material.neededMedia")} edited={edited.has("mediaKind")}>
             <Select
-              label="Needed media"
+              label={t("story.material.neededMedia")}
               value={node.mediaKind}
               options={MISSING_MEDIA_KINDS.map((kind) => ({
                 value: kind,
-                label: MISSING_KIND_LABELS[kind],
+                label: t(MISSING_KIND_KEYS[kind]),
               }))}
               disabled={readOnly}
               onCommit={(value) => {
@@ -284,18 +287,18 @@ function KindFields({
               }}
             />
           </Field>
-          <Field label="Needed" edited={edited.has("need")} top>
+          <Field label={t("story.material.needed")} edited={edited.has("need")} top>
             <TextAreaField
-              label="What is needed"
+              label={t("story.material.whatNeeded")}
               value={node.need}
               disabled={readOnly}
-              placeholder="Close-up of the keyboard, shallow depth of field"
+              placeholder={t("story.material.needPlaceholder")}
               onCommit={(need) => onChange({ ...node, need })}
             />
           </Field>
-          <Field label="Length" edited={edited.has("neededDuration")}>
+          <Field label={t("story.material.length")} edited={edited.has("neededDuration")}>
             <TimeField
-              label="Needed length"
+              label={t("story.material.neededLength")}
               value={node.neededDuration}
               optional
               disabled={readOnly}
@@ -309,6 +312,7 @@ function KindFields({
 }
 
 export function MaterialInspector(props: MaterialInspectorProps) {
+  const { t } = useTranslation();
   const { node, graph, readOnly, onChange, onSelect, onRemove } = props;
   const style = STORY_KIND_STYLES[node.kind];
   const edited = new Set(node.userEdited);
@@ -319,9 +323,16 @@ export function MaterialInspector(props: MaterialInspectorProps) {
         icon={style.icon}
         chip={style.chip}
         name={node.title}
-        sub={`${style.label} · ${materialRole(node)}`}
+        sub={t("story.material.subtitle", {
+          kind: t(style.labelKey),
+          role: t(materialRoleKey(node)),
+        })}
       />
-      <Section title={node.kind === "motion" ? "Use in chapter" : "Used in"}>
+      <Section
+        title={
+          node.kind === "motion" ? t("story.material.useInChapter") : t("story.material.usedIn")
+        }
+      >
         <UsedInSlots
           graph={graph}
           order={order}
@@ -331,11 +342,15 @@ export function MaterialInspector(props: MaterialInspectorProps) {
           onDetach={(attachment) => onRemove([attachment])}
         />
       </Section>
-      <Section title={node.kind === "missing" ? "Needed" : "Properties"}>
-        <EditedChips fields={node.userEdited} labels={FIELD_LABELS} />
-        <Field label="Title" edited={edited.has("title")}>
+      <Section
+        title={
+          node.kind === "missing" ? t("story.material.needed") : t("story.material.properties")
+        }
+      >
+        <EditedChips fields={node.userEdited} />
+        <Field label={t("story.field.title")} edited={edited.has("title")}>
           <Input
-            aria-label="Title"
+            aria-label={t("story.field.title")}
             value={node.title}
             disabled={readOnly}
             onCommit={(title) => title.trim() && onChange({ ...node, title: title.trim() })}
@@ -343,13 +358,13 @@ export function MaterialInspector(props: MaterialInspectorProps) {
         </Field>
         <KindFields node={node} library={props.library} readOnly={readOnly} onChange={onChange} />
         {node.kind !== "missing" && (
-          <Field label="Usage" edited={edited.has("usageIntent")} top>
+          <Field label={t("story.material.usage")} edited={edited.has("usageIntent")} top>
             <TextAreaField
-              label="Usage intent"
+              label={t("story.material.usageIntent")}
               value={node.usageIntent}
               disabled={readOnly}
               rows={2}
-              placeholder="How the material is used"
+              placeholder={t("story.material.usagePlaceholder")}
               onCommit={(usageIntent) => onChange({ ...node, usageIntent })}
             />
           </Field>
@@ -360,17 +375,15 @@ export function MaterialInspector(props: MaterialInspectorProps) {
       ) : (
         <ResolutionSection node={node} />
       )}
-      <Section title="Lock">
+      <Section title={t("story.chapter.section.lock")}>
         <ToggleRow
-          label="Locked"
+          label={t("story.inspector.locked")}
           checked={node.locked}
           disabled={readOnly}
           onCommit={(locked) => onChange({ ...node, locked })}
         />
         <HintNote icon={node.locked ? LockSimple : LockSimpleOpen}>
-          {node.locked
-            ? "The agent will not change it, or attach and detach it."
-            : "Lock it to keep the agent from changing, attaching or detaching it."}
+          {node.locked ? t("story.material.lockedOn") : t("story.material.lockedOff")}
         </HintNote>
       </Section>
     </>

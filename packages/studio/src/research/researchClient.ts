@@ -10,6 +10,7 @@ import {
   type ProjectSourcesView,
   type UpdateTrustedSourceRequest,
 } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
 
 /** A failed research request; `message` is the server's own `{ error: { message } }` when it sent one. */
@@ -58,7 +59,7 @@ async function request<T>(
     response = await fetchImpl(url, init);
   } catch (error) {
     throw new ResearchApiError(
-      error instanceof Error ? error.message : "Couldn't reach the Studio server",
+      error instanceof Error ? error.message : t("research.error.unreachable"),
     );
   }
   const text = await response.text();
@@ -70,11 +71,11 @@ async function request<T>(
   }
   if (!response.ok) {
     throw new ResearchApiError(
-      errorMessage(body) ?? `Request failed (${response.status})`,
+      errorMessage(body) ?? t("research.error.http", { status: response.status }),
       response.status,
     );
   }
-  if (!guard(body)) throw new ResearchApiError("Unexpected response from the Studio server");
+  if (!guard(body)) throw new ResearchApiError(t("research.error.badResponse"));
   return body;
 }
 

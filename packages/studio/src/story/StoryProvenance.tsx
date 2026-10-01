@@ -1,17 +1,14 @@
 import type { ReactNode } from "react";
 import { ArrowSquareOut } from "@phosphor-icons/react";
-import type {
-  AssetSearchMode,
-  MissingAssetNode,
-  StoryMaterialNode,
-} from "@hyperframes/agent-protocol";
+import type { MissingAssetNode, StoryMaterialNode } from "@hyperframes/agent-protocol";
 import { Button } from "../components/ui";
+import { formatDate, useTranslation } from "../i18n";
 import { CONFIDENCE_LABELS, retrievedByLabel, urlHost } from "../research/licenseLabels";
 import { useSourcesStore } from "../research/researchContext";
 import { ExternalLink } from "../research/researchUi";
 import { Section } from "./inspectorFields";
 import { formatAge } from "./storyFormat";
-import { MISSING_KIND_LABELS } from "./storyKinds";
+import { MISSING_KIND_KEYS } from "./storyKinds";
 import {
   FindWithResearchButton,
   SourceLicenseChip,
@@ -20,11 +17,6 @@ import {
   resolutionOf,
   useStoryResearch,
 } from "./storyResearch";
-
-const MODE_LABELS: Record<AssetSearchMode, string> = {
-  trusted: "trusted sources only",
-  any: "any public source",
-};
 
 function Line({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -39,16 +31,15 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
 
 /** A Missing Asset node's way to Research: one turn that looks for this material and resolves the node with it. */
 export function MissingResearchSection({ node }: { node: MissingAssetNode }) {
+  const { t } = useTranslation();
   const research = useStoryResearch();
   const mode = useSourcesStore((state) => state.view?.mode ?? null);
   if (!research) return null;
   const blocker = findBlocker(research, node);
   return (
-    <Section title="Research">
+    <Section title={t("story.research.title")}>
       <p className="text-sm leading-[17px] text-fg-3">
-        Research looks for this {MISSING_KIND_LABELS[node.mediaKind].toLowerCase()}
-        {mode ? ` in ${MODE_LABELS[mode]}` : ""}, imports it with its license and replaces this node
-        with it. Revert the turn to undo it all.
+        {t("story.research.intro", { kind: node.mediaKind, mode: mode ?? "none" })}
       </p>
       <FindWithResearchButton node={node} research={research} />
       {blocker && <p className="text-xs text-fg-3">{blocker}</p>}
@@ -57,7 +48,7 @@ export function MissingResearchSection({ node }: { node: MissingAssetNode }) {
         onClick={() => research.showInSources(null)}
         className="self-start rounded-sm text-sm text-fg-2 underline decoration-border-strong underline-offset-2 outline-hidden hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
       >
-        Open Sources & Licenses
+        {t("story.research.openSources")}
       </button>
     </Section>
   );
@@ -65,47 +56,62 @@ export function MissingResearchSection({ node }: { node: MissingAssetNode }) {
 
 /** Where a node's material came from when it resolved a Missing Asset node: the need, the turn, the provenance. */
 export function ResolutionSection({ node }: { node: StoryMaterialNode }) {
+  const { t } = useTranslation();
   const research = useStoryResearch();
   const resolution = resolutionOf(node);
   if (!resolution) return null;
   const asset = assetOf(node);
   const source = research?.sourceOf(asset) ?? null;
   return (
-    <Section title={resolution.turnId ? "Found by Research" : "Resolved"}>
+    <Section title={resolution.turnId ? t("story.research.foundBy") : t("story.research.resolved")}>
       <dl className="m-0 grid grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1.5 text-sm">
-        <Line label="Needed">{resolution.need || MISSING_KIND_LABELS[resolution.mediaKind]}</Line>
-        <Line label="Resolved">
+        <Line label={t("story.research.needed")}>
+          {resolution.need || t(MISSING_KIND_KEYS[resolution.mediaKind])}
+        </Line>
+        <Line label={t("story.research.resolved")}>
           {formatAge(resolution.at, Date.now())}
-          {resolution.turnId && <span className="text-fg-3">· turn {resolution.turnId}</span>}
+          {resolution.turnId && (
+            <span className="text-fg-3">· {t("research.by.turn", { id: resolution.turnId })}</span>
+          )}
         </Line>
         {source && (
           <>
-            <Line label="License">
+            <Line label={t("research.row.license")}>
               <SourceLicenseChip source={source} />
             </Line>
-            <Line label="Confidence">
-              {CONFIDENCE_LABELS[source.licenseConfidence]}
+            <Line label={t("story.research.confidence")}>
+              {t(CONFIDENCE_LABELS[source.licenseConfidence])}
               {source.licenseBasis && <span className="text-fg-3">· {source.licenseBasis}</span>}
             </Line>
-            <Line label="Author">
+            <Line label={t("research.row.author")}>
               {source.author && source.authorUrl ? (
                 <ExternalLink href={source.authorUrl}>{source.author}</ExternalLink>
               ) : (
-                (source.author ?? "Not stated")
+                (source.author ?? t("research.record.notStated"))
               )}
             </Line>
-            <Line label="Links">
+            <Line label={t("research.row.links")}>
               <ExternalLink href={source.originalUrl}>
-                Original · {urlHost(source.originalUrl)}
+                {t("research.link.original", { host: urlHost(source.originalUrl) })}
               </ExternalLink>
               {source.pageUrl && (
-                <ExternalLink href={source.pageUrl}>Page · {urlHost(source.pageUrl)}</ExternalLink>
+                <ExternalLink href={source.pageUrl}>
+                  {t("research.link.page", { host: urlHost(source.pageUrl) })}
+                </ExternalLink>
               )}
-              {source.licenseUrl && <ExternalLink href={source.licenseUrl}>License</ExternalLink>}
+              {source.licenseUrl && (
+                <ExternalLink href={source.licenseUrl}>{t("research.row.license")}</ExternalLink>
+              )}
             </Line>
-            <Line label="Retrieved">
-              {new Date(source.retrievedAt).toLocaleDateString()} by{" "}
-              {retrievedByLabel(source.retrievedBy)}
+            <Line label={t("research.row.retrieved")}>
+              {t("research.record.retrievedBy", {
+                date: formatDate(source.retrievedAt, {
+                  year: "numeric",
+                  month: "numeric",
+                  day: "numeric",
+                }),
+                by: retrievedByLabel(source.retrievedBy),
+              })}
             </Line>
           </>
         )}
@@ -117,11 +123,7 @@ export function ResolutionSection({ node }: { node: StoryMaterialNode }) {
           ))}
         </ul>
       )}
-      {!source && asset && (
-        <p className="text-xs text-fg-3">
-          No provenance record: this file came from the project, not from a search.
-        </p>
-      )}
+      {!source && asset && <p className="text-xs text-fg-3">{t("story.research.noProvenance")}</p>}
       {research && source && (
         <Button
           size="sm"
@@ -130,7 +132,7 @@ export function ResolutionSection({ node }: { node: StoryMaterialNode }) {
           onClick={() => research.showInSources(asset)}
           className="self-start"
         >
-          Show in Sources & Licenses
+          {t("story.research.showInSources")}
         </Button>
       )}
     </Section>

@@ -7,9 +7,10 @@ import type {
   StoryNode,
 } from "@hyperframes/agent-protocol";
 import { IconButton, cn } from "../components/ui";
+import { t as translate, useTranslation } from "../i18n";
 import { useStoryStore } from "./storyContext";
 import { formatDuration } from "./storyFormat";
-import { PLACEMENT_LABELS, STORY_KIND_STYLES } from "./storyKinds";
+import { PLACEMENT_KEYS, STORY_KIND_STYLES } from "./storyKinds";
 import { cardImage, Thumb } from "./StoryNodeCard";
 import type { StorySelection } from "./storyStore";
 
@@ -79,8 +80,8 @@ export function SlotThumb({ node }: { node: StoryNode }) {
 
 function placementOf(attachment: StoryAttachment): string {
   return attachment.offset !== null
-    ? `at ${formatDuration(attachment.offset)}`
-    : PLACEMENT_LABELS[attachment.placement];
+    ? translate("story.slots.at", { time: formatDuration(attachment.offset) })
+    : translate(PLACEMENT_KEYS[attachment.placement]);
 }
 
 /** The materials of the given kinds attached to a chapter, as slots that select them; detaching on hover. */
@@ -99,13 +100,15 @@ export function AttachedSlots({
   onSelect: (selection: StorySelection) => void;
   onDetach: (attachment: string) => void;
 }) {
+  const { t } = useTranslation();
   const rows = graph.attachments.flatMap((attachment) => {
     if (attachment.chapter !== chapterId) return [];
     const node = graph.nodes.find((candidate) => candidate.id === attachment.node);
     if (!node || node.kind === "chapter" || !kinds.includes(node.kind)) return [];
     return [{ attachment, node }];
   });
-  if (rows.length === 0) return <p className="text-sm leading-6 text-fg-3">None</p>;
+  if (rows.length === 0)
+    return <p className="text-sm leading-6 text-fg-3">{t("story.slots.none")}</p>;
   return (
     <ul className="grid gap-0.5">
       {rows.map(({ attachment, node }) => (
@@ -118,7 +121,7 @@ export function AttachedSlots({
           onOpen={() => onSelect({ nodes: [node.id], edges: [] })}
           action={
             <IconButton
-              aria-label={`Detach ${node.title}`}
+              aria-label={t("story.slots.detach", { title: node.title })}
               size="xs"
               disabled={readOnly}
               icon={<X size={10} aria-hidden />}
@@ -148,17 +151,14 @@ export function UsedInSlots({
   onSelect: (selection: StorySelection) => void;
   onDetach: (attachment: string) => void;
 }) {
+  const { t } = useTranslation();
   const rows = graph.attachments.flatMap((attachment) => {
     if (attachment.node !== nodeId) return [];
     const chapter = graph.nodes.find((node) => node.id === attachment.chapter);
     return chapter ? [{ attachment, chapter }] : [];
   });
   if (rows.length === 0) {
-    return (
-      <p className="text-sm leading-[17px] text-fg-3">
-        Not attached yet: drag from the card’s top port onto a chapter.
-      </p>
-    );
+    return <p className="text-sm leading-[17px] text-fg-3">{t("story.slots.notAttached")}</p>;
   }
   return (
     <ul className="grid gap-0.5">
@@ -177,7 +177,7 @@ export function UsedInSlots({
             onOpen={() => onSelect({ nodes: [], edges: [attachment.id] })}
             action={
               <IconButton
-                aria-label={`Detach from ${chapter.title}`}
+                aria-label={t("story.slots.detachFrom", { title: chapter.title })}
                 size="xs"
                 disabled={readOnly}
                 icon={<X size={10} aria-hidden />}

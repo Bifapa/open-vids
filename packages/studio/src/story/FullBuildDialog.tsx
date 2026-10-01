@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Hammer } from "@phosphor-icons/react";
 import type { StoryActionOptions, StorySyncReport } from "@hyperframes/agent-protocol";
 import { Button } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { Callout, ChoiceRow, DialogGroup, EditRows, StoryDialog } from "./StoryDialog";
 import { allEdits, lockedBuiltSections } from "./storySync";
 
@@ -30,6 +31,7 @@ export function FullBuildDialog({
   onBuild: (options: StoryActionOptions) => void;
   onRebuildInstead: () => void;
 }) {
+  const { t } = useTranslation();
   const [allowLocked, setAllowLocked] = useState<string[]>([]);
   const edits = allEdits(report);
   const locked = lockedBuiltSections(report);
@@ -37,11 +39,11 @@ export function FullBuildDialog({
 
   return (
     <StoryDialog
-      title="Build the whole story again?"
+      title={t("story.fullBuild.title")}
       description={
         count > 0
-          ? `A full build regenerates every section; ${count} manual ${count === 1 ? "edit" : "edits"} will be replaced.`
-          : "A full build regenerates every section of the timeline."
+          ? t("story.fullBuild.description", { count })
+          : t("story.fullBuild.descriptionNoEdits")
       }
       onClose={onClose}
       footer={
@@ -52,7 +54,7 @@ export function FullBuildDialog({
             </span>
           )}
           <Button size="sm" variant="ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             size="sm"
@@ -61,20 +63,20 @@ export function FullBuildDialog({
             icon={<Hammer size={12} aria-hidden />}
             onClick={() => onBuild(allowLocked.length > 0 ? { allowLocked } : {})}
           >
-            Build everything
+            {t("story.fullBuild.confirm")}
           </Button>
         </>
       }
     >
       {edits.length > 0 && (
-        <DialogGroup title="Edits that will be replaced">
+        <DialogGroup title={t("story.fullBuild.editsGroup")}>
           <EditRows edits={edits} limit={EDITS_SHOWN} showWhere />
         </DialogGroup>
       )}
 
       {locked.length > 0 && (
-        <DialogGroup title="Locked chapters">
-          <p className="text-xs text-fg-3">Locked chapters stay as built unless you tick them.</p>
+        <DialogGroup title={t("story.fullBuild.lockedGroup")}>
+          <p className="text-xs text-fg-3">{t("story.fullBuild.lockedNote")}</p>
           <div className="flex flex-col">
             {locked.map((section) => (
               <ChoiceRow
@@ -88,11 +90,11 @@ export function FullBuildDialog({
                       : current.filter((id) => id !== section.chapter),
                   )
                 }
-                label={`Rebuild “${section.title}” too`}
+                label={t("story.fullBuild.rebuildToo", { title: section.title })}
                 description={
                   report.lockedPending.includes(section.chapter)
-                    ? "Locked, and the story changed it since the build."
-                    : "Locked: kept as it was built."
+                    ? t("story.fullBuild.lockedPending")
+                    : t("story.fullBuild.lockedKept")
                 }
               />
             ))}
@@ -101,9 +103,7 @@ export function FullBuildDialog({
       )}
 
       <Callout tone="info">
-        <span>
-          Only some sections changed? Rebuild affected regenerates just those and keeps your edits.
-        </span>
+        <span>{t("story.fullBuild.rebuildHint")}</span>
         <div className="flex items-center gap-2">
           <Button
             size="sm"
@@ -111,7 +111,7 @@ export function FullBuildDialog({
             disabled={rebuildBlocker !== null}
             onClick={onRebuildInstead}
           >
-            Rebuild affected instead
+            {t("story.fullBuild.rebuildInstead")}
           </Button>
           {rebuildBlocker && <span className="text-xs text-fg-3">{rebuildBlocker}</span>}
         </div>

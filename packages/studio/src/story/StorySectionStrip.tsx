@@ -1,6 +1,7 @@
 import { CaretRight } from "@phosphor-icons/react";
 import { isChapter, storyOrder, type ChapterNode } from "@hyperframes/agent-protocol";
 import { Button, cn } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { useStoryStore } from "./storyContext";
 import { formatDuration } from "./storyFormat";
 import { cardImage } from "./StoryNodeCard";
@@ -25,6 +26,7 @@ export function StorySectionStrip({
   onOpenChapter: (chapter: string) => void;
   onOpenEdit: () => void;
 }) {
+  const { t } = useTranslation();
   const graph = useStoryStore((state) => state.graph);
   const facts = useStoryStore((state) => state.facts);
   const sync = useStoryStore((state) => state.sync);
@@ -46,13 +48,13 @@ export function StorySectionStrip({
   const status =
     state === "out_of_sync"
       ? changed > 0
-        ? `${changed} section${changed === 1 ? "" : "s"} changed`
-        : "Built · edited on the timeline"
+        ? t("story.strip.changed", { count: changed })
+        : t("story.strip.editedOnTimeline")
       : state === "in_sync"
-        ? "Built"
+        ? t("story.strip.built")
         : state === "untracked"
-          ? "Built before sync tracking"
-          : "Not built";
+          ? t("story.strip.untracked")
+          : t("story.sync.badge.notBuilt");
   const selected = selection.nodes.length === 1 ? selection.nodes[0] : null;
 
   const section = (chapter: ChapterNode, index: number) => {
@@ -67,7 +69,12 @@ export function StorySectionStrip({
         type="button"
         onClick={() => onOpenChapter(chapter.id)}
         style={{ flex: `${Math.max(1, chapter.estimatedDuration)} 1 0` }}
-        aria-label={`${String(index + 1).padStart(2, "0")} ${chapter.title}, ${formatDuration(chapter.estimatedDuration)}, ${built ? (stale ? "changed since build" : "built") : "not built"}`}
+        aria-label={t("story.strip.sectionAria", {
+          number: String(index + 1).padStart(2, "0"),
+          title: chapter.title,
+          duration: formatDuration(chapter.estimatedDuration),
+          state: built ? (stale ? "changed" : "built") : "notBuilt",
+        })}
         aria-pressed={selected === chapter.id}
         data-story-section={chapter.id}
         className={cn(
@@ -110,7 +117,7 @@ export function StorySectionStrip({
           </span>
         ) : (
           <span className="mx-1 flex min-h-0 items-center justify-center text-xs text-fg-disabled">
-            Not built
+            {t("story.sync.badge.notBuilt")}
           </span>
         )}
       </button>
@@ -119,27 +126,31 @@ export function StorySectionStrip({
 
   return (
     <section
-      aria-label="Story timeline"
+      aria-label={t("story.strip.label")}
       className="flex h-[136px] shrink-0 flex-col border-t border-border-subtle bg-bg-0"
     >
       <header className="flex h-head shrink-0 items-center gap-1 border-b border-border-subtle bg-bg-1 pr-1 pl-3 select-none">
-        <span className="text-sm font-medium text-fg">Timeline</span>
+        <span className="text-sm font-medium text-fg">{t("story.timeline.title")}</span>
         {graph.build && (
           <span className="truncate px-1 text-sm font-medium text-fg-2">
             {graph.build.composition}
           </span>
         )}
         <span className="truncate pl-1 font-mono text-num text-fg-3">
-          {formatDuration(total)} · {chapters.length} sections · {status}
+          {t("story.strip.summary", {
+            duration: formatDuration(total),
+            count: chapters.length,
+            status,
+          })}
         </span>
         <Button size="sm" variant="ghost" className="ml-auto" onClick={onOpenEdit}>
-          Open in Edit
+          {t("story.strip.openEdit")}
           <CaretRight size={12} aria-hidden />
         </Button>
       </header>
       {chapters.length === 0 ? (
         <p className="flex flex-1 items-center justify-center text-xs text-fg-3">
-          Chapters appear here in play order.
+          {t("story.strip.empty")}
         </p>
       ) : (
         <div className="grid min-h-0 flex-1 grid-rows-[20px_minmax(0,1fr)] px-3 pb-2.5">

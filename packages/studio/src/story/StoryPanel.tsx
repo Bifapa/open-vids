@@ -14,6 +14,7 @@ import type { AgentStore } from "../agent/agentStore";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import { useResearchServices, useSourcesStore } from "../research/researchContext";
 import { Button, IconButton, Spinner } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { isTextFieldTarget } from "../utils/typingTarget";
 import { FullBuildDialog } from "./FullBuildDialog";
 import { RebuildDialog } from "./RebuildDialog";
@@ -69,24 +70,24 @@ function EmptyStory({
   onPlan: () => void;
   planDisabled: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
       <span className="flex size-10 items-center justify-center rounded-lg border border-border bg-bg-1 text-fg-3 shadow-raise">
         <TreeStructure size={20} aria-hidden />
       </span>
       <div className="flex flex-col gap-1">
-        <p className="text-md font-semibold text-fg">No story yet</p>
+        <p className="text-md font-semibold text-fg">{t("story.empty.title")}</p>
         <p className="max-w-sm text-sm leading-[17px] text-pretty text-fg-3">
-          Ask the agent to plan the video as chapters from your footage, or start with a chapter and
-          build it yourself.
+          {t("story.empty.body")}
         </p>
       </div>
       <div className="flex gap-1.5">
         <Button variant="primary" size="sm" disabled={planDisabled} onClick={onPlan}>
-          Plan with AI
+          {t("story.empty.plan")}
         </Button>
         <Button variant="secondary" size="sm" onClick={onStart}>
-          Add a chapter
+          {t("story.empty.addChapter")}
         </Button>
       </div>
     </div>
@@ -94,6 +95,7 @@ function EmptyStory({
 }
 
 function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
+  const { t } = useTranslation();
   const { store, client } = useStoryServices();
   const projectId = useStoryStore((state) => state.projectId ?? "");
   const status = useStoryStore((state) => state.status);
@@ -315,16 +317,16 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
         role="status"
       >
         <Spinner />
-        Loading story…
+        {t("story.panel.loading")}
       </div>
     );
   } else if (status === "error") {
     content = (
       <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-md font-semibold text-fg">Couldn't load the story</p>
+        <p className="text-md font-semibold text-fg">{t("story.panel.loadFailed")}</p>
         {loadError && <p className="max-w-sm text-sm text-fg-3">{loadError}</p>}
         <Button size="sm" variant="secondary" onClick={() => void store.getState().reload()}>
-          Retry
+          {t("common.retry")}
         </Button>
       </div>
     );
@@ -380,7 +382,7 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
               >
                 <span className="min-w-0 pt-0.5">{notice}</span>
                 <IconButton
-                  aria-label="Dismiss message"
+                  aria-label={t("common.dismissMessage")}
                   size="xs"
                   icon={<X size={10} aria-hidden />}
                   onClick={() => store.getState().setNotice(null)}
@@ -393,8 +395,8 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
                 className="absolute bottom-3 left-1/2 z-20 flex h-head max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2 rounded-md border border-border bg-menu-bg px-3 text-sm whitespace-nowrap text-fg-2 shadow-pop backdrop-blur-md"
               >
                 <Spinner />
-                <b className="font-semibold text-fg">AI is working on the story…</b>
-                <span className="truncate">The canvas is read-only until it finishes.</span>
+                <b className="font-semibold text-fg">{t("story.panel.busyTitle")}</b>
+                <span className="truncate">{t("story.panel.busyBody")}</span>
               </div>
             )}
           </div>

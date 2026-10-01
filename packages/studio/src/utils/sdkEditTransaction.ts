@@ -1,6 +1,7 @@
 import { openComposition, type Composition } from "@hyperframes/sdk";
 import { hashContent, markSelfWrite } from "../hooks/sdkSelfWriteRegistry";
 import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
+import { t } from "../i18n";
 
 export type CutoverResult =
   | { status: "declined"; reason: string }
@@ -186,7 +187,7 @@ async function writeAndRecord(
   }
   try {
     await deps.editHistory.recordEdit({
-      label: options?.label ?? "Edit layer",
+      label: options?.label ?? t("app.history.editLayer"),
       ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
       ...(options?.coalesceMs != null ? { coalesceMs: options.coalesceMs } : {}),
       files: { [targetPath]: { before: originalContent, after } },

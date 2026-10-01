@@ -9,6 +9,7 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { StoryGraph, StoryNodeFacts, StorySyncReport } from "@hyperframes/agent-protocol";
 import { StoryApiError, type StoryClient } from "./storyClient";
+import { t } from "../i18n";
 import { emptyStoryGraph, newStoryId } from "./storyGraphOps";
 
 export interface StorySelection {
@@ -66,11 +67,13 @@ export type StoryStore = StoreApi<StoryState>;
 
 const EMPTY_SELECTION: StorySelection = { nodes: [], edges: [] };
 
-export const CONFLICT_NOTICE =
-  "The story changed elsewhere, so the latest version was loaded. Your last change was not saved.";
+/** Shown when a save met a newer version of the story on the server. */
+export function conflictNotice(): string {
+  return t("story.notice.conflict");
+}
 
 function describe(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong";
+  return error instanceof Error ? error.message : t("story.error.generic");
 }
 
 /** The selection without ids the graph no longer has. */
@@ -137,7 +140,7 @@ export function createStoryStore({
       } catch (error) {
         if (from !== epoch) return;
         if (get().status === "ready")
-          set({ notice: `Couldn't reload the story: ${describe(error)}` });
+          set({ notice: t("story.notice.reloadFailed", { message: describe(error) }) });
         else set({ status: "error", loadError: describe(error) });
       }
     }
@@ -170,12 +173,15 @@ export function createStoryStore({
           if (error instanceof StoryApiError && error.isConflict) {
             dirty = false;
             stopTimer();
-            set({ past: [], future: [], notice: CONFLICT_NOTICE, saveState: "saved" });
+            set({ past: [], future: [], notice: conflictNotice(), saveState: "saved" });
             await load(projectId, from);
             return false;
           }
           dirty = true;
-          set({ saveState: "failed", notice: `Couldn't save the story: ${describe(error)}` });
+          set({
+            saveState: "failed",
+            notice: t("story.notice.saveFailed", { message: describe(error) }),
+          });
           return false;
         }
       })();

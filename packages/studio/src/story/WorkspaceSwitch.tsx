@@ -1,5 +1,6 @@
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import type { PanelId } from "../components/dock/panelRegistry";
+import { useTranslation, type TranslationKey } from "../i18n";
 import { SegmentedControl } from "../components/ui";
 import { takeOpenvidsWorkspaceParam } from "../utils/openvidsHost";
 
@@ -13,10 +14,10 @@ export const WORKSPACE_PANELS = {
 } as const satisfies Record<Workspace, PanelId>;
 
 const OPTIONS = [
-  { value: "media", label: "Media", title: "Media workspace" },
-  { value: "story", label: "Story", title: "Story workspace" },
-  { value: "edit", label: "Edit", title: "Edit workspace" },
-] as const;
+  { value: "media", label: "story.workspace.media", title: "story.workspace.mediaTitle" },
+  { value: "story", label: "story.workspace.story", title: "story.workspace.storyTitle" },
+  { value: "edit", label: "story.workspace.edit", title: "story.workspace.editTitle" },
+] as const satisfies readonly { value: Workspace; label: TranslationKey; title: TranslationKey }[];
 
 export function isWorkspace(value: unknown): value is Workspace {
   return value === "media" || value === "story" || value === "edit";
@@ -49,13 +50,18 @@ export function useCurrentWorkspace(): Workspace {
  * the front of the centre dock. Everything else (Chat, the library, the inspector) stays where it is.
  */
 export function WorkspaceSwitch({ className }: { className?: string }) {
+  const { t } = useTranslation();
   const current = useCurrentWorkspace();
   const activatePanel = useDockLayoutStore((state) => state.activatePanel);
   return (
     <SegmentedControl
-      label="Workspace"
+      label={t("story.workspace.label")}
       value={current}
-      options={OPTIONS}
+      options={OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.label),
+        title: t(option.title),
+      }))}
       onChange={(next) => activatePanel(WORKSPACE_PANELS[next])}
       className={className}
     />

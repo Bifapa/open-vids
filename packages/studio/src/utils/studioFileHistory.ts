@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { buildProjectApiPath } from "./projectRouting";
 import type { MutableRefObject } from "react";
 import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
@@ -51,11 +52,11 @@ interface SaveProjectFilesWithHistoryInput {
 export async function readProjectFileContent(pid: string, path: string): Promise<string> {
   const response = await fetch(buildProjectApiPath(pid, `/files/${encodeURIComponent(path)}`));
   if (!response.ok) {
-    throw await createStudioSaveHttpError(response, `Failed to read ${path}`);
+    throw await createStudioSaveHttpError(response, t("app.save.readFailed", { path }));
   }
   const data = (await response.json()) as { content?: string };
   if (typeof data.content !== "string") {
-    throw new Error(`Missing file contents for ${path}`);
+    throw new Error(t("app.save.missingContents", { path }));
   }
   return data.content;
 }
@@ -132,10 +133,7 @@ export async function writeProjectFilesWithHistoryInQueue({
         await writeFile(path, snapshots[path].before, snapshots[path].after);
       }
     } catch (rollbackError) {
-      throw new AggregateError(
-        [error, rollbackError],
-        "Failed to save project files and rollback did not complete",
-      );
+      throw new AggregateError([error, rollbackError], t("app.save.rollbackFailed"));
     }
     throw error;
   }

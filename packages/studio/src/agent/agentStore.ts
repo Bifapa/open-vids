@@ -16,6 +16,7 @@ import {
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import { AgentApiError, isActiveTurn, type AgentClient } from "./agentClient";
+import { t } from "../i18n";
 import { describeAgentError } from "./agentErrors";
 import { runningTurn } from "./agentSelectors";
 import { draftCreation, mergeDraftChoices } from "./agentDraftChat";
@@ -266,14 +267,14 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         set((state) => ({ draftChoices: mergeDraftChoices(state.draftChoices, request) }));
         return { ok: true };
       }
-      if (!chatId) return { ok: false, message: "Open a chat first." };
+      if (!chatId) return { ok: false, message: t("agent.chat.openFirst") };
       try {
         applySummary(await client.updateChat(chatId, request));
         return { ok: true };
       } catch (error) {
         if (error instanceof AgentApiError && error.code === "chat_busy") {
           await resync(chatId);
-          return { ok: false, message: "The chat is working. Change its agents once it finishes." };
+          return { ok: false, message: t("agent.chat.busyAgents") };
         }
         return { ok: false, message: describeAgentError(error) };
       }
@@ -507,9 +508,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
           await onActionError(
             error,
             chatId,
-            finishedFirst
-              ? "The agent had just finished. Your message is still in the box; send it to start a new run."
-              : undefined,
+            finishedFirst ? t("agent.chat.justFinished") : undefined,
           );
           return false;
         } finally {
@@ -518,7 +517,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       },
 
       async runStoryAction(action, options) {
-        if (get().pending) return { ok: false, message: "The agent is busy with another request." };
+        if (get().pending) return { ok: false, message: t("agent.chat.busyOther") };
         let chatId = get().chatId;
         set({ pending: "send", notice: null });
         try {

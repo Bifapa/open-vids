@@ -1,4 +1,5 @@
 import type { Composition, GsapTweenSpec } from "@hyperframes/sdk";
+import { t } from "../i18n";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { PatchOperation } from "./sourcePatcher";
 import * as studioAvailability from "../components/editor/manualEditingAvailability";
@@ -432,7 +433,7 @@ export async function sdkDeletePersist(
     originalContent,
     deps,
     (session) => session.removeElement(hfId),
-    { label: "Delete element" },
+    { label: t("app.history.deleteElement") },
   );
   return result;
 }

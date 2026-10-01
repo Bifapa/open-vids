@@ -29,6 +29,7 @@ import {
   cn,
 } from "../components/ui";
 import { AddNodePopover, type NewNodeRequest } from "./AddNodePopover";
+import { formatPercent, t as translate, useTranslation, type TranslationKey } from "../i18n";
 import { useStoryStore } from "./storyContext";
 import { formatAge, formatDuration } from "./storyFormat";
 import type { StorySaveState } from "./storyStore";
@@ -40,15 +41,15 @@ import type { StoryLibrary } from "./useStoryLibrary";
 /** The canvas tool: Select drags cards and connects ports; Pan drags the whole canvas from anywhere. */
 export type StoryTool = "select" | "pan";
 
-const SAVE_STATES: Record<
+const SAVE_STATES = {
+  saved: { label: "story.save.saved", dot: "ok" },
+  pending: { label: "story.save.pending", dot: "warn" },
+  saving: { label: "story.save.saving", dot: "running" },
+  failed: { label: "story.save.failed", dot: "error" },
+} as const satisfies Record<
   StorySaveState,
-  { label: string; dot: "ok" | "running" | "warn" | "error" }
-> = {
-  saved: { label: "Saved", dot: "ok" },
-  pending: { label: "Unsaved", dot: "warn" },
-  saving: { label: "Saving…", dot: "running" },
-  failed: { label: "Not saved", dot: "error" },
-};
+  { label: TranslationKey; dot: "ok" | "running" | "warn" | "error" }
+>;
 
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.5] as const;
 
@@ -59,7 +60,11 @@ const MOD = isMac ? "⌘" : "Ctrl+";
 function actionBlocker(action: StoryAction, agent: StoryAgent, chapters: number): string | null {
   const busy = agentBlocker(agent);
   if (busy) return busy;
-  if (chapters === 0) return action === "build" ? "Add a chapter first" : "Nothing to review yet";
+  if (chapters === 0) {
+    return action === "build"
+      ? translate("story.toolbar.addChapterFirst")
+      : translate("story.toolbar.nothingToReview");
+  }
   return null;
 }
 
@@ -101,6 +106,7 @@ export function StoryToolbar({
   /** Starts a resolve turn for every unlocked Missing Asset node. */
   onFindMissing: () => void;
 }) {
+  const { t } = useTranslation();
   const graph = useStoryStore((state) => state.graph);
   const canUndo = useStoryStore((state) => state.past.length > 0 && !state.agentBusy);
   const canRedo = useStoryStore((state) => state.future.length > 0 && !state.agentBusy);
@@ -116,52 +122,70 @@ export function StoryToolbar({
   const rebuildBlocker = syncBlocker(sync) ?? agentBlocker(agent);
   const missingCount = unlockedMissing(graph).length;
   const findBlocker =
-    researchBlocker(agent) ??
-    (missingCount === 0 ? "No missing material: nothing is waiting for an asset" : null);
+    researchBlocker(agent) ?? (missingCount === 0 ? t("story.toolbar.needMissing") : null);
   const now = Date.now();
   const save = SAVE_STATES[saveState];
-  const reviewed = graph?.review ? ` · Reviewed ${formatAge(graph.review.at, now)}` : "";
+  const reviewed = graph?.review
+    ? ` · ${t("story.toolbar.reviewed", { age: formatAge(graph.review.at, now) })}`
+    : "";
   const built = graph?.build
-    ? ` · Built ${formatAge(graph.build.at, now)} (${formatDuration(graph.build.duration)})`
+    ? ` · ${t("story.toolbar.builtAt", {
+        age: formatAge(graph.build.at, now),
+        duration: formatDuration(graph.build.duration),
+      })}`
     : "";
 
   return (
     <div
       className="flex h-head min-w-0 shrink-0 items-center gap-1 overflow-hidden border-b border-border-subtle bg-bg-1 pl-3 pr-1 select-none"
       role="toolbar"
-      aria-label="Story toolbar"
+      aria-label={t("story.toolbar.label")}
     >
       <span className="shrink-0 text-sm font-medium text-fg @max-[720px]/story:hidden">
-        Story Graph
+        {t("story.toolbar.title")}
       </span>
       <span className="contents @max-[720px]/story:hidden">
         <Separator />
       </span>
       <SegmentedControl<StoryTool>
-        label="Canvas tool"
+        label={t("story.toolbar.canvasTool")}
         variant="icon"
         size="sm"
         value={tool}
         onChange={onTool}
         options={[
-          { value: "select", label: "Select", title: "Select (V)", icon: <Cursor size={12} /> },
-          { value: "pan", label: "Pan", title: "Pan (H)", icon: <Hand size={12} /> },
+          {
+            value: "select",
+            label: t("story.toolbar.select"),
+            title: t("story.toolbar.selectTitle", { key: "V" }),
+            icon: <Cursor size={12} />,
+          },
+          {
+            value: "pan",
+            label: t("story.toolbar.pan"),
+            title: t("story.toolbar.panTitle", { key: "H" }),
+            icon: <Hand size={12} />,
+          },
         ]}
       />
       <AddNodePopover library={library} disabled={readOnly} onAdd={onAdd} />
-      <Tooltip label="Tidy up" shortcut="⇧T" side="bottom">
+      <Tooltip label={t("story.toolbar.tidy")} shortcut="⇧T" side="bottom">
         <IconButton
-          aria-label="Tidy up"
+          aria-label={t("story.toolbar.tidy")}
           size="sm"
           disabled={readOnly || graph === null || graph.nodes.length === 0}
           icon={<SquaresFour size={14} aria-hidden />}
           onClick={onTidy}
         />
       </Tooltip>
-      <div className="ml-1 flex items-center gap-px" role="group" aria-label="Canvas zoom">
-        <Tooltip label="Zoom out" shortcut="-" side="bottom">
+      <div
+        className="ml-1 flex items-center gap-px"
+        role="group"
+        aria-label={t("story.toolbar.zoomGroup")}
+      >
+        <Tooltip label={t("story.toolbar.zoomOut")} shortcut="-" side="bottom">
           <IconButton
-            aria-label="Zoom out"
+            aria-label={t("story.toolbar.zoomOut")}
             size="sm"
             icon={<MagnifyingGlassMinus size={14} aria-hidden />}
             onClick={() => onZoom({ by: 1 / 1.25 })}
@@ -171,34 +195,34 @@ export function StoryToolbar({
           trigger={
             <button
               type="button"
-              aria-label="Zoom level"
+              aria-label={t("story.toolbar.zoomLevel")}
               className="inline-flex h-ctl-sm min-w-[46px] items-center justify-center rounded-sm px-1.5 font-mono text-num text-fg-2 outline-hidden hover:bg-surface-2 hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent data-[popup-open]:bg-surface-2"
             >
-              {Math.round(zoom * 100)}%
+              {formatPercent(zoom)}
             </button>
           }
         >
           {ZOOM_STEPS.map((step) => (
             <MenuItem key={step} onClick={() => onZoom({ to: step })}>
-              {Math.round(step * 100)}%
+              {formatPercent(step)}
             </MenuItem>
           ))}
           <MenuSeparator />
           <MenuItem shortcut="⇧1" onClick={onFit}>
-            Fit Graph
+            {t("story.toolbar.fitGraph")}
           </MenuItem>
         </Menu>
-        <Tooltip label="Zoom in" shortcut="=" side="bottom">
+        <Tooltip label={t("story.toolbar.zoomIn")} shortcut="=" side="bottom">
           <IconButton
-            aria-label="Zoom in"
+            aria-label={t("story.toolbar.zoomIn")}
             size="sm"
             icon={<MagnifyingGlassPlus size={14} aria-hidden />}
             onClick={() => onZoom({ by: 1.25 })}
           />
         </Tooltip>
-        <Tooltip label="Fit graph" shortcut="⇧1" side="bottom">
+        <Tooltip label={t("story.toolbar.fitGraphTip")} shortcut="⇧1" side="bottom">
           <IconButton
-            aria-label="Fit view"
+            aria-label={t("story.toolbar.fitView")}
             size="sm"
             icon={<CornersOut size={14} aria-hidden />}
             onClick={onFit}
@@ -206,18 +230,22 @@ export function StoryToolbar({
         </Tooltip>
       </div>
       <Separator />
-      <Tooltip label="Undo story edit" shortcut={`${MOD}Z`} side="bottom">
+      <Tooltip label={t("story.toolbar.undo")} shortcut={`${MOD}Z`} side="bottom">
         <IconButton
-          aria-label="Undo story edit"
+          aria-label={t("story.toolbar.undo")}
           size="sm"
           disabled={!canUndo}
           icon={<ArrowCounterClockwise size={14} aria-hidden />}
           onClick={onUndo}
         />
       </Tooltip>
-      <Tooltip label="Redo story edit" shortcut={isMac ? "⇧⌘Z" : "Ctrl+Shift+Z"} side="bottom">
+      <Tooltip
+        label={t("story.toolbar.redo")}
+        shortcut={isMac ? "⇧⌘Z" : "Ctrl+Shift+Z"}
+        side="bottom"
+      >
         <IconButton
-          aria-label="Redo story edit"
+          aria-label={t("story.toolbar.redo")}
           size="sm"
           disabled={!canRedo}
           icon={<ArrowClockwise size={14} aria-hidden />}
@@ -233,16 +261,13 @@ export function StoryToolbar({
           role="status"
         >
           <StatusDot tone={save.dot} />
-          <span className="@max-[980px]/story:sr-only">{save.label}</span>
+          <span className="@max-[980px]/story:sr-only">{t(save.label)}</span>
         </span>
       )}
       <div className="min-w-0 flex-1" />
       <div className="flex shrink-0 items-center gap-1.5 pr-0.5">
         <Tooltip
-          label={
-            findBlocker ??
-            `Research looks for the material of ${missingCount === 1 ? "the missing asset" : `all ${missingCount} missing assets`} within your Asset Search policy (one revertable turn)`
-          }
+          label={findBlocker ?? t("story.toolbar.findTip", { count: missingCount })}
           side="bottom"
         >
           <Button
@@ -253,17 +278,11 @@ export function StoryToolbar({
             onClick={onFindMissing}
             data-story-action="resolve"
           >
-            <span className="@max-[1180px]/story:sr-only">Find missing material</span>
+            <span className="@max-[1180px]/story:sr-only">{t("story.toolbar.findMissing")}</span>
             {missingCount > 0 && <Pill tone="warning">{missingCount}</Pill>}
           </Button>
         </Tooltip>
-        <Tooltip
-          label={
-            (reviewBlocker ??
-              "The agent adapts its plan to your changes; locked nodes stay as they are") + reviewed
-          }
-          side="bottom"
-        >
+        <Tooltip label={(reviewBlocker ?? t("story.toolbar.reviewTip")) + reviewed} side="bottom">
           <Button
             size="sm"
             variant="secondary"
@@ -271,20 +290,17 @@ export function StoryToolbar({
             icon={<Sparkle size={12} aria-hidden />}
             onClick={() => onAction("review")}
           >
-            <span className="@max-[880px]/story:sr-only">Review with AI</span>
+            <span className="@max-[880px]/story:sr-only">{t("story.toolbar.review")}</span>
           </Button>
         </Tooltip>
         {sync?.state === "in_sync" && (
-          <Badge tone="success" title="The timeline matches the story" data-story-built="">
+          <Badge tone="success" title={t("story.toolbar.builtBadgeTip")} data-story-built="">
             <Check size={11} weight="bold" aria-hidden />
-            Built
+            {t("story.strip.built")}
           </Badge>
         )}
         <Tooltip
-          label={
-            rebuildBlocker ??
-            `Regenerate only the ${rebuildCount === 1 ? "section" : `${rebuildCount} sections`} the story changed; the rest of the timeline stays`
-          }
+          label={rebuildBlocker ?? t("story.toolbar.rebuildTip", { count: rebuildCount })}
           side="bottom"
         >
           <Button
@@ -296,16 +312,11 @@ export function StoryToolbar({
             aria-haspopup="dialog"
             data-story-action="rebuild"
           >
-            <span className="@max-[880px]/story:sr-only">Rebuild affected</span>
+            <span className="@max-[880px]/story:sr-only">{t("story.toolbar.rebuild")}</span>
             {outOfSync && <span className="tabular-nums">{rebuildCount}</span>}
           </Button>
         </Tooltip>
-        <Tooltip
-          label={
-            (buildBlocker ?? "Compile the story into the timeline (one revertable turn)") + built
-          }
-          side="bottom"
-        >
+        <Tooltip label={(buildBlocker ?? t("story.toolbar.buildTip")) + built} side="bottom">
           <Button
             size="sm"
             variant={outOfSync || sync?.state === "in_sync" ? "secondary" : "primary"}
@@ -313,7 +324,7 @@ export function StoryToolbar({
             icon={<Hammer size={12} aria-hidden />}
             onClick={() => onAction("build")}
           >
-            <span className="@max-[640px]/story:sr-only">Build Story</span>
+            <span className="@max-[640px]/story:sr-only">{t("story.toolbar.build")}</span>
           </Button>
         </Tooltip>
       </div>

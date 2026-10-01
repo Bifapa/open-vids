@@ -17,6 +17,7 @@ import type {
   StorySyncSection,
   StorySyncUnit,
 } from "@hyperframes/agent-protocol";
+import { t, type TranslationKey } from "../i18n";
 import { formatDuration } from "./storyFormat";
 
 export type SyncBadgeKind = "changed" | "moves" | "edited" | "not_built" | "locked";
@@ -28,45 +29,51 @@ export interface SyncBadge {
   detail: string;
 }
 
-export const SYNC_ROLE_LABELS: Record<StorySyncRole, string> = {
-  a_roll: "A-roll",
-  b_roll: "B-roll",
-  picture: "Picture",
-  motion: "Motion",
-  sfx: "Sound effect",
-  music: "Music",
-  captions: "Captions",
-};
+export const SYNC_ROLE_KEYS = {
+  a_roll: "story.sync.role.a_roll",
+  b_roll: "story.sync.role.b_roll",
+  picture: "story.sync.role.picture",
+  motion: "story.sync.role.motion",
+  sfx: "story.sync.role.sfx",
+  music: "story.sync.role.music",
+  captions: "story.sync.role.captions",
+} as const satisfies Record<StorySyncRole, TranslationKey>;
 
-export const SYNC_ACTION_LABELS: Record<StorySyncAction, string> = {
-  keep: "Keep",
-  shift: "Move",
-  rebuild: "Rebuild",
-  add: "Add",
-  remove: "Remove",
-  keep_edited: "Keep edited",
-  keep_locked: "Keep locked",
-  skip: "Skip",
-};
+export const SYNC_ACTION_KEYS = {
+  keep: "story.sync.action.keep",
+  shift: "story.sync.action.shift",
+  rebuild: "story.sync.action.rebuild",
+  add: "story.sync.action.add",
+  remove: "story.sync.action.remove",
+  keep_edited: "story.sync.action.keep_edited",
+  keep_locked: "story.sync.action.keep_locked",
+  skip: "story.sync.action.skip",
+} as const satisfies Record<StorySyncAction, TranslationKey>;
 
-export const SYNC_CHANGE_LABELS: Record<StorySyncChange, string> = {
-  unchanged: "In sync",
-  changed: "Changed",
-  added: "New",
-  removed: "Removed",
-};
+export const SYNC_CHANGE_KEYS = {
+  unchanged: "story.sync.change.unchanged",
+  changed: "story.sync.change.changed",
+  added: "story.sync.change.added",
+  removed: "story.sync.change.removed",
+} as const satisfies Record<StorySyncChange, TranslationKey>;
 
-export const EDIT_AUTHOR_LABELS: Record<StoryEditAuthor, string> = {
-  user: "by you",
-  ai: "by AI",
-  unknown: "author unknown",
-};
+export const EDIT_AUTHOR_KEYS = {
+  user: "story.sync.author.user",
+  ai: "story.sync.author.ai",
+  unknown: "story.sync.author.unknown",
+} as const satisfies Record<StoryEditAuthor, TranslationKey>;
 
-const EDIT_KIND_LABELS: Record<StoryManualEdit["kind"], string> = {
-  modified: "changed",
-  removed: "deleted",
-  added: "copied",
-};
+const EDIT_AUTHOR_COUNT_KEYS = {
+  user: "story.sync.authorCount.user",
+  ai: "story.sync.authorCount.ai",
+  unknown: "story.sync.authorCount.unknown",
+} as const satisfies Record<StoryEditAuthor, TranslationKey>;
+
+const EDIT_KIND_KEYS = {
+  modified: "story.sync.edit.changed",
+  removed: "story.sync.edit.deleted",
+  added: "story.sync.edit.copied",
+} as const satisfies Record<StoryManualEdit["kind"], TranslationKey>;
 
 /** `0:12–0:31`, or a dash for a section that is not (or no longer) on the timeline. */
 export function formatSpan(span: { start: number; end: number } | null): string {
@@ -75,10 +82,9 @@ export function formatSpan(span: { start: number; end: number } | null): string 
 
 /** What was done to a clip: `changed start, duration` / `deleted` / `copied`. */
 export function describeEdit(edit: StoryManualEdit): string {
-  const what = EDIT_KIND_LABELS[edit.kind];
   return edit.kind === "modified" && edit.fields.length > 0
-    ? `${what} ${edit.fields.join(", ")}`
-    : what;
+    ? t("story.sync.edit.changedFields", { fields: edit.fields.join(", ") })
+    : t(EDIT_KIND_KEYS[edit.kind]);
 }
 
 export function sectionOf(
@@ -97,7 +103,7 @@ export function authorSplit(edits: readonly StoryManualEdit[]): string {
   const counts: Record<StoryEditAuthor, number> = { user: 0, ai: 0, unknown: 0 };
   for (const edit of edits) counts[edit.by] += 1;
   return (["user", "ai", "unknown"] as const)
-    .flatMap((by) => (counts[by] > 0 ? [`${counts[by]} ${EDIT_AUTHOR_LABELS[by]}`] : []))
+    .flatMap((by) => (counts[by] > 0 ? [t(EDIT_AUTHOR_COUNT_KEYS[by], { count: counts[by] })] : []))
     .join(" · ");
 }
 
@@ -116,34 +122,39 @@ export function chapterBadges(report: StorySyncReport | null, chapter: string): 
   if (report.lockedPending.includes(chapter)) {
     badges.push({
       kind: "locked",
-      label: "Locked · pending",
-      detail: `Locked, so a rebuild keeps it as built unless you allow it${reasons ? `: ${reasons}` : ""}`,
+      label: t("story.sync.badge.lockedPending"),
+      detail: reasons
+        ? t("story.sync.badge.lockedPending.detailReasons", { reasons })
+        : t("story.sync.badge.lockedPending.detail"),
     });
   } else if (section.change === "added") {
     badges.push({
       kind: "not_built",
-      label: "Not built",
-      detail: "New since the last build: Rebuild affected adds it to the timeline",
+      label: t("story.sync.badge.notBuilt"),
+      detail: t("story.sync.badge.notBuilt.detail"),
     });
   } else if (section.change === "changed") {
     badges.push({
       kind: "changed",
-      label: "Changed since build",
-      detail: reasons || "The story changed since this section was built",
+      label: t("story.sync.badge.changed"),
+      detail: reasons || t("story.sync.badge.changed.sectionFallback"),
     });
   } else if (section.moved) {
     badges.push({
       kind: "moves",
-      label: "Moves",
-      detail: `A rebuild moves it ${formatSpan(section.current)} → ${formatSpan(section.next)}; its content stays`,
+      label: t("story.sync.badge.moves"),
+      detail: t("story.sync.badge.moves.detail", {
+        from: formatSpan(section.current),
+        to: formatSpan(section.next),
+      }),
     });
   }
   const edits = sectionEdits(section);
   if (edits.length > 0) {
     badges.push({
       kind: "edited",
-      label: `Edited on timeline · ${edits.length}`,
-      detail: `Edited on the timeline after the build: ${authorSplit(edits)}`,
+      label: t("story.sync.badge.edited", { count: edits.length }),
+      detail: t("story.sync.badge.edited.detail", { authors: authorSplit(edits) }),
     });
   }
   return badges;
@@ -168,8 +179,8 @@ export function materialBadge(report: StorySyncReport | null, node: string): Syn
   const reasons = [...new Set(changed.flatMap((unit) => unit.reasons))].join("; ");
   return {
     kind: "changed",
-    label: "Changed since build",
-    detail: reasons || "The story changed since this material was built",
+    label: t("story.sync.badge.changed"),
+    detail: reasons || t("story.sync.badge.changed.materialFallback"),
   };
 }
 
@@ -180,9 +191,9 @@ export function rebuildTargets(report: StorySyncReport | null): string[] {
 
 /** Why Rebuild affected cannot run from the report, or null when it can. */
 export function syncBlocker(report: StorySyncReport | null): string | null {
-  if (!report || report.state === "not_built") return "Not built yet";
-  if (report.state === "untracked") return "Built before sync tracking — use Build Story";
-  if (report.state === "in_sync") return "In sync with the timeline";
+  if (!report || report.state === "not_built") return t("story.sync.blocker.notBuilt");
+  if (report.state === "untracked") return t("story.sync.blocker.untracked");
+  if (report.state === "in_sync") return t("story.sync.blocker.inSync");
   return null;
 }
 

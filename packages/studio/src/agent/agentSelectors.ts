@@ -21,6 +21,7 @@ import {
   type UserMessage,
   type WorkerAgentId,
 } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 
 /** The turn currently running in a chat, if any. */
 export function runningTurn(chat: ChatState | null): TurnSummary | null {
@@ -84,7 +85,7 @@ export function displayModelName(
   selection: ModelSelection | null,
   info: AgentModelInfo | null,
 ): string {
-  return info?.name ?? selection?.modelId ?? "No model";
+  return info?.name ?? selection?.modelId ?? t("agent.model.none");
 }
 
 export function sameModel(left: ModelSelection | null, right: ModelSelection | null): boolean {

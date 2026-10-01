@@ -25,6 +25,7 @@ import {
 } from "@hyperframes/core/slideshow";
 import type { CutoverDeps } from "./sdkCutover";
 import { persistSdkSerialize } from "./sdkCutover";
+import { t } from "../i18n";
 
 // Matches ALL <script type="application/hyperframes-slideshow+json"> ... </script>
 // blocks (global + case-insensitive) so we can strip every stale island in one pass.
@@ -88,7 +89,7 @@ export async function persistSlideshowManifest(args: PersistSlideshowArgs): Prom
     originalContent,
     deps,
     {
-      label: label ?? "Edit slideshow",
+      label: label ?? t("app.history.editSlideshow"),
       ...(coalesceKey ? { coalesceKey } : {}),
     },
   );

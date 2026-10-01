@@ -12,6 +12,7 @@ import {
   type StorySyncReport,
 } from "@hyperframes/agent-protocol";
 import { Button, IconButton, Input, Select } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { ChapterTimelineSection } from "./ChapterTimelineSection";
 import {
   EditedChips,
@@ -25,12 +26,7 @@ import {
 } from "./inspectorFields";
 import type { StorySelection } from "./storyStore";
 import { fileName, formatDuration } from "./storyFormat";
-import {
-  CHAPTER_STATUS_LABELS,
-  FIELD_LABELS,
-  NARRATIVE_ROLE_LABELS,
-  STORY_KIND_STYLES,
-} from "./storyKinds";
+import { CHAPTER_STATUS_KEYS, NARRATIVE_ROLE_KEYS, STORY_KIND_STYLES } from "./storyKinds";
 import { AttachedSlots } from "./StorySlots";
 import type { StoryLibrary } from "./useStoryLibrary";
 
@@ -67,6 +63,7 @@ function RangeRow({
   onChange: (next: StorySourceRange) => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const options = (sources.includes(range.source) ? sources : [range.source, ...sources]).map(
     (path) => ({ value: path, label: fileName(path) }),
   );
@@ -78,7 +75,7 @@ function RangeRow({
         </span>
         <div className="min-w-0 flex-1">
           <Select
-            label={`Range ${index + 1} source`}
+            label={t("story.chapter.rangeSource", { number: index + 1 })}
             value={range.source}
             options={options}
             disabled={disabled}
@@ -86,7 +83,7 @@ function RangeRow({
           />
         </div>
         <IconButton
-          aria-label={`Remove range ${index + 1}`}
+          aria-label={t("story.chapter.rangeRemove", { number: index + 1 })}
           size="xs"
           disabled={disabled}
           icon={<Trash size={12} aria-hidden />}
@@ -96,7 +93,7 @@ function RangeRow({
       <div className="flex items-center gap-1 pl-7">
         <div className="w-20 shrink-0">
           <TimeField
-            label={`Range ${index + 1} from`}
+            label={t("story.chapter.rangeFrom", { number: index + 1 })}
             value={range.from}
             precise
             disabled={disabled}
@@ -107,7 +104,7 @@ function RangeRow({
         <span className="text-fg-3">–</span>
         <div className="w-20 shrink-0">
           <TimeField
-            label={`Range ${index + 1} to`}
+            label={t("story.chapter.rangeTo", { number: index + 1 })}
             value={range.to}
             precise
             disabled={disabled}
@@ -118,7 +115,7 @@ function RangeRow({
         {range.segment && (
           <span
             className="ml-auto truncate rounded-xs bg-surface-2 px-1.5 py-0.5 font-mono text-2xs text-fg-2"
-            title="Analysis segment this range came from"
+            title={t("story.chapter.segmentTip")}
           >
             {range.segment}
           </span>
@@ -156,6 +153,7 @@ export function ChapterInspector({
   onSelect,
   onRebuild,
 }: ChapterInspectorProps) {
+  const { t } = useTranslation();
   const edited = new Set(chapter.userEdited);
   const set = <K extends keyof ChapterNode>(key: K, value: ChapterNode[K]) =>
     onChange({ ...chapter, [key]: value });
@@ -186,49 +184,54 @@ export function ChapterInspector({
         name={chapter.title}
         sub={
           place.index >= 0
-            ? `Chapter ${place.index + 1} of ${place.count} · ${formatDuration(place.start)} – ${formatDuration(end)}`
-            : "Chapter"
+            ? t("story.chapter.subtitle", {
+                number: place.index + 1,
+                count: place.count,
+                start: formatDuration(place.start),
+                end: formatDuration(end),
+              })
+            : t("story.chapter.section.chapter")
         }
       />
 
-      <Section title="Chapter">
-        <EditedChips fields={chapter.userEdited} labels={FIELD_LABELS} />
-        <Field label="Title" edited={edited.has("title")}>
+      <Section title={t("story.chapter.section.chapter")}>
+        <EditedChips fields={chapter.userEdited} />
+        <Field label={t("story.field.title")} edited={edited.has("title")}>
           <Input
-            aria-label="Title"
+            aria-label={t("story.field.title")}
             value={chapter.title}
             disabled={readOnly}
             onCommit={(title) => title.trim() && set("title", title.trim())}
           />
         </Field>
-        <Field label="Purpose" edited={edited.has("purpose")} top>
+        <Field label={t("story.chapter.purpose")} edited={edited.has("purpose")} top>
           <TextAreaField
-            label="Purpose"
+            label={t("story.chapter.purpose")}
             value={chapter.purpose}
             rows={2}
             disabled={readOnly}
-            placeholder="What this chapter does for the story"
+            placeholder={t("story.chapter.purposePlaceholder")}
             onCommit={(purpose) => set("purpose", purpose)}
           />
         </Field>
-        <Field label="Summary" edited={edited.has("description")} top>
+        <Field label={t("story.chapter.summary")} edited={edited.has("description")} top>
           <TextAreaField
-            label="Summary"
+            label={t("story.chapter.summary")}
             value={chapter.description}
             rows={2}
             disabled={readOnly}
-            placeholder="What the viewer sees and hears"
+            placeholder={t("story.chapter.summaryPlaceholder")}
             onCommit={(description) => set("description", description)}
           />
         </Field>
-        <Field label="Role" edited={edited.has("narrativeRole")}>
+        <Field label={t("story.chapter.role")} edited={edited.has("narrativeRole")}>
           <Select
-            label="Narrative role"
+            label={t("story.chapter.narrativeRole")}
             value={chapter.narrativeRole}
             disabled={readOnly}
             options={STORY_NARRATIVE_ROLES.map((role) => ({
               value: role,
-              label: NARRATIVE_ROLE_LABELS[role],
+              label: t(NARRATIVE_ROLE_KEYS[role]),
             }))}
             onCommit={(role) => {
               const next = STORY_NARRATIVE_ROLES.find((candidate) => candidate === role);
@@ -236,14 +239,14 @@ export function ChapterInspector({
             }}
           />
         </Field>
-        <Field label="Status" edited={edited.has("status")}>
+        <Field label={t("story.field.status")} edited={edited.has("status")}>
           <Select
-            label="Status"
+            label={t("story.field.status")}
             value={chapter.status}
             disabled={readOnly}
             options={CHAPTER_STATUSES.map((status) => ({
               value: status,
-              label: CHAPTER_STATUS_LABELS[status],
+              label: t(CHAPTER_STATUS_KEYS[status]),
             }))}
             onCommit={(status) => {
               const next = CHAPTER_STATUSES.find((candidate) => candidate === status);
@@ -253,22 +256,20 @@ export function ChapterInspector({
         </Field>
       </Section>
 
-      <Section title="A-roll">
-        <Field label="Intent" edited={edited.has("aRoll")}>
+      <Section title={t("story.field.aRoll")}>
+        <Field label={t("story.chapter.intent")} edited={edited.has("aRoll")}>
           <Input
-            aria-label="A-roll intent"
+            aria-label={t("story.chapter.aRollIntent")}
             value={chapter.aRoll}
             disabled={readOnly}
-            placeholder="Who or what carries the chapter"
+            placeholder={t("story.chapter.aRollPlaceholder")}
             onCommit={(aRoll) => set("aRoll", aRoll)}
           />
         </Field>
         {ranges.length === 0 ? (
-          <p className="text-sm leading-[17px] text-fg-3">
-            No A-roll yet: the chapter fills its duration with visuals.
-          </p>
+          <p className="text-sm leading-[17px] text-fg-3">{t("story.chapter.noARoll")}</p>
         ) : (
-          <ol className="grid gap-1.5" aria-label="Source ranges">
+          <ol className="grid gap-1.5" aria-label={t("story.chapter.sourceRanges")}>
             {ranges.map((range, index) => (
               <RangeRow
                 key={`${index}-${range.source}`}
@@ -292,14 +293,14 @@ export function ChapterInspector({
           disabled={readOnly || (sources.length === 0 && ranges.length === 0)}
           onClick={addRange}
         >
-          Add A-roll
+          {t("story.chapter.addARoll")}
         </Button>
       </Section>
 
-      <Section title="B-roll">
-        <Field label="Intent" edited={edited.has("bRoll")}>
+      <Section title={t("story.field.bRoll")}>
+        <Field label={t("story.chapter.intent")} edited={edited.has("bRoll")}>
           <Input
-            aria-label="B-roll intent"
+            aria-label={t("story.chapter.bRollIntent")}
             value={chapter.bRoll}
             disabled={readOnly}
             onCommit={(bRoll) => set("bRoll", bRoll)}
@@ -315,10 +316,10 @@ export function ChapterInspector({
         />
       </Section>
 
-      <Section title="Motion & captions">
-        <Field label="Intent" edited={edited.has("graphics")}>
+      <Section title={t("story.chapter.section.motionCaptions")}>
+        <Field label={t("story.chapter.intent")} edited={edited.has("graphics")}>
           <Input
-            aria-label="Graphics intent"
+            aria-label={t("story.chapter.graphicsIntent")}
             value={chapter.graphics}
             disabled={readOnly}
             onCommit={(graphics) => set("graphics", graphics)}
@@ -332,24 +333,24 @@ export function ChapterInspector({
           onSelect={onSelect}
           onDetach={detach}
         />
-        <Field label="Captions" edited={edited.has("captions")}>
+        <Field label={t("story.field.captions")} edited={edited.has("captions")}>
           <Select
-            label="Captions"
+            label={t("story.field.captions")}
             value={chapter.captions ? "on" : "off"}
             disabled={readOnly}
             options={[
-              { value: "off", label: "Off" },
-              { value: "on", label: "Word-synced from the transcript" },
+              { value: "off", label: t("story.chapter.captionsOff") },
+              { value: "on", label: t("story.chapter.captionsOn") },
             ]}
             onCommit={(value) => set("captions", value === "on")}
           />
         </Field>
       </Section>
 
-      <Section title="Music & sound">
-        <Field label="Intent" edited={edited.has("audio")}>
+      <Section title={t("story.chapter.section.audio")}>
+        <Field label={t("story.chapter.intent")} edited={edited.has("audio")}>
           <Input
-            aria-label="Audio intent"
+            aria-label={t("story.chapter.audioIntent")}
             value={chapter.audio}
             disabled={readOnly}
             onCommit={(audio) => set("audio", audio)}
@@ -365,39 +366,42 @@ export function ChapterInspector({
         />
       </Section>
 
-      <Section title="Timing">
+      <Section title={t("story.chapter.section.timing")}>
         <Field
-          label="Duration"
+          label={t("story.field.duration")}
           edited={edited.has("estimatedDuration")}
           hint={
             material !== undefined && material !== null
-              ? `of ${formatDuration(place.total)} · A-roll ${formatDuration(material)} after cleanup`
-              : `of ${formatDuration(place.total)}`
+              ? t("story.chapter.durationHintRoll", {
+                  total: formatDuration(place.total),
+                  roll: formatDuration(material),
+                })
+              : t("story.chapter.durationHint", { total: formatDuration(place.total) })
           }
         >
           <TimeField
-            label="Estimated duration"
+            label={t("story.chapter.estimatedDuration")}
             value={chapter.estimatedDuration}
             disabled={readOnly}
             onCommit={(seconds) => seconds !== null && set("estimatedDuration", seconds)}
           />
         </Field>
-        <Field label="Transition in">
+        <Field label={t("story.chapter.transitionIn")}>
           {incoming ? (
             <Input
-              aria-label="Transition in"
+              aria-label={t("story.chapter.transitionIn")}
               value={incoming.transition}
               disabled={readOnly}
-              placeholder="Cut"
+              placeholder={t("story.chapter.transitionPlaceholder")}
               onCommit={(transition) => onEdge({ ...incoming, transition })}
             />
           ) : (
             <span className="text-sm leading-6 text-fg-3">
-              {place.index === 0 ? "Opens the story" : "Not linked to a chapter before it"}
+              {place.index === 0 ? t("story.chapter.opens") : t("story.chapter.notLinked")}
             </span>
           )}
         </Field>
-        <Field label="Timeline">
+        <Field label={t("story.timeline.title")}>
           <span className="px-0.5 font-mono text-sm text-fg">
             {formatDuration(place.start)} – {formatDuration(end)}
           </span>
@@ -412,17 +416,15 @@ export function ChapterInspector({
         onRebuild={onRebuild}
       />
 
-      <Section title="Lock">
+      <Section title={t("story.chapter.section.lock")}>
         <ToggleRow
-          label="Locked"
+          label={t("story.inspector.locked")}
           checked={chapter.locked}
           disabled={readOnly}
           onCommit={(locked) => set("locked", locked)}
         />
         <HintNote icon={chapter.locked ? LockSimple : LockSimpleOpen}>
-          {chapter.locked
-            ? "AI Review, Build and the agent keep this chapter and its attachments exactly as they are."
-            : "Lock a chapter to keep AI Review, Build and the agent from changing it."}
+          {chapter.locked ? t("story.chapter.lockedOn") : t("story.chapter.lockedOff")}
         </HintNote>
       </Section>
     </>

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, CaretRight, Plus } from "@phosphor-icons/react";
 import type { StoryNodeKind } from "@hyperframes/agent-protocol";
 import { IconButton, Popover, cn } from "../components/ui";
+import { t as translate, useTranslation } from "../i18n";
 import type { NewMaterialInput } from "./storyGraphOps";
 import { fileName, formatDuration } from "./storyFormat";
 import { STORY_KIND_STYLES } from "./storyKinds";
@@ -61,8 +62,8 @@ function choicesFor(kind: PickedKind, library: StoryLibrary): Choice[] {
   if (kind === "music") {
     files.unshift({
       key: "later",
-      label: "Choose the track later",
-      detail: "An intended choice",
+      label: translate("story.add.laterTitle"),
+      detail: translate("story.add.laterDetail"),
       request: { kind },
     });
   }
@@ -79,6 +80,7 @@ export function AddNodePopover({
   disabled: boolean;
   onAdd: (request: NewNodeRequest) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState<PickedKind | null>(null);
   const [query, setQuery] = useState("");
@@ -107,12 +109,12 @@ export function AddNodePopover({
       }}
       side="bottom"
       align="start"
-      aria-label="Add to the story"
+      aria-label={t("story.add.menuLabel")}
       className="w-64 p-1"
       trigger={
         <IconButton
-          aria-label="Add node"
-          title="Add node"
+          aria-label={t("story.add.node")}
+          title={t("story.add.node")}
           size="sm"
           disabled={disabled}
           icon={<Plus size={14} aria-hidden />}
@@ -120,7 +122,7 @@ export function AddNodePopover({
       }
     >
       {picking === null ? (
-        <ul className="flex flex-col" aria-label="Add node">
+        <ul className="flex flex-col" aria-label={t("story.add.node")}>
           {ORDER.map((kind) => {
             const style = STORY_KIND_STYLES[kind];
             const KindIcon = style.icon;
@@ -145,7 +147,7 @@ export function AddNodePopover({
                   >
                     <KindIcon size={11} weight="bold" aria-hidden />
                   </span>
-                  {style.label}
+                  {t(style.labelKey)}
                   {isPicked(kind) && (
                     <CaretRight size={12} className="ml-auto text-fg-3" aria-hidden />
                   )}
@@ -158,16 +160,18 @@ export function AddNodePopover({
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1">
             <IconButton
-              aria-label="Back"
+              aria-label={t("common.back")}
               size="sm"
               icon={<ArrowLeft size={12} aria-hidden />}
               onClick={() => setPicking(null)}
             />
             <input
-              aria-label={`Search ${STORY_KIND_STYLES[picking].label}`}
+              aria-label={t("story.add.search", { kind: t(STORY_KIND_STYLES[picking].labelKey) })}
               value={query}
               autoFocus
-              placeholder={picking === "motion" ? "Search presets" : "Search files"}
+              placeholder={
+                picking === "motion" ? t("story.add.searchPresets") : t("story.add.searchFiles")
+              }
               onChange={(event) => setQuery(event.target.value)}
               className="h-ctl-sm min-w-0 flex-1 rounded-sm border border-border bg-surface-1 px-2 text-sm text-fg outline-hidden placeholder:text-fg-disabled focus:border-border-strong"
             />
@@ -175,15 +179,15 @@ export function AddNodePopover({
           <ul
             className="flex max-h-72 flex-col overflow-y-auto"
             role="listbox"
-            aria-label="Choices"
+            aria-label={t("story.add.choices")}
           >
             {choices.length === 0 && (
               <li className="px-2 py-2 text-sm text-fg-3">
                 {library.status === "loading"
-                  ? "Loading…"
+                  ? t("story.add.loading")
                   : picking === "motion"
-                    ? "No presets found."
-                    : "No matching files in the project."}
+                    ? t("story.add.noPresets")
+                    : t("story.add.noFiles")}
               </li>
             )}
             {choices.map((choice) => (

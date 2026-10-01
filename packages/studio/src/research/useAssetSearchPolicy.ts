@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AssetSearchPolicy } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 import type { ResearchClient } from "./researchClient";
 
 export interface AssetSearchPolicyState {
@@ -35,9 +36,7 @@ export function useAssetSearchPolicy(client: ResearchClient): AssetSearchPolicyS
       setPolicy(await client.policy());
       setError(null);
     } catch (failure) {
-      setError(
-        failure instanceof Error ? failure.message : "Couldn't load the Asset Search policy",
-      );
+      setError(failure instanceof Error ? failure.message : t("research.error.policyLoad"));
     } finally {
       setLoading(false);
     }
@@ -59,7 +58,7 @@ export function useAssetSearchPolicy(client: ResearchClient): AssetSearchPolicyS
         setPolicy(await action(client));
         return null;
       } catch (failure) {
-        const message = failure instanceof Error ? failure.message : "The change was not saved";
+        const message = failure instanceof Error ? failure.message : t("research.error.notSaved");
         if (!options?.inline) setError(message);
         return message;
       } finally {

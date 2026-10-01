@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { createStudioSaveHttpError } from "./studioSaveDiagnostics";
 import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
 import type { RecordEditInput } from "./studioFileHistory";
@@ -24,10 +25,13 @@ async function insertTimelineComposition(input: {
     buildProjectApiPath(input.projectId, `/files/${encodeURIComponent(input.targetPath)}`),
   );
   if (!current.ok) {
-    throw await createStudioSaveHttpError(current, `Failed to read ${input.targetPath}`);
+    throw await createStudioSaveHttpError(
+      current,
+      t("app.save.readFailed", { path: input.targetPath }),
+    );
   }
   const snapshot = (await current.json()) as { version?: string };
-  if (typeof snapshot.version !== "string") throw new Error("Missing composition file version");
+  if (typeof snapshot.version !== "string") throw new Error(t("app.save.compositionVersion"));
 
   const response = await fetch(
     buildProjectApiPath(
@@ -46,7 +50,7 @@ async function insertTimelineComposition(input: {
     },
   );
   if (!response.ok) {
-    throw await createStudioSaveHttpError(response, "Failed to add composition to timeline");
+    throw await createStudioSaveHttpError(response, t("app.save.addCompositionFailed"));
   }
   return (await response.json()) as TimelineCompositionInsertionResult;
 }
@@ -69,7 +73,7 @@ export async function commitTimelineCompositionInsertion(input: {
     input.observeVersion?.(input.targetPath, result.version);
     try {
       await input.recordEdit({
-        label: "Add composition to timeline",
+        label: t("app.history.addComposition"),
         files: { [input.targetPath]: { before: result.before, after: result.after } },
       });
     } catch (error) {

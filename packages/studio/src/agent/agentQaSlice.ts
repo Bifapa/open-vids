@@ -1,4 +1,5 @@
 import type { QaReport } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 import { AgentApiError, type AgentClient } from "./agentClient";
 import type { Loadable } from "./agentSettingsSlice";
 
@@ -16,12 +17,12 @@ export interface AgentQaSlice {
 /** Reports come from the Studio server, not the agent: its failures read differently. */
 function describeQaReportError(error: unknown): string {
   if (error instanceof AgentApiError) {
-    if (error.status === 404) return "This report is no longer stored.";
-    if (error.code === "network") return "Can't reach Studio right now.";
-    if (error.code === "bad_response") return "Studio sent a report it couldn't read.";
+    if (error.status === 404) return t("agent.qa.notStored");
+    if (error.code === "network") return t("agent.qa.unreachable");
+    if (error.code === "bad_response") return t("agent.qa.unreadable");
     if (error.message) return error.message;
   }
-  return "The report couldn't be loaded.";
+  return t("agent.qa.loadFailed");
 }
 
 export function createAgentQaSlice({ client }: { client: AgentClient }): AgentQaSlice {

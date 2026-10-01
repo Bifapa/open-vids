@@ -6,6 +6,7 @@ import {
   type ResearchMediaKind,
 } from "@hyperframes/agent-protocol";
 import { Button, cn, fieldBase, fieldText } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { MEDIA_KIND_LABELS } from "./licenseLabels";
 
 /** Domains as the user typed them: split on commas, whitespace and new lines, duplicates dropped. */
@@ -34,6 +35,7 @@ export function AddTrustedSourceForm({
   onAdd: (request: AddTrustedSourceRequest) => Promise<string | null>;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [domainsText, setDomainsText] = useState("");
   const [kinds, setKinds] = useState<ResearchMediaKind[]>([...RESEARCH_MEDIA_KINDS]);
@@ -44,12 +46,14 @@ export function AddTrustedSourceForm({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const domains = parseDomains(domainsText);
-    if (!name.trim()) return setProblem("Give the source a name.");
-    if (domains.length === 0) return setProblem("Add at least one domain, like example.com.");
+    if (!name.trim()) return setProblem(t("research.add.needName"));
+    if (domains.length === 0) return setProblem(t("research.add.needDomain"));
     if (domains.length > RESEARCH_LIMITS.domainsPerSource) {
-      return setProblem(`A source can have at most ${RESEARCH_LIMITS.domainsPerSource} domains.`);
+      return setProblem(
+        t("research.add.tooManyDomains", { max: RESEARCH_LIMITS.domainsPerSource }),
+      );
     }
-    if (kinds.length === 0) return setProblem("Choose what the source offers.");
+    if (kinds.length === 0) return setProblem(t("research.add.needKind"));
     setProblem(null);
     setProblem(await onAdd({ name: name.trim(), domains, kinds }));
   };
@@ -61,25 +65,25 @@ export function AddTrustedSourceForm({
 
   return (
     <form
-      aria-label="Add trusted source"
+      aria-label={t("research.add.formLabel")}
       onSubmit={(event) => void submit(event)}
       className="flex flex-col gap-1.5"
     >
       <label htmlFor={nameId} className="text-xs text-fg-3">
-        Name
+        {t("research.add.name")}
       </label>
       <div className={fieldBase}>
         <input
           id={nameId}
           value={name}
           maxLength={RESEARCH_LIMITS.nameChars}
-          placeholder="City archive"
+          placeholder={t("research.add.namePlaceholder")}
           onChange={(event) => setName(event.target.value)}
           className={fieldText}
         />
       </div>
       <label htmlFor={domainsId} className="mt-0.5 text-xs text-fg-3">
-        Domains
+        {t("research.add.domains")}
       </label>
       <textarea
         id={domainsId}
@@ -93,11 +97,9 @@ export function AddTrustedSourceForm({
           fieldText,
         )}
       />
-      <span className="text-xs text-fg-3">
-        Separate with commas or new lines. A domain covers its subdomains.
-      </span>
+      <span className="text-xs text-fg-3">{t("research.add.domainsHint")}</span>
       <fieldset className="mt-0.5 flex flex-wrap items-center gap-3">
-        <legend className="mb-1 text-xs text-fg-3">Offers</legend>
+        <legend className="mb-1 text-xs text-fg-3">{t("research.add.offers")}</legend>
         {RESEARCH_MEDIA_KINDS.map((kind) => (
           <label key={kind} className="flex items-center gap-1.5 text-sm text-fg">
             <input
@@ -106,7 +108,7 @@ export function AddTrustedSourceForm({
               onChange={(event) => toggleKind(kind, event.target.checked)}
               className="accent-accent"
             />
-            {MEDIA_KIND_LABELS[kind]}
+            {t(MEDIA_KIND_LABELS[kind])}
           </label>
         ))}
       </fieldset>
@@ -117,10 +119,10 @@ export function AddTrustedSourceForm({
       )}
       <div className="mt-0.5 flex justify-end gap-1.5">
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button type="submit" size="sm" variant="primary" loading={pending}>
-          Add source
+          {t("research.add.submit")}
         </Button>
       </div>
     </form>

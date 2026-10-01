@@ -9,6 +9,7 @@ import type {
 } from "@hyperframes/agent-protocol";
 import { Button, cn } from "../components/ui";
 import { LicenseChip } from "../research/LicenseChip";
+import { t as translate, useTranslation } from "../i18n";
 import { LICENSE_STATUS_LABELS } from "../research/licenseLabels";
 
 /**
@@ -42,7 +43,7 @@ export function unlockedMissing(graph: StoryGraph | null): MissingAssetNode[] {
 
 /** Why Research cannot resolve this node now, or null. */
 export function findBlocker(research: StoryResearch, node: MissingAssetNode): string | null {
-  if (node.locked) return "Locked: unlock it to let Research resolve it";
+  if (node.locked) return translate("story.research.lockedBlocker");
   return research.blocker;
 }
 
@@ -67,11 +68,19 @@ export function SourceLicenseChip({
   source: ProjectSourceEntry;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <LicenseChip
       status={source.licenseStatus}
       label={`${source.source.name} · ${source.license}`}
-      title={`${source.source.trusted ? "Trusted source" : "Web"}: ${source.source.name} · ${source.license} (${LICENSE_STATUS_LABELS[source.licenseStatus]})`}
+      title={t(
+        source.source.trusted ? "story.research.chipTitleTrusted" : "story.research.chipTitleWeb",
+        {
+          name: source.source.name,
+          license: source.license,
+          status: t(LICENSE_STATUS_LABELS[source.licenseStatus]),
+        },
+      )}
       className={className}
     />
   );
@@ -90,13 +99,12 @@ export function FindWithResearchButton({
   /** Full width, as on a Missing Asset card. */
   block?: boolean;
 }) {
+  const { t } = useTranslation();
   const blocker = findBlocker(research, node);
   return (
     <span
       className={cn("hf-story-nodrag flex", block ? "w-full" : "self-start", className)}
-      title={
-        blocker ?? "Research looks for this material and resolves the node with what it imports"
-      }
+      title={blocker ?? t("story.research.findTip")}
     >
       <Button
         size="sm"
@@ -110,7 +118,7 @@ export function FindWithResearchButton({
           research.find([node.id]);
         }}
       >
-        Find with Research
+        {t("story.research.find")}
       </Button>
     </span>
   );
@@ -126,16 +134,17 @@ export function ResolvedCardLine({
   resolution: MissingResolution;
   research: StoryResearch | null;
 }) {
+  const { t } = useTranslation();
   const source = research?.sourceOf(assetOf(node)) ?? null;
   return (
     <div className="flex min-w-0 flex-col gap-0.5 px-1" data-story-resolved={resolution.missing}>
       <span className="flex items-center gap-1 text-2xs font-medium text-fg-2">
         <MagnifyingGlass size={10} weight="bold" className="text-success" aria-hidden />
-        {resolution.turnId ? "Found by Research" : "Resolved by you"}
+        {resolution.turnId ? t("story.research.foundBy") : t("story.research.resolvedByYou")}
       </span>
       {resolution.need && (
         <span className="truncate text-2xs text-fg-3" title={resolution.need}>
-          For: {resolution.need}
+          {t("story.research.cardFor", { need: resolution.need })}
         </span>
       )}
       {source && (
@@ -143,12 +152,17 @@ export function ResolvedCardLine({
           <LicenseChip
             status={source.licenseStatus}
             label={source.license}
-            title={`${source.license} (${LICENSE_STATUS_LABELS[source.licenseStatus]}) from ${source.source.name}`}
+            title={t("story.research.cardLicenseTitle", {
+              license: source.license,
+              status: t(LICENSE_STATUS_LABELS[source.licenseStatus]),
+              name: source.source.name,
+            })}
             className="shrink-0"
           />
           <span className="truncate" title={source.source.name}>
-            {source.source.trusted ? "" : "Web · "}
-            {source.source.name}
+            {source.source.trusted
+              ? source.source.name
+              : t("story.research.webSource", { name: source.source.name })}
           </span>
         </span>
       )}

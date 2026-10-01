@@ -14,6 +14,7 @@ import {
 } from "@xyflow/react";
 import { storyOrder, type StoryPoint } from "@hyperframes/agent-protocol";
 import { cn } from "../components/ui";
+import { useTranslation } from "../i18n";
 import { useStoryServices, useStoryStore } from "./storyContext";
 import { toFlowEdges, toFlowNodes, type StoryFlowNode } from "./storyFlow";
 import { connectNodes, moveNodes } from "./storyGraphOps";
@@ -54,6 +55,9 @@ export function StoryCanvas({
   onRefused: (reason: string) => void;
 }) {
   const { store } = useStoryServices();
+  // Sync badges carry their text in the card data: a language switch rebuilds it.
+  const { i18n } = useTranslation();
+  const language = i18n.language;
   const projectId = useStoryStore((state) => state.projectId ?? "");
   const graph = useStoryStore((state) => state.graph);
   const facts = useStoryStore((state) => state.facts);
@@ -69,7 +73,7 @@ export function StoryCanvas({
     setNodes((previous) =>
       toFlowNodes({ graph, facts, projectId, selection, readOnly, order, sync }, previous),
     );
-  }, [graph, facts, projectId, selection, readOnly, order, sync, resync]);
+  }, [graph, facts, projectId, selection, readOnly, order, sync, resync, language]);
   const edges = useMemo(() => toFlowEdges(graph, selection), [graph, selection]);
 
   const onNodesChange = useCallback(

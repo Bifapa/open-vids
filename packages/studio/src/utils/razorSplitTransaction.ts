@@ -1,4 +1,5 @@
 import type { TimelineElement } from "../player";
+import { t } from "../i18n";
 import type { RecordEditInput } from "../hooks/timelineEditingHelpers";
 import { buildPatchTarget } from "./timelineElementSplit";
 import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
@@ -87,7 +88,7 @@ export function buildAtomicCutIntents(
   const seen = new Set<string>();
   for (const element of elements) {
     const target = buildPatchTarget(element);
-    if (!target) throw new Error("Clip is missing a patchable target.");
+    if (!target) throw new Error(t("app.cut.noTarget"));
     const path = element.sourceFile || activeCompPath || "index.html";
     const identity = targetIdentity(path, target);
     if (seen.has(identity)) continue;
@@ -104,10 +105,12 @@ async function readFileVersion(projectId: string, path: string): Promise<string>
   const response = await fetch(
     buildProjectApiPath(projectId, `/files/${encodeURIComponent(path)}`),
   );
-  if (!response.ok) throw new Error(`Failed to read ${path} before cut (${response.status})`);
+  if (!response.ok) {
+    throw new Error(t("app.cut.readFailed", { path, status: response.status }));
+  }
   const body = (await response.json()) as { version?: string };
   const version = body.version ?? response.headers.get("etag") ?? undefined;
-  if (!version) throw new Error(`Missing content version for ${path}`);
+  if (!version) throw new Error(t("app.cut.missingVersion", { path }));
   return version;
 }
 
@@ -136,8 +139,8 @@ async function requestAtomicCut(
     | (Partial<CutBatchResponse> & { error?: string; outcome?: string })
     | null;
   if (!response.ok || body?.ok !== true || !Array.isArray(body.files)) {
-    const prefix = response.status === 409 ? "Cut conflict" : "Cut failed";
-    throw new Error(`${prefix}: ${body?.error ?? `server returned ${response.status}`}`);
+    const detail = body?.error ?? t("app.cut.serverStatus", { status: response.status });
+    throw new Error(t(response.status === 409 ? "app.cut.conflict" : "app.cut.failed", { detail }));
   }
   return body as CutBatchResponse;
 }
@@ -155,10 +158,7 @@ async function rollbackUnrecordedCut(
     }
   }
   if (failures.length > 0) {
-    throw new AggregateError(
-      failures,
-      "Cut history failed and externally changed files could not be safely restored",
-    );
+    throw new AggregateError(failures, t("app.cut.historyFailed"));
   }
 }
 
@@ -186,7 +186,7 @@ export function runAtomicCutTransaction(input: RunAtomicCutInput): Promise<Atomi
       try {
         await rollbackUnrecordedCut(result.files, input.writeProjectFile);
       } catch (rollbackError) {
-        throw new AggregateError([error, rollbackError], "Cut aborted with rollback conflicts");
+        throw new AggregateError([error, rollbackError], t("app.cut.rollbackConflicts"));
       }
       throw error;
     }

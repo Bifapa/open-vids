@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { EditorContext } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 import { formatTime } from "../player/lib/time";
 
 export type ContextChipKind = "clip" | "range" | "asset" | "element" | "story";
@@ -39,7 +40,7 @@ export function contextChips(
       key: rangeKey(range),
       kind: "range",
       label: `${formatTime(range.start)}–${formatTime(range.end)}`,
-      detail: "Timeline range",
+      detail: t("agent.context.timelineRange"),
     });
   }
   if (assetPath) {
@@ -52,8 +53,9 @@ export function contextChips(
     chips.push({
       key: elementKey(previewElement),
       kind: "element",
-      label: previewElement.label || previewElement.tagName || "Element",
-      detail: previewElement.sourceFile ?? previewElement.selector ?? "Canvas selection",
+      label: previewElement.label || previewElement.tagName || t("agent.context.element"),
+      detail:
+        previewElement.sourceFile ?? previewElement.selector ?? t("agent.context.canvasSelection"),
     });
   }
   const node = context.storyGraph?.selectedNode;
@@ -61,8 +63,8 @@ export function contextChips(
     chips.push({
       key: `story:${node}`,
       kind: "story",
-      label: storyNodeTitle(node) ?? "Story node",
-      detail: "Story selection",
+      label: storyNodeTitle(node) ?? t("agent.context.storyNode"),
+      detail: t("agent.context.storySelection"),
     });
   }
   return chips;

@@ -13,6 +13,7 @@ import {
 } from "@hyperframes/agent-protocol";
 import type { AgentClient } from "./agentClient";
 import type { DraftChoices } from "./agentDraftChat";
+import { t } from "../i18n";
 import { describeAgentError } from "./agentErrors";
 import { findModel } from "./agentSelectors";
 import type { ActionResult } from "./agentSettingsSlice";
@@ -120,7 +121,7 @@ export function createAgentComposerSlice({
           intent: intake.intent,
           ...(intake.agentOverrides && { agentOverrides: intake.agentOverrides }),
         });
-        if (isDisposed()) return { ok: false, message: "The project was closed." };
+        if (isDisposed()) return { ok: false, message: t("agent.chat.projectClosed") };
         await get().openChat(created.id);
         const request = intakeTurnRequest(intake);
         if (!request) return { ok: true };
