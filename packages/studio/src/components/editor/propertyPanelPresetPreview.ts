@@ -1,5 +1,6 @@
 import type { NormalizedHfColorGrading } from "@hyperframes/core/color-grading";
 import type { ColorGradingPreviewOptions } from "./useColorGradingController";
+import { t } from "../../i18n";
 
 export function presetPreviewHandlers({
   id,
@@ -18,7 +19,7 @@ export function presetPreviewHandlers({
   onCommit: (grading: NormalizedHfColorGrading) => void;
 }) {
   return {
-    title: `Preview ${label}`,
+    title: t("inspector.preset.preview", { label }),
     onPointerEnter: () =>
       onPreview(resolve(), {
         animatedPreview: { kind: "presets" as const, id },

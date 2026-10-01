@@ -2,6 +2,7 @@ import { readPreviewMediaSrc } from "@hyperframes/core/studio-preview-mark";
 import { useEffect, useState } from "react";
 import { ImageSquare } from "@phosphor-icons/react";
 import { Check, ClipboardList } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import { INSP_SUBHEAD } from "./inspectorStyles";
 import type { DomEditSelection } from "./domEditing";
@@ -76,6 +77,7 @@ export function FlatMediaSection({
     },
   ) => Promise<BackgroundRemovalResult>;
 }) {
+  const { t } = useTranslation();
   const isVideo = element.tagName === "video";
   const isAudio = element.tagName === "audio";
   const isImage = element.tagName === "img";
@@ -140,7 +142,11 @@ export function FlatMediaSection({
   const runBackgroundRemoval = async () => {
     if (!onRemoveBackground || !projectSrc || removeBusy) return;
     setRemoveBusy(true);
-    setRemoveProgress({ status: "processing", progress: 0, stage: "Preparing" });
+    setRemoveProgress({
+      status: "processing",
+      progress: 0,
+      stage: t("inspector.media.stage.preparing"),
+    });
     try {
       const result = await onRemoveBackground(projectSrc, {
         createBackgroundPlate: isVideo && createPlate,
@@ -148,12 +154,17 @@ export function FlatMediaSection({
         onProgress: setRemoveProgress,
       });
       await applyCutoutResult(result);
-      setRemoveProgress({ status: "complete", progress: 100, stage: "Applied cutout", ...result });
+      setRemoveProgress({
+        status: "complete",
+        progress: 100,
+        stage: t("inspector.media.stage.applied"),
+        ...result,
+      });
     } catch (error) {
       setRemoveProgress({
         status: "failed",
         progress: 0,
-        stage: "Failed",
+        stage: t("inspector.media.stage.failed"),
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -164,21 +175,29 @@ export function FlatMediaSection({
   const removeBackgroundBlock = isVisualMedia ? (
     <div className="grid gap-1.5 border-t border-border-subtle pt-2">
       <div className={INSP_SUBHEAD}>
-        Remove Background
-        <span className="font-normal text-fg-3">Transparent {isVideo ? "WebM" : "PNG"}</span>
+        {t("inspector.media.removeBackground")}
+        <span className="font-normal text-fg-3">
+          {t("inspector.media.transparent", { format: isVideo ? "WebM" : "PNG" })}
+        </span>
       </div>
       <FlatSelectRow
-        label="Quality"
+        label={t("inspector.media.quality")}
         value={quality}
         options={[
-          { value: "fast", label: "Fast" },
-          { value: "balanced", label: "Balanced" },
-          { value: "best", label: "Best" },
+          { value: "fast", label: t("inspector.media.quality.fast") },
+          { value: "balanced", label: t("inspector.media.quality.balanced") },
+          { value: "best", label: t("inspector.media.quality.best") },
         ]}
         tier="explicitDefault"
         onChange={(next) => setQuality(next as typeof quality)}
       />
-      {isVideo && <FlatToggle label="BG plate" checked={createPlate} onChange={setCreatePlate} />}
+      {isVideo && (
+        <FlatToggle
+          label={t("inspector.media.bgPlate")}
+          checked={createPlate}
+          onChange={setCreatePlate}
+        />
+      )}
       {removeProgress && (
         <div className="grid gap-1">
           <div className="h-1 overflow-hidden rounded-xs bg-surface-3">
@@ -193,7 +212,9 @@ export function FlatMediaSection({
             <span
               className={`min-w-0 flex-1 truncate ${removeProgress.status === "failed" ? "text-error" : ""}`}
             >
-              {removeProgress.error ?? removeProgress.stage ?? "Processing"}
+              {removeProgress.error ??
+                removeProgress.stage ??
+                t("inspector.media.stage.processing")}
             </span>
             <span className="font-mono text-num text-fg-2">
               {Math.round(removeProgress.progress)}%
@@ -210,11 +231,11 @@ export function FlatMediaSection({
         onClick={() => void runBackgroundRemoval()}
         title={
           canRemoveBackground
-            ? "Remove background and save a transparent asset"
-            : "Select a project-local image or video asset"
+            ? t("inspector.media.removeBgHint")
+            : t("inspector.media.removeBgDisabledHint")
         }
       >
-        {removeBusy ? "Working" : "Remove BG"}
+        {removeBusy ? t("inspector.media.working") : t("inspector.media.removeBg")}
       </Button>
     </div>
   ) : null;
@@ -232,7 +253,7 @@ export function FlatMediaSection({
           size="sm"
           data-flat-media-copy="true"
           icon={copied ? <Check size={12} /> : <ClipboardList size={12} />}
-          title="Copy file path"
+          title={t("inspector.media.copyPath")}
           onClick={() => {
             void navigator.clipboard.writeText(absoluteSrc).then(() => {
               setCopied(true);
@@ -240,20 +261,20 @@ export function FlatMediaSection({
             });
           }}
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("inspector.media.copied") : t("inspector.media.copy")}
         </Button>
       </div>
       {isVisualMedia && (
         <>
           <FlatSelectRow
-            label="Fit"
+            label={t("inspector.media.fit")}
             value={objectFit}
             options={["contain", "cover", "fill", "none", "scale-down"]}
             tier={objectFit === "contain" ? "default" : "explicitCustom"}
             onChange={(next) => void onSetStyle("object-fit", next)}
           />
           <FlatSelectRow
-            label="Position"
+            label={t("inspector.media.position")}
             value={objectPosition}
             options={[
               "center",
@@ -282,7 +303,7 @@ export function FlatMediaSection({
           >
             <div className="min-w-0 flex-1">
               <FlatSlider
-                label="Volume"
+                label={t("inspector.media.volume")}
                 value={volumeFaderPosition}
                 min={AUDIO_GAIN_FADER_MIN}
                 max={AUDIO_GAIN_FADER_MAX}
@@ -308,7 +329,7 @@ export function FlatMediaSection({
             </div>
             <AutomationToggle
               paramKey="volume"
-              label="Volume"
+              label={t("inspector.media.volume")}
               automated={Boolean(volumeAutomated)}
               onAutomate={onAutomateVolume ? () => onAutomateVolume() : undefined}
               onRemoveAutomation={
@@ -325,7 +346,7 @@ export function FlatMediaSection({
             />
           )}
           <FlatSlider
-            label="Media start"
+            label={t("inspector.media.mediaStart")}
             value={Math.round(mediaStart * 100)}
             min={0}
             max={mediaStartMax * 100}
@@ -342,7 +363,7 @@ export function FlatMediaSection({
           <div className="flex items-center gap-1">
             <div className="min-w-0 flex-1">
               <FlatSlider
-                label="Speed"
+                label={t("inspector.media.speed")}
                 value={Math.round(toUnit(RATE_RANGE, playbackRate) * 1000)}
                 min={0}
                 max={1000}
@@ -367,7 +388,7 @@ export function FlatMediaSection({
             </div>
             <AutomationToggle
               paramKey="rate"
-              label="Speed"
+              label={t("inspector.media.speed")}
               automated={Boolean(rate?.automated)}
               onAutomate={rate ? () => rate.onAutomate() : undefined}
               onRemoveAutomation={rate ? () => rate.onRemoveAutomation() : undefined}
@@ -378,26 +399,26 @@ export function FlatMediaSection({
               row is video-only. */}
           {rate?.canApplyPreset && !isAudio && (
             <FlatSelectRow
-              label="Speed preset"
+              label={t("inspector.media.speedPreset")}
               value=""
-              options={[{ value: "", label: "Choose…" }, ...SPEED_PRESET_OPTIONS]}
+              options={[{ value: "", label: t("inspector.media.choose") }, ...SPEED_PRESET_OPTIONS]}
               tier="default"
               onChange={(id) => id && rate.onApplyPreset(id as SpeedPresetId)}
             />
           )}
           <FlatToggle
-            label="Loop"
+            label={t("inspector.media.loop")}
             checked={hasLoop}
             onChange={(next) => void onSetHtmlAttribute("loop", next ? "true" : null)}
           />
           <FlatToggle
-            label="Muted"
+            label={t("inspector.media.muted")}
             checked={hasMuted}
             onChange={(next) => void onSetHtmlAttribute("muted", next ? "true" : null)}
           />
           {isVideo && (
             <FlatToggle
-              label="Has audio track"
+              label={t("inspector.media.hasAudioTrack")}
               checked={hasAudio}
               onChange={(next) => {
                 if (next) {
@@ -428,6 +449,7 @@ function MediaFadeSliders({
   fadeMax: number;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const fadeText = (seconds: number) => (seconds > 0 ? formatFadeSeconds(seconds) : "");
   return (["in", "out"] as const).map((edge) => {
     const seconds = edge === "in" ? fadeIn : fadeOut;
@@ -436,7 +458,7 @@ function MediaFadeSliders({
     return (
       <FlatSlider
         key={edge}
-        label={`Fade ${edge}`}
+        label={t("inspector.media.fade", { edge })}
         value={Math.round(seconds * 100)}
         min={0}
         max={Math.round(edgeMax * 100)}

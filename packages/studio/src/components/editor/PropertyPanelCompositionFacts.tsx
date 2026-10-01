@@ -1,5 +1,6 @@
 import { Film } from "../../icons/SystemIcons";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
+import { useTranslation } from "../../i18n";
 import { usePlayerStore } from "../../player";
 import { STUDIO_PREVIEW_FPS, formatTime } from "../../player/lib/time";
 
@@ -13,6 +14,7 @@ function greatestCommonDivisor(a: number, b: number): number {
  * value comes from state the viewer and timeline already hold.
  */
 export function InspectorCompositionFacts() {
+  const { t } = useTranslation();
   const shell = useStudioShellContextOptional();
   const duration = usePlayerStore((state) => state.duration);
   const elements = usePlayerStore((state) => state.elements);
@@ -24,11 +26,20 @@ export function InspectorCompositionFacts() {
   const divisor = dims ? greatestCommonDivisor(dims.width, dims.height) || 1 : 1;
   const trackCount = new Set(elements.map((element) => element.track)).size;
   const facts: Array<[string, string]> = [
-    ["Resolution", dims ? `${dims.width} × ${dims.height}` : "—"],
-    ["Aspect", dims ? `${dims.width / divisor}:${dims.height / divisor}` : "—"],
-    ["Frame rate", `${STUDIO_PREVIEW_FPS} fps`],
-    ["Duration", duration > 0 ? formatTime(duration) : "—"],
-    ["Clips", `${elements.length} on ${trackCount} ${trackCount === 1 ? "track" : "tracks"}`],
+    [t("inspector.composition.resolution"), dims ? `${dims.width} × ${dims.height}` : "—"],
+    [
+      t("inspector.composition.aspect"),
+      dims ? `${dims.width / divisor}:${dims.height / divisor}` : "—",
+    ],
+    [
+      t("inspector.composition.frameRate"),
+      t("inspector.composition.fps", { fps: STUDIO_PREVIEW_FPS }),
+    ],
+    [t("inspector.composition.duration"), duration > 0 ? formatTime(duration) : "—"],
+    [
+      t("inspector.composition.clips"),
+      t("inspector.composition.clipsValue", { count: elements.length, tracks: trackCount }),
+    ],
   ];
   return (
     <>
@@ -38,14 +49,16 @@ export function InspectorCompositionFacts() {
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-md font-semibold text-fg">{name}</div>
-          <div className="mt-px truncate font-mono text-num text-fg-3">{path} · composition</div>
+          <div className="mt-px truncate font-mono text-num text-fg-3">
+            {t("inspector.composition.path", { path })}
+          </div>
         </div>
       </div>
       <section className="border-b border-border-subtle" data-testid="inspector-composition-facts">
         <h3 className="m-0 flex h-[30px] items-center pl-3 pr-2.5 text-sm font-semibold text-fg">
-          Composition
+          {t("inspector.composition.title")}
         </h3>
-        <dl className="m-0 grid grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1.5 px-3 pb-3 pt-0.5 text-sm">
+        <dl className="m-0 grid grid-cols-[minmax(72px,max-content)_minmax(0,1fr)] gap-x-2 gap-y-1.5 px-3 pb-3 pt-0.5 text-sm">
           {facts.map(([label, value]) => (
             <div key={label} className="contents">
               <dt className="text-fg-3">{label}</dt>

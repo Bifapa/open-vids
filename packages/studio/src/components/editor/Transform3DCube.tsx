@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { formatNumber, useTranslation } from "../../i18n";
 import { projectAxes, projectCubeFaces, wrapDeg } from "./transform3dProjection";
 
 export interface CubePose {
@@ -61,6 +62,7 @@ export function Transform3DCube({
   /** Whether the 3D transform is already keyframed (drives the toggle's state). */
   keyframed?: boolean;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<CubePose | null>(null);
   const [depthDraft, setDepthDraft] = useState<number | null>(null);
   const dragRef = useRef<{ x: number; y: number; pose: CubePose } | null>(null);
@@ -196,10 +198,12 @@ export function Transform3DCube({
         onKeyDown={onKeyDown}
         tabIndex={0}
         role="slider"
-        aria-label="3D rotation. Arrow keys rotate X/Y, Shift+arrows roll Z, Alt for fine steps; drag to rotate, scroll to change depth"
-        aria-valuetext={`X ${Math.round(shown.rotationX)}°, Y ${Math.round(
-          shown.rotationY,
-        )}°, Z ${Math.round(shown.rotationZ)}°`}
+        aria-label={t("editor.cube.aria")}
+        aria-valuetext={t("editor.cube.valueText", {
+          x: formatNumber(Math.round(shown.rotationX)),
+          y: formatNumber(Math.round(shown.rotationY)),
+          z: formatNumber(Math.round(shown.rotationZ)),
+        })}
       >
         <defs>
           <radialGradient id="cube3d-bg" cx="50%" cy="40%" r="65%">
@@ -292,8 +296,8 @@ export function Transform3DCube({
         <button
           type="button"
           onClick={onRecenter}
-          title="Reset 3D orientation"
-          aria-label="Reset 3D orientation"
+          title={t("editor.cube.reset")}
+          aria-label={t("editor.cube.reset")}
           className="absolute right-1.5 top-1.5 rounded-sm p-0.5 text-fg-3 hover:bg-surface-2 hover:text-fg"
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -306,12 +310,8 @@ export function Transform3DCube({
         <button
           type="button"
           onClick={onKeyframe}
-          title={
-            keyframed
-              ? "3D transform is keyframed — click a field diamond to add keyframes"
-              : "Keyframe the 3D transform (animate it over time)"
-          }
-          aria-label="Keyframe 3D transform"
+          title={keyframed ? t("editor.cube.keyframedHint") : t("editor.cube.keyframeHint")}
+          aria-label={t("editor.cube.keyframe")}
           aria-pressed={keyframed}
           className={`absolute left-1.5 top-1.5 rounded p-0.5 hover:bg-surface-2 ${
             keyframed ? "text-[#5ff0bf]" : "text-fg-3 hover:text-fg"

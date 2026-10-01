@@ -1,4 +1,5 @@
-import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimationConstants";
+import { useTranslation } from "../../i18n";
+import { ADD_METHODS, ADD_METHOD_LABELS, methodTooltip } from "./gsapAnimationConstants";
 
 const STYLES = {
   classic: {
@@ -26,6 +27,7 @@ export function GsapAddAnimationControl({
   onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
   variant: keyof typeof STYLES;
 }) {
+  const { t } = useTranslation();
   const styles = STYLES[variant];
 
   return (
@@ -36,18 +38,18 @@ export function GsapAddAnimationControl({
             <button
               key={method}
               type="button"
-              title={METHOD_TOOLTIPS[method]}
+              title={methodTooltip(t, method)}
               onClick={() => {
                 onAddAnimation(method);
                 setOpen(false);
               }}
               className={styles.method}
             >
-              {ADD_METHOD_LABELS[method] ?? method}
+              {t(ADD_METHOD_LABELS[method])}
             </button>
           ))}
           <button type="button" onClick={() => setOpen(false)} className={styles.cancel}>
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       ) : (
@@ -55,9 +57,9 @@ export function GsapAddAnimationControl({
           type="button"
           onClick={() => setOpen(true)}
           className={styles.trigger}
-          title="Add a new animation effect to this element"
+          title={t("editor.animation.addEffectToElementTitle")}
         >
-          + Add effect
+          {t("editor.animation.addEffect")}
         </button>
       )}
     </div>

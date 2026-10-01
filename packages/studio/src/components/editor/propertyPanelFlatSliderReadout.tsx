@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "../../i18n";
 
 /** Click-to-type readout. Enter/blur commits; a refused value stays open and turns red. */
 export function FlatSliderReadout({
@@ -15,6 +16,7 @@ export function FlatSliderReadout({
   /** Receives the raw text; return false to refuse it and keep the field open. */
   onCommitText?: (text: string) => boolean | void;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const [invalid, setInvalid] = useState(false);
@@ -51,7 +53,7 @@ export function FlatSliderReadout({
       <input
         ref={inputRef}
         data-flat-slider-input="true"
-        aria-label={`${label} value`}
+        aria-label={t("inspector.slider.valueLabel", { label })}
         aria-invalid={invalid || undefined}
         value={text}
         spellCheck={false}
@@ -83,7 +85,7 @@ export function FlatSliderReadout({
       data-flat-slider-value="true"
       role={editable ? "button" : undefined}
       tabIndex={editable ? 0 : undefined}
-      title={editable ? "Click to type a value" : undefined}
+      title={editable ? t("inspector.slider.clickToType") : undefined}
       onClick={begin}
       onKeyDown={(e) => {
         if (!editable) return;

@@ -1,6 +1,13 @@
 /* Design inspector, Layers, Variables and Slides panels: the rules Tailwind utilities can't
    express (native control chrome). Colours come from theme.css tokens only. */
 
+/* The label column of every inspector row (`.frow`). Russian labels run 20–40% longer than English. */
+:root {
+  --insp-label-w: 72px;
+}
+:root:lang(ru) {
+  --insp-label-w: 116px;
+}
 /* `.sel`: a native <select> drawn as a field with a down chevron (two gradient halves). */
 .hf-insp-sel {
   appearance: none;

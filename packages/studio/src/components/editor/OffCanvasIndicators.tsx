@@ -1,5 +1,6 @@
 import React from "react";
 import { type DomEditSelection } from "./domEditing";
+import { useTranslation } from "../../i18n";
 
 export interface OffCanvasRect {
   key: string;
@@ -76,6 +77,7 @@ export function OffCanvasIndicators({
   activeCompositionPathRef,
   onSelectionChangeRef,
 }: OffCanvasIndicatorsProps): React.ReactElement {
+  const { t } = useTranslation();
   return (
     <>
       {rects
@@ -124,10 +126,10 @@ export function OffCanvasIndicators({
               <div
                 role="button"
                 tabIndex={0}
-                aria-label={`Select off-canvas element ${r.key}`}
+                aria-label={t("editor.offCanvas.select", { key: r.key })}
                 className="pointer-events-auto absolute inset-0 cursor-pointer rounded-md border-[1.5px] border-dashed border-on-media/30 transition-colors outline-hidden hover:border-solid hover:border-on-media/80 hover:bg-on-media-bg/40 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                 style={clipOutside ? { clipPath: clipOutside } : undefined}
-                title={`Off-canvas: ${r.key} — click to select`}
+                title={t("editor.offCanvas.title", { key: r.key })}
                 onClick={handleClick}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {

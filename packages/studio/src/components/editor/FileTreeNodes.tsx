@@ -8,6 +8,7 @@ import {
   FolderSimple,
 } from "@phosphor-icons/react";
 import { ChevronDown, ChevronRight } from "../../icons/SystemIcons";
+import { Trans, useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import {
   FileIcon,
@@ -48,6 +49,7 @@ export function ContextMenu({
   onDuplicate: (path: string) => void;
   onDelete: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
@@ -120,7 +122,7 @@ export function ContextMenu({
             }}
           >
             <FilePlus size={12} />
-            New File
+            {t("editor.fileTree.newFile")}
           </button>
           <button
             role="menuitem"
@@ -131,7 +133,7 @@ export function ContextMenu({
             }}
           >
             <FolderSimplePlus size={12} />
-            New Folder
+            {t("editor.fileTree.newFolder")}
           </button>
           <div className={MENU_SEPARATOR} />
         </>
@@ -147,7 +149,7 @@ export function ContextMenu({
             }}
           >
             <FilePlus size={12} />
-            New File
+            {t("editor.fileTree.newFile")}
           </button>
           <div className={MENU_SEPARATOR} />
         </>
@@ -161,7 +163,7 @@ export function ContextMenu({
         }}
       >
         <PencilSimple size={12} />
-        Rename
+        {t("common.rename")}
       </button>
       {!state.targetIsFolder && (
         <button
@@ -173,7 +175,7 @@ export function ContextMenu({
           }}
         >
           <Copy size={12} />
-          Duplicate
+          {t("common.duplicate")}
         </button>
       )}
       <div className={MENU_SEPARATOR} />
@@ -186,7 +188,7 @@ export function ContextMenu({
         }}
       >
         <Trash size={12} />
-        Delete
+        {t("common.delete")}
       </button>
     </div>
   );
@@ -207,14 +209,15 @@ export function InlineInput({
   onCommit: (value: string) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const committedRef = useRef(false);
   const [value, setValue] = useState(defaultValue);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"slash" | "dots" | null>(null);
 
-  const validate = (name: string): string | null => {
-    if (/[/\\]/.test(name)) return "Name can't contain / or \\";
-    if (name.includes("..")) return "Name can't contain ..";
+  const validate = (name: string): "slash" | "dots" | null => {
+    if (/[/\\]/.test(name)) return "slash";
+    if (name.includes("..")) return "dots";
     return null;
   };
 
@@ -293,7 +296,7 @@ export function InlineInput({
         />
         {error && (
           <div className="mt-0.5 text-2xs text-error" role="alert">
-            {error}
+            {error === "slash" ? t("editor.fileTree.errorSlash") : t("editor.fileTree.errorDots")}
           </div>
         )}
       </div>
@@ -314,6 +317,7 @@ export function DeleteConfirm({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
 
   // eslint-disable-next-line no-restricted-syntax
@@ -339,21 +343,25 @@ export function DeleteConfirm({
     >
       <p className="m-0 leading-[17px] text-pretty">
         {isFolder ? (
-          <>
-            Delete folder <b className="font-semibold">{name}</b> and everything inside it?
-          </>
+          <Trans
+            i18nKey="editor.fileTree.deleteFolderConfirm"
+            values={{ name }}
+            components={{ b: <b className="font-semibold" /> }}
+          />
         ) : (
-          <>
-            Delete <b className="font-semibold">{name}</b>?
-          </>
+          <Trans
+            i18nKey="editor.fileTree.deleteConfirm"
+            values={{ name }}
+            components={{ b: <b className="font-semibold" /> }}
+          />
         )}
       </p>
       <div className="mt-1 flex justify-end gap-1.5">
         <Button size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button size="sm" variant="danger" onClick={onConfirm}>
-          Delete
+          {t("common.delete")}
         </Button>
       </div>
     </div>

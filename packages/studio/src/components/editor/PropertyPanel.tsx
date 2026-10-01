@@ -1,5 +1,6 @@
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { memo, useMemo, useRef, useState } from "react";
+import { useTranslation } from "../../i18n";
 import { Move } from "../../icons/SystemIcons";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
@@ -113,12 +114,15 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   } = props;
   const styles = element?.computedStyles ?? EMPTY_STYLES;
   const { showToast } = useStudioShellContext();
+  const { t } = useTranslation();
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const clipboardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const timelineElements = usePlayerStore((s) => s.elements);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementHidden = isSelectedElementHidden(timelineElements, selectedElementId);
-  const visibilityToggleLabel = selectedElementHidden ? "Show element" : "Hide element";
+  const visibilityToggleLabel = selectedElementHidden
+    ? t("inspector.header.showElement")
+    : t("inspector.header.hideElement");
   /**
    * An audio element gets no hide control here.
    *
@@ -252,13 +256,13 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     navigator.clipboard
       .writeText(text)
       .then(() => {
-        showToast(`Copied element info for ${element.label} — paste into any AI agent`, "info");
+        showToast(t("inspector.toast.elementInfoCopied", { label: element.label }), "info");
         setClipboardCopied(true);
         clearTimeout(clipboardTimerRef.current);
         clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
       })
       .catch(() => {
-        showToast("Couldn't copy to the clipboard — check browser permissions", "error");
+        showToast(t("inspector.toast.copyFailed"), "error");
       });
   };
 
@@ -379,12 +383,12 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
         )}
 
         {sections.layout && (
-          <Section title="Layout" icon={<Move size={15} />}>
+          <Section title={t("inspector.layout.title")} icon={<Move size={15} />}>
             <div className={RESPONSIVE_GRID}>
               <div className="flex items-center gap-1">
                 <div className="flex-1">
                   <MetricField
-                    label="X"
+                    label={t("inspector.layout.x")}
                     value={formatPxMetricValue(displayX)}
                     disabled={manualOffsetEditingDisabled}
                     scrub
@@ -411,7 +415,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
               <div className="flex items-center gap-1">
                 <div className="flex-1">
                   <MetricField
-                    label="Y"
+                    label={t("inspector.layout.y")}
                     value={formatPxMetricValue(displayY)}
                     disabled={manualOffsetEditingDisabled}
                     scrub
@@ -438,7 +442,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
               <div className="flex items-center gap-1">
                 <div className="flex-1">
                   <MetricField
-                    label="W"
+                    label={t("inspector.layout.width")}
                     value={formatPxMetricValue(displayW)}
                     disabled={manualSizeEditingDisabled}
                     scrub
@@ -465,7 +469,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
               <div className="flex items-center gap-1">
                 <div className="flex-1">
                   <MetricField
-                    label="H"
+                    label={t("inspector.layout.height")}
                     value={formatPxMetricValue(displayH)}
                     disabled={manualSizeEditingDisabled}
                     scrub
@@ -492,7 +496,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
               <div className="flex items-center gap-1">
                 <div className="flex-1">
                   <MetricField
-                    label="R"
+                    label={t("inspector.layout.rotation")}
                     value={`${displayR}°`}
                     disabled={manualRotationEditingDisabled}
                     onCommit={(next) => commitManualRotation(next.replace("°", ""))}
@@ -534,10 +538,10 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             />
             <div className="mt-3">
               <div className="mb-2 text-xs font-medium uppercase tracking-wider text-fg-disabled">
-                Stacking
+                {t("inspector.layout.stacking")}
               </div>
               <MetricField
-                label="Z-index"
+                label={t("inspector.layout.zIndex")}
                 value={String(parseInt(styles["z-index"] || "auto", 10) || 0)}
                 scrub
                 onCommit={(next) => onSetStyle("z-index", next)}

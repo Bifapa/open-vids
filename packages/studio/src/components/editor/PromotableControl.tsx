@@ -14,6 +14,7 @@ import {
   useVariablePromoteChannel,
   type PromoteChannel,
 } from "../../contexts/VariablePromoteContext";
+import { useTranslation } from "../../i18n";
 
 interface RenderArgs {
   /** When bound, the variable's default to display; otherwise undefined. */
@@ -37,6 +38,7 @@ export function PromotableControl({
   enabled?: boolean;
   children: (args: RenderArgs) => React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const promote = useVariablePromoteChannel(channel);
 
   // A binding attribute (`data-var-*` / `var(--id)`) pointing at a declaration
@@ -86,7 +88,7 @@ export function PromotableControl({
           // Sits above the row (not on top of top-0) so it clears a value that
           // renders flush to the row's right edge, e.g. flat Font/Color rows.
           className="pointer-events-none absolute -top-2 right-1.5 z-10 inline-flex max-w-[60%] items-center gap-1 truncate rounded-xs border border-accent-line bg-accent-soft px-1 font-mono text-2xs leading-[14px] text-fg"
-          title={`Bound to variable "${promote.boundId}"`}
+          title={t("editor.variable.boundTo", { id: promote.boundId })}
         >
           ◆ {promote.boundId}
         </span>
@@ -94,12 +96,12 @@ export function PromotableControl({
       {canPromote && (
         <button
           type="button"
-          title="Make this a variable"
+          title={t("editor.variable.make")}
           onClick={(e) => {
             e.stopPropagation();
             promote.promote();
           }}
-          aria-label="Make this a variable"
+          aria-label={t("editor.variable.make")}
           // Sits in the label column, right after the label text (the prototype's `.promo`).
           className="absolute left-[54px] top-1 z-10 inline-flex size-4 items-center justify-center rounded-xs text-2xs text-fg-disabled opacity-0 transition-[color,background-color,opacity] group-hover/promo:opacity-100 hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-accent"
         >

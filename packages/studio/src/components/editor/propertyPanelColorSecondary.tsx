@@ -5,6 +5,7 @@ import {
   type NormalizedHfColorGradingSecondary,
 } from "@hyperframes/core/color-grading";
 import { Eyedropper, Plus, Trash } from "../../icons/SystemIcons";
+import { formatPercent, useTranslation, type TranslationKey } from "../../i18n";
 import { Button } from "../ui/Button";
 import { INSP_CHIP, INSP_MINI_BUTTON, INSP_MINI_LABEL } from "./inspectorStyles";
 import { FlatSlider } from "./propertyPanelFlatPrimitives";
@@ -30,12 +31,12 @@ function wrapHueCenter(value: number): number {
 }
 
 const CORRECTION_CONTROLS = [
-  ["hueShift", "Hue shift", 1, "°"],
-  ["saturation", "Saturation", PERCENT_SCALE, "%"],
-  ["luma", "Luma", PERCENT_SCALE, "%"],
-  ["temperature", "Warmth", PERCENT_SCALE, "%"],
-  ["tint", "Tint", PERCENT_SCALE, "%"],
-] as const;
+  ["hueShift", "inspector.secondary.hueShift", 1, "°"],
+  ["saturation", "inspector.secondary.saturation", PERCENT_SCALE, "%"],
+  ["luma", "inspector.secondary.luma", PERCENT_SCALE, "%"],
+  ["temperature", "inspector.secondary.warmth", PERCENT_SCALE, "%"],
+  ["tint", "inspector.secondary.tint", PERCENT_SCALE, "%"],
+] as const satisfies ReadonlyArray<readonly [string, TranslationKey, number, string]>;
 
 function defaultSecondary(): NormalizedHfColorGradingSecondary {
   const secondary = normalizeHfColorGrading({
@@ -61,7 +62,7 @@ function sampleCapturedFrame(
 }
 
 function percent(value: number): string {
-  return `${Math.round(value * 100)}%`;
+  return formatPercent(value);
 }
 
 export function PropertyPanelColorSecondary({
@@ -73,6 +74,7 @@ export function PropertyPanelColorSecondary({
   captureFrame: () => Promise<ColorGradingCapturedFrame | null>;
   onCommit: (secondaries: Secondaries) => void;
 }) {
+  const { t } = useTranslation();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [sampleFrame, setSampleFrame] = useState<ColorGradingCapturedFrame | null>(null);
   const [samplePixels, setSamplePixels] = useState<Uint8ClampedArray | null>(null);
@@ -143,8 +145,8 @@ export function PropertyPanelColorSecondary({
         <span className="flex items-center gap-0.5">
           <button
             type="button"
-            aria-label="Add secondary color selection"
-            title="Add secondary color selection"
+            aria-label={t("inspector.secondary.add")}
+            title={t("inspector.secondary.add")}
             disabled={secondaries.length >= SECONDARY_CAPABILITIES.max}
             onClick={addSecondary}
             className={INSP_MINI_BUTTON}
@@ -153,8 +155,8 @@ export function PropertyPanelColorSecondary({
           </button>
           <button
             type="button"
-            aria-label="Remove selected secondary"
-            title="Remove selected secondary"
+            aria-label={t("inspector.secondary.remove")}
+            title={t("inspector.secondary.remove")}
             disabled={!selected}
             onClick={removeSelected}
             className={`${INSP_MINI_BUTTON} hover:text-error`}
@@ -167,16 +169,16 @@ export function PropertyPanelColorSecondary({
       {!selected ? (
         <Button
           size="sm"
-          title="Add color selection"
+          title={t("inspector.secondary.addFirstHint")}
           icon={<Plus size={12} />}
           onClick={addSecondary}
         >
-          Add a color selection
+          {t("inspector.secondary.addFirst")}
         </Button>
       ) : (
         <>
           <FlatToggle
-            label="Selection enabled"
+            label={t("inspector.secondary.enabled")}
             checked={selected.enabled}
             onChange={(enabled) => replaceSelected({ ...selected, enabled })}
           />
@@ -199,13 +201,13 @@ export function PropertyPanelColorSecondary({
               } catch {
                 setSampleFrame(null);
                 setSamplePixels(null);
-                setCaptureError("Preview frame unavailable. Try again after the media loads.");
+                setCaptureError(t("inspector.secondary.frameUnavailable"));
               } finally {
                 setSampling(false);
               }
             }}
           >
-            {sampling ? "Capturing frame" : "Sample color from frame"}
+            {sampling ? t("inspector.secondary.capturing") : t("inspector.secondary.sample")}
           </Button>
           {captureError && (
             <p role="alert" className="text-xs leading-4 text-error">
@@ -221,7 +223,7 @@ export function PropertyPanelColorSecondary({
                   onClick={() => setShowMatte(false)}
                   className={INSP_CHIP}
                 >
-                  Source
+                  {t("inspector.secondary.source")}
                 </button>
                 <button
                   type="button"
@@ -229,7 +231,7 @@ export function PropertyPanelColorSecondary({
                   onClick={() => setShowMatte(true)}
                   className={INSP_CHIP}
                 >
-                  Selection matte
+                  {t("inspector.secondary.matte")}
                 </button>
               </div>
               {showMatte ? (
@@ -238,15 +240,15 @@ export function PropertyPanelColorSecondary({
                   width={sampleFrame.width}
                   height={sampleFrame.height}
                   role="img"
-                  aria-label="Selected color matte"
+                  aria-label={t("inspector.secondary.matteAria")}
                   className="block h-auto w-full rounded-sm border border-border bg-bg-1"
                 />
               ) : (
                 <button
                   type="button"
                   className="block w-full cursor-crosshair overflow-hidden rounded-sm border border-border bg-bg-1"
-                  title="Click a color to initialize this selection"
-                  aria-label="Sample color from captured frame"
+                  title={t("inspector.secondary.clickToSample")}
+                  aria-label={t("inspector.secondary.sampleAria")}
                   onClick={(event) => {
                     const pointer: [] | [number, number] =
                       event.detail === 0 ? [] : [event.clientX, event.clientY];
@@ -272,9 +274,9 @@ export function PropertyPanelColorSecondary({
             </div>
           )}
 
-          <div className={`mt-1 ${INSP_MINI_LABEL}`}>Qualifier</div>
+          <div className={`mt-1 ${INSP_MINI_LABEL}`}>{t("inspector.secondary.qualifier")}</div>
           <FlatSlider
-            label="Hue"
+            label={t("inspector.secondary.hue")}
             value={selected.key.hue.center}
             min={SECONDARY_CAPABILITIES.hue.center.min}
             max={HUE_CENTER_MAX}
@@ -292,7 +294,7 @@ export function PropertyPanelColorSecondary({
             }
           />
           <FlatSlider
-            label="Hue range"
+            label={t("inspector.secondary.hueRange")}
             value={selected.key.hue.range}
             min={SECONDARY_CAPABILITIES.hue.range.min}
             max={SECONDARY_CAPABILITIES.hue.range.max}
@@ -316,7 +318,7 @@ export function PropertyPanelColorSecondary({
             }
           />
           <FlatSlider
-            label="Hue softness"
+            label={t("inspector.secondary.hueSoftness")}
             value={selected.key.hue.softness}
             min={SECONDARY_CAPABILITIES.hue.softness.min}
             max={Math.min(
@@ -333,13 +335,12 @@ export function PropertyPanelColorSecondary({
             }
           />
           {(["saturation", "luma"] as const).flatMap((key) => {
-            const label = key === "saturation" ? "Saturation" : "Luma";
             const range = selected.key[key];
             const capability = SECONDARY_CAPABILITIES[key];
             return [
               <FlatSlider
                 key={`${key}-min`}
-                label={`${label} min`}
+                label={t("inspector.secondary.min", { channel: key })}
                 value={range.min * PERCENT_SCALE}
                 min={capability.min.min * PERCENT_SCALE}
                 max={capability.min.max * PERCENT_SCALE}
@@ -363,7 +364,7 @@ export function PropertyPanelColorSecondary({
               />,
               <FlatSlider
                 key={`${key}-max`}
-                label={`${label} max`}
+                label={t("inspector.secondary.max", { channel: key })}
                 value={range.max * PERCENT_SCALE}
                 min={capability.max.min * PERCENT_SCALE}
                 max={capability.max.max * PERCENT_SCALE}
@@ -387,7 +388,7 @@ export function PropertyPanelColorSecondary({
               />,
               <FlatSlider
                 key={`${key}-softness`}
-                label={`${label} softness`}
+                label={t("inspector.secondary.softness", { channel: key })}
                 value={range.softness * PERCENT_SCALE}
                 min={capability.softness.min * PERCENT_SCALE}
                 max={capability.softness.max * PERCENT_SCALE}
@@ -406,14 +407,14 @@ export function PropertyPanelColorSecondary({
             ];
           })}
 
-          <div className={`mt-1 ${INSP_MINI_LABEL}`}>Correction</div>
+          <div className={`mt-1 ${INSP_MINI_LABEL}`}>{t("inspector.secondary.correction")}</div>
           {CORRECTION_CONTROLS.map(([key, label, scale, suffix]) => {
             const limit = SECONDARY_CAPABILITIES.correction[key];
             const value = selected.correction[key] * scale;
             return (
               <FlatSlider
                 key={key}
-                label={label}
+                label={t(label)}
                 value={value}
                 min={limit.min * scale}
                 max={limit.max * scale}

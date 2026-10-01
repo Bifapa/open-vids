@@ -4,123 +4,24 @@ import {
   normalizeHfColorGrading,
   type HfColorGradingAdjustKey,
   type HfColorGradingDetailKey,
-  type HfColorGradingEffectKey,
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { ChevronDown, ChevronRight, Plus, X } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import { LUT_EXT } from "@hyperframes/core/media-types";
 import { LABEL } from "./propertyPanelHelpers";
 import { ColorGradingSliderControl } from "./propertyPanelColorGradingSlider";
+import {
+  AMOUNT_DETAIL_SLIDERS,
+  COLOR_GRADING_ADJUST_SLIDERS,
+  COLOR_GRADING_DETAIL_SLIDERS,
+  EFFECT_SLIDERS,
+  GRAIN_TUNE_SLIDERS,
+  normalizedColorGradingDefault,
+  VIGNETTE_TUNE_SLIDERS,
+} from "./propertyPanelColorGradingSliders";
 
 const LUT_UPLOAD_DIR = "assets/luts";
-
-export const COLOR_GRADING_ADJUST_SLIDERS: Array<{
-  key: HfColorGradingAdjustKey;
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  scale: number;
-  suffix: string;
-}> = [
-  { key: "exposure", label: "Exposure", min: -200, max: 200, step: 5, scale: 100, suffix: "" },
-  { key: "contrast", label: "Contrast", min: -100, max: 100, step: 1, scale: 100, suffix: "%" },
-  {
-    key: "highlights",
-    label: "Highlights",
-    min: -100,
-    max: 100,
-    step: 1,
-    scale: 100,
-    suffix: "%",
-  },
-  { key: "shadows", label: "Shadows", min: -100, max: 100, step: 1, scale: 100, suffix: "%" },
-  {
-    key: "whites",
-    label: "White Point",
-    min: -100,
-    max: 100,
-    step: 1,
-    scale: 100,
-    suffix: "%",
-  },
-  {
-    key: "blacks",
-    label: "Black Point",
-    min: -100,
-    max: 100,
-    step: 1,
-    scale: 100,
-    suffix: "%",
-  },
-  { key: "temperature", label: "Warmth", min: -100, max: 100, step: 1, scale: 100, suffix: "%" },
-  { key: "tint", label: "Tint", min: -100, max: 100, step: 1, scale: 100, suffix: "%" },
-  { key: "vibrance", label: "Vibrance", min: -100, max: 100, step: 1, scale: 100, suffix: "%" },
-  { key: "saturation", label: "Saturation", min: -100, max: 100, step: 1, scale: 100, suffix: "%" },
-];
-
-export const COLOR_GRADING_DETAIL_SLIDERS: Array<{
-  key: HfColorGradingDetailKey;
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  scale: number;
-  suffix: string;
-  defaultValue?: number;
-}> = [
-  { key: "vignette", label: "Vignette", min: 0, max: 100, step: 1, scale: 100, suffix: "%" },
-  {
-    key: "vignetteMidpoint",
-    label: "Midpoint",
-    min: 0,
-    max: 100,
-    step: 1,
-    scale: 100,
-    suffix: "%",
-    defaultValue: 50,
-  },
-  {
-    key: "vignetteRoundness",
-    label: "Roundness",
-    min: -100,
-    max: 100,
-    step: 1,
-    scale: 100,
-    suffix: "%",
-  },
-  {
-    key: "vignetteFeather",
-    label: "Feather",
-    min: 0,
-    max: 100,
-    step: 1,
-    scale: 100,
-    suffix: "%",
-    defaultValue: 65,
-  },
-  { key: "grain", label: "Grain", min: 0, max: 100, step: 1, scale: 100, suffix: "%" },
-  {
-    key: "grainSize",
-    label: "Grain Size",
-    min: 0,
-    max: 100,
-    step: 1,
-    scale: 100,
-    suffix: "%",
-    defaultValue: 25,
-  },
-  {
-    key: "grainRoughness",
-    label: "Roughness",
-    min: 0,
-    max: 100,
-    step: 1,
-    scale: 100,
-    suffix: "%",
-    defaultValue: 50,
-  },
-];
 
 type DetailSlider = (typeof COLOR_GRADING_DETAIL_SLIDERS)[number];
 type SliderSettings = {
@@ -128,39 +29,6 @@ type SliderSettings = {
   label: string;
   onClick: () => void;
 };
-
-const EFFECT_SLIDERS: Array<{
-  key: HfColorGradingEffectKey;
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  scale: number;
-  suffix: string;
-}> = [
-  { key: "blur", label: "Blur", min: 0, max: 100, step: 1, scale: 100, suffix: "%" },
-  { key: "pixelate", label: "Pixelate", min: 0, max: 100, step: 1, scale: 100, suffix: "%" },
-];
-
-const AMOUNT_DETAIL_SLIDERS = COLOR_GRADING_DETAIL_SLIDERS.filter(
-  (slider) => slider.key === "vignette" || slider.key === "grain",
-);
-export const VIGNETTE_TUNE_SLIDERS = COLOR_GRADING_DETAIL_SLIDERS.filter(
-  (slider) =>
-    slider.key === "vignetteMidpoint" ||
-    slider.key === "vignetteRoundness" ||
-    slider.key === "vignetteFeather",
-);
-export const GRAIN_TUNE_SLIDERS = COLOR_GRADING_DETAIL_SLIDERS.filter(
-  (slider) => slider.key === "grainSize" || slider.key === "grainRoughness",
-);
-
-export function normalizedColorGradingDefault(slider: {
-  defaultValue?: number;
-  scale: number;
-}): number {
-  return (slider.defaultValue ?? 0) / slider.scale;
-}
 
 export function visibleColorGradingIntensity(grading: NormalizedHfColorGrading): number {
   // Earlier drafts could persist 0% strength; the next manual edit should revive visible grading.
@@ -256,6 +124,7 @@ export function ColorGradingControls({
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
   onCommitColorGrading: (nextGrading: NormalizedHfColorGrading) => void;
 }) {
+  const { t } = useTranslation();
   const lutInputRef = useRef<HTMLInputElement>(null);
   const [lutOpen, setLutOpen] = useState(false);
   const [detailSettings, setDetailSettings] = useState<"vignette" | "grain" | null>(null);
@@ -301,7 +170,7 @@ export function ColorGradingControls({
     return (
       <ColorGradingSliderControl
         key={slider.key}
-        label={slider.label}
+        label={t(slider.label)}
         value={value}
         min={slider.min}
         max={slider.max}
@@ -319,7 +188,7 @@ export function ColorGradingControls({
   return (
     <div className="space-y-3">
       <label className="grid min-w-0 gap-1.5">
-        <span className={LABEL}>Preset</span>
+        <span className={LABEL}>{t("inspector.grade.preset")}</span>
         <select
           value={String(grading.preset ?? "neutral")}
           onChange={(event) => applyPreset(event.target.value)}
@@ -333,7 +202,7 @@ export function ColorGradingControls({
         </select>
       </label>
       <ColorGradingSliderControl
-        label="Preset strength"
+        label={t("inspector.grade.presetStrength")}
         value={Math.round(grading.intensity * 100)}
         min={0}
         max={100}
@@ -357,7 +226,7 @@ export function ColorGradingControls({
           ) : (
             <ChevronRight size={11} className="shrink-0 text-fg-disabled" />
           )}
-          <span className="min-w-0 flex-1 truncate">Custom LUT</span>
+          <span className="min-w-0 flex-1 truncate">{t("inspector.grade.customLut")}</span>
           {grading.lut && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-studio-accent" />}
         </button>
         {lutOpen && (
@@ -373,11 +242,11 @@ export function ColorGradingControls({
                   );
                 }}
                 className="w-full min-w-0 rounded-md bg-surface-1 px-3 py-2 text-sm font-medium text-fg outline-hidden"
-                title="Uploaded .cube LUT"
+                title={t("inspector.grade.uploadedLutHint")}
               >
-                <option value="">None</option>
+                <option value="">{t("inspector.fill.none")}</option>
                 {lutAssets.length > 0 && (
-                  <optgroup label="Uploaded LUTs">
+                  <optgroup label={t("inspector.grade.uploadedLuts")}>
                     {lutAssets.map((asset) => (
                       <option key={asset} value={asset}>
                         {asset.split("/").pop() ?? asset}
@@ -394,8 +263,10 @@ export function ColorGradingControls({
                   lutInputRef.current?.click();
                 }}
                 className="flex h-8 w-8 items-center justify-center rounded-md bg-surface-1 text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
-                title={lutImporting ? "Importing…" : "Import .cube LUT"}
-                aria-label="Import .cube LUT"
+                title={
+                  lutImporting ? t("inspector.grade.importing") : t("inspector.grade.importLut")
+                }
+                aria-label={t("inspector.grade.importLut")}
                 aria-busy={lutImporting}
               >
                 {lutImporting ? (
@@ -416,9 +287,7 @@ export function ColorGradingControls({
                   setLutImportError(null);
                   void actions
                     .importLut(files, onImportAssets)
-                    .catch(() =>
-                      setLutImportError("LUT import failed — check the .cube file and try again."),
-                    )
+                    .catch(() => setLutImportError(t("inspector.grade.lutImportFailed")))
                     .finally(() => setLutImporting(false));
                   event.currentTarget.value = "";
                 }}
@@ -435,13 +304,15 @@ export function ColorGradingControls({
                   <div className="flex min-w-0 items-start gap-2 text-xs leading-4 text-fg-3">
                     <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-studio-accent" />
                     <span className="min-w-0 flex-1 truncate" title={selectedProjectLut}>
-                      <span className="font-medium text-fg-2">Uploaded LUT</span>
+                      <span className="font-medium text-fg-2">
+                        {t("inspector.grade.uploadedLut")}
+                      </span>
                       {` · ${selectedProjectLut}`}
                     </span>
                   </div>
                 )}
                 <ColorGradingSliderControl
-                  label="LUT Strength"
+                  label={t("inspector.grade.lutStrength")}
                   value={Math.round((grading.lut.intensity ?? 1) * 100)}
                   min={0}
                   max={100}
@@ -459,7 +330,7 @@ export function ColorGradingControls({
       </div>
 
       <div className="grid min-w-0 gap-1.5">
-        <span className={LABEL}>Adjust</span>
+        <span className={LABEL}>{t("inspector.grade.adjust")}</span>
         <div className="grid min-w-0 grid-cols-2 gap-1.5">
           {COLOR_GRADING_ADJUST_SLIDERS.map((slider) => {
             const value = grading.adjust[slider.key] * slider.scale;
@@ -467,7 +338,7 @@ export function ColorGradingControls({
             return (
               <ColorGradingSliderControl
                 key={slider.key}
-                label={slider.label}
+                label={t(slider.label)}
                 value={Math.round(value)}
                 min={slider.min}
                 max={slider.max}
@@ -495,12 +366,12 @@ export function ColorGradingControls({
       </div>
 
       <div className="grid min-w-0 gap-1.5">
-        <span className={LABEL}>Finishing</span>
+        <span className={LABEL}>{t("inspector.grade.finishing")}</span>
         <div className="grid min-w-0 grid-cols-2 gap-1.5">
           {AMOUNT_DETAIL_SLIDERS.map((slider) =>
             renderDetailSlider(slider, {
               active: slider.key === "vignette" ? vignetteSettingsActive : grainSettingsActive,
-              label: `${slider.label} settings`,
+              label: t("inspector.grade.sliderSettings", { label: t(slider.label) }),
               onClick: () =>
                 setDetailSettings((current) =>
                   current === slider.key ? null : (slider.key as "vignette" | "grain"),
@@ -512,12 +383,14 @@ export function ColorGradingControls({
           <div className="grid min-w-0 gap-1.5 rounded-md border border-border-subtle bg-surface-1/40 p-1.5 shadow-xl shadow-black/20">
             <div className="flex min-w-0 items-center gap-2 px-0.5">
               <span className={`${LABEL} min-w-0 flex-1 truncate`}>
-                {detailSettings === "vignette" ? "Vignette settings" : "Grain settings"}
+                {detailSettings === "vignette"
+                  ? t("inspector.grade.vignetteSettings")
+                  : t("inspector.grade.grainSettings")}
               </span>
               <button
                 type="button"
-                aria-label="Close settings"
-                title="Close settings"
+                aria-label={t("inspector.grade.closeSettings")}
+                title={t("inspector.grade.closeSettings")}
                 onClick={() => setDetailSettings(null)}
                 className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-disabled transition-colors hover:bg-surface-2 hover:text-fg"
               >
@@ -532,14 +405,14 @@ export function ColorGradingControls({
       </div>
 
       <div className="grid min-w-0 gap-1.5">
-        <span className={LABEL}>Effects</span>
+        <span className={LABEL}>{t("inspector.group.effects")}</span>
         <div className="grid min-w-0 grid-cols-2 gap-1.5">
           {EFFECT_SLIDERS.map((slider) => {
             const value = grading.effects[slider.key] * slider.scale;
             return (
               <ColorGradingSliderControl
                 key={slider.key}
-                label={slider.label}
+                label={t(slider.label)}
                 value={Math.round(value)}
                 min={slider.min}
                 max={slider.max}

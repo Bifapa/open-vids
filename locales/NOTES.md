@@ -211,3 +211,284 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `onboarding.project.review` — Link next to a ready setup item (verb): go back to that step.
 - `onboarding.project.setUp` — Link next to a setup item that is not ready (verb): go to that step.
 - `onboarding.project.foot` — “Help → Welcome to OpenVids” is a menu path; the Russian must match the translated menu (Rust menu strings).
+
+## studio-editor-a
+
+- `inspector.layout.x` — Horizontal position of the element, in pixels.
+- `inspector.layout.y` — Vertical position of the element, in pixels.
+- `inspector.layout.width` — Width (single-letter field label).
+- `inspector.layout.height` — Height (single-letter field label).
+- `inspector.layout.rotation` — Rotation (single-letter field label).
+- `inspector.layout.stacking` — Heading above the z-index field: which element draws on top of which.
+- `inspector.empty.multi.hint` — {key} is the Shift modifier symbol.
+- `inspector.empty.multi.selection` — Section heading listing the selected elements.
+- `inspector.composition.aspect` — Short label for aspect ratio (width:height).
+- `inspector.composition.clipsValue` — Reads like "12 on 3 tracks": clip count, then the number of tracks they sit on.
+- `inspector.composition.path` — {path} is the composition file path.
+- `inspector.footer.stopRecordingHint` — {seconds} is the elapsed recording time, one decimal place.
+- `inspector.footer.stopRecording` — {seconds} is the elapsed recording time, one decimal place.
+- `inspector.footer.record` — Records a mouse gesture as animation keyframes.
+- `inspector.group.styleSummary` — Collapsed summary of the Style section: the fill state, then the opacity.
+- `inspector.group.grade` — Inspector section for color grading.
+- `inspector.group.effects` — Inspector section of visual (shader) effects on media.
+- `inspector.group.effectsActive` — Collapsed summary of the Effects section: how many effects are switched on.
+- `inspector.group.effectsNone` — Collapsed summary: no effects are on.
+- `inspector.group.timing` — Inspector section holding the start, end and duration of an audio clip.
+- `inspector.group.motion` — Inspector section for animation (GSAP tweens) of an element.
+- `inspector.group.motionSummary` — Collapsed summary of the Motion section: how many animations the element has.
+- `inspector.audioFx.summary.inGroup` — Collapsed Audio FX summary of a clip that belongs to an audio group; {label} is the group name.
+- `inspector.audioFx.summary.unreadable` — Collapsed Audio FX summary when the effect chain stored in the project can't be parsed.
+- `inspector.audioFx.summary.effectsAndCarve` — "carve" is the voiceover carve module (dips this track where a voice sits).
+- `inspector.audioFx.summary.carve` — The voiceover carve module (dips this track where a voice sits).
+- `inspector.carve.title` — Audio module that analyses a voice track and dips this (music) track at the frequencies where the voice sits.
+- `inspector.carve.summary.analysed` — Reads like "6 bands + level + 2 voices". "band" is a frequency band of the EQ cuts; "level" is the level (gain) stage that lowers the bed under the voice; "voices" is the number of voice tracks it listens to and only appears when more than one.
+- `inspector.carve.listenTo` — Label of the voice track(s) the carve listens to.
+- `inspector.carve.pickVoices` — "bed" is the background (music) track the carve is applied to.
+- `inspector.carve.analysed` — Heading of the list of effects the analysis produced.
+- `inspector.fx.group.filters` — Group heading in the add-effect menu.
+- `inspector.fx.group.dynamics` — Group heading in the add-effect menu (compressors, limiters…).
+- `inspector.fx.group.nonlinear` — Group heading in the add-effect menu (distortion, saturation…).
+- `inspector.fx.group.time` — Group heading in the add-effect menu (delay, reverb…).
+- `inspector.fx.add.tone` — Group heading in the add-effect menu; Tone is the 3-band equalizer module.
+- `inspector.fx.add.loudness` — Right-aligned tag under an item name: what kind of processing the item does.
+- `inspector.fx.add.threeBand` — Right-aligned tag: the equalizer has three frequency bands.
+- `inspector.fx.automation.lane` — Tooltip of the button that turns a parameter into an automation envelope drawn on the timeline.
+- `inspector.fx.automation.remove` — {label} is the name of the effect parameter.
+- `inspector.fx.automation.add` — {label} is the name of the effect parameter.
+- `inspector.fx.eq.faderLabel` — Accessible name of an equalizer fader: band name and its gain in decibels, signed.
+- `inspector.fx.eq.title` — Name of the 3-band equalizer module.
+- `inspector.fx.eq.bandCount` — Tag on the equalizer card, e.g. "3-band".
+- `inspector.fx.eq.cut` — Left caption under the equalizer faders: lowering a band's level.
+- `inspector.fx.eq.boost` — Right caption under the equalizer faders: raising a band's level.
+- `inspector.fx.node.details` — Disclosure that reveals every raw parameter of an audio effect; the effect's technical name follows.
+- `inspector.fx.node.moveUp` — Moves an effect earlier in the audio chain.
+- `inspector.fx.node.moveDown` — Moves an effect later in the audio chain.
+- `inspector.fx.node.enable` — {label} is the effect name.
+- `inspector.fx.node.bypass` — Bypass = switch the effect off without removing it. {label} is the effect name.
+- `inspector.fx.node.bypassShort` — Switch the effect off without removing it.
+- `inspector.fx.node.remove` — {label} is the effect name.
+- `inspector.fx.preset.family.voice` — Shelf heading of audio presets for speech.
+- `inspector.fx.preset.family.repair` — Shelf heading of audio presets that repair problems in a recording.
+- `inspector.fx.preset.family.character` — Shelf heading of audio presets that give the sound a distinct character.
+- `inspector.fx.preset.family.space` — Shelf heading of audio presets that place the sound in a room or space.
+- `inspector.fx.preset.amount` — How much of an audio preset is applied (0–100%).
+- `inspector.fx.preset.show` — {label} is the preset name.
+- `inspector.fx.preset.hide` — {label} is the preset name.
+- `inspector.fx.preset.switchOff` — {label} is the preset name.
+- `inspector.fx.preset.switchOn` — {label} is the preset name.
+- `inspector.fx.preset.remove` — {label} is the preset name.
+- `inspector.fx.signal.thisTrack` — Text after "In" in the audio effect rack: the signal coming into the effect chain.
+- `inspector.fx.signal.toMix` — Text after "Out": where the effect chain output goes.
+- `inspector.fx.signal.nothingYet` — Text after "In" for an audio group that has no clips yet.
+- `inspector.fx.signal.together` — Text after "In" for an audio group: the clips it sums, e.g. "vo-1 and vo-2, together".
+- `inspector.fx.signal.listAnd` — {head} is a comma-separated list of clip ids.
+- `inspector.fx.signal.into` — Text after "Out" for a clip that belongs to an audio group; {label} is the group name.
+- `inspector.fx.rack.in` — Label at the start of the audio effect chain (signal in).
+- `inspector.fx.rack.out` — Label at the end of the audio effect chain (signal out).
+- `inspector.row.resetToDefault` — Tooltip of the small reset button on an inspector property that has been customized.
+- `inspector.slider.valueLabel` — Accessible name of the text field that opens when you click a slider's value; {label} is the slider name.
+- `inspector.mask.top` — Single-letter label of the top inset (T/R/B/L = top/right/bottom/left).
+- `inspector.mask.right` — Single-letter label of the right inset.
+- `inspector.mask.bottom` — Single-letter label of the bottom inset.
+- `inspector.mask.left` — Single-letter label of the left inset.
+- `inspector.layout.angle` — Rotation angle field in the flat Layout section.
+- `inspector.layout.flex.gap` — Flex gap between children.
+- `inspector.layout.flex.align` — Cross-axis alignment of flex children.
+- `inspector.layout.flex.justify` — Main-axis distribution of flex children.
+- `inspector.layout.flex.direction` — Flex direction (row / column).
+- `inspector.transform3d.rotZ` — Rotation around the Z axis (compact field label).
+- `inspector.transform3d.rotY` — Rotation around the Y axis (compact field label).
+- `inspector.transform3d.rotX` — Rotation around the X axis (compact field label).
+- `inspector.transform3d.z` — Depth (Z axis) position.
+- `inspector.overlays.add` — {title} is the overlay's name.
+- `inspector.overlays.hint` — "Motion track" is a timeline track name; keep it in sync with the timeline track label.
+- `inspector.grade.status.waitingRuntime` — Status of the color grading shader in the preview.
+- `inspector.grade.status.loadingLut` — LUT = color lookup table file.
+- `inspector.grade.hdrSource` — {label} is the dynamic range label, e.g. "HDR".
+- `inspector.preset.preview` — {label} is a color grading preset name.
+- `inspector.timing.inferredClassic` — Same text as inspector.timing.inferred but with a typographic apostrophe in the English source (legacy inspector).
+- `inspector.layout.flex.title` — CSS flexbox layout mode; keep the term.
+- `inspector.layout.flex.display` — CSS property and value, e.g. "display: flex"; not translated.
+- `inspector.style.radius` — Corner radius section.
+- `inspector.style.strokeStyle` — Stroke style (solid, dashed…).
+- `inspector.style.backdrop` — Label of the blur applied to what is behind the layer.
+- `inspector.style.overflow` — CSS overflow: what happens to content outside the box.
+- `inspector.style.blendMode` — Blend mode of the layer.
+- `inspector.text.weight` — Font weight (thin … black).
+- `inspector.text.line` — Line height field.
+- `inspector.text.track` — Letter spacing (tracking) field.
+- `inspector.text.align` — Text alignment field.
+- `inspector.text.case` — Text transform: uppercase / lowercase / capitalize.
+- `inspector.text.style` — Font style (normal / italic).
+- `inspector.text.remove` — Removes one text layer from the element.
+- `inspector.text.content` — Text content field.
+- `inspector.text.size` — Font size.
+- `inspector.text.layerFallback` — Name of an empty text layer; {n} is its 1-based position.
+- `inspector.text.upright` — Font style option: upright (not italic).
+- `inspector.text.caseStyle` — Row label for two option groups: text case, then upright/italic style.
+- `inspector.text.tracking` — Letter spacing.
+- `inspector.text.align.leftGlyph` — Single-letter glyph on the align-left button.
+- `inspector.text.align.centerGlyph` — Single-letter glyph on the align-center button.
+- `inspector.text.align.rightGlyph` — Single-letter glyph on the align-right button.
+- `inspector.text.align.justifyGlyph` — Single-letter glyph on the justify button.
+- `inspector.text.case.none` — Text case option: no transformation.
+- `inspector.font.source.current` — Badge on a font row in the font picker: where the font comes from.
+- `inspector.font.source.document` — Badge: the font is already used in the document.
+- `inspector.font.source.imported` — Badge: a font file imported into the project.
+- `inspector.font.source.local` — Badge: a font installed on this computer.
+- `inspector.font.source.system` — Badge: a standard system font.
+- `inspector.font.fontTag` — Small tag at the right of the font family button.
+- `inspector.font.label` — Row label of the font picker.
+- `inspector.font.import` — Button: import a font file.
+- `inspector.font.local` — Button: list fonts installed on this computer.
+- `inspector.fill.noAssets` — "Assets tab" is the project's materials panel; keep in sync with its tab name.
+- `inspector.fill.removeStop` — A gradient color stop; {n} is its 1-based position.
+- `inspector.fill.stopPosition` — Short label of a gradient stop's position field (percent).
+- `inspector.fill.stop` — Gradient color stop; {n} is its 1-based position.
+- `inspector.fill.stops` — Heading of the list of gradient color stops.
+- `inspector.fill.size` — Radial gradient size keyword (closest-side…).
+- `inspector.fill.shape` — Radial gradient shape (ellipse / circle).
+- `inspector.fill.reverse` — Reverses the order of the gradient stops.
+- `inspector.fill.repeat` — Repeating gradient checkbox.
+- `inspector.color.mixed` — Badge on a color field when the selected elements have different colors.
+- `inspector.color.pick` — Accessible name of a color swatch button; {label} is the lowercase field name.
+- `inspector.color.hex` — Hexadecimal color code field.
+- `inspector.color.alpha` — Alpha (opacity) slider of the color picker.
+- `inspector.color.hsbReadout` — Readout of the picked color: S = saturation, B = brightness, A = alpha, all in percent.
+- `inspector.color.title` — Small caption in the color picker header.
+- `inspector.curves.tab.master` — Color curve tab: the combined (all channels) curve.
+- `inspector.curves.tab.red` — Color curve tab: red channel.
+- `inspector.curves.tab.green` — Color curve tab: green channel.
+- `inspector.curves.tab.blue` — Color curve tab: blue channel.
+- `inspector.curves.tab.hueVsHue` — Color curve tab: hue versus hue.
+- `inspector.curves.tab.hueVsSaturation` — Color curve tab: hue versus saturation.
+- `inspector.curves.tab.hueVsLuma` — Color curve tab: hue versus luminance.
+- `inspector.curves.reset` — {name} is the curve tab name.
+- `inspector.curves.delete` — Deletes the selected curve point.
+- `inspector.curves.output` — Output value of the selected curve point.
+- `inspector.curves.input` — Input value of the selected curve point.
+- `inspector.wheels.shadows` — Color wheel for the dark tones.
+- `inspector.wheels.highlights` — Color wheel for the bright tones.
+- `inspector.wheels.amount` — How strongly the wheel's color tints the tones.
+- `inspector.wheels.levelLabel` — {label} is the wheel name (Shadows, Midtones, Highlights).
+- `inspector.wheels.valueText` — Screen-reader value of a color wheel.
+- `inspector.scopes.mode.waveform` — Video scope: luminance waveform.
+- `inspector.scopes.mode.parade` — Video scope: RGB parade.
+- `inspector.scopes.canvasLabel` — Accessible name of the scope drawing; {mode} is the scope type, {status} its state.
+- `inspector.scopes.title` — Video scopes (histogram, waveform…) shown while grading.
+- `inspector.scopes.status` — State of the video scopes.
+- `inspector.secondary.correction` — Heading of the correction sliders for a secondary color selection.
+- `inspector.secondary.softness` — Softness of the saturation/luma qualifier edge.
+- `inspector.secondary.qualifier` — Heading of the sliders that define which colors a secondary correction selects (hue/saturation/luma key).
+- `inspector.secondary.matte` — Black-and-white preview of which pixels the color selection picks.
+- `inspector.secondary.luma` — Luminance.
+- `inspector.secondary.tint` — Green–magenta tint.
+- `inspector.grade.adjust.tint` — Green–magenta tint.
+- `inspector.grade.adjust.vibrance` — Boosts muted colors more than already saturated ones.
+- `inspector.grade.detail.vignetteMidpoint` — Vignette midpoint.
+- `inspector.grade.detail.vignetteRoundness` — Vignette roundness.
+- `inspector.grade.detail.vignetteFeather` — Vignette edge softness.
+- `inspector.grade.detail.grain` — Film grain.
+- `inspector.grade.detail.grainRoughness` — Film grain roughness.
+- `inspector.grade.sliderSettings` — {label} is the slider name (Vignette or Grain).
+- `inspector.grade.finishing` — Section of color grading sliders: vignette and grain.
+- `inspector.grade.adjust` — Section of basic color adjustment sliders.
+- `inspector.grade.copyTo` — Label of the scope selector for copying the grade to other media.
+- `inspector.grade.finish` — Sub-group of color grading: vignette and grain.
+- `inspector.grade.secondary` — Sub-group: secondary color correction (corrects a selected range of colors).
+- `inspector.grade.primary` — Sub-group: primary (global) color adjustments.
+- `inspector.grade.amount` — Strength of the selected look (0–100%).
+- `inspector.grade.looks` — Sub-group of color grading presets (looks).
+- `inspector.grade.looksMeta` — Collapsed summary: look name · strength.
+- `inspector.effects.group.essentials` — Family tab of effects: common optical effects.
+- `inspector.effects.group.art` — Family tab of artistic rendering effects.
+- `inspector.effects.effect.bloom` — Glow around bright areas.
+- `inspector.effects.effect.chromaBleed` — Smears color like low-bandwidth video.
+- `inspector.effects.effect.kuwahara` — Painterly smoothing filter (Kuwahara filter).
+- `inspector.effects.control.tapeTracking` — Tape tracking error amount.
+- `inspector.effects.paletteTitle` — Tooltip of a palette preset: palette group name, then palette name.
+- `inspector.effects.reset` — {label} is an effect name.
+- `inspector.effects.remove` — {label} is an effect name.
+- `inspector.effects.mix` — Strength slider of an effect that has no specific name for it.
+- `inspector.grade.previewEffect` — {label} is an effect name.
+- `inspector.style.blend` — Blend mode row label.
+- `inspector.style.colorLabel` — Fill color row label.
+- `inspector.media.fade` — Audio fade length at the start (in) or end (out) of the clip.
+- `inspector.media.mediaStart` — Point in the source file where playback of this clip begins.
+- `inspector.media.position` — Object position inside its box.
+- `inspector.media.fit` — How the image/video fits its box (contain, cover…).
+- `inspector.media.removeBg` — BG = background.
+- `inspector.media.bgPlate` — BG plate = a clean background image rendered without the subject.
+- `inspector.media.transparent` — {format} is WebM (video) or PNG (image).
+- `inspector.media.applied` — {path} is the output file path.
+- `inspector.media.plateHint` — Describes the BG plate option: a copy of the background with the subject cut out.
+- `inspector.media.cutout` — Background-removal block title.
+
+## studio-editor-b
+
+- `editor.animation.method.set` — Tween method label: set values instantly (GSAP set).
+- `editor.animation.method.from` — Tween method: the element animates in from the shown values to its normal state.
+- `editor.animation.prop.rotation` — Animated property label (noun-like: the rotation angle).
+- `editor.animation.prop.visibility` — Animated property label (CSS visibility).
+- `editor.animation.prop.borderRadius` — Animated property label: corner radius.
+- `editor.animation.prop.letterSpacing` — Letter spacing of text.
+- `editor.animation.propTooltip.transformOrigin` — center center / 50% 50% are CSS values and stay as written.
+- `editor.animation.summary.propTo` — Part of the animation description: a property (lower-case label) animated to a value, e.g. “opacity to 100%”.
+- `editor.animation.summary.propFrom` — Part of the animation description: a start-state property and its value, e.g. “opacity 0%”.
+- `editor.animation.summary.set` — Plain-language description of a tween (also copied to the clipboard). {target} is a CSS selector.
+- `editor.animation.card.position` — Badge on a compact row for a position-only animation (x/y).
+- `editor.animation.card.seconds` — A time in seconds.
+- `editor.animation.card.timeRange` — Start and end time of an effect, e.g. “0s – 2s”.
+- `editor.animation.card.length` — Duration of an effect.
+- `editor.animation.card.speed` — Label of the easing selector.
+- `editor.animation.card.from` — Heading above the start-state properties.
+- `editor.animation.card.to` — Heading above the end-state properties.
+- `editor.animation.card.removeFromProp` — {label} is an animated property name (e.g. Opacity).
+- `editor.animation.preset.blur` — Filter preset chip (CSS blur).
+- `editor.animation.preset.bright` — Filter preset chip (CSS brightness boost).
+- `editor.animation.preset.gray` — Filter preset chip (CSS grayscale).
+- `editor.animation.preset.circle` — Clip-path preset chip.
+- `editor.animation.preset.inset` — Clip-path preset chip: a rectangle inset from the edges.
+- `editor.computedTween.source` — “Code” is the name of the Studio tab with the source editor.
+- `editor.computedTween.generatedByFn` — {source} is a function call such as makeCards().
+- `editor.arcPath.curviness` — Slider label: how strongly the motion path bends.
+- `editor.blockParams.colorAria` — {label} is the name of a block parameter.
+- `editor.borderRadius.all` — Field label: one radius for all four corners.
+- `editor.borderRadius.topLeft` — Corner radius field: top-left. Short label in a narrow field.
+- `editor.borderRadius.topRight` — Corner radius field: top-right. Short label in a narrow field.
+- `editor.borderRadius.bottomLeft` — Corner radius field: bottom-left. Short label in a narrow field.
+- `editor.borderRadius.bottomRight` — Corner radius field: bottom-right. Short label in a narrow field.
+- `editor.contextMenu.bringToFront` — Canvas context menu: z-order of the selected element.
+- `editor.crop.title` — Tooltip on a crop edge handle (verb).
+- `editor.ease.preset.linear` — Easing preset names (acceleration curves). Shown under a small curve glyph in a narrow 4-column grid; keep short.
+- `editor.ease.preset.quadIn` — Quadratic (power 2) ease-in.
+- `editor.ease.preset.cubicIn` — Cubic (power 3) ease-in.
+- `editor.ease.preset.easeInBack` — Ease with a small backwards move before it starts.
+- `editor.ease.preset.easeOutBack` — Ease that overshoots the target and settles back.
+- `editor.ease.preset.hold` — Ease that keeps the start value until the end (a step).
+- `editor.ease.preset.gentle` — Spring presets.
+- `editor.ease.mode.curve` — Ease editor mode: a cubic-bezier curve.
+- `editor.ease.presetsMenu` — {mode} is one of Curve / Spring / Wiggle.
+- `editor.ease.modeSelected` — Screen-reader announcement.
+- `editor.ease.presetOnly` — The quoted names refer to the three mode buttons (editor.ease.mode.\*).
+- `editor.ease.pointValue` — Screen-reader value of a bezier control point.
+- `editor.ease.validBezier` — Screen-reader status when the typed bezier values are valid.
+- `editor.ease.bounce` — Label of the spring bounce field.
+- `editor.ease.count` — Label of the wiggle count field (number of oscillations).
+- `editor.animation.multipleTimelines` — “GSAP timeline” is the animation library’s timeline object in the composition code, not the Studio timeline.
+- `editor.animation.unsupportedPattern` — Code samples inside the message stay untranslated.
+- `editor.textToolbar.boldGlyph` — The single letter on the Bold button.
+- `editor.textToolbar.italicGlyph` — The single letter on the Italic button.
+- `editor.textToolbar.underlineGlyph` — The single letter on the Underline button.
+- `editor.keyframe.previousProperty` — {property} is the animated property name, e.g. x or opacity.
+- `editor.keyframe.segment` — Keyframe segment between two percentages of the animation, e.g. “0% → 50%”.
+- `editor.keyframe.customEase` — Easing label for a custom curve.
+- `editor.textField.content` — Label of the text field when an element holds a single text.
+- `editor.motionPath.moveKeyframe` — Undo/redo history label.
+- `editor.motionPath.moveWaypoint` — Undo/redo history label. A waypoint is a point on the motion path.
+- `editor.offCanvas.select` — {key} is an internal element identifier.
+- `editor.fx.popover` — Dialog label of the audio-effects popover on the timeline.
+- `editor.fx.openRack` — “Rack” = the audio effects rack panel.
+- `editor.cube.aria` — Screen-reader description of the 3D rotation cube. Key names (Shift, Alt) stay as on the keyboard.
+- `editor.colorGrading.waitingRuntime` — Color-grading status line: the preview runtime has not reported yet.
+- `editor.fx.groupWithCount` — An audio group name followed by its number of tracks.

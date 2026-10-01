@@ -1,5 +1,6 @@
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { X } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import type { DomEditSelection } from "./domEditingTypes";
 
 /** The action buttons in the inspector header: visibility, Ungroup (groups only), copy, clear. */
@@ -24,6 +25,7 @@ export function InspectorHeaderActions({
   visibilityLabel?: string;
   onToggleHidden?: (id: string, hidden: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-1">
       {selectedElementId && onToggleHidden && (
@@ -49,10 +51,10 @@ export function InspectorHeaderActions({
           onClick={() => {
             onUngroup();
           }}
-          title="Ungroup (⌘⇧G)"
+          title={t("editor.inspector.ungroupTitle", { shortcut: "⌘⇧G" })}
           className="flex h-6 items-center rounded-sm px-2 text-sm font-medium text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
         >
-          Ungroup
+          {t("editor.inspector.ungroup")}
         </button>
       )}
       <button
@@ -63,7 +65,7 @@ export function InspectorHeaderActions({
         className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
           copied ? "text-studio-accent" : "text-fg-3 hover:bg-surface-2 hover:text-fg-2"
         }`}
-        title={copied ? "Copied!" : "Copy element info to clipboard"}
+        title={copied ? t("editor.inspector.copied") : t("editor.inspector.copyInfo")}
       >
         <svg
           width="13"
@@ -79,7 +81,7 @@ export function InspectorHeaderActions({
       </button>
       <button
         type="button"
-        aria-label="Clear selection"
+        aria-label={t("editor.inspector.clearSelection")}
         onClick={() => {
           onClear();
         }}

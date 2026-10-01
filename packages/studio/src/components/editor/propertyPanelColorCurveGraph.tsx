@@ -4,55 +4,18 @@ import {
   compileHfHueCurve,
   HF_COLOR_CURVE_MAX_POINTS,
   type HfColorCurvePoint,
-  type HfColorGradingCurveKey,
-  type HfColorGradingHueCurveKey,
   type HfHueCurvePoint,
   type NormalizedHfColorGradingCurves,
   type NormalizedHfColorGradingHueCurves,
 } from "@hyperframes/core/color-grading";
 import { clampNumber } from "../../utils/studioHelpers";
+import { useTranslation } from "../../i18n";
+import type { CurveTab } from "./propertyPanelColorCurveTabs";
 
 const GRAPH_SIZE = 160;
 const GRAPH_PADDING = 8;
 const SAMPLE_COUNT = 128;
 const INPUT_EPSILON = 0.002;
-
-type RgbTab = {
-  kind: "rgb";
-  key: HfColorGradingCurveKey;
-  label: string;
-  color: string;
-  min: 0;
-  max: 1;
-};
-type HueTab = {
-  kind: "hue";
-  key: HfColorGradingHueCurveKey;
-  label: string;
-  color: string;
-  min: number;
-  max: number;
-};
-export type CurveTab = RgbTab | HueTab;
-
-export const TABS: readonly CurveTab[] = [
-  // Master and the hue curves draw in the panel ink; R/G/B carry their channel's real hue
-  // (a data encoding, the same oklch values as the prototype's `.fx-cv-red|green|blue`).
-  { kind: "rgb", key: "master", label: "Master", color: "var(--color-fg)", min: 0, max: 1 },
-  { kind: "rgb", key: "red", label: "R", color: "oklch(66% 0.19 25)", min: 0, max: 1 },
-  { kind: "rgb", key: "green", label: "G", color: "oklch(72% 0.17 145)", min: 0, max: 1 },
-  { kind: "rgb", key: "blue", label: "B", color: "oklch(64% 0.17 255)", min: 0, max: 1 },
-  { kind: "hue", key: "hueVsHue", label: "Hue/Hue", color: "var(--color-fg)", min: -180, max: 180 },
-  {
-    kind: "hue",
-    key: "hueVsSaturation",
-    label: "Hue/Sat",
-    color: "var(--color-fg)",
-    min: -1,
-    max: 1,
-  },
-  { kind: "hue", key: "hueVsLuma", label: "Hue/Luma", color: "var(--color-fg)", min: -1, max: 1 },
-];
 
 export const RGB_IDENTITY: readonly HfColorCurvePoint[] = [
   [0, 0],
@@ -319,6 +282,7 @@ export function CurveGraph({
   onSettle: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const pointerRef = useRef<{
     pointerId: number;
     index: number;
@@ -433,7 +397,7 @@ export function CurveGraph({
     <svg
       viewBox={`0 0 ${GRAPH_SIZE} ${GRAPH_SIZE}`}
       role="application"
-      aria-label={`${tab.label} curve`}
+      aria-label={t("inspector.curves.graphLabel", { name: t(tab.label) })}
       aria-keyshortcuts="Enter Space ArrowLeft ArrowRight ArrowUp ArrowDown PageUp PageDown Home End Delete"
       tabIndex={disabled ? -1 : 0}
       data-color-curve-graph={tab.key}

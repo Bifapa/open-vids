@@ -7,6 +7,7 @@
  * `propertyPanelAudioFxGroup.tsx`.
  */
 
+import { t } from "../../i18n";
 import {
   classifyAudioName,
   HF_AUDIO_CARVE_ATTR,
@@ -166,7 +167,7 @@ export function collectCarveCandidates(
     offeredGroupIds.add(group.id);
     described.push({
       id: group.id,
-      label: `${group.label} (${members.length})`,
+      label: t("editor.fx.groupWithCount", { label: group.label, count: members.length }),
       kind: classifyAudioName(
         group.label,
         ...members.flatMap((m) => [m.id, m.getAttribute("src")]),

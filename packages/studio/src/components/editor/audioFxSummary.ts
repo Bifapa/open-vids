@@ -8,6 +8,7 @@
  */
 
 import { HF_AUDIO_FX_DATA_KEY, parseAudioFxChain } from "@hyperframes/core/audio-fx";
+import { t } from "../../i18n";
 import type { DomEditSelection } from "./domEditingTypes";
 
 /** Enabled nodes split by who authored them, or null when the chain won't parse. */
@@ -33,16 +34,18 @@ export function audioFxSummary(element: DomEditSelection, groupLabel?: string): 
   // the same job the rack's OUT does from the other end. It outranks the effect
   // count: a member with no effects of its own is still IN the group, and that
   // is the more useful thing to say about it.
-  if (groupLabel) return `in ${groupLabel}`;
+  if (groupLabel) return t("inspector.audioFx.summary.inGroup", { label: groupLabel });
   const counts = countEnabledNodes(element.dataAttributes?.[HF_AUDIO_FX_DATA_KEY]);
-  if (!counts) return "unreadable";
-  const parts: string[] = [];
-  if (counts.handBuilt > 0) {
-    parts.push(`${counts.handBuilt} effect${counts.handBuilt === 1 ? "" : "s"}`);
-  }
+  if (!counts) return t("inspector.audioFx.summary.unreadable");
   // One name for the module however many filters are behind it. Named when the
   // carve is switched on at all, because the control is in this section whether or
   // not it has compiled to anything yet.
-  if (counts.carve > 0 || element.dataAttributes?.["fx-carve"]) parts.push("carve");
-  return parts.length > 0 ? parts.join(" + ") : "none";
+  const hasCarve = counts.carve > 0 || Boolean(element.dataAttributes?.["fx-carve"]);
+  if (counts.handBuilt > 0) {
+    return t(
+      hasCarve ? "inspector.audioFx.summary.effectsAndCarve" : "inspector.audioFx.summary.effects",
+      { count: counts.handBuilt },
+    );
+  }
+  return hasCarve ? t("inspector.audioFx.summary.carve") : t("inspector.audioFx.summary.none");
 }

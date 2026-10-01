@@ -1,5 +1,6 @@
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { t as translate, useTranslation } from "../../i18n";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
@@ -24,6 +25,7 @@ export function FlatTimingRow({
    *  documented below) when the caller doesn't wire it up. */
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const { start, duration, inferred: derived } = deriveElementTiming(element, animations);
   const end = start + duration;
 
@@ -89,13 +91,11 @@ export function FlatTimingRow({
 
   return (
     <div className="grid gap-1.5">
-      {row("Start", formatTimingValue(start), commitStart)}
-      {row("End", formatTimingValue(end), commitEnd)}
-      {row("Duration", formatTimingValue(duration), commitDuration)}
+      {row(t("inspector.timing.start"), formatTimingValue(start), commitStart)}
+      {row(t("inspector.timing.end"), formatTimingValue(end), commitEnd)}
+      {row(t("inspector.timing.duration"), formatTimingValue(duration), commitDuration)}
       {derived && (
-        <p className="m-0 text-xs leading-[15px] text-fg-3">
-          Inferred from this element's animation — edit to pin an explicit clip range.
-        </p>
+        <p className="m-0 text-xs leading-[15px] text-fg-3">{t("inspector.timing.inferred")}</p>
       )}
     </div>
   );
@@ -123,6 +123,7 @@ export function FlatMotionSection({
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
   onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
 } & GsapAnimationEditCallbacks) {
+  const { t } = useTranslation();
   // Only consume a focus request aimed at the element THIS panel renders (not
   // the store's selectedElementId, which flips synchronously during async
   // selection resolution), so a shared class-selector animation id can't open
@@ -143,13 +144,12 @@ export function FlatMotionSection({
         <>
           {multipleTimelines && (
             <p className="m-0 rounded-sm border border-warning/35 bg-warning-soft px-2 py-1.5 text-xs leading-[15px] text-fg-2">
-              This file has multiple GSAP timelines. Animation editing is disabled to prevent data
-              loss — consolidate into a single timeline to enable editing.
+              {t("inspector.motion.multipleTimelines")}
             </p>
           )}
           {unsupportedTimelinePattern && (
             <p className="m-0 rounded-sm border border-warning/35 bg-warning-soft px-2 py-1.5 text-xs leading-[15px] text-fg-2">
-              This timeline uses a computed key the editor can&apos;t resolve statically.
+              {t("inspector.motion.unsupportedTimeline")}
             </p>
           )}
           {!multipleTimelines && !unsupportedTimelinePattern && (
@@ -188,12 +188,12 @@ export function motionSectionLabel(args: {
 }): { title: string; summary: string } {
   if (args.timingOnly) {
     return {
-      title: "Timing",
+      title: translate("inspector.group.timing"),
       summary: `${formatTimingValue(args.start)} – ${formatTimingValue(args.start + args.duration)}`,
     };
   }
   return {
-    title: "Motion",
-    summary: `${args.effectCount} effect${args.effectCount === 1 ? "" : "s"}`,
+    title: translate("inspector.group.motion"),
+    summary: translate("inspector.group.motionSummary", { count: args.effectCount }),
   };
 }

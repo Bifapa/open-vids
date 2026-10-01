@@ -1,50 +1,52 @@
+import type { TFunction } from "i18next";
+import type { TranslationKey } from "../../i18n";
 import { controlPointsForGsapEase, parseStudioCustomEaseData } from "./studioMotion";
 
-export const METHOD_LABELS: Record<string, string> = {
-  set: "Set",
-  to: "Animate",
-  from: "Animate In",
-  fromTo: "From → To",
+export const METHOD_LABELS: Record<string, TranslationKey> = {
+  set: "editor.animation.method.set",
+  to: "editor.animation.method.to",
+  from: "editor.animation.method.from",
+  fromTo: "editor.animation.method.fromTo",
 };
 
-export const METHOD_TOOLTIPS: Record<string, string> = {
-  set: "Instantly snap to these values — no transition",
-  to: "Smoothly animate the element to these target values",
-  from: "Element starts at these values and transitions to its normal state",
-  fromTo: "Animate from one state to another",
+export const METHOD_TOOLTIPS: Record<string, TranslationKey> = {
+  set: "editor.animation.methodTooltip.set",
+  to: "editor.animation.methodTooltip.to",
+  from: "editor.animation.methodTooltip.from",
+  fromTo: "editor.animation.methodTooltip.fromTo",
 };
 
-export const PROP_LABELS: Record<string, string> = {
-  x: "Move X",
-  y: "Move Y",
-  width: "Width",
-  height: "Height",
-  rotation: "Rotate",
-  z: "Move Z",
-  rotationX: "Rotate X",
-  rotationY: "Rotate Y",
-  rotationZ: "Rotate Z",
-  perspective: "Perspective",
-  transformPerspective: "Perspective",
-  transformOrigin: "Transform Origin",
-  opacity: "Opacity",
-  scale: "Scale",
-  scaleX: "Scale X",
-  scaleY: "Scale Y",
-  autoAlpha: "Visibility",
-  visibility: "Visible",
-  scaleX_alias: "Stretch X",
-  filter: "Filter",
-  clipPath: "Clip Path",
-  color: "Color",
-  backgroundColor: "Background",
-  borderColor: "Border Color",
-  borderRadius: "Radius",
-  fontSize: "Font Size",
-  letterSpacing: "Tracking",
-  skewX: "Skew X",
-  skewY: "Skew Y",
-  innerText: "Counter Value",
+export const PROP_LABELS: Record<string, TranslationKey> = {
+  x: "editor.animation.prop.x",
+  y: "editor.animation.prop.y",
+  width: "editor.animation.prop.width",
+  height: "editor.animation.prop.height",
+  rotation: "editor.animation.prop.rotation",
+  z: "editor.animation.prop.z",
+  rotationX: "editor.animation.prop.rotationX",
+  rotationY: "editor.animation.prop.rotationY",
+  rotationZ: "editor.animation.prop.rotationZ",
+  perspective: "editor.animation.prop.perspective",
+  transformPerspective: "editor.animation.prop.perspective",
+  transformOrigin: "editor.animation.prop.transformOrigin",
+  opacity: "editor.animation.prop.opacity",
+  scale: "editor.animation.prop.scale",
+  scaleX: "editor.animation.prop.scaleX",
+  scaleY: "editor.animation.prop.scaleY",
+  autoAlpha: "editor.animation.prop.autoAlpha",
+  visibility: "editor.animation.prop.visibility",
+  scaleX_alias: "editor.animation.prop.scaleXAlias",
+  filter: "editor.animation.prop.filter",
+  clipPath: "editor.animation.prop.clipPath",
+  color: "editor.animation.prop.color",
+  backgroundColor: "editor.animation.prop.backgroundColor",
+  borderColor: "editor.animation.prop.borderColor",
+  borderRadius: "editor.animation.prop.borderRadius",
+  fontSize: "editor.animation.prop.fontSize",
+  letterSpacing: "editor.animation.prop.letterSpacing",
+  skewX: "editor.animation.prop.skewX",
+  skewY: "editor.animation.prop.skewY",
+  innerText: "editor.animation.prop.innerText",
 };
 
 export const PROP_UNITS: Record<string, string> = {
@@ -68,29 +70,51 @@ export const PROP_UNITS: Record<string, string> = {
   visibility: "",
 };
 
-export const PROP_TOOLTIPS: Record<string, string> = {
-  x: "Move left/right (negative = left, positive = right)",
-  y: "Move up/down (negative = up, positive = down)",
-  opacity: "How visible (0 = invisible, 1 = fully visible)",
-  scale: "Size multiplier (1 = normal, 2 = double, 0.5 = half)",
-  scaleX: "Horizontal stretch (1 = normal)",
-  scaleY: "Vertical stretch (1 = normal)",
-  rotation: "Spin angle (360 = full rotation)",
-  z: "Move forward/back along the Z axis",
-  rotationX: "Rotate around the horizontal X axis",
-  rotationY: "Rotate around the vertical Y axis",
-  rotationZ: "Rotate around the screen-facing Z axis",
-  perspective:
-    "3D depth context for child elements; set it on a parent when rotating children in 3D",
-  transformPerspective:
-    "3D depth for THIS element's own X/Y rotation — lower = stronger perspective (try 600–1000)",
-  transformOrigin: "Pivot point for transforms, for example center center or 50% 50%",
-  width: "Element width",
-  height: "Element height",
-  autoAlpha: "Like opacity but hides element completely at 0",
-  visibility: "Show or hide the element",
-  innerText: "End value for a number roll-up (the number it counts up/down to)",
+export const PROP_TOOLTIPS: Record<string, TranslationKey> = {
+  x: "editor.animation.propTooltip.x",
+  y: "editor.animation.propTooltip.y",
+  opacity: "editor.animation.propTooltip.opacity",
+  scale: "editor.animation.propTooltip.scale",
+  scaleX: "editor.animation.propTooltip.scaleX",
+  scaleY: "editor.animation.propTooltip.scaleY",
+  rotation: "editor.animation.propTooltip.rotation",
+  z: "editor.animation.propTooltip.z",
+  rotationX: "editor.animation.propTooltip.rotationX",
+  rotationY: "editor.animation.propTooltip.rotationY",
+  rotationZ: "editor.animation.propTooltip.rotationZ",
+  perspective: "editor.animation.propTooltip.perspective",
+  transformPerspective: "editor.animation.propTooltip.transformPerspective",
+  transformOrigin: "editor.animation.propTooltip.transformOrigin",
+  width: "editor.animation.propTooltip.width",
+  height: "editor.animation.propTooltip.height",
+  autoAlpha: "editor.animation.propTooltip.autoAlpha",
+  visibility: "editor.animation.propTooltip.visibility",
+  innerText: "editor.animation.propTooltip.innerText",
 };
+
+/** The tween method's label; an unknown method shows as its own name. */
+export function methodLabel(t: TFunction, method: string): string {
+  const key = METHOD_LABELS[method];
+  return key ? t(key) : method;
+}
+
+/** The tween method's tooltip, or undefined for an unknown method. */
+export function methodTooltip(t: TFunction, method: string): string | undefined {
+  const key = METHOD_TOOLTIPS[method];
+  return key ? t(key) : undefined;
+}
+
+/** The animated property's label; a property without one shows as its own name. */
+export function propLabel(t: TFunction, prop: string): string {
+  const key = PROP_LABELS[prop];
+  return key ? t(key) : prop;
+}
+
+/** The animated property's tooltip, or undefined when it has none. */
+export function propTooltip(t: TFunction, prop: string): string | undefined {
+  const key = PROP_TOOLTIPS[prop];
+  return key ? t(key) : undefined;
+}
 
 // Ease labels surface the raw GSAP token (e.g. "power2.out", "back.out") rather
 // than friendly names — motion authors recognize the GSAP vocabulary, and the
@@ -180,9 +204,9 @@ export function clampPropertyValue(prop: string, value: number): number {
 
 export const ADD_METHODS = ["to", "from", "fromTo", "set"] as const;
 
-export const ADD_METHOD_LABELS: Record<string, string> = {
-  to: "Animate",
-  from: "Animate In",
-  fromTo: "From → To",
-  set: "Set Instantly",
+export const ADD_METHOD_LABELS: Record<string, TranslationKey> = {
+  to: "editor.animation.method.to",
+  from: "editor.animation.method.from",
+  fromTo: "editor.animation.method.fromTo",
+  set: "editor.animation.addMethod.set",
 };

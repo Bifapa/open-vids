@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, X } from "../../icons/SystemIcons";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { INSP_ROW, INSP_ROW_LABEL, INSP_SELECT, INSP_SUBHEAD } from "./inspectorStyles";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
@@ -19,7 +20,7 @@ import {
   getTextFieldColor,
   getTextStyleValue,
   TextAreaField,
-  WEIGHT_LABELS,
+  weightLabel,
 } from "./propertyPanelSections";
 
 /* ------------------------------------------------------------------ */
@@ -27,18 +28,23 @@ import {
 /* ------------------------------------------------------------------ */
 
 const ALIGN_OPTIONS = [
-  { key: "left", label: "left", node: "L" },
-  { key: "center", label: "center", node: "C" },
-  { key: "right", label: "right", node: "R" },
-  { key: "justify", label: "justify", node: "J" },
-];
+  { key: "left", label: "inspector.text.align.left", node: "inspector.text.align.leftGlyph" },
+  { key: "center", label: "inspector.text.align.center", node: "inspector.text.align.centerGlyph" },
+  { key: "right", label: "inspector.text.align.right", node: "inspector.text.align.rightGlyph" },
+  {
+    key: "justify",
+    label: "inspector.text.align.justify",
+    node: "inspector.text.align.justifyGlyph",
+  },
+] as const satisfies readonly { key: string; label: TranslationKey; node: TranslationKey }[];
 
+// The glyphs are samples of the transform, not words, so they stay as they are.
 const CASE_OPTIONS = [
-  { key: "none", label: "none", node: "–" },
-  { key: "uppercase", label: "uppercase", node: "AG" },
-  { key: "lowercase", label: "lowercase", node: "ag" },
-  { key: "capitalize", label: "capitalize", node: "Ag" },
-];
+  { key: "none", label: "inspector.text.case.none", node: "–" },
+  { key: "uppercase", label: "inspector.text.case.uppercase", node: "AG" },
+  { key: "lowercase", label: "inspector.text.case.lowercase", node: "ag" },
+  { key: "capitalize", label: "inspector.text.case.capitalize", node: "Ag" },
+] as const satisfies readonly { key: string; label: TranslationKey; node: string }[];
 
 function FlatTextFieldEditor({
   field,
@@ -59,6 +65,7 @@ function FlatTextFieldEditor({
   onPreviewTextFieldStyle?: (fieldKey: string, property: string, value: string) => void;
   autoFocus?: boolean;
 }) {
+  const { t } = useTranslation();
   const weight = getTextStyleValue(field, styles, "font-weight", "400");
   const weightOptions = detectAvailableWeights(
     field.computedStyles["font-family"] || styles["font-family"] || "",
@@ -73,7 +80,7 @@ function FlatTextFieldEditor({
         {({ value, onCommit }) => (
           <TextAreaField
             flat
-            label="Content"
+            label={t("inspector.text.content")}
             value={value ?? field.value}
             autoFocus={autoFocus}
             onCommit={onCommit ?? ((next) => onSetText(next, field.key))}
@@ -97,7 +104,7 @@ function FlatTextFieldEditor({
         )}
       </PromotableControl>
       <FlatRow
-        label="Size"
+        label={t("inspector.text.size")}
         value={field.computedStyles["font-size"] || styles["font-size"] || "16px"}
         tier={resolveValueTier(field.inlineStyles["font-size"], styles["font-size"] || "16px")}
         liveCommit
@@ -110,11 +117,11 @@ function FlatTextFieldEditor({
             VALUE_TIER_LABEL_CLASS[resolveValueTier(field.inlineStyles["font-weight"], "400")]
           }`}
         >
-          Weight
+          {t("inspector.text.weight")}
         </span>
         <select
           value={weight}
-          aria-label="Weight"
+          aria-label={t("inspector.text.weight")}
           onChange={(e) => {
             onSetTextFieldStyle(field.key, "font-weight", e.target.value);
           }}
@@ -125,14 +132,14 @@ function FlatTextFieldEditor({
           {(weightOptions.includes(weight) ? weightOptions : [weight, ...weightOptions]).map(
             (option) => (
               <option key={option} value={option}>
-                {WEIGHT_LABELS[option] ?? option}
+                {weightLabel(option)}
               </option>
             ),
           )}
         </select>
       </div>
       <FlatRow
-        label="Tracking"
+        label={t("inspector.text.tracking")}
         value={getTextStyleValue(field, styles, "letter-spacing", "0px")}
         tier={resolveValueTier(field.inlineStyles["letter-spacing"], "0px")}
         onCommit={(next) =>
@@ -145,7 +152,7 @@ function FlatTextFieldEditor({
         onReset={() => onSetTextFieldStyle(field.key, "letter-spacing", "")}
       />
       <FlatRow
-        label="Line height"
+        label={t("inspector.text.lineHeight")}
         value={getTextStyleValue(field, styles, "line-height", "normal")}
         tier={resolveValueTier(field.inlineStyles["line-height"], "normal")}
         onCommit={(next) =>
@@ -158,11 +165,11 @@ function FlatTextFieldEditor({
         onReset={() => onSetTextFieldStyle(field.key, "line-height", "")}
       />
       <FlatSegmentedRow
-        label="Align"
+        label={t("inspector.text.align")}
         options={ALIGN_OPTIONS.map((option) => ({
           key: option.key,
-          node: option.node,
-          label: option.label,
+          node: t(option.node),
+          label: t(option.label),
           active:
             align === option.key ||
             (option.key === "left" && align === "start") ||
@@ -181,16 +188,26 @@ function FlatTextFieldEditor({
         }}
       />
       <FlatSegmentedRow
-        label="Case · Style"
+        label={t("inspector.text.caseStyle")}
         options={[
           ...CASE_OPTIONS.map((option) => ({
             key: option.key,
             node: option.node,
-            label: option.label,
+            label: t(option.label),
             active: textTransform === option.key,
           })),
-          { key: "normal", node: "A", label: "upright", active: fontStyle === "normal" },
-          { key: "italic", node: "A", label: "italic", active: fontStyle === "italic" },
+          {
+            key: "normal",
+            node: "A",
+            label: t("inspector.text.upright"),
+            active: fontStyle === "normal",
+          },
+          {
+            key: "italic",
+            node: "A",
+            label: t("inspector.text.italic"),
+            active: fontStyle === "italic",
+          },
         ]}
         spacerAfterIndex={2}
         onChange={(next) => {
@@ -208,7 +225,7 @@ function FlatTextFieldEditor({
         {({ value, onCommit }) => (
           <ColorField
             flat
-            label="Color"
+            label={t("inspector.text.colorLabel")}
             value={value ?? getTextFieldColor(field, styles)}
             onPreview={(next) => onPreviewTextFieldStyle?.(field.key, "color", next)}
             onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "color", next))}
@@ -240,6 +257,7 @@ export function FlatTextSection({
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
 }) {
+  const { t } = useTranslation();
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,
   );
@@ -323,7 +341,7 @@ export function FlatTextSection({
         className="flex h-ctl-sm items-center gap-1.5 justify-self-start rounded-sm px-1.5 text-xs text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
       >
         <Plus size={10} />
-        Add text field
+        {t("inspector.text.addTextField")}
       </button>
     </div>
   );
@@ -352,9 +370,10 @@ export function FlatTextLayerList({
   onAdd: () => void;
   onRemove: (fieldKey: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-1">
-      <div className={INSP_SUBHEAD}>Text layers</div>
+      <div className={INSP_SUBHEAD}>{t("inspector.text.layers")}</div>
       <div className="grid gap-0.5">
         {fields.map((field, index) => {
           const active = field.key === activeFieldKey;
@@ -375,14 +394,15 @@ export function FlatTextLayerList({
                 style={{ backgroundColor: getTextFieldColor(field, styles) }}
               />
               <span className="min-w-0 flex-1 truncate text-sm text-fg">
-                {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
+                {formatTextFieldPreview(field.value) ||
+                  t("inspector.text.layerFallback", { n: index + 1 })}
               </span>
               <span className="shrink-0 font-mono text-2xs text-fg-3">{field.tagName}</span>
               {fields.length > 1 && (
                 <button
                   type="button"
                   data-flat-text-layer-remove="true"
-                  aria-label="Remove text field"
+                  aria-label={t("inspector.text.removeField")}
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemove(field.key);
@@ -405,7 +425,7 @@ export function FlatTextLayerList({
         className="mt-1 flex h-ctl-sm items-center gap-1.5 justify-self-start rounded-sm px-1.5 text-xs text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
       >
         <Plus size={10} />
-        Add text field
+        {t("inspector.text.addTextField")}
       </button>
     </div>
   );

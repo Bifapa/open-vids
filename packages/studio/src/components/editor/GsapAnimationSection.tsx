@@ -1,6 +1,7 @@
 import { memo } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { Film } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import { Section } from "./propertyPanelPrimitives";
 import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
 import { GsapAnimationList } from "./GsapAnimationList";
@@ -21,19 +22,17 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   onAddAnimation,
   ...callbacks
 }: GsapAnimationSectionProps) {
+  const { t } = useTranslation();
   return (
-    <Section title="Animation" icon={<Film size={15} />}>
+    <Section title={t("editor.animation.section")} icon={<Film size={15} />}>
       {multipleTimelines && (
         <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm leading-relaxed text-amber-400">
-          This file has multiple GSAP timelines. Animation editing is disabled to prevent data loss
-          — consolidate into a single timeline to enable editing.
+          {t("editor.animation.multipleTimelines")}
         </p>
       )}
       {unsupportedTimelinePattern && (
         <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm leading-relaxed text-amber-400">
-          This timeline uses a computed key (window.__timelines[variable]) the editor can&apos;t
-          resolve statically. Use a string-literal key (window.__timelines[&quot;id&quot;]) or a
-          variable declaration (const tl = gsap.timeline()) to enable editing.
+          {t("editor.animation.unsupportedPattern")}
         </p>
       )}
       {multipleTimelines || unsupportedTimelinePattern ? null : (

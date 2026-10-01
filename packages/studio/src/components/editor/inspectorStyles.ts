@@ -14,8 +14,9 @@ export const INSP_MINI_BUTTON =
 export const INSP_FOCUS_INSET =
   "outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
 
-/** `.frow`: 72px label column, field column. */
-export const INSP_ROW = "grid min-h-ctl-sm grid-cols-[72px_minmax(0,1fr)] items-center gap-2";
+/** `.frow`: label column (`--insp-label-w`, 72px; wider for Russian), field column. */
+export const INSP_ROW =
+  "grid min-h-ctl-sm grid-cols-[var(--insp-label-w)_minmax(0,1fr)] items-center gap-2";
 
 /** `.frow > label`. */
 export const INSP_ROW_LABEL = "min-w-0 truncate text-sm text-fg-3";

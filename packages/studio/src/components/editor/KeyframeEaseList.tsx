@@ -1,4 +1,5 @@
 import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
+import { formatPercent, useTranslation } from "../../i18n";
 import { EASE_LABELS } from "./gsapAnimationConstants";
 import { EaseCurveSection } from "./EaseCurveSection";
 import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
@@ -60,16 +61,17 @@ export function KeyframeEaseList({
   /** Apply one ease to every segment at once (clears per-segment overrides). */
   onApplyAll?: (ease: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
         <p className="text-2xs font-semibold uppercase tracking-wider text-fg-3">
-          Per-keyframe easing
+          {t("editor.keyframe.perKeyframeEasing")}
         </p>
         {onApplyAll && (
           <select
-            aria-label="Apply one ease to all segments"
-            title="Apply one ease to every segment (clears per-segment overrides)"
+            aria-label={t("editor.keyframe.applyAllAria")}
+            title={t("editor.keyframe.applyAllTitle")}
             value=""
             onChange={(e) => {
               const next = e.target.value;
@@ -78,7 +80,7 @@ export function KeyframeEaseList({
             className={`${INSP_SELECT} ml-auto w-auto`}
           >
             <option value="" disabled>
-              Set all…
+              {t("editor.keyframe.setAll")}
             </option>
             {APPLY_ALL_EASES.map((name) => (
               <option key={name} value={name}>
@@ -92,9 +94,12 @@ export function KeyframeEaseList({
         if (i === 0) return null;
         const segEase = kf.ease ?? globalEase;
         const isExpanded = expandedPct === kf.percentage;
-        const label = `${keyframes[i - 1].percentage}% → ${kf.percentage}%`;
+        const label = t("editor.keyframe.segment", {
+          from: formatPercent(keyframes[i - 1].percentage / 100, 2),
+          to: formatPercent(kf.percentage / 100, 2),
+        });
         const easeLabel = segEase.startsWith("custom(")
-          ? "Custom"
+          ? t("editor.keyframe.customEase")
           : (EASE_LABELS[segEase] ?? segEase);
         return (
           <div

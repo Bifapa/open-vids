@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Eye, Layers, Palette, Settings, Square, Zap } from "../../icons/SystemIcons";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
+import { formatPercent, useTranslation } from "../../i18n";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import {
   buildBoxShadowPresetValue,
@@ -60,6 +61,7 @@ export function StyleSections({
   // flat path passes this to avoid a double-render. Non-flat callers omit it.
   hideFlex?: boolean;
 }) {
+  const { t } = useTranslation();
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
@@ -169,21 +171,25 @@ export function StyleSections({
   return (
     <>
       {isFlex && !hideFlex && (
-        <Section title="Flex" icon={<Layers size={15} />} defaultCollapsed>
+        <Section
+          title={t("inspector.layout.flex.title")}
+          icon={<Layers size={15} />}
+          defaultCollapsed
+        >
           <div className="space-y-4">
             <SegmentedControl
-              trackName="Flex direction"
+              trackName={t("inspector.style.flexDirection")}
               disabled={styleEditingDisabled}
               value={styles["flex-direction"] || "row"}
               onChange={(next) => onSetStyle("flex-direction", next)}
               options={[
-                { label: "→ Row", value: "row" },
-                { label: "↓ Column", value: "column" },
+                { label: t("inspector.style.flexRowArrow"), value: "row" },
+                { label: t("inspector.style.flexColumnArrow"), value: "column" },
               ]}
             />
             <div className={RESPONSIVE_GRID}>
               <SelectField
-                label="Justify"
+                label={t("inspector.layout.flex.justify")}
                 value={styles["justify-content"] || "flex-start"}
                 disabled={styleEditingDisabled}
                 onChange={(next) => onSetStyle("justify-content", next)}
@@ -197,7 +203,7 @@ export function StyleSections({
                 ]}
               />
               <SelectField
-                label="Align"
+                label={t("inspector.layout.flex.align")}
                 value={styles["align-items"] || "stretch"}
                 disabled={styleEditingDisabled}
                 onChange={(next) => onSetStyle("align-items", next)}
@@ -205,7 +211,7 @@ export function StyleSections({
               />
             </div>
             <DetailField
-              label="Gap"
+              label={t("inspector.layout.flex.gap")}
               value={styles.gap ?? "0px"}
               disabled={styleEditingDisabled}
               onCommit={(next) => onSetStyle("gap", next.endsWith("px") ? next : `${next}px`)}
@@ -215,7 +221,7 @@ export function StyleSections({
       )}
 
       {hasVisualBackground && (
-        <Section title="Radius" icon={<Settings size={15} />} defaultCollapsed>
+        <Section title={t("inspector.style.radius")} icon={<Settings size={15} />} defaultCollapsed>
           <BorderRadiusEditor
             tl={radiusTL}
             tr={radiusTR}
@@ -240,11 +246,11 @@ export function StyleSections({
         </Section>
       )}
 
-      <Section title="Stroke" icon={<Square size={15} />} defaultCollapsed>
+      <Section title={t("inspector.style.stroke")} icon={<Square size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <div className={RESPONSIVE_GRID}>
             <MetricField
-              label="Width"
+              label={t("inspector.style.strokeWidth")}
               value={formatPxMetricValue(borderWidthValue)}
               disabled={styleEditingDisabled}
               liveCommit
@@ -264,7 +270,7 @@ export function StyleSections({
               }}
             />
             <SelectField
-              label="Style"
+              label={t("inspector.style.strokeStyle")}
               value={borderStyleValue}
               disabled={styleEditingDisabled}
               onChange={async (next) => {
@@ -290,7 +296,7 @@ export function StyleSections({
             />
           </div>
           <ColorField
-            label="Stroke color"
+            label={t("inspector.style.strokeColor")}
             value={borderColorValue}
             disabled={styleEditingDisabled}
             onCommit={(next) => onSetStyle("border-color", next)}
@@ -298,10 +304,10 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Effects" icon={<Zap size={15} />} defaultCollapsed>
+      <Section title={t("inspector.group.effects")} icon={<Zap size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <SelectField
-            label="Shadow"
+            label={t("inspector.style.shadow")}
             value={boxShadowPreset}
             disabled={styleEditingDisabled}
             onChange={(next) => {
@@ -315,9 +321,9 @@ export function StyleSections({
           />
           <div className={RESPONSIVE_GRID}>
             <div className="grid min-w-0 gap-1.5">
-              <span className={LABEL}>Layer blur</span>
+              <span className={LABEL}>{t("inspector.style.layerBlur")}</span>
               <SliderControl
-                trackName="Layer blur"
+                trackName={t("inspector.style.layerBlur")}
                 value={filterBlurValue}
                 min={0}
                 max={Math.max(40, Math.ceil(filterBlurValue))}
@@ -331,9 +337,9 @@ export function StyleSections({
               />
             </div>
             <div className="grid min-w-0 gap-1.5">
-              <span className={LABEL}>Backdrop</span>
+              <span className={LABEL}>{t("inspector.style.backdrop")}</span>
               <SliderControl
-                trackName="Backdrop blur"
+                trackName={t("inspector.style.backdropBlur")}
                 value={backdropBlurValue}
                 min={0}
                 max={Math.max(60, Math.ceil(backdropBlurValue))}
@@ -353,18 +359,18 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Clip" icon={<Layers size={15} />} defaultCollapsed>
+      <Section title={t("inspector.style.clip")} icon={<Layers size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <div className={RESPONSIVE_GRID}>
             <SelectField
-              label="Overflow"
+              label={t("inspector.style.overflow")}
               value={styles.overflow || "visible"}
               disabled={styleEditingDisabled}
               onChange={(next) => onSetStyle("overflow", next)}
               options={["visible", "hidden", "clip", "auto", "scroll"]}
             />
             <SelectField
-              label="Mask"
+              label={t("inspector.style.mask")}
               value={clipPathPreset}
               disabled={styleEditingDisabled}
               onChange={(next) => {
@@ -382,9 +388,9 @@ export function StyleSections({
             />
           </div>
           <div className="grid min-w-0 gap-1.5">
-            <span className={LABEL}>Mask inset</span>
+            <span className={LABEL}>{t("inspector.mask.inset")}</span>
             <SliderControl
-              trackName="Mask inset"
+              trackName={t("inspector.mask.inset")}
               value={clipInsetValue}
               min={0}
               max={Math.max(120, Math.ceil(clipInsetValue))}
@@ -401,25 +407,25 @@ export function StyleSections({
             <div className="grid gap-2">
               <div className="grid grid-cols-4 gap-2">
                 <MetricField
-                  label="T"
+                  label={t("inspector.mask.top")}
                   value={formatPxMetricValue(clipInsetSides.top)}
                   disabled={styleEditingDisabled}
                   onCommit={(next) => commitClipInsetSide("top", next)}
                 />
                 <MetricField
-                  label="R"
+                  label={t("inspector.mask.right")}
                   value={formatPxMetricValue(clipInsetSides.right)}
                   disabled={styleEditingDisabled}
                   onCommit={(next) => commitClipInsetSide("right", next)}
                 />
                 <MetricField
-                  label="B"
+                  label={t("inspector.mask.bottom")}
                   value={formatPxMetricValue(clipInsetSides.bottom)}
                   disabled={styleEditingDisabled}
                   onCommit={(next) => commitClipInsetSide("bottom", next)}
                 />
                 <MetricField
-                  label="L"
+                  label={t("inspector.mask.left")}
                   value={formatPxMetricValue(clipInsetSides.left)}
                   disabled={styleEditingDisabled}
                   onCommit={(next) => commitClipInsetSide("left", next)}
@@ -430,21 +436,21 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Transparency" icon={<Eye size={15} />} defaultCollapsed>
+      <Section title={t("inspector.style.transparency")} icon={<Eye size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <SliderControl
-            trackName="Opacity"
+            trackName={t("inspector.style.opacity")}
             value={opacityValue}
             min={0}
             max={100}
             step={1}
             disabled={styleEditingDisabled}
-            displayValue={`${opacityValue}%`}
-            formatDisplayValue={(next) => `${Math.round(next)}%`}
+            displayValue={formatPercent(opacityValue / 100)}
+            formatDisplayValue={(next) => formatPercent(Math.round(next) / 100)}
             onCommit={(next) => onSetStyle("opacity", formatNumericValue(next / 100))}
           />
           <SelectField
-            label="Mode"
+            label={t("inspector.style.blendMode")}
             value={styles["mix-blend-mode"] || "normal"}
             disabled={styleEditingDisabled}
             onChange={(next) => onSetStyle("mix-blend-mode", next)}
@@ -453,22 +459,22 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Fill" icon={<Palette size={15} />}>
+      <Section title={t("inspector.style.fill")} icon={<Palette size={15} />}>
         <div className="space-y-4">
           <SegmentedControl
-            trackName="Fill type"
+            trackName={t("inspector.style.fillType")}
             disabled={styleEditingDisabled}
             value={preferredFillMode}
             onChange={handleFillModeChange}
             options={[
-              { label: "Solid", value: "Solid" },
-              { label: "Gradient", value: "Gradient" },
-              { label: "Image", value: "Image" },
+              { label: t("inspector.style.fillSolid"), value: "Solid" },
+              { label: t("inspector.style.fillGradient"), value: "Gradient" },
+              { label: t("inspector.style.fillImage"), value: "Image" },
             ]}
           />
           {preferredFillMode === "Solid" ? (
             <ColorField
-              label="Fill color"
+              label={t("inspector.style.fillColor")}
               value={styles["background-color"] ?? "transparent"}
               disabled={styleEditingDisabled}
               onCommit={(next) => onSetStyle("background-color", next)}
@@ -497,7 +503,7 @@ export function StyleSections({
           )}
           {!hasTextControls && (
             <ColorField
-              label="Text color"
+              label={t("inspector.style.textColor")}
               value={styles.color ?? "rgb(0, 0, 0)"}
               disabled={styleEditingDisabled}
               onCommit={(next) => onSetStyle("color", next)}

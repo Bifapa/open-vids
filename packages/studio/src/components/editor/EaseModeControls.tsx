@@ -8,6 +8,7 @@
  * them rather than importing it back from the parent.
  */
 
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { EASE_PRESETS } from "./easePresetLibrary";
 import { MiniCurveSvg } from "./easeCurveSvg";
 import { EASE_CURVES } from "./gsapAnimationConstants";
@@ -18,10 +19,11 @@ export type EaseMode = (typeof EASE_MODES)[number];
 export type Pts = [number, number, number, number];
 export const DEFAULT_CURVE: Pts = EASE_CURVES["power2.out"];
 
-export const MODE_LABELS = { curve: "Curve", spring: "Spring", wiggle: "Wiggle" } satisfies Record<
-  EaseMode,
-  string
->;
+export const MODE_LABELS = {
+  curve: "editor.ease.mode.curve",
+  spring: "editor.ease.mode.spring",
+  wiggle: "editor.ease.mode.wiggle",
+} as const satisfies Record<EaseMode, TranslationKey>;
 
 const DEFAULT_EASE_BY_MODE = {
   curve: `custom(M0,0 C${DEFAULT_CURVE[0]},${DEFAULT_CURVE[1]} ${DEFAULT_CURVE[2]},${DEFAULT_CURVE[3]} 1,1)`,
@@ -38,6 +40,7 @@ export const EasePresetGrid = function EasePresetGrid({
   currentEase: string;
   onSelect: (ease: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="mb-2 grid max-h-56 grid-cols-4 gap-1 overflow-y-auto pr-0.5">
       {EASE_PRESETS.filter((preset) => preset.kind === kind).map((preset) => {
@@ -54,7 +57,7 @@ export const EasePresetGrid = function EasePresetGrid({
             className={`flex flex-col items-center gap-0.5 rounded-md p-1 transition-colors ${
               isActive ? "bg-accent-soft ring-1 ring-accent-line" : "hover:bg-surface-2"
             }`}
-            title={preset.label}
+            title={t(preset.label)}
           >
             <MiniCurveSvg ease={preset.ease} active={isActive} />
             <span
@@ -62,7 +65,7 @@ export const EasePresetGrid = function EasePresetGrid({
                 isActive ? "text-fg" : "text-fg-3"
               }`}
             >
-              {preset.label}
+              {t(preset.label)}
             </span>
           </button>
         );
@@ -78,11 +81,12 @@ export function EaseModeToggle({
   mode: EaseMode;
   onCommit: (ease: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="mb-2 grid grid-cols-3 gap-px rounded-md border border-border bg-bg-1 p-0.5"
       role="radiogroup"
-      aria-label="Ease editor mode"
+      aria-label={t("editor.ease.modeGroup")}
     >
       {EASE_MODES.map((candidateMode) => {
         const active = candidateMode === mode;
@@ -101,7 +105,7 @@ export function EaseModeToggle({
               active ? "bg-surface-3 text-fg" : "text-fg-3 hover:bg-surface-1 hover:text-fg-2"
             }`}
           >
-            {MODE_LABELS[candidateMode]}
+            {t(MODE_LABELS[candidateMode])}
           </button>
         );
       })}

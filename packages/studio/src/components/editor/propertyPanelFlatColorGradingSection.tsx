@@ -8,6 +8,7 @@ import {
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { Plus, Settings } from "../../icons/SystemIcons";
+import { formatPercent, useTranslation } from "../../i18n";
 import { LUT_EXT } from "@hyperframes/core/media-types";
 import { CaretDown } from "@phosphor-icons/react";
 import { FlatSlider } from "./propertyPanelFlatPrimitives";
@@ -24,16 +25,18 @@ import type {
 import { presetPreviewHandlers } from "./propertyPanelPresetPreview";
 import { ColorCurves } from "./propertyPanelColorCurves";
 import {
-  COLOR_GRADING_ADJUST_SLIDERS,
-  COLOR_GRADING_DETAIL_SLIDERS,
   colorGradingWithAdjust,
   colorGradingWithDetail,
   createColorGradingActions,
+  visibleColorGradingIntensity,
+} from "./propertyPanelColorGradingControls";
+import {
+  COLOR_GRADING_ADJUST_SLIDERS,
+  COLOR_GRADING_DETAIL_SLIDERS,
   GRAIN_TUNE_SLIDERS,
   normalizedColorGradingDefault,
   VIGNETTE_TUNE_SLIDERS,
-  visibleColorGradingIntensity,
-} from "./propertyPanelColorGradingControls";
+} from "./propertyPanelColorGradingSliders";
 import { PropertyPanelColorScopes } from "./propertyPanelColorScopes";
 import { PropertyPanelColorSecondary } from "./propertyPanelColorSecondary";
 import { ColorWheels } from "./propertyPanelColorWheels";
@@ -61,6 +64,7 @@ function resolveColorGrading(grading: Parameters<typeof normalizeHfColorGrading>
 }
 
 function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
+  const { t } = useTranslation();
   if (metadata?.color.dynamicRange !== "hdr") return null;
   const details = [
     metadata.color.codecName,
@@ -77,15 +81,14 @@ function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
       className="rounded-sm border border-warning/35 bg-warning-soft px-2 py-1.5 text-xs leading-[15px] text-fg-2"
     >
       <div className="flex items-center justify-between gap-2 text-fg">
-        <span className="font-semibold">{metadata.color.label} source</span>
+        <span className="font-semibold">
+          {t("inspector.grade.hdrSource", { label: metadata.color.label })}
+        </span>
         <Badge tone="warning" size="sm">
-          SDR Preview
+          {t("inspector.grade.sdrPreviewBadge")}
         </Badge>
       </div>
-      <p className="mt-0.5">
-        These controls use the current SDR shader preview path. Render may stay HDR-tagged, but this
-        is not true HDR color grading yet.
-      </p>
+      <p className="mt-0.5">{t("inspector.grade.hdrNote")}</p>
       {details && (
         <p data-flat-grade-hdr-detail="true" className="mt-0.5 truncate text-2xs text-fg-3">
           {details}
@@ -129,6 +132,7 @@ export function FlatColorGradingSection({
   onRequestPresetPreviews: () => void;
   captureGradedFrame: ColorGradingControllerState["captureGradedFrame"];
 }) {
+  const { t } = useTranslation();
   const lutInputRef = useRef<HTMLInputElement>(null);
   const [lutOpen, setLutOpen] = useState(false);
   const [detailSettingsOpen, setDetailSettingsOpen] = useState<"vignette" | "grain" | null>(null);
@@ -177,6 +181,8 @@ export function FlatColorGradingSection({
 
   useEffect(() => () => onPreviewColorGrading(null), [onPreviewColorGrading]);
 
+  const settingsLabel = (key: "vignette" | "grain") =>
+    key === "vignette" ? t("inspector.grade.vignetteSettings") : t("inspector.grade.grainSettings");
   const renderDetailSlider = (key: HfColorGradingDetailKey) => {
     const spec = detailByKey(key);
     const value = grading.details[key];
@@ -185,7 +191,7 @@ export function FlatColorGradingSection({
     return (
       <FlatSlider
         key={key}
-        label={spec.label}
+        label={t(spec.label)}
         value={Math.round(value * spec.scale)}
         min={spec.min}
         max={spec.max}
@@ -214,8 +220,11 @@ export function FlatColorGradingSection({
         refreshKey={scopesRefreshKey}
       />
       <FlatSubGroup
-        title="Looks"
-        meta={`${selectedPreset?.label ?? "None"} · ${Math.round(grading.intensity * 100)}%`}
+        title={t("inspector.grade.looks")}
+        meta={t("inspector.grade.looksMeta", {
+          preset: selectedPreset?.label ?? t("inspector.fill.none"),
+          intensity: formatPercent(grading.intensity),
+        })}
       >
         <div data-flat-grade-presets="true" className="grid gap-1.5">
           {presetPreviews.status === "unavailable" && (
@@ -225,7 +234,7 @@ export function FlatColorGradingSection({
               className="justify-self-start"
               onClick={onRequestPresetPreviews}
             >
-              Retry look previews
+              {t("inspector.grade.retryPreviews")}
             </Button>
           )}
           <div data-flat-grade-preset-group="presets" className="grid grid-cols-3 gap-1.5">
@@ -281,7 +290,7 @@ export function FlatColorGradingSection({
           </div>
         </div>
         <FlatSlider
-          label="Amount"
+          label={t("inspector.grade.amount")}
           value={Math.round(grading.intensity * 100)}
           min={0}
           max={100}
@@ -292,14 +301,17 @@ export function FlatColorGradingSection({
         />
       </FlatSubGroup>
 
-      <FlatSubGroup title="Primary" meta={primaryAdjusted ? "Adjusted" : undefined}>
+      <FlatSubGroup
+        title={t("inspector.grade.primary")}
+        meta={primaryAdjusted ? t("inspector.grade.adjusted") : undefined}
+      >
         {COLOR_GRADING_ADJUST_SLIDERS.map((slider) => {
           const rawPercent = grading.adjust[slider.key] * slider.scale;
           const isSet = Math.abs(grading.adjust[slider.key]) > 1e-6;
           return (
             <div key={slider.key} data-flat-grade-adjust="true">
               <FlatSlider
-                label={slider.label}
+                label={t(slider.label)}
                 value={rawPercent}
                 min={slider.min}
                 max={slider.max}
@@ -319,7 +331,7 @@ export function FlatColorGradingSection({
         })}
       </FlatSubGroup>
 
-      <FlatSubGroup title="Color Wheels">
+      <FlatSubGroup title={t("inspector.grade.colorWheels")}>
         <ColorWheels
           value={resolvedGrading.wheels}
           onPreview={(wheels) =>
@@ -339,7 +351,7 @@ export function FlatColorGradingSection({
         />
       </FlatSubGroup>
 
-      <FlatSubGroup title="Curves">
+      <FlatSubGroup title={t("inspector.grade.curves")}>
         <ColorCurves
           value={{ curves: resolvedGrading.curves, hueCurves: resolvedGrading.hueCurves }}
           onPreview={({ curves, hueCurves }) =>
@@ -361,7 +373,7 @@ export function FlatColorGradingSection({
         />
       </FlatSubGroup>
 
-      <FlatSubGroup title="Secondary">
+      <FlatSubGroup title={t("inspector.grade.secondary")}>
         <PropertyPanelColorSecondary
           secondaries={resolvedGrading.secondaries}
           captureFrame={() => captureGradedFrame({ grading: secondaryInputGrading })}
@@ -388,9 +400,9 @@ export function FlatColorGradingSection({
             aria-hidden="true"
             className={`shrink-0 text-fg-3 transition-transform ${lutOpen ? "" : "-rotate-90"}`}
           />
-          Custom LUT
+          {t("inspector.grade.customLut")}
           <span className="ml-auto min-w-0 truncate font-normal text-fg-3">
-            {selectedLutName ?? "None"}
+            {selectedLutName ?? t("inspector.fill.none")}
           </span>
         </button>
         {lutOpen && (
@@ -398,7 +410,7 @@ export function FlatColorGradingSection({
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5">
               <select
                 data-flat-grade-lut-select="true"
-                aria-label="Custom LUT"
+                aria-label={t("inspector.grade.customLut")}
                 value={lut?.src ?? ""}
                 onChange={(e) => {
                   const src = e.target.value;
@@ -406,7 +418,7 @@ export function FlatColorGradingSection({
                 }}
                 className={`${INSP_SELECT} font-mono text-num`}
               >
-                <option value="">None</option>
+                <option value="">{t("inspector.fill.none")}</option>
                 {lutAssets.map((asset) => (
                   <option key={asset} value={asset}>
                     {asset.split("/").pop() ?? asset}
@@ -417,10 +429,10 @@ export function FlatColorGradingSection({
                 size="sm"
                 disabled={!onImportAssets}
                 onClick={() => lutInputRef.current?.click()}
-                title="Import .cube LUT"
+                title={t("inspector.grade.importLut")}
                 icon={<Plus size={12} />}
               >
-                Import
+                {t("inspector.grade.import")}
               </Button>
               <input
                 ref={lutInputRef}
@@ -435,7 +447,7 @@ export function FlatColorGradingSection({
             </div>
             {lut && (
               <FlatSlider
-                label="LUT strength"
+                label={t("inspector.grade.lutStrengthShort")}
                 value={Math.round((lut.intensity ?? 1) * 100)}
                 min={0}
                 max={100}
@@ -449,15 +461,15 @@ export function FlatColorGradingSection({
         )}
       </div>
 
-      <FlatSubGroup title="Finish">
+      <FlatSubGroup title={t("inspector.grade.finish")}>
         {(["vignette", "grain"] as const).map((key) => (
           <div key={key} className="grid grid-cols-[minmax(0,1fr)_20px] items-center gap-1">
             {renderDetailSlider(key)}
             <button
               type="button"
               data-flat-grade-settings={key}
-              title={key === "vignette" ? "Vignette settings" : "Grain settings"}
-              aria-label={key === "vignette" ? "Vignette settings" : "Grain settings"}
+              title={settingsLabel(key)}
+              aria-label={settingsLabel(key)}
               aria-expanded={detailSettingsOpen === key}
               onClick={() => setDetailSettingsOpen((c) => (c === key ? null : key))}
               className={`${INSP_MINI_BUTTON} aria-expanded:bg-surface-3 aria-expanded:text-fg`}
@@ -477,9 +489,9 @@ export function FlatColorGradingSection({
 
       {onApplyScopeAvailable && (
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5 border-t border-border-subtle pt-2">
-          <span className="whitespace-nowrap text-sm text-fg-3">Copy grade to</span>
+          <span className="whitespace-nowrap text-sm text-fg-3">{t("inspector.grade.copyTo")}</span>
           <select
-            aria-label="Copy grade to"
+            aria-label={t("inspector.grade.copyTo")}
             value={applyScope}
             onChange={(e) => {
               onSetApplyScope(e.target.value as "source-file" | "project");
@@ -487,8 +499,8 @@ export function FlatColorGradingSection({
             disabled={applyBusy}
             className={INSP_SELECT}
           >
-            <option value="source-file">Current file media</option>
-            <option value="project">All project media</option>
+            <option value="source-file">{t("inspector.grade.scopeFile")}</option>
+            <option value="project">{t("inspector.grade.scopeProject")}</option>
           </select>
           <Button
             size="sm"
@@ -498,7 +510,7 @@ export function FlatColorGradingSection({
               onApplyToScope();
             }}
           >
-            {applyBusy ? "Applying" : "Apply"}
+            {applyBusy ? t("inspector.grade.applying") : t("inspector.grade.apply")}
           </Button>
         </div>
       )}

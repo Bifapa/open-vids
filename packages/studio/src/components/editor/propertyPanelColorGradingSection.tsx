@@ -9,6 +9,8 @@ import {
   type MediaMetadata,
   type RuntimeColorGradingStatus,
 } from "./useColorGradingController";
+import { gradeStatusText } from "./propertyPanelGradeStatus";
+import { useTranslation } from "../../i18n";
 
 function StatusPill({ status }: { status: RuntimeColorGradingStatus }) {
   const dotClass =
@@ -19,18 +21,20 @@ function StatusPill({ status }: { status: RuntimeColorGradingStatus }) {
         : status.state === "unavailable"
           ? "bg-red-400"
           : "bg-panel-text-5";
+  const statusText = gradeStatusText(status.message);
   return (
     <div
       className="flex min-w-0 items-center gap-1.5 rounded-sm bg-surface-1 px-2 py-1 text-xs font-medium text-fg-3"
-      title={status.message}
+      title={statusText}
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} />
-      <span className="truncate">{status.message}</span>
+      <span className="truncate">{statusText}</span>
     </div>
   );
 }
 
 function HdrMediaWarning({ metadata }: { metadata: MediaMetadata | null }) {
+  const { t } = useTranslation();
   if (metadata?.color.dynamicRange !== "hdr") return null;
   const details = [
     metadata.color.codecName,
@@ -45,15 +49,14 @@ function HdrMediaWarning({ metadata }: { metadata: MediaMetadata | null }) {
   return (
     <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm leading-4 text-amber-100">
       <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
-        <span className="font-semibold">{metadata.color.label} source</span>
+        <span className="font-semibold">
+          {t("inspector.grade.hdrSource", { label: metadata.color.label })}
+        </span>
         <span className="rounded-sm bg-amber-400/20 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide text-amber-100">
-          SDR preview
+          {t("inspector.grade.sdrPreview")}
         </span>
       </div>
-      <p className="text-amber-100/80">
-        These controls use the current SDR shader preview path. Render may stay HDR-tagged, but this
-        is not true HDR color grading yet.
-      </p>
+      <p className="text-amber-100/80">{t("inspector.grade.hdrNote")}</p>
       {details && <p className="mt-1 truncate text-xs text-amber-100/55">{details}</p>}
     </div>
   );
@@ -68,6 +71,7 @@ function HoldBeforeButton({
   disabled: boolean;
   onHoldChange: (holding: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const startHold = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (disabled) return;
     event.preventDefault();
@@ -95,7 +99,7 @@ function HoldBeforeButton({
       type="button"
       disabled={disabled}
       aria-pressed={active}
-      aria-label="Hold to show original"
+      aria-label={t("inspector.grade.holdToCompare")}
       onPointerDown={startHold}
       onPointerUp={stopHold}
       onPointerCancel={stopHold}
@@ -117,7 +121,7 @@ function HoldBeforeButton({
       className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors ${
         active ? "bg-studio-accent text-black" : "text-fg-3 hover:bg-surface-2 hover:text-fg"
       } disabled:cursor-not-allowed disabled:opacity-40`}
-      title="Hold to show original"
+      title={t("inspector.grade.holdToCompare")}
     >
       <Compare size={13} />
     </button>
@@ -148,6 +152,7 @@ export function ColorGradingSection({
     value: string | null,
   ) => Promise<{ changedFiles: number; changedElements: number }>;
 }) {
+  const { t } = useTranslation();
   const {
     grading,
     compareEnabled,
@@ -170,7 +175,7 @@ export function ColorGradingSection({
 
   return (
     <Section
-      title="Color grading"
+      title={t("inspector.grade.title")}
       icon={<Palette size={15} />}
       accessory={
         <div className="flex min-w-0 items-center gap-1.5">
@@ -187,7 +192,7 @@ export function ColorGradingSection({
               resetGrading();
             }}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg"
-            title="Reset color grading"
+            title={t("inspector.grade.reset")}
           >
             <RotateCcw size={12} />
           </button>
@@ -210,10 +215,10 @@ export function ColorGradingSection({
             }}
             disabled={applyBusy}
             className="w-full min-w-0 rounded-md bg-surface-1 px-3 py-2 text-sm font-medium text-fg outline-hidden disabled:cursor-not-allowed disabled:opacity-50"
-            title="Choose where to copy these color grading settings"
+            title={t("inspector.grade.scopeHint")}
           >
-            <option value="source-file">Current file media</option>
-            <option value="project">All project media</option>
+            <option value="source-file">{t("inspector.grade.scopeFile")}</option>
+            <option value="project">{t("inspector.grade.scopeProject")}</option>
           </select>
           <button
             type="button"
@@ -223,9 +228,9 @@ export function ColorGradingSection({
               void applyToScope();
             }}
             className="h-8 rounded-md bg-surface-1 px-3 text-sm font-medium text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
-            title="Copy these color grading settings to the selected scope"
+            title={t("inspector.grade.applyHint")}
           >
-            {applyBusy ? "Applying" : "Apply"}
+            {applyBusy ? t("inspector.grade.applying") : t("inspector.grade.apply")}
           </button>
         </div>
       )}

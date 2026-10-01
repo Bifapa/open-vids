@@ -40,6 +40,7 @@ import {
 } from "./propertyPanelAutomation";
 import type { DomEditSelection } from "./domEditingTypes";
 import { useLivePlayheadTime } from "../../hooks/useLivePlayheadTime";
+import { useTranslation } from "../../i18n";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { isRevealedAudioFxRequestCurrent } from "../../player/store/keyframeSlice";
 import { FxSection } from "./propertyPanelFxSection.js";
@@ -108,6 +109,7 @@ export function AudioFxGroup({
   /** Write `data-audio-group` on every named clip, atomically, one undo entry. */
   onAutoGroupCarveSources?: (clipIds: readonly string[], groupId: string) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const chain = ((): HfAudioFxChain => {
     const raw = element.dataAttributes?.[HF_AUDIO_FX_DATA_KEY];
     if (!raw) return { version: 1, nodes: [] };
@@ -221,8 +223,8 @@ export function AudioFxGroup({
   const automatedPresets = new Set(
     automation.lanes
       .map((lane) => parseAutomationTarget(lane.target))
-      .filter((t): t is { kind: "preset"; presetId: string } => t?.kind === "preset")
-      .map((t) => t.presetId),
+      .filter((target): target is { kind: "preset"; presetId: string } => target?.kind === "preset")
+      .map((target) => target.presetId),
   );
 
   /**
@@ -268,8 +270,9 @@ export function AudioFxGroup({
       element.id ?? undefined,
       doc ? resolveAudioGroups(doc) : [],
     );
+    // `t` is a dependency so the labels follow a language switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [element, storeElements]);
+  }, [element, storeElements, t]);
 
   // A bus has no span of its own, so resolve the live members. The
   // `storeElements` subscription above rerenders this panel when membership

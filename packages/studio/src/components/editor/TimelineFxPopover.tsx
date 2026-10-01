@@ -12,6 +12,7 @@ import { useEffect, useRef, type CSSProperties, type KeyboardEvent } from "react
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 import { applyAudioFxPreset, getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
+import { useTranslation } from "../../i18n";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
 import { applyPresetToChain } from "./useApplyAudioFxPreset.js";
 import { useFxAudition } from "./useFxAudition.js";
@@ -97,6 +98,7 @@ export function TimelineFxPopover({
   onAuditionTransport,
   onOpenRack,
 }: TimelineFxPopoverProps) {
+  const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const { audition, clearAudition, storedChain } = useFxAudition(
     chain,
@@ -136,7 +138,7 @@ export function TimelineFxPopover({
     <div
       ref={rootRef}
       role="dialog"
-      aria-label="Effects"
+      aria-label={t("editor.fx.popover")}
       className="z-200 flex flex-col overflow-hidden rounded-md border border-white/10 bg-[#1b1b1f] p-2 shadow-xl"
       style={clampedStyle(anchorRect)}
       onKeyDown={onKeyDown}
@@ -165,7 +167,7 @@ export function TimelineFxPopover({
             onOpenRack();
           }}
         >
-          + effect
+          {t("editor.fx.addEffect")}
         </button>
         <button
           type="button"
@@ -175,7 +177,7 @@ export function TimelineFxPopover({
             onOpenRack();
           }}
         >
-          Open rack ›
+          {t("editor.fx.openRack")}
         </button>
       </div>
     </div>

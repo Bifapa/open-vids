@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SUPPORTED_PROPS } from "@hyperframes/parsers/gsap-constants";
+import { t } from "../../i18n";
 import { buildTweenSummary } from "./gsapAnimationHelpers";
 import { PROP_LABELS } from "./gsapAnimationConstants";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
@@ -19,7 +20,7 @@ function anim(overrides: Partial<GsapAnimation>): GsapAnimation {
 
 describe("buildTweenSummary", () => {
   it("describes a to tween", () => {
-    const s = buildTweenSummary(anim({ properties: { opacity: 1, x: 100 } }));
+    const s = buildTweenSummary(t, anim({ properties: { opacity: 1, x: 100 } }));
     expect(s).toContain("#box");
     expect(s).toContain("opacity");
     expect(s).toContain("move x");
@@ -27,6 +28,7 @@ describe("buildTweenSummary", () => {
 
   it("describes 3D transform tweens with labels and units", () => {
     const s = buildTweenSummary(
+      t,
       anim({
         properties: {
           z: 120,
@@ -47,19 +49,20 @@ describe("buildTweenSummary", () => {
   });
 
   it("describes a from tween", () => {
-    const s = buildTweenSummary(anim({ method: "from", properties: { opacity: 0 } }));
+    const s = buildTweenSummary(t, anim({ method: "from", properties: { opacity: 0 } }));
     expect(s).toContain("enters from");
     expect(s).toContain("opacity");
   });
 
   it("describes a set tween", () => {
-    const s = buildTweenSummary(anim({ method: "set", properties: { opacity: 0 } }));
+    const s = buildTweenSummary(t, anim({ method: "set", properties: { opacity: 0 } }));
     expect(s).toMatch(/^At 0s, instantly set/);
     expect(s).toContain("opacity");
   });
 
   it("describes a fromTo tween with both from and to sections", () => {
     const s = buildTweenSummary(
+      t,
       anim({
         method: "fromTo",
         fromProperties: { opacity: 0, x: -50 },
@@ -78,13 +81,14 @@ describe("buildTweenSummary", () => {
 
   it("handles fromTo with empty fromProperties", () => {
     const s = buildTweenSummary(
+      t,
       anim({ method: "fromTo", fromProperties: {}, properties: { scale: 2 } }),
     );
     expect(s).toContain("from [—]");
   });
 
   it("handles no properties", () => {
-    const s = buildTweenSummary(anim({ properties: {} }));
+    const s = buildTweenSummary(t, anim({ properties: {} }));
     expect(s).toContain("no properties yet");
   });
 });

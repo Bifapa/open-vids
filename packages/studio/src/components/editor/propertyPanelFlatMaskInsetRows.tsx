@@ -9,6 +9,7 @@ import {
   parsePxMetricValue,
   type ClipPathInsetSides,
 } from "./propertyPanelHelpers";
+import { useTranslation } from "../../i18n";
 import { FlatSlider } from "./propertyPanelFlatPrimitives";
 import { MetricField } from "./propertyPanelPrimitives";
 
@@ -29,6 +30,7 @@ export function FlatMaskInsetRows({
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
+  const { t } = useTranslation();
   const clipPathPreset = inferClipPathPreset(clipPathValue);
   const parsedClipInsets = parseInsetClipPathSides(clipPathValue);
   const clipInsetValue = getClipPathInsetPx(clipPathValue);
@@ -57,7 +59,7 @@ export function FlatMaskInsetRows({
   return (
     <>
       <FlatSlider
-        label="Mask inset"
+        label={t("inspector.mask.inset")}
         value={clipInsetValue}
         min={0}
         max={Math.max(120, Math.ceil(clipInsetValue))}
@@ -72,25 +74,25 @@ export function FlatMaskInsetRows({
       {showClipInsetSides && (
         <div className="grid grid-cols-4 gap-2">
           <MetricField
-            label="T"
+            label={t("inspector.mask.top")}
             value={formatPxMetricValue(clipInsetSides.top)}
             disabled={disabled}
             onCommit={(next) => commitClipInsetSide("top", next)}
           />
           <MetricField
-            label="R"
+            label={t("inspector.mask.right")}
             value={formatPxMetricValue(clipInsetSides.right)}
             disabled={disabled}
             onCommit={(next) => commitClipInsetSide("right", next)}
           />
           <MetricField
-            label="B"
+            label={t("inspector.mask.bottom")}
             value={formatPxMetricValue(clipInsetSides.bottom)}
             disabled={disabled}
             onCommit={(next) => commitClipInsetSide("bottom", next)}
           />
           <MetricField
-            label="L"
+            label={t("inspector.mask.left")}
             value={formatPxMetricValue(clipInsetSides.left)}
             disabled={disabled}
             onCommit={(next) => commitClipInsetSide("left", next)}

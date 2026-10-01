@@ -31,6 +31,7 @@ import { fxTintWash } from "./propertyPanelFxPresetStyle.js";
 // Shared with the timeline's lane labels: a band is named by its frequency in
 // both places, and two formatters would drift.
 import { formatHz } from "../../player/components/automationLaneData";
+import { formatNumber, t as translate, useTranslation } from "../../i18n";
 
 export interface AudioTrackOption {
   id: string;
@@ -49,7 +50,7 @@ function carveMemberName(node: HfAudioFxNode): string {
 function formatParamValue(param: HfAudioFxParam, raw: number | string | undefined): string {
   if (param.kind !== "number" || typeof raw !== "number") return String(raw ?? "");
   const places = param.step >= 1 ? 0 : param.step >= 0.1 ? 1 : 2;
-  return `${Number(raw.toFixed(places))}${param.unit ? ` ${param.unit}` : ""}`;
+  return `${formatNumber(raw, { maximumFractionDigits: places })}${param.unit ? ` ${param.unit}` : ""}`;
 }
 
 /**
@@ -86,6 +87,7 @@ function FxCarveMember({
   automatedTargets?: ReadonlySet<string>;
   liveAutomationValues?: ReadonlyMap<string, number>;
 }) {
+  const { t } = useTranslation();
   const def = getAudioFxDef(node.type);
   if (!def) return null;
   const params = node.params ?? defaultAudioFxParams(node.type);
@@ -121,7 +123,11 @@ function FxCarveMember({
                   edited — saying so is the difference between a stale readout and
                   a pointer to the thing that owns it. */}
               {automated ? (
-                <ChartLine size={10} aria-label="Automated" className="self-center text-fg" />
+                <ChartLine
+                  size={10}
+                  aria-label={t("inspector.carve.automated")}
+                  className="self-center text-fg"
+                />
               ) : null}
             </span>
           );
@@ -175,6 +181,7 @@ export function FxCarveModule({
   onCarveChange(carve: HfCarveSettings): void;
   onCarvePreview(carve: HfCarveSettings): void;
 }) {
+  const { t } = useTranslation();
   const on = carve.enabled;
   const soleVoice = soleCarveVoice(sourceOptions, carve.sources);
   const summary = carveSummary({ nodes, carve, analysing });
@@ -205,11 +212,11 @@ export function FxCarveModule({
               on ? "text-fg" : "text-fg-3"
             } ${INSP_FOCUS_INSET}`}
             // Truncates in a narrow panel like every other name in the rack.
-            title="Voiceover carve"
+            title={t("inspector.carve.title")}
             aria-expanded={open}
             onClick={onToggleOpen}
           >
-            Voiceover carve
+            {t("inspector.carve.title")}
           </button>
           <span className="hf-fx-carve-summary truncate text-xs text-fg-3">{summary}</span>
         </span>
@@ -220,8 +227,8 @@ export function FxCarveModule({
           type="button"
           className={`hf-fx-bypass hf-fx-carve-toggle mx-0.5 ${inspSwitchTrack(on)}`}
           aria-pressed={on}
-          aria-label={on ? "Switch the carve off" : "Switch the carve on"}
-          title={on ? "Switch the carve off" : "Switch the carve on"}
+          aria-label={on ? t("inspector.carve.switchOff") : t("inspector.carve.switchOn")}
+          title={on ? t("inspector.carve.switchOff") : t("inspector.carve.switchOn")}
           disabled={disabled}
           onClick={() => onCarveChange({ ...carve, enabled: !on })}
         >
@@ -247,13 +254,13 @@ export function FxCarveModule({
               param={{
                 kind: "number",
                 key: "strength",
-                label: "Strength",
+                label: t("inspector.carve.strength"),
                 unit: "",
                 min: 0,
                 max: 1,
                 step: 0.05,
                 default: DEFAULT_CARVE.strength,
-                hint: "How hard to carve: deeper cuts, in more bands, and more room made by dropping the bed's level under the voice. At 0 it carves frequencies only. Moving this re-runs the analysis on what is already here.",
+                hint: t("inspector.carve.strengthHint"),
               }}
               value={carve.strength}
               disabled={disabled || carve.sources.length === 0}
@@ -314,17 +321,21 @@ function carveSummary(input: {
   analysing?: boolean;
 }): string {
   const { nodes, carve, analysing } = input;
-  if (!carve.enabled) return "off";
-  if (analysing) return "analysing…";
+  if (!carve.enabled) return translate("inspector.carve.summary.off");
+  if (analysing) return translate("inspector.carve.summary.analysing");
   const bands = nodes.filter((n) => n.type === "peaking").length;
-  if (bands === 0) return carve.sources.length > 0 ? "no analysis yet" : "pick a voice";
-  return [
-    `${bands} band${bands === 1 ? "" : "s"}`,
-    ...(nodes.some((n) => n.type === "gain") ? ["level"] : []),
+  if (bands === 0) {
+    return carve.sources.length > 0
+      ? translate("inspector.carve.summary.noAnalysis")
+      : translate("inspector.carve.summary.pickVoice");
+  }
+  return translate("inspector.carve.summary.analysed", {
+    bands,
+    level: nodes.some((n) => n.type === "gain") ? "yes" : "no",
     // Worth saying when it is more than one: the cuts follow whoever is
     // speaking, and that is not obvious from a band count.
-    ...(carve.sources.length > 1 ? [`${carve.sources.length} voices`] : []),
-  ].join(" + ");
+    voices: carve.sources.length > 1 ? carve.sources.length : 0,
+  });
 }
 
 /** Which voices the bed makes room for: a readout when there is only one to
@@ -342,11 +353,12 @@ function CarveSourceRow({
   disabled?: boolean;
   onCarveChange(carve: HfCarveSettings): void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="hf-fx-row flex min-h-6 items-center gap-1.5">
       {/* Wraps like every other name in this column (see FxParamRow) — one
           truncating row beside wrapping ones reads as a rendering bug. */}
-      <span className={`hf-fx-label ${INSP_FX_LABEL}`}>Listen to</span>
+      <span className={`hf-fx-label ${INSP_FX_LABEL}`}>{t("inspector.carve.listenTo")}</span>
       {soleVoice ? (
         <span
           className="hf-fx-carve-source min-w-0 flex-1 truncate font-mono text-num text-fg-2"
@@ -364,7 +376,7 @@ function CarveSourceRow({
             <label
               key={o.id}
               className="flex h-6 min-w-0 items-center gap-1.5 rounded-xs px-1 text-sm text-fg transition-colors hover:bg-surface-2"
-              title={`Make room for ${o.label}`}
+              title={t("inspector.carve.makeRoomFor", { label: o.label })}
             >
               <input
                 type="checkbox"
@@ -414,6 +426,7 @@ function CarveAnalysis({
   automatedTargets?: ReadonlySet<string>;
   liveAutomationValues?: ReadonlyMap<string, number>;
 }) {
+  const { t } = useTranslation();
   if (analysing) {
     return (
       <p className="hf-fx-carve-working flex items-center justify-center gap-1.5 border-t border-border-subtle py-2 text-xs text-fg-3">
@@ -437,20 +450,22 @@ function CarveAnalysis({
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
           />
         </svg>
-        Analysing…
+        {t("inspector.carve.analysing")}
       </p>
     );
   }
   if (nodes.length === 0) {
     return (
       <p className="hf-fx-carve-working border-t border-border-subtle py-1.5 text-center text-xs text-fg-3">
-        {hasSources ? "Nothing analysed yet." : "Pick the voices this bed should make room for."}
+        {hasSources ? t("inspector.carve.nothingAnalysed") : t("inspector.carve.pickVoices")}
       </p>
     );
   }
   return (
     <div className="hf-fx-carve-members divide-y divide-border-subtle border-t border-border-subtle">
-      <div className={`hf-fx-carve-members-label px-2 pt-1.5 ${INSP_MINI_LABEL}`}>Analysed</div>
+      <div className={`hf-fx-carve-members-label px-2 pt-1.5 ${INSP_MINI_LABEL}`}>
+        {t("inspector.carve.analysed")}
+      </div>
       {nodes.map((node, i) => (
         <FxCarveMember
           key={node.id ?? `${node.type}-${i}`}

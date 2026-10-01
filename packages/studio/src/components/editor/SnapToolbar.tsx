@@ -1,6 +1,7 @@
 import { memo, useEffect } from "react";
 import { CaretDown, FrameCorners, Path } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { useTranslation } from "../../i18n";
 import { IconButton, Menu, MenuCheckboxItem, MenuSeparator, NumberField, Tooltip } from "../ui";
 import { usePreviewGuidesStore, type PreviewSnapPreferences } from "./previewGuidesStore";
 
@@ -40,6 +41,7 @@ function useSnapShortcutKeys(prefs: PreviewSnapPreferences) {
  * path, the motion-destination toggle.
  */
 export const SnapToolbar = memo(function SnapToolbar() {
+  const { t } = useTranslation();
   const prefs = usePreviewGuidesStore((s) => s.snapPrefs);
   const rulerVisible = usePreviewGuidesStore((s) => s.rulerVisible);
   const safeMarginsVisible = usePreviewGuidesStore((s) => s.safeMarginsVisible);
@@ -53,12 +55,16 @@ export const SnapToolbar = memo(function SnapToolbar() {
 
   return (
     <>
-      <span className="inline-flex shrink-0" role="group" aria-label="Guides">
-        <Tooltip label={safeMarginsVisible ? "Hide safe areas" : "Show safe areas"}>
+      <span className="inline-flex shrink-0" role="group" aria-label={t("editor.guides.group")}>
+        <Tooltip
+          label={
+            safeMarginsVisible ? t("editor.guides.hideSafeAreas") : t("editor.guides.showSafeAreas")
+          }
+        >
           <IconButton
             size="sm"
             className="rounded-r-none"
-            aria-label="Toggle safe margins"
+            aria-label={t("editor.guides.toggleSafeMargins")}
             aria-pressed={safeMarginsVisible}
             icon={<FrameCorners size={14} weight={safeMarginsVisible ? "fill" : "regular"} />}
             onClick={() => toggleGuide("safeMarginsVisible")}
@@ -66,13 +72,13 @@ export const SnapToolbar = memo(function SnapToolbar() {
         </Tooltip>
         <Menu
           align="end"
-          aria-label="Guides and snapping"
+          aria-label={t("editor.guides.menu")}
           className="min-w-[236px]"
           trigger={
             <IconButton
               size="sm"
               className="w-3.5 rounded-l-none"
-              aria-label="Guides and snapping options"
+              aria-label={t("editor.guides.menuOptions")}
               icon={<CaretDown size={10} weight="bold" />}
             />
           }
@@ -81,32 +87,32 @@ export const SnapToolbar = memo(function SnapToolbar() {
             checked={safeMarginsVisible}
             onCheckedChange={() => toggleGuide("safeMarginsVisible")}
           >
-            Safe Areas
+            {t("editor.guides.safeAreas")}
           </MenuCheckboxItem>
           <MenuCheckboxItem
-            aria-label="Toggle ruler"
+            aria-label={t("editor.guides.toggleRuler")}
             checked={rulerVisible}
             onCheckedChange={() => toggleGuide("rulerVisible")}
           >
-            Rulers
+            {t("editor.guides.rulers")}
           </MenuCheckboxItem>
           <MenuCheckboxItem
             checked={prefs.gridVisible}
             onCheckedChange={() => setSnapPrefs({ gridVisible: !prefs.gridVisible })}
           >
-            Grid
+            {t("editor.guides.grid")}
           </MenuCheckboxItem>
           <MenuCheckboxItem
             checked={prefs.snapToGrid}
             onCheckedChange={() => setSnapPrefs({ snapToGrid: !prefs.snapToGrid })}
           >
-            Snap to Grid
+            {t("editor.guides.snapToGrid")}
           </MenuCheckboxItem>
           <MenuCheckboxItem
             checked={prefs.snapEnabled}
             onCheckedChange={() => setSnapPrefs({ snapEnabled: !prefs.snapEnabled })}
           >
-            Snap to Elements
+            {t("editor.guides.snapToElements")}
           </MenuCheckboxItem>
           <MenuSeparator />
           <div
@@ -116,9 +122,9 @@ export const SnapToolbar = memo(function SnapToolbar() {
               if (event.key !== "Escape") event.stopPropagation();
             }}
           >
-            <span>Grid Spacing</span>
+            <span>{t("editor.guides.gridSpacing")}</span>
             <NumberField
-              label="Grid spacing in pixels"
+              label={t("editor.guides.gridSpacingLabel")}
               className="w-[76px]"
               value={prefs.gridSpacing}
               min={GRID_SPACING_MIN}
@@ -136,13 +142,11 @@ export const SnapToolbar = memo(function SnapToolbar() {
       </span>
       {motionPathCreateAvailable && (
         <Tooltip
-          label={
-            motionPathArmed ? "Click the canvas to set the destination" : "Set motion destination"
-          }
+          label={motionPathArmed ? t("editor.guides.motionArmed") : t("editor.guides.motionSet")}
         >
           <IconButton
             size="sm"
-            aria-label="Set motion destination"
+            aria-label={t("editor.guides.motionSet")}
             aria-pressed={motionPathArmed}
             icon={<Path size={14} weight={motionPathArmed ? "bold" : "regular"} />}
             onClick={() => setMotionPathArmed(!motionPathArmed)}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import { LABEL } from "./propertyPanelHelpers";
 
 const SLIDER_THUMB_SIZE = 10;
@@ -59,6 +60,7 @@ export function ColorGradingSliderControl({
     onClick: () => void;
   };
 }) {
+  const { t } = useTranslation();
   const [draftState, setDraftState] = useState<{ value: number; source: number } | null>(null);
   const [inputDraft, setInputDraft] = useState<{ value: string; source: number } | null>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -169,13 +171,13 @@ export function ColorGradingSliderControl({
           <button
             type="button"
             disabled={disabled}
-            aria-label={`Reset ${label}`}
+            aria-label={t("inspector.grade.slider.reset", { label })}
             onClick={(event) => {
               event.stopPropagation();
               onReset();
             }}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-disabled transition-colors hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
-            title={`Reset ${label}`}
+            title={t("inspector.grade.slider.reset", { label })}
           >
             <RotateCcw size={11} />
           </button>
@@ -261,20 +263,20 @@ export function ColorGradingSliderControl({
           <button
             type="button"
             disabled={disabled}
-            aria-label={`Decrease ${label}`}
+            aria-label={t("inspector.grade.slider.decrease", { label })}
             onClick={() => nudge(-1)}
             className="flex h-5 w-5 items-center justify-center text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
-            title={`Decrease ${label}`}
+            title={t("inspector.grade.slider.decrease", { label })}
           >
             <Minus size={11} />
           </button>
           <button
             type="button"
             disabled={disabled}
-            aria-label={`Increase ${label}`}
+            aria-label={t("inspector.grade.slider.increase", { label })}
             onClick={() => nudge(1)}
             className="flex h-5 w-5 items-center justify-center border-l border-border-subtle text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
-            title={`Increase ${label}`}
+            title={t("inspector.grade.slider.increase", { label })}
           >
             <Plus size={11} />
           </button>

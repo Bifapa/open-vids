@@ -5,6 +5,8 @@ import {
   parseWiggleEase,
   type WiggleEaseConfig,
 } from "@hyperframes/core/wiggle-ease";
+import type { TFunction } from "i18next";
+import { formatNumber, useTranslation } from "../../i18n";
 import { easePresetLabel } from "./easePresetLibrary";
 import {
   DEFAULT_CURVE,
@@ -58,6 +60,7 @@ function EaseTypeDropdown({
   label: string;
   onSelect: (ease: string) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -149,7 +152,7 @@ function EaseTypeDropdown({
           ref={menuRef}
           id={menuId}
           role="menu"
-          aria-label={`${MODE_LABELS[kind]} ease presets`}
+          aria-label={t("editor.ease.presetsMenu", { mode: t(MODE_LABELS[kind]) })}
           onKeyDown={handleMenuKeyDown}
           className="absolute inset-x-0 top-full z-20 mt-1 rounded-lg border border-border bg-menu-bg/94 p-2 shadow-pop backdrop-blur-xl"
         >
@@ -175,12 +178,17 @@ function resolveEditableCurve(ease: string, springBounce: number | null): Pts | 
   return null;
 }
 
-function resolveEditorLabel(ease: string, springBounce: number | null, isWiggle: boolean): string {
+function resolveEditorLabel(
+  t: TFunction,
+  ease: string,
+  springBounce: number | null,
+  isWiggle: boolean,
+): string {
   const presetLabel = easePresetLabel(ease);
   if (presetLabel !== null) return presetLabel;
-  if (springBounce !== null) return "Custom spring";
-  if (isWiggle) return "Custom wiggle";
-  if (ease.startsWith("custom(")) return "Custom bezier";
+  if (springBounce !== null) return t("editor.ease.customSpring");
+  if (isWiggle) return t("editor.ease.customWiggle");
+  if (ease.startsWith("custom(")) return t("editor.ease.customBezier");
   return EASE_LABELS[ease] ?? ease;
 }
 
@@ -256,6 +264,7 @@ export function EaseCurveSection({
   onCustomEaseCommit: (ease: string) => void;
   collidingAnimationTargets?: AnimationKeyframeTarget[];
 }) {
+  const { t } = useTranslation();
   // The ease this section painted optimistically, still waiting for its commit
   // to round-trip back through the `ease` prop.
   const [pendingEase, setPendingEase] = useState<string | null>(null);
@@ -390,19 +399,19 @@ export function EaseCurveSection({
   const bottom = yToSvg(0);
   const left = xToSvg(0);
   const right = xToSvg(1);
-  const label = resolveEditorLabel(displayedEase, springBounce, isWiggle);
+  const label = resolveEditorLabel(t, displayedEase, springBounce, isWiggle);
 
   return (
     <div className="rounded-lg bg-surface-1/50 p-2">
       <EaseTypeDropdown kind={mode} ease={displayedEase} label={label} onSelect={commitEase} />
       {collidingAnimationTargets && collidingAnimationTargets.length > 1 && (
         <p className="mb-1 text-2xs text-fg-3">
-          Applies to {collidingAnimationTargets.length} animations
+          {t("editor.ease.appliesTo", { count: collidingAnimationTargets.length })}
         </p>
       )}
       <EaseModeToggle mode={mode} onCommit={commitEase} />
       <span className="sr-only" aria-live="polite">
-        {MODE_LABELS[mode]} ease editor selected
+        {t("editor.ease.modeSelected", { mode: t(MODE_LABELS[mode]) })}
       </span>
       {showGraph ? (
         <>
@@ -513,11 +522,16 @@ export function EaseCurveSection({
                       fill="transparent"
                       role="slider"
                       tabIndex={0}
-                      aria-label={`${key === "p1" ? "First" : "Second"} bezier control point`}
+                      aria-label={
+                        key === "p1" ? t("editor.ease.firstPoint") : t("editor.ease.secondPoint")
+                      }
                       aria-valuemin={0}
                       aria-valuemax={1}
                       aria-valuenow={key === "p1" ? x1 : x2}
-                      aria-valuetext={`x ${key === "p1" ? x1 : x2}, y ${key === "p1" ? y1 : y2}`}
+                      aria-valuetext={t("editor.ease.pointValue", {
+                        x: formatNumber(key === "p1" ? x1 : x2),
+                        y: formatNumber(key === "p1" ? y1 : y2),
+                      })}
                       className="cursor-grab stroke-transparent outline-hidden active:cursor-grabbing focus-visible:stroke-white focus-visible:stroke-[2px]"
                       onPointerDown={(e) => handlePointerDown(key, e)}
                       onKeyDown={(event) => handleKeyDown(key, event)}
@@ -546,7 +560,7 @@ export function EaseCurveSection({
         </>
       ) : (
         <p className="px-0.5 py-1.5 text-xs leading-relaxed text-fg-3">
-          {label} preset: switch to Curve, Spring, or Wiggle above to shape it by hand.
+          {t("editor.ease.presetOnly", { label })}
         </p>
       )}
     </div>

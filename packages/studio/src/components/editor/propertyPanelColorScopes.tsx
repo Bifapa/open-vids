@@ -6,15 +6,16 @@ import {
 } from "./colorGradingFrameAnalysis";
 import { useColorGradingScopes } from "./useColorGradingScopes";
 import { RotateCw } from "../../icons/SystemIcons";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { CaretDown } from "@phosphor-icons/react";
 import { INSP_MINI_BUTTON, INSP_SUBGROUP_HEAD } from "./inspectorStyles";
 
-const MODES: Array<{ id: ColorGradingScopeMode; label: string }> = [
-  { id: "histogram", label: "Histogram" },
-  { id: "waveform", label: "Waveform" },
-  { id: "parade", label: "RGB Parade" },
-  { id: "vectorscope", label: "Vectorscope" },
-];
+const MODES = [
+  { id: "histogram", label: "inspector.scopes.mode.histogram" },
+  { id: "waveform", label: "inspector.scopes.mode.waveform" },
+  { id: "parade", label: "inspector.scopes.mode.parade" },
+  { id: "vectorscope", label: "inspector.scopes.mode.vectorscope" },
+] as const satisfies ReadonlyArray<{ id: ColorGradingScopeMode; label: TranslationKey }>;
 
 function densityAlpha(value: number, maximum: number): number {
   if (value === 0 || maximum === 0) return 0;
@@ -181,14 +182,17 @@ export function PropertyPanelColorScopes({
   captureFrame: () => Promise<ColorGradingCapturedFrame | null>;
   refreshKey: string;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<ColorGradingScopeMode>("waveform");
+  const activeMode = MODES.find((candidate) => candidate.id === mode);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { analysis, status, refresh } = useColorGradingScopes({
     open,
     captureFrame,
     refreshKey,
   });
+  const statusText = t("inspector.scopes.status", { status });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -215,8 +219,10 @@ export function PropertyPanelColorScopes({
             aria-hidden="true"
             className={`shrink-0 text-fg-3 transition-transform ${open ? "" : "-rotate-90"}`}
           />
-          Scopes
-          <span className="ml-auto truncate font-normal text-fg-3">{open ? status : "Off"}</span>
+          {t("inspector.scopes.title")}
+          <span className="ml-auto truncate font-normal text-fg-3">
+            {open ? statusText : t("inspector.scopes.off")}
+          </span>
         </button>
       </div>
       {open && (
@@ -235,14 +241,14 @@ export function PropertyPanelColorScopes({
                       : "text-fg-3 hover:bg-surface-1 hover:text-fg-2"
                   }`}
                 >
-                  {candidate.label}
+                  {t(candidate.label)}
                 </button>
               ))}
             </div>
             <button
               type="button"
-              aria-label="Refresh scopes"
-              title="Refresh scopes"
+              aria-label={t("inspector.scopes.refresh")}
+              title={t("inspector.scopes.refresh")}
               onClick={refresh}
               className={INSP_MINI_BUTTON}
             >
@@ -254,7 +260,10 @@ export function PropertyPanelColorScopes({
             width={320}
             height={144}
             role="img"
-            aria-label={`${MODES.find((candidate) => candidate.id === mode)?.label ?? mode} scope, ${status}`}
+            aria-label={t("inspector.scopes.canvasLabel", {
+              mode: activeMode ? t(activeMode.label) : mode,
+              status: statusText,
+            })}
             className="block h-auto w-full rounded-sm border border-border-subtle bg-bg-1"
           />
         </div>

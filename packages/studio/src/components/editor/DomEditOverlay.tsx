@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, type RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
+import { useTranslation } from "../../i18n";
 import { useMarqueeGestures } from "./marqueeCommit";
 import { MarqueeOverlay } from "./MarqueeOverlay";
 import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
@@ -131,6 +132,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onDeleteSelection,
   onApplyZIndex,
 }: DomEditOverlayProps) {
+  const { t } = useTranslation();
   const readOnly = usePreviewReadOnly();
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -442,7 +444,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       }`}
       data-editing-text={inlineText.editing ? "true" : undefined}
       tabIndex={-1}
-      aria-label="Composition canvas"
+      aria-label={t("editor.canvas.ariaLabel")}
       // Cursor follows marquee rect *state* (re-renders), not the mutable ref.
       style={marquee.marqueeRect ? { cursor: "crosshair" } : undefined}
       onPointerDownCapture={(event) => {

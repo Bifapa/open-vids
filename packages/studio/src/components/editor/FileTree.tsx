@@ -1,5 +1,6 @@
 import { memo, useState, useCallback, useMemo, useRef } from "react";
 import { Plus, FolderSimplePlus } from "@phosphor-icons/react";
+import { useTranslation } from "../../i18n";
 import {
   buildTree,
   sortChildren,
@@ -44,6 +45,7 @@ export const FileTree = memo(function FileTree({
   onImportFiles,
   lintFindingsByFile,
 }: FileTreeProps) {
+  const { t } = useTranslation();
   const tree = useMemo(() => buildTree(files), [files]);
   const children = useMemo(() => sortChildren(tree.children), [tree]);
 
@@ -236,20 +238,20 @@ export const FileTree = memo(function FileTree({
       {/* Files header with the new-file / new-folder actions (prototype `.ft-head`) */}
       {hasFileOps && (
         <div className="flex h-list-head shrink-0 items-center gap-1 pl-3 pr-1.5 text-xs font-semibold text-fg-2">
-          <span className="min-w-0 flex-1">Files</span>
+          <span className="min-w-0 flex-1">{t("editor.fileTree.files")}</span>
           <button
             onClick={() => handleNewFile("")}
             className="flex size-ctl-xs items-center justify-center rounded-sm text-fg-3 transition-colors duration-hover hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-            title="New File"
-            aria-label="New File"
+            title={t("editor.fileTree.newFile")}
+            aria-label={t("editor.fileTree.newFile")}
           >
             <Plus size={12} weight="bold" />
           </button>
           <button
             onClick={() => handleNewFolder("")}
             className="flex size-ctl-xs items-center justify-center rounded-sm text-fg-3 transition-colors duration-hover hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-            title="New Folder"
-            aria-label="New Folder"
+            title={t("editor.fileTree.newFolder")}
+            aria-label={t("editor.fileTree.newFolder")}
           >
             <FolderSimplePlus size={12} />
           </button>
@@ -289,7 +291,7 @@ export const FileTree = memo(function FileTree({
           )}
         {children.length === 0 && !inlineInput && (
           <div className="px-3 py-4 text-center text-xs text-fg-3">
-            No files yet{hasFileOps ? " — use + above to create one" : ""}.
+            {hasFileOps ? t("editor.fileTree.emptyCanCreate") : t("editor.fileTree.empty")}
           </div>
         )}
         {children.map((child) =>

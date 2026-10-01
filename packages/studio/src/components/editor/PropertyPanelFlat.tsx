@@ -2,6 +2,8 @@ import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { isTextEditableSelection } from "./domEditing";
+import { formatPercent, useTranslation } from "../../i18n";
+import { flatStyleSummary } from "./propertyPanelFlatStyleHelpers";
 import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
@@ -129,6 +131,7 @@ export function PropertyPanelFlat({
   onUpdateSegmentEase,
   onSetAllKeyframeEases,
 }: PropertyPanelFlatProps) {
+  const { t } = useTranslation();
   // PropertyPanel keys this component by selection, so the default is per element.
   const [openGroupId, setOpenGroupId] = useState<string>(() =>
     isTextEditableSelection(element)
@@ -316,7 +319,7 @@ export function PropertyPanelFlat({
   if (isTextEditable) {
     groups.push({
       id: "text",
-      title: "Text",
+      title: t("inspector.group.text"),
       summary: formatTextFieldPreview(element.textFields[0]?.value ?? ""),
       content: (
         <FlatTextSection
@@ -334,12 +337,10 @@ export function PropertyPanelFlat({
     });
   }
   if (showEditableSections) {
-    const opacityValue = parseFloat(styles.opacity ?? "1");
-    const opacityPct = Math.round((Number.isFinite(opacityValue) ? opacityValue : 1) * 100);
     groups.push({
       id: "style",
-      title: "Style",
-      summary: `fill ${styles["background-image"] && styles["background-image"] !== "none" ? "image/gradient" : styles["background-color"] ? "set" : "none"} · ${opacityPct}%`,
+      title: t("inspector.group.style"),
+      summary: flatStyleSummary(styles),
       content: (
         <FlatStyleSection
           projectId={projectId}
@@ -357,7 +358,7 @@ export function PropertyPanelFlat({
   if (sections.layout) {
     groups.push({
       id: "layout",
-      title: "Layout",
+      title: t("inspector.layout.title"),
       summary: `${formatPxMetricValue(displayX)},${formatPxMetricValue(displayY)} · ${Math.round(displayW)}×${Math.round(displayH)}`,
       content: (
         <FlatLayoutSection
@@ -423,9 +424,9 @@ export function PropertyPanelFlat({
   if (sections.colorGrading) {
     groups.push({
       id: "grade",
-      title: "Grade",
+      title: t("inspector.group.grade"),
       accessory: <FlatColorGradingAccessory state={colorGradingController} />,
-      summary: `${colorGradingController.grading.preset ?? "neutral"} · ${Math.round(colorGradingController.grading.intensity * 100)}%`,
+      summary: `${colorGradingController.grading.preset ?? "neutral"} · ${formatPercent(colorGradingController.grading.intensity)}`,
       content: (
         <FlatColorGradingSection
           grading={colorGradingController.grading}
@@ -452,9 +453,11 @@ export function PropertyPanelFlat({
     };
     groups.push({
       id: "effects",
-      title: "Effects",
+      title: t("inspector.group.effects"),
       accessory: <FlatEffectsAccessory {...effectsProps} />,
-      summary: activeEffects ? `${activeEffects} active` : "none",
+      summary: activeEffects
+        ? t("inspector.group.effectsActive", { count: activeEffects })
+        : t("inspector.group.effectsNone"),
       content: (
         <FlatEffectsSection
           {...effectsProps}
@@ -469,8 +472,8 @@ export function PropertyPanelFlat({
     if (onAddMediaOverlay) {
       groups.push({
         id: "overlays",
-        title: "Overlays",
-        summary: "add layer",
+        title: t("inspector.group.overlays"),
+        summary: t("inspector.group.overlaysSummary"),
         content: (
           <FlatOverlaysSection
             onAddOverlay={(blockName) =>
@@ -487,7 +490,7 @@ export function PropertyPanelFlat({
   if (sections.audioFx) {
     groups.push({
       id: "audio-fx",
-      title: "Audio FX",
+      title: t("inspector.group.audioFx"),
       summary: audioFxSummary(element, audioGroupLabel),
       content: (
         <AudioFxGroup
@@ -502,7 +505,7 @@ export function PropertyPanelFlat({
   if (sections.media) {
     groups.push({
       id: "media",
-      title: "Media",
+      title: t("inspector.group.media"),
       summary: element.tagName,
       content: (
         <FlatMediaSection

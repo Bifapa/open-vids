@@ -1,9 +1,10 @@
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { MetricField } from "./propertyPanelPrimitives";
 import {
   PERCENT_PROPS,
   PROP_CONSTRAINTS,
-  PROP_LABELS,
-  PROP_TOOLTIPS,
+  propLabel,
+  propTooltip,
   PROP_UNITS,
   clampPropertyValue,
 } from "./gsapAnimationConstants";
@@ -18,16 +19,16 @@ import {
 
 export const BOOLEAN_PROPS = new Set(["visibility"]);
 const STRING_PROPS = new Set(["filter", "clipPath"]);
-const FILTER_PRESETS = [
-  { label: "Blur", value: "blur(4px)" },
-  { label: "Bright", value: "brightness(1.5)" },
-  { label: "Gray", value: "grayscale(1)" },
-  { label: "None", value: "none" },
+const FILTER_PRESETS: readonly { label: TranslationKey; value: string }[] = [
+  { label: "editor.animation.preset.blur", value: "blur(4px)" },
+  { label: "editor.animation.preset.bright", value: "brightness(1.5)" },
+  { label: "editor.animation.preset.gray", value: "grayscale(1)" },
+  { label: "common.none", value: "none" },
 ];
-const CLIP_PATH_PRESETS = [
-  { label: "Circle", value: "circle(50% at 50% 50%)" },
-  { label: "Inset", value: "inset(10%)" },
-  { label: "None", value: "none" },
+const CLIP_PATH_PRESETS: readonly { label: TranslationKey; value: string }[] = [
+  { label: "editor.animation.preset.circle", value: "circle(50% at 50% 50%)" },
+  { label: "editor.animation.preset.inset", value: "inset(10%)" },
+  { label: "common.none", value: "none" },
 ];
 
 function isPercentProp(prop: string): boolean {
@@ -84,11 +85,12 @@ export function PropertyRow({
   onRemove: () => void;
   removeTitle: string;
 }) {
+  const { t } = useTranslation();
   if (BOOLEAN_PROPS.has(prop)) {
     const isVisible = val === "visible" || val === 1;
     return (
       <div className="grid grid-cols-[minmax(0,72px)_minmax(0,1fr)_auto] items-center gap-1">
-        <span className="min-w-0 truncate text-sm text-fg-3">{PROP_LABELS[prop] ?? prop}</span>
+        <span className="min-w-0 truncate text-sm text-fg-3">{propLabel(t, prop)}</span>
         <span className="flex min-w-0 items-center">
           <button
             type="button"
@@ -96,7 +98,11 @@ export function PropertyRow({
             aria-checked={isVisible}
             onClick={() => onCommit(isVisible ? "hidden" : "visible")}
             className={inspSwitchTrack(isVisible)}
-            title={isVisible ? "Visible — click to hide" : "Hidden — click to show"}
+            title={
+              isVisible
+                ? t("editor.animation.visibility.visible")
+                : t("editor.animation.visibility.hidden")
+            }
           >
             <span className={inspSwitchKnob(isVisible)} />
           </button>
@@ -111,7 +117,7 @@ export function PropertyRow({
     return (
       <div className="grid gap-1">
         <div className="grid grid-cols-[minmax(0,72px)_minmax(0,1fr)_auto] items-center gap-1">
-          <span className="min-w-0 truncate text-sm text-fg-3">{PROP_LABELS[prop] ?? prop}</span>
+          <span className="min-w-0 truncate text-sm text-fg-3">{propLabel(t, prop)}</span>
           <input
             type="text"
             defaultValue={String(val)}
@@ -132,7 +138,7 @@ export function PropertyRow({
                 onClick={() => onCommit(p.value)}
                 className={INSP_CHIP}
               >
-                {p.label}
+                {t(p.label)}
               </button>
             ))}
           </div>
@@ -144,10 +150,10 @@ export function PropertyRow({
     <div className="flex items-center gap-1">
       <div className="min-w-0 flex-1">
         <MetricField
-          label={PROP_LABELS[prop] ?? prop}
+          label={propLabel(t, prop)}
           value={displayValue(prop, val)}
           suffix={PROP_UNITS[prop]}
-          tooltip={PROP_TOOLTIPS[prop]}
+          tooltip={propTooltip(t, prop)}
           scrub
           liveCommit
           onCommit={(raw) => onCommit(adjustedValue(prop, raw))}
@@ -177,6 +183,7 @@ export function AddPropertyTrigger({
   onClose: () => void;
   buttonClassName: string;
 }) {
+  const { t } = useTranslation();
   if (adding && available.length > 0) {
     return (
       <select
@@ -190,11 +197,11 @@ export function AddPropertyTrigger({
         onBlur={onClose}
       >
         <option value="" disabled>
-          Choose property…
+          {t("editor.animation.chooseProperty")}
         </option>
         {available.map((p) => (
           <option key={p} value={p}>
-            {PROP_LABELS[p] ?? p}
+            {propLabel(t, p)}
           </option>
         ))}
       </select>

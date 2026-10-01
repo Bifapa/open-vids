@@ -1,5 +1,12 @@
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
-import { EASE_LABELS, PERCENT_PROPS, PROP_LABELS, PROP_UNITS } from "./gsapAnimationConstants";
+import type { TFunction } from "i18next";
+import { formatNumber } from "../../i18n";
+import {
+  EASE_LABELS,
+  PERCENT_PROPS,
+  PROP_UNITS,
+  propLabel as translatePropLabel,
+} from "./gsapAnimationConstants";
 
 function formatPropValue(prop: string, v: number | string): string {
   const unit = PROP_UNITS[prop] ?? "";
@@ -7,30 +14,51 @@ function formatPropValue(prop: string, v: number | string): string {
   return `${v}${unit}`;
 }
 
-export function buildTweenSummary(animation: GsapAnimation): string {
+/** A position or duration in seconds as shown in prose; a relative position (`"<"`, `"+=1"`) stays as written. */
+function formatSeconds(value: number | string, round = false): string {
+  if (typeof value !== "number") return value;
+  return formatNumber(round ? parseFloat(value.toFixed(3)) : value, {
+    maximumFractionDigits: 20,
+    useGrouping: false,
+  });
+}
+
+export function buildTweenSummary(t: TFunction, animation: GsapAnimation): string {
   const easeName = animation.ease ?? "none";
-  const ease = EASE_LABELS[easeName] ?? easeName;
+  const ease = (EASE_LABELS[easeName] ?? easeName).toLowerCase();
   const props = Object.entries(animation.properties);
   const target = animation.targetSelector;
-  const dur = animation.duration ?? 0;
-  const rawPos = animation.position;
-  const pos = typeof rawPos === "number" ? parseFloat(rawPos.toFixed(3)) : rawPos;
-  const propDescs = props.map(([p, v]) => {
-    const label = (PROP_LABELS[p] ?? p).toLowerCase();
-    return `${label} to ${formatPropValue(p, v)}`;
-  });
-  const propText = propDescs.length > 0 ? propDescs.join(", ") : "no properties yet";
-  if (animation.method === "set") return `At ${pos}s, instantly set ${target}'s ${propText}.`;
+  const pos = formatSeconds(animation.position, true);
+  const dur = formatSeconds(animation.duration ?? 0);
+  const propDescs = props.map(([p, v]) =>
+    t("editor.animation.summary.propTo", {
+      label: translatePropLabel(t, p).toLowerCase(),
+      value: formatPropValue(p, v),
+    }),
+  );
+  const propText =
+    propDescs.length > 0 ? propDescs.join(", ") : t("editor.animation.summary.noProperties");
+  if (animation.method === "set")
+    return t("editor.animation.summary.set", { pos, target, props: propText });
   if (animation.method === "from")
-    return `Starting at ${pos}s, over ${dur}s, ${target} enters from ${propText} using a ${ease.toLowerCase()} curve.`;
+    return t("editor.animation.summary.from", { pos, dur, target, props: propText, ease });
   if (animation.method === "fromTo") {
     const fromProps = Object.entries(animation.fromProperties ?? {});
-    const fromDescs = fromProps.map(([p, v]) => {
-      const label = (PROP_LABELS[p] ?? p).toLowerCase();
-      return `${label} ${formatPropValue(p, v)}`;
-    });
+    const fromDescs = fromProps.map(([p, v]) =>
+      t("editor.animation.summary.propFrom", {
+        label: translatePropLabel(t, p).toLowerCase(),
+        value: formatPropValue(p, v),
+      }),
+    );
     const fromText = fromDescs.length > 0 ? fromDescs.join(", ") : "—";
-    return `Starting at ${pos}s, over ${dur}s, ${target} animates from [${fromText}] to [${propText}] using a ${ease.toLowerCase()} curve.`;
+    return t("editor.animation.summary.fromTo", {
+      pos,
+      dur,
+      target,
+      from: fromText,
+      props: propText,
+      ease,
+    });
   }
-  return `Starting at ${pos}s, over ${dur}s, animate ${target}'s ${propText} using a ${ease.toLowerCase()} curve.`;
+  return t("editor.animation.summary.to", { pos, dur, target, props: propText, ease });
 }

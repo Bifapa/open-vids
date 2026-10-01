@@ -1,12 +1,13 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CaretDown } from "@phosphor-icons/react";
+import { formatNumber, useTranslation } from "../../i18n";
 import { INSP_MINI_LABEL } from "./inspectorStyles";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { SUPPORTED_EASES, SUPPORTED_PROPS } from "@hyperframes/core/gsap-constants";
 import { RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { MetricField, SelectField } from "./propertyPanelPrimitives";
 import { controlPointsForGsapEase } from "./studioMotion";
-import { EASE_LABELS, METHOD_LABELS, METHOD_TOOLTIPS, PROP_LABELS } from "./gsapAnimationConstants";
+import { EASE_LABELS, methodLabel, methodTooltip, propLabel } from "./gsapAnimationConstants";
 import { buildTweenSummary } from "./gsapAnimationHelpers";
 import { EaseCurveSection } from "./EaseCurveSection";
 import { ArcPathControls } from "./ArcPathControls";
@@ -55,6 +56,7 @@ export const AnimationCard = memo(function AnimationCard({
   onSetAllKeyframeEases,
   onUnroll,
 }: AnimationCardProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [addingProp, setAddingProp] = useState(false);
   const [addingFromProp, setAddingFromProp] = useState(false);
@@ -149,18 +151,18 @@ export const AnimationCard = memo(function AnimationCard({
 
   const [copied, setCopied] = useState(false);
 
-  const methodLabel = METHOD_LABELS[animation.method] ?? animation.method;
+  const methodText = methodLabel(t, animation.method);
   const easeName =
     (animation.keyframes ? animation.keyframes.easeEach : undefined) ?? animation.ease ?? "none";
   const easeLabel = easeName.startsWith("custom(")
-    ? "Custom curve"
+    ? t("editor.animation.card.customCurve")
     : (EASE_LABELS[easeName] ?? easeName);
   const endTime =
     typeof animation.position === "number"
       ? animation.position + (animation.duration ?? 0)
       : animation.position;
 
-  const summary = useMemo(() => buildTweenSummary(animation), [animation]);
+  const summary = useMemo(() => buildTweenSummary(t, animation), [t, animation]);
   const setKeys = Object.keys(animation.properties);
   if (
     animation.method === "set" &&
@@ -172,13 +174,13 @@ export const AnimationCard = memo(function AnimationCard({
     return (
       <div className="flex min-h-7 items-center gap-2 rounded-md border border-border-subtle bg-bg-1 px-2">
         <span className="rounded-xs bg-surface-3 px-1.5 text-xs font-medium leading-[18px] text-fg-2">
-          Position
+          {t("editor.animation.card.position")}
         </span>
         <span className="font-mono text-num text-fg-3">
           x: {Math.round(Number(animation.properties.x ?? 0))}, y:{" "}
           {Math.round(Number(animation.properties.y ?? 0))}
         </span>
-        <span className="ml-auto text-2xs text-fg-3">drag to move</span>
+        <span className="ml-auto text-2xs text-fg-3">{t("editor.animation.card.dragToMove")}</span>
       </div>
     );
 
@@ -198,18 +200,28 @@ export const AnimationCard = memo(function AnimationCard({
       >
         <span
           className="shrink-0 rounded-xs bg-surface-3 px-1.5 text-xs font-medium leading-[18px] text-fg"
-          title={METHOD_TOOLTIPS[animation.method]}
+          title={methodTooltip(t, animation.method)}
         >
-          {methodLabel}
+          {methodText}
         </span>
         <span
           className="min-w-0 truncate font-mono text-num text-fg-2"
-          title="When this effect plays"
+          title={t("editor.animation.card.whenPlays")}
         >
-          {typeof animation.position === "number"
-            ? `${parseFloat(animation.position.toFixed(3))}s`
-            : animation.position}{" "}
-          – {typeof endTime === "number" ? `${parseFloat(endTime.toFixed(3))}s` : endTime}
+          {t("editor.animation.card.timeRange", {
+            start:
+              typeof animation.position === "number"
+                ? t("editor.animation.card.seconds", {
+                    value: formatNumber(parseFloat(animation.position.toFixed(3))),
+                  })
+                : animation.position,
+            end:
+              typeof endTime === "number"
+                ? t("editor.animation.card.seconds", {
+                    value: formatNumber(parseFloat(endTime.toFixed(3))),
+                  })
+                : endTime,
+          })}
         </span>
         <span className="ml-auto min-w-0 truncate text-xs text-fg-3" title={easeName}>
           {easeLabel}
@@ -240,7 +252,7 @@ export const AnimationCard = memo(function AnimationCard({
                         clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
                       }}
                     />
-                    Keyframed — click a segment below to edit its curve
+                    {t("editor.animation.card.keyframed")}
                   </p>
                 )}
               </div>
@@ -252,30 +264,30 @@ export const AnimationCard = memo(function AnimationCard({
                   setTimeout(() => setCopied(false), 1500);
                 }}
                 className="shrink-0 rounded-sm px-1.5 py-0.5 text-2xs font-medium text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg"
-                title="Copy description to clipboard — paste into agent prompts"
+                title={t("editor.animation.card.copyTitle")}
               >
-                {copied ? "Copied" : "Copy"}
+                {copied ? t("editor.animation.card.copied") : t("editor.animation.card.copy")}
               </button>
             </div>
             <div className={RESPONSIVE_GRID}>
               {animation.method !== "set" && (
                 <MetricField
-                  label="Length"
+                  label={t("editor.animation.card.length")}
                   value={String(Math.max(0, animation.duration ?? 0))}
                   suffix="s"
-                  tooltip="How long this effect lasts"
+                  tooltip={t("editor.animation.card.lengthTooltip")}
                   onCommit={commitDuration}
                 />
               )}
               <MetricField
-                label="Starts at"
+                label={t("editor.animation.card.startsAt")}
                 value={
                   typeof animation.position === "string"
                     ? animation.position
                     : String(parseFloat(Math.max(0, animation.position).toFixed(3)))
                 }
                 suffix={typeof animation.position === "number" ? "s" : undefined}
-                tooltip="When this effect begins on the timeline"
+                tooltip={t("editor.animation.card.startsAtTooltip")}
                 onCommit={commitPosition}
               />
             </div>
@@ -312,7 +324,7 @@ export const AnimationCard = memo(function AnimationCard({
                 ) : (
                   <>
                     <SelectField
-                      label="Speed"
+                      label={t("editor.animation.card.speed")}
                       value={easeName.startsWith("custom(") ? "custom" : easeName}
                       options={[...SUPPORTED_EASES, "custom"]}
                       onChange={(next) => {
@@ -342,7 +354,7 @@ export const AnimationCard = memo(function AnimationCard({
 
             {animation.method === "fromTo" && (
               <div className="grid gap-1">
-                <p className={`m-0 ${INSP_MINI_LABEL}`}>From</p>
+                <p className={`m-0 ${INSP_MINI_LABEL}`}>{t("editor.animation.card.from")}</p>
                 <div className="grid gap-1.5">
                   {Object.entries(animation.fromProperties ?? {}).map(([prop, val]) => (
                     <PropertyRow
@@ -351,7 +363,9 @@ export const AnimationCard = memo(function AnimationCard({
                       val={val}
                       onCommit={(adjusted) => commitFromProperty(prop, adjusted)}
                       onRemove={() => onRemoveFromProperty?.(animation.id, prop)}
-                      removeTitle={`Remove from-${PROP_LABELS[prop] ?? prop}`}
+                      removeTitle={t("editor.animation.card.removeFromProp", {
+                        label: propLabel(t, prop),
+                      })}
                     />
                   ))}
                 </div>
@@ -359,8 +373,8 @@ export const AnimationCard = memo(function AnimationCard({
                   <AddPropertyTrigger
                     adding={addingFromProp}
                     available={availableFromProps}
-                    addLabel="+ From property"
-                    addTitle="Add a from-state property"
+                    addLabel={t("editor.animation.card.addFromProp")}
+                    addTitle={t("editor.animation.card.addFromPropTitle")}
                     onAdd={(prop) => onAddFromProperty?.(animation.id, prop)}
                     onOpen={() => setAddingFromProp(true)}
                     onClose={() => setAddingFromProp(false)}
@@ -371,7 +385,7 @@ export const AnimationCard = memo(function AnimationCard({
             )}
 
             {animation.method === "fromTo" && Object.keys(animation.properties).length > 0 && (
-              <p className={`m-0 ${INSP_MINI_LABEL}`}>To</p>
+              <p className={`m-0 ${INSP_MINI_LABEL}`}>{t("editor.animation.card.to")}</p>
             )}
 
             {Object.keys(animation.properties).length > 0 && (
@@ -386,7 +400,9 @@ export const AnimationCard = memo(function AnimationCard({
                       commitProperty(prop, adjusted);
                     }}
                     onRemove={() => onRemoveProperty(animation.id, prop)}
-                    removeTitle={`Remove ${PROP_LABELS[prop] ?? prop}`}
+                    removeTitle={t("editor.animation.card.removeProp", {
+                      label: propLabel(t, prop),
+                    })}
                   />
                 ))}
               </div>
@@ -429,8 +445,8 @@ export const AnimationCard = memo(function AnimationCard({
               <AddPropertyTrigger
                 adding={addingProp}
                 available={availableProps}
-                addLabel="+ Effect"
-                addTitle="Add another animated property to this effect"
+                addLabel={t("editor.animation.card.addEffect")}
+                addTitle={t("editor.animation.card.addEffectTitle")}
                 onAdd={(prop) => onAddProperty(animation.id, prop)}
                 onOpen={() => setAddingProp(true)}
                 onClose={() => setAddingProp(false)}
@@ -440,9 +456,9 @@ export const AnimationCard = memo(function AnimationCard({
                 type="button"
                 onClick={() => onDeleteAnimation(animation.id)}
                 className="ml-auto rounded-sm px-1.5 text-sm font-medium text-error transition-colors hover:bg-error-soft"
-                title="Remove this animation"
+                title={t("editor.animation.card.removeAnimation")}
               >
-                Remove
+                {t("common.remove")}
               </button>
             </div>
           </div>

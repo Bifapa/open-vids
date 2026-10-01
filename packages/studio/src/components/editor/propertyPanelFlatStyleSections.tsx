@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "../../i18n";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
 import { BorderRadiusEditor } from "./BorderRadiusEditor";
@@ -52,6 +53,7 @@ function FlatFillFields({
   onPreviewStyle?: (prop: string, value: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
+  const { t } = useTranslation();
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   const backgroundImage = styles["background-image"] ?? "none";
   const hasTextControls = isTextEditableSelection(element);
@@ -85,16 +87,26 @@ function FlatFillFields({
   return (
     <>
       <FlatSegmentedRow
-        label="Fill"
+        label={t("inspector.style.fill")}
         options={[
-          { key: "Solid", node: "Solid", label: "Solid", active: preferredFillMode === "Solid" },
+          {
+            key: "Solid",
+            node: t("inspector.style.fillSolid"),
+            label: t("inspector.style.fillSolid"),
+            active: preferredFillMode === "Solid",
+          },
           {
             key: "Gradient",
-            node: "Gradient",
-            label: "Gradient",
+            node: t("inspector.style.fillGradient"),
+            label: t("inspector.style.fillGradient"),
             active: preferredFillMode === "Gradient",
           },
-          { key: "Image", node: "Image", label: "Image", active: preferredFillMode === "Image" },
+          {
+            key: "Image",
+            node: t("inspector.style.fillImage"),
+            label: t("inspector.style.fillImage"),
+            active: preferredFillMode === "Image",
+          },
         ]}
         disabled={styleEditingDisabled}
         onChange={handleFillModeChange}
@@ -102,7 +114,7 @@ function FlatFillFields({
       {preferredFillMode === "Solid" ? (
         <ColorField
           flat
-          label="Color"
+          label={t("inspector.style.colorLabel")}
           value={styles["background-color"] ?? "transparent"}
           disabled={styleEditingDisabled}
           onPreview={(next) => onPreviewStyle?.("background-color", next)}
@@ -133,7 +145,7 @@ function FlatFillFields({
       {!hasTextControls && (
         <ColorField
           flat
-          label="Text color"
+          label={t("inspector.style.textColor")}
           value={styles.color ?? "rgb(0, 0, 0)"}
           disabled={styleEditingDisabled}
           onCommit={(next) => onSetStyle("color", next)}
@@ -156,6 +168,7 @@ function FlatStrokeRow({
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
+  const { t } = useTranslation();
   const borderWidthValue =
     parsePxMetricValue(styles["border-width"] ?? "") ??
     parsePxMetricValue(styles["border-top-width"] ?? "") ??
@@ -168,7 +181,7 @@ function FlatStrokeRow({
   return (
     <>
       <FlatRow
-        label="Stroke width"
+        label={t("inspector.style.strokeWidthFlat")}
         value={widthDisplay}
         tier={resolveValueTier(styles["border-width"], "0px")}
         disabled={disabled}
@@ -192,7 +205,7 @@ function FlatStrokeRow({
         }}
       />
       <FlatSelectRow
-        label="Stroke style"
+        label={t("inspector.style.strokeStyleFlat")}
         value={borderStyleValue}
         // Valid border-style keywords — the ONLY way to set this, since a
         // free-text field here would require typing an exact CSS keyword
@@ -211,7 +224,7 @@ function FlatStrokeRow({
       />
       <ColorField
         flat
-        label="Stroke color"
+        label={t("inspector.style.strokeColor")}
         value={borderColorValue}
         disabled={disabled}
         onCommit={(next) => onSetStyle("border-color", next)}
@@ -285,13 +298,14 @@ function FlatShadowBlendRows({
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
+  const { t } = useTranslation();
   const boxShadowPreset = inferBoxShadowPreset(styles["box-shadow"]);
   const blendValue = styles["mix-blend-mode"] || "normal";
 
   return (
     <>
       <FlatSelectRow
-        label="Shadow"
+        label={t("inspector.style.shadow")}
         value={boxShadowPreset}
         options={["none", "soft", "lift", "glow", "custom"]}
         tier={resolveValueTier(boxShadowPreset === "none" ? undefined : boxShadowPreset, "none")}
@@ -306,7 +320,7 @@ function FlatShadowBlendRows({
         onReset={() => void onSetStyle("box-shadow", "none")}
       />
       <FlatSelectRow
-        label="Blend"
+        label={t("inspector.style.blend")}
         value={blendValue}
         options={["normal", "multiply", "screen", "overlay", "darken", "lighten"]}
         tier={resolveValueTier(styles["mix-blend-mode"], "normal")}
@@ -331,13 +345,14 @@ function FlatBlurSliders({
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
+  const { t } = useTranslation();
   const filterBlurValue = getCssFilterFunctionPx(styles.filter, "blur");
   const backdropBlurValue = getCssFilterFunctionPx(styles["backdrop-filter"], "blur");
 
   return (
     <>
       <FlatSlider
-        label="Layer blur"
+        label={t("inspector.style.layerBlur")}
         value={filterBlurValue}
         min={0}
         max={Math.max(40, Math.ceil(filterBlurValue))}
@@ -349,7 +364,7 @@ function FlatBlurSliders({
         }
       />
       <FlatSlider
-        label="Backdrop"
+        label={t("inspector.style.backdrop")}
         value={backdropBlurValue}
         min={0}
         max={Math.max(60, Math.ceil(backdropBlurValue))}
@@ -377,6 +392,7 @@ function FlatOverflowMaskRows({
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
+  const { t } = useTranslation();
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
   const clipPathValue = styles["clip-path"] || "none";
   const clipPathPreset = inferClipPathPreset(clipPathValue);
@@ -384,7 +400,7 @@ function FlatOverflowMaskRows({
   return (
     <>
       <FlatSelectRow
-        label="Overflow"
+        label={t("inspector.style.overflow")}
         value={styles.overflow || "visible"}
         options={["visible", "hidden", "clip", "auto", "scroll"]}
         tier={resolveValueTier(styles.overflow, "visible")}
@@ -393,7 +409,7 @@ function FlatOverflowMaskRows({
         onReset={() => void onSetStyle("overflow", "visible")}
       />
       <FlatSelectRow
-        label="Mask"
+        label={t("inspector.style.mask")}
         value={clipPathPreset}
         // "custom" = authored clip-path; showing "none" invites destroying it.
         options={[...(clipPathPreset === "custom" ? ["custom"] : []), "none", "inset", "circle"]}
@@ -431,11 +447,12 @@ function FlatOpacitySlider({
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
+  const { t } = useTranslation();
   const opacityValue = Math.round((parseNumericValue(styles.opacity) ?? 1) * 100);
 
   return (
     <FlatSlider
-      label="Opacity"
+      label={t("inspector.style.opacity")}
       value={opacityValue}
       min={0}
       max={100}

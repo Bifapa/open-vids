@@ -1,4 +1,5 @@
 import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
+import { useTranslation } from "../../i18n";
 import { INSP_SUBHEAD } from "./inspectorStyles";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
@@ -116,6 +117,7 @@ export function LayoutGeometryRows({
   onRemoveKeyframe,
   onConvertToKeyframes,
 }: GeometryRowsProps) {
+  const { t } = useTranslation();
   const readOnlyPreview = usePreviewReadOnly();
   const readOnlyPreviewReason = usePreviewReadOnlyReason();
   const readOnlyTooltip = readOnlyPreview ? readOnlyPreviewReason : undefined;
@@ -133,7 +135,7 @@ export function LayoutGeometryRows({
   return (
     <div className="grid grid-cols-2 gap-1.5">
       <FlatRow
-        label="X"
+        label={t("inspector.layout.x")}
         value={formatPxMetricValue(displayX)}
         tier={displayX === 0 ? "default" : "explicitCustom"}
         disabled={manualOffsetEditingDisabled}
@@ -143,7 +145,7 @@ export function LayoutGeometryRows({
         suffix={<KeyframeGutter property="x" displayValue={displayX} {...gutterProps} />}
       />
       <FlatRow
-        label="Y"
+        label={t("inspector.layout.y")}
         value={formatPxMetricValue(displayY)}
         tier={displayY === 0 ? "default" : "explicitCustom"}
         disabled={manualOffsetEditingDisabled}
@@ -153,7 +155,7 @@ export function LayoutGeometryRows({
         suffix={<KeyframeGutter property="y" displayValue={displayY} {...gutterProps} />}
       />
       <FlatRow
-        label="W"
+        label={t("inspector.layout.width")}
         value={formatPxMetricValue(displayW)}
         tier="default"
         disabled={manualSizeEditingDisabled}
@@ -163,7 +165,7 @@ export function LayoutGeometryRows({
         suffix={<KeyframeGutter property="width" displayValue={displayW} {...gutterProps} />}
       />
       <FlatRow
-        label="H"
+        label={t("inspector.layout.height")}
         value={formatPxMetricValue(displayH)}
         tier="default"
         disabled={manualSizeEditingDisabled}
@@ -173,7 +175,7 @@ export function LayoutGeometryRows({
         suffix={<KeyframeGutter property="height" displayValue={displayH} {...gutterProps} />}
       />
       <FlatRow
-        label="Angle"
+        label={t("inspector.layout.angle")}
         value={`${displayR}°`}
         tier="default"
         disabled={manualRotationEditingDisabled}
@@ -193,10 +195,11 @@ export function LayoutZIndexRow({
   styles: Record<string, string>;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
+  const { t } = useTranslation();
   const zIndex = String(parseInt(styles["z-index"] || "auto", 10) || 0);
   return (
     <FlatRow
-      label="Z-index"
+      label={t("inspector.layout.zIndex")}
       value={zIndex}
       tier="default"
       onCommit={(next) => void onSetStyle("z-index", next)}
@@ -213,26 +216,39 @@ export function LayoutFlexBlock({
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   disabled: boolean;
 }) {
+  const { t } = useTranslation();
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
   if (!isFlex) return null;
   const direction = styles["flex-direction"] || "row";
   return (
     <div className="grid gap-1.5 pt-1">
       <div className={INSP_SUBHEAD}>
-        Flex{" "}
-        <span className="font-mono text-num font-normal text-fg-3">display: {styles.display}</span>
+        {t("inspector.layout.flex.title")}{" "}
+        <span className="font-mono text-num font-normal text-fg-3">
+          {t("inspector.layout.flex.display", { value: styles.display })}
+        </span>
       </div>
       <FlatSegmentedRow
-        label="Direction"
+        label={t("inspector.layout.flex.direction")}
         options={[
-          { key: "row", node: "→ Row", label: "Row", active: direction === "row" },
-          { key: "column", node: "Column", label: "Column", active: direction === "column" },
+          {
+            key: "row",
+            node: t("inspector.layout.flex.rowArrow"),
+            label: t("inspector.layout.flex.row"),
+            active: direction === "row",
+          },
+          {
+            key: "column",
+            node: t("inspector.layout.flex.column"),
+            label: t("inspector.layout.flex.column"),
+            active: direction === "column",
+          },
         ]}
         disabled={disabled}
         onChange={(next) => void onSetStyle("flex-direction", next)}
       />
       <FlatSelectRow
-        label="Justify"
+        label={t("inspector.layout.flex.justify")}
         value={styles["justify-content"] || "flex-start"}
         tier={resolveValueTier(styles["justify-content"], "flex-start")}
         disabled={disabled}
@@ -247,7 +263,7 @@ export function LayoutFlexBlock({
         onChange={(next) => void onSetStyle("justify-content", next)}
       />
       <FlatSelectRow
-        label="Align"
+        label={t("inspector.layout.flex.align")}
         value={styles["align-items"] || "stretch"}
         tier={resolveValueTier(styles["align-items"], "stretch")}
         disabled={disabled}
@@ -255,7 +271,7 @@ export function LayoutFlexBlock({
         onChange={(next) => void onSetStyle("align-items", next)}
       />
       <FlatRow
-        label="Gap"
+        label={t("inspector.layout.flex.gap")}
         value={styles.gap ?? "0px"}
         tier={resolveValueTier(styles.gap, "0px")}
         disabled={disabled}
@@ -307,9 +323,10 @@ export function LayoutTransform3DBlock({
   onConvertToKeyframes?: (animId: string, duration?: number) => void;
   onLivePreviewProps?: (element: DomEditSelection, props: Record<string, number>) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-1.5 pt-1">
-      <div className={INSP_SUBHEAD}>3D Transform</div>
+      <div className={INSP_SUBHEAD}>{t("inspector.layout.transform3d")}</div>
       <PropertyPanel3dTransform
         gsapRuntimeValues={gsapRuntimeValues}
         gsapAnimId={gsapAnimId}

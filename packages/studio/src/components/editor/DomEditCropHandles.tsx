@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { DomEditSelection } from "./domEditing";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import {
   type CropEdge,
@@ -61,6 +62,13 @@ function edgeHandlePlacement(
 
 const EDGES: CropEdge[] = ["top", "right", "bottom", "left"];
 
+const EDGE_LABELS = {
+  top: "editor.crop.top",
+  right: "editor.crop.right",
+  bottom: "editor.crop.bottom",
+  left: "editor.crop.left",
+} as const satisfies Record<CropEdge, TranslationKey>;
+
 /** Hit-strip + pill dimensions for an edge handle, keyed on its orientation. */
 function edgeHandleMetrics(vertical: boolean): {
   hitWidth: number;
@@ -94,6 +102,7 @@ export function DomEditCropHandles({
   overlayRect,
   onStyleCommit,
 }: DomEditCropHandlesProps) {
+  const { t } = useTranslation();
   const gestureRef = useRef<CropGestureState | null>(null);
   const [dragging, setDragging] = useState(false);
   const [hotEdge, setHotEdge] = useState<CropEdge | null>(null);
@@ -320,8 +329,8 @@ export function DomEditCropHandles({
       {hasCrop && (
         <button
           type="button"
-          aria-label="Reposition crop"
-          title="Reposition crop"
+          aria-label={t("editor.crop.reposition")}
+          title={t("editor.crop.reposition")}
           data-dom-edit-crop-handle="true"
           className="pointer-events-auto absolute rounded-full border-2 border-on-media bg-on-media/30 shadow-[0_0_0_1px_var(--color-on-media-bg)]"
           style={{
@@ -354,8 +363,8 @@ export function DomEditCropHandles({
           <button
             key={edge}
             type="button"
-            aria-label={`Crop ${edge}`}
-            title="Crop"
+            aria-label={t(EDGE_LABELS[edge])}
+            title={t("editor.crop.title")}
             data-dom-edit-crop-handle="true"
             className="pointer-events-auto absolute flex items-center justify-center border-0 bg-transparent p-0"
             style={{

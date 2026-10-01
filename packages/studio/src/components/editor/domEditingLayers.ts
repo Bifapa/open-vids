@@ -1,5 +1,6 @@
 import { probeSourceElement } from "./probeSourceElement";
 import type { PatchOperation } from "../../utils/sourcePatcher";
+import { t } from "../../i18n";
 import {
   resolveEditingAffordances,
   resolveEditingSections,
@@ -54,8 +55,8 @@ function getTextFieldLabel(
   total: number,
   source: "self" | "child",
 ): string {
-  if (source === "self" || total === 1) return "Content";
-  return `Text ${index + 1}`;
+  if (source === "self" || total === 1) return t("editor.textField.content");
+  return t("editor.textField.numbered", { number: index + 1 });
 }
 
 function buildTextField(
@@ -102,7 +103,7 @@ export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
           if (!text.trim()) continue;
           fields.push({
             key: `text-node:${childIdx}`,
-            label: `Text ${childIdx + 1}`,
+            label: t("editor.textField.numbered", { number: childIdx + 1 }),
             value: text,
             tagName: "#text",
             attributes: [],
@@ -166,7 +167,7 @@ export function serializeDomEditTextFields(fields: DomEditTextField[]): string {
 export function buildDefaultDomEditTextField(base?: Partial<DomEditTextField>): DomEditTextField {
   return {
     key: `child:new:${Date.now()}`,
-    label: "Text",
+    label: t("editor.textField.text"),
     value: "New text",
     tagName: "span",
     attributes: [],
@@ -543,17 +544,17 @@ export function getDomEditNonEditableReason(
   selection: DomEditSelection | null,
 ): string | null {
   if (!selection) {
-    return "No stable source target";
+    return t("editor.editability.noStableTarget");
   }
 
   if (selection.element !== element) {
     return selection.isCompositionHost
-      ? "Nested composition boundary"
-      : `Selection resolves to ${selection.label}`;
+      ? t("editor.editability.nestedComposition")
+      : t("editor.editability.resolvesTo", { label: selection.label });
   }
 
   if (!hasSupportedDirectEdit(selection.capabilities)) {
-    return selection.capabilities.reasonIfDisabled ?? "No supported direct edits";
+    return selection.capabilities.reasonIfDisabled ?? t("editor.editability.noDirectEdits");
   }
 
   return null;

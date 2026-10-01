@@ -4,6 +4,7 @@ import { SUPPORTED_EASES } from "../../../../parsers/src/gsapConstants";
 import { parseSpringBounce } from "@hyperframes/core/spring-ease";
 import { parseWiggleEase } from "@hyperframes/core/wiggle-ease";
 import { describe, expect, it } from "vitest";
+import { t } from "../../i18n";
 import { EASE_PRESETS, easePresetLabel } from "./easePresetLibrary";
 import { resolveEaseCurveTuple } from "./gsapAnimationConstants";
 
@@ -14,12 +15,12 @@ describe("EASE_PRESETS", () => {
   it("contains the complete 32-preset Graphs library with unique fields", () => {
     expect(EASE_PRESETS).toHaveLength(32);
     expect(new Set(EASE_PRESETS.map(({ id }) => id))).toHaveLength(32);
-    expect(new Set(EASE_PRESETS.map(({ label }) => label))).toHaveLength(32);
+    expect(new Set(EASE_PRESETS.map(({ label }) => t(label)))).toHaveLength(32);
     expect(new Set(EASE_PRESETS.map(({ ease }) => ease))).toHaveLength(32);
   });
 
   it("preserves the required standard, Flow, and Bounce mappings", () => {
-    const easeByLabel = Object.fromEntries(EASE_PRESETS.map(({ label, ease }) => [label, ease]));
+    const easeByLabel = Object.fromEntries(EASE_PRESETS.map(({ label, ease }) => [t(label), ease]));
 
     expect(easeByLabel).toMatchObject({
       Linear: "none",
@@ -50,7 +51,7 @@ describe("EASE_PRESETS", () => {
     });
 
     const flows = EASE_PRESETS.filter(({ id }) => id.startsWith("flow-"));
-    expect(flows.map(({ label }) => label)).toEqual([
+    expect(flows.map(({ label }) => t(label))).toEqual([
       "Flow 1",
       "Flow 2",
       "Flow 3",

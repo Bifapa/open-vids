@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { CaretDown } from "@phosphor-icons/react";
 import { RotateCcw } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import { cn, fieldBase } from "../ui";
 import { CommitField } from "./propertyPanelPrimitives";
 import { FlatSliderReadout } from "./propertyPanelFlatSliderReadout";
@@ -48,12 +49,13 @@ export function FlatRow({
    *  the field as a prefix instead of in a label column. */
   inline?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={
         inline
           ? "group flex min-h-ctl-sm min-w-0 items-center gap-0.5"
-          : "group grid min-h-ctl-sm grid-cols-[72px_minmax(0,1fr)] items-center gap-2"
+          : "group grid min-h-ctl-sm grid-cols-[var(--insp-label-w)_minmax(0,1fr)] items-center gap-2"
       }
       title={tooltip}
     >
@@ -93,7 +95,7 @@ export function FlatRow({
           <button
             type="button"
             data-flat-row-reset="true"
-            title="Remove — fall back to default"
+            title={t("inspector.row.resetToDefault")}
             onClick={() => {
               onReset();
             }}
@@ -137,7 +139,7 @@ export function FlatSegmentedRow({
   onChange: (nextKey: string) => void;
 }) {
   return (
-    <div className="grid min-h-ctl-sm grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
+    <div className="grid min-h-ctl-sm grid-cols-[var(--insp-label-w)_minmax(0,1fr)] items-center gap-2">
       <span className="min-w-0 truncate text-sm text-fg-3">{label}</span>
       <span className="flex min-w-0 gap-0.5 rounded-md border border-border bg-bg-0 p-0.5">
         {options.map((option, index) => (
@@ -203,6 +205,7 @@ export function FlatGroupHeader({
    *  that sibling actually changed — gating explicitly avoids that replay. */
   animateEntrance?: boolean;
 }) {
+  const { t } = useTranslation();
   const enter = animateEntrance ? "hf-flat-group-enter " : "";
   if (!isOpen) {
     return (
@@ -226,7 +229,7 @@ export function FlatGroupHeader({
     <div className={`${enter}flex h-[30px] shrink-0 items-center`}>
       <button
         type="button"
-        title="Collapse"
+        title={t("inspector.group.collapse")}
         aria-expanded
         onClick={onToggleOpen}
         className={`flex h-full min-w-0 flex-1 items-center gap-1 pl-2 pr-2.5 text-left transition-colors hover:bg-surface-1 ${INSP_FOCUS_INSET}`}
@@ -301,6 +304,7 @@ export function FlatSlider({
   /** Typed readout: return false to refuse the text, keep the field open, and mark it invalid. */
   onCommitText?: (text: string) => boolean | void;
 }) {
+  const { t } = useTranslation();
   // `draft` gives the knob instant, drag-local visual feedback. `onCommit` is
   // throttled (not debounced) to at most once per 40ms: a real drag fires
   // pointermove faster than that, and a pure debounce (reset the timer on
@@ -427,7 +431,7 @@ export function FlatSlider({
 
   return (
     <div className="flex min-h-ctl-sm items-center gap-1.5">
-      <span className="w-[72px] shrink-0 truncate text-sm text-fg-3">{label}</span>
+      <span className="w-[var(--insp-label-w)] shrink-0 truncate text-sm text-fg-3">{label}</span>
       <div
         data-flat-slider-track="true"
         role="slider"
@@ -560,7 +564,7 @@ export function FlatSlider({
             <button
               type="button"
               data-flat-slider-reset="true"
-              title="Remove — fall back to default"
+              title={t("inspector.row.resetToDefault")}
               disabled={disabled}
               onClick={() => {
                 onReset();

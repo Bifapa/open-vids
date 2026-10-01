@@ -3,6 +3,7 @@ import { applyInlineStyle } from "./inlineTextStyleRange";
 import { readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRead";
 import { parseCssColor, toHexColor } from "./colorValue";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
+import { useTranslation } from "../../i18n";
 
 /**
  * The controls for styling the characters selected inside an open text edit.
@@ -40,6 +41,7 @@ export function InlineTextToolbar({
   session: InlineTextEditSession | null;
   iframe: HTMLIFrameElement | null;
 }) {
+  const { t } = useTranslation();
   const [placement, setPlacement] = useState<ToolbarPlacement | null>(null);
 
   const refresh = useCallback(() => {
@@ -76,7 +78,7 @@ export function InlineTextToolbar({
     <div
       data-inline-text-toolbar="true"
       role="toolbar"
-      aria-label="Text formatting"
+      aria-label={t("editor.textToolbar.formatting")}
       className="pointer-events-auto fixed z-200 flex items-center gap-1 rounded-lg border border-border bg-menu-bg/94 p-1 whitespace-nowrap shadow-pop backdrop-blur-xl"
       style={{
         left: placement.left,
@@ -99,7 +101,7 @@ export function InlineTextToolbar({
     >
       <label
         className="group relative flex size-ctl-sm cursor-pointer items-center justify-center rounded-sm hover:bg-surface-2"
-        title="Text colour"
+        title={t("editor.textToolbar.colour")}
       >
         <span
           aria-hidden="true"
@@ -120,7 +122,7 @@ export function InlineTextToolbar({
             bold then opened the colour picker. The size is pinned instead. */}
         <input
           type="color"
-          aria-label="Text colour"
+          aria-label={t("editor.textToolbar.colour")}
           className="absolute inset-0 h-full w-full min-w-0 cursor-pointer opacity-0"
           value={placement.pickerColour}
           onChange={(event) => apply({ color: event.target.value })}
@@ -128,22 +130,22 @@ export function InlineTextToolbar({
       </label>
       <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
       <ToolbarToggle
-        label="Bold"
-        glyph="B"
+        label={t("editor.textToolbar.bold")}
+        glyph={t("editor.textToolbar.boldGlyph")}
         bold
         on={isBold(styles["font-weight"])}
         onToggle={(on) => apply({ "font-weight": on ? "700" : null })}
       />
       <ToolbarToggle
-        label="Italic"
-        glyph="I"
+        label={t("editor.textToolbar.italic")}
+        glyph={t("editor.textToolbar.italicGlyph")}
         italic
         on={styles["font-style"] === "italic"}
         onToggle={(on) => apply({ "font-style": on ? "italic" : null })}
       />
       <ToolbarToggle
-        label="Underline"
-        glyph="U"
+        label={t("editor.textToolbar.underline")}
+        glyph={t("editor.textToolbar.underlineGlyph")}
         underline
         on={styles["text-decoration-line"] === "underline"}
         onToggle={(on) => apply({ "text-decoration-line": on ? "underline" : null })}

@@ -26,6 +26,7 @@
 import { memo } from "react";
 import { createPortal } from "react-dom";
 import type { DomEditSelection } from "./domEditing";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import {
   isZOrderActionEnabled,
@@ -130,11 +131,11 @@ function ZActionIcon({ action }: { action: ZAction }) {
   );
 }
 
-const Z_ACTIONS: Array<{ action: ZAction; label: string }> = [
-  { action: "bring-to-front", label: "Bring to front" },
-  { action: "bring-forward", label: "Bring forward" },
-  { action: "send-backward", label: "Send backward" },
-  { action: "send-to-back", label: "Send to back" },
+const Z_ACTIONS: Array<{ action: ZAction; label: TranslationKey }> = [
+  { action: "bring-to-front", label: "editor.contextMenu.bringToFront" },
+  { action: "bring-forward", label: "editor.contextMenu.bringForward" },
+  { action: "send-backward", label: "editor.contextMenu.sendBackward" },
+  { action: "send-to-back", label: "editor.contextMenu.sendToBack" },
 ];
 
 export const CanvasContextMenu = memo(function CanvasContextMenu({
@@ -146,6 +147,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   onZOrderCrossed,
   onDelete,
 }: CanvasContextMenuProps) {
+  const { t } = useTranslation();
   const menuRef = useContextMenuDismiss(onClose);
 
   // Gate each item group on the presence of its persist handler. Without the
@@ -250,7 +252,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
               {/* Icon inherits the item's text color via currentColor, so the
                   disabled muted tone applies to both icon and label. */}
               <ZActionIcon action={action} />
-              <span>{label}</span>
+              <span>{t(label)}</span>
             </button>
           );
         })}
@@ -268,7 +270,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
             handleDelete();
           }}
         >
-          <span>Delete</span>
+          <span>{t("common.delete")}</span>
           <span className="text-xs text-fg-3 group-hover/item:text-current">⌫</span>
         </button>
       )}

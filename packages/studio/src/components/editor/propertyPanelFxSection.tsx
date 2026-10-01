@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Plus } from "@phosphor-icons/react";
+import { useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import { audioFxRevealTarget, scrollRevealedRowIntoView } from "./audioFxRevealTarget.js";
 import {
@@ -28,7 +29,7 @@ import { applyAudioFxProfile, getAudioFxProfile } from "@hyperframes/core/audio-
 import { audioFxJobNode, type HfAudioFxJob } from "@hyperframes/core/audio-fx-jobs";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
 import { FxRackChain } from "./propertyPanelFxRackChain.js";
-import { CLIP_SIGNAL_PATH } from "./audioFxSignalPath.js";
+import { clipSignalPath } from "./audioFxSignalPath.js";
 import { FxAddMenu } from "./propertyPanelFxAddMenu.js";
 import { useFxAudition } from "./useFxAudition.js";
 import type { FxSectionProps } from "./propertyPanelFxSectionTypes.js";
@@ -101,6 +102,7 @@ export function FxSection({
   revealTarget,
   revealNonce,
 }: FxSectionProps) {
+  const { t } = useTranslation();
   const presetAutomated = automatedPresets ?? new Set<string>();
   // Falls back to the persisting write when no preview handler is supplied, which
   // keeps the control working rather than going dead.
@@ -452,7 +454,7 @@ export function FxSection({
       onKeyDown={closeMenus}
     >
       <FxRackChain
-        signalPath={signalPath ?? CLIP_SIGNAL_PATH}
+        signalPath={signalPath ?? clipSignalPath()}
         chain={chain}
         showCarve={showCarve}
         carveNodes={carveNodes}
@@ -552,7 +554,7 @@ export function FxSection({
             setAdding(false);
           }}
         >
-          {picking ? "Close" : "Presets"}
+          {picking ? t("inspector.fx.close") : t("inspector.fx.presets")}
         </Button>
         <Button
           size="sm"
@@ -569,7 +571,7 @@ export function FxSection({
             setPicking(false);
           }}
         >
-          {adding ? "Close" : "Add Effect"}
+          {adding ? t("inspector.fx.close") : t("inspector.fx.addEffect")}
         </Button>
       </div>
     </div>

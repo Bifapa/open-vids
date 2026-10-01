@@ -1,4 +1,5 @@
 import type { DomEditSelection } from "./domEditingTypes";
+import { t } from "../../i18n";
 import { readStudioBoxSize, readStudioPathOffset } from "./manualEdits";
 import { parsePxMetricValue, type PropertyPanelProps } from "./propertyPanelHelpers";
 
@@ -64,13 +65,7 @@ export function createTransformCommitHandlers({
   const commitManualOffset = async (axis: "x" | "y", nextValue: string) => {
     const parsed = parsePxMetricValue(nextValue);
     if (parsed == null) return;
-    if (
-      await commitAnimatedTransformValue(
-        axis,
-        parsed,
-        "This element's position can't be edited here yet — it is driven by its animation",
-      )
-    )
+    if (await commitAnimatedTransformValue(axis, parsed, t("inspector.toast.positionDriven")))
       return;
     const current = readStudioPathOffset(element.element);
     await Promise.resolve(
@@ -89,7 +84,7 @@ export function createTransformCommitHandlers({
       return;
     }
     if (hasGsapAnimation) {
-      showToast?.("This element's size can't be edited here yet — it is driven by its animation");
+      showToast?.(t("inspector.toast.sizeDriven"));
       return;
     }
     const current = readStudioBoxSize(element.element);
@@ -112,13 +107,7 @@ export function createTransformCommitHandlers({
   const commitManualRotation = async (nextValue: string) => {
     const parsed = Number.parseFloat(nextValue);
     if (!Number.isFinite(parsed)) return;
-    if (
-      await commitAnimatedTransformValue(
-        "rotation",
-        parsed,
-        "This element's rotation can't be edited here yet — it is driven by its animation",
-      )
-    )
+    if (await commitAnimatedTransformValue("rotation", parsed, t("inspector.toast.rotationDriven")))
       return;
     await Promise.resolve(onSetManualRotation(element, { angle: parsed }));
   };

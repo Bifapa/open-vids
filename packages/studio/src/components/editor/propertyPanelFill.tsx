@@ -1,6 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useMemo, useRef, useState } from "react";
 import { Plus, X } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import {
   buildDefaultGradientModel,
   insertGradientStop,
@@ -94,6 +95,7 @@ export function ImageFillField({
   onCommit: (nextValue: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -115,7 +117,7 @@ export function ImageFillField({
         onCommit(`url("${toProjectRootAssetPath(nextImage)}")`);
       }
     } catch {
-      setUploadError("Upload failed — check the file and try again.");
+      setUploadError(t("inspector.fill.uploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -125,7 +127,7 @@ export function ImageFillField({
     <div className="grid gap-2">
       <div className="grid min-w-0 gap-1.5">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <span className={LABEL}>Project asset</span>
+          <span className={LABEL}>{t("inspector.fill.projectAsset")}</span>
           <button
             type="button"
             disabled={disabled || uploading}
@@ -133,13 +135,15 @@ export function ImageFillField({
             className={`${FILL_BUTTON} max-w-full`}
           >
             <Plus size={12} className="shrink-0" />
-            <span className="truncate">{uploading ? "Uploading…" : "Upload image"}</span>
+            <span className="truncate">
+              {uploading ? t("inspector.fill.uploading") : t("inspector.fill.upload")}
+            </span>
           </button>
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            aria-label="Upload image asset"
+            aria-label={t("inspector.fill.uploadAria")}
             disabled={disabled || uploading}
             className="hidden"
             onChange={async (event) => {
@@ -178,7 +182,7 @@ export function ImageFillField({
                 }}
                 className="min-w-0 w-full appearance-none bg-transparent text-sm font-medium text-fg outline-hidden disabled:cursor-not-allowed disabled:text-fg-disabled"
               >
-                <option value="">None</option>
+                <option value="">{t("inspector.fill.none")}</option>
                 {imageAssets.map((asset) => (
                   <option key={asset} value={asset}>
                     {asset}
@@ -189,13 +193,13 @@ export function ImageFillField({
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-border bg-surface-1/50 px-3 py-3 text-sm leading-5 text-fg-3">
-            No image assets yet. Upload one here and Studio will also add it to the Assets tab.
+            {t("inspector.fill.noAssets")}
           </div>
         )}
       </div>
 
       <DetailField
-        label="External URL"
+        label={t("inspector.fill.externalUrl")}
         value={externalUrlValue}
         disabled={disabled}
         onCommit={(next) => onCommit(next.trim() ? `url("${next.trim()}")` : "none")}
@@ -219,6 +223,7 @@ export function GradientField({
   disabled?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const { t } = useTranslation();
   const previewRef = useRef<HTMLDivElement | null>(null);
   const parsed = parseGradient(value) ?? buildDefaultGradientModel(fallbackColor);
 
@@ -269,7 +274,7 @@ export function GradientField({
               key={`stop-preview-${index}`}
               role="slider"
               tabIndex={disabled ? -1 : 0}
-              aria-label={`Stop ${index + 1} position`}
+              aria-label={t("inspector.fill.stopPositionLabel", { n: index + 1 })}
               aria-valuenow={Math.round(stop.position)}
               aria-valuemin={0}
               aria-valuemax={100}
@@ -315,14 +320,14 @@ export function GradientField({
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <SegmentedControl
-            trackName="Gradient type"
+            trackName={t("inspector.fill.gradientType")}
             disabled={disabled}
             value={parsed.kind}
             onChange={(next) => patch({ kind: next as GradientModel["kind"] })}
             options={[
-              { label: "Linear", value: "linear" },
-              { label: "Radial", value: "radial" },
-              { label: "Conic", value: "conic" },
+              { label: t("inspector.fill.linear"), value: "linear" },
+              { label: t("inspector.fill.radial"), value: "radial" },
+              { label: t("inspector.fill.conic"), value: "conic" },
             ]}
           />
           <label className="flex items-center gap-2 text-sm text-fg-2">
@@ -335,7 +340,7 @@ export function GradientField({
               }}
               className="size-3.5 accent-fg"
             />
-            Repeat
+            {t("inspector.fill.repeat")}
           </label>
           <button
             type="button"
@@ -352,16 +357,20 @@ export function GradientField({
             className={FILL_BUTTON}
           >
             <ReverseGradientIcon size={14} />
-            Reverse
+            {t("inspector.fill.reverse")}
           </button>
         </div>
       </div>
 
       {(parsed.kind === "linear" || parsed.kind === "conic") && (
         <div className="grid gap-1.5">
-          <span className={LABEL}>{parsed.kind === "linear" ? "Angle" : "Start angle"}</span>
+          <span className={LABEL}>
+            {parsed.kind === "linear" ? t("inspector.fill.angle") : t("inspector.fill.startAngle")}
+          </span>
           <SliderControl
-            trackName={parsed.kind === "linear" ? "Angle" : "Start angle"}
+            trackName={
+              parsed.kind === "linear" ? t("inspector.fill.angle") : t("inspector.fill.startAngle")
+            }
             value={parsed.angle}
             min={0}
             max={360}
@@ -377,14 +386,14 @@ export function GradientField({
       {parsed.kind === "radial" && (
         <div className={RESPONSIVE_GRID}>
           <SelectField
-            label="Shape"
+            label={t("inspector.fill.shape")}
             value={parsed.shape}
             disabled={disabled}
             onChange={(next) => patch({ shape: next as GradientModel["shape"] })}
             options={["ellipse", "circle"]}
           />
           <SelectField
-            label="Size"
+            label={t("inspector.fill.size")}
             value={parsed.radialSize}
             disabled={disabled}
             onChange={(next) => patch({ radialSize: next as GradientModel["radialSize"] })}
@@ -396,9 +405,9 @@ export function GradientField({
       {(parsed.kind === "radial" || parsed.kind === "conic") && (
         <div className={RESPONSIVE_GRID}>
           <div className="grid min-w-0 gap-1.5">
-            <span className={LABEL}>Center X</span>
+            <span className={LABEL}>{t("inspector.fill.centerX")}</span>
             <SliderControl
-              trackName="Center X"
+              trackName={t("inspector.fill.centerX")}
               value={parsed.centerX}
               min={0}
               max={100}
@@ -410,9 +419,9 @@ export function GradientField({
             />
           </div>
           <div className="grid min-w-0 gap-1.5">
-            <span className={LABEL}>Center Y</span>
+            <span className={LABEL}>{t("inspector.fill.centerY")}</span>
             <SliderControl
-              trackName="Center Y"
+              trackName={t("inspector.fill.centerY")}
               value={parsed.centerY}
               min={0}
               max={100}
@@ -428,16 +437,20 @@ export function GradientField({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <span className={LABEL}>Stops</span>
+          <span className={LABEL}>{t("inspector.fill.stops")}</span>
           <button
             type="button"
             disabled={disabled || parsed.stops.length >= 6}
             onClick={() => addStop()}
-            title={parsed.stops.length >= 6 ? "Maximum 6 stops" : "Add a gradient stop"}
+            title={
+              parsed.stops.length >= 6
+                ? t("inspector.fill.maxStops")
+                : t("inspector.fill.addStopHint")
+            }
             className={FILL_BUTTON}
           >
             <Plus size={12} />
-            Add stop
+            {t("inspector.fill.addStop")}
           </button>
         </div>
         <div className="grid gap-1.5">
@@ -447,13 +460,13 @@ export function GradientField({
               className="grid min-w-0 grid-cols-[minmax(0,1fr)_64px_auto] items-end gap-1"
             >
               <ColorField
-                label={`Stop ${index + 1}`}
+                label={t("inspector.fill.stop", { n: index + 1 })}
                 value={stop.color}
                 disabled={disabled}
                 onCommit={(next) => updateStop(index, { color: next })}
               />
               <DetailField
-                label="Pos"
+                label={t("inspector.fill.stopPosition")}
                 value={`${Math.round(stop.position)}%`}
                 disabled={disabled}
                 onCommit={(next) =>
@@ -467,7 +480,7 @@ export function GradientField({
                 disabled={disabled || parsed.stops.length <= 2}
                 onClick={() => removeStop(index)}
                 className={`${INSP_MINI_BUTTON} mb-0.5 hover:text-error`}
-                aria-label={`Remove stop ${index + 1}`}
+                aria-label={t("inspector.fill.removeStop", { n: index + 1 })}
               >
                 <X size={12} />
               </button>

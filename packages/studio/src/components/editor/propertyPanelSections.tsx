@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Plus, Type } from "../../icons/SystemIcons";
+import { t as translate, useTranslation, type TranslationKey } from "../../i18n";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import { FIELD, LABEL, normalizeTextMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
@@ -35,17 +36,26 @@ export function getTextStyleValue(
 }
 
 const ALL_WEIGHTS = ["100", "200", "300", "400", "500", "600", "700", "800", "900"];
-export const WEIGHT_LABELS: Record<string, string> = {
-  "100": "100 · Thin",
-  "200": "200 · Extra Light",
-  "300": "300 · Light",
-  "400": "400 · Regular",
-  "500": "500 · Medium",
-  "600": "600 · Semi Bold",
-  "700": "700 · Bold",
-  "800": "800 · Extra Bold",
-  "900": "900 · Black",
-};
+const WEIGHT_LABEL_KEYS = {
+  "100": "inspector.text.weight.100",
+  "200": "inspector.text.weight.200",
+  "300": "inspector.text.weight.300",
+  "400": "inspector.text.weight.400",
+  "500": "inspector.text.weight.500",
+  "600": "inspector.text.weight.600",
+  "700": "inspector.text.weight.700",
+  "800": "inspector.text.weight.800",
+  "900": "inspector.text.weight.900",
+} as const satisfies Record<string, TranslationKey>;
+
+function isKnownWeight(weight: string): weight is keyof typeof WEIGHT_LABEL_KEYS {
+  return Object.hasOwn(WEIGHT_LABEL_KEYS, weight);
+}
+
+/** A font weight as the weight pickers list it ("400 · Regular"); an unknown weight is shown as is. */
+export function weightLabel(weight: string): string {
+  return isKnownWeight(weight) ? translate(WEIGHT_LABEL_KEYS[weight]) : weight;
+}
 
 export function detectAvailableWeights(fontFamily: string): string[] {
   const fonts = document.fonts;
@@ -177,12 +187,13 @@ function FontWeightField({
   fontFamily?: string;
   onCommit: (nextValue: string) => void;
 }) {
+  const { t } = useTranslation();
   const options = fontFamily ? detectAvailableWeights(fontFamily) : ALL_WEIGHTS;
   const displayOptions = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <div className={FIELD}>
       <div className="flex min-w-0 items-center gap-3">
-        <span className="shrink-0 text-sm font-medium text-fg-3">Weight</span>
+        <span className="shrink-0 text-sm font-medium text-fg-3">{t("inspector.text.weight")}</span>
         <select
           value={value}
           disabled={disabled}
@@ -193,7 +204,7 @@ function FontWeightField({
         >
           {displayOptions.map((o) => (
             <option key={o} value={o}>
-              {WEIGHT_LABELS[o] ?? o}
+              {weightLabel(o)}
             </option>
           ))}
         </select>
@@ -213,18 +224,19 @@ function AdvancedTextControls({
   disabled?: boolean;
   onCommit: (property: string, value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       <div className={RESPONSIVE_GRID}>
         <SelectField
-          label="Line"
+          label={t("inspector.text.line")}
           value={getTextStyleValue(field, inheritedStyles, "line-height", "normal")}
           disabled={disabled}
           options={["normal", "1", "1.1", "1.2", "1.25", "1.3", "1.4", "1.5", "1.6", "1.75", "2"]}
           onChange={(n) => onCommit("line-height", normalizeTextMetricValue("line-height", n))}
         />
         <SelectField
-          label="Track"
+          label={t("inspector.text.track")}
           value={getTextStyleValue(field, inheritedStyles, "letter-spacing", "0px")}
           disabled={disabled}
           options={[
@@ -250,14 +262,14 @@ function AdvancedTextControls({
       </div>
       <div className={RESPONSIVE_GRID}>
         <SelectField
-          label="Align"
+          label={t("inspector.text.align")}
           value={getTextStyleValue(field, inheritedStyles, "text-align", "start")}
           disabled={disabled}
           onChange={(n) => onCommit("text-align", n)}
           options={["start", "left", "center", "right", "justify", "end"]}
         />
         <SelectField
-          label="Case"
+          label={t("inspector.text.case")}
           value={getTextStyleValue(field, inheritedStyles, "text-transform", "none")}
           disabled={disabled}
           onChange={(n) => onCommit("text-transform", n)}
@@ -265,7 +277,7 @@ function AdvancedTextControls({
         />
       </div>
       <SelectField
-        label="Style"
+        label={t("inspector.text.style")}
         value={getTextStyleValue(field, inheritedStyles, "font-style", "normal")}
         disabled={disabled}
         onChange={(n) => onCommit("font-style", n)}
@@ -298,12 +310,13 @@ function TextFieldEditor({
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onRemoveTextField: (fieldKey: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
       <div className={showRemove ? "flex min-w-0 items-center justify-between gap-2" : "min-w-0"}>
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-fg">
-            {formatTextFieldPreview(field.value) || "Text"}
+            {formatTextFieldPreview(field.value) || t("inspector.group.text")}
           </div>
           <div className="text-xs text-fg-3">{field.tagName}</div>
         </div>
@@ -315,7 +328,7 @@ function TextFieldEditor({
             }}
             className="inline-flex h-7 shrink-0 items-center rounded-lg border border-border bg-neutral-950 px-2.5 text-sm font-medium text-fg-2 transition-colors hover:border-neutral-600 hover:text-white"
           >
-            Remove
+            {t("inspector.text.remove")}
           </button>
         )}
       </div>
@@ -323,7 +336,7 @@ function TextFieldEditor({
         {({ value, onCommit }) => (
           <TextAreaField
             key={field.key}
-            label="Content"
+            label={t("inspector.text.content")}
             value={value ?? field.value}
             disabled={false}
             autoFocus={showRemove}
@@ -337,7 +350,7 @@ function TextFieldEditor({
       >
         {({ value, onCommit }) => (
           <ColorField
-            label="Text color"
+            label={t("inspector.text.color")}
             value={value ?? getTextFieldColor(field, styles)}
             disabled={false}
             onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "color", next))}
@@ -346,7 +359,7 @@ function TextFieldEditor({
       </PromotableControl>
       <div className={RESPONSIVE_GRID}>
         <MetricField
-          label="Size"
+          label={t("inspector.text.size")}
           value={field.computedStyles["font-size"] || styles["font-size"] || "16px"}
           disabled={false}
           liveCommit
@@ -410,6 +423,7 @@ export function TextSection({
    *  false so the legacy (non-flat) call site is unaffected. */
   hideOwnHeading?: boolean;
 }) {
+  const { t } = useTranslation();
   const hasTextControls = isTextEditableSelection(element);
   const [activeTextFieldKey, setActiveTextFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,
@@ -444,7 +458,7 @@ export function TextSection({
     );
     if (hideOwnHeading) return content;
     return (
-      <Section title="Text" icon={<Type size={15} />} defaultCollapsed>
+      <Section title={t("inspector.group.text")} icon={<Type size={15} />} defaultCollapsed>
         {content}
       </Section>
     );
@@ -454,7 +468,7 @@ export function TextSection({
     <div className="space-y-4">
       <div className="grid gap-1.5">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <span className={LABEL}>Text layers</span>
+          <span className={LABEL}>{t("inspector.text.layers")}</span>
           <button
             type="button"
             onClick={() => {
@@ -465,7 +479,7 @@ export function TextSection({
             className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-border bg-neutral-950 px-2.5 text-sm font-medium text-fg-2 transition-colors hover:border-neutral-600 hover:text-white"
           >
             <Plus size={12} className="shrink-0" />
-            <span className="truncate">Add text</span>
+            <span className="truncate">{t("inspector.text.addText")}</span>
           </button>
         </div>
         <div className="grid gap-2">
@@ -489,7 +503,8 @@ export function TextSection({
                       style={{ backgroundColor: getTextFieldColor(field, styles) }}
                     />
                     <span className="min-w-0 truncate text-sm font-medium text-fg">
-                      {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
+                      {formatTextFieldPreview(field.value) ||
+                        t("inspector.text.layerFallback", { n: index + 1 })}
                     </span>
                   </div>
                   <span className="shrink-0 rounded-md border border-border bg-neutral-950 px-1.5 py-0.5 text-xs text-fg-3">
@@ -515,7 +530,7 @@ export function TextSection({
   );
   if (hideOwnHeading) return content;
   return (
-    <Section title="Text" icon={<Type size={15} />}>
+    <Section title={t("inspector.group.text")} icon={<Type size={15} />}>
       {content}
     </Section>
   );

@@ -9,6 +9,7 @@ import {
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { Plus, RotateCcw, X } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import { CaretDown } from "@phosphor-icons/react";
 import { Button } from "../ui/Button";
 import { INSP_MINI_BUTTON, inspPreviewCard } from "./inspectorStyles";
@@ -38,12 +39,13 @@ export function FlatEffectsAccessory({
   grading: NormalizedHfColorGrading;
   onCommitColorGrading: (next: NormalizedHfColorGrading) => void;
 }) {
+  const { t } = useTranslation();
   if (!activeColorGradingEffectCount(grading)) return null;
   return (
     <button
       type="button"
       data-flat-effects-reset="true"
-      title="Reset effects"
+      title={t("inspector.effects.resetAll")}
       onClick={(event) => {
         event.stopPropagation();
         onCommitColorGrading({ ...grading, effects: { ...DEFAULT_EFFECTS }, palette: null });
@@ -75,9 +77,10 @@ export function FlatEffectsSection({
   onRequestEffectPreviews: (effects: readonly HfColorGradingActiveEffectKey[]) => void;
   onRequestPresetPreviews: () => void;
 }) {
+  const { t } = useTranslation();
   const activeEffects = EFFECT_SPECS.filter((effect) => grading.effects[effect.key] > 0.0001);
   const [catalogOpen, setCatalogOpen] = useState(activeEffects.length === 0);
-  const [catalogGroup, setCatalogGroup] = useState(EFFECT_GROUPS[0].label);
+  const [catalogGroup, setCatalogGroup] = useState(EFFECT_GROUPS[0].id);
   const [selectedKey, setSelectedKey] = useState<HfColorGradingActiveEffectKey | null>(
     activeEffects[0]?.key ?? null,
   );
@@ -86,7 +89,7 @@ export function FlatEffectsSection({
 
   useEffect(() => {
     if (!catalogOpen) return;
-    const group = EFFECT_GROUPS.find((candidate) => candidate.label === catalogGroup);
+    const group = EFFECT_GROUPS.find((candidate) => candidate.id === catalogGroup);
     if (!group) return;
     const effectKeys = group.effects.map((effect) => effect.key);
     if (previews.status !== "loading" && effectKeys.some((effect) => !previews.images[effect])) {
@@ -152,7 +155,10 @@ export function FlatEffectsSection({
               <button
                 key={preset.id}
                 type="button"
-                title={`${preset.group}: ${preset.label}`}
+                title={t("inspector.effects.paletteTitle", {
+                  group: preset.group,
+                  label: preset.label,
+                })}
                 data-flat-effects-palette-preset={preset.id}
                 aria-pressed={selected}
                 onClick={() => {
@@ -184,16 +190,16 @@ export function FlatEffectsSection({
               onCommitColorGrading({ ...grading, palette: fallback });
             }}
           >
-            Custom palette
+            {t("inspector.effects.customPalette")}
           </Button>
         ) : (
           <>
             <div className="flex min-h-6 items-center justify-between">
-              <span className="text-sm text-fg-3">Custom palette</span>
+              <span className="text-sm text-fg-3">{t("inspector.effects.customPalette")}</span>
               <button
                 type="button"
-                title="Use default palette"
-                aria-label="Use default palette"
+                title={t("inspector.effects.defaultPalette")}
+                aria-label={t("inspector.effects.defaultPalette")}
                 onClick={() => onCommitColorGrading({ ...grading, palette: null })}
                 className={INSP_MINI_BUTTON}
               >
@@ -205,7 +211,7 @@ export function FlatEffectsSection({
                 <span key={`${index}-${color}`} className="group/swatch relative">
                   <input
                     type="color"
-                    aria-label={`Palette color ${index + 1}`}
+                    aria-label={t("inspector.effects.paletteColor", { n: index + 1 })}
                     value={color}
                     onChange={(event) => {
                       const nextPalette = [...palette];
@@ -217,7 +223,7 @@ export function FlatEffectsSection({
                   {palette.length > 2 && (
                     <button
                       type="button"
-                      aria-label={`Remove palette color ${index + 1}`}
+                      aria-label={t("inspector.effects.removePaletteColor", { n: index + 1 })}
                       onClick={() =>
                         onCommitColorGrading({
                           ...grading,
@@ -234,7 +240,7 @@ export function FlatEffectsSection({
               {palette.length < 6 && (
                 <button
                   type="button"
-                  aria-label="Add palette color"
+                  aria-label={t("inspector.effects.addPaletteColor")}
                   onClick={() =>
                     onCommitColorGrading({
                       ...grading,
@@ -275,7 +281,7 @@ export function FlatEffectsSection({
                   aria-hidden="true"
                   className={`shrink-0 text-fg-3 transition-transform ${selected ? "" : "-rotate-90"}`}
                 />
-                <span className="min-w-0 flex-1 truncate">{effect.label}</span>
+                <span className="min-w-0 flex-1 truncate">{t(effect.label)}</span>
                 <span className="font-mono text-num text-fg-3">
                   {effect.masterFormat?.(grading.effects[effect.key]) ??
                     `${Math.round(grading.effects[effect.key] * 100)}%`}
@@ -293,13 +299,13 @@ export function FlatEffectsSection({
         >
           <div className="flex min-h-6 items-center justify-between gap-2">
             <span className="min-w-0 truncate text-sm font-medium text-fg">
-              {selectedEffect.label}
+              {t(selectedEffect.label)}
             </span>
             <span className="flex items-center gap-0.5">
               <button
                 type="button"
-                title={`Reset ${selectedEffect.label}`}
-                aria-label={`Reset ${selectedEffect.label}`}
+                title={t("inspector.effects.reset", { label: t(selectedEffect.label) })}
+                aria-label={t("inspector.effects.reset", { label: t(selectedEffect.label) })}
                 onClick={() => applyEffect(selectedEffect)}
                 className={INSP_MINI_BUTTON}
               >
@@ -307,8 +313,8 @@ export function FlatEffectsSection({
               </button>
               <button
                 type="button"
-                title={`Remove ${selectedEffect.label}`}
-                aria-label={`Remove ${selectedEffect.label}`}
+                title={t("inspector.effects.remove", { label: t(selectedEffect.label) })}
+                aria-label={t("inspector.effects.remove", { label: t(selectedEffect.label) })}
                 onClick={() => removeEffect(selectedEffect)}
                 className={`${INSP_MINI_BUTTON} hover:text-error`}
               >
@@ -318,7 +324,11 @@ export function FlatEffectsSection({
           </div>
           {selectedEffect.showMaster !== false && (
             <FlatSlider
-              label={selectedEffect.masterLabel ?? "Mix"}
+              label={
+                selectedEffect.masterLabel
+                  ? t(selectedEffect.masterLabel)
+                  : t("inspector.effects.mix")
+              }
               value={grading.effects[selectedEffect.key] * 100}
               min={0}
               max={selectedEffect.max ?? 100}
@@ -358,31 +368,35 @@ export function FlatEffectsSection({
         icon={<Plus size={12} />}
         onClick={() => setCatalogOpen((open) => !open)}
       >
-        Add effect
+        {t("inspector.effects.add")}
       </Button>
 
       {catalogOpen && (
         <div data-flat-effects-catalog="true" className="grid gap-1.5">
-          <div role="tablist" aria-label="Effect families" className="flex flex-wrap gap-0.5">
+          <div
+            role="tablist"
+            aria-label={t("inspector.effects.families")}
+            className="flex flex-wrap gap-0.5"
+          >
             {EFFECT_GROUPS.map((group) => {
               const activeInGroup = group.effects.filter(
                 (effect) => grading.effects[effect.key] > 0.0001,
               ).length;
               return (
                 <button
-                  key={group.label}
+                  key={group.id}
                   type="button"
                   role="tab"
-                  aria-selected={catalogGroup === group.label}
-                  data-flat-effect-group={group.label}
-                  onClick={() => setCatalogGroup(group.label)}
+                  aria-selected={catalogGroup === group.id}
+                  data-flat-effect-group={group.id}
+                  onClick={() => setCatalogGroup(group.id)}
                   className={`inline-flex h-[22px] min-w-0 items-center rounded-sm px-2 text-xs transition-colors focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent ${
-                    catalogGroup === group.label
+                    catalogGroup === group.id
                       ? "bg-surface-2 text-fg hover:bg-surface-3"
                       : "text-fg-3 hover:bg-surface-1 hover:text-fg"
                   }`}
                 >
-                  <span className="truncate">{group.label}</span>
+                  <span className="truncate">{t(group.label)}</span>
                   {activeInGroup > 0 && (
                     <span className="ml-1 rounded-pill bg-surface-3 px-[5px] text-2xs leading-[14px] text-fg">
                       {activeInGroup}
@@ -392,8 +406,8 @@ export function FlatEffectsSection({
               );
             })}
           </div>
-          {EFFECT_GROUPS.filter((group) => group.label === catalogGroup).map((group) => (
-            <section key={group.label} className="grid gap-1" role="tabpanel">
+          {EFFECT_GROUPS.filter((group) => group.id === catalogGroup).map((group) => (
+            <section key={group.id} className="grid gap-1" role="tabpanel">
               <div className="grid grid-cols-3 gap-1.5">
                 {group.presets?.map((presetId) => {
                   const preset = HF_COLOR_GRADING_EFFECT_PRESETS.find(
@@ -453,7 +467,7 @@ export function FlatEffectsSection({
                       type="button"
                       data-flat-effect-option={effect.key}
                       aria-pressed={active}
-                      title={`Preview ${effect.label}`}
+                      title={t("inspector.grade.previewEffect", { label: t(effect.label) })}
                       onPointerEnter={() =>
                         onPreviewColorGrading(resolveEffect(effect), {
                           animatedPreview: { kind: "effects", id: effect.key },
@@ -493,7 +507,7 @@ export function FlatEffectsSection({
                         )}
                       </span>
                       <span className="block truncate px-[5px] pt-[3px] pb-1 text-2xs leading-[13px]">
-                        {effect.label}
+                        {t(effect.label)}
                       </span>
                     </button>
                   );

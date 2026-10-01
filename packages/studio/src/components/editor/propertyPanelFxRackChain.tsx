@@ -11,6 +11,7 @@
 
 import type { HfAudioFxChain, HfAudioFxNode } from "@hyperframes/core/audio-fx";
 import { INSP_MINI_LABEL } from "./inspectorStyles";
+import { useTranslation } from "../../i18n";
 import { readAudioEqBands } from "@hyperframes/core/audio-fx-eq";
 import { DEFAULT_CARVE, type HfCarveSettings } from "@hyperframes/core/audio-carve";
 import { FxCarveModule, type AudioTrackOption } from "./propertyPanelFxCarveModule.js";
@@ -107,6 +108,7 @@ export function FxRackChain({
   presetRemoveAutomationHandler,
   signalPath,
 }: FxRackChainProps) {
+  const { t } = useTranslation();
   return (
     <div className="hf-fx-chain grid gap-1">
       {/* The rack IS the signal path, and saying so costs two lines. Without
@@ -115,7 +117,7 @@ export function FxRackChain({
       <p
         className={`hf-fx-term flex min-h-[18px] items-center gap-1.5 after:h-px after:flex-1 after:bg-border-subtle ${INSP_MINI_LABEL}`}
       >
-        <span className="hf-fx-term-cap">In</span>
+        <span className="hf-fx-term-cap">{t("inspector.fx.rack.in")}</span>
         <span className="max-w-[70%] truncate font-normal normal-case tracking-normal">
           {signalPath.inLabel}
         </span>
@@ -157,9 +159,9 @@ export function FxRackChain({
       ))}
       {handBuiltCount === 0 && eqIds.length === 0 ? (
         <p className="hf-fx-empty py-1 text-xs text-fg-3">
-          {showCarve
-            ? `No other effects on this ${signalPath.subject}.`
-            : `No effects on this ${signalPath.subject}.`}
+          {t(showCarve ? "inspector.fx.rack.emptyOther" : "inspector.fx.rack.empty", {
+            subject: signalPath.subject,
+          })}
         </p>
       ) : (
         runs.map((run) => {
@@ -202,7 +204,7 @@ export function FxRackChain({
       <p
         className={`hf-fx-term hf-fx-term-out flex min-h-[18px] items-center gap-1.5 after:h-px after:flex-1 after:bg-border-subtle ${INSP_MINI_LABEL}`}
       >
-        <span className="hf-fx-term-cap">Out</span>
+        <span className="hf-fx-term-cap">{t("inspector.fx.rack.out")}</span>
         <span className="max-w-[70%] truncate font-normal normal-case tracking-normal">
           {signalPath.outLabel}
         </span>

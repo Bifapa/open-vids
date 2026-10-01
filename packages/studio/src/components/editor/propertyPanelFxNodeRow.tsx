@@ -22,6 +22,7 @@ import {
 } from "@hyperframes/core/audio-fx";
 import { EFFECT_COPY, SUMMARY } from "@hyperframes/core/audio-fx-copy";
 import { getAudioFxProfile } from "@hyperframes/core/audio-fx-profiles";
+import { useTranslation } from "../../i18n";
 import { FX_FAMILY_TYPE, fxFamilyOf, fxFamilyTint } from "./propertyPanelFxFamily.js";
 import { FxNodeOpenBody } from "./propertyPanelFxNodeOpenBody.js";
 import {
@@ -63,7 +64,7 @@ function primaryParamOf(def: HfAudioFxDef): string | null {
  * about a second kind of control. 0..1 in hundredths, the same shape and the
  * same feel as the carve's Strength.
  */
-function profileParam(type: string): HfAudioFxParam | null {
+function profileParam(type: string, hint: string): HfAudioFxParam | null {
   const profile = getAudioFxProfile(type);
   if (!profile) return null;
   return {
@@ -75,7 +76,7 @@ function profileParam(type: string): HfAudioFxParam | null {
     max: 1,
     step: 0.01,
     default: 0.5,
-    hint: `Sets ${profile.derives.length} settings at once. Open Details to see where they land.`,
+    hint,
   };
 }
 
@@ -180,6 +181,7 @@ function FxNodeHeader({
   onMove(delta: number): void;
   onRemove(): void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="hf-fx-node-head flex min-h-9 items-center gap-1 py-0.5 pl-1.5 pr-1">
       {/* Two digits, because a rack reads as a path when its steps are numbered
@@ -211,13 +213,13 @@ function FxNodeHeader({
         ) : null}
       </span>
       <FxMoveButton
-        label="Move up"
+        label={t("inspector.fx.node.moveUp")}
         up
         disabled={Boolean(disabled) || first}
         onClick={() => onMove(-1)}
       />
       <FxMoveButton
-        label="Move down"
+        label={t("inspector.fx.node.moveDown")}
         up={false}
         disabled={Boolean(disabled) || last}
         onClick={() => onMove(1)}
@@ -226,8 +228,12 @@ function FxNodeHeader({
         type="button"
         className={`hf-fx-bypass mx-0.5 ${inspSwitchTrack(!bypassed)}`}
         aria-pressed={bypassed}
-        aria-label={bypassed ? `Enable ${label}` : `Bypass ${label}`}
-        title={bypassed ? "Enable" : "Bypass"}
+        aria-label={
+          bypassed
+            ? t("inspector.fx.node.enable", { label })
+            : t("inspector.fx.node.bypass", { label })
+        }
+        title={bypassed ? t("inspector.fx.node.enableShort") : t("inspector.fx.node.bypassShort")}
         disabled={disabled}
         onClick={onToggleBypass}
       >
@@ -236,8 +242,8 @@ function FxNodeHeader({
       <button
         type="button"
         className={`hf-fx-remove ${INSP_MINI_BUTTON} hover:text-error`}
-        title="Remove"
-        aria-label={`Remove ${label}`}
+        title={t("inspector.fx.node.removeShort")}
+        aria-label={t("inspector.fx.node.remove", { label })}
         disabled={disabled}
         onClick={onRemove}
       >
@@ -265,6 +271,7 @@ export function FxNodeRow({
   onRemove,
   onPreview,
 }: FxNodeRowProps) {
+  const { t } = useTranslation();
   const registryDef = getAudioFxDef(node.type);
   const def = useMemo(() => (registryDef ? plainDef(registryDef) : null), [registryDef]);
   const primary = registryDef ? primaryParamOf(registryDef) : null;
@@ -276,7 +283,10 @@ export function FxNodeRow({
    * only their source differs.
    */
   const profile = getAudioFxProfile(node.type);
-  const derived = useMemo(() => profileParam(node.type), [node.type]);
+  const profileHint = profile
+    ? t("inspector.fx.node.profileHint", { count: profile.derives.length })
+    : "";
+  const derived = useMemo(() => profileParam(node.type, profileHint), [node.type, profileHint]);
   /** The same def cut down to the one knob, so the open face reuses every wire. */
   const onlyPrimary = useMemo(
     () => (def && primary ? { ...def, params: def.params.filter((p) => p.key === primary) } : def),

@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChartLine } from "@phosphor-icons/react";
+import { useTranslation } from "../../i18n";
 import { Tooltip } from "../ui/Tooltip";
 import {
   INSP_FX_LABEL,
@@ -91,14 +92,21 @@ export function AutomationToggle({
   onAutomate?(key: string): void;
   onRemoveAutomation?(key: string): void;
 }) {
+  const { t } = useTranslation();
   if (!onAutomate && !onRemoveAutomation) return null;
   return (
-    <Tooltip label={automated ? "Automated" : "Automation lane"}>
+    <Tooltip
+      label={automated ? t("inspector.fx.automation.automated") : t("inspector.fx.automation.lane")}
+    >
       <button
         type="button"
         className={`hf-fx-automate ${INSP_MINI_BUTTON} aria-pressed:bg-surface-3 aria-pressed:text-fg aria-pressed:shadow-[inset_0_0_0_1px_var(--color-border-strong)]`}
         aria-pressed={automated}
-        aria-label={automated ? `Remove ${label} automation` : `Automate ${label}`}
+        aria-label={
+          automated
+            ? t("inspector.fx.automation.remove", { label })
+            : t("inspector.fx.automation.add", { label })
+        }
         onClick={() => (automated ? onRemoveAutomation?.(paramKey) : onAutomate?.(paramKey))}
       >
         <ChartLine size={12} aria-hidden="true" />

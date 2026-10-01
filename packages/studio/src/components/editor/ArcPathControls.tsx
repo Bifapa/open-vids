@@ -1,5 +1,6 @@
 import { memo, useCallback } from "react";
 import type { ArcPathConfig, ArcPathSegment } from "@hyperframes/core/gsap-parser";
+import { useTranslation } from "../../i18n";
 import { SliderControl } from "./propertyPanelPrimitives";
 import { LABEL } from "./propertyPanelHelpers";
 import { P } from "./panelTokens";
@@ -21,6 +22,7 @@ export const ArcPathControls = memo(function ArcPathControls({
   onToggleAutoRotate,
   disabled,
 }: ArcPathControlsProps) {
+  const { t } = useTranslation();
   const handleToggle = useCallback(() => {
     onToggle(!arcPath.enabled);
   }, [arcPath.enabled, onToggle]);
@@ -32,7 +34,7 @@ export const ArcPathControls = memo(function ArcPathControls({
   if (segmentCount < 1) {
     return (
       <div className="rounded-md border border-border bg-surface-1/50 px-3 py-2">
-        <p className="text-sm text-fg-3">Add at least 2 position keyframes to enable arc motion.</p>
+        <p className="text-sm text-fg-3">{t("editor.arcPath.needKeyframes")}</p>
       </div>
     );
   }
@@ -40,17 +42,17 @@ export const ArcPathControls = memo(function ArcPathControls({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className={LABEL}>Arc Motion</span>
+        <span className={LABEL}>{t("editor.arcPath.arcMotion")}</span>
         <button
           type="button"
           role="switch"
           aria-checked={Boolean(arcPath.enabled)}
-          aria-label="Arc motion"
+          aria-label={t("editor.arcPath.arcMotionAria")}
           onClick={handleToggle}
           disabled={disabled}
           className="relative rounded-full transition-colors duration-200"
           style={{ width: 28, height: 16, background: arcPath.enabled ? P.accent : P.borderInput }}
-          title={arcPath.enabled ? "Disable arc motion" : "Enable arc motion"}
+          title={arcPath.enabled ? t("editor.arcPath.disableArc") : t("editor.arcPath.enableArc")}
         >
           <span
             className="absolute top-[2px] left-0 rounded-full transition-transform duration-200"
@@ -67,12 +69,12 @@ export const ArcPathControls = memo(function ArcPathControls({
       {arcPath.enabled && (
         <>
           <div className="flex items-center justify-between">
-            <span className={LABEL}>Auto-Rotate</span>
+            <span className={LABEL}>{t("editor.arcPath.autoRotate")}</span>
             <button
               type="button"
               role="switch"
               aria-checked={Boolean(arcPath.autoRotate)}
-              aria-label="Auto-rotate along path"
+              aria-label={t("editor.arcPath.autoRotateAria")}
               onClick={handleAutoRotate}
               disabled={disabled}
               className="relative rounded-full transition-colors duration-200"
@@ -83,8 +85,8 @@ export const ArcPathControls = memo(function ArcPathControls({
               }}
               title={
                 arcPath.autoRotate
-                  ? "Disable auto-rotate along path"
-                  : "Rotate element to follow path tangent"
+                  ? t("editor.arcPath.disableAutoRotate")
+                  : t("editor.arcPath.enableAutoRotate")
               }
             >
               <span
@@ -103,21 +105,27 @@ export const ArcPathControls = memo(function ArcPathControls({
             <div key={i} className="grid min-w-0 gap-1.5">
               <div className="flex items-center justify-between">
                 <span className={LABEL}>
-                  {segmentCount === 1 ? "Curviness" : `Segment ${i + 1}`}
+                  {segmentCount === 1
+                    ? t("editor.arcPath.curviness")
+                    : t("editor.arcPath.segment", { index: i + 1 })}
                 </span>
                 {seg.cp1 && seg.cp2 && (
                   <button
                     type="button"
                     onClick={() => onUpdateSegment(i, { cp1: undefined, cp2: undefined })}
                     className="text-2xs font-medium text-fg-3 transition-colors hover:text-fg-2"
-                    title="Reset to auto-generated control points"
+                    title={t("editor.arcPath.resetTitle")}
                   >
-                    Reset
+                    {t("common.reset")}
                   </button>
                 )}
               </div>
               <SliderControl
-                trackName={segmentCount === 1 ? "Curviness" : `Segment ${i + 1} curviness`}
+                trackName={
+                  segmentCount === 1
+                    ? t("editor.arcPath.curviness")
+                    : t("editor.arcPath.segmentCurviness", { index: i + 1 })
+                }
                 value={seg.curviness}
                 min={0}
                 max={3}

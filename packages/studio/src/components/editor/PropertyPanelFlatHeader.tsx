@@ -1,5 +1,6 @@
 import { Eye, EyeSlash, Waveform } from "@phosphor-icons/react";
 import { ClipboardList, Film, Square, Type, X } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import { IconButton } from "../ui";
 
 export type InspectorElementKind = "text" | "media" | "audio" | "other";
@@ -53,8 +54,11 @@ export function PropertyPanelFlatHeader({
   onUngroup?: () => void;
   showUngroup: boolean;
 }) {
+  const { t } = useTranslation();
   const Icon = ICON_BY_KIND[elementKind];
-  const visibilityLabel = hidden ? "Show element" : "Hide element";
+  const visibilityLabel = hidden
+    ? t("inspector.header.showElement")
+    : t("inspector.header.hideElement");
 
   return (
     <div className="flex shrink-0 items-center gap-2.5 border-b border-border-subtle px-3 py-2.5">
@@ -77,8 +81,8 @@ export function PropertyPanelFlatHeader({
         {showUngroup && (
           <IconButton
             size="sm"
-            aria-label="Ungroup"
-            title="Ungroup (⌘⇧G)"
+            aria-label={t("inspector.header.ungroup")}
+            title={t("inspector.header.ungroupHint", { key: "⌘⇧G" })}
             icon={<UngroupGlyph />}
             onClick={() => {
               onUngroup?.();
@@ -99,8 +103,8 @@ export function PropertyPanelFlatHeader({
         )}
         <IconButton
           size="sm"
-          aria-label="Copy element info to clipboard"
-          title={copied ? "Copied!" : "Copy element info for any AI agent"}
+          aria-label={t("inspector.header.copyInfo")}
+          title={copied ? t("inspector.header.copied") : t("inspector.header.copyInfoHint")}
           className={copied ? "text-success" : undefined}
           icon={<ClipboardList size={14} />}
           onClick={() => {
@@ -109,8 +113,8 @@ export function PropertyPanelFlatHeader({
         />
         <IconButton
           size="sm"
-          aria-label="Clear selection"
-          title="Clear selection"
+          aria-label={t("inspector.header.clearSelection")}
+          title={t("inspector.header.clearSelection")}
           icon={<X size={14} />}
           onClick={() => {
             onClear();

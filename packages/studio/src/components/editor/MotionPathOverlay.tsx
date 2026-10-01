@@ -2,6 +2,7 @@ import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { useDomEditContext } from "../../contexts/DomEditContext";
+import { useTranslation } from "../../i18n";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
@@ -94,6 +95,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     iframeRef,
     selectorFor(selection),
   );
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [ghost, setGhost] = useState<{ x: number; y: number; segIndex: number } | null>(null);
   const [hoverNode, setHoverNode] = useState<number | null>(null);
@@ -194,8 +196,8 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       const ps = 1 / transformWDivisor(live);
       const px = Math.round(((e.clientX - r.left) / sc - elHome.x) / ps);
       const py = Math.round(((e.clientY - r.top) / sc - elHome.y) / ps);
-      const t = Math.round(usePlayerStore.getState().currentTime * 100) / 100;
-      void commitCreatePath(createSelector, t, px, py, commitMutation);
+      const time = Math.round(usePlayerStore.getState().currentTime * 100) / 100;
+      void commitCreatePath(createSelector, time, px, py, commitMutation);
       setMotionPathArmed(false);
     };
     surface.addEventListener("pointerdown", onDown, true);
@@ -381,7 +383,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
         d.ref.pct,
         iframeRef.current,
         { commitMutation: (_sel, mutation, options) => commitMutation(mutation, options) },
-        "Move animation path",
+        t("editor.motionPath.moveAnimationPath"),
       );
     } else {
       void commitNode(d.ref, x, y, animId, commitMutation);

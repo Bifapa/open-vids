@@ -1,3 +1,5 @@
+import { formatNumber, useTranslation } from "../../i18n";
+
 export type GestureRecordingState = "idle" | "recording" | "preview";
 
 interface GestureRecordIconProps {
@@ -27,6 +29,7 @@ export function GestureRecordPanelButton({
   recordingDuration,
   onToggleRecording,
 }: GestureRecordPanelButtonProps) {
+  const { t } = useTranslation();
   const recording = recordingState === "recording";
 
   return (
@@ -45,8 +48,14 @@ export function GestureRecordPanelButton({
       >
         <GestureRecordIcon recording={recording} />
         {recording
-          ? `Stop recording ${(recordingDuration ?? 0).toFixed(1)}s -- press R`
-          : "Record gesture (R) -- move pointer to capture motion"}
+          ? t("editor.gesture.stopPanel", {
+              seconds: formatNumber(recordingDuration ?? 0, {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1,
+              }),
+              key: "R",
+            })
+          : t("editor.gesture.recordPanel", { key: "R" })}
       </button>
     </div>
   );
@@ -63,8 +72,11 @@ export function GestureRecordBadge({
   recordingState,
   onToggleRecording,
 }: GestureRecordBadgeProps) {
+  const { t } = useTranslation();
   const recording = recordingState === "recording";
-  const label = recording ? "Stop gesture recording (R)" : "Record gesture (R)";
+  const label = recording
+    ? t("editor.gesture.stopBadge", { key: "R" })
+    : t("editor.gesture.recordBadge", { key: "R" });
 
   return (
     <button

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "../../i18n";
 import { adjustNumericToken, parseNumericToken } from "./propertyPanelHelpers";
 import { useInspectorGestureTransaction } from "./useInspectorGestureTransaction";
 
@@ -23,6 +24,7 @@ export function CommitField({
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void | Promise<unknown>;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(value);
   const valueRef = useRef(value);
   const draftRef = useRef(draft);
@@ -212,7 +214,7 @@ export function CommitField({
         }
       }}
       onKeyDown={handleKeyDown}
-      title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
+      title={parseNumericToken(value) ? t("inspector.field.adjustHint") : undefined}
       className={`min-w-0 w-full bg-transparent text-sm text-inherit outline-hidden placeholder:text-fg-3 disabled:cursor-not-allowed disabled:text-fg-disabled ${
         align === "right" ? "text-right" : "text-left"
       }`}

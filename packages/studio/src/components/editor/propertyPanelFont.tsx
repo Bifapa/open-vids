@@ -19,7 +19,21 @@ import {
   type FontOption,
   type LocalFontData,
 } from "./propertyPanelHelpers";
+import { t as translate, useTranslation, type TranslationKey } from "../../i18n";
 
+const FONT_SOURCE_KEYS = {
+  Current: "inspector.font.source.current",
+  Document: "inspector.font.source.document",
+  Imported: "inspector.font.source.imported",
+  Local: "inspector.font.source.local",
+  Google: "inspector.font.source.google",
+  System: "inspector.font.source.system",
+} as const satisfies Record<FontOption["source"], TranslationKey>;
+
+/** The badge on a font row: where the font comes from. */
+function fontSourceLabel(source: FontOption["source"]): string {
+  return translate(FONT_SOURCE_KEYS[source]);
+}
 /* ------------------------------------------------------------------ */
 /*  Font helper functions                                              */
 /* ------------------------------------------------------------------ */
@@ -136,6 +150,7 @@ export function FontFamilyField({
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   onCommit: (nextValue: string) => void;
 }) {
+  const { t } = useTranslation();
   const currentFamily = primaryFontFamily(value);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -216,7 +231,7 @@ export function FontFamilyField({
 
   const loadBrowserLocalFonts = async () => {
     if (!canQueryLocalFonts || !window.queryLocalFonts) {
-      setFontNotice("This browser does not expose installed fonts. Import a font file instead.");
+      setFontNotice(t("inspector.font.notice.unsupported"));
       return;
     }
     setLoadingLocalFonts(true);
@@ -230,13 +245,13 @@ export function FontFamilyField({
         .map((name) => fontFamilyFromAssetPath(`${name}.ttf`));
       setLocalFontData(sorted);
       setLocalFonts((cur) => uniqueFontFamilies([...cur, ...families]));
-      setFontNotice(fonts.length === 0 ? "No browser-local fonts were returned." : null);
+      setFontNotice(fonts.length === 0 ? t("inspector.font.notice.noLocal") : null);
     } catch (error) {
       const name = error instanceof Error ? error.name : "";
       setFontNotice(
         name === "NotAllowedError"
-          ? "Local font access was denied. Import a font file instead."
-          : "Local font access is unavailable. Import a font file instead.",
+          ? t("inspector.font.notice.denied")
+          : t("inspector.font.notice.unavailable"),
       );
     } finally {
       setLoadingLocalFonts(false);
@@ -256,10 +271,10 @@ export function FontFamilyField({
         setQuery("");
         setOpen(false);
       } else {
-        setFontNotice("No supported font files were imported.");
+        setFontNotice(t("inspector.font.notice.noneImported"));
       }
     } catch {
-      setFontNotice("Font import failed — the files were not added. Try again.");
+      setFontNotice(t("inspector.font.notice.importFailed"));
     } finally {
       setImportingFonts(false);
     }
@@ -362,10 +377,10 @@ export function FontFamilyField({
         } else {
           // Committing an un-imported family would render a silent fallback,
           // so surface the failure and keep the current font instead.
-          setFontNotice(`Couldn't import "${option.family}" — the font was not applied.`);
+          setFontNotice(t("inspector.font.importFailed", { family: option.family }));
         }
       } catch {
-        setFontNotice(`Couldn't import "${option.family}" — the font was not applied.`);
+        setFontNotice(t("inspector.font.importFailed", { family: option.family }));
       } finally {
         setImportingFonts(false);
       }
@@ -389,7 +404,9 @@ export function FontFamilyField({
           type="text"
           value={query}
           disabled={disabled}
-          placeholder={loadingGoogleFonts ? "Loading Google Fonts..." : "Search fonts"}
+          placeholder={
+            loadingGoogleFonts ? t("inspector.font.loadingGoogle") : t("inspector.font.search")
+          }
           onChange={(e) => {
             setQuery(e.target.value);
             setActiveIndex(-1);
@@ -432,7 +449,7 @@ export function FontFamilyField({
             onClick={loadBrowserLocalFonts}
             className="rounded-lg border border-border bg-surface-1 px-2.5 text-xs font-medium text-fg-2 transition-colors hover:border-neutral-600 hover:text-fg disabled:cursor-not-allowed disabled:text-neutral-700"
           >
-            {loadingLocalFonts ? "..." : "Local"}
+            {loadingLocalFonts ? "..." : t("inspector.font.local")}
           </button>
         )}
         <button
@@ -441,14 +458,14 @@ export function FontFamilyField({
           onClick={() => fontInputRef.current?.click()}
           className="rounded-lg border border-border bg-surface-1 px-2.5 text-xs font-medium text-fg-2 transition-colors hover:border-neutral-600 hover:text-fg disabled:cursor-not-allowed disabled:text-neutral-700"
         >
-          {importingFonts ? "..." : "Import"}
+          {importingFonts ? "..." : t("inspector.font.import")}
         </button>
         <input
           ref={fontInputRef}
           type="file"
           accept=".ttf,.otf,.ttc,.woff,.woff2,.eot,font/*"
           multiple
-          aria-label="Import local font files"
+          aria-label={t("inspector.font.importFiles")}
           disabled={disabled || importingFonts || !onImportFonts}
           className="hidden"
           onChange={async (event) => {
@@ -464,7 +481,7 @@ export function FontFamilyField({
       )}
       <div className="max-h-64 overflow-y-auto p-1">
         {filteredOptions.length === 0 ? (
-          <div className="px-2 py-3 text-sm text-fg-3">No fonts found.</div>
+          <div className="px-2 py-3 text-sm text-fg-3">{t("inspector.font.noneFound")}</div>
         ) : (
           filteredOptions.map((option, index) => (
             <button
@@ -491,7 +508,7 @@ export function FontFamilyField({
                 )}
               </span>
               <span className="shrink-0 text-2xs uppercase tracking-[0.14em] text-fg-disabled">
-                {option.source}
+                {fontSourceLabel(option.source)}
               </span>
             </button>
           ))
@@ -504,9 +521,9 @@ export function FontFamilyField({
     return (
       <div
         ref={containerRef}
-        className="relative grid min-h-ctl-sm grid-cols-[72px_minmax(0,1fr)] items-center gap-2"
+        className="relative grid min-h-ctl-sm grid-cols-[var(--insp-label-w)_minmax(0,1fr)] items-center gap-2"
       >
-        <span className="min-w-0 truncate text-sm text-fg-3">Font</span>
+        <span className="min-w-0 truncate text-sm text-fg-3">{t("inspector.font.label")}</span>
         <button
           type="button"
           data-flat-font-trigger="true"
@@ -526,7 +543,7 @@ export function FontFamilyField({
 
   return (
     <div ref={containerRef} className="relative grid min-w-0 gap-1.5">
-      <span className={LABEL}>Font family</span>
+      <span className={LABEL}>{t("inspector.font.family")}</span>
       <button
         type="button"
         disabled={disabled}
@@ -539,7 +556,9 @@ export function FontFamilyField({
         >
           {currentFamily}
         </span>
-        <span className="shrink-0 text-xs uppercase tracking-[0.14em] text-fg-disabled">Font</span>
+        <span className="shrink-0 text-xs uppercase tracking-[0.14em] text-fg-disabled">
+          {t("inspector.font.fontTag")}
+        </span>
       </button>
       {dropdown}
     </div>

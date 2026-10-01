@@ -3,6 +3,7 @@ import { Eye, Film, Layers, Square, Type, X } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditingTypes";
 import { canHideSelections, isAudioDomElement } from "../../utils/timelineInspector";
 import { Button, IconButton } from "../ui";
+import { Trans, useTranslation } from "../../i18n";
 import { InspectorCompositionFacts } from "./PropertyPanelCompositionFacts";
 import type { InspectorElementKind } from "./PropertyPanelFlatHeader";
 
@@ -13,8 +14,10 @@ function FlatEmptyState() {
       <div className="flex items-start gap-2 px-3 py-3 text-sm leading-[17px] text-fg-3">
         <CursorClick size={14} className="mt-px shrink-0" aria-hidden="true" />
         <p className="m-0 text-pretty">
-          <span className="font-medium text-fg-2">Nothing selected.</span> Click any element on the
-          canvas to edit it, or drag to select several.
+          <Trans
+            i18nKey="inspector.empty.nothingSelected"
+            components={{ b: <span className="font-medium text-fg-2" /> }}
+          />
         </p>
       </div>
     </div>
@@ -48,6 +51,7 @@ function FlatMultiSelectState({
   onHideAllSelected?: () => void;
   onClearSelection?: () => void;
 }) {
+  const { t } = useTranslation();
   // One predicate for both actions and for the handler's own refusal, so the
   // button and the refusal cannot disagree about what audio is.
   const hasAudio = !canHideSelections(multiSelectedElements);
@@ -59,15 +63,17 @@ function FlatMultiSelectState({
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-md font-semibold text-fg">
-            {multiSelectCount} Elements Selected
+            {t("inspector.empty.multi.title", { count: multiSelectCount })}
           </div>
-          <div className="mt-px truncate text-xs text-fg-3">⇧-click to add or remove</div>
+          <div className="mt-px truncate text-xs text-fg-3">
+            {t("inspector.empty.multi.hint", { key: "⇧" })}
+          </div>
         </div>
         <IconButton
           size="sm"
           data-flat-multiselect-clear="true"
-          aria-label="Clear selection"
-          title="Clear selection"
+          aria-label={t("inspector.empty.multi.clear")}
+          title={t("inspector.empty.multi.clear")}
           icon={<X size={14} />}
           className="-mr-1"
           onClick={onClearSelection}
@@ -76,7 +82,7 @@ function FlatMultiSelectState({
       <div className="border-b border-border-subtle">
         <div className="flex h-[30px] items-center gap-1 pl-2 pr-2.5 text-sm font-semibold">
           <SquaresFour size={12} className="text-fg-3" aria-hidden="true" />
-          Selection
+          {t("inspector.empty.multi.selection")}
         </div>
         <div className="grid gap-1.5 px-3 pb-3 pt-0.5">
           <ul className="m-0 grid list-none gap-0.5 p-0">
@@ -118,7 +124,7 @@ function FlatMultiSelectState({
                 icon={<Layers size={12} />}
                 onClick={onGroupSelection}
               >
-                Group Selection
+                {t("inspector.empty.multi.group")}
               </Button>
               <Button
                 size="sm"
@@ -126,11 +132,11 @@ function FlatMultiSelectState({
                 icon={<EyeSlash size={12} />}
                 onClick={onHideAllSelected}
               >
-                Hide All
+                {t("inspector.empty.multi.hideAll")}
               </Button>
             </div>
           )}
-          <p className="m-0 text-xs text-fg-3">Select a single element to edit its properties.</p>
+          <p className="m-0 text-xs text-fg-3">{t("inspector.empty.multi.selectOne")}</p>
         </div>
       </div>
     </div>
@@ -152,6 +158,7 @@ export function PropertyPanelEmptyState({
   onHideAllSelected?: () => void;
   onClearSelection?: () => void;
 }) {
+  const { t } = useTranslation();
   if (flat) {
     return multiSelectCount > 1 ? (
       <FlatMultiSelectState
@@ -172,19 +179,19 @@ export function PropertyPanelEmptyState({
         {multiSelectCount > 1 ? (
           <>
             <Layers size={18} className="mb-3 text-fg-disabled" />
-            <p className="text-sm font-medium text-fg">{multiSelectCount} elements selected</p>
+            <p className="text-sm font-medium text-fg">
+              {t("inspector.empty.classic.multiTitle", { count: multiSelectCount })}
+            </p>
             <p className="mt-2 max-w-[260px] text-xs leading-5 text-fg-3">
-              Select a single element to edit its properties. Click an element in the preview or use
-              the timeline layer panel.
+              {t("inspector.empty.classic.multiHint")}
             </p>
           </>
         ) : (
           <>
             <Eye size={18} className="mb-3 text-fg-disabled" />
-            <p className="text-sm font-medium text-fg">Select an element in the preview.</p>
+            <p className="text-sm font-medium text-fg">{t("inspector.empty.classic.title")}</p>
             <p className="mt-2 max-w-[260px] text-xs leading-5 text-fg-3">
-              The inspector is tuned for element edits with safer geometry controls, color picking,
-              and cleaner grouped layer controls.
+              {t("inspector.empty.classic.hint")}
             </p>
           </>
         )}

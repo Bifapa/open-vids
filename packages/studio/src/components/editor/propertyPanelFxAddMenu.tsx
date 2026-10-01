@@ -18,14 +18,15 @@ import {
   type HfAudioFxJob,
 } from "@hyperframes/core/audio-fx-jobs";
 import { EFFECT_COPY } from "@hyperframes/core/audio-fx-copy";
+import { useTranslation, type TranslationKey } from "../../i18n";
 
 const GROUP_ORDER: HfAudioFxGroup[] = ["filter", "dynamics", "nonlinear", "time"];
-const GROUP_LABEL: Record<HfAudioFxGroup, string> = {
-  filter: "Filters",
-  dynamics: "Dynamics",
-  nonlinear: "Non-linear",
-  time: "Time",
-};
+const GROUP_LABEL = {
+  filter: "inspector.fx.group.filters",
+  dynamics: "inspector.fx.group.dynamics",
+  nonlinear: "inspector.fx.group.nonlinear",
+  time: "inspector.fx.group.time",
+} as const satisfies Record<HfAudioFxGroup, TranslationKey>;
 
 /**
  * The add menu, with the jobs standing in for the effect they are made of.
@@ -88,6 +89,7 @@ export function FxAddMenu({
   withJob,
   withEffect,
 }: FxAddMenuProps) {
+  const { t } = useTranslation();
   return (
     <div
       className="hf-fx-add-menu grid max-h-[min(72vh,600px)] gap-1 overflow-y-auto overscroll-contain rounded-md border border-border bg-bg-1 p-1 shadow-raise"
@@ -105,13 +107,15 @@ export function FxAddMenu({
       }}
     >
       <div className="hf-fx-add-group grid gap-px">
-        <span className={`hf-fx-add-group-label ${FX_MENU_GROUP}`}>Tone</span>
+        <span className={`hf-fx-add-group-label ${FX_MENU_GROUP}`}>
+          {t("inspector.fx.add.tone")}
+        </span>
         {onLevel ? (
           <button
             type="button"
             className={`hf-fx-add-composite ${FX_MENU_ITEM}`}
-            data-mech="Loudness"
-            title="Listen to this track and even out its loud and quiet parts."
+            data-mech={t("inspector.fx.add.loudness")}
+            title={t("inspector.fx.add.levelHint")}
             disabled={disabled || analysing}
             onClick={() => {
               if (levelled) onRemoveLevel?.();
@@ -133,9 +137,12 @@ export function FxAddMenu({
             }
             onFocus={levelled ? undefined : () => onAuditionLevel?.(true)}
           >
-            {levelled ? "Remove levelling" : "Even Out Levels"}
+            {levelled ? t("inspector.fx.add.removeLevelling") : t("inspector.fx.add.evenOutLevels")}
             {auditioningLevel ? (
-              <span className="hf-fx-add-working text-fg-3"> measuring…</span>
+              <span className="hf-fx-add-working text-fg-3">
+                {" "}
+                {t("inspector.fx.add.measuring")}
+              </span>
             ) : null}
           </button>
         ) : null}
@@ -145,8 +152,8 @@ export function FxAddMenu({
           // an entry in the effect registry, and a count of the registry must
           // not include it.
           className={`hf-fx-add-composite ${FX_MENU_ITEM}`}
-          data-mech="3-band"
-          title="Bass, middle and treble on one set of faders."
+          data-mech={t("inspector.fx.add.threeBand")}
+          title={t("inspector.fx.add.toneHint")}
           // No audition of its own: a Tone module arrives with every band at
           // 0 dB, so there is nothing to hear until a fader moves, and a hover
           // that changes nothing teaches that hovering does nothing. It still
@@ -157,12 +164,12 @@ export function FxAddMenu({
           }}
           onClick={onEq}
         >
-          Tone (EQ)
+          {t("inspector.fx.add.toneEq")}
         </button>
       </div>
       {GROUPED.map(({ group, defs, jobs }) => (
         <div key={group} className="hf-fx-add-group grid gap-px">
-          <span className={`hf-fx-add-group-label ${FX_MENU_GROUP}`}>{GROUP_LABEL[group]}</span>
+          <span className={`hf-fx-add-group-label ${FX_MENU_GROUP}`}>{t(GROUP_LABEL[group])}</span>
           {jobs.map((job) => (
             <button
               key={job.id}

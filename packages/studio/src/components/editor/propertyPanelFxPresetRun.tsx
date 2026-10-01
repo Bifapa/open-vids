@@ -18,6 +18,7 @@ import { fxPresetBackground, fxPresetStyle } from "./propertyPanelFxPresetStyle.
 import { FxNodeRow } from "./propertyPanelFxNodeRow.js";
 import { CaretDown, X } from "@phosphor-icons/react";
 import { INSP_MINI_BUTTON, inspSwitchKnob, inspSwitchTrack } from "./inspectorStyles";
+import { t as translate, useTranslation } from "../../i18n";
 
 /**
  * The one control over a whole preset: how much of it is applied.
@@ -26,17 +27,19 @@ import { INSP_MINI_BUTTON, inspSwitchKnob, inspSwitchTrack } from "./inspectorSt
  * fabricated the same way the derived one-knob control is, and rendered by the
  * ordinary controls.
  */
-const PRESET_AMOUNT_PARAM: HfAudioFxParam = {
-  kind: "number",
-  key: "amount",
-  label: "Amount",
-  unit: "",
-  min: 0,
-  max: 1,
-  step: 0.01,
-  default: 1,
-  hint: "How much of this preset is applied. Automate it to bring the whole preset in or out over time.",
-};
+function presetAmountParam(): HfAudioFxParam {
+  return {
+    kind: "number",
+    key: "amount",
+    label: translate("inspector.fx.preset.amount"),
+    unit: "",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 1,
+    hint: translate("inspector.fx.preset.amountHint"),
+  };
+}
 
 export interface FxPresetRunProps {
   run: { preset?: string; items: { node: HfAudioFxNode; i: number }[] };
@@ -92,6 +95,7 @@ export function FxPresetRun({
   onAutomate,
   onRemoveAutomation,
 }: FxPresetRunProps) {
+  const { t } = useTranslation();
   const rows = run.items.map(({ node, i }) => (
     <FxNodeRow
       // Keyed by id, as the carve module's list above already is. On
@@ -156,7 +160,9 @@ export function FxPresetRun({
           }}
           aria-expanded={!collapsed}
           title={
-            collapsed ? `Show what ${preset.label} contains` : `Hide ${preset.label}'s effects`
+            collapsed
+              ? t("inspector.fx.preset.show", { label: preset.label })
+              : t("inspector.fx.preset.hide", { label: preset.label })
           }
           onClick={onToggleCollapse}
         >
@@ -182,8 +188,16 @@ export function FxPresetRun({
           type="button"
           className={`hf-fx-preset-run-toggle mx-0.5 ${inspSwitchTrack(runOn)}`}
           aria-pressed={runOn}
-          aria-label={runOn ? `Switch ${preset.label} off` : `Switch ${preset.label} back on`}
-          title={runOn ? `Switch ${preset.label} off` : `Switch ${preset.label} back on`}
+          aria-label={
+            runOn
+              ? t("inspector.fx.preset.switchOff", { label: preset.label })
+              : t("inspector.fx.preset.switchOn", { label: preset.label })
+          }
+          title={
+            runOn
+              ? t("inspector.fx.preset.switchOff", { label: preset.label })
+              : t("inspector.fx.preset.switchOn", { label: preset.label })
+          }
           disabled={disabled}
           onClick={() => onSetAmount(runOn ? 0 : 1)}
         >
@@ -192,8 +206,8 @@ export function FxPresetRun({
         <button
           type="button"
           className={`hf-fx-preset-run-remove ${INSP_MINI_BUTTON} hover:text-error`}
-          title={`Remove ${preset.label}`}
-          aria-label={`Remove ${preset.label}`}
+          title={t("inspector.fx.preset.remove", { label: preset.label })}
+          aria-label={t("inspector.fx.preset.remove", { label: preset.label })}
           disabled={disabled}
           onClick={onRemoveRun}
         >
@@ -203,7 +217,7 @@ export function FxPresetRun({
       {/* The same value the switch sets, so an author can put the preset half
           in — and the lane below ramps it continuously. */}
       <FxParamRow
-        param={PRESET_AMOUNT_PARAM}
+        param={presetAmountParam()}
         value={amount}
         disabled={disabled || automated}
         automated={automated}

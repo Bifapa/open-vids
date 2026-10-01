@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import {
   formatCssColor,
   hsvToRgb,
@@ -163,6 +164,7 @@ export function ColorField({
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
 }) {
+  const { t } = useTranslation();
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -323,7 +325,7 @@ export function ColorField({
         <div
           ref={panelRef}
           role="dialog"
-          aria-label={`${label} color picker`}
+          aria-label={t("inspector.color.pickerLabel", { label })}
           tabIndex={-1}
           className="fixed z-9999 w-[292px] overflow-hidden rounded-lg border border-border bg-menu-bg shadow-pop backdrop-blur-xl outline-hidden"
           style={{
@@ -334,7 +336,9 @@ export function ColorField({
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-fg">{label}</div>
-              <div className="text-2xs uppercase tracking-[0.16em] text-fg-disabled">Color</div>
+              <div className="text-2xs uppercase tracking-[0.16em] text-fg-disabled">
+                {t("inspector.color.title")}
+              </div>
             </div>
             <button
               type="button"
@@ -343,7 +347,7 @@ export function ColorField({
                 setOpen(false);
               }}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-fg-3 transition-colors hover:bg-surface-1 hover:text-fg"
-              aria-label="Close color picker"
+              aria-label={t("inspector.color.closePicker")}
             >
               <X size={13} />
             </button>
@@ -392,13 +396,17 @@ export function ColorField({
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium text-fg">{currentColor}</div>
                 <div className="mt-0.5 text-2xs text-fg-disabled">
-                  S {saturationPercent}% · B {brightnessPercent}% · A {alphaPercent}%
+                  {t("inspector.color.hsbReadout", {
+                    saturation: saturationPercent,
+                    brightness: brightnessPercent,
+                    alpha: alphaPercent,
+                  })}
                 </div>
               </div>
             </div>
 
             <ColorSlider
-              label="Hue"
+              label={t("inspector.color.hue")}
               value={hsv.hue}
               min={0}
               max={360}
@@ -414,7 +422,7 @@ export function ColorField({
             />
 
             <ColorSlider
-              label="Alpha"
+              label={t("inspector.color.alpha")}
               value={draftColor.alpha}
               min={0}
               max={1}
@@ -432,7 +440,7 @@ export function ColorField({
             />
 
             <label className="grid gap-1.5">
-              <span className={LABEL}>Hex</span>
+              <span className={LABEL}>{t("inspector.color.hex")}</span>
               <input
                 value={hexDraft}
                 onChange={(event) => handleHexChange(event.target.value)}
@@ -458,13 +466,13 @@ export function ColorField({
 
   if (flat) {
     return (
-      <div className="grid min-h-ctl-sm grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
+      <div className="grid min-h-ctl-sm grid-cols-[var(--insp-label-w)_minmax(0,1fr)] items-center gap-2">
         <span className="min-w-0 truncate text-sm text-fg-3">{label}</span>
         <button
           type="button"
           data-flat-color-trigger="true"
           disabled={disabled}
-          aria-label={`Pick ${label.toLowerCase()} color`}
+          aria-label={t("inspector.color.pick", { label: label.toLowerCase() })}
           ref={buttonRef}
           onClick={openPicker}
           className={`flex h-ctl-sm min-w-0 items-center gap-1.5 rounded-sm border bg-surface-1 pl-0.5 pr-2 text-left transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed ${open ? "border-border-strong" : "border-border"}`}
@@ -483,7 +491,7 @@ export function ColorField({
               data-color-mixed-indicator="true"
               className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-fg-3"
             >
-              Mixed
+              {t("inspector.color.mixed")}
             </span>
           )}
         </button>
@@ -503,14 +511,14 @@ export function ColorField({
             onClick={onReset}
             className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-fg-3 transition-colors hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Reset
+            {t("inspector.color.reset")}
           </button>
         )}
       </div>
       <button
         type="button"
         disabled={disabled}
-        aria-label={`Pick ${label.toLowerCase()} color`}
+        aria-label={t("inspector.color.pick", { label: label.toLowerCase() })}
         ref={buttonRef}
         onClick={openPicker}
         className={`${FIELD} flex items-center gap-3 text-left hover:border-border disabled:cursor-not-allowed ${open ? "border-neutral-600" : ""}`}
@@ -525,7 +533,7 @@ export function ColorField({
             data-color-mixed-indicator="true"
             className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-fg-3"
           >
-            Mixed
+            {t("inspector.color.mixed")}
           </span>
         )}
       </button>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import { useBlockCatalog } from "../../hooks/useBlockCatalog";
 import { Film, Plus } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import type { DomEditSelection } from "./domEditing";
 import type { ElementTiming } from "./propertyPanelFlatTimingDerivation";
 
@@ -33,13 +34,16 @@ export function FlatOverlaysSection({
 }: {
   onAddOverlay: (name: string) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const { blocks, loading, error } = useBlockCatalog();
   const overlays = filterMediaTreatmentOverlays(blocks);
   const [adding, setAdding] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
 
   if (loading) {
-    return <div className="py-4 text-center text-xs text-fg-3">Loading overlays…</div>;
+    return (
+      <div className="py-4 text-center text-xs text-fg-3">{t("inspector.overlays.loading")}</div>
+    );
   }
   if (error) {
     return <div className="py-4 text-center text-xs text-error">{error}</div>;
@@ -49,16 +53,14 @@ export function FlatOverlaysSection({
   const described = overlays.find((overlay) => overlay.name === previewing);
   return (
     <div className="grid gap-1.5">
-      <p className="m-0 text-xs leading-[15px] text-fg-3">
-        Adds a registry block on the Motion track above this clip.
-      </p>
+      <p className="m-0 text-xs leading-[15px] text-fg-3">{t("inspector.overlays.hint")}</p>
       <div data-flat-overlays="true" className="grid grid-cols-2 gap-2">
         {overlays.map((overlay) => (
           <button
             key={overlay.name}
             type="button"
             data-flat-overlay={overlay.name}
-            aria-label={`Add ${overlay.title}`}
+            aria-label={t("inspector.overlays.add", { title: overlay.title })}
             disabled={busy}
             title={overlay.description}
             onPointerEnter={() => setPreviewing(overlay.name)}
@@ -103,7 +105,7 @@ export function FlatOverlaysSection({
               </span>
             </span>
             <span className="block truncate px-1.5 text-xs leading-[14px]">
-              {adding === overlay.name ? "Adding…" : overlay.title}
+              {adding === overlay.name ? t("inspector.overlays.adding") : overlay.title}
             </span>
           </button>
         ))}

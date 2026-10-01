@@ -5,16 +5,17 @@ import {
   type NormalizedHfColorGradingWheels,
 } from "@hyperframes/core/color-grading";
 import { RotateCcw } from "../../icons/SystemIcons";
+import { useTranslation, type TranslationKey } from "../../i18n";
 import { INSP_MINI_BUTTON, rangeFillStyle } from "./inspectorStyles";
 import { clampNumber } from "../../utils/studioHelpers";
 import { GradingNumberField } from "./propertyPanelGradingNumberField";
 import { useInspectorGestureDraft } from "./useInspectorGestureTransaction";
 
-const WHEELS: ReadonlyArray<{ key: HfColorGradingWheelKey; label: string }> = [
-  { key: "shadows", label: "Shadows" },
-  { key: "midtones", label: "Midtones" },
-  { key: "highlights", label: "Highlights" },
-];
+const WHEELS = [
+  { key: "shadows", label: "inspector.wheels.shadows" },
+  { key: "midtones", label: "inspector.wheels.midtones" },
+  { key: "highlights", label: "inspector.wheels.highlights" },
+] as const satisfies ReadonlyArray<{ key: HfColorGradingWheelKey; label: TranslationKey }>;
 type NormalizedTonalWheel = NormalizedHfColorGradingWheels[HfColorGradingWheelKey];
 
 const WHEEL_CONTROLS = getHfColorGradingCapabilities().wheels.controls;
@@ -112,6 +113,7 @@ function wheelFromKey(
 }
 
 function TonalWheel({
+  wheelKey,
   label,
   wheel,
   disabled,
@@ -121,6 +123,7 @@ function TonalWheel({
   onCancel,
   onReset,
 }: {
+  wheelKey: HfColorGradingWheelKey;
   label: string;
   wheel: NormalizedTonalWheel;
   disabled?: boolean;
@@ -130,6 +133,7 @@ function TonalWheel({
   onCancel: () => void;
   onReset: () => void;
 }) {
+  const { t } = useTranslation();
   const pointerIdRef = useRef<number | null>(null);
   const hueRadians = (wheel.hue * Math.PI) / 180;
   const thumbLeft = 50 + Math.cos(hueRadians) * wheel.amount * 46;
@@ -153,13 +157,13 @@ function TonalWheel({
   };
 
   return (
-    <div data-color-wheel={label.toLowerCase()} className="grid min-w-[84px] flex-1 gap-1">
+    <div data-color-wheel={wheelKey} className="grid min-w-[84px] flex-1 gap-1">
       <div className="flex min-h-5 items-center justify-between gap-0.5">
         <span className="truncate text-xs font-medium text-fg-2">{label}</span>
         <button
           type="button"
-          aria-label={`Reset ${label}`}
-          title={`Reset ${label}`}
+          aria-label={t("inspector.wheels.reset", { label })}
+          title={t("inspector.wheels.reset", { label })}
           disabled={disabled}
           onClick={onReset}
           className={INSP_MINI_BUTTON}
@@ -170,13 +174,14 @@ function TonalWheel({
       <div
         role="slider"
         tabIndex={disabled ? -1 : 0}
-        aria-label={`${label} color`}
+        aria-label={t("inspector.wheels.colorLabel", { label })}
         aria-valuemin={WHEEL_CONTROLS.amount.min * PERCENT_SCALE}
         aria-valuemax={WHEEL_CONTROLS.amount.max * PERCENT_SCALE}
         aria-valuenow={Math.round(wheel.amount * PERCENT_SCALE)}
-        aria-valuetext={`${Math.round(wheel.hue)} degrees, ${Math.round(
-          wheel.amount * PERCENT_SCALE,
-        )} percent`}
+        aria-valuetext={t("inspector.wheels.valueText", {
+          hue: Math.round(wheel.hue),
+          amount: Math.round(wheel.amount * PERCENT_SCALE),
+        })}
         aria-disabled={disabled}
         data-color-wheel-surface="true"
         onDoubleClick={onReset}
@@ -226,7 +231,7 @@ function TonalWheel({
       </div>
       <input
         type="range"
-        aria-label={`${label} level`}
+        aria-label={t("inspector.wheels.levelLabel", { label })}
         min={WHEEL_CONTROLS.level.min}
         max={WHEEL_CONTROLS.level.max}
         step={0.01}
@@ -251,7 +256,7 @@ function TonalWheel({
       />
       <div className="grid grid-cols-3 gap-1">
         <GradingNumberField
-          label="Hue"
+          label={t("inspector.wheels.hue")}
           value={wheel.hue}
           min={WHEEL_CONTROLS.hue.min}
           max={HUE_MAX}
@@ -264,7 +269,7 @@ function TonalWheel({
           onCancel={onCancel}
         />
         <GradingNumberField
-          label="Amount"
+          label={t("inspector.wheels.amount")}
           value={wheel.amount * PERCENT_SCALE}
           min={WHEEL_CONTROLS.amount.min * PERCENT_SCALE}
           max={WHEEL_CONTROLS.amount.max * PERCENT_SCALE}
@@ -277,7 +282,7 @@ function TonalWheel({
           onCancel={onCancel}
         />
         <GradingNumberField
-          label="Level"
+          label={t("inspector.wheels.level")}
           value={wheel.level * PERCENT_SCALE}
           min={WHEEL_CONTROLS.level.min * PERCENT_SCALE}
           max={WHEEL_CONTROLS.level.max * PERCENT_SCALE}
@@ -305,6 +310,7 @@ export function ColorWheels({
   onPreview: (value: NormalizedHfColorGradingWheels) => void;
   onCommit: (value: NormalizedHfColorGradingWheels) => void;
 }) {
+  const { t } = useTranslation();
   const { draft, setDraft, transaction } = useInspectorGestureDraft({
     sourceValue: value,
     onPreview,
@@ -328,7 +334,8 @@ export function ColorWheels({
       {WHEELS.map(({ key, label }) => (
         <TonalWheel
           key={key}
-          label={label}
+          wheelKey={key}
+          label={t(label)}
           wheel={draft[key]}
           disabled={disabled}
           onBegin={transaction.begin}

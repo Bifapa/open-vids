@@ -1,4 +1,5 @@
 import { Record as RecordIcon, Sparkle, Stop } from "@phosphor-icons/react";
+import { formatNumber, useTranslation } from "../../i18n";
 import { Button, Kbd } from "../ui";
 
 export function PropertyPanelFlatFooter({
@@ -12,10 +13,15 @@ export function PropertyPanelFlatFooter({
   recordingDuration?: number;
   onToggleRecording?: () => void;
 }) {
+  const { t } = useTranslation();
   const recording = recordingState === "recording";
+  const seconds = formatNumber(recordingDuration ?? 0, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
   const recordTitle = recording
-    ? `Stop recording ${(recordingDuration ?? 0).toFixed(1)}s`
-    : "Record gesture (R)";
+    ? t("inspector.footer.stopRecordingHint", { seconds })
+    : t("inspector.footer.recordHint", { key: "R" });
 
   return (
     // The 1px line is a shadow, not a border: when the sections fill the body,
@@ -32,7 +38,7 @@ export function PropertyPanelFlatFooter({
           onAskAgent?.();
         }}
       >
-        Ask Agent About This Element
+        {t("inspector.footer.askAgent")}
       </Button>
       {onToggleRecording && (
         <Button
@@ -57,8 +63,8 @@ export function PropertyPanelFlatFooter({
         >
           <span className="truncate">
             {recording
-              ? `Stop Recording ${(recordingDuration ?? 0).toFixed(1)}s`
-              : "Record Gesture"}
+              ? t("inspector.footer.stopRecording", { seconds })
+              : t("inspector.footer.record")}
           </span>
           {!recording && <Kbd className="ml-auto">R</Kbd>}
         </Button>

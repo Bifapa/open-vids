@@ -1,4 +1,5 @@
 import { RotateCcw } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import { INSP_MINI_BUTTON, INSP_ROW, INSP_SELECT } from "./inspectorStyles";
 import {
   VALUE_TIER_LABEL_CLASS,
@@ -33,6 +34,7 @@ export function FlatSelectRow({
   onChange: (nextValue: string) => void;
   onReset?: () => void;
 }) {
+  const { t } = useTranslation();
   const normalizedOptions = options.map((option) =>
     typeof option === "string" ? { value: option, label: option } : option,
   );
@@ -72,7 +74,7 @@ export function FlatSelectRow({
           <button
             type="button"
             data-flat-select-reset="true"
-            title="Remove — fall back to default"
+            title={t("inspector.row.resetToDefault")}
             disabled={disabled}
             onClick={() => {
               onReset();

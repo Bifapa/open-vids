@@ -16,6 +16,7 @@
  */
 
 import type { HfAudioGroup } from "@hyperframes/core/audio-groups";
+import { t } from "../../i18n";
 
 export interface AudioFxSignalPath {
   /** After the word "In". */
@@ -23,15 +24,17 @@ export interface AudioFxSignalPath {
   /** After the word "Out". */
   outLabel: string;
   /** The thing the empty-state sentence is about: "No effects on this …". */
-  subject: string;
+  subject: "track" | "group";
 }
 
 /** What a plain, ungrouped clip has always said, and the default everywhere. */
-export const CLIP_SIGNAL_PATH: AudioFxSignalPath = {
-  inLabel: "this track",
-  outLabel: "to mix",
-  subject: "track",
-};
+export function clipSignalPath(): AudioFxSignalPath {
+  return {
+    inLabel: t("inspector.fx.signal.thisTrack"),
+    outLabel: t("inspector.fx.signal.toMix"),
+    subject: "track",
+  };
+}
 
 /**
  * `groups` is the resolved set from the composition; `elementId` and `tag` come
@@ -40,7 +43,10 @@ export const CLIP_SIGNAL_PATH: AudioFxSignalPath = {
 /** "a", "a and b", "a, b and c" — how the designs read a member list aloud. */
 function joinNatural(items: readonly string[]): string {
   if (items.length <= 1) return items[0] ?? "";
-  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+  return t("inspector.fx.signal.listAnd", {
+    head: items.slice(0, -1).join(", "),
+    last: items[items.length - 1],
+  });
 }
 
 export function audioFxSignalPath(
@@ -59,13 +65,18 @@ export function audioFxSignalPath(
       // comma list. The trailing "together" is the point: it says the group is
       // ONE signal hearing both, which is the thing two separate copies of a
       // chain cannot do, and it says it without "sum" or "bus".
-      inLabel: members.length > 0 ? `${joinNatural(members)}, together` : "nothing yet",
-      outLabel: "to mix",
+      inLabel:
+        members.length > 0
+          ? t("inspector.fx.signal.together", { members: joinNatural(members) })
+          : t("inspector.fx.signal.nothingYet"),
+      outLabel: t("inspector.fx.signal.toMix"),
       subject: "group",
     };
   }
   const owner = elementId ? groups.find((g) => g.memberIds.includes(elementId)) : undefined;
   // "into Voiceover", not "to" — a member feeds the group, and the design uses
   // the preposition that says so.
-  return owner ? { ...CLIP_SIGNAL_PATH, outLabel: `into ${owner.label}` } : CLIP_SIGNAL_PATH;
+  return owner
+    ? { ...clipSignalPath(), outLabel: t("inspector.fx.signal.into", { label: owner.label }) }
+    : clipSignalPath();
 }

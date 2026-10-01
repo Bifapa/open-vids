@@ -2,7 +2,9 @@ import { INSP_MINI_BUTTON } from "./inspectorStyles";
 import { useEffect, useRef } from "react";
 import { isHfColorGradingActive } from "@hyperframes/core/color-grading";
 import { Compare, RotateCcw } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import type { ColorGradingControllerState } from "./useColorGradingController";
+import { gradeStatusText } from "./propertyPanelGradeStatus";
 
 const STATUS_DOT_CLASS: Record<ColorGradingControllerState["runtimeStatus"]["state"], string> = {
   active: "bg-emerald-400",
@@ -20,8 +22,10 @@ export function FlatColorGradingAccessory({
     "grading" | "compareEnabled" | "runtimeStatus" | "commitCompare" | "resetGrading"
   >;
 }) {
+  const { t } = useTranslation();
   const { grading, compareEnabled, runtimeStatus, commitCompare, resetGrading } = state;
   const gradingActive = isHfColorGradingActive(grading);
+  const statusText = gradeStatusText(runtimeStatus.message);
   const releaseRef = useRef<(() => void) | null>(null);
   useEffect(
     () => () => {
@@ -36,7 +40,7 @@ export function FlatColorGradingAccessory({
       <button
         type="button"
         aria-pressed={compareEnabled}
-        aria-label="Hold to show original"
+        aria-label={t("inspector.grade.holdToCompare")}
         disabled={!gradingActive}
         onPointerDown={(e) => {
           if (!gradingActive) return;
@@ -70,28 +74,28 @@ export function FlatColorGradingAccessory({
           e.preventDefault();
           commitCompare(false);
         }}
-        title="Hold to show original"
+        title={t("inspector.grade.holdToCompare")}
         className={INSP_MINI_BUTTON}
       >
         <Compare size={12} />
       </button>
-      <span className="flex min-w-0 items-center gap-1" title={runtimeStatus.message}>
+      <span className="flex min-w-0 items-center gap-1" title={statusText}>
         <span
           data-flat-grade-status-dot="true"
-          title={runtimeStatus.message}
+          title={statusText}
           className={`h-[5px] w-[5px] shrink-0 rounded-full ${STATUS_DOT_CLASS[runtimeStatus.state]}`}
         />
         <span
           data-flat-grade-status-message="true"
           className="max-w-[84px] truncate text-2xs text-fg-3"
         >
-          {runtimeStatus.message}
+          {statusText}
         </span>
       </span>
       <button
         type="button"
         data-flat-grade-reset="true"
-        title="Reset color grading"
+        title={t("inspector.grade.reset")}
         onClick={(e) => {
           e.stopPropagation();
           resetGrading();

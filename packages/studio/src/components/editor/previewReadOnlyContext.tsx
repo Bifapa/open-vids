@@ -1,18 +1,18 @@
 import { useContext, useMemo, type ReactNode } from "react";
+import { useTranslation } from "../../i18n";
 import { createStableContext } from "../../utils/hmrStableContext";
 
 interface PreviewReadOnlyValue {
   readOnly: boolean;
-  reason: string;
+  /** Host-supplied reason; null means the default one. */
+  reason: string | null;
 }
-
-const DEFAULT_REASON = "Preview is read-only.";
 
 // Real default (not a throwing required-provider context): most existing
 // mounts render with no wrapper at all and must stay editable, exactly as today.
 const PreviewReadOnlyContext = createStableContext<PreviewReadOnlyValue>("PreviewReadOnlyContext", {
   readOnly: false,
-  reason: DEFAULT_REASON,
+  reason: null,
 });
 
 export function PreviewReadOnlyProvider({
@@ -24,7 +24,7 @@ export function PreviewReadOnlyProvider({
   reason?: string;
   children: ReactNode;
 }) {
-  const value = useMemo(() => ({ readOnly, reason: reason ?? DEFAULT_REASON }), [readOnly, reason]);
+  const value = useMemo(() => ({ readOnly, reason: reason ?? null }), [readOnly, reason]);
   return <PreviewReadOnlyContext value={value}>{children}</PreviewReadOnlyContext>;
 }
 
@@ -34,7 +34,8 @@ export function usePreviewReadOnly(): boolean {
 
 /** Short host-supplied text for why a hand-edit control is disabled. */
 export function usePreviewReadOnlyReason(): string {
-  return useContext(PreviewReadOnlyContext).reason;
+  const { t } = useTranslation();
+  return useContext(PreviewReadOnlyContext).reason ?? t("editor.readOnly.default");
 }
 
 interface ManualEditCapabilities {

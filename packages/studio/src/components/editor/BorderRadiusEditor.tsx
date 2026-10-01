@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useTranslation } from "../../i18n";
 import { MetricField } from "./propertyPanelPrimitives";
 import { formatNumericValue, parseNumericValue } from "./propertyPanelHelpers";
 import { INSP_MINI_BUTTON } from "./inspectorStyles";
@@ -35,6 +36,7 @@ export function BorderRadiusEditor({
   disabled,
   onCommit,
 }: BorderRadiusEditorProps) {
+  const { t } = useTranslation();
   const uniform = tl === tr && tr === br && br === bl;
   const [linked, setLinked] = useState(uniform);
 
@@ -103,7 +105,7 @@ export function BorderRadiusEditor({
         <div className="min-w-0 flex-1">
           {linked && (
             <MetricField
-              label="All"
+              label={t("editor.borderRadius.all")}
               value={formatNumericValue(tl)}
               disabled={disabled}
               liveCommit
@@ -117,7 +119,7 @@ export function BorderRadiusEditor({
           aria-pressed={linked}
           onClick={handleToggleLinked}
           disabled={disabled}
-          title={linked ? "Unlink corners" : "Link all corners"}
+          title={linked ? t("editor.borderRadius.unlink") : t("editor.borderRadius.link")}
         >
           {linked ? (
             <svg
@@ -148,28 +150,28 @@ export function BorderRadiusEditor({
       {!linked && (
         <div className="grid grid-cols-2 gap-1.5">
           <MetricField
-            label="TL"
+            label={t("editor.borderRadius.topLeft")}
             value={formatNumericValue(tl)}
             disabled={disabled}
             liveCommit
             onCommit={(next) => handleCornerCommit("tl", next)}
           />
           <MetricField
-            label="TR"
+            label={t("editor.borderRadius.topRight")}
             value={formatNumericValue(tr)}
             disabled={disabled}
             liveCommit
             onCommit={(next) => handleCornerCommit("tr", next)}
           />
           <MetricField
-            label="BL"
+            label={t("editor.borderRadius.bottomLeft")}
             value={formatNumericValue(bl)}
             disabled={disabled}
             liveCommit
             onCommit={(next) => handleCornerCommit("bl", next)}
           />
           <MetricField
-            label="BR"
+            label={t("editor.borderRadius.bottomRight")}
             value={formatNumericValue(br)}
             disabled={disabled}
             liveCommit

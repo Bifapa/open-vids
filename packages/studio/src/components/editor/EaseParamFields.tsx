@@ -7,6 +7,7 @@ import {
 } from "@hyperframes/core/wiggle-ease";
 import { roundToCenti } from "../../utils/rounding";
 import { MiniCurveSvg } from "./easeCurveSvg";
+import { useTranslation } from "../../i18n";
 import { INSP_SELECT } from "./inspectorStyles";
 
 type Pts = [number, number, number, number];
@@ -44,10 +45,11 @@ export function EaseBezierField({
   tuple: Pts;
   onCommit: (ease: string) => void;
 }) {
+  const { t } = useTranslation();
   const text = tuple.join(", ");
   const inputRef = useRef<HTMLInputElement>(null);
   const errorId = useId();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"count" | "range" | null>(null);
 
   useEffect(() => {
     if (inputRef.current) inputRef.current.value = text;
@@ -58,12 +60,12 @@ export function EaseBezierField({
     const tokens = raw.trim().split(/[\s,]+/);
     const nums = tokens.map(Number);
     if (tokens.length !== 4 || nums.some((value) => !Number.isFinite(value))) {
-      setError("Enter four finite numbers");
+      setError("count");
       return;
     }
     const [x1, y1, x2, y2] = nums as [number, number, number, number];
     if (y1 < BEZIER_Y_MIN || y1 > BEZIER_Y_MAX || y2 < BEZIER_Y_MIN || y2 > BEZIER_Y_MAX) {
-      setError(`Y values must be between ${BEZIER_Y_MIN} and ${BEZIER_Y_MAX}`);
+      setError("range");
       return;
     }
     const cx = (v: number) => Math.max(0, Math.min(1, v));
@@ -82,7 +84,7 @@ export function EaseBezierField({
           ref={inputRef}
           type="text"
           defaultValue={text}
-          aria-label="Cubic bezier control points"
+          aria-label={t("editor.ease.bezierPoints")}
           aria-invalid={error !== null}
           aria-describedby={error ? errorId : undefined}
           onInput={() => setError(null)}
@@ -106,7 +108,9 @@ export function EaseBezierField({
         aria-live="polite"
         className={`mt-1 text-2xs text-error ${error ? "" : "sr-only"}`}
       >
-        {error ?? "Valid bezier values"}
+        {error === "count" && t("editor.ease.errorCount")}
+        {error === "range" && t("editor.ease.errorRange", { min: BEZIER_Y_MIN, max: BEZIER_Y_MAX })}
+        {error === null && t("editor.ease.validBezier")}
       </p>
     </div>
   );
@@ -171,11 +175,12 @@ export function SpringBounceField({
   springBounce: number;
   onCommit: (ease: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="mt-1.5 flex items-center gap-2 px-0.5 text-xs text-fg-2">
-      <span aria-hidden="true">Bounce</span>
+      <span aria-hidden="true">{t("editor.ease.bounce")}</span>
       <NumericCommitInput
-        label="Spring bounce"
+        label={t("editor.ease.springBounce")}
         value={springBounce}
         min={0}
         max={1}
@@ -197,13 +202,14 @@ export function WiggleField({
   config: WiggleEaseConfig;
   onCommit: (ease: string) => void;
 }) {
+  const { t } = useTranslation();
   const amplitude = config.amplitude ?? WIGGLE_DEFAULT_AMPLITUDE[config.type];
   return (
     <div className="mt-1.5 flex items-center gap-2 px-0.5 text-xs text-fg-2">
       <div className="flex items-center gap-1">
-        <span aria-hidden="true">Count</span>
+        <span aria-hidden="true">{t("editor.ease.count")}</span>
         <NumericCommitInput
-          label="Wiggle count"
+          label={t("editor.ease.wiggleCount")}
           value={config.wiggles}
           min={1}
           step={1}
@@ -212,9 +218,9 @@ export function WiggleField({
         />
       </div>
       <div className="flex items-center gap-1">
-        <span aria-hidden="true">Type</span>
+        <span aria-hidden="true">{t("editor.ease.type")}</span>
         <select
-          aria-label="Wiggle type"
+          aria-label={t("editor.ease.wiggleType")}
           value={config.type}
           onChange={(event) => {
             if (isWiggleType(event.currentTarget.value)) {
@@ -231,9 +237,9 @@ export function WiggleField({
         </select>
       </div>
       <div className="flex items-center gap-1">
-        <span aria-hidden="true">Amplitude</span>
+        <span aria-hidden="true">{t("editor.ease.amplitude")}</span>
         <NumericCommitInput
-          label="Wiggle amplitude"
+          label={t("editor.ease.wiggleAmplitude")}
           value={amplitude}
           min={0}
           max={1}

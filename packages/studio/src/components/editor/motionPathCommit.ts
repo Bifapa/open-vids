@@ -3,6 +3,7 @@
  * GSAP source mutation routed through the (selection-bound) commit facade, which
  * handles the soft reload, undo snapshot, and save-failure feedback.
  */
+import { t } from "../../i18n";
 import type { MotionNodeRef } from "./motionPathGeometry";
 
 export type CommitFn = (
@@ -24,7 +25,10 @@ export function commitNode(
       ? { type: "update-keyframe", animationId, percentage: ref.pct, properties: { x, y } }
       : { type: "update-motion-path-point", animationId, pointIndex: ref.index, x, y };
   return commit(mutation, {
-    label: ref.type === "keyframe" ? "Move keyframe" : "Move waypoint",
+    label:
+      ref.type === "keyframe"
+        ? t("editor.motionPath.moveKeyframe")
+        : t("editor.motionPath.moveWaypoint"),
     softReload: true,
   });
 }
@@ -38,7 +42,7 @@ export function commitAddWaypoint(
 ): Promise<void> {
   return commit(
     { type: "add-motion-path-point", animationId, index, x, y },
-    { label: "Add waypoint", softReload: true },
+    { label: t("editor.motionPath.addWaypoint"), softReload: true },
   );
 }
 
@@ -54,7 +58,7 @@ export function commitAddKeyframe(
   // at that pct) and converts a flat tween to keyframes form when needed.
   return commit(
     { type: "add-keyframe", animationId, percentage, properties: { x, y } },
-    { label: "Add keyframe", softReload: true },
+    { label: t("editor.motionPath.addKeyframe"), softReload: true },
   );
 }
 
@@ -65,7 +69,7 @@ export function commitRemoveWaypoint(
 ): Promise<void> {
   return commit(
     { type: "remove-motion-path-point", animationId, index },
-    { label: "Remove waypoint", softReload: true },
+    { label: t("editor.motionPath.removeWaypoint"), softReload: true },
   );
 }
 
@@ -78,6 +82,6 @@ export function commitCreatePath(
 ): Promise<void> {
   return commit(
     { type: "add-motion-path", targetSelector, position, duration: NEW_PATH_DURATION, x, y },
-    { label: "Create motion path", softReload: true },
+    { label: t("editor.motionPath.create"), softReload: true },
   );
 }

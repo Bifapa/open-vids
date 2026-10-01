@@ -22,6 +22,7 @@ import type {
 } from "@hyperframes/core/audio-fx";
 import type { EFFECT_COPY } from "@hyperframes/core/audio-fx-copy";
 import { FxParamRow } from "./propertyPanelFxControls.js";
+import { useTranslation } from "../../i18n";
 import { FxBandRuler } from "./propertyPanelFxBandRuler.js";
 import { FxNodeParams, type FxNodeControlHandlers } from "./propertyPanelFxNodeParams.js";
 
@@ -185,6 +186,7 @@ export function FxNodeOpenBody({
   disabled?: boolean;
   bypassed: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {/* What it is for, before what it is made of. */}
@@ -238,12 +240,12 @@ export function FxNodeOpenBody({
             aria-hidden="true"
             className={`shrink-0 text-fg-3 transition-transform ${details ? "" : "-rotate-90"}`}
           />
-          Details
+          {t("inspector.fx.node.details")}
           <span className="min-w-0 truncate font-normal text-fg-3">{registryDef.label}</span>
         </button>
       ) : (
         <p className="hf-fx-node-mechanism flex h-6 items-center gap-1 border-t border-border-subtle px-2 text-xs font-semibold text-fg-2">
-          Details
+          {t("inspector.fx.node.details")}
           <span className="min-w-0 truncate font-normal text-fg-3">{registryDef.label}</span>
         </p>
       )}

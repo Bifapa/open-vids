@@ -14,6 +14,7 @@ import {
 } from "@hyperframes/core/audio-fx-presets";
 import { PRESET_PROBLEM } from "@hyperframes/core/audio-fx-copy";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
+import { useTranslation, type TranslationKey } from "../../i18n";
 
 /**
  * Shelf names in the author's language, which is deliberately not the effect
@@ -21,12 +22,12 @@ import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
  * somebody reaching for Telephone is shopping for what they *want*, and
  * Telephone is filters and saturation — nobody looks for it under either.
  */
-const FAMILY_LABEL: Record<HfAudioFxPresetFamily, string> = {
-  voice: "Voice",
-  repair: "Fix",
-  character: "Character",
-  space: "Space",
-};
+const FAMILY_LABEL = {
+  voice: "inspector.fx.preset.family.voice",
+  repair: "inspector.fx.preset.family.repair",
+  character: "inspector.fx.preset.family.character",
+  space: "inspector.fx.preset.family.space",
+} as const satisfies Record<HfAudioFxPresetFamily, TranslationKey>;
 
 export interface FxPresetMenuProps {
   /**
@@ -59,6 +60,7 @@ export interface FxPresetMenuProps {
  * the registry's. See `plans/audio-fx-ux/README.md` §Decided.
  */
 export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProps) {
+  const { t } = useTranslation();
   // The voice presets all begin by cutting rumble out of a human voice and end
   // in a compressor set for speech. On a music bed that is not a mild mismatch,
   // it is the wrong instrument — and the shelf leads with the complaint, so it
@@ -82,7 +84,7 @@ export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProp
       {families.map((family) => (
         <div key={family} className="hf-fx-preset-group grid gap-px">
           <span className="hf-fx-preset-group-label block px-2 pt-1.5 pb-0.5 text-xs text-fg-3">
-            {FAMILY_LABEL[family]}
+            {t(FAMILY_LABEL[family])}
           </span>
           {audioFxPresetsByFamily(family).map((preset) => (
             <button
@@ -93,9 +95,10 @@ export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProp
               // The description says what it does; the count is doing real work
               // — it tells the author a preset IS a chain they can open and
               // edit, rather than an opaque setting they cannot follow.
-              title={`${preset.description} (${preset.nodes.length} effect${
-                preset.nodes.length === 1 ? "" : "s"
-              })`}
+              title={t("inspector.fx.preset.itemHint", {
+                description: preset.description,
+                count: preset.nodes.length,
+              })}
               onClick={() => onPick(preset.id)}
               onMouseEnter={() => onAudition?.(preset.id)}
               // Keyboard reaches this too: arrowing down the shelf auditions the
@@ -115,7 +118,7 @@ export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProp
                 <span className="hf-fx-preset-name">{preset.label}</span>
                 <span className="hf-fx-preset-count">
                   {" · "}
-                  {preset.nodes.length} effect{preset.nodes.length === 1 ? "" : "s"}
+                  {t("inspector.fx.preset.effectCount", { count: preset.nodes.length })}
                 </span>
               </span>
               {/* Hovering a preset plays it, and playing is otherwise invisible:

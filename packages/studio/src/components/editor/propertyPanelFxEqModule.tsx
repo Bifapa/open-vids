@@ -16,6 +16,7 @@ import {
 import { FX_FAMILY_TYPE, fxFamilyTint } from "./propertyPanelFxFamily.js";
 import { X } from "@phosphor-icons/react";
 import { INSP_CARD, INSP_FOCUS_INSET, INSP_MINI_BUTTON } from "./inspectorStyles";
+import { formatNumber, useTranslation } from "../../i18n";
 
 export interface FxEqModuleProps {
   eqId: string;
@@ -36,10 +37,8 @@ function offsetFor(gain: number): number {
   return 50 - (clamped / (HF_AUDIO_EQ_RANGE_DB * 2)) * 100;
 }
 
-const shown = (gain: number): string => {
-  const v = Number(gain.toFixed(1));
-  return v > 0 ? `+${v}` : String(v);
-};
+const shown = (gain: number): string =>
+  formatNumber(gain, { maximumFractionDigits: 1, signDisplay: "exceptZero" });
 
 function Fader({
   band,
@@ -52,6 +51,7 @@ function Fader({
   onPreview(gain: number): void;
   onCommit(gain: number): void;
 }) {
+  const { t } = useTranslation();
   /**
    * Held locally for the length of the gesture.
    *
@@ -106,7 +106,7 @@ function Fader({
           step={0.5}
           value={value}
           disabled={disabled}
-          aria-label={`${band.name} ${shown(value)} dB`}
+          aria-label={t("inspector.fx.eq.faderLabel", { name: band.name, gain: shown(value) })}
           onChange={(e) => move(Number(e.target.value))}
           onPointerUp={settle}
           onKeyUp={settle}
@@ -137,6 +137,7 @@ export function FxEqModule({
   onCommit,
   onRemove,
 }: FxEqModuleProps) {
+  const { t } = useTranslation();
   const preview = useCallback((name: string, gain: number) => onPreview(name, gain), [onPreview]);
   const commit = useCallback((name: string, gain: number) => onCommit(name, gain), [onCommit]);
 
@@ -159,7 +160,7 @@ export function FxEqModule({
             aria-expanded={open}
             onClick={onToggleOpen}
           >
-            Tone
+            {t("inspector.fx.eq.title")}
           </button>
           {/* Closed, it reads like every other module: a sentence about the
               sound rather than a list of values. */}
@@ -169,11 +170,13 @@ export function FxEqModule({
             </span>
           ) : null}
         </span>
-        <span className="shrink-0 font-mono text-2xs text-fg-3">{bands.length}-band</span>
+        <span className="shrink-0 font-mono text-2xs text-fg-3">
+          {t("inspector.fx.eq.bandCount", { count: bands.length })}
+        </span>
         <button
           type="button"
           className={`hf-fx-remove ${INSP_MINI_BUTTON} hover:text-error`}
-          aria-label="Remove Tone"
+          aria-label={t("inspector.fx.eq.remove")}
           disabled={disabled}
           onClick={onRemove}
         >
@@ -195,8 +198,8 @@ export function FxEqModule({
             ))}
           </div>
           <div className="flex justify-between px-0.5 text-2xs text-fg-3">
-            <span>Cut</span>
-            <span>Boost</span>
+            <span>{t("inspector.fx.eq.cut")}</span>
+            <span>{t("inspector.fx.eq.boost")}</span>
           </div>
         </div>
       ) : null}

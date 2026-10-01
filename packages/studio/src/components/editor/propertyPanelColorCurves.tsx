@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { HfColorCurvePoint, HfHueCurvePoint } from "@hyperframes/core/color-grading";
 import { RotateCcw } from "../../icons/SystemIcons";
+import { useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import { INSP_MINI_BUTTON } from "./inspectorStyles";
 import {
@@ -9,11 +10,10 @@ import {
   movePoint,
   pointsFor,
   RGB_IDENTITY,
-  TABS,
   type ColorCurveValues,
-  type CurveTab,
   withPoints,
 } from "./propertyPanelColorCurveGraph";
+import { TABS, type CurveTab } from "./propertyPanelColorCurveTabs";
 import { GradingNumberField } from "./propertyPanelGradingNumberField";
 import { useInspectorGestureDraft } from "./useInspectorGestureTransaction";
 
@@ -30,6 +30,7 @@ export function ColorCurves({
   onPreview: (value: ColorCurveValues) => void;
   onCommit: (value: ColorCurveValues) => void;
 }) {
+  const { t } = useTranslation();
   const [activeKey, setActiveKey] = useState<CurveTab["key"]>("master");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const { draft, setDraft, transaction } = useInspectorGestureDraft({
@@ -108,7 +109,7 @@ export function ColorCurves({
                 : "text-fg-3 hover:bg-surface-1 hover:text-fg-2"
             }`}
           >
-            {candidate.label}
+            {t(candidate.label)}
           </button>
         ))}
       </div>
@@ -128,8 +129,12 @@ export function ColorCurves({
         {selectedPoint ? (
           <>
             <GradingNumberField
-              label={tab.kind === "rgb" ? "Input" : "Hue"}
-              ariaLabel={`Curve point ${tab.kind === "rgb" ? "input" : "hue"}`}
+              label={tab.kind === "rgb" ? t("inspector.curves.input") : t("inspector.curves.hue")}
+              ariaLabel={
+                tab.kind === "rgb"
+                  ? t("inspector.curves.pointInput")
+                  : t("inspector.curves.pointHue")
+              }
               value={formatPointValue(selectedPoint[0], tab, "input")}
               min={0}
               max={tab.kind === "rgb" ? 1 : 359.999}
@@ -143,8 +148,8 @@ export function ColorCurves({
               onCancel={transaction.cancel}
             />
             <GradingNumberField
-              label="Output"
-              ariaLabel="Curve point output"
+              label={t("inspector.curves.output")}
+              ariaLabel={t("inspector.curves.pointOutput")}
               value={formatPointValue(selectedPoint[1], tab, "output")}
               min={tab.min}
               max={tab.max}
@@ -163,18 +168,18 @@ export function ColorCurves({
               disabled={disabled || endpointSelected}
               onClick={deleteSelected}
             >
-              Delete
+              {t("inspector.curves.delete")}
             </Button>
           </>
         ) : (
           <span className="flex-1 self-center text-xs text-fg-3">
-            Click the graph or press Enter to add a point
+            {t("inspector.curves.addHint")}
           </span>
         )}
         <button
           type="button"
-          aria-label={`Reset ${tab.label} curve`}
-          title={`Reset ${tab.label} curve`}
+          aria-label={t("inspector.curves.reset", { name: t(tab.label) })}
+          title={t("inspector.curves.reset", { name: t(tab.label) })}
           disabled={disabled}
           onClick={resetActive}
           className={INSP_MINI_BUTTON}

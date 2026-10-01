@@ -1,4 +1,5 @@
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
+import { useTranslation } from "../../i18n";
 import { memo, useState, useCallback, useEffect, useRef } from "react";
 import {
   collectDomEditLayerItems,
@@ -94,6 +95,7 @@ interface CollapsedState {
 }
 
 export const LayersPanel = memo(function LayersPanel() {
+  const { t } = useTranslation();
   const { previewIframeRef, activeCompPath, showToast } = useStudioShellContext();
   const { refreshKey, compositionLoading, timelineElements, isPlaying } =
     useStudioPlaybackContext();
@@ -375,8 +377,8 @@ export const LayersPanel = memo(function LayersPanel() {
   const visibleLayers = getVisibleLayers(layers, collapsed);
 
   const handleSingleSibling = useCallback(() => {
-    showToast("Only one layer at this level", "info");
-  }, [showToast]);
+    showToast(t("editor.layers.singleSibling"), "info");
+  }, [showToast, t]);
 
   const {
     dragKey,
@@ -395,8 +397,8 @@ export const LayersPanel = memo(function LayersPanel() {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-bg-0 px-6 text-center">
         <Layers size={18} className="mb-3 text-fg-disabled" />
-        <p className="text-sm font-medium text-fg">No layers</p>
-        <p className="mt-1 text-xs text-fg-3">Load a composition to see its element tree</p>
+        <p className="text-sm font-medium text-fg">{t("editor.layers.empty")}</p>
+        <p className="mt-1 text-xs text-fg-3">{t("editor.layers.emptyHint")}</p>
       </div>
     );
   }
@@ -407,7 +409,7 @@ export const LayersPanel = memo(function LayersPanel() {
       onPointerLeave={() => handleLayerHover(null)}
     >
       <div className="flex h-list-head shrink-0 items-center gap-1.5 border-b border-border-subtle px-3 text-xs">
-        <span className="font-semibold text-fg-2">Layers</span>
+        <span className="font-semibold text-fg-2">{t("editor.layers.title")}</span>
         <span className="tabular-nums text-fg-3">{layers.length}</span>
       </div>
       <div
@@ -425,7 +427,7 @@ export const LayersPanel = memo(function LayersPanel() {
           >
             <span aria-hidden="true">←</span>
             <span className="truncate">
-              {activeGroupElement.getAttribute("data-hf-group") || "Group"}
+              {activeGroupElement.getAttribute("data-hf-group") || t("editor.layers.group")}
             </span>
           </button>
         )}
@@ -464,9 +466,9 @@ export const LayersPanel = memo(function LayersPanel() {
               title={
                 draggable
                   ? layer.element.hasAttribute("data-hf-group")
-                    ? "Double-click to enter group"
+                    ? t("editor.layers.enterGroup")
                     : undefined
-                  : "This layer can't be reordered"
+                  : t("editor.layers.notReorderable")
               }
             >
               {hasChildren ? (
@@ -474,7 +476,7 @@ export const LayersPanel = memo(function LayersPanel() {
                   type="button"
                   onClick={(e) => toggleCollapse(layer.key, e)}
                   aria-expanded={!isCollapsed}
-                  aria-label={isCollapsed ? "Expand children" : "Collapse children"}
+                  aria-label={isCollapsed ? t("editor.layers.expand") : t("editor.layers.collapse")}
                   className="relative flex size-4 shrink-0 items-center justify-center rounded-xs text-fg-3 hover:text-fg before:absolute before:-inset-1.5 before:content-['']"
                 >
                   <svg

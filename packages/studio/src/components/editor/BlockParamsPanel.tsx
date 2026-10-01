@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { BlockParam } from "@hyperframes/core/registry";
+import { useTranslation } from "../../i18n";
 import { useFileManagerContextOptional } from "../../contexts/FileManagerContext";
 import { useStudioPlaybackContext } from "../../contexts/StudioContext";
 import { serializeStudioFileMutation } from "../../utils/studioFileMutationCoordinator";
@@ -24,7 +25,12 @@ interface BlockParamsPanelProps {
   onClose: () => void;
 }
 
-type CommitState = { tone: "idle" | "saving" | "saved" | "error"; message?: string };
+type CommitError =
+  | { kind: "notFound" }
+  | { kind: "ambiguous"; previous: string; matches: number }
+  | { kind: "saveFailed" };
+
+type CommitState = { tone: "idle" | "saving" | "saved" | "error"; error?: CommitError };
 
 export const BlockParamsPanel = memo(function BlockParamsPanel({
   blockTitle,
@@ -32,6 +38,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
   compositionPath,
   onClose,
 }: BlockParamsPanelProps) {
+  const { t } = useTranslation();
   const fileManager = useFileManagerContextOptional();
   const { setRefreshKey } = useStudioPlaybackContext();
   const [values, setValues] = useState<Record<string, string>>(() => {
@@ -66,10 +73,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         );
         const matches = content.match(matcher)?.length ?? 0;
         if (matches === 0) {
-          setCommitState({
-            tone: "error",
-            message: `Couldn't find the current value in ${compositionPath} — it may have been edited by hand.`,
-          });
+          setCommitState({ tone: "error", error: { kind: "notFound" } });
           return;
         }
         // The panel maps a param to a bare literal, with no per-occurrence
@@ -80,10 +84,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         // content — so refuse and tell the user to disambiguate by hand. Only a
         // unique single occurrence is safe to rewrite automatically.
         if (matches > 1) {
-          setCommitState({
-            tone: "error",
-            message: `"${previous}" appears ${matches}× in ${compositionPath} — the panel can't tell which one belongs to this parameter, so it won't risk changing unrelated content. Edit the file directly to disambiguate.`,
-          });
+          setCommitState({ tone: "error", error: { kind: "ambiguous", previous, matches } });
           return;
         }
         await fileManager.writeProjectFile(
@@ -95,7 +96,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         setCommitState({ tone: "saved" });
         setRefreshKey((k) => k + 1);
       } catch {
-        setCommitState({ tone: "error", message: "Couldn't save the block file. Retry?" });
+        setCommitState({ tone: "error", error: { kind: "saveFailed" } });
       }
     },
     [fileManager, compositionPath, setRefreshKey],
@@ -149,7 +150,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close block parameters"
+          aria-label={t("editor.blockParams.close")}
           className={INSP_MINI_BUTTON}
         >
           <svg
@@ -170,29 +171,29 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
 
       <div className="grid flex-1 content-start gap-1.5 overflow-y-auto p-3">
         <div className="flex min-w-0 items-baseline justify-between gap-1.5 text-xs font-semibold text-fg-2">
-          Block Parameters
+          {t("editor.blockParams.title")}
           {commitState.tone === "saving" && (
             <span className="font-normal text-fg-3" role="status">
-              Saving…
+              {t("editor.blockParams.saving")}
             </span>
           )}
           {commitState.tone === "saved" && (
             <span
               className="inline-flex min-w-0 items-center gap-1 truncate font-normal text-fg-3"
               role="status"
-              title={`Saved to ${compositionPath}`}
+              title={t("editor.blockParams.savedTo", { path: compositionPath })}
             >
               <Check size={10} className="shrink-0 text-success" aria-hidden="true" />
-              Saved
+              {t("editor.blockParams.saved")}
             </span>
           )}
         </div>
         {params.length === 0 && (
-          <div className="text-sm text-fg-3">This block has no editable parameters.</div>
+          <div className="text-sm text-fg-3">{t("editor.blockParams.empty")}</div>
         )}
         {!fileManager && params.length > 0 && (
           <div className="rounded-sm border border-warning/35 bg-warning-soft px-2 py-1.5 text-xs text-fg-2">
-            Block params can't be edited here — no project file access.
+            {t("editor.blockParams.noFileAccess")}
           </div>
         )}
         {params.map((param) => (
@@ -206,7 +207,15 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         ))}
         {commitState.tone === "error" && (
           <div className="text-xs text-error" role="alert">
-            {commitState.message}
+            {commitState.error?.kind === "notFound" &&
+              t("editor.blockParams.errorNotFound", { path: compositionPath })}
+            {commitState.error?.kind === "ambiguous" &&
+              t("editor.blockParams.errorAmbiguous", {
+                value: commitState.error.previous,
+                matches: commitState.error.matches,
+                path: compositionPath,
+              })}
+            {commitState.error?.kind === "saveFailed" && t("editor.blockParams.errorSave")}
           </div>
         )}
       </div>
@@ -225,6 +234,7 @@ function ParamControl({
   disabled?: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={INSP_ROW}>
       <label className={INSP_ROW_LABEL}>{param.label}</label>
@@ -235,7 +245,7 @@ function ParamControl({
             type="color"
             value={value}
             disabled={disabled}
-            aria-label={`${param.label} color`}
+            aria-label={t("editor.blockParams.colorAria", { label: param.label })}
             onChange={(e) => onChange(e.target.value)}
             className="size-6 cursor-pointer rounded-sm border border-border bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-50"
           />
@@ -243,7 +253,7 @@ function ParamControl({
             type="text"
             value={value}
             disabled={disabled}
-            aria-label={`${param.label} value`}
+            aria-label={t("editor.blockParams.valueAria", { label: param.label })}
             onChange={(e) => onChange(e.target.value)}
             className={`${BLOCK_FIELD} font-mono text-num`}
           />

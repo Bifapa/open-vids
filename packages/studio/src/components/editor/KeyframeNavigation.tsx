@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useTranslation } from "../../i18n";
 import { KeyframeDiamond, type DiamondState } from "./KeyframeDiamond";
 
 interface KeyframeNavigationProps {
@@ -124,6 +125,7 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
   onRemoveKeyframe,
   onConvertToKeyframes,
 }: KeyframeNavigationProps) {
+  const { t } = useTranslation();
   const {
     propertyKeyframes,
     prevKeyframe: prevKf,
@@ -179,8 +181,8 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
         type="button"
         disabled={!prevKf}
         onClick={() => prevKf && onSeek(prevKf.percentage)}
-        title="Previous keyframe"
-        aria-label={`Previous ${property} keyframe`}
+        title={t("editor.keyframe.previous")}
+        aria-label={t("editor.keyframe.previousProperty", { property })}
         className="relative flex h-5 w-3 items-center justify-center rounded-xs hover:text-fg disabled:cursor-default group-data-[kf-state=ghost]/kfg:invisible before:absolute before:-inset-1.5 before:content-['']"
       >
         <ArrowLeft disabled={!prevKf} />
@@ -191,18 +193,18 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
         size={9}
         title={
           diamondState === "ghost"
-            ? `Convert ${property} to keyframes`
+            ? t("editor.keyframe.convert", { property })
             : diamondState === "active"
-              ? `Remove ${property} keyframe`
-              : `Add ${property} keyframe`
+              ? t("editor.keyframe.remove", { property })
+              : t("editor.keyframe.add", { property })
         }
       />
       <button
         type="button"
         disabled={!nextKf}
         onClick={() => nextKf && onSeek(nextKf.percentage)}
-        title="Next keyframe"
-        aria-label={`Next ${property} keyframe`}
+        title={t("editor.keyframe.next")}
+        aria-label={t("editor.keyframe.nextProperty", { property })}
         className="relative flex h-5 w-3 items-center justify-center rounded-xs hover:text-fg disabled:cursor-default group-data-[kf-state=ghost]/kfg:invisible before:absolute before:-inset-1.5 before:content-['']"
       >
         <ArrowRight disabled={!nextKf} />
