@@ -8,6 +8,7 @@ import type {
   ChatMode,
   ChatState,
   ChatSummary,
+  CodedMessageParams,
   EditorContext,
   JevCredentialMode,
   MessageReference,
@@ -45,8 +46,22 @@ export const AGENT_HEADERS = {
   studioOrigin: "x-openvids-studio-origin",
 } as const;
 
+/**
+ * A message the UI can translate: `code` names an `errors.<code>` locale key, `params` fills its placeholders.
+ * The server always sends the English `message` too (the fallback and the log line).
+ */
+export interface CodedMessage {
+  code: string;
+  params?: CodedMessageParams;
+}
+
 export interface AgentErrorBody {
-  error: { code: AgentErrorCode; message: string; details?: Record<string, unknown> };
+  error: {
+    code: AgentErrorCode;
+    message: string;
+    params?: CodedMessageParams;
+    details?: Record<string, unknown>;
+  };
 }
 
 export interface AgentHealth {

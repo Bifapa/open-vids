@@ -84,7 +84,7 @@ function nodeOf(state: State, rawId: string): StoryNode {
   if (!state.existed && state.created.size === 0) {
     throw new StoryFailure("no_story", "There is no story yet; add nodes to create one");
   }
-  throw new StoryFailure("unknown_node", `No node "${id}" in the story`);
+  throw new StoryFailure("unknown_node", `No node "${id}" in the story`, undefined, { id });
 }
 
 function chapterOf(state: State, rawId: string): ChapterNode {

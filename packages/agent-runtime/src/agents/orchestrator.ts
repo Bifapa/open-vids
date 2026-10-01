@@ -229,6 +229,8 @@ export class Orchestrator {
   async runInternal(input: {
     agent: SpecialistId;
     title: string;
+    titleCode?: string;
+    titleParams?: Record<string, string | number>;
     task: string;
   }): Promise<RuntimeRunResult> {
     if (this.closed) throw new Error("This turn has ended; no new work can start.");
@@ -238,6 +240,8 @@ export class Orchestrator {
     const record = await this.startRun({
       agent: input.agent,
       title: input.title,
+      titleCode: input.titleCode,
+      titleParams: input.titleParams,
       task: input.task,
       from: "director",
       parentRunId: null,
@@ -465,6 +469,8 @@ export class Orchestrator {
   private async startRun(input: {
     agent: WorkerAgentId;
     title: string;
+    titleCode?: string;
+    titleParams?: Record<string, string | number>;
     task: string;
     from: AgentId;
     parentRunId: string | null;
@@ -484,6 +490,8 @@ export class Orchestrator {
       agent: input.agent,
       parentRunId: input.parentRunId,
       title: input.title,
+      ...(input.titleCode !== undefined && { titleCode: input.titleCode }),
+      ...(input.titleParams !== undefined && { titleParams: input.titleParams }),
       status: busy ? "queued" : "running",
       model: input.model,
       thinking: input.thinking,

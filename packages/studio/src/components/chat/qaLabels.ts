@@ -1,4 +1,5 @@
 import {
+  type CodedMessageParams,
   type ExecutionBudget,
   type ExecutionQualityPreset,
   type FixedExecutionQualityPreset,
@@ -15,8 +16,18 @@ import {
   type SpecialistThinkingPolicy,
   type TurnQaStatus,
 } from "@hyperframes/agent-protocol";
-import { t, type TranslationKey } from "../../i18n";
+import { isTranslationKey, t, type TranslationKey } from "../../i18n";
 import { AGENT_NAME_KEYS } from "./agentLabels";
+
+/**
+ * A QA reason in Studio's wording when the catalog has `qa.reason.<code>` (with `params`), else the runtime's English
+ * text. Only reasons the runtime itself wrote carry a code; model-written detail passes through unchanged.
+ */
+export function qaReasonText(reason: string, code?: string, params?: CodedMessageParams): string {
+  if (code === undefined) return reason;
+  const key = `qa.reason.${code}`;
+  return isTranslationKey(key) ? t(key, params) : reason;
+}
 
 // ── Execution Quality ────────────────────────────────────────────────────────
 

@@ -7,6 +7,7 @@ import {
   SPECIALIST_IDS,
   isQaReport,
   isRecord,
+  readErrorParams,
   isChatIntent,
   isOAuthLoginState,
   parseAgentIntake,
@@ -19,6 +20,7 @@ import {
   type AutonomySettings,
   type ChatState,
   type ChatSummary,
+  type CodedMessageParams,
   type CreateChatRequest,
   type ListChatsResponse,
   type ListProviderModelsResponse,
@@ -52,18 +54,22 @@ export class AgentApiError extends Error {
   readonly code: AgentFailureCode;
   readonly status: number;
   readonly details: Record<string, unknown> | undefined;
+  /** Values the server's message interpolates; for `describeServerError` when it translates the code. */
+  readonly params: CodedMessageParams | undefined;
 
   constructor(
     code: AgentFailureCode,
     message: string,
     status = 0,
     details?: Record<string, unknown>,
+    params?: CodedMessageParams,
   ) {
     super(message);
     this.name = "AgentApiError";
     this.code = code;
     this.status = status;
     this.details = details;
+    this.params = params;
   }
 
   /** The agent runtime cannot be reached (or the host has no gateway); the editor is unaffected. */
@@ -338,6 +344,7 @@ function failureFor(response: Response, body: unknown): AgentApiError {
       message,
       response.status,
       details,
+      readErrorParams(body.error.params),
     );
   }
   const code: AgentFailureCode = response.status === 503 ? "runtime_unavailable" : "internal";

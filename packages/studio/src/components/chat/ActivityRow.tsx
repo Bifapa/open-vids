@@ -1,13 +1,34 @@
 import { useId, useState, type ReactNode } from "react";
 import { Check, WarningCircle, X } from "@phosphor-icons/react";
-import type { Activity, AgentId } from "@hyperframes/agent-protocol";
-import { formatPercent, useTranslation, type TranslationKey } from "../../i18n";
+import type { Activity, AgentId, CodedMessageParams } from "@hyperframes/agent-protocol";
+import {
+  formatPercent,
+  isTranslationKey,
+  t,
+  useTranslation,
+  type TranslationKey,
+} from "../../i18n";
 import { cn } from "../ui/cn";
 import { Meter, Spinner, StatusDot } from "../ui/Status";
 import { AgentMonogram, chatAgentName } from "./AgentMonogram";
 import { chatFocus } from "./chatStyles";
 import { formatElapsed } from "./relativeTime";
 import { useNow } from "./useNow";
+
+/**
+ * The text of runtime-reported work (an activity row, a delegation step): Studio's `activity.<code>` wording when the
+ * catalog has it, else the runtime's English text. The runtime sets a code for its own sentences only; model-written
+ * titles (a delegated task, a plan step) carry no code and pass through unchanged.
+ */
+export function activityText(
+  label: string,
+  labelCode?: string,
+  labelParams?: CodedMessageParams,
+): string {
+  if (labelCode === undefined) return label;
+  const key = `activity.${labelCode}`;
+  return isTranslationKey(key) ? t(key, labelParams) : label;
+}
 
 /** How a Working-list row reads: running, done, failed, stopped before it ran, or waiting. */
 export type WorkState = "running" | "done" | "failed" | "skipped" | "pending";
@@ -126,10 +147,9 @@ export function ActivityRow({ activity, agent }: { activity: Activity; agent: Ag
       ? Math.round(Math.min(100, Math.max(0, activity.progress)))
       : null;
   const percent = progress === null ? "" : formatPercent(progress / 100);
+  const text = activityText(activity.label, activity.labelCode, activity.labelParams);
   const phrase =
-    progress === null
-      ? activity.label
-      : t("chat.activity.withProgress", { label: activity.label, percent });
+    progress === null ? text : t("chat.activity.withProgress", { label: text, percent });
   const expandable = activity.targets.length > 0;
 
   const body = (
@@ -143,7 +163,7 @@ export function ActivityRow({ activity, agent }: { activity: Activity; agent: Ag
       {progress !== null && (
         <Meter
           value={progress / 100}
-          label={t("chat.activity.progressLabel", { label: activity.label, percent })}
+          label={t("chat.activity.progressLabel", { label: text, percent })}
           data-testid="activity-progress"
           className="col-start-2 col-end-[-1]"
         />

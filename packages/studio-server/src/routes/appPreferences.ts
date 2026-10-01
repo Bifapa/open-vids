@@ -15,7 +15,9 @@ export function registerAppPreferencesRoutes(
   options: { store?: AppPreferencesStore } = {},
 ): void {
   const store = options.store ?? new AppPreferencesStore();
-  const failure = (code: string, message: string) => ({ error: { code, message } });
+  const failure = (code: string, message: string, params?: Record<string, string | number>) => ({
+    error: { code, message, ...(params && { params }) },
+  });
 
   api.get("/app/preferences", (c) => c.json(store.read()));
 
@@ -35,7 +37,7 @@ export function registerAppPreferencesRoutes(
         return c.json(store.update(body));
       } catch (error) {
         if (error instanceof InvalidPreferencesError) {
-          return c.json(failure("invalid_request", error.message), 400);
+          return c.json(failure(error.code, error.message, error.params), 400);
         }
         throw error;
       }

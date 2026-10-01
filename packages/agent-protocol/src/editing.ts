@@ -7,6 +7,7 @@
  * is accepted wherever a clip id is expected.
  */
 
+import type { CodedMessageParams } from "./types.js";
 import { isRecord } from "./validate.js";
 
 // ── Inventory ────────────────────────────────────────────────────────────────
@@ -290,6 +291,8 @@ export type EditErrorCode = (typeof EDIT_ERROR_CODES)[number];
 export interface EditError {
   code: EditErrorCode;
   message: string;
+  /** Placeholder values for `errors.<code>`, when the message interpolates any. */
+  params?: CodedMessageParams;
   /** Index of the failing operation in the batch. */
   opIndex?: number;
 }

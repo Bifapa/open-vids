@@ -487,6 +487,10 @@ export interface AgentRun {
   parentRunId: string | null;
   /** Short task title for milestones and breadcrumbs. */
   title: string;
+  /** `activity.<titleCode>` locale key for `title`; the UI prefers it when present, `title` is the fallback. */
+  titleCode?: string;
+  /** Placeholder values for `activity.<titleCode>`. */
+  titleParams?: CodedMessageParams;
   status: AgentRunStatus;
   model: ModelSelection | null;
   thinking: ThinkingEffort | null;
@@ -655,6 +659,10 @@ export interface Activity {
   status: "running" | "done" | "failed";
   /** Human-readable, present tense while running ("Reading 3 files"). */
   label: string;
+  /** `activity.<labelCode>` locale key for `label`; the UI prefers it when present, `label` is the fallback. */
+  labelCode?: string;
+  /** Placeholder values for `activity.<labelCode>`. */
+  labelParams?: CodedMessageParams;
   /** Number of underlying operations folded into this activity. */
   count: number;
   /** Project-relative targets, capped by the producer. */
@@ -743,6 +751,9 @@ export const AGENT_ERROR_CODES = [
   "internal",
 ] as const;
 export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[number];
+
+/** Values a translated message may interpolate; keys are the locale placeholders (`{count}`, `{path}`). */
+export type CodedMessageParams = Record<string, string | number>;
 
 // ── Durable chat state ───────────────────────────────────────────────────────
 

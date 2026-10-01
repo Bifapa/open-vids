@@ -25,6 +25,7 @@ import {
   THINKING_EFFORTS,
   isChatIntent,
   isSpecialistId,
+  type CodedMessageParams,
   type EditorClipSummary,
   type EditorContext,
   type EditorPreviewElement,
@@ -62,6 +63,20 @@ type UnknownRecord = Record<string, unknown>;
 
 export function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Reads a `params` object off a wire error body: keeps the string and finite-number entries, drops anything else.
+ * Returns `undefined` when nothing usable is there, so callers can pass it straight through as an optional field.
+ */
+export function readErrorParams(value: unknown): CodedMessageParams | undefined {
+  if (!isRecord(value)) return undefined;
+  const params: CodedMessageParams = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === "string" || (typeof entry === "number" && Number.isFinite(entry)))
+      params[key] = entry;
+  }
+  return Object.keys(params).length > 0 ? params : undefined;
 }
 
 function str(value: unknown): string | undefined {

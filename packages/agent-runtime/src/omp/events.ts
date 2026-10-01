@@ -65,6 +65,8 @@ export function translateOmpEvent(
         kind: activity.category,
         targets: [],
         label: activity.label,
+        ...(activity.labelCode !== undefined && { labelCode: activity.labelCode }),
+        ...(activity.labelParams !== undefined && { labelParams: activity.labelParams }),
       };
     }
     return {

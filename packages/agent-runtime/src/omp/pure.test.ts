@@ -174,6 +174,20 @@ describe("OMP event translation", () => {
           activity: () => ({ category: "edit", label: "Editing the timeline · 1 change (trim)" }),
         },
       ],
+      [
+        "inspect_project",
+        {
+          name: "inspect_project",
+          description: "",
+          parameters: {},
+          execute,
+          activity: () => ({
+            category: "inspect",
+            label: "Inspecting the project",
+            labelCode: "inspecting_project",
+          }),
+        },
+      ],
       ["delegate", { name: "delegate", description: "", parameters: {}, execute }],
     ]);
     const start = (toolName: string) => ({
@@ -188,6 +202,14 @@ describe("OMP event translation", () => {
       kind: "edit",
       targets: [],
       label: "Editing the timeline · 1 change (trim)",
+    });
+    expect(translateOmpEvent(start("inspect_project"), projectDir, hostTools)).toEqual({
+      type: "tool.start",
+      toolCallId: "call-inspect_project",
+      kind: "inspect",
+      targets: [],
+      label: "Inspecting the project",
+      labelCode: "inspecting_project",
     });
     expect(translateOmpEvent(start("delegate"), projectDir, hostTools)).toBeNull();
   });

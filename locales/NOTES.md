@@ -1209,3 +1209,16 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `home.error.state_poisoned` — Internal error: a lock was left broken by a crash.
 - `home.error.studio_bad_lifecycle` — The Studio runtime is the local server that edits a project.
 - `home.error.studio_no_port` — "s" is seconds.
+
+## server-errors
+
+- `errors.no_story` — Story service: an edit or build needs a graph that does not exist yet.
+- `errors.unknown_node` — Story service: an operation names a node id the graph does not have; {id} is the raw id.
+- `errors.invalid_preferences.body` — Settings PUT body was not a JSON object.
+- `errors.invalid_preferences.object` — Settings PUT: a known object field (newProject / updates / onboarding) had a non-object value; {key} names it.
+- `errors.invalid_preferences.value` — Settings PUT: a known field had a value outside its contract; {key} is the full field path.
+- `activity.*` — Chat Working-list rows the agent runtime writes. The runtime sends the English text plus labelCode/labelParams; Studio shows the translation when this catalog has the key.
+- `activity.render_qa_pass` — Title of the Vision run that reviews one Render QA pass (a delegation row in the chat).
+- `qa.reason.*` — Why a turn's Render QA ended the way it did (TurnQaState.reason) and why Vision did not review a pass (QaReport.vision.reason). The runtime sends reasonCode/reasonParams next to the English text.
+- `qa.reason.render_failed` — {reason} is the renderer's own English error.
+- `qa.reason.vision_disabled` — Vision (the frame-review specialist) is not enabled in the chat's team.

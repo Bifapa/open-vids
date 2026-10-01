@@ -5,7 +5,7 @@ import {
   type AgentId,
   type SpecialistId,
 } from "@hyperframes/agent-protocol";
-import type { BackendToolKind, HostTool, HostToolResult } from "../backend.js";
+import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
 import type { StoryTurnMode } from "../story/tools.js";
 
 export const RESEARCH_TOOL_NAMES = {
@@ -211,7 +211,7 @@ function activity(
   name: ResearchToolName,
   args: unknown,
   context: ResearchToolContext,
-): { category: BackendToolKind; label: string } {
+): ToolActivity {
   const record = isRecord(args) ? args : {};
   switch (name) {
     case "search_assets": {
@@ -231,32 +231,58 @@ function activity(
     }
     case "inspect_url": {
       const host = hostOf(text(record.url));
-      return {
-        category: "inspect",
-        label: host ? `Reading a web page · ${host}` : "Reading a web page",
-      };
+      return host
+        ? {
+            category: "inspect",
+            label: `Reading a web page · ${host}`,
+            labelCode: "reading_web_page_host",
+            labelParams: { host },
+          }
+        : { category: "inspect", label: "Reading a web page", labelCode: "reading_web_page" };
     }
     case "import_asset": {
       const known = context.candidate?.(text(record.candidate));
       if (known) {
+        const title = shorten(known.title, 60);
         return {
           category: "edit",
-          label: `Importing “${shorten(known.title, 60)}” · ${known.license}`,
+          label: `Importing “${title}” · ${known.license}`,
+          labelCode: "importing_candidate",
+          labelParams: { title, license: known.license },
         };
       }
       const host = hostOf(text(record.url));
-      return {
-        category: "edit",
-        label: host ? `Importing a file from ${host}` : "Importing an asset",
-      };
+      return host
+        ? {
+            category: "edit",
+            label: `Importing a file from ${host}`,
+            labelCode: "importing_file_host",
+            labelParams: { host },
+          }
+        : { category: "edit", label: "Importing an asset", labelCode: "importing_asset" };
     }
     case "resolve_missing_asset":
-      return { category: "edit", label: "Resolving a missing asset" };
+      return {
+        category: "edit",
+        label: "Resolving a missing asset",
+        labelCode: "resolving_missing_asset",
+      };
     case "read_sources":
-      return { category: "inspect", label: "Reading project sources" };
+      return {
+        category: "inspect",
+        label: "Reading project sources",
+        labelCode: "reading_project_sources",
+      };
     case "read_website": {
       const host = hostOf(text(record.url));
-      return { category: "inspect", label: host ? `Reading ${host}` : "Reading a website" };
+      return host
+        ? {
+            category: "inspect",
+            label: `Reading ${host}`,
+            labelCode: "reading_host",
+            labelParams: { host },
+          }
+        : { category: "inspect", label: "Reading a website", labelCode: "reading_website" };
     }
   }
 }

@@ -27,6 +27,7 @@ import {
   TURN_QA_STATUS_LABELS,
   describeQaCounts,
   isLivePassPhase,
+  qaReasonText,
 } from "./qaLabels";
 
 function StatusGlyph({ status }: { status: TurnQaStatus }) {
@@ -189,7 +190,7 @@ export function RenderQaCard({ turn }: { turn: TurnSummary }) {
       </div>
       {qa.reason && (
         <p data-testid="render-qa-reason" className="px-2 pb-1.5 text-xs leading-[15px] text-fg-3">
-          {qa.reason}
+          {qaReasonText(qa.reason, qa.reasonCode, qa.reasonParams)}
         </p>
       )}
       {qa.passes.length > 0 && (

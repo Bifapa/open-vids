@@ -2,6 +2,7 @@ import {
   DEFAULT_EXECUTION_QUALITY,
   effectiveSpecialistConfig,
   isAgentRunTerminal,
+  type Activity,
   type AgentModelCatalog,
   type AgentModelInfo,
   type AgentRun,
@@ -237,17 +238,17 @@ export function agentThread(
 }
 
 /**
- * What a live run is doing right now: the label of the latest running activity of its reply
- * ("Editing scenes/intro.html"). Null once it ended or while it has no running activity.
+ * What a live run is doing right now: the latest running activity of its reply ("Editing scenes/intro.html"), with its
+ * `labelCode` so the caller can translate it. Null once it ended or while it has no running activity.
  */
-export function runCurrentStep(messages: readonly ChatMessage[], run: AgentRun): string | null {
+export function runCurrentStep(messages: readonly ChatMessage[], run: AgentRun): Activity | null {
   if (isAgentRunTerminal(run.status)) return null;
   const reply = messages.find((message) => message.id === run.assistantMessageId);
   if (reply?.role !== "assistant") return null;
   for (let index = reply.parts.length - 1; index >= 0; index -= 1) {
     const part = reply.parts[index];
     if (part?.type === "activity" && part.activity.status === "running") {
-      return part.activity.label;
+      return part.activity;
     }
   }
   return null;

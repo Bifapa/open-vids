@@ -83,6 +83,8 @@ describe("TurnRunner", () => {
         category: "inspect",
         status: "done",
         label: "Reading 2 files",
+        labelCode: "reading_files",
+        labelParams: { count: 2 },
         count: 2,
         targets: ["index.html", "scene.html"],
       });

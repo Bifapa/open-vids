@@ -4,14 +4,24 @@ import type { StoryError, StoryErrorCode } from "@hyperframes/agent-protocol";
 export class StoryFailure extends Error {
   readonly error: StoryError;
 
-  constructor(code: StoryErrorCode, message: string, opIndex?: number) {
+  constructor(
+    code: StoryErrorCode,
+    message: string,
+    opIndex?: number,
+    params?: Record<string, string | number>,
+  ) {
     super(message);
     this.name = "StoryFailure";
-    this.error = { code, message, ...(opIndex !== undefined && { opIndex }) };
+    this.error = {
+      code,
+      message,
+      ...(opIndex !== undefined && { opIndex }),
+      ...(params !== undefined && { params }),
+    };
   }
 
   atOperation(opIndex: number): StoryFailure {
-    return new StoryFailure(this.error.code, this.error.message, opIndex);
+    return new StoryFailure(this.error.code, this.error.message, opIndex, this.error.params);
   }
 }
 

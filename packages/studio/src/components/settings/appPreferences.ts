@@ -1,5 +1,6 @@
-import { isRecord } from "@hyperframes/agent-protocol";
+import { isRecord, readErrorParams } from "@hyperframes/agent-protocol";
 import { create } from "zustand";
+import { describeServerError } from "../../agent/agentErrors";
 import { i18n } from "../../i18n/instance";
 import { LANGUAGE_CODES, SYSTEM_LANGUAGE } from "../../i18n/languages";
 
@@ -138,9 +139,14 @@ async function requestPreferences(init?: RequestInit): Promise<AppPreferences> {
   }
   const body: unknown = await response.json().catch(() => undefined);
   if (!response.ok) {
+    const failure = isRecord(body) && isRecord(body.error) ? body.error : undefined;
     const message =
-      isRecord(body) && isRecord(body.error) && typeof body.error.message === "string"
-        ? body.error.message
+      failure && typeof failure.message === "string"
+        ? describeServerError(
+            typeof failure.code === "string" ? failure.code : "",
+            failure.message,
+            readErrorParams(failure.params),
+          )
         : i18n.t("settings.studio.pref.saveStatus", { status: response.status });
     throw new Error(message);
   }

@@ -1,6 +1,21 @@
-import type { AgentErrorCode } from "@hyperframes/agent-protocol";
-import { t, type TranslationKey } from "../i18n";
+import type { AgentErrorCode, CodedMessageParams } from "@hyperframes/agent-protocol";
+import { isTranslationKey, t, type TranslationKey } from "../i18n";
 import { AgentApiError, type AgentFailureCode } from "./agentClient";
+
+/**
+ * A server error's sentence for the user: Studio's own `errors.<code>` wording when the catalog has one (`params`
+ * fills its placeholders), else the English `message` the server sent, unchanged. Callers pass the code, message and
+ * params of a failed call; a `code` with several sentences simply has no key and keeps the server's wording.
+ */
+export function describeServerError(
+  code: string,
+  message: string,
+  params?: CodedMessageParams,
+): string {
+  const key = `errors.${code}`;
+  if (isTranslationKey(key)) return t(key, params);
+  return message;
+}
 
 /** Plain-language wording per failure code, as keys: translated when the message is built, never at import. */
 const PLAIN_LANGUAGE_KEYS = {
@@ -27,21 +42,30 @@ function isPlainLanguageCode(code: AgentFailureCode): code is keyof typeof PLAIN
 }
 
 /** Turns a failed call into a sentence a user can act on; the raw message is a last resort. */
-export function describeAgentFailure(code: AgentFailureCode, fallback?: string): string {
+export function describeAgentFailure(
+  code: AgentFailureCode,
+  fallback?: string,
+  params?: CodedMessageParams,
+): string {
   if (isPlainLanguageCode(code)) return t(PLAIN_LANGUAGE_KEYS[code]);
-  return fallback ?? t("agent.error.generic");
+  return describeServerError(code, fallback ?? t("agent.error.generic"), params);
 }
 
 export function describeAgentError(error: unknown): string {
-  if (error instanceof AgentApiError) return describeAgentFailure(error.code, error.message);
+  if (error instanceof AgentApiError)
+    return describeAgentFailure(error.code, error.message, error.params);
   return describeAgentFailure("internal");
 }
 
 /** Errors a `turn.failed` event carries; same wording as the call that would have raised them. */
-export function describeTurnError(code: AgentErrorCode, message: string): string {
+export function describeTurnError(
+  code: AgentErrorCode,
+  message: string,
+  params?: CodedMessageParams,
+): string {
   return code === "agent_failed" || code === "internal"
     ? message || describeAgentFailure(code)
-    : describeAgentFailure(code, message);
+    : describeAgentFailure(code, message, params);
 }
 
 /**

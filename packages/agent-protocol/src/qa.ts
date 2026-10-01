@@ -27,8 +27,8 @@
  */
 
 import type { FrameImage } from "./analysis.js";
-import { THINKING_EFFORTS, type ThinkingEffort } from "./types.js";
-import { isRecord, type Parsed } from "./validate.js";
+import { THINKING_EFFORTS, type CodedMessageParams, type ThinkingEffort } from "./types.js";
+import { isRecord, readErrorParams, type Parsed } from "./validate.js";
 
 const fail = (message: string): { ok: false; message: string } => ({ ok: false, message });
 
@@ -563,6 +563,10 @@ export interface QaVisionRun {
   status: QaVisionStatus;
   /** Why Vision did not (fully) review this pass. */
   reason: string | null;
+  /** `qa.reason.<reasonCode>` locale key for `reason`; the UI prefers it when present, `reason` is the fallback. */
+  reasonCode?: string;
+  /** Placeholder values for `qa.reason.<reasonCode>`. */
+  reasonParams?: CodedMessageParams;
   frames: number;
   rounds: number;
   /** `provider/modelId` of the Vision run. */
@@ -655,6 +659,8 @@ export type QaErrorCode = (typeof QA_ERROR_CODES)[number];
 export interface QaError {
   code: QaErrorCode;
   message: string;
+  /** Placeholder values for `errors.<code>`, when the message interpolates any. */
+  params?: CodedMessageParams;
 }
 
 export function isQaError(value: unknown): value is QaError {
@@ -836,6 +842,11 @@ export function parseQaReportInput(body: unknown): Parsed<QaReportInput> {
       vision: {
         status: visionStatus,
         reason: boundedText(rawVision.reason, QA_LIMITS.messageChars),
+        ...(typeof rawVision.reasonCode === "string" &&
+          rawVision.reasonCode.length > 0 && { reasonCode: rawVision.reasonCode.slice(0, 100) }),
+        ...(isRecord(rawVision.reasonParams) && {
+          reasonParams: readErrorParams(rawVision.reasonParams),
+        }),
         frames: finite(rawVision.frames) ? Math.max(0, Math.round(rawVision.frames)) : 0,
         rounds: finite(rawVision.rounds) ? Math.max(0, Math.round(rawVision.rounds)) : 0,
         model: typeof rawVision.model === "string" ? rawVision.model.slice(0, 200) : null,
@@ -898,6 +909,10 @@ export interface TurnQaState {
   passLimit: number;
   passes: QaPassState[];
   reason: string | null;
+  /** `qa.reason.<reasonCode>` locale key for `reason`; the UI prefers it when present, `reason` is the fallback. */
+  reasonCode?: string;
+  /** Placeholder values for `qa.reason.<reasonCode>`. */
+  reasonParams?: CodedMessageParams;
 }
 
 // ── Wire guards ──────────────────────────────────────────────────────────────

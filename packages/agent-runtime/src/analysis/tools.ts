@@ -7,7 +7,7 @@ import {
   type AgentId,
   type SpecialistId,
 } from "@hyperframes/agent-protocol";
-import type { BackendToolKind, HostTool, HostToolResult } from "../backend.js";
+import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
 import { ANALYSIS_SECTIONS, basename } from "./format.js";
 
 export const ANALYSIS_TOOL_NAMES = {
@@ -344,12 +344,21 @@ function sourceName(args: unknown): string | null {
 type ActivityLabel = (
   args: unknown,
   planClips: (plan: string) => number | undefined,
-) => { category: BackendToolKind; label: string };
+) => ToolActivity;
+
+const listSize = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
 
 const ACTIVITIES: Record<AnalysisToolName, ActivityLabel> = {
   analyze_media: (args) => {
     const name = sourceName(args);
-    return { category: "other", label: name ? `Analyzing ${name}` : "Analyzing the media" };
+    return name
+      ? {
+          category: "other",
+          label: `Analyzing ${name}`,
+          labelCode: "analyzing_source",
+          labelParams: { name },
+        }
+      : { category: "other", label: "Analyzing the media", labelCode: "analyzing_media" };
   },
   read_analysis: (args) => {
     const section =
@@ -358,19 +367,38 @@ const ACTIVITIES: Record<AnalysisToolName, ActivityLabel> = {
         : "";
     return { category: "inspect", label: `Reading the analysis${section}` };
   },
-  read_transcript: () => ({ category: "inspect", label: "Reading the transcript" }),
-  save_segments: (args) => ({
-    category: "other",
-    label: `Saving ${count(isRecord(args) ? args.segments : undefined, "segment")}`,
-  }),
-  inspect_frames: (args) => ({
+  read_transcript: () => ({
     category: "inspect",
-    label: `Looking at ${count(isRecord(args) ? args.times : undefined, "frame")}`,
+    label: "Reading the transcript",
+    labelCode: "reading_transcript",
   }),
-  save_vision_notes: (args) => ({
-    category: "other",
-    label: `Saving ${count(isRecord(args) ? args.notes : undefined, "visual note")}`,
-  }),
+  save_segments: (args) => {
+    const segments = isRecord(args) ? listSize(args.segments) : 0;
+    return {
+      category: "other",
+      label: `Saving ${count(isRecord(args) ? args.segments : undefined, "segment")}`,
+      labelCode: "saving_segments",
+      labelParams: { count: segments },
+    };
+  },
+  inspect_frames: (args) => {
+    const times = isRecord(args) ? listSize(args.times) : 0;
+    return {
+      category: "inspect",
+      label: `Looking at ${count(isRecord(args) ? args.times : undefined, "frame")}`,
+      labelCode: "looking_at_frames",
+      labelParams: { count: times },
+    };
+  },
+  save_vision_notes: (args) => {
+    const notes = isRecord(args) ? listSize(args.notes) : 0;
+    return {
+      category: "other",
+      label: `Saving ${count(isRecord(args) ? args.notes : undefined, "visual note")}`,
+      labelCode: "saving_vision_notes",
+      labelParams: { count: notes },
+    };
+  },
   plan_cut: (args) => {
     const label =
       isRecord(args) && typeof args.label === "string" && args.label.trim().length > 0
@@ -385,6 +413,9 @@ const ACTIVITIES: Record<AnalysisToolName, ActivityLabel> = {
       category: "edit",
       label:
         clips === undefined ? "Building the rough cut" : `Building the rough cut · ${clips} clips`,
+      ...(clips === undefined
+        ? { labelCode: "building_rough_cut" }
+        : { labelCode: "building_rough_cut_clips", labelParams: { count: clips } }),
     };
   },
 };

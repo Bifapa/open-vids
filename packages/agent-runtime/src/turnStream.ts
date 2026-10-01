@@ -69,7 +69,14 @@ export class TurnEventWriter {
       this.finishThinkingSegment();
       this.segment = null;
       if (event.type === "tool.start") {
-        if (event.label) this.startLabelledTool(event.toolCallId, event.kind, event.label);
+        if (event.label)
+          this.startLabelledTool(
+            event.toolCallId,
+            event.kind,
+            event.label,
+            event.labelCode,
+            event.labelParams,
+          );
         else this.startTool(event.toolCallId, event.kind, event.targets);
       } else this.endTool(event.toolCallId, event.ok);
       return;
@@ -195,6 +202,8 @@ export class TurnEventWriter {
     toolCallId: string,
     category: Activity["category"],
     label: string,
+    labelCode?: string,
+    labelParams?: Activity["labelParams"],
   ): void {
     if (this.toolGroups.has(toolCallId)) return;
     this.closeCurrentActivity();
@@ -203,6 +212,8 @@ export class TurnEventWriter {
       category,
       status: "running",
       label,
+      ...(labelCode !== undefined && { labelCode }),
+      ...(labelParams !== undefined && { labelParams }),
       count: 1,
       targets: [],
       startedAt: this.options.now(),
@@ -226,7 +237,7 @@ export class TurnEventWriter {
         id: this.options.ids(),
         category,
         status: "running",
-        label: activityLabel(category, 0, []),
+        ...activityLabel(category, 0, []),
         count: 0,
         targets: [],
         startedAt: this.options.now(),
@@ -242,7 +253,7 @@ export class TurnEventWriter {
       status: "running",
       count: group.activity.count + 1,
       targets: uniqueTargets,
-      label: activityLabel(category, group.activity.count + 1, uniqueTargets),
+      ...activityLabel(category, group.activity.count + 1, uniqueTargets),
       endedAt: undefined,
     };
     this.toolGroups.set(toolCallId, group);
@@ -304,11 +315,33 @@ export class TurnEventWriter {
   }
 }
 
-function activityLabel(category: Activity["category"], count: number, targets: string[]): string {
-  if (category === "search") return "Searching the project";
-  if (category === "other") return "Working";
-  const verb = category === "inspect" ? "Reading" : "Editing";
-  if (count > 1) return `${verb} ${count} files`;
-  if (targets[0]) return `${verb} ${targets[0]}`;
-  return `${verb} files`;
+function activityLabel(
+  category: Activity["category"],
+  count: number,
+  targets: string[],
+): Pick<Activity, "label" | "labelCode" | "labelParams"> {
+  if (category === "search") {
+    return { label: "Searching the project", labelCode: "searching_project" };
+  }
+  if (category === "other") return { label: "Working", labelCode: "working" };
+  const inspect = category === "inspect";
+  const verb = inspect ? "Reading" : "Editing";
+  if (count > 1) {
+    return {
+      label: `${verb} ${count} files`,
+      labelCode: inspect ? "reading_files" : "editing_files",
+      labelParams: { count },
+    };
+  }
+  if (targets[0]) {
+    return {
+      label: `${verb} ${targets[0]}`,
+      labelCode: inspect ? "reading_target" : "editing_target",
+      labelParams: { target: targets[0] },
+    };
+  }
+  return {
+    label: `${verb} files`,
+    labelCode: inspect ? "reading_files_bare" : "editing_files_bare",
+  };
 }

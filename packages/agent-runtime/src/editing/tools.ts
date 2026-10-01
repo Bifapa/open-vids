@@ -10,7 +10,7 @@ import {
   type EditOperationName,
   type SpecialistId,
 } from "@hyperframes/agent-protocol";
-import type { BackendToolKind, HostTool, HostToolResult } from "../backend.js";
+import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
 import { RENDER_QUALITIES } from "./host.js";
 import { LONG_RENDER_SECONDS } from "./renderGuard.js";
 
@@ -455,20 +455,33 @@ function editLabel(args: unknown): string {
   return `Editing the timeline · ${operations.length} ${noun} (${shown.join(", ")})`;
 }
 
-const ACTIVITIES: Record<
-  EditingToolName,
-  (args: unknown) => { category: BackendToolKind; label: string }
-> = {
-  inspect_project: () => ({ category: "inspect", label: "Inspecting the project" }),
-  inspect_timeline: () => ({ category: "inspect", label: "Inspecting the timeline" }),
+const ACTIVITIES: Record<EditingToolName, (args: unknown) => ToolActivity> = {
+  inspect_project: () => ({
+    category: "inspect",
+    label: "Inspecting the project",
+    labelCode: "inspecting_project",
+  }),
+  inspect_timeline: () => ({
+    category: "inspect",
+    label: "Inspecting the timeline",
+    labelCode: "inspecting_timeline",
+  }),
   edit_timeline: (args) => ({ category: "edit", label: editLabel(args) }),
   browse_presets: (args) => {
     const kind = isRecord(args)
       ? PRESET_KINDS.find((candidate) => candidate === args.kind)
       : undefined;
-    return { category: "search", label: kind ? `Browsing ${kind} presets` : "Browsing presets" };
+    return {
+      category: "search",
+      label: kind ? `Browsing ${kind} presets` : "Browsing presets",
+      ...(kind === undefined && { labelCode: "browsing_presets" }),
+    };
   },
-  render_video: () => ({ category: "other", label: "Rendering video" }),
+  render_video: () => ({
+    category: "other",
+    label: "Rendering video",
+    labelCode: "rendering_video",
+  }),
 };
 
 /** The editing tools of one agent; every call goes to `execute` (the running turn's editing executor). */

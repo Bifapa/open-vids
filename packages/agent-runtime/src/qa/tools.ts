@@ -6,7 +6,7 @@ import {
   isRecord,
   type AgentId,
 } from "@hyperframes/agent-protocol";
-import type { BackendToolKind, HostTool, HostToolResult } from "../backend.js";
+import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
 
 export const QA_TOOL_NAMES = {
   inspect: "inspect_render",
@@ -111,10 +111,7 @@ const PARAMETERS: Record<QaToolName, Record<string, unknown>> = {
 
 const clock = (seconds: number): string => `${Number(seconds.toFixed(1))} s`;
 
-function activity(
-  name: QaToolName,
-  args: unknown,
-): { category: BackendToolKind; label: string } | null {
+function activity(name: QaToolName, args: unknown): ToolActivity | null {
   const record = isRecord(args) ? args : {};
   if (name === QA_TOOL_NAMES.inspect) {
     const times = Array.isArray(record.times) ? record.times : [];
@@ -122,13 +119,24 @@ function activity(
     return {
       category: "inspect",
       label: `Looking at ${times.length} rendered ${times.length === 1 ? "frame" : "frames"}${first ? ` · from ${first}` : ""}`,
+      ...(first
+        ? { labelCode: "looking_at_frames_from", labelParams: { count: times.length, first } }
+        : { labelCode: "looking_at_frames", labelParams: { count: times.length } }),
     };
   }
   const findings = Array.isArray(record.findings) ? record.findings.length : 0;
-  return {
-    category: "other",
-    label: findings === 0 ? "Reporting: nothing wrong found" : `Reporting ${findings} findings`,
-  };
+  return findings === 0
+    ? {
+        category: "other",
+        label: "Reporting: nothing wrong found",
+        labelCode: "reporting_nothing",
+      }
+    : {
+        category: "other",
+        label: `Reporting ${findings} findings`,
+        labelCode: "reporting_findings",
+        labelParams: { count: findings },
+      };
 }
 
 /** The QA tools of one agent; every call goes to `execute` (the running turn's QA executor). */

@@ -13,7 +13,7 @@ import {
   type StoryAction,
   type StoryOperationName,
 } from "@hyperframes/agent-protocol";
-import type { BackendToolKind, HostTool, HostToolResult } from "../backend.js";
+import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
 
 export const STORY_TOOL_NAMES = {
   read: "read_story",
@@ -459,24 +459,29 @@ function editLabel(args: unknown): string {
   return `Editing the story · ${operations.length} ${noun} (${shown.join(", ")})`;
 }
 
-const ACTIVITIES: Record<
-  StoryToolName,
-  (args: unknown) => { category: BackendToolKind; label: string }
-> = {
-  read_story: () => ({ category: "inspect", label: "Reading the story" }),
+const ACTIVITIES: Record<StoryToolName, (args: unknown) => ToolActivity> = {
+  read_story: () => ({
+    category: "inspect",
+    label: "Reading the story",
+    labelCode: "reading_story",
+  }),
   edit_story: (args) => ({ category: "edit", label: editLabel(args) }),
-  build_story: (args) => ({
-    category: "edit",
-    label:
-      isRecord(args) && args.dryRun === true ? "Checking the story build" : "Building the story",
-  }),
-  rebuild_story: (args) => ({
-    category: "edit",
-    label:
-      isRecord(args) && args.dryRun === true
-        ? "Checking the story rebuild"
-        : "Rebuilding affected sections",
-  }),
+  build_story: (args) =>
+    isRecord(args) && args.dryRun === true
+      ? { category: "edit", label: "Checking the story build", labelCode: "checking_story_build" }
+      : { category: "edit", label: "Building the story", labelCode: "building_story" },
+  rebuild_story: (args) =>
+    isRecord(args) && args.dryRun === true
+      ? {
+          category: "edit",
+          label: "Checking the story rebuild",
+          labelCode: "checking_story_rebuild",
+        }
+      : {
+          category: "edit",
+          label: "Rebuilding affected sections",
+          labelCode: "rebuilding_sections",
+        },
 };
 
 /** The story tools of one agent; every call goes to `execute` (the running turn's story executor). */

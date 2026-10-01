@@ -111,8 +111,22 @@ export function defaultAppDir(): string {
   return process.env.OPENVIDS_APP_DIR || join(homedir(), ".openvids", "app");
 }
 
-/** A PUT body that names a known key with a value outside its contract. */
-export class InvalidPreferencesError extends Error {}
+/** A PUT body that names a known key with a value outside its contract. `code` is the `errors.<code>` key Studio uses. */
+export class InvalidPreferencesError extends Error {
+  readonly code: string;
+  readonly params: Record<string, string | number> | undefined;
+
+  constructor(
+    message: string,
+    code = "invalid_preferences.value",
+    params?: Record<string, string | number>,
+  ) {
+    super(message);
+    this.name = "InvalidPreferencesError";
+    this.code = code;
+    this.params = params;
+  }
+}
 
 const oneOf =
   <T extends string | number>(choices: readonly T[]) =>
@@ -200,36 +214,63 @@ const KNOWN_ONBOARDING: Record<string, (value: unknown) => boolean> = {
 
 /** Refuses a patch whose known keys carry invalid values; unknown keys pass untouched. */
 export function validatePreferencesPatch(patch: unknown): Document {
-  if (!isRecord(patch)) throw new InvalidPreferencesError("Preferences must be a JSON object");
+  if (!isRecord(patch))
+    throw new InvalidPreferencesError(
+      "Preferences must be a JSON object",
+      "invalid_preferences.body",
+    );
   for (const [key, check] of Object.entries(KNOWN_TOP)) {
     if (key in patch && !check(patch[key])) {
-      throw new InvalidPreferencesError(`Invalid value for "${key}"`);
+      throw new InvalidPreferencesError(`Invalid value for "${key}"`, undefined, { key });
     }
   }
   if ("newProject" in patch) {
     const project = patch.newProject;
-    if (!isRecord(project)) throw new InvalidPreferencesError(`"newProject" must be an object`);
+    if (!isRecord(project))
+      throw new InvalidPreferencesError(
+        `"newProject" must be an object`,
+        "invalid_preferences.object",
+        { key: "newProject" },
+      );
     for (const [key, check] of Object.entries(KNOWN_NEW_PROJECT)) {
       if (key in project && !check(project[key])) {
-        throw new InvalidPreferencesError(`Invalid value for "newProject.${key}"`);
+        throw new InvalidPreferencesError(`Invalid value for "newProject.${key}"`, undefined, {
+          key: `newProject.${key}`,
+        });
       }
     }
   }
   if ("updates" in patch) {
     const updates = patch.updates;
-    if (!isRecord(updates)) throw new InvalidPreferencesError(`"updates" must be an object`);
+    if (!isRecord(updates))
+      throw new InvalidPreferencesError(
+        `"updates" must be an object`,
+        "invalid_preferences.object",
+        {
+          key: "updates",
+        },
+      );
     for (const [key, check] of Object.entries(KNOWN_UPDATES)) {
       if (key in updates && !check(updates[key])) {
-        throw new InvalidPreferencesError(`Invalid value for "updates.${key}"`);
+        throw new InvalidPreferencesError(`Invalid value for "updates.${key}"`, undefined, {
+          key: `updates.${key}`,
+        });
       }
     }
   }
   if ("onboarding" in patch) {
     const onboarding = patch.onboarding;
-    if (!isRecord(onboarding)) throw new InvalidPreferencesError(`"onboarding" must be an object`);
+    if (!isRecord(onboarding))
+      throw new InvalidPreferencesError(
+        `"onboarding" must be an object`,
+        "invalid_preferences.object",
+        { key: "onboarding" },
+      );
     for (const [key, check] of Object.entries(KNOWN_ONBOARDING)) {
       if (key in onboarding && !check(onboarding[key])) {
-        throw new InvalidPreferencesError(`Invalid value for "onboarding.${key}"`);
+        throw new InvalidPreferencesError(`Invalid value for "onboarding.${key}"`, undefined, {
+          key: `onboarding.${key}`,
+        });
       }
     }
   }

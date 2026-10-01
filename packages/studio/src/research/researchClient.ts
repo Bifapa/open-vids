@@ -3,24 +3,36 @@ import {
   isExportLicenseCheck,
   isProjectSourcesView,
   isRecord,
+  readErrorParams,
   type AddTrustedSourceRequest,
   type AssetSearchMode,
   type AssetSearchPolicy,
+  type CodedMessageParams,
   type ExportLicenseCheck,
   type ProjectSourcesView,
   type UpdateTrustedSourceRequest,
 } from "@hyperframes/agent-protocol";
+import { describeServerError } from "../agent/agentErrors";
 import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
 
-/** A failed research request; `message` is the server's own `{ error: { message } }` when it sent one. */
+/** A failed research request; `message` is Studio's wording for the server's `code`, or the server's `message`. */
 export class ResearchApiError extends Error {
   readonly status: number;
+  readonly code: string | null;
+  readonly params: CodedMessageParams | undefined;
 
-  constructor(message: string, status = 0) {
+  constructor(
+    message: string,
+    status = 0,
+    code: string | null = null,
+    params?: CodedMessageParams,
+  ) {
     super(message);
     this.name = "ResearchApiError";
     this.status = status;
+    this.code = code;
+    this.params = params;
   }
 }
 
@@ -42,10 +54,20 @@ export interface ResearchClient {
   restoreSources(): Promise<AssetSearchPolicy>;
 }
 
-function errorMessage(body: unknown): string | null {
+/** The server's `{ error: { code, message, params } }`, translated when Studio has `errors.<code>`. */
+function errorFrom(
+  body: unknown,
+): { message: string; code: string; params?: CodedMessageParams } | null {
   if (!isRecord(body) || !isRecord(body.error)) return null;
-  const { message } = body.error;
-  return typeof message === "string" && message ? message : null;
+  const { code, message } = body.error;
+  if (typeof message !== "string" || !message) return null;
+  const key = typeof code === "string" ? code : "";
+  const params = readErrorParams(body.error.params);
+  return {
+    message: describeServerError(key, message, params),
+    code: key,
+    ...(params && { params }),
+  };
 }
 
 async function request<T>(
@@ -70,8 +92,12 @@ async function request<T>(
     body = undefined;
   }
   if (!response.ok) {
+    const failure = errorFrom(body);
+    if (failure) {
+      throw new ResearchApiError(failure.message, response.status, failure.code, failure.params);
+    }
     throw new ResearchApiError(
-      errorMessage(body) ?? t("research.error.http", { status: response.status }),
+      t("research.error.http", { status: response.status }),
       response.status,
     );
   }

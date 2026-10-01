@@ -22,6 +22,7 @@ import {
   QA_SOURCE_LABELS,
   QA_VISION_STATUS_LABELS,
   formatQaRange,
+  qaReasonText,
 } from "./qaLabels";
 
 /** Open issues in the order they matter to the reader: back again, new, still there. */
@@ -142,7 +143,11 @@ function ReportBody({ report }: { report: QaReport }) {
           {report.vision.reason
             ? t("chat.qa.lineWithDetail", {
                 label: t(QA_VISION_STATUS_LABELS[report.vision.status]),
-                detail: report.vision.reason,
+                detail: qaReasonText(
+                  report.vision.reason,
+                  report.vision.reasonCode,
+                  report.vision.reasonParams,
+                ),
               })
             : t("chat.qa.lineNoDetail", {
                 label: t(QA_VISION_STATUS_LABELS[report.vision.status]),

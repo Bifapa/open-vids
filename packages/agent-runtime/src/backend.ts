@@ -23,6 +23,14 @@ import type {
 /** What kind of project work a tool call was; the adapter maps raw tool names onto this. */
 export type BackendToolKind = "inspect" | "search" | "edit" | "other";
 
+/** A tool's chat row: its text plus the `activity.<labelCode>` locale key Studio prefers when it exists. */
+export interface ToolActivity {
+  category: BackendToolKind;
+  label: string;
+  labelCode?: string;
+  labelParams?: Record<string, string | number>;
+}
+
 export type BackendEvent =
   /** The model/effort that will actually run (after defaults were resolved). Emitted once per prompt. */
   | { type: "model.resolved"; model: ModelSelection; thinking: ThinkingEffort | null }
@@ -41,6 +49,10 @@ export type BackendEvent =
        * activity. A labelled call is shown as its own row and never folds into a file-activity group.
        */
       label?: string;
+      /** The `activity.<labelCode>` locale key for `label`; Studio prefers it when present. */
+      labelCode?: string;
+      /** Placeholder values for `activity.<labelCode>`. */
+      labelParams?: Record<string, string | number>;
     }
   | { type: "tool.end"; toolCallId: string; ok: boolean }
   /** A running host tool's determinate progress, 0–100 (a render). */
@@ -78,7 +90,7 @@ export interface HostTool {
     progress?: (percent: number) => void,
   ): Promise<HostToolResult>;
   /** The activity row this call shows, from its (untrusted) arguments; null or absent keeps the call hidden. */
-  activity?(args: unknown): { category: BackendToolKind; label: string } | null;
+  activity?(args: unknown): ToolActivity | null;
 }
 
 export interface BackendPromptInput {

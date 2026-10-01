@@ -150,14 +150,27 @@ describe("app preferences route", () => {
     writeFileSync(path, JSON.stringify({ theme: "dark" }));
     const response = await put(patch);
     expect(response.status).toBe(400);
-    const body: { error: { code: string; message: string } } = await response.json();
-    expect(body.error.code).toBe("invalid_request");
+    const body: {
+      error: { code: string; message: string; params?: { key?: string } };
+    } = await response.json();
+    const objectFields: Record<string, true> = {
+      newProject: true,
+      updates: true,
+      onboarding: true,
+    };
+    expect(body.error.code).toBe(
+      objectFields[key] ? "invalid_preferences.object" : "invalid_preferences.value",
+    );
     expect(body.error.message).toContain(key);
+    expect(body.error.params?.key).toBe(key);
     expect(stored()).toEqual({ theme: "dark" });
   });
 
   it("refuses a body that is not a JSON object", async () => {
-    expect((await put([1, 2])).status).toBe(400);
+    const list = await put([1, 2]);
+    expect(list.status).toBe(400);
+    const body: { error: { code: string } } = await list.json();
+    expect(body.error.code).toBe("invalid_preferences.body");
     expect((await put("not json")).status).toBe(400);
     expect(readdirSync(dir)).toEqual([]);
   });

@@ -17,7 +17,7 @@
  *   {@link normalizeLicense}; the confidence says how they were found.
  */
 
-import type { AgentId } from "./types.js";
+import type { AgentId, CodedMessageParams } from "./types.js";
 import type { MissingMediaKind, StoryError, StoryView } from "./story.js";
 import { isRecord } from "./validate.js";
 
@@ -568,6 +568,8 @@ export type ResearchErrorCode = (typeof RESEARCH_ERROR_CODES)[number];
 export interface ResearchError {
   code: ResearchErrorCode;
   message: string;
+  /** Placeholder values for `errors.<code>`, when the message interpolates any. */
+  params?: CodedMessageParams;
 }
 
 export function isResearchError(value: unknown): value is ResearchError {

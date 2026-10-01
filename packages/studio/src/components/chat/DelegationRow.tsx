@@ -10,6 +10,7 @@ import {
   WORK_STATE_TEXT,
   WorkTail,
   WorkText,
+  activityText,
   workRowGrid,
   type WorkState,
 } from "./ActivityRow";
@@ -44,9 +45,10 @@ export function DelegationRow({ runId }: { runId: string }) {
   if (run.status === "failed" && run.error) {
     outcome = describeTurnError(run.error.code, run.error.message);
   }
-  let step = run.title;
+  let step = activityText(run.title, run.titleCode, run.titleParams);
   if (run.status === "queued") step = t("chat.delegation.waiting");
-  else if (state === "running") step = currentStep ?? run.title;
+  else if (state === "running" && currentStep)
+    step = activityText(currentStep.label, currentStep.labelCode, currentStep.labelParams);
 
   return (
     <li>

@@ -1,5 +1,6 @@
 import type { QaReport } from "@hyperframes/agent-protocol";
 import { t } from "../i18n";
+import { describeServerError } from "./agentErrors";
 import { AgentApiError, type AgentClient } from "./agentClient";
 import type { Loadable } from "./agentSettingsSlice";
 
@@ -20,7 +21,7 @@ function describeQaReportError(error: unknown): string {
     if (error.status === 404) return t("agent.qa.notStored");
     if (error.code === "network") return t("agent.qa.unreachable");
     if (error.code === "bad_response") return t("agent.qa.unreadable");
-    if (error.message) return error.message;
+    if (error.message) return describeServerError(error.code, error.message, error.params);
   }
   return t("agent.qa.loadFailed");
 }

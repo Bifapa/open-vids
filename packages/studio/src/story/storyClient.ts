@@ -2,12 +2,15 @@ import {
   isRecord,
   isStoryError,
   isStoryView,
+  readErrorParams,
+  type CodedMessageParams,
   type PresetInfo,
   type ProjectInventory,
   type SaveStoryRequest,
   type StoryErrorCode,
   type StoryView,
 } from "@hyperframes/agent-protocol";
+import { describeServerError } from "../agent/agentErrors";
 import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
 
@@ -16,12 +19,14 @@ export type StoryFailureCode = StoryErrorCode | "network" | "bad_response" | "ht
 export class StoryApiError extends Error {
   readonly code: StoryFailureCode;
   readonly status: number;
+  readonly params: CodedMessageParams | undefined;
 
-  constructor(code: StoryFailureCode, message: string, status = 0) {
+  constructor(code: StoryFailureCode, message: string, status = 0, params?: CodedMessageParams) {
     super(message);
     this.name = "StoryApiError";
     this.code = code;
     this.status = status;
+    this.params = params;
   }
 
   /** The graph changed on the server since the version the edit was made on. */
@@ -72,7 +77,15 @@ async function request<T>(
   }
   if (!response.ok) {
     const error = isRecord(body) ? body.error : undefined;
-    if (isStoryError(error)) throw new StoryApiError(error.code, error.message, response.status);
+    if (isStoryError(error)) {
+      const params = readErrorParams(error.params);
+      throw new StoryApiError(
+        error.code,
+        describeServerError(error.code, error.message, params),
+        response.status,
+        params,
+      );
+    }
     throw new StoryApiError(
       "http",
       t("story.error.http", { status: response.status }),

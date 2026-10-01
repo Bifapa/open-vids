@@ -16,11 +16,25 @@ import {
   userMessage,
 } from "./agentTestHarness";
 
-function activity(id: string, label: string, status: Activity["status"]): ActivityPart {
+function activity(
+  id: string,
+  label: string,
+  status: Activity["status"],
+  extra: Partial<Pick<Activity, "labelCode" | "labelParams">> = {},
+): ActivityPart {
   return {
     type: "activity",
     id,
-    activity: { id, category: "edit", status, label, count: 1, targets: [], startedAt: 1 },
+    activity: {
+      id,
+      category: "edit",
+      status,
+      label,
+      count: 1,
+      targets: [],
+      startedAt: 1,
+      ...extra,
+    },
   };
 }
 
@@ -115,10 +129,20 @@ describe("delegation progress", () => {
         ],
       }),
     ];
-    expect(runCurrentStep(messages, run)).toBe("Editing scenes/intro.html");
-    expect(runCurrentStep(messages, { ...run, status: "queued" })).toBe(
+    expect(runCurrentStep(messages, run)?.label).toBe("Editing scenes/intro.html");
+    expect(runCurrentStep(messages, { ...run, status: "queued" })?.label).toBe(
       "Editing scenes/intro.html",
     );
+    const coded = [
+      runReply(run, {
+        parts: [
+          activity("a3", "Inspecting the timeline", "running", {
+            labelCode: "inspecting_timeline",
+          }),
+        ],
+      }),
+    ];
+    expect(runCurrentStep(coded, run)?.labelCode).toBe("inspecting_timeline");
   });
 
   it("is nothing between activities, and nothing once the run ended however it ended", () => {

@@ -5,6 +5,7 @@
 
 import {
   isRecord,
+  readErrorParams,
   type AnalysisJob,
   type AnalysisOverview,
   type ProjectInventory,
@@ -12,6 +13,7 @@ import {
   type SourceAnalysisStatus,
   type TranscriptView,
 } from "@hyperframes/agent-protocol";
+import { describeServerError } from "../agent/agentErrors";
 import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
 
@@ -45,7 +47,8 @@ const isJob = (value: unknown): value is AnalysisJob =>
 
 function errorMessage(body: unknown, status: number): string {
   if (isRecord(body) && isRecord(body.error) && typeof body.error.message === "string") {
-    return body.error.message;
+    const code = typeof body.error.code === "string" ? body.error.code : "";
+    return describeServerError(code, body.error.message, readErrorParams(body.error.params));
   }
   return t("media.client.requestFailed", { status });
 }

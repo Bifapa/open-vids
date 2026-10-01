@@ -12,7 +12,7 @@
  * never changed by an agent. The story service enforces both for agent edits.
  */
 
-import type { ManualEditPolicy } from "./types.js";
+import type { CodedMessageParams, ManualEditPolicy } from "./types.js";
 import { isRecord } from "./validate.js";
 
 export const STORY_GRAPH_SCHEMA = 1;
@@ -848,6 +848,8 @@ export type StoryErrorCode = (typeof STORY_ERROR_CODES)[number];
 export interface StoryError {
   code: StoryErrorCode;
   message: string;
+  /** Placeholder values for `errors.<code>`, when the message interpolates any. */
+  params?: CodedMessageParams;
   /** Index of the failing operation in an edit batch. */
   opIndex?: number;
 }

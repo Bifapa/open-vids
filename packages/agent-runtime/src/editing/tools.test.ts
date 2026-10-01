@@ -106,6 +106,7 @@ describe("editing tool activity rows", () => {
     expect(tool("inspect_project").activity?.({})).toEqual({
       category: "inspect",
       label: "Inspecting the project",
+      labelCode: "inspecting_project",
     });
     expect(tool("inspect_timeline").activity?.({})?.label).toBe("Inspecting the timeline");
     expect(

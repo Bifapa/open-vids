@@ -24,6 +24,7 @@
  *   POST …/analysis/cuts/:planId/applied  MarkCutAppliedRequest → CutPlan
  */
 
+import type { CodedMessageParams } from "./types.js";
 import { isRecord } from "./validate.js";
 
 // ── Stages and cache state ───────────────────────────────────────────────────
@@ -569,6 +570,8 @@ export type AnalysisErrorCode = (typeof ANALYSIS_ERROR_CODES)[number];
 export interface AnalysisError {
   code: AnalysisErrorCode;
   message: string;
+  /** Placeholder values for `errors.<code>`, when the message interpolates any. */
+  params?: CodedMessageParams;
 }
 
 export function isAnalysisError(value: unknown): value is AnalysisError {

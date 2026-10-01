@@ -109,6 +109,14 @@ const isAbort = (signal: AbortSignal, error: unknown): boolean =>
   signal.aborted ||
   (typeof error === "object" && error !== null && "code" in error && error.code === "aborted");
 
+/** How a QA loop ended: the English `reason` plus the `qa.reason.<reasonCode>` key the chat translates it by. */
+interface QaEnd {
+  status: TurnQaStatus;
+  reason: string | null;
+  reasonCode?: string;
+  reasonParams?: Record<string, string | number>;
+}
+
 const SKIPPED_VISION: QaVisionRun = {
   status: "skipped",
   reason: null,
@@ -238,7 +246,7 @@ export class QaLoop {
     let lastVision: QaVisionRun | null = null;
     let lastRenderError: string | null = null;
     let corrections = 0;
-    let end: { status: TurnQaStatus; reason: string | null } = {
+    let end: QaEnd = {
       status: "issues_remain",
       reason: null,
     };
@@ -283,19 +291,33 @@ export class QaLoop {
       lastRender = render ?? lastRender;
       lastRenderError = renderError;
 
-      let decision: { status: TurnQaStatus; reason: string | null } | null = null;
+      let decision: QaEnd | null = null;
       if (issues.length === 0) decision = { status: "passed", reason: null };
       else if (renderError && (pass === limit || deps.action === "rebuild"))
-        decision = { status: "failed", reason: `The render failed: ${renderError}` };
+        decision = {
+          status: "failed",
+          reason: `The render failed: ${renderError}`,
+          reasonCode: "render_failed",
+          reasonParams: { reason: renderError },
+        };
       else if (!issues.some((issue) => issue.fixable))
-        decision = { status: "issues_remain", reason: "No open issue can be fixed by an edit." };
+        decision = {
+          status: "issues_remain",
+          reason: "No open issue can be fixed by an edit.",
+          reasonCode: "no_fixable_issues",
+        };
       else if (pass === limit)
-        decision = { status: "issues_remain", reason: "The pass limit was reached." };
+        decision = {
+          status: "issues_remain",
+          reason: "The pass limit was reached.",
+          reasonCode: "pass_limit",
+        };
       else if (deps.action === "rebuild")
         decision = {
           status: "issues_remain",
           reason:
             "A rebuild turn is report-only: only rebuild_story may change the timeline, so nothing was corrected.",
+          reasonCode: "rebuild_report_only",
         };
       await this.endPass(pass, decision?.status === "failed" ? "failed" : "done", {
         reportId: report.id,
@@ -340,6 +362,7 @@ export class QaLoop {
           status: "issues_remain",
           reason:
             "The correction changed nothing in the project, so QA stopped instead of repeating the same render.",
+          reasonCode: "correction_no_change",
         };
         break;
       }
@@ -347,7 +370,7 @@ export class QaLoop {
     }
 
     try {
-      await this.settleState(end.status, end.reason);
+      await this.settleState(end.status, end.reason, end.reasonCode, end.reasonParams);
     } finally {
       await this.finishSession();
     }
@@ -452,7 +475,11 @@ export class QaLoop {
         },
       ];
       checks = [{ id: "render", status: "failed", detail: reason }];
-      vision = { ...SKIPPED_VISION, reason: "The render failed, so there was nothing to review." };
+      vision = {
+        ...SKIPPED_VISION,
+        reason: "The render failed, so there was nothing to review.",
+        reasonCode: "vision_render_failed",
+      };
     } else {
       await this.setPhase(pass, "checking");
       try {
@@ -623,14 +650,22 @@ export class QaLoop {
   ): Promise<{ vision: QaVisionRun; findings: QaIssueDraft[] } | "aborted"> {
     const { deps } = this;
     const { budget } = deps.setup.execution;
-    const none = (status: QaVisionRun["status"], reason: string) => ({
-      vision: { status, reason, frames: 0, rounds: 0, model: null },
+    const none = (status: QaVisionRun["status"], reason: string, reasonCode?: string) => ({
+      vision: {
+        status,
+        reason,
+        ...(reasonCode !== undefined && { reasonCode }),
+        frames: 0,
+        rounds: 0,
+        model: null,
+      },
       findings: [] as QaIssueDraft[],
     });
     if (!deps.setup.enabled.includes("vision"))
-      return none("unavailable", "Vision is not enabled in this chat.");
+      return none("unavailable", "Vision is not enabled in this chat.", "vision_disabled");
     const samples = check.samples.slice(0, budget.qaMaxFrames);
-    if (samples.length === 0) return none("skipped", "The checks planned no frame to look at.");
+    if (samples.length === 0)
+      return none("skipped", "The checks planned no frame to look at.", "vision_no_frames");
 
     deps.qa.openReview({
       pass,
@@ -646,6 +681,8 @@ export class QaLoop {
       run = await deps.orchestrator.runInternal({
         agent: "vision",
         title: `Render QA · pass ${pass}`,
+        titleCode: "render_qa_pass",
+        titleParams: { pass },
         task: renderVisionTask({
           pass,
           limit,
@@ -684,6 +721,7 @@ export class QaLoop {
         vision: {
           status: "failed",
           reason: "Vision finished without reporting any findings, so its review did not count.",
+          reasonCode: "vision_no_findings",
           ...base,
         },
         findings: [],
@@ -782,10 +820,17 @@ export class QaLoop {
     });
   }
 
-  private async settleState(status: TurnQaStatus, reason: string | null): Promise<void> {
+  private async settleState(
+    status: TurnQaStatus,
+    reason: string | null,
+    reasonCode?: string,
+    reasonParams?: Record<string, string | number>,
+  ): Promise<void> {
     if (!this.state) return;
     this.state.status = status;
     this.state.reason = reason;
+    if (reasonCode !== undefined) this.state.reasonCode = reasonCode;
+    if (reasonParams !== undefined) this.state.reasonParams = reasonParams;
     await this.publish();
   }
 

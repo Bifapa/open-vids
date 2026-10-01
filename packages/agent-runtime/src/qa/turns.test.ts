@@ -606,6 +606,7 @@ describe("render QA in a turn", () => {
         expect(fixture.qa.reports[0]?.vision).toEqual({
           status: "unavailable",
           reason: "Vision is not enabled in this chat.",
+          reasonCode: "vision_disabled",
           frames: 0,
           rounds: 0,
           model: null,

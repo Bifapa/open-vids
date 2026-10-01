@@ -755,6 +755,8 @@ describe("activity rows", () => {
     expect(label("analyze_media", { source: "assets/raw-talk.mp4" })).toEqual({
       category: "other",
       label: "Analyzing raw-talk.mp4",
+      labelCode: "analyzing_source",
+      labelParams: { name: "raw-talk.mp4" },
     });
     expect(label("read_analysis", { source: "a.mp4", section: "takes" })?.label).toBe(
       "Reading the analysis · takes",
@@ -775,6 +777,8 @@ describe("activity rows", () => {
     expect(label("build_rough_cut", { plan: "cut-2" })).toEqual({
       category: "edit",
       label: "Building the rough cut · 143 clips",
+      labelCode: "building_rough_cut_clips",
+      labelParams: { count: 143 },
     });
     expect(label("build_rough_cut", { plan: "cut-7" })?.label).toBe("Building the rough cut");
   });
