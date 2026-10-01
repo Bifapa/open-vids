@@ -361,12 +361,12 @@
       safe = {},
       values = [];
     for (const k of Object.keys(p)) {
-      safe[k] = typeof p[k] === "string" ? "\u0000" + values.push(p[k]) + "\u0000" : p[k];
+      safe[k] = typeof p[k] === "string" ? "\uE000" + values.push(p[k]) + "\uE001" : p[k];
     }
     const text = core.t(key, safe);
     const w = wrappers || {};
     const esc = function (s) {
-      return escapeHtml(s).replace(/\u0000(\d+)\u0000/g, function (_, n) {
+      return escapeHtml(s).replace(/\uE000(\d+)\uE001/g, function (_, n) {
         return escapeHtml(values[Number(n) - 1]);
       });
     };
