@@ -4,7 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>HyperFrames Studio</title>
+    <title>OpenVids</title>
+    <script>
+      /* First paint in the app's own background, before the stylesheet arrives: the theme the desktop passed
+         (openvidsTheme) or the OS appearance. Without it the window flashes white when a project opens. */
+      (function () {
+        var theme = new URLSearchParams(location.search).get("openvidsTheme");
+        if (theme !== "dark" && theme !== "light")
+          theme = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        var root = document.documentElement;
+        root.dataset.theme = theme;
+        root.style.backgroundColor = theme === "light" ? "#fcfcfd" : "#0c0d0f";
+        root.style.colorScheme = theme;
+      })();
+    </script>
   </head>
   <body>
     <div data-hf-id="hf-aph5" id="root"></div>

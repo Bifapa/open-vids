@@ -1065,7 +1065,13 @@
       "&density=" +
       encodeURIComponent(OV.densityPref()) +
       (section ? "&section=" + section : "");
-    f.addEventListener("load", () => f.contentWindow.focus());
+    /* Hidden until its document has loaded: a frame whose page has no styles yet paints an opaque white
+       canvas over the dark window (its colour scheme differs from ours), which flashed on every open. */
+    f.style.visibility = "hidden";
+    f.addEventListener("load", () => {
+      f.style.visibility = "";
+      f.contentWindow.focus();
+    });
     document.body.appendChild(f);
     settingsFrame = f;
     $("#settingsBtn").setAttribute("aria-expanded", "true");

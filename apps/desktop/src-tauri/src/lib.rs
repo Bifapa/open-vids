@@ -470,6 +470,7 @@ pub fn run() {
                 if let Some(window) = theme_handle.get_webview_window("main") {
                     let _ = window.set_theme(window_theme(prefs));
                 }
+                paint_window_background(&theme_handle);
             }));
             let preferences = prefs::load(&prefs::prefs_path());
             // What opens at launch: a project named on the command line, else
@@ -587,6 +588,7 @@ pub fn run() {
                     true
                 })
                 .build()?;
+            paint_window_background(&handle);
 
             #[cfg(target_os = "macos")]
             set_help_menu(&handle);
@@ -684,6 +686,20 @@ fn resolved_theme(app: &tauri::AppHandle) -> &'static str {
             Some(Ok(tauri::Theme::Light)) => "light",
             _ => "dark",
         },
+    }
+}
+
+/// The window and webview backdrop, in the pages' own background colour
+/// (`--bg-0` of `ov.css`, `--color-bg-0` of Studio's theme). A webview with no
+/// document painted yet shows this instead of white: between the Projects
+/// page and a project, and before either page's styles arrive.
+fn paint_window_background(app: &tauri::AppHandle) {
+    let color = match resolved_theme(app) {
+        "light" => tauri::window::Color(252, 252, 253, 255),
+        _ => tauri::window::Color(12, 13, 15, 255),
+    };
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_background_color(Some(color));
     }
 }
 

@@ -14,6 +14,8 @@
     <script>
       /* The theme and density the page underneath shows (?theme=, ?density=), before first paint. */
       OV.applyTheme(new URLSearchParams(location.search).get("theme") || "system");
+      /* Always framed over the page: transparent from the first paint, not only once settings.js has run. */
+      document.documentElement.classList.add("st-embed");
       OV.applyDensity(new URLSearchParams(location.search).get("density") || "default");
     </script>
   </head>

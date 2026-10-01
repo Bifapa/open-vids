@@ -16,6 +16,9 @@ export function resolveTheme(theme: AppTheme, systemPrefersLight: boolean): Reso
 /** Dark is the default `:root`; the light tokens hang off `:root[data-theme="light"]`. */
 export function applyResolvedTheme(theme: ResolvedTheme, root: HTMLElement): void {
   if (root.dataset.theme !== theme) root.dataset.theme = theme;
+  // index.html paints the first frame with an inline background; from here the stylesheet's tokens own it.
+  root.style.removeProperty("background-color");
+  root.style.removeProperty("color-scheme");
 }
 
 /**
