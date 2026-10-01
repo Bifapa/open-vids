@@ -50,6 +50,7 @@
 mod agent_proxy;
 mod chrome_install;
 mod cli_runner;
+mod coded_error;
 mod create;
 mod drop_paths;
 mod ffmpeg_install;
@@ -81,6 +82,7 @@ use std::sync::Mutex;
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
+use coded_error::CodedError;
 use home::HomeServer;
 use home_routes::OpenPhase;
 use project::Project;
@@ -184,8 +186,8 @@ fn open_project(
     app: &tauri::AppHandle,
     dir: PathBuf,
     workspace: Option<String>,
-) -> Result<String, String> {
-    let project = structure::validate_structure(&dir).map_err(|e| e.to_string())?;
+) -> Result<String, CodedError> {
+    let project = structure::validate_structure(&dir).map_err(|e| e.coded())?;
     // Resolved before locking the state: the window lookup may need the
     // main thread. The raw `language` preference goes along so Studio can
     // pick the language before preferences load (it resolves `system` itself).
@@ -196,7 +198,7 @@ fn open_project(
         let app_state = app.state::<Mutex<AppState>>();
         let mut state = app_state
             .lock()
-            .map_err(|_| "app state is poisoned".to_string())?;
+            .map_err(|_| CodedError::plain("app_state_poisoned", "app state is poisoned"))?;
         state.project = Some(project.clone());
 
         let url = match state.mode {
@@ -204,13 +206,20 @@ fn open_project(
                 let origin = state
                     .dev_origin
                     .clone()
-                    .ok_or_else(|| "the dev server origin is unknown".to_string())?;
+                    .ok_or_else(|| CodedError::plain("dev_origin_unknown", "the dev server origin is unknown"))?;
                 let projects_dir = state
                     .dev_projects_dir
                     .clone()
-                    .ok_or_else(|| "the dev projects directory is unknown".to_string())?;
-                register_dev_project(&projects_dir, &project.dir, &project.id)
-                    .map_err(|e| format!("could not register the project: {e}"))?;
+                    .ok_or_else(|| {
+                        CodedError::plain("dev_projects_unknown", "the dev projects directory is unknown")
+                    })?;
+                register_dev_project(&projects_dir, &project.dir, &project.id).map_err(|e| {
+                    CodedError::new(
+                        "project_register_failed",
+                        format!("could not register the project: {e}"),
+                        serde_json::json!({ "detail": e.to_string() }),
+                    )
+                })?;
                 state.studio_origin = Some(origin.clone());
                 sidecar::studio_url(
                     &origin,
@@ -233,7 +242,7 @@ fn open_project(
                 let logger: std::sync::Arc<dyn Fn(&str) + Send + Sync> =
                     std::sync::Arc::new(|line| eprintln!("{line}"));
                 let started = sidecar::start(&launcher, &bun, &cli, &project.dir, logger)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| e.coded())?;
                 let url = sidecar::studio_url(
                     &started.origin(),
                     &project.id,
@@ -253,13 +262,21 @@ fn open_project(
     };
 
     app.get_webview_window("main")
-        .ok_or_else(|| "the main window is gone".to_string())?
-        .navigate(
-            target
-                .parse()
-                .map_err(|e| format!("built an invalid URL {target:?}: {e}"))?,
-        )
-        .map_err(|e| e.to_string())?;
+        .ok_or_else(|| CodedError::plain("main_window_gone", "the main window is gone"))?
+        .navigate(target.parse::<tauri::Url>().map_err(|e| {
+            CodedError::new(
+                "invalid_url",
+                format!("built an invalid URL {target:?}: {e}"),
+                serde_json::json!({ "url": target, "detail": e.to_string() }),
+            )
+        })?)
+        .map_err(|e| {
+            CodedError::new(
+                "navigate_failed",
+                e.to_string(),
+                serde_json::json!({ "detail": e.to_string() }),
+            )
+        })?;
     // A fresh composition has no cached thumbnail yet. Refresh it in the
     // background once the Studio server answers, then cache the bytes the
     // home page serves. Best-effort: failures just keep the placeholder.
@@ -276,7 +293,7 @@ fn open_project(
 /// its runtime through a checkout that may not exist on the user's machine. A
 /// `cargo run --release` build therefore finds nothing, and says so, rather than
 /// silently working only on the machine that built it.
-fn resource_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+fn resource_root(app: &tauri::AppHandle) -> Result<PathBuf, CodedError> {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         // A macOS bundle keeps its resources in a *sibling* of the executable's
@@ -296,13 +313,17 @@ fn resource_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
             return Ok(root.clone());
         }
     }
-    Err(format!(
-        "no bundled Studio runtime (looked for {PAYLOAD:?} in {}) — rebuild with `bun run desktop:build`",
-        candidates
-            .iter()
-            .map(|c| c.display().to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
+    let looked_in = candidates
+        .iter()
+        .map(|c| c.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(CodedError::new(
+        "runtime_not_bundled",
+        format!(
+            "no bundled Studio runtime (looked for {PAYLOAD:?} in {looked_in}) — rebuild with `bun run desktop:build`"
+        ),
+        serde_json::json!({ "payload": format!("{PAYLOAD:?}"), "paths": looked_in }),
     ))
 }
 

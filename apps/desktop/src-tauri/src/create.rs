@@ -27,6 +27,10 @@ use std::path::{Path, PathBuf};
 use super::project::is_valid_project_id;
 use super::structure::{set_composition_dimensions, set_composition_duration, set_composition_fps};
 
+use serde_json::json;
+
+use super::coded_error::CodedError;
+
 /// Parameters from the create-project form.
 pub struct CreateParams {
     pub parent: PathBuf,
@@ -59,6 +63,27 @@ impl std::fmt::Display for CreateError {
             Self::Io(detail) => write!(f, "could not write the project: {detail}"),
             Self::NoTemplate(detail) => write!(f, "project template unavailable: {detail}"),
             Self::BadPatch(detail) => write!(f, "could not configure the template: {detail}"),
+        }
+    }
+}
+
+impl CreateError {
+    /// The same sentence as `Display`, with the code and params the page translates it by.
+    pub fn coded(&self) -> CodedError {
+        let message = self.to_string();
+        match self {
+            Self::BadName(name) => CodedError::new("folder_name_unusable", message, json!({ "name": name })),
+            Self::NoParent(dir) => {
+                CodedError::new("location_missing", message, json!({ "path": dir.display().to_string() }))
+            }
+            Self::Exists(dir) => {
+                CodedError::new("folder_exists", message, json!({ "path": dir.display().to_string() }))
+            }
+            Self::Io(detail) => CodedError::new("project_write_failed", message, json!({ "detail": detail })),
+            Self::NoTemplate(detail) => {
+                CodedError::new("template_unavailable_detail", message, json!({ "detail": detail }))
+            }
+            Self::BadPatch(detail) => CodedError::new("template_patch_failed", message, json!({ "detail": detail })),
         }
     }
 }

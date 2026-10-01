@@ -51,7 +51,7 @@
         });
       })
       .catch((err) => {
-        Y.error = err.message;
+        Y.error = OV.describeError(err);
       })
       .finally(() => {
         Y.loading = false;
@@ -90,7 +90,7 @@
             Y.inst[key] = {
               phase: "failed",
               error: null,
-              lostContact: err.message,
+              lostContact: OV.describeError(err),
             };
           }),
       ),
@@ -118,7 +118,7 @@
         Y.inst[key] = st;
       })
       .catch((err) => {
-        Y.inst[key] = { phase: "failed", error: err.message };
+        Y.inst[key] = { phase: "failed", error: err.message, code: err.code, params: err.params };
       })
       .finally(() => {
         OVS.render(true);
@@ -243,7 +243,7 @@
         extra += `<p class="st-field-err" role="alert">${esc(
           st && st.lostContact
             ? tr("onboarding.system.lostContact", { message: st.lostContact })
-            : String((st && st.error) || tr("onboarding.system.installFailedMessage")),
+            : String(OV.describeError(st) || tr("onboarding.system.installFailedMessage")),
         )}</p>`;
       if (canInstall && c.installer === "homebrew" && !failed)
         extra += `<p class="st-foot">${

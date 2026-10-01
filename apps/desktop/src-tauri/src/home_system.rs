@@ -30,7 +30,8 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use super::home_api::respond_json;
+use super::coded_error::CodedError;
+use super::home_api::{method_not_allowed, respond_error, respond_json, route_not_found};
 use super::install_job::InstallState;
 use super::{chrome_install, cli_runner, ffmpeg_install, prefs};
 
@@ -138,7 +139,9 @@ fn handle_check(stream: &mut TcpStream) {
     let result = cli_runner::run(&["doctor", "--tools"], CHECK_TIMEOUT).and_then(|out| {
         cli_runner::last_json_line(&out)
             .and_then(|v| v.get("tools").cloned())
-            .ok_or_else(|| "the check answered with something unreadable".to_string())
+            .ok_or_else(|| {
+                CodedError::plain("check_unreadable", "the check answered with something unreadable")
+            })
     });
     match result {
         Ok(tools) => respond_json(
@@ -151,7 +154,7 @@ fn handle_check(stream: &mut TcpStream) {
                 &ffmpeg_install::state(),
             ),
         ),
-        Err(message) => respond_json(stream, 503, &json!({ "error": message })),
+        Err(err) => respond_error(stream, 503, &err),
     }
 }
 
@@ -167,15 +170,7 @@ pub fn handle(stream: &mut TcpStream, method: &str, path: &str) {
         ("GET", "/api/system/install/ffmpeg") => respond_json(stream, 200, &json!(ffmpeg_install::state())),
         ("POST", "/api/system/install/ffmpeg") => match ffmpeg_install::find_brew() {
             Some(_) => respond_json(stream, 200, &json!(ffmpeg_install::start())),
-            None => respond_json(
-                stream,
-                409,
-                &json!({ "error": format!(
-                    "Homebrew was not found. Install it from {}, then run `{}`.",
-                    ffmpeg_install::BREW_URL,
-                    ffmpeg_install::INSTALL_COMMAND
-                ) }),
-            ),
+            None => respond_error(stream, 409, &ffmpeg_install::homebrew_missing()),
         },
         ("POST", "/api/system/install/ffmpeg/cancel") => {
             respond_json(stream, 200, &json!(ffmpeg_install::cancel()))
@@ -187,10 +182,8 @@ pub fn handle(stream: &mut TcpStream, method: &str, path: &str) {
             | "/api/system/install/chrome/cancel"
             | "/api/system/install/ffmpeg"
             | "/api/system/install/ffmpeg/cancel",
-        ) => {
-            respond_json(stream, 405, &json!({ "error": "method not allowed" }))
-        }
-        _ => respond_json(stream, 404, &json!({ "error": "not found" })),
+        ) => respond_error(stream, 405, &method_not_allowed()),
+        _ => respond_error(stream, 404, &route_not_found()),
     }
 }
 

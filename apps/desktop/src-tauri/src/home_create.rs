@@ -10,14 +10,15 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use super::coded_error::CodedError;
+use super::home_api::respond_error;
 use super::home_routes::{begin_open, respond, HomeInner};
 
 pub fn handle_create(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
     let params = match parse_create(body) {
         Ok(params) => params,
         Err(error) => {
-            let payload = serde_json::json!({ "error": error }).to_string();
-            respond(stream, 400, "application/json", payload.as_bytes());
+            respond_error(stream, 400, &error);
             return;
         }
     };
@@ -39,54 +40,52 @@ pub fn handle_create(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
             begin_open(state, name, dest, Some(workspace));
             respond(stream, 200, "application/json", br#"{"opening":true}"#);
         }
-        Err(error) => {
-            let payload = serde_json::json!({ "error": error }).to_string();
-            respond(stream, 400, "application/json", payload.as_bytes());
-        }
+        Err(error) => respond_error(stream, 400, &error),
     }
 }
 
 /// Scaffold a blank project from the template this build resolves.
-pub fn scaffold_blank(params: &super::create::CreateParams) -> Result<PathBuf, String> {
+pub fn scaffold_blank(params: &super::create::CreateParams) -> Result<PathBuf, CodedError> {
     let staged = std::env::var("OPENVids_TEST_TEMPLATES")
         .ok()
         .map(PathBuf::from)
         .or_else(production_templates_dir);
     let index = super::create::blank_template_index(staged.as_deref())
-        .ok_or_else(|| "project template unavailable".to_string())?;
-    super::create::scaffold(&index, params).map_err(|err| err.to_string())
+        .ok_or_else(|| CodedError::plain("template_unavailable", "project template unavailable"))?;
+    super::create::scaffold(&index, params).map_err(|err| err.coded())
 }
 
-fn parse_create(body: &[u8]) -> Result<super::create::CreateParams, String> {
-    let value: serde_json::Value =
-        serde_json::from_slice(body).map_err(|_| "invalid request body".to_string())?;
+fn parse_create(body: &[u8]) -> Result<super::create::CreateParams, CodedError> {
+    let value: serde_json::Value = serde_json::from_slice(body)
+        .map_err(|_| CodedError::plain("create_body_invalid", "invalid request body"))?;
     let parent = value
         .get("parent")
         .and_then(|v| v.as_str())
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| "choose a location first".to_string())?;
+        .ok_or_else(|| CodedError::plain("create_no_location", "choose a location first"))?;
     let name = value
         .get("name")
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| "give the project a name".to_string())?
+        .ok_or_else(|| CodedError::plain("create_no_name", "give the project a name"))?
         .to_string();
     let fps = value
         .get("fps")
         .and_then(|v| v.as_str())
         .unwrap_or("30")
         .to_string();
+    let no_resolution = || CodedError::plain("create_no_resolution", "pick a resolution");
     let width = value
         .get("width")
         .and_then(|v| v.as_u64())
         .and_then(|n| u32::try_from(n).ok())
-        .ok_or_else(|| "pick a resolution".to_string())?;
+        .ok_or_else(no_resolution)?;
     let height = value
         .get("height")
         .and_then(|v| v.as_u64())
         .and_then(|n| u32::try_from(n).ok())
-        .ok_or_else(|| "pick a resolution".to_string())?;
+        .ok_or_else(no_resolution)?;
     let duration = value
         .get("duration")
         .and_then(|v| v.as_f64())

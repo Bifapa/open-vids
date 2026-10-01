@@ -34,7 +34,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::time::Duration;
 
+use serde_json::json;
+
 use super::cli_runner;
+use super::coded_error::CodedError;
 use super::install_job::{one_line, ExitAction, InstallJob, InstallState, Installer, Stream};
 
 /// What the UI says before and while this runs.
@@ -117,11 +120,15 @@ fn looks_stale(text: &str) -> bool {
         .any(|needle| lower.contains(needle))
 }
 
-/// The one-line reason for a failed run from the stderr tail.
-pub fn failure_reason(tail: &[String], status: &ExitStatus) -> String {
+/// The one-line reason for a failed run from the stderr tail. Brew's own line has no code: it is not our text.
+pub fn failure_reason(tail: &[String], status: &ExitStatus) -> CodedError {
     let joined = tail.join("\n");
     if needs_terminal(&joined) {
-        return format!("Homebrew needs administrator access or a Terminal. Run `{INSTALL_COMMAND}` in Terminal.");
+        return CodedError::new(
+            "brew_needs_terminal",
+            format!("Homebrew needs administrator access or a Terminal. Run `{INSTALL_COMMAND}` in Terminal."),
+            json!({ "command": INSTALL_COMMAND }),
+        );
     }
     let lines: Vec<String> = tail.iter().filter_map(|l| sanitize_line(l)).collect();
     let reason = lines
@@ -130,9 +137,22 @@ pub fn failure_reason(tail: &[String], status: &ExitStatus) -> String {
         .find(|l| l.starts_with("Error:"))
         .or_else(|| lines.last());
     match reason {
-        Some(line) => one_line(line, REASON_CHARS),
-        None => format!("`{INSTALL_COMMAND}` failed ({status})"),
+        Some(line) => CodedError::uncoded(one_line(line, REASON_CHARS)),
+        None => CodedError::new(
+            "brew_failed",
+            format!("`{INSTALL_COMMAND}` failed ({status})"),
+            json!({ "command": INSTALL_COMMAND, "status": status.to_string() }),
+        ),
     }
+}
+
+/// Homebrew is not installed: where to get it and what to run afterwards.
+pub fn homebrew_missing() -> CodedError {
+    CodedError::new(
+        "homebrew_missing",
+        format!("Homebrew was not found. Install it from {BREW_URL}, then run `{INSTALL_COMMAND}`."),
+        json!({ "url": BREW_URL, "command": INSTALL_COMMAND }),
+    )
 }
 
 struct BrewInstaller;
@@ -171,10 +191,8 @@ impl BrewInstaller {
 }
 
 impl Installer for BrewInstaller {
-    fn command(&self, attempt: u32) -> Result<Command, String> {
-        let brew = find_brew().ok_or_else(|| {
-            format!("Homebrew was not found. Install it from {BREW_URL}, then run `{INSTALL_COMMAND}`.")
-        })?;
+    fn command(&self, attempt: u32) -> Result<Command, CodedError> {
+        let brew = find_brew().ok_or_else(homebrew_missing)?;
         let mut command = Command::new(&brew);
         command.args(["install", "ffmpeg"]);
         for (key, value) in Self::environment(&brew, attempt) {
@@ -226,13 +244,13 @@ impl Installer for BrewInstaller {
             state.detail = Some("Updating Homebrew and trying again".into());
             return ExitAction::Retry;
         }
-        *state = InstallState::failed(&failure_reason(stderr_tail, status));
+        *state = InstallState::failed_with(&failure_reason(stderr_tail, status));
         ExitAction::Finished
     }
 
     /// brew said it worked: the tools must now be findable (a fresh CLI process
     /// looks, so the page's next System check sees them too).
-    fn verify(&self) -> Result<Option<String>, String> {
+    fn verify(&self) -> Result<Option<String>, CodedError> {
         let Ok(out) = cli_runner::run(&["doctor", "--tools"], Duration::from_secs(10)) else {
             // No CLI to ask: Homebrew's success is all there is.
             return Ok(None);
@@ -242,7 +260,10 @@ impl Installer for BrewInstaller {
         };
         let found = |name: &str| tools.get(name).and_then(|t| t.get("found")).and_then(|f| f.as_bool()) == Some(true);
         if !found("ffmpeg") {
-            return Err("Homebrew finished, but ffmpeg was not found afterwards.".into());
+            return Err(CodedError::plain(
+                "ffmpeg_not_found_after",
+                "Homebrew finished, but ffmpeg was not found afterwards.",
+            ));
         }
         Ok(tools
             .get("ffmpeg")
@@ -352,22 +373,26 @@ mod tests {
     fn failures_get_a_one_line_reason_from_the_stderr_tail() {
         let tail = |lines: &[&str]| lines.iter().map(|l| l.to_string()).collect::<Vec<_>>();
         assert_eq!(
-            failure_reason(&tail(&["Warning: x", "Error: ffmpeg: no bottle available!"]), &status(1)),
+            failure_reason(&tail(&["Warning: x", "Error: ffmpeg: no bottle available!"]), &status(1)).message,
             "Error: ffmpeg: no bottle available!"
         );
         assert_eq!(
-            failure_reason(&tail(&["Error: boom", "trailing note"]), &status(1)),
+            failure_reason(&tail(&["Error: boom", "trailing note"]), &status(1)).message,
             "Error: boom"
         );
-        assert_eq!(failure_reason(&tail(&["just text"]), &status(1)), "just text");
-        assert!(failure_reason(&[], &status(2)).contains("brew install ffmpeg"));
+        assert_eq!(failure_reason(&tail(&["just text"]), &status(1)).message, "just text");
+        assert_eq!(failure_reason(&tail(&["just text"]), &status(1)).code, None);
+        let failed = failure_reason(&[], &status(2));
+        assert!(failed.message.contains("brew install ffmpeg"));
+        assert_eq!(failed.code, Some("brew_failed"));
         for needs in [
             "sudo: a terminal is required to read the password",
             "Error: Need sudo access on macOS",
             "Please enter your password",
         ] {
             let reason = failure_reason(&tail(&[needs]), &status(1));
-            assert!(reason.contains("Run `brew install ffmpeg` in Terminal"), "{reason}");
+            assert!(reason.message.contains("Run `brew install ffmpeg` in Terminal"), "{}", reason.message);
+            assert_eq!(reason.code, Some("brew_needs_terminal"));
         }
         assert!(looks_stale("Error: No available formula with the name \"ffmpeg\""));
         assert!(looks_stale("curl: (22) The requested URL returned error: 404"));

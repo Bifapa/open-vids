@@ -24,8 +24,10 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use serde_json::{json, Value};
 
 use super::cli_runner;
+use super::coded_error::CodedError;
 
 /// `idle` · `checking` · `downloading` · `installing` · `done` · `failed` · `cancelled`
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -43,6 +45,12 @@ pub struct InstallState {
     pub source: Option<String>,
     /// `failed`: one line.
     pub error: Option<String>,
+    /// `failed`: the stable code of `error` and the values it mentions, when the page can translate it
+    /// (`home.error.<code>`). A failure that is a tool's own output has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<Value>,
 }
 
 impl InstallState {
@@ -54,15 +62,25 @@ impl InstallState {
         path: None,
         source: None,
         error: None,
+        code: None,
+        params: None,
     };
 
     pub fn of(phase: &'static str) -> Self {
         Self { phase, ..Self::IDLE }
     }
 
+    /// A failure with text that is not ours (a tool's own output): no code.
     pub fn failed(message: &str) -> Self {
         let mut state = Self::of("failed");
         state.error = Some(one_line(message, 300));
+        state
+    }
+
+    pub fn failed_with(err: &CodedError) -> Self {
+        let mut state = Self::failed(&err.message);
+        state.code = err.code;
+        state.params = err.code.map(|_| err.params.clone());
         state
     }
 
@@ -104,7 +122,7 @@ pub enum ExitAction {
 pub trait Installer: Sync {
     /// The command to run, stdout piped. `attempt` is 0 for the first run.
     /// It must give the child its own process group (see `cli_runner::command`).
-    fn command(&self, attempt: u32) -> Result<Command, String>;
+    fn command(&self, attempt: u32) -> Result<Command, CodedError>;
     /// The state a freshly started job begins in.
     fn started(&self) -> InstallState;
     /// One line of output. Called with the slot locked: no I/O here.
@@ -120,7 +138,7 @@ pub trait Installer: Sync {
     ) -> ExitAction;
     /// After a successful exit: check the result (may do I/O). `Ok(Some(path))`
     /// is the installed tool, `Ok(None)` an unverifiable but accepted result.
-    fn verify(&self) -> Result<Option<String>, String> {
+    fn verify(&self) -> Result<Option<String>, CodedError> {
         Ok(None)
     }
 }
@@ -182,18 +200,22 @@ impl InstallJob {
             }
             Err(message) => {
                 slot.pid = None;
-                slot.state = InstallState::failed(&message);
+                slot.state = InstallState::failed_with(&message);
             }
         }
         slot.state.clone()
     }
 
-    fn spawn(&self, attempt: u32) -> Result<std::process::Child, String> {
+    fn spawn(&self, attempt: u32) -> Result<std::process::Child, CodedError> {
         let mut command = self.installer.command(attempt)?;
         command.stdin(Stdio::null()).stdout(Stdio::piped());
-        command
-            .spawn()
-            .map_err(|e| format!("could not start the installer: {e}"))
+        command.spawn().map_err(|e| {
+            CodedError::new(
+                "installer_start_failed",
+                format!("could not start the installer: {e}"),
+                json!({ "detail": e.to_string() }),
+            )
+        })
     }
 
     fn feed(&self, generation: u64, stream: Stream, line: &str) {
@@ -248,8 +270,10 @@ impl InstallJob {
                         self.installer.on_exit(state, status, &tail, attempt)
                     }
                     Err(err) => {
-                        slot.state = InstallState::failed(&format!(
-                            "the installer stopped unexpectedly ({err})"
+                        slot.state = InstallState::failed_with(&CodedError::new(
+                            "installer_stopped",
+                            format!("the installer stopped unexpectedly ({err})"),
+                            json!({ "status": err.to_string() }),
                         ));
                         ExitAction::Finished
                     }
@@ -267,7 +291,7 @@ impl InstallJob {
                                 done.path = path;
                                 done
                             }
-                            Err(message) => InstallState::failed(&message),
+                            Err(message) => InstallState::failed_with(&message),
                         };
                     }
                     return;
@@ -286,7 +310,7 @@ impl InstallJob {
                             child = next;
                         }
                         Err(message) => {
-                            slot.state = InstallState::failed(&message);
+                            slot.state = InstallState::failed_with(&message);
                             return;
                         }
                     }
@@ -310,9 +334,11 @@ impl InstallJob {
             if slot.generation != generation || !slot.state.is_active() {
                 return;
             }
-            slot.state = InstallState::failed(&format!(
-                "the install took longer than {} minutes and was stopped",
-                self.timeout.as_secs() / 60
+            let minutes = self.timeout.as_secs() / 60;
+            slot.state = InstallState::failed_with(&CodedError::new(
+                "install_timeout",
+                format!("the install took longer than {minutes} minutes and was stopped"),
+                json!({ "minutes": minutes }),
             ));
             slot.pid
         };

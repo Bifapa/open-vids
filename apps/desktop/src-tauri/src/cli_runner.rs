@@ -22,6 +22,10 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use serde_json::json;
+
+use super::coded_error::CodedError;
+
 /// How long a child gets between SIGTERM and SIGKILL.
 pub const TERM_GRACE: Duration = Duration::from_secs(3);
 
@@ -87,8 +91,10 @@ pub fn launch() -> Option<CliLaunch> {
 
 /// The command for `hyperframes <args>`, not yet spawned: stdout piped, stdin
 /// closed, own process group.
-pub fn command(args: &[&str]) -> Result<Command, String> {
-    let launch = launch().ok_or("the OpenVids command-line tools are not installed")?;
+pub fn command(args: &[&str]) -> Result<Command, CodedError> {
+    let launch = launch().ok_or_else(|| {
+        CodedError::plain("cli_not_installed", "the OpenVids command-line tools are not installed")
+    })?;
     let mut command = Command::new(&launch.bun);
     if let Some(launcher) = &launch.launcher {
         command.arg(launcher);
@@ -160,11 +166,18 @@ pub fn kill_group_now(pid: u32) {
 
 /// Run `hyperframes <args>` to completion and return its stdout. A run that
 /// takes longer than `timeout` is killed (group included) and fails.
-pub fn run(args: &[&str], timeout: Duration) -> Result<String, String> {
-    let mut child = command(args)?
-        .spawn()
-        .map_err(|e| format!("could not start the OpenVids command-line tools: {e}"))?;
-    let mut stdout = child.stdout.take().ok_or("no stdout")?;
+pub fn run(args: &[&str], timeout: Duration) -> Result<String, CodedError> {
+    let mut child = command(args)?.spawn().map_err(|e| {
+        CodedError::new(
+            "cli_start_failed",
+            format!("could not start the OpenVids command-line tools: {e}"),
+            json!({ "detail": e.to_string() }),
+        )
+    })?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| CodedError::plain("cli_no_stdout", "no stdout"))?;
     let reader = std::thread::spawn(move || {
         let mut out = String::new();
         let _ = stdout.by_ref().take(1024 * 1024).read_to_string(&mut out);
@@ -178,12 +191,16 @@ pub fn run(args: &[&str], timeout: Duration) -> Result<String, String> {
             Ok(None) => {
                 kill_group(&mut child);
                 let _ = reader.join();
-                return Err("the check took too long".into());
+                return Err(CodedError::plain("check_timeout", "the check took too long"));
             }
             Err(e) => {
                 kill_group(&mut child);
                 let _ = reader.join();
-                return Err(format!("could not wait for the check: {e}"));
+                return Err(CodedError::new(
+                    "check_wait_failed",
+                    format!("could not wait for the check: {e}"),
+                    json!({ "detail": e.to_string() }),
+                ));
             }
         }
     };
@@ -191,7 +208,11 @@ pub fn run(args: &[&str], timeout: Duration) -> Result<String, String> {
     kill_group_now(child.id());
     let out = reader.join().unwrap_or_default();
     if !status.success() {
-        return Err(format!("the check failed ({status})"));
+        return Err(CodedError::new(
+            "check_failed",
+            format!("the check failed ({status})"),
+            json!({ "status": status.to_string() }),
+        ));
     }
     Ok(out)
 }
@@ -255,7 +276,8 @@ pub mod tests {
     #[test]
     fn a_failing_run_is_an_error() {
         let err = with_fake_cli("exit 3", || run(&["x"], Duration::from_secs(5))).unwrap_err();
-        assert!(err.contains("failed"), "{err}");
+        assert!(err.message.contains("failed"), "{err}");
+        assert_eq!(err.code, Some("check_failed"));
     }
 
     #[test]
@@ -266,7 +288,8 @@ pub mod tests {
             run(&["x"], Duration::from_millis(300))
         })
         .unwrap_err();
-        assert!(err.contains("too long"), "{err}");
+        assert!(err.message.contains("too long"), "{err}");
+        assert_eq!(err.code, Some("check_timeout"));
         assert!(started.elapsed() < Duration::from_secs(10));
     }
 }

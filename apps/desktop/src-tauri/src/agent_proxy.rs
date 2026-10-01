@@ -25,6 +25,10 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use serde_json::json;
+
+use super::coded_error::CodedError;
+
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(25);
 
 struct Running {
@@ -77,8 +81,9 @@ fn token() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn spawn() -> Result<Running, String> {
-    let (bun, entry) = launch().ok_or("the agent runtime is not installed")?;
+fn spawn() -> Result<Running, CodedError> {
+    let (bun, entry) = launch()
+        .ok_or_else(|| CodedError::plain("agent_not_installed", "the agent runtime is not installed"))?;
     let token = token();
     let mut command = Command::new(&bun);
     command
@@ -95,9 +100,13 @@ fn spawn() -> Result<Running, String> {
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
-    let mut child = command
-        .spawn()
-        .map_err(|e| format!("could not start the agent runtime ({}): {e}", bun.display()))?;
+    let mut child = command.spawn().map_err(|e| {
+        CodedError::new(
+            "agent_start_failed",
+            format!("could not start the agent runtime ({}): {e}", bun.display()),
+            json!({ "path": bun.display().to_string(), "detail": e.to_string() }),
+        )
+    })?;
     if let Some(stderr) = child.stderr.take() {
         std::thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
@@ -124,14 +133,18 @@ fn spawn() -> Result<Running, String> {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     let port = loop {
         if let Ok(Some(status)) = child.try_wait() {
-            return Err(format!("the agent runtime exited during startup ({status})"));
+            return Err(CodedError::new(
+                "agent_exited",
+                format!("the agent runtime exited during startup ({status})"),
+                json!({ "status": status.to_string() }),
+            ));
         }
         match rx.recv_timeout(Duration::from_millis(200)) {
             Ok(port) => break port,
             Err(_) if Instant::now() < deadline => continue,
             Err(_) => {
                 kill(&mut child);
-                return Err("the agent runtime did not start in time".into());
+                return Err(CodedError::plain("agent_start_timeout", "the agent runtime did not start in time"));
             }
         }
     };
@@ -144,7 +157,7 @@ fn spawn() -> Result<Running, String> {
     }
     let mut running = running;
     kill(&mut running.child);
-    Err("the agent runtime never became healthy".into())
+    Err(CodedError::plain("agent_unhealthy", "the agent runtime never became healthy"))
 }
 
 fn lifecycle_port(line: &str) -> Option<u16> {
@@ -228,8 +241,10 @@ fn request(
 
 /// Forward one request to the runtime, starting it first if needed. A dead
 /// runtime is replaced once. Errors are user-facing strings.
-pub fn forward(method: &str, path: &str, body: Option<&[u8]>) -> Result<(u16, Vec<u8>), String> {
-    let mut slot = RUNTIME.lock().map_err(|_| "agent runtime state poisoned")?;
+pub fn forward(method: &str, path: &str, body: Option<&[u8]>) -> Result<(u16, Vec<u8>), CodedError> {
+    let mut slot = RUNTIME
+        .lock()
+        .map_err(|_| CodedError::plain("agent_state_poisoned", "agent runtime state poisoned"))?;
     for attempt in 0..2 {
         let alive = slot
             .as_mut()
@@ -241,7 +256,9 @@ pub fn forward(method: &str, path: &str, body: Option<&[u8]>) -> Result<(u16, Ve
             }
             *slot = Some(spawn()?);
         }
-        let running = slot.as_ref().ok_or("agent runtime missing")?;
+        let running = slot
+            .as_ref()
+            .ok_or_else(|| CodedError::plain("agent_missing", "agent runtime missing"))?;
         match request(running, method, path, body) {
             Ok(result) => return Ok(result),
             Err(error) if attempt == 0 => {
@@ -250,10 +267,16 @@ pub fn forward(method: &str, path: &str, body: Option<&[u8]>) -> Result<(u16, Ve
                     kill(&mut dead.child);
                 }
             }
-            Err(error) => return Err(format!("the agent runtime did not answer: {error}")),
+            Err(error) => {
+                return Err(CodedError::new(
+                    "agent_no_answer",
+                    format!("the agent runtime did not answer: {error}"),
+                    json!({ "detail": error.to_string() }),
+                ))
+            }
         }
     }
-    Err("the agent runtime is unavailable".into())
+    Err(CodedError::plain("agent_unavailable", "the agent runtime is unavailable"))
 }
 
 #[cfg(test)]

@@ -60,7 +60,8 @@
         if (l) l.openError = null;
       })
       .catch((err) => {
-        if (l) l.openError = msg("settings.signin.error.openFailed", { message: err.message });
+        if (l)
+          l.openError = msg("settings.signin.error.openFailed", { message: OV.describeError(err) });
       })
       .finally(() => OVS.render(true));
   }
@@ -105,7 +106,7 @@
             Object.assign({}, l.state, {
               status: "failed",
               error: null,
-              lostContact: err.message,
+              lostContact: OV.describeError(err),
             }),
           );
       });
@@ -133,7 +134,7 @@
       })
       .catch((err) => {
         ui.flags.providersNote = OVS.failMsg("settings.signin.error.reloadFailed", {
-          message: err.message,
+          message: OV.describeError(err),
         });
       })
       .finally(() => {
@@ -171,7 +172,7 @@
       .catch((err) => {
         if (L[pid] !== l) return;
         l.starting = false;
-        l.error = err.message;
+        l.error = OV.describeError(err);
       })
       .finally(() => {
         OVS.render(true);
@@ -199,7 +200,7 @@
         if (isState(next)) apply(pid, next);
       })
       .catch((err) => {
-        if (L[pid] === l) l.inputError = err.message;
+        if (L[pid] === l) l.inputError = OV.describeError(err);
       })
       .finally(() => {
         l.sending = false;

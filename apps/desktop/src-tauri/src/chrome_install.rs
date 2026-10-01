@@ -10,9 +10,10 @@
 use std::process::{Command, ExitStatus};
 use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::cli_runner;
+use super::coded_error::CodedError;
 use super::install_job::{one_line, ExitAction, InstallJob, InstallState, Installer, Stream};
 
 struct ChromeInstaller;
@@ -47,7 +48,7 @@ pub fn apply_event(state: &mut InstallState, event: &Value) {
 }
 
 impl Installer for ChromeInstaller {
-    fn command(&self, _attempt: u32) -> Result<Command, String> {
+    fn command(&self, _attempt: u32) -> Result<Command, CodedError> {
         cli_runner::command(&["browser", "ensure", "--json"])
     }
 
@@ -72,7 +73,11 @@ impl Installer for ChromeInstaller {
         _attempt: u32,
     ) -> ExitAction {
         // Still active: the CLI died without saying done or error.
-        *state = InstallState::failed(&format!("the installer stopped unexpectedly ({status})"));
+        *state = InstallState::failed_with(&CodedError::new(
+            "installer_stopped",
+            format!("the installer stopped unexpectedly ({status})"),
+            json!({ "status": status.to_string() }),
+        ));
         ExitAction::Finished
     }
 }

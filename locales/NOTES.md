@@ -1182,3 +1182,30 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `menu.help.welcome` — Reopens the first-run onboarding.
 - `menu.view.reload` — Reloads the window document.
 - `menu.window.fullScreen` — Standard macOS wording; long in Russian, the Window menu must fit it.
+
+## home-errors
+
+- `home.error.agent_exited` — {status} is the process exit status (e.g. "exit status: 1").
+- `home.error.agent_missing` — The agent runtime is the local process the agents run in.
+- `home.error.agent_start_failed` — {path} is the program that was started.
+- `home.error.agent_state_poisoned` — Internal error: a lock was left broken by a crash.
+- `home.error.app_state_poisoned` — Internal error: a lock was left broken by a crash.
+- `home.error.brew_needs_terminal` — Terminal is the macOS Terminal app.
+- `home.error.cannot_open_no_project_name` — {name} is the folder the user picked.
+- `home.error.cannot_open_not_a_directory` — {name} is the item the user picked; it is not a folder.
+- `home.error.check_failed` — "The check" is the first-run System check of Chrome and FFmpeg.
+- `home.error.cli_no_stdout` — Internal error: the command-line tool gave no output stream.
+- `home.error.create_body_invalid` — Internal error: the page sent something the app could not read.
+- `home.error.dev_origin_unknown` — Development builds only.
+- `home.error.dev_projects_unknown` — Development builds only.
+- `home.error.intake_write_failed` — The "intake" is the file that hands the first prompt and the files of a new project to its chat.
+- `home.error.navigate_failed` — The window could not be pointed at the project; {detail} is the system's own text.
+- `home.error.not_a_project` — {name} is the folder the user picked; the page shows it in bold.
+- `home.error.nothing_to_restore` — Undo of "Remove from Recent" found no removed entry.
+- `home.error.project_in_use` — "Show All Projects" is a File menu item (menu.file.showAllProjects).
+- `home.error.project_register_failed` — Development builds only.
+- `home.error.route_not_found` — Internal error: the page asked for something the app does not have.
+- `home.error.runtime_not_bundled` — Developer-facing: a build without its bundled runtime.
+- `home.error.state_poisoned` — Internal error: a lock was left broken by a crash.
+- `home.error.studio_bad_lifecycle` — The Studio runtime is the local server that edits a project.
+- `home.error.studio_no_port` — "s" is seconds.

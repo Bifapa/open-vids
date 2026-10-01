@@ -66,7 +66,7 @@
         );
       })
       .catch((err) => {
-        note = OVS.failMsg("onboarding.project.changeFailed", { message: err.message });
+        note = OVS.failMsg("onboarding.project.changeFailed", { message: OV.describeError(err) });
       })
       .finally(() => OVS.render(true));
   };

@@ -29,7 +29,7 @@
           OVS.post({ type: "ov-prefs", prefs: next });
         })
         .catch((err) => {
-          S.prefsNote = OVS.failMsg("settings.note.saveFailed", { message: err.message });
+          S.prefsNote = OVS.failMsg("settings.note.saveFailed", { message: OV.describeError(err) });
           if (rollback) rollback();
         })
         .finally(() => OVS.render(true)),
@@ -43,7 +43,7 @@
         OV.applyDensity(p.density);
       })
       .catch((err) => {
-        S.prefsError = err.message;
+        S.prefsError = OV.describeError(err);
       })
       .finally(() => OVS.render(true));
   }
@@ -222,7 +222,7 @@
         if (!r.cancelled) savePrefs({ newProject: { location: r.path } });
       })
       .catch((err) => {
-        S.prefsNote = "!" + err.message;
+        S.prefsNote = "!" + OV.describeError(err);
         OVS.render(true);
       });
   };

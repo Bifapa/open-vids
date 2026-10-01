@@ -17,6 +17,10 @@
 
 use std::path::{Path, PathBuf};
 
+use serde_json::json;
+
+use super::coded_error::CodedError;
+
 /// Characters a folder name may not contain (Studio's project-id rule).
 fn is_bad_name_char(c: char) -> bool {
     matches!(c, ':' | '/' | '\\') || (c as u32) < 0x20 || c as u32 == 0x7f
@@ -184,13 +188,24 @@ pub struct ImportedFile {
 }
 
 /// Copy every source file into `<project>/assets/`.
-pub fn import_files(project: &Path, sources: &[PathBuf]) -> Result<Vec<ImportedFile>, String> {
+pub fn import_files(project: &Path, sources: &[PathBuf]) -> Result<Vec<ImportedFile>, CodedError> {
     let assets = project.join("assets");
-    std::fs::create_dir_all(&assets).map_err(|e| format!("could not create assets/: {e}"))?;
+    std::fs::create_dir_all(&assets).map_err(|e| {
+        CodedError::new(
+            "assets_create_failed",
+            format!("could not create assets/: {e}"),
+            json!({ "detail": e.to_string() }),
+        )
+    })?;
     let mut out = Vec::new();
     for source in sources {
-        let written = copy_without_overwrite(source, &assets)
-            .map_err(|e| format!("could not copy {}: {e}", source.display()))?;
+        let written = copy_without_overwrite(source, &assets).map_err(|e| {
+            CodedError::new(
+                "file_copy_failed",
+                format!("could not copy {}: {e}", source.display()),
+                json!({ "path": source.display().to_string(), "detail": e.to_string() }),
+            )
+        })?;
         let size = std::fs::metadata(assets.join(&written))
             .map(|m| m.len())
             .unwrap_or(0);

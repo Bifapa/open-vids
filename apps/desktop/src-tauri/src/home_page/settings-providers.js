@@ -41,7 +41,7 @@
       .then(OVS.setProviders)
       .catch((err) => {
         /* A refresh that fails keeps the list it has; only a first load shows the error. */
-        if (!S.providers) S.providersError = err.message;
+        if (!S.providers) S.providersError = OV.describeError(err);
       })
       .finally(() => OVS.render(true));
   }
@@ -55,7 +55,8 @@
           S.provModels[id] = { status: "ready", models: Array.isArray(r.models) ? r.models : [] };
       })
       .catch((err) => {
-        if (S.provModels[id] === mark) S.provModels[id] = { status: "failed", error: err.message };
+        if (S.provModels[id] === mark)
+          S.provModels[id] = { status: "failed", error: OV.describeError(err) };
       })
       .finally(() => OVS.render(true));
   }
@@ -84,7 +85,7 @@
       })
       .catch((err) => {
         ui.flags.providersNote = failMsg("settings.providers.note.refreshFailed", {
-          message: err.message,
+          message: OV.describeError(err),
         });
       })
       .finally(() => {
@@ -111,7 +112,7 @@
         providersChanged();
       })
       .catch((err) => {
-        ui.err[`prov:${id}`] = err.message;
+        ui.err[`prov:${id}`] = OV.describeError(err);
       })
       .finally(() => {
         delete ui.busy[id];
@@ -129,7 +130,7 @@
       })
       .catch((err) => {
         ui.flags.providersNote = failMsg("settings.providers.note.signOutFailed", {
-          message: err.message,
+          message: OV.describeError(err),
         });
       })
       .finally(() => {

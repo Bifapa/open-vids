@@ -131,7 +131,7 @@
       })
       .catch((err) => {
         OB.busy = false;
-        OB.note = OVS.failMsg("onboarding.note.finishFailed", { message: err.message });
+        OB.note = OVS.failMsg("onboarding.note.finishFailed", { message: OV.describeError(err) });
         OVS.render(true);
       });
   }

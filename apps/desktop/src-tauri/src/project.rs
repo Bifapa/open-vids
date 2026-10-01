@@ -8,6 +8,10 @@
 
 use std::path::{Path, PathBuf};
 
+use serde_json::json;
+
+use super::coded_error::CodedError;
+
 #[derive(Debug)]
 pub enum ProjectError {
     NotADirectory(PathBuf),
@@ -24,6 +28,22 @@ impl std::fmt::Display for ProjectError {
                 f,
                 "{name:?} cannot be used as a project id: it contains a path separator or a reserved character"
             ),
+        }
+    }
+}
+
+impl ProjectError {
+    /// The same sentence as `Display`, with the code and params the page translates it by.
+    pub fn coded(&self) -> CodedError {
+        let message = self.to_string();
+        match self {
+            Self::NotADirectory(path) => {
+                CodedError::new("not_a_directory", message, json!({ "path": path.display().to_string() }))
+            }
+            Self::NoName(path) => {
+                CodedError::new("no_project_name", message, json!({ "path": path.display().to_string() }))
+            }
+            Self::UnsafeName(name) => CodedError::new("unsafe_project_name", message, json!({ "name": name })),
         }
     }
 }

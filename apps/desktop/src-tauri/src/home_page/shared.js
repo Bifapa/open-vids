@@ -258,11 +258,35 @@
             );
             err.status = res.status;
             err.data = data;
+            /* The server's stable id of this failure and the values its sentence mentions (see describeError). */
+            if (data && typeof data.code === "string") {
+              err.code = data.code;
+              err.params = data.params;
+            }
             throw err;
           }
           return data;
         });
     });
+  }
+
+  /* The text to show for a failure from the local server: the translation of its code (home.error.<code>, with
+     the params the server sent), or its own English sentence when it has no code or the catalog has no key for
+     it. Takes an Error from api(), or any {code, params, error|message} object (the open-state and install
+     states carry the same fields). Call it when the text is shown, so it follows the language. */
+  function describeError(err) {
+    if (!err) return "";
+    const message =
+      typeof err.message === "string"
+        ? err.message
+        : typeof err.error === "string"
+          ? err.error
+          : "";
+    if (typeof err.code !== "string" || !err.code) return message;
+    const key = "home.error." + err.code;
+    const params = err.params && typeof err.params === "object" ? err.params : undefined;
+    const text = OVI18N.t(key, params);
+    return text === key ? message : text;
   }
 
   /* ---- Theme: Settings → Appearance (Match system / Dark / Light), applied before first paint ---- */
@@ -303,6 +327,7 @@
     formatClock: formatClock,
     esc: esc,
     api: api,
+    describeError: describeError,
     applyTheme: applyTheme,
     themePref: function () {
       return themePref;

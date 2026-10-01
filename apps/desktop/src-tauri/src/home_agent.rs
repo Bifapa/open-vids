@@ -33,7 +33,8 @@
 
 use std::net::TcpStream;
 
-use super::home_api::{proxy_agent, respond_json};
+use super::coded_error::CodedError;
+use super::home_api::{method_not_allowed, proxy_agent, respond_error, route_not_found};
 
 /// Longest provider id the page may name. Real ids are short slugs
 /// (`anthropic`, `openai-codex`, …).
@@ -101,25 +102,19 @@ pub fn handle_provider_route(stream: &mut TcpStream, method: &str, path: &str, b
         stream,
         map_provider_route(method, path),
         body,
-        "invalid provider id",
+        CodedError::plain("invalid_provider_id", "invalid provider id"),
     );
 }
 
-fn respond_mapped(stream: &mut TcpStream, route: ProviderRoute, body: &[u8], bad_id: &str) {
+fn respond_mapped(stream: &mut TcpStream, route: ProviderRoute, body: &[u8], bad_id: CodedError) {
     match route {
         ProviderRoute::Forward { method, path } => {
             let body = (method == "POST").then_some(body);
             proxy_agent(stream, method, &path, body)
         }
-        ProviderRoute::BadId => respond_json(stream, 400, &serde_json::json!({ "error": bad_id })),
-        ProviderRoute::WrongMethod => respond_json(
-            stream,
-            405,
-            &serde_json::json!({ "error": "method not allowed" }),
-        ),
-        ProviderRoute::Unknown => {
-            respond_json(stream, 404, &serde_json::json!({ "error": "not found" }))
-        }
+        ProviderRoute::BadId => respond_error(stream, 400, &bad_id),
+        ProviderRoute::WrongMethod => respond_error(stream, 405, &method_not_allowed()),
+        ProviderRoute::Unknown => respond_error(stream, 404, &route_not_found()),
     }
 }
 
@@ -175,7 +170,7 @@ pub fn handle_oauth_login_route(stream: &mut TcpStream, method: &str, path: &str
         stream,
         map_oauth_login_route(method, path),
         body,
-        "invalid sign-in id",
+        CodedError::plain("invalid_login_id", "invalid sign-in id"),
     );
 }
 

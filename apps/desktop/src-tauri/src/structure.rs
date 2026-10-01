@@ -18,6 +18,8 @@ use std::path::Path;
 
 use super::project::{validate, Project, ProjectError};
 
+use super::coded_error::CodedError;
+
 /// Why a folder is not openable as a project.
 #[derive(Debug)]
 pub enum StructureError {
@@ -38,6 +40,17 @@ impl std::fmt::Display for StructureError {
                 f,
                 "index.html has no composition (it needs a data-composition-id element)"
             ),
+        }
+    }
+}
+
+impl StructureError {
+    /// The same sentence as `Display`, with the code and params the page translates it by.
+    pub fn coded(&self) -> CodedError {
+        match self {
+            Self::Project(err) => err.coded(),
+            Self::MissingIndex => CodedError::plain("missing_index", self.to_string()),
+            Self::NoComposition => CodedError::plain("no_composition", self.to_string()),
         }
     }
 }

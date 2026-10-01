@@ -4,7 +4,7 @@
    hands everything to the page, which creates the project. */
 (function () {
   "use strict";
-  const { ic, esc, api, formatBytes, formatClock } = OV;
+  const { ic, esc, api, describeError, formatBytes, formatClock } = OV;
   const T = (key, params) => OVI18N.t(key, params);
 
   /* Agent names, monograms, roles, modes, efforts and file kinds are message keys, translated when they are drawn. */
@@ -299,7 +299,7 @@
           update();
         })
         .catch((err) => {
-          state.catalogError = { message: err.message || "" };
+          state.catalogError = err || {};
           renderPopover();
           update();
         });
@@ -307,7 +307,7 @@
 
     /* ---------- composer state ---------- */
     const noModel = () => !!state.catalog && state.catalog.models.length === 0;
-    const catalogDetail = () => state.catalogError.message || T("home.composer.unavailable");
+    const catalogDetail = () => describeError(state.catalogError) || T("home.composer.unavailable");
     function modelChipText() {
       if (!state.catalog && !state.catalogError) return T("home.composer.model.loading");
       if (noModel()) return T("home.composer.model.none");
@@ -496,7 +496,7 @@
         })
         .catch((err) =>
           OVH.toast(
-            esc(T("home.composer.error.addFiles", { message: err.message })),
+            esc(T("home.composer.error.addFiles", { message: describeError(err) })),
             null,
             "error",
           ),
@@ -511,7 +511,11 @@
           reportSkipped(res);
         })
         .catch((err) =>
-          OVH.toast(esc(T("home.composer.error.drop", { message: err.message })), null, "error"),
+          OVH.toast(
+            esc(T("home.composer.error.drop", { message: describeError(err) })),
+            null,
+            "error",
+          ),
         );
     }
 

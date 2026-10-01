@@ -2,8 +2,19 @@
    server, actions through its token-guarded API, the start composer creating real projects. */
 (function () {
   "use strict";
-  const { ic, esc, api, fmtDur, fmtOpened, fmtMedia, fmtNumber, dayDiff, formatBytes, blankThumb } =
-    OV;
+  const {
+    ic,
+    esc,
+    api,
+    describeError,
+    fmtDur,
+    fmtOpened,
+    fmtMedia,
+    fmtNumber,
+    dayDiff,
+    formatBytes,
+    blankThumb,
+  } = OV;
   const { toast, showMenu, closeMenu, sheet } = OVH;
   const tr = (key, params) => OVI18N.t(key, params);
   /* The same, HTML-escaped: for markup built as a string (menus, toasts, templates). */
@@ -95,7 +106,7 @@
       .catch((err) => {
         S.loading = false;
         render();
-        toast(th("home.error.load", { message: err.message }), null, "error");
+        toast(th("home.error.load", { message: describeError(err) }), null, "error");
       });
   }
 
@@ -616,7 +627,8 @@
   /* ---------- actions ---------- */
   /* A toast for a failed action: the message is the backend's error text, passed as {message}. */
   function fail(key, params) {
-    return (err) => toast(th(key, Object.assign({ message: err.message }, params)), null, "error");
+    return (err) =>
+      toast(th(key, Object.assign({ message: describeError(err) }, params)), null, "error");
   }
   function reveal(p) {
     api("/api/reveal", { id: p.id }).catch(fail("home.error.reveal"));
@@ -709,7 +721,7 @@
         p.name = old;
         render();
         land(at, p.id);
-        toast(th("home.error.rename", { name: old, message: err.message }), null, "error");
+        toast(th("home.error.rename", { name: old, message: describeError(err) }), null, "error");
       })
       .finally(() => {
         renameBusy = false;
@@ -779,7 +791,7 @@
             toast(
               th("home.error.open", {
                 name: st.label || openingName(),
-                message: st.error || tr("home.error.unknown"),
+                message: describeError(st) || tr("home.error.unknown"),
               }),
               null,
               "error",
@@ -828,7 +840,7 @@
     api("/api/open", p.media === 0 ? { id: p.id, workspace: "media" } : { id: p.id }).catch(
       (err) => {
         hideOpening();
-        toast(th("home.error.open", { name: p.name, message: err.message }), null, "error");
+        toast(th("home.error.open", { name: p.name, message: describeError(err) }), null, "error");
         load();
       },
     );
@@ -850,7 +862,7 @@
       })
       .catch((err) => {
         if (!err.data || !err.data.invalid)
-          return toast(th("home.error.openFolder", { message: err.message }), null, "error");
+          return toast(th("home.error.openFolder", { message: describeError(err) }), null, "error");
         const { sh, close } = sheet(
           "<h3>" +
             th("home.openSheet.title") +
@@ -861,7 +873,7 @@
             ic("alert", 12) +
             "<span>" +
             boldName(
-              err.message,
+              describeError(err),
               String(err.data.path || "")
                 .split("/")
                 .pop(),
@@ -1135,7 +1147,7 @@
           busy = false;
           q("npOk").disabled = false;
           sh.classList.remove("is-busy");
-          setErr("npNameErr", [inp], esc(err.message));
+          setErr("npNameErr", [inp], esc(describeError(err)));
           inp.focus();
         });
     }
@@ -1642,7 +1654,7 @@
       .catch((err) => {
         start.busy = false;
         composer.setBusy(null);
-        toast(th("home.error.create", { message: err.message }), null, "error");
+        toast(th("home.error.create", { message: describeError(err) }), null, "error");
       });
   }
   composer = OVComposer.mount(chatHost, {
@@ -1725,7 +1737,10 @@
       if (st.phase === "opening") showOpening(st.label, "home.opening.lastProject");
       else if (st.phase === "failed")
         toast(
-          th("home.error.open", { name: st.label, message: st.error || tr("home.error.unknown") }),
+          th("home.error.open", {
+            name: st.label,
+            message: describeError(st) || tr("home.error.unknown"),
+          }),
           null,
           "error",
         );
@@ -1794,7 +1809,7 @@
         /* The setup can't be shown: don't trap the user behind a blank overlay. */
         document.documentElement.classList.remove("is-onboarding");
         lockPage(false);
-        toast(th("home.error.setup", { message: err.message }), null, "error");
+        toast(th("home.error.setup", { message: describeError(err) }), null, "error");
       });
   }
   /* Decided by index.html before first paint: unfinished setup, or Help › Welcome asked for it. */

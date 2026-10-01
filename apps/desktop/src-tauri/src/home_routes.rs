@@ -44,7 +44,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use super::home_api::{self, respond_json};
+use super::coded_error::CodedError;
+use super::home_api::{self, respond_error, respond_json};
 use super::home_auth::{self, Head, HomeToken, TOKEN_HEADER};
 use super::recents::RecentsStore;
 use super::structure::validate_structure;
@@ -65,7 +66,7 @@ pub enum OpenPhase {
     },
     Failed {
         label: String,
-        error: String,
+        error: CodedError,
     },
 }
 
@@ -411,7 +412,10 @@ fn serve_open_state(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
         OpenPhase::Idle => serde_json::json!({ "phase": "idle" }),
         OpenPhase::Opening { label } => serde_json::json!({ "phase": "opening", "label": label }),
         OpenPhase::Failed { label, error } => {
-            serde_json::json!({ "phase": "failed", "label": label, "error": error })
+            let mut body = error.body();
+            body["phase"] = serde_json::json!("failed");
+            body["label"] = serde_json::json!(label);
+            body
         }
     });
     match payload {
@@ -436,15 +440,12 @@ fn handle_pick_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
                     br#"{"cancelled":false,"opening":true}"#,
                 );
             }
-            Err(err) => respond_json(
-                stream,
-                400,
-                &serde_json::json!({
-                    "error": home_api::not_a_project_message(&dir, &err.to_string()),
-                    "invalid": true,
-                    "path": super::prefs::abbreviate_home(&dir),
-                }),
-            ),
+            Err(err) => {
+                let mut body = home_api::not_a_project_error(&dir, &err).body();
+                body["invalid"] = serde_json::json!(true);
+                body["path"] = serde_json::json!(super::prefs::abbreviate_home(&dir));
+                respond_json(stream, 400, &body);
+            }
         },
     }
 }
@@ -479,30 +480,18 @@ fn handle_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8
     match (id, found) {
         (Some(_), Some(entry)) => {
             if !entry.dir.is_dir() {
-                let payload = serde_json::json!({
-                    "error": format!("{} no longer exists — remove it from recents", entry.dir.display())
-                });
-                respond_json(stream, 410, &payload);
+                respond_error(stream, 410, &home_api::folder_missing_remove(&entry.dir));
             } else {
                 match validate_structure(&entry.dir) {
                     Ok(project) => {
                         begin_open(state, project.id.clone(), project.dir.clone(), workspace);
                         respond(stream, 200, "application/json", br#"{"opening":true}"#);
                     }
-                    Err(err) => respond_json(
-                        stream,
-                        400,
-                        &serde_json::json!({ "error": err.to_string() }),
-                    ),
+                    Err(err) => respond_error(stream, 400, &err.coded()),
                 }
             }
         }
-        _ => respond(
-            stream,
-            404,
-            "application/json",
-            br#"{"error":"unknown project"}"#,
-        ),
+        _ => respond_error(stream, 404, &home_api::unknown_project()),
     }
 }
 

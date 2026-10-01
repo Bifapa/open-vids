@@ -358,7 +358,7 @@
         S.catalog = c;
       })
       .catch((err) => {
-        S.agentsError = err.message;
+        S.agentsError = OV.describeError(err);
       })
       .finally(() => render(true));
   }
@@ -388,7 +388,7 @@
           return true;
         })
         .catch((err) => {
-          S.agentsNote = failMsg("settings.note.saveFailed", { message: err.message });
+          S.agentsNote = failMsg("settings.note.saveFailed", { message: OV.describeError(err) });
           return false;
         })
         .finally(() => render(true));

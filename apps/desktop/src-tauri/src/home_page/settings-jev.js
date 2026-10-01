@@ -279,7 +279,7 @@
     api("/api/agent/jev/api-key", { apiKey: null })
       .then(applyKeyResult)
       .catch((err) => {
-        ui.err.jev = err.message;
+        ui.err.jev = OV.describeError(err);
         ui.flags.jevReplace = false;
       })
       .finally(() => {
@@ -296,7 +296,7 @@
         ui.flags.jevTest = r;
       })
       .catch((err) => {
-        ui.flags.jevTest = { ok: false, message: err.message };
+        ui.flags.jevTest = { ok: false, message: OV.describeError(err) };
       })
       .finally(() => OVS.render(true));
   };
@@ -322,7 +322,7 @@
       api("/api/agent/jev/api-key", { apiKey: v })
         .then(applyKeyResult)
         .catch((err) => {
-          ui.err.jev = err.message;
+          ui.err.jev = OV.describeError(err);
         })
         .finally(() => {
           delete ui.busy.jev;

@@ -20,6 +20,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use serde_json::json;
+
+use super::coded_error::CodedError;
+
 /// How long to wait for the CLI to report the port it bound.
 const PORT_REPORT_TIMEOUT: Duration = Duration::from_secs(45);
 /// How long to wait for the bound port to actually serve the Studio API.
@@ -59,6 +63,28 @@ impl std::fmt::Display for SidecarError {
             Self::Spawned(detail) => {
                 write!(f, "the Studio runtime exited during startup: {detail}")
             }
+        }
+    }
+}
+
+impl SidecarError {
+    /// The same sentence as `Display`, with the code and params the page translates it by.
+    pub fn coded(&self) -> CodedError {
+        let message = self.to_string();
+        match self {
+            Self::Spawn(err) => {
+                CodedError::new("studio_start_failed", message, json!({ "detail": err.to_string() }))
+            }
+            Self::NoPortReport(last) => CodedError::new(
+                "studio_no_port",
+                message,
+                json!({ "seconds": PORT_REPORT_TIMEOUT.as_secs(), "detail": last }),
+            ),
+            Self::BadLifecycle(detail) => {
+                CodedError::new("studio_bad_lifecycle", message, json!({ "detail": detail }))
+            }
+            Self::NotReady(port) => CodedError::new("studio_not_ready", message, json!({ "port": port })),
+            Self::Spawned(detail) => CodedError::new("studio_exited", message, json!({ "detail": detail })),
         }
     }
 }

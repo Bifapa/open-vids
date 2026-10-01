@@ -325,39 +325,51 @@ mod tests {
         assert!(html.contains("data-fps=\"24\""));
         assert!(dest.join("meta.json").is_file());
         // A duplicate create is refused; an empty name never reaches disk.
-        let (code, _) = post(
+        let (code, refused) = post(
             &origin,
             "/api/create",
             Some(&token),
             body.to_string().as_bytes(),
         );
         assert_eq!(code, 400);
+        let refused: serde_json::Value = serde_json::from_slice(&refused).unwrap();
+        assert_eq!(refused["code"], "folder_exists");
+        assert_eq!(refused["params"]["path"], dest.display().to_string());
+        assert!(refused["error"].as_str().unwrap().ends_with("already exists and is not empty"));
         let bad = serde_json::json!({"parent": parent.to_string_lossy(), "name": "", "width": 8, "height": 8});
-        let (code, _) = post(
+        let (code, refused) = post(
             &origin,
             "/api/create",
             Some(&token),
             bad.to_string().as_bytes(),
         );
         assert_eq!(code, 400);
+        let refused: serde_json::Value = serde_json::from_slice(&refused).unwrap();
+        assert_eq!(refused["code"], "create_no_name");
+        assert_eq!(refused["error"], "give the project a name");
 
         // The open marked the phase; recording happens on real opens in lib.rs.
         let (code, body) = get(&origin, "/api/open-state", Some(&token));
         assert_eq!(code, 200);
         assert!(String::from_utf8_lossy(&body).contains("opening"));
-        let (code, _) = post(&origin, "/api/open", Some(&token), br#"{"id":"nope"}"#);
+        let (code, refused) = post(&origin, "/api/open", Some(&token), br#"{"id":"nope"}"#);
         assert_eq!(code, 404);
+        let refused: serde_json::Value = serde_json::from_slice(&refused).unwrap();
+        assert_eq!(refused["code"], "unknown_project");
+        assert_eq!(refused["error"], "unknown project");
         // Record the open (sets the current-open guard), prove renaming
         // the open project is refused, then simulate Show All Projects and
         // rename for real.
         server.record_open("my-video", &dest);
-        let (code, _) = post(
+        let (code, refused) = post(
             &origin,
             "/api/rename",
             Some(&token),
             br#"{"id":"my-video","new_name":"blocked"}"#,
         );
         assert_eq!(code, 400);
+        let refused: serde_json::Value = serde_json::from_slice(&refused).unwrap();
+        assert_eq!(refused["code"], "project_in_use");
         server.clear_current();
 
         // Rename moves the folder and keeps meta.json consistent.

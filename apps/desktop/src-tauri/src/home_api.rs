@@ -12,17 +12,55 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
+use super::coded_error::CodedError;
 use super::home_routes::{begin_open, respond, thumb_name_for, HomeInner};
 use super::recents::RecentEntry;
-use super::structure::validate_structure;
+use super::structure::{validate_structure, StructureError};
 use super::{intake, prefs, project_meta};
 
 pub fn respond_json(stream: &mut TcpStream, code: u16, value: &Value) {
     respond(stream, code, "application/json", value.to_string().as_bytes());
 }
 
-fn error(stream: &mut TcpStream, code: u16, message: impl Into<String>) {
-    respond_json(stream, code, &json!({ "error": message.into() }));
+/// Answer with a failure: `{ error, code, params }` (see `coded_error`).
+pub fn respond_error(stream: &mut TcpStream, status: u16, err: &CodedError) {
+    respond_json(stream, status, &err.body());
+}
+
+fn error(stream: &mut TcpStream, status: u16, err: CodedError) {
+    respond_error(stream, status, &err);
+}
+
+fn path_text(path: &Path) -> String {
+    path.display().to_string()
+}
+
+pub fn unknown_project() -> CodedError {
+    CodedError::plain("unknown_project", "unknown project")
+}
+
+pub fn method_not_allowed() -> CodedError {
+    CodedError::plain("method_not_allowed", "method not allowed")
+}
+
+pub fn route_not_found() -> CodedError {
+    CodedError::plain("route_not_found", "not found")
+}
+
+fn folder_missing(dir: &Path) -> CodedError {
+    CodedError::new(
+        "folder_missing",
+        format!("{} no longer exists", dir.display()),
+        json!({ "path": path_text(dir) }),
+    )
+}
+
+pub fn folder_missing_remove(dir: &Path) -> CodedError {
+    CodedError::new(
+        "folder_missing_remove",
+        format!("{} no longer exists — remove it from recents", dir.display()),
+        json!({ "path": path_text(dir) }),
+    )
 }
 
 fn body_json(body: &[u8]) -> Value {
@@ -65,7 +103,7 @@ pub fn serve_recents(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
             let recents: Vec<Value> = entries.iter().map(recent_json).collect();
             respond_json(stream, 200, &json!({ "recents": recents }));
         }
-        None => error(stream, 500, "state poisoned"),
+        None => error(stream, 500, CodedError::plain("state_poisoned", "state poisoned")),
     }
 }
 
@@ -80,7 +118,7 @@ pub fn handle_remove(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
             200,
             &json!({ "ok": true, "index": index, "entry": entry }),
         ),
-        None => error(stream, 404, "unknown project"),
+        None => error(stream, 404, unknown_project()),
     }
 }
 
@@ -94,7 +132,7 @@ pub fn handle_restore(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, bod
             inner.recents.restore(entry);
             respond_json(stream, 200, &json!({ "ok": true }));
         }
-        _ => error(stream, 400, "nothing to restore"),
+        _ => error(stream, 400, CodedError::plain("nothing_to_restore", "nothing to restore")),
     }
 }
 
@@ -109,10 +147,10 @@ fn find(state: &Arc<Mutex<HomeInner>>, id: &str) -> Option<RecentEntry> {
 pub fn handle_reveal(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
     let id = str_field(&body_json(body), "id").unwrap_or_default().to_string();
     let Some(entry) = find(state, &id) else {
-        return error(stream, 404, "unknown project");
+        return error(stream, 404, unknown_project());
     };
     if !entry.dir.exists() {
-        return error(stream, 410, format!("{} no longer exists", entry.dir.display()));
+        return error(stream, 410, folder_missing(&entry.dir));
     }
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("/usr/bin/open")
@@ -125,8 +163,24 @@ pub fn handle_reveal(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
         .status();
     match result {
         Ok(status) if status.success() => respond_json(stream, 200, &json!({ "ok": true })),
-        Ok(status) => error(stream, 500, format!("Finder could not reveal the folder ({status})")),
-        Err(err) => error(stream, 500, format!("Finder could not reveal the folder: {err}")),
+        Ok(status) => error(
+            stream,
+            500,
+            CodedError::new(
+                "reveal_failed_status",
+                format!("Finder could not reveal the folder ({status})"),
+                json!({ "status": status.to_string() }),
+            ),
+        ),
+        Err(err) => error(
+            stream,
+            500,
+            CodedError::new(
+                "reveal_failed",
+                format!("Finder could not reveal the folder: {err}"),
+                json!({ "detail": err.to_string() }),
+            ),
+        ),
     }
 }
 
@@ -140,19 +194,19 @@ const MAX_EXTERNAL_URL_LEN: usize = 4096;
 /// link or `window.open` from the loopback page never reaches the default
 /// browser, so the page asks the shell; everything else (`file:`, `javascript:`,
 /// `http:`, custom schemes, `-flag` lookalikes) is refused here.
-pub fn parse_external_url(raw: &str) -> Result<url::Url, &'static str> {
+pub fn parse_external_url(raw: &str) -> Result<url::Url, CodedError> {
     if raw.is_empty() || raw.len() > MAX_EXTERNAL_URL_LEN || raw.chars().any(char::is_control) {
-        return Err("not a valid address");
+        return Err(CodedError::plain("url_invalid", "not a valid address"));
     }
-    let parsed = url::Url::parse(raw).map_err(|_| "not a valid address")?;
+    let parsed = url::Url::parse(raw).map_err(|_| CodedError::plain("url_invalid", "not a valid address"))?;
     if parsed.scheme() != "https" {
-        return Err("only https addresses can be opened");
+        return Err(CodedError::plain("url_not_https", "only https addresses can be opened"));
     }
     if parsed.host_str().map_or(true, str::is_empty) {
-        return Err("the address has no host");
+        return Err(CodedError::plain("url_no_host", "the address has no host"));
     }
     if !parsed.username().is_empty() || parsed.password().is_some() {
-        return Err("the address must not carry credentials");
+        return Err(CodedError::plain("url_credentials", "the address must not carry credentials"));
     }
     Ok(parsed)
 }
@@ -177,8 +231,24 @@ pub fn handle_open_external(stream: &mut TcpStream, body: &[u8]) {
     };
     match open_external(&url) {
         Ok(status) if status.success() => respond_json(stream, 200, &json!({ "ok": true })),
-        Ok(status) => error(stream, 500, format!("The browser could not be opened ({status})")),
-        Err(err) => error(stream, 500, format!("The browser could not be opened: {err}")),
+        Ok(status) => error(
+            stream,
+            500,
+            CodedError::new(
+                "browser_open_failed_status",
+                format!("The browser could not be opened ({status})"),
+                json!({ "status": status.to_string() }),
+            ),
+        ),
+        Err(err) => error(
+            stream,
+            500,
+            CodedError::new(
+                "browser_open_failed",
+                format!("The browser could not be opened: {err}"),
+                json!({ "detail": err.to_string() }),
+            ),
+        ),
     }
 }
 
@@ -240,19 +310,31 @@ fn set_meta_name(dir: &Path, name: &str) {
 pub fn handle_duplicate(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
     let id = str_field(&body_json(body), "id").unwrap_or_default().to_string();
     let Some(entry) = find(state, &id) else {
-        return error(stream, 404, "unknown project");
+        return error(stream, 404, unknown_project());
     };
     if !entry.dir.is_dir() {
-        return error(stream, 410, format!("{} no longer exists", entry.dir.display()));
+        return error(stream, 410, folder_missing(&entry.dir));
     }
     let Some(parent) = entry.dir.parent().map(Path::to_path_buf) else {
-        return error(stream, 400, "the project has no parent folder");
+        return error(
+            stream,
+            400,
+            CodedError::plain("project_no_parent", "the project has no parent folder"),
+        );
     };
     let name = duplicate_name(&entry.id, &parent);
     let dest = parent.join(&name);
     if let Err(err) = copy_tree(&entry.dir, &dest, &entry.dir) {
         let _ = std::fs::remove_dir_all(&dest);
-        return error(stream, 500, format!("could not duplicate the project: {err}"));
+        return error(
+            stream,
+            500,
+            CodedError::new(
+                "duplicate_failed",
+                format!("could not duplicate the project: {err}"),
+                json!({ "detail": err.to_string() }),
+            ),
+        );
     }
     set_meta_name(&dest, &name);
     let recorded = state.lock().ok().map(|mut inner| {
@@ -271,7 +353,11 @@ pub fn handle_duplicate(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, b
     });
     match recorded.flatten() {
         Some(entry) => respond_json(stream, 200, &json!({ "ok": true, "project": recent_json(&entry) })),
-        None => error(stream, 500, "the duplicate was created but could not be listed"),
+        None => error(
+            stream,
+            500,
+            CodedError::plain("duplicate_not_listed", "the duplicate was created but could not be listed"),
+        ),
     }
 }
 
@@ -279,7 +365,7 @@ pub fn handle_duplicate(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, b
 pub fn handle_locate(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
     let id = str_field(&body_json(body), "id").unwrap_or_default().to_string();
     let Some(entry) = find(state, &id) else {
-        return error(stream, 404, "unknown project");
+        return error(stream, 404, unknown_project());
     };
     let mut dialog = rfd::FileDialog::new().set_title(super::i18n::t_with(
         "dialog.locate.title",
@@ -293,7 +379,7 @@ pub fn handle_locate(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
     };
     let project = match validate_structure(&picked) {
         Ok(project) => project,
-        Err(err) => return error(stream, 400, not_a_project_message(&picked, &err.to_string())),
+        Err(err) => return error(stream, 400, not_a_project_error(&picked, &err)),
     };
     let relinked = state.lock().ok().map(|mut inner| {
         inner.recents.relink(&id, &project.id, &project.dir);
@@ -301,19 +387,32 @@ pub fn handle_locate(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
     });
     match relinked.flatten() {
         Some(entry) => respond_json(stream, 200, &json!({ "ok": true, "project": recent_json(&entry) })),
-        None => error(stream, 500, "could not update recents"),
+        None => error(stream, 500, CodedError::plain("recents_update_failed", "could not update recents")),
     }
 }
 
-pub fn not_a_project_message(dir: &Path, detail: &str) -> String {
+/// Why a folder the user picked is not a project: the folder's name rides along so the page can emphasise it.
+pub fn not_a_project_error(dir: &Path, err: &StructureError) -> CodedError {
     let name = dir
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| dir.display().to_string());
-    if detail.contains("index.html") || detail.contains("composition") {
-        format!("Not an OpenVids project — index.html with data-composition-id is missing in {name}.")
-    } else {
-        format!("{name} can’t be opened: {detail}")
+    match err {
+        StructureError::MissingIndex | StructureError::NoComposition => CodedError::new(
+            "not_a_project",
+            format!("Not an OpenVids project — index.html with data-composition-id is missing in {name}."),
+            json!({ "name": name }),
+        ),
+        StructureError::Project(inner) => {
+            let detail = inner.coded();
+            let (code, mut params) = match detail.code {
+                Some("not_a_directory") => ("cannot_open_not_a_directory", detail.params.clone()),
+                Some("no_project_name") => ("cannot_open_no_project_name", detail.params.clone()),
+                _ => ("cannot_open_unsafe_name", detail.params.clone()),
+            };
+            params["name"] = json!(name);
+            CodedError::new(code, format!("{name} can’t be opened: {}", detail.message), params)
+        }
     }
 }
 
@@ -333,7 +432,15 @@ pub fn handle_prefs_update(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>
             }
             respond_json(stream, 200, &next);
         }
-        Err(err) => error(stream, 400, format!("could not save preferences: {err}")),
+        Err(err) => error(
+            stream,
+            400,
+            CodedError::new(
+                "prefs_save_failed",
+                format!("could not save preferences: {err}"),
+                json!({ "detail": err.to_string() }),
+            ),
+        ),
     }
 }
 
@@ -555,10 +662,18 @@ pub fn handle_start(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
         .map(|a| a.iter().filter_map(Value::as_str).map(PathBuf::from).collect())
         .unwrap_or_default();
     if prompt.is_empty() && sources.is_empty() {
-        return error(stream, 400, "Describe the video or add files first.");
+        return error(stream, 400, CodedError::plain("start_empty", "Describe the video or add files first."));
     }
     if let Some(bad) = sources.iter().find(|p| !p.is_absolute() || !p.is_file()) {
-        return error(stream, 400, format!("{} is not a readable file", bad.display()));
+        return error(
+            stream,
+            400,
+            CodedError::new(
+                "file_unreadable",
+                format!("{} is not a readable file", bad.display()),
+                json!({ "path": path_text(bad) }),
+            ),
+        );
     }
     let intent = str_field(&value, "intent")
         .filter(|i| INTENTS.contains(i))
@@ -567,7 +682,15 @@ pub fn handle_start(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
     let height = value.get("height").and_then(Value::as_u64).unwrap_or(1080) as u32;
     let location = start_location(&value);
     if let Err(err) = std::fs::create_dir_all(&location) {
-        return error(stream, 400, format!("could not use {}: {err}", location.display()));
+        return error(
+            stream,
+            400,
+            CodedError::new(
+                "location_unusable",
+                format!("could not use {}: {err}", location.display()),
+                json!({ "path": path_text(&location), "detail": err.to_string() }),
+            ),
+        );
     }
     let base = intake::derive_name(&prompt, &file_names(&value));
     let name = intake::unique_name(&base, taken_in(state, &location));
@@ -616,7 +739,15 @@ pub fn handle_start(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
         document["agentOverrides"] = overrides.clone();
     }
     if let Err(err) = intake::write_intake(&dest, &document) {
-        return error(stream, 500, format!("could not write the intake: {err}"));
+        return error(
+            stream,
+            500,
+            CodedError::new(
+                "intake_write_failed",
+                format!("could not write the intake: {err}"),
+                json!({ "detail": err.to_string() }),
+            ),
+        );
     }
     let id = dest
         .file_name()
@@ -637,7 +768,7 @@ pub const SPECIALISTS: [&str; 5] = ["editor", "vision", "motion", "research", "a
 pub fn proxy_agent(stream: &mut TcpStream, method: &str, runtime_path: &str, body: Option<&[u8]>) {
     match super::agent_proxy::forward(method, runtime_path, body) {
         Ok((status, payload)) => respond(stream, status, "application/json", &payload),
-        Err(message) => error(stream, 503, message),
+        Err(err) => respond_error(stream, 503, &err),
     }
 }
 
@@ -719,10 +850,44 @@ mod tests {
     }
 
     #[test]
-    fn not_a_project_message_matches_the_prototype_wording() {
+    fn not_a_project_matches_the_prototype_wording_and_names_the_folder() {
+        let err = not_a_project_error(Path::new("/x/Footage Dump"), &StructureError::MissingIndex);
         assert_eq!(
-            not_a_project_message(Path::new("/x/Footage Dump"), "no index.html found"),
+            err.message,
             "Not an OpenVids project — index.html with data-composition-id is missing in Footage Dump."
         );
+        assert_eq!(err.code, Some("not_a_project"));
+        assert_eq!(err.params, json!({ "name": "Footage Dump" }));
+    }
+
+    #[test]
+    fn a_folder_that_is_not_a_directory_gets_its_own_code_and_the_old_sentence() {
+        let err = not_a_project_error(
+            Path::new("/x/file.txt"),
+            &StructureError::Project(super::super::project::ProjectError::NotADirectory("/x/file.txt".into())),
+        );
+        assert_eq!(err.message, "file.txt can’t be opened: /x/file.txt is not a directory");
+        assert_eq!(err.code, Some("cannot_open_not_a_directory"));
+        assert_eq!(err.params, json!({ "path": "/x/file.txt", "name": "file.txt" }));
+    }
+
+    #[test]
+    fn refused_addresses_say_why_with_a_code() {
+        let code = |raw: &str| parse_external_url(raw).unwrap_err().code;
+        assert_eq!(code("http://example.com"), Some("url_not_https"));
+        assert_eq!(code("https://user:pw@example.com"), Some("url_credentials"));
+        assert_eq!(code(""), Some("url_invalid"));
+        assert_eq!(
+            parse_external_url("file:///etc/passwd").unwrap_err().message,
+            "only https addresses can be opened"
+        );
+    }
+
+    #[test]
+    fn a_missing_folder_carries_its_path_as_a_param() {
+        let err = folder_missing_remove(Path::new("/x/Gone"));
+        assert_eq!(err.message, "/x/Gone no longer exists — remove it from recents");
+        assert_eq!(err.body()["code"], "folder_missing_remove");
+        assert_eq!(err.body()["params"]["path"], "/x/Gone");
     }
 }

@@ -44,7 +44,7 @@
         S.policy = p;
       })
       .catch((err) => {
-        S.policyError = err.message;
+        S.policyError = OV.describeError(err);
       })
       .finally(() => {
         ui.flags.policyLoading = false;
@@ -64,8 +64,10 @@
         })
         .catch((err) => {
           if (!inline)
-            S.policyNote = OVS.failMsg("settings.note.saveFailed", { message: err.message });
-          return err.message;
+            S.policyNote = OVS.failMsg("settings.note.saveFailed", {
+              message: OV.describeError(err),
+            });
+          return OV.describeError(err);
         })
         .finally(() => OVS.render(true)),
     );
