@@ -16,6 +16,7 @@ import {
   resolveMainTrackDeleteRippleShifts,
   resolveShiftedElements,
 } from "../player/components/timelineGapCommit";
+import { t } from "../i18n";
 import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
@@ -80,15 +81,17 @@ export function useTimelineDeleteOps({
   const handleTimelineElementsDelete = useCallback(
     async (selection: TimelineElement[]) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(t("timeline.toast.recordingBlocked"), "error");
         return;
       }
       const pid = projectIdRef.current;
-      if (!pid) throw new Error("No active project");
+      if (!pid) throw new Error(t("app.save.noActiveProject"));
       const [element] = selection;
       if (!element) return;
       const label =
-        selection.length === 1 ? getTimelineElementLabel(element) : `${selection.length} clips`;
+        selection.length === 1
+          ? getTimelineElementLabel(element)
+          : t("player.track.clipCount", { count: selection.length });
 
       // One file per delete pass. Every element in a marquee selection lives in
       // the composition being edited, so they share a target; anything that
@@ -102,7 +105,7 @@ export function useTimelineDeleteOps({
         // step with the delete, not two (editHistory.ts coalesces by key +
         // window across separate recordEdit calls, not by label).
         const coalesceKey = `main-track-ripple-delete:${deleteGestureSeq++}`;
-        const deleteHistoryLabel = "Delete timeline clip";
+        const deleteHistoryLabel = t("timeline.history.deleteClip");
         let rollbackDuration = () => {};
         try {
           await saveServerRewriteWithHistory({
@@ -121,7 +124,7 @@ export function useTimelineDeleteOps({
               for (const target of sameFile) {
                 const patchTarget = buildPatchTarget(target);
                 if (!patchTarget) {
-                  throw new Error(`Timeline element ${target.id} is missing a patchable target`);
+                  throw new Error(t("timeline.error.noPatchTarget", { id: target.id }));
                 }
 
                 const removeResponse = await fetch(
@@ -136,7 +139,9 @@ export function useTimelineDeleteOps({
                   },
                 );
                 if (!removeResponse.ok) {
-                  throw new Error(`Failed to delete ${target.id} from ${targetPath}`);
+                  throw new Error(
+                    t("timeline.error.deleteFailed", { id: target.id, path: targetPath }),
+                  );
                 }
 
                 const removeData = (await removeResponse.json()) as {
@@ -203,7 +208,7 @@ export function useTimelineDeleteOps({
             rippleFailed = true;
             usePlayerStore.getState().setElements(survivors);
             console.error("[Timeline] ripple-edit failed to persist after delete", error);
-            showToast("Clip deleted, but the gap could not be closed.", "error");
+            showToast(t("timeline.toast.rippleFailed"), "error");
           }
         }
 
@@ -215,20 +220,18 @@ export function useTimelineDeleteOps({
         // thing (delete), so they get one message, not this generic follow-up too.
         if (!rippleFailed) {
           showToast(
-            `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
+            t(sameFile.length === 1 ? "timeline.toast.deletedOne" : "timeline.toast.deletedMany", {
+              label,
+            }),
             "info",
           );
         }
         if (rippleChanges && !rippleFailed && !rippleNoticeShownRef.current) {
           rippleNoticeShownRef.current = true;
-          showToast(
-            "Ripple closed the gap on the main track. Undo (⌘Z) restores it, or turn off " +
-              "Ripple in the timeline toolbar.",
-            "info",
-          );
+          showToast(t("timeline.toast.rippleNotice", { shortcut: "⌘Z" }), "info");
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
+        const message = error instanceof Error ? error.message : t("timeline.toast.deleteFailed");
         showToast(message);
       }
     },

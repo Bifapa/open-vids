@@ -11,6 +11,7 @@ import {
 import { extractGsapScriptText } from "../utils/gsapSoftReload";
 import { PROPERTY_DEFAULTS } from "./gsapScriptCommitHelpers";
 import type { SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
+import { t } from "../i18n";
 
 const DEBOUNCE_MS = 150;
 
@@ -81,7 +82,7 @@ export function useGsapPropertyDebounce(
     pendingPropertyEditRef.current = null;
     const { selection, animationId, property, value } = pending;
     const mutation = { type: "update-property", animationId, property, value };
-    const label = `Edit GSAP ${property}`;
+    const label = t("animation.history.editProperty", { property });
     try {
       const { sdkSession, sdkDeps, activeCompPath } = sdkRef.current ?? {};
       if (sdkSession && sdkDeps) {
@@ -172,14 +173,14 @@ export function useGsapPropertyDebounce(
           },
           sdkSession,
           sdkDeps,
-          { label: `Add GSAP ${property}` },
+          { label: t("animation.history.addProperty", { property }) },
         );
         if (cutoverCommittedOrThrow(handled)) return;
       }
       commitMutationSafely(
         selection,
         { type: "add-property", animationId, property, defaultValue },
-        { label: `Add GSAP ${property}` },
+        { label: t("animation.history.addProperty", { property }) },
       );
     },
     [commitMutationSafely],
@@ -197,7 +198,12 @@ export function useGsapPropertyDebounce(
           from,
           sdkSession,
           sdkDeps,
-          { label: `Remove GSAP ${from ? `from-${property}` : property}` },
+          {
+            label: t(
+              from ? "animation.history.removeFromProperty" : "animation.history.removeProperty",
+              { property },
+            ),
+          },
         );
         if (cutoverCommittedOrThrow(handled)) return;
       }
@@ -206,7 +212,7 @@ export function useGsapPropertyDebounce(
           selection,
           { type: "remove-from-property", animationId, property },
           {
-            label: `Remove GSAP from-${property}`,
+            label: t("animation.history.removeFromProperty", { property }),
           },
         );
       } else {
@@ -214,7 +220,7 @@ export function useGsapPropertyDebounce(
           selection,
           { type: "remove-property", animationId, property },
           {
-            label: `Remove GSAP ${property}`,
+            label: t("animation.history.removeProperty", { property }),
           },
         );
       }
@@ -255,7 +261,7 @@ export function useGsapPropertyDebounce(
           sdkSession,
           sdkDeps,
           {
-            label: `Edit GSAP from-${property}`,
+            label: t("animation.history.editFromProperty", { property }),
             coalesceKey: `gsap:${animationId}:from:${property}`,
           },
         );
@@ -265,7 +271,7 @@ export function useGsapPropertyDebounce(
         selection,
         { type: "update-from-property", animationId, property, value },
         {
-          label: `Edit GSAP from-${property}`,
+          label: t("animation.history.editFromProperty", { property }),
           coalesceKey: `gsap:${animationId}:from:${property}`,
         },
       );
@@ -295,14 +301,14 @@ export function useGsapPropertyDebounce(
           },
           sdkSession,
           sdkDeps,
-          { label: `Add GSAP from-${property}` },
+          { label: t("animation.history.addFromProperty", { property }) },
         );
         if (cutoverCommittedOrThrow(handled)) return;
       }
       commitMutationSafely(
         selection,
         { type: "add-from-property", animationId, property, defaultValue },
-        { label: `Add GSAP from-${property}` },
+        { label: t("animation.history.addFromProperty", { property }) },
       );
     },
     [commitMutationSafely],

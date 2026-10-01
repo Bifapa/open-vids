@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import { liveTime, usePlayerStore } from "../player";
 import { pauseStudioPreviewPlayback } from "../utils/studioPreviewHelpers";
+import { t } from "../i18n";
 import { type DomEditSelection } from "../components/editor/domEditing";
 import type { ApplyDomSelectionOptions, ResolveDomSelectionOptions } from "./useDomSelection";
 
@@ -257,11 +258,7 @@ export function usePreviewInteraction({
 
   const handleBlockedDomMove = useCallback(
     (selection: DomEditSelection) => {
-      showToast(
-        selection.capabilities.reasonIfDisabled ??
-          "This element can't be adjusted directly from the preview.",
-        "info",
-      );
+      showToast(selection.capabilities.reasonIfDisabled ?? t("layer.toast.notAdjustable"), "info");
     },
     [showToast],
   );

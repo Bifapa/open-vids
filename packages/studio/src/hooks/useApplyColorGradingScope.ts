@@ -7,6 +7,7 @@ import {
   EMPTY_COLOR_GRADING_SCOPE_RESULT,
   type ColorGradingScope,
 } from "../components/studioColorGradingScope";
+import { t } from "../i18n";
 import type { StudioRightPanelsProps } from "../components/StudioRightPanels.types";
 
 export function useApplyColorGradingScope(
@@ -33,7 +34,9 @@ export function useApplyColorGradingScope(
         showToast,
       }).catch((error) => {
         showToast(
-          `Couldn't apply color grading: ${error instanceof Error ? error.message : String(error)}`,
+          t("shell.colorGrading.applyFailed", {
+            message: error instanceof Error ? error.message : String(error),
+          }),
           "error",
         );
         return EMPTY_COLOR_GRADING_SCOPE_RESULT;

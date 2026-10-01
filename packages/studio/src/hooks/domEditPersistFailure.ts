@@ -1,10 +1,11 @@
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import type { PatchOperation } from "../utils/sourcePatcher";
+import { t } from "../i18n";
 
 export class DomEditPersistUnresolvableError extends Error {
   constructor(targetPath: string) {
-    super(`Couldn't find this element in the source file (${targetPath})`);
+    super(t("layer.error.elementNotInSource", { path: targetPath }));
     this.name = "DomEditPersistUnresolvableError";
   }
 }
@@ -43,7 +44,7 @@ function getErrorDetail(error: unknown): string {
 }
 
 function getSelectionLabel(selection: DomEditPersistFailureSelection): string {
-  return selection.label || selection.selector || selection.id || "this element";
+  return selection.label || selection.selector || selection.id || t("layer.label.thisElement");
 }
 
 export function reportDomEditPersistFailure(
@@ -66,7 +67,10 @@ export function reportDomEditPersistFailure(
     return;
   }
 
-  showToast(`Couldn't save "${getSelectionLabel(selection)}": ${detail}`, "error");
+  showToast(
+    t("layer.toast.elementSaveFailed", { label: getSelectionLabel(selection), reason: detail }),
+    "error",
+  );
 }
 
 export function warnDomEditPersistNoOp(

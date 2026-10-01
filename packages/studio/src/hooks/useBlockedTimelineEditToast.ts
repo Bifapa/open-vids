@@ -8,6 +8,7 @@
 
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
+import { t } from "../i18n";
 
 const BLOCKED_TOAST_INTERVAL_MS = 1500;
 
@@ -20,7 +21,7 @@ export function useBlockedTimelineEditToast(
       const now = Date.now();
       if (now - lastAtRef.current < BLOCKED_TOAST_INTERVAL_MS) return;
       lastAtRef.current = now;
-      showToast("This clip can't be moved or resized from the timeline yet.", "info");
+      showToast(t("timeline.toast.clipLocked"), "info");
     },
     [showToast],
   );

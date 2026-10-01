@@ -36,6 +36,7 @@ import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditO
 import { runGestureTransaction } from "./gestureTransaction";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 import { assertGsapEditPersisted } from "./gsapEditOutcome";
+import { t } from "../i18n";
 import type { GsapAnimationFetchOptions } from "./useGsapAnimationFetchFallback";
 
 // Distinct coalesceKey per group drag so consecutive group drags don't fold
@@ -208,9 +209,10 @@ export function useGsapAwareEditing({
           }
           return;
         }
+        const label = t("layer.history.moveAnimatedGroup");
         await gsapCommitMutation.batch(calls, {
-          ...(calls.at(-1)?.options ?? { label: "Move animated layer (group)" }),
-          label: "Move animated layer (group)",
+          ...(calls.at(-1)?.options ?? { label }),
+          label,
         });
       };
       const coalescedCommit: typeof gsapCommitMutation = (selection, mutation, options) => {
@@ -311,7 +313,7 @@ export function useGsapAwareEditing({
       });
       return runGestureTransaction({
         element: selection.element,
-        label: "Resize layer",
+        label: t("layer.history.resize"),
         settle: () => {
           // Scale resize settles its center-scale residual after the scale commit
           // renders. Width/height can settle its anchored position immediately.
@@ -492,7 +494,10 @@ export function useGsapAwareEditing({
   const trackGsapSaveFailure = useCallback(
     (error: unknown) => {
       if (!isStudioSaveErrorAlreadyToasted(error)) {
-        showToast(`Couldn't save animation: ${getStudioSaveErrorMessage(error)}`, "error");
+        showToast(
+          t("animation.toast.saveFailed", { message: getStudioSaveErrorMessage(error) }),
+          "error",
+        );
       }
     },
     [showToast],
@@ -519,7 +524,7 @@ export function useGsapAwareEditing({
   const handleUnroll = useCallback(() => {
     void commitMutation(
       { type: "unroll-timeline" },
-      { label: "Unroll to literal tweens", softReload: true },
+      { label: t("animation.history.unroll"), softReload: true },
     );
   }, [commitMutation]);
 

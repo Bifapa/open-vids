@@ -3,6 +3,7 @@ import { buildProjectApiPath } from "../utils/projectRouting";
 import type { DomEditPatchBatch } from "./domEditCommitTypes";
 import { formatFieldsSuffix } from "./gsapScriptCommitHelpers";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
+import { t } from "../i18n";
 
 export function formatUnsafeFieldList(fields: Array<{ path: string }>): string {
   return fields.map((field) => field.path).join(", ");
@@ -21,8 +22,10 @@ async function readErrorResponseBody(
 }
 
 function formatPatchRejectionMessage(body: { error?: string; fields?: string[] } | null): string {
-  if (!body?.error) return "Couldn't save edit";
-  return `Couldn't save edit: ${body.error}${formatFieldsSuffix(body.fields)}`;
+  if (!body?.error) return t("layer.toast.saveFailed");
+  return t("layer.toast.saveFailedWithReason", {
+    reason: `${body.error}${formatFieldsSuffix(body.fields)}`,
+  });
 }
 
 /** Human-readable identifier for a batch patch target (for the unmatched warning). */
@@ -179,9 +182,13 @@ export async function postPatchElement(
   );
   if (!response.ok) {
     showToast(formatPatchRejectionMessage(await readErrorResponseBody(response)), "error");
-    throw await createStudioSaveHttpError(response, `Failed to patch ${targetPath}`, {
-      alreadyToasted: true,
-    });
+    throw await createStudioSaveHttpError(
+      response,
+      t("layer.error.patchFailed", { path: targetPath }),
+      {
+        alreadyToasted: true,
+      },
+    );
   }
   return (await response.json()) as PatchElementResponse;
 }
@@ -202,7 +209,7 @@ export async function writePreparedContent(
   } catch (error) {
     // The patch already landed on disk; keep it rather than revert a committed change.
     showToast(
-      `Saved, but couldn't finish updating ${targetPath}: ${getErrorDetail(error)}`,
+      t("layer.toast.savedButUpdateFailed", { path: targetPath, reason: getErrorDetail(error) }),
       "error",
     );
     return patchedContent;

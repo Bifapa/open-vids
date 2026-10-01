@@ -27,6 +27,7 @@ import {
   writePreparedContent,
 } from "./useDomEditCommitsHelpers";
 import type { CutoverResult } from "../utils/sdkCutover";
+import { t } from "../i18n";
 import { reseekPreviewRuntime } from "./timelineTrackVisibility";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import { readProjectFileContent } from "../utils/studioFileHistory";
@@ -136,7 +137,7 @@ export function useDomEditCommits({
       expectedProjectId: string,
     ) => {
       if (projectIdRef.current !== expectedProjectId) {
-        throw new Error("Active project changed before the edit could be saved");
+        throw new Error(t("layer.error.projectChanged"));
       }
       const pid = expectedProjectId;
       if (options?.shouldSave && !options.shouldSave()) return;
@@ -150,7 +151,7 @@ export function useDomEditCommits({
       const readTarget = async (): Promise<string | null> => {
         const content = await readProjectFileContent(pid, targetPath);
         if (projectIdRef.current !== expectedProjectId) {
-          throw new Error("Active project changed before the edit could be saved");
+          throw new Error(t("layer.error.projectChanged"));
         }
         return options?.shouldSave && !options.shouldSave() ? null : content;
       };
@@ -164,7 +165,7 @@ export function useDomEditCommits({
       const unsafeFields = findUnsafeDomPatchValues(patchBody);
       if (unsafeFields.length > 0) {
         const fields = formatUnsafeFieldList(unsafeFields);
-        showToast("Couldn't save edit because it contains invalid layout values", "error");
+        showToast(t("layer.toast.invalidLayoutValues"), "error");
         throw new DomEditPersistUnsafeValueError(`DOM patch contains unsafe values: ${fields}`, {
           alreadyToasted: true,
         });
@@ -194,7 +195,7 @@ export function useDomEditCommits({
       }
 
       const history = {
-        label: options?.label ?? "Edit layer",
+        label: options?.label ?? t("app.history.editLayer"),
         coalesceKey: options?.coalesceKey,
         coalesceMs: options?.coalesceMs,
       };
@@ -269,7 +270,7 @@ export function useDomEditCommits({
   const persistDomEditOperations: PersistDomEditOperations = useCallback(
     (selection, operations, options) => {
       const expectedProjectId = projectIdRef.current;
-      if (!expectedProjectId) return Promise.reject(new Error("No active project"));
+      if (!expectedProjectId) return Promise.reject(new Error(t("app.save.noActiveProject")));
       return queueDomEditSave(() =>
         performPersistDomEditOperations(selection, operations, options, expectedProjectId),
       );
@@ -280,20 +281,20 @@ export function useDomEditCommits({
   const commitDomEditPatchBatches: CommitDomEditPatchBatches = useCallback(
     (batches, options) => {
       const expectedProjectId = projectIdRef.current;
-      if (!expectedProjectId) return Promise.reject(new Error("No active project"));
+      if (!expectedProjectId) return Promise.reject(new Error(t("app.save.noActiveProject")));
       return queueDomEditSave(
         // One queued transaction owns validation, persistence, history, reload,
         // and its durable result; splitting those phases risks partial commits.
         async () => {
           if (projectIdRef.current !== expectedProjectId) {
-            throw new Error("Active project changed before the edit could be saved");
+            throw new Error(t("layer.error.projectChanged"));
           }
           const pid = expectedProjectId;
           const unsafeFields = batches.flatMap((batch) =>
             batch.patches.flatMap((patch) => findUnsafeDomPatchValues(patch)),
           );
           if (unsafeFields.length > 0) {
-            showToast("Couldn't save edit because it contains invalid layout values", "error");
+            showToast(t("layer.toast.invalidLayoutValues"), "error");
             throw new DomEditPersistUnsafeValueError(
               `DOM patch contains unsafe values: ${formatUnsafeFieldList(unsafeFields)}`,
               { alreadyToasted: true },
@@ -351,7 +352,10 @@ export function useDomEditCommits({
             error instanceof DomEditPersistUnsafeValueError) &&
           error.alreadyToasted;
         if (!alreadyToasted) {
-          showToast(error instanceof Error ? error.message : "Failed to reorder layers", "error");
+          showToast(
+            error instanceof Error ? error.message : t("layer.toast.reorderFailed"),
+            "error",
+          );
         }
         throw error;
       });

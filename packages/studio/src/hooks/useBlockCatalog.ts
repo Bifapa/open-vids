@@ -5,6 +5,7 @@ import {
   type BlockCategory,
   resolveBlockCategory,
 } from "../utils/blockCategories";
+import { t } from "../i18n";
 
 type CatalogItem = RegistryItem & {
   category: BlockCategory;
@@ -16,7 +17,7 @@ let catalogRequest: Promise<CatalogItem[]> | null = null;
 function loadCatalog(): Promise<CatalogItem[]> {
   catalogRequest ??= fetch("/api/registry/blocks")
     .then((response) => {
-      if (!response.ok) throw new Error("Failed to load catalog");
+      if (!response.ok) throw new Error(t("sidebar.blocks.loadFailed"));
       return response.json() as Promise<RegistryItem[]>;
     })
     .then((items) => {
@@ -53,7 +54,7 @@ export function useBlockCatalog() {
         setBlocks(items);
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Failed to load catalog");
+        setError(err instanceof Error ? err.message : t("sidebar.blocks.loadFailed"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -75,7 +76,7 @@ export function useBlockCatalog() {
           b.title.toLowerCase().includes(q) ||
           b.description.toLowerCase().includes(q) ||
           b.category.toLowerCase().includes(q) ||
-          b.tags?.some((t) => t.toLowerCase().includes(q)),
+          b.tags?.some((tag) => tag.toLowerCase().includes(q)),
       );
     }
     return result;

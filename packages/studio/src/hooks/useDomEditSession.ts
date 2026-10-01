@@ -21,6 +21,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { membersForDelete, timelineElementsForDelete } from "./domEditDeleteMembers";
 import type { RecordEditInput } from "./domEditDeleteMembers";
 import type { DomEditTimelineParams } from "./useDomSelectionTypes";
+import { t } from "../i18n";
 // Re-exported: the delete rule lives in its own module now, and callers (and its
 // own test) have always imported it from here.
 export { membersForDelete };
@@ -299,7 +300,7 @@ export function useDomEditSession({
     async (selection: DomEditSelection, options?: { expandGroup?: boolean }) => {
       // Same structural edit the timeline delete refuses mid-recording.
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(t("timeline.toast.recordingBlocked"), "error");
         return;
       }
       const members = membersForDelete(selection, domEditGroupSelectionsRef.current, options);
@@ -326,7 +327,7 @@ export function useDomEditSession({
     const single = domEditSelectionRef.current;
     const members = group.length > 0 ? group : single ? [single] : [];
     if (members.length < 2) {
-      showToast("Select at least 2 elements to group", "info");
+      showToast(t("layer.toast.groupNeedsTwo"), "info");
       return;
     }
     // A layout group takes the members' bounding box; audio has no box (0x0),
@@ -334,8 +335,8 @@ export function useDomEditSession({
     if (members.some((m) => isAudioDomElement(m.element))) {
       showToast(
         members.every((m) => isAudioDomElement(m.element))
-          ? "Audio clips group into a bus — use FX on the track header"
-          : "Can't group audio clips with layout elements",
+          ? t("layer.toast.audioGroupsAsBus")
+          : t("layer.toast.audioLayoutMix"),
         "info",
       );
       return;
@@ -346,7 +347,7 @@ export function useDomEditSession({
   const handleUngroupSelection = useCallback(() => {
     const sel = domEditSelectionRef.current;
     if (!sel?.element.hasAttribute("data-hf-group")) {
-      showToast("Select a group to ungroup", "info");
+      showToast(t("layer.toast.ungroupNeedsGroup"), "info");
       return;
     }
     // Dissolving the group exits any drill-in (the wrapper is about to vanish).

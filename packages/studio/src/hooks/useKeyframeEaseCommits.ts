@@ -2,6 +2,7 @@ import { useCallback, type RefObject } from "react";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
 import type { AnimationKeyframeTarget } from "./gsapTweenSynth";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import { t } from "../i18n";
 
 interface KeyframeEaseCommitsInput {
   gsapCommitMutation: CommitMutation;
@@ -17,7 +18,11 @@ export function useKeyframeEaseCommits({
       const selection = domEditSelectionRef.current;
       if (!selection || targets.length === 0) return;
       const options = {
-        label: targets.length === 1 ? "Update keyframe ease" : "Update segment ease",
+        label: t(
+          targets.length === 1
+            ? "animation.history.updateKeyframeEase"
+            : "animation.history.updateSegmentEase",
+        ),
         softReload: true,
       };
       const calls = targets.map(({ animationId, tweenPercentage }) => ({
@@ -68,7 +73,7 @@ export function useKeyframeEaseCommits({
           animationId,
           updates: { easeEach: ease, resetKeyframeEases: true },
         },
-        { label: "Apply ease to all segments", softReload: true },
+        { label: t("animation.history.applyEaseToAll"), softReload: true },
       );
     },
     [gsapCommitMutation, domEditSelectionRef],

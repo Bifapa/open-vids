@@ -24,9 +24,7 @@ import {
 } from "../components/editor/manualEditsDomPatches";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { isElementGsapTargeted } from "./gsapTargetCache";
-
-const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
-  "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
+import { t } from "../i18n";
 
 function rejectGsapCssFallback(
   selection: DomEditSelection,
@@ -34,7 +32,7 @@ function rejectGsapCssFallback(
   showToast: (message: string, tone?: "error" | "info") => void,
 ): Promise<never> | null {
   if (!isElementGsapTargeted(previewIframeRef.current, selection.element)) return null;
-  const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
+  const error = new Error(t("layer.toast.gsapCssBlocked"));
   showToast(error.message, "error");
   return Promise.reject(error);
 }
@@ -70,7 +68,7 @@ export function useDomGeometryCommits({
       const before = captureStudioPathOffset(selection.element);
       applyStudioPathOffset(selection.element, next);
       return commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
-        label: "Move layer",
+        label: t("layer.history.move"),
         coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
       }).catch((error) => {
         restoreStudioPathOffset(selection.element, before);
@@ -104,7 +102,7 @@ export function useDomGeometryCommits({
         patches.push(...buildPathOffsetPatches(selection.element));
       }
       return commitPositionPatchToHtml(selection, patches, {
-        label: "Resize layer box",
+        label: t("layer.history.resizeBox"),
         coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
       }).catch((error) => {
         restoreStudioBoxSize(selection.element, beforeSize);
@@ -123,7 +121,7 @@ export function useDomGeometryCommits({
       const before = captureStudioRotation(selection.element);
       applyStudioRotation(selection.element, next);
       return commitPositionPatchToHtml(selection, buildRotationPatches(selection.element), {
-        label: "Rotate layer",
+        label: t("layer.history.rotate"),
         coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
       }).catch((error) => {
         restoreStudioRotation(selection.element, before);
@@ -149,7 +147,7 @@ export function useDomGeometryCommits({
       clearStudioRotation(element);
       // skipRefresh:false triggers reloadPreview() which re-syncs selection on load
       return commitPositionPatchToHtml(selection, clearPatches, {
-        label: "Reset layer edits",
+        label: t("layer.history.resetEdits"),
         coalesceKey: `manual-reset:${getDomEditTargetKey(selection)}`,
         skipRefresh: false,
       }).catch((error) => {

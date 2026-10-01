@@ -1,4 +1,5 @@
 import { editabilityForProvenance, type GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { t, type TranslationKey } from "../i18n";
 
 export type GsapEditBlockReason = "no-selector" | "unroll-required" | "source-uneditable";
 
@@ -42,11 +43,10 @@ export type GsapEditOutcome =
     }
   | { status: "blocked"; reason: GsapEditBlockReason; detail?: GsapEditBlockDetail };
 
-const COPY: Record<GsapEditBlockReason, string> = {
-  "no-selector": "This layer needs a stable selector before Studio can save the edit.",
-  "unroll-required":
-    "This motion comes from a helper or loop. Choose Unroll to edit it explicitly.",
-  "source-uneditable": "This animation is computed at runtime. Edit the animation in the Code tab.",
+const COPY: Record<GsapEditBlockReason, TranslationKey> = {
+  "no-selector": "animation.blocked.noSelector",
+  "unroll-required": "animation.blocked.unrollRequired",
+  "source-uneditable": "animation.blocked.sourceUneditable",
 };
 
 export class GsapEditBlockedError extends Error {
@@ -54,7 +54,7 @@ export class GsapEditBlockedError extends Error {
     readonly reason: GsapEditBlockReason,
     readonly detail?: GsapEditBlockDetail,
   ) {
-    super(COPY[reason]);
+    super(t(COPY[reason]));
     this.name = "GsapEditBlockedError";
   }
 }

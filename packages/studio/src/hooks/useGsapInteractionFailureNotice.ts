@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { isGsapEditBlockedError } from "./gsapEditOutcome";
+import { t } from "../i18n";
 
 export function useGsapInteractionFailureNotice(
   showToast: (message: string, tone?: "error" | "info") => void,
@@ -7,7 +8,7 @@ export function useGsapInteractionFailureNotice(
   return useCallback(
     (error: unknown) => {
       showToast(
-        isGsapEditBlockedError(error) ? error.message : "Failed to save animated edit.",
+        isGsapEditBlockedError(error) ? error.message : t("animation.toast.interactionSaveFailed"),
         "error",
       );
     },

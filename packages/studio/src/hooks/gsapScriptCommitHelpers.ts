@@ -1,5 +1,6 @@
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { t } from "../i18n";
 
 export { PROPERTY_DEFAULTS } from "./gsapShared";
 import { idSelector, matchesExactlyOne } from "./gsapShared";
@@ -73,18 +74,17 @@ function formatGsapMutationHttpErrorMessage(statusCode: number, body: unknown): 
   if (isRecord(body) && typeof body.error === "string") {
     return body.error;
   }
-  return `GSAP mutation failed with status ${statusCode}`;
+  return t("animation.toast.mutationStatus", { status: statusCode });
 }
 
 export function formatGsapMutationRejectionToast(error: GsapMutationHttpError): string {
   const body = error.responseBody;
   if (isRecord(body)) {
-    return `Couldn't save animation: ${formatGsapMutationHttpErrorMessage(
-      error.statusCode,
-      body,
-    )}${formatFieldsSuffix(body.fields)}`;
+    return t("animation.toast.saveFailed", {
+      message: `${formatGsapMutationHttpErrorMessage(error.statusCode, body)}${formatFieldsSuffix(body.fields)}`,
+    });
   }
-  return `Couldn't save animation: ${error.message}`;
+  return t("animation.toast.saveFailed", { message: error.message });
 }
 
 interface AssignAutoIdParams {
@@ -113,7 +113,7 @@ export async function assignGsapTargetAutoIdIfNeeded({
   };
   const unsafePatchFields = findUnsafeDomPatchValues(patchBody);
   if (unsafePatchFields.length > 0) {
-    showToast?.("Couldn't assign element id because the patch contains invalid values", "error");
+    showToast?.(t("animation.toast.autoIdInvalid"), "error");
     return false;
   }
   const res = await fetch(

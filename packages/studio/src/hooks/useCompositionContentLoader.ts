@@ -1,5 +1,6 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback } from "react";
+import { t } from "../i18n";
 
 /**
  * Loads a composition file's content for the source editor when a composition
@@ -26,15 +27,22 @@ export function useCompositionContentLoader({
       setEditingFile({ path: comp, content: null });
       fetch(buildProjectApiPath(projectId, `/files/${encodeURIComponent(comp)}`))
         .then(async (r) => {
-          if (!r.ok) throw new Error(`Failed to load ${comp} (${r.status})`);
+          if (!r.ok)
+            throw new Error(
+              t("fileManager.toast.loadFailedStatus", { path: comp, status: r.status }),
+            );
           return r.json();
         })
         .then((data: { content?: string }) => {
-          if (typeof data.content !== "string") throw new Error(`No content returned for ${comp}`);
+          if (typeof data.content !== "string")
+            throw new Error(t("fileManager.toast.noContent", { path: comp }));
           setEditingFile({ path: comp, content: data.content });
         })
         .catch((err) => {
-          showToast(err instanceof Error ? err.message : `Failed to load ${comp}`, "error");
+          showToast(
+            err instanceof Error ? err.message : t("fileManager.toast.loadFailed", { path: comp }),
+            "error",
+          );
         });
     },
     [projectId, setEditingFile, setActiveCompPath, showToast],

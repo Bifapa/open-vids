@@ -4,6 +4,7 @@ import {
   StudioFileConflictError,
   type StudioSaveDrainResult,
 } from "../utils/studioSaveDiagnostics";
+import { t } from "../i18n";
 
 const FAILURE_BURST_MS = 5_000;
 
@@ -68,10 +69,7 @@ export function useEditorSave({
         now - lastFailureToastAtRef.current >= FAILURE_BURST_MS
       ) {
         lastFailureToastAtRef.current = now;
-        showToast(
-          `Couldn't save ${path} — your latest edits are NOT persisted. Check the preview server; editing again retries the save.`,
-          "error",
-        );
+        showToast(t("editor.source.saveFailed", { path }), "error");
       }
     },
     [showToast],
@@ -81,7 +79,7 @@ export function useEditorSave({
     (candidate: EditorSaveCandidate): Promise<EditorSaveDrainResult> => {
       const task = saveProjectFilesWithHistory({
         projectId: candidate.projectId,
-        label: "Edit source",
+        label: t("editor.history.editSource"),
         coalesceKey: `source:${candidate.path}`,
         files: { [candidate.path]: () => candidate.content },
         readFile: readProjectFile,

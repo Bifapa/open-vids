@@ -11,6 +11,7 @@ import {
   parkPlayheadOnKeyframe,
   materializeIfDynamic,
 } from "./gsapDragCommit";
+import { t } from "../i18n";
 
 /**
  * The tween's keyframes with one inserted at `percentage`. Any existing keyframe
@@ -80,7 +81,7 @@ async function extendTweenAndAddKeyframe(
       duration: roundTo3(newDuration),
       keyframes: remappedKfs,
     },
-    { label: `Move layer (extended keyframe)`, softReload: true, beforeReload },
+    { label: t("layer.history.moveExtendedKeyframe"), softReload: true, beforeReload },
   );
 }
 
@@ -104,7 +105,7 @@ async function commitKeyframedPosition(
       properties,
       ...(backfillDefaults ? { backfillDefaults } : {}),
     },
-    { label: `Move layer (keyframe ${pct}%)`, softReload: true, beforeReload },
+    { label: t("layer.history.moveKeyframe", { percentage: pct }), softReload: true, beforeReload },
   );
   if (activeKeyframePct != null) {
     setActiveKeyframePct(null);
@@ -205,7 +206,7 @@ async function commitFlatViaKeyframes(
         animationId: anim.id,
         ...(Object.keys(resolvedFromValues).length > 0 ? { resolvedFromValues } : {}),
       },
-      { label: "Convert to keyframes for drag", skipReload: true, coalesceKey },
+      { label: t("layer.history.convertForDrag"), skipReload: true, coalesceKey },
     );
     const fresh = callbacks.fetchAnimations ? await callbacks.fetchAnimations() : [];
     // By id first: a target with several tweens (two `to`s on the same selector)
@@ -238,7 +239,7 @@ async function commitFlatViaKeyframes(
       animationId: anim.id,
       ...(Object.keys(resolvedFromValues).length > 0 ? { resolvedFromValues } : {}),
     },
-    { label: "Convert to keyframes for drag", skipReload: true, coalesceKey },
+    { label: t("layer.history.convertForDrag"), skipReload: true, coalesceKey },
   );
   const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
   const editedSelected = activeKeyframePct != null;
@@ -253,7 +254,12 @@ async function commitFlatViaKeyframes(
       properties,
       ...(backfillDefaults ? { backfillDefaults } : {}),
     },
-    { label: `Move layer (keyframe ${pct}%)`, softReload: true, beforeReload, coalesceKey },
+    {
+      label: t("layer.history.moveKeyframe", { percentage: pct }),
+      softReload: true,
+      beforeReload,
+      coalesceKey,
+    },
   );
   if (editedSelected) parkPlayheadOnKeyframe(anim, pct);
 }
@@ -304,7 +310,7 @@ export async function commitGsapPositionFromDrag(
           x: newX,
           y: newY,
         },
-        { label: "Move layer (waypoint)", softReload: true, beforeReload: restoreOffset },
+        { label: t("layer.history.moveWaypoint"), softReload: true, beforeReload: restoreOffset },
       );
       setActiveKeyframePct(null);
       parkPlayheadOnKeyframe(anim, pct);
@@ -328,7 +334,7 @@ export async function commitGsapPositionFromDrag(
         keyframes: temporalKeyframes,
         ease: "none",
       },
-      { label: "Move layer (new keyframe)", softReload: true, beforeReload: restoreOffset },
+      { label: t("layer.history.moveNewKeyframe"), softReload: true, beforeReload: restoreOffset },
     );
     return;
   }
@@ -376,7 +382,7 @@ export async function commitGsapPositionFromDrag(
       await callbacks.commitMutation(
         selection,
         { type: "split-into-property-groups", animationId: anim.id },
-        { label: "Split from() for drag", skipReload: true },
+        { label: t("layer.history.splitFromForDrag"), skipReload: true },
       );
 
       const allAnims = callbacks.fetchAnimations ? await callbacks.fetchAnimations() : [];
@@ -438,7 +444,11 @@ export async function commitGsapPositionFromDrag(
         existingPosAnim
           ? { type: "replace-with-keyframes", animationId: existingPosAnim.id, ...baseKf }
           : { type: "add-with-keyframes", ...baseKf },
-        { label: "Move layer (from extended)", softReload: true, beforeReload: restoreOffset },
+        {
+          label: t("layer.history.moveFromExtended"),
+          softReload: true,
+          beforeReload: restoreOffset,
+        },
       );
     } else {
       const coalesceKey = `gsap:convert-drag:${anim.id}`;
@@ -448,7 +458,7 @@ export async function commitGsapPositionFromDrag(
           type: "convert-to-keyframes",
           animationId: anim.id,
         },
-        { label: "Convert from() for drag", skipReload: true, coalesceKey },
+        { label: t("layer.history.convertFromForDrag"), skipReload: true, coalesceKey },
       );
       const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
       const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
@@ -463,7 +473,7 @@ export async function commitGsapPositionFromDrag(
           ...(backfillDefaults ? { backfillDefaults } : {}),
         },
         {
-          label: `Move layer (keyframe ${pct}%)`,
+          label: t("layer.history.moveKeyframe", { percentage: pct }),
           softReload: true,
           beforeReload: restoreOffset,
           coalesceKey,

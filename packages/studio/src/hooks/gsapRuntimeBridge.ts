@@ -11,6 +11,7 @@
 import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
+import { t } from "../i18n";
 
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
 import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
@@ -91,7 +92,7 @@ export async function resolveGroupTween(
     await commitMutation(
       selection,
       { type: "split-into-property-groups", animationId: legacyMixed.id },
-      { label: "Split mixed tween into property groups", skipReload: true },
+      { label: t("animation.history.splitMixedTween"), skipReload: true },
     );
     if (fetchFallbackAnimations) {
       const fresh = await fetchFallbackAnimations();
@@ -112,7 +113,7 @@ export async function resolveGroupTween(
       await commitMutation(
         selection,
         { type: "split-into-property-groups", animationId: freshLegacy.id },
-        { label: "Split mixed tween into property groups", skipReload: true },
+        { label: t("animation.history.splitMixedTween"), skipReload: true },
       );
       const reFetched = await fetchFallbackAnimations();
       const reFetchedGroup = reFetched.find((a) => a.propertyGroup === group);
@@ -213,7 +214,7 @@ export async function tryGsapDragIntercept(
           targetSelector: selector,
           keepAnimationId: keeper.id,
         },
-        { label: "Consolidate position writes", skipReload: true },
+        { label: t("animation.history.consolidatePositionWrites"), skipReload: true },
       );
       workingAnimations = await fetchFallbackAnimations();
     } else {
@@ -398,7 +399,7 @@ export async function tryGsapRotationIntercept(
       pct,
       iframe,
       { commitMutation, fetchAnimations: fetchFallbackAnimations },
-      "Rotate animation",
+      t("animation.history.rotateAnimation"),
     );
     return { status: "persisted" };
   }
@@ -413,7 +414,7 @@ export async function tryGsapRotationIntercept(
     await commitMutation(
       selection,
       { type: "convert-to-keyframes", animationId: anim.id, resolvedFromValues },
-      { label: "Convert to keyframes for rotation", skipReload: true },
+      { label: t("animation.history.convertForRotation"), skipReload: true },
     );
   }
 
@@ -435,7 +436,7 @@ export async function tryGsapRotationIntercept(
       properties,
       backfillDefaults,
     },
-    { label: `Rotate (keyframe ${pct}%)`, softReload: true },
+    { label: t("animation.history.rotateKeyframe", { percentage: pct }), softReload: true },
   );
   return { status: "persisted" };
 }

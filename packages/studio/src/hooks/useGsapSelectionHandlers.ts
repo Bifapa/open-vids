@@ -7,6 +7,7 @@ import {
   getStudioSaveErrorMessage,
   isStudioSaveErrorAlreadyToasted,
 } from "../utils/studioSaveDiagnostics";
+import { t } from "../i18n";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 
 /**
@@ -131,7 +132,10 @@ export function useGsapSelectionHandlers({
   const trackGsapHandlerFailure = useCallback(
     (error: unknown) => {
       if (!isStudioSaveErrorAlreadyToasted(error)) {
-        showToast(`Couldn't save animation: ${getStudioSaveErrorMessage(error)}`, "error");
+        showToast(
+          t("animation.toast.saveFailed", { message: getStudioSaveErrorMessage(error) }),
+          "error",
+        );
       }
     },
     [showToast],

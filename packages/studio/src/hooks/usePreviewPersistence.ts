@@ -13,6 +13,7 @@ import {
 import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapUndoRestore";
 import { usePlayerStore } from "../player";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
+import { t } from "../i18n";
 
 /** The restore payload the undo/redo preview-sync consumes (from the history store). */
 interface HistoryPreviewRestore {
@@ -118,8 +119,8 @@ export function usePreviewPersistence({
       onOpen: (event) => {
         const message =
           event.statusCode === 409
-            ? "Save paused: this file changed elsewhere. Reload and review the latest version before reapplying your edit."
-            : "Auto-save is paused. Check your connection.";
+            ? t("shell.saveQueue.pausedConflict")
+            : t("shell.saveQueue.pausedOffline");
         setDomEditSaveQueuePaused(message);
         showToastRef.current(message, "error");
       },

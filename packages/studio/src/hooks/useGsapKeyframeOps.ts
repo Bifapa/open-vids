@@ -25,6 +25,7 @@ import type {
   SafeGsapCommitMutation,
   TrackGsapSaveFailure,
 } from "./gsapScriptCommitTypes";
+import { t } from "../i18n";
 
 function executeOptimisticKeyframeCacheUpdate(options: {
   sourceFile: string;
@@ -95,6 +96,7 @@ export function useGsapKeyframeOps({
         percentage,
         properties: { [property]: value },
       };
+      const label = t("animation.history.addKeyframeAt", { percentage });
       void executeOptimisticKeyframeCacheUpdate({
         sourceFile,
         elementId: selection.id,
@@ -134,19 +136,19 @@ export function useGsapKeyframeOps({
               sdkSession,
               sdkDeps,
               {
-                label: `Add keyframe at ${percentage}%`,
+                label,
                 coalesceKey: `gsap:${animationId}:kf:${percentage}`,
               },
             );
             if (cutoverCommittedOrThrow(handled)) return;
           }
           await commitMutation(selection, mutation, {
-            label: `Add keyframe at ${percentage}%`,
+            label,
             softReload: true,
           });
         },
       }).catch((error) => {
-        trackGsapSaveFailure(error, selection, mutation, `Add keyframe at ${percentage}%`);
+        trackGsapSaveFailure(error, selection, mutation, label);
       });
     },
     [activeCompPath, commitMutation, trackGsapSaveFailure, sdkSession, sdkDeps],
@@ -169,7 +171,10 @@ export function useGsapKeyframeOps({
           properties,
           sdkSession,
           sdkDeps,
-          toSdkPersistOptions(`Add keyframe at ${percentage}%`, commitOverrides),
+          toSdkPersistOptions(
+            t("animation.history.addKeyframeAt", { percentage }),
+            commitOverrides,
+          ),
         );
         if (cutoverCommittedOrThrow(handled)) return;
       }
@@ -177,7 +182,7 @@ export function useGsapKeyframeOps({
         selection,
         { type: "add-keyframe", animationId, percentage, properties },
         {
-          label: `Add keyframe at ${percentage}%`,
+          label: t("animation.history.addKeyframeAt", { percentage }),
           softReload: true,
           ...commitOverrides,
         },
@@ -210,7 +215,7 @@ export function useGsapKeyframeOps({
           ),
         }),
         persist: async () => {
-          const label = `Remove keyframe at ${percentage}%`;
+          const label = t("animation.history.removeKeyframeAt", { percentage });
           if (sdkSession && sdkDeps) {
             const handled = await sdkGsapRemoveKeyframePersist(
               sourceFile,
@@ -228,7 +233,12 @@ export function useGsapKeyframeOps({
           await commitMutation(selection, mutation, commitOptions);
         },
       }).catch((error) => {
-        trackGsapSaveFailure(error, selection, mutation, `Remove keyframe at ${percentage}%`);
+        trackGsapSaveFailure(
+          error,
+          selection,
+          mutation,
+          t("animation.history.removeKeyframeAt", { percentage }),
+        );
       });
     },
     [activeCompPath, commitMutation, trackGsapSaveFailure, sdkSession, sdkDeps],
@@ -249,7 +259,7 @@ export function useGsapKeyframeOps({
       try {
         let changed = false;
         await commitMutation(selection, mutation, {
-          label: `Move keyframe to ${toPercentage}%`,
+          label: t("animation.history.moveKeyframeTo", { percentage: toPercentage }),
           softReload: true,
           onResult: (result) => {
             changed = result.changed !== false;
@@ -257,7 +267,12 @@ export function useGsapKeyframeOps({
         });
         return changed;
       } catch (error) {
-        trackGsapSaveFailure(error, selection, mutation, `Move keyframe to ${toPercentage}%`);
+        trackGsapSaveFailure(
+          error,
+          selection,
+          mutation,
+          t("animation.history.moveKeyframeTo", { percentage: toPercentage }),
+        );
         return false;
       }
     },
@@ -285,7 +300,7 @@ export function useGsapKeyframeOps({
       try {
         let changed = false;
         await commitMutation(selection, mutation, {
-          label: "Retime keyframe (resize tween)",
+          label: t("animation.history.retimeKeyframe"),
           softReload: true,
           onResult: (result) => {
             changed = result.changed !== false;
@@ -293,7 +308,7 @@ export function useGsapKeyframeOps({
         });
         return changed;
       } catch (error) {
-        trackGsapSaveFailure(error, selection, mutation, "Retime keyframe (resize tween)");
+        trackGsapSaveFailure(error, selection, mutation, t("animation.history.retimeKeyframe"));
         return false;
       }
     },
@@ -316,7 +331,7 @@ export function useGsapKeyframeOps({
           resolvedFromValues,
           sdkSession,
           sdkDeps,
-          toSdkPersistOptions("Convert to keyframes", commitOverrides),
+          toSdkPersistOptions(t("animation.history.convertToKeyframes"), commitOverrides),
         );
         if (cutoverCommittedOrThrow(handled)) return;
       }
@@ -325,7 +340,7 @@ export function useGsapKeyframeOps({
         // `duration` only applies when the target is a static `set` (which has
         // none) — it spans the converted keyframes across the element's clip.
         { type: "convert-to-keyframes", animationId, resolvedFromValues, duration },
-        { label: "Convert to keyframes", ...commitOverrides },
+        { label: t("animation.history.convertToKeyframes"), ...commitOverrides },
       );
     },
     [commitMutation, activeCompPath, sdkSession, sdkDeps],
@@ -343,7 +358,7 @@ export function useGsapKeyframeOps({
           animationId,
           sdkSession,
           sdkDeps,
-          { label: "Remove all keyframes" },
+          { label: t("animation.history.removeAllKeyframes") },
         );
         if (cutoverCommittedOrThrow(handled)) {
           if (cacheElementId) clearKeyframeCacheForElement(targetPath, cacheElementId);
@@ -354,7 +369,7 @@ export function useGsapKeyframeOps({
         selection,
         { type: "remove-all-keyframes", animationId },
         {
-          label: "Remove all keyframes",
+          label: t("animation.history.removeAllKeyframes"),
           softReload: true,
           // The committed result is the single success boundary: clearing
           // before it makes failed saves lie, while waiting for the reload leaves

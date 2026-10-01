@@ -28,6 +28,7 @@ import {
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import { pickClosestToPlayhead, readGsapPositionFromIframe } from "./gsapPositionDetection";
+import { t } from "../i18n";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
@@ -440,7 +441,7 @@ export async function tryGsapResizeIntercept(
       pct,
       iframe,
       { commitMutation, fetchAnimations: fetchFallbackAnimations },
-      "Resize animation",
+      t("animation.history.resizeAnimation"),
     );
     return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
   }
@@ -461,7 +462,7 @@ export async function tryGsapResizeIntercept(
       await commitMutation(
         selection,
         { type: "convert-to-keyframes", animationId: anim.id, resolvedFromValues },
-        { label: "Convert to keyframes for resize" },
+        { label: t("animation.history.convertForResize") },
       );
       if (fetchFallbackAnimations) {
         const fresh = await fetchFallbackAnimations();
@@ -547,8 +548,10 @@ export async function tryGsapResizeIntercept(
       },
       {
         label: outsideRange
-          ? `Resize (extended to ${ct.toFixed(2)}s)`
-          : `Resize (keyframe ${Math.round(((ct - newStart) / newDuration) * 1000) / 10}%)`,
+          ? t("animation.history.resizeExtended", { time: ct.toFixed(2) })
+          : t("animation.history.resizeKeyframe", {
+              percentage: Math.round(((ct - newStart) / newDuration) * 1000) / 10,
+            }),
         softReload: true,
       },
     );
@@ -571,7 +574,7 @@ export async function tryGsapResizeIntercept(
       properties: resizeProps,
       backfillDefaults,
     },
-    { label: `Resize (keyframe ${pct}%)`, softReload: true },
+    { label: t("animation.history.resizeKeyframe", { percentage: pct }), softReload: true },
   );
   return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
 }

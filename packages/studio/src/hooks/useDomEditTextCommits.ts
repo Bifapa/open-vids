@@ -23,6 +23,7 @@ import {
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { canEditElementTextInline } from "../components/editor/domEditInlineText";
+import { t } from "../i18n";
 import { buildNextDomTextFields, planDomTextCommit } from "./domEditTextCommitPlan";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
@@ -187,7 +188,7 @@ export function useDomEditTextCommits({
         },
         persist: () =>
           persistDomEditOperations(selection, operations, {
-            label: "Edit layer style",
+            label: t("layer.history.editStyle"),
             skipRefresh,
             prepareContent: importedFont
               ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
@@ -265,7 +266,7 @@ export function useDomEditTextCommits({
         },
         persist: () =>
           persistDomEditOperations(selection, textCommit.operations, {
-            label: "Edit text",
+            label: t("layer.history.editText"),
             skipRefresh: true,
             shouldSave: isLatestTextCommit,
           }),
@@ -351,7 +352,7 @@ export function useDomEditTextCommits({
         },
         persist: async () => {
           await persistDomEditOperations(domEditSelection, operations, {
-            label: "Edit text",
+            label: t("layer.history.editText"),
             skipRefresh: true,
             shouldSave: isLatestTextCommit,
           });
@@ -428,7 +429,7 @@ export function useDomEditTextCommits({
         },
         persist: async () => {
           await persistDomEditOperations(selection, textCommit.operations, {
-            label: "Edit text",
+            label: t("layer.history.editText"),
             skipRefresh: true,
             prepareContent: importedFont
               ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)

@@ -2,11 +2,7 @@ import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { reseekPreviewAtTime } from "../player/hooks/timelineSyncHydration";
 import { applySoftReloadFinalization } from "../utils/gsapSoftReload";
-import {
-  timelineTrackOrder,
-  trackDisplayNumber,
-  trackDisplaySuffix,
-} from "../player/components/timelineTrackDisplay";
+import { timelineTrackOrder, trackDisplayNumber } from "../player/components/timelineTrackDisplay";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { isAudioTimelineElement } from "../utils/timelineInspector";
 import type { PatchOperation } from "../utils/sourcePatcher";
@@ -17,6 +13,26 @@ import {
   readFileContent,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
+import { formatNumber, t } from "../i18n";
+
+/** The undo-history label of a track's eye / mute toggle: it names the row only when there is one. */
+function trackVisibilityLabel(audioOnly: boolean, hidden: boolean, number: number | null): string {
+  const values = { number: number === null ? "" : formatNumber(number) };
+  if (audioOnly) {
+    if (number === null)
+      return t(hidden ? "timeline.history.muteTrackBare" : "timeline.history.unmuteTrackBare");
+    return t(hidden ? "timeline.history.muteTrack" : "timeline.history.unmuteTrack", values);
+  }
+  if (number === null) return t(hidden ? "player.track.hideBare" : "player.track.showBare");
+  return t(hidden ? "player.track.hide" : "player.track.show", values);
+}
+
+/** The undo-history label of an element eye toggle; several elements are counted. */
+function elementVisibilityLabel(count: number, hidden: boolean): string {
+  if (count > 1)
+    return t(hidden ? "timeline.history.hideElements" : "timeline.history.showElements", { count });
+  return t(hidden ? "timeline.history.hideElement" : "timeline.history.showElement");
+}
 
 export interface MutableRef<T> {
   current: T;
@@ -201,18 +217,10 @@ export async function toggleTimelineTrackHidden({
   // use ascending element-bearing keys, which stop matching the header as soon
   // as an audio group reorders the rows and inserts an anchor: the same click
   // then said "Mute track 2" and recorded "Mute track 1".
-  const suffix = trackDisplaySuffix(
-    displayNumber ?? trackDisplayNumber(timelineTrackOrder(timelineElements), track),
-  );
+  const number = displayNumber ?? trackDisplayNumber(timelineTrackOrder(timelineElements), track);
   const trackElements = timelineElements.filter((element) => element.track === track);
   const isAudioOnlyTrack = trackElements.length > 0 && trackElements.every(isAudioTimelineElement);
-  const label = isAudioOnlyTrack
-    ? hidden
-      ? `Mute track${suffix}`
-      : `Unmute track${suffix}`
-    : hidden
-      ? `Hide track${suffix}`
-      : `Show track${suffix}`;
+  const label = trackVisibilityLabel(isAudioOnlyTrack, hidden, number);
   return setElementsHidden({
     projectId,
     activeCompPath,
@@ -244,14 +252,7 @@ export async function toggleTimelineElementHidden({
     activeCompPath,
     elements,
     hidden,
-    label:
-      elements.length > 1
-        ? hidden
-          ? `Hide ${elements.length} elements`
-          : `Show ${elements.length} elements`
-        : hidden
-          ? "Hide element"
-          : "Show element",
+    label: elementVisibilityLabel(elements.length, hidden),
     previewIframe,
     writeProjectFile,
     recordEdit,
@@ -282,7 +283,7 @@ export function useTimelineTrackVisibilityEditing({
   return useCallback(
     async (track: number, hidden: boolean, displayNumber?: number | null) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(t("timeline.toast.recordingBlocked"), "error");
         return;
       }
       const pid = projectIdRef.current;
@@ -304,7 +305,7 @@ export function useTimelineTrackVisibilityEditing({
       } catch (error) {
         console.error("[Timeline] Failed to toggle track visibility", error);
         const message =
-          error instanceof Error ? error.message : "Failed to toggle track visibility";
+          error instanceof Error ? error.message : t("timeline.toast.trackVisibilityFailed");
         showToast(message);
       }
     },
@@ -341,14 +342,14 @@ export function useTimelineElementVisibilityEditing({
   return useCallback(
     async (elementKey: string | readonly string[], hidden: boolean) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(t("timeline.toast.recordingBlocked"), "error");
         return;
       }
       const pid = projectIdRef.current;
       if (!pid) return;
       const keys = typeof elementKey === "string" ? [elementKey] : elementKey;
       if (!timelineElements.some((item) => keys.includes(item.key ?? item.id))) {
-        showToast("This element is inside a sub-composition and has no timeline row to hide.");
+        showToast(t("timeline.toast.noRowToHide"));
         return;
       }
       try {
@@ -367,7 +368,7 @@ export function useTimelineElementVisibilityEditing({
       } catch (error) {
         console.error("[Timeline] Failed to toggle element visibility", error);
         const message =
-          error instanceof Error ? error.message : "Failed to toggle element visibility";
+          error instanceof Error ? error.message : t("timeline.toast.elementVisibilityFailed");
         showToast(message);
       }
     },

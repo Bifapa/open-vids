@@ -27,14 +27,6 @@ export function trackDisplayNumber(trackOrder: readonly number[], track: number)
   return row < 0 ? null : row + 1;
 }
 
-/**
- * The `" 3"` in `Hide track 3`, empty when there is no display row to name.
- * Announcing "Hide track" is thin; announcing an invented row is wrong.
- */
-export function trackDisplaySuffix(displayNumber: number | null): string {
-  return displayNumber === null ? "" : ` ${displayNumber}`;
-}
-
 /** A track's name when it has no label of its own: `Track 3`, or `Track` when it has no display row. */
 export function trackName(displayNumber: number | null): string {
   return displayNumber === null

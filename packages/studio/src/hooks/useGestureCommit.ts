@@ -14,6 +14,7 @@ import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { roundTo3 } from "../utils/rounding";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import { isInstantHold, idSelector, writeTargetSelector, tweenTargetsElement } from "./gsapShared";
+import { t } from "../i18n";
 
 type RecordedKeyframe = {
   percentage: number;
@@ -149,7 +150,7 @@ export function useGestureCommit({
       const sel = capturedSelectionRef.current;
       if (!sel) {
         if (frozenSamples.length > 2) {
-          showToast("Selection lost during recording", "error");
+          showToast(t("gesture.toast.selectionLost"), "error");
         }
         return;
       }
@@ -157,11 +158,11 @@ export function useGestureCommit({
         frozenSamples.length > 0 ? (frozenSamples[frozenSamples.length - 1]?.time ?? 0) : 0;
 
       if (frozenSamples.length <= 2) {
-        showToast("No gesture detected — move the pointer while recording", "error");
+        showToast(t("gesture.toast.noGesture"), "error");
         return;
       }
       if (duration <= 0) {
-        showToast("Recording too short — try again", "error");
+        showToast(t("gesture.toast.tooShort"), "error");
         return;
       }
 
@@ -187,7 +188,7 @@ export function useGestureCommit({
       // would record the gesture onto every sibling sharing it.
       const selector = sel.id ? idSelector(sel.id) : sel.selector;
       if (!selector) {
-        showToast("Cannot save — element has no selector", "error");
+        showToast(t("gesture.toast.noSelector"), "error");
         return;
       }
       // A recorded gesture becomes a NEW tween, so its target must address one
@@ -195,7 +196,7 @@ export function useGestureCommit({
       // every sibling sharing its class (see writeTargetSelector).
       const writeSelector = writeTargetSelector(sel);
       if (!writeSelector) {
-        showToast("Cannot save: element has no unique selector", "error");
+        showToast(t("gesture.toast.noUniqueSelector"), "error");
         return;
       }
       if (liveSession.commitMutation) {
@@ -230,7 +231,7 @@ export function useGestureCommit({
                 duration: roundTo3(duration),
                 keyframes,
               },
-              { label: "Gesture recording (replace set)", softReload: true },
+              { label: t("gesture.history.replaceSet"), softReload: true },
             );
           } else {
             const tweenStart = existingPositionTween.resolvedStart ?? 0;
@@ -279,7 +280,7 @@ export function useGestureCommit({
                   duration: tweenDur,
                   keyframes: merged,
                 },
-                { label: "Gesture recording (merge)", softReload: true },
+                { label: t("gesture.history.merge"), softReload: true },
               );
             } else {
               // Emit one tween per property group so a mixed-prop gesture (e.g.
@@ -301,7 +302,7 @@ export function useGestureCommit({
                     easeEach: "none",
                   },
                   {
-                    label: "Gesture recording (new range)",
+                    label: t("gesture.history.newRange"),
                     ...coalesceOptions,
                     ...reloadOnlyLast(index, keyframeGroups.length),
                   },
@@ -324,7 +325,7 @@ export function useGestureCommit({
                 easeEach: "none",
               },
               {
-                label: "Gesture recording",
+                label: t("gesture.history.recording"),
                 ...coalesceOptions,
                 ...reloadOnlyLast(index, keyframeGroups.length),
               },
@@ -332,10 +333,10 @@ export function useGestureCommit({
           }
         }
       }
-      showToast(`Recorded ${sortedPcts.length} keyframes`, "info");
+      showToast(t("gesture.toast.recorded", { count: sortedPcts.length }), "info");
     } catch (err) {
       console.error("[GR:error]", err);
-      showToast(`Gesture commit failed: ${err}`, "error");
+      showToast(t("gesture.toast.commitFailed", { error: String(err) }), "error");
     } finally {
       store.requestSeek(recordingStartTimeRef.current);
       gestureRecording.clearSamples();
@@ -356,12 +357,12 @@ export function useGestureCommit({
     if (readOnlyPreview) return;
     const sel = domEditSessionRef.current.domEditSelection;
     if (!sel) {
-      showToast("Select an element first", "error");
+      showToast(t("gesture.toast.selectFirst"), "error");
       return;
     }
     const iframe = previewIframeRef.current;
     if (!iframe) {
-      showToast("Preview not ready — try again", "error");
+      showToast(t("gesture.toast.previewNotReady"), "error");
       return;
     }
 

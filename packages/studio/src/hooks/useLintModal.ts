@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { LintFinding } from "../components/LintModal";
 import { usePlayerStore } from "../player";
 import { isPreviewBooted, whenPreviewBooted } from "../player/store/playerStore";
+import { t } from "../i18n";
 
 interface RawFinding {
   severity?: string;
@@ -55,7 +56,7 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
       setBackgroundFindings(parsed);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setLintModal([{ severity: "error", message: `Failed to run lint: ${msg}` }]);
+      setLintModal([{ severity: "error", message: t("shell.lint.runFailed", { message: msg }) }]);
     } finally {
       setLinting(false);
     }

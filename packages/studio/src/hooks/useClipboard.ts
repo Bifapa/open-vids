@@ -27,6 +27,7 @@ import {
   parseSavedSource,
 } from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+import { t } from "../i18n";
 
 interface RecordEditInput {
   label: string;
@@ -62,13 +63,17 @@ function elementKey(domId: string, sourceFile: string): string {
 }
 
 /** "Paste clip" / "Paste clips" — the edit-history label, no count shown. */
-function clipLabel(verb: string, clipCount: number): string {
-  return `${verb} ${clipCount > 1 ? "clips" : "clip"}`;
+function clipLabel(kind: "paste" | "duplicate", clipCount: number): string {
+  return t(kind === "paste" ? "clipboard.history.pasteClips" : "clipboard.history.duplicateClips", {
+    count: clipCount,
+  });
 }
 
 /** "Pasted clip" / "Pasted 3 clips" — the toast message, count shown once plural. */
-function clipToast(verbPast: string, clipCount: number): string {
-  return clipCount > 1 ? `${verbPast} ${clipCount} clips` : `${verbPast} clip`;
+function clipToast(kind: "paste" | "duplicate", clipCount: number): string {
+  return t(kind === "paste" ? "clipboard.toast.pastedClips" : "clipboard.toast.duplicatedClips", {
+    count: clipCount,
+  });
 }
 
 function getSelectedDomElement(
@@ -236,7 +241,7 @@ export function useClipboard({
   const readSaved = useCallback(
     async (path: string): Promise<string> => {
       const pid = projectIdRef.current;
-      if (!pid) throw new Error("No project is open.");
+      if (!pid) throw new Error(t("clipboard.error.noProject"));
       // Only the order matters here; a failed save already shows its own banner.
       await waitForPendingDomEditSaves().catch(() => {});
       return serializeStudioFileMutations(writeProjectFile, [path], () =>
@@ -259,7 +264,10 @@ export function useClipboard({
     for (const element of selected) {
       const live = findTimelineElementInIframe(previewIframeRef.current, element, activeCompPath);
       if (!live) {
-        showToast(`Unable to copy "${element.label ?? element.id}".`, "info");
+        showToast(
+          t("clipboard.toast.copyClipFailed", { label: element.label ?? element.id }),
+          "info",
+        );
         return null;
       }
       lives.push(live);
@@ -292,7 +300,7 @@ export function useClipboard({
     if (!targets) return null;
     const sourceFile = targets.elements[0]?.sourceFile || activeCompPath || "index.html";
     return readClips(targets).then((clips) => {
-      showToast(clips.length > 1 ? `Copied ${clips.length} clips` : "Copied clip", "info");
+      showToast(t("clipboard.toast.copiedClips", { count: clips.length }), "info");
       return { kind: "timeline-clip", clips, sourceFile };
     });
   }, [activeCompPath, findSelectedClips, readClips, showToast]);
@@ -301,12 +309,12 @@ export function useClipboard({
     (domSelection: DomEditSelection): Promise<ClipboardPayload> | null => {
       const live = getSelectedDomElement(previewIframeRef, domSelection, activeCompPath);
       if (!live) {
-        showToast("Unable to copy this element.", "info");
+        showToast(t("clipboard.toast.copyElementFailed"), "info");
         return null;
       }
       const sourceFile = domSelection.sourceFile || activeCompPath || "index.html";
       return readSaved(sourceFile).then((content) => {
-        showToast("Copied element", "info");
+        showToast(t("clipboard.toast.copiedElement"), "info");
         return {
           kind: "dom-element",
           html: savedMarkupElseLive(parseSavedSource(content), live, sourceFile),
@@ -327,12 +335,12 @@ export function useClipboard({
     if (usePlayerStore.getState().selectedElementId) pending = copyTimelineSelection();
     else if (domSelection) pending = copyDomSelection(domSelection);
     else {
-      showToast("Nothing selected to copy.", "info");
+      showToast(t("clipboard.toast.nothingToCopy"), "info");
       return null;
     }
     if (!pending) return null;
     const own = pending.catch((error: unknown) => {
-      showToast(error instanceof Error ? error.message : "Failed to copy", "error");
+      showToast(error instanceof Error ? error.message : t("clipboard.toast.copyFailed"), "error");
       return null;
     });
     const previous = clipboardRef.current;
@@ -350,7 +358,7 @@ export function useClipboard({
   const handlePaste = useCallback(async () => {
     const payload = await clipboardRef.current;
     if (!payload) {
-      showToast("Nothing to paste.", "info");
+      showToast(t("clipboard.toast.nothingToPaste"), "info");
       return;
     }
     const pid = projectIdRef.current;
@@ -372,8 +380,8 @@ export function useClipboard({
 
       const label =
         payload.kind === "timeline-clip"
-          ? clipLabel("Paste", payload.clips.length)
-          : "Paste element";
+          ? clipLabel("paste", payload.clips.length)
+          : t("clipboard.history.pasteElement");
 
       await saveProjectFilesWithHistory({
         projectId: pid,
@@ -394,12 +402,12 @@ export function useClipboard({
       reloadPreview();
       showToast(
         payload.kind === "timeline-clip"
-          ? clipToast("Pasted", payload.clips.length)
-          : "Pasted element",
+          ? clipToast("paste", payload.clips.length)
+          : t("clipboard.toast.pastedElement"),
         "info",
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to paste";
+      const message = error instanceof Error ? error.message : t("clipboard.toast.pasteFailed");
       showToast(message);
     }
   }, [activeCompPath, recordEdit, reloadPreview, showToast, writeProjectFile]);
@@ -430,7 +438,7 @@ export function useClipboard({
 
       await saveProjectFilesWithHistory({
         projectId: pid,
-        label: clipLabel("Duplicate", clips.length),
+        label: clipLabel("duplicate", clips.length),
         files: { [targetPath]: duplicate },
         readFile: (path) => readFileContent(pid, path),
         writeFile: writeProjectFile,
@@ -445,10 +453,10 @@ export function useClipboard({
         usePlayerStore.getState().setSelection(ids.map((id) => elementKey(id, targetPath)));
       }
       reloadPreview();
-      showToast(clipToast("Duplicated", clips.length), "info");
+      showToast(clipToast("duplicate", clips.length), "info");
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to duplicate";
+      const message = error instanceof Error ? error.message : t("clipboard.toast.duplicateFailed");
       showToast(message);
       return false;
     }

@@ -15,6 +15,7 @@ import {
   persistElementAttribute,
   readSavedAttribute,
 } from "./timelineEditingHelpers";
+import { t } from "../i18n";
 import { useLiveLanes, type LiveLaneRestore, type LiveLaneSource } from "./liveLanes";
 import type {
   MutableRef,
@@ -200,13 +201,13 @@ export function useSetElementAttribute({
           recordEdit,
           pendingTimelineEditPathRef,
         });
-        if (!written)
-          return unsaved(failedTimelineSave("This clip has no id to save it by", showToast));
+        if (!written) return unsaved(failedTimelineSave(t("timeline.error.clipNoId"), showToast));
         live.settle(value);
         return { status: "saved" };
       } catch (error) {
         console.error("[Timeline] Failed to set element attribute", error);
-        const message = error instanceof Error ? error.message : "Failed to update effect";
+        const message =
+          error instanceof Error ? error.message : t("timeline.error.effectUpdateFailed");
         return unsaved(failedTimelineSave(message, showToast));
       }
     },

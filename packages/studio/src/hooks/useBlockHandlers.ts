@@ -7,6 +7,7 @@ import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { addBlockToProject } from "../utils/blockInstaller";
 import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
+import { t } from "../i18n";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { MediaOverlayPlacement } from "../components/editor/propertyPanelTypes";
@@ -92,11 +93,11 @@ export function useBlockHandlers({
   const runBlockInstall = useCallback(
     async <T>(blockName: string, install: () => Promise<T>): Promise<T | null> => {
       if (installingBlockRef.current) {
-        showToast("A block is already installing — one moment…", "info");
+        showToast(t("sidebar.blocks.installBusy"), "info");
         return null;
       }
       installingBlockRef.current = true;
-      const progress = showToast(`Adding ${blockName}…`, "info");
+      const progress = showToast(t("sidebar.blocks.addingNamed", { name: blockName }), "info");
       try {
         return await install();
       } finally {

@@ -29,6 +29,8 @@ import {
   directEditOutcomeForProperties,
   GsapEditBlockedError,
 } from "./gsapEditOutcome";
+import { t } from "../i18n";
+import { staticSetLabel } from "./staticSetLabel";
 import type { CommitMutation, CommitMutationCall } from "./gsapScriptCommitTypes";
 
 interface CommitAnimatedPropertyDeps {
@@ -99,27 +101,11 @@ async function maybeAutoKeyframeSet(
       animationId: setAnim.id,
       duration: animatedTween.duration ?? 1,
     },
-    { label: "Keyframe 3D transform", softReload: true },
+    { label: t("animation.history.keyframe3d"), softReload: true },
   );
 }
 
 type Commit = CommitMutation;
-
-/** Undo-history label for a static-set commit, from the group it writes. */
-const STATIC_SET_LABELS: Partial<Record<ReturnType<typeof classifyPropertyGroup>, string>> = {
-  position: "Move layer",
-  scale: "Resize layer",
-  size: "Resize layer",
-  rotation: "Rotate layer",
-  visual: "Set opacity",
-  other: "Set 3D transform",
-};
-
-function staticSetLabel(propEntries: [string, number | string][]): string {
-  const groups = new Set(propEntries.map(([k]) => classifyPropertyGroup(k)));
-  const only = groups.size === 1 ? [...groups][0] : undefined;
-  return (only && STATIC_SET_LABELS[only]) || "Set properties";
-}
 
 /** Merge ALL props into the static `set` in ONE commit (value-only, instant), then
  *  auto-keyframe. One mutation — a per-property loop would shift the set's
@@ -331,7 +317,7 @@ async function commitKeyframeProps(
     await commit(
       selection,
       { type: "convert-to-keyframes", animationId: anim.id },
-      { label: "Convert to keyframes", skipReload: true },
+      { label: t("animation.history.convertToKeyframes"), skipReload: true },
     );
   }
   const ct = usePlayerStore.getState().currentTime;
@@ -387,7 +373,10 @@ async function commitKeyframeProps(
         duration: roundTo3(newDuration),
         keyframes: remapped,
       },
-      { label: `Edit ${primaryProp} (extended keyframe)`, softReload: true },
+      {
+        label: t("animation.history.editPropertyExtended", { property: primaryProp }),
+        softReload: true,
+      },
     );
     return;
   }
@@ -416,7 +405,10 @@ async function commitKeyframeProps(
           backfillDefaults,
         },
     {
-      label: `Edit ${primaryProp} (keyframe ${pct}%)`,
+      label: t("animation.history.editPropertyKeyframe", {
+        property: primaryProp,
+        percentage: pct,
+      }),
       softReload: true,
       ...(instantPatch ? { instantPatch } : {}),
     },
@@ -488,7 +480,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
               pct,
               iframe,
               { commitMutation: gsapCommitMutation },
-              `Edit ${primaryProp} (whole animation)`,
+              t("animation.history.editPropertyWhole", { property: primaryProp }),
             );
             return;
           }
@@ -572,7 +564,10 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
               duration: roundTo3(tDur),
               keyframes,
             },
-            { label: `Add ${primaryProp} keyframe`, softReload: true },
+            {
+              label: t("animation.history.addPropertyKeyframe", { property: primaryProp }),
+              softReload: true,
+            },
           );
           return;
         }

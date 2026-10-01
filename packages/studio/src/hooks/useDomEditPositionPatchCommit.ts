@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { DomEditSaveQueueOpenError } from "../utils/domEditSaveQueue";
+import { t } from "../i18n";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 
 interface UseDomEditPositionPatchCommitParams {
@@ -36,7 +37,7 @@ export function useDomEditPositionPatchCommit({
           // resolved the commit, which skipped the caller's revert, so the element
           // stayed where the drag put it while nothing reached the file.
           if (error instanceof DomEditSaveQueueOpenError) throw error;
-          showToast(error instanceof Error ? error.message : "Failed to save position");
+          showToast(error instanceof Error ? error.message : t("layer.toast.positionSaveFailed"));
           throw error;
         });
     },

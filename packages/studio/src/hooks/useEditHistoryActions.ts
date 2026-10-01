@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+import { t } from "../i18n";
 
 interface HistoryResult {
   ok: boolean;
@@ -65,7 +66,6 @@ export function useEditHistoryActions({
 
   const apply = useCallback(
     async (direction: "undo" | "redo") => {
-      const noun = direction === "undo" ? "Undo" : "Redo";
       await waitForPendingDomEditSaves();
       const result = await editHistory[direction]({
         readFile: readHistoryFile,
@@ -73,13 +73,20 @@ export function useEditHistoryActions({
       });
       if (!result.ok && result.reason === "content-mismatch") {
         showToast(
-          `Can't ${direction}: ${result.paths?.join(", ")} changed since that edit.`,
+          t(direction === "undo" ? "shell.history.undoBlocked" : "shell.history.redoBlocked", {
+            paths: String(result.paths?.join(", ")),
+          }),
           "info",
         );
         return;
       }
       if (!result.ok && result.reason === "failed") {
-        showToast(`${noun} failed: ${result.message}`, "error");
+        showToast(
+          t(direction === "undo" ? "shell.history.undoFailed" : "shell.history.redoFailed", {
+            message: String(result.message),
+          }),
+          "error",
+        );
         return;
       }
       if (result.ok && result.label) {

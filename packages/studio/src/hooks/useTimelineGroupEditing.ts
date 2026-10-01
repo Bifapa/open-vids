@@ -18,6 +18,7 @@ import {
   type PersistTimelineBatchChange,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
+import { t } from "../i18n";
 import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
@@ -133,11 +134,12 @@ export function useTimelineGroupEditing({
   const enqueueGroupOperation = useCallback(
     (label: string, operation: (projectId: string) => Promise<void>): Promise<void> => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
-        return Promise.reject(new Error(`${label}: blocked while recording`));
+        showToast(t("timeline.toast.recordingBlocked"), "error");
+        return Promise.reject(new Error(t("timeline.error.blockedWhileRecording", { label })));
       }
       const projectId = projectIdRef.current;
-      if (!projectId) return Promise.reject(new Error(`${label}: no active project`));
+      if (!projectId)
+        return Promise.reject(new Error(t("timeline.error.noActiveProject", { label })));
       const run = editQueueRef.current.then(() => operation(projectId));
       // Keep the shared edit queue from wedging on a rejection, but return the raw
       // (rejecting) promise so the gesture owner can roll back on a real failure.
@@ -281,7 +283,7 @@ export function useTimelineGroupEditing({
       syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? moveCoalesceKey(changes);
       const coalesceMs = options?.coalesceMs;
-      const label = options?.label ?? "Move timeline clips";
+      const label = options?.label ?? t("timeline.history.moveClips");
       return enqueueGroupOperation(label, async (projectId) => {
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
@@ -396,7 +398,8 @@ export function useTimelineGroupEditing({
       syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? resizeCoalesceKey(changes);
       const coalesceMs = options?.coalesceMs;
-      return enqueueGroupOperation("Resize timeline clips", async (projectId) => {
+      const resizeLabel = t("timeline.history.resizeClips");
+      return enqueueGroupOperation(resizeLabel, async (projectId) => {
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
           changes,
@@ -406,14 +409,14 @@ export function useTimelineGroupEditing({
           })),
           eligible: changes.every((change) => !resizeHasPlaybackStartAdjustment(change)),
           needsExtension,
-          label: "Resize timeline clips",
+          label: resizeLabel,
           coalesceKey,
           coalesceMs,
         });
         if (!handledBySdk) {
           await persistServerBatch(
             projectId,
-            "Resize timeline clips",
+            resizeLabel,
             changes.map((change) => ({
               element: change.element,
               buildPatches: (original, target) =>
@@ -434,7 +437,7 @@ export function useTimelineGroupEditing({
             projectId,
             iframe: previewIframeRef.current,
             reloadPreview,
-            label: "Resize timeline clips",
+            label: resizeLabel,
             errorLabel: "Failed to scale GSAP positions",
             coalesceKey,
             recordEdit,

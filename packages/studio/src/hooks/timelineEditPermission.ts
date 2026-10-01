@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { TimelineElement } from "../player";
+import { t } from "../i18n";
 
 /** A host's verdict on one element: editable, or blocked with a reason to show. */
 export type TimelineEditPermission = true | { blocked: true; reason: string };
@@ -18,10 +19,10 @@ export function projectForTimelineSave(
   showToast: (message: string, tone?: "error" | "info") => void,
 ): string | TimelineEditOutcome {
   if (isRecording) {
-    showToast("Cannot edit timeline while recording", "error");
-    return { status: "refused", reason: "Cannot edit timeline while recording" };
+    showToast(t("timeline.toast.recordingBlocked"), "error");
+    return { status: "refused", reason: t("timeline.toast.recordingBlocked") };
   }
-  return projectId ?? failedTimelineSave("No project is open", showToast);
+  return projectId ?? failedTimelineSave(t("timeline.toast.noProject"), showToast);
 }
 
 export function failedTimelineSave(

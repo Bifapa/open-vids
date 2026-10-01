@@ -3,6 +3,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { absoluteToPercentageForAnimation, findTweenAtTime } from "../utils/globalTimeCompiler";
 import { PROPERTY_DEFAULTS, selectorFromSelection, writeTargetSelector } from "./gsapShared";
 import { roundToCenti } from "../utils/rounding";
+import { t } from "../i18n";
 
 type CommitFn = (
   selection: DomEditSelection,
@@ -38,7 +39,7 @@ export async function commitKeyframeAtTimeImpl(
       await commitMutation(
         selection,
         { type: "convert-to-keyframes", animationId: tween.id },
-        { label: "Convert to keyframes", skipReload: true },
+        { label: t("animation.history.convertToKeyframes"), skipReload: true },
       );
     }
 
@@ -57,7 +58,7 @@ export async function commitKeyframeAtTimeImpl(
         backfillDefaults,
       },
       {
-        label: `Add keyframe at ${roundToCenti(absoluteTime)}s`,
+        label: t("animation.history.addKeyframeAtTime", { time: roundToCenti(absoluteTime) }),
         coalesceKey: `keyframe:${tween.id}:${pct}`,
         softReload: true,
       },
@@ -83,7 +84,7 @@ export async function commitKeyframeAtTimeImpl(
         ],
       },
       {
-        label: `New animation at ${roundToCenti(absoluteTime)}s`,
+        label: t("animation.history.newAnimationAtTime", { time: roundToCenti(absoluteTime) }),
         softReload: true,
       },
     );

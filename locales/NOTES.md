@@ -1091,3 +1091,80 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `app.cut.readFailed` — {path} is a project file; {status} is an HTTP status code.
 - `app.cut.conflict` — {detail} is the server's explanation.
 - `app.cut.serverStatus` — {status} is an HTTP status code.
+
+## studio-hooks
+
+- `shell.lint.runFailed` — {message} is the error text.
+- `animation.toast.saveFailed` — {message} is the reason the save failed.
+- `fileManager.toast.loadFailedStatus` — {status} is an HTTP status code.
+- `shell.history.undoBlocked` — {paths} is a comma-separated list of file paths.
+- `shell.history.redoBlocked` — {paths} is a comma-separated list of file paths.
+- `sidebar.blocks.addingNamed` — {name} is the block name.
+- `media.removeBackground.failedStatus` — {status} is an HTTP status code.
+- `media.removeBackground.created` — {file} is the new file's name.
+- `timeline.capture.failedStatus` — {status} is an HTTP status code.
+- `shell.saveQueue.externalChange` — Lower-case clause shown as the reason in the title bar's save-failed tooltip.
+- `timeline.history.muteTrack` — Undo-history label; {number} is the displayed track number.
+- `timeline.history.muteTrackBare` — Undo-history label used when the track has no displayed number.
+- `timeline.history.unmuteTrack` — Undo-history label; {number} is the displayed track number.
+- `timeline.history.unmuteTrackBare` — Undo-history label used when the track has no displayed number.
+- `animation.blocked.unrollRequired` — "Unroll" is the button label of the computed-tween notice (editor.computedTween.\*); keep in sync.
+- `animation.toast.mutationStatus` — {status} is an HTTP status code.
+- `timeline.error.noPatchTarget` — {id} is the element's id attribute.
+- `timeline.error.patchFailed` — {id} is the element's id attribute.
+- `timeline.error.deleteFailed` — {id} is the element's id attribute.
+- `timeline.toast.deletedOne` — {label} is the clip's name or a count of clips.
+- `timeline.toast.deletedMany` — {label} is the clip's name or a count of clips; several clips were deleted.
+- `timeline.toast.rippleNotice` — "Ripple" is the timeline toolbar's ripple-edit toggle; the shortcut is the undo key.
+- `timeline.history.splitClips` — Undo-history label; {time} is a playhead time in seconds with two decimals.
+- `timeline.toast.cutSelectorsSkipped` — {selectors} is a comma-separated list of CSS selectors.
+- `timeline.toast.splitDone` — {label} is the clip's name; {time} is a playhead time in seconds with two decimals.
+- `timeline.toast.splitAllDone` — {time} is a playhead time in seconds with two decimals.
+- `timeline.error.blockedWhileRecording` — {label} is an undo-history label such as "Move timeline clips".
+- `timeline.error.noActiveProject` — {label} is an undo-history label such as "Move timeline clips".
+- `timeline.error.audioGroupIdTaken` — {id} is an element id.
+- `timeline.history.groupClipsAs` — {name} is the group's name.
+- `timeline.error.groupClipMissing` — {ids} is a comma-separated list of element ids.
+- `layer.toast.audioGroupsAsBus` — "FX" is the effects button on the track header.
+- `layer.toast.deleting` — {label} is an element's name or a count of elements.
+- `layer.toast.deletedOne` — {label} is an element's name.
+- `layer.toast.deletedMany` — {label} is a count of elements; several were deleted.
+- `clipboard.history.pasteClips` — Undo-history label; the count only selects the singular or plural form and is not shown.
+- `clipboard.history.duplicateClips` — Undo-history label; the count only selects the singular or plural form and is not shown.
+- `fileManager.toast.skippedTooLarge` — {names} is a comma-separated list of file names.
+- `fileManager.toast.notAdded` — {why} is a comma-separated list like "photo.heic (unsupported format)".
+- `fileManager.toast.addedUnchecked` — {reason} is a note from the server about why the files were not checked.
+- `fileManager.toast.uploadFailed` — {status} is an HTTP status code.
+- `fileManager.toast.unknownReason` — Placeholder for the {reason} of a failed file operation when the server gave none.
+- `animation.history.addKeyframeAt` — Undo-history label; {percentage} is the position within the animation.
+- `animation.history.removeKeyframeAt` — Undo-history label; {percentage} is the position within the animation.
+- `animation.history.moveKeyframeTo` — Undo-history label; {percentage} is the new position within the animation.
+- `animation.history.editProperty` — Undo-history label; {property} is a GSAP property name such as opacity or x. Do not translate it.
+- `animation.history.addProperty` — {property} is a GSAP property name such as opacity or x. Do not translate it.
+- `animation.history.removeProperty` — {property} is a GSAP property name such as opacity or x. Do not translate it.
+- `animation.history.editFromProperty` — "from-" is the starting value of a GSAP tween; {property} is a property name. Do not translate the name.
+- `animation.history.addFromProperty` — "from-" is the starting value of a GSAP tween; {property} is a property name. Do not translate the name.
+- `animation.history.removeFromProperty` — "from-" is the starting value of a GSAP tween; {property} is a property name. Do not translate the name.
+- `animation.history.addTween` — {method} is a GSAP method name (to, from, set, fromTo). Do not translate it.
+- `animation.history.addKeyframeAtTime` — Undo-history label; {time} is a time in seconds.
+- `animation.history.newAnimationAtTime` — Undo-history label; {time} is a time in seconds.
+- `animation.history.resizeSizeKeyframe` — Undo-history label; {percentage} is the position within the animation.
+- `layer.history.moveKeyframe` — Undo-history label; {percentage} is the position within the animation.
+- `layer.history.splitFromForDrag` — from() is the GSAP method name; do not translate it.
+- `layer.history.moveFromExtended` — "from" is the GSAP from() animation; do not translate it.
+- `layer.history.convertFromForDrag` — from() is the GSAP method name; do not translate it.
+- `animation.history.rotateKeyframe` — Undo-history label; {percentage} is the position within the animation.
+- `animation.history.resizeExtended` — Undo-history label; {time} is a time in seconds.
+- `animation.history.resizeKeyframe` — Undo-history label; {percentage} is the position within the animation.
+- `animation.history.editPropertyExtended` — {property} is a GSAP property name. Do not translate it.
+- `animation.history.editPropertyKeyframe` — {property} is a GSAP property name. Do not translate it.
+- `animation.history.editPropertyWhole` — {property} is a GSAP property name. Do not translate it.
+- `animation.history.addPropertyKeyframe` — {property} is a GSAP property name. Do not translate it.
+- `gesture.history.replaceSet` — "set" is the GSAP set() method; do not translate it.
+- `layer.history.editAttribute` — Undo-history label; {attribute} is an HTML/data attribute name such as "start" or "data-volume". Do not translate it.
+- `layer.toast.saveFailedWithReason` — {reason} is the server's error text, followed by the affected fields in parentheses.
+- `layer.label.thisElement` — Fallback name of an element in "Couldn't save {label}: …" when it has no label.
+- `shell.history.undid` — {label} is the name of the edit that was undone.
+- `shell.history.redid` — {label} is the name of the edit that was redone.
+- `shell.history.razorInSubComposition` — {key} is the razor tool's shortcut key.
+- `layer.label.element` — Fallback name of a picked element that has no label or tag name.

@@ -15,6 +15,7 @@ import {
   rollbackOwnedMutation,
   type GsapMutationStatus,
 } from "./gsapMutationClient";
+import { t } from "../i18n";
 import {
   serializeStudioFileMutations,
   type StudioProjectFileWriter,
@@ -28,11 +29,11 @@ export async function readFileContent(projectId: string, targetPath: string): Pr
     `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(targetPath)}`,
   );
   if (!response.ok) {
-    throw new Error(`Failed to read ${targetPath}`);
+    throw new Error(t("app.save.readFailed", { path: targetPath }));
   }
   const data = (await response.json()) as { content?: string };
   if (typeof data.content !== "string") {
-    throw new Error(`Missing file contents for ${targetPath}`);
+    throw new Error(t("app.save.missingContents", { path: targetPath }));
   }
   return data.content;
 }

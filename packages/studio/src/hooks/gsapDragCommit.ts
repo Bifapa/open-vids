@@ -17,6 +17,7 @@ import type { RuntimeTweenChange } from "./gsapRuntimePatch";
 import { isGestureTransactionCommit, runGestureTransaction } from "./gestureTransaction";
 import { setPatchFromUpdateProperty } from "./gsapDragStaticSetHelpers";
 import { GsapEditBlockedError } from "./gsapEditOutcome";
+import { t } from "../i18n";
 export {
   findExistingPositionWrite,
   findRotationSetAnimation,
@@ -99,12 +100,12 @@ async function replaceKeyframedPositionHold(
         properties,
         global: true,
       },
-      { label: "Move layer", skipReload: true },
+      { label: t("layer.history.move"), skipReload: true },
     );
     await commit(
       selection,
       { type: "delete", animationId: existingSet.id },
-      { label: "Move layer", softReload: true },
+      { label: t("layer.history.move"), softReload: true },
     );
   };
 
@@ -114,7 +115,7 @@ async function replaceKeyframedPositionHold(
   }
   await runGestureTransaction({
     element: selection.element,
-    label: "Move layer",
+    label: t("layer.history.move"),
     settle: () => undefined,
     persist: async (commit) => persist(commit(commitMutation)),
     restore: () => undefined,
@@ -177,7 +178,7 @@ export async function commitStaticGsapPosition(
     } as const;
     const global = !!existingSet.global;
     await callbacks.commitMutation(selection, mutation, {
-      label: "Move layer",
+      label: t("layer.history.move"),
       softReload: true,
       instantPatch: {
         selector,
@@ -203,7 +204,7 @@ export async function commitStaticGsapPosition(
       global: true,
     },
     {
-      label: "Move layer",
+      label: t("layer.history.move"),
       softReload: true,
       instantPatch: {
         selector: target,
@@ -239,7 +240,7 @@ export async function commitStaticGsapRotation(
       value: newRotation,
     } as const;
     await callbacks.commitMutation(selection, rotationMutation, {
-      label: "Rotate layer",
+      label: t("layer.history.rotate"),
       softReload: true,
       // Value-only rotation set — patch the runtime in place (off-timeline gsap.set
       // applies to the element directly; on-timeline tl.set patches its tween).
@@ -261,7 +262,7 @@ export async function commitStaticGsapRotation(
       global: true,
     },
     {
-      label: "Rotate layer",
+      label: t("layer.history.rotate"),
       softReload: true,
       instantPatch: {
         selector: target,
@@ -298,7 +299,7 @@ export async function commitStaticGsapSize(
         animationId: existingSet.id,
         properties: { width, height },
       },
-      { label: "Resize layer", softReload: true },
+      { label: t("layer.history.resize"), softReload: true },
     );
     return;
   }
@@ -313,7 +314,7 @@ export async function commitStaticGsapSize(
       position: 0,
       properties: { width, height },
     },
-    { label: "Resize layer", softReload: true },
+    { label: t("layer.history.resize"), softReload: true },
   );
 }
 
@@ -391,7 +392,7 @@ export async function commitKeyframedSizeFromResize(
   // Add the size keyframe tween FIRST, then delete the old global hold. The gesture
   // transport applies both in one ordered batch; a plain commit fallback keeps the
   // same recoverable ordering. Only the transaction's result triggers the reload.
-  const addLabel = `Resize (size keyframe ${pct.toFixed(0)}%)`;
+  const addLabel = t("animation.history.resizeSizeKeyframe", { percentage: pct.toFixed(0) });
   const target = newTweenTarget(selection);
   if (!target) return false;
   await callbacks.commitMutation(
@@ -409,7 +410,7 @@ export async function commitKeyframedSizeFromResize(
     await callbacks.commitMutation(
       selection,
       { type: "delete", animationId: sizeSet.id },
-      { label: "Resize layer", softReload: true },
+      { label: t("layer.history.resize"), softReload: true },
     );
   }
   return true;
@@ -495,6 +496,10 @@ export async function commitWholePathOffset(
       keyframes: shifted,
       ease,
     },
-    { label: "Move animation path", softReload: true, beforeReload: restoreOffset },
+    {
+      label: t("animation.history.moveAnimationPath"),
+      softReload: true,
+      beforeReload: restoreOffset,
+    },
   );
 }

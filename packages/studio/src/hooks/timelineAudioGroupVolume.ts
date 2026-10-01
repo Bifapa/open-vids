@@ -15,6 +15,7 @@ import {
   readSavedAttribute,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
+import { t } from "../i18n";
 import { useLiveLanes, type LiveLaneRestore, type LiveLaneSource } from "./liveLanes";
 import type {
   MutableRef,
@@ -325,13 +326,13 @@ export function useSetAudioGroupAttribute({
           recordEdit,
           pendingTimelineEditPathRef,
         });
-        if (!written)
-          return unsaved(failedTimelineSave("This group has no id to save it by", showToast));
+        if (!written) return unsaved(failedTimelineSave(t("timeline.error.groupNoId"), showToast));
         live.settle(value);
         return { status: "saved" };
       } catch (error) {
         console.error("[Timeline] Failed to set group attribute", error);
-        const message = error instanceof Error ? error.message : "Failed to update group";
+        const message =
+          error instanceof Error ? error.message : t("timeline.error.groupUpdateFailed");
         return unsaved(failedTimelineSave(message, showToast));
       }
     },

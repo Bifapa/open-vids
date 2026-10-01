@@ -7,6 +7,7 @@ import { toProjectAbsolutePath, type AgentModalAnchorPoint } from "../utils/stud
 import { liveMarkupWithoutPreviewMarks } from "../utils/authoredSource";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
+import { t } from "../i18n";
 
 // ── Types ──
 
@@ -104,7 +105,7 @@ export function useAskAgentModal({
 
       const copied = await copyTextToClipboard(prompt);
       if (!copied) {
-        showToast("Could not copy prompt to clipboard.", "error");
+        showToast(t("shell.askAgent.copyFailed"), "error");
         return;
       }
 

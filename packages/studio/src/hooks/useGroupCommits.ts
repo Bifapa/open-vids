@@ -16,6 +16,7 @@ import {
   type ElementMatchSelection,
 } from "../utils/studioHelpers";
 import type { TimelineElement } from "../player";
+import { t } from "../i18n";
 
 interface UseGroupCommitsParams extends DomEditCommitBaseParams {
   /** Resync the SDK session after a server-side write (the wrapper/unwrap changes
@@ -144,7 +145,15 @@ async function commitStructuralMutation(
         const errBody = (await mutateResponse.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(errBody?.error ?? `Failed to ${label.toLowerCase()} in ${targetPath}`);
+        throw new Error(
+          errBody?.error ??
+            t(
+              route === "wrap-elements"
+                ? "layer.error.groupFailedIn"
+                : "layer.error.ungroupFailedIn",
+              { path: targetPath },
+            ),
+        );
       }
       result = (await mutateResponse.json()) as { content?: string; groupId?: string };
       return { disk: typeof result.content === "string" ? result.content : originalContent };
@@ -168,7 +177,7 @@ export function useGroupCommits(params: UseGroupCommitsParams) {
       // in one document. (Cross-file grouping is out of scope.)
       const targetPath = members[0].sourceFile || activeCompPath || "index.html";
       if (members.some((m) => (m.sourceFile || activeCompPath || "index.html") !== targetPath)) {
-        showToast("Can't group elements from different files", "error");
+        showToast(t("layer.toast.groupDifferentFiles"), "error");
         return null;
       }
 
@@ -183,12 +192,12 @@ export function useGroupCommits(params: UseGroupCommitsParams) {
           targetPath,
           "wrap-elements",
           { targets, groupId, bbox, rebases },
-          "Group elements",
+          t("layer.history.groupElements"),
           params,
         );
         return data.groupId ?? groupId;
       } catch (error) {
-        showToast(error instanceof Error ? error.message : "Failed to group elements", "error");
+        showToast(error instanceof Error ? error.message : t("layer.toast.groupFailed"), "error");
         return null;
       }
     },
@@ -208,11 +217,11 @@ export function useGroupCommits(params: UseGroupCommitsParams) {
           targetPath,
           "unwrap-elements",
           { target: buildDomEditPatchTarget(group), childTracks },
-          "Ungroup elements",
+          t("layer.history.ungroupElements"),
           params,
         );
       } catch (error) {
-        showToast(error instanceof Error ? error.message : "Failed to ungroup elements", "error");
+        showToast(error instanceof Error ? error.message : t("layer.toast.ungroupFailed"), "error");
       }
     },
     [activeCompPath, projectIdRef, showToast, params, timelineElements],

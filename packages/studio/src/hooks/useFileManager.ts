@@ -8,6 +8,7 @@ import { serializeStudioFileMutation } from "../utils/studioFileMutationCoordina
 import { useFileTree } from "./useFileTree";
 import { useEditorSave } from "./useEditorSave";
 import { useProjectFileWriter } from "./useProjectFileWriter";
+import { t } from "../i18n";
 
 // ── Types ──
 
@@ -135,7 +136,8 @@ export function useFileManager({
       }
       fetch(`/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path)}`)
         .then((r) => {
-          if (!r.ok) throw new Error(`Failed to load ${path} (${r.status})`);
+          if (!r.ok)
+            throw new Error(t("fileManager.toast.loadFailedStatus", { path, status: r.status }));
           return r.json();
         })
         .then((data: { content?: string; version?: string }) => {
@@ -145,7 +147,10 @@ export function useFileManager({
           }
         })
         .catch((err: unknown) => {
-          showToast(err instanceof Error ? err.message : `Failed to load ${path}`, "error");
+          showToast(
+            err instanceof Error ? err.message : t("fileManager.toast.loadFailed", { path }),
+            "error",
+          );
         });
     },
     [fileVersions, showToast],
@@ -207,28 +212,31 @@ export function useFileManager({
         if (res.ok) {
           const data = await res.json();
           if (data.skipped?.length) {
-            showToast(`Skipped (too large): ${data.skipped.join(", ")}`);
+            showToast(t("fileManager.toast.skippedTooLarge", { names: data.skipped.join(", ") }));
           }
           if (data.invalid?.length) {
             const why = data.invalid
               .map((entry: { name: string; reason: string }) => `${entry.name} (${entry.reason})`)
               .join(", ");
-            showToast(`Not added: ${why}`);
+            showToast(t("fileManager.toast.notAdded", { why }));
           }
           if (data.unchecked?.length) {
             const names = data.unchecked.map((entry: { name: string }) => entry.name).join(", ");
-            showToast(`Added ${names}, ${data.unchecked[0].reason}`, "info");
+            showToast(
+              t("fileManager.toast.addedUnchecked", { names, reason: data.unchecked[0].reason }),
+              "info",
+            );
           }
           await refreshFileTree();
           setRefreshKey((k) => k + 1);
           return Array.isArray(data.files) ? data.files : [];
         } else if (res.status === 413) {
-          showToast("Upload rejected: payload too large");
+          showToast(t("fileManager.toast.uploadTooLarge"));
         } else {
-          showToast(`Upload failed (${res.status})`);
+          showToast(t("fileManager.toast.uploadFailed", { status: res.status }));
         }
       } catch {
-        showToast("Upload failed: network error");
+        showToast(t("fileManager.toast.uploadNetworkError"));
       }
       return [];
     },
@@ -258,9 +266,9 @@ export function useFileManager({
         await refreshFileTree();
         handleFileSelect(path);
       } else {
-        const err = await res.json().catch(() => ({ error: "unknown" }));
+        const err = await res.json().catch(() => ({ error: t("fileManager.toast.unknownReason") }));
         console.error(`Create file failed: ${err.error}`);
-        showToast(`Couldn't create ${path}: ${err.error}`, "error");
+        showToast(t("fileManager.toast.createFailed", { path, reason: err.error }), "error");
       }
     },
     [refreshFileTree, handleFileSelect, showToast],
@@ -281,9 +289,9 @@ export function useFileManager({
       if (res.ok) {
         await refreshFileTree();
       } else {
-        const err = await res.json().catch(() => ({ error: "unknown" }));
+        const err = await res.json().catch(() => ({ error: t("fileManager.toast.unknownReason") }));
         console.error(`Create folder failed: ${err.error}`);
-        showToast(`Couldn't create folder ${path}: ${err.error}`, "error");
+        showToast(t("fileManager.toast.createFolderFailed", { path, reason: err.error }), "error");
       }
     },
     [refreshFileTree, showToast],
@@ -303,9 +311,9 @@ export function useFileManager({
         if (editingPathRef.current === path) setEditingFile(null);
         await refreshFileTree();
       } else {
-        const err = await res.json().catch(() => ({ error: "unknown" }));
+        const err = await res.json().catch(() => ({ error: t("fileManager.toast.unknownReason") }));
         console.error(`Delete failed: ${err.error}`);
-        showToast(`Couldn't delete ${path}: ${err.error}`, "error");
+        showToast(t("fileManager.toast.deleteFailed", { path, reason: err.error }), "error");
       }
     },
     [refreshFileTree, showToast],
@@ -330,9 +338,12 @@ export function useFileManager({
         await refreshFileTree();
         setRefreshKey((k) => k + 1);
       } else {
-        const err = await res.json().catch(() => ({ error: "unknown" }));
+        const err = await res.json().catch(() => ({ error: t("fileManager.toast.unknownReason") }));
         console.error(`Rename failed: ${err.error}`);
-        showToast(`Couldn't rename ${oldPath}: ${err.error}`, "error");
+        showToast(
+          t("fileManager.toast.renameFailed", { path: oldPath, reason: err.error }),
+          "error",
+        );
       }
     },
     [refreshFileTree, handleFileSelect, setRefreshKey, showToast],
@@ -352,9 +363,9 @@ export function useFileManager({
         await refreshFileTree();
         if (data.path) handleFileSelect(data.path);
       } else {
-        const err = await res.json().catch(() => ({ error: "unknown" }));
+        const err = await res.json().catch(() => ({ error: t("fileManager.toast.unknownReason") }));
         console.error(`Duplicate failed: ${err.error}`);
-        showToast(`Couldn't duplicate ${path}: ${err.error}`, "error");
+        showToast(t("fileManager.toast.duplicateFailed", { path, reason: err.error }), "error");
       }
     },
     [refreshFileTree, handleFileSelect, showToast],

@@ -11,6 +11,7 @@ import { bumpDomEditCommitMapVersion, runDomEditCommit } from "./domEditCommitRu
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
+import { t } from "../i18n";
 
 // ── Types ──
 
@@ -300,7 +301,7 @@ export function useDomEditAttributeCommits({
   const handleDomAttributesCommit = useCallback(
     async (selection: DomEditSelection, attrs: Record<string, string>) => {
       await commitDataAttributes(selection, attrs, {
-        label: "Edit timing",
+        label: t("layer.history.editTiming"),
         coalescePrefix: "attrs",
         skipRefresh: false,
         refreshAfter: true,
@@ -312,7 +313,7 @@ export function useDomEditAttributeCommits({
   const handleDomAttributeCommit = useCallback(
     async (attr: string, value: string) => {
       await commitDataAttribute(attr, value, {
-        label: `Edit ${attr.replace(/-/g, " ")}`,
+        label: t("layer.history.editAttribute", { attribute: attr.replace(/-/g, " ") }),
         coalescePrefix: "attr",
         skipRefresh: false,
         refreshAfter: true,
@@ -329,7 +330,9 @@ export function useDomEditAttributeCommits({
       live?: { previewOnly?: boolean },
     ) => {
       await commitDataAttribute(attr, value, {
-        label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
+        label: t("layer.history.editAttribute", {
+          attribute: attr.replace(/^(data-)?/, "").replace(/-/g, " "),
+        }),
         coalescePrefix: "attr-live",
         skipRefresh: true,
         onSettled,
@@ -351,7 +354,9 @@ export function useDomEditAttributeCommits({
   const handleDomAttributeQuietCommit = useCallback(
     async (attr: string, value: string | null) => {
       await commitDataAttribute(attr, value, {
-        label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
+        label: t("layer.history.editAttribute", {
+          attribute: attr.replace(/^(data-)?/, "").replace(/-/g, " "),
+        }),
         coalescePrefix: "attr-quiet",
         skipRefresh: true,
         refreshAfter: true,
@@ -395,7 +400,7 @@ export function useDomEditAttributeCommits({
         },
         persist: () =>
           persistDomEditOperations(domEditSelection, [op], {
-            label: `Edit ${attr}`,
+            label: t("layer.history.editAttribute", { attribute: attr }),
             coalesceKey: commitKey,
             skipRefresh: false,
           }),

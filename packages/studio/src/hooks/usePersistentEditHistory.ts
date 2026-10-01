@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HistoryListItem, HistoryResult } from "@hyperframes/studio-server";
 import { studioFileContentVersion, studioWriteHeaders } from "../utils/studioFileVersion";
+import { t } from "../i18n";
 
 interface RecordEditInput {
   label: string;
@@ -63,12 +64,16 @@ async function post(
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
   }).catch(() => null);
-  if (!response) return { ok: false, status: 0, error: "Studio could not reach its server." };
+  if (!response) return { ok: false, status: 0, error: t("shell.history.serverUnreachable") };
   const reply = (await response.json().catch(() => null)) as { error?: string } | null;
   if (response.ok && reply) return { ok: true, body: reply };
   if (response.ok)
-    return { ok: false, status: response.status, error: "The history's reply was unreadable." };
-  return { ok: false, status: response.status, error: reply?.error ?? `HTTP ${response.status}` };
+    return { ok: false, status: response.status, error: t("shell.history.replyUnreadable") };
+  return {
+    ok: false,
+    status: response.status,
+    error: reply?.error ?? t("shell.history.httpStatus", { status: response.status }),
+  };
 }
 
 /** Whether a drag's claim is held open; a failed one is logged (its write lands as an outside change; 404: none). */

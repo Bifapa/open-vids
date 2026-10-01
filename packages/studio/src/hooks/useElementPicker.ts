@@ -11,6 +11,7 @@ import {
   acceptStudioRuntimeMessage,
   postRuntimeControlMessage,
 } from "../player/lib/runtimeProtocol";
+import { t } from "../i18n";
 import { compositionPathOfPreviewUrl } from "../player/components/CompositionThumbnail";
 import { getSourceFileForElement } from "../components/editor/domEditingDom";
 
@@ -308,7 +309,7 @@ function toPickedElement(el: PickedElementInfo, iframe: HTMLIFrameElement): Pick
     id: el.id ?? null,
     tagName: el.tagName ?? "div",
     selector: el.selector ?? "",
-    label: el.label ?? el.tagName ?? "Element",
+    label: el.label ?? el.tagName ?? t("layer.label.element"),
     boundingBox: el.boundingBox ?? { x: 0, y: 0, width: 0, height: 0 },
     textContent: el.textContent ?? null,
     src: el.src ?? null,

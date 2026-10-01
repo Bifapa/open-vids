@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
+import { t } from "../i18n";
 import type {
   CommitMutation,
   CommitMutationOptions,
@@ -25,7 +26,10 @@ export function useSafeGsapCommitMutation(
       // than an unhandled rejection.
       commitMutation(selection, mutation, options).catch((error) => {
         trackGsapSaveFailure(error, selection, mutation, options.label);
-        showToast?.(`Couldn't save animation: ${getStudioSaveErrorMessage(error)}`, "error");
+        showToast?.(
+          t("animation.toast.saveFailed", { message: getStudioSaveErrorMessage(error) }),
+          "error",
+        );
       }),
     [commitMutation, trackGsapSaveFailure, showToast],
   );

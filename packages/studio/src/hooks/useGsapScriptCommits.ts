@@ -11,6 +11,7 @@ import {
   isStudioSaveErrorAlreadyToasted,
   markStudioSaveErrorAlreadyToasted,
 } from "../utils/studioSaveDiagnostics";
+import { t } from "../i18n";
 import type { CutoverDeps } from "../utils/sdkCutover";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import { patchRuntimeTweenInPlace } from "./gsapRuntimePatch";
@@ -49,7 +50,7 @@ async function mutateGsapScript(
   );
   if (!res.ok) throw new GsapMutationHttpError(res.status, await readJsonResponseBody(res));
   const result = (await res.json()) as MutationResult;
-  if (!result.ok) throw new Error(`Failed to update GSAP in ${sourceFile}`);
+  if (!result.ok) throw new Error(t("animation.toast.updateFailed", { path: sourceFile }));
   return result;
 }
 
@@ -68,7 +69,7 @@ async function mutateGsapScriptBatch(
   );
   if (!res.ok) throw new GsapMutationHttpError(res.status, await readJsonResponseBody(res));
   const result = (await res.json()) as MutationResult;
-  if (!result.ok) throw new Error(`Failed to update GSAP in ${sourceFile}`);
+  if (!result.ok) throw new Error(t("animation.toast.updateFailed", { path: sourceFile }));
   return result;
 }
 
@@ -81,7 +82,7 @@ function showUnchangedMutationFeedback(
 ): void {
   if (result.changed !== false || mutations.length !== 1) return;
   if (mutations[0]?.type === "move-keyframe") {
-    showToast?.("A keyframe already exists at that time", "info");
+    showToast?.(t("animation.toast.keyframeExists"), "info");
   }
 }
 
@@ -93,7 +94,7 @@ async function runMutationRequest(
 ): Promise<MutationResult | undefined> {
   const unsafeFields = mutations.flatMap((mutation) => findUnsafeMutationValues(mutation));
   if (unsafeFields.length > 0) {
-    showToast?.("Couldn't read element layout — try again at a different playhead time", "error");
+    showToast?.(t("animation.toast.layoutUnreadable"), "error");
     if (options.skipReload) return;
     throw markStudioSaveErrorAlreadyToasted(
       new Error(
@@ -421,7 +422,10 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
   const handleGsapSaveFailure = useCallback(
     (error: unknown) => {
       if (!isStudioSaveErrorAlreadyToasted(error)) {
-        showToast?.(`Couldn't save animation: ${getStudioSaveErrorMessage(error)}`, "error");
+        showToast?.(
+          t("animation.toast.saveFailed", { message: getStudioSaveErrorMessage(error) }),
+          "error",
+        );
       }
     },
     [showToast],
@@ -459,7 +463,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
   // instead of a normalized full-DOM re-emit that would reformat the whole file.
   const readProjectFileContent = useCallback(
     (path: string): Promise<string> => {
-      if (!activeProjectId) throw new Error("No active project");
+      if (!activeProjectId) throw new Error(t("app.save.noActiveProject"));
       return readSharedProjectFileContent(activeProjectId, path);
     },
     [activeProjectId],

@@ -32,6 +32,7 @@ import {
   findElementForSelection,
   findElementForTimelineElement,
 } from "../components/editor/domEditingElement";
+import { t } from "../i18n";
 export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
 export { readFileContent };
 function isHTMLElement(element: Element | null): element is HTMLElement {
@@ -308,7 +309,7 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
   const targetPath = input.element.sourceFile || input.activeCompPath || "index.html";
   const patchTarget = buildPatchTarget(input.element);
   if (!patchTarget) {
-    throw new Error(`Timeline element ${input.element.id} is missing a patchable target`);
+    throw new Error(t("timeline.error.noPatchTarget", { id: input.element.id }));
   }
 
   input.pendingTimelineEditPathRef.current.add(targetPath);
@@ -320,7 +321,9 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
       [targetPath]: (current) => {
         const patched = input.buildPatches(current, patchTarget);
         if (patched === current) {
-          throw new Error(`Unable to patch timeline element ${input.element.id} in ${targetPath}`);
+          throw new Error(
+            t("timeline.error.patchFailed", { id: input.element.id, path: targetPath }),
+          );
         }
         return patched;
       },
@@ -356,10 +359,10 @@ export function patchTimelineChangesInSource(
   let current = source;
   for (const { element, buildPatches } of changes) {
     const target = buildPatchTarget(element);
-    if (!target) throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+    if (!target) throw new Error(t("timeline.error.noPatchTarget", { id: element.id }));
     // Resolve first: a member already at its target values patches to the same string, a missing one must throw.
     if (!findTagByTarget(current, target)) {
-      throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
+      throw new Error(t("timeline.error.patchFailed", { id: element.id, path: targetPath }));
     }
     current = buildPatches(current, target);
   }
@@ -477,7 +480,7 @@ export async function persistElementAttribute({
   return serializeStudioFileMutations(writeProjectFile, [targetPath], async () => {
     const before = await readFileContent(projectId, targetPath);
     if (readTagSnippetByTarget(before, patchTarget) === undefined) {
-      throw new Error(`Unable to patch element in ${targetPath}`);
+      throw new Error(t("timeline.error.patchElementFailed", { path: targetPath }));
     }
     // Unwind to the file's value: live writers already patched the DOM, so `readLive()`
     // would equal `value` and a failed save would keep a never-saved preview.

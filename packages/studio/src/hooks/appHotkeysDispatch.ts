@@ -9,6 +9,7 @@ import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { STUDIO_PLAIN_KEYS } from "../player/components/studioShortcuts";
+import { t } from "../i18n";
 
 // Extracted from useAppHotkeys.ts to keep it under the studio 600-line cap,
 // following useTimelineDeleteOps's precedent. Pure functions, no hooks — the
@@ -196,7 +197,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
       // that isn't in the raw `elements` list, so the s-key can't resolve them.
       // Nudge toward the razor tool instead of failing silently.
       if (!el && selectedElementId.includes("#")) {
-        cb.showToast("Use the razor tool (B) to split clips inside a sub-composition", "info");
+        cb.showToast(t("shell.history.razorInSubComposition", { key: "B" }), "info");
         return;
       }
     }

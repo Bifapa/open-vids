@@ -24,6 +24,7 @@ import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditComm
 import { domEditCommitDeclined, type DomEditCommitOutcome } from "./domEditCommitRunner";
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
+import { t } from "../i18n";
 
 interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   /** Route delete through SDK when session resolves the hf-id. */
@@ -91,13 +92,13 @@ export function useElementLifecycleOps({
       const label =
         selections.length === 1
           ? selection.label || selection.id || selection.selector || selection.tagName
-          : `${selections.length} elements`;
+          : t("layer.label.elementCount", { count: selections.length });
       // Say the press landed before doing the work. Deleting a marquee selection
       // takes seconds — reading the file, removing every member, saving, then
       // reloading the preview — and until it finishes the canvas looks exactly
       // like it did before. With nothing acknowledging the key, that silence is
       // indistinguishable from Delete being broken, which is how it got read.
-      if (selections.length > 1) showToast(`Deleting ${label}...`, "info");
+      if (selections.length > 1) showToast(t("layer.toast.deleting", { label }), "info");
 
       // One file per pass; anything authored elsewhere is dropped rather than
       // patched into the wrong document.
@@ -107,8 +108,8 @@ export function useElementLifecycleOps({
       );
       try {
         const patchTargets = sameFile.map((member) => buildDomEditPatchTarget(member));
-        if (patchTargets.some((t) => !t.id && !t.selector && !t.hfId)) {
-          throw new Error("Selected element has no patchable target");
+        if (patchTargets.some((target) => !target.id && !target.selector && !target.hfId)) {
+          throw new Error(t("layer.error.noPatchTarget"));
         }
 
         // The SDK path can take the whole selection only when every member is
@@ -133,7 +134,9 @@ export function useElementLifecycleOps({
             clearDomSelection();
             usePlayerStore.getState().setSelectedElementId(null);
             showToast(
-              `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
+              t(sameFile.length === 1 ? "layer.toast.deletedOne" : "layer.toast.deletedMany", {
+                label,
+              }),
               "info",
             );
             return { ok: true } as const;
@@ -147,7 +150,7 @@ export function useElementLifecycleOps({
         const deleted = await saveServerRewriteWithHistory({
           projectId: pid,
           path: targetPath,
-          label: "Delete element",
+          label: t("app.history.deleteElement"),
           writeFile: writeProjectFile,
           recordEdit: editHistory.recordEdit,
           rewrite: async (originalContent) => {
@@ -165,7 +168,7 @@ export function useElementLifecycleOps({
             if (!removeResponse.ok) {
               throw await createStudioSaveHttpError(
                 removeResponse,
-                `Failed to delete element from ${targetPath}`,
+                t("layer.error.deleteFailedIn", { path: targetPath }),
               );
             }
             const removeData = (await removeResponse.json()) as {
@@ -184,7 +187,7 @@ export function useElementLifecycleOps({
           // matching at all means the preview is describing a document the file
           // does not have — say so rather than reporting a delete that happened.
           reloadPreview();
-          showToast("Nothing to delete, the preview was out of date. Try again.");
+          showToast(t("layer.toast.deleteStale"));
           return domEditCommitDeclined("preview-stale");
         }
 
@@ -196,12 +199,14 @@ export function useElementLifecycleOps({
         reloadPreview();
         for (const member of sameFile) onElementDeleted?.(member);
         showToast(
-          `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
+          t(sameFile.length === 1 ? "layer.toast.deletedOne" : "layer.toast.deletedMany", {
+            label,
+          }),
           "info",
         );
         return { ok: true } as const;
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to delete element";
+        const message = error instanceof Error ? error.message : t("layer.toast.deleteFailed");
         showToast(message);
         // The toast is what tells the human. The returned outcome is what tells
         // a caller that has no screen to read.
@@ -345,7 +350,7 @@ export function useElementLifecycleOps({
           // server reports an unmatched patch target (live DOM ≠ disk).
           try {
             const result = await commitDomEditPatchBatches(batches, {
-              label: "Reorder layers",
+              label: t("layer.history.reorder"),
               coalesceKey,
               // Unbounded window: every key this commit records under is unique per
               // gesture (zReorderCoalesceKey's gesture seq, or the lane drag's

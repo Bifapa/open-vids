@@ -27,6 +27,7 @@ import {
 } from "../utils/studioHelpers";
 import { formatTimelineAttributeNumber } from "./timelineEditingHelpers";
 import { readFileContent } from "./timelineTimingSync";
+import { t } from "../i18n";
 import { commitTimelineCompositionInsertion } from "../utils/timelineCompositionInsert";
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
@@ -92,7 +93,7 @@ export function useTimelineAssetDropOps({
       durationOverride?: number,
     ): Promise<number | undefined> => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(t("timeline.toast.recordingBlocked"), "error");
         return undefined;
       }
       const targetPath = activeCompPath || "index.html";
@@ -100,11 +101,11 @@ export function useTimelineAssetDropOps({
         return undefined;
       }
       const pid = projectIdRef.current;
-      if (!pid) throw new Error("No active project");
+      if (!pid) throw new Error(t("app.save.noActiveProject"));
 
       const kind = getTimelineAssetKind(assetPath);
       if (!kind) {
-        showToast("Only image, video, and audio assets can be dropped onto the timeline.");
+        showToast(t("timeline.toast.dropKindUnsupported"));
         return undefined;
       }
 
@@ -168,7 +169,7 @@ export function useTimelineAssetDropOps({
 
         await saveProjectFilesWithHistory({
           projectId: pid,
-          label: "Add timeline asset",
+          label: t("timeline.history.addAsset"),
           files: { [targetPath]: insertAsset },
           readFile: (path) => readFileContent(pid, path),
           writeFile: writeProjectFile,
@@ -180,8 +181,7 @@ export function useTimelineAssetDropOps({
         reloadPreview();
         return track;
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to drop asset onto timeline";
+        const message = error instanceof Error ? error.message : t("timeline.toast.dropFailed");
         showToast(message);
         return undefined;
       }
@@ -210,7 +210,7 @@ export function useTimelineAssetDropOps({
   const handleTimelineFileDrop = useCallback(
     async (files: File[], placement?: TimelineDropPlacement) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(t("timeline.toast.recordingBlocked"), "error");
         return;
       }
       const targetPath = activeCompPath || "index.html";
@@ -257,7 +257,7 @@ export function useTimelineAssetDropOps({
   const handleTimelineCompositionDrop = useCallback(
     async (sourcePath: string, placement: Pick<TimelineElement, "start" | "track">) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(t("timeline.toast.recordingBlocked"), "error");
         return;
       }
       const targetPath = activeCompPath || "index.html";
@@ -265,7 +265,7 @@ export function useTimelineAssetDropOps({
         return;
       }
       const pid = projectIdRef.current;
-      if (!pid) throw new Error("No active project");
+      if (!pid) throw new Error(t("app.save.noActiveProject"));
       try {
         await commitTimelineCompositionInsertion({
           projectId: pid,
@@ -280,10 +280,10 @@ export function useTimelineAssetDropOps({
           resync: forceReloadSdkSession,
           refresh: reloadPreview,
         });
-        showToast("Composition added to the timeline.", "info");
+        showToast(t("timeline.toast.compositionAdded"), "info");
       } catch (error) {
         showToast(
-          error instanceof Error ? error.message : "Failed to add composition to timeline",
+          error instanceof Error ? error.message : t("app.save.addCompositionFailed"),
           "error",
         );
       }

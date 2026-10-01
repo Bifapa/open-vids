@@ -30,6 +30,18 @@ import { POSITION_PROPS } from "./gsapRuntimeReaders";
 import { roundTo3 } from "../utils/rounding";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { buildTemporalArcKeyframes } from "./gsapDragPositionCommit";
+import { t } from "../i18n";
+
+/**
+ * Undo-history labels, built when the commit runs. Module-level so the functions below keep their
+ * `t` (playhead time) parameters instead of shadowing the translate function.
+ */
+const historyLabel = {
+  enableKeyframes: () => t("animation.history.enableKeyframes"),
+  addKeyframe: () => t("animation.history.addKeyframe"),
+  extendMotionPath: () => t("animation.history.extendMotionPath"),
+  removeKeyframe: () => t("animation.history.removeKeyframe"),
+};
 
 let enableKeyframesTransactionCounter = 0;
 
@@ -159,7 +171,7 @@ async function replaceSetWithSingleKeyframe(
       keyframes: [{ percentage: 0, properties: position }],
       ease: setAnim.ease,
     },
-    { label: "Enable keyframes", softReload: true },
+    { label: historyLabel.enableKeyframes(), softReload: true },
   );
 }
 
@@ -268,7 +280,7 @@ async function extendKeyframedTweenToPlayhead(
       ease: anim.ease,
     },
     {
-      label: "Add keyframe",
+      label: historyLabel.addKeyframe(),
       softReload: true,
       ...commitOverrides,
     },
@@ -376,7 +388,7 @@ export async function promoteSetToKeyframes(
       ],
       ease: setAnim.ease,
     },
-    { label: "Add keyframe", softReload: true },
+    { label: historyLabel.addKeyframe(), softReload: true },
   );
 }
 
@@ -409,7 +421,7 @@ export async function applyArcKeyframeAtPlayhead(
           animationId: arcAnim.id,
           updates: { duration: roundTo3(t - start) },
         },
-        { label: "Extend motion path", softReload: true },
+        { label: historyLabel.extendMotionPath(), softReload: true },
       );
     }
     return;
@@ -431,7 +443,7 @@ export async function applyArcKeyframeAtPlayhead(
           keyframes: nodes.filter((_, index) => index !== timedNodeIndex),
           ease: "none",
         },
-        { label: "Remove keyframe", softReload: true },
+        { label: historyLabel.removeKeyframe(), softReload: true },
       );
     }
     return;
@@ -452,7 +464,7 @@ export async function applyArcKeyframeAtPlayhead(
       }),
       ease: "none",
     },
-    { label: "Add keyframe", softReload: true },
+    { label: historyLabel.addKeyframe(), softReload: true },
   );
 }
 
@@ -560,7 +572,7 @@ export function useEnableKeyframes(
             duration: roundTo3(elDuration),
             keyframes,
           },
-          { label: "Enable keyframes", softReload: true },
+          { label: historyLabel.enableKeyframes(), softReload: true },
         );
       } else {
         session.handleGsapAddAnimation("to");

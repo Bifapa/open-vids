@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { timelineTrackOrder, trackDisplayNumber, trackDisplaySuffix } from "./timelineTrackDisplay";
+import { timelineTrackOrder, trackDisplayNumber } from "./timelineTrackDisplay";
 
 describe("timelineTrackOrder", () => {
   it("is the ascending distinct key order, fractional sub-comp keys included", () => {
@@ -21,15 +21,5 @@ describe("trackDisplayNumber", () => {
     // The old end-row fallback announced "track 4" for a track the user cannot
     // see at row 4, and nothing upstream could tell that apart from a real row.
     expect(trackDisplayNumber([0, 1, 2], 7)).toBeNull();
-  });
-});
-
-describe("trackDisplaySuffix", () => {
-  it("names the row when there is one", () => {
-    expect(`Hide track${trackDisplaySuffix(3)}`).toBe("Hide track 3");
-  });
-
-  it("drops the number entirely when there is no row", () => {
-    expect(`Hide track${trackDisplaySuffix(null)}`).toBe("Hide track");
   });
 });

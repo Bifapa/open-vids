@@ -20,6 +20,7 @@ import {
   readFileContent,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
+import { t } from "../i18n";
 import {
   groupElementsByTargetPath,
   reseekPreviewRuntime,
@@ -36,7 +37,7 @@ function assertAudioGroupEditable(
   elements: readonly TimelineElement[],
 ): void {
   if (checkEditable && !checkEditable(elements)) {
-    throw new Error("Timeline edit blocked");
+    throw new Error(t("timeline.error.editBlocked"));
   }
 }
 
@@ -115,7 +116,7 @@ function insertGroupElement(html: string, groupId: string, label?: string): stri
     // every later group write (`buildPatchTarget({ domId })`) at that element,
     // stamping data-volume / data-hidden / data-fx-chain onto it.
     if (new RegExp(`^<\\s*${HF_AUDIO_GROUP_TAG}\\b`, "i").test(existing)) return html;
-    throw new Error(`Cannot create audio group: id ${groupId} is already used in this file`);
+    throw new Error(t("timeline.error.audioGroupIdTaken", { id: groupId }));
   }
   // The author's name for the group, from the naming dialog (groups doc §5).
   // Without it the timeline falls back to the minted id, which is the one thing
@@ -216,8 +217,8 @@ export async function createAudioGroupAndAssignMembers({
     const changedPaths = await saveProjectFilesWithHistory({
       projectId,
       label: groupLabel
-        ? `Group ${elements.length} clips as ${groupLabel}`
-        : `Group ${elements.length} voice clips`,
+        ? t("timeline.history.groupClipsAs", { count: elements.length, name: groupLabel })
+        : t("timeline.history.groupVoiceClips", { count: elements.length }),
       files,
       readFile: (path) => readFileContent(projectId, path),
       writeFile: writeProjectFile,
@@ -265,7 +266,7 @@ export function useAudioGroupCarveAssignment({
   return useCallback(
     async (clipIds: readonly string[], groupId: string, groupLabel?: string) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(t("timeline.toast.recordingBlocked"), "error");
         return;
       }
       const pid = projectIdRef.current;
@@ -288,7 +289,7 @@ export function useAudioGroupCarveAssignment({
           const missing = [...wanted].filter(
             (id) => !elements.some((item) => runtimeAudioId(item) === id),
           );
-          throw new Error(`Cannot group: no timeline clip for ${missing.join(", ")}`);
+          throw new Error(t("timeline.error.groupClipMissing", { ids: missing.join(", ") }));
         }
         await createAudioGroupAndAssignMembers({
           groupLabel,
@@ -303,7 +304,8 @@ export function useAudioGroupCarveAssignment({
         });
       } catch (error) {
         console.error("[Timeline] Failed to group voice clips", error);
-        const message = error instanceof Error ? error.message : "Failed to group voice clips";
+        const message =
+          error instanceof Error ? error.message : t("timeline.toast.groupVoiceFailed");
         showToast(message);
         // Rethrown, not just reported: the carve's auto-group chains
         // `.then(() => ({ ...next, sources: [groupId] }))` off this promise, so

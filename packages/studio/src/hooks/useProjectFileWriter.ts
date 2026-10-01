@@ -7,6 +7,7 @@ import {
 } from "../utils/studioSaveDiagnostics";
 import { studioExpectedFileVersion, studioWriteHeaders } from "../utils/studioFileVersion";
 import { trackProjectSave } from "../utils/saveActivity";
+import { t } from "../i18n";
 
 export interface UseProjectFileWriterOptions {
   projectId: string | null;
@@ -31,13 +32,14 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
 
   const readProjectFile = useCallback(
     async (path: string): Promise<string> => {
-      if (!projectId) throw new Error("No active project");
+      if (!projectId) throw new Error(t("app.save.noActiveProject"));
       const response = await fetch(
         `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}`,
       );
-      if (!response.ok) throw new Error(`Failed to read ${path}`);
+      if (!response.ok) throw new Error(t("app.save.readFailed", { path }));
       const data = (await response.json()) as { content?: string; version?: string };
-      if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
+      if (typeof data.content !== "string")
+        throw new Error(t("app.save.missingContents", { path }));
       fileVersions.set(path, data.version ?? response.headers.get("etag"));
       return data.content;
     },
@@ -46,11 +48,11 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
 
   const readOptionalProjectFile = useCallback(
     async (path: string): Promise<string> => {
-      if (!projectId) throw new Error("No active project");
+      if (!projectId) throw new Error(t("app.save.noActiveProject"));
       const response = await fetch(
         `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
       );
-      if (!response.ok) throw new Error(`Failed to read ${path}`);
+      if (!response.ok) throw new Error(t("app.save.readFailed", { path }));
       const data = (await response.json()) as { content?: string; version?: string };
       fileVersions.set(path, data.version ?? response.headers.get("etag"));
       return typeof data.content === "string" ? data.content : "";
@@ -61,7 +63,7 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
   const writeProjectFile = useCallback(
     (path: string, content: string, expectedContent?: string): Promise<void> =>
       trackProjectSave(async () => {
-        if (!projectId) throw new Error("No active project");
+        if (!projectId) throw new Error(t("app.save.noActiveProject"));
         const writeProjectId = projectId;
         let expectedVersion = await studioExpectedFileVersion(fileVersions, path, expectedContent);
         if (expectedVersion === undefined) {
@@ -79,7 +81,10 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
           } else if (preflight.status === 404) {
             expectedVersion = null;
           } else {
-            throw await createStudioSaveHttpError(preflight, `Failed to read ${path} before save`);
+            throw await createStudioSaveHttpError(
+              preflight,
+              t("app.save.readBeforeSaveFailed", { path }),
+            );
           }
         }
         await retryStudioSave(async () => {
@@ -100,7 +105,7 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
               },
             );
           } catch (error) {
-            throw new StudioSaveNetworkError(`Failed to save ${path}: network error`, {
+            throw new StudioSaveNetworkError(t("app.save.networkError", { path }), {
               cause: error,
             });
           }
@@ -122,11 +127,10 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
             });
           }
           if (!response.ok)
-            throw await createStudioSaveHttpError(response, `Failed to save ${path}`);
+            throw await createStudioSaveHttpError(response, t("app.save.saveFailed", { path }));
           const result = (await response.json()) as { version?: string };
           const version = result.version ?? response.headers.get("etag");
-          if (!version)
-            throw new Error(`Save response for ${path} did not include a content version`);
+          if (!version) throw new Error(t("app.save.noVersion", { path }));
           fileVersions.set(path, version);
         });
       }),

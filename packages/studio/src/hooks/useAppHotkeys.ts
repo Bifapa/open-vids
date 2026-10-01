@@ -9,6 +9,7 @@ import {
   isCaptionPreviewVisible,
 } from "../captions/components/CaptionOverlayUtils";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
+import { t } from "../i18n";
 import {
   type HotkeyCallbacks,
   dispatchModifierKey,
@@ -65,7 +66,12 @@ function tryApplyBeatHistory(
   const fileAt = fileStack[fileStack.length - 1]?.createdAt ?? null;
   if (fileAt !== null && (direction === "undo" ? beatAt < fileAt : beatAt > fileAt)) return false;
   const label = direction === "undo" ? ps.undoBeatEdits() : ps.redoBeatEdits();
-  if (label) showToast(`${direction === "undo" ? "Undid" : "Redid"} ${label}`, "info");
+  if (label) {
+    showToast(
+      t(direction === "undo" ? "shell.history.undid" : "shell.history.redid", { label }),
+      "info",
+    );
+  }
   return true;
 }
 
@@ -169,7 +175,10 @@ export function useAppHotkeys({
         const restored = direction === "undo" ? captionState.undo() : captionState.redo();
         if (restored) {
           applyCaptionModelToIframe(restored);
-          showToast(`${direction === "undo" ? "Undid" : "Redid"} caption edit`, "info");
+          showToast(
+            t(direction === "undo" ? "shell.history.undidCaption" : "shell.history.redidCaption"),
+            "info",
+          );
           return;
         }
         // Empty caption stack: fall through to beat/file history as usual.

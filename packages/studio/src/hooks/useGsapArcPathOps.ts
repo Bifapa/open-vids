@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
+import { t } from "../i18n";
 
 export function useGsapArcPathOps(commitMutationSafely: SafeGsapCommitMutation) {
   const setArcPath = useCallback(
@@ -20,7 +21,12 @@ export function useGsapArcPathOps(commitMutationSafely: SafeGsapCommitMutation) 
       commitMutationSafely(
         selection,
         { type: "set-arc-path" as const, animationId, ...config },
-        { label: config.enabled ? "Enable arc path" : "Disable arc path", softReload: true },
+        {
+          label: t(
+            config.enabled ? "animation.history.enableArcPath" : "animation.history.disableArcPath",
+          ),
+          softReload: true,
+        },
       );
     },
     [commitMutationSafely],
@@ -40,7 +46,7 @@ export function useGsapArcPathOps(commitMutationSafely: SafeGsapCommitMutation) 
       commitMutationSafely(
         selection,
         { type: "update-arc-segment" as const, animationId, segmentIndex, ...update },
-        { label: "Update arc segment", softReload: true },
+        { label: t("animation.history.updateArcSegment"), softReload: true },
       );
     },
     [commitMutationSafely],
@@ -51,7 +57,7 @@ export function useGsapArcPathOps(commitMutationSafely: SafeGsapCommitMutation) 
       commitMutationSafely(
         selection,
         { type: "remove-arc-path" as const, animationId },
-        { label: "Remove arc path", softReload: true },
+        { label: t("animation.history.removeArcPath"), softReload: true },
       );
     },
     [commitMutationSafely],

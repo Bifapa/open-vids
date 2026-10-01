@@ -4,6 +4,7 @@ import type { StudioContextValue } from "../contexts/StudioContext";
 import type { PanelId } from "../components/dock/panelRegistry";
 import type { TimelineFileDropHandler } from "./useTimelineEditingTypes";
 import { usePlayerStore } from "../player";
+import { t } from "../i18n";
 
 interface StudioContextInput {
   projectId: string;
@@ -57,7 +58,7 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
     // Conflict first: when both are true the conflict is the one the user has
     // been asked to decide, and resolving it is what unblocks the queue.
     writeBlockedReason: input.externalFileConflict
-      ? "an external change to this file is waiting to be resolved"
+      ? t("shell.saveQueue.externalChange")
       : input.domEditSaveQueuePaused,
     handleUndo: input.handleUndo,
     handleRedo: input.handleRedo,

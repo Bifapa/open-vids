@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { waitForMediaJob } from "../components/studioMediaJobs";
 import type { BackgroundRemovalProgress } from "../components/editor/propertyPanelTypes";
+import { t } from "../i18n";
 
 interface RemoveBackgroundOptions {
   createBackgroundPlate?: boolean;
@@ -47,16 +48,21 @@ export function useRemoveBackground(
         error?: string;
       };
       if (!response.ok || !data.jobId) {
-        throw new Error(data.error || `Background removal failed (${response.status})`);
+        throw new Error(
+          data.error || t("media.removeBackground.failedStatus", { status: response.status }),
+        );
       }
-      showToast("Removing background...", "info");
+      showToast(t("media.removeBackground.started"), "info");
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
       try {
         const result = await waitForMediaJob(data.jobId, options.onProgress, controller.signal);
         await refreshFileTree();
-        showToast(`Created transparent asset: ${result.outputPath.split("/").pop()}`, "info");
+        showToast(
+          t("media.removeBackground.created", { file: result.outputPath.split("/").pop() ?? "" }),
+          "info",
+        );
         return result;
       } finally {
         if (abortRef.current === controller) {
