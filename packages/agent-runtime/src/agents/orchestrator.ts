@@ -52,6 +52,8 @@ export interface TurnAgentSetup {
   jev: JevRuntime | null;
   catalog: AgentModelCatalog;
   editorContext?: EditorContext;
+  /** The user's UI language (BCP-47): every specialist task carries the reply-language block. */
+  userLanguage?: string;
   /** The user's Asset Search policy as the turn started (see research/prompt.ts); unset without a research host. */
   research?: ResearchTurnState;
   /** The Execution Quality the turn runs with: the preset and the budget it resolved to (fixed for the turn). */
@@ -533,6 +535,8 @@ export class Orchestrator {
     const taskText = renderPromptContext(
       `<task title=${JSON.stringify(input.title)} from=${JSON.stringify(AGENT_DISPLAY_NAMES[input.from])}>\n${input.task}\n</task>`,
       this.deps.setup.editorContext,
+      [],
+      this.deps.setup.userLanguage,
     );
     // Research works under the user's Asset Search policy; it is stated with every task it gets. Every specialist is
     // told what the user's Autonomy settings mean for locked material (and Research for downloads).

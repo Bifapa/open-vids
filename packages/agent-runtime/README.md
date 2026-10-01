@@ -479,6 +479,11 @@ results, `checkGate` / `framesGate` / `cancelDelay`, stored `reports`); the runt
 ## Turns, checkpoints, concurrency
 
 - One project-modifying turn at a time across all chats of a project (`chat_busy` / `project_busy`).
+- The user's UI language rides with every start and steer request as `userLanguage` (a BCP-47 tag
+  Studio takes from its i18n instance). `renderPromptContext` appends a `<user-language>` block
+  with one English instruction ("Reply to the user in Russian; keep tool calls, file contents, code
+  and identifiers unchanged") to the Director's prompt and to every specialist task; English or an
+  unknown tag adds nothing, so the prompt is byte-identical to before. System prompts stay English.
 - One prompt = one turn = one checkpoint. A checkpoint is a project-history window attributed to the
   `Director` agent (existing engine behind Undo); revert undoes the turn's entries newest first with
   `keep-later-edits` or `just-this`. If no checkpoint can be opened the turn does not start.

@@ -347,7 +347,7 @@ export class TurnRunner {
     if (this.active !== run || run.finalizing || !run.session) {
       throw new RuntimeError("turn_not_active", "Turn is no longer active", 409);
     }
-    const text = renderPromptContext(input.text, input.editorContext);
+    const text = renderPromptContext(input.text, input.editorContext, [], input.userLanguage);
     if (run.directorIdle) {
       // The Director is between prompts, waiting for delegated runs: the instruction opens its next prompt.
       run.pendingSteering.push(text);
@@ -836,7 +836,7 @@ export class TurnRunner {
         setup.execution.budget.qaPasses > 0 &&
         qaApplies(run.mode, run.storyAction);
       const promptPromise = promptDirector(
-        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references)}${intentBlock ? `\n\n${intentBlock}` : ""}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
+        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage)}${intentBlock ? `\n\n${intentBlock}` : ""}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
       );
       run.markPromptStarted();
       let outcome = await promptPromise;
@@ -925,6 +925,7 @@ export class TurnRunner {
         jevApiKey,
         catalog,
         ...(input.editorContext && { editorContext: input.editorContext }),
+        ...(input.userLanguage && { userLanguage: input.userLanguage }),
       }),
       model: chat.mainAgentModel ?? settings.director.model,
       thinking: chat.thinking ?? settings.director.thinking,

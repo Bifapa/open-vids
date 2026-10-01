@@ -236,6 +236,17 @@ describe("validators", () => {
     expect(parsed.value.editorContext?.selection.range).toEqual({ start: 1, end: 2 });
   });
 
+  it("carries the user's UI language on start and steer, and rejects a malformed tag", () => {
+    const started = parseStartTurn({ prompt: "x", userLanguage: "ru" });
+    expect(started.ok && started.value.userLanguage).toBe("ru");
+    const steered = parseSteerTurn({ text: "x", userLanguage: "pt-BR" });
+    expect(steered.ok && steered.value.userLanguage).toBe("pt-BR");
+    const absent = parseStartTurn({ prompt: "x" });
+    expect(absent.ok && "userLanguage" in absent.value).toBe(false);
+    expect(parseStartTurn({ prompt: "x", userLanguage: "Russian!" }).ok).toBe(false);
+    expect(parseSteerTurn({ text: "x", userLanguage: 7 }).ok).toBe(false);
+  });
+
   it("rejects empty prompts and steering text", () => {
     expect(parseStartTurn({ prompt: "  " }).ok).toBe(false);
     expect(parseSteerTurn({ text: "" }).ok).toBe(false);

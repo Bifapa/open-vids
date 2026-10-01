@@ -51,6 +51,8 @@ export function resolveTurnSetup(input: {
   jevApiKey: string | null;
   catalog: AgentModelCatalog;
   editorContext?: EditorContext;
+  /** The user's UI language (BCP-47); specialists are told to answer in it. */
+  userLanguage?: string;
   /** The runtime can render and check (an editing host and a QA host): the Director is told about Render QA. */
   qaAvailable: boolean;
 }): TurnAgentSetup {
@@ -69,6 +71,7 @@ export function resolveTurnSetup(input: {
     jev: resolveJev(settings, input.jevApiKey, catalog),
     catalog,
     ...(input.editorContext && { editorContext: input.editorContext }),
+    ...(input.userLanguage && { userLanguage: input.userLanguage }),
     execution: { preset: quality.preset, budget: resolveExecutionBudget(quality) },
     qaAvailable: input.qaAvailable,
     autonomy: {

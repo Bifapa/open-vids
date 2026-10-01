@@ -30,6 +30,7 @@ export function storyTurnRequest(
   action: StoryAction,
   options: StoryActionOptions | undefined,
   editorContext: EditorContext | undefined,
+  userLanguage?: string,
 ): StartTurnRequest {
   const storyOptions = compactOptions(options);
   return {
@@ -38,5 +39,6 @@ export function storyTurnRequest(
     storyAction: action,
     ...(storyOptions && { storyOptions }),
     editorContext,
+    ...(userLanguage && { userLanguage }),
   };
 }

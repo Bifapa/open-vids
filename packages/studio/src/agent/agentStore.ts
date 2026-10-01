@@ -16,7 +16,7 @@ import {
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import { AgentApiError, isActiveTurn, type AgentClient } from "./agentClient";
-import { t } from "../i18n";
+import { i18n, t } from "../i18n";
 import { describeAgentError } from "./agentErrors";
 import { runningTurn } from "./agentSelectors";
 import { draftCreation, mergeDraftChoices } from "./agentDraftChat";
@@ -303,6 +303,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         await client.startTurn(created.id, {
           prompt: text,
           editorContext: captureContext(),
+          userLanguage: i18n.language,
           ...options,
         });
       } catch (error) {
@@ -497,8 +498,16 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         set({ pending: running ? "steer" : "send", notice: null });
         const editorContext = captureContext();
         try {
-          if (running) await client.steerTurn(chatId, running.id, { text, editorContext });
-          else await client.startTurn(chatId, { prompt: text, editorContext, ...options });
+          const userLanguage = i18n.language;
+          if (running)
+            await client.steerTurn(chatId, running.id, { text, editorContext, userLanguage });
+          else
+            await client.startTurn(chatId, {
+              prompt: text,
+              editorContext,
+              userLanguage,
+              ...options,
+            });
           set((state) => ({ drafts: { ...state.drafts, [chatId]: "" } }));
           // Server-authoritative: the turn arrives on the stream. If the stream is down, ask.
           if (get().streamStatus !== "open") await resync(chatId);
@@ -527,7 +536,10 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
             await get().openChat(created.id);
             chatId = created.id;
           }
-          await client.startTurn(chatId, storyTurnRequest(action, options, captureContext()));
+          await client.startTurn(
+            chatId,
+            storyTurnRequest(action, options, captureContext(), i18n.language),
+          );
           if (get().streamStatus !== "open") await resync(chatId);
           return { ok: true };
         } catch (error) {

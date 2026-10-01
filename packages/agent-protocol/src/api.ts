@@ -100,6 +100,11 @@ export interface StartTurnRequest {
   storyAction?: StoryAction;
   /** The user's choices for a `build` or `rebuild` action; refused with any other action. */
   storyOptions?: StoryActionOptions;
+  /**
+   * The user's UI language as a BCP-47 code (`en`, `ru`, …). The agents answer in that language;
+   * absent means English behaviour.
+   */
+  userLanguage?: string;
 }
 
 export interface StartTurnResponse {
@@ -109,6 +114,11 @@ export interface StartTurnResponse {
 export interface SteerTurnRequest {
   text: string;
   editorContext?: EditorContext;
+  /**
+   * The user's UI language as a BCP-47 code (`en`, `ru`, …). The agents answer in that language;
+   * absent means English behaviour.
+   */
+  userLanguage?: string;
 }
 
 export interface SteerTurnResponse {

@@ -66,7 +66,10 @@ describe("consumeIntake", () => {
       enabledAgents: ["editor", "vision"],
       intent: "plan",
     });
-    expect(client.startTurn).toHaveBeenCalledWith("new", intakeTurnRequest(INTAKE));
+    expect(client.startTurn).toHaveBeenCalledWith("new", {
+      ...intakeTurnRequest(INTAKE),
+      userLanguage: "en",
+    });
     expect(store.getState().chatId).toBe("new");
     expect(reveal).toHaveBeenCalledTimes(1);
 

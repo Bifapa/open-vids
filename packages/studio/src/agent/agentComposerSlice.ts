@@ -13,7 +13,7 @@ import {
 } from "@hyperframes/agent-protocol";
 import type { AgentClient } from "./agentClient";
 import type { DraftChoices } from "./agentDraftChat";
-import { t } from "../i18n";
+import { i18n, t } from "../i18n";
 import { describeAgentError } from "./agentErrors";
 import { findModel } from "./agentSelectors";
 import type { ActionResult } from "./agentSettingsSlice";
@@ -126,7 +126,7 @@ export function createAgentComposerSlice({
         const request = intakeTurnRequest(intake);
         if (!request) return { ok: true };
         set({ pending: "send" });
-        await client.startTurn(created.id, request);
+        await client.startTurn(created.id, { ...request, userLanguage: i18n.language });
         // The turn arrives on the stream; a stream that is not up yet catches up from the snapshot.
         if (!isDisposed() && get().streamStatus !== "open") await get().openChat(created.id);
         return { ok: true };

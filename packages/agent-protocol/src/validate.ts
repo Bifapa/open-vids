@@ -651,6 +651,8 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
       return fail("a resolve action takes only storyOptions.missing");
     storyOptions = parsed.value;
   }
+  const userLanguage = parseUserLanguage(body.userLanguage);
+  if (!userLanguage.ok) return userLanguage;
   return {
     ok: true,
     value: {
@@ -661,8 +663,19 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
       ...(intent && { intent }),
       ...(storyAction && { storyAction }),
       ...(storyOptions && { storyOptions }),
+      ...(userLanguage.value && { userLanguage: userLanguage.value }),
     },
   };
+}
+
+/** A BCP-47-ish language tag (`en`, `ru`, `pt-BR`); absent is fine and means English behaviour. */
+const USER_LANGUAGE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/i;
+
+function parseUserLanguage(value: unknown): Parsed<string | undefined> {
+  if (value === undefined) return { ok: true, value: undefined };
+  if (typeof value !== "string" || !USER_LANGUAGE.test(value))
+    return fail("userLanguage must be a BCP-47 language tag");
+  return { ok: true, value };
 }
 
 const STORY_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -718,9 +731,15 @@ export function parseSteerTurn(body: unknown): Parsed<SteerTurnRequest> {
   if (!text.ok) return text;
   const editorContext = parseOptionalContext(body.editorContext);
   if (!editorContext.ok) return editorContext;
+  const userLanguage = parseUserLanguage(body.userLanguage);
+  if (!userLanguage.ok) return userLanguage;
   return {
     ok: true,
-    value: { text: text.value, ...(editorContext.value && { editorContext: editorContext.value }) },
+    value: {
+      text: text.value,
+      ...(editorContext.value && { editorContext: editorContext.value }),
+      ...(userLanguage.value && { userLanguage: userLanguage.value }),
+    },
   };
 }
 

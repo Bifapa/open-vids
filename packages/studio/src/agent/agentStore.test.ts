@@ -300,6 +300,7 @@ describe("send, steer and abort", () => {
     expect(client.startTurn).toHaveBeenCalledWith("c1", {
       prompt: "Trim the intro",
       editorContext: CONTEXT,
+      userLanguage: "en",
     });
     expect(client.steerTurn).not.toHaveBeenCalled();
     expect(created.getState().drafts.c1).toBe("");
@@ -315,6 +316,7 @@ describe("send, steer and abort", () => {
     expect(client.steerTurn).toHaveBeenCalledWith("c1", "t1", {
       text: "Make it shorter",
       editorContext: undefined,
+      userLanguage: "en",
     });
     expect(client.startTurn).not.toHaveBeenCalled();
   });
@@ -329,7 +331,11 @@ describe("send, steer and abort", () => {
     log.latest("/chats/").open();
     created.getState().setDraft("Go");
     await created.getState().send();
-    expect(client.startTurn).toHaveBeenCalledWith("c1", { prompt: "Go", editorContext: undefined });
+    expect(client.startTurn).toHaveBeenCalledWith("c1", {
+      prompt: "Go",
+      editorContext: undefined,
+      userLanguage: "en",
+    });
   });
 
   it("refetches the snapshot after a send when the stream is not connected", async () => {
