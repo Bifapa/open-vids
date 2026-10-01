@@ -1,3 +1,5 @@
+import { t } from "../../i18n";
+
 /**
  * The render route answers a refusal with `{ error, hint }` naming the exact
  * cause and how to fix it. Studio used to print the bare status code and drop
@@ -17,5 +19,5 @@ export async function readServerError(res: Response): Promise<string> {
   } catch {
     // Not JSON, or the body was already consumed — fall through to the status.
   }
-  return `Server error (${res.status}). Check the terminal for details.`;
+  return t("renders.error.server", { status: res.status });
 }

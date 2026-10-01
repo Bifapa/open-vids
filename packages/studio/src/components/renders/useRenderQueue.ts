@@ -6,6 +6,7 @@ import { confirmExportLicenses } from "../../research/exportLicenseGate";
 import { studioResearchClient } from "../../research/researchContext";
 import { readServerError } from "./serverError";
 import { ffmpegInstallMessage, useFfmpegStatus } from "./useFfmpegStatus";
+import { t } from "../../i18n";
 
 export interface RenderJob {
   id: string;
@@ -112,7 +113,7 @@ export function useRenderQueue(
     try {
       const res = await fetch(buildProjectApiPath(projectId, `/renders`));
       if (!res.ok) {
-        setLoadError(`Couldn't load render history (server error ${res.status}).`);
+        setLoadError(t("renders.error.loadHistoryStatus", { status: res.status }));
         return;
       }
       const data = await res.json();
@@ -144,7 +145,7 @@ export function useRenderQueue(
         });
       }
     } catch {
-      setLoadError("Couldn't load render history. Is the studio server running?");
+      setLoadError(t("renders.error.loadHistory"));
     }
   }, [projectId]);
 
@@ -166,7 +167,7 @@ export function useRenderQueue(
           status: "failed",
           progress: 0,
           error: ffmpegInstallMessage(ffmpeg),
-          filename: "Export blocked",
+          filename: t("renders.job.exportBlocked"),
           createdAt: Date.now(),
         });
         return;
@@ -226,8 +227,8 @@ export function useRenderQueue(
           id: generateId(),
           status: "failed",
           progress: 0,
-          error: `Could not reach render server: ${cause}. Use \`hyperframes render\` from the CLI instead.`,
-          filename: "Export failed",
+          error: t("renders.error.unreachable", { cause }),
+          filename: t("renders.job.exportFailed"),
           createdAt: startTime,
         };
         addSessionJob(failedJob);
@@ -239,7 +240,7 @@ export function useRenderQueue(
           status: "failed",
           progress: 0,
           error: await readServerError(res),
-          filename: "Export failed",
+          filename: t("renders.job.exportFailed"),
           createdAt: startTime,
         };
         addSessionJob(failedJob);
@@ -298,7 +299,7 @@ export function useRenderQueue(
               ? {
                   ...j,
                   status: "failed" as const,
-                  error: "Connection lost. Is the render server running?",
+                  error: t("renders.error.connectionLost"),
                 }
               : j,
           ),
@@ -325,7 +326,7 @@ export function useRenderQueue(
       try {
         const res = await fetch(`/api/render/${jobId}/cancel`, { method: "POST" });
         if (!res.ok && res.status !== 404) {
-          setActionError("Couldn't cancel on the server — the render may still be running.");
+          setActionError(t("renders.error.cancelFailed"));
           return;
         }
         // Reconcile with the status the route reports: if the render actually
@@ -339,7 +340,7 @@ export function useRenderQueue(
           }
         }
       } catch {
-        setActionError("Couldn't reach the server to cancel — the render may still be running.");
+        setActionError(t("renders.error.cancelUnreachable"));
       }
     },
     [closeActiveEventSource, loadRenders],
@@ -352,11 +353,11 @@ export function useRenderQueue(
       try {
         const res = await fetch(`/api/render/${jobId}`, { method: "DELETE" });
         if (!res.ok) {
-          setActionError("Couldn't delete the render — it's still on disk.");
+          setActionError(t("renders.error.deleteFailed"));
           return;
         }
       } catch {
-        setActionError("Couldn't reach the server to delete the render.");
+        setActionError(t("renders.error.deleteUnreachable"));
         return;
       }
       setJobs((prev) => prev.filter((j) => j.id !== jobId));

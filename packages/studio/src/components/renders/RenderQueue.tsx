@@ -18,6 +18,7 @@ import { Pill } from "../ui/Status";
 import { Tooltip } from "../ui/Tooltip";
 import { cn } from "../ui/cn";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
+import { Trans, useTranslation } from "../../i18n";
 
 export type StartRenderHandler = (
   format: RenderFormat,
@@ -70,6 +71,7 @@ function RecentRenders({
   RenderQueueProps,
   "projectId" | "onDelete" | "onClearCompleted" | "loadError" | "onRetryLoad"
 > & { jobs: RenderJob[] }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(true);
   return (
     <section className="-mx-3 border-t border-border-subtle">
@@ -84,7 +86,7 @@ function RecentRenders({
           aria-hidden
           className={cn("text-fg-3 transition-transform duration-expand", !open && "-rotate-90")}
         />
-        Recent Renders
+        {t("renders.recent.title")}
         {jobs.length > 0 && <Pill className="ml-auto">{jobs.length}</Pill>}
       </button>
       {open && (
@@ -94,23 +96,23 @@ function RecentRenders({
               <p className="m-0 text-center text-xs text-error">{loadError}</p>
               {onRetryLoad && (
                 <Button size="sm" onClick={onRetryLoad}>
-                  Retry
+                  {t("common.retry")}
                 </Button>
               )}
             </div>
           ) : jobs.length === 0 ? (
-            <p className="m-0 py-2 text-center text-xs text-fg-3">No renders yet</p>
+            <p className="m-0 py-2 text-center text-xs text-fg-3">{t("renders.recent.empty")}</p>
           ) : (
             <>
               <div className="mb-0.5 flex min-h-ctl-sm items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-xs text-fg-3">
-                  {jobs.length} render{jobs.length === 1 ? "" : "s"} · newest first
+                  {t("renders.recent.count", { count: jobs.length })}
                 </span>
                 {/* Hides rows only: files stay on disk (delete is per row and
                     confirmed) and hidden rows don't come back on reload. */}
-                <Tooltip label="Hide finished renders from this list (files stay on disk)">
+                <Tooltip label={t("renders.recent.clearTooltip")}>
                   <Button size="sm" variant="ghost" onClick={onClearCompleted} className="-mr-2">
-                    Clear Completed
+                    {t("renders.recent.clear")}
                   </Button>
                 </Tooltip>
               </div>
@@ -155,6 +157,7 @@ export const RenderQueue = memo(function RenderQueue({
   ffmpegChecking,
   onRecheckFfmpeg,
 }: RenderQueueProps) {
+  const { t } = useTranslation();
   const settingsState = useRenderSettings();
   const { settings } = settingsState;
 
@@ -179,7 +182,7 @@ export const RenderQueue = memo(function RenderQueue({
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg-0 text-sm text-fg">
       <header className="flex h-head shrink-0 items-center gap-1.5 border-b border-border-subtle pl-3 pr-2">
-        <h2 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold">Export</h2>
+        <h2 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold">{t("renders.title")}</h2>
         {headMeta && (
           <span className="min-w-0 truncate text-sm text-fg-2" title={headMeta}>
             {headMeta}
@@ -207,7 +210,7 @@ export const RenderQueue = memo(function RenderQueue({
               <IconButton
                 size="xs"
                 onClick={onDismissActionError}
-                aria-label="Dismiss error"
+                aria-label={t("renders.dismissError")}
                 icon={<X size={10} aria-hidden />}
               />
             )}
@@ -241,15 +244,16 @@ export const RenderQueue = memo(function RenderQueue({
           {missingFfmpeg ? (
             <>
               <WarningCircle size={12} className="shrink-0 text-warning" aria-hidden />
-              Install FFmpeg to render
+              {t("renders.installFfmpeg")}
             </>
           ) : lastRenderDurationMs !== undefined ? (
             <>
               <Clock size={12} className="shrink-0" aria-hidden />
-              Last render took{" "}
-              <span className="font-mono text-num text-fg-2">
-                {formatRenderDuration(lastRenderDurationMs)}
-              </span>
+              <Trans
+                i18nKey="renders.lastRenderTook"
+                values={{ duration: formatRenderDuration(lastRenderDurationMs) }}
+                components={{ mono: <span className="font-mono text-num text-fg-2" /> }}
+              />
             </>
           ) : null}
         </span>
@@ -259,7 +263,7 @@ export const RenderQueue = memo(function RenderQueue({
           data-testid="renders-export"
           loading={isRendering}
           disabled={missingFfmpeg !== null}
-          title={missingFfmpeg ? "Install FFmpeg to render. See the note above." : undefined}
+          title={missingFfmpeg ? t("renders.installFfmpegTitle") : undefined}
           onClick={() => {
             // loading already disables the button; this guard also stops a
             // double-click in the same frame from enqueueing two renders.
@@ -272,7 +276,7 @@ export const RenderQueue = memo(function RenderQueue({
             );
           }}
         >
-          {isRendering ? "Rendering…" : "Render"}
+          {isRendering ? t("renders.rendering") : t("renders.render")}
         </Button>
       </footer>
     </div>

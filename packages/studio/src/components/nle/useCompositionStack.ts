@@ -29,7 +29,7 @@ export function useCompositionStack({
   const [compositionStack, setCompositionStack] = useState<CompositionLevel[]>([
     {
       id: "master",
-      label: "Master",
+      label: "",
       previewUrl: buildProjectApiPath(projectId, `/preview`),
     },
   ]);
@@ -106,7 +106,7 @@ export function useCompositionStack({
   useEffect(() => {
     const master: CompositionLevel = {
       id: "master",
-      label: "Master",
+      label: "",
       previewUrl: buildProjectApiPath(projectId, `/preview`),
     };
     if (activeCompositionPath === "index.html") {

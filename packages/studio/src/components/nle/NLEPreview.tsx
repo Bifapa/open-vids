@@ -28,6 +28,7 @@ import {
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
 import { PreviewZoomOverlay, usePreviewNavigator } from "./PreviewZoomOverlay";
 import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
+import { formatPercent, t, useTranslation } from "../../i18n";
 interface NLEPreviewProps {
   projectId: string;
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -57,6 +58,12 @@ export function getPreviewPlayerKey({
   directUrl?: string;
 }): string {
   return directUrl ?? projectId;
+}
+
+function zoomHudText(state: PreviewZoomState): string {
+  return isPreviewAtFit(state)
+    ? t("timeline.zoom.fit")
+    : formatPercent(Math.round(state.zoomPercent) / 100);
 }
 
 const ZOOM_HUD_TIMEOUT_MS = 1200;
@@ -125,6 +132,7 @@ export const NLEPreview = memo(function NLEPreview({
   onCompositionSizeChange,
   fillBox,
 }: NLEPreviewProps) {
+  const { t } = useTranslation();
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -265,7 +273,7 @@ export const NLEPreview = memo(function NLEPreview({
           }
           // Live per-frame readout — without this the HUD shows an empty pill
           // on the first-ever zoom and a stale percentage mid-gesture.
-          hud.textContent = isPreviewAtFit(clamped) ? "Fit" : `${Math.round(clamped.zoomPercent)}%`;
+          hud.textContent = zoomHudText(clamped);
         }
       }
 
@@ -285,7 +293,7 @@ export const NLEPreview = memo(function NLEPreview({
         if (showHud) {
           const hud = hudRef.current;
           if (hud) {
-            hud.textContent = isPreviewAtFit(final) ? "Fit" : `${Math.round(final.zoomPercent)}%`;
+            hud.textContent = zoomHudText(final);
             if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
             hudTimerRef.current = setTimeout(() => {
               if (hudRef.current) hudRef.current.style.opacity = "0";
@@ -487,7 +495,7 @@ export const NLEPreview = memo(function NLEPreview({
         ref={viewportRef}
         className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-stage outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
         tabIndex={0}
-        aria-label="Composition preview"
+        aria-label={t("timeline.preview.label")}
       >
         <div
           className="absolute flex items-center justify-center pointer-events-none"

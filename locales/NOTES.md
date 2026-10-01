@@ -815,3 +815,75 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `player.waveform.unavailable` — Shown on an audio clip whose waveform could not be decoded.
 - `player.timeline.trackView` — Accessible name of the scrolling area that shows the timeline's tracks.
 - `player.clip.defaultLabel` — {tag} is an HTML tag name in lower case such as video or div; used when a clip has no name.
+
+## studio-nle
+
+- `timeline.assetPreview.closeTitle` — {key} is the Escape key name.
+- `timeline.assetPreview.insert` — Button: places the previewed asset on the timeline at the playhead.
+- `timeline.zoom.panned` — Chip over the preview: the view was moved without changing the zoom.
+- `timeline.zoom.zoomed` — Chip over the preview; {percent} is the zoom, shown in bold.
+- `timeline.zoom.fit` — Button that resets the preview zoom so the whole frame fits.
+- `timeline.stack.master` — Name of the top-level composition in the breadcrumb (index.html); "Master" as in master composition.
+- `timeline.captions.exit` — Leaves caption editing mode.
+- `timeline.meter.monitor` — Strip of the audio meters: the preview output (what you hear), not a clip group.
+- `timeline.meter.setVolume` — Name of the undo step after dragging a volume fader.
+- `timeline.meter.faderTitle` — {readout} is a gain such as "+6.0 dB".
+- `timeline.meter.volume` — {label} is an audio group name or "Monitor".
+- `timeline.preview.meta` — Caption of the preview header: composition name, size in pixels, frame rate.
+- `panels.variables.bind.kind.imageSource` — Button in the "Bind selected" card: promotes this property of the selected element to a variable.
+- `panels.variables.bind.noun.imageSource` — Lowercase form of the matching bind.kind label, inserted into a sentence.
+- `panels.variables.bind.selected` — Heading of the card; {name} is the label of the selected element.
+- `panels.variables.bind.idFor` — {what} is a lowercase noun such as "text color".
+- `panels.variables.bind.existsWithDefault` — {id} is an existing variable id; {value} its current default.
+- `panels.variables.bind.button` — {label} is the property (Text, Font…); the arrow reads "becomes a variable". Non-breaking space before the last word.
+- `panels.variables.issue.undeclared` — {id} is a variable id.
+- `panels.variables.issue.typeMismatch` — {expected} and {actual} are variable type names (string, number, boolean, color…) and stay in English.
+- `panels.variables.issue.enumOutOfRange` — {allowed} is a comma-separated list of allowed values.
+- `panels.variables.row.unused` — Small badge next to a variable no script reads.
+- `panels.variables.row.setDefault` — Button: writes the overridden preview value into the variable declaration.
+- `panels.variables.row.editTitle` — "Declaration" = the variable definition (id, type, default).
+- `panels.variables.empty` — Code identifiers inside <code> stay untranslated.
+- `panels.variables.history.declare` — Name of the undo step.
+- `panels.variables.history.edit` — Name of the undo step.
+- `panels.variables.history.remove` — Name of the undo step.
+- `panels.variables.history.setDefault` — Name of the undo step.
+- `panels.variables.history.bind` — Name of the undo step; {what} is a lowercase property noun such as "text color".
+- `panels.variables.noChange` — {label} is the name of the attempted edit.
+- `panels.variables.typeConflict` — {existing} and {wanted} are variable type names (string, color, font, image…).
+- `panels.variables.history.update` — Name of the undo step.
+- `panels.variables.form.label` — Human-readable name of a variable (not a tag).
+- `panels.variables.form.labelPlaceholder` — Example value for the variable label field.
+- `panels.variables.form.min` — Field of a number variable: minimum.
+- `panels.variables.form.max` — Field of a number variable: maximum.
+- `panels.variables.form.step` — Field of a number variable: step of the slider.
+- `panels.variables.form.options` — The line format value:Label is parsed; keep the colon.
+- `panels.slideshow.undoTitle` — {key} is the keyboard shortcut.
+- `panels.slideshow.undo` — {depth} is the number of edits that can be undone.
+- `panels.slideshow.slides` — Section header of the slideshow panel; {count} is the number of slides.
+- `panels.slideshow.selectScene` — "Scene" is a section of the composition that can become a slide.
+- `panels.slideshow.branches` — A branch is an alternative sequence of slides that hotspots jump to.
+- `panels.slideshow.hotspotTool` — A hotspot is a clickable element on a slide that jumps to a branch.
+- `panels.slideshow.inspector.fragments` — Hold-points pause the slide at a time until the presenter advances.
+- `panels.slideshow.inspector.markTitle` — {time} is the playhead time in seconds.
+- `panels.slideshow.inspector.seconds` — A time in seconds, e.g. 1.50s.
+- `panels.slideshow.branch.confirmDelete` — Inline confirmation; {count} is the number of slides in the branch.
+- `panels.slideshow.hotspot.none` — Shown instead of an element id when nothing is selected.
+- `renders.title` — Heading of the Renders panel (export surface).
+- `renders.lastRenderTook` — {duration} is a short duration such as "1m 5s".
+- `renders.rendering` — Label of the Render button while a render is running.
+- `renders.render` — Button that starts a render.
+- `renders.recent.clear` — Removes finished renders from the list only; files stay on disk.
+- `renders.job.rendering` — Fallback stage name of a running render.
+- `renders.job.exportBlocked` — Shown in place of a file name for a render that could not start.
+- `renders.job.exportFailed` — Shown in place of a file name for a render that could not start.
+- `renders.item.tookToRender` — Part of the meta line of a finished render, e.g. "MP4 · H.264 · 12s render · 5m ago".
+- `renders.item.keep` — Cancels the delete confirmation; the file stays.
+- `renders.item.deleteMenu` — The ellipsis means a confirmation follows.
+- `renders.settings.scale.auto` — Render at the composition's own size.
+- `renders.settings.scale.notInteger` — Why a resolution option is disabled: it is not a whole-number upscale of the composition size.
+- `renders.settings.editVariables` — Link that opens the Variables panel.
+- `renders.ffmpeg.installWith` — {remedy} is a shell command.
+- `renders.error.server` — {status} is an HTTP status code.
+- `renders.error.loadHistoryStatus` — {status} is an HTTP status code.
+- `renders.error.unreachable` — {cause} is the technical error text; `hyperframes render` is a CLI command and stays untranslated.
+- `panels.variables.history.bindPromote` — Name of the undo step when promoting a property to a variable from the Design panel; {what} is a lowercase property noun such as "text color".

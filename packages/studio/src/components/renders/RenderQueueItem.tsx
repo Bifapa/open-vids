@@ -15,18 +15,20 @@ import { Menu, MenuItem, MenuSeparator } from "../ui/Menu";
 import { Meter, Spinner } from "../ui/Status";
 import { cn } from "../ui/cn";
 import type { RenderJob } from "./useRenderQueue";
+import { formatDuration, formatNumber, formatPercent, t, useTranslation } from "../../i18n";
 
 export function formatRenderDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  const s = Math.round(ms / 1000);
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+  if (ms < 1000) {
+    return formatNumber(ms, { style: "unit", unit: "millisecond", unitDisplay: "narrow" });
+  }
+  return formatDuration(ms / 1000);
 }
 
 function formatTimeAgo(timestamp: number): string {
   const diff = Date.now() - timestamp;
-  if (diff < 60000) return "just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  return `${Math.floor(diff / 3600000)}h ago`;
+  if (diff < 60000) return t("renders.item.justNow");
+  if (diff < 3600000) return t("renders.item.minutesAgo", { count: Math.floor(diff / 60000) });
+  return t("renders.item.hoursAgo", { count: Math.floor(diff / 3600000) });
 }
 
 const FORMAT_LABEL: Record<string, string> = {
@@ -43,18 +45,24 @@ export const RenderJobStatus = memo(function RenderJobStatus({
   job: RenderJob;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="mt-2.5 grid gap-2 rounded-md border border-border-subtle bg-bg-1 px-2.5 py-2">
       <div className="flex min-h-[18px] items-center gap-2">
         <Spinner />
-        <b className="min-w-0 flex-1 truncate font-semibold text-fg">{job.stage || "Rendering"}</b>
-        <span className="font-mono text-num text-fg-2">{job.progress}%</span>
+        <b className="min-w-0 flex-1 truncate font-semibold text-fg">
+          {job.stage || t("renders.job.rendering")}
+        </b>
+        <span className="font-mono text-num text-fg-2">{formatPercent(job.progress / 100)}</span>
       </div>
-      <Meter value={job.progress / 100} label={`Render progress: ${job.progress}%`} />
+      <Meter
+        value={job.progress / 100}
+        label={t("renders.job.progress", { percent: formatPercent(job.progress / 100) })}
+      />
       <div className="flex min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1 truncate font-mono text-num text-fg-3">{job.filename}</span>
         <Button size="xs" variant="ghost" onClick={onCancel}>
-          Cancel Render
+          {t("renders.job.cancel")}
         </Button>
       </div>
     </div>
@@ -73,6 +81,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
   projectId,
   onDelete,
 }: RenderQueueItemProps) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -82,8 +91,11 @@ export const RenderQueueItem = memo(function RenderQueueItem({
   const isComplete = job.status === "complete";
   const extension = job.filename.split(".").pop()?.toLowerCase() ?? "";
   const meta = [FORMAT_LABEL[extension] ?? extension.toUpperCase()];
-  if (job.durationMs) meta.push(`${formatRenderDuration(job.durationMs)} render`);
+  if (job.durationMs) {
+    meta.push(t("renders.item.tookToRender", { duration: formatRenderDuration(job.durationMs) }));
+  }
   meta.push(formatTimeAgo(job.createdAt));
+  if (job.status === "cancelled") meta.unshift(t("renders.item.cancelled"));
 
   const open = () => window.open(fileSrc, "_blank");
   const download = () => {
@@ -113,7 +125,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
         type="button"
         onClick={isComplete ? open : undefined}
         disabled={!isComplete}
-        aria-label={isComplete ? `Open ${job.filename} in a new tab` : undefined}
+        aria-label={isComplete ? t("renders.item.openInTab", { name: job.filename }) : undefined}
         className={cn(
           "relative flex h-6 w-10 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-surface-1 text-fg-3 shadow-[inset_0_0_0_1px_var(--color-border-subtle)]",
           "outline-hidden focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
@@ -152,24 +164,23 @@ export const RenderQueueItem = memo(function RenderQueueItem({
         <b className="truncate text-sm font-medium leading-4 text-fg">{job.filename}</b>
         {confirmingDelete ? (
           <span className="truncate text-xs leading-[14px] text-error">
-            Delete this file from disk?
+            {t("renders.item.confirmDelete")}
           </span>
         ) : job.status === "failed" ? (
           <span className="truncate text-xs leading-[14px] text-error" title={job.error}>
-            {job.error ? `Failed: ${job.error}` : "Failed"}
+            {job.error
+              ? t("renders.item.failedWith", { error: job.error })
+              : t("renders.item.failed")}
           </span>
         ) : (
-          <span className="truncate text-xs leading-[14px] text-fg-3">
-            {job.status === "cancelled" ? "Cancelled · " : ""}
-            {meta.join(" · ")}
-          </span>
+          <span className="truncate text-xs leading-[14px] text-fg-3">{meta.join(" · ")}</span>
         )}
       </div>
 
       {confirmingDelete ? (
         <span className="flex shrink-0 items-center gap-1">
           <Button size="xs" variant="ghost" onClick={() => setConfirmingDelete(false)}>
-            Keep
+            {t("renders.item.keep")}
           </Button>
           <Button
             size="xs"
@@ -179,18 +190,18 @@ export const RenderQueueItem = memo(function RenderQueueItem({
               onDelete();
             }}
           >
-            Delete
+            {t("common.delete")}
           </Button>
         </span>
       ) : (
         <Menu
           side="bottom"
           align="end"
-          aria-label={`${job.filename} actions`}
+          aria-label={t("renders.item.menuLabel", { name: job.filename })}
           trigger={
             <IconButton
               size="xs"
-              aria-label={`Actions for ${job.filename}`}
+              aria-label={t("renders.item.actionsFor", { name: job.filename })}
               icon={<DotsThree size={14} weight="bold" aria-hidden />}
               className="text-fg-3 hover:bg-surface-3 hover:text-fg"
             />
@@ -201,14 +212,14 @@ export const RenderQueueItem = memo(function RenderQueueItem({
             disabled={!isComplete}
             onClick={open}
           >
-            Open
+            {t("common.open")}
           </MenuItem>
           <MenuItem
             icon={<DownloadSimple size={14} aria-hidden />}
             disabled={!isComplete}
             onClick={download}
           >
-            Download
+            {t("common.download")}
           </MenuItem>
           <MenuSeparator />
           <MenuItem
@@ -216,7 +227,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
             tone="danger"
             onClick={() => setConfirmingDelete(true)}
           >
-            Delete…
+            {t("renders.item.deleteMenu")}
           </MenuItem>
         </Menu>
       )}

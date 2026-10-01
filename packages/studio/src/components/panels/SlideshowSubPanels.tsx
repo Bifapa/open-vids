@@ -4,25 +4,13 @@
  */
 
 import { useState, useCallback, useId } from "react";
-import type { SlideRef, SlideHotspot, SlideSequence } from "@hyperframes/core/slideshow";
-import type { DomEditSelection } from "../editor/domEditing";
+import type { SlideRef, SlideSequence } from "@hyperframes/core/slideshow";
 import type { SceneInfo } from "./slideshowPanelHelpers";
-import { generateId } from "../../utils/generateId";
 import { CaretDown, X } from "@phosphor-icons/react";
 import { buttonBase, buttonSizes, buttonVariants } from "../ui/Button";
-import {
-  INSP_CHIP,
-  INSP_FOCUS_INSET,
-  INSP_MINI_BUTTON,
-  INSP_SELECT,
-} from "../editor/inspectorStyles";
-
-/** `.btn.sm` secondary, for the slide panels' plain buttons. */
-const SLIDE_BUTTON = `${buttonBase} ${buttonVariants.secondary} ${buttonSizes.sm} shrink-0`;
-
-/** `.ta` / `.input`: a boxed field on surface-1. */
-const SLIDE_FIELD =
-  "min-w-0 rounded-sm border border-border bg-surface-1 px-2 text-sm text-fg outline-hidden transition-colors placeholder:text-fg-3 hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
+import { INSP_CHIP, INSP_FOCUS_INSET, INSP_MINI_BUTTON } from "../editor/inspectorStyles";
+import { formatNumber, useTranslation } from "../../i18n";
+import { SLIDE_BUTTON, SLIDE_FIELD } from "./slideshowStyles";
 
 /** Scene start as mm:ss, the way the prototype's slide list shows it. */
 function formatSlideTime(seconds: number): string {
@@ -77,6 +65,7 @@ export function SlideList({
   onToggle,
   onReorder,
 }: SlideListProps) {
+  const { t } = useTranslation();
   const slideIds = new Set(slides.map((s) => s.sceneId));
   const sceneById = new Map(scenes.map((s) => [s.id, s]));
   const orderedSlideScenes = slides
@@ -111,7 +100,7 @@ export function SlideList({
           >
             <input
               type="checkbox"
-              aria-label={`Include ${scene.label} as main-line slide`}
+              aria-label={t("panels.slideshow.list.include", { scene: scene.label })}
               checked={isSlide}
               onChange={() => onToggle(scene.id)}
               onClick={(e) => e.stopPropagation()}
@@ -125,8 +114,8 @@ export function SlideList({
               <span className="flex shrink-0">
                 <button
                   type="button"
-                  aria-label="Move slide up"
-                  title="Move up"
+                  aria-label={t("panels.slideshow.list.moveUpLabel")}
+                  title={t("panels.slideshow.list.moveUp")}
                   disabled={slideIndex <= 0}
                   className={`${INSP_MINI_BUTTON} w-4`}
                   onClick={(e) => {
@@ -138,8 +127,8 @@ export function SlideList({
                 </button>
                 <button
                   type="button"
-                  aria-label="Move slide down"
-                  title="Move down"
+                  aria-label={t("panels.slideshow.list.moveDownLabel")}
+                  title={t("panels.slideshow.list.moveDown")}
                   disabled={slideIndex === slides.length - 1}
                   className={`${INSP_MINI_BUTTON} w-4`}
                   onClick={(e) => {
@@ -154,7 +143,9 @@ export function SlideList({
           </div>
         );
       })}
-      {scenes.length === 0 && <p className="m-0 px-1.5 py-2 text-sm text-fg-3">No scenes found</p>}
+      {scenes.length === 0 && (
+        <p className="m-0 px-1.5 py-2 text-sm text-fg-3">{t("panels.slideshow.list.empty")}</p>
+      )}
     </div>
   );
 }
@@ -178,45 +169,56 @@ export function SlideInspector({
   onMarkFragment,
   onRemoveFragment,
 }: SlideInspectorProps) {
+  const { t } = useTranslation();
   const fragments = slide?.fragments ?? [];
+  const formatSeconds = (seconds: number) =>
+    formatNumber(seconds, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      useGrouping: false,
+    });
   return (
     <div className="grid gap-2 px-3 py-2">
-      <p className="m-0 truncate font-mono text-num text-fg-3">Scene: {sceneId}</p>
+      <p className="m-0 truncate font-mono text-num text-fg-3">
+        {t("panels.slideshow.inspector.scene", { id: sceneId })}
+      </p>
       <div className="grid gap-1">
-        <label className="text-sm text-fg-3">Notes</label>
+        <label className="text-sm text-fg-3">{t("panels.slideshow.inspector.notes")}</label>
         <textarea
           className={`${SLIDE_FIELD} min-h-[60px] resize-y py-1.5`}
           rows={3}
-          placeholder="Speaker notes or script..."
+          placeholder={t("panels.slideshow.inspector.notesPlaceholder")}
           value={slide?.notes ?? ""}
           onChange={(e) => onSetNotes(e.target.value)}
         />
       </div>
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm text-fg-3">Fragment hold-points</span>
+          <span className="text-sm text-fg-3">{t("panels.slideshow.inspector.fragments")}</span>
           <button
             type="button"
             className={SLIDE_BUTTON}
             onClick={onMarkFragment}
-            title={`Mark ${currentTime.toFixed(2)}s as hold-point`}
+            title={t("panels.slideshow.inspector.markTitle", { time: formatSeconds(currentTime) })}
           >
-            Mark {currentTime.toFixed(2)}s
+            {t("panels.slideshow.inspector.mark", { time: formatSeconds(currentTime) })}
           </button>
         </div>
         {fragments.length > 0 ? (
           <div className="flex flex-wrap gap-1">
-            {fragments.map((t, i) => (
+            {fragments.map((time, i) => (
               <span
                 key={`frag-${i}`}
                 className={`${INSP_CHIP} inline-flex items-center gap-1 pr-0.5 font-mono text-num`}
               >
-                {t.toFixed(2)}s
+                {t("panels.slideshow.inspector.seconds", { time: formatSeconds(time) })}
                 <button
                   type="button"
-                  aria-label={`Remove fragment at ${t.toFixed(2)}s`}
+                  aria-label={t("panels.slideshow.inspector.removeFragment", {
+                    time: formatSeconds(time),
+                  })}
                   className={`${INSP_MINI_BUTTON} size-4 hover:text-error`}
-                  onClick={() => onRemoveFragment(t)}
+                  onClick={() => onRemoveFragment(time)}
                 >
                   <X size={10} aria-hidden="true" />
                 </button>
@@ -224,7 +226,7 @@ export function SlideInspector({
             ))}
           </div>
         ) : (
-          <p className="m-0 text-xs text-fg-3">No hold-points yet</p>
+          <p className="m-0 text-xs text-fg-3">{t("panels.slideshow.inspector.noFragments")}</p>
         )}
       </div>
     </div>
@@ -256,6 +258,7 @@ export function BranchTree({
   selectedSequenceId,
   onSelectBranchSlide,
 }: BranchTreeProps) {
+  const { t } = useTranslation();
   const [newLabel, setNewLabel] = useState("");
   const inputId = useId();
 
@@ -273,21 +276,21 @@ export function BranchTree({
           id={inputId}
           type="text"
           className={`${SLIDE_FIELD} h-ctl-sm flex-1`}
-          placeholder="New branch name..."
+          placeholder={t("panels.slideshow.branch.newPlaceholder")}
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleCreate();
           }}
-          aria-label="New branch sequence name"
+          aria-label={t("panels.slideshow.branch.newLabel")}
         />
         <button type="button" className={SLIDE_BUTTON} onClick={handleCreate}>
-          Add
+          {t("common.add")}
         </button>
       </div>
 
       {sequences.length === 0 ? (
-        <p className="text-xs text-fg-disabled italic">No branches yet</p>
+        <p className="text-xs text-fg-disabled italic">{t("panels.slideshow.branch.empty")}</p>
       ) : (
         <div className="flex flex-col gap-3">
           {sequences.map((seq) => (
@@ -330,6 +333,7 @@ function BranchItem({
   selectedSequenceId,
   onSelectBranchSlide,
 }: BranchItemProps) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(seq.label);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -354,14 +358,14 @@ function BranchItem({
               if (e.key === "Enter") commitRename();
               if (e.key === "Escape") setEditing(false);
             }}
-            aria-label={`Rename branch ${seq.label}`}
+            aria-label={t("panels.slideshow.branch.renameLabel", { name: seq.label })}
           />
         ) : (
           <span
             role="button"
             tabIndex={0}
             className="min-w-0 flex-1 cursor-pointer truncate text-sm font-medium text-fg hover:text-fg-2"
-            title="Click to rename"
+            title={t("panels.slideshow.branch.renameHint")}
             onClick={() => setEditing(true)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -375,7 +379,7 @@ function BranchItem({
         )}
         <button
           type="button"
-          aria-label={`Delete branch ${seq.label}`}
+          aria-label={t("panels.slideshow.branch.deleteLabel", { name: seq.label })}
           className={`${INSP_MINI_BUTTON} hover:text-error`}
           onClick={() => setConfirmingDelete(true)}
         >
@@ -385,11 +389,10 @@ function BranchItem({
       {confirmingDelete && (
         <div className="grid gap-1 rounded-sm border border-error/35 bg-error-soft px-2 py-1.5">
           <span className="text-xs text-fg-2">
-            Delete branch &ldquo;{seq.label}&rdquo;
-            {seq.slides.length > 0
-              ? ` and its ${seq.slides.length} slide${seq.slides.length === 1 ? "" : "s"}`
-              : ""}
-            ? Hotspots pointing to it will no longer resolve.
+            {t("panels.slideshow.branch.confirmDelete", {
+              name: seq.label,
+              count: seq.slides.length,
+            })}
           </span>
           <div className="flex items-center justify-end gap-1">
             <button
@@ -400,14 +403,14 @@ function BranchItem({
               }}
               className={`${buttonBase} ${buttonVariants.danger} ${buttonSizes.xs}`}
             >
-              Delete
+              {t("common.delete")}
             </button>
             <button
               type="button"
               onClick={() => setConfirmingDelete(false)}
               className={`${buttonBase} ${buttonVariants.ghost} ${buttonSizes.xs}`}
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </div>
@@ -420,7 +423,10 @@ function BranchItem({
             <div key={scene.id} className="flex items-center gap-1.5 py-0.5 text-sm text-fg-2">
               <input
                 type="checkbox"
-                aria-label={`Assign ${scene.label || scene.id} to branch ${seq.label}`}
+                aria-label={t("panels.slideshow.branch.assignLabel", {
+                  scene: scene.label || scene.id,
+                  branch: seq.label,
+                })}
                 checked={assigned}
                 onChange={(e) => onAssign(seq.id, scene.id, e.target.checked)}
                 className="accent-accent shrink-0"
@@ -442,138 +448,10 @@ function BranchItem({
             </div>
           );
         })}
-        {scenes.length === 0 && <p className="text-xs text-fg-disabled italic">No scenes</p>}
-      </div>
-    </div>
-  );
-}
-
-// ── Sub-surface: Hotspot Tool ─────────────────────────────────────────────
-
-export interface HotspotToolProps {
-  selectedSceneId: string | null;
-  slide: SlideRef | undefined;
-  domEditSelection: DomEditSelection | null;
-  sequences: SlideSequence[];
-  onAddHotspot: (sceneId: string, hotspot: SlideHotspot) => void;
-  onRemoveHotspot: (sceneId: string, hotspotId: string) => void;
-}
-
-export function HotspotTool({
-  selectedSceneId,
-  slide,
-  domEditSelection,
-  sequences,
-  onAddHotspot,
-  onRemoveHotspot,
-}: HotspotToolProps) {
-  const [targetSequenceId, setTargetSequenceId] = useState("");
-  const [hotspotLabel, setHotspotLabel] = useState("");
-  const hotspots = slide?.hotspots ?? [];
-
-  const selectedElementId = domEditSelection?.element?.id ?? null;
-  const selectedHfId = domEditSelection?.hfId ?? null;
-  const elementKey = selectedElementId || selectedHfId;
-
-  const handleMakeHotspot = useCallback(() => {
-    if (!selectedSceneId || !targetSequenceId || !elementKey) return;
-    const id = `hotspot-${elementKey}-${generateId()}`;
-    const label = hotspotLabel.trim() || elementKey;
-    onAddHotspot(selectedSceneId, { id, label, target: targetSequenceId });
-    setHotspotLabel("");
-  }, [selectedSceneId, targetSequenceId, elementKey, hotspotLabel, onAddHotspot]);
-
-  if (!selectedSceneId) {
-    return (
-      <div className="px-3 py-2">
-        <p className="m-0 text-sm text-fg-3">Select a scene in the Slides list</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid gap-2 px-3 py-2">
-      <div className="grid gap-1.5">
-        <p className="m-0 text-sm text-fg-3">
-          Selected element:{" "}
-          <span className="font-mono text-num text-fg">{elementKey ?? "none"}</span>
-        </p>
-        {!elementKey && (
-          <p className="m-0 text-xs text-fg-3">
-            Click an element on the canvas to choose the hotspot target.
-          </p>
+        {scenes.length === 0 && (
+          <p className="text-xs text-fg-disabled italic">{t("panels.slideshow.branch.noScenes")}</p>
         )}
-        {sequences.length === 0 && (
-          <p className="m-0 text-xs text-fg-3">
-            Create a branch in the Branches section first — hotspots jump to a branch.
-          </p>
-        )}
-        <label className="text-sm text-fg-3">Hotspot label</label>
-        <input
-          type="text"
-          className={`${SLIDE_FIELD} h-ctl-sm`}
-          placeholder="Button label..."
-          value={hotspotLabel}
-          onChange={(e) => setHotspotLabel(e.target.value)}
-          aria-label="Hotspot label"
-        />
-        <label className="text-sm text-fg-3">Target branch</label>
-        <select
-          className={INSP_SELECT}
-          value={targetSequenceId}
-          onChange={(e) => setTargetSequenceId(e.target.value)}
-          aria-label="Target branch sequence"
-        >
-          <option value="">— select branch —</option>
-          {sequences.map((seq) => (
-            <option key={seq.id} value={seq.id}>
-              {seq.label}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          disabled={!elementKey || !targetSequenceId}
-          title={
-            !elementKey
-              ? "Select an element on the canvas first"
-              : !targetSequenceId
-                ? "Choose a target branch first"
-                : undefined
-          }
-          className={`${buttonBase} ${buttonVariants.primary} ${buttonSizes.sm} justify-self-start`}
-          onClick={handleMakeHotspot}
-        >
-          Make hotspot
-        </button>
       </div>
-
-      {hotspots.length > 0 && (
-        <div className="grid gap-1">
-          <p className="m-0 text-xs font-semibold text-fg-2">Hotspots on this slide</p>
-          {hotspots.map((h) => {
-            const seqLabel = sequences.find((s) => s.id === h.target)?.label ?? h.target;
-            return (
-              <div
-                key={h.id}
-                className="flex h-row-sm items-center gap-2 rounded-sm border border-border-subtle bg-bg-1 pr-1 pl-2"
-              >
-                <span className="min-w-0 flex-1 truncate text-sm text-fg">
-                  {h.label} → <span className="text-fg-3">{seqLabel}</span>
-                </span>
-                <button
-                  type="button"
-                  aria-label={`Remove hotspot ${h.label}`}
-                  className={`${INSP_MINI_BUTTON} hover:text-error`}
-                  onClick={() => onRemoveHotspot(selectedSceneId, h.id)}
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

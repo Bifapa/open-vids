@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "../../i18n";
 
 /**
  * What the dev server knows about this machine's FFmpeg, as reported by
@@ -31,9 +32,11 @@ type ProbeResult = FfmpegStatus | null;
  * is narrow, and the command is the part the user acts on.
  */
 export function ffmpegInstallMessage(status: FfmpegStatus | null): string {
-  const title = status?.title ?? "FFmpeg not found";
+  const title = status?.title ?? t("renders.ffmpeg.notFound");
   const remedy = status?.command ?? status?.hint;
-  return remedy ? `${title}. Install it with: ${remedy}` : `${title}. Install FFmpeg to export.`;
+  return remedy
+    ? t("renders.ffmpeg.installWith", { title, remedy })
+    : t("renders.ffmpeg.installToExport", { title });
 }
 
 // The Render panel unmounts on every right-panel tab switch, and each miss

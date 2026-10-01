@@ -7,6 +7,7 @@
 import { useState } from "react";
 import type { CompositionVariable, CompositionVariableType } from "@hyperframes/sdk";
 import { VARIABLES_INPUT_CLASS } from "./VariablesValueControls";
+import { t, useTranslation, type TranslationKey } from "../../i18n";
 
 const VARIABLE_TYPES: CompositionVariableType[] = [
   "string",
@@ -17,6 +18,12 @@ const VARIABLE_TYPES: CompositionVariableType[] = [
   "font",
   "image",
 ];
+
+const CONSTRAINT_LABEL_KEYS = {
+  min: "panels.variables.form.min",
+  max: "panels.variables.form.max",
+  step: "panels.variables.form.step",
+} as const satisfies Record<"min" | "max" | "step", TranslationKey>;
 
 export interface DeclarationDraft {
   id: string;
@@ -65,7 +72,7 @@ function numberDeclFromDraft(
   draft: DeclarationDraft,
 ): CompositionVariable | string {
   const value = Number(draft.defaultRaw);
-  if (!Number.isFinite(value)) return "Default must be a number.";
+  if (!Number.isFinite(value)) return t("panels.variables.form.error.defaultNumber");
   const constraint = (key: "min" | "max" | "step") => {
     const raw = draft[key].trim();
     if (!raw) return {};
@@ -96,9 +103,10 @@ function enumDeclFromDraft(
       return { value: v, label: rest.join(":").trim() || v };
     })
     .filter((o) => o.value.length > 0);
-  if (options.length === 0) return "Enum needs at least one option (one per line, value:Label).";
+  if (options.length === 0) return t("panels.variables.form.error.enumNeedsOption");
   const value = draft.defaultRaw.trim() || (options[0]?.value ?? "");
-  if (!options.some((o) => o.value === value)) return "Default must be one of the options.";
+  if (!options.some((o) => o.value === value))
+    return t("panels.variables.form.error.defaultInOptions");
   return { ...base, type: "enum", default: value, options };
 }
 
@@ -139,7 +147,7 @@ export function mergeDeclarationEdit(
 /** Build a typed declaration from the form draft; string on validation error. */
 export function declarationFromDraft(draft: DeclarationDraft): CompositionVariable | string {
   const id = draft.id.trim();
-  if (!id) return "Variable id is required.";
+  if (!id) return t("panels.variables.form.error.idRequired");
   const label = draft.label.trim() || id;
   const description = draft.description.trim() || undefined;
   const base = { id, label, ...(description ? { description } : {}) };
@@ -205,6 +213,7 @@ export function DeclarationForm({
   onSubmit: (decl: CompositionVariable) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<DeclarationDraft>(initial);
   const [error, setError] = useState<string | null>(null);
   const editingExisting = initial.id.length > 0;
@@ -223,7 +232,7 @@ export function DeclarationForm({
   return (
     <div className="space-y-2 rounded-md border border-border bg-surface-1/60 p-2">
       <div className="grid grid-cols-2 gap-2">
-        <Field label="ID">
+        <Field label={t("panels.variables.form.id")}>
           <input
             type="text"
             value={draft.id}
@@ -233,41 +242,41 @@ export function DeclarationForm({
             className={`${VARIABLES_INPUT_CLASS} font-mono disabled:opacity-50`}
           />
         </Field>
-        <Field label="Label">
+        <Field label={t("panels.variables.form.label")}>
           <input
             type="text"
             value={draft.label}
             onChange={(e) => set({ label: e.target.value })}
-            placeholder="Title"
+            placeholder={t("panels.variables.form.labelPlaceholder")}
             className={VARIABLES_INPUT_CLASS}
           />
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Type">
+        <Field label={t("panels.variables.form.type")}>
           <select
             value={draft.type}
             onChange={(e) => {
-              const type = VARIABLE_TYPES.find((t) => t === e.target.value);
+              const type = VARIABLE_TYPES.find((candidate) => candidate === e.target.value);
               if (type) set({ type });
             }}
             className={VARIABLES_INPUT_CLASS}
           >
-            {VARIABLE_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
+            {VARIABLE_TYPES.map((candidate) => (
+              <option key={candidate} value={candidate}>
+                {candidate}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="Default">
+        <Field label={t("common.default")}>
           <DefaultField draft={draft} onChange={(defaultRaw) => set({ defaultRaw })} />
         </Field>
       </div>
       {draft.type === "number" && (
         <div className="grid grid-cols-3 gap-2">
           {(["min", "max", "step"] as const).map((key) => (
-            <Field key={key} label={key}>
+            <Field key={key} label={t(CONSTRAINT_LABEL_KEYS[key])}>
               <input
                 type="text"
                 value={draft[key]}
@@ -279,7 +288,7 @@ export function DeclarationForm({
         </div>
       )}
       {draft.type === "enum" && (
-        <Field label="Options (one per line, value:Label)">
+        <Field label={t("panels.variables.form.options")}>
           <textarea
             value={draft.optionsRaw}
             onChange={(e) => set({ optionsRaw: e.target.value })}
@@ -288,7 +297,7 @@ export function DeclarationForm({
           />
         </Field>
       )}
-      <Field label="Description (optional)">
+      <Field label={t("panels.variables.form.description")}>
         <input
           type="text"
           value={draft.description}
@@ -303,7 +312,7 @@ export function DeclarationForm({
           onClick={onCancel}
           className="h-6 rounded-sm px-2 text-xs text-fg-3 hover:text-fg-2"
         >
-          Cancel
+          {t("common.cancel")}
         </button>
         <button
           type="button"

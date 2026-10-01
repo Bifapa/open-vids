@@ -3,6 +3,7 @@ import { ArrowsClockwise, Copy, WarningCircle } from "@phosphor-icons/react";
 import { Button } from "../ui/Button";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import type { FfmpegStatus } from "./useFfmpegStatus";
+import { useTranslation } from "../../i18n";
 
 const DOWNLOAD_URL = "https://ffmpeg.org/download.html";
 const CUE_MS = 1600;
@@ -26,6 +27,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
   checking: boolean;
   onRecheck: () => void;
 }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   // A recheck that finds nothing changes no other pixel on screen, so without
   // this the button reads as broken at the exact moment the user is most
@@ -65,10 +67,10 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
     >
       <p className="m-0 flex items-center gap-1.5 font-semibold text-fg">
         <WarningCircle size={12} weight="bold" className="shrink-0 text-warning" aria-hidden />
-        {status.title ?? "FFmpeg not found"}
+        {status.title ?? t("renders.ffmpeg.notFound")}
       </p>
       <p className="m-0 text-xs text-fg-2 text-pretty">
-        {status.detail ?? "FFmpeg is required to encode video."}
+        {status.detail ?? t("renders.ffmpeg.required")}
       </p>
 
       {status.command ? (
@@ -84,7 +86,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
             onClick={() => void copy(status.command ?? "")}
             className="min-w-[76px] justify-center"
           >
-            {copied ? "Copied" : "Copy"}
+            {copied ? t("common.copied") : t("common.copy")}
           </Button>
         </div>
       ) : (
@@ -98,7 +100,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
           onClick={onRecheck}
           disabled={checking}
         >
-          {checking ? "Checking…" : "Check Again"}
+          {checking ? t("renders.ffmpeg.checking") : t("renders.ffmpeg.checkAgain")}
         </Button>
         <a
           href={DOWNLOAD_URL}
@@ -106,12 +108,12 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
           rel="noreferrer"
           className="rounded-xs text-xs text-fg-2 underline decoration-border-strong underline-offset-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         >
-          Other install options
+          {t("renders.ffmpeg.otherOptions")}
         </a>
         {/* Last in the row and only ever appended, so appearing and vanishing
             moves nothing that sits before it. */}
         <span aria-live="polite" className="ml-auto text-xs text-fg-2">
-          {recheckFailed ? "Still not found" : ""}
+          {recheckFailed ? t("renders.ffmpeg.stillNotFound") : ""}
         </span>
       </div>
     </div>

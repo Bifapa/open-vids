@@ -4,6 +4,7 @@ import { useFrameCapture } from "../../hooks/useFrameCapture";
 import { STUDIO_PREVIEW_FPS } from "../../player/lib/time";
 import { SnapToolbar } from "../editor/SnapToolbar";
 import { Spinner, Tooltip, buttonBase, buttonVariants, cn } from "../ui";
+import { useTranslation } from "../../i18n";
 
 /** "compositions/intro.html" → "intro". */
 function compositionName(path: string | null): string {
@@ -17,11 +18,19 @@ function compositionName(path: string | null): string {
  * `Name · W × H · fps`, the guides and snapping tools, and frame capture.
  */
 export function PreviewHeadTools() {
+  const { t } = useTranslation();
   const shell = useStudioShellContextOptional();
   if (!shell) return null;
   const dims = shell.compositionDimensions;
   const name = compositionName(shell.activeCompPath);
-  const meta = dims ? `${name} · ${dims.width} × ${dims.height} · ${STUDIO_PREVIEW_FPS} fps` : name;
+  const meta = dims
+    ? t("timeline.preview.meta", {
+        name,
+        width: dims.width,
+        height: dims.height,
+        fps: STUDIO_PREVIEW_FPS,
+      })
+    : name;
   return (
     <div className="flex min-w-0 items-center gap-0.5" data-testid="preview-head-tools">
       <span
@@ -37,6 +46,7 @@ export function PreviewHeadTools() {
 }
 
 function CaptureFrameButton({ shell }: { shell: StudioShellValue }) {
+  const { t } = useTranslation();
   const {
     captureFrameHref,
     captureFrameFilename,
@@ -50,7 +60,9 @@ function CaptureFrameButton({ shell }: { shell: StudioShellValue }) {
     waitForPendingDomEditSaves: shell.waitForPendingDomEditSaves,
   });
   return (
-    <Tooltip label={capturing ? "Capturing frame…" : "Capture frame as PNG"}>
+    <Tooltip
+      label={capturing ? t("timeline.capture.capturingTooltip") : t("timeline.capture.tooltip")}
+    >
       {/* A real download link: `download` on an <a> is what saves the frame,
           so it wears IconButton's recipe rather than being one. */}
       <a
@@ -66,7 +78,7 @@ function CaptureFrameButton({ shell }: { shell: StudioShellValue }) {
         onFocus={refreshCaptureFrameTime}
         onPointerDown={refreshCaptureFrameTime}
         aria-disabled={capturing || undefined}
-        aria-label={capturing ? "Capturing frame" : "Capture current frame"}
+        aria-label={capturing ? t("timeline.capture.capturing") : t("timeline.capture.label")}
         className={cn(
           buttonBase,
           buttonVariants.ghost,

@@ -20,6 +20,7 @@ import {
   mergeDeclarationEdit,
 } from "./VariablesDeclarationForm";
 import { RowAction } from "./VariablesRowAction";
+import { useTranslation } from "../../i18n";
 
 function CompositionSection({
   group,
@@ -34,6 +35,7 @@ function CompositionSection({
   onSave: (path: string, decl: CompositionVariable) => void;
   onRemove: (path: string, id: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1.5">
       <p
@@ -54,13 +56,13 @@ function CompositionSection({
               </span>
               <span className="ml-auto flex items-center gap-1">
                 <RowAction
-                  label="Edit"
-                  title="Edit declaration"
+                  label={t("panels.variables.row.edit")}
+                  title={t("panels.variables.row.editTitle")}
                   onClick={() => onToggleEdit(editing ? null : key)}
                 />
                 <RowAction
                   label="✕"
-                  title="Remove declaration"
+                  title={t("panels.variables.row.removeTitle")}
                   danger
                   onClick={() => onRemove(group.path, decl.id)}
                 />
@@ -70,7 +72,7 @@ function CompositionSection({
             {editing && (
               <DeclarationForm
                 initial={draftFromDeclaration(decl)}
-                submitLabel="Save"
+                submitLabel={t("common.save")}
                 onSubmit={(edited) => onSave(group.path, mergeDeclarationEdit(decl, edited))}
                 onCancel={() => onToggleEdit(null)}
               />
@@ -99,6 +101,7 @@ export function VariablesOtherCompositions({
   recordEdit: RecordEditFn;
   reloadPreview: () => void;
 }) {
+  const { t } = useTranslation();
   const [selfRefresh, setSelfRefresh] = useState(0);
   const groups = useProjectCompositionVariables(
     compositionPaths,
@@ -117,19 +120,21 @@ export function VariablesOtherCompositions({
   const onSave = useCallback(
     (path: string, decl: CompositionVariable) => {
       setEditingKey(null);
-      void editInFile(path, `Update variable "${decl.id}"`, (s: Composition) =>
-        s.updateVariableDeclaration(decl.id, decl),
+      void editInFile(
+        path,
+        t("panels.variables.history.update", { id: decl.id }),
+        (s: Composition) => s.updateVariableDeclaration(decl.id, decl),
       ).then(() => setSelfRefresh((r) => r + 1));
     },
-    [editInFile],
+    [editInFile, t],
   );
   const onRemove = useCallback(
     (path: string, id: string) => {
-      void editInFile(path, `Remove variable "${id}"`, (s: Composition) =>
+      void editInFile(path, t("panels.variables.history.remove", { id }), (s: Composition) =>
         s.removeVariableDeclaration(id),
       ).then(() => setSelfRefresh((r) => r + 1));
     },
-    [editInFile],
+    [editInFile, t],
   );
 
   if (groups.length === 0) return null;
@@ -137,7 +142,7 @@ export function VariablesOtherCompositions({
   return (
     <div className="space-y-3 border-t border-border pt-3">
       <p className="text-2xs font-medium uppercase tracking-wider text-fg-disabled">
-        Other compositions
+        {t("panels.variables.otherCompositions")}
       </p>
       {groups.map((group) => (
         <CompositionSection

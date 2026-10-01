@@ -21,6 +21,7 @@ import {
   uniqueId,
   type PromoteChannel,
 } from "./variablePromoteHelpers";
+import { t } from "../i18n";
 import { useContext, useEffect, useMemo, useState } from "react";
 import { createStableContext } from "../utils/hmrStableContext";
 
@@ -130,14 +131,15 @@ export function useVariablePromoteChannel(channel: PromoteChannel): ChannelPromo
         // reuse one. Auto-binding to a colliding pre-existing variable here would
         // silently couple two unrelated elements.
         const id = uniqueId(action.suggestedId, declarations);
-        void persist(`Bind ${action.label.toLowerCase()} to variable "${id}"`, (s) =>
-          applyBind(s, hfId, action, id),
+        void persist(
+          t("panels.variables.history.bindPromote", { what: t(action.nounKey), id }),
+          (s) => applyBind(s, hfId, action, id),
         ).catch(onPersistError);
       },
       setDefault: (raw: string) => {
         if (!boundId || !declaration) return;
         const next = declaration.type === "color" ? rgbToHex(raw) : raw;
-        void persist(`Set default for "${boundId}"`, (s) =>
+        void persist(t("panels.variables.history.setDefault", { id: boundId }), (s) =>
           s.setVariableValue(boundId, next),
         ).catch(onPersistError);
       },

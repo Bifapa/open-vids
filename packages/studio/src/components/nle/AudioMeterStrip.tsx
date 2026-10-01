@@ -22,6 +22,7 @@ import { clampNumber } from "../../utils/studioHelpers";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { useTranslation } from "../../i18n";
 import {
   METER_DB_MARKS,
   useProjectHasAudio,
@@ -47,13 +48,12 @@ interface Strip {
 type Bars = { mask: HTMLElement | null; peak: HTMLElement | null };
 type StripBars = [Bars, Bars];
 
-const MONITOR_LABEL = "Monitor";
-
 /** Where the fill turns amber, then red, on the same piecewise dB scale the marks use. */
 const AMBER_AT = markFraction(-6);
 const RED_AT = markFraction(-3);
 
 function useStrips(): Strip[] {
+  const { t } = useTranslation();
   const elements = usePlayerStore((s) => s.elements);
   const masterVolume = usePlayerStore((s) => s.audioVolume);
   return useMemo(() => {
@@ -67,9 +67,9 @@ function useStrips(): Strip[] {
     }
     return [
       ...[...labels].map(([id, label]) => ({ id, label, volume: volumes.get(id) ?? 1 })),
-      { id: null, label: MONITOR_LABEL, volume: masterVolume },
+      { id: null, label: t("timeline.meter.monitor"), volume: masterVolume },
     ];
-  }, [elements, masterVolume]);
+  }, [elements, masterVolume, t]);
 }
 
 /** Group volume through the existing `data-volume` write path (live while dragging, one
@@ -81,6 +81,7 @@ function useVolumeHandlers(): {
 } {
   const { onSetAudioGroupAttributeLive, onSetAudioGroupAttributeQuiet } =
     useTimelineEditContextOptional();
+  const { t } = useTranslation();
   const setAudioVolume = usePlayerStore((s) => s.setAudioVolume);
   const onLive = useCallback(
     (id: string | null, volume: number) => {
@@ -97,10 +98,10 @@ function useVolumeHandlers(): {
           id,
           "data-volume",
           formatAudioGain(volume),
-          "Set volume",
+          t("timeline.meter.setVolume"),
         );
     },
-    [onSetAudioGroupAttributeQuiet, setAudioVolume],
+    [onSetAudioGroupAttributeQuiet, setAudioVolume, t],
   );
   return { onLive, onCommit };
 }
@@ -259,6 +260,7 @@ function Fader({
   onLive: (v: number) => void;
   onCommit: (v: number) => void;
 }) {
+  const { t } = useTranslation();
   const trackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<number | null>(null);
   const position = audioGainToFaderPosition(volume);
@@ -303,7 +305,7 @@ function Fader({
       role="slider"
       tabIndex={0}
       aria-label={label}
-      title={`${title}: ${readout}`}
+      title={t("timeline.meter.faderTitle", { title, readout })}
       aria-orientation="vertical"
       aria-valuemin={AUDIO_GAIN_FADER_MIN}
       aria-valuemax={maxPosition}
@@ -347,6 +349,7 @@ function MeterStrip({
   onLive: (id: string | null, volume: number) => void;
   onCommit: (id: string | null, volume: number) => void;
 }) {
+  const { t } = useTranslation();
   const refs = [
     useRef<HTMLDivElement>(null),
     useRef<HTMLDivElement>(null),
@@ -366,11 +369,15 @@ function MeterStrip({
     <div className="flex w-[104px] shrink-0 flex-col items-center gap-1 px-1.5 pt-2 pb-1.5">
       <div
         className="flex min-h-0 flex-1 items-stretch gap-1.5"
-        aria-label={`${strip.label} level`}
+        aria-label={t("timeline.meter.level", { label: strip.label })}
       >
         <Fader
-          label={`${strip.label} volume`}
-          title={strip.id === null ? "Preview monitor volume" : `${strip.label} volume`}
+          label={t("timeline.meter.volume", { label: strip.label })}
+          title={
+            strip.id === null
+              ? t("timeline.meter.monitorVolume")
+              : t("timeline.meter.volume", { label: strip.label })
+          }
           volume={strip.volume}
           maxPosition={strip.id === null ? audioGainToFaderPosition(1) : AUDIO_GAIN_FADER_MAX}
           onLive={(v) => onLive(strip.id, v)}

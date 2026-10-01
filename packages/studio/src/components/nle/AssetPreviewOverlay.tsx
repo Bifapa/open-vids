@@ -19,6 +19,7 @@ import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { shouldDismissAssetPreview } from "../../utils/assetPreviewDismiss";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
+import { useTranslation, type TranslationKey } from "../../i18n";
 
 function basename(path: string): string {
   return path.split("/").pop() ?? path;
@@ -26,7 +27,11 @@ function basename(path: string): string {
 
 type AssetKind = "image" | "video" | "audio";
 
-const KIND_LABELS: Record<AssetKind, string> = { image: "Image", video: "Video", audio: "Audio" };
+const KIND_LABELS: Record<AssetKind, TranslationKey> = {
+  image: "timeline.assetPreview.kind.image",
+  video: "timeline.assetPreview.kind.video",
+  audio: "timeline.assetPreview.kind.audio",
+};
 
 function resolveAssetKind(path: string): AssetKind {
   if (VIDEO_EXT.test(path)) return "video";
@@ -45,6 +50,7 @@ function clock(seconds: number): string {
 
 /** Play / pause, scrub and mute for the previewed video or audio element. */
 function Transport({ media }: { media: HTMLMediaElement }) {
+  const { t } = useTranslation();
   const [playing, setPlaying] = useState(!media.paused);
   const [time, setTime] = useState(media.currentTime);
   const [duration, setDuration] = useState(media.duration);
@@ -79,7 +85,7 @@ function Transport({ media }: { media: HTMLMediaElement }) {
     <div className="flex items-center gap-2 border-t border-border-subtle py-1.5 pr-3 pl-1.5">
       <IconButton
         size="sm"
-        aria-label={playing ? "Pause preview" : "Play preview"}
+        aria-label={playing ? t("timeline.assetPreview.pause") : t("timeline.assetPreview.play")}
         icon={playing ? <Pause size={14} weight="fill" /> : <Play size={14} weight="fill" />}
         onClick={() => {
           if (media.paused) void media.play().catch(() => {});
@@ -92,7 +98,7 @@ function Transport({ media }: { media: HTMLMediaElement }) {
         max={1000}
         value={Math.round(fraction * 1000)}
         disabled={!known}
-        aria-label="Scrub preview"
+        aria-label={t("timeline.assetPreview.scrub")}
         onChange={(e) => {
           media.currentTime = (Number(e.target.value) / 1000) * duration;
         }}
@@ -110,7 +116,7 @@ function Transport({ media }: { media: HTMLMediaElement }) {
       </span>
       <IconButton
         size="sm"
-        aria-label={muted ? "Unmute preview" : "Mute preview"}
+        aria-label={muted ? t("timeline.assetPreview.unmute") : t("timeline.assetPreview.mute")}
         aria-pressed={!muted}
         icon={muted ? <SpeakerSlash size={14} /> : <SpeakerHigh size={14} />}
         onClick={() => {
@@ -191,6 +197,7 @@ function AssetPreviewMedia({
 }
 
 export function AssetPreviewOverlay() {
+  const { t } = useTranslation();
   const previewAsset = useAssetPreviewStore((s) => s.previewAsset);
   const previewProjectId = useAssetPreviewStore((s) => s.previewProjectId);
   const previewInsert = useAssetPreviewStore((s) => s.previewInsert);
@@ -259,7 +266,7 @@ export function AssetPreviewOverlay() {
       className="absolute inset-0 z-50 flex items-center justify-center bg-scrim/20"
       onClick={clearPreviewAsset}
       role="dialog"
-      aria-label={`Preview: ${name}`}
+      aria-label={t("timeline.assetPreview.label", { name })}
     >
       {/* Floating preview card — compact, canvas stays visible around it */}
       <div
@@ -271,13 +278,13 @@ export function AssetPreviewOverlay() {
             {name}
           </h3>
           <span className="shrink-0 text-xs whitespace-nowrap text-fg-3 tabular-nums">
-            {KIND_LABELS[kind]}
+            {t(KIND_LABELS[kind])}
             {length && ` · ${length}`}
           </span>
           <IconButton
             size="sm"
-            aria-label="Close preview"
-            title="Close (Esc)"
+            aria-label={t("timeline.assetPreview.close")}
+            title={t("timeline.assetPreview.closeTitle", { key: "Esc" })}
             icon={<X size={14} />}
             onClick={(e) => {
               e.stopPropagation();
@@ -308,7 +315,7 @@ export function AssetPreviewOverlay() {
                 clearPreviewAsset();
               }}
             >
-              Insert at Playhead
+              {t("timeline.assetPreview.insert")}
             </Button>
           )}
         </footer>

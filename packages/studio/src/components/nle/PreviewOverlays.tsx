@@ -18,6 +18,7 @@ import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers"
 import { zReorderCoalesceKey } from "../../hooks/useElementLifecycleOps";
 import { useCanvasZOrderTimelineMirror } from "./useCanvasZOrderTimelineMirror";
 import { runZLaneGesture } from "./zLaneGesture";
+import { useTranslation } from "../../i18n";
 import type { BlockPreviewInfo } from "../sidebar/BlocksTab";
 import type { GestureRecordingState } from "../editor/GestureRecordControl";
 import type { ReactNode } from "react";
@@ -136,6 +137,7 @@ export function PreviewOverlays({
   onToggleRecording,
   gestureOverlay,
 }: PreviewOverlaysProps) {
+  const { t } = useTranslation();
   const { activeCompPath, previewIframeRef } = useStudioShellContext();
   const { captionEditMode, compositionLoading, isPlaying } = useStudioPlaybackContext();
   const compositionDimensions = useCompositionDimensions(previewIframeRef);
@@ -214,13 +216,13 @@ export function PreviewOverlays({
         {/* Mode indicator + explicit exit */}
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-60 flex items-center gap-2 rounded-full border border-studio-accent/40 bg-black/70 px-2.5 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-studio-accent" aria-hidden="true" />
-          <span className="text-2xs text-neutral-200">Editing captions</span>
+          <span className="text-2xs text-neutral-200">{t("timeline.captions.editing")}</span>
           <button
             type="button"
             onClick={exitCaptionMode}
             className="rounded-sm text-2xs text-neutral-400 underline underline-offset-2 hover:text-neutral-100 focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-studio-accent"
           >
-            Exit
+            {t("timeline.captions.exit")}
           </button>
         </div>
         {captionSyncError && (
@@ -234,12 +236,12 @@ export function PreviewOverlays({
               onClick={() => useCaptionStore.getState().retrySave?.()}
               className="rounded-sm text-2xs text-red-100 underline underline-offset-2 hover:text-white"
             >
-              Retry
+              {t("common.retry")}
             </button>
             <button
               type="button"
               onClick={() => useCaptionStore.getState().setSyncError(null)}
-              aria-label="Dismiss"
+              aria-label={t("common.dismiss")}
               className="rounded-sm px-0.5 text-2xs text-red-300/70 hover:text-red-100"
             >
               ✕
@@ -332,7 +334,7 @@ export function PreviewOverlays({
           onClick={enterCaptionMode}
           className="absolute top-2.5 left-1/2 z-60 h-ctl-sm -translate-x-1/2 rounded-pill bg-on-media-bg px-3 text-xs text-on-media-2 transition-colors hover:text-on-media focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         >
-          Edit captions
+          {t("timeline.captions.edit")}
         </button>
       )}
     </>

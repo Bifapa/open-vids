@@ -13,6 +13,7 @@ import { useMemo, useState } from "react";
 import type { Composition, CompositionVariable } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../editor/domEditingTypes";
 
+import { Trans, useTranslation, type TranslationKey } from "../../i18n";
 import { VARIABLES_INPUT_CLASS } from "./VariablesValueControls";
 
 // <source> is deliberately excluded: rewriting a <source> child's src after
@@ -21,7 +22,10 @@ const MEDIA_TAGS = new Set(["img", "video", "audio"]);
 
 export interface BindAction {
   key: string;
-  label: string;
+  /** Button label ("Text color"). */
+  labelKey: TranslationKey;
+  /** The same thing as a lowercase noun, for use inside a sentence ("text color"). */
+  nounKey: TranslationKey;
   /** Binding channel: data-var-src / data-var-text attribute, or a style prop. */
   kind: "src" | "text" | "style";
   styleProp?: string;
@@ -76,7 +80,15 @@ export function buildBindActions(
     const currentSrc = snapshot.attributes.src ?? "";
     actions.push({
       key: "src",
-      label: tag === "img" ? "Image source" : "Media source",
+      ...(tag === "img"
+        ? {
+            labelKey: "panels.variables.bind.kind.imageSource",
+            nounKey: "panels.variables.bind.noun.imageSource",
+          }
+        : {
+            labelKey: "panels.variables.bind.kind.mediaSource",
+            nounKey: "panels.variables.bind.noun.mediaSource",
+          }),
       kind: "src",
       suggestedId: base,
       declaration: (id) =>
@@ -93,7 +105,8 @@ export function buildBindActions(
   if (text && snapshot.children.length === 0 && !selection.isCompositionHost) {
     actions.push({
       key: "text",
-      label: "Text",
+      labelKey: "panels.variables.bind.kind.text",
+      nounKey: "panels.variables.bind.noun.text",
       kind: "text",
       suggestedId: `${base}-text`,
       declaration: (id) => ({
@@ -110,7 +123,8 @@ export function buildBindActions(
     actions.push(
       {
         key: "color",
-        label: "Text color",
+        labelKey: "panels.variables.bind.kind.textColor",
+        nounKey: "panels.variables.bind.noun.textColor",
         kind: "style",
         styleProp: "color",
         suggestedId: `${base}-color`,
@@ -123,7 +137,8 @@ export function buildBindActions(
       },
       {
         key: "background",
-        label: "Background",
+        labelKey: "panels.variables.bind.kind.background",
+        nounKey: "panels.variables.bind.noun.background",
         kind: "style",
         styleProp: "background-color",
         suggestedId: `${base}-bg`,
@@ -136,7 +151,8 @@ export function buildBindActions(
       },
       {
         key: "font",
-        label: "Font",
+        labelKey: "panels.variables.bind.kind.font",
+        nounKey: "panels.variables.bind.noun.font",
         kind: "style",
         styleProp: "font-family",
         suggestedId: `${base}-font`,
@@ -181,6 +197,7 @@ export function VariablesBindElement({
   sdkSession: Composition;
   onBind: (action: BindAction, id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [idDraft, setIdDraft] = useState("");
   const actions = useMemo(() => buildBindActions(selection, sdkSession), [selection, sdkSession]);
@@ -199,12 +216,16 @@ export function VariablesBindElement({
   return (
     <div className="space-y-1.5 rounded-md border border-accent-line bg-surface-1/40 p-2">
       <p className="text-2xs font-medium uppercase tracking-wider text-fg-3">
-        Bind selected: <span className="normal-case text-fg-2">{selection.label}</span>
+        <Trans
+          i18nKey="panels.variables.bind.selected"
+          values={{ name: selection.label }}
+          components={{ name: <span className="normal-case text-fg-2" /> }}
+        />
       </p>
       {active ? (
         <div className="space-y-1.5">
           <label className="text-2xs font-medium text-fg-3">
-            Variable id for {active.label.toLowerCase()}
+            {t("panels.variables.bind.idFor", { what: t(active.nounKey) })}
           </label>
           <input
             type="text"
@@ -215,11 +236,15 @@ export function VariablesBindElement({
           />
           {existingDecl && (
             <p className="text-2xs leading-snug text-amber-400/90">
-              "{trimmedId}" already exists. This element will use its current value
-              {existingDecl.default !== undefined && (
-                <span className="font-mono"> ({String(existingDecl.default)})</span>
+              {existingDecl.default !== undefined ? (
+                <Trans
+                  i18nKey="panels.variables.bind.existsWithDefault"
+                  values={{ id: trimmedId, value: String(existingDecl.default) }}
+                  components={{ mono: <span className="font-mono" /> }}
+                />
+              ) : (
+                t("panels.variables.bind.exists", { id: trimmedId })
               )}
-              , not the element's own — binding won't change "{trimmedId}".
             </p>
           )}
           <div className="flex items-center justify-end gap-2">
@@ -228,7 +253,7 @@ export function VariablesBindElement({
               onClick={() => setActiveKey(null)}
               className="h-6 rounded-sm px-2 text-xs text-fg-3 hover:text-fg-2"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               type="button"
@@ -239,7 +264,7 @@ export function VariablesBindElement({
               }}
               className="h-6 rounded-sm bg-surface-2 px-2 text-xs font-medium text-fg hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {existingDecl ? "Bind anyway" : "Bind"}
+              {existingDecl ? t("panels.variables.bind.anyway") : t("panels.variables.bind.action")}
             </button>
           </div>
         </div>
@@ -255,7 +280,7 @@ export function VariablesBindElement({
               }}
               className="h-6 rounded-md border border-border px-2 text-xs font-medium text-fg-2 transition-colors hover:border-border hover:text-fg"
             >
-              {action.label} →&nbsp;variable
+              {t("panels.variables.bind.button", { label: t(action.labelKey) })}
             </button>
           ))}
         </div>

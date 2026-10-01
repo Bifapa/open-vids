@@ -6,6 +6,7 @@ import { AudioMeterStrip } from "./AudioMeterStrip";
 import { TimelineSequenceCrumbs } from "./TimelineSequenceCrumbs";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { useNLEContext } from "./NLEContext";
+import { useTranslation } from "../../i18n";
 
 export interface TimelinePaneProps {
   /** Slot rendered above the timeline tracks (toolbar with split, delete, zoom) */
@@ -66,6 +67,7 @@ export function TimelinePane({
   onDuplicateClip,
   canPasteClip,
 }: TimelinePaneProps) {
+  const { t } = useTranslation();
   const {
     seek,
     handleDrillDown,
@@ -144,7 +146,7 @@ export function TimelinePane({
           onDrop={(event) => event.preventDefault()}
         >
           <span className="rounded-md bg-neutral-900/90 px-2.5 py-1 text-[11px] text-neutral-400">
-            Loading composition…
+            {t("timeline.loadingComposition")}
           </span>
         </div>
       )}

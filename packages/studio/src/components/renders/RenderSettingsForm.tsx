@@ -11,6 +11,7 @@ import {
   persistRenderSettings,
   type PersistedRenderSettings,
 } from "./renderSettings";
+import { Trans, t, useTranslation, type TranslationKey } from "../../i18n";
 
 export interface CompositionDimensions {
   width: number;
@@ -28,11 +29,11 @@ type RenderScale = "auto" | "1080p" | "4k";
 
 const SCALE_OPTION_ORDER: RenderScale[] = ["auto", "1080p", "4k"];
 
-const SCALE_LABEL: Record<RenderScale, string> = {
-  auto: "Auto",
-  "1080p": "1080p",
-  "4k": "4K",
-};
+/** Auto is a word; the sized presets are names and stay as they are. */
+function scaleLabel(scale: RenderScale): string {
+  if (scale === "auto") return t("renders.settings.scale.auto");
+  return scale === "1080p" ? "1080p" : "4K";
+}
 
 type CompAspect = "landscape" | "portrait" | "square";
 
@@ -91,12 +92,16 @@ function scaleOptionLabel(
 ): string {
   const resolved = resolvedDimensions(scale, dims);
   const base = resolved
-    ? `${resolved.width} × ${resolved.height} · ${SCALE_LABEL[scale]}`
-    : SCALE_LABEL[scale];
+    ? `${resolved.width} × ${resolved.height} · ${scaleLabel(scale)}`
+    : scaleLabel(scale);
   // Explain *why* an option is disabled instead of greying it silently:
   // the preset must be an exact integer upscale of the authored size.
   if (dims && !scaleApplies(scale, dims)) {
-    return `${base} — not an integer scale of ${dims.width}×${dims.height}`;
+    return t("renders.settings.scale.notInteger", {
+      base,
+      width: dims.width,
+      height: dims.height,
+    });
   }
   return base;
 }
@@ -108,23 +113,21 @@ const FORMAT_OPTIONS: Array<SelectOption & { value: RenderFormat }> = [
   { value: "webm", label: "WebM · VP9" },
 ];
 
-const FORMAT_NOTE: Record<RenderFormat, string> = {
-  mp4: "Best for general use. Smallest file, universal playback.",
-  mov: "Keeps transparency. Works in Final Cut Pro, DaVinci Resolve and most editors. Large files.",
-  webm: "Keeps transparency. Smaller than MOV, limited editor support.",
-};
+const FORMAT_NOTE_KEYS = {
+  mp4: "renders.settings.formatNote.mp4",
+  mov: "renders.settings.formatNote.mov",
+  webm: "renders.settings.formatNote.webm",
+} as const satisfies Record<RenderFormat, TranslationKey>;
 
-const QUALITY_OPTIONS: Array<{ value: RenderQuality; label: string }> = [
-  { value: "draft", label: "Draft" },
-  { value: "standard", label: "Standard" },
-  { value: "high", label: "High" },
-];
+const QUALITY_VALUES: RenderQuality[] = ["draft", "standard", "high"];
 
-const FPS_OPTIONS: Array<SelectOption & { value: `${RenderFps}` }> = [
-  { value: "24", label: "24 fps" },
-  { value: "30", label: "30 fps" },
-  { value: "60", label: "60 fps" },
-];
+const QUALITY_KEYS = {
+  draft: "renders.settings.quality.draft",
+  standard: "renders.settings.quality.standard",
+  high: "renders.settings.quality.high",
+} as const satisfies Record<RenderQuality, TranslationKey>;
+
+const FPS_VALUES: RenderFps[] = [24, 30, 60];
 
 function isFormat(value: string): value is RenderFormat {
   return FORMAT_OPTIONS.some((option) => option.value === value);
@@ -179,6 +182,7 @@ function FieldRow({ label, children }: { label: string; children: ReactNode }) {
 
 /** "Uses current variable values · 1 overridden": what the render injects, with a way to edit it. */
 function VariablesLine() {
+  const { t } = useTranslation();
   const overridden = usePreviewVariablesStore((state) =>
     state.values ? Object.keys(state.values).length : 0,
   );
@@ -188,12 +192,13 @@ function VariablesLine() {
         <Sliders size={12} className="shrink-0" aria-hidden />
         <span className="truncate">
           {overridden > 0 ? (
-            <>
-              Uses current variable values ·{" "}
-              <span className="font-mono text-num text-fg-2">{overridden}</span> overridden
-            </>
+            <Trans
+              i18nKey="renders.settings.variablesOverridden"
+              values={{ count: overridden }}
+              components={{ mono: <span className="font-mono text-num text-fg-2" /> }}
+            />
           ) : (
-            "Uses default variable values"
+            t("renders.settings.variablesDefault")
           )}
         </span>
       </span>
@@ -202,7 +207,7 @@ function VariablesLine() {
         onClick={() => useDockLayoutStore.getState().activatePanel("variables")}
         className="shrink-0 rounded-xs text-xs text-fg-2 underline decoration-border-strong underline-offset-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
       >
-        Edit
+        {t("renders.settings.editVariables")}
       </button>
     </div>
   );
@@ -218,15 +223,16 @@ export function RenderSettingsForm({
   disabled: boolean;
   compositionDimensions?: CompositionDimensions | null;
 }) {
+  const { t } = useTranslation();
   const { settings, update } = state;
   // MOV (ProRes) is a fixed-quality codec — the quality choice has no effect.
   const showQuality = settings.format !== "mov";
 
   return (
     <div className="grid gap-1.5 py-2.5">
-      <FieldRow label="Resolution">
+      <FieldRow label={t("renders.settings.resolution")}>
         <Select
-          label="Resolution"
+          label={t("renders.settings.resolution")}
           value={settings.scale}
           options={SCALE_OPTION_ORDER.map((value) => ({
             value,
@@ -239,11 +245,14 @@ export function RenderSettingsForm({
           }}
         />
       </FieldRow>
-      <FieldRow label="Frame rate">
+      <FieldRow label={t("renders.settings.frameRate")}>
         <Select
-          label="Frame rate"
+          label={t("renders.settings.frameRate")}
           value={String(settings.fps)}
-          options={FPS_OPTIONS}
+          options={FPS_VALUES.map((fps) => ({
+            value: String(fps),
+            label: t("renders.settings.fps", { fps }),
+          }))}
           disabled={disabled}
           onCommit={(next) => {
             const fps = toFps(next);
@@ -251,9 +260,9 @@ export function RenderSettingsForm({
           }}
         />
       </FieldRow>
-      <FieldRow label="Format">
+      <FieldRow label={t("renders.settings.format")}>
         <Select
-          label="Format"
+          label={t("renders.settings.format")}
           value={settings.format}
           options={FORMAT_OPTIONS}
           disabled={disabled}
@@ -262,13 +271,15 @@ export function RenderSettingsForm({
           }}
         />
       </FieldRow>
-      <p className="m-0 pl-20 text-xs text-fg-3 text-pretty">{FORMAT_NOTE[settings.format]}</p>
+      <p className="m-0 pl-20 text-xs text-fg-3 text-pretty">
+        {t(FORMAT_NOTE_KEYS[settings.format])}
+      </p>
       {showQuality && (
-        <FieldRow label="Quality">
+        <FieldRow label={t("renders.settings.quality")}>
           <SegmentedControl
-            label="Quality"
+            label={t("renders.settings.quality")}
             value={settings.quality}
-            options={QUALITY_OPTIONS}
+            options={QUALITY_VALUES.map((value) => ({ value, label: t(QUALITY_KEYS[value]) }))}
             disabled={disabled}
             onChange={(quality) => update({ quality })}
             className="justify-self-start"

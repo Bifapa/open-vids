@@ -24,11 +24,24 @@ import { PreviewValueControl } from "./VariablesValueControls";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { resolveMasterCompositionPath } from "../../utils/studioUrlState";
 import { isScalarVariableValue as isScalar } from "@hyperframes/core/variables";
+import { Trans, t, useTranslation, type TranslationKey } from "../../i18n";
 
 /** POSIX single-quote escaping so the copied command survives quotes in values. */
 function shellSingleQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
+
+type CopyKind = "command" | "json";
+
+const COPIED_KEYS = {
+  command: "panels.variables.copied.command",
+  json: "panels.variables.copied.json",
+} as const satisfies Record<CopyKind, TranslationKey>;
+
+const COPY_FAILED_KEYS = {
+  command: "panels.variables.copyFailed.command",
+  json: "panels.variables.copyFailed.json",
+} as const satisfies Record<CopyKind, TranslationKey>;
 
 export interface StudioEditPersistenceProps {
   sdkSession: Composition | null;
@@ -45,15 +58,23 @@ type VariablesPanelProps = StudioEditPersistenceProps;
 function formatIssue(issue: VariableValidationIssue): string {
   switch (issue.kind) {
     case "undeclared":
-      return `"${issue.variableId}" is not declared.`;
+      return t("panels.variables.issue.undeclared", { id: issue.variableId });
     case "type-mismatch":
-      return `"${issue.variableId}" expects ${issue.expected}, got ${issue.actual}.`;
+      return t("panels.variables.issue.typeMismatch", {
+        id: issue.variableId,
+        expected: issue.expected,
+        actual: issue.actual,
+      });
     case "enum-out-of-range":
-      return `"${issue.variableId}" must be one of: ${issue.allowed.join(", ")}.`;
+      return t("panels.variables.issue.enumOutOfRange", {
+        id: issue.variableId,
+        allowed: issue.allowed.join(", "),
+      });
   }
 }
 
 function ValidationStrip({ issues }: { issues: VariableValidationIssue[] }) {
+  useTranslation(); // re-render on a language switch: formatIssue reads the active language
   if (issues.length === 0) return null;
   return (
     <div className="space-y-1 rounded-md border border-red-900/60 bg-red-950/30 p-2">
@@ -89,6 +110,7 @@ function VariableRow({
   onSaveEdit: (decl: CompositionVariable) => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid min-w-0 gap-1 border-t border-border-subtle py-1.5 first:border-t-0">
       <div className="flex min-w-0 items-center gap-1.5">
@@ -98,7 +120,7 @@ function VariableRow({
         {overridden && (
           <span
             className="size-1.5 shrink-0 rounded-full bg-fg-2 shadow-[0_0_0_2px_var(--color-surface-3)]"
-            title="Overridden in this preview"
+            title={t("panels.variables.row.overriddenTitle")}
           />
         )}
         <span className="min-w-0 flex-1 truncate font-mono text-num text-fg-3">
@@ -107,28 +129,37 @@ function VariableRow({
         {unused && (
           <span
             className="inline-flex h-4 shrink-0 items-center rounded-xs bg-warning-soft px-1 text-2xs text-warning"
-            title="No script reads this variable"
+            title={t("panels.variables.row.unusedTitle")}
           >
-            unused
+            {t("panels.variables.row.unused")}
           </span>
         )}
         <span className="ml-auto flex items-center gap-1">
           {overridden && isScalar(value) && (
             <RowAction
-              label="Set default"
-              title="Persist this value as the declared default"
+              label={t("panels.variables.row.setDefault")}
+              title={t("panels.variables.row.setDefaultTitle")}
               onClick={() => onSetDefault(value)}
             />
           )}
-          <RowAction label="Edit" title="Edit declaration" onClick={onToggleEdit} />
-          <RowAction label="✕" title="Remove declaration" danger onClick={onRemove} />
+          <RowAction
+            label={t("panels.variables.row.edit")}
+            title={t("panels.variables.row.editTitle")}
+            onClick={onToggleEdit}
+          />
+          <RowAction
+            label="✕"
+            title={t("panels.variables.row.removeTitle")}
+            danger
+            onClick={onRemove}
+          />
         </span>
       </div>
       {decl.description && <p className="m-0 text-xs text-fg-3">{decl.description}</p>}
       {editing ? (
         <DeclarationForm
           initial={draftFromDeclaration(decl)}
-          submitLabel="Save"
+          submitLabel={t("common.save")}
           onSubmit={(edited) => onSaveEdit(mergeDeclarationEdit(decl, edited))}
           onCancel={onToggleEdit}
         />
@@ -146,16 +177,19 @@ function UndeclaredReads({
   usage: VariableUsageReport | null;
   onDeclare: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   if (!usage || usage.undeclaredReads.length === 0) return null;
   return (
     <div className="grid gap-1 rounded-md border border-border bg-bg-1 p-2">
-      <p className="m-0 text-xs font-semibold text-fg-2">Read by scripts, not declared</p>
+      <p className="m-0 text-xs font-semibold text-fg-2">
+        {t("panels.variables.undeclared.heading")}
+      </p>
       {usage.undeclaredReads.map((id) => (
         <div key={id} className="flex items-center gap-2">
           <code className="font-mono text-xs text-fg-2">{id}</code>
           <RowAction
-            label="Declare"
-            title="Declare as a string variable"
+            label={t("panels.variables.undeclared.declare")}
+            title={t("panels.variables.undeclared.declareTitle")}
             onClick={() => onDeclare(id)}
           />
         </div>
@@ -172,13 +206,16 @@ function PreviewModeHeader({
   overrideCount: number;
   onReset: () => void;
 }) {
+  const { t } = useTranslation();
   const hasOverrides = overrideCount > 0;
   return (
     <div className="flex h-head shrink-0 items-center justify-between border-b border-border-subtle pl-3 pr-1.5">
       <div className="flex min-w-0 items-baseline gap-1.5">
-        <span className="text-sm font-semibold text-fg">Variables</span>
+        <span className="text-sm font-semibold text-fg">{t("panels.variables.header.title")}</span>
         <span className="truncate text-xs text-fg-3">
-          {hasOverrides ? `${overrideCount} overridden` : "Preview and renders use these values."}
+          {hasOverrides
+            ? t("panels.variables.header.overridden", { count: overrideCount })
+            : t("panels.variables.header.hint")}
         </span>
       </div>
       {hasOverrides && (
@@ -187,7 +224,7 @@ function PreviewModeHeader({
           onClick={onReset}
           className="h-ctl-sm rounded-sm px-2 text-xs text-fg-2 hover:bg-surface-2 hover:text-fg"
         >
-          Reset
+          {t("common.reset")}
         </button>
       )}
     </div>
@@ -205,40 +242,45 @@ function HandoffFooter({
 }: {
   effectiveValues: Record<string, unknown>;
   compPath: string;
-  onCopy: (text: string, what: string) => void;
+  onCopy: (text: string, what: CopyKind) => void;
 }) {
+  const { t } = useTranslation();
   const json = JSON.stringify(effectiveValues);
   const command = `npx hyperframes render ${shellSingleQuote(compPath)} --variables ${shellSingleQuote(json)}`;
   return (
     <div className="space-y-1.5 rounded-md border border-border/70 bg-surface-1/40 p-2">
-      <p className="text-2xs font-medium uppercase tracking-wider text-fg-3">Use this template</p>
+      <p className="text-2xs font-medium uppercase tracking-wider text-fg-3">
+        {t("panels.variables.handoff.title")}
+      </p>
       <code className="block truncate font-mono text-2xs text-fg-3" title={command}>
         {command}
       </code>
       <div className="flex items-center gap-2">
         <RowAction
-          label="Copy render command"
-          title="CLI command rendering exactly what the preview shows"
-          onClick={() => onCopy(command, "Render command")}
+          label={t("panels.variables.handoff.copyCommand")}
+          title={t("panels.variables.handoff.copyCommandTitle")}
+          onClick={() => onCopy(command, "command")}
         />
         <RowAction
-          label="Copy values JSON"
-          title="Effective values (defaults merged with preview overrides)"
-          onClick={() => onCopy(json, "Values JSON")}
+          label={t("panels.variables.handoff.copyJson")}
+          title={t("panels.variables.handoff.copyJsonTitle")}
+          onClick={() => onCopy(json, "json")}
         />
       </div>
     </div>
   );
 }
 
-const EMPTY_STATE = (
-  <p className="text-xs leading-relaxed text-fg-3">
-    No variables declared. Variables make parts of this composition dynamic — declare them here (or
-    in <code className="font-mono">data-composition-variables</code>), read them with{" "}
-    <code className="font-mono">getVariables()</code>, and pass values at render time with{" "}
-    <code className="font-mono">--variables</code>.
-  </p>
-);
+function EmptyState() {
+  return (
+    <p className="text-xs leading-relaxed text-fg-3">
+      <Trans
+        i18nKey="panels.variables.empty"
+        components={{ code: <code className="font-mono" /> }}
+      />
+    </p>
+  );
+}
 
 // Panel orchestrator — JSX conditionals per section, same shape as StudioRightPanels.
 export const VariablesPanel = memo(function VariablesPanel({
@@ -247,6 +289,7 @@ export const VariablesPanel = memo(function VariablesPanel({
   reloadPreview,
   recordEdit,
 }: VariablesPanelProps) {
+  const { t } = useTranslation();
   const { activeCompPath, showToast } = useStudioShellContext();
   const { refreshKey } = useStudioPlaybackContext();
   const { readProjectFile, writeProjectFile, compositions } = useFileManagerContext();
@@ -302,16 +345,13 @@ export const VariablesPanel = memo(function VariablesPanel({
   );
 
   const copyToClipboard = useCallback(
-    (text: string, what: string) => {
+    (text: string, what: CopyKind) => {
       // Shared helper carries the execCommand fallback Safari needs.
       void copyTextToClipboard(text).then((ok) =>
-        showToast(
-          ok ? `${what} copied` : `Couldn't copy ${what.toLowerCase()}`,
-          ok ? "info" : "error",
-        ),
+        showToast(ok ? t(COPIED_KEYS[what]) : t(COPY_FAILED_KEYS[what]), ok ? "info" : "error"),
       );
     },
-    [showToast],
+    [showToast, t],
   );
 
   const dropPreviewOverride = useCallback(
@@ -344,14 +384,14 @@ export const VariablesPanel = memo(function VariablesPanel({
       try {
         const changed = await persistVariables(label, mutate);
         if (changed) setRevision((r) => r + 1);
-        else showToast(`${label}: no change applied`, "info");
+        else showToast(t("panels.variables.noChange", { label }), "info");
         return changed;
       } catch (err) {
         showToast(err instanceof Error ? err.message : String(err), "error");
         return false;
       }
     },
-    [persistVariables, showToast],
+    [persistVariables, showToast, t],
   );
 
   const handleAdd = useCallback(
@@ -363,9 +403,11 @@ export const VariablesPanel = memo(function VariablesPanel({
         return;
       }
       setAddOpen(false);
-      void runSchemaEdit(`Declare variable "${decl.id}"`, (s) => s.declareVariable(decl));
+      void runSchemaEdit(t("panels.variables.history.declare", { id: decl.id }), (s) =>
+        s.declareVariable(decl),
+      );
     },
-    [sdkSession, runSchemaEdit, showToast],
+    [sdkSession, runSchemaEdit, showToast, t],
   );
 
   const handleUpdate = useCallback(
@@ -381,11 +423,11 @@ export const VariablesPanel = memo(function VariablesPanel({
         return;
       }
       setEditingId(null);
-      void runSchemaEdit(`Edit variable "${decl.id}"`, (s) =>
+      void runSchemaEdit(t("panels.variables.history.edit", { id: decl.id }), (s) =>
         s.updateVariableDeclaration(decl.id, decl),
       );
     },
-    [sdkSession, runSchemaEdit, showToast],
+    [sdkSession, runSchemaEdit, showToast, t],
   );
 
   const handleRemove = useCallback(
@@ -399,22 +441,24 @@ export const VariablesPanel = memo(function VariablesPanel({
       // Drop the preview override only if the declaration was actually removed —
       // otherwise a rejected/failed edit would leave the row on disk but silently
       // wipe the user's custom preview value.
-      void runSchemaEdit(`Remove variable "${id}"`, (s) => s.removeVariableDeclaration(id)).then(
-        (changed) => {
-          if (changed) dropPreviewOverride(id);
-        },
-      );
+      void runSchemaEdit(t("panels.variables.history.remove", { id }), (s) =>
+        s.removeVariableDeclaration(id),
+      ).then((changed) => {
+        if (changed) dropPreviewOverride(id);
+      });
     },
-    [sdkSession, runSchemaEdit, dropPreviewOverride, showToast],
+    [sdkSession, runSchemaEdit, dropPreviewOverride, showToast, t],
   );
 
   const handleSetDefault = useCallback(
     (id: string, value: string | number | boolean) => {
-      void runSchemaEdit(`Set default for "${id}"`, (s) => s.setVariableValue(id, value));
+      void runSchemaEdit(t("panels.variables.history.setDefault", { id }), (s) =>
+        s.setVariableValue(id, value),
+      );
       // The override now equals the persisted default — drop it from preview state.
       dropPreviewOverride(id);
     },
-    [runSchemaEdit, dropPreviewOverride],
+    [runSchemaEdit, dropPreviewOverride, t],
   );
 
   const resetPreview = useCallback(() => {
@@ -433,17 +477,17 @@ export const VariablesPanel = memo(function VariablesPanel({
       const wanted = action.declaration(id).type;
       if (existing && existing.type !== wanted) {
         showToast(
-          `"${id}" is already a ${existing.type} variable — pick another id for this ${wanted} binding`,
+          t("panels.variables.typeConflict", { id, existing: existing.type, wanted }),
           "error",
         );
         return;
       }
       const hfId = domEditSelection.hfId;
-      void runSchemaEdit(`Bind ${action.label.toLowerCase()} to "${id}"`, (s) =>
+      void runSchemaEdit(t("panels.variables.history.bind", { what: t(action.nounKey), id }), (s) =>
         applyBind(s, hfId, action, id),
       );
     },
-    [sdkSession, domEditSelection, runSchemaEdit, showToast],
+    [sdkSession, domEditSelection, runSchemaEdit, showToast, t],
   );
 
   // The bind gesture targets the composition the session models — a selection
@@ -456,7 +500,7 @@ export const VariablesPanel = memo(function VariablesPanel({
   if (!sdkSession) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center">
-        <p className="text-xs text-fg-3">Open a composition to manage its variables.</p>
+        <p className="text-xs text-fg-3">{t("panels.variables.needsComposition")}</p>
       </div>
     );
   }
@@ -477,7 +521,7 @@ export const VariablesPanel = memo(function VariablesPanel({
           />
         )}
         <ValidationStrip issues={issues} />
-        {declarations.length === 0 && !addOpen && EMPTY_STATE}
+        {declarations.length === 0 && !addOpen && <EmptyState />}
         {declarations.map((decl) => (
           <VariableRow
             key={decl.id}
@@ -502,9 +546,7 @@ export const VariablesPanel = memo(function VariablesPanel({
           onDeclare={(id) => handleAdd({ id, type: "string", label: id, default: "" })}
         />
         {usage?.scanIncomplete && (
-          <p className="text-2xs text-fg-disabled">
-            Scripts access variables dynamically — usage info may be incomplete.
-          </p>
+          <p className="text-2xs text-fg-disabled">{t("panels.variables.dynamicAccess")}</p>
         )}
         {declarations.length > 0 && (
           <HandoffFooter
@@ -516,7 +558,7 @@ export const VariablesPanel = memo(function VariablesPanel({
         {addOpen ? (
           <DeclarationForm
             initial={EMPTY_DRAFT}
-            submitLabel="Add variable"
+            submitLabel={t("panels.variables.addVariable")}
             onSubmit={handleAdd}
             onCancel={() => setAddOpen(false)}
           />
@@ -526,7 +568,7 @@ export const VariablesPanel = memo(function VariablesPanel({
             onClick={() => setAddOpen(true)}
             className="h-7 w-full rounded-md border border-dashed border-border text-xs font-medium text-fg-3 transition-colors hover:border-border hover:text-fg-2"
           >
-            + Add variable
+            {t("panels.variables.addButton")}
           </button>
         )}
         <VariablesOtherCompositions

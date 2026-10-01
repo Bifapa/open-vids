@@ -21,13 +21,9 @@ import { usePlayerStore } from "../../player";
 import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
 import { generateId } from "../../utils/generateId";
-import {
-  SectionHeader,
-  SlideList,
-  SlideInspector,
-  BranchTree,
-  HotspotTool,
-} from "./SlideshowSubPanels";
+import { useTranslation } from "../../i18n";
+import { SectionHeader, SlideList, SlideInspector, BranchTree } from "./SlideshowSubPanels";
+import { HotspotTool } from "./SlideshowHotspotTool";
 
 // Re-export pure helpers so the test file can import from "./SlideshowPanel".
 export {
@@ -170,6 +166,7 @@ export interface SlideshowPanelProps {
 type SectionKey = "slides" | "inspector" | "branches" | "hotspot";
 
 export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowPanelProps) {
+  const { t } = useTranslation();
   const { editingFile } = useFileManagerContext();
   const compHtml = editingFile?.content ?? null;
 
@@ -430,14 +427,14 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
           role="alert"
           className="flex items-center justify-between gap-2 border-b border-error/35 bg-error-soft px-3 py-2"
         >
-          <span className="text-sm text-error">Changes not saved</span>
+          <span className="text-sm text-error">{t("panels.slideshow.notSaved")}</span>
           <button
             type="button"
             disabled={retrying}
             onClick={handleRetryPersist}
             className="h-ctl-xs rounded-sm bg-error px-2 text-xs text-accent-ink transition-colors enabled:hover:bg-error/90 disabled:opacity-50"
           >
-            {retrying ? "Retrying…" : "Retry"}
+            {retrying ? t("panels.slideshow.retrying") : t("common.retry")}
           </button>
         </div>
       )}
@@ -446,10 +443,10 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
           <button
             type="button"
             onClick={handleUndo}
-            title="Undo last slideshow edit (⌘Z)"
+            title={t("panels.slideshow.undoTitle", { key: "⌘Z" })}
             className="h-ctl-xs rounded-sm px-2 text-xs text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
           >
-            Undo ({undoDepth})
+            {t("panels.slideshow.undo", { depth: undoDepth })}
           </button>
         </div>
       )}
@@ -457,7 +454,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
         expanded={expandedSections.has("slides")}
         onToggle={() => toggleSection("slides")}
       >
-        Slides ({manifest.slides.length})
+        {t("panels.slideshow.slides", { count: manifest.slides.length })}
       </SectionHeader>
       {expandedSections.has("slides") && (
         <div className="py-1">
@@ -479,7 +476,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
         expanded={expandedSections.has("inspector")}
         onToggle={() => toggleSection("inspector")}
       >
-        Slide Inspector
+        {t("panels.slideshow.inspector")}
       </SectionHeader>
       {expandedSections.has("inspector") && (
         <>
@@ -493,7 +490,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
               onRemoveFragment={handleRemoveFragment}
             />
           ) : (
-            <p className="m-0 px-3 py-2 text-sm text-fg-3">Select a scene above to inspect</p>
+            <p className="m-0 px-3 py-2 text-sm text-fg-3">{t("panels.slideshow.selectScene")}</p>
           )}
         </>
       )}
@@ -502,7 +499,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
         expanded={expandedSections.has("branches")}
         onToggle={() => toggleSection("branches")}
       >
-        Branches ({sequences.length})
+        {t("panels.slideshow.branches", { count: sequences.length })}
       </SectionHeader>
       {expandedSections.has("branches") && (
         <BranchTree
@@ -522,7 +519,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
         expanded={expandedSections.has("hotspot")}
         onToggle={() => toggleSection("hotspot")}
       >
-        Hotspot Tool
+        {t("panels.slideshow.hotspotTool")}
       </SectionHeader>
       {expandedSections.has("hotspot") && (
         <HotspotTool

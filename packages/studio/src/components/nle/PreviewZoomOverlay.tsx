@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { Button } from "../ui";
+import { Trans, formatPercent, useTranslation } from "../../i18n";
 import {
   isFitZoom,
   isPreviewAtFit,
@@ -67,6 +68,7 @@ export function PreviewZoomOverlay({
   onFit: () => void;
   navigatorRegionRef: (node: HTMLDivElement | null) => void;
 }) {
+  const { t } = useTranslation();
   if (isPreviewAtFit(zoom)) return null;
   return (
     <>
@@ -77,23 +79,26 @@ export function PreviewZoomOverlay({
         onPointerDown={(event) => event.stopPropagation()}
       >
         {isFitZoom(zoom.zoomPercent) ? (
-          <span>Panned</span>
+          <span>{t("timeline.zoom.panned")}</span>
         ) : (
           <span>
-            Zoomed{" "}
-            <b className="font-mono text-num font-medium tabular-nums text-fg">
-              {Math.round(zoom.zoomPercent)}%
-            </b>
+            <Trans
+              i18nKey="timeline.zoom.zoomed"
+              values={{ percent: formatPercent(Math.round(zoom.zoomPercent) / 100) }}
+              components={{
+                b: <b className="font-mono text-num font-medium tabular-nums text-fg" />,
+              }}
+            />
           </span>
         )}
         <Button
           size="xs"
           variant="secondary"
           onClick={onFit}
-          aria-label="Fit the whole frame in view"
+          aria-label={t("timeline.zoom.fitLabel")}
           data-testid="preview-zoom-fit"
         >
-          Fit
+          {t("timeline.zoom.fit")}
         </Button>
       </div>
       <div

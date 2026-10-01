@@ -1,12 +1,19 @@
 import { ArrowLeft } from "@phosphor-icons/react";
+import { useTranslation } from "../../i18n";
 
 export interface CompositionLevel {
   /** Unique id — "master" or composition file path */
   id: string;
-  /** Display label — "Master" or filename without extension */
+  /** Display label — the filename without extension; empty for "master", which is named at render */
   label: string;
   /** Preview URL for this composition level */
   previewUrl: string;
+}
+
+/** Labels a stack level for display; the master level is named in the active language. */
+export function useCompositionLevelLabel(): (level: CompositionLevel) => string {
+  const { t } = useTranslation();
+  return (level) => (level.id === "master" ? t("timeline.stack.master") : level.label);
 }
 
 interface CompositionBreadcrumbProps {
@@ -15,11 +22,13 @@ interface CompositionBreadcrumbProps {
 }
 
 export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcrumbProps) {
+  const { t } = useTranslation();
+  const levelLabel = useCompositionLevelLabel();
   if (stack.length <= 1) return null;
 
   return (
     <nav
-      aria-label="Composition navigation"
+      aria-label={t("timeline.breadcrumb.label")}
       className="flex h-head shrink-0 items-center gap-0.5 border-t border-border-subtle bg-bg-1 px-1.5"
     >
       {/* Back button — always goes to parent */}
@@ -29,8 +38,8 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
           onNavigate(stack.length - 2);
         }}
         className="flex size-ctl-sm items-center justify-center rounded-sm text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
-        title="Back (Esc, or double-click empty timeline)"
-        aria-label="Back to parent composition"
+        title={t("timeline.breadcrumb.backHint")}
+        aria-label={t("timeline.breadcrumb.back")}
       >
         <ArrowLeft size={12} weight="bold" />
       </button>
@@ -47,7 +56,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
             )}
             {isLast ? (
               <span aria-current="location" className="px-1.5 text-sm font-medium text-fg">
-                {level.label}
+                {levelLabel(level)}
               </span>
             ) : (
               <button
@@ -57,7 +66,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
                 }}
                 className="rounded-sm px-1.5 text-sm text-fg-2 transition-colors hover:bg-surface-1 hover:text-fg"
               >
-                {level.label}
+                {levelLabel(level)}
               </button>
             )}
           </span>
