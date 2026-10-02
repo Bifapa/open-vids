@@ -3,11 +3,7 @@
   "categories": {
     "correctness": "error"
   },
-  "plugins": [
-    "react",
-    "react-hooks",
-    "typescript"
-  ],
+  "plugins": ["react", "react-hooks", "typescript"],
   "ignorePatterns": [
     ".scratch/",
     "dist/",
@@ -29,19 +25,12 @@
         "packages/cli/src/templates/**/*.ts",
         "packages/cli/src/telemetry/**/*.ts"
       ],
-      "excludeFiles": [
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "packages/cli/src/telemetry/feedback.ts"
-      ],
+      "excludeFiles": ["**/*.test.ts", "**/*.test.tsx", "packages/cli/src/telemetry/feedback.ts"],
       "rules": {
         "no-console": [
           "error",
           {
-            "allow": [
-              "error",
-              "warn"
-            ]
+            "allow": ["error", "warn"]
           }
         ]
       }

@@ -39,10 +39,12 @@ They aren't redundant — one is "what variables does this composition have?" an
 
 ```html
 <!-- compositions/card.html -->
-<html data-composition-variables='[
+<html
+  data-composition-variables='[
   {"id":"title","type":"string","label":"Title","default":"Hello"},
   {"id":"color","type":"color","label":"Color","default":"#111827"}
-]'>
+]'
+>
   <body>
     <div data-composition-id="card" data-width="1920" data-height="1080">
       <h1 class="title"></h1>
@@ -58,10 +60,16 @@ They aren't redundant — one is "what variables does this composition have?" an
 
 ```html
 <!-- index.html — embed twice with different per-instance values -->
-<div data-composition-id="card-pro" data-composition-src="compositions/card.html"
-     data-variable-values='{"title":"Pro","color":"#ff4d4f"}'></div>
-<div data-composition-id="card-enterprise" data-composition-src="compositions/card.html"
-     data-variable-values='{"title":"Enterprise","color":"#22c55e"}'></div>
+<div
+  data-composition-id="card-pro"
+  data-composition-src="compositions/card.html"
+  data-variable-values='{"title":"Pro","color":"#ff4d4f"}'
+></div>
+<div
+  data-composition-id="card-enterprise"
+  data-composition-src="compositions/card.html"
+  data-variable-values='{"title":"Enterprise","color":"#22c55e"}'
+></div>
 ```
 
 The runtime layers `data-variable-values` over the sub-comp's declared defaults on a per-instance basis. The same `getVariables()` call works at the top level too — the CLI flag `--variables` provides the override, declared `default`s fall through for missing keys.

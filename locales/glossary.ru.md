@@ -6,87 +6,87 @@
 Имена собственные не переводятся: OpenVids, HyperFrames, Story (режим и граф), Jev,
 названия провайдеров и моделей.
 
-| English | Русский | Примечание |
-| --- | --- | --- |
-| timeline | таймлайн | не «временная шкала» |
-| clip | клип | |
-| track | дорожка | |
-| keyframe | ключевой кадр | |
-| render | рендер / рендерить | «Render» как кнопка — «Рендерить» |
-| export | экспорт / экспортировать | |
-| composition | композиция | |
-| project | проект | |
-| asset | материал | медиа-файл проекта; «Asset Search» — «Поиск материалов» |
-| media | медиа | |
-| footage | материал / отснятый материал | |
-| source (file) | исходник | |
-| preview | предпросмотр | кнопка — «Просмотр» |
-| playhead | курсор воспроизведения | |
-| scrub | прокрутка | |
-| snap | привязка | |
-| blade | лезвие | инструмент разрезания |
-| split | разрезать | |
-| trim | подрезать / подрезка | |
-| ripple delete | удалить со сдвигом | |
-| gap | пробел | между клипами |
-| transition | переход | |
-| caption / subtitle | субтитры | |
-| chapter | глава | Story |
-| section | раздел | Story / sync |
-| B-roll | B-roll | не переводится |
-| A-roll | A-roll | не переводится |
-| voice-over | закадровый голос | |
-| take | дубль | |
-| cut (noun) | монтаж / склейка | по контексту |
-| cut plan | план монтажа | |
-| inspector | инспектор | |
-| layer | слой | |
-| layout | компоновка | проверка QA «layout» — «компоновка» |
-| frame rate | частота кадров | |
-| fps | к/с | |
-| resolution | разрешение | |
-| aspect ratio | соотношение сторон | |
-| thumbnail | миниатюра | |
-| settings | настройки | |
-| preferences | настройки | |
-| theme | тема | |
-| density | плотность интерфейса | |
-| agent | агент | |
-| Director | Директор | роль агента |
-| specialist | специалист | роль агента |
-| turn | ход | ход в чате с агентом |
-| checkpoint | контрольная точка | |
-| revert | откатить | |
-| undo / redo | отменить / повторить | |
-| provider | провайдер | |
-| model | модель | |
-| API key | API-ключ | |
-| sign in / sign out | войти / выйти | |
-| trusted sources | доверенные источники | |
-| license | лицензия | |
-| provenance | происхождение | |
-| QA / render QA | проверка рендера | «QA» можно оставить в скобках |
-| execution quality | качество выполнения | |
-| pass | проход | QA pass |
-| issue / finding | замечание | |
-| warning | предупреждение | |
-| error | ошибка | |
-| loading… | загрузка… | |
-| retry / try again | повторить | |
-| cancel | отмена | кнопка — «Отмена» |
-| OK | ОК | |
-| save | сохранить | |
-| delete | удалить | |
-| remove | убрать | из списка, не с диска |
-| move to Trash | переместить в Корзину | |
-| open | открыть | |
-| close | закрыть | |
-| rename | переименовать | |
-| duplicate | дублировать | |
-| reveal in Finder | показать в Finder | |
-| drag and drop | перетащить | |
-| hotkey / shortcut | сочетание клавиш | |
-| workspace | рабочее пространство | Media / Story / Edit |
-| Media (workspace) | Медиа | |
-| Edit (workspace) | Монтаж | |
-| Story (workspace) | Story | не переводится |
+| English            | Русский                      | Примечание                                              |
+| ------------------ | ---------------------------- | ------------------------------------------------------- |
+| timeline           | таймлайн                     | не «временная шкала»                                    |
+| clip               | клип                         |                                                         |
+| track              | дорожка                      |                                                         |
+| keyframe           | ключевой кадр                |                                                         |
+| render             | рендер / рендерить           | «Render» как кнопка — «Рендерить»                       |
+| export             | экспорт / экспортировать     |                                                         |
+| composition        | композиция                   |                                                         |
+| project            | проект                       |                                                         |
+| asset              | материал                     | медиа-файл проекта; «Asset Search» — «Поиск материалов» |
+| media              | медиа                        |                                                         |
+| footage            | материал / отснятый материал |                                                         |
+| source (file)      | исходник                     |                                                         |
+| preview            | предпросмотр                 | кнопка — «Просмотр»                                     |
+| playhead           | курсор воспроизведения       |                                                         |
+| scrub              | прокрутка                    |                                                         |
+| snap               | привязка                     |                                                         |
+| blade              | лезвие                       | инструмент разрезания                                   |
+| split              | разрезать                    |                                                         |
+| trim               | подрезать / подрезка         |                                                         |
+| ripple delete      | удалить со сдвигом           |                                                         |
+| gap                | пробел                       | между клипами                                           |
+| transition         | переход                      |                                                         |
+| caption / subtitle | субтитры                     |                                                         |
+| chapter            | глава                        | Story                                                   |
+| section            | раздел                       | Story / sync                                            |
+| B-roll             | B-roll                       | не переводится                                          |
+| A-roll             | A-roll                       | не переводится                                          |
+| voice-over         | закадровый голос             |                                                         |
+| take               | дубль                        |                                                         |
+| cut (noun)         | монтаж / склейка             | по контексту                                            |
+| cut plan           | план монтажа                 |                                                         |
+| inspector          | инспектор                    |                                                         |
+| layer              | слой                         |                                                         |
+| layout             | компоновка                   | проверка QA «layout» — «компоновка»                     |
+| frame rate         | частота кадров               |                                                         |
+| fps                | к/с                          |                                                         |
+| resolution         | разрешение                   |                                                         |
+| aspect ratio       | соотношение сторон           |                                                         |
+| thumbnail          | миниатюра                    |                                                         |
+| settings           | настройки                    |                                                         |
+| preferences        | настройки                    |                                                         |
+| theme              | тема                         |                                                         |
+| density            | плотность интерфейса         |                                                         |
+| agent              | агент                        |                                                         |
+| Director           | Директор                     | роль агента                                             |
+| specialist         | специалист                   | роль агента                                             |
+| turn               | ход                          | ход в чате с агентом                                    |
+| checkpoint         | контрольная точка            |                                                         |
+| revert             | откатить                     |                                                         |
+| undo / redo        | отменить / повторить         |                                                         |
+| provider           | провайдер                    |                                                         |
+| model              | модель                       |                                                         |
+| API key            | API-ключ                     |                                                         |
+| sign in / sign out | войти / выйти                |                                                         |
+| trusted sources    | доверенные источники         |                                                         |
+| license            | лицензия                     |                                                         |
+| provenance         | происхождение                |                                                         |
+| QA / render QA     | проверка рендера             | «QA» можно оставить в скобках                           |
+| execution quality  | качество выполнения          |                                                         |
+| pass               | проход                       | QA pass                                                 |
+| issue / finding    | замечание                    |                                                         |
+| warning            | предупреждение               |                                                         |
+| error              | ошибка                       |                                                         |
+| loading…           | загрузка…                    |                                                         |
+| retry / try again  | повторить                    |                                                         |
+| cancel             | отмена                       | кнопка — «Отмена»                                       |
+| OK                 | ОК                           |                                                         |
+| save               | сохранить                    |                                                         |
+| delete             | удалить                      |                                                         |
+| remove             | убрать                       | из списка, не с диска                                   |
+| move to Trash      | переместить в Корзину        |                                                         |
+| open               | открыть                      |                                                         |
+| close              | закрыть                      |                                                         |
+| rename             | переименовать                |                                                         |
+| duplicate          | дублировать                  |                                                         |
+| reveal in Finder   | показать в Finder            |                                                         |
+| drag and drop      | перетащить                   |                                                         |
+| hotkey / shortcut  | сочетание клавиш             |                                                         |
+| workspace          | рабочее пространство         | Media / Story / Edit                                    |
+| Media (workspace)  | Медиа                        |                                                         |
+| Edit (workspace)   | Монтаж                       |                                                         |
+| Story (workspace)  | Story                        | не переводится                                          |

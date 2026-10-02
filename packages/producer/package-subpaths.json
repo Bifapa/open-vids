@@ -5,19 +5,13 @@
       "source": "./src/index.ts",
       "runtime": "./dist/index.js",
       "types": "./dist/index.d.ts",
-      "environments": [
-        "bun",
-        "node"
-      ]
+      "environments": ["bun", "node"]
     },
     "./server": {
       "source": "./src/server.ts",
       "runtime": "./dist/public-server.js",
       "types": null,
-      "environments": [
-        "bun",
-        "node"
-      ]
+      "environments": ["bun", "node"]
     }
   }
 }

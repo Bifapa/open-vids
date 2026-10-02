@@ -4,13 +4,13 @@
 
 Check what's configured and which engines a workflow will use (see the skill's **Preflight** section). Keys resolve in this order — **first match wins**:
 
-| Provider                             | Resolution order (first non-empty wins)                                                                                                                                    | Local deps when used                             |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Provider                             | Resolution order (first non-empty wins)                                                                       | Local deps when used                             |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | **HeyGen** (TTS + BGM/SFX retrieval) | `$HEYGEN_API_KEY` → `$HYPERFRAMES_API_KEY` → `~/.heygen/credentials` (`$HEYGEN_CONFIG_DIR` overrides the dir) | none (REST)                                      |
-| **ElevenLabs** (TTS fallback)        | `$ELEVENLABS_API_KEY`                                                                                                                                                      | `pip install elevenlabs`                         |
-| **Lyria** (BGM fallback)             | `$GEMINI_API_KEY` → `$GOOGLE_API_KEY`                                                                                                                                      | `pip install google-genai`                       |
-| **Kokoro** (TTS, no key)             | always — final voice fallback                                                                                                                                              | `pip install kokoro-onnx soundfile`              |
-| **MusicGen** (BGM, no key)           | always — final music fallback                                                                                                                                              | `pip install transformers torch soundfile numpy` |
+| **ElevenLabs** (TTS fallback)        | `$ELEVENLABS_API_KEY`                                                                                         | `pip install elevenlabs`                         |
+| **Lyria** (BGM fallback)             | `$GEMINI_API_KEY` → `$GOOGLE_API_KEY`                                                                         | `pip install google-genai`                       |
+| **Kokoro** (TTS, no key)             | always — final voice fallback                                                                                 | `pip install kokoro-onnx soundfile`              |
+| **MusicGen** (BGM, no key)           | always — final music fallback                                                                                 | `pip install transformers torch soundfile numpy` |
 
 Set `$HEYGEN_API_KEY` (or `$HYPERFRAMES_API_KEY`) — one key, every project, no per-repo `.env`. It is sent as `X-Api-Key`. With no HeyGen credential, voice/BGM run fully locally (Kokoro / MusicGen) — `hyperframes doctor` reports whether those local deps are installed.
 

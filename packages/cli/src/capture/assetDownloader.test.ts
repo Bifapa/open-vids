@@ -327,12 +327,7 @@ describe("drop counts — why a referenced asset is not in the capture", () => {
           async () =>
             new Response(
               new Uint8Array(
-                readFileSync(
-                  new URL(
-                    "./__fixtures__/test-font-a.woff2",
-                    import.meta.url,
-                  ),
-                ),
+                readFileSync(new URL("./__fixtures__/test-font-a.woff2", import.meta.url)),
               ),
               { status: 200 },
             ),
@@ -615,12 +610,8 @@ describe("declared icons — keep them all, headline the bare mark", () => {
 describe("capture download security boundaries", () => {
   it("preserves two different fonts whose URL extensions canonicalize to the same name", async () => {
     await withTempDir(async (dir) => {
-      const first = readFileSync(
-        new URL("./__fixtures__/test-font-a.woff2", import.meta.url),
-      );
-      const second = readFileSync(
-        new URL("./__fixtures__/test-font-b.woff2", import.meta.url),
-      );
+      const first = readFileSync(new URL("./__fixtures__/test-font-a.woff2", import.meta.url));
+      const second = readFileSync(new URL("./__fixtures__/test-font-b.woff2", import.meta.url));
       expect(first.equals(second)).toBe(false);
       vi.stubGlobal(
         "fetch",
@@ -641,9 +632,7 @@ describe("capture download security boundaries", () => {
 
   it("shares the capture byte budget between fonts and icons", async () => {
     await withTempDir(async (dir) => {
-      const bytes = readFileSync(
-        new URL("./__fixtures__/test-font-a.woff2", import.meta.url),
-      );
+      const bytes = readFileSync(new URL("./__fixtures__/test-font-a.woff2", import.meta.url));
       const fetchMock = vi.fn(async () => new Response(new Uint8Array(bytes)));
       vi.stubGlobal("fetch", fetchMock);
       const byteBudget = { remainingBytes: bytes.length };
@@ -709,9 +698,7 @@ describe("capture download security boundaries", () => {
     "writes valid font %s under a safe name and rewrites CSS",
     async (name) => {
       await withTempDir(async (dir) => {
-        const bytes = readFileSync(
-          new URL("./__fixtures__/test-font-a.woff2", import.meta.url),
-        );
+        const bytes = readFileSync(new URL("./__fixtures__/test-font-a.woff2", import.meta.url));
         vi.stubGlobal(
           "fetch",
           vi.fn(async () => new Response(new Uint8Array(bytes))),

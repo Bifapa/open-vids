@@ -41,7 +41,11 @@ libc = "0.2"
 # page (drop_paths.rs). Same versions wry already links.
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString"] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSArray",
+  "NSString",
+] }
 
 [profile.release]
 codegen-units = 1

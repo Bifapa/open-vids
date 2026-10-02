@@ -3,9 +3,7 @@ import { win32 } from "node:path";
 import { describe, expect, it } from "vitest";
 import { captureFontExtension, captureFontFilename } from "./captureFontValidation.js";
 
-const font = readFileSync(
-  new URL("./__fixtures__/test-font-a.woff2", import.meta.url),
-);
+const font = readFileSync(new URL("./__fixtures__/test-font-a.woff2", import.meta.url));
 
 describe("capture font publication", () => {
   it("keeps canonicalized font names distinct on case-insensitive filesystems", () => {
