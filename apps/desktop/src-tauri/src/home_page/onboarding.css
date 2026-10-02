@@ -193,7 +193,7 @@ html.is-onboarding .tb-tools {
   line-height: 16px;
 }
 
-/* Connected summary (step 2) and the review rows (step 4) are .st-prov rows: dot | label | control. */
+/* Connected summary (Model step) and the review rows (Project step) are .st-prov rows: dot | label | control. */
 .ob-names {
   font-weight: 500;
 }

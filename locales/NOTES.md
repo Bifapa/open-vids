@@ -197,6 +197,7 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `settings.execution.passes` — How many times the agent renders its work and checks the result.
 - `onboarding.step.done` — Read by screen readers after a completed step name.
 - `onboarding.step.welcome` — Name of the first setup step.
+- `onboarding.step.appearance` — Name of the setup step that picks the app language and the light/dark theme.
 - `onboarding.step.model` — Name of the setup step that connects an AI model.
 - `onboarding.step.system` — Name of the setup step that checks Chrome and FFmpeg.
 - `onboarding.models.connected` — {names} is a list of provider names; keep the <names> tags around it.

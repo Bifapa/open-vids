@@ -1,4 +1,4 @@
-/* Onboarding step 3 — System check. GET /api/system/check lists Chrome, FFmpeg and ffprobe; a missing tool with
+/* Onboarding step 4 — System check. GET /api/system/check lists Chrome, FFmpeg and ffprobe; a missing tool with
    `canInstall` gets an Install button driven by GET/POST /api/system/install/<tool> (+ /cancel), polled while it
    runs. The tool row is generic: it lights up for any tool whose check says canInstall and whose install state
    arrives in `install[<tool>]`. FFmpeg is installed only through Homebrew and provides ffprobe too, so the two

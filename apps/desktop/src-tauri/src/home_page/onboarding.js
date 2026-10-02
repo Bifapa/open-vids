@@ -1,4 +1,4 @@
-/* First-run onboarding — the shell: four skippable steps (Welcome, Model, System, Project), a step indicator,
+/* First-run onboarding — the shell: five skippable steps (Welcome, Language & theme, Model, System, Project), a step indicator,
    Back / Continue, "Skip setup", focus per step, and the page underneath made inert. The steps live in
    onboarding-<step>.js and register on window.OVOB.steps; the Models step reuses the Models & Providers
    modules (settings-core / -providers / -signin) mounted into the overlay with OVS.useHost.
@@ -10,7 +10,7 @@
   const overlay = document.getElementById("ob");
   const hostEl = document.getElementById("obMain");
   const STEP_KEY = "ov-onboarding-step";
-  const ORDER = ["welcome", "models", "system", "project"];
+  const ORDER = ["welcome", "appearance", "models", "system", "project"];
 
   const store = {
     get(k) {

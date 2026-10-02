@@ -1,4 +1,4 @@
-/* Onboarding step 2 — Connect a model. The provider rows, key form and sign-in panel are the Models & Providers
+/* Onboarding step 3 — Connect a model. The provider rows, key form and sign-in panel are the Models & Providers
    ones (settings-providers.js / settings-signin.js), drawn here as they are in Settings; this file only decides
    which providers show and what the step says. A model is optional: the manual editor works without one. */
 (function () {

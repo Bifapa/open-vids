@@ -1,4 +1,4 @@
-/* Onboarding step 4 — First project: the folder new projects are created in (preferences newProject.location,
+/* Onboarding step 5 — First project: the folder new projects are created in (preferences newProject.location,
    changed with the native picker, POST /api/pick-parent), a review of what the earlier steps found, and Finish. */
 (function () {
   "use strict";

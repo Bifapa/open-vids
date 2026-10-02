@@ -1840,6 +1840,7 @@
     "settings-signin",
     "onboarding",
     "onboarding-welcome",
+    "onboarding-appearance",
     "onboarding-models",
     "onboarding-system",
     "onboarding-project",

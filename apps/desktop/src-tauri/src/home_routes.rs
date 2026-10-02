@@ -364,6 +364,7 @@ fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
         "onboarding.css" => (CSS, include_bytes!("home_page/onboarding.css")),
         "onboarding.js" => (JS, include_bytes!("home_page/onboarding.js")),
         "onboarding-welcome.js" => (JS, include_bytes!("home_page/onboarding-welcome.js")),
+        "onboarding-appearance.js" => (JS, include_bytes!("home_page/onboarding-appearance.js")),
         "onboarding-models.js" => (JS, include_bytes!("home_page/onboarding-models.js")),
         "onboarding-system.js" => (JS, include_bytes!("home_page/onboarding-system.js")),
         "onboarding-project.js" => (JS, include_bytes!("home_page/onboarding-project.js")),
