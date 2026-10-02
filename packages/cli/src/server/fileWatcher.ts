@@ -45,6 +45,22 @@ function isDirectory(path: string): boolean {
   }
 }
 
+// FSEvents (macOS) can still deliver writes made just before the stream started: the host stamps
+// hf-ids into every composition right before it watches, and those events arriving afterwards would
+// reach Studio as an outside edit. For a short while after arming, a path whose last change predates
+// the watch is such a replay, and so is an atomic write's temp file that is already gone.
+const REPLAY_WINDOW_MS = 5000;
+const ATOMIC_TEMP_FILE = /\.\d+\.[0-9a-f-]{36}\.tmp$/;
+
+function isReplayFromBefore(path: string, armedAt: number): boolean {
+  try {
+    // `armedAt` is a whole millisecond (Date.now()); a write in that same millisecond came first.
+    return Math.floor(lstatSync(path).ctimeMs) <= armedAt;
+  } catch {
+    return ATOMIC_TEMP_FILE.test(path);
+  }
+}
+
 // On Linux, Node's `recursive` watch arms inotify per file inode, so a file replaced by rename
 // (an atomic save) is never reported again; a watch per directory reports children by name.
 function watchProjectTree(
@@ -52,9 +68,19 @@ function watchProjectTree(
   onChange: (relativePath: string) => void,
 ): () => void {
   if (process.platform !== "linux") {
+    let armedAt = Number.POSITIVE_INFINITY;
     const tree = watch(projectDir, { recursive: true }, (_event, filename) => {
-      if (filename) onChange(filename.toString());
+      if (!filename) return;
+      const relativePath = filename.toString();
+      if (
+        Date.now() - armedAt < REPLAY_WINDOW_MS &&
+        isReplayFromBefore(join(projectDir, relativePath), armedAt)
+      ) {
+        return;
+      }
+      onChange(relativePath);
     });
+    armedAt = Date.now();
     // An async 'error' (e.g. EMFILE) with no listener would crash the process.
     tree.on("error", () => tree.close());
     return () => tree.close();

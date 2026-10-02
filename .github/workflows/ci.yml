@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -32,7 +32,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -63,6 +63,9 @@ jobs:
       - name: Check desktop
         run: bun run desktop:check
 
+      - name: Desktop Rust tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
       - name: Desktop tests
         run: bun run --cwd apps/desktop test
 
@@ -83,7 +86,11 @@ jobs:
             skills: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      # The engine's HDR PNG tests read one LFS fixture; the rest of LFS is the producer's regression corpus.
+      - name: Fetch test fixtures from LFS
+        run: git lfs pull --include="packages/producer/tests/hdr-regression/src/hdr-photo-pq.png"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -91,12 +98,15 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # Tests synthesize fixtures with libvorbis, libaom-av1, libvpx and x264; Homebrew's `ffmpeg` lacks some of them.
       - name: Install FFmpeg
-        run: command -v ffmpeg >/dev/null || brew install ffmpeg
+        run: |
+          brew install ffmpeg-full
+          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
