@@ -39,6 +39,9 @@ jobs:
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          # Same Bun as CI: the staged app runs on this Bun binary (apps/desktop/scripts/stage-runtime.mjs).
+          bun-version: "1.4.2"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

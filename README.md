@@ -20,14 +20,22 @@ It began as a snapshot of [HyperFrames](https://github.com/heygen-com/hyperframe
 
 OpenVids is at an early stage.
 
-- macOS 11 or later only. Builds have been made on Apple Silicon.
-- There are no prebuilt downloads yet: you build the app from source.
+- macOS 11 or later on Apple Silicon. There is no Intel build.
+- Prebuilt downloads are on [GitHub Releases](https://github.com/bazodev/open-vids/releases/latest); you can also build from source.
 - The app checks GitHub Releases for updates and installs them on a button press; updates are verified with the project's updater signing key, not by Apple code signing.
-- Builds are ad-hoc signed and not notarized.
+- Builds are ad-hoc signed and not notarized, so macOS blocks the first launch (see [Install](#install)).
 - Rendering and thumbnails need Chrome and FFmpeg installed on the machine; OpenVids does not ship them.
 - The local Studio server is unauthenticated on loopback while a project is open. See [SECURITY.md](SECURITY.md).
 
-## Getting started
+## Install
+
+1. Download `OpenVids_<version>_aarch64.dmg` from the [latest release](https://github.com/bazodev/open-vids/releases/latest), open it and drag OpenVids to Applications.
+2. Open OpenVids once. macOS says it cannot verify the developer: the app is not notarized. Open **System Settings → Privacy & Security**, scroll to Security and click **Open Anyway** next to OpenVids, then confirm. Alternatively, in Terminal: `xattr -dr com.apple.quarantine /Applications/OpenVids.app`.
+3. Install [Google Chrome](https://www.google.com/chrome/) and FFmpeg (`brew install ffmpeg`, or the button OpenVids shows when FFmpeg is missing).
+
+Later versions install from inside the app (the update button), without these steps.
+
+## Build from source
 
 Install the tools listed under [Requirements](#requirements), then:
 
