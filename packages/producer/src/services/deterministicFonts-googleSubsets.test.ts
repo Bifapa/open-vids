@@ -23,13 +23,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { fontDirectories } from "@hyperframes/core/fonts/system-locator";
 import { _clearGoogleFontCssCacheForTests } from "./deterministicFonts.js";
 
 beforeEach(() => _clearGoogleFontCssCacheForTests());
 
 let cacheDir: string;
 let prevCacheEnv: string | undefined;
-const LOCAL_FONT_DIR = join(homedir(), ".local", "share", "fonts");
+// The system font locator only scans this platform's font directories: the first one under the home
+// directory (~/Library/Fonts on macOS, ~/.fonts on Linux) holds the test's "installed" font.
+const LOCAL_FONT_DIR =
+  fontDirectories().find((dir) => dir.startsWith(homedir())) ??
+  join(homedir(), ".local", "share", "fonts");
 const LOCAL_FONT_FILE = join(LOCAL_FONT_DIR, "hf-authored-fail-test.woff2");
 const LOCAL_FONT_BYTES = "LOCAL_ONLY_BYTES";
 

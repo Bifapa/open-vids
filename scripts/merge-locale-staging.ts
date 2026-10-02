@@ -49,9 +49,7 @@ async function withLock<T>(work: () => T): Promise<T> {
     } catch {
       if (Date.now() > deadline)
         throw new Error(`stale lock ${LOCK}: remove it if no merge is running`);
-      const { promise, resolve } = Promise.withResolvers<void>();
-      setTimeout(resolve, 100);
-      await promise;
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
     }
   }
   try {

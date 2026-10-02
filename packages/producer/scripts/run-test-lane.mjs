@@ -29,6 +29,8 @@ if (vitestFiles.length > 0) run(["x", "vitest", "run", ...vitestFiles]);
 
 // Bun's mock.module registry is process-global. Run each file in a fresh
 // process so mocks from one source test cannot mutate another test's imports.
+// The timeout covers the first system font lookup of a process: on macOS it
+// reads `system_profiler SPFontsDataType`, which takes 5–10 s with many fonts.
 for (const test of tests.filter((entry) => entry.runner === "bun")) {
-  run(["test", test.file]);
+  run(["test", "--timeout", "30000", test.file]);
 }
