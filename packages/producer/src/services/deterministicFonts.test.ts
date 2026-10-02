@@ -211,9 +211,33 @@ describe("var() font-family fallbacks", () => {
   const noProperties = new Map<string, string>();
 
   it("injects the fallback family of an undefined custom property", async () => {
-    const html = styled(`body { font-family: var(--font-body, Inter, system-ui, sans-serif); }`);
-    const result = await injectDeterministicFontFaces(html, { allowSystemFontCapture: false });
-    expect(result).toContain(`font-family: "Inter";`);
+    const prevCacheEnv = process.env.HYPERFRAMES_FONT_CACHE_DIR;
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-font-var-fallback-"));
+    process.env.HYPERFRAMES_FONT_CACHE_DIR = cacheDir;
+    _clearGoogleFontCssCacheForTests();
+    try {
+      const woff2Url = "https://fonts.gstatic.com/s/inter/v1/inter.woff2";
+      const fetchImpl = Object.assign(
+        async (url: string) =>
+          url.includes("css2")
+            ? new Response(
+                `@font-face { font-style: normal; font-weight: 400; src: url(${woff2Url}) format('woff2'); }`,
+                { status: 200 },
+              )
+            : new Response(new Uint8Array([0, 1, 2, 3])),
+        { preconnect: fetch.preconnect },
+      );
+      const html = styled(`body { font-family: var(--font-body, Inter, system-ui, sans-serif); }`);
+      const result = await injectDeterministicFontFaces(html, {
+        fetchImpl,
+        allowSystemFontCapture: false,
+      });
+      expect(result).toContain(`font-family: "Inter";`);
+    } finally {
+      if (prevCacheEnv === undefined) delete process.env.HYPERFRAMES_FONT_CACHE_DIR;
+      else process.env.HYPERFRAMES_FONT_CACHE_DIR = prevCacheEnv;
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   });
 
   it("uses the fallback list when the custom property is undefined", () => {
