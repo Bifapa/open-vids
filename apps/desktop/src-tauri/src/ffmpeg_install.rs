@@ -332,8 +332,15 @@ mod tests {
                 std::fs::set_permissions(&brew, std::fs::Permissions::from_mode(0o755)).unwrap();
             }
             std::env::set_var("OPENVIDS_BREW_PATH", &brew);
+            // The user's own HOMEBREW_* settings reach brew on purpose; the fake brews model a user
+            // without them (CI runners set HOMEBREW_NO_AUTO_UPDATE globally).
+            let user_no_auto_update = std::env::var_os("HOMEBREW_NO_AUTO_UPDATE");
+            std::env::remove_var("HOMEBREW_NO_AUTO_UPDATE");
             JOB.reset();
             let out = body(&dir);
+            if let Some(value) = user_no_auto_update {
+                std::env::set_var("HOMEBREW_NO_AUTO_UPDATE", value);
+            }
             std::env::remove_var("OPENVIDS_BREW_PATH");
             let _ = std::fs::remove_dir_all(&dir);
             out
