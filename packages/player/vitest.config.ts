@@ -20,8 +20,12 @@ export default defineConfig({
   },
   test: {
     environment: "happy-dom",
-    // Let happy-dom provide storage instead of Node's experimental global.
-    execArgv: ["--no-experimental-webstorage"],
+    // Node 25+ exposes a localStorage global that is not a working Storage without
+    // --localstorage-file and shadows happy-dom's. Node < 22.4 has no such flag and
+    // refuses to start with it.
+    execArgv: process.allowedNodeEnvironmentFlags.has("--no-experimental-webstorage")
+      ? ["--no-experimental-webstorage"]
+      : [],
     setupFiles: ["./src/slideshow/test-setup.ts"],
   },
 });
