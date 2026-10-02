@@ -1,8 +1,9 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
+import type { RenderActivity } from "./activity.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
 import { resolveWithinProject } from "../helpers/safePath.js";
@@ -30,7 +31,7 @@ export function registerRenderRoutes(
   api: Hono,
   adapter: StudioApiAdapter,
   options: RenderRouteOptions = {},
-): void {
+): RenderActivity {
   const openPath = options.openPath ?? openInDefaultApp;
   // Scoped job store — not shared across createStudioApi() calls
   const renderJobs = new Map<string, RenderJobState & { createdAt: number }>();
@@ -347,4 +348,15 @@ export function registerRenderRoutes(
     }
     return c.json({ renders: files });
   });
+
+  return {
+    activeRenders(project) {
+      const rendersDir = resolve(adapter.rendersDir(project));
+      let count = 0;
+      for (const job of renderJobs.values()) {
+        if (job.status === "rendering" && resolve(dirname(job.outputPath)) === rendersDir) count++;
+      }
+      return count;
+    },
+  };
 }

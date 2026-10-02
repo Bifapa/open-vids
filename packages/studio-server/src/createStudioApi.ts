@@ -21,6 +21,7 @@ import { registerStoryRoutes } from "./routes/story.js";
 import { registerResearchRoutes } from "./routes/research.js";
 import { registerQaRoutes } from "./routes/qa.js";
 import { registerAppPreferencesRoutes } from "./routes/appPreferences.js";
+import { registerActivityRoutes } from "./routes/activity.js";
 
 /**
  * Create a Hono sub-app with all studio API routes.
@@ -42,7 +43,8 @@ export function createStudioApi(
   registerFileRoutes(api, adapter);
   registerPreviewRoutes(api, adapter);
   registerLintRoutes(api, adapter);
-  registerRenderRoutes(api, adapter);
+  const renders = registerRenderRoutes(api, adapter);
+  registerActivityRoutes(api, adapter, renders);
   registerThumbnailRoutes(api, adapter);
   registerImageThumbnailRoutes(api, adapter);
   registerSelectionRoutes(api, adapter);

@@ -15,12 +15,14 @@ export interface AgentRuntimeLaunch {
   env?: Record<string, string>;
 }
 
+export type AgentGatewayStatus = "stopped" | "starting" | "running" | "failed";
+
 export interface AgentGateway {
   handle(
     request: Request,
     ctx: { project: ResolvedProject; subPath: string; origin: string },
   ): Promise<Response>;
-  status(): "stopped" | "starting" | "running" | "failed";
+  status(): AgentGatewayStatus;
   dispose(): Promise<void>;
 }
 
@@ -175,7 +177,7 @@ function copyResponseBody(
 }
 
 export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
-  let state: "stopped" | "starting" | "running" | "failed" = "stopped";
+  let state: AgentGatewayStatus = "stopped";
   let current: RuntimeInstance | null = null;
   let starting: Promise<RuntimeInstance> | null = null;
   let disposed = false;
