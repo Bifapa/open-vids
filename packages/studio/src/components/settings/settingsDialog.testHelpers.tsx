@@ -29,6 +29,7 @@ export const PREFERENCES: AppPreferences = {
   density: "default",
   language: "system",
   updates: { autoCheck: true },
+  telemetry: { enabled: true },
 };
 
 export function resetPreferences(): void {

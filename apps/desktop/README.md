@@ -124,6 +124,19 @@ button:
   downloaded `.dmg` meets Gatekeeper (System Settings › Privacy & Security › Open Anyway, or
   `xattr -dr com.apple.quarantine /Applications/OpenVids.app`).
 
+## Usage statistics
+
+`src-tauri/src/telemetry.rs` is the only sender of the anonymous usage statistics described in the
+root [README](../../README.md#usage-statistics): `app_start`, a `heartbeat` every 5 minutes,
+`app_end` on a normal quit (sent while the processes stop, at most 1 s) and one
+`telemetry_disabled` without an installation id when `telemetry.enabled` turns off. The preferences
+watcher in `lib.rs` re-reads the file, so a change saved from Studio counts too. Debug builds send
+nothing; to watch the requests, point one at a local receiver:
+
+```bash
+OPENVIDS_TELEMETRY_URL=http://127.0.0.1:8899/api/send bun run desktop:dev
+```
+
 ## Architecture
 
 ```

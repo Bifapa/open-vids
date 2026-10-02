@@ -50,6 +50,16 @@ signing or notarization (builds are ad-hoc signed). The updater private key live
 repository's GitHub Actions secrets. An attacker who obtains that key, or who can publish releases
 in this repository, could ship a malicious update that the app would accept.
 
+## Usage statistics
+
+Apart from the update check, the only request the desktop shell sends on its own is anonymous usage
+statistics: a JSON `POST` to `https://analytics.openvids.ai/api/send` (OpenVids' Umami) at launch,
+every 5 minutes, on quit, and once when the user turns statistics off. It carries the event name, the
+UI language, the app version, OS, architecture, whether the window has focus and a random installation
+id (left out of the opt-out event), never file or project names, paths, content, chat text, URLs, keys
+or error messages. Off with Settings › General, `DO_NOT_TRACK=1` or `OPENVIDS_TELEMETRY=0`; details
+in [README.md](README.md#usage-statistics). Report anything else leaving the machine through it.
+
 ## Dependencies
 
 Vulnerabilities in a third-party dependency are best reported to that project. If the way OpenVids

@@ -37,6 +37,11 @@ export interface UpdatePreferences {
   autoCheck: boolean;
 }
 
+/** Anonymous usage statistics; only the desktop shell sends them. */
+export interface TelemetryPreferences {
+  enabled: boolean;
+}
+
 export interface AppPreferences {
   version: 1;
   theme: AppTheme;
@@ -47,6 +52,7 @@ export interface AppPreferences {
   /** `system` or a language code from the locale catalog; the server validates it, so Studio takes any string. */
   language: string;
   updates: UpdatePreferences;
+  telemetry: TelemetryPreferences;
 }
 
 export interface AppPreferencesPatch {
@@ -57,11 +63,13 @@ export interface AppPreferencesPatch {
   density?: AppDensity;
   language?: string;
   updates?: Partial<UpdatePreferences>;
+  telemetry?: Partial<TelemetryPreferences>;
 }
 
 export const DEFAULT_DENSITY: AppDensity = "default";
 export const DEFAULT_LANGUAGE = SYSTEM_LANGUAGE;
 export const DEFAULT_UPDATES: UpdatePreferences = { autoCheck: true };
+export const DEFAULT_TELEMETRY: TelemetryPreferences = { enabled: true };
 
 const oneOf =
   <T extends string | number>(choices: readonly T[]) =>
@@ -85,14 +93,15 @@ function isNewProjectPreferences(value: unknown): value is NewProjectPreferences
   );
 }
 
-/** The keys every version of the file has. `density`, `language` and `updates` came later and are filled in when missing. */
+/** The keys every version of the file has. `density`, `language`, `updates` and `telemetry` came later and are filled in when missing. */
 function hasCoreFields(value: unknown): value is Omit<
   AppPreferences,
-  "density" | "language" | "updates"
+  "density" | "language" | "updates" | "telemetry"
 > & {
   density?: unknown;
   language?: unknown;
   updates?: unknown;
+  telemetry?: unknown;
 } {
   return (
     isRecord(value) &&
@@ -105,12 +114,13 @@ function hasCoreFields(value: unknown): value is Omit<
 }
 
 /**
- * The preferences in a document, or null when it is not one. A document written before density and the update
- * choice existed reads as Default density and automatic update checks, which is what the server answers too.
+ * The preferences in a document, or null when it is not one. A document written before density, the update choice
+ * and the usage statistics choice existed reads as Default density, automatic update checks and statistics on,
+ * which is what the server answers too.
  */
 export function parseAppPreferences(value: unknown): AppPreferences | null {
   if (!hasCoreFields(value)) return null;
-  const { density, language, updates } = value;
+  const { density, language, updates, telemetry } = value;
   return {
     version: 1,
     theme: value.theme,
@@ -124,6 +134,12 @@ export function parseAppPreferences(value: unknown): AppPreferences | null {
         isRecord(updates) && typeof updates.autoCheck === "boolean"
           ? updates.autoCheck
           : DEFAULT_UPDATES.autoCheck,
+    },
+    telemetry: {
+      enabled:
+        isRecord(telemetry) && typeof telemetry.enabled === "boolean"
+          ? telemetry.enabled
+          : DEFAULT_TELEMETRY.enabled,
     },
   };
 }
@@ -198,6 +214,7 @@ export const useAppPreferences = create<AppPreferencesState>((set, get) => ({
           ...patch,
           newProject: { ...before.newProject, ...patch.newProject },
           updates: { ...before.updates, ...patch.updates },
+          telemetry: { ...before.telemetry, ...patch.telemetry },
         },
       });
     }

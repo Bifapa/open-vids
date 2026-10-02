@@ -256,6 +256,15 @@
               tr("settings.general.autoUpdate"),
             ),
           ) +
+          row(
+            te("settings.general.telemetry"),
+            te("settings.general.telemetry.hint"),
+            sw(
+              prefs.telemetry && prefs.telemetry.enabled,
+              "telemetry",
+              tr("settings.general.telemetry"),
+            ),
+          ) +
           updateRows(st) +
           (S.updateBusy ? busyConfirm() : ""),
       ) + updateNote()
@@ -421,6 +430,10 @@
   CLICK["auto-update"] = () => {
     if (S.prefs)
       savePrefs({ updates: { autoCheck: !(S.prefs.updates && S.prefs.updates.autoCheck) } });
+  };
+  CLICK.telemetry = () => {
+    if (S.prefs)
+      savePrefs({ telemetry: { enabled: !(S.prefs.telemetry && S.prefs.telemetry.enabled) } });
   };
   CLICK["update-check"] = () => {
     S.updateBusy = null;

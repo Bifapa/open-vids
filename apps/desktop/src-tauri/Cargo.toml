@@ -28,6 +28,9 @@ trash = "5"
 url = "2"
 tauri-plugin-updater = "2"
 semver = "1"
+# The usage statistics POST (telemetry.rs): a small blocking client on its own
+# thread, rustls with ring (already in the tree via the updater) and Mozilla's roots.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 [target.'cfg(unix)'.dependencies]
 # killpg, for reaping the sidecar's whole process group. See sidecar::terminate.

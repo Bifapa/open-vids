@@ -333,6 +333,8 @@
   "settings.general.onLaunch.projects": "Показать проекты",
   "settings.general.confirmTrash": "Спрашивать перед перемещением проектов в Корзину",
   "settings.general.autoUpdate": "Автоматически проверять обновления",
+  "settings.general.telemetry": "Отправлять анонимную статистику использования",
+  "settings.general.telemetry.hint": "Версия приложения, система и открыт ли OpenVids. Никогда — ваши проекты, файлы и чаты.",
   "settings.general.group.updates": "Обновления",
   "settings.general.updates.version": "Версия",
   "settings.general.updates.idle": "Проверить, вышла ли новая версия",

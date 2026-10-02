@@ -45,6 +45,7 @@ describe("app preferences route", () => {
         confirmTrash: "yes",
         density: "huge",
         updates: { autoCheck: "sometimes", channel: "beta" },
+        telemetry: { enabled: "no", note: "x" },
         onboarding: { completedAt: "yesterday", step: "models" },
         future: { x: 1 },
         newProject: { fps: 23, width: 0, height: 1920, openIn: "story", location: "", extra: true },
@@ -58,6 +59,7 @@ describe("app preferences route", () => {
       confirmTrash: true,
       density: "default",
       updates: { autoCheck: true, channel: "beta" },
+      telemetry: { enabled: true, note: "x" },
       onboarding: { completedAt: null, step: "models" },
       future: { x: 1 },
       newProject: {
@@ -87,6 +89,28 @@ describe("app preferences route", () => {
       updates: { autoCheck: false, channel: "beta" },
     });
     expect(stored()).toMatchObject({ density: "compact", updates: { autoCheck: false } });
+  });
+
+  it("stores the usage statistics choice, merging the group key by key", async () => {
+    expect(await get()).toMatchObject({ telemetry: { enabled: true } });
+    writeFileSync(
+      path,
+      JSON.stringify({ telemetry: { note: "x" }, updates: { autoCheck: false } }),
+    );
+    const response = await put({ telemetry: { enabled: false } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      telemetry: { enabled: false, note: "x" },
+      updates: { autoCheck: false },
+    });
+    expect(stored()).toMatchObject({ telemetry: { enabled: false, note: "x" } });
+    // An update that does not name it leaves it alone.
+    expect(await (await put({ theme: "dark" })).json()).toMatchObject({
+      telemetry: { enabled: false },
+    });
+    // A stored group that is not an object reads as on, like the desktop.
+    writeFileSync(path, JSON.stringify({ telemetry: false }));
+    expect(await get()).toMatchObject({ telemetry: { enabled: true } });
   });
 
   it("stores when the onboarding was finished, keeps its other keys, and can reset it", async () => {
@@ -136,6 +160,9 @@ describe("app preferences route", () => {
     [{ density: "huge" }, "density"],
     [{ updates: { autoCheck: "yes" } }, "updates.autoCheck"],
     [{ updates: true }, "updates"],
+    [{ telemetry: { enabled: "no" } }, "telemetry.enabled"],
+    [{ telemetry: { enabled: null } }, "telemetry.enabled"],
+    [{ telemetry: false }, "telemetry"],
     [{ onboarding: { completedAt: "now" } }, "onboarding.completedAt"],
     [{ onboarding: { completedAt: 0 } }, "onboarding.completedAt"],
     [{ onboarding: { completedAt: 1.5 } }, "onboarding.completedAt"],
@@ -156,6 +183,7 @@ describe("app preferences route", () => {
     const objectFields: Record<string, true> = {
       newProject: true,
       updates: true,
+      telemetry: true,
       onboarding: true,
     };
     expect(body.error.code).toBe(

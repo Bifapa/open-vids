@@ -188,6 +188,33 @@ it("saves the automatic update check and keeps the frame rates the editor can ho
   ).toEqual(["24 fps", "25 fps", "30 fps", "60 fps"]);
 });
 
+it("turns the usage statistics off and on from General, with the hint beside the switch", async () => {
+  const fetchMock = stubPreferencesFetch();
+  mount();
+  await act(async () => openSettings("general"));
+  await settle();
+
+  expect(document.body.textContent).toContain("Never your projects, files or chats.");
+  const toggle = () =>
+    document.body.querySelector<HTMLElement>(
+      '[role="switch"][aria-label="Share anonymous usage statistics"]',
+    );
+  expect(toggle()?.getAttribute("aria-checked")).toBe("true");
+  await click(toggle());
+  expect(fetchMock).toHaveBeenLastCalledWith(
+    "/api/app/preferences",
+    expect.objectContaining({ body: JSON.stringify({ telemetry: { enabled: false } }) }),
+  );
+  expect(useAppPreferences.getState().preferences?.telemetry.enabled).toBe(false);
+  expect(toggle()?.getAttribute("aria-checked")).toBe("false");
+  await click(toggle());
+  expect(fetchMock).toHaveBeenLastCalledWith(
+    "/api/app/preferences",
+    expect.objectContaining({ body: JSON.stringify({ telemetry: { enabled: true } }) }),
+  );
+  expect(useAppPreferences.getState().preferences?.telemetry.enabled).toBe(true);
+});
+
 it("switches the app language from General: saved, in the store, and the row re-renders in Russian", async () => {
   const fetchMock = stubPreferencesFetch();
   vi.stubGlobal("navigator", { languages: ["en-US"] });
@@ -227,8 +254,14 @@ it("switches the app language from General: saved, in the store, and the row re-
   }
 });
 
-it("reads preferences written before density, language and the update choice existed", async () => {
-  const { density: _density, language: _language, updates: _updates, ...old } = PREFERENCES;
+it("reads preferences written before density, language, the update and the statistics choices existed", async () => {
+  const {
+    density: _density,
+    language: _language,
+    updates: _updates,
+    telemetry: _telemetry,
+    ...old
+  } = PREFERENCES;
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => Response.json(old)),

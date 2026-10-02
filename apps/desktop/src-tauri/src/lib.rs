@@ -75,6 +75,7 @@ mod recents;
 mod research_policy;
 mod sidecar;
 mod structure;
+mod telemetry;
 mod thumbnails;
 mod updater;
 
@@ -577,6 +578,7 @@ pub fn run() {
                     }
                     known = current;
                     let next = prefs::load(&path);
+                    telemetry::preferences_changed(&next);
                     let theme = window_theme(&next);
                     let os: Vec<String> = sys_locale::get_locales().collect();
                     let code = i18n::resolve_for_prefs(&next, &os);
@@ -718,6 +720,9 @@ pub fn run() {
                 })
                 .build()?;
             paint_window_background(&handle);
+            // Anonymous usage statistics (`telemetry.rs`): off the setup path,
+            // and never when the environment or a debug build says so.
+            telemetry::start(&handle, dev);
 
             #[cfg(target_os = "macos")]
             set_help_menu(&handle);
@@ -739,7 +744,11 @@ pub fn run() {
                 event,
                 tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
             ) {
+                // `app_end` goes out while the processes stop; its short
+                // budget is all the wait it can add to the quit.
+                let end = telemetry::app_end(app);
                 stop_owned_processes(app);
+                end.wait();
             }
         });
 }

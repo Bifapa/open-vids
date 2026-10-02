@@ -41,6 +41,7 @@ pub fn defaults() -> Value {
         "onLaunch": "projects",
         "density": "default",
         "updates": { "autoCheck": true },
+        "telemetry": { "enabled": true },
         "onboarding": { "completedAt": null }
     })
 }
@@ -167,6 +168,18 @@ fn normalize(stored: Value) -> Value {
     updates.insert("autoCheck".into(), json!(auto_check));
     out.insert("updates".into(), Value::Object(updates));
 
+    // Anonymous usage statistics (`telemetry.rs`): on unless the user turned them off.
+    let mut telemetry = match out.remove("telemetry") {
+        Some(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+    let enabled = telemetry
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    telemetry.insert("enabled".into(), json!(enabled));
+    out.insert("telemetry".into(), Value::Object(telemetry));
+
     // First-run onboarding: when it was finished (ms since the epoch), else null.
     let mut onboarding = match out.remove("onboarding") {
         Some(Value::Object(map)) => map,
@@ -290,6 +303,11 @@ pub fn auto_check_updates(prefs: &Value) -> bool {
     prefs["updates"]["autoCheck"].as_bool().unwrap_or(true)
 }
 
+/// `telemetry.enabled`: send anonymous usage statistics (`telemetry.rs`).
+pub fn telemetry_enabled(prefs: &Value) -> bool {
+    prefs["telemetry"]["enabled"].as_bool().unwrap_or(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,6 +385,38 @@ mod tests {
         let next = update(&path, &json!({"density":"huge"})).unwrap();
         assert_eq!(next["density"], "default");
         assert_eq!(next["updates"]["autoCheck"], false);
+    }
+
+    #[test]
+    fn the_statistics_choice_defaults_on_merges_and_falls_back() {
+        let path = tmp("telemetry");
+        assert_eq!(load(&path)["telemetry"], json!({"enabled": true}));
+        assert!(telemetry_enabled(&load(&path)));
+        // Unknown keys inside the group survive a merge that turns it off.
+        std::fs::write(
+            &path,
+            br#"{"telemetry":{"note":"x"},"updates":{"autoCheck":false}}"#,
+        )
+        .unwrap();
+        let next = update(&path, &json!({"telemetry":{"enabled":false}})).unwrap();
+        assert_eq!(next["telemetry"], json!({"enabled": false, "note": "x"}));
+        assert!(!telemetry_enabled(&next));
+        assert_eq!(next["updates"]["autoCheck"], false);
+        assert_eq!(load(&path), next);
+        // A patch that does not name it leaves it alone.
+        let next = update(&path, &json!({"theme":"dark"})).unwrap();
+        assert_eq!(next["telemetry"]["enabled"], false);
+        // Invalid values read as on, the default.
+        for bad in [
+            r#"{"enabled":"no"}"#,
+            r#"{"enabled":0}"#,
+            r#"{"enabled":null}"#,
+            "false",
+            r#""off""#,
+        ] {
+            std::fs::write(&path, format!(r#"{{"telemetry":{bad}}}"#)).unwrap();
+            assert_eq!(load(&path)["telemetry"]["enabled"], true, "{bad}");
+        }
     }
 
     #[test]

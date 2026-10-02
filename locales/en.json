@@ -333,6 +333,8 @@
   "settings.general.onLaunch.projects": "Show Projects",
   "settings.general.confirmTrash": "Confirm before moving projects to Trash",
   "settings.general.autoUpdate": "Check for updates automatically",
+  "settings.general.telemetry": "Share anonymous usage statistics",
+  "settings.general.telemetry.hint": "App version, system and whether OpenVids is open. Never your projects, files or chats.",
   "settings.general.group.updates": "Updates",
   "settings.general.updates.version": "Version",
   "settings.general.updates.idle": "Check whether a newer version is available",

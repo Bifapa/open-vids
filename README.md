@@ -86,6 +86,17 @@ The Chat panel talks to the OpenVids Agent Runtime (`packages/agent-runtime`), w
 
 Details: `packages/agent-runtime/README.md`.
 
+## Usage statistics
+
+The desktop app sends anonymous usage statistics so we can see how many people use OpenVids, and on which versions and systems. They go to OpenVids' own [Umami](https://umami.is) at `https://analytics.openvids.ai` (`POST /api/send`), from the Tauri shell only (`apps/desktop/src-tauri/src/telemetry.rs`): Studio, the Studio server, the agent runtime and the CLI never send them.
+
+- **Events** — `app_start` at launch (and when statistics are turned back on), `heartbeat` every 5 minutes while the app is open, `app_end` on a normal quit, and `telemetry_disabled` once at the moment you turn statistics off.
+- **Fields** — every event carries the event name, the UI language and `version` (app version), `os`, `arch` and `active` (whether the main window has focus). Every event except `telemetry_disabled` also carries an installation id: a random UUID created on the first send and stored in `~/.openvids/app/installation-id` (`OPENVIDS_APP_DIR` moves it). The request's User-Agent is `OpenVids/<version> (<os>; <arch>)`. Nothing else.
+- **Never sent** — names or paths of files and projects, project content, chat or prompt text, URLs, provider keys, error messages.
+- **Turning it off** — Settings › General › **Share anonymous usage statistics** (`telemetry.enabled` in `~/.openvids/app/preferences.json`); after the one `telemetry_disabled` nothing is sent. `DO_NOT_TRACK=1` or `OPENVIDS_TELEMETRY=0` in the environment stops every request, whatever the setting, and no installation id is created. Development builds (`bun run desktop:dev`) send nothing unless `OPENVIDS_TELEMETRY_URL` points them at an address (for testing against a local receiver).
+
+Failed requests are dropped: no retries, nothing queued on disk.
+
 ## Requirements
 
 - [Bun](https://bun.sh) (package manager and the sidecar JS runtime)

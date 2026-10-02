@@ -16,7 +16,7 @@ import { replaceFileAtomically } from "../helpers/atomicFile.js";
  * - writes are atomic (temp file + rename).
  *
  * Known top-level keys: `version`, `theme`, `language`, `onLaunch`, `confirmTrash`, `density`,
- * `newProject`, `updates`, `onboarding`. `language` is `"system"` or a code from
+ * `newProject`, `updates`, `telemetry`, `onboarding`. `language` is `"system"` or a code from
  * `locales/index.json`.
  *
  * The file is re-read on every request: the desktop may have changed it since.
@@ -69,6 +69,11 @@ export interface UpdatePreferences {
   autoCheck: boolean;
 }
 
+/** Anonymous usage statistics, sent by the desktop shell only (`apps/desktop/src-tauri/src/telemetry.rs`). */
+export interface TelemetryPreferences {
+  enabled: boolean;
+}
+
 /** First-run onboarding: when it was finished (ms since the epoch), `null` while it has not been. */
 export interface OnboardingPreferences {
   completedAt: number | null;
@@ -84,6 +89,7 @@ export interface AppPreferences {
   onLaunch: LaunchMode;
   density: AppDensity;
   updates: UpdatePreferences;
+  telemetry: TelemetryPreferences;
   onboarding: OnboardingPreferences;
 }
 
@@ -103,6 +109,7 @@ export function defaultAppPreferences(): AppPreferences {
     onLaunch: "projects",
     density: "default",
     updates: { autoCheck: true },
+    telemetry: { enabled: true },
     onboarding: { completedAt: null },
   };
 }
@@ -164,6 +171,7 @@ function normalize(stored: Document): Document & AppPreferences {
     fps: isFps(project.fps) ? project.fps : base.newProject.fps,
   };
   const updates = isRecord(stored.updates) ? stored.updates : {};
+  const telemetry = isRecord(stored.telemetry) ? stored.telemetry : {};
   const onboarding = isRecord(stored.onboarding) ? stored.onboarding : {};
   return {
     ...stored,
@@ -178,6 +186,10 @@ function normalize(stored: Document): Document & AppPreferences {
       ...updates,
       autoCheck:
         typeof updates.autoCheck === "boolean" ? updates.autoCheck : base.updates.autoCheck,
+    },
+    telemetry: {
+      ...telemetry,
+      enabled: typeof telemetry.enabled === "boolean" ? telemetry.enabled : base.telemetry.enabled,
     },
     onboarding: {
       ...onboarding,
@@ -206,6 +218,10 @@ const KNOWN_NEW_PROJECT: Record<string, (value: unknown) => boolean> = {
 
 const KNOWN_UPDATES: Record<string, (value: unknown) => boolean> = {
   autoCheck: (value) => typeof value === "boolean",
+};
+
+const KNOWN_TELEMETRY: Record<string, (value: unknown) => boolean> = {
+  enabled: (value) => typeof value === "boolean",
 };
 
 const KNOWN_ONBOARDING: Record<string, (value: unknown) => boolean> = {
@@ -254,6 +270,22 @@ export function validatePreferencesPatch(patch: unknown): Document {
       if (key in updates && !check(updates[key])) {
         throw new InvalidPreferencesError(`Invalid value for "updates.${key}"`, undefined, {
           key: `updates.${key}`,
+        });
+      }
+    }
+  }
+  if ("telemetry" in patch) {
+    const telemetry = patch.telemetry;
+    if (!isRecord(telemetry))
+      throw new InvalidPreferencesError(
+        `"telemetry" must be an object`,
+        "invalid_preferences.object",
+        { key: "telemetry" },
+      );
+    for (const [key, check] of Object.entries(KNOWN_TELEMETRY)) {
+      if (key in telemetry && !check(telemetry[key])) {
+        throw new InvalidPreferencesError(`Invalid value for "telemetry.${key}"`, undefined, {
+          key: `telemetry.${key}`,
         });
       }
     }

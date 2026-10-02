@@ -250,6 +250,16 @@ export function GeneralSection() {
             onCommit={(autoCheck) => save({ updates: { autoCheck } })}
           />
         </SettingsRow>
+        <SettingsRow
+          label={t("settings.general.telemetry")}
+          hint={t("settings.general.telemetry.hint")}
+        >
+          <Toggle
+            label={t("settings.general.telemetry")}
+            checked={preferences.telemetry.enabled}
+            onCommit={(enabled) => save({ telemetry: { enabled } })}
+          />
+        </SettingsRow>
       </SettingsGroup>
       {error && (
         <p role="alert" className="mx-0.5 mt-2 text-xs text-error">
