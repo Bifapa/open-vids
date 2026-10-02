@@ -6,6 +6,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { addBlockToProject } from "../utils/blockInstaller";
+import { useTimelineLockRefusal } from "./timelineEditPermission";
 import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
 import { t } from "../i18n";
 import type { BlockParam } from "@hyperframes/core/registry";
@@ -90,8 +91,11 @@ export function useBlockHandlers({
   // guard, repeat drops while one is in flight stack duplicate installs.
   const installingBlockRef = useRef(false);
   const { showToast, dismissToast } = blockCtxDeps;
+  const refuseTimelineLock = useTimelineLockRefusal(showToast);
   const runBlockInstall = useCallback(
     async <T>(blockName: string, install: () => Promise<T>): Promise<T | null> => {
+      // A block install adds clips to the composition the agent is rewriting.
+      if (refuseTimelineLock()) return null;
       if (installingBlockRef.current) {
         showToast(t("sidebar.blocks.installBusy"), "info");
         return null;
@@ -105,7 +109,7 @@ export function useBlockHandlers({
         dismissToast(progress);
       }
     },
-    [showToast, dismissToast],
+    [showToast, dismissToast, refuseTimelineLock],
   );
 
   const handleAddBlock = useCallback(

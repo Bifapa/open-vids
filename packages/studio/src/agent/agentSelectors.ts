@@ -2,6 +2,7 @@ import {
   DEFAULT_EXECUTION_QUALITY,
   effectiveSpecialistConfig,
   isAgentRunTerminal,
+  type ActiveTurnInfo,
   type Activity,
   type AgentModelCatalog,
   type AgentModelInfo,
@@ -32,6 +33,19 @@ export function runningTurn(chat: ChatState | null): TurnSummary | null {
     if (turn?.status === "running") return turn;
   }
   return null;
+}
+
+/**
+ * A project-modifying turn is running: the project-wide `activeTurn` (set by the server, which is also what keeps
+ * it running through the turn's render-QA correction passes), or a running turn in the open chat — the latter also
+ * covers the window where a turn was started while the project event stream is down. This is what locks the
+ * timeline (see agent/agentTurnLock.ts).
+ */
+export function agentTurnRunning(state: {
+  activeTurn: ActiveTurnInfo | null;
+  chat: ChatState | null;
+}): boolean {
+  return state.activeTurn !== null || runningTurn(state.chat) !== null;
 }
 
 /**

@@ -1,7 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
-import { AGENT_HEADERS, AGENT_RUNTIME_PREFIX } from "@hyperframes/agent-protocol";
+import {
+  AGENT_HEADERS,
+  AGENT_RUNTIME_PREFIX,
+  encodeScopeHeader,
+} from "@hyperframes/agent-protocol";
 import type { ResolvedProject } from "../types.js";
 
 export interface AgentRuntimeLaunch {
@@ -480,8 +484,8 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
         if (value !== null) headers.set(name, value);
       }
       headers.set(AGENT_HEADERS.token, `Bearer ${instance.token}`);
-      headers.set(AGENT_HEADERS.projectId, ctx.project.id);
-      headers.set(AGENT_HEADERS.projectDir, ctx.project.dir);
+      headers.set(AGENT_HEADERS.projectId, encodeScopeHeader(ctx.project.id));
+      headers.set(AGENT_HEADERS.projectDir, encodeScopeHeader(ctx.project.dir));
       headers.set(AGENT_HEADERS.studioOrigin, ctx.origin);
 
       const init: RequestInit = {

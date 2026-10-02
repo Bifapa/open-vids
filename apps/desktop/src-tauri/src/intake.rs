@@ -7,6 +7,7 @@
 //!
 //! ```json
 //! { "version": 1, "prompt": "…", "intent": "plan"|"edit"|"ask",
+//!   "format": "auto",                      // optional; "auto" = the agent picks the frame format
 //!   "model": {"provider","modelId"}|null, "thinking": "<effort>"|null,
 //!   "agents": ["editor", …], "agentOverrides": { … },
 //!   "files": [{ "path": "assets/a.mov", "name": "a.mov", "size": 1, "kind": "video" }],
@@ -311,8 +312,16 @@ mod tests {
         assert_eq!(imported[0].kind, "video");
         assert_eq!(std::fs::read(project.join("assets/clip.final.mov")).unwrap(), b"old");
 
-        let path = write_intake(&project, &serde_json::json!({"version": 1})).unwrap();
+        let path = write_intake(
+            &project,
+            &serde_json::json!({ "version": 1, "format": "auto", "prompt": "Reel" }),
+        )
+        .unwrap();
         assert_eq!(path, project.join(".hyperframes/agent/intake.json"));
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written["format"], "auto");
+        assert_eq!(written["prompt"], "Reel");
         assert!(!project.join(".hyperframes/agent/.intake.json.tmp").exists());
     }
 }

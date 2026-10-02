@@ -50,7 +50,11 @@ import { RuntimeError, errorMessage } from "./errors.js";
 import type { CheckpointHandle, CheckpointHost, RevertOutcome } from "./checkpointHost.js";
 import { intentRefusal, renderIntentBlock } from "./intent.js";
 import { ChatService } from "./chats.js";
-import { renderPromptContext } from "./promptContext.js";
+import {
+  renderCanvasAutoBlock,
+  renderCanvasAutoPlanBlock,
+  renderPromptContext,
+} from "./promptContext.js";
 import { renderRevertedTurns, revertedSinceLastPrompt } from "./revertedTurns.js";
 import { SessionManager } from "./sessionManager.js";
 import type { AgentSettingsStore } from "./settings.js";
@@ -193,6 +197,9 @@ export class TurnRunner {
         activeTurn: null,
       });
     }
+    // A start-from-chat project on Auto: the format stays open across turns (a Plan now, the edit later) until an
+    // edit sets the canvas. Durable on the chat, so a restart does not lose the choice.
+    if (input.canvas === "auto") await this.chats.setCanvasAuto(chatId, true);
     // A Story workspace action is always a story-mode turn; otherwise the request's mode, else the chat's.
     const mode: ChatMode = input.storyAction ? "story" : (input.mode ?? chatState.chat.activeMode);
     // A Story workspace action always acts; otherwise the request's intent, else the chat's, else Edit.
@@ -662,6 +669,9 @@ export class TurnRunner {
               turnSignal: signal,
               userRequests: [input.prompt],
               turnId: run.turn.id,
+              // The canvas is set: the chat no longer needs the format decided before the next build.
+              onCanvasSet: () =>
+                void this.chats.setCanvasAuto(run.chatId, false).catch(() => undefined),
               ...(researchHost && { research: researchHost }),
               fingerprint: qa
                 ? (callSignal) => qa.fingerprint(callSignal).catch(() => null)
@@ -815,6 +825,13 @@ export class TurnRunner {
         return outcome;
       };
       const intentBlock = renderIntentBlock(run.intent);
+      // The frame format is still open (the project was started with it on Auto): every turn of that chat carries a
+      // canvas instruction until a successful edit sets it — the build turn must set it, a plan states the choice.
+      const canvasAuto =
+        input.canvas === "auto" || (this.chats.get(run.chatId)?.chat.canvasAuto ?? false);
+      const canvasBlock = canvasAuto
+        ? `\n\n${run.intent === "edit" ? renderCanvasAutoBlock() : renderCanvasAutoPlanBlock()}`
+        : "";
       const storyBlocks =
         run.mode === "story" && run.story
           ? `\n\n${renderStoryBlocks(await this.storyBlockInput(run, setup, run.story))}`
@@ -836,7 +853,7 @@ export class TurnRunner {
         setup.execution.budget.qaPasses > 0 &&
         qaApplies(run.mode, run.storyAction);
       const promptPromise = promptDirector(
-        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage)}${intentBlock ? `\n\n${intentBlock}` : ""}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
+        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage)}${intentBlock ? `\n\n${intentBlock}` : ""}${canvasBlock}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
       );
       run.markPromptStarted();
       let outcome = await promptPromise;

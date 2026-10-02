@@ -74,6 +74,7 @@ export function ComposerPopover({
       side="top"
       align="center"
       sideOffset={8}
+      collisionAvoidance={{ side: "none" }}
       container={container ?? undefined}
       aria-label={title}
       className={cn(
@@ -97,7 +98,7 @@ export function ComposerPopover({
         )}
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-fg">{title}</span>
       </div>
-      <div className="grid gap-px">{children}</div>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-px">{children}</div>
     </Popover>
   );
 }
@@ -261,11 +262,12 @@ export function EffortField({
       </PopoverField>
     );
   }
-  const labels = choices.length + 1 > 5 ? SHORT_EFFORT_LABELS : EFFORT_LABELS;
+  const compact = choices.length + 1 > 5;
+  const labels = compact ? SHORT_EFFORT_LABELS : EFFORT_LABELS;
   const options: SegmentedOption<string>[] = [
     {
       value: "default",
-      label: t("common.default"),
+      label: compact ? t("chat.effort.short.default") : t("common.default"),
       title: defaultEffort
         ? t("chat.effort.defaultWith", { effort: t(EFFORT_LABELS[defaultEffort]) })
         : t("common.default"),
@@ -292,7 +294,7 @@ export function EffortField({
           if (next === "default") onChange(null);
           else if (isThinkingEffort(next)) onChange(next);
         }}
-        className="flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-1"
+        className="flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-1 [&>button]:whitespace-nowrap [&:lang(ru)]:flex-wrap [&:lang(ru)>button]:flex-auto"
       />
     </PopoverField>
   );

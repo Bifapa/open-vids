@@ -430,6 +430,93 @@ mod tests {
         assert_eq!(code, 404);
     }
 
+    #[test]
+    fn start_names_the_project_from_the_sent_title_and_derives_when_it_is_missing() {
+        let (server, origin) = spawn("start-name");
+        let token = server.token_for_test();
+        let parent = base("start-name-parent");
+        let location = parent.to_string_lossy().to_string();
+
+        // The model-chosen title becomes the folder name, and the intake keeps the prompt.
+        let (code, body) = post(
+            &origin,
+            "/api/start",
+            Some(&token),
+            serde_json::json!({
+                "prompt": "Сделай тизер из интервью с режиссёром",
+                "name": "Тизер интервью",
+                "location": location,
+                "width": 1920,
+                "height": 1080,
+            })
+            .to_string()
+            .as_bytes(),
+        );
+        assert_eq!(code, 200);
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["name"], "Тизер интервью");
+        assert_eq!(value["opening"], true);
+        let project = parent.join("Тизер интервью");
+        assert!(project.join("index.html").is_file());
+        let intake: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(project.join(".hyperframes/agent/intake.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(intake["prompt"], "Сделай тизер из интервью с режиссёром");
+
+        // The same title again is made unique rather than refused.
+        let (code, body) = post(
+            &origin,
+            "/api/start",
+            Some(&token),
+            serde_json::json!({
+                "prompt": "Сделай тизер из интервью с режиссёром",
+                "name": "Тизер интервью",
+                "location": location,
+            })
+            .to_string()
+            .as_bytes(),
+        );
+        assert_eq!(code, 200);
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["name"], "Тизер интервью 2");
+
+        // An unusable name (or none at all) falls back to the prompt derivation.
+        let (code, body) = post(
+            &origin,
+            "/api/start",
+            Some(&token),
+            serde_json::json!({
+                "prompt": "Build a product teaser with music",
+                "name": "a/b",
+                "location": location,
+            })
+            .to_string()
+            .as_bytes(),
+        );
+        assert_eq!(code, 200);
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["name"], "Build a product teaser");
+
+        // Files only, no prompt: the first media file names it.
+        let clip = parent.join("cam-a.mov");
+        std::fs::write(&clip, b"x").unwrap();
+        let (code, body) = post(
+            &origin,
+            "/api/start",
+            Some(&token),
+            serde_json::json!({
+                "files": [clip.to_string_lossy()],
+                "location": location,
+            })
+            .to_string()
+            .as_bytes(),
+        );
+        assert_eq!(code, 200);
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["name"], "cam-a");
+    }
+
     fn send(origin: &str, method: &str, path: &str, token: Option<&str>, body: &[u8]) -> (u16, Vec<u8>) {
         let addr = origin.trim_start_matches("http://");
         let mut req = format!(

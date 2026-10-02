@@ -22,6 +22,8 @@ import { STUDIO_PREVIEW_MARK_META } from "@hyperframes/core/studio-preview-mark"
 import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
+import { createProjectSignature } from "../helpers/projectSignature";
+import { fileContentVersion } from "../helpers/fileVersion";
 import type { StudioApiAdapter } from "../types";
 import {
   affectsPreview,
@@ -112,6 +114,41 @@ describe("registerPreviewRoutes", () => {
     );
     const authored = await (await app.request("http://localhost/projects/demo/preview")).text();
     expect(authored).not.toContain('<base href="/api/projects/demo/preview/">');
+  });
+
+  it("serves the reload after Studio's own write from disk, not the pre-write cached bundle", async () => {
+    const projectDir = createProjectDir();
+    // A host-style signature cache: the CLI and the Vite dev host both memoise
+    // the signature until their file watcher clears it, which debounces well
+    // past the reload Studio issues the moment its write returns.
+    let cachedSignature: string | null = null;
+    const adapter = createAdapter(projectDir, {
+      getProjectSignature: (dir: string) => (cachedSignature ??= createProjectSignature(dir)),
+      invalidateProjectSignature: () => {
+        cachedSignature = null;
+      },
+    });
+    const app = new Hono();
+    registerPreviewRoutes(app, adapter);
+    registerFileRoutes(app, adapter);
+
+    // Warm the signature and the built-preview cache the way opening the project does.
+    const warm = await app.request("http://localhost/projects/demo/preview");
+    expect(warm.status).toBe(200);
+    expect(await warm.text()).toContain("Preview");
+
+    // Studio's own write, then the reload it triggers — no watcher in between.
+    const before = readFileSync(join(projectDir, "index.html"), "utf-8");
+    const after = before.replace("Preview", "Preview with dropped clip");
+    const put = await app.request("http://localhost/projects/demo/files/index.html", {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion(before) },
+      body: after,
+    });
+    expect(put.status).toBe(200);
+
+    const reload = await app.request("http://localhost/projects/demo/preview");
+    expect(await reload.text()).toContain("Preview with dropped clip");
   });
 
   it("serves the mark the runtime keys preview-only work on, ahead of the runtime script", async () => {

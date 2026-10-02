@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
 import { createAgentClient } from "./agentClient";
+import { agentTurnRunning } from "./agentSelectors";
+import { clearAgentTurnRunning, publishAgentTurnRunning } from "./agentTurnLock";
 import { createAgentStore, type AgentState, type AgentStore } from "./agentStore";
 import { browserEventSource, type EventSourceFactory } from "./agentStream";
 import type { EditorContextSource } from "./editorContext";
@@ -56,12 +58,19 @@ export function useProjectAgentStore(
       onTurnEnded: () => live.current.onTurnEnded(),
     });
     setStore(next);
+    // The timeline (outside this provider) locks while a turn runs: mirror the store's own turn state.
+    const publishTurnLock = (state: AgentState) =>
+      publishAgentTurnRunning(projectId, agentTurnRunning(state));
+    publishTurnLock(next.getState());
+    const unsubscribeTurnLock = next.subscribe(publishTurnLock);
     void next
       .getState()
       .init()
       .then(() => consumeIntake(next, client));
     return () => {
+      unsubscribeTurnLock();
       next.getState().dispose();
+      clearAgentTurnRunning(projectId);
       setStore(null);
     };
   }, [projectId, openEventSource]);

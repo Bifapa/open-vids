@@ -226,7 +226,13 @@ export type EditOperation =
   /** Lay the clips end to end on `track` in the given order, starting at `start` (default 0). */
   | { op: "arrange_track"; track: number; clips: string[]; start?: number; gap?: number }
   /** Explicit composition length; without it the length follows the content after every batch. */
-  | { op: "set_composition"; duration: number };
+  | { op: "set_composition"; duration: number }
+  /**
+   * Resize the composition's canvas (frame): the root's `data-width`/`data-height`, the inline stage CSS and the
+   * viewport meta. Even pixels, up to {@link EDIT_LIMITS.maxCanvasPixels} — the render encodes H.264. Clip frames
+   * are left where they are; a project whose format the agent picked before building has nothing placed yet.
+   */
+  | { op: "set_canvas"; width: number; height: number };
 
 export type EditOperationName = EditOperation["op"];
 
@@ -243,6 +249,7 @@ export const EDIT_OPERATION_NAMES = [
   "set_clip",
   "arrange_track",
   "set_composition",
+  "set_canvas",
 ] as const satisfies readonly EditOperationName[];
 
 export interface ApplyEditsRequest {
@@ -333,6 +340,8 @@ export const EDIT_LIMITS = {
   maxVolume: 3.98,
   /** Largest |coordinate| or size of a clip frame, in composition pixels. */
   maxFramePixels: 20_000,
+  /** Largest canvas side `set_canvas` accepts, in pixels (even numbers only). */
+  maxCanvasPixels: 8_192,
 } as const;
 
 export type ParsedEdit<T> = { ok: true; value: T } | { ok: false; error: EditError };
@@ -374,6 +383,16 @@ function readVolume(value: unknown): number | Field {
     return { ok: false, message: "volume must be a number ≥ 0" };
   if (value > EDIT_LIMITS.maxVolume)
     return { ok: false, message: `volume exceeds ${EDIT_LIMITS.maxVolume}` };
+  return value;
+}
+
+/** Canvas sides are even (H.264 encodes whole chroma blocks), positive and within the render's limit. */
+function readCanvasPixels(value: unknown, field: string): number | Field {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0)
+    return { ok: false, message: `${field} must be a positive whole number of pixels` };
+  if (value % 2 !== 0) return { ok: false, message: `${field} must be even` };
+  if (value > EDIT_LIMITS.maxCanvasPixels)
+    return { ok: false, message: `${field} exceeds ${EDIT_LIMITS.maxCanvasPixels} pixels` };
   return value;
 }
 
@@ -471,6 +490,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
     set_clip: ["clip", "volume", "muted", "fit", "zIndex", "frame", "fadeIn", "fadeOut"],
     arrange_track: ["track", "clips", "start", "gap"],
     set_composition: ["duration"],
+    set_canvas: ["width", "height"],
   };
   const unknownKey = Object.keys(raw).find(
     (key) => key !== "op" && !allowedKeys[name].includes(key),
@@ -800,6 +820,12 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
     case "set_composition": {
       const duration = time("duration", true);
       if (duration !== undefined) op = { op: name, duration };
+      break;
+    }
+    case "set_canvas": {
+      const width = need(readCanvasPixels(raw.width, "width"));
+      const height = need(readCanvasPixels(raw.height, "height"));
+      if (width !== undefined && height !== undefined) op = { op: name, width, height };
       break;
     }
   }

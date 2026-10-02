@@ -103,7 +103,7 @@ export function ColorCurves({
               setActiveKey(candidate.key);
               setSelectedIndex(null);
             }}
-            className={`h-[18px] min-w-0 flex-1 truncate rounded-sm px-1 text-xs transition-colors focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent disabled:text-fg-disabled ${
+            className={`h-[18px] min-w-0 flex-1 truncate rounded-sm px-1 text-xs transition-colors focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent disabled:text-fg-disabled [&:lang(ru)]:flex-auto ${
               candidate.key === tab.key
                 ? "bg-surface-3 text-fg"
                 : "text-fg-3 hover:bg-surface-1 hover:text-fg-2"

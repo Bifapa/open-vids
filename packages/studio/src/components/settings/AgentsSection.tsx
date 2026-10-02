@@ -71,7 +71,8 @@ const AGENT_TEXT: Record<
 };
 
 /** Agent, Model, Thinking effort, On — the prototype's `.st-agents` columns. */
-const AGENT_GRID = "grid grid-cols-[minmax(0,1fr)_152px_144px_28px] items-center gap-3 px-3";
+const AGENT_GRID =
+  "grid grid-cols-[minmax(0,1fr)_152px_144px_28px] items-center gap-3 px-3 [&:lang(ru)]:grid-cols-[minmax(0,1fr)_184px_192px_28px]";
 
 /** ModelPicker in the prototype's 28 px window-form `.sel` look, caret at the right edge. */
 const MODEL_TRIGGER =

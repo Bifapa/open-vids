@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { LockSimple } from "@phosphor-icons/react";
 import { Timeline } from "../../player";
 import type { TimelineElement, TimelineTimeRange } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
@@ -6,6 +7,7 @@ import { AudioMeterStrip } from "./AudioMeterStrip";
 import { TimelineSequenceCrumbs } from "./TimelineSequenceCrumbs";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { useNLEContext } from "./NLEContext";
+import { useAgentTurnRunning } from "../../agent/agentTurnLock";
 import { useTranslation } from "../../i18n";
 
 export interface TimelinePaneProps {
@@ -81,12 +83,17 @@ export function TimelinePane({
   // Move/resize/split come from the timeline edit context, not props.
   const { onMoveElement, onMoveElements, onResizeElement, onResizeElements, onSplitElement } =
     useTimelineEditContext();
+  // While an agent turn runs for this project the timeline is read-only: no clip gesture arms, the edit callbacks
+  // refuse anyway (the central gate in useTimelineEditing), and this pane shows why. Playback, seek, zoom, scroll
+  // and selection stay live — only the edits stop.
+  const agentTurnRunning = useAgentTurnRunning();
 
   return (
     <div
       className="relative flex h-full flex-col"
       data-studio-timeline="true"
-      aria-disabled={timelineDisabled || undefined}
+      data-timeline-locked={agentTurnRunning || undefined}
+      aria-disabled={timelineDisabled || agentTurnRunning || undefined}
     >
       <div
         className="flex flex-col flex-1 min-h-0 overflow-hidden"
@@ -102,11 +109,22 @@ export function TimelinePane({
           <TimelineSequenceCrumbs stack={compositionStack} onNavigate={handleNavigateComposition} />
           {timelineToolbar && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
           {timelineToolbar}
+          {agentTurnRunning && (
+            <span
+              className="ml-auto flex shrink-0 items-center gap-1 rounded-full border border-accent/40 bg-accent-soft px-2 py-0.5 text-[11px] text-accent"
+              data-testid="timeline-ai-lock"
+              role="status"
+            >
+              <LockSimple size={12} weight="bold" aria-hidden="true" />
+              {t("timeline.lock.aiEditing")}
+            </span>
+          )}
         </header>
         <div className="flex min-h-0 flex-1">
           <div className="min-w-0 flex-1">
             <Timeline
               sessionEpoch={timelineSessionEpoch}
+              timelineLocked={agentTurnRunning}
               onSeek={seek}
               onDrillDown={handleDrillDown}
               renderClipContent={renderClipContent}

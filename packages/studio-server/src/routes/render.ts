@@ -7,6 +7,7 @@ import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/pa
 import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { fileResponse } from "../helpers/fileResponse.js";
+import { openInDefaultApp } from "../helpers/openInDefaultApp.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
@@ -20,7 +21,17 @@ function contentDispositionHeader(disposition: "inline" | "attachment", filename
   return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
-export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
+export interface RenderRouteOptions {
+  /** Test seam for the "open in the OS default player" route. */
+  openPath?: (path: string) => Promise<void>;
+}
+
+export function registerRenderRoutes(
+  api: Hono,
+  adapter: StudioApiAdapter,
+  options: RenderRouteOptions = {},
+): void {
+  const openPath = options.openPath ?? openInDefaultApp;
   // Scoped job store — not shared across createStudioApi() calls
   const renderJobs = new Map<string, RenderJobState & { createdAt: number }>();
 
@@ -257,6 +268,30 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       "Content-Type": contentType,
       "Content-Disposition": contentDispositionHeader("inline", filename),
     });
+  });
+
+  // Open a finished render in the OS default player. The OpenVids desktop
+  // shell's webview drops a loopback `window.open` (only `https:` addresses
+  // reach the default browser), so the render file has to be opened by the
+  // loopback server that owns it — see helpers/openInDefaultApp.ts. Studio
+  // only calls this when it runs inside the shell; a plain browser keeps
+  // opening the file URL in a tab. POST, so no prefetch or link preview can
+  // launch a player, and the path is confined to the project's renders dir.
+  api.post("/projects/:id/renders/:filename/open", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    const filename = c.req.param("filename");
+    const rendersDir = adapter.rendersDir(project);
+    const fp = resolveWithinProject(rendersDir, filename);
+    if (!fp) return c.json({ error: "forbidden" }, 403);
+    if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
+    try {
+      await openPath(fp);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return c.json({ error: `could not open the render: ${detail}` }, 500);
+    }
+    return c.json({ opened: true });
   });
 
   // List renders

@@ -4,6 +4,7 @@ import type {
   ListProvidersResponse,
   OAuthFlow,
   OAuthLoginState,
+  ProjectTitleRequest,
   ProviderInfo,
 } from "@hyperframes/agent-protocol";
 import type {
@@ -56,6 +57,17 @@ export class ScriptedAgentBackend implements AgentBackend {
 
   async listModels(): Promise<AgentModelCatalog> {
     return structuredClone(this.catalog);
+  }
+
+  /** What `generateProjectTitle` answers: a fixed title, or a script per request (may throw). */
+  projectTitle: string | ((input: ProjectTitleRequest) => Promise<string>) = "Scripted Project";
+  /** Every title request this backend saw, oldest first. */
+  readonly titleRequests: ProjectTitleRequest[] = [];
+
+  async generateProjectTitle(input: ProjectTitleRequest): Promise<string> {
+    this.titleRequests.push(structuredClone(input));
+    if (typeof this.projectTitle === "string") return this.projectTitle;
+    return this.projectTitle(input);
   }
 
   async listProviders(): Promise<ListProvidersResponse> {

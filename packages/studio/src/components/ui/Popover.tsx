@@ -32,6 +32,10 @@ interface PopoverProps extends Omit<ComponentPropsWithoutRef<typeof BasePopover.
    */
   initialFocus?: ComponentPropsWithoutRef<typeof BasePopover.Popup>["initialFocus"];
   className?: string;
+  /** Which collisions move the popup; Base UI's default flips it to the opposite side. */
+  collisionAvoidance?: ComponentPropsWithoutRef<
+    typeof BasePopover.Positioner
+  >["collisionAvoidance"];
   "data-preview-state"?: PopupPreviewState;
 }
 
@@ -46,6 +50,7 @@ export function Popover({
   initialFocus,
   "aria-label": ariaLabel,
   "data-preview-state": previewState,
+  collisionAvoidance,
   ...root
 }: PopoverProps) {
   return (
@@ -57,6 +62,7 @@ export function Popover({
           align={align}
           sideOffset={sideOffset}
           collisionPadding={VIEWPORT_MARGIN}
+          collisionAvoidance={collisionAvoidance}
           className="z-200"
         >
           <BasePopover.Popup

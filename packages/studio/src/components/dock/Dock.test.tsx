@@ -97,13 +97,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// The default Edit layout tabs [compositions|assets|code|catalog] into one
+// The default Edit layout tabs [chat|compositions|assets|code|catalog] into one
 // group and [design|layers|renders|variables] into another; dockview shows
 // only the active tab's content per group. `slideshow` and `sources` are never
 // part of the default build — StudioRightPanels opens the first when the file
 // is one, and Sources & Licenses opens on demand.
 const DEFAULT_OPEN = PANEL_IDS.filter((id) => id !== "slideshow" && id !== "sources");
-const DEFAULT_VISIBLE = ["preview", "timeline", "compositions", "design"];
+const DEFAULT_VISIBLE = ["preview", "timeline", "chat", "design"];
 // keepMounted panels (preview, timeline, chat) keep their content mounted behind a hidden tab.
 const KEPT_MOUNTED = PANEL_IDS.filter((id) => "keepMounted" in PANEL_DEFINITIONS[id]);
 
@@ -217,6 +217,36 @@ describe("Dock on React 19", () => {
     act(() => useDockLayoutStore.getState().togglePanel("chat"));
     expect(useDockLayoutStore.getState().openPanels.has("chat")).toBe(true);
     expect(persistedGroupOf("chat")).toContain('"compositions"');
+  });
+
+  it("builds the left group as Chat, Compositions, ... with Chat showing", () => {
+    mount("p1");
+    expect(persistedGroupOf("chat")?.startsWith('"chat","compositions"')).toBe(true);
+    expect(dockApi?.getPanel("chat")?.group.activePanel?.id).toBe("chat");
+  });
+
+  it("reopens Chat as the first tab of its group, ahead of Compositions", () => {
+    mount("p1");
+    act(() => useDockLayoutStore.getState().closePanel("chat"));
+    act(() => useDockLayoutStore.getState().togglePanel("chat"));
+    expect(persistedGroupOf("chat")?.startsWith('"chat","compositions"')).toBe(true);
+  });
+
+  it("moves Chat first and in front when a stored layout has it behind Compositions", () => {
+    mount("p1");
+    act(() => {
+      dockApi?.getPanel("chat")?.api.moveTo({ group: dockApi.getPanel("chat")!.group, index: 3 });
+      dockApi?.getPanel("compositions")?.api.setActive();
+      vi.advanceTimersByTime(1000);
+    });
+    expect(persistedGroupOf("chat")?.startsWith('"chat"')).toBe(false);
+    act(() => root?.unmount());
+    root = null;
+    document.body.innerHTML = "";
+
+    mount("p1");
+    expect(dockApi?.getPanel("chat")?.group.panels[0]?.id).toBe("chat");
+    expect(dockApi?.getPanel("chat")?.group.activePanel?.id).toBe("chat");
   });
 
   it("falls back to the default layout when the stored one names an unknown panel", () => {

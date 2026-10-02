@@ -298,7 +298,9 @@ export function createViteAdapter(
 
     runtimeUrl: "/api/runtime.js",
 
-    rendersDir: () => resolve(dataDir, "../renders"),
+    // Same place as the CLI host: the agent's render QA and editing probe address renders as `renders/<file>`
+    // inside the project.
+    rendersDir: (project) => join(project.dir, "renders"),
 
     startRender(opts): RenderJobState {
       const abortController = new AbortController();

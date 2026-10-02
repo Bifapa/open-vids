@@ -73,6 +73,8 @@ interface RenderQueueItemProps {
   job: RenderJob;
   projectId: string;
   onDelete: () => void;
+  /** Opens the finished render for the user (OS player in the desktop shell, a tab in a browser). */
+  onOpen: () => void;
 }
 
 /** One finished, failed or cancelled render in Recent Renders. */
@@ -80,6 +82,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
   job,
   projectId,
   onDelete,
+  onOpen,
 }: RenderQueueItemProps) {
   const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
@@ -97,7 +100,6 @@ export const RenderQueueItem = memo(function RenderQueueItem({
   meta.push(formatTimeAgo(job.createdAt));
   if (job.status === "cancelled") meta.unshift(t("renders.item.cancelled"));
 
-  const open = () => window.open(fileSrc, "_blank");
   const download = () => {
     const a = document.createElement("a");
     a.href = fileSrc;
@@ -123,7 +125,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           keyboard users can open the render too. */}
       <button
         type="button"
-        onClick={isComplete ? open : undefined}
+        onClick={isComplete ? onOpen : undefined}
         disabled={!isComplete}
         aria-label={isComplete ? t("renders.item.openInTab", { name: job.filename }) : undefined}
         className={cn(
@@ -210,7 +212,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           <MenuItem
             icon={<ArrowSquareOut size={14} aria-hidden />}
             disabled={!isComplete}
-            onClick={open}
+            onClick={onOpen}
           >
             {t("common.open")}
           </MenuItem>

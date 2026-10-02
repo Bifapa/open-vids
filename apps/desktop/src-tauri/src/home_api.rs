@@ -651,6 +651,30 @@ pub fn handle_start_name(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, 
 
 const INTENTS: [&str; 3] = ["plan", "edit", "ask"];
 
+/// Longest explicit project name the Start composer may send (the runtime's title is capped at 40).
+const MAX_START_NAME: usize = 64;
+
+/// The base name for a start: an explicit `name` when the caller sent a usable one (the title the model chose from
+/// the prompt), else the derivation from the prompt and files (see [`intake::derive_name`]). A name that is blank,
+/// too long or not a valid project id is ignored, never an error: naming must not block a start.
+fn start_base_name(value: &Value, prompt: &str) -> String {
+    str_field(value, "name")
+        .map(str::trim)
+        .filter(|name| name.chars().count() <= MAX_START_NAME && super::project::is_valid_project_id(name))
+        .map(str::to_string)
+        .unwrap_or_else(|| intake::derive_name(prompt, &file_names(value)))
+}
+
+/// The canvas-format hand-off from the Start composer: only `"auto"` carries meaning (the agent picks the format
+/// from the brief and the footage); anything else, or nothing, keeps the size the project was scaffolded with.
+fn start_format(value: &Value) -> Option<&'static str> {
+    value
+        .get("format")
+        .and_then(Value::as_str)
+        .filter(|f| *f == "auto")
+        .map(|_| "auto")
+}
+
 /// `POST /api/start` — create the project, import the files, write the intake
 /// and open it in the Media workspace.
 pub fn handle_start(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
@@ -692,7 +716,7 @@ pub fn handle_start(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
             ),
         );
     }
-    let base = intake::derive_name(&prompt, &file_names(&value));
+    let base = start_base_name(&value, &prompt);
     let name = intake::unique_name(&base, taken_in(state, &location));
     let p = prefs::load(&prefs::prefs_path());
     let params = super::create::CreateParams {
@@ -735,6 +759,9 @@ pub fn handle_start(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
         "files": files,
         "createdAt": super::create::now_iso(),
     });
+    if let Some(format) = start_format(&value) {
+        document["format"] = json!(format);
+    }
     if let Some(overrides) = value.get("agentOverrides").filter(|v| v.is_object()) {
         document["agentOverrides"] = overrides.clone();
     }
@@ -819,6 +846,15 @@ mod tests {
     }
 
     #[test]
+    fn the_start_composer_hands_over_auto_format_only() {
+        assert_eq!(start_format(&json!({ "format": "auto" })), Some("auto"));
+        assert_eq!(start_format(&json!({ "format": "9:16" })), None);
+        assert_eq!(start_format(&json!({ "format": null })), None);
+        assert_eq!(start_format(&json!({ "format": 7 })), None);
+        assert_eq!(start_format(&json!({})), None);
+    }
+
+    #[test]
     fn duplicate_names_follow_finder() {
         let base = std::env::temp_dir().join(format!("openvids-dup-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -847,6 +883,28 @@ mod tests {
         assert!(dst.join(".hyperframes/agent/chats.json").is_file());
         assert!(!dst.join("renders").exists());
         assert!(!dst.join(".hyperframes/agent/intake.json").exists());
+    }
+
+    #[test]
+    fn an_explicit_start_name_wins_over_the_derivation() {
+        let value = json!({
+            "name": "Тизер интервью",
+            "prompt": "Сделай тизер из интервью с режиссёром",
+            "files": ["assets/interview.mov"],
+        });
+        assert_eq!(
+            start_base_name(&value, "Сделай тизер из интервью с режиссёром"),
+            "Тизер интервью"
+        );
+        // An unusable name is ignored: the derivation stands in.
+        for bad in [json!({ "name": "a/b" }), json!({ "name": "   " }), json!({ "name": 7 })] {
+            assert_eq!(start_base_name(&bad, "Build a product teaser"), "Build a product teaser");
+        }
+        let long = json!({ "name": "x".repeat(MAX_START_NAME + 1) });
+        assert_eq!(start_base_name(&long, "Build a product teaser"), "Build a product teaser");
+        // Files-only starts keep the first media file's name.
+        let files_only = json!({ "name": null, "prompt": "", "files": ["assets/cam-a.mov"] });
+        assert_eq!(start_base_name(&files_only, ""), "cam-a");
     }
 
     #[test]

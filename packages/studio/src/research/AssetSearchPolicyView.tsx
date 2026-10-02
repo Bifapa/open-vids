@@ -125,7 +125,7 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
             {source.domains.length > 0 && (
               <span className="font-mono text-num">{source.domains.join(", ")} · </span>
             )}
-            {source.kinds.map((kind) => MEDIA_KIND_LABELS[kind]).join(" · ")}
+            {source.kinds.map((kind) => t(MEDIA_KIND_LABELS[kind])).join(" · ")}
           </span>
         </div>
         <Tooltip label={t("research.policy.removeTip")} side="bottom">

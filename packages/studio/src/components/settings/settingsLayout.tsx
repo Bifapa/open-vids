@@ -49,8 +49,10 @@ export function SettingsGroup({
   const id = useId();
   return (
     <section aria-labelledby={id} className={cn("mt-5", className)}>
-      <div className="flex min-w-0 items-baseline gap-1.5 px-0.5 pb-1.5 text-xs font-semibold text-fg-2">
-        <span id={id}>{label}</span>
+      <div className="flex min-w-0 items-baseline gap-1.5 px-0.5 pb-1.5 text-xs font-semibold text-fg-2 [&:lang(ru)]:flex-wrap">
+        <span id={id} className="[&:lang(ru)]:shrink-0">
+          {label}
+        </span>
         {note && (
           <span className="min-w-0 truncate font-normal text-fg-3 tabular-nums">{note}</span>
         )}

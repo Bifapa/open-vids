@@ -2,6 +2,12 @@ export interface TimelineEditCapabilities {
   canMove: boolean;
   canTrimStart: boolean;
   canTrimEnd: boolean;
+  /**
+   * The whole timeline is read-only because an agent turn is running (not because this one element is locked):
+   * no gesture starts, and a pointerdown is not reported as a blocked edit — the timeline's own indicator
+   * explains why, so a per-clip toast would be noise.
+   */
+  timelineLocked?: boolean;
 }
 
 function isDeterministicTimelineWindow(input: {
@@ -45,7 +51,7 @@ export function getTimelineEditCapabilities(input: {
   timelineLocked?: boolean;
 }): TimelineEditCapabilities {
   if (input.timelineLocked) {
-    return { canMove: false, canTrimStart: false, canTrimEnd: false };
+    return { canMove: false, canTrimStart: false, canTrimEnd: false, timelineLocked: true };
   }
 
   const canPatch = hasPatchableTimelineTarget(input);

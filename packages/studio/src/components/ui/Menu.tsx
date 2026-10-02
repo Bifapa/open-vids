@@ -53,8 +53,8 @@ export const popupSurface = cn(
   "data-[preview-state=open]:opacity-100 data-[preview-state=open]:scale-100",
 );
 
-/** The popup's own layer: menus sit above panel chrome and below a modal. */
-const POPUP_LAYER = "z-200";
+/** The popup's own layer: above panel chrome (dock overlays) and the modal dialogs (z-100) that open menus and selects. */
+export const POPUP_LAYER = "z-200";
 
 const menuPopup = cn(popupSurface, "min-w-40 p-1 shadow-pop");
 

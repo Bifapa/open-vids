@@ -43,6 +43,7 @@ describe("render queue package exports", () => {
           jobs={[job]}
           projectId="p"
           onDelete={vi.fn()}
+          onOpen={vi.fn()}
           onClearCompleted={vi.fn()}
           onStartRender={vi.fn()}
           isRendering={false}

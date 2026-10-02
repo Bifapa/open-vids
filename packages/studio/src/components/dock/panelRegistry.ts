@@ -6,6 +6,7 @@ export const PANEL_IDS = [
   "preview",
   "story",
   "timeline",
+  "chat",
   "compositions",
   "assets",
   "code",
@@ -16,7 +17,6 @@ export const PANEL_IDS = [
   "sources",
   "variables",
   "slideshow",
-  "chat",
 ] as const;
 
 export type PanelId = (typeof PANEL_IDS)[number];
@@ -64,17 +64,17 @@ export const PANEL_DEFINITIONS = {
   assets: {
     title: "shell.dock.panel.assets",
     zone: "left",
-    reopen: { near: "compositions", direction: "within" },
+    reopen: { near: "preview", direction: "left" },
   },
   code: {
     title: "shell.dock.panel.code",
     zone: "left",
-    reopen: { near: "compositions", direction: "within" },
+    reopen: { near: "preview", direction: "left" },
   },
   catalog: {
     title: "shell.dock.panel.catalog",
     zone: "left",
-    reopen: { near: "compositions", direction: "within" },
+    reopen: { near: "preview", direction: "left" },
   },
   design: {
     title: "shell.dock.panel.design",
@@ -110,7 +110,7 @@ export const PANEL_DEFINITIONS = {
   chat: {
     title: "shell.dock.panel.chat",
     zone: "left",
-    reopen: { near: "compositions", direction: "within" },
+    reopen: { near: "preview", direction: "left" },
     keepMounted: true,
   },
 } as const satisfies Record<PanelId, PanelDefinition>;

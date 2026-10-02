@@ -17,6 +17,7 @@ import {
   dispatchPlainKey,
   handleUndoRedoKey,
 } from "./appHotkeysDispatch";
+import { useTimelineLockRefusal } from "./timelineEditPermission";
 import {
   useEditHistoryActions,
   type EditHistoryHandle,
@@ -162,8 +163,13 @@ export function useAppHotkeys({
     forceReloadSdkSession,
   });
 
+  const refuseTimelineLock = useTimelineLockRefusal(showToast);
+
   const applyHistory = useCallback(
     async (direction: "undo" | "redo") => {
+      // While an agent turn runs the project is being rewritten: undoing (or redoing) a file snapshot under it
+      // would fight the agent's own writes, so history waits for the turn to end.
+      if (refuseTimelineLock()) return;
       // Caption edits live in their own in-memory stack. While caption edit
       // mode is active, ⌘Z must revert the caption edit — not an unrelated
       // earlier file edit (which would ALSO leave the caption change intact).
@@ -189,7 +195,7 @@ export function useAppHotkeys({
 
       await fileHistory[direction]();
     },
-    [editHistory.state, fileHistory, showToast],
+    [editHistory.state, fileHistory, showToast, refuseTimelineLock],
   );
 
   const handleUndo = useCallback(() => applyHistory("undo"), [applyHistory]);

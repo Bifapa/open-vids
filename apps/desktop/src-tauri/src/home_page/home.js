@@ -1513,22 +1513,27 @@
     ["1:1", "home.start.format.square", 1080, 1080],
     ["4:5", "home.start.format.portrait", 1080, 1350],
   ];
+  const AUTO_FORMAT = "auto";
   const ratioOf = (w, h) => {
     const g = (a, b) => (b ? g(b, a % b) : a);
     const d = g(w, h);
     return w / d + ":" + h / d;
   };
-  /* The preferred size takes its aspect's slot (e.g. 4K 16:9), so the default format follows Settings. */
+  /* "Auto" is first and the default: the agent picks the format from the brief and the footage; the preferred size
+     is only the canvas the project starts from. Further down, the preferred size takes its aspect's slot (e.g. 4K
+     16:9), so the other defaults follow Settings. */
   function formats() {
     const d = np(),
       ratio = ratioOf(d.width, d.height);
-    return FORMATS.map((f) => (f[0] === ratio ? [f[0], f[1], d.width, d.height] : f));
+    return [
+      [AUTO_FORMAT, "home.start.format.auto", d.width, d.height],
+      ...FORMATS.map((f) => (f[0] === ratio ? [f[0], f[1], d.width, d.height] : f)),
+    ];
   }
   const start = { loc: null, fmt: null, busy: false };
   function initStartLocation() {
     start.loc = { dir: np().location, path: np().location };
-    const list = formats();
-    start.fmt = list.find((f) => f[2] === np().width && f[3] === np().height) || list[0];
+    start.fmt = formats()[0];
     paintAspect();
     refreshFoot();
   }
@@ -1541,18 +1546,23 @@
   function paintAspect() {
     if (!start.fmt) return;
     const [r, l, w, h] = start.fmt,
-      fps = np().fps;
+      fps = np().fps,
+      auto = r === AUTO_FORMAT,
+      size = w + "×" + h;
     aspectBtn.innerHTML =
       ic("aspect") +
       '<span class="ov-chat-chip-label">' +
-      r +
+      (auto ? tr(l) : r) +
       "</span>" +
       ic("chevron-down").replace('class="ic"', 'class="ic ov-chat-chip-caret"');
-    const size = w + "×" + h;
-    aspectBtn.dataset.tip = tr("home.start.aspect.tip", { size, fps: String(fps) });
+    aspectBtn.dataset.tip = auto
+      ? tr("home.start.aspect.auto.tip", { size, fps: String(fps) })
+      : tr("home.start.aspect.tip", { size, fps: String(fps) });
     aspectBtn.setAttribute(
       "aria-label",
-      tr("home.start.aspect.aria", { ratio: r, name: tr(l), size, fps: String(fps) }),
+      auto
+        ? tr("home.start.aspect.auto.aria", { size, fps: String(fps) })
+        : tr("home.start.aspect.aria", { ratio: r, name: tr(l), size, fps: String(fps) }),
     );
   }
   aspectBtn.addEventListener("click", () => {
@@ -1560,11 +1570,14 @@
     const r = aspectBtn.getBoundingClientRect();
     showMenu(
       formats().map((f) => ({
-        label: th("home.start.format.item", {
-          ratio: f[0],
-          name: tr(f[1]),
-          size: f[2] + "×" + f[3],
-        }),
+        label:
+          f[0] === AUTO_FORMAT
+            ? th("home.start.format.auto.item", { size: f[2] + "×" + f[3] })
+            : th("home.start.format.item", {
+                ratio: f[0],
+                name: tr(f[1]),
+                size: f[2] + "×" + f[3],
+              }),
         radio: true,
         checked: f[0] === start.fmt[0],
         act: () => {
@@ -1583,10 +1596,11 @@
   foot.className = "start-foot";
   foot.innerHTML =
     ic("folder") +
-    '<span></span><span class="start-path"></span>' +
+    '<span></span><span class="start-path"></span><span class="start-note" hidden></span>' +
     '<button class="link" type="button" aria-haspopup="menu" aria-expanded="false"></button><span class="start-files" hidden></span>';
   const locBtn = foot.querySelector(".link"),
     pathEl = foot.querySelector(".start-path"),
+    noteEl = foot.querySelector(".start-note"),
     filesEl = foot.querySelector(".start-files");
   const footLabel = foot.querySelector("span");
   function paintFoot() {
@@ -1602,7 +1616,8 @@
       });
   };
 
-  /* The footer follows the composer: the folder Start would create (derived + made unique by Rust), file count + size. */
+  /* The footer follows the composer: with a prompt the model names the project, so only the location and that fact
+     are shown; a files-only start keeps the folder Rust would create (derived + made unique). */
   let composer = null,
     footTimer = null,
     footSeq = 0;
@@ -1619,6 +1634,15 @@
       : "";
     clearTimeout(footTimer);
     const seq = ++footSeq;
+    const prompt = (st.prompt || "").trim();
+    noteEl.hidden = !prompt;
+    noteEl.textContent = prompt ? tr("home.start.foot.naming") : "";
+    if (prompt) {
+      const where = start.loc.path.replace(/\/+$/, "");
+      pathEl.textContent = where + "/…";
+      pathEl.title = tr("home.start.foot.naming.tip", { location: start.loc.path });
+      return;
+    }
     footTimer = setTimeout(
       () =>
         api("/api/start/name", {
@@ -1635,18 +1659,42 @@
       120,
     );
   }
+  /* The model names the project from the prompt (the composer's chosen model, in the UI language) while Start shows
+     busy; a failure, timeout or empty answer falls back to the Rust derivation the footer previews. */
+  function askProjectName(payload) {
+    const prompt = (payload.prompt || "").trim();
+    if (!prompt) return Promise.resolve(null);
+    const files = (composer.getState().files || []).map((f) => f.name);
+    const ask = api("/api/agent/project-title", {
+      prompt,
+      files,
+      model: payload.model || null,
+      language: OVI18N.language() || null,
+    })
+      .then((res) => (res && typeof res.title === "string" && res.title ? res.title : null))
+      .catch(() => null);
+    // The runtime gives up after 8 s; this covers a wedged proxy or a lost answer.
+    return Promise.race([ask, new Promise((resolve) => setTimeout(() => resolve(null), 11000))]);
+  }
   function startProject(payload) {
     if (start.busy) return;
     start.busy = true;
-    composer.setBusy("home.start.creating");
-    api(
-      "/api/start",
-      Object.assign({}, payload, {
-        width: start.fmt[2],
-        height: start.fmt[3],
-        location: start.loc.dir,
-      }),
-    )
+    const prompt = (payload.prompt || "").trim();
+    composer.setBusy(prompt ? "home.start.naming" : "home.start.creating");
+    askProjectName(payload)
+      .then((name) => {
+        composer.setBusy("home.start.creating");
+        return api(
+          "/api/start",
+          Object.assign({}, payload, {
+            name: name || null,
+            width: start.fmt[2],
+            height: start.fmt[3],
+            ...(start.fmt[0] === AUTO_FORMAT && { format: AUTO_FORMAT }),
+            location: start.loc.dir,
+          }),
+        );
+      })
       .then((res) => {
         pathEl.textContent = res.path;
         showOpening(res.name);
@@ -1726,6 +1774,7 @@
     paintChrome();
     paintAspect();
     paintFoot();
+    refreshFoot();
     composer.relocalize();
     paintOpening();
     if (settingsFrame) settingsFrame.title = tr("home.settings.title");

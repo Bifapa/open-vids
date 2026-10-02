@@ -1,4 +1,5 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
+import { openRenderFile } from "./openRender";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { CanvasResolution } from "@hyperframes/parsers";
 import { generateId } from "../../utils/generateId";
@@ -382,6 +383,24 @@ export function useRenderQueue(
 
   const dismissActionError = useCallback(() => setActionError(null), []);
 
+  // Open a finished render for the user: the OS default player inside the
+  // OpenVids shell (through the Studio server — see openRender.ts), a new tab
+  // in a plain browser. A failed open is reported like any other render action
+  // instead of leaving the click silent, which is what the shell's dropped
+  // `window.open` used to do.
+  const openRender = useCallback(
+    async (job: RenderJob) => {
+      setActionError(null);
+      try {
+        if (!projectId) throw new Error("the render has no project");
+        await openRenderFile(projectId, job.filename);
+      } catch {
+        setActionError(t("renders.error.openFailed"));
+      }
+    },
+    [projectId],
+  );
+
   // Clean up EventSource on unmount or projectId change
   useEffect(() => {
     return () => {
@@ -401,6 +420,7 @@ export function useRenderQueue(
       reloadRenders: loadRenders,
       deleteRender,
       cancelRender,
+      openRender,
       clearCompleted,
       startRender: startRender as (options: unknown) => Promise<void>,
       // Every Export control reads these, so no caller has to decide for
@@ -419,6 +439,7 @@ export function useRenderQueue(
       loadRenders,
       deleteRender,
       cancelRender,
+      openRender,
       clearCompleted,
       startRender,
       ffmpeg,

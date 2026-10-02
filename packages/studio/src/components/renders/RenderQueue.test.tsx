@@ -47,6 +47,7 @@ function mountRenderQueue(
         jobs={jobs}
         projectId="demo"
         onDelete={vi.fn()}
+        onOpen={vi.fn()}
         onClearCompleted={vi.fn()}
         onStartRender={onStartRender}
         isRendering={false}

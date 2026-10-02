@@ -12,6 +12,7 @@ import {
   isOAuthLoginId,
   isOAuthLoginState,
   isProviderId,
+  parseAgentIntake,
   parseReference,
   parseRevertTurn,
   parseSetJevApiKey,
@@ -268,6 +269,27 @@ describe("validators", () => {
     expect(parseReference({ id: "x", kind: "timeline-range", start: 3, end: 1 }).ok).toBe(false);
     expect(parseReference({ id: "x", kind: "video", source: { type: "nope" } }).ok).toBe(false);
     expect(parseReference({ id: "x", kind: "hologram" }).ok).toBe(false);
+  });
+
+  it("carries the Auto frame-format hand-off on a start turn and on an intake, and refuses other values", () => {
+    const started = parseStartTurn({ prompt: "x", canvas: "auto" });
+    expect(started.ok && started.value.canvas).toBe("auto");
+    const absent = parseStartTurn({ prompt: "x" });
+    expect(absent.ok && "canvas" in absent.value).toBe(false);
+    expect(parseStartTurn({ prompt: "x", canvas: "16:9" }).ok).toBe(false);
+
+    const intake = parseAgentIntake({
+      version: 1,
+      prompt: "Reel from the interview",
+      intent: "edit",
+      format: "auto",
+      files: [],
+      createdAt: "2026-10-01T00:00:00.000Z",
+    });
+    expect(intake.ok && intake.value.format).toBe("auto");
+    const plain = parseAgentIntake({ version: 1, prompt: "x", files: [] });
+    expect(plain.ok && "format" in plain.value).toBe(false);
+    expect(parseAgentIntake({ version: 1, prompt: "x", files: [], format: "9:16" }).ok).toBe(false);
   });
 
   it("validates revert modes", () => {

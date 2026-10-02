@@ -79,6 +79,9 @@ function resolvePointerDownAction(
 ): PointerDownAction {
   if (e.button !== 0) return { kind: "ignore" };
   if (usePlayerStore.getState().activeTool === "razor") return { kind: "ignore" };
+  // Read-only timeline (an agent turn is running): the click still selects, but no gesture arms — and unlike a
+  // per-element lock this is not reported as a blocked edit, the timeline's indicator already says why.
+  if (capabilities.timelineLocked) return { kind: "ignore" };
   if (e.shiftKey) return { kind: "arm-shift-click" };
 
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();

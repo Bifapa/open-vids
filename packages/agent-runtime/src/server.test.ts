@@ -6,11 +6,13 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_HEADERS,
   AGENT_PROTOCOL_VERSION,
+  encodeScopeHeader,
   EXECUTION_BUDGETS,
   isRecord,
   type ProviderInfo,
 } from "@hyperframes/agent-protocol";
 import { createRuntimeApp, type RuntimeApp } from "./server.js";
+import { RuntimeError } from "./errors.js";
 import { AgentSettingsStore } from "./settings.js";
 import {
   FakeAnalysisHost,
@@ -95,6 +97,111 @@ describe("runtime HTTP server", () => {
         headers: { ...headers, [AGENT_HEADERS.projectId]: "different-project" },
       });
       expect(mismatchedProject.status).toBe(400);
+    } finally {
+      await app.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a percent-encoded project scope whose id and folder are not Latin-1", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openvids-agent-unicode-"));
+    const projectDir = join(root, "Запуск ракеты");
+    await mkdir(projectDir);
+    const app = createRuntimeApp({
+      backend: new ScriptedAgentBackend(),
+      checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
+      analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
+      research: () => new FakeResearchHost(),
+      qa: () => new FakeQaHost(),
+      settings: new AgentSettingsStore(join(root, "settings")),
+      token: "runtime-secret",
+    });
+    try {
+      const created = await app.request("/v1/chats", {
+        method: "POST",
+        body: "{}",
+        headers: {
+          [AGENT_HEADERS.token]: "Bearer runtime-secret",
+          [AGENT_HEADERS.projectId]: encodeScopeHeader("Запуск ракеты"),
+          [AGENT_HEADERS.projectDir]: encodeScopeHeader(projectDir),
+          [AGENT_HEADERS.studioOrigin]: "http://127.0.0.1:4173",
+        },
+      });
+      expect(created.status).toBe(201);
+      expect(await responseObject(created)).toMatchObject({ projectId: "Запуск ракеты" });
+    } finally {
+      await app.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("names a project over the token-only title route and passes validation failures through", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openvids-agent-title-"));
+    const backend = new ScriptedAgentBackend();
+    const app = createRuntimeApp({
+      backend,
+      checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
+      analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
+      research: () => new FakeResearchHost(),
+      qa: () => new FakeQaHost(),
+      settings: new AgentSettingsStore(join(root, "settings")),
+      token: "runtime-secret",
+    });
+    const token = { [AGENT_HEADERS.token]: "Bearer runtime-secret" };
+    const call = (body?: unknown) =>
+      app.request("/v1/project-title", {
+        method: "POST",
+        headers: { ...token, "content-type": "application/json" },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+      });
+    try {
+      const unauthorized = await app.request("/v1/project-title", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "Тизер интервью" }),
+      });
+      expect(unauthorized.status).toBe(401);
+      expect((await call({ prompt: "Тизер интервью" })).status).toBe(200);
+      expect(backend.titleRequests.at(-1)).toEqual({
+        prompt: "Тизер интервью",
+        files: [],
+        model: null,
+        language: null,
+      });
+      const named = await call({
+        prompt: "Cut a teaser from the interview",
+        files: ["interview.mov", "  ", "score.mp3"],
+        model: { provider: "anthropic", modelId: "claude-sonnet-4-5" },
+        language: "en",
+      });
+      expect(named.status).toBe(200);
+      expect(await responseObject(named)).toEqual({ title: "Scripted Project" });
+      expect(backend.titleRequests.at(-1)).toEqual({
+        prompt: "Cut a teaser from the interview",
+        files: ["interview.mov", "score.mp3"],
+        model: { provider: "anthropic", modelId: "claude-sonnet-4-5" },
+        language: "en",
+      });
+      // The route is global: a project scope is neither required nor read.
+      expect((await call({ prompt: "x" })).status).toBe(200);
+
+      expect((await call({})).status).toBe(400);
+      expect((await call({ prompt: "  " })).status).toBe(400);
+      expect((await call({ prompt: "x", files: "a.mov" })).status).toBe(400);
+      expect((await call({ prompt: "x", model: { provider: "anthropic" } })).status).toBe(400);
+
+      backend.projectTitle = async () => {
+        throw new RuntimeError("model_unavailable", "No authenticated model", 503);
+      };
+      const refused = await call({ prompt: "x" });
+      expect(refused.status).toBe(503);
+      expect(await responseObject(refused)).toMatchObject({
+        error: { code: "model_unavailable" },
+      });
     } finally {
       await app.dispose();
       await rm(root, { recursive: true, force: true });

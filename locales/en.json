@@ -4088,5 +4088,16 @@
   "qa.reason.vision_disabled": "Vision is not enabled in this chat.",
   "qa.reason.vision_no_frames": "The checks planned no frame to look at.",
   "qa.reason.vision_render_failed": "The render failed, so there was nothing to review.",
-  "qa.reason.vision_no_findings": "Vision finished without reporting any findings, so its review did not count."
+  "qa.reason.vision_no_findings": "Vision finished without reporting any findings, so its review did not count.",
+  "chat.effort.short.default": "Default",
+  "timeline.lock.aiEditing": "The agent is editing — timeline locked",
+  "timeline.toast.agentEditing": "The agent is editing this project — the timeline is locked until the turn finishes.",
+  "home.start.naming": "Choosing a name…",
+  "home.start.foot.naming": "name from your description",
+  "home.start.foot.naming.tip": "The folder is created in {location}; its name comes from your description.",
+  "home.start.format.auto": "Auto",
+  "home.start.format.auto.item": "Auto — the agent chooses · {size}",
+  "home.start.aspect.auto.tip": "Format chosen by the agent from your brief and the footage · starts at {size}, {fps} fps",
+  "home.start.aspect.auto.aria": "Format: Auto — the agent chooses it, starting at {size}, {fps} fps",
+  "renders.error.openFailed": "Couldn't open the render — the file may have been moved or the system has no player for it."
 }

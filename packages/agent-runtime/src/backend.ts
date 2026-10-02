@@ -6,6 +6,7 @@ import type {
   ModelSelection,
   OAuthFlow,
   OAuthLoginState,
+  ProjectTitleRequest,
   ThinkingEffort,
 } from "@hyperframes/agent-protocol";
 
@@ -160,6 +161,12 @@ export interface AgentBackend {
   /** Informational name reported by /health. */
   readonly name: string;
   listModels(): Promise<AgentModelCatalog>;
+  /**
+   * One short, tool-less completion that names a project from a Start-composer prompt: `input.model` when the composer
+   * chose one, else the Main default. No session, no project, no tools. Throws a `RuntimeError` (`model_unavailable`
+   * when nothing can answer, `agent_failed` when the call fails or times out) — the caller falls back to its own name.
+   */
+  generateProjectTitle(input: ProjectTitleRequest): Promise<string>;
   /**
    * Providers the harness knows with their credential status, and when the catalog last synced. Re-reads the API keys
    * OpenVids stores, so a key saved by another runtime process is applied before this answers.

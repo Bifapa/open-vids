@@ -24,10 +24,11 @@ describe("parseApplyEditsRequest", () => {
         { op: "set_clip", clip: "c1", zIndex: -3 },
         { op: "arrange_track", track: 1, clips: ["a", "b"], gap: 0 },
         { op: "set_composition", duration: 12 },
+        { op: "set_canvas", width: 1080, height: 1920 },
       ],
     });
     if (!parsed.ok) throw new Error(parsed.error.message);
-    expect(parsed.value.operations).toHaveLength(11);
+    expect(parsed.value.operations).toHaveLength(12);
     expect(parsed.value.operations[0]).toEqual({
       op: "add_clip",
       asset: "assets/a.mp4",
@@ -115,6 +116,15 @@ describe("parseApplyEditsRequest", () => {
     ["no cues", { op: "apply_captions", preset: "p", cues: [] }],
     ["arrange_track repeating a clip", { op: "arrange_track", track: 0, clips: ["a", "a"] }],
     ["arrange_track with no clips", { op: "arrange_track", track: 0, clips: [] }],
+    ["an odd canvas side", { op: "set_canvas", width: 1081, height: 1920 }],
+    ["a zero canvas side", { op: "set_canvas", width: 1080, height: 0 }],
+    ["a fractional canvas side", { op: "set_canvas", width: 1080.5, height: 1920 }],
+    ["a string canvas side", { op: "set_canvas", width: "1080", height: 1920 }],
+    [
+      "a canvas side past the limit",
+      { op: "set_canvas", width: EDIT_LIMITS.maxCanvasPixels + 2, height: 1080 },
+    ],
+    ["a set_canvas with a missing side", { op: "set_canvas", width: 1080 }],
   ])("refuses %s at the operation's index", (_name, operation) => {
     const error = refused({
       operations: [{ op: "set_composition", duration: 1 }, operation],

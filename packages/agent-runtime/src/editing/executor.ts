@@ -30,6 +30,11 @@ export interface TurnEditingOptions {
   userRequests?: readonly string[];
   /** The running turn: stamped on every `edit_timeline` batch so the service can attribute the edits to it. */
   turnId?: string | undefined;
+  /**
+   * A successful `edit_timeline` batch that set the composition's canvas: the chat that had the format still to be
+   * decided (a start-from-chat "Auto" project) no longer needs the agent to pick one.
+   */
+  onCanvasSet?: (() => void) | undefined;
   /** The research host: a finished render reports the license warnings and credits of the researched assets it ships. */
   research?: ResearchHost | undefined;
   /**
@@ -171,7 +176,11 @@ export class TurnEditing {
         // The turn is the runtime's to name: whatever id the model sent is replaced.
         const { turnId } = this.options;
         const batch = turnId === undefined ? request.value : { ...request.value, turnId };
-        return { text: formatEditResult(await host.apply(batch, signal)) };
+        const applied = await host.apply(batch, signal);
+        // Only a batch the service accepted: the format is decided now.
+        if (batch.operations.some((operation) => operation.op === "set_canvas"))
+          this.options.onCanvasSet?.();
+        return { text: formatEditResult(applied) };
       }
       case EDITING_TOOL_NAMES.presets: {
         const record = argsRecord(args);

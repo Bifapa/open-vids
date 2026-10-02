@@ -108,7 +108,7 @@ describe("dock tab strips", () => {
   ];
 
   it("keep dockview's tablist, tab and selected roles with one tab stop", () => {
-    const tabs = tabsOf("compositions");
+    const tabs = tabsOf("chat");
     expect(tabs).toHaveLength(5);
     expect(tabs[0]?.closest('[role="tablist"]')).not.toBeNull();
     expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual([
@@ -124,8 +124,8 @@ describe("dock tab strips", () => {
   it("leave browser shortcuts alone when Alt, Ctrl or Meta is held", () => {
     const sash = columnSash(0);
     const left = widthOf("compositions");
-    const tab = tabsOf("compositions")[0] as HTMLElement;
-    const active = () => api.getPanel("compositions")?.group.activePanel?.id;
+    const tab = tabsOf("chat")[0] as HTMLElement;
+    const active = () => api.getPanel("chat")?.group.activePanel?.id;
     for (const init of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }]) {
       const onSash = new KeyboardEvent("keydown", {
         key: "ArrowRight",
@@ -136,24 +136,24 @@ describe("dock tab strips", () => {
       sash.dispatchEvent(onSash);
       press(tab, "ArrowRight", init);
       expect(onSash.defaultPrevented).toBe(false);
-      expect(active()).toBe("compositions");
+      expect(active()).toBe("chat");
     }
     expect(widthOf("compositions")).toBe(left);
   });
 
   it("move focus and activate the neighbouring tab, wrapping at both ends", () => {
-    const tabs = tabsOf("compositions");
-    const active = () => api.getPanel("compositions")?.group.activePanel?.id;
+    const tabs = tabsOf("chat");
+    const active = () => api.getPanel("chat")?.group.activePanel?.id;
     (tabs[0] as HTMLElement).focus();
     press(tabs[0] as HTMLElement, "ArrowRight");
-    expect(active()).toBe("assets");
+    expect(active()).toBe("compositions");
     expect(document.activeElement).toBe(tabs[1]);
     press(tabs[1] as HTMLElement, "ArrowLeft");
     press(tabs[0] as HTMLElement, "ArrowLeft");
-    expect(active()).toBe("chat");
+    expect(active()).toBe("catalog");
     expect(document.activeElement).toBe(tabs[4]);
     press(tabs[4] as HTMLElement, "ArrowRight");
-    expect(active()).toBe("compositions");
+    expect(active()).toBe("chat");
   });
 
   it("jump to the first and last tab with Home and End", () => {

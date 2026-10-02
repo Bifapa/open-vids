@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, posix } from "node:path";
+import postcss from "postcss";
 import type {
   ApplyEditsRequest,
   ApplyEditsResponse,
@@ -187,6 +188,55 @@ function setRootDuration(model: CompositionModel, seconds: number): void {
       ? "data-composition-duration"
       : "data-duration";
   holder.setAttribute(name, fmt(seconds));
+}
+
+/** The selectors whose rule carries the stage size in the blank template's inline CSS. */
+const STAGE_SELECTORS = /^(?:html|body|:root)$/i;
+
+/** The px size of the `html`/`body` rule of one inline style sheet; `%`/`auto` and min-/max- sizes stay as they are. */
+function replaceStageCssSize(css: string, width: number, height: number): string {
+  let root: postcss.Root;
+  try {
+    root = postcss.parse(css);
+  } catch {
+    return css;
+  }
+  let changed = false;
+  root.walkRules((rule) => {
+    if (!rule.selectors.some((selector) => STAGE_SELECTORS.test(selector.trim()))) return;
+    rule.walkDecls((decl) => {
+      if (decl.prop !== "width" && decl.prop !== "height") return;
+      if (!/^\d+px$/.test(decl.value.trim())) return;
+      decl.value = `${decl.prop === "width" ? width : height}px`;
+      changed = true;
+    });
+  });
+  return changed ? root.toString() : css;
+}
+
+/**
+ * The stage size lives in three places in the blank template: the root's `data-width`/`data-height`, the inline
+ * `html, body` CSS and the viewport meta. create.rs patches the same three when a project is scaffolded.
+ */
+function setCanvasSize(model: CompositionModel, width: number, height: number): void {
+  model.root.setAttribute("data-width", String(width));
+  model.root.setAttribute("data-height", String(height));
+  const viewport = model.document.querySelector('meta[name="viewport"]');
+  const content = viewport?.getAttribute("content");
+  if (viewport && content) {
+    viewport.setAttribute(
+      "content",
+      content.replace(
+        /\b(width|height)\s*=\s*\d+/g,
+        (_match, dim: string) => `${dim}=${dim === "width" ? width : height}`,
+      ),
+    );
+  }
+  for (const style of Array.from(model.document.querySelectorAll("style"))) {
+    const css = style.textContent ?? "";
+    const patched = replaceStageCssSize(css, width, height);
+    if (patched !== css) style.textContent = patched;
+  }
 }
 
 /** The media in-point attribute the clip already uses (`data-playback-start` wins, as it does when read). */
@@ -926,6 +976,17 @@ async function setComposition(
   return { op: op.op, clipId: null, newClipId: null };
 }
 
+async function setCanvas(
+  env: EditEnv,
+  batch: Batch,
+  op: Extract<EditOperation, { op: "set_canvas" }>,
+): Promise<EditOperationResult> {
+  const model = await loadModel(env, batch.html);
+  setCanvasSize(model, op.width, op.height);
+  commit(batch, model);
+  return { op: op.op, clipId: null, newClipId: null };
+}
+
 async function runOperation(
   env: EditEnv,
   batch: Batch,
@@ -956,6 +1017,8 @@ async function runOperation(
       return arrangeTrack(env, batch, op);
     case "set_composition":
       return setComposition(env, batch, op);
+    case "set_canvas":
+      return setCanvas(env, batch, op);
   }
 }
 

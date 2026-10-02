@@ -212,7 +212,7 @@ export function AgentsMenu({ chat }: { chat: ChatSummary }) {
           return (
             <div key={id} className={rowClass} data-agent={id}>
               <AgentMonogram agent={id} off={!on} />
-              <AgentInfo name={name} role={AGENT_BLURBS[id]} off={!on} />
+              <AgentInfo name={name} role={t(AGENT_BLURBS[id])} off={!on} />
               <IconButton
                 size="sm"
                 aria-label={t("chat.agents.settingsFor", { name })}

@@ -2,6 +2,7 @@ import type {
   AgentIntake,
   AgentIntakeFile,
   CreateChatRequest,
+  ProjectTitleRequest,
   RevertTurnRequest,
   SetJevApiKeyRequest,
   SetProviderApiKeyRequest,
@@ -55,6 +56,12 @@ export const LIMITS = {
   providerChars: 200,
   apiKeyChars: 4_096,
   oauthInputChars: 8_192,
+  /** File names a project-title request may carry (the composer lists fewer). */
+  projectTitleFiles: 32,
+  /** Longest file name a title request keeps, in characters; anything longer is clamped, never rejected. */
+  fileNameChars: 255,
+  /** Longest language tag a title request keeps (`pt-BR`, `zh-Hans-CN`); longer tags are clamped. */
+  languageChars: 35,
 } as const;
 
 const fail = (message: string): { ok: false; message: string } => ({ ok: false, message });
@@ -538,6 +545,33 @@ export function parseSetProviderApiKey(body: unknown): Parsed<SetProviderApiKeyR
   return parseApiKeyBody(body);
 }
 
+/**
+ * `POST /project-title`. Only the prompt is required; a body without `model`/`language` (or with nulls) asks for the
+ * runtime's Main default and the prompt's own language. File names and the language tag are clamped, never rejected:
+ * a title request must not fail over a cosmetic field.
+ */
+export function parseProjectTitleRequest(body: unknown): Parsed<ProjectTitleRequest> {
+  if (!isRecord(body)) return fail("body must be an object");
+  const prompt = nonEmpty(body.prompt)?.trim();
+  if (!prompt) return fail("prompt must be a non-empty string");
+  if (prompt.length > LIMITS.promptChars) return fail("prompt is too long");
+  const files: string[] = [];
+  if (body.files !== undefined && body.files !== null) {
+    if (!Array.isArray(body.files)) return fail("files must be an array of file names");
+    for (const item of body.files.slice(0, LIMITS.projectTitleFiles)) {
+      const name = nonEmpty(item)?.trim();
+      if (name) files.push(name.slice(0, LIMITS.fileNameChars));
+    }
+  }
+  let model: ModelSelection | null = null;
+  if (body.model !== undefined && body.model !== null) {
+    model = parseModelSelection(body.model);
+    if (!model) return fail("model must be {provider, modelId}");
+  }
+  const language = nonEmpty(body.language)?.trim().slice(0, LIMITS.languageChars) || null;
+  return { ok: true, value: { prompt, files, model, language } };
+}
+
 /** Provider ids are short slugs (`anthropic`, `openai-codex`, `llama.cpp`); this also keeps path traversal and `__proto__` out. */
 const PROVIDER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -666,6 +700,11 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
       return fail("a resolve action takes only storyOptions.missing");
     storyOptions = parsed.value;
   }
+  let canvas: StartTurnRequest["canvas"];
+  if (body.canvas !== undefined) {
+    if (body.canvas !== "auto") return fail('canvas must be "auto"');
+    canvas = body.canvas;
+  }
   const userLanguage = parseUserLanguage(body.userLanguage);
   if (!userLanguage.ok) return userLanguage;
   return {
@@ -678,6 +717,7 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
       ...(intent && { intent }),
       ...(storyAction && { storyAction }),
       ...(storyOptions && { storyOptions }),
+      ...(canvas && { canvas }),
       ...(userLanguage.value && { userLanguage: userLanguage.value }),
     },
   };
@@ -832,12 +872,18 @@ export function parseAgentIntake(value: unknown): Parsed<AgentIntake> {
     files.push(file.value);
   }
   if (!prompt && files.length === 0) return fail("an intake needs a prompt or files");
+  let format: AgentIntake["format"];
+  if (value.format !== undefined) {
+    if (value.format !== "auto") return fail('format must be "auto"');
+    format = value.format;
+  }
   return {
     ok: true,
     value: {
       version: 1,
       prompt,
       intent,
+      ...(format && { format }),
       model: model.value,
       thinking: thinking.value ?? null,
       agents: SPECIALIST_IDS.filter((id) => agents.includes(id)),

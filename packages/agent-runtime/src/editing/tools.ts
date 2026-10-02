@@ -84,7 +84,8 @@ const EDIT_OPERATIONS_GUIDE = `Operations (each has "op" plus):
 - split_clip: clip, at (timeline time inside the clip). The result reports the new second half's clip id.
 - set_clip: clip; any of volume, muted, fit, zIndex, frame, fadeIn, fadeOut.
 - arrange_track: track, clips (ids in order), optional start (default 0) and gap; lays them end to end.
-- set_composition: duration (explicit length; otherwise the length follows the content).`;
+- set_composition: duration (explicit length; otherwise the length follows the content).
+- set_canvas: width, height (even pixels, up to ${EDIT_LIMITS.maxCanvasPixels}). Sets the composition's frame format. Placed clips keep their frames, so when the format is still to be decided, set the canvas BEFORE adding clips.`;
 
 const DESCRIPTIONS: Record<EditingToolName, string> = {
   inspect_project: `List the project's compositions (size, length, clip count), media assets (kind, size, duration, whether video has audio) and existing renders. Call it first to learn what material exists before planning an edit.`,
@@ -143,6 +144,13 @@ const frame = {
   },
   required: ["x", "y", "width", "height"],
   additionalProperties: false,
+};
+const canvasSide = {
+  type: "integer",
+  minimum: 2,
+  maximum: EDIT_LIMITS.maxCanvasPixels,
+  multipleOf: 2,
+  description: `Even pixels, up to ${EDIT_LIMITS.maxCanvasPixels} (the render encodes H.264).`,
 };
 
 interface OperationSchema {
@@ -363,6 +371,12 @@ const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
     { duration: { type: "number", exclusiveMinimum: 0, description: "Seconds." } },
     ["duration"],
   ),
+  set_canvas: operationSchema(
+    "set_canvas",
+    "Set the composition's canvas (frame) size — pick the format before building the timeline.",
+    { width: canvasSide, height: canvasSide },
+    ["width", "height"],
+  ),
 };
 
 const compositionProperty = str(
@@ -434,6 +448,7 @@ const OP_SUMMARY: Record<EditOperationName, string> = {
   set_clip: "adjust",
   arrange_track: "arrange",
   set_composition: "set length",
+  set_canvas: "set format",
 };
 
 const isOperationName = (value: unknown): value is EditOperationName =>

@@ -14,11 +14,13 @@ import {
   AGENT_HEADERS,
   AGENT_PROTOCOL_VERSION,
   AGENT_RUNTIME_PREFIX,
+  decodeScopeHeader,
   SSE_EVENTS,
   encodeSseMessage,
   isOAuthLoginId,
   isProviderId,
   parseCreateChat,
+  parseProjectTitleRequest,
   parseRevertTurn,
   parseSetJevApiKey,
   parseSetProviderApiKey,
@@ -128,6 +130,14 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
   app.get(`${AGENT_RUNTIME_PREFIX}/models`, async (context) =>
     context.json(await options.backend.listModels()),
   );
+
+  // The Start composer names a project before any project exists: one short, tool-less completion (Home falls back
+  // to its own derivation on any failure). Global: token only.
+  app.post(`${AGENT_RUNTIME_PREFIX}/project-title`, async (context) => {
+    const parsed = parseProjectTitleRequest(await readBody(context));
+    if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+    return context.json({ title: await options.backend.generateProjectTitle(parsed.value) });
+  });
 
   app.get(`${AGENT_RUNTIME_PREFIX}/providers`, async (context) =>
     context.json(await options.backend.listProviders()),
@@ -443,6 +453,7 @@ function isGlobalRoute(path: string): boolean {
   return (
     rest === "health" ||
     rest === "models" ||
+    rest === "project-title" ||
     rest === "providers" ||
     rest === "providers/refresh" ||
     /^providers\/[^/]+\/models$/.test(rest) ||
@@ -470,8 +481,8 @@ function loginParam(context: Context<RuntimeEnvironment>): string {
 }
 
 async function resolveScope(headers: Headers): Promise<ProjectScope> {
-  const projectId = headers.get(AGENT_HEADERS.projectId)?.trim();
-  const projectDir = headers.get(AGENT_HEADERS.projectDir);
+  const projectId = decodeScopeHeader(headers.get(AGENT_HEADERS.projectId))?.trim();
+  const projectDir = decodeScopeHeader(headers.get(AGENT_HEADERS.projectDir));
   const studioOrigin = headers.get(AGENT_HEADERS.studioOrigin);
   if (!projectId || !projectDir || !studioOrigin)
     throw new RuntimeError("invalid_request", "Project scope headers are required", 400);

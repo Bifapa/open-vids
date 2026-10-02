@@ -755,3 +755,104 @@ describe("POST /projects/:id/render — variables forwarding", () => {
     }
   });
 });
+
+describe("POST /projects/:id/renders/:filename/open — OS default player", () => {
+  const tmpDirs: string[] = [];
+
+  function buildOpenApp(openPath: (path: string) => Promise<void>): {
+    app: Hono;
+    rendersDir: string;
+  } {
+    const rendersDir = mkdtempSync(join(tmpdir(), "hf-renders-open-"));
+    tmpDirs.push(rendersDir);
+    const adapter: StudioApiAdapter = {
+      listProjects: () => [],
+      resolveProject: async (id: string) => (id === "demo" ? { id, dir: tmpdir() } : null),
+      bundle: async () => null,
+      lint: async () => ({ findings: [] }),
+      runtimeUrl: "/api/runtime.js",
+      rendersDir: () => rendersDir,
+      startRender: (opts) => ({
+        id: opts.jobId,
+        status: "rendering",
+        progress: 0,
+        outputPath: opts.outputPath,
+      }),
+    };
+    const app = new Hono();
+    registerRenderRoutes(app, adapter, { openPath });
+    return { app, rendersDir };
+  }
+
+  afterEach(() => {
+    for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true });
+    tmpDirs.length = 0;
+  });
+
+  it("hands the render's absolute path to the OS opener", async () => {
+    const opened: string[] = [];
+    const { app, rendersDir } = buildOpenApp(async (path) => {
+      opened.push(path);
+    });
+    const filename = "render 測試.mp4";
+    writeFileSync(join(rendersDir, filename), "render-bytes");
+
+    const res = await app.request(
+      `http://localhost/projects/demo/renders/${encodeURIComponent(filename)}/open`,
+      { method: "POST" },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ opened: true });
+    expect(opened).toEqual([join(rendersDir, filename)]);
+  });
+
+  it("refuses a traversal that escapes the renders dir", async () => {
+    const opened: string[] = [];
+    const { app } = buildOpenApp(async (path) => {
+      opened.push(path);
+    });
+
+    const res = await app.request(
+      `http://localhost/projects/demo/renders/${encodeURIComponent("../index.html")}/open`,
+      { method: "POST" },
+    );
+
+    expect(res.status).toBe(403);
+    expect(opened).toEqual([]);
+  });
+
+  it("404s for an unknown project and a missing file without opening anything", async () => {
+    const opened: string[] = [];
+    const { app } = buildOpenApp(async (path) => {
+      opened.push(path);
+    });
+
+    const unknownProject = await app.request("http://localhost/projects/nope/renders/x.mp4/open", {
+      method: "POST",
+    });
+    expect(unknownProject.status).toBe(404);
+
+    const missing = await app.request("http://localhost/projects/demo/renders/missing.mp4/open", {
+      method: "POST",
+    });
+    expect(missing.status).toBe(404);
+    expect(opened).toEqual([]);
+  });
+
+  it("reports an opener failure as a 500 instead of a silent success", async () => {
+    const { app, rendersDir } = buildOpenApp(async () => {
+      throw new Error("no player for .mp4");
+    });
+    writeFileSync(join(rendersDir, "demo.mp4"), "render-bytes");
+
+    const res = await app.request("http://localhost/projects/demo/renders/demo.mp4/open", {
+      method: "POST",
+    });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("no player for .mp4"),
+    });
+  });
+});

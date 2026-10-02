@@ -28,7 +28,8 @@
 //! - `GET|PUT /api/preferences` — the shared app preferences file.
 //! - `POST /api/files/pick`, `/api/files/dropped` — files for the composer.
 //! - `POST /api/start/name`, `/api/start` — start a project from the composer.
-//! - `GET /api/agent/models`, `GET|PUT /api/agent/settings` — agent runtime.
+//! - `GET /api/agent/models`, `POST /api/agent/project-title`,
+//!   `GET|PUT /api/agent/settings` — agent runtime.
 //! - `/api/agent/providers…` (keys, in-app sign-in start/sign-out),
 //!   `/api/agent/oauth/logins/<id>[/input|/cancel]` (sign-in poll, answer,
 //!   cancel), `POST /api/agent/jev/{api-key,test}` — more agent-runtime
@@ -212,6 +213,9 @@ fn route(
         ("GET", "/api/preferences") => home_api::serve_prefs(s),
         ("PUT", "/api/preferences") => home_api::handle_prefs_update(s, state, body),
         ("GET", "/api/agent/models") => home_api::proxy_agent(s, "GET", "/v1/models", None),
+        ("POST", "/api/agent/project-title") => {
+            home_api::proxy_agent(s, "POST", "/v1/project-title", Some(body))
+        }
         ("GET", "/api/agent/settings") => home_api::proxy_agent(s, "GET", "/v1/settings", None),
         ("PUT", "/api/agent/settings") => {
             home_api::proxy_agent(s, "PATCH", "/v1/settings", Some(body))

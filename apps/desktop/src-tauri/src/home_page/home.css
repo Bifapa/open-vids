@@ -145,6 +145,10 @@ body {
   flex: none;
   font-size: var(--text-xs);
 }
+.start-note {
+  flex: none;
+  color: var(--fg-3);
+}
 .start-foot .link[aria-expanded="true"] {
   color: var(--fg);
 }

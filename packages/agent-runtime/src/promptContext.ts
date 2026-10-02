@@ -27,6 +27,30 @@ export function renderUserLanguageBlock(userLanguage: string | undefined): strin
   return `<user-language>${userLanguage}</user-language>\nThe user reads the interface in ${name}. Reply to the user in ${name}; keep tool calls, file contents, code and identifiers unchanged.`;
 }
 
+/**
+ * The block that says the frame format is still open (the project started with "Auto") and how to settle it before
+ * building. It rides on the Director's first prompt; once the Director sets the canvas, the timeline it builds and
+ * every specialist task it delegates already belong to that format.
+ */
+export function renderCanvasAutoBlock(): string {
+  return `<canvas-auto>
+The user started this project with the frame format on Auto: the composition's current size is only a placeholder, not a decision. Decide the format before you build the timeline and set it with edit_timeline {op: "set_canvas", width, height} (even pixels) before adding clips, then build for that format.
+Read it from the brief (Reels, TikTok, Shorts or Stories → 9:16; YouTube, a presentation or TV → 16:9; an Instagram feed post → 1:1 or 4:5) and from the material (inspect the imported footage with inspect_project: mostly vertical clips → 9:16, mostly widescreen → 16:9, a portrait photo series → 4:5). When nothing indicates otherwise use 16:9.
+Say in your reply which format you chose and why.
+</canvas-auto>`;
+}
+
+/**
+ * The plan/intake variant: nothing is built in this turn, but the choice cannot be deferred past the build, so the
+ * plan states it. The flag stays on the chat until an edit actually sets the canvas.
+ */
+export function renderCanvasAutoPlanBlock(): string {
+  return `<canvas-auto>
+The user started this project with the frame format on Auto and it is still to be decided: the composition's current size is only a placeholder. Decide now which format the video should have and state it in your plan or reply — a later edit turn sets it with edit_timeline {op: "set_canvas", width, height} (even pixels) before any clip is added, and everything you plan (framing, text placement, overlays) must assume that format.
+Read it from the brief (Reels, TikTok, Shorts or Stories → 9:16; YouTube, a presentation or TV → 16:9; an Instagram feed post → 1:1 or 4:5) and from the material (inspect the imported footage with inspect_project: mostly vertical clips → 9:16, mostly widescreen → 16:9, a portrait photo series → 4:5). When nothing indicates otherwise use 16:9.
+</canvas-auto>`;
+}
+
 /** Adds Studio-captured editor context, typed references and the user's language to the text received by a backend. */
 export function renderPromptContext(
   prompt: string,

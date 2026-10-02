@@ -1,5 +1,6 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { Clock } from "../../icons/SystemIcons";
+import { useAgentTurnRunning } from "../../agent/agentTurnLock";
 import { useTranslation } from "../../i18n";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
@@ -41,6 +42,10 @@ export function TimingSection({
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
 }) {
   const { t } = useTranslation();
+  // Clip timing is a timeline edit even though it writes through the DOM-edit path: while an agent turn runs the
+  // project, these fields would race the agent's own rewrites, so they are read-only for the turn's duration.
+  const locked = useAgentTurnRunning();
+  const lockTitle = locked ? t("timeline.lock.aiEditing") : undefined;
   const explicitStart = Number.parseFloat(element.dataAttributes.start ?? "0") || 0;
   const explicitDuration =
     Number.parseFloat(
@@ -77,11 +82,15 @@ export function TimingSection({
         <MetricField
           label={t("inspector.timing.start")}
           value={formatTimingValue(start)}
+          disabled={locked}
+          tooltip={lockTitle}
           onCommit={commitStart}
         />
         <MetricField
           label={t("inspector.timing.end")}
           value={formatTimingValue(end)}
+          disabled={locked}
+          tooltip={lockTitle}
           onCommit={commitEnd}
         />
       </div>
@@ -89,6 +98,8 @@ export function TimingSection({
         <MetricField
           label={t("inspector.timing.duration")}
           value={formatTimingValue(duration)}
+          disabled={locked}
+          tooltip={lockTitle}
           onCommit={commitDuration}
         />
       </div>

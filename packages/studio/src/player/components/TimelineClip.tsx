@@ -126,7 +126,8 @@ export const TimelineClip = memo(function TimelineClip({
     ...themeVariables,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
     // Regular cursor over clips (CapCut-style, user preference) — no grab hand.
-    cursor: "default",
+    // While an agent turn runs the timeline is read-only, so the cursor says so.
+    cursor: capabilities.timelineLocked ? "not-allowed" : "default",
     appearance: "none",
     color: "inherit",
     font: "inherit",

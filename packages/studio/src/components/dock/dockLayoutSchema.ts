@@ -3,7 +3,7 @@ import { isPanelId } from "./panelRegistry";
 
 export const DOCK_PANEL_COMPONENT = "panel";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

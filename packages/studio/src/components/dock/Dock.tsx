@@ -21,7 +21,12 @@ import { DockStripActions } from "./DockStripActions";
 import { DockTab } from "./DockTab";
 import { DockWindowMenu } from "./DockWindowMenu";
 import { installTabFill } from "./dockTabFill";
-import { addRegisteredPanel, applySideMinimums, buildEditLayout } from "./dockLayout";
+import {
+  addRegisteredPanel,
+  applySideMinimums,
+  buildEditLayout,
+  withChatFirst,
+} from "./dockLayout";
 import { DOCK_PANEL_COMPONENT } from "./dockLayoutSchema";
 import { useDockLayoutStore, type DockController, type DockSnapshot } from "./dockLayoutStore";
 import {
@@ -96,7 +101,17 @@ function createController(api: DockviewApi): DockController {
         ? undefined
         : panelsInZone(zone).find((other) => other !== id && api.getPanel(other));
     if (sibling) {
-      addRegisteredPanel(api, id, { referencePanel: sibling, direction: "within" });
+      // Slot the tab in registry order (Chat, Compositions, Assets, ...) among the group's panels.
+      const order = panelsInZone(zone);
+      const group = api.getPanel(sibling)?.group;
+      const at = group?.panels.findIndex(
+        (panel) => isPanelId(panel.id) && order.indexOf(panel.id) > order.indexOf(id),
+      );
+      addRegisteredPanel(api, id, {
+        referencePanel: sibling,
+        direction: "within",
+        ...(at !== undefined && at >= 0 ? { index: at } : {}),
+      });
       return;
     }
     const hasAnchor = api.getPanel(reopen.near) !== undefined;
@@ -149,7 +164,7 @@ function restoreOrBuild(api: DockviewApi, projectId: string | null) {
   const stored = readStudioUiPreferences(undefined, projectId).dockLayout;
   if (stored) {
     try {
-      api.fromJSON(stored);
+      api.fromJSON(withChatFirst(stored));
       return;
     } catch {
       /* a layout the schema accepted but dockview cannot load: start over */

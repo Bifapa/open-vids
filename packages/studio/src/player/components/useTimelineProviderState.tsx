@@ -67,6 +67,7 @@ export function useTimelineProviderState({
   canPasteClip,
   theme: themeOverrides,
   sessionEpoch = 0,
+  timelineLocked = false,
 }: TimelineProps = {}): TimelineContextValue {
   const { t } = useTranslation();
   const {
@@ -456,6 +457,7 @@ export function useTimelineProviderState({
     isScrubbing,
     blockedClipRef,
     suppressClickRef,
+    timelineLocked,
     scrollRef,
     playheadRef,
     onDrillDown,

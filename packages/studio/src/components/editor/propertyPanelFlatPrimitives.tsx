@@ -143,7 +143,10 @@ export function FlatSegmentedRow({
       <span className="min-w-0 truncate text-sm text-fg-3">{label}</span>
       <span className="flex min-w-0 gap-0.5 rounded-md border border-border bg-bg-0 p-0.5">
         {options.map((option, index) => (
-          <span key={option.key} className="flex min-w-0 flex-1 items-center gap-0.5">
+          <span
+            key={option.key}
+            className="flex min-w-0 flex-1 items-center gap-0.5 [&:lang(ru)]:flex-auto"
+          >
             <button
               type="button"
               data-flat-segment="true"
@@ -153,7 +156,7 @@ export function FlatSegmentedRow({
               onClick={() => {
                 onChange(option.key);
               }}
-              className={`flex h-[18px] min-w-0 flex-1 items-center justify-center truncate rounded-sm px-1 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:text-fg-disabled ${
+              className={`flex h-[18px] min-w-0 flex-1 items-center justify-center truncate rounded-sm px-1 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:text-fg-disabled [&:lang(ru)]:flex-auto ${
                 option.active
                   ? "bg-surface-3 text-fg shadow-[inset_0_0_0_1px_var(--color-border-strong)]"
                   : "text-fg-3 hover:bg-surface-2 hover:text-fg"

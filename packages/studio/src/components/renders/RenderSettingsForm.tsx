@@ -173,7 +173,7 @@ export function useRenderSettings(): RenderSettingsState {
 
 function FieldRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid min-h-ctl-sm grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
+    <div className="grid min-h-ctl-sm grid-cols-[72px_minmax(0,1fr)] items-center gap-2 [&:lang(ru)]:grid-cols-[92px_minmax(0,1fr)]">
       <span className="whitespace-nowrap text-sm text-fg-3">{label}</span>
       {children}
     </div>
@@ -187,10 +187,10 @@ function VariablesLine() {
     state.values ? Object.keys(state.values).length : 0,
   );
   return (
-    <div className="flex min-h-5 min-w-0 items-center gap-2 pl-20">
-      <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-fg-3">
+    <div className="flex min-h-5 min-w-0 items-center gap-2 pl-20 [&:lang(ru)]:items-start [&:lang(ru)]:pl-[100px]">
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-fg-3 [&:lang(ru)]:items-start">
         <Sliders size={12} className="shrink-0" aria-hidden />
-        <span className="truncate">
+        <span className="truncate [&:lang(ru)]:overflow-visible [&:lang(ru)]:whitespace-normal">
           {overridden > 0 ? (
             <Trans
               i18nKey="renders.settings.variablesOverridden"
@@ -271,7 +271,7 @@ export function RenderSettingsForm({
           }}
         />
       </FieldRow>
-      <p className="m-0 pl-20 text-xs text-fg-3 text-pretty">
+      <p className="m-0 pl-20 text-xs text-fg-3 text-pretty [&:lang(ru)]:pl-[100px]">
         {t(FORMAT_NOTE_KEYS[settings.format])}
       </p>
       {showQuality && (
@@ -282,7 +282,7 @@ export function RenderSettingsForm({
             options={QUALITY_VALUES.map((value) => ({ value, label: t(QUALITY_KEYS[value]) }))}
             disabled={disabled}
             onChange={(quality) => update({ quality })}
-            className="justify-self-start"
+            className="justify-self-start [&:lang(ru)]:w-full [&:lang(ru)>button]:min-w-0 [&:lang(ru)>button]:flex-1 [&:lang(ru)>button]:px-1.5"
           />
         </FieldRow>
       )}

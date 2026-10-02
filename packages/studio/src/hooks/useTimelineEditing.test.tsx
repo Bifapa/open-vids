@@ -5,6 +5,8 @@ import { createRoot } from "react-dom/client";
 import { openComposition } from "@hyperframes/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
+import { setAgentTurnRunning } from "../agent/agentTurnLock";
+import { t } from "../i18n";
 import { jsonResponse, requestUrl } from "./fetchStubTestUtils";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
 import { useTimelineEditing } from "./useTimelineEditing";
@@ -1963,6 +1965,76 @@ describe("useTimelineEditing effect saves report what happened", () => {
       outcome = await setAudioGroupAttribute.setQuiet("hf-group", "data-volume", "0.5", "Volume");
     });
     expect(outcome).toEqual({ status: "refused", reason: "Reserved by an agent" });
+    expect(writeProjectFile).not.toHaveBeenCalled();
+    unmount();
+  });
+});
+
+// While an agent turn runs the project is being rewritten: every hand edit is refused by the same gate the host's
+// canEdit verdict goes through, and the refusal lifts the moment the turn ends.
+describe("useTimelineEditing: agent-turn lock", () => {
+  afterEach(() => setAgentTurnRunning(false));
+
+  it("refuses a move while a turn runs, with the lock reason and nothing written", async () => {
+    const { clip, move, writeProjectFile, recordEdit, showToast, unmount } =
+      setupSingleClipHarness();
+    setAgentTurnRunning(true);
+
+    await act(async () => {
+      await move(clip, { start: 3, track: clip.track });
+      await flushAsyncWork();
+    });
+
+    expect(writeProjectFile).not.toHaveBeenCalled();
+    expect(recordEdit).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(t("timeline.toast.agentEditing"), "error");
+    unmount();
+  });
+
+  it("allows the same move once the turn ended", async () => {
+    const { clip, move, writeProjectFile, unmount } = setupSingleClipHarness();
+    setAgentTurnRunning(true);
+    await act(async () => {
+      await move(clip, { start: 3, track: clip.track });
+      await flushAsyncWork();
+    });
+    expect(writeProjectFile).not.toHaveBeenCalled();
+
+    setAgentTurnRunning(false);
+    await act(async () => {
+      await move(clip, { start: 3, track: clip.track });
+      await flushAsyncWork();
+    });
+
+    expect(writeProjectFile).toHaveBeenCalled();
+    unmount();
+  });
+
+  it("refuses a resize and a delete (single and multi) with nothing written", async () => {
+    const { clip, resize, del, elementsDelete, writeProjectFile, recordEdit, unmount } =
+      setupSingleClipHarness();
+    setAgentTurnRunning(true);
+
+    await act(async () => {
+      await resize(clip, { start: 1, duration: 3 });
+      await del(clip);
+      await elementsDelete([clip]);
+      await flushAsyncWork();
+    });
+
+    expect(writeProjectFile).not.toHaveBeenCalled();
+    expect(recordEdit).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("refuses a clip effect write as refused, not failed", async () => {
+    const { clip, setElementFxAttribute, writeProjectFile, unmount } = setupSingleClipHarness();
+    setAgentTurnRunning(true);
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await setElementFxAttribute.setQuiet(clip, "data-hf-audio-fx", "echo", "Apply");
+    });
+    expect(outcome).toEqual({ status: "refused", reason: t("timeline.toast.agentEditing") });
     expect(writeProjectFile).not.toHaveBeenCalled();
     unmount();
   });

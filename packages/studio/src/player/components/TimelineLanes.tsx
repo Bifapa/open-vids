@@ -100,6 +100,7 @@ export function TimelineLanes({
   onMoveElement,
   onRazorSplit,
   onRazorSplitAll,
+  timelineLocked,
 }: TimelineLanesProps) {
   // ponytail: One per-instance namespace prevents aria-controls and aria-owns
   // from resolving into a second timeline that renders the same logical rows.
@@ -370,7 +371,10 @@ export function TimelineLanes({
                 // diamonds on their own bar instead.
                 const isTrackKeyframeClip = elementKey === keyframeClipKey;
                 const showsLanes = isTrackKeyframeClip && rowExpanded;
-                const capabilities = getTimelineEditCapabilities(el);
+                const capabilities = getTimelineEditCapabilities({
+                  ...el,
+                  timelineLocked: el.timelineLocked || timelineLocked,
+                });
                 const isSelected =
                   selectedElementId === elementKey || selectedElementIds.has(elementKey);
                 const isComposition = !!el.compositionSrc;

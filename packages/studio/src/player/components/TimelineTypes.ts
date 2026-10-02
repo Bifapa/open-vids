@@ -13,6 +13,12 @@ export interface TimelineClipRenderContext {
 export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverrides {
   /** Project-scoped reset boundary; soft source refreshes retain the same epoch. */
   sessionEpoch?: number;
+  /**
+   * Read-only timeline: an agent turn is running for this project, so no clip gesture may start (playback, seek,
+   * zoom, scroll and selection stay live). The host also refuses the edit callbacks themselves; this flag is what
+   * keeps the timeline from arming a drag it would only have to throw away.
+   */
+  timelineLocked?: boolean;
   /** keepPlaying: true preserves the current play state across the seek. */
   onSeek?: (time: number, options?: { keepPlaying?: boolean }) => void;
   onDrillDown?: (element: TimelineElement) => void;

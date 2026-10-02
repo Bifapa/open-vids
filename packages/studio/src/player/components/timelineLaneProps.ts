@@ -103,6 +103,8 @@ export interface TimelineLaneBaseProps {
   beatAnalysis?: MusicBeatAnalysis | null;
   /** Resolved audio groups, positioned in row order — see useTimelineTrackDerivations. */
   groups: readonly TimelineTrackGroupInfo[];
+  /** Read-only timeline while an agent turn runs: no clip gesture arms (see TimelineProps.timelineLocked). */
+  timelineLocked?: boolean;
 }
 
 /**

@@ -1222,3 +1222,31 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `qa.reason.*` — Why a turn's Render QA ended the way it did (TurnQaState.reason) and why Vision did not review a pass (QaReport.vision.reason). The runtime sends reasonCode/reasonParams next to the English text.
 - `qa.reason.render_failed` — {reason} is the renderer's own English error.
 - `qa.reason.vision_disabled` — Vision (the frame-review specialist) is not enabled in the chat's team.
+
+## rulayout
+
+- `chat.effort.short.default` — Short label of the Default segment in the thinking-effort strip when the strip shows six or more segments (same compact set as chat.effort.short.*).
+- `inspector.media.hasAudioTrack` — Inspector toggle label; same 116 px label column limit as inspector.media.mediaStart.
+- `inspector.grade.status.none` — Truncated status chip in the colour-grading section header (about 84 px); Russian kept short.
+
+## timeline-lock
+
+- `timeline.lock.aiEditing` — Badge in the timeline header while an agent turn is running for the project; every hand edit is refused until the turn (including its render-QA correction passes) ends.
+- `timeline.toast.agentEditing` — Refusal toast when a hand edit (drag, trim, delete, drop, paste, duplicate, undo/redo, block install) is attempted while an agent turn is running.
+
+## smart-project-name
+
+- `home.start.naming` — Start composer busy label while the model names the project from the prompt.
+- `home.start.foot.naming` — Start footer, after the location path, when the prompt is non-empty: the project name will be chosen from the description (no folder preview).
+- `home.start.foot.naming.tip` — Tooltip of the location path in that state; {location} is the chosen parent folder.
+
+## auto-format
+
+- `home.start.format.auto` — Start composer aspect chip: first menu entry and default; the agent picks the frame format.
+- `home.start.format.auto.item` — Aspect menu row for Auto; {size} is the placeholder canvas the project starts from.
+- `home.start.aspect.auto.tip` — Chip tooltip on Auto; {size} is the starting canvas, {fps} the frame rate.
+- `home.start.aspect.auto.aria` — Chip aria-label on Auto.
+
+## dropdowns-open
+
+- `renders.error.openFailed` — Shown in the Renders panel when opening a finished render fails (POST /renders/:filename/open).

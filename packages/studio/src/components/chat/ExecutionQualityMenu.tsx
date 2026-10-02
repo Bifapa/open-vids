@@ -73,7 +73,7 @@ function QualityRow({
       >
         <Check size={12} weight="bold" />
       </span>
-      <span className="col-start-2 flex min-w-0 items-center gap-1.5">
+      <span className="col-start-2 flex min-w-0 items-center gap-x-1.5 gap-y-px [&:lang(ru)]:flex-wrap">
         <span className="shrink-0 text-sm leading-4 font-medium text-fg">{title}</span>
         {editable && <PencilSimple size={11} aria-hidden className="shrink-0 text-fg-3" />}
         <span className="min-w-0 truncate text-xs text-fg-3">{blurb}</span>

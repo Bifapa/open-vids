@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import { setAgentTurnRunning } from "../agent/agentTurnLock";
 import { createTimelineResetState, usePlayerStore } from "../player/store/playerStore";
 import {
   readTimelinePerformanceDiagnostics,
@@ -26,6 +27,8 @@ interface StudioTestHookDeps {
 interface StudioTestApi {
   runtimeMode: typeof STUDIO_RUNTIME_MODE;
   selectByDomId: (id: string) => Promise<boolean>;
+  /** Drives the agent-turn lock (see agent/agentTurnLock.ts) without a live agent turn. */
+  setAgentTurnRunning: (running: boolean) => void;
   loadTimelinePerformanceFixture: (
     spec: TimelinePerformanceFixtureSpec,
   ) => TimelinePerformanceFixtureSummary;
@@ -67,6 +70,7 @@ export function useStudioTestHooks({
         applyDomSelection(selection, { revealPanel: true });
         return true;
       },
+      setAgentTurnRunning: (running: boolean) => setAgentTurnRunning(running),
       loadTimelinePerformanceFixture: (spec) => {
         const fixture = createTimelinePerformanceFixture(spec);
         setTimelinePerformanceFixtureLease(true);

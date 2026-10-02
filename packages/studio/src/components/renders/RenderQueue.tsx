@@ -32,6 +32,8 @@ export interface RenderQueueProps {
   projectId: string;
   onDelete: (jobId: string) => void;
   onCancel?: (jobId: string) => void;
+  /** Opens a finished render for the user (OS player in the desktop shell). */
+  onOpen: (job: RenderJob) => void;
   onClearCompleted: () => void;
   onStartRender: StartRenderHandler;
   isRendering: boolean;
@@ -64,12 +66,13 @@ function RecentRenders({
   jobs,
   projectId,
   onDelete,
+  onOpen,
   onClearCompleted,
   loadError,
   onRetryLoad,
 }: Pick<
   RenderQueueProps,
-  "projectId" | "onDelete" | "onClearCompleted" | "loadError" | "onRetryLoad"
+  "projectId" | "onDelete" | "onOpen" | "onClearCompleted" | "loadError" | "onRetryLoad"
 > & { jobs: RenderJob[] }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(true);
@@ -123,6 +126,7 @@ function RecentRenders({
                     job={job}
                     projectId={projectId}
                     onDelete={() => onDelete(job.id)}
+                    onOpen={() => onOpen(job)}
                   />
                 ))}
               </ul>
@@ -144,6 +148,7 @@ export const RenderQueue = memo(function RenderQueue({
   projectId,
   onDelete,
   onCancel,
+  onOpen,
   onClearCompleted,
   onStartRender,
   isRendering,
@@ -228,6 +233,7 @@ export const RenderQueue = memo(function RenderQueue({
           jobs={finished}
           projectId={projectId}
           onDelete={onDelete}
+          onOpen={onOpen}
           onClearCompleted={onClearCompleted}
           loadError={loadError}
           onRetryLoad={onRetryLoad}

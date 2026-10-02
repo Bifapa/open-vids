@@ -71,6 +71,7 @@ export function intakeTurnRequest(intake: AgentIntake): StartTurnRequest | null 
     ...(references.length > 0 && { references }),
     intent: intake.intent,
     mode: "normal",
+    ...(intake.format === "auto" && { canvas: "auto" }),
   };
 }
 

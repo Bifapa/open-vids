@@ -357,6 +357,12 @@ export interface ChatSummary {
   agentOverrides?: SpecialistOverrides;
   /** The chat's own Execution Quality; absent or null = the global default. */
   executionQuality?: ExecutionQuality | null;
+  /**
+   * The chat's frame format is still to be decided: the project was started with the format on Auto, so the agent
+   * must pick the canvas before building. Set by the runtime when a turn arrives with `canvas: "auto"`, durable
+   * across turns and restarts; cleared when a successful `edit_timeline` batch sets the canvas.
+   */
+  canvasAuto?: boolean;
 }
 
 /** The specialist configuration a chat actually uses: its own override, else the global default. */

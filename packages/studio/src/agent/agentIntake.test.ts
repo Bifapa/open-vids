@@ -50,6 +50,11 @@ describe("intake turn", () => {
     );
     expect(intakeTurnRequest({ ...INTAKE, prompt: "", files: [] })).toBeNull();
   });
+
+  it("carries the Auto format to the runtime as a canvas hint", () => {
+    expect(intakeTurnRequest({ ...INTAKE, format: "auto" })?.canvas).toBe("auto");
+    expect(intakeTurnRequest(INTAKE)?.canvas).toBeUndefined();
+  });
 });
 
 describe("consumeIntake", () => {

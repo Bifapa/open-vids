@@ -467,15 +467,36 @@ function foldAndCommitElementPatchBatches(
 
 function commitElementPatchBatchesWithReceipts(
   c: RouteContext,
+  adapter: StudioApiAdapter,
   projectDir: string,
   batches: ElementPatchBatchRequest[],
-): ReturnType<typeof commitElementPatchBatches> {
-  return commitElementPatchBatches(
+): ElementPatchCommitResult {
+  const result = commitElementPatchBatches(
     projectDir,
     batches,
     undefined,
     c.req.header("X-Hyperframes-Write-Token"),
   );
+  // The commit writes every prepared file synchronously before it answers; the
+  // preview reload that follows must not be served the pre-commit bundle.
+  if (!("error" in result)) invalidateSignatureAfterWrite(adapter, projectDir);
+  return result;
+}
+
+/**
+ * Drop the host's cached project signature after this server wrote a project file.
+ *
+ * The preview document cache is keyed by that signature, and the host clears it
+ * from its file watcher — which debounces (30ms of quiet, at most once per
+ * 300ms burst in the CLI host). Studio reloads the preview the moment its own
+ * write returns, so without this the reload could be answered from the
+ * pre-write cache: a dropped asset, a deleted clip or a DOM edit stayed
+ * invisible until the *next* write's reload rebuilt the cache, which is what
+ * made "the first drop does nothing, the second shows two clips at once" — the
+ * second rebuild served everything that had accumulated on disk.
+ */
+function invalidateSignatureAfterWrite(adapter: StudioApiAdapter, projectDir: string): void {
+  adapter.invalidateProjectSignature?.(projectDir);
 }
 
 /**
@@ -490,6 +511,8 @@ function commitElementPatchBatchesWithReceipts(
  */
 function writeFileWithReceipt(
   c: RouteContext,
+  adapter: StudioApiAdapter,
+  projectDir: string,
   filePath: string,
   absPath: string,
   html: string,
@@ -500,11 +523,13 @@ function writeFileWithReceipt(
   const version = fileContentVersion(html);
   const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
   recordFileWriteReceipt(absPath, { path: filePath, version, writeToken, overwrote });
+  invalidateSignatureAfterWrite(adapter, projectDir);
   return { version, writeToken };
 }
 
 function writeMutationResult(
   c: RouteContext,
+  adapter: StudioApiAdapter,
   projectDir: string,
   filePath: string,
   absPath: string,
@@ -516,13 +541,14 @@ function writeMutationResult(
   if (readFileSync(absPath, "utf-8") !== original) {
     return c.json({ error: "file changed", conflict: true, path: filePath }, 409);
   }
-  const { version } = writeFileWithReceipt(c, filePath, absPath, html);
+  const { version } = writeFileWithReceipt(c, adapter, projectDir, filePath, absPath, html);
   return { backupPath: backupPathForResponse(projectDir, backup.backupPath), version };
 }
 
 /** Write `next` to `absPath` only if it differs from `original`, returning a standardized change response. */
 function writeIfChanged(
   c: RouteContext,
+  adapter: StudioApiAdapter,
   projectDir: string,
   filePath: string,
   absPath: string,
@@ -532,7 +558,15 @@ function writeIfChanged(
   if (next === original) {
     return c.json({ ok: true, changed: false, content: original, path: filePath });
   }
-  const mutationResult = writeMutationResult(c, projectDir, filePath, absPath, next, original);
+  const mutationResult = writeMutationResult(
+    c,
+    adapter,
+    projectDir,
+    filePath,
+    absPath,
+    next,
+    original,
+  );
   if (mutationResult instanceof Response) return mutationResult;
   const { backupPath } = mutationResult;
   return c.json({
@@ -1283,6 +1317,7 @@ async function prepareGsapMutationScript(
 
 async function applyGsapMutations(
   c: RouteContext,
+  adapter: StudioApiAdapter,
   res: ResolvedGsapFile,
   mutations: GsapMutationRequest[],
 ): Promise<Response> {
@@ -1333,6 +1368,7 @@ async function applyGsapMutations(
   if (changed) {
     const mutationResult = writeMutationResult(
       c,
+      adapter,
       res.project.dir,
       res.filePath,
       res.absPath,
@@ -2456,6 +2492,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const version = fileContentVersion(body);
     const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
     recordFileWriteReceipt(res.absPath, { path: res.filePath, version, writeToken, overwrote });
+    invalidateSignatureAfterWrite(adapter, res.project.dir);
     c.header("ETag", version);
 
     return c.json({
@@ -2484,6 +2521,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "already exists" }, 409);
     }
 
+    invalidateSignatureAfterWrite(adapter, res.project.dir);
     return c.json({ ok: true, path: res.filePath }, 201);
   });
 
@@ -2501,6 +2539,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     } else {
       unlinkSync(res.absPath);
     }
+    invalidateSignatureAfterWrite(adapter, res.project.dir);
 
     return c.json({
       ok: true,
@@ -2571,6 +2610,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
     const { version, writeToken } = writeFileWithReceipt(
       c,
+      adapter,
+      ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
       insertion.html,
@@ -2604,6 +2645,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const originalContent = readFileSync(ctx.absPath, "utf-8");
     return writeIfChanged(
       c,
+      adapter,
       ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
@@ -2640,7 +2682,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     for (const target of targets) {
       next = removeElementFromHtml(next, target);
     }
-    return writeIfChanged(c, ctx.project.dir, ctx.filePath, ctx.absPath, originalContent, next);
+    return writeIfChanged(
+      c,
+      adapter,
+      ctx.project.dir,
+      ctx.filePath,
+      ctx.absPath,
+      originalContent,
+      next,
+    );
   });
 
   api.post("/projects/:id/file-mutations/split-batch", async (c) => {
@@ -2779,6 +2829,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         );
       }
 
+      // Every file the cut rewrote is on disk before the response; the client
+      // reloads immediately, so the cut must not be served a pre-cut bundle.
+      invalidateSignatureAfterWrite(adapter, project.dir);
       const result = prepared.map((file) => ({
         path: file.path,
         before: file.before,
@@ -2840,6 +2893,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
     const mutationResult = writeMutationResult(
       c,
+      adapter,
       ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
@@ -2903,6 +2957,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       }
       const mutationResult = writeMutationResult(
         c,
+        adapter,
         ctx.project.dir,
         ctx.filePath,
         ctx.absPath,
@@ -2945,7 +3000,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const unsafeFields = findUnsafeElementPatchBatchValues(body.batches);
     if (unsafeFields.length > 0) return rejectUnsafeMutationValues(c, unsafeFields);
 
-    const result = commitElementPatchBatchesWithReceipts(c, project.dir, body.batches);
+    const result = commitElementPatchBatchesWithReceipts(c, adapter, project.dir, body.batches);
     if ("error" in result) {
       return elementPatchBatchCommitErrorResponse(c, result.error, result.sourceFile);
     }
@@ -2973,7 +3028,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return rejectUnsafeMutationValues(c, unsafeFields);
     }
 
-    const result = commitElementPatchBatchesWithReceipts(c, ctx.project.dir, [batch]);
+    const result = commitElementPatchBatchesWithReceipts(c, adapter, ctx.project.dir, [batch]);
     if ("error" in result) {
       return elementPatchBatchCommitErrorResponse(c, result.error, result.sourceFile);
     }
@@ -3048,6 +3103,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
     const mutationResult = writeMutationResult(
       c,
+      adapter,
       ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
@@ -3112,7 +3168,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (result.unwrappedGroupId) {
       cleaned = stripGsapAnimationsForSelector(cleaned, `#${result.unwrappedGroupId}`);
     }
-    return writeIfChanged(c, ctx.project.dir, ctx.filePath, ctx.absPath, originalContent, cleaned);
+    return writeIfChanged(
+      c,
+      adapter,
+      ctx.project.dir,
+      ctx.filePath,
+      ctx.absPath,
+      originalContent,
+      cleaned,
+    );
   });
 
   api.post("/projects/:id/file-mutations/probe-element/*", async (c) => {
@@ -3157,6 +3221,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     // Update references to the old path across all project files
     const updatedFiles = updateReferences(res.project.dir, res.filePath, body.newPath);
+    invalidateSignatureAfterWrite(adapter, res.project.dir);
 
     return c.json({ ok: true, path: body.newPath, updatedReferences: updatedFiles });
   });
@@ -3193,6 +3258,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "already exists" }, 409);
     }
 
+    invalidateSignatureAfterWrite(adapter, project.dir);
     return c.json({ ok: true, path: copyPath }, 201);
   });
 
@@ -3218,6 +3284,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
       const formData = await c.req.formData();
       const result = await processUploadedFiles(formData, targetDir, project.dir);
+      // A new project file changes the signature (assets are part of it); the
+      // file tree's own preview reload must not be served the pre-upload bundle.
+      if (result.uploaded.length > 0) invalidateSignatureAfterWrite(adapter, project.dir);
 
       return c.json(
         {
@@ -3274,7 +3343,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (!body) return c.json({ error: "mutation type required" }, 400);
     const error = validateGsapMutationRequest(c, body);
     if (error) return error;
-    return applyGsapMutations(c, res, [body]);
+    return applyGsapMutations(c, adapter, res, [body]);
   });
 
   api.post("/projects/:id/gsap-mutations-batch/*", async (c) => {
@@ -3294,7 +3363,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const error = validateGsapMutationRequest(c, mutation);
       if (error) return error;
     }
-    return applyGsapMutations(c, res, body.mutations);
+    return applyGsapMutations(c, adapter, res, body.mutations);
   });
 
   // A failed multi-step GSAP transaction may restore only the exact bytes its
@@ -3320,6 +3389,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ ok: true, restored: false, conflict: true });
     }
     replaceFileAtomically(res.absPath, body.restore, statSync(res.absPath).mode);
+    invalidateSignatureAfterWrite(adapter, res.project.dir);
     return c.json({ ok: true, restored: true, conflict: false });
   });
 }

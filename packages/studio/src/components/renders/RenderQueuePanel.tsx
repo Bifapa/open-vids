@@ -26,6 +26,7 @@ export const RenderQueuePanel = memo(function RenderQueuePanel() {
       projectId={projectId}
       onDelete={renderQueue.deleteRender}
       onCancel={renderQueue.cancelRender}
+      onOpen={renderQueue.openRender}
       loadError={renderQueue.loadError}
       onRetryLoad={renderQueue.reloadRenders}
       actionError={renderQueue.actionError}

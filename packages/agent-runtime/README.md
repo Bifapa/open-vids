@@ -24,7 +24,8 @@ The wire model (chats, turns, messages, events, editor context, references) is o
   token is generated per launch and known only to the gateway and this process. The browser never
   sees the token or the port.
 - The project is selected per request by gateway-set headers (`x-openvids-project-id`,
-  `-project-dir`, `-studio-origin`). The runtime only ever touches the directory it is handed.
+  `-project-dir`, percent-encoded since ids and folders may be non-Latin, and `-studio-origin`).
+  The runtime only ever touches the directory it is handed.
 - Env: `OPENVIDS_AGENT_TOKEN` (required), `OPENVIDS_AGENT_PORT` (default `0`),
   `OPENVIDS_AGENT_PARENT_PID` (exit when that process disappears).
 - Prints one stdout line, `{"openvids-agent":"listening","port":N,"protocolVersion":1}`.

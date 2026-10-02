@@ -17,6 +17,7 @@ import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { findElementForSelection } from "../components/editor/domEditingElement";
 import { findTimelineElementInIframe, readFileContent } from "./timelineEditingHelpers";
+import { useTimelineLockRefusal } from "./timelineEditPermission";
 import { buildTimelineElementKey } from "../player/lib/timelineElementHelpers";
 import { timeRangesOverlap } from "../player/components/timelineCollision";
 import {
@@ -236,6 +237,7 @@ export function useClipboard({
   const clipboardRef = useRef<Promise<ClipboardPayload | null> | null>(null);
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
+  const refuseTimelineLock = useTimelineLockRefusal(showToast);
 
   // After any save still in flight on the file, so a copy right after an edit takes the edit.
   const readSaved = useCallback(
@@ -361,6 +363,8 @@ export function useClipboard({
       showToast(t("clipboard.toast.nothingToPaste"), "info");
       return;
     }
+    // Pasting clips writes clip timing into the composition the agent is rewriting; pasting a DOM element does not.
+    if (payload.kind === "timeline-clip" && refuseTimelineLock()) return;
     const pid = projectIdRef.current;
     if (!pid) return;
 
@@ -410,7 +414,7 @@ export function useClipboard({
       const message = error instanceof Error ? error.message : t("clipboard.toast.pasteFailed");
       showToast(message);
     }
-  }, [activeCompPath, recordEdit, reloadPreview, showToast, writeProjectFile]);
+  }, [activeCompPath, recordEdit, reloadPreview, showToast, writeProjectFile, refuseTimelineLock]);
 
   // Duplicates the current selection in place, immediately after it, without
   // touching the clipboard — a pending copy must survive a Cmd+D. Shares
@@ -419,6 +423,7 @@ export function useClipboard({
   const handleDuplicate = useCallback(async (): Promise<boolean> => {
     const targets = findSelectedClips();
     if (!targets) return false;
+    if (refuseTimelineLock()) return false;
     const pid = projectIdRef.current;
     if (!pid) return false;
 
@@ -468,6 +473,7 @@ export function useClipboard({
     reloadPreview,
     showToast,
     writeProjectFile,
+    refuseTimelineLock,
   ]);
 
   const handleCut = useCallback(async (): Promise<boolean> => {

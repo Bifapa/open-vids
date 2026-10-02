@@ -47,6 +47,24 @@ export const AGENT_HEADERS = {
 } as const;
 
 /**
+ * Project ids and directories may hold any Unicode (a Russian project name, a folder under `~/Видео`), but HTTP
+ * header values must be Latin-1, so the gateway percent-encodes the project scope and the runtime decodes it.
+ */
+export function encodeScopeHeader(value: string): string {
+  return encodeURIComponent(value);
+}
+
+/** The decoded scope header; null when absent or not valid percent-encoding. */
+export function decodeScopeHeader(value: string | null): string | null {
+  if (value === null) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A message the UI can translate: `code` names an `errors.<code>` locale key, `params` fills its placeholders.
  * The server always sends the English `message` too (the fallback and the log line).
  */
@@ -116,6 +134,12 @@ export interface StartTurnRequest {
   /** The user's choices for a `build` or `rebuild` action; refused with any other action. */
   storyOptions?: StoryActionOptions;
   /**
+   * `auto`: the user started the project with the frame format on Auto, so the composition's current size is only a
+   * placeholder and the agent must decide the format from the brief and the footage before building (edit_timeline's
+   * `set_canvas`). Absent: the composition's size is the user's choice.
+   */
+  canvas?: "auto";
+  /**
    * The user's UI language as a BCP-47 code (`en`, `ru`, …). The agents answer in that language;
    * absent means English behaviour.
    */
@@ -176,6 +200,12 @@ export interface AgentIntake {
   version: 1;
   prompt: string;
   intent: ChatIntent;
+  /**
+   * `auto`: the user left the frame format on Auto ("let the agent decide"), so the project was scaffolded with the
+   * preferred size as a placeholder and the first turn must choose the format itself. Absent: the fixed size the
+   * project was created with.
+   */
+  format?: "auto";
   model: ModelSelection | null;
   thinking: ThinkingEffort | null;
   agents: SpecialistId[];
@@ -225,6 +255,25 @@ export interface StartOAuthLoginRequest {
 /** The user's answer to the prompt of a sign-in (`POST /oauth/logins/:id/input`): a pasted code or redirect URL. */
 export interface SubmitOAuthLoginInputRequest {
   text: string;
+}
+
+/**
+ * One short, tool-less completion that names a project being started (`POST /project-title`). Home calls it while
+ * the Start button is busy; any failure makes it fall back to its own derivation.
+ */
+export interface ProjectTitleRequest {
+  /** What the user described; the title must fit this prompt. */
+  prompt: string;
+  /** Names (never paths) of the files the project will import; may be empty. */
+  files: string[];
+  /** The composer's chosen model; null asks for the runtime's Main default. */
+  model: ModelSelection | null;
+  /** UI language the title must be written in (`en`, `ru`, …); null follows the prompt's own language. */
+  language: string | null;
+}
+
+export interface ProjectTitleResponse {
+  title: string;
 }
 
 /** The provider list; also the answer to saving/removing a provider key and to a forced refresh. */

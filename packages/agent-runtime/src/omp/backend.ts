@@ -39,6 +39,7 @@ import type {
   ModelSelection,
   OAuthFlow,
   OAuthLoginState,
+  ProjectTitleRequest,
   ThinkingEffort,
 } from "@hyperframes/agent-protocol";
 import { RuntimeError } from "../errors.ts";
@@ -63,6 +64,7 @@ import {
 import { hostToolContent } from "./tool-content.ts";
 import { guardToolCallPaths } from "./path-guard.ts";
 import { projectBoundaryExtension } from "./tool-guard.ts";
+import { generateProjectTitleWithOmp } from "./title.ts";
 
 const MODEL_CATALOG_TTL_MS = 60_000;
 const PROJECT_FILE_TOOLS = ["read", "grep", "glob", "find", "edit", "write"];
@@ -899,6 +901,32 @@ class OmpBackend implements AgentBackend {
     return catalogSources(registry.getAll().filter((model) => model.provider === provider)).map(
       mapModelInfo,
     );
+  }
+
+  async generateProjectTitle(input: ProjectTitleRequest): Promise<string> {
+    const services = await this.ensureServices();
+    const chosen = input.model
+      ? services.registry.find(input.model.provider, input.model.modelId)
+      : undefined;
+    const model = input.model
+      ? isAvailableModel(services.registry, chosen)
+        ? chosen
+        : undefined
+      : chooseBackendModel(services.registry, services.catalog);
+    if (!model) {
+      throw new RuntimeError(
+        "model_unavailable",
+        input.model
+          ? `The selected model ${input.model.provider}/${input.model.modelId} is not available or has no configured credentials.`
+          : "No authenticated OMP model is available to name the project.",
+        input.model ? 400 : 503,
+      );
+    }
+    return generateProjectTitleWithOmp({
+      model,
+      registry: services.registry,
+      request: input,
+    });
   }
 
   async openSession(input: OpenBackendSessionInput): Promise<BackendSession> {

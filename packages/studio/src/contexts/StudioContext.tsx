@@ -1,6 +1,7 @@
 import type { TimelineElement } from "../player";
 import type { CompositionDimensions } from "../components/renders/RenderSettingsForm";
 import type { FfmpegStatus } from "../components/renders/useFfmpegStatus";
+import type { RenderJob } from "../components/renders/useRenderQueue";
 import { useContext, useMemo, type ReactNode } from "react";
 import { createStableContext } from "../utils/hmrStableContext";
 
@@ -34,6 +35,8 @@ export interface StudioShellValue {
     reloadRenders: () => void;
     deleteRender: (jobId: string) => void;
     cancelRender: (jobId: string) => void;
+    /** Opens a finished render for the user (OS player in the desktop shell, a tab in a browser). */
+    openRender: (job: RenderJob) => void;
     clearCompleted: () => void;
     startRender: (options: unknown) => Promise<void>;
     /** Encoder availability. `null` means "no answer", not "missing". */

@@ -120,8 +120,15 @@ async function activate(id: PanelId) {
 
 describe("dock tabs", () => {
   it("draw the close glyph on the shown tab only", () => {
-    for (const id of ["design", "compositions"] as const) expect(showsClose(id)).toBe(true);
-    for (const id of ["layers", "renders", "variables", "chat", "assets", "code"] as const) {
+    for (const id of ["design", "chat"] as const) expect(showsClose(id)).toBe(true);
+    for (const id of [
+      "layers",
+      "renders",
+      "variables",
+      "compositions",
+      "assets",
+      "code",
+    ] as const) {
       expect(showsClose(id)).toBe(false);
     }
   });

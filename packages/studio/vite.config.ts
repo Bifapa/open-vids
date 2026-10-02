@@ -9,7 +9,7 @@ import {
   lstatSync,
   realpathSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
@@ -170,8 +170,19 @@ function devProjectApi(): Plugin {
         /* dataDir doesn't exist yet */
       }
 
-      const projectWatcher = watch([...watchedProjects.keys()], {
+      const watchedRoots = new Set(watchedProjects.keys());
+      const projectWatcher = watch([...watchedRoots], {
         ignoreInitial: true,
+        // Render output and its frame work dirs live in `<project>/renders` (as in the CLI host); a render
+        // writes thousands of frames there that are neither composition edits nor history.
+        ignored: (path: string) => {
+          for (const root of watchedRoots) {
+            const rel = relative(root, path);
+            if (rel && !rel.startsWith("..") && !isAbsolute(rel))
+              return rel.split(sep)[0] === "renders";
+          }
+          return false;
+        },
         // A project write is a whole-file replace; wait for it to settle so a
         // half-written composition is never announced.
         awaitWriteFinish: { stabilityThreshold: 40, pollInterval: 10 },
@@ -184,7 +195,10 @@ function devProjectApi(): Plugin {
       // still rendered the pre-edit composition. Every event type counts, since
       // an added or deleted asset changes the signature as surely as an edit.
       const signatureCache = createProjectSignatureCache({
-        watch: (projectDir) => void projectWatcher.add(projectDir),
+        watch: (projectDir) => {
+          watchedRoots.add(projectDir);
+          projectWatcher.add(projectDir);
+        },
       });
       for (const event of ["add", "change", "unlink", "addDir", "unlinkDir"] as const) {
         projectWatcher.on(event, (filePath: string) => signatureCache.invalidate(filePath));

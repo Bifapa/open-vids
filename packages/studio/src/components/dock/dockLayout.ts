@@ -1,5 +1,5 @@
-import type { Direction, DockviewApi } from "dockview-react";
-import { DOCK_PANEL_COMPONENT } from "./dockLayoutSchema";
+import type { Direction, DockviewApi, SerializedDockview } from "dockview-react";
+import { DOCK_PANEL_COMPONENT, isRecord } from "./dockLayoutSchema";
 import { t } from "../../i18n";
 import { PANEL_DEFINITIONS, isPanelId, type PanelId } from "./panelRegistry";
 
@@ -73,7 +73,7 @@ function minimumSize(id: PanelId) {
 export function addRegisteredPanel(
   api: DockviewApi,
   id: PanelId,
-  position?: { referencePanel: PanelId; direction: Direction },
+  position?: { referencePanel: PanelId; direction: Direction; index?: number },
 ) {
   return api.addPanel({
     id,
@@ -85,7 +85,7 @@ export function addRegisteredPanel(
   });
 }
 
-/** The default Edit layout: [library | preview/story | inspector] over a full-width timeline. */
+/** The default Edit layout: [chat | compositions | ... | preview/story | inspector] over a full-width timeline. */
 export function buildEditLayout(api: DockviewApi, viewportWidth: number) {
   api.clear();
   const widths = defaultSideWidths(viewportWidth);
@@ -95,18 +95,43 @@ export function buildEditLayout(api: DockviewApi, viewportWidth: number) {
   addRegisteredPanel(api, "media", { referencePanel: "preview", direction: "within" });
   addRegisteredPanel(api, "story", { referencePanel: "preview", direction: "within" });
   api.getPanel("preview")?.api.setActive();
-  addRegisteredPanel(api, "compositions", { referencePanel: "preview", direction: "left" });
-  for (const id of ["assets", "code", "catalog", "chat"] as const) {
-    addRegisteredPanel(api, id, { referencePanel: "compositions", direction: "within" });
+  addRegisteredPanel(api, "chat", { referencePanel: "preview", direction: "left" });
+  for (const id of ["compositions", "assets", "code", "catalog"] as const) {
+    addRegisteredPanel(api, id, { referencePanel: "chat", direction: "within" });
   }
   addRegisteredPanel(api, "design", { referencePanel: "preview", direction: "right" });
   for (const id of ["layers", "renders", "variables"] as const) {
     addRegisteredPanel(api, id, { referencePanel: "design", direction: "within" });
   }
-  api.getPanel("compositions")?.api.setActive();
+  api.getPanel("chat")?.api.setActive();
   api.getPanel("design")?.api.setActive();
   applySideMinimums(api, viewportWidth);
-  api.getPanel("compositions")?.group.api.setSize({ width: widths.left });
+  api.getPanel("chat")?.group.api.setSize({ width: widths.left });
   api.getPanel("design")?.group.api.setSize({ width: widths.right });
   api.getPanel("timeline")?.group.api.setSize({ height: DEFAULT_TIMELINE_H });
+}
+
+function chatFirstNode(node: unknown): unknown {
+  if (!isRecord(node)) return node;
+  if (node.type === "branch" && Array.isArray(node.data)) {
+    return { ...node, data: node.data.map(chatFirstNode) };
+  }
+  const data = node.data;
+  if (node.type !== "leaf" || !isRecord(data) || !Array.isArray(data.views)) return node;
+  const sideOnly = data.views.every(
+    (view) => isPanelId(view) && PANEL_DEFINITIONS[view].zone !== "center",
+  );
+  if (!data.views.includes("chat") || !sideOnly) return node;
+  const views = ["chat", ...data.views.filter((view) => view !== "chat")];
+  return { ...node, data: { ...data, views, activeView: "chat" } };
+}
+
+/**
+ * A stored layout with Chat opening first: in the side tab group that holds it, Chat becomes the
+ * first tab and the one showing. Every other customisation (sizes, groups, other tab order) is
+ * kept; a Chat the user moved into a group with the preview stays where it is.
+ */
+export function withChatFirst(layout: SerializedDockview): SerializedDockview {
+  const grid = layout.grid as unknown as Record<string, unknown>;
+  return { ...layout, grid: { ...grid, root: chatFirstNode(grid.root) } as typeof layout.grid };
 }

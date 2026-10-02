@@ -131,6 +131,22 @@ export class ChatService {
     return chat;
   }
 
+  /**
+   * Sets or clears the chat's "frame format still to be decided" flag (a start-from-chat project the agent must
+   * pick the canvas for). Durable: it rides `chat.updated`, so a later turn of the same chat — plan now, edit
+   * after the user approves the plan — still knows the format is open.
+   */
+  async setCanvasAuto(chatId: string, auto: boolean): Promise<void> {
+    const record = this.chats.get(chatId);
+    if (!record) return;
+    const current = record.state.chat;
+    if ((current.canvasAuto ?? false) === auto) return;
+    const chat: ChatSummary = { ...current, updatedAt: this.now() };
+    if (auto) chat.canvasAuto = true;
+    else delete chat.canvasAuto;
+    await this.emit(chatId, { type: "chat.updated", chat });
+  }
+
   async markWorking(chatId: string, prompt: string): Promise<ChatSummary> {
     const record = this.chats.get(chatId);
     if (!record) throw new Error("Chat does not exist");

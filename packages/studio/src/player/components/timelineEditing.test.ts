@@ -483,6 +483,8 @@ describe("getTimelineEditCapabilities", () => {
       canMove: false,
       canTrimStart: false,
       canTrimEnd: false,
+      // The flag tells a clip gesture this is a lock, not a small hit target: no gesture arms and no blocked toast.
+      timelineLocked: true,
     });
   });
 

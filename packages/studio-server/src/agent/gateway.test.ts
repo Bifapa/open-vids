@@ -40,8 +40,8 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({
       auth: request.headers.authorization,
-      projectId: request.headers["x-openvids-project-id"],
-      projectDir: request.headers["x-openvids-project-dir"],
+      projectId: decodeURIComponent(request.headers["x-openvids-project-id"]),
+      projectDir: decodeURIComponent(request.headers["x-openvids-project-dir"]),
       studioOrigin: request.headers["x-openvids-studio-origin"],
       accept: request.headers.accept,
       contentType: request.headers["content-type"],
@@ -170,6 +170,20 @@ describe("createAgentGateway", () => {
       count: 1,
     });
     expect(echo).not.toHaveProperty("forgedHeader");
+  });
+
+  it("forwards a project whose id and folder are not Latin-1", async () => {
+    const gateway = createGateway(createTempDir());
+    const unicode: ResolvedProject = {
+      id: "Запуск ракеты",
+      dir: "/Users/me/Movies/OpenVids/Запуск ракеты",
+    };
+    const response = await gateway.handle(new Request("http://studio.test/agent/echo"), {
+      ...context,
+      project: unicode,
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ projectId: unicode.id, projectDir: unicode.dir });
   });
 
   it("coalesces concurrent first requests into one runtime launch", async () => {

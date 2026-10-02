@@ -4,6 +4,7 @@ import {
   activeThread,
   agentCrumbs,
   agentThread,
+  agentTurnRunning,
   mainThreadMessages,
   runCurrentStep,
 } from "./agentSelectors";
@@ -13,6 +14,7 @@ import {
   chatState,
   runReply,
   taskMessage,
+  turn,
   userMessage,
 } from "./agentTestHarness";
 
@@ -153,5 +155,32 @@ describe("delegation progress", () => {
     for (const status of ended) {
       expect(runCurrentStep(busy, { ...run, status })).toBeNull();
     }
+  });
+});
+
+// What locks the timeline while the agent works: the project-wide active turn (which the server keeps set through
+// the turn's render-QA correction passes), or a running turn in the open chat.
+describe("agentTurnRunning", () => {
+  it("is true while the project has an active turn, whatever the open chat shows", () => {
+    const activeTurn = { chatId: "c1", turnId: "t1", startedAt: 1 };
+    expect(agentTurnRunning({ activeTurn, chat: null })).toBe(true);
+    expect(
+      agentTurnRunning({ activeTurn, chat: chatState({ turns: [turn({ status: "completed" })] }) }),
+    ).toBe(true);
+  });
+
+  it("is true for a running turn in the open chat, even before the project event arrives", () => {
+    expect(agentTurnRunning({ activeTurn: null, chat: chatState({ turns: [turn()] }) })).toBe(true);
+  });
+
+  it("is false with no active turn and no running turn", () => {
+    expect(agentTurnRunning({ activeTurn: null, chat: null })).toBe(false);
+    expect(agentTurnRunning({ activeTurn: null, chat: chatState() })).toBe(false);
+    expect(
+      agentTurnRunning({
+        activeTurn: null,
+        chat: chatState({ turns: [turn({ status: "failed" })] }),
+      }),
+    ).toBe(false);
   });
 });

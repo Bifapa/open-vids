@@ -1069,6 +1069,65 @@ describe("set_composition and the length rule", () => {
   });
 });
 
+describe("set_canvas", () => {
+  const TEMPLATE_HTML = `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=1920, height=1080">
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #root { width: 100%; height: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="5">
+      <div id="title" data-hf-id="hf-title" class="clip" data-start="0" data-duration="2" data-track-index="0" style="position: absolute; width: 640px; height: 360px">Hi</div>
+    </div>
+  </body>
+</html>`;
+
+  it("rewrites the root, the stage CSS and the viewport meta, and leaves clip frames alone", async () => {
+    const made = withProject({ html: TEMPLATE_HTML });
+    const response = await apply([{ op: "set_canvas", width: 1080, height: 1920 }]);
+    expect(response.changedFiles).toEqual(["index.html"]);
+    expect(response.timeline.composition).toMatchObject({
+      path: "index.html",
+      width: 1080,
+      height: 1920,
+    });
+    const html = made.read("index.html");
+    expect(html).toContain('data-width="1080"');
+    expect(html).toContain('data-height="1920"');
+    expect(html).toContain("width: 1080px");
+    expect(html).toContain("height: 1920px");
+    expect(html).toContain("width=1080");
+    expect(html).toContain("height=1920");
+    expect(html).not.toContain("width: 1920px");
+    expect(html).toContain("width: 640px");
+    expect(html).toContain("width: 100%");
+  });
+
+  it("sets the canvas in the same batch an empty composition is built into", async () => {
+    const made = withProject({
+      html: `<div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="0"></div>`,
+    });
+    const response = await apply([
+      { op: "set_canvas", width: 1080, height: 1920 },
+      { op: "add_clip", asset: "assets/a.mp4", start: 0, track: 0 },
+    ]);
+    expect(response.timeline.composition.width).toBe(1080);
+    expect(response.timeline.composition.height).toBe(1920);
+    // The clip placed after the resize fills the new canvas.
+    expect(made.read("index.html")).toContain("width: 1080px");
+  });
+});
+
 describe("batch validation against the project", () => {
   it("refuses an unknown clip with its index, and names the known clips", async () => {
     withProject();
