@@ -38,6 +38,8 @@
 //!   (`home_research`).
 //! - `GET /api/system/check`, `/api/system/install/chrome[/cancel]` — the
 //!   first-run System check and the Chrome installer (`home_system`).
+//! - `GET /api/update/status`, `POST /api/update/check`, `POST /api/update/install`
+//!   — the in-app update (`home_update`, `updater`).
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -240,6 +242,7 @@ fn route(
             super::home_research::handle(s, &method, p, body)
         }
         (_, p) if super::home_system::owns(p) => super::home_system::handle(s, &method, p),
+        (_, p) if super::home_update::owns(p) => super::home_update::handle(s, &method, p, body),
         ("POST", "/api/open-external") => home_api::handle_open_external(s, body),
         ("POST", "/api/pick-open") => handle_pick_open(s, state),
         ("POST", "/api/pick-parent") => handle_pick_parent(s),

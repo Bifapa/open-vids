@@ -48,6 +48,220 @@
       .finally(() => OVS.render(true));
   }
 
+  /* ---------- Updates: the home server's /api/update/* (status, check, install) ---------- */
+  /* Polled phases; "ready" only while the app is restarting (otherwise the update waits parked for the user). */
+  const isActive = (st) =>
+    st.phase === "checking" ||
+    st.phase === "downloading" ||
+    (st.phase === "ready" && st.restarting !== false);
+  const POLL_MS = 700;
+  /* Phases in which a "Restart anyway?" question no longer applies. */
+  const SETTLED = ["idle", "checking", "upToDate", "downloading", "failed"];
+  let pollTimer = 0,
+    pollFails = 0,
+    statusInFlight = false,
+    loadFailed = false;
+  S.update = null;
+  S.updateError = null;
+  S.updateBusy = null;
+  S.updatePending = false;
+
+  function stopPoll() {
+    clearTimeout(pollTimer);
+    pollTimer = 0;
+  }
+  function schedulePoll() {
+    stopPoll();
+    if (OVS.section() !== "general" || !S.update || !isActive(S.update)) return;
+    pollTimer = setTimeout(loadUpdate, POLL_MS);
+  }
+  /* A fresh status: redraw only when it differs, so a select the user has open is not closed by every poll. */
+  function applyUpdate(st) {
+    if (!st || typeof st.phase !== "string") return;
+    const same = JSON.stringify(st) === JSON.stringify(S.update);
+    S.update = st;
+    pollFails = 0;
+    if (SETTLED.includes(st.phase)) S.updateBusy = null;
+    if (!same) OVS.render(true);
+    schedulePoll();
+  }
+  function loadUpdate() {
+    if (statusInFlight) return Promise.resolve();
+    statusInFlight = true;
+    /* A failed status carries its own `error` text: it is data here, not a refused request. */
+    return api("/api/update/status", undefined, undefined, { plainBody: true })
+      .then((st) => {
+        if (loadFailed) S.updateError = null;
+        loadFailed = false;
+        applyUpdate(st);
+      })
+      .catch((err) => {
+        /* The app restarts itself after "ready": a few unanswered polls are expected, a long silence is shown. */
+        pollFails += 1;
+        if (!S.update || pollFails >= 5) {
+          S.updateError = err;
+          loadFailed = true;
+          stopPoll();
+          OVS.render(true);
+        } else schedulePoll();
+      })
+      .finally(() => {
+        statusInFlight = false;
+      });
+  }
+  /* A request the user started (check / install): its answer is the new status; a refusal carries one too. */
+  function updateRequest(path, body) {
+    S.updateError = null;
+    S.updatePending = true;
+    return api(path, body, undefined, { plainBody: true })
+      .then(applyUpdate)
+      .catch((err) => {
+        const st = err.data && err.data.status;
+        if (st) applyUpdate(st);
+        if (err.code === "update_busy") S.updateBusy = err.params || {};
+        else {
+          S.updateError = err;
+          if (!st) loadUpdate();
+        }
+      })
+      .finally(() => {
+        S.updatePending = false;
+        OVS.render(true);
+        schedulePoll();
+      });
+  }
+
+  /* The status line of the Updates group, by phase. */
+  function updateRows(st) {
+    const phase = st ? st.phase : "idle";
+    const btn = (act, label, primary, disabled) =>
+      `<button type="button" class="btn${primary ? " btn-primary" : ""}" data-act="${act}" data-fk="${act}"${
+        disabled || S.updatePending ? " disabled" : ""
+      }>${te(label)}</button>`;
+    const spin = '<i class="spinner"></i>';
+    const install = (disabled) =>
+      btn("update-install", "settings.general.updates.install", true, disabled);
+    if (phase === "checking")
+      return row(
+        spin + te("settings.general.updates.checking"),
+        null,
+        btn("update-check", "settings.general.updates.check", false, true),
+      );
+    if (phase === "upToDate")
+      return row(
+        te("settings.general.updates.upToDate"),
+        null,
+        btn("update-check", "settings.general.updates.checkAgain"),
+      );
+    if (phase === "available") {
+      const date = st.date ? new Date(st.date) : null;
+      const released =
+        date && !Number.isNaN(date.getTime())
+          ? te("settings.general.updates.released", {
+              date: new Intl.DateTimeFormat(OVI18N.language(), { dateStyle: "medium" }).format(
+                date,
+              ),
+            })
+          : null;
+      const notes =
+        typeof st.notes === "string" && st.notes.trim()
+          ? `<div class="st-sub"><div class="st-notes" tabindex="0" role="region" aria-label="${te(
+              "settings.general.updates.notes.aria",
+            )}">${esc(st.notes.trim())}</div></div>`
+          : "";
+      return (
+        row(
+          te("settings.general.updates.available", { version: st.version }),
+          released,
+          install(false),
+        ) + notes
+      );
+    }
+    if (phase === "downloading") {
+      const total = typeof st.total === "number" && st.total > 0 ? st.total : 0;
+      const done = Math.max(0, Number(st.downloaded) || 0);
+      const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+      const label = total
+        ? te("settings.general.updates.downloading", {
+            downloaded: OV.formatBytes(done),
+            total: OV.formatBytes(total),
+          })
+        : te("settings.general.updates.downloadingUnknown", { downloaded: OV.formatBytes(done) });
+      const bar = total
+        ? `<div class="st-bar" role="progressbar" aria-label="${te(
+            "settings.general.updates.progress.aria",
+          )}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>`
+        : `<div class="st-bar is-indeterminate" role="progressbar" aria-label="${te(
+            "settings.general.updates.progress.aria",
+          )}"><i></i></div>`;
+      return row(label, null, install(true)) + `<div class="st-sub">${bar}</div>`;
+    }
+    if (phase === "ready" && st.restarting === false)
+      return row(
+        te("settings.general.updates.downloaded", { version: st.version }),
+        null,
+        btn("update-install", "settings.general.updates.restart", true),
+      );
+    if (phase === "ready")
+      return row(spin + te("settings.general.updates.installing"), null, install(true));
+    if (phase === "failed")
+      return row(
+        `<span class="st-upd-err">${esc(OV.describeError(st))}</span>`,
+        null,
+        btn("update-check", "settings.failure.tryAgain"),
+      );
+    return row(
+      te("settings.general.updates.idle"),
+      null,
+      btn("update-check", "settings.general.updates.check"),
+    );
+  }
+  /* An install refused because the open project is busy: ask, then re-send with force. */
+  function busyConfirm() {
+    return `<div class="st-sub st-upd-busy" role="alert"><p>${te(
+      "settings.general.updates.busy",
+    )}</p><div class="st-actions"><button type="button" class="btn btn-primary" data-act="update-force" data-fk="update-force"${
+      S.updatePending ? " disabled" : ""
+    }>${te("settings.general.updates.busy.restart")}</button><button type="button" class="btn" data-act="update-busy-cancel" data-fk="update-busy-cancel">${te(
+      "common.cancel",
+    )}</button></div></div>`;
+  }
+  function updateNote() {
+    const err = S.updateError;
+    if (!err) return "";
+    return OVS.noteHtml(
+      err.code
+        ? "!" + OV.describeError(err)
+        : OVS.failMsg("settings.general.updates.requestFailed", {
+            message: OV.describeError(err) || String(err),
+          }),
+    );
+  }
+  function updatesGroup(prefs) {
+    const st = S.update;
+    return (
+      group(
+        te("settings.general.group.updates"),
+        row(
+          te("settings.general.updates.version"),
+          null,
+          `<span class="mono st-upd-ver">${esc(st ? st.currentVersion : "—")}</span>`,
+        ) +
+          row(
+            te("settings.general.autoUpdate"),
+            null,
+            sw(
+              prefs.updates && prefs.updates.autoCheck,
+              "auto-update",
+              tr("settings.general.autoUpdate"),
+            ),
+          ) +
+          updateRows(st) +
+          (S.updateBusy ? busyConfirm() : ""),
+      ) + updateNote()
+    );
+  }
+
   PAGES.general = function () {
     const title = tr("settings.section.general");
     if (!S.prefs)
@@ -148,17 +362,9 @@
             te("settings.general.confirmTrash"),
             null,
             sw(prefs.confirmTrash, "confirm-trash", tr("settings.general.confirmTrash")),
-          ) +
-          row(
-            te("settings.general.autoUpdate"),
-            null,
-            sw(
-              prefs.updates && prefs.updates.autoCheck,
-              "auto-update",
-              tr("settings.general.autoUpdate"),
-            ),
           ),
-      )
+      ) +
+      updatesGroup(prefs)
     );
   };
 
@@ -216,6 +422,20 @@
     if (S.prefs)
       savePrefs({ updates: { autoCheck: !(S.prefs.updates && S.prefs.updates.autoCheck) } });
   };
+  CLICK["update-check"] = () => {
+    S.updateBusy = null;
+    updateRequest("/api/update/check", {});
+  };
+  CLICK["update-install"] = () => {
+    updateRequest("/api/update/install", {});
+  };
+  CLICK["update-force"] = () => {
+    S.updateBusy = null;
+    updateRequest("/api/update/install", { force: true });
+  };
+  CLICK["update-busy-cancel"] = () => {
+    S.updateBusy = null;
+  };
   CLICK["choose-location"] = () => {
     api("/api/pick-parent", {})
       .then((r) => {
@@ -268,4 +488,8 @@
   window.addEventListener("ov-language", () => OVS.render(true));
 
   OVS.loadPrefs = loadPrefs;
+  OVS.ON_ENTER.general = () => {
+    loadUpdate();
+  };
+  OVS.ON_LEAVE.general = stopPoll;
 })();

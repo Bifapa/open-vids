@@ -155,7 +155,7 @@ fn normalize(stored: Value) -> Value {
     let density = pick_str(out.get("density"), &DENSITIES, "default");
     out.insert("density".into(), json!(density));
 
-    // Update behaviour: only the choice is stored, the updater does not exist yet.
+    // Update behaviour: whether the app checks for a new version after launch (`updater.rs`).
     let mut updates = match out.remove("updates") {
         Some(Value::Object(map)) => map,
         _ => Map::new(),
@@ -283,6 +283,11 @@ pub fn reopen_last(prefs: &Value) -> bool {
 /// is always a supported value.
 pub fn language(prefs: &Value) -> &str {
     prefs["language"].as_str().unwrap_or("system")
+}
+
+/// `updates.autoCheck`: check for a new version once after launch.
+pub fn auto_check_updates(prefs: &Value) -> bool {
+    prefs["updates"]["autoCheck"].as_bool().unwrap_or(true)
 }
 
 #[cfg(test)]

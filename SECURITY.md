@@ -42,6 +42,14 @@ These are documented and do not need a new report, though fixes are welcome:
   [apps/desktop/README.md](apps/desktop/README.md#known-limitation-the-studio-loopback-api-is-unauthenticated).
 - **Builds are ad-hoc signed.** They are not signed with an Apple Developer ID and are not notarized.
 
+## Updates
+
+OpenVids updates itself from GitHub Releases, and an update is authenticated only by a minisign
+signature checked against OpenVids' updater key, which is embedded in the app — not by Apple code
+signing or notarization (builds are ad-hoc signed). The updater private key lives only in this
+repository's GitHub Actions secrets. An attacker who obtains that key, or who can publish releases
+in this repository, could ship a malicious update that the app would accept.
+
 ## Dependencies
 
 Vulnerabilities in a third-party dependency are best reported to that project. If the way OpenVids

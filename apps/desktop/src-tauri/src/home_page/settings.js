@@ -40,6 +40,13 @@
       close();
     }
   });
+  /* The Projects page switches the section (menu › Check for Updates… while Settings is already open). */
+  window.addEventListener("message", (e) => {
+    if (e.source !== window.parent || e.origin !== location.origin) return;
+    const m = e.data;
+    if (m && m.type === "ov-settings-go" && SECTIONS.some((s) => s.id === m.section))
+      OVS.go(m.section);
+  });
 
   /* ---------- boot: draw what is known, then load every data source (each shows its own loading, error and retry) ---------- */
   OVS.render(false);

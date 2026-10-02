@@ -31,6 +31,7 @@ bun run desktop:dev      # Studio dev server + Tauri window, one terminal
 bun run desktop:build    # HyperFrames build -> staged runtime -> OpenVids.app (+ .dmg)
 bun run desktop:stage    # Stage the production runtime only
 bun run desktop:check    # cargo check for src-tauri
+bun run desktop:version  # set/verify the app version (see Releasing)
 ```
 
 Open a specific project at launch:
@@ -67,6 +68,62 @@ navigation lands. Outside OpenVids the logo renders exactly as before.
 For a Code-tab edit that has saved to disk but has not appeared in the preview,
 use **View > Reload**; see the limitation below.
 
+## Updates
+
+OpenVids updates itself with `tauri-plugin-updater`. It is a Rust-only path: the webview holds no
+capability for the plugin, and the pages only see the token-gated home API:
+
+- `GET /api/update/status` — the current phase (`checking`, `available`, `downloading`, `ready`,
+  `failed`, …) plus the version, release notes, download progress or the failure.
+- `POST /api/update/check` — ask the release feed (GitHub Releases `latest.json`) for a newer
+  version.
+- `POST /api/update/install` `{ "force"?: boolean }` — download, verify the signature, install and
+  restart. Nothing is downloaded without this call.
+
+**Check for Updates…** in the app menu runs the same check: with the Projects page open it opens
+Settings › General, where the page shows progress and the install button; with a project open Rust
+shows native dialogs instead. When `updates.autoCheck` (Settings › General, default on) is set,
+release builds also do one quiet check about 15 seconds after launch and the Projects page shows an
+unobtrusive mark — still nothing is downloaded or installed until the user asks for it.
+
+A downloaded archive is authenticated with a minisign signature checked against the updater key in
+`tauri.conf.json` (`plugins.updater.pubkey`); the private key exists only as a GitHub Actions
+secret. `requireSignedVersion` is on: the signature's trusted comment carries the version the
+archive was built for, so a tampered `latest.json` cannot pair a new version number with an older
+signed archive. A failed check leaves the installed bundle untouched. See [Releasing](#releasing).
+
+Installing first stops what the app runs — the Studio sidecar's process group, the agent runtimes
+and running install jobs — the same way quitting does (`stop_owned_processes` in `lib.rs`), and
+moves the window back to the Projects page. If the open project is mid-render or an agent turn is
+running, the app asks for confirmation first ("Update and Restart" / "Restart Anyway"); a download
+that finishes while the project is busy waits in `ready` and asks again. The plugin then replaces
+the installed bundle (`/Applications/OpenVids.app`) and the app quits; a detached `/bin/sh` waits
+for the old pid to exit and opens the new bundle with `/usr/bin/open`, as Finder would. It does not
+use Tauri's in-place restart: that execs the new binary as a child of the old process, and in the
+manual run the new window stayed behind the other apps and the new binary read the Documents folder
+under the old binary's permission instead of asking for its own (see below). Each update downloads
+the full `.app.tar.gz` archive; layered or delta updates are a separate future task.
+
+### macOS permissions and Gatekeeper after an update
+
+Measured with an ad-hoc-signed 0.1.0 installed in `/Applications` and updated to 0.1.1 through the
+button:
+
+- **TCC.** An ad-hoc signature's designated requirement is its code hash
+  (`codesign -d -r-` prints `designated => cdhash H"…"`), and every build has a different one. TCC
+  grants are bound to that requirement, so the updated app is a new client: the first launch of
+  0.1.1 through LaunchServices asked again for access to the Documents folder (where the recent
+  projects live), although 0.1.0 had been allowed. Every update repeats this for every protected
+  location the app touches
+  (Documents, Desktop, Downloads, removable volumes); the stale grants stay in System Settings ›
+  Privacy & Security. Only a stable signing identity (Developer ID) keeps grants across updates.
+- **Gatekeeper.** The plugin unpacks the archive itself, so the new bundle carries no
+  `com.apple.quarantine` attribute (`xattr` shows only `com.apple.provenance`); Gatekeeper does
+  not assess it and the app opens without a prompt. `codesign --verify --deep --strict` passes;
+  `spctl -a` still says `rejected`, as it does for every ad-hoc build. Only the first install from a
+  downloaded `.dmg` meets Gatekeeper (System Settings › Privacy & Security › Open Anyway, or
+  `xattr -dr com.apple.quarantine /Applications/OpenVids.app`).
+
 ## Architecture
 
 ```
@@ -97,6 +154,7 @@ apps/desktop/
     src/create.rs          Blank-template scaffold (fps/size/duration, meta.json)
     src/thumbnails.rs      Background thumbnail refresh from Studio
     src/project.rs         Directory -> Studio project id
+    src/updater.rs         In-app updates: check, download + install, restart
     capabilities/main.json Window dragging for the loopback pages, nothing else
   sidecar/
     serve.mjs              Parent-death watch; see "Teardown" below
@@ -135,7 +193,11 @@ that the CLI's `build:copy` step places there. `stage-runtime.mjs` then assemble
 
 `tauri.prod.conf.json` supplies the runtime resource paths only to
 `desktop:build`, after staging has created them. They are bundled into the app;
-nothing in the shipped app refers to the monorepo.
+nothing in the shipped app refers to the monorepo. `scripts/tauri-build.mjs` runs
+`tauri build --config src-tauri/tauri.prod.conf.json`; when no
+`TAURI_SIGNING_PRIVATE_KEY` is set it adds a second `--config` that turns
+`bundle.createUpdaterArtifacts` off, so local builds do not need the release key
+(see [Releasing](#releasing)).
 
 At runtime the Rust side:
 
@@ -160,6 +222,64 @@ navigation back). The embedded server is single-project by construction
 (`createStudioServer` takes one `projectDir`), so there is nothing to serve
 until the user picks something. Opening a different project restarts the
 sidecar rather than re-pointing at it; the home server is untouched.
+
+## Releasing
+
+The app version has one source of truth: `[package] version` in
+`src-tauri/Cargo.toml`. Tauri reads it from there because `tauri.conf.json` sets
+no `version`; two files mirror it — `apps/desktop/package.json` and the
+`openvids-desktop` entry in `src-tauri/Cargo.lock`. `bun run desktop:version
+0.1.1` writes all three, prints what changed, and `bun run desktop:version
+--check` (also part of `bun run lint`) prints the mismatch and exits 1. The
+version is bare semver — the tag is `v0.1.1`, the version is `0.1.1`; a leading
+`v` is rejected.
+
+To cut a release:
+
+1. `bun run desktop:version 0.1.1`, commit the change.
+2. Tag it with the release notes and push the tag:
+
+   ```bash
+   git tag -a v0.1.1 -m "OpenVids 0.1.1 — what changed…"
+   git push origin v0.1.1
+   ```
+
+   The annotated tag's message becomes the release notes (`latest.json` and the
+   GitHub Release).
+
+3. `.github/workflows/release.yml` checks that the tag and the app version
+   agree, builds with the release key, writes `latest.json` and creates a
+   **draft** GitHub Release holding `OpenVids_<v>_aarch64.dmg`,
+   `OpenVids_<v>_aarch64.app.tar.gz` (+ `.sig`) and `latest.json`.
+4. Check the draft and publish it. The updater endpoint
+   `releases/latest/download/latest.json` only resolves once the release is
+   published — GitHub serves “latest” from published, non-prerelease releases,
+   never from drafts.
+
+The build signs updates with the `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets. In the workflow
+`OPENVIDS_RELEASE=1` makes a missing key a hard error; on a development machine
+`bun run desktop:build` without the key skips updater artifacts instead
+(`scripts/tauri-build.mjs` adds a `--config` that turns them off) and says so.
+
+To exercise an update locally, build with the updater pointed at a loopback feed
+and sign with a throwaway key. The extra `--config` is appended last, so it wins
+over `tauri.conf.json`; keep any of this out of the committed configs:
+
+```bash
+# A throwaway key pair (its public key goes into the --config below).
+bun run --cwd apps/desktop tauri signer generate -w /tmp/openvids-test.key -p test
+
+# Build the app as usual, with the updater pointed at a local feed.
+TAURI_SIGNING_PRIVATE_KEY=/tmp/openvids-test.key \
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD=test \
+bun run --cwd apps/desktop build -- \
+  --config '{"plugins":{"updater":{"endpoints":["http://127.0.0.1:8000/latest.json"],"dangerousInsecureTransportProtocol":true,"pubkey":"<the test public key>"}}}'
+
+# Serve the feed: latest.json (version, notes, pub_date, darwin-aarch64.signature/url)
+# plus the OpenVids.app.tar.gz from the bundle. The signature is the .sig file's contents.
+cd /tmp/ov-feed && python3 -m http.server 8000
+```
 
 ## Choosing the runtime: bun, not Node
 
@@ -239,7 +359,7 @@ The webview gets no native access beyond moving its own window.
   never reaches the webview, and proxies only `/v1/models` and `/v1/settings`
   behind the home token.
 - OS file drops on the Projects page still arrive as HTML5 drops (see below);
-  the page posts the dropped *names* and Rust reads the real paths off the
+  the page posts the dropped _names_ and Rust reads the real paths off the
   macOS drag pasteboard (`drop_paths.rs`), keeping only matching names. Files
   are copied (APFS clones) into `<project>/assets/` on Start — nothing is
   streamed through JavaScript.

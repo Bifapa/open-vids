@@ -18,10 +18,11 @@ It began as a snapshot of [HyperFrames](https://github.com/heygen-com/hyperframe
 
 ## Status
 
-OpenVids is at an early stage (version 0.1.0).
+OpenVids is at an early stage.
 
 - macOS 11 or later only. Builds have been made on Apple Silicon.
 - There are no prebuilt downloads yet: you build the app from source.
+- The app checks GitHub Releases for updates and installs them on a button press; updates are verified with the project's updater signing key, not by Apple code signing.
 - Builds are ad-hoc signed and not notarized.
 - Rendering and thumbnails need Chrome and FFmpeg installed on the machine; OpenVids does not ship them.
 - The local Studio server is unauthenticated on loopback while a project is open. See [SECURITY.md](SECURITY.md).

@@ -1,0 +1,136 @@
+name: Release
+
+# Build and sign the macOS release for a version tag and create a DRAFT GitHub Release.
+#
+# The in-app updater points at https://github.com/bazodev/open-vids/releases/latest/download/latest.json.
+# That URL only resolves once the release is *published*: GitHub's "latest" is the most recent release
+# that is neither a draft nor a prerelease. The workflow therefore leaves the release as a draft —
+# check the assets, then publish it to make the update visible to installed apps.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release ${{ github.ref_name }}
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The only Git LFS objects in the repository are producer test fixtures; the release
+          # build never reads them, so skip the (metered) LFS downloads entirely.
+          lfs: false
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+
+      # actions/checkout fetches only the commit, but an annotated tag's message becomes the
+      # release notes, so fetch the tag object itself.
+      - name: Fetch the tag
+        run: git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/desktop/src-tauri -> target"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify the tag matches the app version
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          declared="$(bun scripts/desktop-version.ts --print)"
+          if [ "$version" != "$declared" ]; then
+            echo "tag ${GITHUB_REF_NAME} says ${version}, but the app version is ${declared}" >&2
+            exit 1
+          fi
+          bun scripts/desktop-version.ts --check
+
+      - name: Build
+        run: bun run desktop:build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          OPENVIDS_RELEASE: "1"
+
+      - name: Collect artifacts and write latest.json
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          bundle="apps/desktop/src-tauri/target/release/bundle"
+          dmg="${bundle}/dmg/OpenVids_${version}_aarch64.dmg"
+          app_tar="${bundle}/macos/OpenVids.app.tar.gz"
+          app_sig="${bundle}/macos/OpenVids.app.tar.gz.sig"
+
+          for file in "$dmg" "$app_tar" "$app_sig"; do
+            if [ ! -f "$file" ]; then
+              echo "missing bundle artifact: $file" >&2
+              exit 1
+            fi
+          done
+
+          stage="release-assets"
+          mkdir -p "$stage"
+          cp "$dmg" "$stage/OpenVids_${version}_aarch64.dmg"
+          cp "$app_tar" "$stage/OpenVids_${version}_aarch64.app.tar.gz"
+          cp "$app_sig" "$stage/OpenVids_${version}_aarch64.app.tar.gz.sig"
+
+          notes=""
+          if [ "$(git cat-file -t "${GITHUB_REF_NAME}" 2>/dev/null || true)" = "tag" ]; then
+            notes="$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)')"
+          fi
+          if [ -z "$notes" ]; then
+            notes="See https://github.com/bazodev/open-vids/releases/tag/${GITHUB_REF_NAME}"
+          fi
+          printf '%s\n' "$notes" > "${RUNNER_TEMP}/release-notes.txt"
+
+          jq -n \
+            --arg version "$version" \
+            --arg notes "$notes" \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg signature "$(cat "$app_sig")" \
+            --arg url "https://github.com/bazodev/open-vids/releases/download/${GITHUB_REF_NAME}/OpenVids_${version}_aarch64.app.tar.gz" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: {"darwin-aarch64": {signature: $signature, url: $url}}}' \
+            > "$stage/latest.json"
+          cat "$stage/latest.json"
+
+      - name: Create or update the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Only a draft may be refreshed: a published release is what installed apps download.
+            if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "release ${GITHUB_REF_NAME} is already published; not overwriting its assets" >&2
+              exit 1
+            fi
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "OpenVids ${version}" \
+              --notes-file "${RUNNER_TEMP}/release-notes.txt"
+            gh release upload "$GITHUB_REF_NAME" --clobber release-assets/*
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --draft \
+              --title "OpenVids ${version}" \
+              --notes-file "${RUNNER_TEMP}/release-notes.txt" \
+              release-assets/*
+          fi
+          ls -l release-assets

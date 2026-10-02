@@ -211,6 +211,17 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `onboarding.project.review` — Link next to a ready setup item (verb): go back to that step.
 - `onboarding.project.setUp` — Link next to a setup item that is not ready (verb): go to that step.
 - `onboarding.project.foot` — “Help → Welcome to OpenVids” is a menu path; the Russian must match the translated menu (Rust menu strings).
+- `settings.general.updates.idle` — Label of the Updates row before any check; the button on its right is settings.general.updates.check.
+- `settings.general.updates.downloaded` — Update downloaded and verified but not installed (the user declined restarting a busy project); {version} is the new version. The button is settings.general.updates.restart.
+- `settings.general.updates.available` — {version} is the new version, e.g. “0.1.1”.
+- `settings.general.updates.released` — Small line under the available version; {date} is a localized date (e.g. “2 Oct 2026”).
+- `settings.general.updates.notes.aria` — Accessible name of the scrollable release-notes text (plain text from the release).
+- `settings.general.updates.install` — Primary button: downloads, installs and restarts OpenVids. Same wording as dialog.update.install.
+- `settings.general.updates.downloading` — {downloaded} and {total} are file sizes such as “12.3 MB”.
+- `settings.general.updates.downloadingUnknown` — Used when the server did not send the total size.
+- `settings.general.updates.busy` — Inline confirmation when the open project is still rendering or running an agent turn (a “turn” is one agent run in the project chat); buttons: settings.general.updates.busy.restart and common.cancel.
+- `settings.general.updates.requestFailed` — Shown when the local updater service cannot be reached at all; {message} is the system's text.
+- `home.update.settingsTip` — Tooltip and accessible name of the Settings toolbar button while an update is available; {version} is the new version.
 
 ## studio-editor-a
 
@@ -1173,9 +1184,22 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 
 - `dialog.locate.title` — Native folder-picker window title; {name} is the project folder name being relinked.
 - `dialog.openProject.title` — Native folder-picker window title; same action as the home page Open sheet.
+- `dialog.update.upToDate.title` — Native alert title after "Check for Updates…" when no newer version exists; shown only while a project is open (the Projects page uses Settings instead).
+- `dialog.update.upToDate.message` — {version} is the installed version.
+- `dialog.update.available.title` — {version} is the new version.
+- `dialog.update.available.message` — {current} is the installed version, {notes} the release notes as plain text (may be empty); \n\n is a blank line between them.
+- `dialog.update.install` — Primary button of the native update alert; the app restarts afterwards.
+- `dialog.update.later` — Dismiss button of the native update alert.
+- `dialog.update.failed.title` — Title of the native alert that shows a failed check, download or install; the reason (home.error.update\_\*) is its text.
+- `dialog.update.downloading.title` — {version} is the version being downloaded.
+- `dialog.update.downloading.message` — {percent} is a whole number without the % sign; Rust substitutes plain arguments only.
+- `dialog.update.busy.title` — Native confirmation shown instead of restarting when the open project is rendering or an agent turn runs.
+- `dialog.update.busy.message` — "Turn" is one agent run in the project chat.
+- `dialog.update.busy.restart` — Destructive confirm button: restarts and stops the render or agent turn.
 - `menu.app.about` — First item of the macOS app menu; opens the About panel.
 - `menu.app.aboutComment` — About panel subtitle.
 - `menu.app.aboutCredits` — About panel credits; \n is a line break; OpenVids, HyperFrames, HeyGen and Apache License 2.0 stay untranslated.
+- `menu.app.checkForUpdates` — App menu item right after About; the ellipsis means it may open a dialog or the Settings window.
 - `menu.app.name` — Product name; also the main window title. Never translated.
 - `menu.app.quit` — macOS convention is Завершить (not Закрыть) for quitting an app.
 - `menu.file.openProject` — Also the ⌘O menu item; the ellipsis means a dialog follows.
@@ -1209,6 +1233,12 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `home.error.state_poisoned` — Internal error: a lock was left broken by a crash.
 - `home.error.studio_bad_lifecycle` — The Studio runtime is the local server that edits a project.
 - `home.error.studio_no_port` — "s" is seconds.
+- `home.error.update_busy` — Update install refused: the open project is rendering or running an agent turn; the page asks "Restart anyway?" (settings.general.updates.busy).
+- `home.error.update_check_failed` — {detail} is the network or server text, kept as is.
+- `home.error.update_download_failed` — {detail} is the network or server text, kept as is.
+- `home.error.update_install_failed` — {detail} is the system's own text.
+- `home.error.update_signature_invalid` — The downloaded update is signed; the signature check failed, so nothing was installed.
+- `home.error.update_unsupported` — Development builds and unpackaged runs have no updater.
 
 ## server-errors
 
@@ -1225,7 +1255,7 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 
 ## rulayout
 
-- `chat.effort.short.default` — Short label of the Default segment in the thinking-effort strip when the strip shows six or more segments (same compact set as chat.effort.short.*).
+- `chat.effort.short.default` — Short label of the Default segment in the thinking-effort strip when the strip shows six or more segments (same compact set as chat.effort.short.\*).
 - `inspector.media.hasAudioTrack` — Inspector toggle label; same 116 px label column limit as inspector.media.mediaStart.
 - `inspector.grade.status.none` — Truncated status chip in the colour-grading section header (about 84 px); Russian kept short.
 

@@ -63,6 +63,8 @@
   const itemEl = (id) => body.querySelector('[data-item][data-id="' + CSS.escape(id) + '"]');
   const SORTS = { opened: "home.sort.opened", name: "home.sort.name", dur: "home.sort.duration" };
   const monoWrap = (inner) => '<span class="mono" style="font-size:11px">' + inner + "</span>";
+  /* The version the Settings button announces while an update waits (paintUpdate); null otherwise. */
+  let updateVersion = null;
 
   /* ---------- static chrome ---------- */
   $("#fieldIcon").innerHTML = ic("search", 14);
@@ -81,7 +83,40 @@
     document.querySelectorAll("[data-tip-i18n]").forEach((el) => {
       el.dataset.tip = tr(el.dataset.tipI18n);
     });
+    paintUpdate();
   }
+
+  /* ---------- update badge: an accent dot on Settings while a newer version waits (GET /api/update/status) ---------- */
+  function paintUpdate() {
+    const btn = $("#settingsBtn");
+    const label = updateVersion
+      ? tr("home.update.settingsTip", { version: updateVersion })
+      : tr("home.toolbar.settings");
+    btn.classList.toggle("has-update", !!updateVersion);
+    btn.setAttribute("aria-label", label);
+    btn.dataset.tip = label;
+  }
+  function loadUpdateBadge() {
+    return api("/api/update/status", undefined, undefined, { plainBody: true })
+      .then((st) => {
+        const waiting =
+          st.phase === "available" || st.phase === "downloading" || st.phase === "ready";
+        const next = waiting && typeof st.version === "string" ? st.version : null;
+        if (next !== updateVersion) {
+          updateVersion = next;
+          paintUpdate();
+        }
+      })
+      .catch(() => {
+        /* no updater in this build, or the server is busy: keep the badge as it is */
+      });
+  }
+  loadUpdateBadge();
+  setInterval(() => {
+    if (document.visibilityState === "visible") loadUpdateBadge();
+  }, 30000);
+  /* Settings opens on General while the badge shows, so the update is one click away. */
+  const settingsSection = () => (updateVersion ? "general" : undefined);
 
   /* ---------- data ---------- */
   const toItem = (r) => ({
@@ -1224,6 +1259,7 @@
     $("#settingsBtn").setAttribute("aria-expanded", "false");
     if (settingsReturn && settingsReturn.focus) settingsReturn.focus();
     settingsReturn = null;
+    loadUpdateBadge();
   }
   window.addEventListener("message", (e) => {
     if (!settingsFrame || e.source !== settingsFrame.contentWindow || !e.data) return;
@@ -1246,7 +1282,9 @@
       initStartLocation();
     }
   }
-  $("#settingsBtn").addEventListener("click", () => openSettings($("#settingsBtn")));
+  $("#settingsBtn").addEventListener("click", () =>
+    openSettings($("#settingsBtn"), settingsSection()),
+  );
 
   /* ---------- events ---------- */
   /* Shortcuts shared by a Recent item and a Last Opened card; `at` says where focus lands afterwards. */
@@ -1469,7 +1507,7 @@
       k = e.key.toLowerCase();
     if (mod && e.key === ",") {
       e.preventDefault();
-      return openSettings($("#settingsBtn"));
+      return openSettings($("#settingsBtn"), settingsSection());
     }
     if (
       settingsFrame ||
@@ -1869,7 +1907,18 @@
   window.ovHome = {
     openProject: () => !onboardingOpen() && openPicker(),
     newProject: () => !onboardingOpen() && newSheet(),
-    openSettings: () => !onboardingOpen() && openSettings($("#settingsBtn")),
+    openSettings: () => !onboardingOpen() && openSettings($("#settingsBtn"), settingsSection()),
+    /* App menu › Check for Updates…: the General section shows the result (the check itself runs in Rust). */
+    checkForUpdates: () => {
+      if (onboardingOpen()) return;
+      if (settingsFrame) {
+        settingsFrame.contentWindow.postMessage(
+          { type: "ov-settings-go", section: "general" },
+          location.origin,
+        );
+        settingsFrame.contentWindow.focus();
+      } else openSettings($("#settingsBtn"), "general");
+    },
     openOnboarding: () => openOnboarding(true),
   };
 })();

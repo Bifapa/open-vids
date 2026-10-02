@@ -63,6 +63,7 @@ mod home_project;
 mod home_research;
 mod home_routes;
 mod home_system;
+mod home_update;
 mod i18n;
 mod install_job;
 mod intake;
@@ -75,6 +76,7 @@ mod research_policy;
 mod sidecar;
 mod structure;
 mod thumbnails;
+mod updater;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -372,12 +374,21 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             ..Default::default()
         }),
     )?;
+    // Next to About, as on macOS: the update itself runs in Rust (`updater`).
+    let check_updates = MenuItem::with_id(
+        app,
+        "check_updates",
+        i18n::t("menu.app.checkForUpdates"),
+        true,
+        None::<&str>,
+    )?;
     let app_menu = Submenu::with_items(
         app,
         i18n::t("menu.app.name"),
         true,
         &[
             &about,
+            &check_updates,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::hide(app, Some(&i18n::t("menu.app.hide")))?,
             &PredefinedMenuItem::hide_others(app, Some(&i18n::t("menu.app.hideOthers")))?,
@@ -456,6 +467,8 @@ fn apply_language(app: &tauri::AppHandle) {
 
 pub fn run() {
     tauri::Builder::default()
+        // Rust-only: no capability grants the webview its commands (see `updater`).
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .menu(build_menu)
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "open_project" {
@@ -475,6 +488,9 @@ pub fn run() {
             }
             if event.id().as_ref() == "welcome" {
                 show_onboarding(app);
+            }
+            if event.id().as_ref() == "check_updates" {
+                check_for_updates(app);
             }
             if event.id().as_ref() == "reload" {
                 if let Some(window) = app.get_webview_window("main") {
@@ -517,6 +533,10 @@ pub fn run() {
                 }
             }
             home.set_opener(home_opener(handle.clone()));
+            updater::init(&handle);
+            if !dev {
+                updater::schedule_auto_check();
+            }
             // Language + theme follower for preference changes. The home page
             // calls this listener on `PUT /api/preferences`; the polling
             // watcher below calls it for Studio-side writes. The last resolved
@@ -714,21 +734,65 @@ pub fn run() {
             // state is dropped; this is the last chance to do it explicitly
             // while the child can still be waited on. The home server drops
             // with the state — it lives until this point, not until a
-            // project opens.
+            // project opens. An update's restart takes this path too.
             if matches!(
                 event,
                 tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
             ) {
-                if let Some(state) = app.try_state::<Mutex<AppState>>() {
-                    if let Ok(mut state) = state.lock() {
-                        state.studio = None;
-                    }
-                }
-                agent_proxy::shutdown();
-                chrome_install::shutdown();
-                ffmpeg_install::shutdown();
+                stop_owned_processes(app);
             }
         });
+}
+
+/// Stop every process the app owns: the Studio sidecar's group, the
+/// project-less agent runtime and running installs. Quitting and installing
+/// an update both take this path; calling it twice is harmless. The sidecar
+/// is taken out of the state first and reaped without the lock held (its
+/// teardown waits out the SIGTERM grace in `sidecar::terminate`).
+fn stop_owned_processes(app: &tauri::AppHandle) {
+    let studio = app
+        .try_state::<Mutex<AppState>>()
+        .and_then(|state| state.lock().ok().and_then(|mut state| state.studio.take()));
+    drop(studio);
+    agent_proxy::shutdown();
+    chrome_install::shutdown();
+    ffmpeg_install::shutdown();
+}
+
+/// Before an update replaces the bundle: close the open project the way Show
+/// All Projects does (the window goes back to the Projects page, so an
+/// install that fails leaves a working window), then stop everything the app
+/// owns and wait for it, so nothing keeps running from the old bundle.
+pub(crate) fn release_for_update(app: &tauri::AppHandle) {
+    let server = take_closed_studio(app);
+    if !window_is_on_home(app) {
+        show_home(app);
+    }
+    drop(server);
+    stop_owned_processes(app);
+}
+
+/// The Studio origin and id of the project the window shows, if any.
+pub(crate) fn open_project_scope(app: &tauri::AppHandle) -> Option<(String, String)> {
+    let app_state = app.try_state::<Mutex<AppState>>()?;
+    let state = app_state.lock().ok()?;
+    Some((state.studio_origin.clone()?, state.project.as_ref()?.id.clone()))
+}
+
+/// App menu › Check for Updates…: on the Projects page the check runs and
+/// Settings › General shows it (handed to the page by `eval`, like ⌘O);
+/// with a project open, native dialogs, so the project stays open.
+fn check_for_updates(app: &tauri::AppHandle) {
+    if window_is_on_home(app) {
+        updater::check();
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.eval(
+                "window.ovHome && window.ovHome.checkForUpdates && window.ovHome.checkForUpdates()",
+            );
+        }
+    } else {
+        updater::menu_check();
+    }
 }
 
 /// Open a project off the setup path, reporting failure to the log.
