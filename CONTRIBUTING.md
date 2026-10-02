@@ -3,6 +3,8 @@
 Thanks for your interest. Bug reports, fixes and focused improvements are welcome. For a larger
 change, open an issue first so the approach can be agreed before you write the code.
 
+Everyone taking part in the project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Setup
 
 You need macOS, [Bun](https://bun.sh), a Rust stable toolchain, Node.js 22+, FFmpeg with ffprobe on
