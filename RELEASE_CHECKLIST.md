@@ -1,7 +1,7 @@
 # OpenVids release checklist
 
 Run for every release candidate. A release is not ready until every **gate** passes on the commit being shipped.
-Record the results (commit, numbers, timings) in `docs/current-state.md` of the docs repository.
+Record the results (commit, numbers, timings) in the release notes.
 
 ## 1. Build and static checks (gate)
 
@@ -108,5 +108,5 @@ hdiutil attach apps/desktop/src-tauri/target/release/bundle/dmg/OpenVids_*_aarch
 
 ## 8. Documentation
 
-- [ ] `docs/current-state.md`: commit, test counts, E2E results, timings, known limitations.
+- [ ] Release notes: commit, test counts, E2E results, timings, known limitations.
 - [ ] Roadmap/status updated; `AGENTS.md` and package READMEs describe any changed contract.
