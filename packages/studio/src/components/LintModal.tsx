@@ -1,7 +1,14 @@
-import { useState } from "react";
-import { CheckCircle, Copy, FileCode, Lightning, Terminal, Warning } from "@phosphor-icons/react";
-import { formatNumber, useTranslation } from "../i18n";
-import { copyTextToClipboard } from "../utils/clipboard";
+import {
+  CheckCircle,
+  FileCode,
+  Lightning,
+  Sparkle,
+  Terminal,
+  Warning,
+} from "@phosphor-icons/react";
+import { useComposerRequestStore } from "../agent/composerRequest";
+import { formatNumber, t as translate, useTranslation } from "../i18n";
+import { useDockLayoutStore } from "./dock/dockLayoutStore";
 import { Badge, Button, Dialog } from "./ui";
 
 export interface LintFinding {
@@ -23,46 +30,52 @@ function groupByFile(findings: LintFinding[]): Array<[string | null, LintFinding
   return [...groups];
 }
 
-/** The prototype's Checks dialog: findings grouped by file, each a card with severity, message and fix. */
+/** The chat message that hands the findings to the agent: an instruction, then one entry per finding. */
+export function findingsAgentMessage(findings: LintFinding[], kind: "checks" | "console"): string {
+  const intro =
+    kind === "checks"
+      ? translate("shell.lint.agentMessage.checks")
+      : translate("shell.lint.agentMessage.console");
+  const entries = findings.map((finding) => {
+    const severity =
+      finding.severity === "error"
+        ? translate("shell.lint.severity.error")
+        : translate("shell.lint.severity.warning");
+    let entry = `- ${severity}${finding.file ? ` (${finding.file})` : ""}: ${finding.message}`;
+    if (finding.fixHint)
+      entry += `\n  ${translate("shell.lint.agentMessage.fix")}: ${finding.fixHint}`;
+    return entry;
+  });
+  return `${intro}\n\n${entries.join("\n")}`;
+}
+
+/**
+ * The prototype's Checks dialog: findings grouped by file, each a card with severity, message and fix. "Fix with
+ * Agent" closes it and sends the findings to the open chat (into the composer instead when a turn is running or
+ * the user has typed something there).
+ */
 export function LintModal({
   findings,
-  projectId,
-  projectDir,
   kind = "checks",
-  promptIntro = "Fix these lint issues",
   onClose,
 }: {
   findings: LintFinding[];
-  projectId: string;
-  /** Real on-disk project directory for the agent prompt (not the browser URL). */
-  projectDir?: string | null;
   /** Which findings these are — console errors must not masquerade as lint results. */
   kind?: "checks" | "console";
-  /** First line of the copied agent prompt. */
-  promptIntro?: string;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const errors = findings.filter((f) => f.severity === "error").length;
   const warnings = findings.length - errors;
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   // Console errors carry no file: their group is the runtime, not a source file.
   const title = kind === "checks" ? t("shell.lint.title.checks") : t("shell.lint.title.console");
   const looseLabel =
     kind === "checks" ? t("shell.lint.group.composition") : t("shell.lint.group.runtime");
 
-  const handleCopyToAgent = async () => {
-    const lines = findings.map((f) => {
-      let line = `[${f.severity}] ${f.message}`;
-      if (f.file) line += `\n  File: ${f.file}`;
-      if (f.fixHint) line += `\n  Fix: ${f.fixHint}`;
-      return line;
-    });
-    const pathLine = projectDir ? `Project path: ${projectDir}\n\n` : "";
-    const text = `${promptIntro} for project "${projectId}":\n\n${pathLine}${lines.join("\n\n")}`;
-    const ok = await copyTextToClipboard(text);
-    setCopyState(ok ? "copied" : "failed");
-    setTimeout(() => setCopyState("idle"), ok ? 2000 : 3000);
+  const handleFixWithAgent = () => {
+    useComposerRequestStore.getState().ask(findingsAgentMessage(findings, kind), { send: true });
+    useDockLayoutStore.getState().activatePanel("chat");
+    onClose();
   };
 
   return (
@@ -78,21 +91,14 @@ export function LintModal({
       className="w-[min(640px,calc(100vw-2rem))] max-h-[min(720px,calc(100vh-6rem))]"
       footer={
         findings.length > 0 ? (
-          <>
-            {copyState === "failed" && (
-              <span role="alert" className="mr-auto text-xs text-error">
-                {t("shell.lint.copyFailed")}
-              </span>
-            )}
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<Copy size={12} aria-hidden />}
-              onClick={() => void handleCopyToAgent()}
-            >
-              {copyState === "copied" ? t("shell.lint.copied") : t("shell.lint.copyToAgent")}
-            </Button>
-          </>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Sparkle size={12} aria-hidden />}
+            onClick={handleFixWithAgent}
+          >
+            {t("shell.lint.fixWithAgent")}
+          </Button>
         ) : undefined
       }
     >

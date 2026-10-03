@@ -561,8 +561,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                 />
                 <StudioStatusBar />
                 <StudioOverlays
-                  projectId={projectId}
-                  projectDir={fileManager.projectDir}
                   lintModal={lint.lintModal}
                   closeLintModal={lint.closeLintModal}
                   consoleErrors={consoleErrors}

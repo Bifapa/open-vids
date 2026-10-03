@@ -7,8 +7,6 @@ import type { useToast } from "../hooks/useToast";
 type LintFindings = ComponentProps<typeof LintModal>["findings"];
 
 export interface StudioOverlaysProps {
-  projectId: string;
-  projectDir?: string | null;
   lintModal: LintFindings | null;
   closeLintModal: () => void;
   consoleErrors: LintFindings | null;
@@ -23,8 +21,6 @@ export interface StudioOverlaysProps {
  * `App.tsx` to keep the shell within the studio's 600-line decomposition budget.
  */
 export function StudioOverlays({
-  projectId,
-  projectDir,
   lintModal,
   closeLintModal,
   consoleErrors,
@@ -34,25 +30,11 @@ export function StudioOverlays({
 }: StudioOverlaysProps) {
   return (
     <>
-      {lintModal !== null && (
-        <LintModal
-          findings={lintModal}
-          projectId={projectId}
-          projectDir={projectDir}
-          onClose={closeLintModal}
-        />
-      )}
+      {lintModal !== null && <LintModal findings={lintModal} onClose={closeLintModal} />}
       {/* One modal at a time — console errors wait behind an open lint modal
           instead of stacking two full-screen overlays. */}
       {lintModal === null && consoleErrors !== null && consoleErrors.length > 0 && (
-        <LintModal
-          findings={consoleErrors}
-          projectId={projectId}
-          projectDir={projectDir}
-          kind="console"
-          promptIntro="Fix these runtime console errors from the composition preview"
-          onClose={clearConsoleErrors}
-        />
+        <LintModal findings={consoleErrors} kind="console" onClose={clearConsoleErrors} />
       )}
       <ExportLicenseDialog />
       {/* Bottom-right stack for toasts. Empty when nothing is showing. */}

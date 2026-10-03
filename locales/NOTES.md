@@ -610,7 +610,10 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `shell.header.projects` — Button in the titlebar that goes back to the Projects screen.
 - `shell.history.redoActionTooltip` — {action} is the name of the edit that was undone, e.g. "Move layer".
 - `shell.history.undoActionTooltip` — {action} is the name of the last edit, e.g. "Move layer".
-- `shell.lint.copyToAgent` — Copies the findings as a ready-made prompt for an AI agent.
+- `shell.lint.agentMessage.checks` — First line of the chat message "Fix with Agent" sends; the findings follow as a list.
+- `shell.lint.agentMessage.console` — Same, for preview console errors.
+- `shell.lint.agentMessage.fix` — Label before a finding's suggested fix inside that chat message.
+- `shell.lint.fixWithAgent` — Button of the Checks dialog: sends the findings to the chat for the agent to fix.
 - `shell.lint.group.composition` — Heading of the group of checks that belong to no file.
 - `shell.lint.group.runtime` — Heading of the group of preview console errors.
 - `shell.lint.severity.error` — Badge on a finding.

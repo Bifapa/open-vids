@@ -189,3 +189,43 @@ describe("Ask Agent about an element", () => {
     target.getState().dispose();
   });
 });
+
+describe("a request to send (Checks › Fix with Agent)", () => {
+  const ask = (text: string) => useComposerRequestStore.getState().ask(text, { send: true });
+
+  it("goes out as the next message of the open chat", async () => {
+    mountPanel({ view: "chat", chatId: "c1", chat: chatState() });
+
+    await act(async () => ask("Fix these problems"));
+
+    expect(client?.startTurn).toHaveBeenCalledWith(
+      "c1",
+      expect.objectContaining({ prompt: "Fix these problems" }),
+    );
+  });
+
+  it("only joins the draft while a turn is running, so it never steers that turn", async () => {
+    const host = mountPanel({
+      view: "chat",
+      chatId: "c1",
+      chat: runningChatState(),
+      activeTurn: { chatId: "c1", turnId: "t1", startedAt: 1 },
+    });
+
+    await act(async () => ask("Fix these problems"));
+
+    expect(field(host).value).toBe("Fix these problems");
+    expect(client?.steerTurn).not.toHaveBeenCalled();
+    expect(client?.startTurn).not.toHaveBeenCalled();
+  });
+
+  it("does not send what the user was typing: the findings join the draft instead", async () => {
+    const host = mountPanel({ view: "chat", chatId: "c1", chat: chatState() });
+    await type(field(host), "half-written idea");
+
+    await act(async () => ask("Fix these problems"));
+
+    expect(field(host).value).toBe("half-written idea\nFix these problems");
+    expect(client?.startTurn).not.toHaveBeenCalled();
+  });
+});
