@@ -31,17 +31,21 @@ export function changesProject(toolName: string): boolean {
 
 /**
  * Why a project-changing call is refused in this turn; null when the turn may make it. An Ask turn refuses them
- * from the start; an Edit turn refuses them after its Director proposed a plan (`planProposed`), because the rest
- * of that turn changes nothing until the user approves.
+ * from the start; an Edit turn refuses them after its Director proposed a plan (`planProposed`) or offered Story
+ * Mode (`storyOffered`), because the rest of that turn changes nothing until the user decides.
  */
 export function intentRefusal(
   intent: ChatIntent,
   toolName: string,
   planProposed = false,
+  storyOffered = false,
 ): string | null {
   if (!changesProject(toolName)) return null;
   if (intent === "ask") {
     return `This is an Ask turn: the user wants an answer only, so ${toolName} is not available. Answer from what you can read and inspect.`;
+  }
+  if (storyOffered) {
+    return `This turn already offered Story Mode and nothing in the project changes until the user answers the offer, so ${toolName} is not available. End the turn with a short reply about what the story would do with their chapters.`;
   }
   if (planProposed) {
     return `This turn already published a plan proposal and nothing in the project changes until the user approves it, so ${toolName} is not available. End the turn with a short summary of the plan.`;

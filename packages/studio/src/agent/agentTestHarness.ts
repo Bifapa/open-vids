@@ -27,6 +27,8 @@ import type {
   PermissionPart,
   PermissionRequest,
   PermissionState,
+  StoryOffer,
+  StoryOfferPart,
 } from "@hyperframes/agent-protocol";
 import { AgentApiError, type AgentClient } from "./agentClient";
 import type { EventSourceLike } from "./agentStream";
@@ -169,6 +171,25 @@ export function permissionRequest(overrides: Partial<PermissionRequest> = {}): P
 export function permissionPart(overrides: Partial<PermissionRequest> = {}): PermissionPart {
   const permission = permissionRequest(overrides);
   return { type: "permission", id: permission.id, permission };
+}
+
+export function storyOffer(overrides: Partial<StoryOffer> = {}): StoryOffer {
+  return {
+    id: "offer1",
+    chapters: [
+      { title: "Rocket launch" },
+      { title: "Carina Nebula", summary: "photo from the archive" },
+      { title: "Finale with credits", durationSeconds: 12 },
+    ],
+    state: "pending",
+    requestedAt: 4000,
+    ...overrides,
+  };
+}
+
+export function storyOfferPart(overrides: Partial<StoryOffer> = {}): StoryOfferPart {
+  const offer = storyOffer(overrides);
+  return { type: "story-offer", id: offer.id, offer };
 }
 
 export function chatState(overrides: Partial<ChatState> = {}): ChatState {
@@ -437,6 +458,13 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
       permission: permissionRequest({
         id: permissionId,
         state: ANSWER_STATES[decision],
+        answeredAt: 7000,
+      }),
+    })),
+    answerStoryOffer: vi.fn(async (_chatId, _turnId, offerId, decision) => ({
+      offer: storyOffer({
+        id: offerId,
+        state: decision === "accept" ? "accepted" : "declined",
         answeredAt: 7000,
       }),
     })),

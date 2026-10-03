@@ -4,12 +4,14 @@ import type { ChatState, TurnSummary } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { useComposerRequestStore } from "../../agent/composerRequest";
 import { hasNoUsableModel, mainThreadMessages, type ThreadId } from "../../agent/agentSelectors";
+import { useChapterCount } from "../../story/useStoryActions";
 import { useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
 import { AgentThread } from "./AgentThread";
+import { BuildStoryButton } from "./BuildStoryButton";
 import { NoModelState } from "./ConnectModel";
 import { chatAgentName } from "./AgentMonogram";
-import { chatPadX, selItem } from "./chatStyles";
+import { chatMeasureWide, chatPadX, selItem } from "./chatStyles";
 import { AssistantBlock, UserMessageView } from "./Messages";
 import { PlanView } from "./PlanView";
 import { RenderQaCard } from "./RenderQaCard";
@@ -94,6 +96,7 @@ function MainThread({ chat }: { chat: ChatState }) {
 
   // The last turn's plan proposal is the user's to run or change; once another turn runs it is stale.
   const lastTurn = chat.turns.at(-1);
+  const chapterCount = useChapterCount();
   const approvalFor = (turn: TurnSummary | undefined) =>
     turn &&
     turn.plan?.proposal === true &&
@@ -128,6 +131,14 @@ function MainThread({ chat }: { chat: ChatState }) {
               }
             />
             {turn?.qa && <RenderQaCard turn={turn} />}
+            {turn?.storyAction === "review" &&
+              turn.status === "completed" &&
+              turn.id === lastTurn?.id &&
+              chapterCount > 0 && (
+                <div className={cn("mt-1", chatMeasureWide)}>
+                  <BuildStoryButton />
+                </div>
+              )}
             {turn && turn.status !== "running" && (
               <TurnFooter
                 turn={turn}

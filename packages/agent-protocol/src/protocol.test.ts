@@ -14,6 +14,7 @@ import {
   isProviderId,
   normalizeChatIntent,
   parseAgentIntake,
+  parseAnswerStoryOffer,
   parseReference,
   parseRevertTurn,
   parseSetJevApiKey,
@@ -30,6 +31,7 @@ import {
   type ChatSummary,
   type OAuthLoginState,
   type PermissionRequest,
+  type StoryOffer,
   type TurnSummary,
 } from "./index.js";
 
@@ -180,6 +182,45 @@ describe("applyChatEvent", () => {
     const aborted = open?.messages[1];
     if (aborted?.role !== "assistant") throw new Error("the assistant message is missing");
     expect(aborted.parts[0]).toMatchObject({ permission: { state: "expired" } });
+  });
+
+  it("folds a Story Mode offer into its part and keeps a pending one answerable after its turn ends", () => {
+    const offer: StoryOffer = {
+      id: "offer-1",
+      chapters: [
+        { title: "Старт ракеты" },
+        { title: "Туманность Карина", summary: "фото из архива" },
+        { title: "Финал с титрами", durationSeconds: 12, material: "музыка" },
+      ],
+      state: "pending",
+      requestedAt: 4,
+    };
+    const state = foldChatEvents(
+      [
+        ...log().slice(0, 2),
+        { type: "storyOffer.updated", messageId: "m2", offer },
+        { type: "turn.completed", turn: { ...turn, status: "completed", endedAt: 9 } },
+      ].map((event, index) => ({ ...event, seq: index + 1, chatId: "c1", ts: 10 + index })),
+    );
+    const message = state?.messages[1];
+    if (message?.role !== "assistant") throw new Error("the assistant message is missing");
+    // Unlike a permission, the offer stays pending: its card outlives the turn that made it.
+    expect(message.parts).toEqual([{ type: "story-offer", id: "offer-1", offer }]);
+
+    // The answer replaces the part in place, with the state the runtime wrote.
+    const answered = applyChatEvent(state!, {
+      type: "storyOffer.updated",
+      messageId: "m2",
+      offer: { ...offer, state: "accepted", answeredAt: 7 },
+      seq: (state?.lastSeq ?? 0) + 1,
+      chatId: "c1",
+      ts: 30,
+    });
+    const after = answered.messages[1];
+    if (after?.role !== "assistant") throw new Error("the assistant message is missing");
+    expect(after.parts).toEqual([
+      { type: "story-offer", id: "offer-1", offer: { ...offer, state: "accepted", answeredAt: 7 } },
+    ]);
   });
 
   it("marks a failed turn's streaming message failed", () => {
@@ -381,6 +422,20 @@ describe("validators", () => {
       value: { mode: "just-this" },
     });
     expect(parseRevertTurn({ mode: "back-to-before" }).ok).toBe(false);
+  });
+
+  it("validates a Story Mode offer answer", () => {
+    expect(parseAnswerStoryOffer({ decision: "accept" })).toEqual({
+      ok: true,
+      value: { decision: "accept" },
+    });
+    expect(parseAnswerStoryOffer({ decision: "decline" })).toEqual({
+      ok: true,
+      value: { decision: "decline" },
+    });
+    expect(parseAnswerStoryOffer({ decision: "yes" }).ok).toBe(false);
+    expect(parseAnswerStoryOffer({}).ok).toBe(false);
+    expect(parseAnswerStoryOffer(undefined).ok).toBe(false);
   });
 
   it("parses a turn's mode and Story workspace action, and refuses unknown ones", () => {

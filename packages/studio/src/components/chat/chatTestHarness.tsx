@@ -1,6 +1,11 @@
 import { act } from "react";
 import { AgentStoreProvider } from "../../agent/agentContext";
-import { createAgentStore, type AgentState, type AgentStore } from "../../agent/agentStore";
+import {
+  createAgentStore,
+  type AgentState,
+  type AgentStore,
+  type AgentStoreDeps,
+} from "../../agent/agentStore";
 import {
   CATALOG,
   chatState,
@@ -21,10 +26,14 @@ export interface Mounted {
 }
 
 /** The chat panel body on a real store with a fake client, pre-seeded with `state`. */
-export function mountChat(state: Partial<AgentState>, data: FakeClientData = {}): Mounted {
+export function mountChat(
+  state: Partial<AgentState>,
+  data: FakeClientData = {},
+  deps: Pick<AgentStoreDeps, "projectHasMedia"> = {},
+): Mounted {
   const client = createFakeClient({ chat: chatState(), ...data });
   const sources = createSourceLog();
-  const store = createAgentStore({ client, openEventSource: sources.open });
+  const store = createAgentStore({ client, openEventSource: sources.open, ...deps });
   store.setState({ availability: "ready", models: CATALOG, ...state });
   const host = mountHost(
     <AgentStoreProvider store={store}>

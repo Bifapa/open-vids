@@ -9,6 +9,7 @@ import type {
   ChatSummary,
   ExecutionPlan,
   PermissionRequest,
+  StoryOffer,
   TaskMessage,
   TurnCheckpoint,
   TurnSummary,
@@ -53,6 +54,11 @@ export type ChatEventPayload =
    * assistant message (whichever agent asked) and is updated in place as the user answers or the turn expires it.
    */
   | { type: "permission.updated"; messageId: string; permission: PermissionRequest }
+  /**
+   * A Story Mode offer of this turn appeared or changed state (accepted, declined, expired): its card lives in the
+   * main conversation's assistant message and is updated in place, wherever the answer came from.
+   */
+  | { type: "storyOffer.updated"; messageId: string; offer: StoryOffer }
   | { type: "message.completed"; messageId: string; status: AssistantMessageStatus }
   | { type: "checkpoint.updated"; turnId: string; checkpoint: TurnCheckpoint }
   /** The Director published or revised the turn's compact plan. */

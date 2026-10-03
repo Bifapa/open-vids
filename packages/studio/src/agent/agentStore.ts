@@ -24,6 +24,7 @@ import { draftCreation, mergeDraftChoices } from "./agentDraftChat";
 import { createAgentComposerSlice, type AgentComposerSlice } from "./agentComposerSlice";
 import { createAgentQaSlice, type AgentQaSlice } from "./agentQaSlice";
 import { createAgentPermissionSlice, type AgentPermissionSlice } from "./agentPermissionSlice";
+import { createAgentStoryOfferSlice, type AgentStoryOfferSlice } from "./agentStoryOfferSlice";
 import { createAgentRevertSlice, type AgentRevertSlice } from "./agentRevertSlice";
 import {
   createAgentSettingsSlice,
@@ -57,6 +58,7 @@ export interface AgentState
     AgentRevertSlice,
     AgentComposerSlice,
     AgentPermissionSlice,
+    AgentStoryOfferSlice,
     AgentAttachmentSlice {
   availability: AgentAvailability;
   unavailableMessage: string | null;
@@ -112,15 +114,18 @@ export interface AgentStoreDeps {
   onTurnReverted?: () => void | Promise<void>;
   /** Called when a turn of the open chat ends (completed, failed or aborted): pick up renders it produced. */
   onTurnEnded?: () => void;
+  /** The project has pictures, video or audio: read when a Story offer is accepted. */
+  projectHasMedia?: () => boolean;
 }
 
 export type AgentStore = StoreApi<AgentState>;
 
 export function createAgentStore(deps: AgentStoreDeps): AgentStore {
-  const { client, openEventSource } = deps;
+  const { client, openEventSource, projectHasMedia = () => false } = deps;
   let projectStream: StreamHandle | null = null;
   let chatStream: StreamHandle | null = null;
   let disposed = false;
+  const isDisposed = () => disposed;
   /** Bumped whenever the open chat changes, so a slow response for a chat we left is dropped. */
   let chatEpoch = 0;
   let resyncing = false;
@@ -327,18 +332,19 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         client,
         set,
         get,
-        isDisposed: () => disposed,
+        isDisposed,
         updateOpenChat,
       }),
       ...createAgentQaSlice({ client }),
       ...createAgentPermissionSlice({ client, get }),
+      ...createAgentStoryOfferSlice({ client, set, get, isDisposed, projectHasMedia }),
       ...createAgentAttachmentSlice({ set, get }),
       ...createAgentRevertSlice({ client, set, get, onTurnReverted: deps.onTurnReverted }),
       ...createAgentComposerSlice({
         client,
         set,
         get,
-        isDisposed: () => disposed,
+        isDisposed,
         updateOpenChat,
       }),
       availability: "loading",

@@ -29,12 +29,12 @@ import {
   cn,
 } from "../components/ui";
 import { AddNodePopover, type NewNodeRequest } from "./AddNodePopover";
-import { formatPercent, t as translate, useTranslation, type TranslationKey } from "../i18n";
+import { formatPercent, useTranslation, type TranslationKey } from "../i18n";
 import { useStoryStore } from "./storyContext";
 import { formatAge, formatDuration } from "./storyFormat";
 import type { StorySaveState } from "./storyStore";
 import { rebuildTargets, syncBlocker } from "./storySync";
-import { agentBlocker, researchBlocker, type StoryAgent } from "./useStoryAgent";
+import { actionBlocker, agentBlocker, researchBlocker, type StoryAgent } from "./useStoryAgent";
 import { unlockedMissing } from "./storyResearch";
 import type { StoryLibrary } from "./useStoryLibrary";
 
@@ -55,18 +55,6 @@ const ZOOM_STEPS = [0.5, 0.75, 1, 1.5] as const;
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
-
-/** Why Review/Build cannot run now, or null when they can. */
-function actionBlocker(action: StoryAction, agent: StoryAgent, chapters: number): string | null {
-  const busy = agentBlocker(agent);
-  if (busy) return busy;
-  if (chapters === 0) {
-    return action === "build"
-      ? translate("story.toolbar.addChapterFirst")
-      : translate("story.toolbar.nothingToReview");
-  }
-  return null;
-}
 
 /** A hairline between head groups. */
 function Separator() {

@@ -1326,3 +1326,9 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `chat.plan.revise` — Button next to "Carry out": focuses the composer so the user can ask for changes to the proposal.
 - `chat.plan.executePrompt` — The user's visible message when the plan starts running; the runtime itself attaches the approved steps.
 - `settings.execution.planApproval` — Settings row: when the Director must propose a plan before changing the project.
+
+## chat-story-offer
+
+- `chat.storyOffer.declinePrompt` — Sent as the user's own message in the chat when they decline the Story offer; the Director then carries out the request they made just before it.
+- `chat.storyOffer.noFootage` — Media is the Media workspace (Материалы).
+- `chat.story.build` — Button that compiles the story's chapters into the timeline (same as Build Story in the Story workspace).

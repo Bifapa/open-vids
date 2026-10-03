@@ -4268,5 +4268,18 @@
   "settings.execution.planApproval.never": "Never",
   "settings.execution.planApproval.big.hint": "Propose a plan first for big requests: more than two steps, two or more specialists, a render, import or download, removing or replacing your work, or long-form analysis. Small edits run directly.",
   "settings.execution.planApproval.always.hint": "Propose a plan before every request that changes the project.",
-  "settings.execution.planApproval.never.hint": "Act immediately, without plan approval."
+  "settings.execution.planApproval.never.hint": "Act immediately, without plan approval.",
+  "chat.storyOffer.title": "Build this as a Story?",
+  "chat.storyOffer.note": "The chapters go into Story in this order. Nothing is built until you say so.",
+  "chat.storyOffer.accept": "Open in Story",
+  "chat.storyOffer.decline": "No, edit right away",
+  "chat.storyOffer.openStory": "Open Story",
+  "chat.storyOffer.error": "Couldn’t send your answer. {message}",
+  "chat.storyOffer.state.accepted": "The chapters are in Story.",
+  "chat.storyOffer.state.declined": "No Story — editing right away.",
+  "chat.storyOffer.state.expired": "This offer is no longer available.",
+  "chat.storyOffer.noFootage": "No footage in the project yet. Add video, pictures or music in Media, then build the video.",
+  "chat.storyOffer.declinePrompt": "Without Story — edit right away",
+  "chat.story.build": "Build the video",
+  "errors.story_offer_conflict": "The story already has chapters, or it changed while the offer was waiting, so the offer can’t be applied. Open Story to see it."
 }

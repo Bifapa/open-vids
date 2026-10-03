@@ -227,6 +227,7 @@ describe("multi-agent orchestration", () => {
       const soloDirector = fixture.backend.sessionsOf("director").at(-1);
       expect(soloDirector?.input.hostTools.map((tool) => tool.name)).toEqual([
         "propose_plan",
+        "offer_story_mode",
         "update_plan",
         ...EDITOR_TOOLS,
         ...ANALYSIS_TOOLS_SOLO,

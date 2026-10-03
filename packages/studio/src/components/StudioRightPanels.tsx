@@ -22,6 +22,7 @@ import { studioSourcesStore } from "../research/researchContext";
 import { useSourcesAutoRefresh } from "../research/useSourcesAutoRefresh";
 import { MediaPanel } from "../media/MediaPanel";
 import { refreshAssetRanges } from "../media/assetRangesStore";
+import { hasProjectMedia } from "../media/mediaLibrary";
 import { MediaWorkspaceLayout } from "../media/MediaWorkspaceLayout";
 import { VariablesPanel } from "./panels/VariablesPanel";
 import { Dock } from "./dock/Dock";
@@ -180,11 +181,13 @@ export function StudioRightPanels({
   }, [refreshAfterAgentRevert]);
   // One agent store per project, shared by Chat and the Story panel (which starts Review/Build turns).
   const editorContext = useEditorContextSource(projectId);
+  const projectHasMedia = useCallback(() => hasProjectMedia(fileTree), [fileTree]);
   const agentStore = useProjectAgentStore(
     projectId,
     editorContext,
     onAgentReverted,
     renderQueue.reloadRenders,
+    projectHasMedia,
   );
   // Asking about an element from the inspector or the canvas menu fills this store's composer draft.
   useComposerRequestBridge(agentStore);

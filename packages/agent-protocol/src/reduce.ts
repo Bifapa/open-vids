@@ -235,6 +235,19 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         })),
       };
 
+    case "storyOffer.updated":
+      return {
+        ...base,
+        messages: mapAssistant(state.messages, event.messageId, (message) => ({
+          ...message,
+          parts: upsertPart(message.parts, {
+            type: "story-offer",
+            id: event.offer.id,
+            offer: event.offer,
+          }),
+        })),
+      };
+
     case "message.completed":
       return {
         ...base,

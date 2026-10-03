@@ -20,6 +20,7 @@ import {
   isOAuthLoginId,
   isProviderId,
   parseAnswerPermission,
+  parseAnswerStoryOffer,
   parseCreateChat,
   parseProjectTitleRequest,
   parseRevertTurn,
@@ -386,6 +387,27 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
           context.req.param("turnId"),
           context.req.param("permissionId"),
           parsed.value.decision,
+        );
+      return context.json(response);
+    },
+  );
+
+  // The user's answer to a Story Mode offer card ("Open in Story" / "No, edit right away"): the offer stays
+  // answerable after its own turn ended, so unlike a permission it is read from the chat. An `accept` writes the
+  // chapters into the Story Graph through the story service before it answers (no model runs).
+  app.post(
+    `${AGENT_RUNTIME_PREFIX}/chats/:chatId/turns/:turnId/story-offers/:offerId`,
+    async (context) => {
+      const parsed = parseAnswerStoryOffer(await readBody(context));
+      if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+      const response = await context
+        .get("project")
+        .turns.answerStoryOffer(
+          context.req.param("chatId"),
+          context.req.param("turnId"),
+          context.req.param("offerId"),
+          parsed.value.decision,
+          context.req.raw.signal,
         );
       return context.json(response);
     },

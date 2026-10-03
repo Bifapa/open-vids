@@ -15,6 +15,7 @@ import {
   type AgentErrorBody,
   type AgentErrorCode,
   type PermissionDecision,
+  type StoryOfferDecision,
   type AgentIntake,
   type AgentModelCatalog,
   type AgentSettings,
@@ -32,6 +33,7 @@ import {
   type QaReport,
   type RevertTurnRequest,
   type AnswerPermissionResponse,
+  type AnswerStoryOfferResponse,
   type RevertTurnResponse,
   type SetJevApiKeyRequest,
   type SetProviderApiKeyRequest,
@@ -47,6 +49,7 @@ import {
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import { isAnswerPermissionResponse } from "./permissionGuards";
+import { isAnswerStoryOfferResponse } from "./storyOfferGuards";
 import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
 
@@ -118,6 +121,16 @@ export interface AgentClient {
     permissionId: string,
     decision: PermissionDecision,
   ): Promise<AnswerPermissionResponse>;
+  /**
+   * The user's answer to a Story Mode offer card. Accepting makes the runtime write the offered chapters into the
+   * Story Graph; the response is the offer in its new state.
+   */
+  answerStoryOffer(
+    chatId: string,
+    turnId: string,
+    offerId: string,
+    decision: StoryOfferDecision,
+  ): Promise<AnswerStoryOfferResponse>;
   /** Same-origin URL for the chat event stream, resuming after `afterSeq`. */
   chatEventsUrl(chatId: string, afterSeq: number): string;
   projectEventsUrl(): string;
@@ -452,6 +465,13 @@ export function createAgentClient(
         "POST",
         `/chats/${enc(chatId)}/turns/${enc(turnId)}/permissions/${enc(permissionId)}`,
         isAnswerPermissionResponse,
+        { decision },
+      ),
+    answerStoryOffer: (chatId, turnId, offerId, decision) =>
+      call(
+        "POST",
+        `/chats/${enc(chatId)}/turns/${enc(turnId)}/story-offers/${enc(offerId)}`,
+        isAnswerStoryOfferResponse,
         { decision },
       ),
     chatEventsUrl: (chatId, afterSeq) =>

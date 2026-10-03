@@ -11,6 +11,7 @@ import {
   type PlanStepStatus,
   type SpecialistId,
   type StoryAction,
+  type StoryOfferChapter,
   type ThinkingEffort,
 } from "@hyperframes/agent-protocol";
 import type { HostTool, HostToolResult } from "../backend.js";
@@ -23,6 +24,7 @@ import { buildQaTools } from "../qa/tools.js";
 
 export const TOOL_NAMES = {
   propose: "propose_plan",
+  offerStory: "offer_story_mode",
   plan: "update_plan",
   delegate: "delegate",
   wait: "wait_for_agents",
@@ -36,6 +38,10 @@ export const LIMITS = {
   stepTitleChars: 120,
   runTitleChars: 80,
   taskChars: 20_000,
+  storyChapters: 12,
+  chapterTitleChars: 120,
+  chapterSummaryChars: 400,
+  chapterMaterialChars: 200,
 } as const;
 
 export type ToolExecutor = (
@@ -68,6 +74,12 @@ export interface ToolAvailability {
    * user's plan approval on `big` or `always`): it gets `propose_plan`, and the turn's prompt states when to use it.
    */
   planProposal?: boolean;
+  /**
+   * The Director may offer Story Mode this turn (a normal-mode Edit turn, not an execute-plan turn, in a chat that
+   * has not declined one, while the project's Story graph has no chapters): it gets `offer_story_mode`, and the
+   * turn's prompt states when to use it. Accepting the offer writes the chapters through the story host.
+   */
+  storyOffer?: boolean;
   /**
    * The runtime has a research host and the user's Asset Search policy could be read: Research gets the search and
    * import tools and the Director the read-only sources tool (whichever the chat's team and the turn allow).
@@ -225,6 +237,49 @@ function directorTools(
       execute: (args, signal) => execute(TOOL_NAMES.propose, args, signal),
     });
   }
+  if (availability.storyOffer) {
+    tools.push({
+      name: TOOL_NAMES.offerStory,
+      description:
+        "Offer Story Mode when the user describes the video itself as an ordered structure of three or more content parts (scenes, chapters, «сначала … потом … затем …», a numbered list of parts): pass the chapters in their own words and order. Do not use it for a list of editing operations, and not for fewer than three parts. After this call every project-changing tool is refused for the rest of this turn: reply in one or two sentences about what the story would do with these chapters and end the turn.",
+      parameters: {
+        type: "object",
+        properties: {
+          chapters: {
+            type: "array",
+            minItems: 3,
+            maxItems: LIMITS.storyChapters,
+            items: {
+              type: "object",
+              properties: {
+                title: stringProperty(
+                  "The part's title, in the user's words.",
+                  LIMITS.chapterTitleChars,
+                ),
+                summary: stringProperty(
+                  "One short line about what this part shows, when the user said it.",
+                  LIMITS.chapterSummaryChars,
+                ),
+                durationSeconds: {
+                  type: "number",
+                  description: "Intended length in seconds, when the user said it.",
+                },
+                material: stringProperty(
+                  "The footage or material this part needs, when the user said it.",
+                  LIMITS.chapterMaterialChars,
+                ),
+              },
+              required: ["title"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["chapters"],
+        additionalProperties: false,
+      },
+      execute: (args, signal) => execute(TOOL_NAMES.offerStory, args, signal),
+    });
+  }
   tools.push({
     name: TOOL_NAMES.plan,
     description:
@@ -376,6 +431,57 @@ export function parsePlanArgs(args: unknown): ParsedArgs<PlanArgs> {
 
 export interface ProposalArgs {
   steps: Array<{ title: string; agent: AgentId | null }>;
+}
+
+export interface StoryOfferArgs {
+  chapters: StoryOfferChapter[];
+}
+
+/**
+ * `offer_story_mode`'s chapters: three or more parts of the video, in the user's order. Titles are required; the
+ * rest is kept only when the model sent something usable (a whitespace-only summary is no summary).
+ */
+export function parseStoryOfferArgs(args: unknown): ParsedArgs<StoryOfferArgs> {
+  if (!isRecord(args) || !Array.isArray(args.chapters))
+    return { ok: false, message: "chapters must be an array of the video's parts" };
+  if (args.chapters.length < 3)
+    return {
+      ok: false,
+      message:
+        "a Story Mode offer needs at least 3 chapters; offer only when the user described the video as an ordered structure of parts",
+    };
+  if (args.chapters.length > LIMITS.storyChapters)
+    return { ok: false, message: `at most ${LIMITS.storyChapters} chapters` };
+  const chapters: StoryOfferChapter[] = [];
+  for (const raw of args.chapters) {
+    if (!isRecord(raw)) return { ok: false, message: "each chapter must be an object" };
+    const title = text(raw.title, "chapter title", LIMITS.chapterTitleChars);
+    if (!title.ok) return title;
+    if (raw.summary !== undefined && typeof raw.summary !== "string")
+      return { ok: false, message: "chapter summary must be a string" };
+    if (raw.material !== undefined && typeof raw.material !== "string")
+      return { ok: false, message: "chapter material must be a string" };
+    if (
+      raw.durationSeconds !== undefined &&
+      (typeof raw.durationSeconds !== "number" ||
+        !Number.isFinite(raw.durationSeconds) ||
+        raw.durationSeconds <= 0)
+    )
+      return { ok: false, message: "chapter durationSeconds must be a number of seconds > 0" };
+    const summary = raw.summary?.trim();
+    const material = raw.material?.trim();
+    chapters.push({
+      title: title.value,
+      ...(summary
+        ? { summary: summary.slice(0, LIMITS.chapterSummaryChars) }
+        : {}),
+      ...(typeof raw.durationSeconds === "number"
+        ? { durationSeconds: raw.durationSeconds }
+        : {}),
+      ...(material ? { material: material.slice(0, LIMITS.chapterMaterialChars) } : {}),
+    });
+  }
+  return { ok: true, value: { chapters } };
 }
 
 /** `propose_plan`'s steps become pending `PlanStep`s: the user approves titles, statuses arrive later. */

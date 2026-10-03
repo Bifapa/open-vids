@@ -23,6 +23,7 @@ import type {
   SpecialistId,
   StoryAction,
   StoryActionOptions,
+  StoryOffer,
   ThinkingEffort,
   TurnSummary,
 } from "./types.js";
@@ -201,6 +202,24 @@ export interface AnswerPermissionRequest {
 
 export interface AnswerPermissionResponse {
   permission: PermissionRequest;
+}
+
+/** The user's answer to a {@link StoryOffer} card. */
+export const STORY_OFFER_DECISIONS = ["accept", "decline"] as const;
+export type StoryOfferDecision = (typeof STORY_OFFER_DECISIONS)[number];
+
+/**
+ * `POST /v1/chats/:chatId/turns/:turnId/story-offers/:offerId` — the user's answer to the Story Mode offer card.
+ * `accept`: the runtime writes the chapters into the Story Graph (no model) and marks the offer accepted; `decline`:
+ * the chat records the decline and the offer becomes declined. Unlike a permission, a pending offer stays answerable
+ * after its own turn ends; a new user turn expires it.
+ */
+export interface AnswerStoryOfferRequest {
+  decision: StoryOfferDecision;
+}
+
+export interface AnswerStoryOfferResponse {
+  offer: StoryOffer;
 }
 
 export type GetChatResponse = ChatState;

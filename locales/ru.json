@@ -4268,5 +4268,18 @@
   "settings.execution.planApproval.never": "Никогда",
   "settings.execution.planApproval.big.hint": "Спрашивать перед большими задачами: больше двух шагов, двое специалистов или больше, рендер, импорт или скачивание, удаление или замена ваших правок, анализ длинного видео. Мелкие правки выполняются сразу.",
   "settings.execution.planApproval.always.hint": "Предлагать план перед каждой задачей, которая меняет проект.",
-  "settings.execution.planApproval.never.hint": "Выполнять задачи сразу, без подтверждения плана."
+  "settings.execution.planApproval.never.hint": "Выполнять задачи сразу, без подтверждения плана.",
+  "chat.storyOffer.title": "Собрать это как Story?",
+  "chat.storyOffer.note": "Главы лягут в Story в таком порядке. Ничего не соберётся, пока вы не скажете.",
+  "chat.storyOffer.accept": "Открыть в Story",
+  "chat.storyOffer.decline": "Нет, монтируй сразу",
+  "chat.storyOffer.openStory": "Открыть Story",
+  "chat.storyOffer.error": "Не удалось отправить ответ. {message}",
+  "chat.storyOffer.state.accepted": "Главы уже в Story.",
+  "chat.storyOffer.state.declined": "Без Story — монтаж сразу.",
+  "chat.storyOffer.state.expired": "Предложение больше не актуально.",
+  "chat.storyOffer.noFootage": "В проекте пока нет материалов. Добавьте видео, картинки или музыку в «Материалах» и соберите ролик.",
+  "chat.storyOffer.declinePrompt": "Без Story — монтируй сразу",
+  "chat.story.build": "Собрать ролик",
+  "errors.story_offer_conflict": "В Story уже есть главы, или он изменился, пока предложение ждало, поэтому применить его нельзя. Откройте Story, чтобы увидеть."
 }

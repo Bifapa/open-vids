@@ -379,6 +379,11 @@ export interface ChatSummary {
   /** The chat's own Execution Quality; absent or null = the global default. */
   executionQuality?: ExecutionQuality | null;
   /**
+   * The user declined a Story Mode offer in this chat: it is never offered here again and the Director is told to
+   * edit directly. Durable, like the offer cards themselves.
+   */
+  storyDeclined?: boolean;
+  /**
    * The chat's frame format is still to be decided: the project was started with the format on Auto, so the agent
    * must pick the canvas before building. Set by the runtime when a turn arrives with `canvas: "auto"`, durable
    * across turns and restarts; cleared when a successful `edit_timeline` batch sets the canvas.
@@ -726,6 +731,41 @@ export interface DelegationPart {
 }
 
 /**
+ * One chapter of a Story Mode offer, as the Director named it from the user's own words: the title and, when the
+ * user said them, a short summary, an intended length and the material the part needs.
+ */
+export interface StoryOfferChapter {
+  title: string;
+  summary?: string;
+  durationSeconds?: number;
+  material?: string;
+}
+
+/** `pending`: the card waits for the user; `accepted`/`declined`: the answer; `expired`: a new turn moved on. */
+export const STORY_OFFER_STATES = ["pending", "accepted", "declined", "expired"] as const;
+export type StoryOfferState = (typeof STORY_OFFER_STATES)[number];
+
+/**
+ * The Director's offer to build the video as a Story: the chapters the user described, in their order. Accepting
+ * writes them into the Story Graph (the runtime does it, no model) and the user lands in the Story workspace;
+ * declining keeps the chat on direct editing (`ChatSummary.storyDeclined`).
+ */
+export interface StoryOffer {
+  id: string;
+  chapters: StoryOfferChapter[];
+  state: StoryOfferState;
+  requestedAt: number;
+  answeredAt?: number;
+}
+
+/** The Story Mode offer card in the main conversation. */
+export interface StoryOfferPart {
+  type: "story-offer";
+  id: string;
+  offer: StoryOffer;
+}
+
+/**
  * Settings an agent can ask the user to allow from the chat: `read_linked_pages` is Asset Search → Websites → "Read
  * linked pages" (`websites.readLinkedPages`), `website_full_access` is "Full access to linked sites"
  * (`websites.fullAccess`, which needs reading too).
@@ -781,7 +821,8 @@ export type AssistantPart =
   | ThinkingPart
   | ActivityPart
   | DelegationPart
-  | PermissionPart;
+  | PermissionPart
+  | StoryOfferPart;
 
 interface MessageBase {
   id: string;
@@ -841,6 +882,7 @@ export const AGENT_ERROR_CODES = [
   "checkpoint_unavailable",
   "revert_conflict",
   "revert_unavailable",
+  "story_offer_conflict",
   "agent_failed",
   "internal",
 ] as const;

@@ -40,12 +40,13 @@ export function useProjectAgentStore(
   editorContext: EditorContextSource,
   onReverted: () => void | Promise<void>,
   onTurnEnded: () => void = () => {},
+  projectHasMedia: () => boolean = () => false,
   openEventSource: EventSourceFactory = browserEventSource,
 ): AgentStore | null {
   const [store, setStore] = useState<AgentStore | null>(null);
-  const live = useRef({ editorContext, onReverted, onTurnEnded });
+  const live = useRef({ editorContext, onReverted, onTurnEnded, projectHasMedia });
   useEffect(() => {
-    live.current = { editorContext, onReverted, onTurnEnded };
+    live.current = { editorContext, onReverted, onTurnEnded, projectHasMedia };
   });
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export function useProjectAgentStore(
       captureEditorContext: () => withoutExcluded(live.current.editorContext.capture()),
       onTurnReverted: () => live.current.onReverted(),
       onTurnEnded: () => live.current.onTurnEnded(),
+      projectHasMedia: () => live.current.projectHasMedia(),
     });
     setStore(next);
     // The timeline (outside this provider) locks while a turn runs: mirror the store's own turn state.

@@ -1,6 +1,7 @@
 import type {
   AgentIntake,
   AnswerPermissionRequest,
+  AnswerStoryOfferRequest,
   AgentIntakeFile,
   CreateChatRequest,
   ProjectTitleRequest,
@@ -14,7 +15,7 @@ import type {
   UpdateAgentSettingsRequest,
   UpdateChatRequest,
 } from "./api.js";
-import { INTAKE_FILE_KINDS, REVERT_MODES } from "./api.js";
+import { INTAKE_FILE_KINDS, REVERT_MODES, STORY_OFFER_DECISIONS } from "./api.js";
 import {
   CHAT_INTENTS,
   CHAT_MODES,
@@ -852,6 +853,12 @@ export function parseAnswerPermission(body: unknown): Parsed<AnswerPermissionReq
   return decision
     ? { ok: true, value: { decision } }
     : fail("decision must be once, always or deny");
+}
+
+export function parseAnswerStoryOffer(body: unknown): Parsed<AnswerStoryOfferRequest> {
+  if (!isRecord(body)) return fail("body must be an object");
+  const decision = STORY_OFFER_DECISIONS.find((known) => known === body.decision);
+  return decision ? { ok: true, value: { decision } } : fail("decision must be accept or decline");
 }
 
 const INTAKE_FILES = 200;

@@ -109,7 +109,8 @@ export function AgentChatBody() {
           ? t("chat.panel.region.chat", { title: title ?? "" })
           : t("chat.panel.region.history")
       }
-      className="flex h-full min-h-0 flex-col outline-hidden"
+      data-chat-overlay=""
+      className="relative flex h-full min-h-0 flex-col outline-hidden"
     >
       <ChatHeader contextChat={contextChat} />
       {view === "chat" ? <ChatView /> : <HistoryView selectedId={visited?.id ?? null} />}

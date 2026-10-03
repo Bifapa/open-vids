@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
   isAgentRunTerminal,
+  isChapter,
   normalizeChatIntent,
   type ActiveTurnInfo,
   type AgentId,
   type AgentModelCatalog,
   type AnswerPermissionResponse,
+  type AnswerStoryOfferResponse,
   type AssistantMessage,
   type AssistantMessageStatus,
   type ChatIntent,
@@ -17,6 +19,9 @@ import {
   type PlanStep,
   type StoryAction,
   type StoryActionOptions,
+  type StoryOffer,
+  type StoryOfferDecision,
+  type StoryOfferPart,
   type UserPart,
   type UserMessage,
   type ChatSummary,
@@ -38,7 +43,12 @@ import { Orchestrator, type TurnAgentSetup } from "./agents/orchestrator.js";
 import { directorInstructions, jevInstructions, specialistInstructions } from "./agents/roles.js";
 import { renderTeam, resolveTurnSetup } from "./agents/setup.js";
 import { isLockRefusal, lockedEditAdvice } from "./autonomy.js";
-import { buildHostTools, TOOL_NAMES, type ToolAvailability } from "./agents/tools.js";
+import {
+  buildHostTools,
+  parseStoryOfferArgs,
+  TOOL_NAMES,
+  type ToolAvailability,
+} from "./agents/tools.js";
 import { TurnEditing } from "./editing/executor.js";
 import { isEditingToolName } from "./editing/tools.js";
 import { TurnAnalysis } from "./analysis/executor.js";
@@ -46,6 +56,12 @@ import { isAnalysisToolName } from "./analysis/tools.js";
 import { TurnStory } from "./story/executor.js";
 import { renderStoryBlocks } from "./story/prompt.js";
 import { isStoryToolName, storyToolsFor, timelineWritesAllowed } from "./story/tools.js";
+import { StoryToolError } from "./story/host.js";
+import {
+  renderStoryDeclinedBlock,
+  renderStoryOfferBlock,
+  storyOfferOperations,
+} from "./storyOffer.js";
 import { TurnResearch } from "./research/executor.js";
 import { isResearchToolName, type ResearchAccess } from "./research/tools.js";
 import { WebsiteResourceLog } from "./research/websiteResources.js";
@@ -133,6 +149,10 @@ interface ActiveRun {
   storyAction: StoryAction | null;
   /** The user's choices for a build/rebuild action (scope, manual-edit policy, locked chapters), if any. */
   storyOptions: StoryActionOptions | null;
+  /** Whether this turn may offer Story Mode at all (the tool and the prompt block go together). */
+  storyOfferEligible: boolean;
+  /** The offer this turn published, if any: another one is refused and project changes stop until answered. */
+  storyOffer: StoryOffer | null;
   /** The Director's prompt has ended but the turn is still collecting delegated work. */
   directorIdle: boolean;
   /** Steering received while the Director was idle; it opens the next Director prompt. */
@@ -222,6 +242,9 @@ export class TurnRunner {
         activeTurn: null,
       });
     }
+    // A new user turn moves the chat on: a Story Mode offer still waiting for its answer is expired. (The offer of
+    // the turn that just ended stays answerable, so this is the only place a pending offer is taken down.)
+    await this.expireStoryOffers(chatId);
     // A start-from-chat project on Auto: the format stays open across turns (a proposal now, the edit later) until
     // an edit sets the canvas. Durable on the chat, so a restart does not lose the choice.
     if (input.canvas === "auto") await this.chats.setCanvasAuto(chatId, true);
@@ -303,6 +326,8 @@ export class TurnRunner {
       executePlan,
       storyAction: input.storyAction ?? null,
       storyOptions: input.storyOptions ?? null,
+      storyOfferEligible: false,
+      storyOffer: null,
       directorIdle: false,
       pendingSteering: [],
       promptStarted: started.promise,
@@ -456,6 +481,152 @@ export class TurnRunner {
     )
       throw new RuntimeError("turn_not_active", "Turn is not active", 409);
     return { permission: await run.permissions.answer(permissionId, decision) };
+  }
+
+  /**
+   * The user's answer to a Story Mode offer card. Unlike a permission, the offer stays answerable after its own turn
+   * ended, so it is read from the chat and only a turn running right now is refused. `accept` writes the chapters
+   * into the Story Graph through the story service (no model) and marks the offer accepted — refused when the graph
+   * changed meanwhile or already has chapters; `decline` records the decline on the chat, so it is never offered
+   * there again, and marks the offer declined.
+   */
+  async answerStoryOffer(
+    chatId: string,
+    turnId: string,
+    offerId: string,
+    decision: StoryOfferDecision,
+    signal?: AbortSignal,
+  ): Promise<AnswerStoryOfferResponse> {
+    const state = this.chats.get(chatId);
+    if (!state) throw new RuntimeError("chat_not_found", "Chat was not found", 404);
+    const found = this.storyOfferTarget(state, turnId, offerId);
+    if (found.offer.state !== "pending")
+      throw new RuntimeError("turn_not_active", "This Story Mode offer was already answered", 409);
+    if (this.active) {
+      if (this.active.chatId === chatId)
+        throw new RuntimeError("chat_busy", "This chat has a running turn", 409);
+      throw new RuntimeError("project_busy", "Another chat is modifying this project", 409, {
+        activeTurn: this.info(this.active),
+      });
+    }
+    if (this.revertingChatId) {
+      if (this.revertingChatId === chatId)
+        throw new RuntimeError("chat_busy", "This chat is being reverted", 409);
+      throw new RuntimeError("project_busy", "Another chat is modifying this project", 409, {
+        activeTurn: null,
+      });
+    }
+    if (decision === "decline") {
+      await this.chats.setStoryDeclined(chatId);
+      const declined: StoryOffer = {
+        ...found.offer,
+        state: "declined",
+        answeredAt: this.now(),
+      };
+      await this.chats.emit(chatId, {
+        type: "storyOffer.updated",
+        messageId: found.messageId,
+        offer: declined,
+      });
+      return { offer: declined };
+    }
+    if (!this.storyFactory)
+      throw new RuntimeError("invalid_request", "Story Mode is not available in this runtime", 400);
+    const host = this.storyFactory(this.chats.scope);
+    const callSignal = signal ?? new AbortController().signal;
+    let accepted: StoryOffer;
+    try {
+      const view = await host.view(callSignal);
+      if (view.graph?.nodes.some(isChapter))
+        throw new RuntimeError(
+          "story_offer_conflict",
+          "The story gained chapters while the offer was waiting, so it cannot be applied.",
+          409,
+        );
+      await host.edit(
+        {
+          ...(view.version !== null && { baseVersion: view.version }),
+          operations: storyOfferOperations(found.offer.chapters),
+        },
+        callSignal,
+      );
+      accepted = { ...found.offer, state: "accepted", answeredAt: this.now() };
+    } catch (error) {
+      throw this.storyOfferFailure(error);
+    }
+    await this.chats.emit(chatId, {
+      type: "storyOffer.updated",
+      messageId: found.messageId,
+      offer: accepted,
+    });
+    return { offer: accepted };
+  }
+
+  /** Where a turn's Story Mode offer card lives and what it says; unknown turns and offers are refused. */
+  private storyOfferTarget(
+    state: ChatState,
+    turnId: string,
+    offerId: string,
+  ): { messageId: string; offer: StoryOffer } {
+    const turn = state.turns.find((entry) => entry.id === turnId);
+    if (!turn) throw new RuntimeError("turn_not_found", "Turn was not found", 404);
+    const message = state.messages.find((entry) => entry.id === turn.assistantMessageId);
+    if (message?.role !== "assistant")
+      throw new RuntimeError("invalid_request", "This turn has no such Story Mode offer", 400);
+    const part = message.parts.find(
+      (entry): entry is StoryOfferPart => entry.type === "story-offer" && entry.id === offerId,
+    );
+    if (!part)
+      throw new RuntimeError("invalid_request", "This turn has no such Story Mode offer", 400);
+    return { messageId: message.id, offer: part.offer };
+  }
+
+  /** A story failure of the offer write, as the runtime answers it: a graph that moved on is a conflict. */
+  private storyOfferFailure(error: unknown): RuntimeError {
+    if (error instanceof RuntimeError) return error;
+    if (error instanceof StoryToolError) {
+      if (error.code === "conflict")
+        return new RuntimeError(
+          "story_offer_conflict",
+          "The story changed while the offer was waiting, so it cannot be applied.",
+          409,
+        );
+      if (error.code === "unavailable" || error.code === "aborted")
+        return new RuntimeError(
+          "runtime_unavailable",
+          errorMessage(error, "The story service could not be reached"),
+          503,
+        );
+      return new RuntimeError("story_offer_conflict", error.message, 409);
+    }
+    return new RuntimeError(
+      "runtime_unavailable",
+      errorMessage(error, "The story service could not be reached"),
+      503,
+    );
+  }
+
+  /**
+   * Expires every pending Story Mode offer of a chat that has no running turn. Called when a new user turn starts:
+   * that is what makes a pending offer unanswerable, while the end of its own turn leaves it pending.
+   */
+  private async expireStoryOffers(chatId: string): Promise<void> {
+    const state = this.chats.get(chatId);
+    if (!state) return;
+    for (const message of state.messages) {
+      if (message.role !== "assistant") continue;
+      for (const part of message.parts) {
+        if (part.type !== "story-offer" || part.offer.state !== "pending") continue;
+        const expired: StoryOffer = {
+          ...part.offer,
+          state: "expired",
+          answeredAt: this.now(),
+        };
+        await this.chats
+          .emit(chatId, { type: "storyOffer.updated", messageId: message.id, offer: expired })
+          .catch(() => undefined);
+      }
+    }
   }
 
   /**
@@ -638,11 +809,30 @@ export class TurnRunner {
     return run.turn.plan?.proposal === true;
   }
 
-  /** The harness's own file writes (edit/write) are refused in an Ask turn and after a plan proposal, per turn. */
+  /**
+   * Whether the turn may offer Story Mode: an ordinary Edit turn (not a story-mode or execute-plan one), in a chat
+   * that has not declined an offer, while the project's Story graph has no chapters. False when the story could not
+   * be read — the accept would fail the same way.
+   */
+  private async storyOfferOpen(run: ActiveRun, signal: AbortSignal): Promise<boolean> {
+    if (!run.story || run.mode !== "normal" || run.intent !== "edit" || run.executePlan !== null)
+      return false;
+    if (this.chats.get(run.chatId)?.chat.storyDeclined === true) return false;
+    const snapshot = await run.story.snapshot(signal);
+    if (snapshot.view === null) return false;
+    return !(snapshot.view.graph?.nodes.some(isChapter) ?? false);
+  }
+
+  /** Whether this turn already published a Story Mode offer (everything project-changing is refused then). */
+  private storyOffered(run: ActiveRun): boolean {
+    return run.storyOffer !== null;
+  }
+
+  /** The harness's own file writes (edit/write) are refused in an Ask turn and after a plan or story offer. */
   private fileWriteRefusal(chatId: string, toolName: string): string | null {
     const run = this.active;
     if (!run || run.chatId !== chatId) return null;
-    return intentRefusal(run.intent, toolName, this.planProposed(run));
+    return intentRefusal(run.intent, toolName, this.planProposed(run), this.storyOffered(run));
   }
 
   /** The user's "ask before changing locked sections" setting for the turn that is running (true when none is). */
@@ -874,6 +1064,10 @@ export class TurnRunner {
         : null;
       // What the project is when the turn starts: render QA runs only when the turn changed it.
       const startFingerprint = qa ? await qa.fingerprint(signal).catch(() => null) : null;
+      // Story Mode is offered from an ordinary Edit turn while the graph is still empty and the chat has not
+      // declined it. The graph is read once, here: an unreadable story means no offer (a failed accept is worse than
+      // a missed suggestion), and one turn at a time means it cannot gain chapters mid-turn.
+      run.storyOfferEligible = await this.storyOfferOpen(run, signal);
       const availability: ToolAvailability = {
         enabled: setup.enabled,
         jev: setup.jev !== null,
@@ -896,6 +1090,7 @@ export class TurnRunner {
         mode: run.mode,
         intent: run.intent,
         planProposal: this.planProposalOffered(run),
+        storyOffer: run.storyOfferEligible,
         storyAction: run.storyAction,
         planClips: (plan) => this.active?.analysis?.planClips(plan),
       };
@@ -999,8 +1194,15 @@ export class TurnRunner {
         run.mode === "story" && run.story
           ? `\n\n${renderStoryBlocks(await this.storyBlockInput(run, setup, run.story))}`
           : "";
-      // Earlier turns the user reverted since the Director's session last saw this chat: their edits are gone.
+      // The turn may offer Story Mode (the tool is there): its block says when that is what the user's request is,
+      // and takes precedence over the plan-approval block. A chat that already declined one is told so in words.
+      const offerBlocks = run.storyOfferEligible ? `\n\n${renderStoryOfferBlock()}` : "";
       const chatState = this.chats.get(run.chatId);
+      const declinedBlocks =
+        chatState?.chat.storyDeclined === true && run.mode === "normal"
+          ? `\n\n${renderStoryDeclinedBlock()}`
+          : "";
+      // Earlier turns the user reverted since the Director's session last saw this chat: their edits are gone.
       const revertedBlock = chatState
         ? renderRevertedTurns(
             revertedSinceLastPrompt(chatState.turns, chatState.messages, run.turn.id),
@@ -1016,7 +1218,7 @@ export class TurnRunner {
         setup.execution.budget.qaPasses > 0 &&
         qaApplies(run.mode, run.storyAction);
       const promptPromise = promptDirector(
-        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage)}${intentBlock ? `\n\n${intentBlock}` : ""}${planBlocks}${canvasBlock}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
+        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage)}${intentBlock ? `\n\n${intentBlock}` : ""}${planBlocks}${offerBlocks}${declinedBlocks}${canvasBlock}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
       );
       run.markPromptStarted();
       let outcome = await promptPromise;
@@ -1231,14 +1433,47 @@ export class TurnRunner {
     if (!run || run.chatId !== chatId || run.finalizing)
       return { text: "There is no running turn for this tool call.", isError: true };
     const refusal =
-      qaPhaseRefusal(run.qaPhase, name) ?? intentRefusal(run.intent, name, this.planProposed(run));
+      qaPhaseRefusal(run.qaPhase, name) ??
+      intentRefusal(run.intent, name, this.planProposed(run), run.storyOffer !== null);
     if (refusal) return { text: refusal, isError: true };
     // A reused session keeps its old tool list: propose_plan is refused unless this turn actually offers it.
-    if (name === TOOL_NAMES.propose && (caller !== "director" || !this.planProposalOffered(run)))
+    if (
+      name === TOOL_NAMES.propose &&
+      (caller !== "director" || !this.planProposalOffered(run) || run.storyOffer !== null)
+    )
       return {
         text: "Proposing a plan is not available in this turn: do the work, or finish with your reply.",
         isError: true,
       };
+    if (name === TOOL_NAMES.offerStory) {
+      if (caller !== "director" || !run.storyOfferEligible)
+        return {
+          text: "Offering Story Mode is not available in this turn: do the work, or finish with your reply.",
+          isError: true,
+        };
+      if (run.storyOffer)
+        return {
+          text: "Story Mode is already offered in this turn: end it with a short reply about the offer.",
+          isError: true,
+        };
+      const parsed = parseStoryOfferArgs(args);
+      if (!parsed.ok) return { text: parsed.message, isError: true };
+      const offer: StoryOffer = {
+        id: this.ids(),
+        chapters: parsed.value.chapters,
+        state: "pending",
+        requestedAt: this.now(),
+      };
+      run.storyOffer = offer;
+      await this.chats.emit(chatId, {
+        type: "storyOffer.updated",
+        messageId: run.assistantMessage.id,
+        offer,
+      });
+      return {
+        text: `The Story Mode offer with ${offer.chapters.length} chapters is on screen: the user can open the Story workspace or decline (labelled in the user's language; do not quote button names). Every project-changing tool is refused for the rest of this turn — write one or two sentences about what the story would do with these chapters, in the user's language, and end the turn.`,
+      };
+    }
     if (isQaToolName(name)) {
       if (!run.qa) return { text: "Render QA is not available in this runtime.", isError: true };
       return run.qa.execute(caller, name, args, signal);

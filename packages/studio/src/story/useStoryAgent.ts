@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import type { StoryAction } from "@hyperframes/agent-protocol";
 import type { ActionResult } from "../agent/agentSettingsSlice";
 import { t } from "../i18n";
 import type { AgentState, AgentStore } from "../agent/agentStore";
@@ -23,6 +24,22 @@ export function agentBlocker(agent: StoryAgent): string | null {
   if (!agent.available) return t("story.agent.unavailable");
   if (agent.busy) return t("story.agent.working");
   if (agent.pending) return t("story.agent.starting");
+  return null;
+}
+
+/** Why Review/Build cannot run now, or null when they can. */
+export function actionBlocker(
+  action: StoryAction,
+  agent: StoryAgent,
+  chapters: number,
+): string | null {
+  const busy = agentBlocker(agent);
+  if (busy) return busy;
+  if (chapters === 0) {
+    return action === "build"
+      ? t("story.toolbar.addChapterFirst")
+      : t("story.toolbar.nothingToReview");
+  }
   return null;
 }
 

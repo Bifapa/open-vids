@@ -117,6 +117,14 @@ export function isLibraryPath(path: string): boolean {
   return segments[0] !== "renders" && !segments.some((segment) => segment.startsWith("."));
 }
 
+/** The project has footage, pictures or music in its library (fonts alone are not material for a story). */
+export function hasProjectMedia(paths: readonly string[]): boolean {
+  return paths.some((path) => {
+    const kind = mediaKindOf(path);
+    return kind !== null && kind !== "font" && isLibraryPath(path);
+  });
+}
+
 export function buildMediaItems(sources: MediaSources): MediaItem[] {
   const byPath = new Map(sources.provenance.map((record) => [record.asset, record]));
   const items: MediaItem[] = [];

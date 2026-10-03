@@ -147,6 +147,21 @@ export class ChatService {
     await this.emit(chatId, { type: "chat.updated", chat });
   }
 
+  /**
+   * Records that the user declined Story Mode in this chat: the runtime never offers it here again and tells the
+   * Director so. Durable on the chat, like the offer cards themselves.
+   */
+  async setStoryDeclined(chatId: string): Promise<void> {
+    const record = this.chats.get(chatId);
+    if (!record) return;
+    const current = record.state.chat;
+    if (current.storyDeclined === true) return;
+    await this.emit(chatId, {
+      type: "chat.updated",
+      chat: { ...current, storyDeclined: true, updatedAt: this.now() },
+    });
+  }
+
   async markWorking(chatId: string, prompt: string): Promise<ChatSummary> {
     const record = this.chats.get(chatId);
     if (!record) throw new Error("Chat does not exist");
