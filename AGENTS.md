@@ -11,6 +11,7 @@ OpenVids is a standalone, agent-native desktop video editor derived from an init
   - Project and source files on disk are the single source of truth.
   - Hard kills (SIGKILL, crash) are recovered, never cleaned up by handlers: history keeps open agent windows in `<history home>/open-windows.json` and files a dead owner's writes to the turn's own entry on the next start (so `Revert this turn` still works); the Studio server sweeps `renders/work-*` and `.*.hf-transaction-*` at start and the engine kills Chrome whose owner died (`<tmp>/hyperframes-browsers/<pid>.json`, `sweepOrphanBrowsers`). Keep new long-lived state recoverable the same way.
   - Anonymous usage statistics are sent by the Tauri shell only (`apps/desktop/src-tauri/src/telemetry.rs`, to Umami; gated by `telemetry.enabled`, `DO_NOT_TRACK`, `OPENVIDS_TELEMETRY`); Studio, `studio-server`, `agent-runtime` and `cli` never send them, and a new event or field lands only together with the README's "Usage statistics" section.
+  - Bug reports are an explicit user action from the Tauri shell only (`apps/desktop/src-tauri/src/report.rs`, window label `report`, to `https://openvids.ai/api/reports`): text, screenshots, an optional email and the redacted log tail leave the machine, the email and logs are never public, the text and screenshots become a public GitHub issue, and the telemetry preference/`DO_NOT_TRACK` do not apply to them.
 
 ## Package Manager & Commands
 

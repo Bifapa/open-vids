@@ -28,6 +28,7 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 
 use super::coded_error::CodedError;
+use super::logfile;
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(25);
 
@@ -111,6 +112,7 @@ fn spawn() -> Result<Running, CodedError> {
         std::thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 eprintln!("[home-agent] {line}");
+                logfile::agent(&line);
             }
         });
     }
@@ -127,6 +129,7 @@ fn spawn() -> Result<Running, CodedError> {
                     }
                 }
                 eprintln!("[home-agent] {line}");
+                logfile::agent(&line);
             }
         });
     }
@@ -205,9 +208,35 @@ fn request(
     path: &str,
     body: Option<&[u8]>,
 ) -> std::io::Result<(u16, Vec<u8>)> {
+    request_with_timeout(running, method, path, body, Duration::from_secs(30))
+}
+
+/// `GET /v1/settings` when the runtime is already up, `None` when it is not.
+/// The bug reporter (`report.rs`) uses this to describe the user's providers
+/// and models; it must never start the runtime just to do so, and must never
+/// wait long.
+pub fn settings_if_running(timeout: Duration) -> Option<Vec<u8>> {
+    let mut slot = RUNTIME.lock().ok()?;
+    let running = slot.as_mut()?;
+    if !matches!(running.child.try_wait(), Ok(None)) {
+        return None;
+    }
+    request_with_timeout(running, "GET", "/v1/settings", None, timeout)
+        .ok()
+        .filter(|(status, _)| *status == 200)
+        .map(|(_, body)| body)
+}
+
+fn request_with_timeout(
+    running: &Running,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+    read_timeout: Duration,
+) -> std::io::Result<(u16, Vec<u8>)> {
     let mut stream = TcpStream::connect(("127.0.0.1", running.port))?;
-    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+    stream.set_read_timeout(Some(read_timeout))?;
+    stream.set_write_timeout(Some(Duration::from_secs(10).min(read_timeout)))?;
     let body = body.unwrap_or_default();
     let head = format!(
         "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -263,6 +292,7 @@ pub fn forward(method: &str, path: &str, body: Option<&[u8]>) -> Result<(u16, Ve
             Ok(result) => return Ok(result),
             Err(error) if attempt == 0 => {
                 eprintln!("[home-agent] request failed, restarting: {error}");
+                logfile::agent(&format!("request failed, restarting: {error}"));
                 if let Some(mut dead) = slot.take() {
                     kill(&mut dead.child);
                 }

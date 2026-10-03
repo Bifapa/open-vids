@@ -60,6 +60,7 @@ mod home_api;
 mod home_auth;
 mod home_create;
 mod home_project;
+mod home_report;
 mod home_research;
 mod home_routes;
 mod home_system;
@@ -68,10 +69,12 @@ mod i18n;
 mod install_job;
 mod intake;
 mod locales;
+mod logfile;
 mod prefs;
 mod project;
 mod project_meta;
 mod recents;
+mod report;
 mod research_policy;
 mod sidecar;
 mod structure;
@@ -126,6 +129,7 @@ struct AppState {
 
 fn log_line(message: &str) {
     eprintln!("[openvids] {message}");
+    logfile::shell(message);
 }
 
 // ── Startup arguments ───────────────────────────────────────────────────────
@@ -243,7 +247,10 @@ fn open_project(
                 // The home server stays up — only the Studio sidecar restarts.
                 state.studio = None;
                 let logger: std::sync::Arc<dyn Fn(&str) + Send + Sync> =
-                    std::sync::Arc::new(|line| eprintln!("{line}"));
+                    std::sync::Arc::new(|line| {
+                        eprintln!("{line}");
+                        logfile::sidecar(line);
+                    });
                 let started = sidecar::start(&launcher, &bun, &cli, &project.dir, logger)
                     .map_err(|e| e.coded())?;
                 let url = sidecar::studio_url(
@@ -443,8 +450,23 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         true,
         None::<&str>,
     )?;
-    let help =
-        Submenu::with_id_and_items(app, "help", i18n::t("menu.help.title"), true, &[&welcome])?;
+    // Help › Report a Problem…: the separate, non-blocking report window
+    // (`report.rs`). The window itself talks plain HTTP to this app's home
+    // server, so the menu only asks for it to be opened.
+    let report_problem = MenuItem::with_id(
+        app,
+        "report_problem",
+        i18n::t("menu.help.reportProblem"),
+        true,
+        None::<&str>,
+    )?;
+    let help = Submenu::with_id_and_items(
+        app,
+        "help",
+        i18n::t("menu.help.title"),
+        true,
+        &[&welcome, &report_problem],
+    )?;
 
     Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window, &help])
 }
@@ -457,10 +479,10 @@ fn apply_language(app: &tauri::AppHandle) {
     match build_menu(app) {
         Ok(menu) => {
             if let Err(error) = app.set_menu(menu) {
-                eprintln!("[openvids] could not apply the menu language: {error}");
+                log_line(&format!("could not apply the menu language: {error}"));
             }
         }
-        Err(error) => eprintln!("[openvids] could not rebuild the menu: {error}"),
+        Err(error) => log_line(&format!("could not rebuild the menu: {error}")),
     }
 }
 
@@ -490,13 +512,16 @@ pub fn run() {
             if event.id().as_ref() == "welcome" {
                 show_onboarding(app);
             }
+            if event.id().as_ref() == "report_problem" {
+                report::open_window("menu");
+            }
             if event.id().as_ref() == "check_updates" {
                 check_for_updates(app);
             }
             if event.id().as_ref() == "reload" {
                 if let Some(window) = app.get_webview_window("main") {
                     if let Err(error) = window.reload() {
-                        eprintln!("[openvids] could not reload the window: {error}");
+                        log_line(&format!("could not reload the window: {error}"));
                     }
                 }
             }
@@ -504,6 +529,23 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let dev = cfg!(debug_assertions);
+            // The persistent log starts first: everything below (and the
+            // sidecar and agent runtimes later) writes through it.
+            logfile::init(
+                handle
+                    .path()
+                    .app_log_dir()
+                    .unwrap_or_else(|_| std::env::temp_dir().join("openvids-logs")),
+            );
+            // Every session opens with one line, so a bug report always
+            // carries at least the version and platform it came from.
+            logfile::shell(&format!(
+                "OpenVids {} started ({} {}, {} build)",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+                std::env::consts::ARCH,
+                if dev { "debug" } else { "release" }
+            ));
 
             // The home server starts first: the window always opens on it,
             // and it outlives every project so "Show All Projects" is a
@@ -649,6 +691,7 @@ pub fn run() {
                 }
             };
             state.home_origin = state.home.origin();
+            report::init(&handle, &state.home_origin);
             let initial_url = state.home_origin.clone();
 
             let _ = APP_FOR_HOME_CLEANUP.set(Mutex::new(Some(handle.clone())));
@@ -701,7 +744,7 @@ pub fn run() {
                     if let Ok(url) = home_api::parse_external_url(url.as_str()) {
                         std::thread::spawn(move || {
                             if let Err(err) = home_api::open_external(&url) {
-                                eprintln!("[shell] could not open the browser: {err}");
+                                log_line(&format!("could not open the browser: {err}"));
                             }
                         });
                     }
@@ -849,8 +892,9 @@ fn home_opener(app: tauri::AppHandle) -> home_routes::Opener {
 }
 
 /// The native window theme for the preferences: fixed for Dark / Light,
-/// following macOS for Match system.
-fn window_theme(preferences: &serde_json::Value) -> Option<tauri::Theme> {
+/// following macOS for Match system. The report window (`report.rs`) uses it
+/// too, so every shell window follows the same preference.
+pub(crate) fn window_theme(preferences: &serde_json::Value) -> Option<tauri::Theme> {
     match prefs::theme(preferences) {
         "dark" => Some(tauri::Theme::Dark),
         "light" => Some(tauri::Theme::Light),
@@ -858,9 +902,10 @@ fn window_theme(preferences: &serde_json::Value) -> Option<tauri::Theme> {
     }
 }
 
-/// `dark` or `light` for Studio's first paint (`openvidsTheme`): the
-/// preference, or for Match system the appearance macOS reports now.
-fn resolved_theme(app: &tauri::AppHandle) -> &'static str {
+/// `dark` or `light` for Studio's first paint (`openvidsTheme`) and for the
+/// report page's boot state: the preference, or for Match system the
+/// appearance macOS reports now.
+pub(crate) fn resolved_theme(app: &tauri::AppHandle) -> &'static str {
     match prefs::theme(&prefs::load(&prefs::prefs_path())) {
         "light" => "light",
         "dark" => "dark",
@@ -915,7 +960,7 @@ fn show_home(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         if let Ok(url) = origin.parse() {
             if let Err(error) = window.navigate(url) {
-                eprintln!("[openvids] could not show the home screen: {error}");
+                log_line(&format!("could not show the home screen: {error}"));
             }
         }
     }

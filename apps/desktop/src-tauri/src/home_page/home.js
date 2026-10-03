@@ -75,6 +75,7 @@
   $("#settingsBtn").innerHTML = ic("settings");
   $("#settingsBtn").setAttribute("aria-haspopup", "dialog");
   $("#settingsBtn").setAttribute("aria-expanded", "false");
+  $("#reportBtn").innerHTML = ic("bug");
   /* The texts drawn from script, at load and again when the language changes. The tooltips (data-tip) are read
      by the tooltip layer, so they are set here from data-tip-i18n. */
   function paintChrome() {
@@ -1284,6 +1285,10 @@
   }
   $("#settingsBtn").addEventListener("click", () =>
     openSettings($("#settingsBtn"), settingsSection()),
+  );
+  /* Report a problem: a window of its own (the shell opens or focuses it), so the page stays usable beside it. */
+  $("#reportBtn").addEventListener("click", () =>
+    api("/api/report/open", { context: "projects" }).catch(fail("home.error.reportOpen")),
   );
 
   /* ---------- events ---------- */

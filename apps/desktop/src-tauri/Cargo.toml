@@ -28,9 +28,17 @@ trash = "5"
 url = "2"
 tauri-plugin-updater = "2"
 semver = "1"
-# The usage statistics POST (telemetry.rs): a small blocking client on its own
-# thread, rustls with ring (already in the tree via the updater) and Mozilla's roots.
+# The usage statistics POST (telemetry.rs) and the bug-report upload
+# (report.rs): a small blocking client on its own thread, rustls with ring
+# (already in the tree via the updater) and Mozilla's roots.
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+# Bug reports: the proof-of-work hash (report.rs) and the gzipped log part.
+# flate2's pure-Rust backend keeps the build free of a C zlib dependency.
+sha2 = "0.10"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# Client-side log redaction (report.rs): a dozen patterns for keys, tokens,
+# JWTs and emails. Already in the tree via Tauri.
+regex = "1"
 
 [target.'cfg(unix)'.dependencies]
 # killpg, for reaping the sidecar's whole process group. See sidecar::terminate.

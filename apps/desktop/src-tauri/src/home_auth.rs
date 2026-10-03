@@ -101,11 +101,36 @@ impl Head {
 
 /// Whether this request needs the token: every `/api` request plus any
 /// mutating method. Plain page/asset/thumbnail GETs stay open.
+///
+/// One deliberate exception: `POST /api/report/open`, which the Studio
+/// sidecar's page calls (it has no token — it is a different loopback origin)
+/// to open or focus the bug-report window. It only opens a window: no data in
+/// or out. `origin_allowed` still demands a loopback origin for it, so a
+/// visited website cannot reach even this route.
 pub fn requires_token(method: &str, path: &str) -> bool {
+    if is_report_open(method, path) {
+        return false;
+    }
     if path.starts_with("/api/") {
         return true;
     }
     !method.eq_ignore_ascii_case("GET") && !method.eq_ignore_ascii_case("HEAD")
+}
+
+fn is_report_open(method: &str, path: &str) -> bool {
+    method.eq_ignore_ascii_case("POST") && path == "/api/report/open"
+}
+
+/// An `http://127.0.0.1:<port>` or `http://localhost:<port>` origin — any
+/// port, because the Studio sidecar runs on its own.
+fn loopback_origin(origin: &str) -> bool {
+    url::Url::parse(origin)
+        .map(|url| {
+            url.scheme() == "http"
+                && matches!(url.host_str(), Some("127.0.0.1") | Some("localhost"))
+                && url.port().is_some()
+        })
+        .unwrap_or(false)
 }
 
 /// Check `Host`/`Origin` scoping for `port`.
@@ -115,6 +140,8 @@ pub fn requires_token(method: &str, path: &str) -> bool {
 ///   the token still guards mutations.
 /// - A present Origin must equal the server's own origin. Plain navigations
 ///   and `<img>` loads send no Origin and pass.
+/// - The one exception is `POST /api/report/open`: its Origin may be any
+///   loopback origin (the Studio sidecar's page calls it cross-port).
 pub fn origin_allowed(head: &Head, port: u16) -> bool {
     if let Some(host) = head.header("host") {
         let host = host.trim().to_lowercase();
@@ -125,6 +152,9 @@ pub fn origin_allowed(head: &Head, port: u16) -> bool {
     }
     if let Some(origin) = head.header("origin") {
         let origin = origin.trim().to_lowercase();
+        if is_report_open(&head.method, &head.path) {
+            return loopback_origin(&origin);
+        }
         let local = [
             format!("http://127.0.0.1:{port}"),
             format!("http://localhost:{port}"),
@@ -168,6 +198,83 @@ mod tests {
         assert!(requires_token("DELETE", "/api/whatever"));
         assert!(!requires_token("GET", "/"));
         assert!(!requires_token("GET", "/thumb/abc.jpg"));
+    }
+
+    #[test]
+    fn only_the_report_open_route_is_exempt_from_the_token() {
+        assert!(!requires_token("POST", "/api/report/open"));
+        assert!(
+            requires_token("GET", "/api/report/open"),
+            "the method matters"
+        );
+        assert!(requires_token("POST", "/api/report/submit"));
+        assert!(requires_token("POST", "/api/report/draft"));
+        assert!(requires_token("POST", "/api/report/open/x"));
+    }
+
+    #[test]
+    fn the_report_open_exemption_accepts_loopback_origins_only() {
+        let port = 5199;
+        let studio = "http://127.0.0.1:5333";
+        assert!(origin_allowed(
+            &head(
+                "POST",
+                "/api/report/open",
+                &[("host", "127.0.0.1:5199"), ("origin", studio)]
+            ),
+            port
+        ));
+        assert!(origin_allowed(
+            &head(
+                "POST",
+                "/api/report/open",
+                &[
+                    ("host", "localhost:5199"),
+                    ("origin", "http://localhost:8080")
+                ]
+            ),
+            port
+        ));
+        // A foreign website cannot open the window...
+        for origin in ["https://evil.com", "http://127.0.0.1.evil.com", "null"] {
+            assert!(
+                !origin_allowed(
+                    &head(
+                        "POST",
+                        "/api/report/open",
+                        &[("host", "127.0.0.1:5199"), ("origin", origin)]
+                    ),
+                    port
+                ),
+                "{origin} must be rejected"
+            );
+        }
+        // ...and the exemption does not leak into any other route.
+        assert!(!origin_allowed(
+            &head(
+                "POST",
+                "/api/report/submit",
+                &[("host", "127.0.0.1:5199"), ("origin", studio)]
+            ),
+            port
+        ));
+        assert!(!origin_allowed(
+            &head(
+                "GET",
+                "/api/report/open",
+                &[("host", "127.0.0.1:5199"), ("origin", studio)]
+            ),
+            port
+        ));
+        // A foreign Host is always refused.
+        assert!(!origin_allowed(
+            &head(
+                "POST",
+                "/api/report/open",
+                &[("host", "evil.com"), ("origin", studio)]
+            ),
+            port
+        ));
     }
 
     #[test]

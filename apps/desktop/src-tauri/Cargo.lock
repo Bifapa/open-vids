@@ -2516,15 +2516,18 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 name = "openvids-desktop"
 version = "0.2.0"
 dependencies = [
+ "flate2",
  "getrandom 0.3.4",
  "libc",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
+ "regex",
  "rfd",
  "semver",
  "serde",
  "serde_json",
+ "sha2",
  "sys-locale",
  "tauri",
  "tauri-build",

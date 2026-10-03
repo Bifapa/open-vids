@@ -214,3 +214,27 @@ it("keeps the logo when the OpenVids home param fails validation", () => {
   expect(host.querySelector('[data-testid="openvids-back"]')).toBeNull();
   expect(host.querySelector('[aria-label="OpenVids"]')).not.toBeNull();
 });
+
+it("offers Report a problem only inside the desktop shell, and asks the home server to open its window", () => {
+  const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+  vi.stubGlobal("fetch", fetchMock);
+  try {
+    expect(mount().querySelector('[data-testid="header-report-problem"]')).toBeNull();
+    act(() => mounted?.root.unmount());
+    mounted?.host.remove();
+    mounted = null;
+
+    const host = mount("?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035");
+    const button = query(host, '[data-testid="header-report-problem"]');
+    expect(button.getAttribute("aria-label")).toBe("Report a problem");
+    act(() => button.click());
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:57035/api/report/open", {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "content-type": "text/plain" },
+      body: JSON.stringify({ context: "studio" }),
+    });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

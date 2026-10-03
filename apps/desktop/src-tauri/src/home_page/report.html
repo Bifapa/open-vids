@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="report.page.title">Report a problem — OpenVids</title>
+    <link rel="stylesheet" href="/assets/ov.css" />
+    <link rel="stylesheet" href="/assets/report.css" />
+    <script>
+      window.OV_TOKEN = "__OPENVids_TOKEN__";
+      window.OV_LOCALES = "__OV_LOCALES__";
+      window.OV_BOOT = "__OV_BOOT__";
+    </script>
+    <script src="/assets/shared.js"></script>
+    <script src="/assets/i18n.js"></script>
+    <script>
+      /* Theme and language the app shows, before first paint: the resolved values the server injects (OV_BOOT),
+         else ?theme= / ?language= (the raw preferences). The server also injects the catalog. report.js reads
+         the preferences itself for anything neither provides. */
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var boot = window.OV_BOOT && typeof window.OV_BOOT === "object" ? window.OV_BOOT : {};
+        OV.applyTheme(boot.theme || q.get("theme") || "system");
+        OV.applyDensity(q.get("density") || "default");
+        OVI18N.init(
+          boot.languagePreference || q.get("language") || "system",
+          window.OV_LOCALES && typeof window.OV_LOCALES === "object"
+            ? window.OV_LOCALES
+            : undefined,
+        );
+      })();
+    </script>
+  </head>
+  <body class="rp-body">
+    <div class="rp" id="rp">
+      <div class="rp-scroll" id="rpScroll">
+        <div class="rp-page">
+          <header class="rp-head">
+            <div class="rp-head-text">
+              <h1 class="rp-title" id="rpTitle" data-i18n="report.heading">Report a problem</h1>
+              <p class="rp-lede" data-i18n="report.lede">
+                Tell us what went wrong. This window stays out of the way, so you can keep working.
+              </p>
+            </div>
+            <label class="rp-pin">
+              <span data-i18n="report.pin.label">Always on top</span>
+              <button
+                type="button"
+                class="sw"
+                role="switch"
+                id="rpPin"
+                aria-checked="false"
+              ></button>
+            </label>
+          </header>
+
+          <form class="rp-form" id="rpForm" novalidate autocomplete="off">
+            <div class="rp-field">
+              <div class="rp-label-row">
+                <label class="rp-label" for="rpDesc" data-i18n="report.description.label"
+                  >What happened?</label
+                >
+                <span class="rp-count" id="rpDescCount" hidden></span>
+              </div>
+              <textarea
+                class="input rp-text rp-text-lg"
+                id="rpDesc"
+                rows="5"
+                maxlength="8000"
+                required
+                aria-describedby="rpDescHint"
+                data-i18n-placeholder="report.description.placeholder"
+                placeholder="What did you do, what did you expect, and what happened instead?"
+              ></textarea>
+              <p class="rp-hint is-error" id="rpDescHint" hidden></p>
+            </div>
+
+            <div class="rp-field">
+              <div class="rp-label-row">
+                <label class="rp-label" for="rpSteps" data-i18n="report.steps.label"
+                  >Steps to reproduce</label
+                >
+                <span class="rp-opt" data-i18n="report.optional">optional</span>
+              </div>
+              <textarea
+                class="input rp-text"
+                id="rpSteps"
+                rows="3"
+                maxlength="4000"
+                data-i18n-placeholder="report.steps.placeholder"
+                placeholder="1. Open a project&#10;2. …"
+              ></textarea>
+            </div>
+
+            <div class="rp-field">
+              <div class="rp-label-row">
+                <label class="rp-label" for="rpEmail" data-i18n="report.email.label"
+                  >Email for follow-up</label
+                >
+                <span class="rp-opt" data-i18n="report.optional">optional</span>
+              </div>
+              <input
+                class="input"
+                id="rpEmail"
+                type="email"
+                maxlength="200"
+                spellcheck="false"
+                autocapitalize="off"
+                aria-describedby="rpEmailHint"
+                data-i18n-placeholder="report.email.placeholder"
+                placeholder="you@example.com"
+              />
+              <p class="rp-hint is-error" id="rpEmailHint" hidden></p>
+            </div>
+
+            <div class="rp-field" id="rpShotsField">
+              <div class="rp-label-row">
+                <span class="rp-label" id="rpShotsLabel" data-i18n="report.shots.label"
+                  >Screenshots</span
+                >
+                <span class="rp-opt" id="rpShotsCount"></span>
+              </div>
+              <p class="rp-shots-empty" id="rpShotsEmpty" data-i18n="report.shots.empty">
+                Paste an image with ⌘V, drop files here, or use the buttons below.
+              </p>
+              <ul class="rp-shots" id="rpShots" aria-labelledby="rpShotsLabel"></ul>
+              <ul class="rp-errors" id="rpShotErrors" role="alert"></ul>
+              <div class="rp-shot-actions">
+                <button type="button" class="btn btn-sm" id="rpPick"></button>
+                <button type="button" class="btn btn-sm" id="rpCapture"></button>
+                <label class="rp-check">
+                  <input type="checkbox" id="rpHide" checked />
+                  <span data-i18n="report.shots.hideWindow">Hide this window while capturing</span>
+                </label>
+              </div>
+            </div>
+          </form>
+
+          <section class="rp-done" id="rpDone" hidden aria-live="polite">
+            <span class="rp-done-ic" aria-hidden="true" id="rpDoneIc"></span>
+            <h2 class="rp-done-title" data-i18n="report.done.title">Report sent</h2>
+            <p class="rp-done-text" id="rpDoneText"></p>
+            <button type="button" class="btn" id="rpNew" data-i18n="report.new">New report</button>
+          </section>
+        </div>
+      </div>
+
+      <footer class="rp-foot" id="rpFoot">
+        <div class="rp-banner-slot" id="rpBanner" aria-live="polite"></div>
+        <div class="rp-foot-row">
+          <p class="rp-attached" data-i18n="report.attached">
+            Logs and system information are attached automatically.
+          </p>
+          <button type="button" class="btn btn-primary btn-lg rp-send" id="rpSend"></button>
+        </div>
+      </footer>
+
+      <div class="rp-drop" id="rpDrop" hidden aria-hidden="true">
+        <span data-i18n="report.shots.drop">Drop images to attach them</span>
+      </div>
+    </div>
+    <script>
+      OV.mountSprite();
+    </script>
+    <script src="/assets/report.js"></script>
+  </body>
+</html>

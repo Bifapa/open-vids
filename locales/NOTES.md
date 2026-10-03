@@ -1281,3 +1281,21 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 ## dropdowns-open
 
 - `renders.error.openFailed` — Shown in the Renders panel when opening a finished render fails (POST /renders/:filename/open).
+
+## bugreport-ui
+
+- `report.page.title` — Document title of the report window page (the native window title is a separate shell string).
+- `report.description.count` — Character counter next to the description field: {count} typed of {max}.
+- `report.shots.count` — How many screenshots are attached of the maximum.
+- `report.shots.error.too_large` — {name} is a file name; 8 MB is the server limit per screenshot.
+- `report.error.rateLimited` — {minutes} is a whole number of minutes (plural).
+- `report.done.published` — <a> wraps a link to the GitHub issue; keep the tag. {number} is the issue number.
+- `report.error.kept` — Shown under a failed send: the text and screenshots are still in the window.
+- `home.toolbar.report` — Tooltip and aria-label of the Projects toolbar button that opens the report window.
+- `shell.header.reportProblem` — Tooltip and aria-label of the Studio header button that opens the report window.
+
+## bugreport-shell
+
+- `menu.help.reportProblem` — Help submenu item that opens the bug-report window (Rust, apps/desktop/src-tauri/src/lib.rs).
+- `report.window.title` — Native title of the bug-report window (Rust, report.rs). Not the page heading — that is report.heading.
+- `dialog.reportPick.title` — Native title of the image picker behind POST /api/report/screenshots/pick (Rust, report.rs).

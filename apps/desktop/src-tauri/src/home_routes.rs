@@ -54,10 +54,14 @@ use super::recents::RecentsStore;
 use super::structure::validate_structure;
 const PAGE: &str = include_str!("home_page/index.html");
 const SETTINGS_PAGE: &str = include_str!("home_page/settings.html");
+const REPORT_PAGE: &str = include_str!("home_page/report.html");
 const TOKEN_PLACEHOLDER: &str = "__OPENVids_TOKEN__";
 const BOOT_PLACEHOLDER: &str = "\"__OV_BOOT__\"";
 const LOCALES_PLACEHOLDER: &str = "\"__OV_LOCALES__\"";
 const BODY_LIMIT: usize = 64 * 1024;
+/// The raw-screenshot upload is the one route that legitimately carries an
+/// image (8 MB) plus framing; no other route reads more than `BODY_LIMIT`.
+const SCREENSHOT_BODY_LIMIT: usize = 9 * 1024 * 1024;
 
 /// What the background open is doing (polled by the page's loading state).
 #[derive(Debug, Clone, Default)]
@@ -162,7 +166,7 @@ fn read_request(stream: &mut TcpStream) -> Option<(Head, Vec<u8>)> {
                 .header("content-length")
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(0)
-                .min(BODY_LIMIT);
+                .min(body_limit(&head));
             let mut body = raw[end..].to_vec();
             while body.len() < content_len {
                 let n = stream.read(&mut buf).ok()?;
@@ -185,6 +189,18 @@ fn find_header_end(raw: &[u8]) -> Option<usize> {
     raw.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4)
 }
 
+/// How much of the body to buffer for this request. Everything stays at the
+/// 64 KiB default except the one route that uploads a whole image.
+fn body_limit(head: &Head) -> usize {
+    let upload = head.method.eq_ignore_ascii_case("POST")
+        && percent_decode(&head.path) == "/api/report/screenshots";
+    if upload {
+        SCREENSHOT_BODY_LIMIT
+    } else {
+        BODY_LIMIT
+    }
+}
+
 // ── Routing ─────────────────────────────────────────────────────────────────
 
 fn route(
@@ -200,6 +216,7 @@ fn route(
     match (method.as_str(), path.as_str()) {
         ("GET", "/") | ("GET", "/index.html") => serve_page(s, state, token),
         ("GET", "/settings") => serve_settings_page(s, token),
+        ("GET", "/report") => serve_report_page(s, token),
         ("GET", p) if p.starts_with("/assets/") => serve_asset(s, &p["/assets/".len()..]),
         ("GET", "/locales/index.json") => respond(
             s,
@@ -240,6 +257,9 @@ fn route(
         }
         (_, p) if super::home_research::owns(p) => {
             super::home_research::handle(s, &method, p, body)
+        }
+        (_, p) if super::home_report::owns(p) => {
+            super::home_report::handle(s, &method, p, body, head)
         }
         (_, p) if super::home_system::owns(p) => super::home_system::handle(s, &method, p),
         (_, p) if super::home_update::owns(p) => super::home_update::handle(s, &method, p, body),
@@ -305,6 +325,28 @@ fn serve_settings_page(stream: &mut TcpStream, token: &str) {
     respond(stream, 200, "text/html; charset=utf-8", page.as_bytes());
 }
 
+/// The report window document: token, the locale catalog and the boot object
+/// (`OV_BOOT`: resolved theme, resolved language, raw preference). Rendered
+/// from Rust because the window has no query string to inherit from the page
+/// underneath it.
+fn serve_report_page(stream: &mut TcpStream, token: &str) {
+    let page = render_report_page(token);
+    respond(stream, 200, "text/html; charset=utf-8", page.as_bytes());
+}
+
+fn render_report_page(token: &str) -> String {
+    let prefs = super::prefs::load(&super::prefs::prefs_path());
+    // `<` cannot close the inline script: JSON-escape it.
+    let locales = boot_locales(&prefs).to_string().replace('<', "\\u003c");
+    let boot = super::report::boot_json()
+        .to_string()
+        .replace('<', "\\u003c");
+    REPORT_PAGE
+        .replace(TOKEN_PLACEHOLDER, token)
+        .replace(LOCALES_PLACEHOLDER, &locales)
+        .replace(BOOT_PLACEHOLDER, &boot)
+}
+
 /// What the pages get injected so the first paint is already translated:
 /// the language list plus `en` and the preferred locale's messages.
 fn boot_locales(prefs: &serde_json::Value) -> serde_json::Value {
@@ -347,6 +389,7 @@ fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
         "home.css" => (CSS, include_bytes!("home_page/home.css")),
         "composer.css" => (CSS, include_bytes!("home_page/composer.css")),
         "settings.css" => (CSS, include_bytes!("home_page/settings.css")),
+        "report.css" => (CSS, include_bytes!("home_page/report.css")),
         "shared.js" => (JS, include_bytes!("home_page/shared.js")),
         "i18n.js" => (JS, include_bytes!("home_page/i18n.js")),
         "home.js" => (JS, include_bytes!("home_page/home.js")),
@@ -361,6 +404,7 @@ fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
         "settings-assets.js" => (JS, include_bytes!("home_page/settings-assets.js")),
         "settings-execution.js" => (JS, include_bytes!("home_page/settings-execution.js")),
         "settings.js" => (JS, include_bytes!("home_page/settings.js")),
+        "report.js" => (JS, include_bytes!("home_page/report.js")),
         "onboarding.css" => (CSS, include_bytes!("home_page/onboarding.css")),
         "onboarding.js" => (JS, include_bytes!("home_page/onboarding.js")),
         "onboarding-welcome.js" => (JS, include_bytes!("home_page/onboarding-welcome.js")),
@@ -529,7 +573,7 @@ fn content_type_for(name: &str) -> &'static str {
     }
 }
 
-fn percent_decode(path: &str) -> String {
+pub(crate) fn percent_decode(path: &str) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(path.len());
     let mut bytes = path.as_bytes().iter();
     while let Some(&b) = bytes.next() {
@@ -588,6 +632,59 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_the_screenshot_upload_gets_the_large_body_limit() {
+        let head = |method: &str, path: &str| Head {
+            method: method.to_string(),
+            path: path.to_string(),
+            headers: Default::default(),
+        };
+        assert_eq!(
+            body_limit(&head("POST", "/api/report/screenshots")),
+            SCREENSHOT_BODY_LIMIT
+        );
+        assert_eq!(
+            body_limit(&head("POST", "/api/%72eport/screenshots")),
+            SCREENSHOT_BODY_LIMIT,
+            "the decoded path decides, as it does when routing"
+        );
+        for (method, path) in [
+            ("POST", "/api/report/submit"),
+            ("POST", "/api/report/draft"),
+            ("GET", "/api/report/screenshots"),
+            ("POST", "/api/preferences"),
+            ("POST", "/"),
+        ] {
+            assert_eq!(
+                body_limit(&head(method, path)),
+                BODY_LIMIT,
+                "{method} {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_report_page_is_rendered_with_token_locales_and_boot_state() {
+        let page = render_report_page("token-123");
+        for placeholder in ["__OPENVids_TOKEN__", "__OV_LOCALES__", "__OV_BOOT__"] {
+            assert!(
+                !page.contains(placeholder),
+                "{placeholder} left in the page"
+            );
+        }
+        assert!(page.contains("token-123"));
+        assert!(page.contains("window.OV_LOCALES = {"), "{page}");
+        let boot = page
+            .split("window.OV_BOOT = ")
+            .nth(1)
+            .and_then(|rest| rest.split(";\n").next())
+            .expect("the boot assignment");
+        let boot: serde_json::Value = serde_json::from_str(boot).expect("OV_BOOT parses as JSON");
+        assert!(boot["theme"].is_string(), "{boot}");
+        assert!(boot["language"].is_string(), "{boot}");
+        assert!(boot["languagePreference"].is_string(), "{boot}");
+    }
+
+    #[test]
     fn percent_decoding_keeps_utf8() {
         assert_eq!(percent_decode("/thumb/a%20b.jpg"), "/thumb/a b.jpg");
         assert_eq!(percent_decode("/x/%E2%80%94"), "/x/—");
@@ -595,7 +692,7 @@ mod tests {
 
     #[test]
     fn every_asset_the_page_links_is_compiled_in() {
-        for page in [PAGE, SETTINGS_PAGE] {
+        for page in [PAGE, SETTINGS_PAGE, REPORT_PAGE] {
             for chunk in page.split("/assets/").skip(1) {
                 let name: String = chunk
                     .chars()

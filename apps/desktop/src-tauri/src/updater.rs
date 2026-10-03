@@ -532,10 +532,14 @@ fn apply(app: &tauri::AppHandle, generation: u64, update: Update, bytes: Vec<u8>
     match update.install(&bytes) {
         Ok(()) => {
             eprintln!("[openvids] update {} installed, restarting", update.version);
+            crate::logfile::shell(&format!("update {} installed, restarting", update.version));
             match relaunch_after_exit() {
                 Ok(()) => app.exit(0),
                 Err(err) => {
                     eprintln!("[openvids] could not relaunch through LaunchServices ({err}); restarting in place");
+                    crate::logfile::shell(&format!(
+                        "could not relaunch through LaunchServices ({err}); restarting in place"
+                    ));
                     app.request_restart();
                 }
             }
@@ -543,6 +547,7 @@ fn apply(app: &tauri::AppHandle, generation: u64, update: Update, bytes: Vec<u8>
         Err(err) => {
             let err = install_error(&err.to_string());
             eprintln!("[openvids] {err}");
+            crate::logfile::shell(&err.to_string());
             slot().install_failed(generation, &err);
         }
     }

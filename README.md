@@ -105,6 +105,14 @@ The desktop app sends anonymous usage statistics so we can see how many people u
 
 Failed requests are dropped: no retries, nothing queued on disk.
 
+## Bug reports
+
+Help › **Report a Problem…** (`apps/desktop/src-tauri/src/report.rs` plus the home server's `/report` page) opens a separate window that never blocks the editor: the user can keep working, move the window anywhere, and attach screenshots — taken with the native capture tool (region or window, the report window hides itself first) or picked from disk (up to 5, PNG/JPEG/WebP, 8 MB each). Sending is an explicit action, so the telemetry preference and `DO_NOT_TRACK` do not apply to reports. They go to `https://openvids.ai/api/reports` (rate limit, a proof-of-work challenge and a kill switch), which either publishes the report immediately as a public issue in [bazodev/open-vids](https://github.com/bazodev/open-vids/issues) or holds it for moderation.
+
+- **Sent** — the text the user wrote, optionally their email, the screenshots, the last ~1 MB of the app log (`~/Library/Logs/<bundle id>/openvids.log`, where the shell, the Studio server and the agent runtime all write; rotated at 5 MB into `.1`/`.2`) and diagnostics: app version, macOS version, architecture, UI language, the FFmpeg version the CLI's own check reports, and the provider and model names selected in the agent settings — names only, never a key. A random reporter id (rate limiting) is created on the first send in the app's data directory (`~/Library/Application Support/<bundle id>/reporter-id`); it is separate from the statistics installation id.
+- **Private** — the email and the log tail are for triage only: they are never part of the public issue and never sent to the moderation model. The log is redacted on the machine before it leaves (API keys, bearer tokens, JWTs, `key`/`token`/`secret`/`password` values, email addresses, and the home directory shown as `~`) and redacted again on the server.
+- **Public** — the report text and the screenshots become a public GitHub issue when the report is classified as clean, so a screenshot may show anything visible on screen. Draft text and screenshots live in the app's data directory under `report-draft/` until the report is sent.
+
 ## Requirements
 
 - [Bun](https://bun.sh) (package manager and the sidecar JS runtime)

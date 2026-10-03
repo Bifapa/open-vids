@@ -287,6 +287,12 @@ pub fn theme(prefs: &Value) -> &str {
     prefs["theme"].as_str().unwrap_or("system")
 }
 
+/// The `density` preference (`"default"` | `"compact"`), normalized on read.
+/// The report window carries it in its URL like the settings iframe does.
+pub fn density(prefs: &Value) -> &str {
+    prefs["density"].as_str().unwrap_or("default")
+}
+
 pub fn reopen_last(prefs: &Value) -> bool {
     prefs["onLaunch"].as_str() == Some("last")
 }

@@ -13,6 +13,7 @@ import {
   SaveState,
   TitlebarSeparator,
 } from "./shell/TitlebarControls";
+import { ReportProblemButton } from "./shell/ReportProblemButton";
 import { Button, IconButton, OpenvidsLogo, Tooltip } from "./ui";
 
 export interface StudioHeaderProps {
@@ -131,6 +132,7 @@ export function StudioHeader({ onExport }: StudioHeaderProps) {
             onClick={() => openSettings()}
           />
         </Tooltip>
+        {homeOrigin ? <ReportProblemButton homeOrigin={homeOrigin} /> : null}
       </div>
     </header>
   );
