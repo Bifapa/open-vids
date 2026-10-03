@@ -3,9 +3,28 @@ import { describe, expect, it } from "vitest";
 import {
   buildTimelineFileDropPlacements,
   extendCompositionDurationIfNeeded,
+  pickedClipTiming,
   resolveTimelineAssetCompositionSize,
   setCompositionDurationToContent,
 } from "./timelineAssetDrop";
+
+describe("pickedClipTiming", () => {
+  it("starts the media at the pick's in point and is as long as the pick", () => {
+    expect(pickedClipTiming({ start: 42, end: 75 })).toEqual({ mediaStart: 42, duration: 33 });
+  });
+
+  it("works to the centisecond, like every other timing the timeline writes", () => {
+    expect(pickedClipTiming({ start: 0.1, end: 0.2 })).toEqual({ mediaStart: 0.1, duration: 0.1 });
+    expect(pickedClipTiming({ start: 12.344, end: 20.01 })).toEqual({
+      mediaStart: 12.34,
+      duration: 7.67,
+    });
+  });
+
+  it("keeps a pick that begins at the start of the file at media time zero", () => {
+    expect(pickedClipTiming({ start: 0, end: 4 })).toEqual({ mediaStart: 0, duration: 4 });
+  });
+});
 
 describe("setCompositionDurationToContent", () => {
   const src = (dur: number) =>

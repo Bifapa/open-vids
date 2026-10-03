@@ -5,6 +5,7 @@
  */
 
 import type {
+  AssetRange,
   ProjectAsset,
   ProjectSourceEntry,
   SourceAnalysisStatus,
@@ -14,6 +15,7 @@ import type {
 } from "@hyperframes/agent-protocol";
 import { AUDIO_EXT, FONT_EXT, IMAGE_EXT, VIDEO_EXT } from "@hyperframes/core/media-types";
 import { formatBytes, t, type TranslationKey } from "../i18n";
+import { effectivePick } from "./assetRange";
 
 export type MediaKind = "video" | "image" | "audio" | "font";
 export type MediaOrigin = "imported" | "research" | "download";
@@ -35,6 +37,8 @@ export interface MediaItem {
   offline: boolean;
   used: boolean;
   analysis: SourceAnalysisStatus | null;
+  /** The fragment the user picked for the AI to use (video/audio); null: the whole file. */
+  range: AssetRange | null;
 }
 
 export const KIND_ORDER: readonly MediaKind[] = ["video", "image", "audio", "font"];
@@ -87,6 +91,8 @@ export interface MediaSources {
   /** Probe facts from the editing inventory, by path. */
   inventory: ReadonlyMap<string, ProjectAsset>;
   analysis: ReadonlyMap<string, SourceAnalysisStatus>;
+  /** The picked fragments by path. */
+  ranges: ReadonlyMap<string, AssetRange>;
   provenance: readonly ProjectSourceEntry[];
   /** Paths the open timeline or the Story Graph uses. */
   usedPaths: ReadonlySet<string>;
@@ -112,12 +118,13 @@ export function buildMediaItems(sources: MediaSources): MediaItem[] {
     const probe = sources.inventory.get(path);
     const provenance = byPath.get(path) ?? null;
     const analysis = sources.analysis.get(path) ?? null;
+    const duration = probe?.duration ?? analysis?.duration ?? null;
     items.push({
       path,
       name: fileName(path),
       kind,
       bytes: probe?.bytes ?? null,
-      duration: probe?.duration ?? analysis?.duration ?? null,
+      duration,
       width: probe?.width ?? null,
       height: probe?.height ?? null,
       hasAudio: probe?.hasAudio ?? null,
@@ -126,6 +133,10 @@ export function buildMediaItems(sources: MediaSources): MediaItem[] {
       offline: false,
       used: sources.usedPaths.has(path) || (provenance?.usedIn.length ?? 0) > 0,
       analysis,
+      range:
+        kind === "video" || kind === "audio"
+          ? effectivePick(sources.ranges.get(path), duration)
+          : null,
     });
   }
   for (const record of sources.provenance) {
@@ -145,6 +156,7 @@ export function buildMediaItems(sources: MediaSources): MediaItem[] {
       offline: true,
       used: sources.usedPaths.has(record.asset) || record.usedIn.length > 0,
       analysis: sources.analysis.get(record.asset) ?? null,
+      range: null,
     });
   }
   return items;

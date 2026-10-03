@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type {
   AnalysisJob,
+  AssetRange,
   ProjectAsset,
   SourceAnalysisStatus,
   StoryGraph,
@@ -11,6 +12,7 @@ import { deriveUsedPaths } from "../components/sidebar/AssetsTab";
 import { studioStoryStore } from "../story/storyContext";
 import { t } from "../i18n";
 import { useSourcesStore } from "../research/researchContext";
+import { assetRangesStore, refreshAssetRanges, useAssetRanges } from "./assetRangesStore";
 import { mediaClient } from "./mediaClient";
 import {
   analysisRunning,
@@ -85,6 +87,7 @@ export function useMediaLibrary(projectId: string, assets: readonly string[]): M
   const assetsKey = assets.join("|");
   const refresh = useCallback(() => {
     generation.current += 1;
+    refreshAssetRanges();
     const mine = generation.current;
     void Promise.allSettled([
       mediaClient.inventory(projectId),
@@ -106,16 +109,28 @@ export function useMediaLibrary(projectId: string, assets: readonly string[]): M
     refresh();
   }, [refresh, assetsKey]);
 
+  // The picked fragments follow the ranges store (reloaded on focus and after a history step); until it has
+  // answered, the inventory's own copy stands in.
+  const storedRanges = useAssetRanges(projectId);
+  const rangesLoaded = assetRangesStore((state) => state.loaded && state.projectId === projectId);
+  const inventoryRanges = useMemo(() => {
+    const picked = new Map<string, AssetRange>();
+    for (const asset of inventory.values()) if (asset.range) picked.set(asset.path, asset.range);
+    return picked;
+  }, [inventory]);
+  const ranges = rangesLoaded ? storedRanges : inventoryRanges;
+
   const items = useMemo(
     () =>
       buildMediaItems({
         assets,
         inventory,
         analysis,
+        ranges,
         provenance: records ?? [],
         usedPaths,
       }),
-    [assets, inventory, analysis, records, usedPaths],
+    [assets, inventory, analysis, ranges, records, usedPaths],
   );
 
   // An agent (or another window) may be analysing: follow it until nothing runs.

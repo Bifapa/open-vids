@@ -4,11 +4,15 @@
  */
 
 import {
+  isAssetRangesView,
   isRecord,
   readErrorParams,
   type AnalysisJob,
   type AnalysisOverview,
+  type AssetRange,
+  type AssetRangesView,
   type ProjectInventory,
+  type SetAssetRangeRequest,
   type ShotMap,
   type SourceAnalysisStatus,
   type TranscriptView,
@@ -25,6 +29,10 @@ export interface MediaClient {
   shots(projectId: string, source: string): Promise<ShotMap>;
   startAnalysis(projectId: string, source: string): Promise<AnalysisJob>;
   job(projectId: string, jobId: string): Promise<AnalysisJob>;
+  /** The fragments the user picked of the project's video/audio assets, by asset path. */
+  ranges(projectId: string): Promise<AssetRangesView>;
+  /** Picks a fragment of an asset (`null`: use the whole file); answers with every pick as stored. */
+  setRange(projectId: string, path: string, range: AssetRange | null): Promise<AssetRangesView>;
 }
 
 const isInventory = (value: unknown): value is ProjectInventory =>
@@ -95,4 +103,14 @@ export const mediaClient: MediaClient = {
     }),
   job: (projectId, jobId) =>
     request(buildProjectApiPath(projectId, `/analysis/jobs/${encodeURIComponent(jobId)}`), isJob),
+  ranges: (projectId) =>
+    request(buildProjectApiPath(projectId, "/editing/ranges"), isAssetRangesView),
+  setRange: (projectId, path, range) => {
+    const body: SetAssetRangeRequest = { path, range };
+    return request(buildProjectApiPath(projectId, "/editing/ranges"), isAssetRangesView, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
 };

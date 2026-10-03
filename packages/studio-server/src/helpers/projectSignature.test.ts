@@ -83,6 +83,11 @@ describe("history-only tracked paths", () => {
     expect(tracksHistory(".hyperframes/research")).toBe(true);
     expect(affects(".hyperframes/research/provenance.json")).toBe(false);
     expect(tracksHistory(".hyperframes/research/cache/index.json")).toBe(false);
+    // The user's picked fragments roll back with a turn; the media folder holds nothing else tracked.
+    expect(tracksHistory(".hyperframes/media/ranges.json")).toBe(true);
+    expect(tracksHistory(".hyperframes/media")).toBe(true);
+    expect(affects(".hyperframes/media/ranges.json")).toBe(false);
+    expect(tracksHistory(".hyperframes/media/other.json")).toBe(false);
     expect(tracksHistory("assets/research/ocean-1a2b3c4d.mp4")).toBe(true);
   });
 

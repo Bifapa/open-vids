@@ -73,22 +73,23 @@ export function editingToolsFor(
 const CONVENTIONS = `Conventions: all times are seconds on the composition timeline (0 = start). Clip ids come from inspect_timeline and from the results of your own edits; assets are project-relative paths from inspect_project. Track 0 is the A-roll: the main story, audible. Higher tracks are B-roll and overlays (their video is muted; they are drawn on top of lower tracks because newer clips get a higher z-index) and titles. Music and sound effects are audio clips on tracks of their own: music at volume about 0.2–0.4 under speech with a 1–2 s fadeIn/fadeOut, sound effects as loud as they need to be.`;
 
 const EDIT_OPERATIONS_GUIDE = `Operations (each has "op" plus):
-- add_clip: asset, start, track; optional duration (default: rest of the media; 3 s for images), mediaStart (in-point in the source), volume (0–${EDIT_LIMITS.maxVolume}), muted, fit ("contain"|"cover"), frame ({x, y, width, height} in composition pixels, e.g. a logo in a corner; default: a video fills the frame, an image keeps its size, centred), fadeIn/fadeOut (seconds of linear audio/video gain ramp at the clip start/end; use 1–2 s on music beds).
-- add_sequence: asset (video/audio), track, ranges [{from, to}] (source in/out points, up to ${EDIT_LIMITS.sequenceRanges}); optional start (default 0), volume, muted, fit, frame, edgeFade (0–${EDIT_LIMITS.maxEdgeFade} s audio ramp at both edges of every clip, e.g. 0.02 against clicks). Places one clip per range back to back with no gaps and returns all their ids; use it for cutting one long recording, not for placing single clips. Refused if a range runs past the end of the source.
+- add_clip: asset, start, track; optional duration (default: rest of the media — of the user-picked fragment, when there is one —; 3 s for images), mediaStart (in-point in the source; defaults to the user-picked fragment's start), volume (0–${EDIT_LIMITS.maxVolume}), muted, fit ("contain"|"cover"), frame ({x, y, width, height} in composition pixels, e.g. a logo in a corner; default: a video fills the frame, an image keeps its size, centred), fadeIn/fadeOut (seconds of linear audio/video gain ramp at the clip start/end; use 1–2 s on music beds).
+- add_sequence: asset (video/audio), track, ranges [{from, to}] (source in/out points, up to ${EDIT_LIMITS.sequenceRanges}); optional start (default 0), volume, muted, fit, frame, edgeFade (0–${EDIT_LIMITS.maxEdgeFade} s audio ramp at both edges of every clip, e.g. 0.02 against clicks). Places one clip per range back to back with no gaps and returns all their ids; use it for cutting one long recording, not for placing single clips. Refused if a range runs past the end of the source or outside the fragment the user picked.
 - add_text: text, start, duration, track; optional placement ("top"|"center"|"bottom"), size ("small"|"medium"|"large"), color.
 - add_component: name (a block/component from browse_presets), start, track; optional duration.
 - apply_captions: preset (a caption preset from browse_presets), cues [{text, start, end}] spanning the composition; optional track.
 - remove_clip: clip, or clips (many ids at once, up to ${EDIT_LIMITS.removeClips}); optional ripple (close the gap by moving later clips on the track).
 - move_clip: clip; start and/or track.
-- trim_clip: clip; new timeline start and/or end (trimming the head of a video/audio clip advances its media in-point).
+- trim_clip: clip; new timeline start and/or end (trimming the head of a video/audio clip advances its media in-point; a clip of an asset the user picked a fragment of can be trimmed only inside that fragment).
 - split_clip: clip, at (timeline time inside the clip). The result reports the new second half's clip id.
 - set_clip: clip; any of volume, muted, fit, zIndex, frame, fadeIn, fadeOut.
 - arrange_track: track, clips (ids in order), optional start (default 0) and gap; lays them end to end.
 - set_composition: duration (explicit length; otherwise the length follows the content).
-- set_canvas: width, height (even pixels, up to ${EDIT_LIMITS.maxCanvasPixels}). Sets the composition's frame format. Placed clips keep their frames, so when the format is still to be decided, set the canvas BEFORE adding clips.`;
+- set_canvas: width, height (even pixels, up to ${EDIT_LIMITS.maxCanvasPixels}). Sets the composition's frame format. Placed clips keep their frames, so when the format is still to be decided, set the canvas BEFORE adding clips.
+User-picked fragments: inspect_project marks a video/audio asset the user picked a fragment of as "USER-PICKED FRAGMENT start–end s" — the AI may use only that part of the file. add_clip starts mediaStart at the fragment and defaults the duration to its end; add_sequence ranges and trim_clip stay inside it; a placement reaching outside it is refused (out_of_bounds) with the picked range in the message. Plan with the fragment's length — a 33.5 s music bed lasts 33.5 s: place it again or fade it out instead of running past its end.`;
 
 const DESCRIPTIONS: Record<EditingToolName, string> = {
-  inspect_project: `List the project's compositions (size, length, clip count), media assets (kind, size, duration, whether video has audio) and existing renders. Call it first to learn what material exists before planning an edit.`,
+  inspect_project: `List the project's compositions (size, length, clip count), media assets (kind, size, duration, whether video has audio; an asset the user picked a fragment of is marked "USER-PICKED FRAGMENT" — only that part of the file may be used) and existing renders. Call it first to learn what material exists before planning an edit.`,
   inspect_timeline: `Show a composition's timeline as a table: clip id, kind, label, start–end, track, source, notes (media in-point, volume, muted, locked; "(template placeholder — not user content)" marks the new project's untouched placeholder title, which you may remove or replace in a normal edit), plus the composition's size, length and content version. Also reports the user's playhead, selected clips/asset/time range and active composition as they were when the user sent the message (they may have changed since). Read it before editing and again after a batch to verify the result. Defaults to the main composition. ${CONVENTIONS}`,
   edit_timeline: `Change the timeline of a composition with a batch of operations. The batch is atomic: if any operation is refused, nothing is applied and the error names the failing operation (operations[N]) so you can fix it and retry. Operations run in order; clips they create get ids that are returned in the result (use them in a later call). After edits the Studio timeline and preview update by themselves, and every edit belongs to this turn's checkpoint, so the user can revert it. Pass baseVersion (the version from inspect_timeline) to refuse the batch if the composition changed since you looked. ${CONVENTIONS}\n${EDIT_OPERATIONS_GUIDE}`,
   browse_presets: `Search the built-in presets: caption styles ("caption", used by apply_captions), motion-graphics "block"s and reusable "component"s (both used by add_component). Returns names with a short description and natural length. Optional query filters by text.`,
@@ -184,8 +185,15 @@ const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
       asset: str("Project-relative asset path from inspect_project.", EDIT_LIMITS.pathChars),
       start: time("Timeline start in seconds."),
       track: track("Track: 0 = A-roll, higher = B-roll/overlay; audio on its own track."),
-      duration: { type: "number", exclusiveMinimum: 0, description: "Seconds on the timeline." },
-      mediaStart: time("In-point in the source media, seconds."),
+      duration: {
+        type: "number",
+        exclusiveMinimum: 0,
+        description:
+          "Seconds on the timeline; defaults to the rest of the media, or to the end of the user-picked fragment when there is one.",
+      },
+      mediaStart: time(
+        "In-point in the source media, seconds; defaults to the user-picked fragment's start when there is one.",
+      ),
       volume,
       muted: { type: "boolean" },
       fit,
@@ -210,12 +218,15 @@ const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
         items: {
           type: "object",
           properties: {
-            from: time("In-point in the source, seconds."),
+            from: time(
+              "In-point in the source, seconds; inside the user-picked fragment when there is one.",
+            ),
             to: {
               type: "number",
               exclusiveMinimum: 0,
               maximum: EDIT_LIMITS.maxTime,
-              description: "Out-point in the source, seconds; after from.",
+              description:
+                "Out-point in the source, seconds; after from and inside the user-picked fragment when there is one.",
             },
           },
           required: ["from", "to"],
@@ -316,7 +327,7 @@ const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
   ),
   trim_clip: operationSchema(
     "trim_clip",
-    "Set new timeline in/out points (give at least one of start, end).",
+    "Set new timeline in/out points (give at least one of start, end). A clip of a video/audio asset the user picked a fragment of can be trimmed only inside that fragment.",
     {
       clip: clipId,
       start: time("New timeline start, seconds."),

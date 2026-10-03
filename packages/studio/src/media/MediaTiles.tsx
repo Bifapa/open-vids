@@ -32,6 +32,7 @@ import {
   type MediaItem,
   type MediaMatch,
 } from "./mediaLibrary";
+import { RangeBadge } from "./RangeBadge";
 
 export interface TileHandlers {
   onSelect: (path: string) => void;
@@ -239,6 +240,7 @@ export function MediaCard({
             {clock(item.duration)}
           </span>
         )}
+        {item.range && <RangeBadge range={item.range} className="absolute top-1 left-1" />}
         {item.used && (
           <span
             title={t("media.card.used")}
@@ -329,6 +331,7 @@ export function MediaRow({
         <span className="min-w-0 truncate text-sm text-fg" title={item.name}>
           {item.name}
         </span>
+        {item.range && <RangeBadge range={item.range} tone="inline" />}
         {hit && <span className="min-w-0 truncate text-xs text-fg-3">{hit}</span>}
       </span>
       <span className="justify-self-end">

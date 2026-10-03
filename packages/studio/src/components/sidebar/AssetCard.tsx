@@ -25,6 +25,7 @@ import {
   type CopyFeedback,
 } from "./assetHelpers";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
+import { AssetRangeBadge } from "../../media/RangeBadge";
 import {
   MEDIA_LOAD_SETTLE_TIMEOUT_MS,
   acquireMediaLoad,
@@ -387,6 +388,7 @@ export function AssetCard({
                   {durationLabel}
                 </span>
               )}
+              <AssetRangeBadge asset={asset} className="absolute top-[3px] left-[3px]" />
               {used && (
                 <span
                   title={t("sidebar.asset.inUse")}
@@ -409,6 +411,7 @@ export function AssetCard({
             </div>
             <KindIcon size={12} aria-hidden="true" className="shrink-0 text-fg-3" />
             <span className={cn(ASSET_NAME_CLASS, "flex-1 text-base")}>{fullName}</span>
+            <AssetRangeBadge asset={asset} tone="inline" />
             {used && <UsedDot />}
             <CopyChip feedback={copyFeedback} asset={asset} />
             <span className="shrink-0 text-xs text-fg-3 tabular-nums">{durationLabel || "—"}</span>

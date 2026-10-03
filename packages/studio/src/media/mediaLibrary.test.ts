@@ -111,6 +111,11 @@ function library(): MediaItem[] {
       ],
       ["assets/music.mp3", analysis("assets/music.mp3", {})],
     ]),
+    ranges: new Map([
+      ["assets/music.mp3", { start: 2, end: 6 }],
+      ["assets/talk.mp4", { start: 0, end: 60 }],
+      ["assets/logo.png", { start: 1, end: 2 }],
+    ]),
     provenance: [
       record("assets/research/steenbeck.jpg"),
       record("assets/research/gone.jpg", {
@@ -140,6 +145,16 @@ describe("the media library", () => {
     const gone = library().find((item) => item.path === "assets/research/gone.jpg");
     expect(gone).toMatchObject({ offline: true, kind: "image", origin: "download" });
     expect(gone?.provenance?.source.name).toBe("Wikimedia Commons");
+  });
+
+  it("carries a picked fragment on video and audio items, never a whole-file or an image's", () => {
+    const items = library();
+    const rangeOf = (path: string) => items.find((item) => item.path === path)?.range;
+    // music.mp3 has no probe; its length comes from the analysis (10 s), so 2–6 s is a real pick.
+    expect(rangeOf("assets/music.mp3")).toEqual({ start: 2, end: 6 });
+    // 0–60 s of a 60 s file is the whole file: no pick.
+    expect(rangeOf("assets/talk.mp4")).toBeNull();
+    expect(rangeOf("assets/logo.png")).toBeNull();
   });
 
   it("sorts items into origin, usage and offline collections", () => {

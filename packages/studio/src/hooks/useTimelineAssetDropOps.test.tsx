@@ -76,6 +76,72 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     expect(written).toContain('data-duration="13"');
   });
 
+  describe("an asset with a picked fragment", () => {
+    const source =
+      '<main data-composition-id="scene" data-duration="10" data-width="1920" data-height="1080"></main>';
+
+    /** The server holds a pick of 42–75 s for clip.mp4; every other request answers with the composition. */
+    function stubPick(ranges: Record<string, { start: number; end: number }>) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          String(url).includes("/editing/ranges")
+            ? { ok: true, json: async () => ({ ranges }) }
+            : { ok: true, json: async () => ({ content: source }) },
+        ),
+      );
+    }
+
+    it("lands as the fragment: media from the in point, as long as the pick", async () => {
+      const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+      const getDrop = renderDropHook(source, writeProjectFile);
+      stubPick({ "clip.mp4": { start: 42, end: 75 } });
+
+      await act(async () => {
+        await getDrop()("clip.mp4", { start: 8, track: 0 });
+      });
+
+      const [, written] = writeProjectFile.mock.calls[0] as [string, string];
+      expect(written).toMatch(/<video id="clip"[^>]*data-start="8"[^>]*data-duration="33"/);
+      expect(written).toContain('data-media-start="42"');
+      // 8 s + the 33 s fragment: the composition grows to hold it.
+      expect(written).toContain('data-duration="41"');
+    });
+
+    it("places the whole file when this asset has no pick", async () => {
+      const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+      const getDrop = renderDropHook(source, writeProjectFile);
+      stubPick({ "other.mp4": { start: 42, end: 75 } });
+
+      await act(async () => {
+        await getDrop()("clip.mp4", { start: 1, track: 0 }, 4);
+      });
+
+      const [, written] = writeProjectFile.mock.calls[0] as [string, string];
+      expect(written).not.toContain("data-media-start");
+    });
+
+    it("falls back to the whole file when the server cannot say", async () => {
+      const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+      const getDrop = renderDropHook(source, writeProjectFile);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          String(url).includes("/editing/ranges")
+            ? { ok: false, status: 500, json: async () => ({}) }
+            : { ok: true, json: async () => ({ content: source }) },
+        ),
+      );
+
+      await act(async () => {
+        await getDrop()("clip.mp4", { start: 1, track: 0 });
+      });
+
+      const [, written] = writeProjectFile.mock.calls[0] as [string, string];
+      expect(written).not.toContain("data-media-start");
+    });
+  });
+
   it("leaves the root duration alone when the drop lands inside the current end", async () => {
     const source =
       '<main data-composition-id="scene" data-duration="10" data-width="1920" data-height="1080"></main>';

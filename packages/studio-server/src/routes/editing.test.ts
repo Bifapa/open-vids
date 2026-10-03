@@ -1,19 +1,23 @@
 // @vitest-environment node
 import { Hono } from "hono";
-import type {
-  ApplyEditsResponse,
-  EditError,
-  PresetInfo,
-  ProjectAsset,
-  ProjectInventory,
-  TimelineSnapshot,
+import {
+  ASSET_RANGES_PATH,
+  type ApplyEditsResponse,
+  type AssetRangesView,
+  type EditError,
+  type PresetInfo,
+  type ProjectAsset,
+  type ProjectInventory,
+  type TimelineSnapshot,
 } from "@hyperframes/agent-protocol";
 import type { RegistryItem } from "@hyperframes/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeProber, createTestProject, type TestProject } from "../editing/testProject.js";
+import { openProjectHistory } from "../history/projectHistory.js";
 import { registerEditingRoutes } from "./editing.js";
 import { join } from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const SKINS = join(import.meta.dirname, "../../../../skills/hyperframes-creative/frame-presets");
 const CATALOG: RegistryItem[] = [
@@ -58,7 +62,13 @@ function setup() {
       headers: { "content-type": "application/json" },
       body: typeof body === "string" ? body : JSON.stringify(body),
     });
-  return { made, api, get, post };
+  const put = (body: unknown, id = "demo") =>
+    api.request(`/projects/${id}/editing/ranges`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  return { made, api, get, post, put };
 }
 
 async function errorOf(response: Response): Promise<EditError> {
@@ -325,5 +335,133 @@ describe("POST /editing/apply boundary", () => {
     expect(timeline.clips.filter((c) => c.kind === "text" && c.label.startsWith("t"))).toHaveLength(
       5,
     );
+  });
+});
+
+describe("GET/PUT /editing/ranges", () => {
+  it("round-trips a pick: the view, the stored file, and the inventory", async () => {
+    const { made, get, put } = setup();
+    expect((await (await get("ranges")).json()) as AssetRangesView).toEqual({ ranges: {} });
+
+    const answer = await put({ path: "assets/music.mp3", range: { start: 10, end: 20 } });
+    expect(answer.status).toBe(200);
+    const view: AssetRangesView = await answer.json();
+    expect(view).toEqual({ ranges: { "assets/music.mp3": { start: 10, end: 20 } } });
+    expect(JSON.parse(made.read(ASSET_RANGES_PATH))).toEqual({
+      version: 1,
+      ranges: { "assets/music.mp3": { start: 10, end: 20 } },
+    });
+    expect(await (await get("ranges")).json()).toEqual(view);
+
+    const inventory: ProjectInventory = await (await get("project")).json();
+    expect(inventory.assets.find((asset) => asset.path === "assets/music.mp3")?.range).toEqual({
+      start: 10,
+      end: 20,
+    });
+    expect(inventory.assets.find((asset) => asset.path === "assets/a.mp4")?.range).toBeUndefined();
+  });
+
+  it("clamps the end to the file's length, within the frame-rounding slack", async () => {
+    const { get, put } = setup();
+    const clamped: AssetRangesView = await (
+      await put({ path: "assets/music.mp3", range: { start: 20, end: 30.04 } })
+    ).json();
+    expect(clamped.ranges["assets/music.mp3"]).toEqual({ start: 20, end: 30 });
+    // music.mp3 is 30 s; anything past it by more than the slack is refused.
+    expect(
+      await errorOf(await put({ path: "assets/music.mp3", range: { start: 20, end: 31 } })),
+    ).toMatchObject({ code: "out_of_bounds" });
+    expect(
+      await errorOf(await put({ path: "assets/music.mp3", range: { start: 30, end: 31 } })),
+    ).toMatchObject({ code: "out_of_bounds" });
+    // Clearing never needs the length.
+    expect((await put({ path: "assets/music.mp3", range: null })).status).toBe(200);
+    expect(await (await get("ranges")).json()).toEqual({ ranges: {} });
+  });
+
+  it("stores a whole-file range as cleared, and null clears a pick", async () => {
+    const { made, put } = setup();
+    await put({ path: "assets/music.mp3", range: { start: 10, end: 20 } });
+    const whole: AssetRangesView = await (
+      await put({ path: "assets/music.mp3", range: { start: 0, end: 30 } })
+    ).json();
+    expect(whole).toEqual({ ranges: {} });
+    expect(JSON.parse(made.read(ASSET_RANGES_PATH))).toEqual({ version: 1, ranges: {} });
+
+    await put({ path: "assets/music.mp3", range: { start: 10, end: 20 } });
+    expect(await (await put({ path: "assets/music.mp3", range: null })).json()).toEqual({
+      ranges: {},
+    });
+    expect(JSON.parse(made.read(ASSET_RANGES_PATH))).toEqual({ version: 1, ranges: {} });
+  });
+
+  it("prunes picks of deleted files on the next write and drops them from the view", async () => {
+    const { made, get, put } = setup();
+    await put({ path: "assets/music.mp3", range: { start: 5, end: 15 } });
+    await put({ path: "assets/a.mp4", range: { start: 1, end: 4 } });
+    rmSync(join(made.project.dir, "assets/music.mp3"));
+
+    expect(await (await get("ranges")).json()).toEqual({
+      ranges: { "assets/a.mp4": { start: 1, end: 4 } },
+    });
+
+    const after: AssetRangesView = await (
+      await put({ path: "assets/b.mp4", range: { start: 0, end: 2 } })
+    ).json();
+    expect(Object.keys(after.ranges).sort()).toEqual(["assets/a.mp4", "assets/b.mp4"]);
+    expect(JSON.parse(made.read(ASSET_RANGES_PATH))).toEqual({
+      version: 1,
+      ranges: {
+        "assets/a.mp4": { start: 1, end: 4 },
+        "assets/b.mp4": { start: 0, end: 2 },
+      },
+    });
+  });
+
+  it("refuses a missing or non-media asset with unknown_asset / unsupported", async () => {
+    const { put } = setup();
+    const missing = await put({ path: "assets/missing.mp4", range: { start: 0, end: 1 } });
+    expect(missing.status).toBe(404);
+    expect(await errorOf(missing)).toMatchObject({ code: "unknown_asset" });
+    const outside = await put({ path: "../secret.mp4", range: { start: 0, end: 1 } });
+    expect(outside.status).toBe(404);
+    for (const path of ["assets/photo.png", "index.html"]) {
+      const response = await put({ path, range: { start: 0, end: 1 } });
+      expect(response.status).toBe(400);
+      expect(await errorOf(response)).toMatchObject({ code: "unsupported" });
+    }
+  });
+
+  it("refuses a malformed body before touching the file", async () => {
+    const { made, put } = setup();
+    const short = await put({ path: "assets/music.mp3", range: { start: 5, end: 5.05 } });
+    expect(short.status).toBe(400);
+    expect(await errorOf(short)).toMatchObject({ code: "invalid_request" });
+    expect(
+      (await put({ path: "assets/music.mp3", range: { start: 1, end: 2 }, extra: 1 })).status,
+    ).toBe(400);
+    expect(existsSync(join(made.project.dir, ASSET_RANGES_PATH))).toBe(false);
+  });
+
+  it("files the user's pick in project history as You", async () => {
+    const { made, put } = setup();
+    const historyRoot = mkdtempSync(join(tmpdir(), "openvids-editing-history-"));
+    const history = await openProjectHistory({ projectDir: made.project.dir, historyRoot });
+    made.adapter.history = () => history;
+    try {
+      expect((await put({ path: "assets/music.mp3", range: { start: 5, end: 15 } })).status).toBe(
+        200,
+      );
+      await history.flush();
+      const entry = history.list().at(-1);
+      expect(entry).toMatchObject({
+        label: "Picked asset fragment",
+        who: { kind: "person", name: "You" },
+      });
+      expect(entry?.files.map((file) => file.path)).toEqual([ASSET_RANGES_PATH]);
+    } finally {
+      await history.close();
+      rmSync(historyRoot, { recursive: true, force: true });
+    }
   });
 });

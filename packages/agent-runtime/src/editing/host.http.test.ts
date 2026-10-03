@@ -114,6 +114,38 @@ describe("HttpEditingHost", () => {
     expect(error).toMatchObject({ code: "unknown_clip", message: "no clip nope", opIndex: 2 });
   });
 
+  it("accepts the fragment the user picked on an inventory asset and rejects a malformed one", async () => {
+    const asset = (range: unknown) => ({
+      path: "assets/music.mp3",
+      kind: "audio",
+      bytes: 6_000_000,
+      duration: 182,
+      width: null,
+      height: null,
+      hasAudio: null,
+      ...(range === undefined ? {} : { range }),
+    });
+    const inventoryOf = (range: unknown) => ({
+      compositions: [],
+      assets: [asset(range)],
+      renders: [],
+    });
+    const { host } = await studio({
+      "GET /api/projects/p%201/editing/project": (_request, response) =>
+        json(response, 200, inventoryOf({ start: 42, end: 75.5 })),
+    });
+    const inventory = await host.inventory(abortSignal());
+    expect(inventory.assets[0]?.range).toEqual({ start: 42, end: 75.5 });
+
+    const garbled = await studio({
+      "GET /api/projects/p%201/editing/project": (_request, response) =>
+        json(response, 200, inventoryOf({ start: "42", end: 75.5 })),
+    });
+    await expect(garbled.host.inventory(abortSignal())).rejects.toMatchObject({
+      code: "unavailable",
+    });
+  });
+
   it("treats an unreachable or garbled service as unavailable, and a conflict as its own code", async () => {
     const { host } = await studio({
       "GET /api/projects/p%201/editing/timeline": (_request, response) =>

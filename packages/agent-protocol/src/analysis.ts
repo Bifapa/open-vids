@@ -24,6 +24,7 @@
  *   POST …/analysis/cuts/:planId/applied  MarkCutAppliedRequest → CutPlan
  */
 
+import type { AssetRange } from "./editing.js";
 import type { CodedMessageParams } from "./types.js";
 import { isRecord } from "./validate.js";
 
@@ -412,6 +413,11 @@ export interface CutPlan extends CutPlanSummary {
   request: CutPlanRequest;
   transcriptVersion: string;
   segmentsVersion: string;
+  /**
+   * The fragment the user had picked of the source when the plan was made (absent/null: the whole file). Every range
+   * of the plan stays inside it; once the pick changes the plan is out of date (the service says so on read).
+   */
+  mediaRange?: AssetRange | null;
   ranges: CutRange[];
   removed: CutRemoval[];
   warnings: string[];

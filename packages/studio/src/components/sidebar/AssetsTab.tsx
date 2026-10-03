@@ -4,6 +4,7 @@ import { ListBullets, SquaresFour } from "@phosphor-icons/react";
 import { useTranslation } from "../../i18n";
 import { SearchInput } from "../ui/SearchInput";
 import { SegmentedControl, cn } from "../ui";
+import { useAssetRanges } from "../../media/assetRangesStore";
 import { MEDIA_EXT, FONT_EXT } from "@hyperframes/core/media-types";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -126,6 +127,8 @@ export const AssetsTab = memo(function AssetsTab({
   onAddAssetToTimeline,
 }: AssetsTabProps) {
   const { t } = useTranslation();
+  // Keeps the picked-fragment badges of the tiles below current.
+  useAssetRanges(projectId);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<CopyFeedback>(null);

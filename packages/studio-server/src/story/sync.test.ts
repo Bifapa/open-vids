@@ -10,6 +10,7 @@ import {
 } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanRanges } from "../analysis/cutPlan.js";
+import { writeAssetRanges } from "../editing/assetRanges.js";
 import { clipState, type ClipState } from "../editing/clipState.js";
 import { applyEdits } from "../editing/operations.js";
 import { readComposition } from "../editing/service.js";
@@ -492,6 +493,33 @@ describe("Rebuild affected section", () => {
     // The edits are still known afterwards, and the timeline matches the graph again.
     const later = await reportOf(f);
     expect(later).toMatchObject({ state: "in_sync", manualEdits: 2 });
+  });
+
+  it("marks a chapter for rebuild when the picked fragment of its source changes, and rebuilds inside it", async () => {
+    const { f, ids } = await built();
+    const keptMain = sectionClips(f, ids.main, "a_roll");
+    expect(keptMain.length).toBeGreaterThan(0);
+    expect((await f.view()).facts[ids.outro]?.materialDuration ?? 0).toBeGreaterThan(0);
+    writeAssetRanges(f.project.dir, new Map([[TALK, { start: 0, end: 5 }]]));
+
+    // The impact and the chapter facts are computed from the new pick: the cached in-sync report is not served.
+    const impact = await reportOf(f);
+    expect(impact.state).toBe("out_of_sync");
+    expect(impact.affected).toEqual([ids.outro]); // Outro's g3 (6–7.4 s) is outside 0–5 s; Intro and Main are inside
+    expect(impact.warnings.join(" ")).toContain("The user picked 0–5s of assets/a.mp4 for use");
+    expect((await f.view()).facts[ids.outro]?.materialDuration).toBe(0);
+
+    const result = await rebuild(f);
+    expect(result.changed).toBe(true);
+    expect(result.report.affected).toContain(ids.outro);
+    expect(sectionClips(f, ids.outro, "a_roll")).toEqual([]);
+    for (const id of keptMain) expect(sectionClips(f, ids.main, "a_roll")).toContain(id);
+    const { snapshot } = await readComposition(f.project, "index.html", f.made.facts);
+    const talkClips = snapshot.clips.filter((clip) => clip.src === TALK);
+    expect(talkClips.length).toBeGreaterThan(0);
+    for (const clip of talkClips) {
+      expect((clip.mediaStart ?? 0) + clip.duration).toBeLessThanOrEqual(5.001);
+    }
   });
 
   it("moves reordered chapters as whole sections without regenerating them", async () => {

@@ -1,5 +1,6 @@
 // @vitest-environment node
 import type {
+  AssetRange,
   CutPlan,
   CutPlanRequest,
   SegmentMap,
@@ -75,6 +76,7 @@ function plan(
     segments: SegmentMap;
     shots: ShotMap | null;
     transcript: TranscriptArtifact;
+    mediaRange: AssetRange | null;
   }> = {},
 ): CutPlan {
   const base = fixture();
@@ -91,6 +93,7 @@ function plan(
     segmentsVersion: "sha256:g",
     shots: patch.shots === undefined ? null : patch.shots,
     sourceDuration: base.duration,
+    mediaRange: patch.mediaRange ?? null,
   });
 }
 
@@ -844,5 +847,90 @@ describe("cleanRanges", () => {
     expect(clean([{ from: tail, to: base.duration + 5, segment: "silent" }], null)).toEqual([
       { from: tail, to: base.duration, segment: "silent" },
     ]);
+  });
+});
+
+describe("planCut: the user's picked fragment", () => {
+  const base = fixture();
+  const segmentById = (id: string) => {
+    const segment = base.segments.segments.find((entry) => entry.id === id);
+    if (!segment) throw new Error(`no segment ${id}`);
+    return segment;
+  };
+
+  it("keeps every range inside the pick, records it and stays consistent", () => {
+    const first = segmentById("g1");
+    const last = segmentById("g3");
+    const pick = { start: first.start, end: last.end };
+    const cut = plan({}, { mediaRange: pick });
+    expect(cut.mediaRange).toEqual(pick);
+    expect(cut.ranges.length).toBeGreaterThan(0);
+    for (const range of cut.ranges) {
+      expect(range.from).toBeGreaterThanOrEqual(pick.start - 1e-9);
+      expect(range.to).toBeLessThanOrEqual(pick.end + 1e-9);
+    }
+    expect(cut.stats.cutDuration).toBeCloseTo(
+      cut.ranges.reduce((sum, range) => sum + (range.to - range.from), 0),
+      3,
+    );
+    expect(cut.stats.ranges).toBe(cut.ranges.length);
+    // Nothing outside the pick is covered, and no removal is reported outside it (segment drops are reported whole).
+    for (const word of base.transcript.words) {
+      const time = middle(word);
+      if (time >= pick.start && time <= pick.end) continue;
+      expect(cut.ranges.some((range) => !range.hook && inside(range, time))).toBe(false);
+    }
+    for (const entry of cut.removed) {
+      if (entry.reason === "segment") continue;
+      expect(entry.from).toBeGreaterThanOrEqual(pick.start - 1e-9);
+      expect(entry.to).toBeLessThanOrEqual(pick.end + 1e-9);
+    }
+  });
+
+  it("drops the segments outside the pick with a warning — a must segment too — instead of refusing", () => {
+    const only = segmentById("g1");
+    const cut = plan({}, { mediaRange: { start: only.start, end: only.end } });
+    expect(cut.stats.droppedSegments).toEqual(expect.arrayContaining(["g2", "g3", "g4", "g5"]));
+    const warnings = cut.warnings.join(" ");
+    expect(warnings).toContain("The user picked");
+    expect(warnings).toContain("g2");
+    expect(cut.ranges).not.toHaveLength(0);
+    expect(cut.ranges.every((range) => range.segment === "g1")).toBe(true);
+  });
+
+  it("trims a cleaned piece back to the pick where padding ran past it", () => {
+    const g1 = segmentById("g1");
+    const lastWord = base.transcript.words
+      .filter((word) => middle(word) <= g1.end)
+      .sort((a, b) => middle(a) - middle(b))
+      .at(-1);
+    if (!lastWord) throw new Error("fixture has no words");
+    const pick = { start: g1.start, end: middle(lastWord) + 0.03 };
+    const cut = plan({}, { mediaRange: pick });
+    const last = cut.ranges.filter((range) => !range.hook).at(-1);
+    expect(last?.to).toBeCloseTo(pick.end, 3);
+    for (const range of cut.ranges) expect(range.to).toBeLessThanOrEqual(pick.end + 1e-9);
+  });
+
+  it("keeps the hook inside the pick and says when it had to clip it", () => {
+    const g2 = segmentById("g2");
+    const g3 = segmentById("g3");
+    const pick = { start: g2.start, end: g3.end };
+    const cut = plan({ hook: { firstSentence: "s1", lastSentence: "s6" } }, { mediaRange: pick });
+    const hookRanges = cut.ranges.filter((range) => range.hook);
+    expect(hookRanges.length).toBeGreaterThan(0);
+    for (const range of hookRanges) {
+      expect(range.from).toBeGreaterThanOrEqual(pick.start - 1e-9);
+      expect(range.to).toBeLessThanOrEqual(pick.end + 1e-9);
+    }
+    expect(cut.warnings.join(" ")).toContain("the hook plays only what is inside it");
+  });
+
+  it("refuses with the pick named when nothing inside it can be kept", () => {
+    const pick: AssetRange = { start: base.duration - 0.2, end: base.duration };
+    const error = refusal(() => plan({}, { mediaRange: pick }));
+    expect(error.code).toBe("invalid_request");
+    expect(error.message).toContain("The user picked");
+    expect(error.message).toContain("no speech");
   });
 });

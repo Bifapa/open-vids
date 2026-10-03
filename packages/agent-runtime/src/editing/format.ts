@@ -1,5 +1,6 @@
 import type {
   ApplyEditsResponse,
+  AssetRange,
   EditorContext,
   PresetInfo,
   PresetKind,
@@ -130,6 +131,15 @@ export function formatEditResult(response: ApplyEditsResponse): string {
   );
 }
 
+/**
+ * The inventory note for a video/audio asset the user picked a fragment of: everything the AI may use is inside it.
+ * Null when the whole file may be used.
+ */
+function pickedFragment(range: AssetRange | undefined): string | null {
+  if (!range) return null;
+  return `USER-PICKED FRAGMENT ${seconds(range.start)}–${seconds(range.end)} s (${seconds(range.end - range.start)} s): use only this part`;
+}
+
 export function formatInventory(inventory: ProjectInventory): string {
   const compositions = inventory.compositions.map(
     (composition) =>
@@ -145,6 +155,7 @@ export function formatInventory(inventory: ProjectInventory): string {
           ? "has audio"
           : "silent"
         : null,
+      pickedFragment(asset.range),
     ].filter(Boolean);
     return `- ${asset.path} · ${details.join(" · ")}`;
   });

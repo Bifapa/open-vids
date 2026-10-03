@@ -22,6 +22,7 @@ import {
   writeAssetDragData,
 } from "./AssetCard";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
+import { AssetRangeBadge } from "../../media/RangeBadge";
 
 // Only one preview should play at a time; starting a row stops the previous one.
 let stopCurrentPreview: (() => void) | null = null;
@@ -227,6 +228,7 @@ export function AudioRow({
         <span className={cn(ASSET_NAME_CLASS, "flex-1 text-base", playing && "text-fg")}>
           {name}
         </span>
+        <AssetRangeBadge asset={asset} tone="inline" />
         {used && <UsedDot />}
         <CopyChip feedback={copyFeedback} asset={asset} />
         <span className="shrink-0 text-xs text-fg-3 tabular-nums">

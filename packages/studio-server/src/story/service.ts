@@ -5,6 +5,7 @@ import {
   isChapter,
   storyOrder,
   validateStoryGraph,
+  type AssetRange,
   type ManualEditPolicy,
   type SaveStoryRequest,
   type StoryBuildRequest,
@@ -27,6 +28,7 @@ import {
 import { isAnalysisFailure } from "../analysis/errors.js";
 import type { AnalysisService, SourceAnalysisData } from "../analysis/service.js";
 import { serialized } from "../analysis/store.js";
+import { readAssetRanges } from "../editing/assetRanges.js";
 import { CAPTIONS_FILE } from "../editing/captions.js";
 import { isEditFailure, type EditFailure } from "../editing/errors.js";
 import { MAIN_COMPOSITION } from "../editing/inventory.js";
@@ -84,6 +86,15 @@ const NO_ORDER: StoryOrder = { chapters: [], notes: [] };
 const withoutStamp = (graph: StoryGraph) => ({ ...graph, updatedAt: 0, updatedBy: "ai" });
 
 const fingerprint = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 24);
+
+/** Fingerprint of the picked asset fragments: a changed pick must miss every cache keyed on the graph/analysis. */
+const rangesKey = (ranges: ReadonlyMap<string, AssetRange>): string =>
+  ranges.size === 0
+    ? "no-ranges"
+    : [...ranges]
+        .map(([path, range]) => `${path}@${range.start}-${range.end}`)
+        .sort()
+        .join("\0");
 
 /**
  * Fingerprint of the project's captions file, or null when there is none. Taken over the parsed document without
@@ -242,6 +253,7 @@ export class StoryService {
       read.snapshot.version,
       ledger.state === "ok" ? fingerprint(ledger.bytes) : ledger.state,
       captionsFingerprint(project) ?? "no-captions",
+      rangesKey(readAssetRanges(project.dir)),
       ...sources.map((source, i) => `${source}@${versions[i]}`),
     ].join("\0");
     const cached = this.syncCache.get(project.dir);
@@ -330,12 +342,13 @@ export class StoryService {
     const versions = await Promise.all(
       sources.map(async (source) => (await lookup(source))?.version ?? "missing"),
     );
-    const key = `${stored.version}\0${sources.map((source, i) => `${source}@${versions[i]}`).join("\0")}`;
+    const ranges = readAssetRanges(project.dir);
+    const key = `${stored.version}\0${rangesKey(ranges)}\0${sources.map((source, i) => `${source}@${versions[i]}`).join("\0")}`;
     const cached = this.materialCache.get(project.dir);
     if (cached?.key === key) return cached.lengths;
     const lengths = new Map<string, number | null>();
     for (const chapter of chapters) {
-      lengths.set(chapter.id, (await cleanChapterAroll(chapter, lookup)).length);
+      lengths.set(chapter.id, (await cleanChapterAroll(chapter, lookup, ranges)).length);
     }
     this.materialCache.set(project.dir, { key, lengths });
     return lengths;
@@ -411,7 +424,11 @@ export class StoryService {
         return abs !== null && path.endsWith(".html") && existsSync(abs) && statSync(abs).isFile();
       },
       cleanedLength: async (ranges) => {
-        const cleaned = await cleanChapterAroll({ title: "", sourceRanges: ranges }, lookup);
+        const cleaned = await cleanChapterAroll(
+          { title: "", sourceRanges: ranges },
+          lookup,
+          readAssetRanges(project.dir),
+        );
         return cleaned.total;
       },
     };

@@ -9,6 +9,7 @@ import type {
 import { isCompositionSource } from "../helpers/hfIdPersist.js";
 import { isInHiddenOrVendorDir, walkDir } from "../helpers/safePath.js";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
+import { effectiveRange, readAssetRanges } from "./assetRanges.js";
 import { assetKindOf, type MediaFacts } from "./mediaFacts.js";
 import { parseComposition, resolveClipDurations } from "./timeline.js";
 
@@ -70,9 +71,15 @@ export async function readInventory(
   );
   const mediaPaths = files.filter((file) => MEDIA_KINDS.has(assetKindOf(file))).sort();
   const probed = await facts.readMany(project.dir, mediaPaths);
+  const ranges = readAssetRanges(project.dir);
   const assets = mediaPaths.flatMap((path) => {
     const asset = probed.get(path);
-    return asset ? [asset] : [];
+    if (!asset) return [];
+    const range =
+      asset.kind === "video" || asset.kind === "audio"
+        ? effectiveRange(ranges.get(path), asset.duration)
+        : null;
+    return [range ? { ...asset, range } : asset];
   });
 
   const compositions = files

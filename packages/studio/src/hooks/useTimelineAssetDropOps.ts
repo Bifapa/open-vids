@@ -16,8 +16,10 @@ import {
 } from "@hyperframes/core/editing/timeline-asset";
 import {
   buildTimelineFileDropPlacements,
+  pickedClipTiming,
   resolveTimelineAssetCompositionSize,
 } from "../utils/timelineAssetDrop";
+import { mediaClient } from "../media/mediaClient";
 import { generateId } from "../utils/generateId";
 import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
 import {
@@ -32,6 +34,12 @@ import { commitTimelineCompositionInsertion } from "../utils/timelineComposition
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
+
+/** The fragment the user picked of an asset, or null (none, or the server did not answer: the whole file). */
+async function fetchPickedRange(projectId: string, assetPath: string) {
+  const view = await mediaClient.ranges(projectId).catch(() => null);
+  return view?.ranges[assetPath] ?? null;
+}
 
 /** The first uploaded file opens the new track (if asked); the rest land on the lane it landed on. */
 function fileDropPlacement(
@@ -111,11 +119,20 @@ export function useTimelineAssetDropOps({
 
       try {
         const normalizedStart = Number(formatTimelineAttributeNumber(placement.start));
+        // An asset the user picked a fragment of lands as that fragment: its media from the pick's in point, as
+        // long as the pick. (An upload placed by file drop is new and has no pick: its duration is given.)
+        const picked =
+          kind !== "image" && durationOverride === undefined
+            ? await fetchPickedRange(pid, assetPath)
+            : null;
+        const pickedTiming = picked ? pickedClipTiming(picked) : null;
         const duration =
-          Number.isFinite(durationOverride) && durationOverride != null && durationOverride > 0
+          pickedTiming?.duration ??
+          (Number.isFinite(durationOverride) && durationOverride != null && durationOverride > 0
             ? durationOverride
-            : await resolveDroppedAssetDuration(pid, assetPath, kind);
+            : await resolveDroppedAssetDuration(pid, assetPath, kind));
         const normalizedDuration = Number(formatTimelineAttributeNumber(duration));
+        const mediaStart = pickedTiming?.mediaStart;
         // A video with an audio stream lands audible; the mixer only hears a
         // <video> marked data-has-audio, and a muted drop was losing the sound.
         const hasAudio = await resolveDroppedAssetHasAudio(pid, assetPath, kind);
@@ -155,6 +172,7 @@ export function useTimelineAssetDropOps({
                 start: normalizedStart,
                 duration: normalizedDuration,
                 track,
+                mediaStart,
                 zIndex: newElementZIndex,
                 hasAudio,
                 geometry: fitTimelineAssetGeometry(

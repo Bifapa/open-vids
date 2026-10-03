@@ -1,4 +1,5 @@
 import type {
+  AssetRange,
   CutPlan,
   CutPlanRequest,
   CutRange,
@@ -12,6 +13,7 @@ import type {
   TakeIssue,
   TranscriptArtifact,
 } from "@hyperframes/agent-protocol";
+import { pickedForUse } from "../helpers/pickedRange.js";
 import { AnalysisFailure } from "./errors.js";
 
 const DEFAULT_LABEL = "rough cut";
@@ -429,10 +431,12 @@ export function cleanRanges(input: CleanRangesInput): CleanedRange[] {
 
 /**
  * The deterministic editor: turns a request (segment order, drops, hook, which issues and pauses to remove) plus the
- * analysis into source ranges laid back to back on the cut's timeline. Throws `AnalysisFailure` (`invalid_request`)
- * for unknown ids, for dropping a `must` segment without `allowDropMust`, and for a plan that keeps nothing.
- * Pauses come from the silence map when there is one (every silence longer than maxPause is cut down to pauseKeep,
- * whatever the word timestamps claim), else from word gaps.
+ * analysis into source ranges laid back to back on the cut's timeline. When the user picked a fragment of the source
+ * (`mediaRange`), every kept range stays inside it: segments outside it are dropped with a warning, words and pieces
+ * are clipped to it, and the pick is recorded on the plan. Throws `AnalysisFailure` (`invalid_request`) for unknown
+ * ids, for dropping a `must` segment without `allowDropMust`, and for a plan that keeps nothing. Pauses come from the
+ * silence map when there is one (every silence longer than maxPause is cut down to pauseKeep, whatever the word
+ * timestamps claim), else from word gaps.
  */
 export function planCut(input: {
   id: string;
@@ -447,15 +451,33 @@ export function planCut(input: {
   segmentsVersion: string;
   shots: ShotMap | null;
   sourceDuration: number;
+  /** The fragment the user picked of the source (null/absent: the whole file). Nothing outside it is kept. */
+  mediaRange?: AssetRange | null;
 }): CutPlan {
   const { transcript, takes, segments, shots, sourceDuration } = input;
   const request = mergeCutRequest(null, input.request);
   const maxPause = request.maxPause ?? DEFAULT_MAX_PAUSE;
   const pauseKeep = request.pauseKeep ?? DEFAULT_PAUSE_KEEP;
   const { words, sentences } = transcript;
+  const pick = input.mediaRange ?? null;
+  const inPick = (time: number): boolean =>
+    pick === null || (time >= pick.start && time <= pick.end);
+  const wordMiddle = (index: number): number => {
+    const word = words[index];
+    return word ? (word.start + word.end) / 2 : Number.NEGATIVE_INFINITY;
+  };
+  /** Only the part of a piece the pick allows; null when nothing of it is left. */
+  const clampPiece = (piece: Piece): Piece | null => {
+    if (pick === null) return piece;
+    const from = Math.max(piece.from, pick.start);
+    const to = Math.min(piece.to, pick.end);
+    return to - from > 0 ? { ...piece, from, to } : null;
+  };
+  const clampPieces = (list: Piece[]): Piece[] => list.flatMap((piece) => clampPiece(piece) ?? []);
   function invalid(message: string): never {
     throw new AnalysisFailure("invalid_request", message);
   }
+  const warnings: string[] = [];
 
   // ── Validate ids ───────────────────────────────────────────────────────────
   if (segments.segments.length === 0) invalid("There are no segments to plan a cut from.");
@@ -509,18 +531,35 @@ export function planCut(input: {
     for (const segment of segments.segments)
       if (!explicitDrop.has(segment.id) && segment.priority !== "drop") sequence.push(segment);
   }
-  const playing = new Set(sequence.map((segment) => segment.id));
+  // A segment the picked fragment does not reach cannot play: the pick drops it with a warning, not a refusal.
+  const pickedSequence =
+    pick === null
+      ? sequence
+      : sequence.filter((segment) => segment.end > pick.start && segment.start < pick.end);
+  const droppedByPick = sequence.filter((segment) => !pickedSequence.includes(segment));
+  const playing = new Set(pickedSequence.map((segment) => segment.id));
   const dropped = segments.segments.filter((segment) => !playing.has(segment.id));
   const allowed = new Set(request.allowDropMust ?? []);
+  const droppedByPickIds = new Set(droppedByPick.map((segment) => segment.id));
   for (const segment of dropped) {
-    if (segment.priority === "must" && !allowed.has(segment.id))
+    if (
+      segment.priority === "must" &&
+      !allowed.has(segment.id) &&
+      !droppedByPickIds.has(segment.id)
+    )
       invalid(
         `Segment ${segment.id} "${segment.title}" is marked must; it can only be left out when its id is also in allowDropMust.`,
       );
   }
-  const sourceRank = sequence.map((segment) => segmentIndex.get(segment.id) ?? 0);
+  if (pick !== null && droppedByPick.length > 0)
+    warnings.push(
+      `${pickedForUse(request.source, pick)}; ${droppedByPick.map((segment) => `${segment.id} "${segment.title}"`).join(", ")} ${droppedByPick.length === 1 ? "lies" : "lie"} outside it and ${droppedByPick.length === 1 ? "was" : "were"} left out.`,
+    );
+  const sourceRank = pickedSequence.map((segment) => segmentIndex.get(segment.id) ?? 0);
   const staying = stayingInOrder(sourceRank);
-  const moved = sequence.filter((_, index) => !staying.has(index)).map((segment) => segment.id);
+  const moved = pickedSequence
+    .filter((_, index) => !staying.has(index))
+    .map((segment) => segment.id);
 
   // ── Which words are removed ────────────────────────────────────────────────
   const allIssues = takes?.issues ?? [];
@@ -557,6 +596,7 @@ export function planCut(input: {
     for (const [i, word] of words.entries()) {
       const middle = (word.start + word.end) / 2;
       if (middle < issue.start || middle > issue.end) continue;
+      if (!inPick(middle)) continue;
       removedWord[i] = true;
       const owner = wordSegment[i];
       if (owner !== null && owner !== undefined && playing.has(owner)) touchesPlaying = true;
@@ -573,24 +613,41 @@ export function planCut(input: {
     wordSegment,
   });
   const keptInOrder: number[] = [];
-  for (const segment of sequence) {
+  for (const segment of pickedSequence) {
     const [from, to] = segmentWords(segment);
-    for (let i = from; i <= to; i++) if (!removedWord[i]) keptInOrder.push(i);
+    for (let i = from; i <= to; i++)
+      if (!removedWord[i] && inPick(wordMiddle(i))) keptInOrder.push(i);
   }
   const main = cleaner.clean(keptInOrder, false);
-  const mainPieces = main.pieces;
+  const mainPieces = clampPieces(main.pieces);
   separateOverlaps(mainPieces);
 
   let hookPieces: Piece[] = [];
   if (hookWords) {
     const indices: number[] = [];
-    for (let i = hookWords[0]; i <= hookWords[1]; i++) if (!removedWord[i]) indices.push(i);
-    hookPieces = cleaner.clean(indices, true).pieces;
+    let clipped = false;
+    for (let i = hookWords[0]; i <= hookWords[1]; i++) {
+      if (removedWord[i]) continue;
+      if (!inPick(wordMiddle(i))) {
+        clipped = true;
+        continue;
+      }
+      indices.push(i);
+    }
+    if (clipped && pick !== null)
+      warnings.push(
+        `${pickedForUse(request.source, pick)}; the hook plays only what is inside it.`,
+      );
+    hookPieces = clampPieces(cleaner.clean(indices, true).pieces);
   }
 
   const all = [...hookPieces, ...mainPieces].filter((piece) => piece.to > piece.from);
   if (mainPieces.length === 0)
-    invalid("The plan keeps no speech: every segment is dropped or removed.");
+    invalid(
+      pick === null
+        ? "The plan keeps no speech: every segment is dropped or removed."
+        : `${pickedForUse(request.source, pick)}; no speech inside it is kept: every segment lies outside it, is dropped or is removed.`,
+    );
 
   const ranges: CutRange[] = [];
   let atMs = 0;
@@ -611,11 +668,11 @@ export function planCut(input: {
   // ── What was removed ───────────────────────────────────────────────────────
   const removed: CutRemoval[] = [];
   for (const pause of main.pauses) {
-    const swallowed = ranges.some(
-      (range) => !range.hook && range.from <= pause.from && pause.to <= range.to,
-    );
-    if (!swallowed && pause.to > pause.from)
-      removed.push({ ...pause, from: round3(pause.from), to: round3(pause.to) });
+    const from = pick === null ? pause.from : Math.max(pause.from, pick.start);
+    const to = pick === null ? pause.to : Math.min(pause.to, pick.end);
+    if (to <= from) continue;
+    const swallowed = ranges.some((range) => !range.hook && range.from <= from && to <= range.to);
+    if (!swallowed) removed.push({ ...pause, from: round3(from), to: round3(to) });
   }
   const reasonOf = (issue: TakeIssue): CutRemovalReason =>
     issue.kind === "filler"
@@ -623,8 +680,12 @@ export function planCut(input: {
       : issue.kind === "black" || issue.kind === "frozen"
         ? "visual"
         : "take";
-  for (const issue of effective)
-    removed.push({ from: issue.start, to: issue.end, reason: reasonOf(issue), ref: issue.id });
+  for (const issue of effective) {
+    const from = pick === null ? issue.start : Math.max(issue.start, pick.start);
+    const to = pick === null ? issue.end : Math.min(issue.end, pick.end);
+    if (to <= from) continue;
+    removed.push({ from, to, reason: reasonOf(issue), ref: issue.id });
+  }
   for (const segment of dropped)
     removed.push({ from: segment.start, to: segment.end, reason: "segment", ref: segment.id });
   removed.sort((a, b) => a.from - b.from || a.to - b.to);
@@ -635,7 +696,6 @@ export function planCut(input: {
   for (const range of ranges) if (range.hook) hookSeconds += range.to - range.from;
 
   // ── Warnings ───────────────────────────────────────────────────────────────
-  const warnings: string[] = [];
   const target = request.targetDuration;
   if (target !== undefined && Math.abs(cutDuration - target) / target > TARGET_TOLERANCE) {
     const percent = Math.round((Math.abs(cutDuration - target) / target) * 100);
@@ -708,6 +768,7 @@ export function planCut(input: {
     request,
     transcriptVersion: input.transcriptVersion,
     segmentsVersion: input.segmentsVersion,
+    mediaRange: pick,
     ranges,
     removed,
     warnings,

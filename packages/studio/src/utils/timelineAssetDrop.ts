@@ -1,3 +1,4 @@
+import type { AssetRange } from "@hyperframes/agent-protocol";
 import { roundToCenti } from "./rounding";
 import { patchRootCompositionDuration, readRootCompositionDuration } from "./rootDuration";
 
@@ -26,6 +27,17 @@ export function buildTimelineFileDropPlacements(
     nextStart = roundToCenti(nextStart + duration);
     return { start, track: placement.track };
   });
+}
+
+/**
+ * The clip a drop of an asset with a picked fragment places: its media starts at the pick's in point and the clip is
+ * as long as the pick, so only the fragment the user chose lands on the timeline. Manual edits afterwards are free.
+ */
+export function pickedClipTiming(range: AssetRange): { mediaStart: number; duration: number } {
+  return {
+    mediaStart: roundToCenti(Math.max(0, range.start)),
+    duration: roundToCenti(range.end - range.start),
+  };
 }
 
 export function resolveTimelineAssetCompositionSize(source: string): {

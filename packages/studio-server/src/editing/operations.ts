@@ -5,6 +5,7 @@ import postcss from "postcss";
 import type {
   ApplyEditsRequest,
   ApplyEditsResponse,
+  AssetRange,
   ClipFit,
   ClipFrame,
   EditOperation,
@@ -28,6 +29,7 @@ import {
   CompositionInsertionError,
   insertCompositionIntoSource,
 } from "../helpers/compositionInsertion.js";
+import { pickedForUse } from "../helpers/pickedRange.js";
 import { pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
 import {
   removeElementFromHtml,
@@ -35,6 +37,7 @@ import {
   splitElementInHtml,
 } from "../helpers/sourceMutation.js";
 import { patchStyleAttrString } from "../helpers/sourceStyleMutation.js";
+import { mediaBounds, readAssetRanges, type MediaBounds } from "./assetRanges.js";
 import {
   CAPTIONS_FILE,
   buildCaptionsComposition,
@@ -62,7 +65,7 @@ import {
 
 const EPS = 0.001;
 /** How far a clip may run past the end of its media before the edit is refused (frame-rounding slack). */
-const MEDIA_OVERRUN_TOLERANCE = 0.05;
+export const MEDIA_OVERRUN_TOLERANCE = 0.05;
 /** What Studio gives a freshly dropped image (DEFAULT_TIMELINE_ASSET_DURATION.image). */
 const DEFAULT_IMAGE_SECONDS = 3;
 const DEFAULT_CANVAS = { width: 1920, height: 1080 };
@@ -98,6 +101,28 @@ interface Batch {
   installed: string[];
   /** Existing clips (hf id or DOM id) the batch changed; stamped with the turn at the end. */
   touched: Set<string>;
+  /** The user's picked asset fragments, read once per batch on first use. */
+  ranges?: Map<string, AssetRange>;
+}
+
+/**
+ * The source window a placement of this asset must stay inside: the fragment the user picked, or the whole file.
+ * The picks are read once per batch, so a 400-range cut costs one file read.
+ */
+function boundsFor(
+  env: EditEnv,
+  batch: Batch,
+  assetPath: string,
+  duration: number | null,
+): MediaBounds {
+  const ranges = (batch.ranges ??= readAssetRanges(env.project.dir));
+  return mediaBounds(ranges.get(assetPath), duration);
+}
+
+/** Names the user's pick in a refusal, numbers included, so a model can correct itself. */
+function pickedRange(assetPath: string, bounds: MediaBounds): string {
+  // A picked bound always has an end; the fallback only satisfies the type.
+  return pickedForUse(assetPath, { start: bounds.start, end: bounds.end ?? bounds.start });
 }
 
 interface Gsap {
@@ -330,26 +355,44 @@ async function addClip(
   }
 
   const isMedia = kind === "video" || kind === "audio";
-  const mediaStart = op.mediaStart ?? 0;
   const source = facts.duration;
+  const bounds = isMedia ? boundsFor(env, batch, assetPath, source) : null;
+  const mediaStart = op.mediaStart ?? bounds?.start ?? 0;
   let duration: number;
-  if (isMedia) {
+  if (isMedia && bounds) {
     if (source !== null && mediaStart >= source) {
       throw new EditFailure(
         "out_of_bounds",
         `mediaStart ${fmt(mediaStart)}s is at or past the end of ${assetPath} (${fmt(source)}s)`,
       );
     }
+    if (bounds.picked && mediaStart < bounds.start - MEDIA_OVERRUN_TOLERANCE) {
+      throw new EditFailure(
+        "out_of_bounds",
+        `${pickedRange(assetPath, bounds)}; mediaStart ${fmt(mediaStart)}s is before it`,
+      );
+    }
     if (op.duration !== undefined) {
-      if (source !== null && mediaStart + op.duration > source + MEDIA_OVERRUN_TOLERANCE) {
+      if (bounds.end !== null && mediaStart + op.duration > bounds.end + MEDIA_OVERRUN_TOLERANCE) {
         throw new EditFailure(
           "out_of_bounds",
-          `${fmt(op.duration)}s from ${fmt(mediaStart)}s runs past the end of ${assetPath} (${fmt(source)}s)`,
+          bounds.picked
+            ? `${pickedRange(assetPath, bounds)}; ${fmt(op.duration)}s from ${fmt(mediaStart)}s runs past ${fmt(bounds.end)}s`
+            : `${fmt(op.duration)}s from ${fmt(mediaStart)}s runs past the end of ${assetPath} (${fmt(bounds.end)}s)`,
         );
       }
       duration = op.duration;
-    } else if (source !== null) {
-      duration = source - mediaStart;
+    } else if (bounds.end !== null) {
+      // With a pick this is the fragment's remaining length; without one, the whole file's.
+      duration = bounds.end - mediaStart;
+      if (duration <= 0) {
+        throw new EditFailure(
+          "out_of_bounds",
+          bounds.picked
+            ? `${pickedRange(assetPath, bounds)}; mediaStart ${fmt(mediaStart)}s is at or past ${fmt(bounds.end)}s`
+            : `mediaStart ${fmt(mediaStart)}s is at or past the end of ${assetPath} (${fmt(bounds.end)}s)`,
+        );
+      }
     } else {
       throw new EditFailure(
         "unsupported",
@@ -427,14 +470,24 @@ async function addSequence(
     throw new EditFailure("unsupported", "frame applies to video and images, not audio");
   }
   const source = facts.duration;
-  if (source !== null) {
-    for (const [index, range] of op.ranges.entries()) {
-      if (range.from >= source || range.to > source + MEDIA_OVERRUN_TOLERANCE) {
-        throw new EditFailure(
-          "out_of_bounds",
-          `ranges[${index}] (${fmt(range.from)}–${fmt(range.to)}s) is past the end of ${assetPath} (${fmt(source)}s)`,
-        );
-      }
+  const bounds = boundsFor(env, batch, assetPath, source);
+  for (const [index, range] of op.ranges.entries()) {
+    if (range.from < bounds.start - MEDIA_OVERRUN_TOLERANCE) {
+      throw new EditFailure(
+        "out_of_bounds",
+        `${pickedRange(assetPath, bounds)}; ranges[${index}] (${fmt(range.from)}–${fmt(range.to)}s) starts before it`,
+      );
+    }
+    if (
+      bounds.end !== null &&
+      (range.from >= bounds.end || range.to > bounds.end + MEDIA_OVERRUN_TOLERANCE)
+    ) {
+      throw new EditFailure(
+        "out_of_bounds",
+        bounds.picked
+          ? `${pickedRange(assetPath, bounds)}; ranges[${index}] (${fmt(range.from)}–${fmt(range.to)}s) is outside it`
+          : `ranges[${index}] (${fmt(range.from)}–${fmt(range.to)}s) is past the end of ${assetPath} (${fmt(bounds.end)}s)`,
+      );
     }
   }
 
@@ -798,21 +851,39 @@ async function trimClip(
   const isMedia = clip.kind === "video" || clip.kind === "audio";
   const source =
     clip.src === null ? null : (env.facts.peek(env.project.dir, clip.src)?.duration ?? null);
+  const bounds = isMedia && clip.src !== null ? boundsFor(env, batch, clip.src, source) : null;
+  const oldMediaStart = clip.mediaStart ?? 0;
   const headDelta = start - clip.start;
-  let mediaStart = clip.mediaStart ?? 0;
+  let mediaStart = oldMediaStart;
   if (isMedia && Math.abs(headDelta) > EPS) {
     // Trimming the head moves the in-point by the same amount of source time; earlier than the source's start is impossible.
-    const shifted = mediaStart + headDelta * clip.playbackRate;
-    if (shifted < -EPS) {
+    const shifted = oldMediaStart + headDelta * clip.playbackRate;
+    // A clip the user placed outside the pick may not reach further out than it already does, but a trim inside is fine.
+    const earliest = bounds === null ? 0 : Math.min(bounds.start, oldMediaStart);
+    if (shifted < earliest - EPS) {
       throw new EditFailure(
         "out_of_bounds",
-        `Cannot start ${fmt(-headDelta)}s earlier: only ${fmt(mediaStart / clip.playbackRate)}s of media precede this clip's in-point`,
+        bounds?.picked && shifted < bounds.start - EPS
+          ? `${pickedRange(clip.src ?? "", bounds)}; the new in-point ${fmt(shifted)}s would be before ${fmt(earliest)}s`
+          : `Cannot start ${fmt(-headDelta)}s earlier: only ${fmt(oldMediaStart / clip.playbackRate)}s of media precede this clip's in-point`,
       );
     }
     if (source !== null && shifted >= source) {
       throw new EditFailure("out_of_bounds", "The new start is past the end of the media");
     }
     mediaStart = Math.max(0, shifted);
+  }
+  if (isMedia && bounds?.picked && bounds.end !== null) {
+    // The clip keeps whatever of the pick (or of the file) it already uses; a trim may not widen that window.
+    // Checked before the source's own end so a refusal names the pick when the pick is the tighter bound.
+    const mediaEnd = mediaStart + (end - start) * clip.playbackRate;
+    const allowedEnd = Math.max(bounds.end, oldMediaStart + clip.duration * clip.playbackRate);
+    if (mediaEnd > allowedEnd + MEDIA_OVERRUN_TOLERANCE) {
+      throw new EditFailure(
+        "out_of_bounds",
+        `${pickedRange(clip.src ?? "", bounds)}; the clip would run to ${fmt(mediaEnd)}s of the source (allowed ${fmt(allowedEnd)}s)`,
+      );
+    }
   }
   if (isMedia && source !== null) {
     const latestEnd = start + (source - mediaStart) / clip.playbackRate;

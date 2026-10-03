@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AnalysisJob, AnalyzeRequest, SaveSegmentsRequest } from "@hyperframes/agent-protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { writeAssetRanges } from "../editing/assetRanges.js";
 import type { ResolvedProject } from "../types.js";
 import { isAnalysisFailure } from "./errors.js";
 import { AnalysisService } from "./service.js";
@@ -676,6 +677,27 @@ describe.skipIf(!hasFfmpeg)("cut plans", () => {
     appendFileSync(test.path(SOURCE), Buffer.alloc(32, 2));
     expect((await service.getCut(project, "cut-2")).warnings.join(" ")).toContain("out of date");
     expect((await rejection(service.planCut(project, { source: SOURCE }))).code).toBe("stale");
+  });
+
+  it("plans inside the picked fragment and goes out of date when the pick changes", async () => {
+    const { service, project } = setup();
+    await analyze(service, project);
+    writeAssetRanges(project.dir, new Map([[SOURCE, { start: 2, end: 6 }]]));
+    const plan = await service.planCut(project, { source: SOURCE });
+    expect(plan.mediaRange).toEqual({ start: 2, end: 6 });
+    expect(plan.ranges.length).toBeGreaterThan(0);
+    for (const range of plan.ranges) {
+      expect(range.from).toBeGreaterThanOrEqual(2 - 1e-9);
+      expect(range.to).toBeLessThanOrEqual(6 + 1e-9);
+    }
+    expect((await service.getCut(project, plan.id)).warnings.join(" ")).not.toContain(
+      "out of date",
+    );
+
+    writeAssetRanges(project.dir, new Map([[SOURCE, { start: 0, end: 4 }]]));
+    const stale = await service.getCut(project, plan.id);
+    expect(stale.warnings.join(" ")).toContain("out of date");
+    expect(stale.ranges).toEqual(plan.ranges); // the stored plan is reported as it was made
   });
 });
 

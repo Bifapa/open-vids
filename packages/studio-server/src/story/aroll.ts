@@ -1,6 +1,8 @@
-import type { ChapterNode, StorySourceRange } from "@hyperframes/agent-protocol";
+import type { AssetRange, ChapterNode, StorySourceRange } from "@hyperframes/agent-protocol";
 import type { SourceAnalysisData } from "../analysis/service.js";
 import { cleanRanges } from "../analysis/cutPlan.js";
+import { effectiveRange } from "../editing/assetRanges.js";
+import { pickedForUse } from "../helpers/pickedRange.js";
 
 /** Analysis of a source, or null when the source is not a project media file (missing). */
 export type AnalysisLookup = (source: string) => Promise<SourceAnalysisData | null>;
@@ -23,12 +25,15 @@ export interface CleanedAroll {
 
 /**
  * The A-roll of a chapter as Build Story lays it down: its ranges cleaned exactly like the rough-cut planner cleans
- * segments (bad takes, fillers, long pauses). A source that is not analysed keeps its ranges as they are, with a
- * warning; a source that is gone is skipped with one.
+ * segments (bad takes, fillers, long pauses). Every range is first intersected with the fragment the user picked of
+ * its source (`ranges`): nothing outside a pick is laid down, and a pick that cuts material away is said in a
+ * warning. A source that is not analysed keeps its ranges as they are, with a warning; a source that is gone is
+ * skipped with one.
  */
 export async function cleanChapterAroll(
   chapter: Pick<ChapterNode, "title" | "sourceRanges">,
   lookup: AnalysisLookup,
+  ranges: ReadonlyMap<string, AssetRange>,
 ): Promise<CleanedAroll> {
   const groups: Array<{ source: string; ranges: StorySourceRange[] }> = [];
   for (const range of chapter.sourceRanges) {
@@ -56,22 +61,43 @@ export async function cleanChapterAroll(
         to: Math.min(range.to, duration),
         segment: range.segment,
       }));
+    const pick = effectiveRange(ranges.get(group.source), duration);
+    let trimmed = false;
+    const usable = clamped.flatMap((range) => {
+      if (pick === null) return [range];
+      const from = Math.max(range.from, pick.start);
+      const to = Math.min(range.to, pick.end);
+      if (to - from <= 0) {
+        trimmed = true;
+        return [];
+      }
+      if (from !== range.from || to !== range.to) trimmed = true;
+      return [{ ...range, from, to }];
+    });
+    if (trimmed && pick !== null) {
+      warnings.push(
+        `${chapter.title}: ${pickedForUse(group.source, pick)}; only that part of its ranges is used.`,
+      );
+    }
     if (data.transcript) {
       for (const piece of cleanRanges({
-        ranges: clamped,
+        ranges: usable,
         transcript: data.transcript,
         takes: data.takes,
         silence: data.silence,
         sourceDuration: duration,
       })) {
-        pieces.push({ source: group.source, ...piece });
+        // Cleaning pads pieces to word boundaries: trim them back into the pick.
+        const from = pick === null ? piece.from : Math.max(piece.from, pick.start);
+        const to = pick === null ? piece.to : Math.min(piece.to, pick.end);
+        if (to - from > 0) pieces.push({ source: group.source, ...piece, from, to });
       }
     } else {
       analysed = false;
       warnings.push(
         `${chapter.title}: ${group.source} is not analysed; its ranges are used as they are (analyze_media cleans pauses, fillers and bad takes).`,
       );
-      for (const range of clamped) pieces.push({ source: group.source, ...range });
+      for (const range of usable) pieces.push({ source: group.source, ...range });
     }
   }
   const length = pieces.reduce((sum, piece) => sum + (piece.to - piece.from), 0);

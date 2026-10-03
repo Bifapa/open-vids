@@ -22,6 +22,7 @@ import { CAPTIONS_FILE } from "../editing/captions.js";
 import { aiEditTurn, clipState, clipStateChanges, type ClipState } from "../editing/clipState.js";
 import { isUntouchedTemplatePlaceholder } from "../editing/placeholder.js";
 import { clipLabel, readClipProvenance, type ClipNode } from "../editing/timeline.js";
+import { pickedFragment } from "../helpers/pickedRange.js";
 import { sameJson } from "./graphIo.js";
 import {
   MUSIC_FADE_SECONDS,
@@ -629,10 +630,12 @@ export function planSync(input: PlanInput): SyncPlan {
     if (wanted && first && lastCovered) {
       const want = round3(lastCovered.newStart + lastCovered.newLength - first.newStart);
       let length = want;
-      if (wanted.assetDuration !== null && wanted.assetDuration < want) {
-        length = round3(wanted.assetDuration);
+      if (wanted.usableDuration !== null && wanted.usableDuration < want) {
+        length = round3(wanted.usableDuration);
         warnings.push(
-          `Music "${wanted.node.title}" is ${length} s long but the story part it scores is ${want} s; it ends early.`,
+          wanted.picked
+            ? `Music "${wanted.node.title}" has ${length} s inside the picked fragment ${pickedFragment(wanted.node.asset ?? "", { start: wanted.usableStart, end: round3(wanted.usableStart + wanted.usableDuration) })} but the story part it scores is ${want} s; it ends early.`
+            : `Music "${wanted.node.title}" is ${length} s long but the story part it scores is ${want} s; it ends early.`,
         );
       }
       const fade = round3(Math.min(MUSIC_FADE_SECONDS, length / 2));
@@ -642,6 +645,7 @@ export function planSync(input: PlanInput): SyncPlan {
         start: 0,
         track: STORY_TRACKS.music,
         duration: length,
+        ...(wanted.usableStart > 0 && { mediaStart: wanted.usableStart }),
         volume: wanted.node.volume,
         fadeIn: fade,
         fadeOut: fade,

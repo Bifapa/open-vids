@@ -2,6 +2,7 @@ import {
   ASSET_KINDS,
   CLIP_KINDS,
   PRESET_KINDS,
+  isAssetRange,
   isRecord,
   type ApplyEditsResponse,
   type PresetInfo,
@@ -36,7 +37,8 @@ export function isProjectAsset(value: unknown): value is ProjectAsset {
     isNumber(value.bytes) &&
     isNumberOrNull(value.duration) &&
     isNumberOrNull(value.width) &&
-    isNumberOrNull(value.height)
+    isNumberOrNull(value.height) &&
+    (value.range === undefined || value.range === null || isAssetRange(value.range))
   );
 }
 

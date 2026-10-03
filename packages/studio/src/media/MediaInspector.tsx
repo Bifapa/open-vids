@@ -38,6 +38,7 @@ import {
   TimedList,
   TranscriptList,
 } from "./MediaInspectorParts";
+import { AssetRangeEditor } from "./AssetRangeEditor";
 import { useAssetAnalysis } from "./useAssetAnalysis";
 import { RemoveBackgroundDialog, type RemoveBackground } from "./RemoveBackgroundDialog";
 
@@ -421,6 +422,19 @@ function AssetInspector(props: MediaInspectorProps & { item: MediaItem }) {
           )}
         </div>
       )}
+      {(item.kind === "video" || item.kind === "audio") &&
+        !item.offline &&
+        (item.duration ?? 0) > 0 && (
+          <AssetRangeEditor
+            item={item}
+            projectId={projectId}
+            mediaRef={mediaRef}
+            time={time}
+            playing={playing}
+            onSeek={seek}
+            shotStarts={analysis.shots.slice(1).map((shot) => shot.start)}
+          />
+        )}
       {item.kind !== "font" && <SourceSection item={item} onOpenSources={props.onOpenSources} />}
       {item.analysis && (
         <Section title={t("media.inspector.section.analysis")}>

@@ -221,6 +221,41 @@ describe("editing tool results", () => {
     });
   });
 
+  it("passes an out_of_bounds refusal to the model unchanged, picked range and all", async () => {
+    const { host, call } = editing();
+    const message =
+      "The user picked 42–75.5 s of assets/music.mp3 for use; the clip would play 15.5 s past the end of the fragment.";
+    host.nextApplyError = new EditingError("out_of_bounds", message, 0);
+    const result = await call("edit_timeline", {
+      operations: [{ op: "add_clip", asset: "assets/music.mp3", start: 0, track: 2, duration: 40 }],
+    });
+    expect(result).toEqual({ isError: true, text: `out_of_bounds (operations[0]): ${message}` });
+  });
+
+  it("shows the user-picked fragment in the project inventory", async () => {
+    const { host, call } = editing();
+    host.inventoryResult = {
+      compositions: [],
+      assets: [
+        {
+          path: "assets/music.mp3",
+          kind: "audio",
+          bytes: 6_000_000,
+          duration: 182,
+          width: null,
+          height: null,
+          hasAudio: null,
+          range: { start: 42, end: 75.5 },
+        },
+      ],
+      renders: [],
+    };
+    const result = await call("inspect_project", {});
+    expect(result.text).toContain(
+      "- assets/music.mp3 · audio · 182 s · USER-PICKED FRAGMENT 42–75.5 s (33.5 s): use only this part",
+    );
+  });
+
   it("accepts an add_sequence batch and reports the clip count instead of a wall of ids", async () => {
     const { host, call } = editing();
     const ranges = Array.from({ length: 312 }, (_, index) => ({

@@ -26,6 +26,55 @@ export interface ProjectAsset {
   height: number | null;
   /** Video only: whether the file carries an audio stream. */
   hasAudio: boolean | null;
+  /**
+   * Inventory only (video/audio): the fragment the user picked for the AI to use (see {@link AssetRange}). Absent
+   * when the whole file may be used.
+   */
+  range?: AssetRange;
+}
+
+/**
+ * The part of a video/audio asset the user picked for the AI to use, in source seconds (`0 ≤ start < end ≤ length`,
+ * at least {@link ASSET_RANGE_MIN_SECONDS} long). Every editing-service placement of the asset — agent edits, Build
+ * Story, rough cuts — stays inside it and defaults to it; manual Studio edits are not restricted. Stored per project
+ * in {@link ASSET_RANGES_PATH}, keyed by project-relative asset path.
+ */
+export interface AssetRange {
+  start: number;
+  end: number;
+}
+
+export const ASSET_RANGES_PATH = ".hyperframes/media/ranges.json";
+export const ASSET_RANGES_SCHEMA = 1;
+export const ASSET_RANGE_MIN_SECONDS = 0.1;
+
+/** `ranges.json` on disk and the answer of `GET`/`PUT /api/projects/:id/editing/ranges`: asset path → range. */
+export interface AssetRangesView {
+  ranges: Record<string, AssetRange>;
+}
+
+/** `PUT /api/projects/:id/editing/ranges`: pick a fragment of one asset, or `range: null` to use the whole file. */
+export interface SetAssetRangeRequest {
+  path: string;
+  range: AssetRange | null;
+}
+
+export function isAssetRange(value: unknown): value is AssetRange {
+  return (
+    isRecord(value) &&
+    typeof value.start === "number" &&
+    typeof value.end === "number" &&
+    Number.isFinite(value.start) &&
+    Number.isFinite(value.end) &&
+    value.start >= 0 &&
+    value.end - value.start >= ASSET_RANGE_MIN_SECONDS - 1e-6
+  );
+}
+
+export function isAssetRangesView(value: unknown): value is AssetRangesView {
+  return (
+    isRecord(value) && isRecord(value.ranges) && Object.values(value.ranges).every(isAssetRange)
+  );
 }
 
 export interface CompositionSummary {
@@ -887,4 +936,32 @@ export function isEditError(value: unknown): value is EditError {
     typeof value.message === "string" &&
     EDIT_ERROR_CODES.some((code) => code === value.code)
   );
+}
+
+/** Validates `PUT /editing/ranges`; the service still checks the asset's kind and length against the project. */
+export function parseSetAssetRangeRequest(body: unknown): ParsedEdit<SetAssetRangeRequest> {
+  if (!isRecord(body)) return invalid("body must be a JSON object");
+  const unknownKey = Object.keys(body).find((key) => key !== "path" && key !== "range");
+  if (unknownKey) return invalid(`unknown field "${unknownKey}"`);
+  const path = readString(body.path, "path", EDIT_LIMITS.pathChars);
+  if (isField(path)) return invalid(path.ok ? "path is invalid" : path.message);
+  if (body.range === null) return { ok: true, value: { path, range: null } };
+  if (!isRecord(body.range)) return invalid("range must be {start, end} or null");
+  const { start, end } = body.range;
+  if (
+    typeof start !== "number" ||
+    typeof end !== "number" ||
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    start < 0 ||
+    end > EDIT_LIMITS.maxTime
+  ) {
+    return invalid(
+      `range.start and range.end must be seconds between 0 and ${EDIT_LIMITS.maxTime}`,
+    );
+  }
+  if (end - start < ASSET_RANGE_MIN_SECONDS) {
+    return invalid(`range must be at least ${ASSET_RANGE_MIN_SECONDS}s long (end after start)`);
+  }
+  return { ok: true, value: { path, range: { start, end } } };
 }

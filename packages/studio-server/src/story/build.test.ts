@@ -2,6 +2,7 @@
 import type { TimelineClip } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanRanges } from "../analysis/cutPlan.js";
+import { writeAssetRanges } from "../editing/assetRanges.js";
 import { readTimeline } from "../editing/service.js";
 import { isStoryFailure } from "./errors.js";
 import {
@@ -343,6 +344,96 @@ describe("Build Story", () => {
     expect(result.warnings.join(" ")).toContain("not analysed");
     const { clips } = await timelineOf(f);
     expect(clips.map((clip) => [clip.mediaStart, clip.duration])).toEqual([[1, 2]]);
+  });
+
+  it("uses only the picked fragments of the A-roll, B-roll, sound effects and the music bed", async () => {
+    const f = story();
+    const ids = await referenceStory(f);
+    writeAssetRanges(
+      f.project.dir,
+      new Map([
+        ["assets/a.mp4", { start: 0, end: 5 }],
+        ["assets/b.mp4", { start: 1.5, end: 3.5 }],
+        ["assets/music.mp3", { start: 10, end: 20 }],
+      ]),
+    );
+    const result = await build(f, { turnId: "turn-pick" });
+    const [main, intro] = result.chapters;
+    const { clips } = await timelineOf(f);
+
+    // The A-roll of a chapter is cleaned inside the pick: Main's g3 (6–7.4 s) is outside 0–5 s and gone.
+    const expectedMain = cleaned([{ from: 2.6, to: 4.3, segment: "g2" }]);
+    const mainClips = clipsOn(clips, 0).filter((clip) => clip.provenance?.storyNode === ids.main);
+    expect(mainClips.map((clip) => [clip.mediaStart ?? 0, clip.duration])).toEqual(
+      expectedMain.map((range) => [range.from, Number((range.to - range.from).toFixed(3))]),
+    );
+    for (const clip of clipsOn(clips, 0)) {
+      expect((clip.mediaStart ?? 0) + clip.duration).toBeLessThanOrEqual(5.001);
+    }
+    expect(result.warnings.join(" ")).toContain("The user picked 0–5s of assets/a.mp4 for use");
+
+    // The B-roll starts at the pick's start (later than the node's own in-point) and stops at its end.
+    const [cutaway] = clipsOn(clips, 1);
+    expect(cutaway).toMatchObject({ src: "assets/b.mp4", mediaStart: 1.5, duration: 2 });
+    expect(result.warnings.join(" ")).toContain(
+      "uses only the picked fragment 1.5–3.5s of assets/b.mp4",
+    );
+
+    // The bed starts at the pick's start and spans the chapters it scores.
+    const [bed] = clipsOn(clips, 4);
+    expect(bed).toMatchObject({ src: "assets/music.mp3", mediaStart: 10, start: 0 });
+    expect(bed?.end).toBeCloseTo(intro?.end ?? -1, 2);
+    expect(main?.start).toBe(0);
+  });
+
+  it("leaves out material the picked fragments no longer reach and says what it dropped", async () => {
+    const f = story();
+    await referenceStory(f);
+    writeAssetRanges(
+      f.project.dir,
+      new Map([
+        ["assets/a.mp4", { start: 7.5, end: 8 }],
+        ["assets/b.mp4", { start: 0, end: 0.9 }],
+      ]),
+    );
+    const result = await build(f);
+    const warnings = result.warnings.join(" ");
+    const { clips } = await timelineOf(f);
+
+    // Every A-roll range is outside 7.5–8 s: no A-roll, and each chapter says why.
+    expect(clipsOn(clips, 0)).toEqual([]);
+    expect(warnings).toContain("The user picked 7.5–8s of assets/a.mp4 for use");
+    expect(warnings).toContain("no A-roll could be placed");
+    // The cutaway's node starts at 1 s, past the pick's end: it is left out, named.
+    expect(clipsOn(clips, 1)).toEqual([]);
+    expect(warnings).toContain("is outside the picked fragment 0–0.9s of assets/b.mp4");
+  });
+
+  it("estimates a new chapter from the picked fragment of its source", async () => {
+    const f = story(BLANK_HTML);
+    writeAssetRanges(f.project.dir, new Map([[TALK, { start: 6, end: 8 }]]));
+    const made = await f.edit([
+      {
+        op: "add_node",
+        node: {
+          kind: "chapter",
+          title: "Tail",
+          sourceRanges: [{ source: TALK, from: 0, to: 8 }],
+        },
+      },
+    ]);
+    const id = created(made, 0);
+    const graph = await f.graph();
+    const chapter = graph.nodes.find((node) => node.id === id);
+    if (chapter?.kind !== "chapter") throw new Error("no chapter");
+    const full = cleaned([{ from: 0, to: 8, segment: null }]).reduce(
+      (sum, range) => sum + range.to - range.from,
+      0,
+    );
+    expect(chapter.estimatedDuration).toBeGreaterThan(0);
+    expect(chapter.estimatedDuration).toBeLessThan(full);
+    const view = await f.view();
+    expect(view.facts[id]?.materialDuration).toBeCloseTo(chapter.estimatedDuration, 2);
   });
 
   it("writes nothing on a dry run and reports what it would do", async () => {

@@ -19,6 +19,7 @@ import { SourcesPanel } from "../research/SourcesPanel";
 import { studioSourcesStore } from "../research/researchContext";
 import { useSourcesAutoRefresh } from "../research/useSourcesAutoRefresh";
 import { MediaPanel } from "../media/MediaPanel";
+import { refreshAssetRanges } from "../media/assetRangesStore";
 import { MediaWorkspaceLayout } from "../media/MediaWorkspaceLayout";
 import { VariablesPanel } from "./panels/VariablesPanel";
 import { Dock } from "./dock/Dock";
@@ -174,6 +175,7 @@ export function StudioRightPanels({
   const onAgentReverted = useCallback(async () => {
     void studioStoryStore.getState().reload();
     void studioSourcesStore.getState().reload();
+    refreshAssetRanges();
     await refreshAfterAgentRevert();
   }, [refreshAfterAgentRevert]);
   // One agent store per project, shared by Chat and the Story panel (which starts Review/Build turns).

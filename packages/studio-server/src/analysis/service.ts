@@ -7,6 +7,7 @@ import {
   type AnalysisOverview,
   type AnalysisStage,
   type AnalyzeRequest,
+  type AssetRange,
   type CutPlan,
   type CutPlanRequest,
   type CutPlanSummary,
@@ -26,6 +27,7 @@ import {
   type TranscriptArtifact,
 } from "@hyperframes/agent-protocol";
 import { isInHiddenOrVendorDir, resolveWithinProject, walkDir } from "../helpers/safePath.js";
+import { effectiveRange, readAssetRanges } from "../editing/assetRanges.js";
 import { assetKindOf, MediaFacts, type MediaProber } from "../editing/mediaFacts.js";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { readAppliedCuts } from "./appliedCuts.js";
@@ -754,6 +756,10 @@ export class AnalysisService {
     const shots = await this.freshArtifact(project, view, "shots", isShotMap);
     const sourceDuration = view.manifest?.fingerprint.duration ?? 0;
     const merged = mergeCutRequest(base?.request ?? null, request);
+    const mediaRange = effectiveRange(
+      readAssetRanges(project.dir).get(ref.path),
+      sourceDuration > 0 ? sourceDuration : null,
+    );
     return store.createCut(async (id) =>
       planCut({
         id,
@@ -768,6 +774,7 @@ export class AnalysisService {
         segmentsVersion,
         shots,
         sourceDuration,
+        mediaRange,
       }),
     );
   }
@@ -815,7 +822,7 @@ export class AnalysisService {
     return plans.map((plan) => ({ ...plan, applied: applied.get(plan.id) ?? null }));
   }
 
-  /** Why the plan no longer fits the source's analysis, or null while it does. */
+  /** Why the plan no longer fits the source's analysis (or its picked fragment), or null while it does. */
   private async staleReason(project: ResolvedProject, plan: CutPlan): Promise<string | null> {
     const ref = await this.resolveSource(project, plan.source).catch(() => null);
     if (!ref) return `${plan.source} is no longer in the project`;
@@ -826,6 +833,20 @@ export class AnalysisService {
     if (!this.isFresh(view, "transcript") || version !== plan.transcriptVersion) {
       return `the transcript of ${plan.source} changed after the plan was made; plan again`;
     }
+    const pickNow = effectiveRange(
+      readAssetRanges(project.dir).get(plan.source),
+      view.manifest?.fingerprint.duration ?? null,
+    );
+    const pickThen = plan.mediaRange ?? null;
+    if (!sameRange(pickThen, pickNow)) {
+      return `the picked fragment of ${plan.source} changed after the plan was made; plan again`;
+    }
     return null;
   }
+}
+
+/** Whether two picks are the same fragment (both null: the whole file). */
+function sameRange(a: AssetRange | null, b: AssetRange | null): boolean {
+  if (a === null || b === null) return a === b;
+  return Math.abs(a.start - b.start) < 1e-6 && Math.abs(a.end - b.end) < 1e-6;
 }

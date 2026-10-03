@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import { t } from "../i18n";
+import { refreshAssetRanges } from "../media/assetRangesStore";
 
 interface HistoryResult {
   ok: boolean;
@@ -89,6 +90,7 @@ export function useEditHistoryActions({
         );
         return;
       }
+      if (result.ok) refreshAssetRanges();
       if (result.ok && result.label) {
         const restore = { paths: result.paths, files: result.files };
         onAfterUndoRedo?.(restore);

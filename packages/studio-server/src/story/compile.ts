@@ -11,6 +11,8 @@ import {
   type StoryGraph,
   type StorySyncRole,
 } from "@hyperframes/agent-protocol";
+import { mediaBounds, readAssetRanges } from "../editing/assetRanges.js";
+import { pickedFragment } from "../helpers/pickedRange.js";
 import { listPresets } from "../editing/presets.js";
 import type { MediaFacts } from "../editing/mediaFacts.js";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
@@ -70,8 +72,12 @@ export interface IntentSection {
 export interface IntentMusic {
   node: MusicNode;
   covers: string[];
-  /** Length of the file, when known (the bed ends early when the file is shorter than its chapters). */
-  assetDuration: number | null;
+  /** Length of the usable part of the file (the user's pick, or the whole file), when known. */
+  usableDuration: number | null;
+  /** Where the usable part starts in the file (0 without a pick): the bed starts there, not at the file's start. */
+  usableStart: number;
+  /** The usable part is a fragment the user picked (warnings say so). */
+  picked: boolean;
 }
 
 export interface StoryIntent {
@@ -116,6 +122,7 @@ const ROLE_OF = { video: "b_roll", picture: "picture", motion: "motion" } as con
  */
 export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise<StoryIntent> {
   const warnings: string[] = [];
+  const ranges = readAssetRanges(env.project.dir);
   const order = storyOrder(graph);
   const byId = new Map(graph.nodes.map((node) => [node.id, node]));
   const chapters = order.chapters.flatMap((id) => {
@@ -145,7 +152,7 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
   const sections: IntentSection[] = [];
   for (const chapter of chapters) {
     for (const range of chapter.sourceRanges) sources.add(range.source);
-    const cleaned = await cleanChapterAroll(chapter, env.lookup);
+    const cleaned = await cleanChapterAroll(chapter, env.lookup, ranges);
     warnings.push(...cleaned.warnings);
     const speech = cleaned.pieces.length > 0 && cleaned.total > 0;
     const length = round3(speech ? cleaned.total : chapter.estimatedDuration);
@@ -206,13 +213,28 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
             );
             break;
           }
-          const sourceEnd = node.sourceOut ?? asset.duration;
-          const range = sourceEnd === null ? null : sourceEnd - node.sourceIn;
+          const bounds = mediaBounds(ranges.get(node.asset), asset.duration);
+          const sourceIn = Math.max(node.sourceIn, bounds.start);
+          const wantedOut = node.sourceOut ?? asset.duration;
+          const sourceOut =
+            bounds.end === null ? wantedOut : Math.min(wantedOut ?? bounds.end, bounds.end);
+          const range = sourceOut === null ? null : sourceOut - sourceIn;
           if (range !== null && range <= 0) {
             warnings.push(
-              `${chapter.title}: "${node.title}" starts at or after the end of ${node.asset}; it was left out.`,
+              bounds.picked && bounds.end !== null
+                ? `${chapter.title}: "${node.title}" is outside the picked fragment ${pickedFragment(node.asset, { start: bounds.start, end: bounds.end })}; it was left out.`
+                : `${chapter.title}: "${node.title}" starts at or after the end of ${node.asset}; it was left out.`,
             );
             break;
+          }
+          if (
+            bounds.picked &&
+            bounds.end !== null &&
+            (node.sourceIn < bounds.start || (wantedOut !== null && wantedOut > bounds.end))
+          ) {
+            warnings.push(
+              `${chapter.title}: "${node.title}" uses only the picked fragment ${pickedFragment(node.asset, { start: bounds.start, end: bounds.end })}; the rest was left out.`,
+            );
           }
           let wanted = attachment.duration ?? Math.min(range ?? span.length, span.length);
           if (range !== null && wanted > range) {
@@ -232,7 +254,7 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
             start: placed.start,
             track: STORY_TRACKS.bRoll,
             duration: placed.length,
-            ...(node.sourceIn > 0 && { mediaStart: node.sourceIn }),
+            ...(sourceIn > 0 && { mediaStart: sourceIn }),
             muted: true,
             fit: "cover",
           });
@@ -304,8 +326,15 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
             );
             break;
           }
-          const natural = asset.duration ?? span.length;
+          const bounds = mediaBounds(ranges.get(node.asset), asset.duration);
+          const natural =
+            bounds.end === null ? (asset.duration ?? span.length) : bounds.end - bounds.start;
           const wanted = Math.min(attachment.duration ?? natural, natural);
+          if (bounds.picked && bounds.end !== null && (attachment.duration ?? 0) > natural) {
+            warnings.push(
+              `${chapter.title}: sound effect "${node.title}" is limited to the picked fragment ${pickedFragment(node.asset, { start: bounds.start, end: bounds.end })}.`,
+            );
+          }
           const placed = placeInChapter(span, wanted, attachment.placement, attachment.offset);
           if (placed.length < MIN_CLIP_SECONDS) {
             leftOut();
@@ -317,6 +346,7 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
             start: placed.start,
             track: STORY_TRACKS.sfx,
             duration: placed.length,
+            ...(bounds.start > 0 && { mediaStart: bounds.start }),
             volume: node.volume,
             fadeOut: round3(Math.min(0.1, placed.length / 2)),
           });
@@ -354,7 +384,14 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
       );
       continue;
     }
-    music.push({ node, covers, assetDuration: asset.duration });
+    const bounds = mediaBounds(ranges.get(node.asset), asset.duration);
+    music.push({
+      node,
+      covers,
+      usableDuration: bounds.end === null ? asset.duration : bounds.end - bounds.start,
+      usableStart: bounds.start,
+      picked: bounds.picked,
+    });
   }
 
   let captionPreset: string | null = null;

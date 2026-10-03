@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import type { RegistryItem } from "@hyperframes/core";
 import type { ApplyEditsRequest, EditOperation, TimelineClip } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
+import { writeAssetRanges } from "./assetRanges.js";
 import { isEditFailure } from "./errors.js";
 import { stampFileHfIds } from "../helpers/hfIdPersist.js";
 import { applyEdits } from "./operations.js";
@@ -1316,5 +1317,151 @@ describe("provenance", () => {
     // A batch without a turn (Studio, Story builds) adds no stamp.
     await apply([{ op: "move_clip", clip: "hf-music", start: 1 }]);
     expect(project?.read("index.html")).not.toMatch(/data-hf-id="hf-music"[^>]*data-ov-ai-edit/);
+  });
+});
+
+describe("asset ranges", () => {
+  const pickFragments = (entries: Array<[string, { start: number; end: number }]>) => {
+    if (!project) throw new Error("no project");
+    writeAssetRanges(project.project.dir, new Map(entries));
+  };
+
+  it("makes an add_clip of a picked asset default to the pick", async () => {
+    withProject();
+    pickFragments([["assets/music.mp3", { start: 10, end: 20 }]]);
+    const { results, timeline } = await apply([
+      { op: "add_clip", asset: "assets/music.mp3", start: 0, track: 3 },
+    ]);
+    expect(clipOf(timeline.clips, results[0]?.clipId ?? "")).toMatchObject({
+      src: "assets/music.mp3",
+      start: 0,
+      duration: 10,
+      mediaStart: 10,
+      sourceDuration: 30,
+    });
+  });
+
+  it("refuses an add_clip before or past the pick, naming it", async () => {
+    withProject();
+    pickFragments([["assets/music.mp3", { start: 10, end: 20 }]]);
+    const before = await refusal([
+      { op: "add_clip", asset: "assets/music.mp3", start: 0, track: 3, mediaStart: 4 },
+    ]);
+    expect(before).toMatchObject({ code: "out_of_bounds", opIndex: 0 });
+    expect(before.message).toContain("The user picked 10–20s of assets/music.mp3 for use");
+
+    const past = await refusal([
+      {
+        op: "add_clip",
+        asset: "assets/music.mp3",
+        start: 0,
+        track: 3,
+        mediaStart: 12,
+        duration: 12,
+      },
+    ]);
+    expect(past).toMatchObject({ code: "out_of_bounds", opIndex: 0 });
+    expect(past.message).toContain("The user picked 10–20s of assets/music.mp3 for use");
+    expect(past.message).toContain("runs past 20s");
+
+    // The pick's own length, and the 0.05 s frame-rounding slack, are fine.
+    await expect(
+      apply([
+        {
+          op: "add_clip",
+          asset: "assets/music.mp3",
+          start: 0,
+          track: 3,
+          mediaStart: 10,
+          duration: 10.04,
+        },
+      ]),
+    ).resolves.toBeDefined();
+  });
+
+  it("refuses add_sequence ranges outside the pick, naming the index", async () => {
+    withProject();
+    pickFragments([["assets/a.mp4", { start: 2, end: 4 }]]);
+    const error = await refusal([
+      {
+        op: "add_sequence",
+        asset: "assets/a.mp4",
+        track: 1,
+        ranges: [
+          { from: 2, to: 3 },
+          { from: 4.5, to: 5 },
+        ],
+      },
+    ]);
+    expect(error).toMatchObject({ code: "out_of_bounds", opIndex: 0 });
+    expect(error.message).toContain("ranges[1]");
+    expect(error.message).toContain("The user picked 2–4s of assets/a.mp4 for use");
+
+    const early = await refusal([
+      { op: "add_sequence", asset: "assets/a.mp4", track: 1, ranges: [{ from: 1, to: 2 }] },
+    ]);
+    expect(early.message).toContain("ranges[0]");
+    expect(early.message).toContain("starts before it");
+
+    const inside = await apply([
+      {
+        op: "add_sequence",
+        asset: "assets/a.mp4",
+        track: 1,
+        ranges: [
+          { from: 2, to: 3 },
+          { from: 3, to: 4 },
+        ],
+      },
+    ]);
+    expect(inside.results[0]?.clipIds).toHaveLength(2);
+  });
+
+  it("stops a trim from widening the pick on a clip placed inside it", async () => {
+    withProject();
+    pickFragments([["assets/music.mp3", { start: 10, end: 20 }]]);
+    const added = await apply([{ op: "add_clip", asset: "assets/music.mp3", start: 0, track: 3 }]);
+    const id = added.results[0]?.clipId ?? "";
+
+    const past = await refusal([{ op: "trim_clip", clip: id, end: 24 }]);
+    expect(past).toMatchObject({ code: "out_of_bounds" });
+    expect(past.message).toContain("The user picked 10–20s of assets/music.mp3 for use");
+
+    const shrunk = await apply([{ op: "trim_clip", clip: id, start: 5 }]);
+    expect(clipOf(shrunk.timeline.clips, id)).toMatchObject({
+      start: 5,
+      end: 10,
+      duration: 5,
+      mediaStart: 15,
+    });
+  });
+
+  it("keeps a clip the user placed outside the pick from widening it, but lets it shrink", async () => {
+    withProject({
+      html: MAIN_HTML.replace(
+        /<audio id="music"[^>]*>/,
+        '<audio id="music" data-hf-id="hf-music" class="clip" src="assets/music.mp3" data-start="2" data-duration="4" data-track-index="3" data-media-start="5" data-volume="0.5">',
+      ),
+    });
+    pickFragments([["assets/music.mp3", { start: 10, end: 20 }]]);
+
+    // The clip uses 5–9 s of the source; trimming its head earlier would reach further outside the pick.
+    const widened = await refusal([{ op: "trim_clip", clip: "hf-music", start: 1 }]);
+    expect(widened).toMatchObject({ code: "out_of_bounds" });
+    expect(widened.message).toContain("The user picked 10–20s of assets/music.mp3 for use");
+
+    const shrunk = await apply([{ op: "trim_clip", clip: "hf-music", start: 2.5, end: 5 }]);
+    expect(clipOf(shrunk.timeline.clips, "hf-music")).toMatchObject({
+      start: 2.5,
+      end: 5,
+      mediaStart: 5.5,
+    });
+
+    // It may grow up to the pick, not past it.
+    const grown = await apply([{ op: "trim_clip", clip: "hf-music", end: 14 }]);
+    expect(clipOf(grown.timeline.clips, "hf-music")).toMatchObject({ start: 2.5, end: 14 });
+    const past = await refusal([{ op: "trim_clip", clip: "hf-music", end: 23 }]);
+    expect(past).toMatchObject({ code: "out_of_bounds" });
+    expect(past.message).toContain("The user picked 10–20s of assets/music.mp3 for use");
   });
 });

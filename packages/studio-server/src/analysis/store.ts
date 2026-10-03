@@ -4,6 +4,7 @@ import { dirname, join, posix } from "node:path";
 import {
   ANALYSIS_STAGES,
   COMPUTED_STAGES,
+  isAssetRange,
   isRecord,
   type AnalysisStage,
   type ComputedStage,
@@ -247,6 +248,9 @@ function isCutPlan(value: unknown): value is CutPlan {
     isRecord(value) &&
     typeof value.id === "string" &&
     typeof value.source === "string" &&
+    (value.mediaRange === undefined ||
+      value.mediaRange === null ||
+      isAssetRange(value.mediaRange)) &&
     Array.isArray(value.ranges)
   );
 }

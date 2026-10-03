@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { ASSET_RANGES_PATH } from "@hyperframes/agent-protocol";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 
 const SIGNATURE_TEXT_EXTENSIONS = new Set([
@@ -186,14 +187,16 @@ function collectProjectFiles(normalizedProjectDir: string): ProjectSignatureFile
 /**
  * Files project history tracks that the preview never reads: they are left out of the signature and of Studio's
  * file-change reloads, but an undo/revert restores them together with the project's source. Currently the Story
- * Graph (`.hyperframes/story/graph.json`) and its timeline sync ledger (`.hyperframes/story/sync.json`), and the
- * research provenance ledger (`.hyperframes/research/provenance.json`), which agent turns write and "Revert this
- * turn" must roll back together with the composition (and the imported asset files).
+ * Graph (`.hyperframes/story/graph.json`) and its timeline sync ledger (`.hyperframes/story/sync.json`), the
+ * research provenance ledger (`.hyperframes/research/provenance.json`), and the user's picked asset fragments
+ * (`.hyperframes/media/ranges.json`), which agent turns and the ranges route write and "Revert this turn" must roll
+ * back together with the composition.
  */
 export const HISTORY_ONLY_TRACKED_PATHS = [
   ".hyperframes/story/graph.json",
   ".hyperframes/story/sync.json",
   ".hyperframes/research/provenance.json",
+  ASSET_RANGES_PATH,
 ] as const;
 
 /** Whether a write at `changedPath` can change what project history tracks (the signature's files plus the above). */
