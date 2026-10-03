@@ -116,9 +116,21 @@ export interface JevSettings {
 }
 
 /**
+ * When the Director proposes a plan before acting (Settings → Execution → Autonomy):
+ *
+ * - `big`: propose first only for a big request — more than two steps, two or more specialists, a render, import or
+ *   download, removing or replacing what the user made, or long-form analysis. Small edits run directly.
+ * - `always`: propose first for every request that changes the project.
+ * - `never`: never propose; run directly.
+ */
+export const PLAN_APPROVALS = ["big", "always", "never"] as const;
+export type PlanApproval = (typeof PLAN_APPROVALS)[number];
+
+/**
  * How much the agents may do without asking (Settings → Execution → Autonomy).
  *
- * - `defaultIntent`: the Mode chip a new chat's composer starts with. The runtime only stores it; Studio applies it.
+ * - `planApproval`: when the Director proposes a plan the user approves with "Carry out the plan" before anything
+ *   changes. After a proposal the rest of that turn changes nothing.
  * - `askBeforeLockedEdits`: material the user locked or set by hand (locked timeline clips, locked Story nodes, the
  *   user's decisions) is NEVER changed by an agent, whatever this says (the editing and story services refuse it).
  *   `true`: an agent that needs such a change stops work on that item and asks the user first. `false`: it leaves the
@@ -128,7 +140,7 @@ export interface JevSettings {
  *   Story workspace's "Find missing material" action). `false`: agents import what fits without asking.
  */
 export interface AutonomySettings {
-  defaultIntent: ChatIntent;
+  planApproval: PlanApproval;
   askBeforeLockedEdits: boolean;
   askBeforeDownloads: boolean;
 }
@@ -286,20 +298,29 @@ export const CHAT_MODES = ["normal", "story"] as const;
 export type ChatMode = (typeof CHAT_MODES)[number];
 
 /**
- * What the user wants from a turn (the composer's Mode chip): `plan` — the Director proposes a plan first and changes
- * nothing (the user proceeds with an Edit turn); `edit` — the agents act on the project; `ask` — the Director answers
- * only. Plan and Ask turns never change the project: the runtime withholds and refuses every project-changing tool.
+ * What the user wants from a turn (the composer's Mode chip): `edit` — the agents act on the project; `ask` — the
+ * Director answers only. An Ask turn never changes the project: the runtime withholds and refuses every
+ * project-changing tool. An Edit turn may first propose a plan when the user's plan-approval setting asks for it.
  */
-export const CHAT_INTENTS = ["plan", "edit", "ask"] as const;
+export const CHAT_INTENTS = ["edit", "ask"] as const;
 export type ChatIntent = (typeof CHAT_INTENTS)[number];
 
 export function isChatIntent(value: unknown): value is ChatIntent {
   return typeof value === "string" && (CHAT_INTENTS as readonly string[]).includes(value);
 }
 
-/** Autonomy of a user who never changed it: new chats start in Plan, and agents ask before locked edits and downloads. */
+/**
+ * Reads an intent from stored data (a chat, a turn, an intake file): the removed `plan` intent is read as `edit`,
+ * so chats written before the plan-approval rework keep loading. Null for anything else.
+ */
+export function normalizeChatIntent(value: unknown): ChatIntent | null {
+  if (value === "plan") return "edit";
+  return isChatIntent(value) ? value : null;
+}
+
+/** Autonomy of a user who never changed it: the Director proposes plans for big requests, and agents ask before locked edits and downloads. */
 export const DEFAULT_AUTONOMY_SETTINGS: Readonly<AutonomySettings> = {
-  defaultIntent: "plan",
+  planApproval: "big",
   askBeforeLockedEdits: true,
   askBeforeDownloads: true,
 };
@@ -462,6 +483,11 @@ export interface PlanStep {
 export interface ExecutionPlan {
   steps: PlanStep[];
   updatedAt: number;
+  /**
+   * True when the Director published this plan as a proposal the user must approve ("Carry out the plan"): the turn
+   * changed nothing after it. An ordinary progress plan (update_plan) has no flag.
+   */
+  proposal?: boolean;
 }
 
 // ── Agent runs ───────────────────────────────────────────────────────────────
@@ -524,7 +550,14 @@ interface ReferenceBase {
   label?: string;
 }
 
-export interface MediaReference extends ReferenceBase {
+/** What Studio knows about a project file the user attached; the prompt tells it to the agents in words. */
+interface AttachedFileFacts {
+  sizeBytes?: number;
+  /** Length of a video or audio file, in seconds. */
+  durationSeconds?: number;
+}
+
+export interface MediaReference extends ReferenceBase, AttachedFileFacts {
   kind: "image" | "video" | "audio" | "file";
   source: MediaSource;
   mimeType?: string;
@@ -536,7 +569,7 @@ export interface UrlReference extends ReferenceBase {
   title?: string;
 }
 
-export interface AssetReference extends ReferenceBase {
+export interface AssetReference extends ReferenceBase, AttachedFileFacts {
   kind: "asset";
   /** Project-relative asset path. */
   path: string;

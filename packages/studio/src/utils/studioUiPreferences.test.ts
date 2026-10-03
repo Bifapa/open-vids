@@ -177,3 +177,30 @@ describe("audioMetersVisible preference", () => {
     expect(readStudioUiPreferences(storage).audioMetersVisible).toBeUndefined();
   });
 });
+
+describe("Story workspace preferences", () => {
+  it("round-trips the workspace and the Story splits per project", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences(
+      { dockWorkspace: "story", storyLayout: { left: 0.4, top: 0.6 } },
+      storage,
+      "p1",
+    );
+    expect(readStudioUiPreferences(storage, "p1")).toMatchObject({
+      dockWorkspace: "story",
+      storyLayout: { left: 0.4, top: 0.6 },
+    });
+    expect(readStudioUiPreferences(storage, "p2").dockWorkspace).toBeUndefined();
+  });
+
+  it("drops an unknown workspace and splits outside the window", () => {
+    const storage = createStorage();
+    storage.setItem(
+      "hf-studio-ui-preferences",
+      JSON.stringify({ dockWorkspace: "media", storyLayout: { left: 1.4, top: 0.5 } }),
+    );
+    const prefs = readStudioUiPreferences(storage);
+    expect(prefs.dockWorkspace).toBeUndefined();
+    expect(prefs.storyLayout).toBeUndefined();
+  });
+});

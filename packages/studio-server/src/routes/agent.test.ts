@@ -163,7 +163,8 @@ describe("agent gateway route", () => {
       const winner = first.status === 200 ? first : second;
       expect(await winner.json()).toMatchObject({
         prompt: "Cut a 30 second teaser",
-        intent: "plan",
+        // An intake written before the Plan mode was removed starts as Edit.
+        intent: "edit",
         model: { provider: "anthropic", modelId: "claude-sonnet" },
         agents: ["editor", "vision"],
         files: [{ path: "assets/a.mp4", kind: "video" }],

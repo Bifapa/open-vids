@@ -8,7 +8,7 @@ import { createFakeClient, createSourceLog } from "./agentTestHarness";
 const INTAKE: AgentIntake = {
   version: 1,
   prompt: "Cut a 60s teaser from the interview",
-  intent: "plan",
+  intent: "ask",
   model: { provider: "anthropic", modelId: "sonnet" },
   thinking: "high",
   agents: ["editor", "vision"],
@@ -30,7 +30,7 @@ describe("intake turn", () => {
   it("references every imported file by its project path, typed by kind", () => {
     expect(intakeTurnRequest(INTAKE)).toEqual({
       prompt: "Cut a 60s teaser from the interview",
-      intent: "plan",
+      intent: "ask",
       mode: "normal",
       references: [
         {
@@ -69,7 +69,7 @@ describe("consumeIntake", () => {
     expect(client.createChat).toHaveBeenCalledWith({ model: INTAKE.model, thinking: "high" });
     expect(client.updateChat).toHaveBeenCalledWith("new", {
       enabledAgents: ["editor", "vision"],
-      intent: "plan",
+      intent: "ask",
     });
     expect(client.startTurn).toHaveBeenCalledWith("new", {
       ...intakeTurnRequest(INTAKE),

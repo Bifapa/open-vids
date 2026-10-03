@@ -133,23 +133,21 @@ describe("read_website availability", () => {
     ]);
   });
 
-  it("is offered in Plan and Ask turns (reading is harmless) but not in a story build or rebuild turn", () => {
-    for (const intent of ["plan", "ask"] as const) {
-      const names = buildHostTools(
-        "director",
-        {
-          enabled: TEAM,
-          jev: false,
-          editing: true,
-          analysis: true,
-          story: true,
-          websites: true,
-          intent,
-        },
-        async () => ({ text: "" }),
-      ).map((tool) => tool.name);
-      expect(names).toContain("read_website");
-    }
+  it("is offered in Ask turns (reading is harmless) but not in a story build or rebuild turn", () => {
+    const names = buildHostTools(
+      "director",
+      {
+        enabled: TEAM,
+        jev: false,
+        editing: true,
+        analysis: true,
+        story: true,
+        websites: true,
+        intent: "ask",
+      },
+      async () => ({ text: "" }),
+    ).map((tool) => tool.name);
+    expect(names).toContain("read_website");
     for (const storyAction of ["build", "rebuild"] as const) {
       expect(researchToolsOf("director", TEAM, { mode: "story", storyAction }, true, true)).toEqual(
         [],
@@ -182,7 +180,7 @@ describe("full-access website tools availability", () => {
     expect(researchToolsOf("motion", [], { mode: "normal" }, false, true, true)).toEqual([]);
   });
 
-  it("offers none in a story build or rebuild turn, and keeps record_website out of Plan and Ask turns", () => {
+  it("offers none in a story build or rebuild turn, and keeps record_website out of Ask turns", () => {
     for (const storyAction of ["build", "rebuild"] as const) {
       for (const agent of AGENTS) {
         expect(
@@ -190,24 +188,22 @@ describe("full-access website tools availability", () => {
         ).toEqual([]);
       }
     }
-    for (const intent of ["plan", "ask"] as const) {
-      const names = buildHostTools(
-        "director",
-        {
-          enabled: TEAM,
-          jev: false,
-          editing: true,
-          analysis: true,
-          story: true,
-          websites: true,
-          websiteFiles: true,
-          intent,
-        },
-        async () => ({ text: "" }),
-      ).map((tool) => tool.name);
-      expect(names).toContain("get_website_file");
-      expect(names).not.toContain("record_website");
-    }
+    const names = buildHostTools(
+      "director",
+      {
+        enabled: TEAM,
+        jev: false,
+        editing: true,
+        analysis: true,
+        story: true,
+        websites: true,
+        websiteFiles: true,
+        intent: "ask",
+      },
+      async () => ({ text: "" }),
+    ).map((tool) => tool.name);
+    expect(names).toContain("get_website_file");
+    expect(names).not.toContain("record_website");
   });
 });
 
@@ -607,37 +603,35 @@ describe("full-access website tools in the executor", () => {
     expect(host.recordRequests).toEqual([]);
   });
 
-  it("refuses save and record in Plan and Ask turns, and lets read mode through", async () => {
-    for (const intent of ["plan", "ask"] as const) {
-      const { host, call } = fullAccess({ intent });
-      const saved = await call(
-        "get_website_file",
-        { url: "https://linear.app/a.json", mode: "save" },
-        "director",
-      );
-      expect(saved.isError).toBe(true);
-      expect(saved.text).toContain(intent === "plan" ? "Plan turn" : "Ask turn");
-      const recorded = await call(
-        "record_website",
-        { url: "https://linear.app", seconds: 4 },
-        "director",
-      );
-      expect(recorded.isError).toBe(true);
-      expect(recorded.text).toContain(intent === "plan" ? "Plan turn" : "Ask turn");
-      expect(host.websiteFileRequests).toEqual([]);
-      expect(host.recordRequests).toEqual([]);
+  it("refuses save and record in Ask turns, and lets read mode through", async () => {
+    const { host, call } = fullAccess({ intent: "ask" });
+    const saved = await call(
+      "get_website_file",
+      { url: "https://linear.app/a.json", mode: "save" },
+      "director",
+    );
+    expect(saved.isError).toBe(true);
+    expect(saved.text).toContain("Ask turn");
+    const recorded = await call(
+      "record_website",
+      { url: "https://linear.app", seconds: 4 },
+      "director",
+    );
+    expect(recorded.isError).toBe(true);
+    expect(recorded.text).toContain("Ask turn");
+    expect(host.websiteFileRequests).toEqual([]);
+    expect(host.recordRequests).toEqual([]);
 
-      expect(
-        (
-          await call(
-            "get_website_file",
-            { url: "https://linear.app/app.css", mode: "read" },
-            "director",
-          )
-        ).isError,
-      ).toBeUndefined();
-      expect(host.websiteFileRequests).toHaveLength(1);
-    }
+    expect(
+      (
+        await call(
+          "get_website_file",
+          { url: "https://linear.app/app.css", mode: "read" },
+          "director",
+        )
+      ).isError,
+    ).toBeUndefined();
+    expect(host.websiteFileRequests).toHaveLength(1);
   });
 
   it("needs the user's download approval for save and record, but not for read", async () => {

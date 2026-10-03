@@ -75,6 +75,7 @@ export function resolveTurnSetup(input: {
     execution: { preset: quality.preset, budget: resolveExecutionBudget(quality) },
     qaAvailable: input.qaAvailable,
     autonomy: {
+      planApproval: settings.autonomy.planApproval,
       askBeforeLockedEdits: settings.autonomy.askBeforeLockedEdits,
       askBeforeDownloads: settings.autonomy.askBeforeDownloads,
     },

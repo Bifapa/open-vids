@@ -1,6 +1,6 @@
 /* Settings → Execution: the default Execution Quality for chats that haven't chosen their own
    (agents.executionQuality {preset, custom} in the global agent settings, GET/PUT /api/agent/settings) and the
-   Autonomy group (agents.autonomy {defaultIntent, askBeforeLockedEdits, askBeforeDownloads}, same route). */
+   Autonomy group (agents.autonomy {planApproval, askBeforeLockedEdits, askBeforeDownloads}, same route). */
 (function () {
   "use strict";
   const { esc, S, PAGES, CLICK, CHANGE, tr, row, group, sw, seg, stepper, head } = OVS;
@@ -105,14 +105,22 @@
       hint: "settings.execution.field.researchCandidates.hint",
     },
   ];
-  /* Autonomy: packages/agent-protocol AutonomySettings. Mode copy matches the composer's Mode chip. */
-  const MODES = [
-    ["plan", "settings.execution.mode.plan", "settings.execution.mode.plan.hint"],
-    ["edit", "settings.execution.mode.edit", "settings.execution.mode.edit.hint"],
-    ["ask", "settings.execution.mode.ask", "settings.execution.mode.ask.hint"],
+  /* Autonomy: packages/agent-protocol AutonomySettings. Plan approval copy matches the Director's plan proposals. */
+  const APPROVALS = [
+    ["big", "settings.execution.planApproval.big", "settings.execution.planApproval.big.hint"],
+    [
+      "always",
+      "settings.execution.planApproval.always",
+      "settings.execution.planApproval.always.hint",
+    ],
+    [
+      "never",
+      "settings.execution.planApproval.never",
+      "settings.execution.planApproval.never.hint",
+    ],
   ];
   const AUTONOMY_DEFAULTS = {
-    defaultIntent: "plan",
+    planApproval: "big",
     askBeforeLockedEdits: true,
     askBeforeDownloads: true,
   };
@@ -259,13 +267,13 @@
       group(
         te("settings.execution.group.autonomy"),
         row(
-          te("settings.execution.chatMode"),
-          te(MODES.find((m) => m[0] === au.defaultIntent)[2]),
+          te("settings.execution.planApproval"),
+          esc(tr(APPROVALS.find((a) => a[0] === au.planApproval)[2])),
           seg(
-            MODES.map((m) => [m[0], tr(m[1])]),
-            au.defaultIntent,
-            "auto-intent",
-            tr("settings.execution.chatMode"),
+            APPROVALS.map((a) => [a[0], tr(a[1])]),
+            au.planApproval,
+            "auto-plan",
+            tr("settings.execution.planApproval"),
           ),
         ) +
           row(
@@ -336,8 +344,8 @@
     if (!RANGES[key] || !Number.isFinite(n)) return OVS.render(true); /* back to the saved number */
     editBudget(() => ({ [key]: clamp(key, n) }));
   };
-  CLICK["auto-intent"] = (t) => {
-    OVS.saveAgents({ autonomy: { defaultIntent: t.dataset.v } });
+  CLICK["auto-plan"] = (t) => {
+    OVS.saveAgents({ autonomy: { planApproval: t.dataset.v } });
   };
   CLICK["auto-sw"] = (t) => {
     const key = t.dataset.key;

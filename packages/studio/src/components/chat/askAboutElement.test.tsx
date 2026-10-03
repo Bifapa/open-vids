@@ -28,6 +28,8 @@ const controller: DockController = {
   setTitle: vi.fn(),
   close: vi.fn(),
   setGroupVisible: vi.fn(),
+  enterStory: vi.fn(),
+  leaveStory: vi.fn(),
   reset: vi.fn(),
 };
 

@@ -1,6 +1,11 @@
 import { useState, type KeyboardEvent } from "react";
 import { ChatCircleText, Check } from "@phosphor-icons/react";
-import { CHAT_INTENTS, type ChatIntent, type ChatSummary } from "@hyperframes/agent-protocol";
+import {
+  CHAT_INTENTS,
+  normalizeChatIntent,
+  type ChatIntent,
+  type ChatSummary,
+} from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { runningTurn } from "../../agent/agentSelectors";
 import { useTranslation, type TranslationKey } from "../../i18n";
@@ -20,7 +25,6 @@ export const INTENT_LABELS: Record<
   ChatIntent,
   { name: TranslationKey; description: TranslationKey }
 > = {
-  plan: { name: "chat.intent.plan", description: "chat.mode.plan.description" },
   edit: { name: "chat.intent.edit", description: "chat.mode.edit.description" },
   ask: { name: "chat.intent.ask", description: "chat.mode.ask.description" },
 };
@@ -39,14 +43,15 @@ function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
   ]?.focus();
 }
 
-/** Plan / Edit / Ask: the chat's intent, persisted on the chat and applied to each turn it starts. */
+/** Edit / Ask: the chat's intent, persisted on the chat and applied to each turn it starts. */
 export function ModeMenu({ chat }: { chat: ChatSummary }) {
   const { t } = useTranslation();
   const locked = useAgentStore((state) => runningTurn(state.chat) !== null);
   const setIntent = useAgentStore((state) => state.setIntent);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const intent = chat.intent ?? "edit";
+  // A chat written before the plan-approval rework may still store the removed `plan`: it shows as Edit.
+  const intent = normalizeChatIntent(chat.intent) ?? "edit";
   const current = INTENT_LABELS[intent];
 
   const choose = async (next: ChatIntent) => {

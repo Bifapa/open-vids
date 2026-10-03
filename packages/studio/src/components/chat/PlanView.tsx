@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { CaretRight, Check, Minus, WarningCircle } from "@phosphor-icons/react";
 import type { ExecutionPlan, PlanStepStatus } from "@hyperframes/agent-protocol";
 import { useTranslation } from "../../i18n";
+import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
 import { StatusDot } from "../ui/Status";
 import { PLAN_STATUS_LABELS } from "./agentLabels";
@@ -33,9 +34,18 @@ const STEP_TEXT: Record<PlanStepStatus, string> = {
 
 /**
  * The Director's compact plan for a turn, "n of m" in its head: open while the turn runs, folded once it ends
- * (the user can still open it). Informational only; nothing here waits for approval.
+ * (the user can still open it). A plan proposal (`plan.proposal`) is the user's to run or change; while it is the
+ * last turn's and no turn runs, it carries the "Carry out the plan" / "Change" buttons.
  */
-export function PlanView({ plan, live }: { plan: ExecutionPlan; live: boolean }) {
+export function PlanView({
+  plan,
+  live,
+  approval,
+}: {
+  plan: ExecutionPlan;
+  live: boolean;
+  approval?: { busy: boolean; onExecute: () => void; onRevise: () => void } | undefined;
+}) {
   const { t } = useTranslation();
   const [choice, setChoice] = useState<boolean | null>(null);
   const open = choice ?? live;
@@ -102,6 +112,16 @@ export function PlanView({ plan, live }: { plan: ExecutionPlan; live: boolean })
             </li>
           ))}
         </ol>
+      )}
+      {approval && plan.proposal && (
+        <div className="flex items-center gap-1.5 border-t border-border-subtle px-2 py-1.5">
+          <Button size="sm" disabled={approval.busy} onClick={approval.onExecute}>
+            {t("chat.plan.execute")}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={approval.busy} onClick={approval.onRevise}>
+            {t("chat.plan.revise")}
+          </Button>
+        </div>
       )}
     </section>
   );

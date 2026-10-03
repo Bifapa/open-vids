@@ -38,6 +38,7 @@ import {
   parseDelegateArgs,
   parseJevArgs,
   parsePlanArgs,
+  parseProposalArgs,
   parseRunArgs,
   parseWaitArgs,
 } from "./tools.js";
@@ -153,6 +154,8 @@ export class Orchestrator {
   private closed = false;
   /** The Director published its own plan; the automatic run-based plan stops. */
   private directorPlanned = false;
+  /** The plan is a proposal awaiting the user's approval ("Carry out the plan"); project-changing tools refuse. */
+  private directorProposal = false;
   /** The automatic plan's final step once the turn has ended. */
   private assembled: PlanStepStatus | null = null;
 
@@ -176,6 +179,8 @@ export class Orchestrator {
       if (name === TOOL_NAMES.jev) return await this.runJev(caller, args, signal);
       if (caller !== "director") return refuse(`${name} is only available to the Director.`);
       switch (name) {
+        case TOOL_NAMES.propose:
+          return await this.proposePlan(args);
         case TOOL_NAMES.plan:
           return await this.updatePlan(args);
         case TOOL_NAMES.delegate:
@@ -294,12 +299,39 @@ export class Orchestrator {
 
   // ── Tools ──────────────────────────────────────────────────────────────────
 
+  private async proposePlan(args: unknown): Promise<HostToolResult> {
+    const parsed = parseProposalArgs(args);
+    if (!parsed.ok) return refuse(parsed.message);
+    const plan: ExecutionPlan = {
+      steps: parsed.value.steps.map((step, index) => ({
+        id: `step-${index + 1}`,
+        ...step,
+        status: "pending",
+      })),
+      updatedAt: this.deps.now(),
+      proposal: true,
+    };
+    this.directorPlanned = true;
+    this.directorProposal = true;
+    this.deps.turn.plan = plan;
+    await this.deps.chats.emit(this.deps.chatId, {
+      type: "plan.updated",
+      turnId: this.deps.turn.id,
+      plan,
+    });
+    return done(
+      "Plan proposed: the user decides. The project-changing tools are unavailable for the rest of this turn — end it with a short summary of the plan and stop.",
+    );
+  }
+
   private async updatePlan(args: unknown): Promise<HostToolResult> {
     const parsed = parsePlanArgs(args);
     if (!parsed.ok) return refuse(parsed.message);
     const plan: ExecutionPlan = {
       steps: parsed.value.steps.map((step, index) => ({ id: `step-${index + 1}`, ...step })),
       updatedAt: this.deps.now(),
+      // A plan published after the proposal is still the proposal: the user's buttons stay until a new turn runs.
+      ...(this.directorProposal && { proposal: true }),
     };
     this.directorPlanned = true;
     this.deps.turn.plan = plan;

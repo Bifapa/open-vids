@@ -5,6 +5,7 @@ import { activeThread, hasNoUsableModel, runningTurn } from "../../agent/agentSe
 import { draftChatSummary } from "../../agent/agentDraftChat";
 import { NEW_CHAT_DRAFT } from "../../agent/agentStore";
 import { useComposerContextStore } from "../../agent/composerContext";
+import { isUploading } from "../../agent/composerAttachments";
 import { useComposerRequestStore } from "../../agent/composerRequest";
 import { useDockLayoutStore } from "../dock/dockLayoutStore";
 import { cn } from "../ui/cn";
@@ -14,6 +15,7 @@ import { AgentsMenu } from "./AgentsMenu";
 import { ConnectModelButton, MANUAL_EDITOR_NOTE, NO_MODEL_SENTENCE } from "./ConnectModel";
 import { chatAgentName } from "./AgentMonogram";
 import { ComposerPortalContext, chipIconClass, chipLabelClass } from "./composerParts";
+import { AttachmentChips, useDraftAttachments } from "./AttachmentChips";
 import { ContextChips } from "./ContextChips";
 import { ExecutionQualityMenu } from "./ExecutionQualityMenu";
 import { ModeMenu } from "./ModeMenu";
@@ -94,11 +96,19 @@ export function Composer() {
   const blockedTitle = blockedBy ? chats.find((item) => item.id === blockedBy.chatId)?.title : null;
   const busy = pending === "send" || pending === "steer";
   const hasText = draft.trim().length > 0;
+  const attachments = useDraftAttachments();
   // The new-chat draft has no chat yet: its first message creates it.
   const isDraft = chatId === null;
   // The runtime lists no usable model: nothing can run, and the panel says how to connect one.
   const noModel = hasNoUsableModel(models);
-  const canSubmit = hasText && !busy && !blockedBy && !noModel && (chat !== null || isDraft);
+  // A message goes out with its files: Send waits while one is still being imported.
+  const canSubmit =
+    hasText &&
+    !busy &&
+    !blockedBy &&
+    !noModel &&
+    !isUploading(attachments) &&
+    (chat !== null || isDraft);
   // The chips edit the open chat, or in the draft the choices its chat will be created with.
   const summary = chat?.chat ?? (isDraft ? draftChatSummary(draftChoices, settings) : null);
 
@@ -215,6 +225,7 @@ export function Composer() {
             "has-[textarea:focus-visible]:border-border-strong has-[textarea:focus-visible]:outline-solid has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-1 has-[textarea:focus-visible]:outline-accent",
           )}
         >
+          <AttachmentChips onRemoved={() => areaRef.current?.focus({ preventScroll: true })} />
           <ContextChips onRemoved={() => areaRef.current?.focus({ preventScroll: true })} />
           <label htmlFor="chat-composer-textarea" className="sr-only">
             {t("chat.composer.label")}

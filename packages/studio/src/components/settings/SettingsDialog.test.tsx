@@ -276,17 +276,21 @@ it("edits the Autonomy group, each setting saved at once with a hint that says w
   await act(async () => openSettings("execution"));
   await settle();
 
-  // Defaults: Plan, and ask before locked edits and downloads.
-  expect(radio("Default chat mode", "Plan")?.getAttribute("aria-checked")).toBe("true");
-  expect(document.body.textContent).toContain("Proposes a plan first");
+  // Defaults: propose a plan for big tasks, and ask before locked edits and downloads.
+  expect(radio("Plan approval", "For big tasks")?.getAttribute("aria-checked")).toBe("true");
+  expect(document.body.textContent).toContain("Propose a plan first for big requests");
   expect(document.body.textContent).toContain(
     "Agents stop and ask first. They never change locked sections on their own.",
   );
 
-  await click(radio("Default chat mode", "Ask"));
-  expect(client.updateSettings).toHaveBeenLastCalledWith({ autonomy: { defaultIntent: "ask" } });
-  expect(agentStore.getState().settings?.autonomy.defaultIntent).toBe("ask");
-  expect(document.body.textContent).toContain("Answers only");
+  await click(radio("Plan approval", "Always"));
+  expect(client.updateSettings).toHaveBeenLastCalledWith({
+    autonomy: { planApproval: "always" },
+  });
+  expect(agentStore.getState().settings?.autonomy.planApproval).toBe("always");
+  expect(document.body.textContent).toContain(
+    "Propose a plan before every request that changes the project.",
+  );
 
   const locked = document.body.querySelector<HTMLElement>(
     '[role="switch"][aria-label="Ask before changing locked or hand-edited sections"]',
@@ -310,7 +314,7 @@ it("edits the Autonomy group, each setting saved at once with a hint that says w
     autonomy: { askBeforeDownloads: false },
   });
   expect(agentStore.getState().settings?.autonomy).toEqual({
-    defaultIntent: "ask",
+    planApproval: "always",
     askBeforeLockedEdits: false,
     askBeforeDownloads: false,
   });

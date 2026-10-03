@@ -30,9 +30,11 @@ function writeHidden(projectId: string, ids: readonly PanelId[]) {
  */
 export function MediaWorkspaceLayout({ projectId }: { projectId: string }) {
   const mediaShown = useDockLayoutStore((state) => state.visiblePanels.has("media"));
+  const inStory = useDockLayoutStore((state) => state.arrangement === "story");
   const controller = useDockLayoutStore((state) => state.controller);
   useEffect(() => {
-    if (!controller) return;
+    // Story arranges the dock itself and keeps Edit's groups (and the hidden list) for the way back.
+    if (!controller || inStory) return;
     if (mediaShown) {
       const { visiblePanels } = useDockLayoutStore.getState();
       const hide = [...visiblePanels].filter((id) => id !== "media");
@@ -43,6 +45,6 @@ export function MediaWorkspaceLayout({ projectId }: { projectId: string }) {
     const hidden = readHidden(projectId);
     for (const id of hidden) controller.setGroupVisible(id, true);
     if (hidden.length) writeHidden(projectId, []);
-  }, [controller, mediaShown, projectId]);
+  }, [controller, inStory, mediaShown, projectId]);
   return null;
 }

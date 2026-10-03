@@ -35,7 +35,7 @@ describe("new-chat draft choices", () => {
     await state.setThinking("high");
     expect((await state.setEnabledAgents(["vision", "editor"])).ok).toBe(true);
     expect((await state.setAgentOverride("editor", override)).ok).toBe(true);
-    expect((await state.setIntent("plan")).ok).toBe(true);
+    expect((await state.setIntent("ask")).ok).toBe(true);
     const quality = { preset: "fast" as const, custom: EXECUTION_BUDGETS.balanced };
     expect((await state.setExecutionQuality(quality)).ok).toBe(true);
     // Nothing exists on the server yet.
@@ -45,7 +45,7 @@ describe("new-chat draft choices", () => {
     // The chips read the draft as a chat would look.
     const shown = draftChatSummary(store.getState().draftChoices, SETTINGS);
     expect(shown.mainAgentModel).toEqual({ provider: "anthropic", modelId: "sonnet" });
-    expect(shown.intent).toBe("plan");
+    expect(shown.intent).toBe("ask");
     expect(shown.enabledAgents).toEqual(["editor", "vision"]);
 
     store.getState().setDraft("Trim the intro");
@@ -58,7 +58,7 @@ describe("new-chat draft choices", () => {
     expect(client.updateChat).toHaveBeenCalledWith("new", {
       enabledAgents: ["editor", "vision"],
       agentOverrides: { editor: override },
-      intent: "plan",
+      intent: "ask",
       executionQuality: quality,
     });
     expect(client.startTurn).toHaveBeenCalledWith(
@@ -73,47 +73,36 @@ describe("new-chat draft choices", () => {
     expect(store.getState().chatId).toBe("new");
   });
 
-  it("creates a chat in the default chat mode when nothing was chosen", async () => {
+  it("creates a chat with no intent of its own when nothing was chosen (the runtime starts in Edit)", async () => {
     const { store, client } = await draftStore();
     store.getState().setDraft("Hello");
     await store.getState().send();
     expect(client.createChat).toHaveBeenCalledWith({});
-    // Settings → Execution → Autonomy: new chats start in Plan unless that was changed.
-    expect(client.updateChat).toHaveBeenCalledWith("new", { intent: "plan" });
+    // No settings decide the mode any more: with no choice the chat carries no intent, and Edit applies.
+    expect(client.updateChat).not.toHaveBeenCalled();
+    expect(client.startTurn).toHaveBeenCalledWith(
+      "new",
+      expect.not.objectContaining({ intent: expect.anything() }),
+    );
   });
 
-  it("starts the draft, and the chat it creates, in the configured default mode", async () => {
-    const settings = {
-      ...SETTINGS,
-      autonomy: { ...SETTINGS.autonomy, defaultIntent: "ask" as const },
-    };
-    const client = createFakeClient({ settings });
-    store = createAgentStore({ client, openEventSource: createSourceLog().open });
-    await store.getState().init();
-    expect(draftChatSummary(store.getState().draftChoices, settings).intent).toBe("ask");
-
+  it("sends the mode chosen in the draft, and falls back to Edit with no settings", async () => {
+    const { store, client } = await draftStore();
+    await store.getState().setIntent("ask");
+    expect(draftChatSummary(store.getState().draftChoices, SETTINGS).intent).toBe("ask");
     store.getState().setDraft("What is in the intro?");
     await store.getState().send();
     expect(client.updateChat).toHaveBeenCalledWith("new", { intent: "ask" });
-  });
-
-  it("lets a mode chosen in the draft win over the default, and falls back to Edit before settings load", async () => {
-    const { store, client } = await draftStore();
-    await store.getState().setIntent("edit");
-    expect(draftChatSummary(store.getState().draftChoices, SETTINGS).intent).toBe("edit");
-    store.getState().setDraft("Hello");
-    await store.getState().send();
-    expect(client.updateChat).toHaveBeenCalledWith("new", { intent: "edit" });
 
     // No settings (the runtime could not provide them): the draft shows Edit and sends no intent of its own.
     expect(draftChatSummary({}, null).intent).toBe("edit");
-    expect(draftCreation({}, null).update).toBeNull();
+    expect(draftCreation({}).update).toBeNull();
   });
 
   it("starts where a new chat would, and resets the effort a newly chosen model cannot take", async () => {
     const { store } = await draftStore();
     const fresh = draftChatSummary(store.getState().draftChoices, SETTINGS);
-    expect(fresh.intent).toBe("plan");
+    expect(fresh.intent).toBe("edit");
     expect(fresh.mainAgentModel).toBeNull();
     expect(fresh.executionQuality).toBeNull();
 

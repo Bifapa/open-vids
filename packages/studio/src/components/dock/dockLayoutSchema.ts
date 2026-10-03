@@ -64,3 +64,21 @@ export function parseDockLayout(value: unknown): SerializedDockview | null {
   const everyPanelIsPlaced = Object.keys(panels).every((id) => views.includes(id));
   return everyViewIsAPanel && everyPanelIsPlaced ? (value as unknown as SerializedDockview) : null;
 }
+
+/** How the Story arrangement splits the window: the left column's share of the width and the preview's share of the right column's height. */
+export interface StoryRatios {
+  left: number;
+  top: number;
+}
+
+const MIN_RATIO = 0.1;
+const MAX_RATIO = 0.9;
+
+/** Parses stored Story ratios at the trust boundary; null means use the defaults. */
+export function parseStoryRatios(value: unknown): StoryRatios | null {
+  if (!isRecord(value)) return null;
+  const { left, top } = value;
+  const inRange = (ratio: unknown): ratio is number =>
+    typeof ratio === "number" && ratio >= MIN_RATIO && ratio <= MAX_RATIO;
+  return inRange(left) && inRange(top) ? { left, top } : null;
+}

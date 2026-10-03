@@ -5,7 +5,8 @@ import { useTranslation, type TranslationKey } from "../../i18n";
 import { usePlayerStore } from "../../player";
 import { STUDIO_PREVIEW_FPS } from "../../player/lib/time";
 import { useStoryStore } from "../../story/storyContext";
-import { useCurrentWorkspace, type Workspace } from "../../story/WorkspaceSwitch";
+import { useCurrentWorkspace } from "../../story/WorkspaceSwitch";
+import type { Workspace } from "../dock/dockWorkspace";
 import { Kbd } from "../ui";
 
 interface Hint {

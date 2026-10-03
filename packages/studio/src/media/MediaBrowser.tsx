@@ -133,7 +133,11 @@ export function MediaBrowser(props: MediaBrowserProps) {
     onOpen: (path) => onSelect(path),
     onDragStart: (event: DragEvent, item: MediaItem) => {
       event.dataTransfer.effectAllowed = "copy";
-      event.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: item.path }));
+      // The path is what drops read; size and length let the chat tell the agents about the file.
+      event.dataTransfer.setData(
+        TIMELINE_ASSET_MIME,
+        JSON.stringify({ path: item.path, bytes: item.bytes, duration: item.duration }),
+      );
       event.dataTransfer.setData("text/plain", item.path);
       setDragging(item);
     },

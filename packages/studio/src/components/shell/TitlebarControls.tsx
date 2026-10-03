@@ -134,37 +134,46 @@ function showZone(zone: Exclude<PanelZone, "center">) {
 }
 
 /**
- * Left column, timeline and right column on or off: the prototype's three-button `.seg`, mapped onto
- * the dock. Hiding keeps every panel open in its place, so turning a zone back on restores it as it was.
+ * Left column, bottom panel and right column on or off: the prototype's three-button `.seg`, mapped
+ * onto the dock. Hiding keeps every panel open in its place, so turning a zone back on restores it as
+ * it was. The Story workspace has no right column, and its bottom panel is the Story graph.
  */
 export function PanelToggles() {
   const { t } = useTranslation();
   const visiblePanels = useDockLayoutStore((state) => state.visiblePanels);
-  const leftShown = panelsInZone("left").some((id) => visiblePanels.has(id));
+  const inStory = useDockLayoutStore((state) => state.arrangement === "story");
+  // Story's left column is Chat and Media as tabs of one group; either one showing means the column shows.
+  const leftShown =
+    panelsInZone("left").some((id) => visiblePanels.has(id)) ||
+    (inStory && visiblePanels.has("media"));
   const rightShown = panelsInZone("right").some((id) => visiblePanels.has(id));
-  const timelineShown = visiblePanels.has("timeline");
+  const bottomPanel = inStory ? "story" : "timeline";
+  const bottomShown = visiblePanels.has(bottomPanel);
   const toggles = [
     {
       side: "left",
       label: t("shell.titlebar.leftPanel"),
       pressed: leftShown,
+      disabled: false,
       toggle: () =>
         leftShown ? useDockLayoutStore.getState().setZoneVisible("left", false) : showZone("left"),
     },
     {
       side: "bottom",
-      label: t("shell.titlebar.timeline"),
-      pressed: timelineShown,
+      label: inStory ? t("shell.dock.panel.story") : t("shell.titlebar.timeline"),
+      pressed: bottomShown,
+      disabled: false,
       toggle: () => {
         const store = useDockLayoutStore.getState();
-        if (timelineShown) store.setGroupVisible("timeline", false);
-        else store.activatePanel("timeline");
+        if (bottomShown) store.setGroupVisible(bottomPanel, false);
+        else store.activatePanel(bottomPanel);
       },
     },
     {
       side: "right",
       label: t("shell.titlebar.rightPanel"),
       pressed: rightShown,
+      disabled: inStory,
       toggle: () =>
         rightShown
           ? useDockLayoutStore.getState().setZoneVisible("right", false)
@@ -177,18 +186,20 @@ export function PanelToggles() {
       aria-label={t("shell.titlebar.panels")}
       className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-bg-0 p-0.5"
     >
-      {toggles.map(({ side, label, pressed, toggle }) => (
+      {toggles.map(({ side, label, pressed, disabled, toggle }) => (
         <Tooltip key={side} label={label} side="bottom">
           <button
             type="button"
             aria-label={label}
             aria-pressed={pressed}
+            disabled={disabled}
             onClick={toggle}
             className={cn(
               "inline-flex h-[22px] w-[26px] items-center justify-center rounded-sm text-fg-3 select-none",
               "transition-[background-color,color] ease-standard duration-hover",
               "hover:bg-surface-2 hover:text-fg",
               "aria-pressed:bg-surface-3 aria-pressed:text-fg aria-pressed:shadow-[inset_0_0_0_1px_var(--color-border-strong)]",
+              "disabled:pointer-events-none disabled:opacity-40",
               "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
             )}
           >

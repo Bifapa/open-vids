@@ -2,13 +2,13 @@ import {
   AGENT_ERROR_CODES,
   EXECUTION_QUALITY_PRESETS,
   OAUTH_FLOWS,
+  PLAN_APPROVALS,
   PROVIDER_CREDENTIAL_SOURCES,
   PROVIDER_STATUSES,
   SPECIALIST_IDS,
   isQaReport,
   isRecord,
   readErrorParams,
-  isChatIntent,
   isOAuthLoginState,
   parseAgentIntake,
   type ActiveTurnInfo,
@@ -250,7 +250,7 @@ function isExecutionQuality(value: unknown): boolean {
 function isAutonomy(value: unknown): value is AutonomySettings {
   return (
     isRecord(value) &&
-    isChatIntent(value.defaultIntent) &&
+    PLAN_APPROVALS.some((approval) => approval === value.planApproval) &&
     typeof value.askBeforeLockedEdits === "boolean" &&
     typeof value.askBeforeDownloads === "boolean"
   );

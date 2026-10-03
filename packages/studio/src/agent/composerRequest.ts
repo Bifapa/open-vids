@@ -13,6 +13,8 @@ interface ComposerRequestState {
   /** The draft was filled: the composer takes the focus, caret at the end, as soon as it is on screen. */
   focusPending: boolean;
   ask(text: string, options?: { send?: boolean }): void;
+  /** Only asks the composer to take the focus (the plan proposal's "Change" button). */
+  focus(): void;
   delivered(id: number): void;
   focused(): void;
 }
@@ -24,6 +26,7 @@ export const useComposerRequestStore = create<ComposerRequestState>((set) => ({
   focusPending: false,
   ask: (text, options) =>
     set({ request: { id: (nextRequestId += 1), text, send: options?.send === true } }),
+  focus: () => set({ focusPending: true }),
   delivered: (id) =>
     set((state) => (state.request?.id === id ? { request: null, focusPending: true } : state)),
   focused: () => set({ focusPending: false }),

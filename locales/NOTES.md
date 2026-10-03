@@ -103,7 +103,6 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `home.composer.file.sr` — Screen-reader text after a file name; {detail} is size and duration.
 - `home.composer.inheritFrom` — Option of a model list: use the lead agent's model.
 - `home.composer.kind.video` — Kind of an attached file (screen-reader text).
-- `home.composer.mode.plan` — Mode of the new project's chat: the agents propose a plan first.
 - `home.composer.mode.edit` — Mode of the new project's chat: the agents edit the timeline.
 - `home.composer.mode.ask` — Mode of the new project's chat: the agents only answer.
 - `home.composer.model.chip` — Chip label: model short name and thinking effort.
@@ -185,9 +184,6 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `settings.jev.group.check` — Group heading (noun): a live test of Jev’s settings.
 - `settings.assets.custom` — Badge on a source the user added.
 - `settings.execution.field.qaFramesPerMinute.hint` — {min}–{max} is the allowed range of the number.
-- `settings.execution.mode.plan` — Chat mode name; matches the composer’s Mode chip.
-- `settings.execution.mode.edit` — Chat mode name; matches the composer’s Mode chip.
-- `settings.execution.mode.ask` — Chat mode name; matches the composer’s Mode chip.
 - `settings.execution.passes.many` — {passes} is 2 or more; {corrections} is one less.
 - `settings.execution.summary.vision` — Fragment of a summary line; keep the <b> tags.
 - `settings.execution.summary.critique` — Fragment of a summary line; keep the <b> tags.
@@ -569,7 +565,6 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `chat.empty.suggestion.pacing` — Starting prompt suggestions shown in an empty chat; clicking one puts this exact text into the message box, so write it as the user's request to the agent (imperative).
 - `chat.markdown.showTimecode` — A timecode in the agent's reply that jumps the preview to that moment; {time} is the timecode text.
 - `chat.reference.upload` — Fallback name of an attached file that has no name, when it was uploaded by the user.
-- `chat.intent.plan` — Tag on a user message that was sent in Plan mode (the agent only plans).
 - `chat.intent.ask` — Tag on a user message that was sent in Ask mode (the agent only answers questions).
 - `chat.message.steering` — Tag on a message that redirected an already running agent task.
 - `chat.message.you` — Author name of the user's own messages.
@@ -1318,3 +1313,16 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `editor.gesture.arm.modifiers` — Compact modifier cheat sheet on the instruction card: each modifier key records a different property while dragging.
 - `editor.gesture.arm.cancel` — Lowercase word after the Esc key cap on the instruction card ("Esc cancel").
 - `editor.gesture.recording.status` — Status pill over the preview while the pointer is held and the motion path is being recorded.
+
+## chat-drop
+
+- `chat.attach.uploading` — Screen-reader text on a file chip in the chat composer while the file is being copied into the project.
+- `chat.attach.failed` — Screen-reader text on a file chip whose copy into the project failed.
+- `story.drop.hint` — Hint over the Story graph while a file is dragged above it; a chapter is a section of the story.
+
+## plan-approval
+
+- `chat.plan.execute` — Button under a plan the Director proposed; it starts a turn that carries the plan out.
+- `chat.plan.revise` — Button next to "Carry out": focuses the composer so the user can ask for changes to the proposal.
+- `chat.plan.executePrompt` — The user's visible message when the plan starts running; the runtime itself attaches the approved steps.
+- `settings.execution.planApproval` — Settings row: when the Director must propose a plan before changing the project.

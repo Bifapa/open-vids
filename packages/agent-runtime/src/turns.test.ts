@@ -181,6 +181,45 @@ describe("TurnRunner", () => {
     }
   });
 
+  it("records the files attached to a steering message and tells the live session about them", async () => {
+    const fixture = await createRuntimeFixture();
+    const gate = deferred<BackendPromptOutcome>();
+    try {
+      const chat = await fixture.chats.create({});
+      fixture.backend.promptScript = () => gate.promise;
+      const turn = await fixture.turns.start(chat.id, { prompt: "Build a caption" });
+      await waitUntil(
+        () => fixture.backend.sessions[0]?.prompts.length === 1,
+        "backend prompt start",
+      );
+      const messageId = await fixture.turns.steer(chat.id, turn.id, {
+        text: "Use this logo",
+        references: [
+          {
+            id: "r1",
+            kind: "image",
+            label: "logo.png",
+            source: { type: "project-path", path: "assets/logo.png" },
+            sizeBytes: 2048,
+          },
+        ],
+      });
+      expect(fixture.backend.sessions[0]?.steering[0]).toContain(
+        "- picture assets/logo.png (2 KB)",
+      );
+      const message = fixture.chats.get(chat.id)?.messages.find((item) => item.id === messageId);
+      expect(message?.role === "user" && message.parts.map((part) => part.type)).toEqual([
+        "text",
+        "reference",
+      ]);
+      gate.resolve("completed");
+      await finishTurn(fixture, chat.id);
+    } finally {
+      gate.resolve("completed");
+      await fixture.cleanup();
+    }
+  });
+
   it("aborts cleanly and always closes the checkpoint", async () => {
     const fixture = await createRuntimeFixture();
     try {

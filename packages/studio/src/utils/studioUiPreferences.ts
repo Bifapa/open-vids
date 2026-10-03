@@ -1,5 +1,9 @@
 import type { SerializedDockview } from "dockview-react";
-import { parseDockLayout } from "../components/dock/dockLayoutSchema";
+import {
+  parseDockLayout,
+  parseStoryRatios,
+  type StoryRatios,
+} from "../components/dock/dockLayoutSchema";
 
 export type TimelineTimeDisplayMode = "time" | "frame";
 
@@ -43,6 +47,12 @@ export interface StudioUiPreferences {
   agentToolsEnabled?: boolean;
   /** The dock's serialized panel tree; parsed by `parseDockLayout` on read. */
   dockLayout?: SerializedDockview;
+  /**
+   * `dockLayout` is always the Edit arrangement. "story" means the project was left in the Story
+   * workspace, whose own splits are `storyLayout`.
+   */
+  dockWorkspace?: "edit" | "story";
+  storyLayout?: StoryRatios;
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -144,6 +154,11 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
     }
     const dockLayout = parseDockLayout(parsed.dockLayout);
     if (dockLayout) preferences.dockLayout = dockLayout;
+    if (parsed.dockWorkspace === "edit" || parsed.dockWorkspace === "story") {
+      preferences.dockWorkspace = parsed.dockWorkspace;
+    }
+    const storyLayout = parseStoryRatios(parsed.storyLayout);
+    if (storyLayout) preferences.storyLayout = storyLayout;
     return preferences;
   } catch {
     return {};

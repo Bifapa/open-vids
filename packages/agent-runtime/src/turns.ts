@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   isAgentRunTerminal,
+  normalizeChatIntent,
   type ActiveTurnInfo,
   type AgentId,
   type AgentModelCatalog,
@@ -9,7 +10,11 @@ import {
   type AssistantMessageStatus,
   type ChatIntent,
   type ChatMode,
+  type ChatState,
+  type MessageReference,
   type PermissionDecision,
+  type PlanApproval,
+  type PlanStep,
   type StoryAction,
   type StoryActionOptions,
   type UserPart,
@@ -33,7 +38,7 @@ import { Orchestrator, type TurnAgentSetup } from "./agents/orchestrator.js";
 import { directorInstructions, jevInstructions, specialistInstructions } from "./agents/roles.js";
 import { renderTeam, resolveTurnSetup } from "./agents/setup.js";
 import { isLockRefusal, lockedEditAdvice } from "./autonomy.js";
-import { buildHostTools, type ToolAvailability } from "./agents/tools.js";
+import { buildHostTools, TOOL_NAMES, type ToolAvailability } from "./agents/tools.js";
 import { TurnEditing } from "./editing/executor.js";
 import { isEditingToolName } from "./editing/tools.js";
 import { TurnAnalysis } from "./analysis/executor.js";
@@ -52,7 +57,12 @@ import { renderInterimInstruction } from "./qa/prompt.js";
 import { isQaToolName } from "./qa/tools.js";
 import { RuntimeError, errorMessage } from "./errors.js";
 import type { CheckpointHandle, CheckpointHost, RevertOutcome } from "./checkpointHost.js";
-import { intentRefusal, renderIntentBlock } from "./intent.js";
+import {
+  intentRefusal,
+  renderExecutePlanBlock,
+  renderIntentBlock,
+  renderPlanApprovalBlock,
+} from "./intent.js";
 import { ChatService } from "./chats.js";
 import {
   renderCanvasAutoBlock,
@@ -113,8 +123,12 @@ interface ActiveRun {
   qaPhase: QaPhase;
   /** The mode the turn runs in (a story action implies `story`). */
   mode: ChatMode;
-  /** What the user wants from the turn: Plan and Ask turns never change the project. */
+  /** What the user wants from the turn: an Ask turn never changes the project. */
   intent: ChatIntent;
+  /** The user's plan-approval setting for this turn (from the global settings as the turn started). */
+  planApproval: PlanApproval;
+  /** The approved plan this turn carries out, if the user started it from a proposal; the steps as proposed. */
+  executePlan: { turnId: string; steps: PlanStep[] } | null;
   /** The Story workspace action the turn runs, if any. */
   storyAction: StoryAction | null;
   /** The user's choices for a build/rebuild action (scope, manual-edit policy, locked chapters), if any. */
@@ -208,15 +222,24 @@ export class TurnRunner {
         activeTurn: null,
       });
     }
-    // A start-from-chat project on Auto: the format stays open across turns (a Plan now, the edit later) until an
-    // edit sets the canvas. Durable on the chat, so a restart does not lose the choice.
+    // A start-from-chat project on Auto: the format stays open across turns (a proposal now, the edit later) until
+    // an edit sets the canvas. Durable on the chat, so a restart does not lose the choice.
     if (input.canvas === "auto") await this.chats.setCanvasAuto(chatId, true);
-    // A Story workspace action is always a story-mode turn; otherwise the request's mode, else the chat's.
-    const mode: ChatMode = input.storyAction ? "story" : (input.mode ?? chatState.chat.activeMode);
-    // A Story workspace action always acts; otherwise the request's intent, else the chat's, else Edit.
-    const intent: ChatIntent = input.storyAction
-      ? "edit"
-      : (input.intent ?? chatState.chat.intent ?? "edit");
+    // "Carry out the plan": the proposal must exist on the chat before anything is reserved.
+    const executePlan = this.resolveExecutePlan(chatState, input);
+    // A Story workspace action is always a story-mode turn; a plan is carried out in a normal turn; otherwise the
+    // request's mode, else the chat's.
+    const mode: ChatMode = input.storyAction
+      ? "story"
+      : executePlan
+        ? "normal"
+        : (input.mode ?? chatState.chat.activeMode);
+    // A Story workspace action and an approved plan always act; otherwise the request's intent, else the chat's
+    // (an old chat may still store the removed `plan`, read as `edit`), else Edit.
+    const intent: ChatIntent =
+      input.storyAction || executePlan
+        ? "edit"
+        : (input.intent ?? normalizeChatIntent(chatState.chat.intent) ?? "edit");
     const startedAt = this.now();
     const turnId = this.ids();
     const promptMessageId = this.ids();
@@ -236,13 +259,7 @@ export class TurnRunner {
       ...(input.storyAction && { storyAction: input.storyAction }),
       ...(input.storyOptions && { storyOptions: input.storyOptions }),
     };
-    const referenceParts = (input.references ?? []).map(
-      (reference): UserPart => ({
-        type: "reference",
-        id: this.ids(),
-        reference,
-      }),
-    );
+    const referenceParts = this.referenceParts(input.references);
     const promptMessage: UserMessage = {
       id: promptMessageId,
       chatId,
@@ -282,6 +299,8 @@ export class TurnRunner {
       qaPhase: null,
       mode,
       intent,
+      planApproval: "never",
+      executePlan,
       storyAction: input.storyAction ?? null,
       storyOptions: input.storyOptions ?? null,
       directorIdle: false,
@@ -298,6 +317,7 @@ export class TurnRunner {
     // The team and the Director's model are fixed for the whole turn, from the chat and the global defaults.
     const prepared = await this.prepareTurn(chatState.chat, input);
     reservation.setup = prepared.setup;
+    reservation.planApproval = prepared.setup.autonomy.planApproval;
     turn.model = prepared.model;
     turn.thinking = prepared.thinking;
     reservation.turn.model = prepared.model;
@@ -345,6 +365,12 @@ export class TurnRunner {
     }
   }
 
+  private referenceParts(references: readonly MessageReference[] = []): UserPart[] {
+    return references.map(
+      (reference): UserPart => ({ type: "reference", id: this.ids(), reference }),
+    );
+  }
+
   async steer(chatId: string, turnId: string, input: SteerTurnRequest): Promise<string> {
     const run = this.active;
     if (!run || run.chatId !== chatId || run.turn.id !== turnId || run.finalizing) {
@@ -358,7 +384,10 @@ export class TurnRunner {
       createdAt: this.now(),
       role: "user",
       steering: true,
-      parts: [{ type: "text", id: this.ids(), text: input.text }],
+      parts: [
+        { type: "text", id: this.ids(), text: input.text },
+        ...this.referenceParts(input.references),
+      ],
     };
     await this.chats.emit(chatId, { type: "message.appended", message });
     await run.promptStarted;
@@ -366,7 +395,12 @@ export class TurnRunner {
     if (this.active !== run || run.finalizing || !run.session) {
       throw new RuntimeError("turn_not_active", "Turn is no longer active", 409);
     }
-    const text = renderPromptContext(input.text, input.editorContext, [], input.userLanguage);
+    const text = renderPromptContext(
+      input.text,
+      input.editorContext,
+      input.references,
+      input.userLanguage,
+    );
     if (run.directorIdle) {
       // The Director is between prompts, waiting for delegated runs: the instruction opens its next prompt.
       run.pendingSteering.push(text);
@@ -568,11 +602,47 @@ export class TurnRunner {
     }
   }
 
-  /** The harness's own file writes (edit/write) are refused in a Plan or Ask turn, for every agent of the turn. */
+  /**
+   * The plan proposal an execute turn carries out: the request names the turn whose plan the user approved. Missing
+   * or unproposed turns are refused; the steps are the proposal's own, so a revise turn cannot change them.
+   */
+  private resolveExecutePlan(
+    chatState: ChatState,
+    input: StartTurnRequest,
+  ): { turnId: string; steps: PlanStep[] } | null {
+    const requested = input.executePlan;
+    if (!requested) return null;
+    const source = chatState.turns.find((turn) => turn.id === requested.turnId);
+    const steps = source?.plan?.proposal ? source.plan.steps : null;
+    if (!steps || steps.length === 0)
+      throw new RuntimeError(
+        "invalid_request",
+        "That turn has no plan proposal to carry out; propose one first",
+        400,
+      );
+    return { turnId: requested.turnId, steps };
+  }
+
+  /** Whether the running turn's Director may propose a plan (the prompt block and `propose_plan` go together). */
+  private planProposalOffered(run: ActiveRun): boolean {
+    return (
+      run.intent === "edit" &&
+      run.mode !== "story" &&
+      run.executePlan === null &&
+      run.planApproval !== "never"
+    );
+  }
+
+  /** Whether the running turn already published a plan proposal (everything project-changing is refused then). */
+  private planProposed(run: ActiveRun): boolean {
+    return run.turn.plan?.proposal === true;
+  }
+
+  /** The harness's own file writes (edit/write) are refused in an Ask turn and after a plan proposal, per turn. */
   private fileWriteRefusal(chatId: string, toolName: string): string | null {
     const run = this.active;
     if (!run || run.chatId !== chatId) return null;
-    return intentRefusal(run.intent, toolName);
+    return intentRefusal(run.intent, toolName, this.planProposed(run));
   }
 
   /** The user's "ask before changing locked sections" setting for the turn that is running (true when none is). */
@@ -825,6 +895,7 @@ export class TurnRunner {
         qa: qa !== null,
         mode: run.mode,
         intent: run.intent,
+        planProposal: this.planProposalOffered(run),
         storyAction: run.storyAction,
         planClips: (plan) => this.active?.analysis?.planClips(plan),
       };
@@ -911,8 +982,14 @@ export class TurnRunner {
         return outcome;
       };
       const intentBlock = renderIntentBlock(run.intent);
+      // An execute turn carries the approved steps; a turn that may propose carries when to propose. Never both.
+      const planBlocks = run.executePlan
+        ? `\n\n${renderExecutePlanBlock(run.executePlan.steps)}`
+        : this.planProposalOffered(run)
+          ? `\n\n${renderPlanApprovalBlock(run.planApproval)}`
+          : "";
       // The frame format is still open (the project was started with it on Auto): every turn of that chat carries a
-      // canvas instruction until a successful edit sets it — the build turn must set it, a plan states the choice.
+      // canvas instruction until a successful edit sets it — a turn that acts sets it, an Ask turn states the choice.
       const canvasAuto =
         input.canvas === "auto" || (this.chats.get(run.chatId)?.chat.canvasAuto ?? false);
       const canvasBlock = canvasAuto
@@ -939,7 +1016,7 @@ export class TurnRunner {
         setup.execution.budget.qaPasses > 0 &&
         qaApplies(run.mode, run.storyAction);
       const promptPromise = promptDirector(
-        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage)}${intentBlock ? `\n\n${intentBlock}` : ""}${canvasBlock}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
+        `${renderTeam(setup)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage)}${intentBlock ? `\n\n${intentBlock}` : ""}${planBlocks}${canvasBlock}${storyBlocks}${revertedBlocks}${qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}`,
       );
       run.markPromptStarted();
       let outcome = await promptPromise;
@@ -1153,8 +1230,15 @@ export class TurnRunner {
     const run = this.active;
     if (!run || run.chatId !== chatId || run.finalizing)
       return { text: "There is no running turn for this tool call.", isError: true };
-    const refusal = qaPhaseRefusal(run.qaPhase, name) ?? intentRefusal(run.intent, name);
+    const refusal =
+      qaPhaseRefusal(run.qaPhase, name) ?? intentRefusal(run.intent, name, this.planProposed(run));
     if (refusal) return { text: refusal, isError: true };
+    // A reused session keeps its old tool list: propose_plan is refused unless this turn actually offers it.
+    if (name === TOOL_NAMES.propose && (caller !== "director" || !this.planProposalOffered(run)))
+      return {
+        text: "Proposing a plan is not available in this turn: do the work, or finish with your reply.",
+        isError: true,
+      };
     if (isQaToolName(name)) {
       if (!run.qa) return { text: "Render QA is not available in this runtime.", isError: true };
       return run.qa.execute(caller, name, args, signal);

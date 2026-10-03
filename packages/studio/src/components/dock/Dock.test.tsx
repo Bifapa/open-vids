@@ -294,6 +294,67 @@ describe("Dock wiring", () => {
   });
 });
 
+describe("Dock workspaces", () => {
+  const stored = () => readStudioUiPreferences(undefined, "p1");
+
+  it("switches to the Story arrangement and back without touching the stored Edit layout", () => {
+    const host = mount("p1");
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    const edit = JSON.stringify(stored().dockLayout?.grid);
+    const previewContent = host.querySelector('[data-testid="content-preview"]');
+
+    act(() => useDockLayoutStore.getState().setWorkspace("story"));
+    expect(useDockLayoutStore.getState().arrangement).toBe("story");
+    expect(dockApi?.getPanel("chat")?.group).toBe(dockApi?.getPanel("media")?.group);
+    // Edit-only panels count as closed while Story is shown, and the preview is still the same element.
+    expect(useDockLayoutStore.getState().openPanels.has("timeline")).toBe(false);
+    expect(host.querySelector('[data-testid="content-preview"]')).toBe(previewContent);
+    act(() => {
+      dockApi?.getPanel("chat")?.group.api.setSize({ width: 500 });
+      vi.advanceTimersByTime(1000);
+    });
+    expect(JSON.stringify(stored().dockLayout?.grid)).toBe(edit);
+    expect(stored().dockWorkspace).toBe("story");
+    expect(stored().storyLayout).toBeDefined();
+
+    act(() => useDockLayoutStore.getState().setWorkspace("edit"));
+    expect(useDockLayoutStore.getState().arrangement).toBe("edit");
+    expect(useDockLayoutStore.getState().openPanels.has("timeline")).toBe(true);
+    expect(host.querySelector('[data-testid="content-preview"]')).toBe(previewContent);
+  });
+
+  it("reopens in Story when the project was left there", () => {
+    mount("p1");
+    act(() => useDockLayoutStore.getState().setWorkspace("story"));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    act(() => root?.unmount());
+    root = null;
+    document.body.innerHTML = "";
+
+    mount("p1");
+    expect(useDockLayoutStore.getState().arrangement).toBe("story");
+    expect(dockApi?.getPanel("story")?.group.api.isVisible).toBe(true);
+    expect(dockApi?.getPanel("design")?.group.api.isVisible).toBe(false);
+  });
+
+  it("applies a workspace asked for before the dock mounted, over the stored one", () => {
+    localStorage.setItem("hf-studio-ui-preferences:p1", JSON.stringify({ dockWorkspace: "story" }));
+    act(() => useDockLayoutStore.getState().setWorkspace("edit"));
+    mount("p1");
+    expect(useDockLayoutStore.getState().arrangement).toBe("edit");
+  });
+
+  it("starts in Edit for a project that never opened Story", () => {
+    mount("p1");
+    expect(useDockLayoutStore.getState().arrangement).toBe("edit");
+    expect(stored().dockWorkspace).toBeUndefined();
+  });
+});
+
 describe("parseDockLayout", () => {
   it("rejects shapes that are not a dock layout", () => {
     expect(parseDockLayout(null)).toBeNull();

@@ -12,6 +12,7 @@ import {
   isOAuthLoginId,
   isOAuthLoginState,
   isProviderId,
+  normalizeChatIntent,
   parseAgentIntake,
   parseReference,
   parseRevertTurn,
@@ -318,6 +319,37 @@ describe("validators", () => {
     expect(parseReference({ id: "x", kind: "hologram" }).ok).toBe(false);
   });
 
+  it("keeps the size and length of an attached file, drops nonsense, and accepts references on steering", () => {
+    const media = parseReference({
+      id: "1",
+      kind: "video",
+      source: { type: "project-path", path: "a.mp4" },
+      sizeBytes: 4096,
+      durationSeconds: 12.5,
+    });
+    expect(media.ok && media.value).toMatchObject({ sizeBytes: 4096, durationSeconds: 12.5 });
+    const asset = parseReference({ id: "2", kind: "asset", path: "a.pdf", sizeBytes: 10 });
+    expect(asset.ok && asset.value).toMatchObject({ sizeBytes: 10 });
+    const odd = parseReference({
+      id: "3",
+      kind: "image",
+      source: { type: "project-path", path: "a.png" },
+      sizeBytes: -1,
+      durationSeconds: "long",
+    });
+    expect(odd.ok && "sizeBytes" in odd.value).toBe(false);
+    expect(odd.ok && "durationSeconds" in odd.value).toBe(false);
+
+    const steered = parseSteerTurn({
+      text: "use this too",
+      references: [{ id: "a", kind: "asset", path: "assets/logo.png" }],
+    });
+    expect(steered.ok && steered.value.references).toEqual([
+      { id: "a", kind: "asset", path: "assets/logo.png" },
+    ]);
+    expect(parseSteerTurn({ text: "x", references: [{ id: "" }] }).ok).toBe(false);
+  });
+
   it("carries the Auto frame-format hand-off on a start turn and on an intake, and refuses other values", () => {
     const started = parseStartTurn({ prompt: "x", canvas: "auto" });
     expect(started.ok && started.value.canvas).toBe("auto");
@@ -334,6 +366,9 @@ describe("validators", () => {
       createdAt: "2026-10-01T00:00:00.000Z",
     });
     expect(intake.ok && intake.value.format).toBe("auto");
+    // An intake file written by the removed Plan mode still loads, as an Edit turn.
+    const legacy = parseAgentIntake({ version: 1, prompt: "x", intent: "plan", files: [] });
+    expect(legacy.ok && legacy.value.intent).toBe("edit");
     const plain = parseAgentIntake({ version: 1, prompt: "x", files: [] });
     expect(plain.ok && "format" in plain.value).toBe(false);
     expect(parseAgentIntake({ version: 1, prompt: "x", files: [], format: "9:16" }).ok).toBe(false);
@@ -531,6 +566,36 @@ describe("multi-agent events", () => {
       status: "aborted",
     });
   });
+
+  it("keeps a plan proposal's pending steps when its turn ends (the user has not decided yet)", () => {
+    const events = [
+      ...log().slice(0, 2),
+      {
+        type: "plan.updated" as const,
+        turnId: "t1",
+        plan: {
+          steps: [
+            {
+              id: "s1",
+              title: "Build the intro",
+              status: "pending" as const,
+              agent: "motion" as const,
+            },
+          ],
+          updatedAt: 3,
+          proposal: true,
+        },
+      },
+      {
+        type: "turn.completed" as const,
+        turn: { ...turn, status: "completed" as const, endedAt: 9 },
+      },
+    ].map((event, index) => ({ ...event, seq: index + 1, chatId: "c1", ts: 10 + index }));
+    const state = foldChatEvents(events);
+    expect(state?.turns[0]?.plan).toMatchObject({ proposal: true });
+    expect(state?.turns[0]?.plan?.steps.map((step) => step.status)).toEqual(["pending"]);
+    expect(state?.turns[0]?.plan?.steps[0]?.title).toBe("Build the intro");
+  });
 });
 
 describe("agent configuration validators", () => {
@@ -608,26 +673,68 @@ describe("agent configuration validators", () => {
 
   it("validates the autonomy settings group", () => {
     expect(DEFAULT_AUTONOMY_SETTINGS).toEqual({
-      defaultIntent: "plan",
+      planApproval: "big",
       askBeforeLockedEdits: true,
       askBeforeDownloads: true,
     });
     expect(
       parseUpdateAgentSettings({
-        autonomy: { defaultIntent: "ask", askBeforeDownloads: false },
+        autonomy: { planApproval: "always", askBeforeDownloads: false },
       }),
     ).toEqual({
       ok: true,
-      value: { autonomy: { defaultIntent: "ask", askBeforeDownloads: false } },
+      value: { autonomy: { planApproval: "always", askBeforeDownloads: false } },
     });
     expect(parseUpdateAgentSettings({ autonomy: {} })).toEqual({
       ok: true,
       value: { autonomy: {} },
     });
-    expect(parseUpdateAgentSettings({ autonomy: { defaultIntent: "yolo" } }).ok).toBe(false);
+    // An old settings file still carrying the removed defaultIntent loads: the field is ignored.
+    expect(
+      parseUpdateAgentSettings({
+        autonomy: { defaultIntent: "plan", askBeforeLockedEdits: false },
+      }),
+    ).toEqual({ ok: true, value: { autonomy: { askBeforeLockedEdits: false } } });
+    expect(parseUpdateAgentSettings({ autonomy: { planApproval: "sometimes" } }).ok).toBe(false);
     expect(parseUpdateAgentSettings({ autonomy: { askBeforeLockedEdits: "yes" } }).ok).toBe(false);
     expect(parseUpdateAgentSettings({ autonomy: { askBeforeDownloads: 1 } }).ok).toBe(false);
     expect(parseUpdateAgentSettings({ autonomy: [] }).ok).toBe(false);
+  });
+
+  it("keeps the Mode chip to Edit and Ask, and reads the removed Plan intent from stored data", () => {
+    expect(normalizeChatIntent("plan")).toBe("edit");
+    expect(normalizeChatIntent("ask")).toBe("ask");
+    expect(normalizeChatIntent("edit")).toBe("edit");
+    expect(normalizeChatIntent("cinema")).toBeNull();
+    expect(parseUpdateChat({ intent: "ask" })).toEqual({ ok: true, value: { intent: "ask" } });
+    expect(parseUpdateChat({ intent: "plan" }).ok).toBe(false);
+    expect(parseStartTurn({ prompt: "x", intent: "ask" }).ok).toBe(true);
+    expect(parseStartTurn({ prompt: "x", intent: "plan" }).ok).toBe(false);
+  });
+
+  it("carries the approved plan of an execute turn and refuses malformed or conflicting ones", () => {
+    expect(parseStartTurn({ prompt: "Carry out the plan", executePlan: { turnId: "t1" } })).toEqual(
+      {
+        ok: true,
+        value: { prompt: "Carry out the plan", executePlan: { turnId: "t1" } },
+      },
+    );
+    expect(parseStartTurn({ prompt: "x", intent: "edit", executePlan: { turnId: "t1" } }).ok).toBe(
+      true,
+    );
+    expect(parseStartTurn({ prompt: "x", executePlan: {} }).ok).toBe(false);
+    expect(parseStartTurn({ prompt: "x", executePlan: { turnId: "  " } }).ok).toBe(false);
+    expect(parseStartTurn({ prompt: "x", executePlan: "t1" }).ok).toBe(false);
+    expect(parseStartTurn({ prompt: "x", intent: "ask", executePlan: { turnId: "t1" } }).ok).toBe(
+      false,
+    );
+    expect(
+      parseStartTurn({
+        prompt: "x",
+        storyAction: "build",
+        executePlan: { turnId: "t1" },
+      }).ok,
+    ).toBe(false);
   });
 
   it("validates a provider API key body and provider ids", () => {

@@ -301,11 +301,11 @@ describe("a call whose setting is off asks the user in chat", () => {
     expect(host.websiteRequests).toHaveLength(1);
   });
 
-  it("asks again after a restart's lost grant only when the setting is off, and never for Plan turns", async () => {
-    const plan = harness({ readLinkedPages: false, intent: "plan" });
-    const refused = await plan.call("read_website", { url: "https://linear.app", save: true });
+  it("asks again after a restart's lost grant only when the setting is off, and never for Ask turns", async () => {
+    const ask = harness({ readLinkedPages: false, intent: "ask" });
+    const refused = await ask.call("read_website", { url: "https://linear.app", save: true });
     expect(refused.isError).toBe(true);
     expect(refused.text).toContain("cannot save files");
-    expect(plan.published).toEqual([]);
+    expect(ask.published).toEqual([]);
   });
 });

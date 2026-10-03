@@ -105,7 +105,7 @@ export interface TurnResearchOptions {
   turn: StoryTurnMode;
   /** The user's choices for a `resolve` turn: the Missing Asset nodes the turn may resolve. */
   storyOptions: StoryActionOptions | null;
-  /** What the user wants from the turn: a Plan or Ask turn never saves a website's files into the project. */
+  /** What the user wants from the turn: an Ask turn never saves a website's files into the project. */
   intent: ChatIntent;
   /** Which groups this turn offers (the same access its host tools were built with); full website access defaults off. */
   access?: ResearchAccess;
@@ -432,7 +432,7 @@ export class TurnResearch {
     }
     if (save && intent !== "edit") {
       return refuse(
-        `This is a ${intent === "plan" ? "Plan" : "Ask"} turn: nothing in the project changes, so read_website cannot save files. Call it without save to read the style, and say that the files are saved when the user proceeds.`,
+        "This is an Ask turn: the user wants an answer only, so read_website cannot save files. Call it without save to read the style, and answer from what you read.",
       );
     }
     const asked = await this.askPermission("read_linked_pages", "read", url, caller);
@@ -506,9 +506,7 @@ export class TurnResearch {
     if (scope) return scope;
     if (mode === "save" && this.options.intent !== "edit") {
       return refuse(
-        this.options.intent === "plan"
-          ? `This is a Plan turn: nothing in the project changes, so get_website_file cannot save a file. Read it with mode "read" to study it, and say what would be downloaded when the user proceeds.`
-          : `This is an Ask turn: the user wants an answer only, so get_website_file cannot save a file. Read it with mode "read" and answer from its text.`,
+        'This is an Ask turn: the user wants an answer only, so get_website_file cannot save a file. Read it with mode "read" and answer from its text.',
       );
     }
     const action: PermissionAction = mode === "save" ? "download" : "read_code";
@@ -573,9 +571,7 @@ export class TurnResearch {
     if (scope) return scope;
     if (this.options.intent !== "edit") {
       return refuse(
-        this.options.intent === "plan"
-          ? `This is a Plan turn: nothing in the project changes, so record_website is not available. Describe what you would record and how it would be used; the user proceeds with an Edit turn.`
-          : `This is an Ask turn: the user wants an answer only, so record_website is not available.`,
+        "This is an Ask turn: the user wants an answer only, so record_website is not available.",
       );
     }
     const asked = await this.askPermission("website_full_access", "record", url, caller);

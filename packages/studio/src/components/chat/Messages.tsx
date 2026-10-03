@@ -138,7 +138,7 @@ function MessageHead({
   );
 }
 
-const INTENT_TAGS = { plan: "chat.intent.plan", ask: "chat.intent.ask" } as const;
+const INTENT_TAGS = { ask: "chat.intent.ask" } as const;
 
 /** The user's message: set apart by a quiet surface fill; context chips above the text. */
 export function UserMessageView({
@@ -156,7 +156,8 @@ export function UserMessageView({
     if (part.type === "text") texts.push({ id: part.id, text: part.text });
     else references.push({ id: part.id, reference: part.reference });
   }
-  const intent = turn?.intent === "plan" || turn?.intent === "ask" ? turn.intent : null;
+  // Older turns may still store the removed `plan` intent: no badge then (it is not shown for Edit either).
+  const asked = turn?.intent === "ask";
   return (
     <article
       data-role="user"
@@ -169,7 +170,7 @@ export function UserMessageView({
           </Badge>
         )}
         {turn?.mode === "story" && <Badge size="sm">Story</Badge>}
-        {intent && <Badge size="sm">{t(INTENT_TAGS[intent])}</Badge>}
+        {asked && <Badge size="sm">{t(INTENT_TAGS.ask)}</Badge>}
       </MessageHead>
       {references.length > 0 && (
         <div

@@ -39,7 +39,7 @@ export function renderUserLanguageBlock(userLanguage: string | undefined): strin
  */
 export function renderCanvasAutoBlock(): string {
   return `<canvas-auto>
-The user started this project with the frame format on Auto: the composition's current size is only a placeholder, not a decision. Decide the format before you build the timeline and set it with edit_timeline {op: "set_canvas", width, height} (even pixels) before adding clips, then build for that format.
+The user started this project with the frame format on Auto: the composition's current size is only a placeholder, not a decision. Decide the format before you build the timeline and set it with edit_timeline {op: "set_canvas", width, height} (even pixels) before adding clips, then build for that format. When this turn instead proposes a plan (plan approval) and changes nothing, state the chosen format in the proposal; the turn that carries the plan out sets it before any clip is added, and everything you plan (framing, text placement, overlays) must assume that format.
 Read it from the brief (Reels, TikTok, Shorts or Stories → 9:16; YouTube, a presentation or TV → 16:9; an Instagram feed post → 1:1 or 4:5) and from the material (inspect the imported footage with inspect_project: mostly vertical clips → 9:16, mostly widescreen → 16:9, a portrait photo series → 4:5). When nothing indicates otherwise use 16:9.
 Say in your reply which format you chose and why.
 </canvas-auto>`;
@@ -94,6 +94,48 @@ export function renderUserSelectionBlock(context: EditorContext): string | null 
   return `<user-selection>\nThe user had this selected in the editor and attached it to the message. When the message says "this", "it", "here" (or the same in another language) without naming something else, it means this selection:\n${lines.join("\n")}\n</user-selection>`;
 }
 
+const ATTACHMENT_KINDS = {
+  image: "picture",
+  video: "video",
+  audio: "audio",
+  file: "file",
+} as const;
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
+}
+
+/** `- video assets/a.mp4 (12.4 s, 3.2 MB)` for a project file the user attached; null for any other reference. */
+function describeAttachment(reference: MessageReference): string | null {
+  if (reference.kind === "url" || reference.kind === "timeline-range") return null;
+  if (reference.kind === "editor-selection") return null;
+  const path =
+    reference.kind === "asset"
+      ? reference.path
+      : reference.source.type === "project-path"
+        ? reference.source.path
+        : null;
+  if (!path) return null;
+  const kind = reference.kind === "asset" ? "file" : ATTACHMENT_KINDS[reference.kind];
+  const facts = [
+    reference.durationSeconds !== undefined && `${seconds(reference.durationSeconds)} s`,
+    reference.sizeBytes !== undefined && formatBytes(reference.sizeBytes),
+  ].filter((fact): fact is string => fact !== false);
+  return `- ${kind} ${path}${facts.length > 0 ? ` (${facts.join(", ")})` : ""}`;
+}
+
+/**
+ * The project files the user attached to the message (dropped on the chat or dragged from Media), in words ahead of the
+ * raw `<references>`: they are what "this picture", "the video I added" or "these files" means. Null when none.
+ */
+export function renderAttachmentsBlock(references: readonly MessageReference[]): string | null {
+  const lines = references.flatMap((reference) => describeAttachment(reference) ?? []);
+  if (lines.length === 0) return null;
+  return `<attachments>\nThe user attached these project files to the message. When the message says "this", "these", "the picture", "the video" (or the same in another language) without naming something else, it means these files:\n${lines.join("\n")}\n</attachments>`;
+}
+
 /** Adds Studio-captured editor context, typed references and the user's language to the text received by a backend. */
 export function renderPromptContext(
   prompt: string,
@@ -102,9 +144,11 @@ export function renderPromptContext(
   userLanguage?: string,
 ): string {
   const blocks = [prompt];
+  const selection = editorContext ? renderUserSelectionBlock(editorContext) : null;
+  if (selection) blocks.push(selection);
+  const attachments = renderAttachmentsBlock(references);
+  if (attachments) blocks.push(attachments);
   if (editorContext) {
-    const selection = renderUserSelectionBlock(editorContext);
-    if (selection) blocks.push(selection);
     blocks.push(`<editor-context>\n${JSON.stringify(editorContext, null, 2)}\n</editor-context>`);
   }
   if (references.length > 0) {

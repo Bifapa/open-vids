@@ -22,6 +22,7 @@ import { changesProject } from "../intent.js";
 import { buildQaTools } from "../qa/tools.js";
 
 export const TOOL_NAMES = {
+  propose: "propose_plan",
   plan: "update_plan",
   delegate: "delegate",
   wait: "wait_for_agents",
@@ -60,8 +61,13 @@ export interface ToolAvailability {
   mode?: ChatMode;
   /** The Story workspace action of the turn (`review`, `build`, `rebuild`), if any. */
   storyAction?: StoryAction | null;
-  /** What the user wants from the turn (default `edit`). Plan and Ask turns get no project-changing tools. */
+  /** What the user wants from the turn (default `edit`). An Ask turn gets no project-changing tools. */
   intent?: ChatIntent;
+  /**
+   * The Director may propose a plan this turn (an Edit turn that is not a story-mode or execute-plan turn, with the
+   * user's plan approval on `big` or `always`): it gets `propose_plan`, and the turn's prompt states when to use it.
+   */
+  planProposal?: boolean;
   /**
    * The runtime has a research host and the user's Asset Search policy could be read: Research gets the search and
    * import tools and the Director the read-only sources tool (whichever the chat's team and the turn allow).
@@ -185,11 +191,12 @@ function directorTools(
 ): HostTool[] {
   const planAgents: AgentId[] = ["director", ...availability.enabled];
   if (availability.jev) planAgents.push("jev");
-  const tools: HostTool[] = [
-    {
-      name: TOOL_NAMES.plan,
+  const tools: HostTool[] = [];
+  if (availability.planProposal) {
+    tools.push({
+      name: TOOL_NAMES.propose,
       description:
-        "Publish or replace the compact execution plan shown to the user (3–7 short product-level steps). Call it again to update step statuses.",
+        "Propose a plan and stop before changing anything (the user's plan-approval setting says when this is required). Publish 3–7 short product-level steps in the order you will do them. After this call every project-changing tool is refused for the rest of this turn: end with a short summary of the plan.",
       parameters: {
         type: "object",
         properties: {
@@ -201,14 +208,13 @@ function directorTools(
               type: "object",
               properties: {
                 title: stringProperty("Short step title.", LIMITS.stepTitleChars),
-                status: { type: "string", enum: [...PLAN_STEP_STATUSES] },
                 agent: {
                   type: "string",
                   enum: planAgents,
                   description: "Who does this step, if known.",
                 },
               },
-              required: ["title", "status"],
+              required: ["title"],
               additionalProperties: false,
             },
           },
@@ -216,9 +222,41 @@ function directorTools(
         required: ["steps"],
         additionalProperties: false,
       },
-      execute: (args, signal) => execute(TOOL_NAMES.plan, args, signal),
+      execute: (args, signal) => execute(TOOL_NAMES.propose, args, signal),
+    });
+  }
+  tools.push({
+    name: TOOL_NAMES.plan,
+    description:
+      "Publish or replace the compact execution plan shown to the user (3–7 short product-level steps). Call it again to update step statuses.",
+    parameters: {
+      type: "object",
+      properties: {
+        steps: {
+          type: "array",
+          minItems: 1,
+          maxItems: LIMITS.planSteps,
+          items: {
+            type: "object",
+            properties: {
+              title: stringProperty("Short step title.", LIMITS.stepTitleChars),
+              status: { type: "string", enum: [...PLAN_STEP_STATUSES] },
+              agent: {
+                type: "string",
+                enum: planAgents,
+                description: "Who does this step, if known.",
+              },
+            },
+            required: ["title", "status"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["steps"],
+      additionalProperties: false,
     },
-  ];
+    execute: (args, signal) => execute(TOOL_NAMES.plan, args, signal),
+  });
 
   if (availability.enabled.length > 0) {
     tools.push(
@@ -332,6 +370,30 @@ export function parsePlanArgs(args: unknown): ParsedArgs<PlanArgs> {
         ? raw.agent
         : null;
     steps.push({ title: title.value, status, agent });
+  }
+  return { ok: true, value: { steps } };
+}
+
+export interface ProposalArgs {
+  steps: Array<{ title: string; agent: AgentId | null }>;
+}
+
+/** `propose_plan`'s steps become pending `PlanStep`s: the user approves titles, statuses arrive later. */
+export function parseProposalArgs(args: unknown): ParsedArgs<ProposalArgs> {
+  if (!isRecord(args) || !Array.isArray(args.steps) || args.steps.length === 0)
+    return { ok: false, message: "steps must be a non-empty array" };
+  if (args.steps.length > LIMITS.planSteps)
+    return { ok: false, message: `at most ${LIMITS.planSteps} steps` };
+  const steps: ProposalArgs["steps"] = [];
+  for (const raw of args.steps) {
+    if (!isRecord(raw)) return { ok: false, message: "each step must be an object" };
+    const title = text(raw.title, "step title", LIMITS.stepTitleChars);
+    if (!title.ok) return title;
+    const agent =
+      raw.agent === "director" || raw.agent === "jev" || isSpecialistId(raw.agent)
+        ? raw.agent
+        : null;
+    steps.push({ title: title.value, agent });
   }
   return { ok: true, value: { steps } };
 }

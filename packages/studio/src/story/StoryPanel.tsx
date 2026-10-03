@@ -37,6 +37,7 @@ import { fullBuildNeedsConfirm, syncBlocker } from "./storySync";
 import { agentBlocker, researchBlocker, useStoryAgent, useStoryAgentSync } from "./useStoryAgent";
 import { StoryResearchProvider, type StoryResearch } from "./storyResearch";
 import { useStoryLibrary } from "./useStoryLibrary";
+import { useStoryDrop } from "./useStoryDrop";
 import { useStoryTimelineSync } from "./useStoryTimelineSync";
 
 /** The Story panel's modal: the impact of a rebuild (every affected section, or the chosen ones), or the confirm
@@ -111,6 +112,7 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
   const flow = useReactFlow();
   const canvasRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const drop = useStoryDrop(canvasRef);
   useStoryAgentSync(agentStore, store);
   useStoryTimelineSync(store);
 
@@ -355,6 +357,7 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
           focusWithin.current = true;
         }}
         onBlurCapture={onBlurCapture}
+        {...drop.handlers}
         className="@container/story relative flex h-full min-h-0 flex-col bg-bg-0 text-fg outline-hidden"
       >
         <StoryToolbar
@@ -414,6 +417,7 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
           />
         )}
         {dialogView}
+        {drop.overlay}
       </div>
     </StoryResearchProvider>
   );

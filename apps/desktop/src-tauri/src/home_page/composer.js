@@ -63,12 +63,6 @@
   /* `name` is the mode's id (it travels with the start request); `label` / `description` are what the user reads. */
   const MODES = Object.freeze([
     {
-      name: "Plan",
-      intent: "plan",
-      label: "home.composer.mode.plan",
-      description: "home.composer.mode.planDescription",
-    },
-    {
       name: "Edit",
       intent: "edit",
       label: "home.composer.mode.edit",
@@ -318,7 +312,7 @@
       });
     }
     const agentCount = () => 1 + AGENTS.filter((a) => state.agents[a.id]).length;
-    const modeOf = () => MODES.find((m) => m.name === state.mode) || MODES[1];
+    const modeOf = () => MODES.find((m) => m.name === state.mode) || MODES[0];
 
     function update() {
       const m = currentModel();

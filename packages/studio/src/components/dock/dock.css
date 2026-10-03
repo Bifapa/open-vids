@@ -125,8 +125,11 @@
   --dv-inactivegroup-hiddenpanel-tab-color: var(--color-fg);
 }
 
-/* The titlebar's Media | Story | Edit switch owns the workspaces; only the shown one keeps its tab. */
-.hf-dock .dv-tab.dv-inactive-tab:has(.hf-dock-tab[data-workspace]) {
+/* The titlebar's Media | Story | Edit switch owns the workspaces; only the shown one keeps its tab.
+ * Story is the exception: Media is a second tab beside Chat there. */
+.hf-dock-frame:not([data-arrangement="story"])
+  .hf-dock
+  .dv-tab.dv-inactive-tab:has(.hf-dock-tab[data-workspace]) {
   display: none;
 }
 

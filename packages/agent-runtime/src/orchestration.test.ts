@@ -226,6 +226,7 @@ describe("multi-agent orchestration", () => {
       await settled(fixture, solo.id);
       const soloDirector = fixture.backend.sessionsOf("director").at(-1);
       expect(soloDirector?.input.hostTools.map((tool) => tool.name)).toEqual([
+        "propose_plan",
         "update_plan",
         ...EDITOR_TOOLS,
         ...ANALYSIS_TOOLS_SOLO,
@@ -811,47 +812,55 @@ describe("auto canvas turns", () => {
     }
   });
 
-  it("keeps the format open through a plan turn and clears the flag when an edit sets the canvas", async () => {
+  it("keeps the format open through a plan proposal and clears the flag when the execute turn sets the canvas", async () => {
     const fixture = await createRuntimeFixture();
     try {
       const chat = await fixture.chats.create({}, []);
       script(fixture, {
         director: async (input, session) => {
-          if (input.text.includes("Plan a Reel")) {
-            say(input, "Plan: a 9:16 Reel from the interview.");
-          } else {
+          if (input.text.includes("<approved-plan>")) {
             const edit = await session.callTool("edit_timeline", {
               operations: [{ op: "set_canvas", width: 1080, height: 1920 }],
             });
             expect(edit.isError).toBeUndefined();
             say(input, "Built the Reel in 9:16.");
+          } else {
+            await session.callTool("propose_plan", {
+              steps: [{ title: "Set the 9:16 format", agent: "editor" }, { title: "Cut the Reel" }],
+            });
+            say(input, "Plan: a 9:16 Reel from the interview.");
           }
           return "completed";
         },
       });
       await fixture.turns.start(chat.id, {
-        prompt: "Plan a Reel from the interview",
-        intent: "plan",
+        prompt: "Make a Reel from the interview",
         canvas: "auto",
       });
       await settled(fixture, chat.id);
 
-      const planned = fixture.backend.sessionsOf("director")[0];
-      expect(planned?.prompts[0]?.text).toContain("<canvas-auto>");
-      expect(planned?.prompts[0]?.text).toContain("still to be decided");
+      const proposed = fixture.backend.sessionsOf("director")[0];
+      expect(proposed?.prompts[0]?.text).toContain("<canvas-auto>");
+      expect(proposed?.prompts[0]?.text).toContain("set_canvas");
       expect(fixture.chats.get(chat.id)?.chat.canvasAuto).toBe(true);
       // Durable: the flag survives a restart (reopened from the same store).
       const reopened = await ChatService.open(fixture.scope, fixture.store);
       expect(reopened.get(chat.id)?.chat.canvasAuto).toBe(true);
 
-      // The edit turn carries no `canvas` field: the chat's flag alone keeps the instruction.
-      await fixture.turns.start(chat.id, { prompt: "Build the Reel", intent: "edit" });
+      // The user approved the plan: the execute turn carries no `canvas` field; the chat's flag keeps the instruction.
+      const proposal = fixture.chats.get(chat.id)?.turns.at(-1);
+      expect(proposal?.plan?.proposal).toBe(true);
+      await fixture.turns.start(chat.id, {
+        prompt: "Carry out the plan",
+        executePlan: { turnId: proposal!.id },
+      });
       await settled(fixture, chat.id);
       const prompts = fixture.backend
         .sessionsOf("director")
         .flatMap((session) => session.prompts.map((prompt) => prompt.text));
       expect(prompts.at(-1)).toContain("<canvas-auto>");
       expect(prompts.at(-1)).toContain("set_canvas");
+      expect(prompts.at(-1)).toContain("<approved-plan>");
       expect(
         fixture.editing.applyRequests.map((request) => request.operations.map((op) => op.op)),
       ).toEqual([["set_canvas"]]);

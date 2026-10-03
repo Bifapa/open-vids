@@ -79,23 +79,27 @@ describe("AgentSettingsStore", () => {
     try {
       await writeFile(
         join(dir, "settings.json"),
-        JSON.stringify({ director: { model: null, thinking: "off" } }),
+        JSON.stringify({
+          director: { model: null, thinking: "off" },
+          // The removed `defaultIntent` of an older file is ignored, not an error.
+          autonomy: { defaultIntent: "plan" },
+        }),
       );
       const store = new AgentSettingsStore(dir);
       const migrated = await store.get();
       expect(migrated.autonomy).toEqual(DEFAULT_AUTONOMY_SETTINGS);
       expect(migrated.autonomy).toEqual({
-        defaultIntent: "plan",
+        planApproval: "big",
         askBeforeLockedEdits: true,
         askBeforeDownloads: true,
       });
       expect(migrated.director.thinking).toBe("off");
 
       const updated = await store.update({
-        autonomy: { defaultIntent: "edit", askBeforeDownloads: false },
+        autonomy: { planApproval: "always", askBeforeDownloads: false },
       });
       expect(updated.autonomy).toEqual({
-        defaultIntent: "edit",
+        planApproval: "always",
         askBeforeLockedEdits: true,
         askBeforeDownloads: false,
       });

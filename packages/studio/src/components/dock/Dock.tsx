@@ -15,7 +15,7 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react";
 import { useTranslation } from "../../i18n";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { installDockAccessibility } from "./dockAccessibility";
 import { DockStripActions } from "./DockStripActions";
 import { DockTab } from "./DockTab";
@@ -28,6 +28,8 @@ import {
   withChatFirst,
 } from "./dockLayout";
 import { DOCK_PANEL_COMPONENT } from "./dockLayoutSchema";
+import { createDockArrangement, type DockArrangement } from "./dockArrangement";
+import { isStoryPanel, storyPlacement, type Arrangement } from "./dockWorkspace";
 import { useDockLayoutStore, type DockController, type DockSnapshot } from "./dockLayoutStore";
 import {
   PANEL_DEFINITIONS,
@@ -70,11 +72,13 @@ function PanelSlot({ api }: IDockviewPanelProps) {
 
 const COMPONENTS = { [DOCK_PANEL_COMPONENT]: PanelSlot };
 
-function snapshot(api: DockviewApi): DockSnapshot {
+function snapshot(api: DockviewApi, arrangement: Arrangement): DockSnapshot {
   const openPanels = new Set<PanelId>();
   const visiblePanels = new Set<PanelId>();
   for (const panel of api.panels) {
     if (!isPanelId(panel.id)) continue;
+    // Story keeps the Edit panels in hidden groups for the way back; to the rest of Studio they are closed.
+    if (arrangement === "story" && !isStoryPanel(panel.id)) continue;
     openPanels.add(panel.id);
     if (panel.api.isVisible && panel.group.api.isVisible) visiblePanels.add(panel.id);
   }
@@ -84,6 +88,7 @@ function snapshot(api: DockviewApi): DockSnapshot {
   });
   const active = api.activePanel?.id;
   return {
+    arrangement,
     openPanels,
     visiblePanels,
     activePanel: isPanelId(active) ? active : null,
@@ -91,33 +96,40 @@ function snapshot(api: DockviewApi): DockSnapshot {
   };
 }
 
-function createController(api: DockviewApi): DockController {
-  const open = (id: PanelId) => {
-    if (api.getPanel(id)) return;
-    const { zone, reopen } = PANEL_DEFINITIONS[id];
-    // Side columns are tab groups; preview and timeline are separate groups in the centre.
-    const sibling =
-      zone === "center"
-        ? undefined
-        : panelsInZone(zone).find((other) => other !== id && api.getPanel(other));
-    if (sibling) {
-      // Slot the tab in registry order (Chat, Compositions, Assets, ...) among the group's panels.
-      const order = panelsInZone(zone);
-      const group = api.getPanel(sibling)?.group;
-      const at = group?.panels.findIndex(
-        (panel) => isPanelId(panel.id) && order.indexOf(panel.id) > order.indexOf(id),
-      );
-      addRegisteredPanel(api, id, {
-        referencePanel: sibling,
-        direction: "within",
-        ...(at !== undefined && at >= 0 ? { index: at } : {}),
-      });
-      return;
-    }
-    const hasAnchor = api.getPanel(reopen.near) !== undefined;
-    const position = { referencePanel: reopen.near, direction: reopen.direction };
-    addRegisteredPanel(api, id, hasAnchor ? position : undefined);
-  };
+function openPanel(api: DockviewApi, id: PanelId, arrangement: Arrangement) {
+  if (api.getPanel(id)) return;
+  const story = arrangement === "story" ? storyPlacement(api, id) : undefined;
+  if (story) {
+    addRegisteredPanel(api, id, story);
+    return;
+  }
+  const { zone, reopen } = PANEL_DEFINITIONS[id];
+  // Side columns are tab groups; preview and timeline are separate groups in the centre.
+  const sibling =
+    zone === "center"
+      ? undefined
+      : panelsInZone(zone).find((other) => other !== id && api.getPanel(other));
+  if (sibling) {
+    // Slot the tab in registry order (Chat, Compositions, Assets, ...) among the group's panels.
+    const order = panelsInZone(zone);
+    const group = api.getPanel(sibling)?.group;
+    const at = group?.panels.findIndex(
+      (panel) => isPanelId(panel.id) && order.indexOf(panel.id) > order.indexOf(id),
+    );
+    addRegisteredPanel(api, id, {
+      referencePanel: sibling,
+      direction: "within",
+      ...(at !== undefined && at >= 0 ? { index: at } : {}),
+    });
+    return;
+  }
+  const hasAnchor = api.getPanel(reopen.near) !== undefined;
+  const position = { referencePanel: reopen.near, direction: reopen.direction };
+  addRegisteredPanel(api, id, hasAnchor ? position : undefined);
+}
+
+function createController(api: DockviewApi, arrangement: DockArrangement): DockController {
+  const open = (id: PanelId) => openPanel(api, id, arrangement.current());
   // dockview hands a re-shown group whatever its neighbours left over, and hiding one group first
   // widens the next before it is hidden. So the first hide records every showing group's size, and
   // the last show puts the whole arrangement back; showing only some restores just those.
@@ -156,7 +168,9 @@ function createController(api: DockviewApi): DockController {
     },
     setTitle: (id, title) => api.getPanel(id)?.api.setTitle(title),
     setGroupVisible,
-    reset: () => buildEditLayout(api, window.innerWidth),
+    enterStory: arrangement.enterStory,
+    leaveStory: arrangement.leaveStory,
+    reset: arrangement.reset,
   };
 }
 
@@ -175,6 +189,7 @@ function restoreOrBuild(api: DockviewApi, projectId: string | null) {
 
 function Root({ projectId, children }: { projectId: string | null; children: ReactNode }) {
   const [slots, setSlots] = useState<Slots>({});
+  const shownArrangement = useDockLayoutStore((state) => state.arrangement);
   const registerSlot = useCallback((id: PanelId, element: HTMLElement | null) => {
     setSlots((prev) => {
       if (prev[id] === (element ?? undefined)) return prev;
@@ -200,22 +215,32 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
       const resizeObserver = new ResizeObserver(() => applySideMinimums(api, window.innerWidth));
       if (root) resizeObserver.observe(root);
       const store = useDockLayoutStore.getState();
-      store.attach(createController(api));
-      store.sync(snapshot(api));
-
+      const sync = () => useDockLayoutStore.getState().sync(snapshot(api, arrangement.current()));
       let timer: ReturnType<typeof setTimeout> | undefined;
       const persist = () => {
         clearTimeout(timer);
-        timer = setTimeout(() => {
-          writeStudioUiPreferences({ dockLayout: api.toJSON() }, undefined, projectId);
-        }, PERSIST_DEBOUNCE_MS);
+        timer = setTimeout(arrangement.save, PERSIST_DEBOUNCE_MS);
       };
       // dockview does not fire onDidLayoutChange for add/remove/activate,
-      // so every event class is wired to the same sync+persist pair.
+      // so every event class is wired to the same sync+persist pair. While panels are being moved
+      // between arrangements the dock is half built: only the arrangement's own switch syncs it.
       const onDockChange = () => {
-        useDockLayoutStore.getState().sync(snapshot(api));
+        if (arrangement.moving()) return;
+        sync();
         persist();
       };
+      const arrangement = createDockArrangement(api, projectId, {
+        openPanel: (id) => openPanel(api, id, "edit"),
+        onChange: () => {
+          applySideMinimums(api);
+          sync();
+        },
+      });
+      if (readStudioUiPreferences(undefined, projectId).dockWorkspace === "story") {
+        arrangement.enterStory();
+      }
+      store.attach(createController(api, arrangement));
+      sync();
       const subscriptions = [
         api.onDidAddPanel(() => {
           applySideMinimums(api);
@@ -232,11 +257,11 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
       // After the subscriptions, so the store syncs; through the store, so a panel the restored
       // layout lacks is opened and its group shown. Saved at once: a remount (StrictMode, HMR)
       // restores the stored layout, and must find the requested panel in front.
+      const pendingWorkspace = store.takePendingWorkspace();
+      if (pendingWorkspace) store.setWorkspace(pendingWorkspace);
       const pending = store.takePendingActivation();
-      if (pending) {
-        store.activatePanel(pending);
-        writeStudioUiPreferences({ dockLayout: api.toJSON() }, undefined, projectId);
-      }
+      if (pending) store.activatePanel(pending);
+      if (pendingWorkspace || pending) arrangement.save();
       disposeRef.current = () => {
         clearTimeout(timer);
         for (const subscription of subscriptions) subscription.dispose();
@@ -251,7 +276,7 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
 
   return (
     <SlotsContext.Provider value={{ slots, registerSlot }}>
-      <div className="hf-dock-frame">
+      <div className="hf-dock-frame" data-arrangement={shownArrangement}>
         <DockviewReact
           key={projectId ?? ""}
           className="hf-dock min-h-0 min-w-0 flex-1"

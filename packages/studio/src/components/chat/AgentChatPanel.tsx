@@ -5,6 +5,7 @@ import type { ChatSummary } from "@hyperframes/agent-protocol";
 import { NEW_CHAT_DRAFT, type AgentStore } from "../../agent/agentStore";
 import { useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
+import { ChatDropZone } from "./ChatDropZone";
 import { ChatHeader } from "./ChatHeader";
 import { ChatView } from "./ChatView";
 import { HistoryView } from "./HistoryView";
@@ -127,10 +128,19 @@ export function AgentChatPanel({ store }: { store: AgentStore | null }) {
       <PanelBoundary>
         {store ? (
           <AgentStoreProvider store={store}>
-            <AgentChatBody />
+            <ChatDropZone>
+              <AgentChatBody />
+            </ChatDropZone>
           </AgentStoreProvider>
         ) : (
-          <Calm title={t("chat.panel.loading")} />
+          // No store yet: a drop here still must not land on the timeline.
+          <div
+            className="h-full"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => event.preventDefault()}
+          >
+            <Calm title={t("chat.panel.loading")} />
+          </div>
         )}
       </PanelBoundary>
     </div>

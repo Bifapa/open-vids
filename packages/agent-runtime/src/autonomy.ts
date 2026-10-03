@@ -13,7 +13,10 @@ import type { AutonomySettings } from "@hyperframes/agent-protocol";
  * ({@link approvesDownload}).
  */
 
-export type TurnAutonomy = Pick<AutonomySettings, "askBeforeLockedEdits" | "askBeforeDownloads">;
+export type TurnAutonomy = Pick<
+  AutonomySettings,
+  "planApproval" | "askBeforeLockedEdits" | "askBeforeDownloads"
+>;
 
 /** What an agent does after a refusal that names a locked or hand-set item. */
 export function lockedEditAdvice(askFirst: boolean): string {

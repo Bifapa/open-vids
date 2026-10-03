@@ -146,12 +146,19 @@ describe("dock tabs", () => {
       false,
     ]);
     expect(tabShown("layers")).toBe(true);
-    await activate("story");
+    await activate("media");
     expect([tabShown("preview"), tabShown("media"), tabShown("story")]).toEqual([
       false,
-      false,
       true,
+      false,
     ]);
+  });
+
+  it("show Media as a second tab beside Chat once the dock is arranged for Story", async () => {
+    await activate("story");
+    expect([tabShown("preview"), tabShown("media"), tabShown("story")]).toEqual([true, true, true]);
+    expect(stripOf("media")).toBe(stripOf("chat"));
+    expect(stripOf("preview")).not.toBe(stripOf("story"));
   });
 
   it("name the close control after the panel, and close only that panel", async () => {

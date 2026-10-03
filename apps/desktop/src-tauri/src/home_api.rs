@@ -649,7 +649,7 @@ pub fn handle_start_name(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, 
     );
 }
 
-const INTENTS: [&str; 3] = ["plan", "edit", "ask"];
+const INTENTS: [&str; 2] = ["edit", "ask"];
 
 /// Longest explicit project name the Start composer may send (the runtime's title is capped at 40).
 const MAX_START_NAME: usize = 64;

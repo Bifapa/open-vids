@@ -58,15 +58,18 @@ function upsertTurn(turns: TurnSummary[], turn: TurnSummary): TurnSummary[] {
   const known = turn.plan ?? turns[index]?.plan;
   const plan =
     known && turn.status !== "running"
-      ? {
-          ...known,
-          steps: known.steps.map((step): PlanStep => {
-            if (step.status === "running")
-              return { ...step, status: turn.status === "completed" ? "done" : "skipped" };
-            if (step.status === "pending") return { ...step, status: "skipped" };
-            return step;
-          }),
-        }
+      ? known.proposal
+        ? // A plan proposal waits for the user: its pending steps are not settled by the turn ending.
+          known
+        : {
+            ...known,
+            steps: known.steps.map((step): PlanStep => {
+              if (step.status === "running")
+                return { ...step, status: turn.status === "completed" ? "done" : "skipped" };
+              if (step.status === "pending") return { ...step, status: "skipped" };
+              return step;
+            }),
+          }
       : known;
   const knownQa = turn.qa ?? turns[index]?.qa;
   const qa = knownQa && turn.status !== "running" ? settleQa(knownQa) : knownQa;

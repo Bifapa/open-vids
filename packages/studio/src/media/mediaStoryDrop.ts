@@ -8,9 +8,16 @@ import {
   storyOrder,
   type ChapterNode,
   type StoryGraph,
+  type StoryPoint,
 } from "@hyperframes/agent-protocol";
 import { t } from "../i18n";
-import { addNode, connectNodes, newMaterial, newStoryId } from "../story/storyGraphOps";
+import {
+  addNode,
+  connectNodes,
+  newMaterial,
+  newStoryId,
+  replaceAttachment,
+} from "../story/storyGraphOps";
 import type { MediaItem } from "./mediaLibrary";
 
 const MATERIAL_KIND = { video: "video", image: "picture", audio: "music" } as const;
@@ -24,13 +31,15 @@ export function chaptersInOrder(graph: StoryGraph): ChapterNode[] {
 export type StoryDropResult = { ok: true; graph: StoryGraph } | { ok: false; reason: string };
 
 /**
- * Adds a material node for `item` below the chapter and attaches it. With `chapterId` null the node is placed
- * unconnected, to the right of the canvas content.
+ * Adds a material node for `item` and attaches it to the chapter: below the chapter, placed `middle` of it (music
+ * `throughout`). With `chapterId` null the node is placed unconnected, at `at` (where it was dropped on the canvas)
+ * or else to the right of the canvas content.
  */
 export function attachMediaToStory(
   graph: StoryGraph,
   item: Pick<MediaItem, "kind" | "path" | "name">,
   chapterId: string | null,
+  at?: StoryPoint,
 ): StoryDropResult {
   if (item.kind === "font") return { ok: false, reason: t("media.story.noFonts") };
   const chapter = chapterId ? graph.nodes.find((node) => node.id === chapterId) : undefined;
@@ -46,7 +55,7 @@ export function attachMediaToStory(
         x: chapter.position.x + attachedCount * 40,
         y: chapter.position.y + 220 + attachedCount * 30,
       }
-    : { x: rightmost + 320, y: 0 };
+    : (at ?? { x: rightmost + 320, y: 0 });
   const node = newMaterial(newStoryId(graph, "n"), position, {
     kind: MATERIAL_KIND[item.kind],
     source: item.path,
@@ -56,5 +65,11 @@ export function attachMediaToStory(
   const added = addNode(graph, node);
   if (!added.ok || !chapter) return added;
   const connected = connectNodes(added.graph, { source: node.id, target: chapter.id });
-  return connected.ok ? { ok: true, graph: connected.graph } : connected;
+  if (!connected.ok) return connected;
+  const attachment = connected.graph.attachments.find((candidate) => candidate.id === connected.id);
+  if (!attachment || node.kind === "music") return { ok: true, graph: connected.graph };
+  return {
+    ok: true,
+    graph: replaceAttachment(connected.graph, { ...attachment, placement: "middle" }),
+  };
 }

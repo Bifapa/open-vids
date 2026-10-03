@@ -15,7 +15,7 @@ import type { AgentClient } from "./agentClient";
 import type { DraftChoices } from "./agentDraftChat";
 import { i18n, t } from "../i18n";
 import { describeAgentError } from "./agentErrors";
-import { findModel } from "./agentSelectors";
+import { findModel, runningTurn } from "./agentSelectors";
 import type { ActionResult } from "./agentSettingsSlice";
 import type { AgentState } from "./agentStore";
 
@@ -28,8 +28,13 @@ export interface AgentComposerSlice {
   draftChoices: DraftChoices;
   setModel(model: ModelSelection | null): Promise<void>;
   setThinking(thinking: ThinkingEffort | null): Promise<void>;
-  /** The chat's intent (Plan / Edit / Ask) for its next turns; persisted on the chat. */
+  /** The chat's intent (Edit / Ask) for its next turns; persisted on the chat. */
   setIntent(intent: ChatIntent): Promise<ActionResult>;
+  /**
+   * "Carry out the plan": starts the turn that executes the approved proposal of this chat. The visible prompt is
+   * the localized "Carry out the plan"; the runtime attaches the approved steps itself.
+   */
+  startPlanExecution(turnId: string): Promise<ActionResult>;
   /**
    * A project started from the Projects page chat: a new chat with the intake's model, thinking, agents and
    * intent, opened, and its first turn started with the prompt and the imported files as references.
@@ -109,6 +114,29 @@ export function createAgentComposerSlice({
       const chat = get().chat;
       if (chat && (chat.chat.intent ?? "edit") === intent) return { ok: true };
       return updateOpenChat({ intent });
+    },
+
+    async startPlanExecution(turnId) {
+      const { chatId, chat, pending } = get();
+      if (!chatId || !chat) return { ok: false, message: t("agent.chat.openFirst") };
+      if (pending || runningTurn(chat)) return { ok: false, message: t("agent.chat.busyOther") };
+      set({ pending: "send", notice: null });
+      try {
+        await client.startTurn(chatId, {
+          prompt: t("chat.plan.executePrompt"),
+          executePlan: { turnId },
+          userLanguage: i18n.language,
+        });
+        // The turn arrives on the stream; a stream that is not up yet catches up from the snapshot.
+        if (!isDisposed() && get().streamStatus !== "open") await get().openChat(chatId);
+        return { ok: true };
+      } catch (error) {
+        const message = describeAgentError(error);
+        if (!isDisposed()) set({ notice: { message } });
+        return { ok: false, message };
+      } finally {
+        if (!isDisposed()) set({ pending: null });
+      }
     },
 
     async startFromIntake(intake) {

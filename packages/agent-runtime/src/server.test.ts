@@ -693,20 +693,20 @@ describe("runtime HTTP server", () => {
       });
     try {
       expect((await responseObject(await call("GET"))).autonomy).toEqual({
-        defaultIntent: "plan",
+        planApproval: "big",
         askBeforeLockedEdits: true,
         askBeforeDownloads: true,
       });
       const patched = await responseObject(
-        await call("PATCH", { autonomy: { defaultIntent: "edit", askBeforeLockedEdits: false } }),
+        await call("PATCH", { autonomy: { planApproval: "always", askBeforeLockedEdits: false } }),
       );
       expect(patched.autonomy).toEqual({
-        defaultIntent: "edit",
+        planApproval: "always",
         askBeforeLockedEdits: false,
         askBeforeDownloads: true,
       });
       expect((await responseObject(await call("GET"))).autonomy).toEqual(patched.autonomy);
-      expect((await call("PATCH", { autonomy: { defaultIntent: "autopilot" } })).status).toBe(400);
+      expect((await call("PATCH", { autonomy: { planApproval: "sometimes" } })).status).toBe(400);
       expect((await call("PATCH", { autonomy: { askBeforeDownloads: "no" } })).status).toBe(400);
     } finally {
       await app.dispose();

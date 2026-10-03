@@ -23,11 +23,13 @@ import {
   OAUTH_FLOWS,
   PERMISSION_DECISIONS,
   OAUTH_LOGIN_STATUSES,
+  PLAN_APPROVALS,
   SPECIALIST_IDS,
   STORY_ACTIONS,
   THINKING_EFFORTS,
   isChatIntent,
   isSpecialistId,
+  normalizeChatIntent,
   type CodedMessageParams,
   type EditorClipSummary,
   type EditorContext,
@@ -249,6 +251,19 @@ function parseMediaSource(value: unknown): MediaSource | null {
   return null;
 }
 
+/** The size and length of an attached file, when they are sane numbers. */
+function parseFileFacts(value: Record<string, unknown>): {
+  sizeBytes?: number;
+  durationSeconds?: number;
+} {
+  const sizeBytes = num(value.sizeBytes);
+  const durationSeconds = num(value.durationSeconds);
+  return {
+    ...(sizeBytes !== undefined && sizeBytes >= 0 && { sizeBytes }),
+    ...(durationSeconds !== undefined && durationSeconds >= 0 && { durationSeconds }),
+  };
+}
+
 export function parseReference(value: unknown): Parsed<MessageReference> {
   if (!isRecord(value)) return fail("reference must be an object");
   const id = nonEmpty(value.id);
@@ -266,7 +281,13 @@ export function parseReference(value: unknown): Parsed<MessageReference> {
       const mimeType = str(value.mimeType);
       return {
         ok: true,
-        value: { ...common, kind: value.kind, source, ...(mimeType !== undefined && { mimeType }) },
+        value: {
+          ...common,
+          kind: value.kind,
+          source,
+          ...(mimeType !== undefined && { mimeType }),
+          ...parseFileFacts(value),
+        },
       };
     }
     case "url": {
@@ -281,7 +302,7 @@ export function parseReference(value: unknown): Parsed<MessageReference> {
     case "asset": {
       const path = nonEmpty(value.path);
       return path
-        ? { ok: true, value: { ...common, kind: "asset", path } }
+        ? { ok: true, value: { ...common, kind: "asset", path, ...parseFileFacts(value) } }
         : fail("asset reference needs a path");
     }
     case "timeline-range": {
@@ -512,10 +533,13 @@ export function parseUpdateAgentSettings(body: unknown): Parsed<UpdateAgentSetti
 function parseAutonomy(raw: unknown): Parsed<Partial<AutonomySettings>> {
   if (!isRecord(raw)) return fail("autonomy must be an object");
   const autonomy: Partial<AutonomySettings> = {};
-  if (raw.defaultIntent !== undefined) {
-    if (!isChatIntent(raw.defaultIntent))
-      return fail(`autonomy.defaultIntent must be one of: ${CHAT_INTENTS.join(", ")}`);
-    autonomy.defaultIntent = raw.defaultIntent;
+  // `defaultIntent` was removed (new chats always start in Edit): an old settings file that still carries it loads,
+  // and the field is ignored like any other unknown key.
+  if (raw.planApproval !== undefined) {
+    const planApproval = PLAN_APPROVALS.find((known) => known === raw.planApproval);
+    if (!planApproval)
+      return fail(`autonomy.planApproval must be one of: ${PLAN_APPROVALS.join(", ")}`);
+    autonomy.planApproval = planApproval;
   }
   if (raw.askBeforeLockedEdits !== undefined) {
     if (typeof raw.askBeforeLockedEdits !== "boolean")
@@ -685,6 +709,16 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
     if (storyAction && body.intent !== "edit") return fail("a story action always runs as edit");
     intent = body.intent;
   }
+  let executePlan: StartTurnRequest["executePlan"];
+  if (body.executePlan !== undefined) {
+    if (!isRecord(body.executePlan))
+      return fail("executePlan must be an object with the turnId of the plan proposal");
+    const turnId = nonEmpty(body.executePlan.turnId);
+    if (!turnId) return fail("executePlan must carry the turnId of the plan proposal");
+    if (storyAction) return fail("a story action does not carry an executePlan");
+    if (intent && intent !== "edit") return fail("executing a plan always runs as edit");
+    executePlan = { turnId };
+  }
   let storyOptions: StoryActionOptions | undefined;
   if (body.storyOptions !== undefined) {
     if (storyAction !== "build" && storyAction !== "rebuild" && storyAction !== "resolve")
@@ -717,6 +751,7 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
       ...(editorContext.value && { editorContext: editorContext.value }),
       ...(mode && { mode }),
       ...(intent && { intent }),
+      ...(executePlan && { executePlan }),
       ...(storyAction && { storyAction }),
       ...(storyOptions && { storyOptions }),
       ...(canvas && { canvas }),
@@ -786,6 +821,8 @@ export function parseSteerTurn(body: unknown): Parsed<SteerTurnRequest> {
   if (!isRecord(body)) return fail("body must be an object");
   const text = parsePromptText(body.text, "text");
   if (!text.ok) return text;
+  const references = parseReferences(body.references);
+  if (!references.ok) return references;
   const editorContext = parseOptionalContext(body.editorContext);
   if (!editorContext.ok) return editorContext;
   const userLanguage = parseUserLanguage(body.userLanguage);
@@ -794,6 +831,7 @@ export function parseSteerTurn(body: unknown): Parsed<SteerTurnRequest> {
     ok: true,
     value: {
       text: text.value,
+      ...(references.value && { references: references.value }),
       ...(editorContext.value && { editorContext: editorContext.value }),
       ...(userLanguage.value && { userLanguage: userLanguage.value }),
     },
@@ -852,8 +890,9 @@ export function parseAgentIntake(value: unknown): Parsed<AgentIntake> {
   const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
   if (prompt.length > LIMITS.promptChars)
     return fail(`prompt is longer than ${LIMITS.promptChars} characters`);
-  const intent = value.intent === undefined ? "edit" : value.intent;
-  if (!isChatIntent(intent)) return fail(`intent must be one of: ${CHAT_INTENTS.join(", ")}`);
+  // An intake written before the plan-approval rework may still say `plan`: it is read as `edit`.
+  const intent = normalizeChatIntent(value.intent ?? "edit");
+  if (!intent) return fail(`intent must be one of: ${CHAT_INTENTS.join(", ")}`);
   const model = parseIntakeModel(value.model);
   if (!model.ok) return model;
   const thinking = parseOptionalThinking(value.thinking);

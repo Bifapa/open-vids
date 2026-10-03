@@ -37,24 +37,21 @@ function overridesOf(choices: DraftChoices): SpecialistOverrides {
 }
 
 /**
- * The intent a new chat starts in: the Mode chip's choice in the draft, else Settings → Execution → Autonomy →
- * default chat mode, else Edit (the settings have not loaded, or the runtime predates the group).
+ * The intent a new chat starts in: the Mode chip's choice in the draft, else Edit. New chats always start in Edit —
+ * the old stored default-intent setting is gone.
  */
-export function draftIntent(
-  choices: DraftChoices,
-  settings: Pick<AgentSettings, "autonomy"> | null,
-): ChatIntent {
-  return choices.intent ?? settings?.autonomy.defaultIntent ?? "edit";
+export function draftIntent(choices: DraftChoices): ChatIntent {
+  return choices.intent ?? "edit";
 }
 
 /**
  * The draft as the chips see it: a chat that does not exist yet, starting where a new chat would (the
- * specialists enabled by default, Default model and effort, the default chat mode, the global Execution Quality),
+ * specialists enabled by default, Default model and effort, the draft's intent, the global Execution Quality),
  * plus the choices.
  */
 export function draftChatSummary(
   choices: DraftChoices,
-  settings: Pick<AgentSettings, "specialists" | "autonomy"> | null,
+  settings: Pick<AgentSettings, "specialists"> | null,
 ): ChatSummary {
   return {
     id: "",
@@ -65,7 +62,7 @@ export function draftChatSummary(
     status: "idle",
     lastTaskSummary: null,
     activeMode: "normal",
-    intent: draftIntent(choices, settings),
+    intent: draftIntent(choices),
     mainAgentModel: choices.model ?? null,
     thinking: choices.thinking ?? null,
     enabledAgents:
@@ -79,17 +76,14 @@ export function draftChatSummary(
 /**
  * How the draft becomes a chat: model and thinking travel with the create; the rest is one update right after,
  * before the first turn starts. `update` is null when the chips changed nothing else. The chat is created with the
- * intent the Mode chip showed (the configured default mode when the user never touched it), so what the composer
- * said is what the chat runs; the runtime itself falls back to Edit for a chat with no intent.
+ * intent the Mode chip showed, so what the composer said is what the chat runs; the runtime itself falls back to
+ * Edit for a chat with no intent.
  */
-export function draftCreation(
-  choices: DraftChoices,
-  settings: Pick<AgentSettings, "autonomy"> | null = null,
-): {
+export function draftCreation(choices: DraftChoices): {
   create: CreateChatRequest;
   update: UpdateChatRequest | null;
 } {
-  const intent = choices.intent ?? settings?.autonomy.defaultIntent;
+  const intent = choices.intent;
   const create: CreateChatRequest = {
     ...(choices.model !== undefined && { model: choices.model }),
     ...(choices.thinking !== undefined && { thinking: choices.thinking }),

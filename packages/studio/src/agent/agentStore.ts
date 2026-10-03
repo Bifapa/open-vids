@@ -2,21 +2,22 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import {
   applyChatEvent,
   isNextEvent,
-  isRecord,
   type ActiveTurnInfo,
   type AgentModelCatalog,
-  type ChatEvent,
   type ChatMode,
   type ChatState,
   type ChatSummary,
   type EditorContext,
-  type ProjectEvent,
+  type MessageReference,
   type StoryAction,
   type StoryActionOptions,
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import { AgentApiError, isActiveTurn, type AgentClient } from "./agentClient";
 import { i18n, t } from "../i18n";
+import { createAgentAttachmentSlice, type AgentAttachmentSlice } from "./agentAttachmentSlice";
+import { attachmentReferences, isUploading } from "./composerAttachments";
+import { isChatEvent, isProjectEvent, parseJson, upsertChat } from "./agentStoreParsing";
 import { describeAgentError } from "./agentErrors";
 import { runningTurn } from "./agentSelectors";
 import { draftCreation, mergeDraftChoices } from "./agentDraftChat";
@@ -55,7 +56,8 @@ export interface AgentState
     AgentQaSlice,
     AgentRevertSlice,
     AgentComposerSlice,
-    AgentPermissionSlice {
+    AgentPermissionSlice,
+    AgentAttachmentSlice {
   availability: AgentAvailability;
   unavailableMessage: string | null;
   chats: ChatSummary[];
@@ -113,32 +115,6 @@ export interface AgentStoreDeps {
 }
 
 export type AgentStore = StoreApi<AgentState>;
-
-function isChatEvent(value: unknown): value is ChatEvent {
-  return (
-    isRecord(value) &&
-    typeof value.seq === "number" &&
-    typeof value.chatId === "string" &&
-    typeof value.type === "string"
-  );
-}
-
-function isProjectEvent(value: unknown): value is ProjectEvent {
-  return isRecord(value) && (value.type === "chat.upserted" || value.type === "project.activeTurn");
-}
-
-function parseJson(data: string): unknown {
-  try {
-    return JSON.parse(data);
-  } catch {
-    return undefined;
-  }
-}
-
-function upsertChat(chats: ChatSummary[], chat: ChatSummary): ChatSummary[] {
-  const rest = chats.filter((existing) => existing.id !== chat.id);
-  return [chat, ...rest].sort((a, b) => b.updatedAt - a.updatedAt);
-}
 
 export function createAgentStore(deps: AgentStoreDeps): AgentStore {
   const { client, openEventSource } = deps;
@@ -296,18 +272,23 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
     };
 
     /** The draft's first message: the chat is created now, the turn started, then the chat opened. */
-    const sendFromDraft = async (text: string, options?: { mode?: ChatMode }) => {
+    const sendFromDraft = async (
+      text: string,
+      references: MessageReference[],
+      options?: { mode?: ChatMode },
+    ) => {
       set({ pending: "send", notice: null });
       let created: ChatSummary | null = null;
       let failure: unknown = null;
       try {
-        const { create, update } = draftCreation(get().draftChoices, get().settings);
+        const { create, update } = draftCreation(get().draftChoices);
         created = await client.createChat(create);
         // The chips' other choices land before the first turn, so it already runs with them.
         if (update) created = await client.updateChat(created.id, update);
         applySummary(created);
         await client.startTurn(created.id, {
           prompt: text,
+          ...(references.length > 0 && { references }),
           editorContext: captureContext(),
           userLanguage: i18n.language,
           ...options,
@@ -323,6 +304,14 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         drafts: chatId
           ? { ...state.drafts, [NEW_CHAT_DRAFT]: "", [chatId]: failure === null ? "" : text }
           : state.drafts,
+        // Unsent attachments follow the text.
+        attachments: chatId
+          ? {
+              ...state.attachments,
+              [NEW_CHAT_DRAFT]: [],
+              [chatId]: failure === null ? [] : (state.attachments[NEW_CHAT_DRAFT] ?? []),
+            }
+          : state.attachments,
       }));
       if (chatId && !disposed && get().view === "chat" && get().chatId === null) {
         await get().openChat(chatId);
@@ -343,6 +332,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       }),
       ...createAgentQaSlice({ client }),
       ...createAgentPermissionSlice({ client, get }),
+      ...createAgentAttachmentSlice({ set, get }),
       ...createAgentRevertSlice({ client, set, get, onTurnReverted: deps.onTurnReverted }),
       ...createAgentComposerSlice({
         client,
@@ -496,10 +486,14 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       },
 
       async send(options) {
-        const { chatId, chat, drafts, pending, view } = get();
-        const text = (drafts[chatId ?? NEW_CHAT_DRAFT] ?? "").trim();
-        if (!text || pending) return false;
-        if (!chatId) return view === "chat" ? sendFromDraft(text, options) : false;
+        const { chatId, chat, drafts, pending, view, attachments } = get();
+        const draftKey = chatId ?? NEW_CHAT_DRAFT;
+        const text = (drafts[draftKey] ?? "").trim();
+        const attached = attachments[draftKey] ?? [];
+        // The message waits for its uploads: a reference to a file that is not in the project yet is no reference.
+        if (!text || pending || isUploading(attached)) return false;
+        const references = attachmentReferences(attached);
+        if (!chatId) return view === "chat" ? sendFromDraft(text, references, options) : false;
         if (!chat) return false;
         const running = runningTurn(chat);
         set({ pending: running ? "steer" : "send", notice: null });
@@ -507,15 +501,24 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         try {
           const userLanguage = i18n.language;
           if (running)
-            await client.steerTurn(chatId, running.id, { text, editorContext, userLanguage });
+            await client.steerTurn(chatId, running.id, {
+              text,
+              ...(references.length > 0 && { references }),
+              editorContext,
+              userLanguage,
+            });
           else
             await client.startTurn(chatId, {
               prompt: text,
+              ...(references.length > 0 && { references }),
               editorContext,
               userLanguage,
               ...options,
             });
-          set((state) => ({ drafts: { ...state.drafts, [chatId]: "" } }));
+          set((state) => ({
+            drafts: { ...state.drafts, [chatId]: "" },
+            attachments: { ...state.attachments, [chatId]: [] },
+          }));
           // Server-authoritative: the turn arrives on the stream. If the stream is down, ask.
           if (get().streamStatus !== "open") await resync(chatId);
           return true;

@@ -1,6 +1,9 @@
-import { CHAT_INTENTS, type AutonomySettings } from "@hyperframes/agent-protocol";
+import {
+  PLAN_APPROVALS,
+  type AutonomySettings,
+  type PlanApproval,
+} from "@hyperframes/agent-protocol";
 import { useTranslation, type TranslationKey } from "../../i18n";
-import { INTENT_LABELS } from "../chat/ModeMenu";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { Toggle } from "../ui/Toggle";
 import { SettingsGroup, SettingsRow } from "./settingsLayout";
@@ -16,9 +19,22 @@ const DOWNLOAD_HINTS = {
   off: "settings.studio.au.dlOff",
 } as const satisfies Record<string, TranslationKey>;
 
+/** The hint says what each approval level means. */
+const APPROVAL_HINTS: Record<PlanApproval, TranslationKey> = {
+  big: "settings.execution.planApproval.big.hint",
+  always: "settings.execution.planApproval.always.hint",
+  never: "settings.execution.planApproval.never.hint",
+};
+
+const APPROVAL_LABELS: Record<PlanApproval, TranslationKey> = {
+  big: "settings.execution.planApproval.big",
+  always: "settings.execution.planApproval.always",
+  never: "settings.execution.planApproval.never",
+};
+
 /**
- * How much the agents may do without asking (prototype "Autonomy"): the mode a new chat starts in, and whether they
- * ask before touching locked or hand-edited sections and before downloading assets. Each change saves at once.
+ * How much the agents may do without asking (prototype "Autonomy"): when a plan must be approved first, and whether
+ * they ask before touching locked or hand-edited sections and before downloading assets. Each change saves at once.
  */
 export function AutonomyGroup({
   autonomy,
@@ -31,17 +47,17 @@ export function AutonomyGroup({
   return (
     <SettingsGroup label={t("settings.execution.group.autonomy")}>
       <SettingsRow
-        label={t("settings.execution.chatMode")}
-        hint={t(INTENT_LABELS[autonomy.defaultIntent].description)}
+        label={t("settings.execution.planApproval")}
+        hint={t(APPROVAL_HINTS[autonomy.planApproval])}
       >
         <SegmentedControl
-          label={t("settings.execution.chatMode")}
-          value={autonomy.defaultIntent}
-          options={CHAT_INTENTS.map((intent) => ({
-            value: intent,
-            label: t(INTENT_LABELS[intent].name),
+          label={t("settings.execution.planApproval")}
+          value={autonomy.planApproval}
+          options={PLAN_APPROVALS.map((approval) => ({
+            value: approval,
+            label: t(APPROVAL_LABELS[approval]),
           }))}
-          onChange={(defaultIntent) => onChange({ defaultIntent })}
+          onChange={(planApproval) => onChange({ planApproval })}
         />
       </SettingsRow>
       <SettingsRow

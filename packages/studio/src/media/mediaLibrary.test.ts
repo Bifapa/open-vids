@@ -311,8 +311,8 @@ describe("dropping media on the Story Graph", () => {
       (candidate) => "asset" in candidate && candidate.asset === item.path,
     );
     expect(node).toMatchObject({ kind: "video", title: "talk", createdBy: "user" });
-    expect(result.graph.attachments.some((a) => a.node === node?.id && a.chapter === "c")).toBe(
-      true,
+    expect(result.graph.attachments).toContainEqual(
+      expect.objectContaining({ node: node?.id, chapter: "c", placement: "middle" }),
     );
   });
 

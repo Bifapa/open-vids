@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { WORKSPACE_PANELS, isStoryPanel, type Arrangement, type Workspace } from "./dockWorkspace";
 import {
   PANEL_DEFINITIONS,
   PANEL_IDS,
@@ -17,10 +18,16 @@ export interface DockController {
   close: (id: PanelId) => void;
   /** Hides or shows the panel's whole tab group without closing it. */
   setGroupVisible: (id: PanelId, visible: boolean) => void;
+  /** Moves into the Story arrangement (a no-op if already there); Edit's layout is remembered. */
+  enterStory: () => void;
+  /** Moves back to the Edit layout (a no-op if already there). */
+  leaveStory: () => void;
   reset: () => void;
 }
 
 export interface DockSnapshot {
+  /** The dock's arrangement; in Story only the Story panels count as open. */
+  arrangement: Arrangement;
   openPanels: ReadonlySet<PanelId>;
   /** Open panels whose tab is showing and whose group is not hidden. */
   visiblePanels: ReadonlySet<PanelId>;
@@ -34,12 +41,17 @@ type LastActive = Partial<Record<PanelZone, PanelId>>;
 interface DockLayoutState extends DockSnapshot {
   controller: DockController | null;
   lastActive: LastActive;
+  /** A workspace requested before the dock mounted; Dock.Root applies it on ready. */
+  pendingWorkspace: Workspace | null;
   /** An activation requested before the dock mounted; Dock.Root applies it on ready. */
   pendingActivation: PanelId | null;
   attach: (controller: DockController) => void;
   detach: () => void;
   sync: (snapshot: DockSnapshot) => void;
   takePendingActivation: () => PanelId | null;
+  takePendingWorkspace: () => Workspace | null;
+  /** Media | Story | Edit: leaves Story unless it is the target, then brings that workspace's centre panel forward. */
+  setWorkspace: (workspace: Workspace) => void;
   activatePanel: (id: PanelId) => void;
   closePanel: (id: PanelId) => void;
   togglePanel: (id: PanelId) => void;
@@ -51,13 +63,15 @@ interface DockLayoutState extends DockSnapshot {
 
 export const useDockLayoutStore = create<DockLayoutState>((set, get) => ({
   controller: null,
+  arrangement: "edit",
   openPanels: new Set(PANEL_IDS),
   visiblePanels: new Set(PANEL_IDS),
   activePanel: null,
   lastActive: {},
   pendingActivation: null,
+  pendingWorkspace: null,
   attach: (controller) => set({ controller }),
-  detach: () => set({ controller: null, lastActive: {} }),
+  detach: () => set({ controller: null, lastActive: {}, arrangement: "edit" }),
   sync: (snapshot) =>
     set((state) => {
       const lastActive = { ...state.lastActive };
@@ -74,12 +88,30 @@ export const useDockLayoutStore = create<DockLayoutState>((set, get) => ({
     set({ pendingActivation: null });
     return pendingActivation;
   },
+  takePendingWorkspace: () => {
+    const { pendingWorkspace } = get();
+    set({ pendingWorkspace: null });
+    return pendingWorkspace;
+  },
+  setWorkspace: (workspace) => {
+    const { controller, activatePanel } = get();
+    if (!controller) {
+      set({ pendingWorkspace: workspace });
+      return;
+    }
+    if (workspace !== "story") controller.leaveStory();
+    activatePanel(WORKSPACE_PANELS[workspace]);
+  },
   activatePanel: (id) => {
-    const { controller } = get();
+    const { controller, arrangement } = get();
     if (!controller) {
       set({ pendingActivation: id });
       return;
     }
+    // Story is a layout of its own; the Story panel brings it up, and any other panel asked for by
+    // name (the inspector, the timeline) is somewhere Story does not show, so it takes the dock back to Edit.
+    if (id === "story") controller.enterStory();
+    else if (arrangement === "story" && !isStoryPanel(id)) controller.leaveStory();
     controller.setGroupVisible(id, true);
     controller.activate(id);
   },

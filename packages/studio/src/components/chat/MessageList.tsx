@@ -2,6 +2,7 @@ import { useMemo, useRef } from "react";
 import { ArrowDown, ClosedCaptioning, FilmStrip, Scissors, type Icon } from "@phosphor-icons/react";
 import type { ChatState, TurnSummary } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
+import { useComposerRequestStore } from "../../agent/composerRequest";
 import { hasNoUsableModel, mainThreadMessages, type ThreadId } from "../../agent/agentSelectors";
 import { useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
@@ -71,6 +72,8 @@ function MainThread({ chat }: { chat: ChatState }) {
   const { t } = useTranslation();
   const reverts = useAgentStore((state) => state.reverts);
   const activeTurn = useAgentStore((state) => state.activeTurn);
+  const pending = useAgentStore((state) => state.pending);
+  const executePlan = useAgentStore((state) => state.startPlanExecution);
   const revert = useAgentStore((state) => state.revert);
   const unrevert = useAgentStore((state) => state.unrevert);
   const dismissRevert = useAgentStore((state) => state.dismissRevert);
@@ -89,6 +92,21 @@ function MainThread({ chat }: { chat: ChatState }) {
     }));
   }, [chat]);
 
+  // The last turn's plan proposal is the user's to run or change; once another turn runs it is stale.
+  const lastTurn = chat.turns.at(-1);
+  const approvalFor = (turn: TurnSummary | undefined) =>
+    turn &&
+    turn.plan?.proposal === true &&
+    turn.id === lastTurn?.id &&
+    turn.status === "completed" &&
+    activeTurn === null
+      ? {
+          busy: pending !== null,
+          onExecute: () => void executePlan(turn.id),
+          onRevise: () => useComposerRequestStore.getState().focus(),
+        }
+      : undefined;
+
   if (rows.length === 0) return <EmptyChat />;
   return (
     <>
@@ -99,7 +117,15 @@ function MainThread({ chat }: { chat: ChatState }) {
           <div key={message.id} className="grid min-w-0 gap-1.5">
             <AssistantBlock
               message={message}
-              plan={turn?.plan && <PlanView plan={turn.plan} live={turn.status === "running"} />}
+              plan={
+                turn?.plan && (
+                  <PlanView
+                    plan={turn.plan}
+                    live={turn.status === "running"}
+                    approval={approvalFor(turn)}
+                  />
+                )
+              }
             />
             {turn?.qa && <RenderQaCard turn={turn} />}
             {turn && turn.status !== "running" && (

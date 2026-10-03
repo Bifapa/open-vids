@@ -369,7 +369,7 @@ export const SETTINGS: AgentSettings = {
     apiKeyConfigured: false,
   },
   executionQuality: DEFAULT_EXECUTION_QUALITY,
-  autonomy: { defaultIntent: "plan", askBeforeLockedEdits: true, askBeforeDownloads: true },
+  autonomy: { planApproval: "big", askBeforeLockedEdits: true, askBeforeDownloads: true },
 };
 
 /** A provider as the runtime reports it: connected through the user's OMP setup unless overridden. */

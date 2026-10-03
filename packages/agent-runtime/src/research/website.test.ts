@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentId, ChatIntent } from "@hyperframes/agent-protocol";
+import type { AgentId } from "@hyperframes/agent-protocol";
 import type { BackendPromptOutcome } from "../backend.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "../testing/runtimeFixture.js";
 import { FakeResearchHost, researchPolicy, sampleWebsiteStyle } from "../testing/research.js";
@@ -198,20 +198,17 @@ describe("read_website results", () => {
   });
 });
 
-describe("read_website is read-only in Plan and Ask turns", () => {
-  it.each<ChatIntent>(["plan", "ask"])(
-    "refuses save in a %s turn but still reads",
-    async (intent) => {
-      const { host, call } = executor({ intent });
-      const saved = await call({ url: "https://linear.app", save: true });
-      expect(saved.isError).toBe(true);
-      expect(saved.text).toContain("cannot save files");
-      expect(host.websiteRequests).toEqual([]);
+describe("read_website is read-only in Ask turns", () => {
+  it("refuses save in an Ask turn but still reads", async () => {
+    const { host, call } = executor({ intent: "ask" });
+    const saved = await call({ url: "https://linear.app", save: true });
+    expect(saved.isError).toBe(true);
+    expect(saved.text).toContain("cannot save files");
+    expect(host.websiteRequests).toEqual([]);
 
-      expect((await call({ url: "https://linear.app" })).isError).toBeUndefined();
-      expect(host.websiteRequests).toHaveLength(1);
-    },
-  );
+    expect((await call({ url: "https://linear.app" })).isError).toBeUndefined();
+    expect(host.websiteRequests).toHaveLength(1);
+  });
 });
 
 // ── In a running turn: which texts count as the user's ───────────────────────

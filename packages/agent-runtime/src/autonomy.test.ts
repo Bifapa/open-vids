@@ -74,14 +74,26 @@ describe("lock refusals", () => {
   });
 
   it("states both settings in the Director's brief and the delegated tasks", () => {
-    const strict = autonomyTeamLines({ askBeforeLockedEdits: true, askBeforeDownloads: true });
+    const strict = autonomyTeamLines({
+      planApproval: "big",
+      askBeforeLockedEdits: true,
+      askBeforeDownloads: true,
+    });
     expect(strict[0]).toContain("The user wants to be asked first");
     expect(strict[1]).toContain("Downloads need the user's approval first");
-    const free = autonomyTeamLines({ askBeforeLockedEdits: false, askBeforeDownloads: false });
+    const free = autonomyTeamLines({
+      planApproval: "big",
+      askBeforeLockedEdits: false,
+      askBeforeDownloads: false,
+    });
     expect(free[0]).toContain("does not want to be interrupted");
     expect(free[1]).toContain("without asking first");
     // Specialists hear the lock rule; only Research hears the download rule.
-    const policy = { askBeforeLockedEdits: true, askBeforeDownloads: true };
+    const policy = {
+      planApproval: "big" as const,
+      askBeforeLockedEdits: true,
+      askBeforeDownloads: true,
+    };
     expect(renderAutonomyBlock(policy, "editor")).not.toContain("Downloads");
     expect(renderAutonomyBlock(policy, "research")).toContain("Downloads need the user's approval");
     expect(downloadApprovalRefusal()).toContain("Do not import anything yet");

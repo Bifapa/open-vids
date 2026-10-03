@@ -129,129 +129,136 @@ export function MediaPanel({
   };
 
   return (
-    <div
-      className="grid h-full min-h-0 grid-cols-[212px_minmax(0,1fr)_320px] gap-1.5 bg-desktop"
-      data-studio-media=""
-      data-testid="media-workspace"
-    >
-      <Column
-        testId="media-library"
-        head={
-          <>
-            <span className="inline-flex h-ctl-sm items-center px-2 text-sm font-medium text-fg">
-              {t("media.panel.library")}
-            </span>
-            <span className="flex-1" />
-            <IconButton
-              aria-label={t("media.import")}
-              size="sm"
-              icon={<DownloadSimple className="size-icon-md" />}
-              onClick={() => fileInput.current?.click()}
-            />
-            <input
-              ref={fileInput}
-              type="file"
-              multiple
-              accept="video/*,image/*,audio/*,font/*,.woff,.woff2,.ttf,.otf"
-              className="hidden"
-              onChange={(event) => {
-                if (event.target.files?.length) void importFiles(event.target.files);
-                event.target.value = "";
-              }}
-            />
-          </>
-        }
-      >
-        <MediaLibraryNav
-          items={items}
-          current={navKey}
-          onSelect={onNav}
-          queue={queue}
-          onAnalyzeAll={() => library.analyze(items.filter(needsAnalysis).map((item) => item.path))}
-        />
-      </Column>
-
-      <Tabs
-        value={centerTab}
-        onValueChange={(value: unknown) => setCenterTab(value === "sources" ? "sources" : "media")}
-        className="min-h-0 min-w-0"
+    <div className="@container/media h-full min-h-0">
+      {/* Narrower than a window (Story's left column): library and browser only, the inspector waits for width. */}
+      <div
+        className="grid h-full min-h-0 grid-cols-[168px_minmax(0,1fr)] gap-1.5 bg-desktop @[900px]/media:grid-cols-[212px_minmax(0,1fr)_320px]"
+        data-studio-media=""
+        data-testid="media-workspace"
       >
         <Column
-          testId="media-browser-panel"
-          className="h-full"
+          testId="media-library"
           head={
-            <TabsList aria-label={t("media.panel.browserTabs")}>
-              <Tab value="media">{t("media.tab.media")}</Tab>
-              <Tab value="sources">
-                {t("media.nav.sources")}
-                {sourcesAttention && (
-                  <i
-                    aria-label={t("media.sources.needsCheck")}
-                    className="ml-1 size-1.5 rounded-full bg-warning"
-                  />
-                )}
-              </Tab>
-            </TabsList>
+            <>
+              <span className="inline-flex h-ctl-sm items-center px-2 text-sm font-medium text-fg">
+                {t("media.panel.library")}
+              </span>
+              <span className="flex-1" />
+              <IconButton
+                aria-label={t("media.import")}
+                size="sm"
+                icon={<DownloadSimple className="size-icon-md" />}
+                onClick={() => fileInput.current?.click()}
+              />
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                accept="video/*,image/*,audio/*,font/*,.woff,.woff2,.ttf,.otf"
+                className="hidden"
+                onChange={(event) => {
+                  if (event.target.files?.length) void importFiles(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+            </>
           }
         >
-          <TabPanel value="media" className="flex min-h-0 flex-1 flex-col">
-            <MediaBrowser
-              projectId={projectId}
-              items={items}
-              collection={collection}
-              collectionLabel={t(COLLECTION_LABELS[collection])}
-              onResetCollection={() => setCollection("all")}
-              searchIndex={library.searchIndex}
-              loadSearchIndex={library.loadSearchIndex}
-              selectedPath={selectedPath}
-              onSelect={select}
-              onImport={() => fileInput.current?.click()}
-              onImportFiles={importFiles}
-              onAddToTimeline={onAddAssetToTimeline}
-              onDelete={handleDeleteFile}
-              onRename={handleRenameFile}
-              onAddToStory={addToStory}
-            />
-          </TabPanel>
-          <TabPanel value="sources" className="flex min-h-0 flex-1 flex-col">
-            <SourcesPanel />
-          </TabPanel>
+          <MediaLibraryNav
+            items={items}
+            current={navKey}
+            onSelect={onNav}
+            queue={queue}
+            onAnalyzeAll={() =>
+              library.analyze(items.filter(needsAnalysis).map((item) => item.path))
+            }
+          />
         </Column>
-      </Tabs>
 
-      <Tabs
-        value={rightTab}
-        onValueChange={(value: unknown) => setRightTab(value === "chat" ? "chat" : "inspector")}
-        className="min-h-0 min-w-0"
-      >
-        <Column
-          testId="media-right"
-          className="h-full"
-          head={
-            <TabsList aria-label={t("media.panel.rightTabs")}>
-              <Tab value="inspector">{t("media.tab.inspector")}</Tab>
-              <Tab value="chat">{t("media.tab.chat")}</Tab>
-            </TabsList>
+        <Tabs
+          value={centerTab}
+          onValueChange={(value: unknown) =>
+            setCenterTab(value === "sources" ? "sources" : "media")
           }
+          className="min-h-0 min-w-0"
         >
-          <TabPanel value="inspector" className="flex min-h-0 flex-1 flex-col">
-            <MediaInspector
-              projectId={projectId}
-              item={selected}
-              items={items}
-              waitingCount={queue.waiting.length + (queue.job || queue.starting ? 1 : 0)}
-              onAnalyze={library.analyze}
-              onAddToTimeline={onAddAssetToTimeline}
-              onAddToStory={addToStory}
-              onOpenSources={openSources}
-              removeBackground={removeBackground}
-            />
-          </TabPanel>
-          <TabPanel value="chat" className="flex min-h-0 flex-1 flex-col">
-            <AgentChatPanel store={agentStore} />
-          </TabPanel>
-        </Column>
-      </Tabs>
+          <Column
+            testId="media-browser-panel"
+            className="h-full"
+            head={
+              <TabsList aria-label={t("media.panel.browserTabs")}>
+                <Tab value="media">{t("media.tab.media")}</Tab>
+                <Tab value="sources">
+                  {t("media.nav.sources")}
+                  {sourcesAttention && (
+                    <i
+                      aria-label={t("media.sources.needsCheck")}
+                      className="ml-1 size-1.5 rounded-full bg-warning"
+                    />
+                  )}
+                </Tab>
+              </TabsList>
+            }
+          >
+            <TabPanel value="media" className="flex min-h-0 flex-1 flex-col">
+              <MediaBrowser
+                projectId={projectId}
+                items={items}
+                collection={collection}
+                collectionLabel={t(COLLECTION_LABELS[collection])}
+                onResetCollection={() => setCollection("all")}
+                searchIndex={library.searchIndex}
+                loadSearchIndex={library.loadSearchIndex}
+                selectedPath={selectedPath}
+                onSelect={select}
+                onImport={() => fileInput.current?.click()}
+                onImportFiles={importFiles}
+                onAddToTimeline={onAddAssetToTimeline}
+                onDelete={handleDeleteFile}
+                onRename={handleRenameFile}
+                onAddToStory={addToStory}
+              />
+            </TabPanel>
+            <TabPanel value="sources" className="flex min-h-0 flex-1 flex-col">
+              <SourcesPanel />
+            </TabPanel>
+          </Column>
+        </Tabs>
+
+        <Tabs
+          value={rightTab}
+          onValueChange={(value: unknown) => setRightTab(value === "chat" ? "chat" : "inspector")}
+          className="hidden min-h-0 min-w-0 @[900px]/media:block"
+        >
+          <Column
+            testId="media-right"
+            className="h-full"
+            head={
+              <TabsList aria-label={t("media.panel.rightTabs")}>
+                <Tab value="inspector">{t("media.tab.inspector")}</Tab>
+                <Tab value="chat">{t("media.tab.chat")}</Tab>
+              </TabsList>
+            }
+          >
+            <TabPanel value="inspector" className="flex min-h-0 flex-1 flex-col">
+              <MediaInspector
+                projectId={projectId}
+                item={selected}
+                items={items}
+                waitingCount={queue.waiting.length + (queue.job || queue.starting ? 1 : 0)}
+                onAnalyze={library.analyze}
+                onAddToTimeline={onAddAssetToTimeline}
+                onAddToStory={addToStory}
+                onOpenSources={openSources}
+                removeBackground={removeBackground}
+              />
+            </TabPanel>
+            <TabPanel value="chat" className="flex min-h-0 flex-1 flex-col">
+              <AgentChatPanel store={agentStore} />
+            </TabPanel>
+          </Column>
+        </Tabs>
+      </div>
     </div>
   );
 }

@@ -6,7 +6,7 @@
 //! `<project>/.hyperframes/agent/intake.json`:
 //!
 //! ```json
-//! { "version": 1, "prompt": "…", "intent": "plan"|"edit"|"ask",
+//! { "version": 1, "prompt": "…", "intent": "edit"|"ask",   // "plan" (removed) is read back as "edit"
 //!   "format": "auto",                      // optional; "auto" = the agent picks the frame format
 //!   "model": {"provider","modelId"}|null, "thinking": "<effort>"|null,
 //!   "agents": ["editor", …], "agentOverrides": { … },

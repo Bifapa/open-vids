@@ -114,7 +114,7 @@ export interface UpdateChatRequest {
   agentOverrides?: Partial<Record<SpecialistId, SpecialistConfig | null>>;
   /** The chat's mode for its next turns. */
   activeMode?: ChatMode;
-  /** The chat's intent (Plan / Edit / Ask) for its next turns. */
+  /** The chat's intent (Edit / Ask) for its next turns. */
   intent?: ChatIntent;
   /** The chat's own Execution Quality; null returns the chat to the global default. */
   executionQuality?: ExecutionQuality | null;
@@ -127,10 +127,16 @@ export interface StartTurnRequest {
   /** Mode of this turn; defaults to the chat's `activeMode`. A story action implies `story`. */
   mode?: ChatMode;
   /**
-   * What the user wants from this turn; defaults to the chat's `intent`, else `edit`. Plan and Ask turns change
-   * nothing. A story action always runs as `edit`.
+   * What the user wants from this turn; defaults to the chat's `intent`, else `edit`. Ask turns change nothing. A
+   * story action and an execute-plan request always run as `edit`.
    */
   intent?: ChatIntent;
+  /**
+   * "Carry out the plan": the user approved a plan proposal of this chat, identified by the turn that published it.
+   * The runtime adds the approved steps to the prompt and the Director carries them out; it never proposes again in
+   * that turn. Refused when the turn carries no plan proposal, and never combined with a story action.
+   */
+  executePlan?: { turnId: string };
   /** Run a Story workspace action (Review with AI / Build Story / Rebuild affected sections) as this turn. */
   storyAction?: StoryAction;
   /** The user's choices for a `build` or `rebuild` action; refused with any other action. */
@@ -154,6 +160,8 @@ export interface StartTurnResponse {
 
 export interface SteerTurnRequest {
   text: string;
+  /** Files the steering message attaches. */
+  references?: MessageReference[];
   editorContext?: EditorContext;
   /**
    * The user's UI language as a BCP-47 code (`en`, `ru`, …). The agents answer in that language;
