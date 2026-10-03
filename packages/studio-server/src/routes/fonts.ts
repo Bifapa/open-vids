@@ -45,11 +45,11 @@ function collectFontsFromDir(dir: string): string[] {
   return collectFontFileEntries(dir).map((e) => e.family);
 }
 
-function listInstalledFontFamilies(): string[] {
+async function listInstalledFontFamilies(): Promise<string[]> {
   if (cachedFonts) return cachedFonts;
   const families = new Set<string>();
 
-  for (const family of getSystemProfilerFamilies()) {
+  for (const family of await getSystemProfilerFamilies()) {
     families.add(family);
     if (families.size >= MAX_FONT_RESULTS) break;
   }
@@ -121,14 +121,14 @@ async function listGoogleFontFamilies(): Promise<string[]> {
 }
 
 export function registerFontRoutes(api: Hono): void {
-  api.get("/fonts", (c) => c.json({ fonts: listInstalledFontFamilies() }));
+  api.get("/fonts", async (c) => c.json({ fonts: await listInstalledFontFamilies() }));
   api.get("/fonts/google", async (c) => c.json({ fonts: await listGoogleFontFamilies() }));
 
-  api.get("/fonts/file", (c) => {
+  api.get("/fonts/file", async (c) => {
     const family = c.req.query("family");
     if (!family) return c.json({ error: "family parameter required" }, 400);
 
-    const located = locateSystemFont(family);
+    const located = await locateSystemFont(family);
     if (!located) return c.json({ error: "font not found" }, 404);
 
     let fd: number;

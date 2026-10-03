@@ -518,7 +518,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           downloadToTemp(url, destDir),
         ),
       });
-      return injectDeterministicFontFaces(prepared.html);
+      // The preview runs on this machine, whose browser reads installed fonts itself. Embedding
+      // them (renders still do) meant a blocking font index build and multi-MB data URIs.
+      return injectDeterministicFontFaces(prepared.html, {
+        allowSystemFontCapture: false,
+        warnUnresolvedFonts: false,
+      });
     },
 
     getProjectSignature: projectSignature,

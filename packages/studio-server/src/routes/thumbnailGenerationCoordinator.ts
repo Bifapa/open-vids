@@ -126,4 +126,6 @@ export class ThumbnailGenerationCoordinator {
   }
 }
 
-export const thumbnailGenerationCoordinator = new ThumbnailGenerationCoordinator(1);
+// Two at once: Studio fetches two composition thumbnails at a time, and the CLI host keeps a page
+// per in-flight frame (cli/src/server/thumbnailPages.ts), so neither waits on the other's seek.
+export const thumbnailGenerationCoordinator = new ThumbnailGenerationCoordinator(2);

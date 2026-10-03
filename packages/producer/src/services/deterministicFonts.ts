@@ -777,7 +777,7 @@ async function buildFontFaceCss(
     // The page already named the file. A font found on this machine is a
     // different file, and the render machines do not have it.
     if (options.allowSystemFontCapture && !pageNamedThisFile(originalCaseFamily, options)) {
-      const variants = locateSystemFontVariants(originalCaseFamily);
+      const variants = await locateSystemFontVariants(originalCaseFamily);
       if (variants.length > 0) {
         let totalBytes = 0;
         for (const variant of variants) {
@@ -1435,6 +1435,12 @@ export interface InjectDeterministicFontFacesOptions {
    * to contain the same fonts as the authoring machine.
    */
   allowSystemFontCapture?: boolean;
+  /**
+   * When `false`, families no source resolves are left to the browser without the
+   * "No deterministic font mapping" warning. For a live preview on the authoring machine,
+   * where the browser reads the installed fonts itself. Default `true`.
+   */
+  warnUnresolvedFonts?: boolean;
 }
 
 // Keep the complete CSS request under the broadly supported ~2 KB URL limit.
@@ -1654,7 +1660,7 @@ export async function injectDeterministicFontFaces(
     );
   }
   if (!css) {
-    if (unresolved.length > 0) {
+    if (unresolved.length > 0 && options.warnUnresolvedFonts !== false) {
       warnUnresolvedFonts(unresolved);
     }
     return html;
@@ -1674,7 +1680,7 @@ export async function injectDeterministicFontFaces(
   defaultLogger.info(
     `[Compiler] Injected deterministic @font-face rules for ${pendingFamilies.size - unresolved.length} requested font families`,
   );
-  if (unresolved.length > 0) {
+  if (unresolved.length > 0 && options.warnUnresolvedFonts !== false) {
     warnUnresolvedFonts(unresolved);
   }
 

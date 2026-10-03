@@ -275,7 +275,12 @@ export function createViteAdapter(
 
     async transformPreviewHtml({ html }) {
       const producer = await import("../producer/src/services/deterministicFonts.js");
-      return producer.injectDeterministicFontFaces(html);
+      // The preview runs on this machine, whose browser reads installed fonts itself. Embedding
+      // them (renders still do) meant a blocking font index build and multi-MB data URIs.
+      return producer.injectDeterministicFontFaces(html, {
+        allowSystemFontCapture: false,
+        warnUnresolvedFonts: false,
+      });
     },
 
     getProjectSignature(projectDir: string): string {

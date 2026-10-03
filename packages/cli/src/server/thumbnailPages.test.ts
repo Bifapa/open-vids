@@ -15,26 +15,52 @@ function fakeBrowser() {
 }
 
 describe("createThumbnailPages", () => {
-  it("loads a document once and serves every frame from that page, one at a time", async () => {
+  it("takes two frames of one document in parallel, then serves later frames from the loaded pages", async () => {
     const { browser } = fakeBrowser();
     const thumbnails = createThumbnailPages();
+    const load = vi.fn(async () => {});
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const running: string[] = [];
+    const shot = (name: string) => async () => {
+      running.push(name);
+      await gate;
+      return name;
+    };
+
+    const burst = Promise.all([
+      thumbnails.withPage(browser, "/preview", "v1", 0, load, shot("t0")),
+      thumbnails.withPage(browser, "/preview", "v1", 3, load, shot("t3")),
+    ]);
+    // Both frames run at once, each on its own page.
+    await vi.waitFor(() => expect(running).toEqual(["t0", "t3"]));
+    release();
+    expect(await burst).toEqual(["t0", "t3"]);
+
+    expect(await thumbnails.withPage(browser, "/preview", "v1", 5, load, shot("t5"))).toBe("t5");
+    expect(browser.newPage).toHaveBeenCalledTimes(2);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs frames queued on one page one at a time when no page is free", async () => {
+    const { browser } = fakeBrowser();
+    const thumbnails = createThumbnailPages(1);
     const load = vi.fn(async () => {});
     const order: string[] = [];
     const shot = (name: string) => async () => {
       order.push(`${name}:start`);
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await Promise.resolve();
       order.push(`${name}:end`);
       return name;
     };
 
     const frames = await Promise.all([
       thumbnails.withPage(browser, "/preview", "v1", 0, load, shot("t0")),
-      thumbnails.withPage(browser, "/preview", "v1", 0, load, shot("t3")),
+      thumbnails.withPage(browser, "/preview", "v1", 3, load, shot("t3")),
     ]);
 
     expect(frames).toEqual(["t0", "t3"]);
     expect(browser.newPage).toHaveBeenCalledTimes(1);
-    expect(load).toHaveBeenCalledTimes(1);
     expect(order).toEqual(["t0:start", "t0:end", "t3:start", "t3:end"]);
   });
 
@@ -112,7 +138,8 @@ describe("createThumbnailPages", () => {
     const backward = await frame(10);
     expect(backward).toBe(pages[1]);
     expect(load).toHaveBeenLastCalledWith(pages[1]);
-    await vi.waitFor(() => expect(pages[0]?.close).toHaveBeenCalled());
+    // The page at 20 s still serves a later frame.
+    expect(await frame(30)).toBe(first);
   });
 
   it("closes a kept page a second after its last frame, once a burst of thumbnails is over", async () => {

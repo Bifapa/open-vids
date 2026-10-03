@@ -1,7 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export const SYSTEM_FONT_SIZE_LIMIT = 5 * 1024 * 1024;
 const PROFILER_TIMEOUT_MS = 5000;
@@ -228,21 +231,27 @@ type SystemProfilerEntry = {
   isRegular: boolean;
 };
 
-let profilerCache: Map<string, SystemProfilerEntry[]> | null = null;
+// The run is shared, not repeated: `system_profiler` takes seconds (5–13 s with many fonts), so it
+// runs once per process, off the event loop — a server that waits on it still answers everything else.
+let profilerIndex: Promise<Map<string, SystemProfilerEntry[]>> | null = null;
 
-function getSystemProfilerIndex(): Map<string, SystemProfilerEntry[]> {
-  if (profilerCache) return profilerCache;
-  profilerCache = new Map();
-  if (platform() !== "darwin") return profilerCache;
+function getSystemProfilerIndex(): Promise<Map<string, SystemProfilerEntry[]>> {
+  profilerIndex ??= readSystemProfilerIndex();
+  return profilerIndex;
+}
+
+async function readSystemProfilerIndex(): Promise<Map<string, SystemProfilerEntry[]>> {
+  const index = new Map<string, SystemProfilerEntry[]>();
+  if (platform() !== "darwin") return index;
 
   try {
-    const raw = execFileSync("system_profiler", ["SPFontsDataType", "-json"], {
+    const { stdout } = await execFileAsync("system_profiler", ["SPFontsDataType", "-json"], {
       encoding: "utf8",
       maxBuffer: 12 * 1024 * 1024,
       timeout: PROFILER_TIMEOUT_MS,
     });
-    const parsed = JSON.parse(raw);
-    if (!parsed?.SPFontsDataType || !Array.isArray(parsed.SPFontsDataType)) return profilerCache;
+    const parsed = JSON.parse(stdout);
+    if (!parsed?.SPFontsDataType || !Array.isArray(parsed.SPFontsDataType)) return index;
 
     for (const fontEntry of parsed.SPFontsDataType) {
       if (!fontEntry?.typefaces || !Array.isArray(fontEntry.typefaces)) continue;
@@ -260,20 +269,20 @@ function getSystemProfilerIndex(): Map<string, SystemProfilerEntry[]> {
           format: extensionToFormat(ext),
           isRegular: isRegularWeight(filePath),
         };
-        const list = profilerCache.get(normalized) ?? [];
+        const list = index.get(normalized) ?? [];
         list.push(entry);
-        profilerCache.set(normalized, list);
+        index.set(normalized, list);
       }
     }
   } catch {
-    // system_profiler unavailable
+    // system_profiler unavailable or past its timeout
   }
 
-  return profilerCache;
+  return index;
 }
 
-function locateViaSystemProfiler(targetFamily: string): LocatedFont | null {
-  const index = getSystemProfilerIndex();
+async function locateViaSystemProfiler(targetFamily: string): Promise<LocatedFont | null> {
+  const index = await getSystemProfilerIndex();
   const entries = index.get(targetFamily);
   if (!entries || entries.length === 0) return null;
 
@@ -284,13 +293,14 @@ function locateViaSystemProfiler(targetFamily: string): LocatedFont | null {
   return pickBestCandidate(candidates);
 }
 
-function locateViaFcMatch(targetFamily: string): LocatedFont | null {
+async function locateViaFcMatch(targetFamily: string): Promise<LocatedFont | null> {
   if (platform() !== "linux") return null;
   try {
-    const result = execFileSync("fc-match", [targetFamily, "--format=%{file}"], {
+    const { stdout } = await execFileAsync("fc-match", [targetFamily, "--format=%{file}"], {
       encoding: "utf8",
       timeout: FC_MATCH_TIMEOUT_MS,
-    }).trim();
+    });
+    const result = stdout.trim();
     if (!result || !isRegularFile(result) || !isPathBounded(result)) return null;
     const fileName = result.split("/").pop() ?? "";
     const derivedFamily = toFamilyName(fileName);
@@ -302,7 +312,7 @@ function locateViaFcMatch(targetFamily: string): LocatedFont | null {
   }
 }
 
-export function locateSystemFont(family: string): LocatedFont | null {
+export async function locateSystemFont(family: string): Promise<LocatedFont | null> {
   const normalized = normalizeName(family);
   if (!normalized) return null;
 
@@ -311,10 +321,10 @@ export function locateSystemFont(family: string): LocatedFont | null {
 
   let result: LocatedFont | null = null;
 
-  result = locateViaSystemProfiler(normalized);
+  result = await locateViaSystemProfiler(normalized);
 
   if (!result) {
-    result = locateViaFcMatch(normalized);
+    result = await locateViaFcMatch(normalized);
   }
 
   if (!result) {
@@ -366,13 +376,13 @@ function inferWeightAndStyle(fileName: string): { weight: string; style: "normal
   return { weight: "400", style };
 }
 
-export function locateSystemFontVariants(family: string): LocatedFontVariant[] {
+export async function locateSystemFontVariants(family: string): Promise<LocatedFontVariant[]> {
   const normalized = normalizeName(family);
   if (!normalized) return [];
 
   const variants: LocatedFontVariant[] = [];
 
-  const profilerIndex = getSystemProfilerIndex();
+  const profilerIndex = await getSystemProfilerIndex();
   const profilerEntries = profilerIndex.get(normalized);
   if (profilerEntries && profilerEntries.length > 0) {
     for (const e of profilerEntries) {
@@ -403,13 +413,13 @@ function dedupeVariants(variants: LocatedFontVariant[]): LocatedFontVariant[] {
   return Array.from(seen.values());
 }
 
-export function getSystemProfilerFamilies(): string[] {
-  const index = getSystemProfilerIndex();
+export async function getSystemProfilerFamilies(): Promise<string[]> {
+  const index = await getSystemProfilerIndex();
   return Array.from(index.keys());
 }
 
 export function clearSystemFontCache(): void {
   cache.clear();
-  profilerCache = null;
+  profilerIndex = null;
   allowedDirsCache = null;
 }
