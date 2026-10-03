@@ -26,6 +26,7 @@ import {
 } from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { BundleOptions } from "@hyperframes/core/compiler";
+import type { inspectWebsiteViaCli } from "../cli/src/server/siteAdapter";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { generateThumbnail, findSystemChrome } from "./vite.browser";
@@ -301,6 +302,21 @@ export function createViteAdapter(
     // Same place as the CLI host: the agent's render QA and editing probe address renders as `renders/<file>`
     // inside the project.
     rendersDir: (project) => join(project.dir, "renders"),
+
+    // The website style reader, as in the CLI host: `cli inspect-site` in a child process (its own headless Chrome),
+    // run from the CLI's source with this Bun, so `desktop:dev` needs no CLI build.
+    async inspectWebsite(opts) {
+      const mod = await server.ssrLoadModule(
+        resolve(__dirname, "../cli/src/server/siteAdapter.ts"),
+      );
+      const inspect: typeof inspectWebsiteViaCli = mod.inspectWebsiteViaCli;
+      return inspect(opts, {
+        invocation: () => ({
+          command: process.execPath,
+          prefix: [resolve(__dirname, "../cli/src/cli.ts")],
+        }),
+      });
+    },
 
     startRender(opts): RenderJobState {
       const abortController = new AbortController();

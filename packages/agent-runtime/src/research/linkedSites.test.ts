@@ -42,6 +42,17 @@ describe("linkedSites", () => {
     expect(linkedSites(["mailto:a@b.com", "index.html", "no links here"])).toEqual([]);
   });
 
+  it("counts a site named by its bare domain, but not a file name", () => {
+    expect(
+      linkedSites([
+        "сделай ресерч сайта openvids.ai и сделай промушн в их стиле, трек Chrome Bounce.wav",
+        "посмотри linear.app/pricing, а index.html, README.md и assets/music.mp3 не трогай",
+      ]),
+    ).toEqual(["openvids.ai", "linear.app"]);
+    expect(isLinkedSite("https://www.openvids.ai/", linkedSites(["сайт openvids.ai."]))).toBe(true);
+    expect(linkedSites(["mail me at team@openvids.ai"])).toEqual([]);
+  });
+
   it("never counts an IP address or localhost as a linked site", () => {
     expect(linkedSites(["http://127.0.0.1:8080/x http://localhost:3000 http://10.0.0.5/"])).toEqual(
       [],

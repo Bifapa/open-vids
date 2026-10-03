@@ -3,8 +3,9 @@ import { isIP } from "node:net";
 /**
  * The websites a user has linked in a chat, and whether a URL the agent wants to read belongs to one of them.
  *
- * The agent may read only pages of a site the user themselves sent a link to (any user message of the chat: the first
- * prompt, later messages and steering). A site is its registrable domain: a link to `https://www.linear.app/x` allows
+ * The agent may read only pages of a site the user themselves named in a chat — a URL, a `www.` address or a bare
+ * domain such as `openvids.ai` — in any user message (the first prompt, later messages and steering). A site is its
+ * registrable domain: a link to `https://www.linear.app/x` allows
  * `linear.app`, `www.linear.app` and `docs.linear.app`, never `example.com`. Links the assistant writes (its own
  * replies, search results, page contents) never count: this module is fed user text only.
  */
@@ -45,6 +46,68 @@ const SHARED_SUFFIXES: Readonly<Record<string, true>> = {
 const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"'`\])}]+/gi;
 /** `www.example.com/path` without a scheme: people write links that way, and `www.` is unmistakable. */
 const WWW_IN_TEXT = /(?<![\w./@-])www\.[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:[/?#][^\s<>"'`\])}]*)?/gi;
+/**
+ * A bare domain (`openvids.ai`, `linear.app/pricing`): people name their site that way too. Letters-only last label,
+ * not part of an address, path or e-mail; file names are told apart by {@link FILE_EXTENSIONS}.
+ */
+const BARE_DOMAIN_IN_TEXT =
+  /(?<![\w./@:-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,24})(?![\w@-])(?:[/?#][^\s<>"'`\])}]*)?/gi;
+/** Last labels that name a file kind, not a site (`index.html`, `Chrome Bounce.wav`, `README.md`, `Node.js`). */
+const FILE_EXTENSIONS = new Set([
+  "html",
+  "htm",
+  "css",
+  "js",
+  "mjs",
+  "cjs",
+  "ts",
+  "tsx",
+  "jsx",
+  "json",
+  "md",
+  "txt",
+  "csv",
+  "xml",
+  "yml",
+  "yaml",
+  "toml",
+  "lock",
+  "log",
+  "py",
+  "rs",
+  "sh",
+  "pdf",
+  "doc",
+  "docx",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "svg",
+  "webp",
+  "avif",
+  "heic",
+  "mp4",
+  "mov",
+  "mkv",
+  "avi",
+  "webm",
+  "mp3",
+  "wav",
+  "m4a",
+  "aac",
+  "flac",
+  "ogg",
+  "zip",
+  "rar",
+  "gz",
+  "dmg",
+  "exe",
+  "woff",
+  "woff2",
+  "ttf",
+  "otf",
+]);
 const TRAILING_PUNCTUATION = /[.,;:!?»”’…]+$/;
 
 /** Lower-case host of an http(s) URL; null when the text is not one. */
@@ -75,13 +138,18 @@ export function registrableDomain(host: string): string | null {
   return lastTwo;
 }
 
-/** The http(s) URLs written in `text` (`www.`-prefixed words count as https). */
+/** The http(s) URLs written in `text` (`www.`-prefixed words and bare domains count as https). */
 export function linksIn(text: string): string[] {
   const links: string[] = [];
   for (const match of text.matchAll(URL_IN_TEXT))
     links.push(match[0].replace(TRAILING_PUNCTUATION, ""));
   for (const match of text.matchAll(WWW_IN_TEXT))
     links.push(`https://${match[0].replace(TRAILING_PUNCTUATION, "")}`);
+  for (const match of text.matchAll(BARE_DOMAIN_IN_TEXT)) {
+    const word = match[0].replace(TRAILING_PUNCTUATION, "");
+    if (/^www\./i.test(word) || FILE_EXTENSIONS.has(match[1]?.toLowerCase() ?? "")) continue;
+    links.push(`https://${word}`);
+  }
   return links;
 }
 
