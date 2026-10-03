@@ -1,7 +1,6 @@
 //! Anonymous usage statistics: how many people use OpenVids, on which
-//! version and system. Sent to OpenVids' own Umami
-//! (`https://analytics.openvids.ai`), by this module only: Studio, the Studio
-//! server, the agent runtime and the CLI never send statistics.
+//! version and system. Sent by this module only: Studio, the Studio server,
+//! the agent runtime and the CLI never send statistics.
 //!
 //! ## What is sent
 //!

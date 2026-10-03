@@ -96,22 +96,19 @@ Details: `packages/agent-runtime/README.md`.
 
 ## Usage statistics
 
-The desktop app sends anonymous usage statistics so we can see how many people use OpenVids, and on which versions and systems. They go to OpenVids' own [Umami](https://umami.is) at `https://analytics.openvids.ai` (`POST /api/send`), from the Tauri shell only (`apps/desktop/src-tauri/src/telemetry.rs`): Studio, the Studio server, the agent runtime and the CLI never send them.
+The desktop app sends anonymous usage statistics so we can see how many people use OpenVids, and on which versions and systems.
 
-- **Events** — `app_start` at launch (and when statistics are turned back on), `heartbeat` every 5 minutes while the app is open, `app_end` on a normal quit, and `telemetry_disabled` once at the moment you turn statistics off.
-- **Fields** — every event carries the event name, the UI language and `version` (app version), `os`, `arch` and `active` (whether the main window has focus). Every event except `telemetry_disabled` also carries an installation id: a random UUID created on the first send and stored in `~/.openvids/app/installation-id` (`OPENVIDS_APP_DIR` moves it). The request's User-Agent is `OpenVids/<version> (<os>; <arch>)`. Nothing else.
-- **Never sent** — names or paths of files and projects, project content, chat or prompt text, URLs, provider keys, error messages.
-- **Turning it off** — Settings › General › **Share anonymous usage statistics** (`telemetry.enabled` in `~/.openvids/app/preferences.json`); after the one `telemetry_disabled` nothing is sent. `DO_NOT_TRACK=1` or `OPENVIDS_TELEMETRY=0` in the environment stops every request, whatever the setting, and no installation id is created. Development builds (`bun run desktop:dev`) send nothing unless `OPENVIDS_TELEMETRY_URL` points them at an address (for testing against a local receiver).
-
-Failed requests are dropped: no retries, nothing queued on disk.
+- **Sent** — that the app started, a heartbeat every few minutes while it is open, and that it closed, with the app version, OS, architecture, UI language and a random installation id.
+- **Never sent** — names or paths of files and projects, project content, chat or prompt text, URLs, API keys, error messages.
+- **Turning it off** — Settings › General › **Share anonymous usage statistics**, or `DO_NOT_TRACK=1` / `OPENVIDS_TELEMETRY=0` in the environment.
 
 ## Bug reports
 
-Help › **Report a Problem…** (`apps/desktop/src-tauri/src/report.rs` plus the home server's `/report` page) opens a separate window that never blocks the editor: the user can keep working, move the window anywhere, and attach screenshots — taken with the native capture tool (region or window, the report window hides itself first) or picked from disk (up to 5, PNG/JPEG/WebP, 8 MB each). Sending is an explicit action, so the telemetry preference and `DO_NOT_TRACK` do not apply to reports. They go to `https://openvids.ai/api/reports` (rate limit, a proof-of-work challenge and a kill switch), which either publishes the report immediately as a public issue in [bazodev/open-vids](https://github.com/bazodev/open-vids/issues) or holds it for moderation.
+Help › **Report a Problem…** opens a window that does not block the editor: you can keep working, move it anywhere and attach screenshots.
 
-- **Sent** — the text the user wrote, optionally their email, the screenshots, the last ~1 MB of the app log (`~/Library/Logs/<bundle id>/openvids.log`, where the shell, the Studio server and the agent runtime all write; rotated at 5 MB into `.1`/`.2`) and diagnostics: app version, macOS version, architecture, UI language, the FFmpeg version the CLI's own check reports, and the provider and model names selected in the agent settings — names only, never a key. A random reporter id (rate limiting) is created on the first send in the app's data directory (`~/Library/Application Support/<bundle id>/reporter-id`); it is separate from the statistics installation id.
-- **Private** — the email and the log tail are for triage only: they are never part of the public issue and never sent to the moderation model. The log is redacted on the machine before it leaves (API keys, bearer tokens, JWTs, `key`/`token`/`secret`/`password` values, email addresses, and the home directory shown as `~`) and redacted again on the server.
-- **Public** — the report text and the screenshots become a public GitHub issue when the report is classified as clean, so a screenshot may show anything visible on screen. Draft text and screenshots live in the app's data directory under `report-draft/` until the report is sent.
+- **Public** — your text and screenshots become an issue in this repository, so a screenshot shows whatever was on screen.
+- **Private** — the optional email and the app log attached to the report. Keys, tokens, email addresses and your user name are removed from the log before it leaves your computer.
+- **Also attached** — app version, macOS version, architecture, UI language, FFmpeg version and the names of the AI models you selected (never keys).
 
 ## Requirements
 

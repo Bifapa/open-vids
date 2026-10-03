@@ -6,10 +6,9 @@
 //! (`logfile`, redacted here before it is sent), and diagnostics (version,
 //! macOS version, arch, UI language, the FFmpeg version the CLI doctor
 //! reports and — when the agent runtime happens to be up — the provider and
-//! model names the user selected; never a key). It is sent to
-//! `https://openvids.ai/api/reports` (env `OPENVIDS_REPORTS_URL` overrides),
-//! which publishes clean reports as a public GitHub issue and holds unclear
-//! ones for moderation. Text and screenshots become public; logs and email
+//! model names the user selected; never a key). It is sent to OpenVids'
+//! report endpoint (`DEFAULT_BASE_URL`; env `OPENVIDS_REPORTS_URL` overrides).
+//! Text and screenshots become a public GitHub issue; logs and email
 //! never do. Because the user pressed "Send", the telemetry preference and
 //! `DO_NOT_TRACK` do not apply to this module.
 //!
