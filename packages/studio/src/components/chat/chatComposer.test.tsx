@@ -17,6 +17,13 @@ import {
   type Mounted,
 } from "./chatTestHarness";
 
+const fileManager = vi.hoisted((): { value: { assets: string[]; fileTree: string[] } | null } => ({
+  value: null,
+}));
+vi.mock("../../contexts/FileManagerContext", () => ({
+  useFileManagerContextOptional: () => fileManager.value,
+}));
+
 let mounted: Mounted | undefined;
 
 afterEach(() => {
@@ -25,6 +32,7 @@ afterEach(() => {
   useDockLayoutStore.setState({ controller: null });
   useAssetPreviewStore.setState({ previewAsset: null, previewProjectId: null });
   useComposerContextStore.getState().clear();
+  fileManager.value = null;
 });
 
 /** Base UI opens popups a task after the click. */
@@ -170,5 +178,34 @@ describe("context chips", () => {
     expect(useComposerContextStore.getState().excluded.has("asset:assets/city-night.mp4")).toBe(
       true,
     );
+  });
+});
+
+describe("@ mentions", () => {
+  it("completes a project file from the popup and attaches it without sending", async () => {
+    const assets = ["assets/logo.png", "assets/intro.mp4", "music/interlude.mp3"];
+    fileManager.value = { assets, fileTree: assets };
+    mounted = mountChat({ view: "chat", chatId: "c1", chat: chatState() });
+    const field = textarea(mounted.host);
+    await act(async () => field.focus());
+
+    await type(field, "look at @int");
+    await act(async () => field.setSelectionRange(12, 12));
+    const menu = mounted.host.querySelector('[data-testid="composer-mention-menu"]');
+    expect(menu?.getAttribute("role")).toBe("listbox");
+    const names = [...(menu?.querySelectorAll('[role="option"]') ?? [])].map(
+      (option) => option.querySelector("span")?.textContent,
+    );
+    expect(names).toEqual(["interlude.mp3", "intro.mp4"]);
+
+    await pressKey(field, "ArrowDown");
+    await pressKey(field, "Enter");
+
+    expect(field.value).toBe("look at @intro.mp4 ");
+    expect(field.selectionStart).toBe(19);
+    expect(mounted.client.startTurn).not.toHaveBeenCalled();
+    expect(mounted.host.querySelector('[data-testid="composer-mention-menu"]')).toBeNull();
+    const chips = mounted.host.querySelector('[data-testid="composer-attachments"]');
+    expect(chips?.textContent).toContain("intro.mp4");
   });
 });

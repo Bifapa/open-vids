@@ -13,7 +13,7 @@ import type { AttachmentKind, ComposerAttachment } from "../../agent/composerAtt
 import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 
-const KIND_ICONS: Record<AttachmentKind, typeof File> = {
+export const KIND_ICONS: Record<AttachmentKind, typeof File> = {
   image: ImageSquare,
   video: FilmStrip,
   audio: MusicNote,

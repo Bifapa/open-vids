@@ -15,6 +15,7 @@ import { AgentsMenu } from "./AgentsMenu";
 import { ConnectModelButton, MANUAL_EDITOR_NOTE, NO_MODEL_SENTENCE } from "./ConnectModel";
 import { chatAgentName } from "./AgentMonogram";
 import { ComposerPortalContext, chipIconClass, chipLabelClass } from "./composerParts";
+import { useAssetMentions } from "./AssetMentionMenu";
 import { AttachmentChips, useDraftAttachments } from "./AttachmentChips";
 import { ContextChips } from "./ContextChips";
 import { ExecutionQualityMenu } from "./ExecutionQualityMenu";
@@ -138,7 +139,11 @@ export function Composer() {
     return () => panel.removeEventListener("keydown", onKeyDown);
   }, [portal]);
 
+  const fieldDisabled = blockedBy !== null || noModel || (chat === null && !isDraft);
+  const mentions = useAssetMentions({ areaRef, draft, disabled: fieldDisabled, setDraft });
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentions.handleKeyDown(event)) return;
     if (event.key === "Escape") {
       event.preventDefault();
       event.currentTarget.blur();
@@ -220,11 +225,12 @@ export function Composer() {
         )}
         <div
           className={cn(
-            "mx-2 mb-2 flex flex-col rounded-md border border-border bg-bg-1 transition-colors duration-hover",
+            "relative mx-2 mb-2 flex flex-col rounded-md border border-border bg-bg-1 transition-colors duration-hover",
             "hover:border-border-strong @min-[440px]/composer:mx-2.5 @min-[440px]/composer:mb-2.5",
             "has-[textarea:focus-visible]:border-border-strong has-[textarea:focus-visible]:outline-solid has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-1 has-[textarea:focus-visible]:outline-accent",
           )}
         >
+          {mentions.menu}
           <AttachmentChips onRemoved={() => areaRef.current?.focus({ preventScroll: true })} />
           <ContextChips onRemoved={() => areaRef.current?.focus({ preventScroll: true })} />
           <label htmlFor="chat-composer-textarea" className="sr-only">
@@ -235,12 +241,16 @@ export function Composer() {
             ref={areaRef}
             rows={1}
             value={draft}
-            disabled={blockedBy !== null || noModel || (chat === null && !isDraft)}
+            disabled={fieldDisabled}
             placeholder={placeholder}
             spellCheck
             autoComplete="off"
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              mentions.trackChange(event.target);
+            }}
             onKeyDown={onKeyDown}
+            {...mentions.fieldProps}
             className={cn(
               "block max-h-[156px] min-h-row w-full resize-none overflow-y-auto bg-transparent px-2.5 pt-2 pb-1",
               "text-base leading-[18px] text-fg outline-hidden [field-sizing:content] placeholder:text-fg-3",
