@@ -579,10 +579,14 @@ mod tests {
         assert_eq!(policy["mode"], "trusted");
         assert_eq!(policy["sources"].as_array().unwrap().len(), 4);
         assert_eq!(policy["websites"]["readLinkedPages"], true);
+        assert_eq!(policy["websites"]["fullAccess"], false);
 
-        let (code, body) = send(&origin, "PUT", "/api/research/policy", Some(&token), br#"{"mode":"any","websites":{"readLinkedPages":false}}"#);
+        let (code, body) = send(&origin, "PUT", "/api/research/policy", Some(&token), br#"{"mode":"any","websites":{"readLinkedPages":false,"fullAccess":true}}"#);
         assert_eq!(code, 200);
-        assert_eq!(json(&body)["mode"], "any");
+        let policy = json(&body);
+        assert_eq!(policy["mode"], "any");
+        assert_eq!(policy["websites"]["readLinkedPages"], false);
+        assert_eq!(policy["websites"]["fullAccess"], true);
         let (code, body) = send(&origin, "PUT", "/api/research/policy", Some(&token), b"{}");
         assert_eq!(code, 400);
         assert_eq!(json(&body)["error"]["code"], "invalid_request");
@@ -616,6 +620,8 @@ mod tests {
         let file: serde_json::Value = serde_json::from_slice(&std::fs::read(research_dir.join("policy.json")).unwrap()).unwrap();
         assert_eq!(file["schema"], "openvids.research-policy/1");
         assert_eq!(file["mode"], "any");
+        assert_eq!(file["websites"]["readLinkedPages"], false);
+        assert_eq!(file["websites"]["fullAccess"], true);
     }
 
     #[test]

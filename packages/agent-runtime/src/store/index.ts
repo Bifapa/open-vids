@@ -147,6 +147,8 @@ function isChatEvent(value: unknown): value is ChatEvent {
       );
     case "activity.updated":
       return typeof value.messageId === "string" && isRecord(value.activity);
+    case "permission.updated":
+      return typeof value.messageId === "string" && isRecord(value.permission);
     case "message.completed":
       return typeof value.messageId === "string" && typeof value.status === "string";
     case "checkpoint.updated":

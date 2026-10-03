@@ -18,6 +18,8 @@ const PROJECT_CHANGING_TOOLS: Readonly<Record<string, true>> = {
   [STORY_TOOL_NAMES.rebuild]: true,
   [RESEARCH_TOOL_NAMES.import]: true,
   [RESEARCH_TOOL_NAMES.resolve]: true,
+  // get_website_file is not listed: its "read" mode changes nothing (the executor refuses "save" outside Edit turns).
+  [RESEARCH_TOOL_NAMES.record]: true,
   edit: true,
   write: true,
 };

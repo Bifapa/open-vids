@@ -1,5 +1,5 @@
 /* Settings → Asset Search: the global policy in ~/.openvids/research/policy.json, the same routes Studio uses:
-   GET/PUT /api/research/policy {mode?, websites?: {readLinkedPages}}, POST /api/research/sources {name, domains},
+   GET/PUT /api/research/policy {mode?, websites?: {readLinkedPages?, fullAccess?}}, POST /api/research/sources {name, domains},
    PATCH/DELETE /api/research/sources/:id {enabled}, POST /api/research/sources/restore. Every success answers the
    whole policy; the server validates (a refused source comes back as {error:{message}}, shown at the field).
    Source names, domains and license notes are user- or server-supplied text: always escaped. */
@@ -164,6 +164,7 @@
         ? `<p class="st-foot"><span class="status warning">${ic("alert")}${te("settings.assets.allOff")}</span></p>`
         : "";
     const readLinked = p.websites.readLinkedPages;
+    const fullAccess = readLinked && p.websites.fullAccess;
     return (
       head(title) +
       intro +
@@ -176,7 +177,13 @@
           te("settings.assets.readLinked"),
           te("settings.assets.readLinked.hint"),
           sw(readLinked, "read-linked", tr("settings.assets.readLinked")),
-        ),
+        ) +
+          row(
+            te("settings.assets.fullAccess"),
+            te("settings.assets.fullAccess.hint"),
+            sw(fullAccess, "full-access", tr("settings.assets.fullAccess"), "", !readLinked),
+            readLinked ? "" : "is-disabled",
+          ),
       )
     );
   };
@@ -209,6 +216,16 @@
         api(
           "/api/research/policy",
           { websites: { readLinkedPages: !S.policy.websites.readLinkedPages } },
+          "PUT",
+        ),
+      );
+  };
+  CLICK["full-access"] = () => {
+    if (S.policy && S.policy.websites.readLinkedPages)
+      policyOp(() =>
+        api(
+          "/api/research/policy",
+          { websites: { fullAccess: !S.policy.websites.fullAccess } },
           "PUT",
         ),
       );

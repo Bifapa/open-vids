@@ -8,6 +8,8 @@
  * helper does not exist in the page (esbuild issue #1031).
  */
 
+import type { WebsiteResourceKind } from "@hyperframes/agent-protocol";
+
 export interface RawColor {
   hex: string;
   role: "background" | "surface" | "text" | "muted" | "accent" | "border";
@@ -587,4 +589,194 @@ export const PAGE_SCRIPT = String.raw`(() => {
     textLength: (document.body.innerText || "").trim().length,
     documentHeight: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)
   };
+})()`;
+
+/** One file the page's DOM points at (an element or a CSS background), as the in-page script reported it. */
+export interface RawResourceRef {
+  url: string;
+  /** What the element implies; the reader re-classifies with the response's type when it has one. */
+  kind: WebsiteResourceKind;
+  /** Natural size, when the page shows it. */
+  width: number | null;
+  height: number | null;
+  /** Media length in seconds, when the element knows it. */
+  duration: number | null;
+  usage: string;
+}
+
+/**
+ * The files the page's DOM points at: images (src, srcset, picture sources), video/audio (src, poster, sources),
+ * external SVG `<use>` sprites, CSS `url()` backgrounds of visible elements, icon/preload links, and Lottie/Rive
+ * players. Inline SVGs and `#fragment` references are not files and are skipped; the network half of the list (every
+ * response, its size and mime type) is collected in Node (`inspectSite.ts`).
+ */
+export const RESOURCE_SCRIPT = String.raw`(() => {
+  var MAX = 400;
+  var MAX_ELEMENTS = 2500;
+  var out = [];
+  var seen = new Map();
+
+  function absolute(value) {
+    try {
+      var url = new URL(value, location.href);
+      return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+    } catch (e) { return null; }
+  }
+  function clip(text, n) { return String(text || "").replace(/\s+/g, " ").trim().slice(0, n); }
+  function where(el) {
+    var node = el;
+    for (var depth = 0; node && depth < 4; depth++) {
+      if (node.id) return "#" + node.id;
+      var cls = typeof node.className === "string" ? node.className.trim().split(/\s+/)[0] : "";
+      if (cls) return "." + cls;
+      node = node.parentElement;
+    }
+    return el.tagName ? el.tagName.toLowerCase() : "?";
+  }
+  function context(el) {
+    var tag = el.tagName ? el.tagName.toLowerCase() : "?";
+    var place = where(el);
+    return place === tag ? tag : tag + " in " + place;
+  }
+  function add(url, kind, usage, size) {
+    var href = absolute(url);
+    if (!href || out.length >= MAX) return;
+    var key = href.split("#")[0];
+    var known = seen.get(key);
+    if (known) {
+      if (known.kind === "other" && kind !== "other") known.kind = kind;
+      if (known.width === null && size && size.width) known.width = size.width;
+      if (known.height === null && size && size.height) known.height = size.height;
+      if (known.duration === null && size && size.duration) known.duration = size.duration;
+      return;
+    }
+    var row = {
+      url: href,
+      kind: kind,
+      width: (size && size.width) || null,
+      height: (size && size.height) || null,
+      duration: (size && size.duration) || null,
+      usage: clip(usage, 160)
+    };
+    seen.set(key, row);
+    out.push(row);
+  }
+  function candidates(srcset) {
+    return String(srcset || "").split(",").map(function (part) {
+      return part.trim().split(/\s+/)[0];
+    }).filter(Boolean);
+  }
+
+  // ── Images ──
+  document.querySelectorAll("img").forEach(function (img) {
+    var rect = img.getBoundingClientRect();
+    var size = {
+      width: img.naturalWidth || Math.round(rect.width) || null,
+      height: img.naturalHeight || Math.round(rect.height) || null
+    };
+    var src = img.currentSrc || img.src || "";
+    if (src) add(src, "image", context(img), size);
+    candidates(img.getAttribute("srcset")).forEach(function (url) {
+      add(url, "image", context(img) + " (srcset)", size);
+    });
+  });
+  document.querySelectorAll("picture source[srcset]").forEach(function (source) {
+    var picture = source.closest("picture") || source;
+    candidates(source.getAttribute("srcset")).forEach(function (url) {
+      add(url, "image", context(picture) + " (source)", null);
+    });
+  });
+
+  // ── Video and audio ──
+  function mediaFlags(el) {
+    var flags = [];
+    if (el.autoplay) flags.push("autoplay");
+    if (el.loop) flags.push("loop");
+    if (el.muted) flags.push("muted");
+    return flags.length ? " " + flags.join(" ") : "";
+  }
+  function mediaDuration(el) {
+    var seconds = Number(el.duration);
+    return isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) / 1000 : null;
+  }
+  document.querySelectorAll("video").forEach(function (video) {
+    var usage = context(video) + mediaFlags(video);
+    var size = {
+      width: video.videoWidth || null,
+      height: video.videoHeight || null,
+      duration: mediaDuration(video)
+    };
+    var src = video.currentSrc || video.src || "";
+    if (src) add(src, "video", usage, size);
+    video.querySelectorAll("source[src]").forEach(function (source) {
+      add(source.getAttribute("src"), "video", usage + " (source)", size);
+    });
+    var poster = video.getAttribute("poster");
+    if (poster) add(poster, "image", context(video) + " poster", null);
+  });
+  document.querySelectorAll("audio").forEach(function (audio) {
+    var usage = context(audio) + mediaFlags(audio);
+    var size = { duration: mediaDuration(audio) };
+    var src = audio.currentSrc || audio.src || "";
+    if (src) add(src, "audio", usage, size);
+    audio.querySelectorAll("source[src]").forEach(function (source) {
+      add(source.getAttribute("src"), "audio", usage + " (source)", size);
+    });
+  });
+
+  // ── External SVG sprites ──
+  document.querySelectorAll("use").forEach(function (use) {
+    var href = use.getAttribute("href") || use.getAttribute("xlink:href") || "";
+    if (!href || href.charAt(0) === "#") return;
+    add(href, "svg", "SVG <use> sprite in " + where(use), null);
+  });
+
+  // ── Animation players: Lottie JSON/.lottie, Rive .riv ──
+  document.querySelectorAll("lottie-player, dotlottie-player, [data-animation-path], [data-src]").forEach(function (el) {
+    var src = el.getAttribute("src") || el.getAttribute("data-animation-path") || el.getAttribute("data-src") || "";
+    var path = src.split(/[?#]/)[0].toLowerCase();
+    if (!/\.(json|lottie|riv)$/.test(path)) return;
+    var label = /\.riv$/.test(path) ? "Rive animation" : "Lottie player";
+    add(src, "animation", label + " in " + where(el), null);
+  });
+
+  // ── CSS backgrounds of visible elements ──
+  var all = document.body ? document.body.getElementsByTagName("*") : [];
+  var limit = Math.min(all.length, MAX_ELEMENTS);
+  var urlPattern = /url\((['"]?)([^'")]+)\1\)/g;
+  for (var i = 0; i < limit && out.length < MAX; i++) {
+    var el = all[i];
+    if (el.closest && el.closest("svg")) continue;
+    var style = getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") continue;
+    var rect = el.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) continue;
+    var background = style.backgroundImage;
+    if (!background || background === "none" || background.indexOf("url(") < 0) continue;
+    var found = 0;
+    urlPattern.lastIndex = 0;
+    var match;
+    while ((match = urlPattern.exec(background)) && found < 2) {
+      var ref = match[2];
+      if (/^data:/i.test(ref)) continue;
+      add(ref, "image", "CSS background of " + where(el), null);
+      found++;
+    }
+  }
+
+  // ── Icon and preload links ──
+  var PRELOAD_KINDS = { font: "font", script: "script", style: "stylesheet", video: "video", audio: "audio", image: "image", fetch: "data", document: "document", track: "other" };
+  document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"], link[rel="apple-touch-icon-precomposed"], link[rel="mask-icon"], link[rel="preload"]').forEach(function (link) {
+    var href = link.getAttribute("href") || "";
+    if (!href) return;
+    var rel = (link.getAttribute("rel") || "").toLowerCase();
+    var as = (link.getAttribute("as") || "").toLowerCase();
+    if (rel === "preload") {
+      add(href, PRELOAD_KINDS[as] || "other", "preload (" + (as || "fetch") + ")", null);
+    } else {
+      add(href, "image", "<link rel=" + rel + ">", null);
+    }
+  });
+
+  return out;
 })()`;

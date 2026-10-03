@@ -1,6 +1,7 @@
 import {
   RESEARCH_LIMITS,
   RESEARCH_MEDIA_KINDS,
+  WEBSITE_LIMITS,
   isRecord,
   type AgentId,
   type SpecialistId,
@@ -15,6 +16,8 @@ export const RESEARCH_TOOL_NAMES = {
   resolve: "resolve_missing_asset",
   sources: "read_sources",
   website: "read_website",
+  file: "get_website_file",
+  record: "record_website",
 } as const;
 
 export type ResearchToolName = (typeof RESEARCH_TOOL_NAMES)[keyof typeof RESEARCH_TOOL_NAMES];
@@ -29,7 +32,19 @@ type Executor = (name: string, args: unknown, signal: AbortSignal) => Promise<Ho
 export interface ResearchAccess {
   assets: boolean;
   websites: boolean;
+  /**
+   * The user's policy currently allows full access to the linked sites. The tools are offered either way: a call
+   * whose setting is off asks the user in chat. This only decides how their results talk about downloading.
+   */
+  websiteFiles: boolean;
 }
+
+/** Without a caller's access: the asset and website-reading groups, but not full website access. */
+export const DEFAULT_RESEARCH_ACCESS: ResearchAccess = {
+  assets: true,
+  websites: true,
+  websiteFiles: false,
+};
 
 /** Who may read a website the user linked: the Director, and the specialists that style or find material. */
 const WEBSITE_READERS: readonly AgentId[] = ["director", "motion", "research"];
@@ -41,18 +56,29 @@ const WEBSITE_READERS: readonly AgentId[] = ["director", "motion", "research"];
  * any. Without Research enabled in the chat nobody gets those tools, and a Story build or rebuild turn offers none.
  *
  * `read_website` (reading one site the user linked, for its style) is separate: the Director, Motion and Research get
- * it whether or not Research is enabled, because it does not search or import. `access` says which groups the turn
- * offers: the asset tools need the user's Asset Search policy to have been read, the website tool a research host.
- * A specialist only gets it when it is in the chat's team.
+ * it whether or not Research is enabled, because it does not search or import. The same agents also get
+ * `get_website_file` and `record_website` whenever a research host exists: when the user's full access to linked
+ * sites is off, calling one asks them in chat to allow it. `access` says which groups the turn offers: the asset
+ * tools need the user's Asset Search policy to have been read, the website tools a research host. A specialist only
+ * gets them when it is in the chat's team.
  */
 export function researchToolsFor(
   agent: AgentId,
   enabled: readonly SpecialistId[],
   turn: StoryTurnMode,
-  access: ResearchAccess = { assets: true, websites: true },
+  access: ResearchAccess = DEFAULT_RESEARCH_ACCESS,
 ): ResearchToolName[] {
   if (turn.action === "build" || turn.action === "rebuild") return [];
-  const { search, inspect, import: importAsset, resolve, sources, website } = RESEARCH_TOOL_NAMES;
+  const {
+    search,
+    inspect,
+    import: importAsset,
+    resolve,
+    sources,
+    website,
+    file,
+    record,
+  } = RESEARCH_TOOL_NAMES;
   const tools: ResearchToolName[] = [];
   if (access.assets && enabled.includes("research")) {
     if (agent === "research") tools.push(search, inspect, importAsset, resolve, sources);
@@ -62,7 +88,7 @@ export function researchToolsFor(
     access.websites &&
     WEBSITE_READERS.includes(agent) &&
     (agent === "director" || enabled.some((specialist) => specialist === agent));
-  if (reads) tools.push(website);
+  if (reads) tools.push(website, file, record);
   return tools;
 }
 
@@ -75,7 +101,9 @@ const DESCRIPTIONS: Record<ResearchToolName, string> = {
   inspect_url: `Read one public web page or media URL and list the media it offers as importable candidates, with the page's own author and license information. Use it on a page a search pointed to, or a URL the user gave. Stream manifests (HLS/DASH) and protected media are not importable. ${POLICY_NOTE}`,
   import_asset: `Download a candidate (by the id from search_assets/inspect_url) — or a direct media URL — into the project under assets/research/ and record where it came from: URL, source, author and license are stored by the server from the source's own data, not from you. Converts the file for the editor when needed, and detects duplicates (an asset already in the project is reused, not downloaded again). Pass exactly one of "candidate" or "url". Pass "resolveMissing" (a Missing Asset node id from read_story) to resolve that node with the imported asset in the same step. Import only material that will actually be used. The import is part of this turn's checkpoint, so the user can revert it. ${POLICY_NOTE}`,
   resolve_missing_asset: `Resolve a Missing Asset node of the Story Graph with a media file that is already in the project (for example one imported earlier). The node becomes a video, picture or music node for that file and keeps its attachments. Refused for a locked node.`,
-  read_website: `Open one website the user linked in this chat and extract its visual identity: palette with roles (background, surface, text, accent), fonts and how to load them, type scale, corner radii, shadows, button styles, design tokens, motion character (durations, easing), logo, headings and navigation labels — plus a 1440×900 and a full-page screenshot you can look at. Use it when the user links a site and asks for its style, brand or look. Only sites the user linked are allowed (the same site, including www. and subdomains, and any of its pages); for any other address the call is refused — ask the user for the link, never guess one. With save: true the screenshots, the logo and the self-hosted fonts the page actually uses are saved under assets/web/<host>/ and recorded as website references with an unknown license; pass it when the result will be used in the video (not in a Plan or Ask turn). The user can switch website reading off in Settings → Asset Search → Websites; then the call fails and you cannot change that.`,
+  read_website: `Open one website the user linked in this chat and extract its visual identity: palette with roles (background, surface, text, accent), fonts and how to load them, type scale, corner radii, shadows, button styles, design tokens, motion character (durations, easing), logo, headings and navigation labels — plus a 1440×900 and a full-page screenshot you can look at, and the list of files the page uses (resources: videos, images, SVG, Lottie/Rive animations, fonts, styles, scripts). Use it when the user links a site and asks for its style, brand or look. Only sites the user linked are allowed (the same site, including www. and subdomains, and any of its pages); for any other address the call is refused — ask the user for the link, never guess one. If reading linked pages is off, the call asks the user in chat to allow it and continues with their answer. With save: true the screenshots, the logo and the self-hosted fonts the page actually uses are saved under assets/web/<host>/ and recorded as website references with an unknown license; pass it when the result will be used in the video (not in a Plan or Ask turn).`,
+  get_website_file: `Fetch one file of a website the user linked in this chat. If full access to linked sites is off, the call asks the user in chat to allow it and continues with their answer — just call it when the user wants a file from the site. mode "save" downloads the file into assets/web/<host>/files/ and records it as a website reference with an unknown license; mode "read" returns its raw text (page HTML, CSS, JS, JSON, SVG) and saves nothing. Allowed URLs: a file the linked site itself serves, or an exact URL an earlier read_website of it listed in its resources (its own CDN included) — anything else is refused, so read the site first and take the URL from its list. Use "read" to study how an animation really works (its CSS keyframes, JS easing, SVG/SMIL) before recreating it in GSAP; use "save" for material you will actually use: a video/audio/picture as a clip, a Lottie JSON with lottie-web (register the player as window.__hfLottie), a Rive file with its runtime, a font with @font-face. Website files are license unknown — never claim one, tell the user where it came from.`,
+  record_website: `Record a page of a website the user linked in this chat as an MP4 video. If full access to linked sites is off, the call asks the user in chat to allow it and continues with their answer — just call it when the user wants a recording of the site. Real time, 1–30 seconds, optionally only one element (selector) and optionally scrolling the page; the file lands in assets/web/<host>/recordings/ as a video asset for edit_timeline. Use it to capture an animation that has no file to download (canvas, WebGL, CSS-only) so it can be cut into the video as footage; prefer get_website_file when the animation is a real Lottie/Rive/SVG/video file. The recording is a website reference with an unknown license — never claim one, tell the user it belongs to the site's owner.`,
   read_sources: `Read the project's Sources and Licenses: every imported asset with its source, author, license (status and confidence), where the file is used and what needs the user's attention, plus the credit lines the project owes.`,
 };
 
@@ -162,6 +190,64 @@ const PARAMETERS: Record<ResearchToolName, Record<string, unknown>> = {
       },
     },
     required: ["url"],
+    additionalProperties: false,
+  },
+  get_website_file: {
+    type: "object",
+    properties: {
+      url: str(
+        "The exact http(s) URL of a file of a site the user linked, or of a file an earlier read_website of it listed.",
+        RESEARCH_LIMITS.urlChars,
+      ),
+      mode: {
+        type: "string",
+        enum: ["save", "read"],
+        description:
+          "save: download the file into assets/web/<host>/files/. read: return the file's raw text (page, CSS, JS, JSON, SVG); nothing is saved.",
+      },
+      pageUrl: str(
+        "Optional: the page of the site where the file was found (recorded as its provenance page).",
+        RESEARCH_LIMITS.urlChars,
+      ),
+    },
+    required: ["url", "mode"],
+    additionalProperties: false,
+  },
+  record_website: {
+    type: "object",
+    properties: {
+      url: str(
+        "The http(s) URL of a page of a site the user linked (the page to record).",
+        RESEARCH_LIMITS.urlChars,
+      ),
+      seconds: {
+        type: "integer",
+        minimum: WEBSITE_LIMITS.recordMinSeconds,
+        maximum: WEBSITE_LIMITS.recordMaxSeconds,
+        description: `Recording length in seconds (real time), ${WEBSITE_LIMITS.recordMinSeconds}–${WEBSITE_LIMITS.recordMaxSeconds}.`,
+      },
+      selector: str(
+        `CSS selector of the element to record (default: the whole viewport).`,
+        WEBSITE_LIMITS.selectorChars,
+      ),
+      scroll: {
+        type: "boolean",
+        description: "Scroll smoothly from the top to the bottom of the page while recording.",
+      },
+      width: {
+        type: "integer",
+        minimum: 2,
+        maximum: WEBSITE_LIMITS.recordMaxSide,
+        description: `Viewport width in pixels (even, default 1920, max ${WEBSITE_LIMITS.recordMaxSide}).`,
+      },
+      height: {
+        type: "integer",
+        minimum: 2,
+        maximum: WEBSITE_LIMITS.recordMaxSide,
+        description: `Viewport height in pixels (even, default 1080, max ${WEBSITE_LIMITS.recordMaxSide}).`,
+      },
+    },
+    required: ["url", "seconds"],
     additionalProperties: false,
   },
 };
@@ -283,6 +369,43 @@ function activity(
             labelParams: { host },
           }
         : { category: "inspect", label: "Reading a website", labelCode: "reading_website" };
+    }
+    case "get_website_file": {
+      const host = hostOf(text(record.url));
+      const read = record.mode === "read";
+      if (host) {
+        return read
+          ? {
+              category: "inspect",
+              label: `Reading a file from ${host}`,
+              labelCode: "reading_site_file_host",
+              labelParams: { host },
+            }
+          : {
+              category: "edit",
+              label: `Downloading a file from ${host}`,
+              labelCode: "downloading_site_file_host",
+              labelParams: { host },
+            };
+      }
+      return read
+        ? { category: "inspect", label: "Reading a site file", labelCode: "reading_site_file" }
+        : {
+            category: "edit",
+            label: "Downloading a site file",
+            labelCode: "downloading_site_file",
+          };
+    }
+    case "record_website": {
+      const host = hostOf(text(record.url));
+      return host
+        ? {
+            category: "edit",
+            label: `Recording ${host}`,
+            labelCode: "recording_host",
+            labelParams: { host },
+          }
+        : { category: "edit", label: "Recording a web page", labelCode: "recording_website" };
     }
   }
 }

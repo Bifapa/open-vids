@@ -21,6 +21,7 @@ import type {
   UserMessage,
 } from "@hyperframes/agent-protocol";
 import { formatNumber, t, useTranslation, type TranslationKey } from "../../i18n";
+import { isPermissionPart } from "../../agent/permissionGuards";
 import { cn } from "../ui/cn";
 import { Badge } from "../ui/Status";
 import { ActivityRow } from "./ActivityRow";
@@ -28,6 +29,7 @@ import { AgentMonogram, chatAgentName } from "./AgentMonogram";
 import { chatMeasure, chatMeasureWide, noteBox, sectLabel } from "./chatStyles";
 import { DelegationRow } from "./DelegationRow";
 import { MarkdownLite } from "./MarkdownLite";
+import { PermissionCard } from "./PermissionCard";
 import { formatClockTime } from "./relativeTime";
 import { ThinkingBlock } from "./ThinkingBlock";
 
@@ -342,6 +344,8 @@ export function AssistantBlock({
             />
           ) : group.part.type === "thinking" ? (
             <ThinkingBlock part={group.part} live={streaming} />
+          ) : isPermissionPart(group.part) ? (
+            <PermissionCard turnId={message.turnId} permission={group.part.permission} />
           ) : null}
         </Fragment>
       ))}

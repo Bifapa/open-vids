@@ -121,7 +121,7 @@ const webFiles = (f: ResearchFixture): string[] => {
 describe("the Websites setting", () => {
   it("is on by default and survives a policy file written before it existed", () => {
     const { f } = setup();
-    expect(f.service.policy().websites).toEqual({ readLinkedPages: true });
+    expect(f.service.policy().websites).toEqual({ readLinkedPages: true, fullAccess: false });
   });
 
   it("refuses every read when switched off, before any page is opened", async () => {

@@ -15,6 +15,7 @@ import {
 import { ResearchToolError } from "./host.js";
 import { TurnResearch } from "./executor.js";
 import { HttpResearchHost, type HttpResearchHostOptions } from "./host.http.js";
+import { WebsiteResourceLog } from "./websiteResources.js";
 
 interface Seen {
   method: string;
@@ -295,6 +296,140 @@ describe("HttpResearchHost", () => {
   });
 });
 
+describe("HttpResearchHost full-access website routes", () => {
+  const fileText = {
+    url: "https://linear.app/app.css",
+    finalUrl: "https://linear.app/app.css",
+    kind: "stylesheet",
+    mimeType: "text/css",
+    bytes: 12_000,
+    text: "/* sample */ .hero { color: #5e6ad2; }",
+  };
+
+  it("reads a file's text as a plain read, and saves a file as a cancellable write with a request id", async () => {
+    const save = heldRoute();
+    const cancel = cancelRoute("cancelled");
+    const { host, seen } = await studio({
+      [`POST ${PROJECT}/website/file`]: (request, response) => {
+        const body = isRecord(request.body) ? request.body : {};
+        if (body.mode === "save") save.route(request, response);
+        else json(response, 200, fileText);
+      },
+      [CANCEL_ROUTE]: cancel.route,
+    });
+
+    const read = await host.websiteFile(
+      { url: "https://linear.app/app.css", mode: "read" },
+      signal(),
+    );
+    expect(read.text).toContain(".hero");
+    expect(seen[0]).toMatchObject({
+      method: "POST",
+      path: `${PROJECT}/website/file`,
+      body: { url: "https://linear.app/app.css", mode: "read" },
+    });
+    expect(seen[0]?.body).not.toHaveProperty("requestId");
+
+    const controller = new AbortController();
+    const pending = host.websiteFile(
+      {
+        url: "https://linear.app/lottie/loader.json",
+        mode: "save",
+        pageUrl: "https://linear.app/",
+        turnId: "t1",
+      },
+      controller.signal,
+    );
+    const answer = await save.held;
+    controller.abort();
+    await cancel.arrived;
+    json(answer, 409, cancelledAnswer);
+    await expect(pending).rejects.toMatchObject({ code: "aborted" });
+    expect(seen[1]?.body).toMatchObject({
+      url: "https://linear.app/lottie/loader.json",
+      mode: "save",
+      pageUrl: "https://linear.app/",
+      turnId: "t1",
+      requestId: expect.any(String),
+    });
+    expect(seen[2]?.path).toBe(`${PROJECT}/requests/${requestIdOf(seen[1])}/cancel`);
+  });
+
+  it("records a page as a cancellable write and keeps waiting for the server's answer", async () => {
+    const record = heldRoute();
+    const cancel = cancelRoute("committed");
+    const { host, seen } = await studio({
+      [`POST ${PROJECT}/website/record`]: record.route,
+      [CANCEL_ROUTE]: cancel.route,
+    });
+    const controller = new AbortController();
+    const pending = host.recordWebsite(
+      { url: "https://linear.app/", seconds: 6, turnId: "t1", agent: "motion", model: null },
+      controller.signal,
+    );
+    const answer = await record.held;
+    controller.abort();
+    await cancel.arrived;
+    json(answer, 200, {
+      path: "assets/web/linear.app/recordings/page.mp4",
+      finalUrl: "https://linear.app/",
+      width: 1280,
+      height: 720,
+      duration: 6,
+      bytes: 2_400_000,
+      notes: ["the selector matched nothing"],
+    });
+    await expect(pending).resolves.toMatchObject({
+      path: "assets/web/linear.app/recordings/page.mp4",
+      duration: 6,
+      notes: ["the selector matched nothing"],
+    });
+    expect(seen[0]?.body).toMatchObject({
+      seconds: 6,
+      turnId: "t1",
+      agent: "motion",
+      model: null,
+      requestId: expect.any(String),
+    });
+    expect(seen[1]?.path).toBe(`${PROJECT}/requests/${requestIdOf(seen[0])}/cancel`);
+  });
+
+  it("maps the service's errors and refuses invalid payloads", async () => {
+    const { host } = await studio({
+      [`POST ${PROJECT}/website/file`]: (_request, response) =>
+        json(response, 403, {
+          error: { code: "blocked_by_policy", message: "Full access to linked sites is off." },
+        }),
+      [`POST ${PROJECT}/website/record`]: (_request, response) => json(response, 200, { path: 7 }),
+    });
+    await expect(
+      host.websiteFile({ url: "https://linear.app/a.json", mode: "save" }, signal()),
+    ).rejects.toMatchObject({
+      code: "blocked_by_policy",
+      message: "Full access to linked sites is off.",
+    });
+    await expect(
+      host.recordWebsite({ url: "https://linear.app/", seconds: 3 }, signal()),
+    ).rejects.toMatchObject({
+      code: "studio_unavailable",
+      message: expect.stringContaining("invalid website recording result"),
+    });
+  });
+
+  it("never sends a full-access request whose signal is already aborted", async () => {
+    const { host, seen } = await studio({});
+    const spent = new AbortController();
+    spent.abort();
+    await expect(
+      host.websiteFile({ url: "https://linear.app/a.json", mode: "save" }, spent.signal),
+    ).rejects.toMatchObject({ code: "aborted" });
+    await expect(
+      host.recordWebsite({ url: "https://linear.app/", seconds: 3 }, spent.signal),
+    ).rejects.toMatchObject({ code: "aborted" });
+    expect(seen).toEqual([]);
+  });
+});
+
 /** What the website route answers for a read of `body.url`. */
 function sampleWebsiteResult(body: unknown) {
   const url = isRecord(body) && typeof body.url === "string" ? body.url : "https://example.com/";
@@ -483,6 +618,7 @@ describe("a stopped turn and its import over HTTP", () => {
       turn: { mode: "normal", action: null },
       storyOptions: null,
       intent: "edit",
+      websites: { chatId: "chat-1", resources: new WebsiteResourceLog() },
       userTexts: () => [],
       turnUserTexts: () => [],
       askBeforeDownloads: false,
@@ -551,5 +687,73 @@ describe("a stopped turn and its import over HTTP", () => {
       isError: true,
       text: expect.stringContaining("write_unsettled"),
     });
+  });
+});
+
+describe("HttpResearchHost permission routes", () => {
+  it("switches the websites settings on the global policy route and posts and revokes the turn's grant", async () => {
+    const { host, seen } = await studio({
+      "PUT /api/research/policy": (_request, response) =>
+        json(
+          response,
+          200,
+          researchPolicy({ websites: { readLinkedPages: true, fullAccess: true } }),
+        ),
+      [`POST ${PROJECT}/website/grants`]: (request, response) =>
+        json(response, 200, {
+          turnId: (request.body as { turnId: string }).turnId,
+          access: "full",
+          grantedAt: 1,
+          expiresAt: 2,
+        }),
+      [`DELETE ${PROJECT}/website/grants/turn%201`]: (_request, response) =>
+        json(response, 200, { ok: true }),
+    });
+
+    const policy = await host.updateWebsitePolicy(
+      { websites: { readLinkedPages: true, fullAccess: true } },
+      signal(),
+    );
+    expect(policy.websites).toEqual({ readLinkedPages: true, fullAccess: true });
+    const grant = await host.grantWebsite({ turnId: "turn-1", access: "full" }, signal());
+    expect(grant).toMatchObject({ turnId: "turn-1", access: "full" });
+    await host.revokeWebsiteGrant("turn 1", signal());
+
+    expect(seen.map((request) => `${request.method} ${request.path}`)).toEqual([
+      "PUT /api/research/policy",
+      `POST ${PROJECT}/website/grants`,
+      `DELETE ${PROJECT}/website/grants/turn%201`,
+    ]);
+    expect(seen[0]?.body).toEqual({ websites: { readLinkedPages: true, fullAccess: true } });
+    expect(seen[1]?.body).toEqual({ turnId: "turn-1", access: "full" });
+  });
+
+  it("maps failures and invalid payloads, and never sends an aborted permission call", async () => {
+    const { host, seen } = await studio({
+      "PUT /api/research/policy": (_request, response) =>
+        json(response, 400, {
+          error: {
+            code: "invalid_request",
+            message: "websites needs readLinkedPages or fullAccess",
+          },
+        }),
+      [`POST ${PROJECT}/website/grants`]: (_request, response) => json(response, 200, {}),
+    });
+    await expect(
+      host.updateWebsitePolicy({ websites: { readLinkedPages: true } }, signal()),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+    await expect(
+      host.grantWebsite({ turnId: "t", access: "read" }, signal()),
+    ).rejects.toMatchObject({ code: "studio_unavailable" });
+
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      host.grantWebsite({ turnId: "t", access: "read" }, controller.signal),
+    ).rejects.toMatchObject({ code: "aborted" });
+    await expect(host.revokeWebsiteGrant("t", controller.signal)).rejects.toMatchObject({
+      code: "aborted",
+    });
+    expect(seen).toHaveLength(2);
   });
 });

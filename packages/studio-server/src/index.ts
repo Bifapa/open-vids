@@ -47,6 +47,8 @@ export type {
   WebsiteFile,
   WebsiteInspection,
   WebsiteInspectionResult,
+  WebsiteRecordingResult,
+  WebsiteAdapterFailure,
   SpeakerDiarization,
   ResolvedProject,
   RenderJobState,

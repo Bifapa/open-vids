@@ -4,6 +4,7 @@ import {
   type WebsiteFont,
   type WebsiteFontUse,
   type WebsiteLogo,
+  type WebsiteResource,
   type WebsiteStyle,
 } from "@hyperframes/agent-protocol";
 import { topKeys, type CssFacts, type CssFontFace } from "./cssAnalysis.js";
@@ -31,6 +32,8 @@ export interface AssembleInput {
   /** Font files the page loaded, by URL. */
   fontFiles: ReadonlyMap<string, CapturedFontFile>;
   logos: WebsiteLogo[];
+  /** The files the page uses, most visible first (`resources.ts`). */
+  resources: WebsiteResource[];
   notes: string[];
   now: number;
 }
@@ -233,6 +236,7 @@ export function assembleStyle(input: AssembleInput): {
     ogImage: raw.ogImage,
     headings: raw.headings,
     navLabels: raw.navLabels,
+    resources: input.resources,
     notes: input.notes,
     capturedAt: input.now,
   };

@@ -10,9 +10,16 @@ import type {
   ProjectSourcesView,
   ReadWebsiteRequest,
   ReadWebsiteResult,
+  RecordWebsiteRequest,
+  RecordWebsiteResult,
   ResearchErrorCode,
   ResolveMissingRequest,
   ResolveMissingResult,
+  UpdateAssetSearchPolicyRequest,
+  WebsiteFileRequest,
+  WebsiteFileResult,
+  WebsiteGrant,
+  WebsiteGrantRequest,
 } from "@hyperframes/agent-protocol";
 
 /**
@@ -30,6 +37,22 @@ import type {
 export interface ResearchHost {
   /** The user's Asset Search policy (mode and trusted sources). */
   policy(signal: AbortSignal): Promise<AssetSearchPolicy>;
+  /**
+   * `PUT /api/research/policy` with only the Websites switches: the user answered "Turn on" to a permission request
+   * in the chat. Studio merges the partial update and answers the fresh policy.
+   */
+  updateWebsitePolicy(
+    request: UpdateAssetSearchPolicyRequest,
+    signal: AbortSignal,
+  ): Promise<AssetSearchPolicy>;
+  /**
+   * `POST /api/projects/:id/research/website/grants`: the user answered "Allow once" to a permission request, so
+   * website calls of that turn pass the setting's check as if it were on (a `full` grant also satisfies reading).
+   * Studio keeps it until {@link revokeWebsiteGrant} or its own expiry.
+   */
+  grantWebsite(request: WebsiteGrantRequest, signal: AbortSignal): Promise<WebsiteGrant>;
+  /** `DELETE /api/projects/:id/research/website/grants/:turnId`: the turn ended; Studio drops the grant. */
+  revokeWebsiteGrant(turnId: string, signal: AbortSignal): Promise<void>;
   search(request: AssetSearchRequest, signal: AbortSignal): Promise<AssetSearchResult>;
   inspect(request: InspectUrlRequest, signal: AbortSignal): Promise<InspectUrlResult>;
   importAsset(request: ImportAssetRequest, signal: AbortSignal): Promise<ImportAssetResult>;
@@ -40,6 +63,19 @@ export interface ResearchHost {
    * The runtime decides which sites the user linked; the server enforces the user's switch and public-address rules.
    */
   website(request: ReadWebsiteRequest, signal: AbortSignal): Promise<ReadWebsiteResult>;
+  /**
+   * Full access to a linked site: downloads one file it serves (or its pages load) into `assets/web/<host>/files/`
+   * with a provenance record (`mode: "save"`), or returns the raw text of a page, style sheet or script
+   * (`mode: "read"`). The runtime decides which URLs are allowed (a linked site, or a file an earlier read of it
+   * listed); the server enforces the user's full-access switch and the public-address rules. `save` writes, so it is
+   * awaited to its end before the checkpoint closes.
+   */
+  websiteFile(request: WebsiteFileRequest, signal: AbortSignal): Promise<WebsiteFileResult>;
+  /**
+   * Full access to a linked site: records a page as an MP4 in `assets/web/<host>/recordings/` for `seconds` (real
+   * time). It writes, so it is awaited to its end before the checkpoint closes.
+   */
+  recordWebsite(request: RecordWebsiteRequest, signal: AbortSignal): Promise<RecordWebsiteResult>;
   /** The project's Sources/Licenses view. */
   sources(signal: AbortSignal): Promise<ProjectSourcesView>;
   /** What an export of the composition would ship: license warnings and credits. */

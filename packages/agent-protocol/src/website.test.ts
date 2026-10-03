@@ -33,6 +33,7 @@ describe("parseWebsiteStyle", () => {
       headings: [],
       navLabels: [],
       notes: [],
+      resources: [],
       capturedAt: 5,
     });
     for (const broken of [
@@ -177,9 +178,15 @@ describe("the policy's Websites group", () => {
   const policy = { mode: "trusted", sources: [], removedBuiltIns: [], updatedAt: 0 };
 
   it("is part of a policy: one without it is not a policy", () => {
-    expect(isAssetSearchPolicy({ ...policy, websites: { readLinkedPages: true } })).toBe(true);
-    expect(isAssetSearchPolicy({ ...policy, websites: { readLinkedPages: false } })).toBe(true);
+    const websites = { readLinkedPages: true, fullAccess: false };
+    expect(isAssetSearchPolicy({ ...policy, websites })).toBe(true);
+    expect(isAssetSearchPolicy({ ...policy, websites: { ...websites, fullAccess: true } })).toBe(
+      true,
+    );
     expect(isAssetSearchPolicy(policy)).toBe(false);
-    expect(isAssetSearchPolicy({ ...policy, websites: { readLinkedPages: "yes" } })).toBe(false);
+    expect(isAssetSearchPolicy({ ...policy, websites: { readLinkedPages: true } })).toBe(false);
+    expect(isAssetSearchPolicy({ ...policy, websites: { ...websites, fullAccess: "yes" } })).toBe(
+      false,
+    );
   });
 });

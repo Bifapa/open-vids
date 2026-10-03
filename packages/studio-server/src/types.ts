@@ -286,6 +286,41 @@ export interface StudioApiAdapter {
    * address rules, and aborting the signal stops the browser. Resolves `{ error }` for a page that cannot be read.
    */
   inspectWebsite?(opts: { url: string; signal: AbortSignal }): Promise<WebsiteInspectionResult>;
+
+  /**
+   * Optional (full access to linked sites): records a public web page in real time as an H.264 MP4, in headless
+   * Chrome outside this process under the same address rules as `inspectWebsite`. The file is written to
+   * `outFile` (an absolute path the caller owns, outside the project); the caller moves it into the project.
+   * Resolves `{ error }` for a page that cannot be recorded; aborting the signal stops the browser.
+   */
+  recordWebsite?(opts: {
+    url: string;
+    seconds: number;
+    selector?: string;
+    scroll?: boolean;
+    width: number;
+    height: number;
+    outFile: string;
+    signal: AbortSignal;
+  }): Promise<WebsiteRecordingResult>;
+}
+
+export type WebsiteRecordingResult =
+  | {
+      finalUrl: string;
+      width: number;
+      height: number;
+      /** Seconds. */
+      duration: number;
+      notes: string[];
+    }
+  | WebsiteAdapterFailure;
+
+export interface WebsiteAdapterFailure {
+  error: {
+    code: "blocked_by_policy" | "unavailable" | "network" | "unsupported";
+    message: string;
+  };
 }
 
 export interface WebsiteFile {

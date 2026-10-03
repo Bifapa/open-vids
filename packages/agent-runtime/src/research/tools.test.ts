@@ -13,14 +13,17 @@ import {
 import { TurnResearch, type TurnResearchOptions } from "./executor.js";
 import { ResearchToolError } from "./host.js";
 import { RESEARCH_TOOL_NAMES } from "./tools.js";
+import { WebsiteResourceLog } from "./websiteResources.js";
 
+const WEBSITE_TOOLS = ["read_website", "get_website_file", "record_website"];
 const RESEARCH_TOOLS = Object.values<string>(RESEARCH_TOOL_NAMES).filter(
-  (name) => name !== "read_website",
+  (name) => !WEBSITE_TOOLS.includes(name),
 );
 const EXTERNAL_TOOLS = RESEARCH_TOOLS.filter((name) => name !== "read_sources");
 const TEAM: SpecialistId[] = ["editor", "vision", "motion", "audio", "research"];
 const NO_RESEARCH: SpecialistId[] = ["editor", "vision", "motion", "audio"];
 const AGENTS: AgentId[] = ["director", "editor", "vision", "motion", "audio", "research", "jev"];
+const FULL_ACCESS = { assets: true, websites: true, websiteFiles: true };
 
 interface Turn {
   mode: "normal" | "story";
@@ -33,14 +36,25 @@ function researchToolsOf(
   turn: Turn,
   research = true,
   websites = false,
+  websiteFiles = false,
 ): string[] {
   return buildHostTools(
     agent,
-    { enabled, jev: true, editing: true, analysis: true, story: true, research, websites, ...turn },
+    {
+      enabled,
+      jev: true,
+      editing: true,
+      analysis: true,
+      story: true,
+      research,
+      websites,
+      websiteFiles,
+      ...turn,
+    },
     async () => ({ text: "" }),
   )
     .map((tool) => tool.name)
-    .filter((name) => name === "read_website" || RESEARCH_TOOLS.includes(name));
+    .filter((name) => WEBSITE_TOOLS.includes(name) || RESEARCH_TOOLS.includes(name));
 }
 
 describe("research tool availability", () => {
@@ -101,15 +115,15 @@ describe("read_website availability", () => {
   });
 
   it("does not depend on Research being enabled or on the Asset Search policy being readable", () => {
-    expect(researchToolsOf("director", NO_RESEARCH, { mode: "normal" }, false, true)).toEqual([
-      "read_website",
-    ]);
-    expect(researchToolsOf("motion", NO_RESEARCH, { mode: "normal" }, false, true)).toEqual([
-      "read_website",
-    ]);
-    expect(researchToolsOf("director", TEAM, { mode: "normal" }, false, true)).toEqual([
-      "read_website",
-    ]);
+    expect(researchToolsOf("director", NO_RESEARCH, { mode: "normal" }, false, true)).toEqual(
+      WEBSITE_TOOLS,
+    );
+    expect(researchToolsOf("motion", NO_RESEARCH, { mode: "normal" }, false, true)).toEqual(
+      WEBSITE_TOOLS,
+    );
+    expect(researchToolsOf("director", TEAM, { mode: "normal" }, false, true)).toEqual(
+      WEBSITE_TOOLS,
+    );
   });
 
   it("is missing for a specialist that is not in the chat's team, and without a research host", () => {
@@ -144,6 +158,59 @@ describe("read_website availability", () => {
   });
 });
 
+describe("full-access website tools availability", () => {
+  it("offers get_website_file and record_website to the website readers whenever a research host exists", () => {
+    for (const agent of AGENTS) {
+      const readers = ["director", "motion", "research"].includes(agent);
+      for (const websiteFiles of [true, false]) {
+        const names = researchToolsOf(agent, TEAM, { mode: "normal" }, true, true, websiteFiles);
+        for (const name of WEBSITE_TOOLS) expect(names.includes(name)).toBe(readers);
+      }
+    }
+  });
+
+  it("does not depend on Research being enabled, and still respects the chat's team", () => {
+    expect(researchToolsOf("motion", NO_RESEARCH, { mode: "normal" }, false, true, true)).toEqual(
+      WEBSITE_TOOLS,
+    );
+    expect(researchToolsOf("director", NO_RESEARCH, { mode: "normal" }, false, true, true)).toEqual(
+      WEBSITE_TOOLS,
+    );
+    expect(researchToolsOf("motion", ["editor"], { mode: "normal" }, false, true, true)).toEqual(
+      [],
+    );
+    expect(researchToolsOf("motion", [], { mode: "normal" }, false, true, true)).toEqual([]);
+  });
+
+  it("offers none in a story build or rebuild turn, and keeps record_website out of Plan and Ask turns", () => {
+    for (const storyAction of ["build", "rebuild"] as const) {
+      for (const agent of AGENTS) {
+        expect(
+          researchToolsOf(agent, TEAM, { mode: "story", storyAction }, true, true, true),
+        ).toEqual([]);
+      }
+    }
+    for (const intent of ["plan", "ask"] as const) {
+      const names = buildHostTools(
+        "director",
+        {
+          enabled: TEAM,
+          jev: false,
+          editing: true,
+          analysis: true,
+          story: true,
+          websites: true,
+          websiteFiles: true,
+          intent,
+        },
+        async () => ({ text: "" }),
+      ).map((tool) => tool.name);
+      expect(names).toContain("get_website_file");
+      expect(names).not.toContain("record_website");
+    }
+  });
+});
+
 // ── Executor ─────────────────────────────────────────────────────────────────
 
 function research(overrides: Partial<TurnResearchOptions> = {}) {
@@ -157,6 +224,7 @@ function research(overrides: Partial<TurnResearchOptions> = {}) {
     turn: { mode: "normal", action: null },
     storyOptions: null,
     intent: "edit",
+    websites: { chatId: "chat-1", resources: new WebsiteResourceLog() },
     userTexts: () => [],
     turnUserTexts: () => [],
     askBeforeDownloads: false,
@@ -335,6 +403,315 @@ describe("the research executor", () => {
   });
 });
 
+// ── Full-access website tools ────────────────────────────────────────────────
+
+describe("full-access website tools in the executor", () => {
+  /** A turn with full access, the user's link in the chat, and the caller that reads websites. */
+  function fullAccess(overrides: Partial<TurnResearchOptions> = {}) {
+    return research({
+      access: FULL_ACCESS,
+      userTexts: () => ["look at https://linear.app — make a motion intro"],
+      ...overrides,
+    });
+  }
+
+  it("refuses the tools when the turn's access does not include them, before Studio is asked", async () => {
+    const { host, call } = research({
+      userTexts: () => ["https://linear.app"],
+      access: { assets: true, websites: false, websiteFiles: false },
+    });
+    for (const [name, args] of [
+      ["get_website_file", { url: "https://linear.app/a.json", mode: "save" }],
+      ["record_website", { url: "https://linear.app", seconds: 5 }],
+    ] as const) {
+      const result = await call(name, args, "director");
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain("not available to you");
+    }
+    expect(host.websiteFileRequests).toEqual([]);
+    expect(host.recordRequests).toEqual([]);
+  });
+
+  it("allows a page or file of the linked site, www., subdomains and bare-domain links; refuses every other host", async () => {
+    const { host, call } = fullAccess();
+    for (const url of [
+      "https://linear.app/app.css",
+      "https://www.linear.app/media/hero.mp4",
+      "https://docs.linear.app/anim.json",
+    ]) {
+      expect((await call("get_website_file", { url, mode: "read" }, "motion")).isError).toBe(
+        undefined,
+      );
+    }
+    expect(host.websiteFileRequests.map((request) => request.url)).toEqual([
+      "https://linear.app/app.css",
+      "https://www.linear.app/media/hero.mp4",
+      "https://docs.linear.app/anim.json",
+    ]);
+
+    const other = await call(
+      "get_website_file",
+      { url: "https://example.com/a.png", mode: "save" },
+      "director",
+    );
+    expect(other.isError).toBe(true);
+    expect(other.text).toContain("not a file of a website the user linked");
+    expect(other.text).toContain("read_website");
+    expect(host.websiteFileRequests).toHaveLength(3);
+
+    const bare = fullAccess({ userTexts: () => ["сделай сайт openvids.ai"] });
+    expect(
+      (
+        await bare.call(
+          "get_website_file",
+          { url: "https://openvids.ai/logo.svg", mode: "save" },
+          "director",
+        )
+      ).isError,
+    ).toBeUndefined();
+    expect(
+      (await bare.call("record_website", { url: "https://www.openvids.ai/", seconds: 4 }, "motion"))
+        .isError,
+    ).toBeUndefined();
+    expect(bare.host.recordRequests).toHaveLength(1);
+  });
+
+  it("remembers the files a read_website listed, per chat across turns; the same file in another chat is refused", async () => {
+    const resources = new WebsiteResourceLog();
+    const first = fullAccess({ websites: { chatId: "chat-1", resources } });
+    await first.call("read_website", { url: "https://linear.app" }, "director");
+
+    // The next turn of the same chat (a fresh executor, the same runtime) may fetch a CDN file the read listed.
+    const second = fullAccess({ websites: { chatId: "chat-1", resources } });
+    const fetched = await second.call(
+      "get_website_file",
+      { url: "https://cdn.example-cdn.com/lottie/loader.json", mode: "read" },
+      "director",
+    );
+    expect(fetched.isError).toBeUndefined();
+    for (const url of [
+      // A fragment or a differently cased host still names the same remembered file.
+      "https://cdn.example-cdn.com/lottie/loader.json#badge",
+      "https://CDN.Example-CDN.com/lottie/loader.json",
+    ]) {
+      expect(
+        (await second.call("get_website_file", { url, mode: "read" }, "director")).isError,
+      ).toBeUndefined();
+    }
+    expect(second.host.websiteFileRequests).toEqual([
+      { url: "https://cdn.example-cdn.com/lottie/loader.json", mode: "read", turnId: "turn-1" },
+      {
+        url: "https://cdn.example-cdn.com/lottie/loader.json#badge",
+        mode: "read",
+        turnId: "turn-1",
+      },
+      { url: "https://CDN.Example-CDN.com/lottie/loader.json", mode: "read", turnId: "turn-1" },
+    ]);
+
+    // Another chat never read the site: the same URL is outside the scope there.
+    const otherChat = fullAccess();
+    const refused = await otherChat.call(
+      "get_website_file",
+      { url: "https://cdn.example-cdn.com/lottie/loader.json", mode: "read" },
+      "director",
+    );
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toContain("not a file of a website the user linked");
+  });
+
+  it("stamps turn, agent, model and the mode itself, whatever the model sends, and formats the result", async () => {
+    const { host, call } = fullAccess();
+    const saved = await call(
+      "get_website_file",
+      {
+        url: "https://linear.app/lottie/loader.json",
+        mode: "save",
+        pageUrl: "https://linear.app/pricing",
+        turnId: "forged",
+        agent: "user",
+        model: "evil/model",
+        requestId: "x",
+      },
+      "motion",
+    );
+    expect(host.websiteFileRequests).toEqual([
+      {
+        url: "https://linear.app/lottie/loader.json",
+        mode: "save",
+        pageUrl: "https://linear.app/pricing",
+        turnId: "turn-1",
+        agent: "motion",
+        model: null,
+      },
+    ]);
+    expect(saved.text).toContain("assets/web/linear.app/files/loader.json");
+    expect(saved.text).toContain("lottie-web");
+    expect(saved.text).toContain("window.__hfLottie");
+    expect(saved.text).toContain("license unknown");
+
+    const read = await call(
+      "get_website_file",
+      { url: "https://linear.app/app.css", mode: "read" },
+      "director",
+    );
+    expect(read.text).toContain("Read https://linear.app/app.css");
+    expect(read.text).toContain(".hero { color: #5e6ad2; }");
+
+    const recorded = await call(
+      "record_website",
+      {
+        url: "https://linear.app/pricing",
+        seconds: 6,
+        selector: ".hero",
+        scroll: true,
+        width: 1280,
+        height: 720,
+        turnId: "forged",
+      },
+      "motion",
+    );
+    expect(host.recordRequests).toEqual([
+      {
+        url: "https://linear.app/pricing",
+        seconds: 6,
+        selector: ".hero",
+        scroll: true,
+        width: 1280,
+        height: 720,
+        turnId: "turn-1",
+        agent: "motion",
+        model: null,
+      },
+    ]);
+    expect(recorded.text).toContain("assets/web/linear.app/recordings/page.mp4");
+    expect(recorded.text).toContain("video asset");
+    expect(recorded.text).toContain("License unknown");
+  });
+
+  it("refuses malformed calls itself", async () => {
+    const { host, call } = fullAccess();
+    for (const [name, args] of [
+      ["get_website_file", { url: "https://linear.app/a.json" }],
+      ["get_website_file", { url: "https://linear.app/a.json", mode: "download" }],
+      ["record_website", { url: "https://linear.app" }],
+      ["record_website", { url: "https://linear.app", seconds: 0 }],
+      ["record_website", { url: "https://linear.app", seconds: 31 }],
+      ["record_website", { url: "https://linear.app", seconds: 5, width: 1921 }],
+      ["record_website", { url: "https://linear.app", seconds: 5, scroll: "yes" }],
+    ] as const) {
+      const result = await call(name, args, "motion");
+      expect(result).toMatchObject({ isError: true });
+      expect(result.text).toContain("invalid_request");
+    }
+    expect(host.websiteFileRequests).toEqual([]);
+    expect(host.recordRequests).toEqual([]);
+  });
+
+  it("refuses save and record in Plan and Ask turns, and lets read mode through", async () => {
+    for (const intent of ["plan", "ask"] as const) {
+      const { host, call } = fullAccess({ intent });
+      const saved = await call(
+        "get_website_file",
+        { url: "https://linear.app/a.json", mode: "save" },
+        "director",
+      );
+      expect(saved.isError).toBe(true);
+      expect(saved.text).toContain(intent === "plan" ? "Plan turn" : "Ask turn");
+      const recorded = await call(
+        "record_website",
+        { url: "https://linear.app", seconds: 4 },
+        "director",
+      );
+      expect(recorded.isError).toBe(true);
+      expect(recorded.text).toContain(intent === "plan" ? "Plan turn" : "Ask turn");
+      expect(host.websiteFileRequests).toEqual([]);
+      expect(host.recordRequests).toEqual([]);
+
+      expect(
+        (
+          await call(
+            "get_website_file",
+            { url: "https://linear.app/app.css", mode: "read" },
+            "director",
+          )
+        ).isError,
+      ).toBeUndefined();
+      expect(host.websiteFileRequests).toHaveLength(1);
+    }
+  });
+
+  it("needs the user's download approval for save and record, but not for read", async () => {
+    const denied = fullAccess({
+      askBeforeDownloads: true,
+      turnUserTexts: () => ["сделай интро в стиле сайта"],
+    });
+    const deniedSave = await denied.call(
+      "get_website_file",
+      { url: "https://linear.app/a.json", mode: "save" },
+      "director",
+    );
+    expect(deniedSave.text).toContain("Not downloaded");
+    const deniedRecord = await denied.call(
+      "record_website",
+      { url: "https://linear.app", seconds: 4 },
+      "director",
+    );
+    expect(deniedRecord.text).toContain("Not downloaded");
+    expect(denied.host.websiteFileRequests).toEqual([]);
+    expect(denied.host.recordRequests).toEqual([]);
+
+    expect(
+      (
+        await denied.call(
+          "get_website_file",
+          { url: "https://linear.app/app.css", mode: "read" },
+          "director",
+        )
+      ).isError,
+    ).toBeUndefined();
+
+    const approved = fullAccess({
+      askBeforeDownloads: true,
+      turnUserTexts: () => ["скачай этот файл с сайта"],
+    });
+    expect(
+      (
+        await approved.call(
+          "get_website_file",
+          { url: "https://linear.app/a.json", mode: "save" },
+          "director",
+        )
+      ).isError,
+    ).toBeUndefined();
+    expect(approved.host.websiteFileRequests).toHaveLength(1);
+  });
+
+  it("turns the server's full-access refusal into a clear instruction, and keeps other callers out", async () => {
+    const { host, call } = fullAccess();
+    host.nextError = new ResearchToolError(
+      "blocked_by_policy",
+      "Full access to linked sites is off.",
+    );
+    const blocked = await call(
+      "get_website_file",
+      { url: "https://linear.app/a.json", mode: "save" },
+      "director",
+    );
+    expect(blocked.isError).toBe(true);
+    expect(blocked.text).toContain("Full access to linked sites is off.");
+    expect(blocked.text).toContain("needs full access to linked sites");
+    expect(blocked.text).toContain("do not retry this turn");
+
+    const { host: other, call: otherCall } = fullAccess();
+    for (const caller of ["editor", "vision", "audio", "jev"] as const) {
+      expect(
+        (await otherCall("record_website", { url: "https://linear.app", seconds: 4 }, caller)).text,
+      ).toContain("not available to you");
+    }
+    expect(other.recordRequests).toEqual([]);
+  });
+});
+
 // ── What the model reads ─────────────────────────────────────────────────────
 
 describe("research results", () => {
@@ -463,7 +840,15 @@ describe("research activity labels", () => {
   const tool = (name: string) => {
     const found = buildHostTools(
       "research",
-      { enabled: TEAM, jev: false, editing: false, analysis: false, research: true },
+      {
+        enabled: TEAM,
+        jev: false,
+        editing: false,
+        analysis: false,
+        research: true,
+        websites: true,
+        websiteFiles: true,
+      },
       async () => ({ text: "" }),
     ).find((hostTool) => hostTool.name === name);
     if (!found) throw new Error(`no ${name}`);
@@ -487,6 +872,30 @@ describe("research activity labels", () => {
     expect(tool("import_asset").activity?.({ url: "https://example.com/a.mp4" })?.label).toBe(
       "Importing a file from example.com",
     );
+    expect(
+      tool("get_website_file").activity?.({ url: "https://linear.app/a.json", mode: "save" }),
+    ).toEqual({
+      category: "edit",
+      label: "Downloading a file from linear.app",
+      labelCode: "downloading_site_file_host",
+      labelParams: { host: "linear.app" },
+    });
+    expect(
+      tool("get_website_file").activity?.({ url: "https://linear.app/app.css", mode: "read" })
+        ?.labelCode,
+    ).toBe("reading_site_file_host");
+    expect(tool("get_website_file").activity?.({ mode: "save" })?.labelCode).toBe(
+      "downloading_site_file",
+    );
+    expect(
+      tool("record_website").activity?.({ url: "https://www.linear.app/pricing", seconds: 5 }),
+    ).toEqual({
+      category: "edit",
+      label: "Recording linear.app",
+      labelCode: "recording_host",
+      labelParams: { host: "linear.app" },
+    });
+    expect(tool("record_website").activity?.({ url: 7 })?.labelCode).toBe("recording_website");
   });
 
   it("names the candidate and its license on an import, and the source on a single-source search", () => {

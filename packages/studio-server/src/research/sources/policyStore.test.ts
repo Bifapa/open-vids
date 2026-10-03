@@ -203,20 +203,54 @@ describe("the Websites group of the policy", () => {
 
   it("defaults to reading linked pages, for a new file and for one written before the setting existed", () => {
     const store = new PolicyStore({ dir });
-    expect(store.get().websites).toEqual({ readLinkedPages: true });
+    expect(store.get().websites).toEqual({ readLinkedPages: true, fullAccess: false });
     writeFileSync(join(dir, "policy.json"), stored({}));
     const old = store.get();
-    expect(old).toMatchObject({ mode: "any", websites: { readLinkedPages: true } });
+    expect(old).toMatchObject({
+      mode: "any",
+      websites: { readLinkedPages: true, fullAccess: false },
+    });
+
+    // A file from before full access existed keeps its switch, with full access off.
+    writeFileSync(join(dir, "policy.json"), stored({ websites: { readLinkedPages: false } }));
+    const before = store.get();
+    expect(before).toMatchObject({
+      mode: "any",
+      websites: { readLinkedPages: false, fullAccess: false },
+    });
+    expect(existsSync(join(dir, "policy.json.bak"))).toBe(false);
+
+    // The full shape (as the home server or a newer Studio writes it) loads as-is.
+    writeFileSync(
+      join(dir, "policy.json"),
+      stored({ websites: { readLinkedPages: true, fullAccess: true } }),
+    );
+    expect(store.get().websites).toEqual({ readLinkedPages: true, fullAccess: true });
   });
 
-  it("keeps the switch across instances without touching the mode or the sources", () => {
+  it("keeps the switches across instances without touching the mode or the sources", () => {
     const store = new PolicyStore({ dir });
     store.setMode("any");
-    store.setWebsites({ readLinkedPages: false });
+    store.setWebsites({ readLinkedPages: false, fullAccess: true });
     const again = new PolicyStore({ dir }).get();
-    expect(again).toMatchObject({ mode: "any", websites: { readLinkedPages: false } });
+    expect(again).toMatchObject({
+      mode: "any",
+      websites: { readLinkedPages: false, fullAccess: true },
+    });
     expect(again.sources).toHaveLength(4);
-    expect(new PolicyStore({ dir }).setWebsites({}).websites.readLinkedPages).toBe(false);
+    expect(new PolicyStore({ dir }).setWebsites({}).websites).toEqual({
+      readLinkedPages: false,
+      fullAccess: true,
+    });
+    // Changing one switch keeps the other.
+    expect(store.setWebsites({ fullAccess: false }).websites).toEqual({
+      readLinkedPages: false,
+      fullAccess: false,
+    });
+    expect(store.setWebsites({ readLinkedPages: true }).websites).toEqual({
+      readLinkedPages: true,
+      fullAccess: false,
+    });
   });
 
   it("does not guess at a damaged value: the whole file is replaced by the defaults and kept as a backup", () => {
@@ -224,5 +258,17 @@ describe("the Websites group of the policy", () => {
     writeFileSync(join(dir, "policy.json"), stored({ websites: { readLinkedPages: "no" } }));
     expect(store.get().mode).toBe("trusted");
     expect(existsSync(join(dir, "policy.json.bak"))).toBe(true);
+
+    // A present-but-non-boolean fullAccess is damaged as well.
+    store.setMode("any");
+    expect(store.get().mode).toBe("any");
+    writeFileSync(
+      join(dir, "policy.json"),
+      stored({ websites: { readLinkedPages: true, fullAccess: "yes" } }),
+    );
+    expect(store.get()).toMatchObject({
+      mode: "trusted",
+      websites: { readLinkedPages: true, fullAccess: false },
+    });
   });
 });

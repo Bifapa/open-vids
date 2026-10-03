@@ -1,15 +1,20 @@
 /**
- * The Studio server's website reader capability (`inspectWebsite`), implemented by running this CLI's own
- * `inspect-site` command as a child process: headless Chrome renders the page and extracts its visual identity, kept
- * out of the server process like the layout check (see `cliChild.ts`). Aborting the request kills the CLI, and Chrome
+ * The Studio server's website capabilities, implemented by running this CLI's own commands as child processes:
+ * `inspectWebsite` (`cli inspect-site`: headless Chrome renders the page and extracts its visual identity) and
+ * `recordWebsite` (`cli record-site`: the page is recorded, in real time, as an H.264 MP4). Both keep the browser out
+ * of the server process like the layout check (see `cliChild.ts`). Aborting the request kills the CLI, and Chrome
  * with it (it is started over a pipe and exits when the pipe closes).
  */
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { parseWebsiteStyle } from "@hyperframes/agent-protocol";
-import type { WebsiteInspection, WebsiteInspectionResult } from "@hyperframes/studio-server";
+import type {
+  WebsiteInspection,
+  WebsiteInspectionResult,
+  WebsiteRecordingResult,
+} from "@hyperframes/studio-server";
 import { failureMessage, runCli, type CliChildDeps } from "./cliChild.js";
 
 type FailureCode = Extract<WebsiteInspectionResult, { error: unknown }>["error"]["code"];
@@ -101,4 +106,70 @@ export async function inspectWebsiteViaCli(
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * Records a page as an MP4 by running `cli record-site` in a child process. The child writes straight to `outFile`
+ * (the caller owns the path); a refused, failed or aborted run leaves nothing behind.
+ */
+export async function recordWebsiteViaCli(
+  opts: {
+    url: string;
+    seconds: number;
+    selector?: string;
+    scroll?: boolean;
+    width: number;
+    height: number;
+    outFile: string;
+    signal: AbortSignal;
+  },
+  deps: CliChildDeps = {},
+): Promise<WebsiteRecordingResult> {
+  const run = await runCli(
+    [
+      "record-site",
+      opts.url,
+      "--out",
+      opts.outFile,
+      "--seconds",
+      String(opts.seconds),
+      "--width",
+      String(opts.width),
+      "--height",
+      String(opts.height),
+      ...(opts.selector === undefined ? [] : ["--selector", opts.selector]),
+      ...(opts.scroll ? ["--scroll"] : []),
+      "--timeout",
+      String(Math.round(opts.seconds + 40)),
+      "--json",
+    ],
+    { signal: opts.signal },
+    deps,
+  ).catch((error: unknown) => {
+    rmSync(opts.outFile, { force: true });
+    throw error;
+  });
+  const report = run.json;
+  if (report?.ok === false) {
+    const code = FAILURE_CODES.find((candidate) => candidate === report.code);
+    if (code && typeof report.error === "string") {
+      rmSync(opts.outFile, { force: true });
+      return { error: { code, message: report.error } };
+    }
+  }
+  if (run.code !== 0 || report?.ok !== true) {
+    rmSync(opts.outFile, { force: true });
+    throw new Error(failureMessage("record-site", run));
+  }
+  const finalUrl = text(report.finalUrl, "final URL");
+  const width = number(report.width, "width");
+  const height = number(report.height, "height");
+  const duration = number(report.duration, "duration");
+  const notes = list(report.notes, "notes").flatMap((note) =>
+    typeof note === "string" ? [note] : [],
+  );
+  if (!existsSync(opts.outFile) || statSync(opts.outFile).size === 0) {
+    throw new Error("record-site: the recording file is missing or empty");
+  }
+  return { finalUrl, width, height, duration, notes };
 }

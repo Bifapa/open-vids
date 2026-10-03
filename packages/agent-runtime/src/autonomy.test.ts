@@ -153,7 +153,9 @@ describe("ask before downloading assets, in a turn", () => {
       expect(fixture.research.importRequests).toEqual([]);
       // Research and the Director both know the rule before they act.
       expect(seen.task()).toContain("<autonomy>");
-      expect(seen.task()).toContain("import_asset (and read_website with save) is refused");
+      expect(seen.task()).toContain(
+        'import_asset, read_website with save, get_website_file with mode "save" and record_website are refused',
+      );
       expect(seen.roster()).toContain("Downloads need the user's approval first");
     } finally {
       await fixture.cleanup();

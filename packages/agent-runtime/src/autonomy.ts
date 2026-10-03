@@ -8,8 +8,9 @@ import type { AutonomySettings } from "@hyperframes/agent-protocol";
  * when it meets such an item: stop and ask the user, or leave it alone and report it afterwards. The model sees that in
  * its team brief, in every delegated task, and appended to every refusal.
  *
- * Downloads are enforced by the research executor (`research/executor.ts`): with `askBeforeDownloads` an import is
- * refused until the user has approved ({@link approvesDownload}).
+ * Downloads are enforced by the research executor (`research/executor.ts`): with `askBeforeDownloads` an import, a
+ * saved website read, a full-access website file download or a page recording is refused until the user has approved
+ * ({@link approvesDownload}).
  */
 
 export type TurnAutonomy = Pick<AutonomySettings, "askBeforeLockedEdits" | "askBeforeDownloads">;
@@ -36,7 +37,7 @@ const LOCKED_BRIEF_ASK =
 const LOCKED_BRIEF_LEAVE =
   "Locked or hand-set material (clips locked on the timeline, locked Story nodes, decisions the user made by hand) is never changed by an agent; the services refuse it. The user does not want to be interrupted for it: leave such items exactly as they are, carry on with the rest of the task, and list in your final reply what you left untouched and why. Do not look for a way around a lock.";
 const DOWNLOADS_ASK =
-  "Downloads need the user's approval first: Research may search and inspect, but import_asset (and read_website with save) is refused until the user has approved in this turn — an explicit instruction to download or import, a yes, or the Story workspace's Find missing material. Have Research list what it found (title, source, license and its status, size, page URL, why it fits) and report that to the user, then stop and wait for their answer.";
+  "Downloads need the user's approval first: Research may search and inspect, but import_asset, read_website with save, get_website_file with mode \"save\" and record_website are refused until the user has approved in this turn — an explicit instruction to download or import, a yes, or the Story workspace's Find missing material. Have Research list what it found (title, source, license and its status, size, page URL, why it fits) and report that to the user, then stop and wait for their answer.";
 const DOWNLOADS_FREE =
   "Downloads: the user lets agents import material that fits the request without asking first (the Asset Search policy and the license rules still apply).";
 

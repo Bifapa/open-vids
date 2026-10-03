@@ -26,7 +26,7 @@ import {
 } from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { BundleOptions } from "@hyperframes/core/compiler";
-import type { inspectWebsiteViaCli } from "../cli/src/server/siteAdapter";
+import type { inspectWebsiteViaCli, recordWebsiteViaCli } from "../cli/src/server/siteAdapter";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { generateThumbnail, findSystemChrome } from "./vite.browser";
@@ -311,6 +311,20 @@ export function createViteAdapter(
       );
       const inspect: typeof inspectWebsiteViaCli = mod.inspectWebsiteViaCli;
       return inspect(opts, {
+        invocation: () => ({
+          command: process.execPath,
+          prefix: [resolve(__dirname, "../cli/src/cli.ts")],
+        }),
+      });
+    },
+
+    // The page recorder, as in the CLI host: `cli record-site` in a child process, same source-mode invocation.
+    async recordWebsite(opts) {
+      const mod = await server.ssrLoadModule(
+        resolve(__dirname, "../cli/src/server/siteAdapter.ts"),
+      );
+      const record: typeof recordWebsiteViaCli = mod.recordWebsiteViaCli;
+      return record(opts, {
         invocation: () => ({
           command: process.execPath,
           prefix: [resolve(__dirname, "../cli/src/cli.ts")],

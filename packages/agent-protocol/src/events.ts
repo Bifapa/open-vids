@@ -8,6 +8,7 @@ import type {
   ChatMessage,
   ChatSummary,
   ExecutionPlan,
+  PermissionRequest,
   TaskMessage,
   TurnCheckpoint,
   TurnSummary,
@@ -47,6 +48,11 @@ export type ChatEventPayload =
       done: boolean;
     }
   | { type: "activity.updated"; messageId: string; activity: Activity }
+  /**
+   * A permission request of the running turn was created or answered: its part appears in the main conversation's
+   * assistant message (whichever agent asked) and is updated in place as the user answers or the turn expires it.
+   */
+  | { type: "permission.updated"; messageId: string; permission: PermissionRequest }
   | { type: "message.completed"; messageId: string; status: AssistantMessageStatus }
   | { type: "checkpoint.updated"; turnId: string; checkpoint: TurnCheckpoint }
   /** The Director published or revised the turn's compact plan. */

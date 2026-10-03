@@ -12,7 +12,7 @@ import {
 } from "./mediaTypes.js";
 import type { FetchedPage, ResearchHttp } from "./types.js";
 import { pinnedTransport, type TransportInit } from "./pinnedTransport.js";
-import { UrlGuard } from "./urlPolicy.js";
+import { UrlGuard, type VettedUrl } from "./urlPolicy.js";
 
 /**
  * Public media hosts ask automated clients to identify themselves with a contact URL (Wikimedia's User-Agent policy
@@ -115,9 +115,33 @@ export class PolicyFetcher {
     headers: Record<string, string>,
     signal: AbortSignal,
   ): Promise<{ response: Response; finalUrl: string }> {
+    return this.follow(rawUrl, headers, signal, (url) =>
+      this.guard.vet(url, scope.policy, scope.grants ?? []),
+    );
+  }
+
+  /**
+   * Opens a response under the address rules alone: full access to linked sites may open any public address, so the
+   * trusted-source check does not apply. Redirects are followed by hand and every hop is vetted, exactly like
+   * {@link open}.
+   */
+  async openPublic(
+    rawUrl: string,
+    headers: Record<string, string>,
+    signal: AbortSignal,
+  ): Promise<{ response: Response; finalUrl: string }> {
+    return this.follow(rawUrl, headers, signal, (url) => this.guard.vetPublic(url));
+  }
+
+  private async follow(
+    rawUrl: string,
+    headers: Record<string, string>,
+    signal: AbortSignal,
+    vet: (url: string) => Promise<VettedUrl>,
+  ): Promise<{ response: Response; finalUrl: string }> {
     let current = rawUrl;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      const { url, addresses } = await this.guard.vet(current, scope.policy, scope.grants ?? []);
+      const { url, addresses } = await vet(current);
       let response: Response;
       try {
         response = await this.transport(url.toString(), {
@@ -345,7 +369,7 @@ export class PolicyFetcher {
 }
 
 /** The chunks of a response body (`getReader` loop: DOM-lib streams are not async-iterable). Cancels on early exit. */
-async function* chunksOf(body: ReadableStream<Uint8Array>): AsyncGenerator<Uint8Array> {
+export async function* chunksOf(body: ReadableStream<Uint8Array>): AsyncGenerator<Uint8Array> {
   const reader = body.getReader();
   try {
     for (;;) {

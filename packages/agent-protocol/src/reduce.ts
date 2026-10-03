@@ -124,6 +124,9 @@ function settleOpenPart(part: AssistantPart): AssistantPart {
   if (part.type === "activity" && part.activity.status === "running") {
     return { ...part, activity: { ...part.activity, status: "done" } };
   }
+  if (part.type === "permission" && part.permission.state === "pending") {
+    return { ...part, permission: { ...part.permission, state: "expired" } };
+  }
   return part;
 }
 
@@ -212,6 +215,19 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
             type: "activity",
             id: event.activity.id,
             activity: event.activity,
+          }),
+        })),
+      };
+
+    case "permission.updated":
+      return {
+        ...base,
+        messages: mapAssistant(state.messages, event.messageId, (message) => ({
+          ...message,
+          parts: upsertPart(message.parts, {
+            type: "permission",
+            id: event.permission.id,
+            permission: event.permission,
           }),
         })),
       };

@@ -231,6 +231,8 @@ describe("multi-agent orchestration", () => {
         ...ANALYSIS_TOOLS_SOLO,
         "read_story",
         "read_website",
+        "get_website_file",
+        "record_website",
       ]);
     } finally {
       await fixture.cleanup();

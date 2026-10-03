@@ -2,6 +2,9 @@ import {
   ASSET_SEARCH_MODES,
   RESEARCH_LIMITS,
   RESEARCH_MEDIA_KINDS,
+  WEBSITE_FILE_MODES,
+  WEBSITE_GRANT_ACCESS,
+  WEBSITE_LIMITS,
   isRecord,
   type AddTrustedSourceRequest,
   type AgentId,
@@ -9,11 +12,14 @@ import {
   type AssetSearchRequest,
   type ImportAssetRequest,
   type InspectUrlRequest,
+  type RecordWebsiteRequest,
   type ResearchMediaKind,
   type ResolveMissingRequest,
   type ReadWebsiteRequest,
   type UpdateAssetSearchPolicyRequest,
   type UpdateTrustedSourceRequest,
+  type WebsiteFileRequest,
+  type WebsiteGrantRequest,
 } from "@hyperframes/agent-protocol";
 import { agentIdOf } from "./agents.js";
 import { ResearchFailure } from "./errors.js";
@@ -69,14 +75,22 @@ export function parsePolicyUpdate(raw: unknown): UpdateAssetSearchPolicyRequest 
     request.mode = mode;
   }
   if (value.websites !== undefined) {
-    const websites = body(value.websites, ["readLinkedPages"]);
-    if (websites.readLinkedPages === undefined) {
-      throw new ResearchFailure("invalid_request", "websites needs readLinkedPages");
+    const websites = body(value.websites, ["readLinkedPages", "fullAccess"]);
+    if (websites.readLinkedPages === undefined && websites.fullAccess === undefined) {
+      throw new ResearchFailure("invalid_request", "websites needs readLinkedPages or fullAccess");
     }
-    if (typeof websites.readLinkedPages !== "boolean") {
+    if (websites.readLinkedPages !== undefined && typeof websites.readLinkedPages !== "boolean") {
       throw new ResearchFailure("invalid_request", "readLinkedPages must be true or false");
     }
-    request.websites = { readLinkedPages: websites.readLinkedPages };
+    if (websites.fullAccess !== undefined && typeof websites.fullAccess !== "boolean") {
+      throw new ResearchFailure("invalid_request", "fullAccess must be true or false");
+    }
+    request.websites = {
+      ...(typeof websites.readLinkedPages === "boolean" && {
+        readLinkedPages: websites.readLinkedPages,
+      }),
+      ...(typeof websites.fullAccess === "boolean" && { fullAccess: websites.fullAccess }),
+    };
   }
   return request;
 }
@@ -229,4 +243,113 @@ export function parseWebsiteRequest(raw: unknown): ReadWebsiteRequest {
 /** The `:requestId` of the cancel route. */
 export function parseRequestId(raw: string | undefined): string {
   return text(raw, "requestId", ID_CHARS);
+}
+
+/** A turn id set by the runtime, wherever it appears (a route parameter or a request body). */
+export function parseTurnId(raw: unknown): string {
+  return text(raw, "turnId", ID_CHARS * 2);
+}
+
+/** `POST /api/projects/:id/research/website/grants`: the user allowed a Websites setting once for this turn. */
+export function parseWebsiteGrantRequest(raw: unknown): WebsiteGrantRequest {
+  const value = body(raw, ["turnId", "access"]);
+  const access = WEBSITE_GRANT_ACCESS.find((entry) => entry === value.access);
+  if (access === undefined) {
+    throw new ResearchFailure(
+      "invalid_request",
+      `access must be ${WEBSITE_GRANT_ACCESS.join(" or ")}`,
+    );
+  }
+  return { turnId: parseTurnId(value.turnId), access };
+}
+
+/** `POST /api/projects/:id/research/website/file` (full access): save a file, or read its text. */
+export function parseWebsiteFileRequest(raw: unknown): WebsiteFileRequest {
+  const value = body(raw, ["url", "mode", "pageUrl", "requestId", "turnId", "agent", "model"]);
+  const mode = WEBSITE_FILE_MODES.find((entry) => entry === value.mode);
+  if (mode === undefined) {
+    throw new ResearchFailure("invalid_request", `mode must be ${WEBSITE_FILE_MODES.join(" or ")}`);
+  }
+  return {
+    url: text(value.url, "url", RESEARCH_LIMITS.urlChars),
+    mode,
+    ...(value.pageUrl !== undefined && {
+      pageUrl: text(value.pageUrl, "pageUrl", RESEARCH_LIMITS.urlChars),
+    }),
+    ...(value.requestId !== undefined && {
+      requestId: text(value.requestId, "requestId", ID_CHARS),
+    }),
+    ...(value.turnId !== undefined && { turnId: text(value.turnId, "turnId", ID_CHARS * 2) }),
+    ...(value.agent !== undefined && { agent: agentOf(value.agent) }),
+    ...(value.model !== undefined && {
+      model: value.model === null ? null : text(value.model, "model", 200),
+    }),
+  };
+}
+
+/** `POST /api/projects/:id/research/website/record` (full access): record a page as an MP4. */
+export function parseRecordWebsiteRequest(raw: unknown): RecordWebsiteRequest {
+  const value = body(raw, [
+    "url",
+    "seconds",
+    "selector",
+    "scroll",
+    "width",
+    "height",
+    "requestId",
+    "turnId",
+    "agent",
+    "model",
+  ]);
+  const seconds = value.seconds;
+  if (
+    typeof seconds !== "number" ||
+    !Number.isFinite(seconds) ||
+    seconds < WEBSITE_LIMITS.recordMinSeconds ||
+    seconds > WEBSITE_LIMITS.recordMaxSeconds
+  ) {
+    throw new ResearchFailure(
+      "invalid_request",
+      `seconds must be between ${WEBSITE_LIMITS.recordMinSeconds} and ${WEBSITE_LIMITS.recordMaxSeconds}`,
+    );
+  }
+  if (value.scroll !== undefined && typeof value.scroll !== "boolean") {
+    throw new ResearchFailure("invalid_request", "scroll must be true or false");
+  }
+  const side = (field: "width" | "height"): number | undefined => {
+    const rawSide = value[field];
+    if (rawSide === undefined) return undefined;
+    if (
+      typeof rawSide !== "number" ||
+      !Number.isInteger(rawSide) ||
+      rawSide < 2 ||
+      rawSide > WEBSITE_LIMITS.recordMaxSide
+    ) {
+      throw new ResearchFailure(
+        "invalid_request",
+        `${field} must be a whole number from 2 to ${WEBSITE_LIMITS.recordMaxSide}`,
+      );
+    }
+    return rawSide;
+  };
+  const width = side("width");
+  const height = side("height");
+  return {
+    url: text(value.url, "url", RESEARCH_LIMITS.urlChars),
+    seconds,
+    ...(value.selector !== undefined && {
+      selector: text(value.selector, "selector", WEBSITE_LIMITS.selectorChars),
+    }),
+    ...(value.scroll !== undefined && { scroll: value.scroll }),
+    ...(width !== undefined && { width }),
+    ...(height !== undefined && { height }),
+    ...(value.requestId !== undefined && {
+      requestId: text(value.requestId, "requestId", ID_CHARS),
+    }),
+    ...(value.turnId !== undefined && { turnId: text(value.turnId, "turnId", ID_CHARS * 2) }),
+    ...(value.agent !== undefined && { agent: agentOf(value.agent) }),
+    ...(value.model !== undefined && {
+      model: value.model === null ? null : text(value.model, "model", 200),
+    }),
+  };
 }

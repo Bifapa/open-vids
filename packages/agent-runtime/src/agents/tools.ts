@@ -72,6 +72,12 @@ export interface ToolAvailability {
    * when Research is off in the chat or the Asset Search policy could not be read.
    */
   websites?: boolean;
+  /**
+   * The user's Asset Search policy currently has full access to linked sites on. `get_website_file` and
+   * `record_website` are offered whenever a research host exists; this only tells their results the setting is on
+   * (a call whose setting is off asks the user in chat).
+   */
+  websiteFiles?: boolean;
   /** A candidate the turn's searches returned, for the activity label of an import. */
   researchCandidate?: (id: string) => KnownCandidate | undefined;
   /** The display name of a trusted source in the user's policy, for the activity label of a search. */
@@ -146,6 +152,7 @@ export function buildHostTools(
           access: {
             assets: availability.research === true,
             websites: availability.websites === true,
+            websiteFiles: availability.websiteFiles === true,
           },
           ...(availability.researchCandidate && { candidate: availability.researchCandidate }),
           ...(availability.researchSourceName && { sourceName: availability.researchSourceName }),

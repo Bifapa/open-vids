@@ -8,7 +8,7 @@
 import { Hono, type Context } from "hono";
 import { diarizeMediaViaCli, transcribeMediaViaCli } from "./speechAdapter.js";
 import { checkLayoutViaCli } from "./layoutAdapter.js";
-import { inspectWebsiteViaCli } from "./siteAdapter.js";
+import { inspectWebsiteViaCli, recordWebsiteViaCli } from "./siteAdapter.js";
 import { streamSSE } from "hono/streaming";
 import { realpath } from "@hyperframes/core";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
@@ -804,6 +804,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     checkLayout: (opts) => checkLayoutViaCli(opts),
     // The website style reader is `cli inspect-site` in a child: the page runs in its own headless Chrome.
     inspectWebsite: (opts) => inspectWebsiteViaCli(opts),
+    // The page recorder is `cli record-site` in a child: same browser rules, real-time MP4.
+    recordWebsite: (opts) => recordWebsiteViaCli(opts),
   };
 
   const agentGateway = createAgentGateway({

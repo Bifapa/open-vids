@@ -1,9 +1,11 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
+import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
-import { inspectWebsiteViaCli } from "./siteAdapter.js";
+import { inspectWebsiteViaCli, recordWebsiteViaCli } from "./siteAdapter.js";
 
 const PID = 7272;
 
@@ -18,6 +20,8 @@ const SITE = {
 interface Script {
   /** Files the CLI writes into its `--out` directory. */
   files?: Record<string, string>;
+  /** Content the CLI writes to its `--out` path itself (`record-site`). */
+  outFileContent?: string;
   report?: Record<string, unknown>;
   stderr?: string;
   code?: number;
@@ -50,6 +54,10 @@ function fakeSpawn(script: Script): FakeSpawn {
       for (const [name, content] of Object.entries(script.files ?? {})) {
         mkdirSync(dirname(join(outDir, name)), { recursive: true });
         writeFileSync(join(outDir, name), content);
+      }
+      if (script.outFileContent !== undefined) {
+        mkdirSync(dirname(outDir), { recursive: true });
+        writeFileSync(outDir, script.outFileContent);
       }
       if (script.stderr) child.stderr.write(script.stderr);
       if (script.report) child.stdout.write(`${JSON.stringify(script.report)}\n`);
@@ -181,5 +189,130 @@ describe("inspectWebsiteViaCli", () => {
     await expect(pending).rejects.toThrow("client went away");
     if (process.platform !== "win32") expect(signals[0]).toEqual([-PID, "SIGTERM"]);
     expect(existsSync(fake.outDir())).toBe(false);
+  });
+});
+
+const recordInput = (over: Partial<Parameters<typeof recordWebsiteViaCli>[0]> = {}) => ({
+  url: "https://example.com/",
+  seconds: 5,
+  width: 1920,
+  height: 1080,
+  outFile: join(tmpdir(), `openvids-record-${randomUUID()}.mp4`),
+  signal: new AbortController().signal,
+  ...over,
+});
+
+describe("recordWebsiteViaCli", () => {
+  it("runs `record-site` straight into the caller's file and returns the recording's facts", async () => {
+    const outFile = join(tmpdir(), `openvids-record-${randomUUID()}.mp4`);
+    const fake = fakeSpawn({
+      outFileContent: "mp4-bytes",
+      report: {
+        ok: true,
+        finalUrl: "https://example.com/after",
+        width: 640,
+        height: 480,
+        duration: 5,
+        bytes: 9,
+        notes: ['The selector ".hero" matched nothing; the whole viewport was recorded.'],
+      },
+    });
+    const result = await recordWebsiteViaCli(
+      recordInput({ outFile, selector: ".hero", scroll: true }),
+      deps(fake),
+    );
+    expect(fake.calls[0]?.args.slice(0, 3)).toEqual([
+      "/cli/cli.js",
+      "record-site",
+      "https://example.com/",
+    ]);
+    expect(fake.calls[0]?.args).toEqual(
+      expect.arrayContaining([
+        "--json",
+        "--scroll",
+        "--selector",
+        ".hero",
+        "--seconds",
+        "5",
+        "--width",
+        "1920",
+        "--height",
+        "1080",
+        "--out",
+        outFile,
+      ]),
+    );
+    expect(result).toEqual({
+      finalUrl: "https://example.com/after",
+      width: 640,
+      height: 480,
+      duration: 5,
+      notes: [expect.stringContaining("matched nothing")],
+    });
+    rmSync(outFile, { force: true });
+  });
+
+  it("answers a refused or unrecordable page as a typed error and leaves no file behind", async () => {
+    for (const code of ["blocked_by_policy", "unavailable", "network", "unsupported"]) {
+      const outFile = join(tmpdir(), `openvids-record-${randomUUID()}.mp4`);
+      const fake = fakeSpawn({
+        outFileContent: "partial",
+        report: { ok: false, code, error: `because ${code}` },
+        code: 1,
+      });
+      expect(await recordWebsiteViaCli(recordInput({ outFile }), deps(fake))).toEqual({
+        error: { code, message: `because ${code}` },
+      });
+      expect(existsSync(outFile)).toBe(false);
+    }
+  });
+
+  it("throws when the CLI died, reported something unusable, or wrote no file", async () => {
+    const died = join(tmpdir(), `openvids-record-${randomUUID()}.mp4`);
+    await expect(
+      recordWebsiteViaCli(
+        recordInput({ outFile: died }),
+        deps(fakeSpawn({ code: 3, stderr: "no ffmpeg\n" })),
+      ),
+    ).rejects.toThrow(/record-site exited with code 3: no ffmpeg/);
+    expect(existsSync(died)).toBe(false);
+
+    const empty = join(tmpdir(), `openvids-record-${randomUUID()}.mp4`);
+    await expect(
+      recordWebsiteViaCli(
+        recordInput({ outFile: empty }),
+        deps(
+          fakeSpawn({
+            report: {
+              ok: true,
+              finalUrl: "https://example.com/",
+              width: 1920,
+              height: 1080,
+              duration: 5,
+              notes: [],
+            },
+          }),
+        ),
+      ),
+    ).rejects.toThrow(/missing or empty/);
+  });
+
+  it("kills the child's group on abort and removes the partial file", async () => {
+    const outFile = join(tmpdir(), `openvids-record-${randomUUID()}.mp4`);
+    writeFileSync(outFile, "partial");
+    const fake = fakeSpawn({ hang: true });
+    const signals: Array<[number, unknown]> = [];
+    vi.spyOn(process, "kill").mockImplementation((pid, sig) => {
+      signals.push([pid, sig]);
+      if (sig === "SIGTERM") setImmediate(() => fake.children[0]?.emit("close", null));
+      return true;
+    });
+    const abort = new AbortController();
+    const pending = recordWebsiteViaCli(recordInput({ outFile, signal: abort.signal }), deps(fake));
+    await vi.waitFor(() => expect(fake.spawn).toHaveBeenCalled());
+    abort.abort(new Error("client went away"));
+    await expect(pending).rejects.toThrow("client went away");
+    if (process.platform !== "win32") expect(signals[0]).toEqual([-PID, "SIGTERM"]);
+    expect(existsSync(outFile)).toBe(false);
   });
 });

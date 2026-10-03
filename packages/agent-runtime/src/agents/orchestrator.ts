@@ -26,7 +26,11 @@ import { renderAutonomyBlock, type TurnAutonomy } from "../autonomy.js";
 import type { ChatService } from "../chats.js";
 import { errorMessage } from "../errors.js";
 import { renderPromptContext } from "../promptContext.js";
-import { renderResearchBlock, type ResearchTurnState } from "../research/prompt.js";
+import {
+  renderResearchBlock,
+  websiteAccessLine,
+  type ResearchTurnState,
+} from "../research/prompt.js";
 import { TurnEventWriter, type StreamTimerApi, type StreamTimerHandle } from "../turnStream.js";
 import { parseModelArgument, routeDelegation } from "./routing.js";
 import {
@@ -557,7 +561,9 @@ export class Orchestrator {
             this.deps.setup.execution.budget.researchCandidates,
           )
         : null;
-    const text = [taskText, research, autonomy].filter(Boolean).join("\n\n");
+    // Motion may read a linked site itself; it is told when full access is off so it asks the user instead of failing.
+    const website = input.agent === "motion" ? websiteAccessLine(this.deps.setup.research) : null;
+    const text = [taskText, research, website, autonomy].filter(Boolean).join("\n\n");
 
     // Queue the run before the first await, so concurrent delegations to one specialist line up in call order.
     const announced = Promise.withResolvers<boolean>();

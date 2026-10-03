@@ -23,6 +23,10 @@ import type {
   TaskMessage,
   TestJevResponse,
   TurnSummary,
+  PermissionDecision,
+  PermissionPart,
+  PermissionRequest,
+  PermissionState,
 } from "@hyperframes/agent-protocol";
 import { AgentApiError, type AgentClient } from "./agentClient";
 import type { EventSourceLike } from "./agentStream";
@@ -140,6 +144,31 @@ export function assistantMessage(overrides: Partial<AssistantMessage> = {}): Ass
     parts: [],
     ...overrides,
   };
+}
+
+/** What a decision leaves a request as, the way the runtime answers it. */
+const ANSWER_STATES: Record<PermissionDecision, PermissionState> = {
+  once: "allowed_once",
+  always: "enabled",
+  deny: "denied",
+};
+
+export function permissionRequest(overrides: Partial<PermissionRequest> = {}): PermissionRequest {
+  return {
+    id: "perm1",
+    kind: "website_full_access",
+    action: "download",
+    site: "openvids.ai",
+    agent: "research",
+    state: "pending",
+    requestedAt: 4000,
+    ...overrides,
+  };
+}
+
+export function permissionPart(overrides: Partial<PermissionRequest> = {}): PermissionPart {
+  const permission = permissionRequest(overrides);
+  return { type: "permission", id: permission.id, permission };
 }
 
 export function chatState(overrides: Partial<ChatState> = {}): ChatState {
@@ -404,6 +433,13 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
     abortTurn: vi.fn(async () => undefined),
     revertTurn: vi.fn(async () => data.revert ?? { ok: true, turn: turn({ status: "completed" }) }),
     unrevertTurn: vi.fn(async () => ({ ok: true, turn: turn({ status: "completed" }) })),
+    answerPermission: vi.fn(async (_chatId, _turnId, permissionId, decision) => ({
+      permission: permissionRequest({
+        id: permissionId,
+        state: ANSWER_STATES[decision],
+        answeredAt: 7000,
+      }),
+    })),
     chatEventsUrl: vi.fn((chatId, after) => `/agent/chats/${chatId}/events?after=${after}`),
     projectEventsUrl: vi.fn(() => "/agent/events"),
     getSettings: vi.fn(async () => data.settings ?? SETTINGS),

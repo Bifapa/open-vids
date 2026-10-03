@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { SiteInspectError, inspectSite } from "./inspectSite.js";
+import { inspectSite } from "./inspectSite.js";
+import { SiteInspectError } from "./siteSession.js";
 import type { RequestPolicy } from "./requestPolicy.js";
 
 const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
@@ -31,6 +32,8 @@ const PAGE = (secretPort: number) => `<!doctype html>
 <main><h1>Motion for everyone</h1>
 <p>Brand Co builds calm tools for teams who care about the details of their work.</p>
 <button class="cta">Start now</button>
+<img src="/hero.png" width="120" height="60" alt="Hero">
+<div class="panel"></div>
 <img src="http://127.0.0.1:${secretPort}/secret.png" width="10" height="10" alt="">
 </main></body></html>`;
 
@@ -45,6 +48,7 @@ h1 { font: 700 60px/1.1 "Brand Sans", sans-serif; margin: 120px 32px 16px; }
 p { margin: 0 32px 24px; max-width: 640px; color: #9aa0c0; }
 .cta { margin-left: 32px; background: #ff5500; color: #101020; border: 0; border-radius: 999px; padding: 12px 28px;
   font: 600 16px "Brand Sans", sans-serif; transition: transform 240ms cubic-bezier(0.2, 0, 0, 1); animation: rise 600ms ease-out; }
+.panel { height: 160px; background-image: url("/bg.png"); background-size: cover; }
 `;
 
 describe.runIf(executablePath)("inspectSite in Chromium", () => {
@@ -65,6 +69,8 @@ describe.runIf(executablePath)("inspectSite in Chromium", () => {
       if (req.url === "/")
         res.writeHead(200, { "content-type": "text/html" }).end(PAGE(secretPort));
       else if (req.url === "/site.css") res.writeHead(200, { "content-type": "text/css" }).end(CSS);
+      else if (req.url === "/hero.png" || req.url === "/bg.png")
+        res.writeHead(200, { "content-type": "image/png" }).end("png");
       else if (req.url === "/brand-sans.woff2")
         res.writeHead(200, { "content-type": "font/woff2" }).end("wOF2-not-a-real-font");
       else res.writeHead(404).end("missing");
@@ -142,6 +148,28 @@ describe.runIf(executablePath)("inspectSite in Chromium", () => {
     expect(style.motion.keyframes).toContain("rise");
     expect(style.headings[0]).toBe("Motion for everyone");
     expect(style.navLabels).toEqual(["Product", "Pricing"]);
+
+    // Files the page uses: DOM references (an image, a CSS background) plus every response, ordered media first.
+    expect(style.resources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          url: `${siteUrl}/hero.png`,
+          kind: "image",
+          mimeType: "image/png",
+          usage: "img",
+        }),
+        expect.objectContaining({
+          url: `${siteUrl}/bg.png`,
+          kind: "image",
+          usage: "CSS background of .panel",
+        }),
+        expect.objectContaining({ url: `${siteUrl}/brand-sans.woff2`, kind: "font" }),
+        expect.objectContaining({ url: `${siteUrl}/site.css`, kind: "stylesheet" }),
+      ]),
+    );
+    const kinds = style.resources.map((entry) => entry.kind);
+    expect(kinds.indexOf("image")).toBeLessThan(kinds.indexOf("font"));
+    expect(kinds.indexOf("font")).toBeLessThan(kinds.indexOf("stylesheet"));
 
     expect(result.logo).toMatchObject({ file: "logo.svg", mimeType: "image/svg+xml" });
     const svg = readFileSync(join(out, "logo.svg"), "utf8");

@@ -14,6 +14,7 @@ import {
   type ActiveTurnInfo,
   type AgentErrorBody,
   type AgentErrorCode,
+  type PermissionDecision,
   type AgentIntake,
   type AgentModelCatalog,
   type AgentSettings,
@@ -30,6 +31,7 @@ import {
   type ProviderInfo,
   type QaReport,
   type RevertTurnRequest,
+  type AnswerPermissionResponse,
   type RevertTurnResponse,
   type SetJevApiKeyRequest,
   type SetProviderApiKeyRequest,
@@ -44,6 +46,7 @@ import {
   type UpdateAgentSettingsRequest,
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
+import { isAnswerPermissionResponse } from "./permissionGuards";
 import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
 
@@ -105,6 +108,16 @@ export interface AgentClient {
     turnId: string,
     request: RevertTurnRequest,
   ): Promise<RevertTurnResponse>;
+  /**
+   * The user's answer to a permission card (a website setting the agent needs is off). The runtime resumes the
+   * waiting tool call and answers the request in its new state.
+   */
+  answerPermission(
+    chatId: string,
+    turnId: string,
+    permissionId: string,
+    decision: PermissionDecision,
+  ): Promise<AnswerPermissionResponse>;
   /** Same-origin URL for the chat event stream, resuming after `afterSeq`. */
   chatEventsUrl(chatId: string, afterSeq: number): string;
   projectEventsUrl(): string;
@@ -433,6 +446,13 @@ export function createAgentClient(
         `/chats/${enc(chatId)}/turns/${enc(turnId)}/unrevert`,
         isRevertTurnResponse,
         request,
+      ),
+    answerPermission: (chatId, turnId, permissionId, decision) =>
+      call(
+        "POST",
+        `/chats/${enc(chatId)}/turns/${enc(turnId)}/permissions/${enc(permissionId)}`,
+        isAnswerPermissionResponse,
+        { decision },
       ),
     chatEventsUrl: (chatId, afterSeq) =>
       `${base(`/chats/${enc(chatId)}/events`)}?after=${afterSeq}`,

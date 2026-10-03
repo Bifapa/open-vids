@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  File,
   FilmStrip,
   Image,
   MusicNotes,
+  Sparkle,
   TextAa,
   WarningCircle,
   type Icon,
@@ -24,6 +26,8 @@ const KIND_ICONS: Record<ProvenanceMediaKind, Icon> = {
   picture: Image,
   audio: MusicNotes,
   font: TextAa,
+  animation: Sparkle,
+  file: File,
 };
 
 function thumbnailUrl(projectId: string, record: ProjectSourceEntry): string | null {

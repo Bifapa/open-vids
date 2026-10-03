@@ -17,7 +17,7 @@ import { autonomyTeamLines } from "../autonomy.js";
 import { errorMessage } from "../errors.js";
 import type { JevRuntime, TurnAgentSetup } from "./orchestrator.js";
 import { jevInstructions } from "./roles.js";
-import { researchTeamLine } from "../research/prompt.js";
+import { researchTeamLine, websiteAccessLine } from "../research/prompt.js";
 import { executionTeamLine } from "../qa/prompt.js";
 
 const JEV_TEST_TIMEOUT_MS = 60_000;
@@ -109,6 +109,8 @@ export function renderTeam(setup: TurnAgentSetup): string {
       );
   }
   lines.push(researchTeamLine(setup.enabled.includes("research"), setup.research));
+  const website = websiteAccessLine(setup.research);
+  if (website) lines.push(website);
   lines.push(
     executionTeamLine(setup.execution, {
       qaAvailable: setup.qaAvailable,

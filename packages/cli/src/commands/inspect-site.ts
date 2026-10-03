@@ -6,11 +6,8 @@ import { c } from "../ui/colors.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { createRenderCancellationScope } from "../utils/renderCancellation.js";
-import {
-  SiteInspectError,
-  inspectSite,
-  type InspectSiteResult,
-} from "../siteInspect/inspectSite.js";
+import { inspectSite, type InspectSiteResult } from "../siteInspect/inspectSite.js";
+import { SiteInspectError } from "../siteInspect/siteSession.js";
 
 export const examples: Example[] = [
   ["Read a site's visual identity", "hyperframes inspect-site https://linear.app"],
@@ -41,6 +38,15 @@ function describe(site: WebsiteStyle, result: InspectSiteResult): string[] {
     `Motion ${site.motion.durationsMs.map((d) => `${d}ms`).join(", ") || "-"}  ${site.motion.easings.join(", ")}`,
     `Logo ${result.logo ? `${result.logo.file} (${result.logo.mimeType}) from ${result.logo.url}` : "not captured"}`,
     `Headings ${site.headings.slice(0, 3).join(" | ")}`,
+    ...(site.resources.length > 0
+      ? [
+          "",
+          `Files (${site.resources.length})`,
+          ...site.resources
+            .slice(0, 12)
+            .map((resource) => `  ${resource.kind.padEnd(10)} ${resource.url}`),
+        ]
+      : []),
     ...site.notes.map((note) => c.warn(`Note: ${note}`)),
     "",
     `Files in ${result.screenshots.map((shot) => shot.file).join(", ")}${result.logo ? `, ${result.logo.file}` : ""}${result.fonts.length ? `, ${result.fonts.map((font) => font.file).join(", ")}` : ""}`,

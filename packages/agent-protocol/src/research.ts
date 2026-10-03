@@ -62,13 +62,22 @@ export interface TrustedSource {
   homepage: string | null;
 }
 
-/** The Websites group of the policy: whether agents may read pages the user links in chat (see `website.ts`). */
+/** The Websites group of the policy: what agents may do with the sites the user names in chat (see `website.ts`). */
 export interface WebsitePolicy {
   /** Default `true`. Off: the website reader refuses every request. */
   readLinkedPages: boolean;
+  /**
+   * Default `false`. Full access to the linked sites: agents may also download any file such a site serves or its
+   * pages load (pictures, video, audio, Lottie/Rive animations, SVG, fonts), read the raw text of its pages, styles and
+   * scripts, and record its pages as video. Only meaningful with `readLinkedPages`; the address rules still apply.
+   */
+  fullAccess: boolean;
 }
 
-export const DEFAULT_WEBSITE_POLICY: Readonly<WebsitePolicy> = { readLinkedPages: true };
+export const DEFAULT_WEBSITE_POLICY: Readonly<WebsitePolicy> = {
+  readLinkedPages: true,
+  fullAccess: false,
+};
 
 export interface AssetSearchPolicy {
   mode: AssetSearchMode;
@@ -442,8 +451,16 @@ export interface CancelResearchRequestResult {
 
 // ── Provenance ───────────────────────────────────────────────────────────────
 
-/** What a provenance record can describe: researched media, plus fonts saved from a website reference. */
-export const PROVENANCE_MEDIA_KINDS = [...RESEARCH_MEDIA_KINDS, "font"] as const;
+/**
+ * What a provenance record can describe: researched media, plus what a website reference saves — fonts, animations
+ * (Lottie JSON / `.lottie`, Rive `.riv`) and any other file a site with full access served (`file`).
+ */
+export const PROVENANCE_MEDIA_KINDS = [
+  ...RESEARCH_MEDIA_KINDS,
+  "font",
+  "animation",
+  "file",
+] as const;
 export type ProvenanceMediaKind = (typeof PROVENANCE_MEDIA_KINDS)[number];
 
 export const PROVENANCE_PATH = ".hyperframes/research/provenance.json";
@@ -588,7 +605,8 @@ export function isAssetSearchPolicy(value: unknown): value is AssetSearchPolicy 
     ASSET_SEARCH_MODES.some((mode) => mode === value.mode) &&
     Array.isArray(value.sources) &&
     isRecord(value.websites) &&
-    typeof value.websites.readLinkedPages === "boolean"
+    typeof value.websites.readLinkedPages === "boolean" &&
+    typeof value.websites.fullAccess === "boolean"
   );
 }
 

@@ -4,10 +4,12 @@ import {
   type ActiveTurnInfo,
   type AgentId,
   type AgentModelCatalog,
+  type AnswerPermissionResponse,
   type AssistantMessage,
   type AssistantMessageStatus,
   type ChatIntent,
   type ChatMode,
+  type PermissionDecision,
   type StoryAction,
   type StoryActionOptions,
   type UserPart,
@@ -40,7 +42,9 @@ import { TurnStory } from "./story/executor.js";
 import { renderStoryBlocks } from "./story/prompt.js";
 import { isStoryToolName, storyToolsFor, timelineWritesAllowed } from "./story/tools.js";
 import { TurnResearch } from "./research/executor.js";
-import { isResearchToolName } from "./research/tools.js";
+import { isResearchToolName, type ResearchAccess } from "./research/tools.js";
+import { WebsiteResourceLog } from "./research/websiteResources.js";
+import { PermissionBroker } from "./permissions.js";
 import { TurnQa } from "./qa/executor.js";
 import { QaLoop, qaApplies, type QaPhase } from "./qa/loop.js";
 import { qaPhaseRefusal } from "./qa/phase.js";
@@ -98,6 +102,11 @@ interface ActiveRun {
   story: TurnStory | null;
   /** The turn's research tools; closed (in-flight imports and resolutions awaited) before the checkpoint ends. */
   research: TurnResearch | null;
+  /**
+   * The turn's permission requests: a website tool whose setting is off asks the user from the chat and waits here.
+   * Expired at the turn's end so no waiting call hangs; the turn's grant is revoked then too.
+   */
+  permissions: PermissionBroker | null;
   /** The turn's render QA (service calls and Vision's review tools); closed and awaited before the checkpoint ends. */
   qa: TurnQa | null;
   /** Where the turn is in render QA: tools are refused accordingly (see qa/phase.ts). */
@@ -137,6 +146,8 @@ export class TurnRunner {
   private readonly analysisPollMs: number | undefined;
   private readonly timers: StreamTimerApi;
   private readonly sessionManager: SessionManager;
+  /** Files the linked sites' reads listed, per chat: full access may fetch exactly these (see websiteResources.ts). */
+  private readonly websiteResources = new WebsiteResourceLog();
   private active: ActiveRun | null = null;
   private revertingChatId: string | null = null;
 
@@ -266,6 +277,7 @@ export class TurnRunner {
       analysis: null,
       story: null,
       research: null,
+      permissions: null,
       qa: null,
       qaPhase: null,
       mode,
@@ -381,6 +393,35 @@ export class TurnRunner {
     const run = this.active;
     if (run && run.chatId === chatId && run.turn.id === turnId && !run.finalizing)
       run.controller.abort();
+  }
+
+  /**
+   * The user's answer to a permission request of the running turn (the chat's "Allow once" / "Turn on" / "Don't
+   * allow"): the request is published in its new state and the tool call waiting on it resumes. Unknown chat or turn
+   * are `chat_not_found` / `turn_not_found`; a turn that is not running, or a request that is no longer pending, is
+   * `turn_not_active`. When Studio cannot apply an `always` or `once` answer the request stays pending and the
+   * failure is answered, so the user can retry.
+   */
+  async answerPermission(
+    chatId: string,
+    turnId: string,
+    permissionId: string,
+    decision: PermissionDecision,
+  ): Promise<AnswerPermissionResponse> {
+    const state = this.chats.get(chatId);
+    if (!state) throw new RuntimeError("chat_not_found", "Chat was not found", 404);
+    if (!state.turns.some((turn) => turn.id === turnId))
+      throw new RuntimeError("turn_not_found", "Turn was not found", 404);
+    const run = this.active;
+    if (
+      !run ||
+      run.chatId !== chatId ||
+      run.turn.id !== turnId ||
+      run.finalizing ||
+      !run.permissions
+    )
+      throw new RuntimeError("turn_not_active", "Turn is not active", 409);
+    return { permission: await run.permissions.answer(permissionId, decision) };
   }
 
   /**
@@ -698,6 +739,50 @@ export class TurnRunner {
             storyOptions: run.storyOptions,
           })
         : null;
+      // The user's Asset Search policy decides what Research may do and whether full access to the sites the user
+      // links is offered; it is read whenever a research host exists (the Director and Motion read websites even with
+      // Research off). When Studio cannot say, research fails closed and the website tools stay read-only.
+      if (researchHost) {
+        const policy = await researchHost.policy(signal).catch(() => null);
+        setup.research = policy
+          ? { status: "ready", policy }
+          : { status: "unavailable", reason: "Studio's research service did not answer" };
+      }
+      const researchAccess: ResearchAccess = {
+        assets: researchHost !== null && setup.research?.status === "ready",
+        websites: researchHost !== null,
+        websiteFiles:
+          researchHost !== null &&
+          setup.research?.status === "ready" &&
+          setup.research.policy.websites.readLinkedPages &&
+          setup.research.policy.websites.fullAccess,
+      };
+      const websiteSettings =
+        setup.research?.status === "ready"
+          ? {
+              readLinkedPages: setup.research.policy.websites.readLinkedPages,
+              fullAccess: setup.research.policy.websites.fullAccess,
+            }
+          : null;
+      // A website tool whose setting is off asks the user from the chat: the card lives in the main message of the
+      // turn, whatever agent asked, and the answer reaches Studio through the same research host.
+      run.permissions = researchHost
+        ? new PermissionBroker({
+            turnId: run.turn.id,
+            host: researchHost,
+            publish: (permission) =>
+              this.chats
+                .emit(run.chatId, {
+                  type: "permission.updated",
+                  messageId: run.assistantMessage.id,
+                  permission,
+                })
+                .then(() => undefined),
+            signal,
+            now: this.now,
+            ids: this.ids,
+          })
+        : null;
       run.research = researchHost
         ? new TurnResearch({
             host: researchHost,
@@ -707,19 +792,16 @@ export class TurnRunner {
             turn: { mode: run.mode, action: run.storyAction },
             storyOptions: run.storyOptions,
             intent: run.intent,
+            access: researchAccess,
+            websiteSettings,
+            permissions: run.permissions,
+            websites: { chatId: run.chatId, resources: this.websiteResources },
             userTexts: () => this.userTexts(run.chatId),
             turnUserTexts: () => this.userTexts(run.chatId, run.turn.id),
             askBeforeDownloads: setup.autonomy.askBeforeDownloads,
             model: () => this.researchModel(run, setup),
           })
         : null;
-      // The user's Asset Search policy decides what Research may do; when Studio cannot say, research fails closed.
-      if (run.research && setup.enabled.includes("research")) {
-        const policy = await run.research.policy(signal);
-        setup.research = policy
-          ? { status: "ready", policy }
-          : { status: "unavailable", reason: "Studio's research service did not answer" };
-      }
       // What the project is when the turn starts: render QA runs only when the turn changed it.
       const startFingerprint = qa ? await qa.fingerprint(signal).catch(() => null) : null;
       const availability: ToolAvailability = {
@@ -728,8 +810,12 @@ export class TurnRunner {
         editing: run.editing !== null,
         analysis: run.analysis !== null,
         story: run.story !== null,
-        research: run.research !== null && setup.research?.status === "ready",
-        websites: run.research !== null,
+        research:
+          researchHost !== null &&
+          setup.research?.status === "ready" &&
+          setup.enabled.includes("research"),
+        websites: researchHost !== null,
+        websiteFiles: researchAccess.websiteFiles,
         researchCandidate: (id) => this.active?.research?.candidate(id),
         researchSourceName: (id) =>
           setup.research?.status === "ready"
@@ -958,7 +1044,10 @@ export class TurnRunner {
       storyOptions: run.storyOptions,
       graph: snapshot.graph,
       view: snapshot.view,
-      researchReady: run.research !== null && setup.research?.status === "ready",
+      researchReady:
+        run.research !== null &&
+        setup.research?.status === "ready" &&
+        setup.enabled.includes("research"),
     };
   }
 
@@ -1109,6 +1198,10 @@ export class TurnRunner {
   ): Promise<void> {
     if (run.finalizing) return;
     run.finalizing = true;
+    // A call waiting on the user's permission answer must return before anything awaits the run: the pending
+    // requests become expired (their parts update) and the turn's one-time grant is revoked.
+    await run.permissions?.expireAll().catch(() => undefined);
+    await run.permissions?.revokeGrant().catch(() => undefined);
     // Every delegated run must be over before the checkpoint closes, or its later writes would escape Revert.
     await run.orchestrator?.shutdown(status === "completed").catch(() => undefined);
     // Render QA's checks, frame extractions and report writes end here too (the QA loop itself has already returned).

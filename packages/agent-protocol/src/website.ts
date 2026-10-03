@@ -1,7 +1,7 @@
 /**
  * The website style reader: an agent reads a page the user linked in chat and gets the site's visual identity
  * (palette, fonts, logo, type scale, radii, buttons, motion character, screenshots) to build a motion composition in
- * that style.
+ * that style, plus the list of files the page uses ({@link WebsiteResource}).
  *
  * - The page is rendered in headless Chrome inside a CLI child process of the Studio server (never in the server
  *   itself); the server checks the global `websites.readLinkedPages` setting and the address rules (public http(s)
@@ -10,6 +10,11 @@
  *   which knows the messages; the server never sees them.
  * - `save` writes the screenshots, the logo and the self-hosted font files actually used into `assets/web/<host>/`,
  *   each with a provenance record (origin "website reference", license unknown) in the project's research ledger.
+ * - Full access (`websites.fullAccess`, off by default): {@link WebsiteFileRequest} downloads any file of a linked
+ *   site (or one its pages load from elsewhere) into `assets/web/<host>/files/`, or returns the text of a page, style
+ *   sheet or script; {@link RecordWebsiteRequest} records a page as an MP4 into `assets/web/<host>/recordings/`.
+ *   Both are refused (`blocked_by_policy`) while full access is off. The runtime decides which URLs are "of a linked
+ *   site": the user's sites, and every resource a read of such a site listed.
  *
  * Browser-safe: no Node imports.
  */
@@ -46,6 +51,18 @@ export const WEBSITE_LIMITS = {
   fontFileBytes: 1_500_000,
   logoFileBytes: 400_000,
   screenshotBytes: 1_500_000,
+  /** Files listed in {@link WebsiteStyle.resources}. */
+  resources: 200,
+  /** Largest file a full-access download saves. */
+  fileBytes: 300_000_000,
+  /** Largest text a full-access read returns (longer text is cut, `truncated: true`). */
+  readTextChars: 200_000,
+  /** Length of a page recording, seconds. */
+  recordMinSeconds: 1,
+  recordMaxSeconds: 30,
+  /** Largest recording viewport side, pixels (even numbers). */
+  recordMaxSide: 1920,
+  selectorChars: 300,
 } as const;
 
 // ── The extracted style ──────────────────────────────────────────────────────
@@ -147,6 +164,40 @@ export interface WebsiteLogo {
   captured: boolean;
 }
 
+export const WEBSITE_RESOURCE_KINDS = [
+  "image",
+  "svg",
+  "video",
+  "audio",
+  /** Lottie JSON or `.lottie`, Rive `.riv`. */
+  "animation",
+  "font",
+  "stylesheet",
+  "script",
+  "document",
+  /** Other JSON/XML/text the page fetched. */
+  "data",
+  "other",
+] as const;
+export type WebsiteResourceKind = (typeof WEBSITE_RESOURCE_KINDS)[number];
+
+/** A file the page loaded or references (network responses plus `src`/`href`/`poster`/CSS `url()` in the DOM). */
+export interface WebsiteResource {
+  /** Absolute http(s) URL. */
+  url: string;
+  kind: WebsiteResourceKind;
+  mimeType: string | null;
+  /** Response size, when it was loaded. */
+  bytes: number | null;
+  /** Natural size of a picture or video, when the page shows it. */
+  width: number | null;
+  height: number | null;
+  /** Video/audio length in seconds, when the page shows it. */
+  duration: number | null;
+  /** Where the page uses it, short: `<video> autoplay loop in .hero`, `CSS background of .card`, `Lottie player`. */
+  usage: string;
+}
+
 export interface WebsiteStyle {
   /** The URL that was asked for. */
   url: string;
@@ -174,6 +225,8 @@ export interface WebsiteStyle {
   navLabels: string[];
   /** What the reader noticed: a cookie wall, a bot check, a page that rendered mostly empty. */
   notes: string[];
+  /** Files the page uses, most visible first (media before styles and scripts); empty from older readers. */
+  resources: WebsiteResource[];
   capturedAt: number;
 }
 
@@ -224,6 +277,103 @@ export interface ReadWebsiteResult {
   site: WebsiteStyle;
   screenshots: WebsiteScreenshot[];
   saved?: SavedWebsiteFiles;
+}
+
+export const WEBSITE_FILE_MODES = ["save", "read"] as const;
+/** `save`: download into the project; `read`: return the text (page, style sheet, script, JSON, SVG), nothing saved. */
+export type WebsiteFileMode = (typeof WEBSITE_FILE_MODES)[number];
+
+/** `POST /api/projects/:id/research/website/file` (full access only). */
+export interface WebsiteFileRequest {
+  url: string;
+  mode: WebsiteFileMode;
+  /** The linked page the file was found on (recorded as the provenance page). */
+  pageUrl?: string;
+  requestId?: string;
+  /** Set by the runtime, never the model. */
+  turnId?: string;
+  agent?: AgentId | "user";
+  model?: string | null;
+}
+
+export interface WebsiteFileResult {
+  url: string;
+  /** After redirects. */
+  finalUrl: string;
+  kind: WebsiteResourceKind;
+  mimeType: string | null;
+  bytes: number;
+  /** `read`: the text, cut at {@link WEBSITE_LIMITS.readTextChars}. */
+  text?: string;
+  truncated?: boolean;
+  /** `save`: the project-relative file under `assets/web/<host>/files/` (an identical file is reused). */
+  path?: string;
+}
+
+/** `POST /api/projects/:id/research/website/record` (full access only): a real-time recording of a page. */
+export interface RecordWebsiteRequest {
+  url: string;
+  /** {@link WEBSITE_LIMITS.recordMinSeconds}–{@link WEBSITE_LIMITS.recordMaxSeconds}. */
+  seconds: number;
+  /** Record only this element (the video is cropped to it); default the whole viewport. */
+  selector?: string;
+  /** Scroll smoothly from the top to the bottom of the page during the recording. */
+  scroll?: boolean;
+  /** Viewport, default 1920×1080, even pixels up to {@link WEBSITE_LIMITS.recordMaxSide}. */
+  width?: number;
+  height?: number;
+  requestId?: string;
+  turnId?: string;
+  agent?: AgentId | "user";
+  model?: string | null;
+}
+
+export interface RecordWebsiteResult {
+  /** The project-relative MP4 under `assets/web/<host>/recordings/`. */
+  path: string;
+  finalUrl: string;
+  width: number;
+  height: number;
+  /** Seconds. */
+  duration: number;
+  bytes: number;
+  /** What the recorder noticed: the selector matched nothing, a cookie wall, a page that kept loading. */
+  notes: string[];
+}
+
+/**
+ * `read`: what `websites.readLinkedPages` allows (reading pages); `full`: what `websites.fullAccess` allows (files,
+ * code, recordings — reading included).
+ */
+export const WEBSITE_GRANT_ACCESS = ["read", "full"] as const;
+export type WebsiteGrantAccess = (typeof WEBSITE_GRANT_ACCESS)[number];
+
+/**
+ * `POST /api/projects/:id/research/website/grants` — the user allowed a Websites setting ONCE from the chat (the
+ * runtime relays the click): until it is revoked (`DELETE …/website/grants/:turnId`, at the end of the turn) or
+ * expires, website requests of that project carrying this `turnId` pass the setting's check as if it were on. The
+ * address rules still apply.
+ */
+export interface WebsiteGrantRequest {
+  turnId: string;
+  access: WebsiteGrantAccess;
+}
+
+export interface WebsiteGrant {
+  turnId: string;
+  access: WebsiteGrantAccess;
+  grantedAt: number;
+  expiresAt: number;
+}
+
+export function isWebsiteGrant(value: unknown): value is WebsiteGrant {
+  return (
+    isRecord(value) &&
+    typeof value.turnId === "string" &&
+    WEBSITE_GRANT_ACCESS.some((access) => access === value.access) &&
+    typeof value.grantedAt === "number" &&
+    typeof value.expiresAt === "number"
+  );
 }
 
 // ── Parser ───────────────────────────────────────────────────────────────────
@@ -358,6 +508,23 @@ function tokenOf(raw: unknown): WebsiteToken | null {
   return name.startsWith("--") && value !== "" ? { name, value } : null;
 }
 
+function resourceOf(raw: unknown): WebsiteResource | null {
+  if (!isRecord(raw)) return null;
+  const url = httpUrl(raw.url);
+  const kind = oneOf(WEBSITE_RESOURCE_KINDS, raw.kind);
+  if (!url || !kind) return null;
+  return {
+    url,
+    kind,
+    mimeType: optionalText(raw.mimeType, 120),
+    bytes: nonNegative(raw.bytes),
+    width: nonNegative(raw.width),
+    height: nonNegative(raw.height),
+    duration: nonNegative(raw.duration),
+    usage: text(raw.usage, 160),
+  };
+}
+
 function logoOf(raw: unknown): WebsiteLogo | null {
   if (!isRecord(raw)) return null;
   const source = oneOf(WEBSITE_LOGO_SOURCES, raw.source);
@@ -421,6 +588,7 @@ export function parseWebsiteStyle(raw: unknown): WebsiteStyle | null {
     headings: strings(raw.headings, WEBSITE_LIMITS.headings, 160),
     navLabels: strings(raw.navLabels, WEBSITE_LIMITS.navLabels, 40),
     notes: strings(raw.notes, WEBSITE_LIMITS.notes, WEBSITE_LIMITS.textChars),
+    resources: mapped(raw.resources, WEBSITE_LIMITS.resources, resourceOf),
     capturedAt,
   };
 }
@@ -451,5 +619,33 @@ export function isReadWebsiteResult(value: unknown): value is ReadWebsiteResult 
       (isRecord(value.saved) &&
         typeof value.saved.dir === "string" &&
         Array.isArray(value.saved.files)))
+  );
+}
+
+export function isWebsiteFileResult(value: unknown): value is WebsiteFileResult {
+  return (
+    isRecord(value) &&
+    typeof value.url === "string" &&
+    typeof value.finalUrl === "string" &&
+    oneOf(WEBSITE_RESOURCE_KINDS, value.kind) !== null &&
+    (value.mimeType === null || typeof value.mimeType === "string") &&
+    nonNegative(value.bytes) !== null &&
+    (value.text === undefined || typeof value.text === "string") &&
+    (value.truncated === undefined || typeof value.truncated === "boolean") &&
+    (value.path === undefined || typeof value.path === "string")
+  );
+}
+
+export function isRecordWebsiteResult(value: unknown): value is RecordWebsiteResult {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    typeof value.finalUrl === "string" &&
+    nonNegative(value.width) !== null &&
+    nonNegative(value.height) !== null &&
+    nonNegative(value.duration) !== null &&
+    nonNegative(value.bytes) !== null &&
+    Array.isArray(value.notes) &&
+    value.notes.every((note) => typeof note === "string")
   );
 }

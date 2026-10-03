@@ -10,6 +10,20 @@ export type ResearchTurnState =
 
 const MAX_LISTED_SOURCES = 30;
 
+/**
+ * One short line about the websites settings for the agents that may read linked sites (Director, Motion, Research):
+ * with a setting off, the tools are still there and a call asks the user in chat. Empty when the policy could not be
+ * read (the role prompts cover that) or both settings are already on.
+ */
+export function websiteAccessLine(state: ResearchTurnState | undefined): string {
+  if (!state || state.status !== "ready") return "";
+  const { readLinkedPages, fullAccess } = state.policy.websites;
+  if (readLinkedPages && fullAccess) return "";
+  if (!readLinkedPages)
+    return "Reading linked pages is off right now: read_website, get_website_file and record_website are still there, and a call asks the user in chat to allow it — call the tool when the user wants the site's style, its files or a recording; no need to ask them to change Settings.";
+  return "Full access to linked sites is off right now: read_website reads a linked site as usual, and get_website_file or record_website ask the user in chat to allow full access — call them when the user wants a file or a recording from the site; no need to ask them to change Settings.";
+}
+
 const enabledSources = (policy: AssetSearchPolicy) =>
   policy.sources.filter((source) => source.enabled);
 
@@ -68,6 +82,7 @@ export function renderResearchBlock(
     policy.mode === "any"
       ? `The web backend (id "${WEB_SOURCE_ID}") and any public http(s) page (inspect_url) are allowed; trusted sources are the better first choice because their license data is structured.`
       : `The web backend ("${WEB_SOURCE_ID}") and pages outside the trusted sources are NOT allowed: the Studio server refuses them (blocked_by_policy). Do not ask for them.`;
+  const website = websiteAccessLine(state);
   return `<asset-search-policy mode="${policy.mode}">
 The user's Asset Search policy: ${modeText(policy)}.
 ${sourcesText}
@@ -80,5 +95,5 @@ Rules:
 - Import only what will be used. To fill a Missing Asset node import with "resolveMissing" set to its id (a duplicate is reused, not downloaded twice).
 - Never invent or restate license, author or source facts that the tool results do not state; the Studio server records them from the source itself.
 - Report for every asset: the project path, the source, the author, the license with its status, the credit line to show, and which node it resolved; and list what you could not find or was blocked, with why.
-</asset-search-policy>`;
+${website ? `${website}\n` : ""}</asset-search-policy>`;
 }

@@ -5,30 +5,27 @@ import { sanitizeSvg } from "@hyperframes/core/figma";
 import { WEBSITE_LIMITS, type WebsiteLogo, type WebsiteStyle } from "@hyperframes/agent-protocol";
 import type { Browser, HTTPResponse, Page } from "puppeteer-core";
 import { CAPTURE_USER_AGENT } from "../capture/userAgent.js";
-import { installPageFunctionGuard } from "../capture/captureCompositionFrame.js";
 import { assembleStyle, fontMime, type CapturedFontFile } from "./assemble.js";
 import { analyzeCss, type CssSheet } from "./cssAnalysis.js";
-import { PAGE_SCRIPT, type RawPage } from "./pageScript.js";
-import { parseRawPage, parseTokenPairs } from "./rawPage.js";
+import { PAGE_SCRIPT, RESOURCE_SCRIPT, type RawPage } from "./pageScript.js";
+import { parseRawPage, parseRawResources, parseTokenPairs } from "./rawPage.js";
+import {
+  classifyResource,
+  looksLikeLottie,
+  mergeResources,
+  resourceKey,
+  type CollectedResource,
+} from "./resources.js";
 import { createRequestPolicy, type RequestPolicy } from "./requestPolicy.js";
-
-export const SITE_INSPECT_ERROR_CODES = [
-  "blocked_by_policy",
-  "unavailable",
-  "network",
-  "unsupported",
-] as const;
-export type SiteInspectErrorCode = (typeof SITE_INSPECT_ERROR_CODES)[number];
-
-export class SiteInspectError extends Error {
-  constructor(
-    readonly code: SiteInspectErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "SiteInspectError";
-  }
-}
+import {
+  explainNavigationError,
+  guardPage,
+  launchChrome,
+  settle,
+  sleep,
+  SiteInspectError,
+  type PageCapture,
+} from "./siteSession.js";
 
 const VIEWPORT = { width: 1440, height: 900 } as const;
 const FULL_PAGE_MAX = { width: 1440, height: 3000 } as const;
@@ -67,102 +64,61 @@ export interface InspectSiteResult {
   }>;
 }
 
-const CHROME_ARGS = [
-  "--disable-extensions",
-  "--disable-sync",
-  "--disable-background-networking",
-  "--disable-default-apps",
-  "--disable-component-update",
-  "--disable-features=Translate,MediaRouter",
-  "--no-first-run",
-  "--no-default-browser-check",
-  "--mute-audio",
-  "--hide-scrollbars",
-  "--block-new-web-contents",
-  "--force-color-profile=srgb",
-  "--disable-dev-shm-usage",
-];
+const MAX_RESPONSE_RESOURCES = 400;
+const MAX_LOTTIE_CHECKS = 40;
+const MAX_LOTTIE_BYTES = 2_000_000;
+const JSON_MIME = /^(application\/(json|ld\+json)|text\/json)/;
 
-// Chrome, puppeteer and sharp load lazily: they are only needed by this command, not by every CLI start.
-async function launchChrome(userDataDir: string): Promise<Browser> {
-  const { ensureBrowser } = await import("../browser/manager.js");
-  const puppeteer = await import("puppeteer-core");
-  let executablePath: string;
-  try {
-    executablePath = (await ensureBrowser()).executablePath;
-  } catch (error) {
-    throw new SiteInspectError(
-      "unsupported",
-      `No Chrome is available to render the page: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  // The renderer sandbox stays on: this opens pages nobody vetted. Only a root user on Linux cannot have it.
-  const root = process.platform === "linux" && process.getuid?.() === 0;
-  return puppeteer.default.launch({
-    headless: true,
-    executablePath,
-    // Chrome exits when this pipe closes, so a killed CLI never leaves a browser behind.
-    pipe: true,
-    userDataDir,
-    args: [...CHROME_ARGS, ...(root ? ["--no-sandbox"] : [])],
-  });
-}
-
-/** Script run in every document before the page's own: no sockets, no service workers, no popups. */
-const LOCKDOWN_SCRIPT = String.raw`(() => {
-  var deny = function (name) {
-    return function () { throw new DOMException(name + " is disabled while a page is being read", "SecurityError"); };
-  };
-  try { window.WebSocket = deny("WebSocket"); } catch (e) {}
-  try { window.EventSource = deny("EventSource"); } catch (e) {}
-  try { window.RTCPeerConnection = deny("RTCPeerConnection"); } catch (e) {}
-  try { window.open = function () { return null; }; } catch (e) {}
-  try { if (navigator.serviceWorker) Object.defineProperty(navigator, "serviceWorker", { value: undefined }); } catch (e) {}
-})()`;
-
-interface Capture {
+interface Capture extends PageCapture {
   stylesheets: CssSheet[];
   stylesheetCount: number;
   stylesheetBytes: number;
   fonts: Map<string, CapturedFontFile>;
-  blocked: Array<{ url: string; reason: string }>;
-  /** Set when a connection went to a private address although its name vetted as public (DNS rebinding). */
-  violation: string | null;
-  pending: Array<Promise<void>>;
+  /** Every file a response answered with, by URL without its hash (the first response wins). */
+  resources: Map<string, CollectedResource>;
+  /** How many JSON responses were opened looking for Lottie animations. */
+  lottieChecks: number;
 }
 
-async function guardPage(page: Page, policy: RequestPolicy, capture: Capture): Promise<void> {
-  await installPageFunctionGuard(page);
-  await page.evaluateOnNewDocument(LOCKDOWN_SCRIPT);
-  await page.setBypassServiceWorker(true);
-  await page.setRequestInterception(true);
-  page.on("request", (request) => {
-    void (async () => {
-      const refusal = await policy.check(request.url());
-      try {
-        if (refusal) {
-          capture.blocked.push({ url: request.url(), reason: refusal.reason });
-          await request.abort("blockedbyclient");
-        } else {
-          await request.continue();
-        }
-      } catch {
-        // The page closed or the request was already answered.
-      }
-    })();
-  });
-  page.on("response", (response) => watchResponse(response, policy, capture));
-  page.on("dialog", (dialog) => void dialog.dismiss().catch(() => {}));
-}
-
-function watchResponse(response: HTTPResponse, policy: RequestPolicy, capture: Capture): void {
-  const problem = policy.remoteAddressProblem(response.remoteAddress().ip);
-  if (problem) {
-    capture.violation ??= `${new URL(response.url()).hostname}: ${problem}`;
-    return;
-  }
+function watchResponse(response: HTTPResponse, capture: Capture): void {
   const type = response.request().resourceType();
   if (!response.ok()) return;
+  const url = response.url();
+  const headers = response.headers();
+  const mimeType = (headers["content-type"] ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (/^https?:/i.test(url) && capture.resources.size < MAX_RESPONSE_RESOURCES) {
+    const length = Number(headers["content-length"]);
+    const key = resourceKey(url);
+    const entry = capture.resources.get(key) ?? {
+      url,
+      kind: classifyResource({ url, mimeType: mimeType || null, networkType: type }),
+      mimeType: mimeType || null,
+      bytes: Number.isFinite(length) && length >= 0 ? length : null,
+      width: null,
+      height: null,
+      duration: null,
+      usage: "",
+    };
+    if (!capture.resources.has(key)) capture.resources.set(key, entry);
+    // A Lottie animation is a JSON file whose shape says so; the mime type alone cannot tell it from other data.
+    const isJson = JSON_MIME.test(mimeType) || /\.json(?:$|[?#])/i.test(url);
+    if (
+      isJson &&
+      (entry.bytes === null || entry.bytes <= MAX_LOTTIE_BYTES) &&
+      capture.lottieChecks < MAX_LOTTIE_CHECKS
+    ) {
+      capture.lottieChecks += 1;
+      capture.pending.push(
+        response
+          .text()
+          .then((text) => {
+            if (text.length > MAX_LOTTIE_BYTES) return;
+            if (looksLikeLottie(text)) entry.kind = "animation";
+          })
+          .catch(() => {}),
+      );
+    }
+  }
   if (type === "stylesheet" && capture.stylesheetCount < MAX_STYLESHEETS) {
     capture.stylesheetCount += 1;
     capture.pending.push(
@@ -190,19 +146,6 @@ function watchResponse(response: HTTPResponse, policy: RequestPolicy, capture: C
         .catch(() => {}),
     );
   }
-}
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-async function settle(page: Page): Promise<void> {
-  await page.waitForNetworkIdle({ idleTime: 700, timeout: 7000 }).catch(() => {});
-  await Promise.race([
-    page.evaluate(
-      "document.fonts ? document.fonts.ready.then(function () { return true; }) : true",
-    ),
-    sleep(3000),
-  ]).catch(() => {});
-  await sleep(250);
 }
 
 /** Scrolls the whole page once so lazily loaded content and scroll-revealed elements are in place. */
@@ -438,22 +381,6 @@ function notesFor(raw: RawPage, capture: Capture, documentHeight: number): strin
   return notes;
 }
 
-function explainNavigationError(error: unknown, url: string, capture: Capture): SiteInspectError {
-  const message = error instanceof Error ? error.message : String(error);
-  const refused = capture.blocked.find((entry) => entry.url === url) ?? capture.blocked[0];
-  if (/ERR_BLOCKED_BY_CLIENT/.test(message) && refused) {
-    return new SiteInspectError("blocked_by_policy", refused.reason);
-  }
-  if (/ERR_NAME_NOT_RESOLVED|ERR_NAME_RESOLUTION_FAILED/.test(message)) {
-    return new SiteInspectError("network", `Could not look up ${new URL(url).hostname}`);
-  }
-  if (/timeout|Timeout/.test(message)) {
-    return new SiteInspectError("network", "The page did not respond in time");
-  }
-  const code = /net::(ERR_[A-Z_]+)/.exec(message)?.[1];
-  return new SiteInspectError("network", `The page could not be opened${code ? ` (${code})` : ""}`);
-}
-
 export async function inspectSite(options: InspectSiteOptions): Promise<InspectSiteResult> {
   const { url, outDir, signal } = options;
   const policy = options.policy ?? createRequestPolicy();
@@ -463,6 +390,8 @@ export async function inspectSite(options: InspectSiteOptions): Promise<InspectS
     stylesheetCount: 0,
     stylesheetBytes: 0,
     fonts: new Map(),
+    resources: new Map(),
+    lottieChecks: 0,
     blocked: [],
     violation: null,
     pending: [],
@@ -500,7 +429,7 @@ export async function inspectSite(options: InspectSiteOptions): Promise<InspectS
     const page = await browser.newPage();
     await page.setViewport({ ...VIEWPORT, deviceScaleFactor: 1 });
     await page.setUserAgent(CAPTURE_USER_AGENT);
-    await guardPage(page, policy, capture);
+    await guardPage(page, policy, capture, (response) => watchResponse(response, capture));
 
     progress(`Opening ${url}`);
     let response: HTTPResponse | null;
@@ -530,8 +459,15 @@ export async function inspectSite(options: InspectSiteOptions): Promise<InspectS
         "unavailable",
         "The page could not be read (its address is not usable)",
       );
+    progress("Listing the page's files");
+    const domResources = parseRawResources(await page.evaluate(RESOURCE_SCRIPT));
     await Promise.allSettled(capture.pending);
     if (capture.violation) throw new SiteInspectError("blocked_by_policy", capture.violation);
+    const resources = mergeResources(
+      domResources,
+      [...capture.resources.values()],
+      WEBSITE_LIMITS.resources,
+    );
 
     const css = analyzeCss([
       ...raw.inlineCss.map((text) => ({ text, baseUrl: raw.finalUrl })),
@@ -561,6 +497,7 @@ export async function inspectSite(options: InspectSiteOptions): Promise<InspectS
       tokenValues,
       fontFiles: capture.fonts,
       logos,
+      resources,
       notes: notesFor(raw, capture, raw.documentHeight),
       now: Date.now(),
     });

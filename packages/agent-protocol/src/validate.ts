@@ -1,5 +1,6 @@
 import type {
   AgentIntake,
+  AnswerPermissionRequest,
   AgentIntakeFile,
   CreateChatRequest,
   ProjectTitleRequest,
@@ -20,6 +21,7 @@ import {
   JEV_CREDENTIAL_MODES,
   MANUAL_EDIT_POLICIES,
   OAUTH_FLOWS,
+  PERMISSION_DECISIONS,
   OAUTH_LOGIN_STATUSES,
   SPECIALIST_IDS,
   STORY_ACTIONS,
@@ -804,6 +806,14 @@ export function parseRevertTurn(body: unknown): Parsed<RevertTurnRequest> {
   if (body.mode === undefined) return { ok: true, value: {} };
   const mode = REVERT_MODES.find((known) => known === body.mode);
   return mode ? { ok: true, value: { mode } } : fail("unknown revert mode");
+}
+
+export function parseAnswerPermission(body: unknown): Parsed<AnswerPermissionRequest> {
+  if (!isRecord(body)) return fail("body must be an object");
+  const decision = PERMISSION_DECISIONS.find((known) => known === body.decision);
+  return decision
+    ? { ok: true, value: { decision } }
+    : fail("decision must be once, always or deny");
 }
 
 const INTAKE_FILES = 200;

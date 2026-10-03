@@ -19,6 +19,7 @@ import {
   encodeSseMessage,
   isOAuthLoginId,
   isProviderId,
+  parseAnswerPermission,
   parseCreateChat,
   parseProjectTitleRequest,
   parseRevertTurn,
@@ -370,6 +371,25 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
     context.get("project").turns.abort(context.req.param("chatId"), context.req.param("turnId"));
     return context.json({}, 202);
   });
+
+  // The user's answer to a permission request shown in the chat ("Allow once" / "Turn on" / "Don't allow"): the
+  // waiting tool call resumes (or is refused) with it. `always` switches the setting on, `once` grants the turn.
+  app.post(
+    `${AGENT_RUNTIME_PREFIX}/chats/:chatId/turns/:turnId/permissions/:permissionId`,
+    async (context) => {
+      const parsed = parseAnswerPermission(await readBody(context));
+      if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+      const response = await context
+        .get("project")
+        .turns.answerPermission(
+          context.req.param("chatId"),
+          context.req.param("turnId"),
+          context.req.param("permissionId"),
+          parsed.value.decision,
+        );
+      return context.json(response);
+    },
+  );
 
   app.post(`${AGENT_RUNTIME_PREFIX}/chats/:chatId/turns/:turnId/revert`, async (context) => {
     const parsed = parseRevertTurn(await readBody(context));

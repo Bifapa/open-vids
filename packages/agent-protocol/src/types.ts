@@ -692,8 +692,63 @@ export interface DelegationPart {
   runId: string;
 }
 
+/**
+ * Settings an agent can ask the user to allow from the chat: `read_linked_pages` is Asset Search → Websites → "Read
+ * linked pages" (`websites.readLinkedPages`), `website_full_access` is "Full access to linked sites"
+ * (`websites.fullAccess`, which needs reading too).
+ */
+export const PERMISSION_KINDS = ["read_linked_pages", "website_full_access"] as const;
+export type PermissionKind = (typeof PERMISSION_KINDS)[number];
+
+/** What the agent was about to do when it asked (set by the runtime from the tool, never by the model). */
+export const PERMISSION_ACTIONS = ["read", "download", "read_code", "record"] as const;
+export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
+
+/** `once`: allowed for the rest of this turn only; `always`: the setting is switched on; `deny`: not allowed. */
+export const PERMISSION_DECISIONS = ["once", "always", "deny"] as const;
+export type PermissionDecision = (typeof PERMISSION_DECISIONS)[number];
+
+/** `expired`: the turn ended (finished, stopped, failed) before the user answered. */
+export const PERMISSION_STATES = [
+  "pending",
+  "allowed_once",
+  "enabled",
+  "denied",
+  "expired",
+] as const;
+export type PermissionState = (typeof PERMISSION_STATES)[number];
+
+/**
+ * A setting an agent needs that is off: the tool call waits while the chat shows the setting with "Allow once",
+ * "Turn on" and "Don't allow"; the answer (`POST …/turns/:turnId/permissions/:id`) resumes it.
+ */
+export interface PermissionRequest {
+  id: string;
+  kind: PermissionKind;
+  action: PermissionAction;
+  /** The site the agent wants (registrable domain, e.g. `openvids.ai`), when the request is about one. */
+  site: string | null;
+  /** Who asked (a specialist inside its run, or the Director). */
+  agent: AgentId;
+  state: PermissionState;
+  requestedAt: number;
+  answeredAt?: number;
+}
+
+/** Shown in the main conversation's message of the turn, whichever agent asked. */
+export interface PermissionPart {
+  type: "permission";
+  id: string;
+  permission: PermissionRequest;
+}
+
 export type UserPart = TextPart | ReferencePart;
-export type AssistantPart = TextPart | ThinkingPart | ActivityPart | DelegationPart;
+export type AssistantPart =
+  | TextPart
+  | ThinkingPart
+  | ActivityPart
+  | DelegationPart
+  | PermissionPart;
 
 interface MessageBase {
   id: string;

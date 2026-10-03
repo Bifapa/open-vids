@@ -4,7 +4,7 @@
 //! `/api/` routes, so the per-launch token guards them.
 //!
 //! - `GET    /api/research/policy` → the policy
-//! - `PUT    /api/research/policy {mode?, websites?: {readLinkedPages}}` → the policy
+//! - `PUT    /api/research/policy {mode?, websites?: {readLinkedPages?, fullAccess?}}` → the policy
 //! - `POST   /api/research/sources {name, domains, kinds?, homepage?, licenseNote?}` → the policy
 //! - `PATCH  /api/research/sources/<id> {enabled?, name?, domains?, kinds?, licenseNote?}` → the policy
 //! - `DELETE /api/research/sources/<id>` → the policy

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AssetSearchPolicy } from "@hyperframes/agent-protocol";
 import { t } from "../i18n";
 import type { ResearchClient } from "./researchClient";
+import { onAssetSearchPolicyChanged } from "./policyChanges";
 
 export interface AssetSearchPolicyState {
   policy: AssetSearchPolicy | null;
@@ -44,6 +45,8 @@ export function useAssetSearchPolicy(client: ResearchClient): AssetSearchPolicyS
 
   useEffect(() => {
     void reload();
+    // "Turn on" in the chat changes the stored policy behind this view's back.
+    return onAssetSearchPolicyChanged(() => void reload());
   }, [reload]);
 
   const change = useCallback(

@@ -9,8 +9,11 @@ import {
   isProjectSourcesView,
   isReadWebsiteResult,
   isRecord,
+  isRecordWebsiteResult,
   isResearchError,
   isResolveMissingResult,
+  isWebsiteFileResult,
+  isWebsiteGrant,
   type AssetSearchPolicy,
   type AssetSearchRequest,
   type AssetSearchResult,
@@ -23,8 +26,15 @@ import {
   type ProjectSourcesView,
   type ReadWebsiteRequest,
   type ReadWebsiteResult,
+  type RecordWebsiteRequest,
+  type RecordWebsiteResult,
   type ResolveMissingRequest,
   type ResolveMissingResult,
+  type UpdateAssetSearchPolicyRequest,
+  type WebsiteFileRequest,
+  type WebsiteFileResult,
+  type WebsiteGrant,
+  type WebsiteGrantRequest,
 } from "@hyperframes/agent-protocol";
 import type { ProjectScope } from "../checkpointHost.js";
 import { ResearchToolError, type ResearchHost } from "./host.js";
@@ -41,6 +51,10 @@ export const RESEARCH_TIMEOUTS_MS = {
   importAsset: 15 * 60_000,
   /** Chrome renders the page (30 s budget) and a save downloads logo and fonts. */
   website: 120_000,
+  /** A full-access download may be a large video (up to 300 MB) and can be converted for the editor. */
+  websiteFile: 15 * 60_000,
+  /** A page recording runs at most 30 s of real time plus the page load. */
+  recordWebsite: 5 * 60_000,
 } as const;
 
 /**
@@ -99,6 +113,39 @@ export class HttpResearchHost implements ResearchHost {
     });
     if (!isAssetSearchPolicy(payload)) throw invalidResponse("Asset Search policy");
     return payload;
+  }
+
+  async updateWebsitePolicy(
+    request: UpdateAssetSearchPolicyRequest,
+    signal: AbortSignal,
+  ): Promise<AssetSearchPolicy> {
+    const payload = await this.request("PUT", `${this.global}/policy`, {
+      body: request,
+      signal,
+      timeoutMs: this.timeoutsMs.read,
+      onTimeout: "Studio did not answer in time.",
+    });
+    if (!isAssetSearchPolicy(payload)) throw invalidResponse("Asset Search policy");
+    return payload;
+  }
+
+  async grantWebsite(request: WebsiteGrantRequest, signal: AbortSignal): Promise<WebsiteGrant> {
+    const payload = await this.request("POST", `${this.project}/website/grants`, {
+      body: request,
+      signal,
+      timeoutMs: this.timeoutsMs.read,
+      onTimeout: "Studio did not answer in time.",
+    });
+    if (!isWebsiteGrant(payload)) throw invalidResponse("website grant");
+    return payload;
+  }
+
+  async revokeWebsiteGrant(turnId: string, signal: AbortSignal): Promise<void> {
+    await this.request("DELETE", `${this.project}/website/grants/${encodeURIComponent(turnId)}`, {
+      signal,
+      timeoutMs: this.timeoutsMs.read,
+      onTimeout: "Studio did not answer in time.",
+    });
   }
 
   async search(request: AssetSearchRequest, signal: AbortSignal): Promise<AssetSearchResult> {
@@ -161,6 +208,36 @@ export class HttpResearchHost implements ResearchHost {
     return payload;
   }
 
+  async websiteFile(request: WebsiteFileRequest, signal: AbortSignal): Promise<WebsiteFileResult> {
+    const options = {
+      signal,
+      timeoutMs: this.timeoutsMs.websiteFile,
+      onTimeout:
+        "The file did not finish downloading in time and was cancelled; read_sources shows whether it reached the project.",
+    };
+    // A read returns text and writes nothing; a save downloads the file and is awaited like an import.
+    const payload =
+      request.mode === "save"
+        ? await this.write("website/file", request, options)
+        : await this.request("POST", `${this.project}/website/file`, { ...options, body: request });
+    if (!isWebsiteFileResult(payload)) throw invalidResponse("website file result");
+    return payload;
+  }
+
+  async recordWebsite(
+    request: RecordWebsiteRequest,
+    signal: AbortSignal,
+  ): Promise<RecordWebsiteResult> {
+    const payload = await this.write("website/record", request, {
+      signal,
+      timeoutMs: this.timeoutsMs.recordWebsite,
+      onTimeout:
+        "The recording did not finish in time and was cancelled; check the project before trying again.",
+    });
+    if (!isRecordWebsiteResult(payload)) throw invalidResponse("website recording result");
+    return payload;
+  }
+
   async sources(signal: AbortSignal): Promise<ProjectSourcesView> {
     const payload = await this.request("GET", `${this.project}/sources`, {
       signal,
@@ -183,7 +260,7 @@ export class HttpResearchHost implements ResearchHost {
 
   /** A read: abandoned (the connection closed) as soon as the caller's signal aborts or the call times out. */
   private async request(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT" | "DELETE",
     url: string,
     { body, signal, timeoutMs, onTimeout }: RequestOptions,
   ): Promise<unknown> {
@@ -195,7 +272,8 @@ export class HttpResearchHost implements ResearchHost {
   }
 
   /**
-   * An import, a resolution or a saved website read: it writes project files, so stopping it must not end with a write landing after the
+   * An import, a resolution, a saved website read, a full-access download or a page recording: it writes project
+   * files, so stopping it must not end with a write landing after the
    * turn's checkpoint closed. The call carries a fresh request id; when the caller's signal aborts (the turn was
    * stopped) or the call times out, the host sends an explicit cancel and keeps waiting for the original request's
    * answer instead of dropping the connection:
@@ -209,8 +287,13 @@ export class HttpResearchHost implements ResearchHost {
    *   write, and a stuck Studio must not hold the turn (and the user's Stop) forever.
    */
   private async write(
-    path: "import" | "resolve" | "website",
-    request: ImportAssetRequest | ResolveMissingRequest | ReadWebsiteRequest,
+    path: "import" | "resolve" | "website" | "website/file" | "website/record",
+    request:
+      | ImportAssetRequest
+      | ResolveMissingRequest
+      | ReadWebsiteRequest
+      | WebsiteFileRequest
+      | RecordWebsiteRequest,
     { signal, timeoutMs, onTimeout }: Omit<RequestOptions, "body">,
   ): Promise<unknown> {
     if (signal.aborted) throw aborted();
@@ -280,7 +363,7 @@ export class HttpResearchHost implements ResearchHost {
   }
 
   private async exchange(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT" | "DELETE",
     url: string,
     body: unknown,
     signal: AbortSignal,

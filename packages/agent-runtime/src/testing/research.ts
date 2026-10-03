@@ -13,9 +13,16 @@ import type {
   ProjectSourcesView,
   ReadWebsiteRequest,
   ReadWebsiteResult,
+  RecordWebsiteRequest,
+  RecordWebsiteResult,
   ResolveMissingRequest,
   ResolveMissingResult,
   TrustedSource,
+  UpdateAssetSearchPolicyRequest,
+  WebsiteFileRequest,
+  WebsiteFileResult,
+  WebsiteGrant,
+  WebsiteGrantRequest,
   WebsiteStyle,
 } from "@hyperframes/agent-protocol";
 import { storyView } from "./story.js";
@@ -52,7 +59,7 @@ export function researchPolicy(overrides: Partial<AssetSearchPolicy> = {}): Asse
       }),
     ],
     removedBuiltIns: [],
-    websites: { readLinkedPages: true },
+    websites: { readLinkedPages: true, fullAccess: false },
     updatedAt: 1,
     ...overrides,
   };
@@ -131,6 +138,58 @@ export function sampleWebsiteStyle(url = "https://example.com/"): WebsiteStyle {
     headings: ["Build better products"],
     navLabels: ["Product", "Pricing"],
     notes: [],
+    resources: [
+      {
+        url: `https://${host}/media/hero.mp4`,
+        kind: "video",
+        mimeType: "video/mp4",
+        bytes: 4_200_000,
+        width: 1920,
+        height: 1080,
+        duration: 6.5,
+        usage: "<video> autoplay loop in .hero",
+      },
+      {
+        url: `https://${host}/img/product.png`,
+        kind: "image",
+        mimeType: "image/png",
+        bytes: 180_000,
+        width: 1200,
+        height: 800,
+        duration: null,
+        usage: "product card",
+      },
+      {
+        url: "https://cdn.example-cdn.com/lottie/loader.json",
+        kind: "animation",
+        mimeType: "application/json",
+        bytes: 90_000,
+        width: null,
+        height: null,
+        duration: null,
+        usage: "Lottie player in .badge",
+      },
+      {
+        url: `https://${host}/fonts/brand.woff2`,
+        kind: "font",
+        mimeType: "font/woff2",
+        bytes: 48_000,
+        width: null,
+        height: null,
+        duration: null,
+        usage: "headings",
+      },
+      {
+        url: `https://${host}/app.css`,
+        kind: "stylesheet",
+        mimeType: "text/css",
+        bytes: 12_000,
+        width: null,
+        height: null,
+        duration: null,
+        usage: "global styles",
+      },
+    ],
     capturedAt: 1,
   };
 }
@@ -252,6 +311,8 @@ export class FakeResearchHost implements ResearchHost {
   policyResult: AssetSearchPolicy = researchPolicy();
   /** The next `policy` call rejects with this error. */
   nextPolicyError: ResearchToolError | null = null;
+  /** The next `updateWebsitePolicy`, `grantWebsite` or `revokeWebsiteGrant` call rejects with this error. */
+  nextPermissionError: ResearchToolError | null = null;
   /** What `search` returns (candidates); the request's query and kind are echoed. */
   searchCandidates: AssetCandidate[] = [];
   /** When set, `search` answers with this result as is. */
@@ -259,6 +320,10 @@ export class FakeResearchHost implements ResearchHost {
   inspectResult: InspectUrlResult | null = null;
   /** What `website` answers; default: {@link sampleWebsiteStyle} of the requested URL with two screenshots. */
   websiteResult: ReadWebsiteResult | null = null;
+  /** What `websiteFile` answers; default: a site file in `assets/web/<host>/files/` or a sample stylesheet text. */
+  websiteFileResult: WebsiteFileResult | null = null;
+  /** What `recordWebsite` answers; default: an MP4 in the site's `recordings/` folder. */
+  recordResult: RecordWebsiteResult | null = null;
   /** What `importAsset` answers; default: a fresh import of `assets/research/ocean-waves.mp4`. */
   importResult: ImportAssetResult | null = null;
   sourcesResult: ProjectSourcesView = sampleSourcesView();
@@ -275,9 +340,17 @@ export class FakeResearchHost implements ResearchHost {
   importGate: Promise<void> | null = null;
 
   policyCalls = 0;
+  /** Every `PUT /api/research/policy` the runtime sent (the user's "Turn on"). */
+  readonly policyUpdates: UpdateAssetSearchPolicyRequest[] = [];
+  /** Every grant the runtime posted (the user's "Allow once"). */
+  readonly grants: WebsiteGrantRequest[] = [];
+  /** Every turn id whose grant the runtime revoked at the turn's end. */
+  readonly revokedGrants: string[] = [];
   readonly searchRequests: AssetSearchRequest[] = [];
   readonly inspectRequests: InspectUrlRequest[] = [];
   readonly websiteRequests: ReadWebsiteRequest[] = [];
+  readonly websiteFileRequests: WebsiteFileRequest[] = [];
+  readonly recordRequests: RecordWebsiteRequest[] = [];
   readonly importRequests: ImportAssetRequest[] = [];
   readonly importFinished: ImportAssetRequest[] = [];
   /** The signal each import was given, so tests can see when the turn stopped waiting for it. */
@@ -295,6 +368,38 @@ export class FakeResearchHost implements ResearchHost {
       throw error;
     }
     return structuredClone(this.policyResult);
+  }
+
+  async updateWebsitePolicy(
+    request: UpdateAssetSearchPolicyRequest,
+    signal: AbortSignal,
+  ): Promise<AssetSearchPolicy> {
+    if (signal.aborted) throw aborted();
+    this.policyUpdates.push(request);
+    this.throwNextPermissionError();
+    this.policyResult = {
+      ...this.policyResult,
+      websites: { ...this.policyResult.websites, ...request.websites },
+    };
+    return structuredClone(this.policyResult);
+  }
+
+  async grantWebsite(request: WebsiteGrantRequest, signal: AbortSignal): Promise<WebsiteGrant> {
+    if (signal.aborted) throw aborted();
+    this.grants.push(request);
+    this.throwNextPermissionError();
+    return {
+      turnId: request.turnId,
+      access: request.access,
+      grantedAt: 1_700_000_000_000,
+      expiresAt: 1_700_000_000_000 + 6 * 60 * 60_000,
+    };
+  }
+
+  async revokeWebsiteGrant(turnId: string, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) throw aborted();
+    this.revokedGrants.push(turnId);
+    this.throwNextPermissionError();
   }
 
   async search(request: AssetSearchRequest, signal: AbortSignal): Promise<AssetSearchResult> {
@@ -362,6 +467,54 @@ export class FakeResearchHost implements ResearchHost {
     );
   }
 
+  async websiteFile(request: WebsiteFileRequest, signal: AbortSignal): Promise<WebsiteFileResult> {
+    if (signal.aborted) throw aborted();
+    this.websiteFileRequests.push(request);
+    this.throwNextError();
+    const url = new URL(request.url);
+    const host = url.hostname.replace(/^www\./, "");
+    const name = url.pathname.split("/").filter(Boolean).at(-1) ?? "file";
+    const result: WebsiteFileResult =
+      request.mode === "save"
+        ? {
+            url: request.url,
+            finalUrl: request.url,
+            kind: "animation",
+            mimeType: "application/json",
+            bytes: 90_000,
+            path: `assets/web/${host}/files/${name}`,
+          }
+        : {
+            url: request.url,
+            finalUrl: request.url,
+            kind: "stylesheet",
+            mimeType: "text/css",
+            bytes: 12_000,
+            text: "/* sample */ .hero { color: #5e6ad2; }",
+          };
+    return structuredClone(this.websiteFileResult ?? result);
+  }
+
+  async recordWebsite(
+    request: RecordWebsiteRequest,
+    signal: AbortSignal,
+  ): Promise<RecordWebsiteResult> {
+    if (signal.aborted) throw aborted();
+    this.recordRequests.push(request);
+    this.throwNextError();
+    const host = new URL(request.url).hostname.replace(/^www\./, "");
+    const result: RecordWebsiteResult = {
+      path: `assets/web/${host}/recordings/page.mp4`,
+      finalUrl: request.url,
+      width: request.width ?? 1920,
+      height: request.height ?? 1080,
+      duration: request.seconds,
+      bytes: 2_400_000,
+      notes: [],
+    };
+    return structuredClone(this.recordResult ?? result);
+  }
+
   async importAsset(request: ImportAssetRequest, signal: AbortSignal): Promise<ImportAssetResult> {
     if (signal.aborted) throw aborted();
     this.importRequests.push(request);
@@ -426,6 +579,13 @@ export class FakeResearchHost implements ResearchHost {
     if (!this.nextError) return;
     const error = this.nextError;
     this.nextError = null;
+    throw error;
+  }
+
+  private throwNextPermissionError(): void {
+    if (!this.nextPermissionError) return;
+    const error = this.nextPermissionError;
+    this.nextPermissionError = null;
     throw error;
   }
 }

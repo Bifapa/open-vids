@@ -1,9 +1,13 @@
 // @vitest-environment node
+import { writeFileSync } from "node:fs";
 import { Hono } from "hono";
 import {
   isAssetSearchPolicy,
   isAssetSearchResult,
   isReadWebsiteResult,
+  isRecordWebsiteResult,
+  isWebsiteFileResult,
+  isWebsiteGrant,
 } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WebsiteInspection } from "../types.js";
@@ -225,19 +229,28 @@ describe("the website reader routes", () => {
     fonts: [],
   };
 
-  it("serve and change the Websites switch through the policy routes", async () => {
+  it("serve and change the Websites switches through the policy routes", async () => {
     const { call } = app();
     expect((await call("GET", "/research/policy")).body).toMatchObject({
-      websites: { readLinkedPages: true },
+      websites: { readLinkedPages: true, fullAccess: false },
     });
     expect(
       (await call("PUT", "/research/policy", { websites: { readLinkedPages: false } })).body,
-    ).toMatchObject({ mode: "trusted", websites: { readLinkedPages: false } });
+    ).toMatchObject({ mode: "trusted", websites: { readLinkedPages: false, fullAccess: false } });
+    expect(
+      (await call("PUT", "/research/policy", { websites: { fullAccess: true } })).body,
+    ).toMatchObject({ mode: "trusted", websites: { readLinkedPages: false, fullAccess: true } });
     expect((await call("PUT", "/research/policy", { mode: "any" })).body).toMatchObject({
       mode: "any",
-      websites: { readLinkedPages: false },
+      websites: { readLinkedPages: false, fullAccess: true },
     });
-    for (const bad of [{}, { websites: {} }, { websites: { readLinkedPages: "yes" } }]) {
+    for (const bad of [
+      {},
+      { websites: {} },
+      { websites: { readLinkedPages: "yes" } },
+      { websites: { fullAccess: "yes" } },
+      { websites: { readLinkedPages: true, nope: 1 } },
+    ]) {
       expect(await call("PUT", "/research/policy", bad)).toMatchObject({
         status: 400,
         body: { error: { code: "invalid_request" } },
@@ -286,5 +299,327 @@ describe("the website reader routes", () => {
     expect(
       await call("POST", "/projects/demo/research/website", { url: "https://example.com/" }),
     ).toMatchObject({ status: 415, body: { error: { code: "unsupported" } } });
+  });
+});
+
+describe("the full-access website routes", () => {
+  it("refuse file and record with 403 while full access is off", async () => {
+    const { call } = app();
+    expect(
+      await call("POST", "/projects/demo/research/website/file", {
+        url: "https://example.com/a.txt",
+        mode: "read",
+      }),
+    ).toMatchObject({ status: 403, body: { error: { code: "blocked_by_policy" } } });
+    expect(
+      await call("POST", "/projects/demo/research/website/record", {
+        url: "https://example.com/",
+        seconds: 2,
+      }),
+    ).toMatchObject({ status: 403, body: { error: { code: "blocked_by_policy" } } });
+  });
+
+  it("read text and save a file over HTTP, and answer bad bodies", async () => {
+    const { f, call } = app();
+    await call("PUT", "/research/policy", { websites: { fullAccess: true } });
+
+    f.net.when("https://example.com/app.js", media("console.log(1)", "application/javascript"));
+    const read = await call("POST", "/projects/demo/research/website/file", {
+      url: "https://example.com/app.js",
+      mode: "read",
+    });
+    expect(read.status).toBe(200);
+    if (!isWebsiteFileResult(read.body)) throw new Error("not a website file result");
+    expect(read.body).toMatchObject({ kind: "script", text: "console.log(1)", truncated: false });
+
+    f.net.when("https://example.com/hero.png", media("PNGDATA", "image/png"));
+    const saved = await call("POST", "/projects/demo/research/website/file", {
+      url: "https://example.com/hero.png",
+      mode: "save",
+      pageUrl: "https://example.com/",
+    });
+    expect(saved.status).toBe(200);
+    if (!isWebsiteFileResult(saved.body)) throw new Error("not a website file result");
+    expect(saved.body.path).toBe("assets/web/example.com/files/hero.png");
+
+    expect(
+      await call("POST", "/projects/demo/research/website/file", {
+        url: "https://example.com/a",
+        mode: "download",
+      }),
+    ).toMatchObject({ status: 400 });
+    expect(
+      await call("POST", "/projects/demo/research/website/file", {
+        url: "https://example.com/a",
+        mode: "read",
+        extra: 1,
+      }),
+    ).toMatchObject({ status: 400 });
+    expect(
+      await call("POST", "/projects/demo/research/website/file", {
+        url: "http://127.0.0.1/",
+        mode: "read",
+      }),
+    ).toMatchObject({ status: 403, body: { error: { code: "blocked_by_policy" } } });
+    expect(
+      (
+        await call("POST", "/projects/ghost/research/website/file", {
+          url: "https://example.com/a",
+          mode: "read",
+        })
+      ).status,
+    ).toBe(404);
+  });
+
+  it("record through the adapter, validate the body and answer 415 without a capability", async () => {
+    const { f, call } = app();
+    await call("PUT", "/research/policy", { websites: { fullAccess: true } });
+    expect(
+      await call("POST", "/projects/demo/research/website/record", {
+        url: "https://example.com/",
+        seconds: 2,
+      }),
+    ).toMatchObject({ status: 415, body: { error: { code: "unsupported" } } });
+
+    const seen: Array<{ width: number; height: number }> = [];
+    f.story.made.adapter.recordWebsite = async (opts) => {
+      seen.push({ width: opts.width, height: opts.height });
+      writeFileSync(opts.outFile, "MP4");
+      return {
+        finalUrl: opts.url,
+        width: opts.width,
+        height: opts.height,
+        duration: opts.seconds,
+        notes: [],
+      };
+    };
+    const recorded = await call("POST", "/projects/demo/research/website/record", {
+      url: "https://example.com/",
+      seconds: 2,
+      width: 1001,
+      height: 900,
+    });
+    expect(recorded.status).toBe(200);
+    if (!isRecordWebsiteResult(recorded.body)) throw new Error("not a record result");
+    expect(recorded.body).toMatchObject({ width: 1000, height: 900, duration: 2, bytes: 3 });
+    expect(recorded.body.path).toMatch(/^assets\/web\/example\.com\/recordings\//);
+    expect(seen).toEqual([{ width: 1000, height: 900 }]);
+
+    for (const bad of [
+      { url: "https://example.com/" },
+      { url: "https://example.com/", seconds: 0 },
+      { url: "https://example.com/", seconds: 31 },
+      { url: "https://example.com/", seconds: 2, width: 1001.5 },
+      { url: "https://example.com/", seconds: 2, width: 4000 },
+      { url: "https://example.com/", seconds: 2, scroll: "yes" },
+      { url: "https://example.com/", seconds: 2, selector: "x".repeat(301) },
+      { url: "https://example.com/", seconds: 2, extra: 1 },
+    ]) {
+      expect(await call("POST", "/projects/demo/research/website/record", bad)).toMatchObject({
+        status: 400,
+      });
+    }
+  });
+});
+
+describe("the one-time website grants", () => {
+  const inspection: WebsiteInspection = {
+    site: {
+      url: "https://example.com/",
+      finalUrl: "https://example.com/",
+      host: "example.com",
+      title: "Example",
+      description: "",
+      themeColor: null,
+      language: null,
+      colors: [],
+      fonts: [],
+      textStyles: [],
+      radii: [],
+      shadows: [],
+      buttons: [],
+      tokens: [],
+      motion: { durationsMs: [], easings: [], keyframes: [], properties: [] },
+      logos: [],
+      favicon: null,
+      ogImage: null,
+      headings: [],
+      navLabels: [],
+      notes: [],
+      capturedAt: 1,
+    },
+    screenshots: [],
+    logo: null,
+    fonts: [],
+  };
+  const off = { websites: { readLinkedPages: false, fullAccess: false } };
+  const page = { url: "https://example.com/" };
+
+  it("let a read-granted turn read, keep files and recordings blocked, and unblock on revoke", async () => {
+    const { f, call } = app();
+    f.story.made.adapter.inspectWebsite = async () => inspection;
+    await call("PUT", "/research/policy", off);
+
+    expect(
+      await call("POST", "/projects/demo/research/website", { ...page, turnId: "turn-a" }),
+    ).toMatchObject({
+      status: 403,
+      body: {
+        error: {
+          code: "blocked_by_policy",
+          message: expect.stringContaining("Settings → Asset Search → Websites"),
+        },
+      },
+    });
+    expect(
+      await call("POST", "/projects/demo/research/website/file", {
+        url: "https://example.com/a.txt",
+        mode: "read",
+        turnId: "turn-a",
+      }),
+    ).toMatchObject({ status: 403, body: { error: { code: "blocked_by_policy" } } });
+
+    const granted = await call("POST", "/projects/demo/research/website/grants", {
+      turnId: "turn-a",
+      access: "read",
+    });
+    expect(granted.status).toBe(200);
+    if (!isWebsiteGrant(granted.body)) throw new Error("not a website grant");
+    expect(granted.body).toMatchObject({ turnId: "turn-a", access: "read" });
+    expect(granted.body.expiresAt).toBeGreaterThan(granted.body.grantedAt);
+
+    // The granted turn reads; another turn and a request without one stay blocked.
+    expect(
+      (await call("POST", "/projects/demo/research/website", { ...page, turnId: "turn-a" })).status,
+    ).toBe(200);
+    expect(
+      await call("POST", "/projects/demo/research/website", { ...page, turnId: "turn-b" }),
+    ).toMatchObject({ status: 403, body: { error: { code: "blocked_by_policy" } } });
+    expect(await call("POST", "/projects/demo/research/website", page)).toMatchObject({
+      status: 403,
+      body: { error: { code: "blocked_by_policy" } },
+    });
+    // A read grant does not open files or recordings.
+    expect(
+      await call("POST", "/projects/demo/research/website/file", {
+        url: "https://example.com/a.txt",
+        mode: "read",
+        turnId: "turn-a",
+      }),
+    ).toMatchObject({ status: 403, body: { error: { code: "blocked_by_policy" } } });
+    expect(
+      await call("POST", "/projects/demo/research/website/record", {
+        url: "https://example.com/",
+        seconds: 2,
+        turnId: "turn-a",
+      }),
+    ).toMatchObject({ status: 403, body: { error: { code: "blocked_by_policy" } } });
+
+    // Revoking restores the block, and revoking again is idempotent.
+    expect((await call("DELETE", "/projects/demo/research/website/grants/turn-a")).body).toEqual({
+      ok: true,
+    });
+    expect(
+      await call("POST", "/projects/demo/research/website", { ...page, turnId: "turn-a" }),
+    ).toMatchObject({ status: 403, body: { error: { code: "blocked_by_policy" } } });
+    expect((await call("DELETE", "/projects/demo/research/website/grants/turn-a")).body).toEqual({
+      ok: true,
+    });
+  });
+
+  it("let a fully granted turn read, download and record without changing the policy", async () => {
+    const { f, call } = app();
+    f.story.made.adapter.inspectWebsite = async () => inspection;
+    f.story.made.adapter.recordWebsite = async (opts) => {
+      writeFileSync(opts.outFile, "MP4");
+      return {
+        finalUrl: opts.url,
+        width: opts.width,
+        height: opts.height,
+        duration: opts.seconds,
+        notes: [],
+      };
+    };
+    await call("PUT", "/research/policy", off);
+    await call("POST", "/projects/demo/research/website/grants", {
+      turnId: "turn-a",
+      access: "full",
+    });
+
+    f.net.when("https://example.com/app.js", media("console.log(1)", "application/javascript"));
+    const read = await call("POST", "/projects/demo/research/website/file", {
+      url: "https://example.com/app.js",
+      mode: "read",
+      turnId: "turn-a",
+    });
+    expect(read.status).toBe(200);
+    if (!isWebsiteFileResult(read.body)) throw new Error("not a website file result");
+    expect(read.body).toMatchObject({ kind: "script", text: "console.log(1)", truncated: false });
+
+    f.net.when("https://example.com/hero.png", media("PNGDATA", "image/png"));
+    const saved = await call("POST", "/projects/demo/research/website/file", {
+      url: "https://example.com/hero.png",
+      mode: "save",
+      pageUrl: "https://example.com/",
+      turnId: "turn-a",
+    });
+    expect(saved.status).toBe(200);
+    if (!isWebsiteFileResult(saved.body)) throw new Error("not a website file result");
+    expect(saved.body.path).toBe("assets/web/example.com/files/hero.png");
+
+    expect(
+      (await call("POST", "/projects/demo/research/website", { ...page, turnId: "turn-a" })).status,
+    ).toBe(200);
+    expect(
+      (
+        await call("POST", "/projects/demo/research/website/record", {
+          ...page,
+          seconds: 2,
+          turnId: "turn-a",
+        })
+      ).status,
+    ).toBe(200);
+
+    // The grant is per turn; it changed no setting.
+    expect(
+      await call("POST", "/projects/demo/research/website/file", {
+        url: "https://example.com/app.js",
+        mode: "read",
+        turnId: "turn-b",
+      }),
+    ).toMatchObject({ status: 403 });
+    expect((await call("GET", "/research/policy")).body).toMatchObject({
+      websites: { readLinkedPages: false, fullAccess: false },
+    });
+  });
+
+  it("validate the grant body and the turn id, and answer an unknown project with 404", async () => {
+    const { call } = app();
+    for (const bad of [
+      {},
+      { turnId: "turn-a" },
+      { access: "read" },
+      { turnId: "", access: "read" },
+      { turnId: "   ", access: "read" },
+      { turnId: 5, access: "read" },
+      { turnId: "turn-a", access: "download" },
+      { turnId: "turn-a", access: "read", extra: 1 },
+      { turnId: "x".repeat(257), access: "read" },
+    ]) {
+      expect(await call("POST", "/projects/demo/research/website/grants", bad)).toMatchObject({
+        status: 400,
+        body: { error: { code: "invalid_request" } },
+      });
+    }
+    expect(await call("DELETE", "/projects/demo/research/website/grants/%20")).toMatchObject({
+      status: 400,
+      body: { error: { code: "invalid_request" } },
+    });
+    expect(
+      await call("POST", "/projects/ghost/research/website/grants", {
+        turnId: "turn-a",
+        access: "read",
+      }),
+    ).toMatchObject({ status: 404 });
   });
 });

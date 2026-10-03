@@ -10,12 +10,14 @@
 //!
 //! - schema `openvids.research-policy/1`: `mode`, `builtIns` (what the user
 //!   changed about a built-in source), `userSources`, `removedBuiltIns`,
-//!   `websites.readLinkedPages`, `updatedAt` (ms since the epoch);
+//!   `websites.readLinkedPages`, `websites.fullAccess`, `updatedAt` (ms since
+//!   the epoch);
 //! - a file that cannot be read as such (also: an unusable user source, a
 //!   damaged `websites`) is copied to `policy.json.bak` and replaced by the
 //!   defaults, never guessed at, so a damaged policy can only narrow what is
 //!   allowed; a file from before the website reader has no `websites` and
-//!   gets the default (reading linked pages on);
+//!   gets the default (reading linked pages on), and one from before full
+//!   access keeps its `readLinkedPages` with `fullAccess` off;
 //! - writes replace the file atomically (temp file + rename), mode 0600, in a
 //!   directory of mode 0700;
 //! - the response of every route is the full policy view.
@@ -185,6 +187,8 @@ pub struct TrustedSource {
 pub struct Websites {
     #[serde(rename = "readLinkedPages")]
     pub read_linked_pages: bool,
+    #[serde(rename = "fullAccess")]
+    pub full_access: bool,
 }
 
 /// `AssetSearchPolicy` (agent-protocol): the body every route answers with.
@@ -232,6 +236,7 @@ impl Stored {
             removed_built_ins: Vec::new(),
             websites: Websites {
                 read_linked_pages: true,
+                full_access: false,
             },
             updated_at: Number::from(0u64),
         }
@@ -337,14 +342,27 @@ fn stored_of(raw: &Value) -> Option<Stored> {
         .map(user_source_of)
         .collect::<Option<Vec<TrustedSource>>>()?;
     // No `websites` (a file from before the website reader): the default. A
-    // damaged value is not guessed at: the whole file is refused.
+    // damaged value is not guessed at: the whole file is refused. A file from
+    // before full access has no `fullAccess`: it stays off, keeping
+    // `readLinkedPages`.
     let websites = match map.get("websites") {
         None => Websites {
             read_linked_pages: true,
+            full_access: false,
         },
-        Some(value) => Websites {
-            read_linked_pages: value.as_object()?.get("readLinkedPages")?.as_bool()?,
-        },
+        Some(value) => {
+            let websites = value.as_object()?;
+            let read_linked_pages = websites.get("readLinkedPages")?.as_bool()?;
+            let full_access = match websites.get("fullAccess") {
+                None => false,
+                Some(Value::Bool(flag)) => *flag,
+                Some(_) => return None,
+            };
+            Websites {
+                read_linked_pages,
+                full_access,
+            }
+        }
     };
     Some(Stored {
         schema: POLICY_SCHEMA,
@@ -488,6 +506,7 @@ pub fn normalize_domain(input: &str) -> Result<String, PolicyError> {
 pub struct PolicyUpdate {
     pub mode: Option<String>,
     pub read_linked_pages: Option<bool>,
+    pub full_access: Option<bool>,
 }
 
 /// `POST /api/research/sources`
@@ -585,11 +604,21 @@ pub fn parse_policy_update(raw: &Value) -> Result<PolicyUpdate, PolicyError> {
         }
     }
     if let Some(websites) = map.get("websites") {
-        let websites = body_object(websites, &["readLinkedPages"])?;
-        match websites.get("readLinkedPages") {
-            None => return Err(PolicyError::invalid("websites needs readLinkedPages")),
-            Some(Value::Bool(flag)) => update.read_linked_pages = Some(*flag),
-            Some(_) => return Err(PolicyError::invalid("readLinkedPages must be true or false")),
+        let websites = body_object(websites, &["readLinkedPages", "fullAccess"])?;
+        if websites.get("readLinkedPages").is_none() && websites.get("fullAccess").is_none() {
+            return Err(PolicyError::invalid("websites needs readLinkedPages or fullAccess"));
+        }
+        if let Some(flag) = websites.get("readLinkedPages") {
+            match flag {
+                Value::Bool(flag) => update.read_linked_pages = Some(*flag),
+                _ => return Err(PolicyError::invalid("readLinkedPages must be true or false")),
+            }
+        }
+        if let Some(flag) = websites.get("fullAccess") {
+            match flag {
+                Value::Bool(flag) => update.full_access = Some(*flag),
+                _ => return Err(PolicyError::invalid("fullAccess must be true or false")),
+            }
         }
     }
     Ok(update)
@@ -755,7 +784,8 @@ impl PolicyStore {
     pub fn update_policy(&self, update: &PolicyUpdate) -> Result<PolicyView, PolicyError> {
         let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut stored = self.load();
-        if update.mode.is_none() && update.read_linked_pages.is_none() {
+        if update.mode.is_none() && update.read_linked_pages.is_none() && update.full_access.is_none()
+        {
             return Ok(stored.view());
         }
         if let Some(mode) = &update.mode {
@@ -769,6 +799,9 @@ impl PolicyStore {
         }
         if let Some(flag) = update.read_linked_pages {
             stored.websites.read_linked_pages = flag;
+        }
+        if let Some(flag) = update.full_access {
+            stored.websites.full_access = flag;
         }
         self.save(stored)
     }
@@ -1030,6 +1063,7 @@ mod tests {
             .update_policy(&PolicyUpdate {
                 mode: Some("any".into()),
                 read_linked_pages: None,
+                full_access: None,
             })
             .unwrap();
         store
@@ -1142,6 +1176,7 @@ mod tests {
             .update_policy(&PolicyUpdate {
                 mode: Some("any".into()),
                 read_linked_pages: None,
+                full_access: None,
             })
             .unwrap();
         assert_eq!(PolicyStore::new(&dir).get().removed_built_ins, strings(&["nasa-images"]));
@@ -1245,6 +1280,7 @@ mod tests {
             .update_policy(&PolicyUpdate {
                 mode: Some("any".into()),
                 read_linked_pages: None,
+                full_access: None,
             })
             .unwrap();
         std::fs::write(
@@ -1303,36 +1339,74 @@ mod tests {
     fn websites_default_to_reading_linked_pages_for_new_and_old_files() {
         let dir = dir("websites-default");
         let store = PolicyStore::new(&dir);
-        assert!(store.get().websites.read_linked_pages);
+        let fresh = store.get().websites;
+        assert!(fresh.read_linked_pages);
+        assert!(!fresh.full_access);
         std::fs::write(dir.join("policy.json"), stored_file(json!({}))).unwrap();
         let old = store.get();
         assert_eq!(old.mode, "any");
         assert!(old.websites.read_linked_pages);
+        assert!(!old.websites.full_access);
+
+        // A file from before full access existed keeps its switch, with full access off.
+        std::fs::write(
+            dir.join("policy.json"),
+            stored_file(json!({"websites": {"readLinkedPages": false}})),
+        )
+        .unwrap();
+        let before = store.get();
+        assert_eq!(before.mode, "any");
+        assert!(!before.websites.read_linked_pages);
+        assert!(!before.websites.full_access);
+        assert!(!dir.join("policy.json.bak").exists());
     }
 
     #[test]
-    fn the_websites_switch_survives_without_touching_the_mode_or_the_sources() {
+    fn the_websites_switches_survive_without_touching_the_mode_or_the_sources() {
         let dir = dir("websites-switch");
         let store = PolicyStore::new(&dir);
         store
             .update_policy(&PolicyUpdate {
                 mode: Some("any".into()),
                 read_linked_pages: None,
+                full_access: None,
             })
             .unwrap();
         store
             .update_policy(&PolicyUpdate {
                 mode: None,
                 read_linked_pages: Some(false),
+                full_access: Some(true),
             })
             .unwrap();
         let again = PolicyStore::new(&dir).get();
         assert_eq!(again.mode, "any");
         assert!(!again.websites.read_linked_pages);
+        assert!(again.websites.full_access);
         assert_eq!(again.sources.len(), 4);
         // An update that names nothing changes nothing.
         let same = PolicyStore::new(&dir).update_policy(&PolicyUpdate::default()).unwrap();
         assert!(!same.websites.read_linked_pages);
+        assert!(same.websites.full_access);
+        // Changing one switch keeps the other.
+        let just_full = store
+            .update_policy(&PolicyUpdate {
+                mode: None,
+                read_linked_pages: None,
+                full_access: Some(false),
+            })
+            .unwrap();
+        assert!(!just_full.websites.read_linked_pages);
+        assert!(!just_full.websites.full_access);
+        let just_read = store
+            .update_policy(&PolicyUpdate {
+                mode: None,
+                read_linked_pages: Some(true),
+                full_access: None,
+            })
+            .unwrap();
+        assert!(just_read.websites.read_linked_pages);
+        assert!(!just_read.websites.full_access);
     }
 
     #[test]
@@ -1346,6 +1420,23 @@ mod tests {
         .unwrap();
         assert_eq!(store.get().mode, "trusted");
         assert!(dir.join("policy.json.bak").exists());
+
+        // A present-but-non-boolean fullAccess is damaged as well.
+        store
+            .update_policy(&PolicyUpdate {
+                mode: Some("any".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        std::fs::write(
+            dir.join("policy.json"),
+            stored_file(json!({"websites": {"readLinkedPages": true, "fullAccess": "yes"}})),
+        )
+        .unwrap();
+        let after = store.get();
+        assert_eq!(after.mode, "trusted");
+        assert!(after.websites.read_linked_pages);
+        assert!(!after.websites.full_access);
     }
 
     #[test]
@@ -1380,6 +1471,8 @@ mod tests {
         assert_eq!(view.mode, "any");
         assert_eq!(view.removed_built_ins, strings(&["nasa-images"]));
         assert!(!view.websites.read_linked_pages);
+        // The TS file predates full access: it loads as off, and is written back with the key.
+        assert!(!view.websites.full_access);
         assert_eq!(view.updated_at, Number::from(1_700_000_000_000u64));
         let ids: Vec<&str> = view.sources.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, vec!["wikimedia-commons", "openverse", "internet-archive", "src-0a1b2c3d"]);
@@ -1403,7 +1496,7 @@ mod tests {
         assert_eq!(written["userSources"][0]["builtIn"], false);
         assert_eq!(written["userSources"][0]["enabled"], false);
         assert_eq!(written["removedBuiltIns"], json!(["nasa-images"]));
-        assert_eq!(written["websites"], json!({"readLinkedPages": false}));
+        assert_eq!(written["websites"], json!({"readLinkedPages": false, "fullAccess": false}));
         assert!(std::fs::read_to_string(&file).unwrap().ends_with("}\n"));
     }
 
@@ -1452,6 +1545,17 @@ mod tests {
         let ok = parse_policy_update(&json!({"mode": "any", "websites": {"readLinkedPages": false}})).unwrap();
         assert_eq!(ok.mode.as_deref(), Some("any"));
         assert_eq!(ok.read_linked_pages, Some(false));
+        assert_eq!(ok.full_access, None);
+
+        // Either key alone is a valid update; nothing else may ride along.
+        let full = parse_policy_update(&json!({"websites": {"fullAccess": true}})).unwrap();
+        assert_eq!(full, PolicyUpdate { mode: None, read_linked_pages: None, full_access: Some(true) });
+        let both =
+            parse_policy_update(&json!({"websites": {"readLinkedPages": true, "fullAccess": false}}))
+                .unwrap();
+        assert_eq!(both.read_linked_pages, Some(true));
+        assert_eq!(both.full_access, Some(false));
+
         for bad in [
             json!({}),
             json!([]),
@@ -1460,6 +1564,8 @@ mod tests {
             json!({"mode": "any", "extra": 1}),
             json!({"websites": {}}),
             json!({"websites": {"readLinkedPages": "yes"}}),
+            json!({"websites": {"fullAccess": "yes"}}),
+            json!({"websites": {"fullAccess": 1}}),
             json!({"websites": {"readLinkedPages": true, "x": 1}}),
             json!({"websites": 3}),
         ] {

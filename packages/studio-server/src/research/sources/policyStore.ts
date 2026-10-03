@@ -112,11 +112,18 @@ function storedPolicyOf(raw: unknown): StoredPolicy | null {
     userSources.push(source);
   }
   // A file written before the website reader existed has no `websites`: the default applies. A damaged value is not
-  // guessed at (the whole file is replaced by the defaults, see `load`).
+  // guessed at (the whole file is replaced by the defaults, see `load`). A file written before full access existed has
+  // no `fullAccess`: it stays off, without touching `readLinkedPages`.
   let websites: WebsitePolicy = { ...DEFAULT_WEBSITE_POLICY };
   if (raw.websites !== undefined) {
     if (!isRecord(raw.websites) || typeof raw.websites.readLinkedPages !== "boolean") return null;
-    websites = { readLinkedPages: raw.websites.readLinkedPages };
+    if (raw.websites.fullAccess !== undefined && typeof raw.websites.fullAccess !== "boolean") {
+      return null;
+    }
+    websites = {
+      readLinkedPages: raw.websites.readLinkedPages,
+      fullAccess: raw.websites.fullAccess === true,
+    };
   }
   return {
     schema: POLICY_SCHEMA,
@@ -266,7 +273,10 @@ export class PolicyStore {
     const stored = this.load();
     return this.save({
       ...stored,
-      websites: { readLinkedPages: update.readLinkedPages ?? stored.websites.readLinkedPages },
+      websites: {
+        readLinkedPages: update.readLinkedPages ?? stored.websites.readLinkedPages,
+        fullAccess: update.fullAccess ?? stored.websites.fullAccess,
+      },
     });
   }
 

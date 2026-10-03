@@ -17,6 +17,7 @@ import {
   type RecordedRequest,
 } from "./researchTestHarness";
 import { createSourcesStore } from "./sourcesStore";
+import { announceAssetSearchPolicyChanged } from "./policyChanges";
 import { SourcesPanel } from "./SourcesPanel";
 
 let host: HTMLElement;
@@ -221,6 +222,24 @@ describe("Asset Search policy", () => {
     ).toContain("Provenance is still recorded");
   });
 
+  it("reads the policy again when it was changed outside the panel (Turn on in the chat)", async () => {
+    let policy: AssetSearchPolicy = policyFixture({
+      websites: { readLinkedPages: true, fullAccess: false },
+    });
+    await openPolicy({ "GET /api/research/policy": () => policy });
+    const fullAccess = () =>
+      host.querySelector('[role="switch"][aria-label="Full access to linked sites"]');
+    expect(fullAccess()?.getAttribute("aria-checked")).toBe("false");
+
+    policy = policyFixture({ websites: { readLinkedPages: true, fullAccess: true } });
+    await act(async () => {
+      announceAssetSearchPolicyChanged();
+      await settle();
+    });
+
+    expect(fullAccess()?.getAttribute("aria-checked")).toBe("true");
+  });
+
   it("switches reading the pages you link in chat with a PUT of the websites group", async () => {
     let policy: AssetSearchPolicy = policyFixture();
     await openPolicy({
@@ -234,7 +253,7 @@ describe("Asset Search policy", () => {
       "Only links from your own messages, plus other pages on the same site.",
     );
 
-    policy = policyFixture({ websites: { readLinkedPages: false } });
+    policy = policyFixture({ websites: { readLinkedPages: false, fullAccess: false } });
     await click(switchOf());
 
     expect(requests).toContainEqual({
@@ -243,6 +262,36 @@ describe("Asset Search policy", () => {
       body: { websites: { readLinkedPages: false } },
     });
     expect(switchOf()?.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("switches full access to linked sites with a PUT, and locks it while reading pages is off", async () => {
+    let policy: AssetSearchPolicy = policyFixture();
+    await openPolicy({
+      "GET /api/research/policy": () => policy,
+      "PUT /api/research/policy": () => policy,
+    });
+    const fullAccess = () =>
+      host.querySelector('[role="switch"][aria-label="Full access to linked sites"]');
+    expect(fullAccess()?.getAttribute("aria-checked")).toBe("false");
+    expect(fullAccess()?.hasAttribute("data-disabled")).toBe(false);
+    expect(host.querySelector("[data-websites-group]")?.textContent).toContain(
+      "record its pages as video",
+    );
+
+    policy = policyFixture({ websites: { readLinkedPages: true, fullAccess: true } });
+    await click(fullAccess());
+    expect(requests).toContainEqual({
+      method: "PUT",
+      url: "/api/research/policy",
+      body: { websites: { fullAccess: true } },
+    });
+    expect(fullAccess()?.getAttribute("aria-checked")).toBe("true");
+
+    // Reading off: full access is shown off and cannot be switched, even though the stored value stays on.
+    policy = policyFixture({ websites: { readLinkedPages: false, fullAccess: true } });
+    await click(host.querySelector('[role="switch"][aria-label="Open links you send in chat"]'));
+    expect(fullAccess()?.getAttribute("aria-checked")).toBe("false");
+    expect(fullAccess()?.hasAttribute("data-disabled")).toBe(true);
   });
 
   it("keeps the switch where it was and shows the failure when the server refuses the change", async () => {

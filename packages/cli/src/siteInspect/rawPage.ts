@@ -1,4 +1,4 @@
-import { isRecord } from "@hyperframes/agent-protocol";
+import { WEBSITE_RESOURCE_KINDS, isRecord } from "@hyperframes/agent-protocol";
 import type {
   RawButton,
   RawColor,
@@ -6,6 +6,7 @@ import type {
   RawLogo,
   RawMotion,
   RawPage,
+  RawResourceRef,
   RawTextStyle,
 } from "./pageScript.js";
 
@@ -172,6 +173,33 @@ export function parseRawPage(raw: unknown): RawPage | null {
     textLength: num(raw.textLength) ?? 0,
     documentHeight: num(raw.documentHeight) ?? 0,
   };
+}
+
+function resourceOf(raw: unknown): RawResourceRef | null {
+  if (!isRecord(raw)) return null;
+  const url = maybeText(raw.url, 2048);
+  if (url === null) return null;
+  try {
+    const protocol = new URL(url).protocol;
+    if (protocol !== "http:" && protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+  const kind = WEBSITE_RESOURCE_KINDS.find((entry) => entry === raw.kind);
+  if (!kind) return null;
+  return {
+    url,
+    kind,
+    width: num(raw.width),
+    height: num(raw.height),
+    duration: num(raw.duration),
+    usage: text(raw.usage, 160),
+  };
+}
+
+/** The DOM's file references from `RESOURCE_SCRIPT`, checked: unusable entries are dropped, the list is capped. */
+export function parseRawResources(raw: unknown): RawResourceRef[] {
+  return rows(raw, 400, resourceOf);
 }
 
 /** The `[name, value]` pairs of the token probe. */

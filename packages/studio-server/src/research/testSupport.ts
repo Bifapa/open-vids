@@ -7,6 +7,7 @@ import { createStoryFixture, type StoryFixture } from "../story/testSupport.js";
 import type { MediaInspection, MediaToolkit } from "./normalize.js";
 import { ResearchService, type ResearchServiceOptions } from "./service.js";
 import { PolicyFetcher, type Transport } from "./sources/policyFetch.js";
+import type { TransportInit } from "./sources/pinnedTransport.js";
 import { PolicyStore } from "./sources/policyStore.js";
 import type { WebSearchBackend, WebSearchHit } from "./sources/types.js";
 import type { DnsResolver } from "./sources/address.js";
@@ -23,7 +24,7 @@ export function fixtureText(name: string): string {
 }
 
 /** A fresh Response per request (a body can be read once, and cancelling half of a clone never settles). */
-export type Answer = (url: URL) => Response | Promise<Response>;
+export type Answer = (url: URL, init: TransportInit) => Response | Promise<Response>;
 
 export const json =
   (value: unknown, status = 200): Answer =>
@@ -65,12 +66,12 @@ export class FakeNet {
     return this;
   }
 
-  readonly transport: Transport = async (raw) => {
+  readonly transport: Transport = async (raw, init) => {
     this.calls.push(raw);
     const url = new URL(raw);
     const rule = this.rules.find((entry) => entry.match(url));
     if (!rule) return new Response("not found", { status: 404 });
-    return rule.answer(url);
+    return rule.answer(url, init);
   };
 
   hosts(): string[] {
@@ -193,6 +194,8 @@ export function createResearchFixture(
     hits?: WebSearchHit[];
     /** The website reader's browser (the CLI child in production). */
     inspectWebsite?: ResearchServiceOptions["inspectWebsite"];
+    /** The full-access recorder (the CLI child in production). */
+    recordWebsite?: ResearchServiceOptions["recordWebsite"];
   } = {},
 ): ResearchFixture {
   const story = createStoryFixture();
@@ -213,6 +216,7 @@ export function createResearchFixture(
     webSearch: web,
     toolkit,
     inspectWebsite: options.inspectWebsite,
+    recordWebsite: options.recordWebsite,
     websiteGuard: new UrlGuard(resolver(options.dns)),
   });
   return {

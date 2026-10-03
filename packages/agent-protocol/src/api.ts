@@ -18,6 +18,8 @@ import type {
   ProviderInfo,
   SpecialistConfig,
   SpecialistDefaults,
+  PermissionDecision,
+  PermissionRequest,
   SpecialistId,
   StoryAction,
   StoryActionOptions,
@@ -178,6 +180,20 @@ export interface RevertTurnRequest {
 export type RevertTurnResponse =
   | { ok: true; turn: TurnSummary }
   | { ok: false; conflict: { files: string[] } };
+
+/**
+ * `POST /v1/chats/:chatId/turns/:turnId/permissions/:permissionId` — the user's answer to a {@link PermissionRequest}
+ * shown in the chat. `always` switches the setting on, `once` allows it for the rest of the turn; the waiting tool
+ * call then continues. Answers the request in its new state; a request that is no longer pending is
+ * `turn_not_active`.
+ */
+export interface AnswerPermissionRequest {
+  decision: PermissionDecision;
+}
+
+export interface AnswerPermissionResponse {
+  permission: PermissionRequest;
+}
 
 export type GetChatResponse = ChatState;
 

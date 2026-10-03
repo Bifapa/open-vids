@@ -7,7 +7,6 @@ import {
   WEBSITE_SOURCE_ID,
   type AssetProvenance,
   type AssetSearchMode,
-  type AssetSourceRef,
   type ProvenanceMediaKind,
   type ReadWebsiteRequest,
   type ReadWebsiteResult,
@@ -28,6 +27,7 @@ import { readLedger, writeLedger } from "./provenance.js";
 import { RequestRegistry, type RequestGuard } from "./requestRegistry.js";
 import type { PolicyStore } from "./sources/policyStore.js";
 import type { UrlGuard } from "./sources/urlPolicy.js";
+import type { WebsiteGrantStore } from "./websiteGrants.js";
 
 type InspectWebsite = NonNullable<StudioApiAdapter["inspectWebsite"]>;
 
@@ -37,6 +37,8 @@ export interface WebsiteReaderOptions {
   /** Runs the page in headless Chrome outside this process (the CLI child); absent where there is no browser. */
   inspect: InspectWebsite | undefined;
   requests: RequestRegistry;
+  /** The one-time grants ("Allow once") that let a turn read while `readLinkedPages` is off. */
+  grants: WebsiteGrantStore;
   /** Serializes writes to a project with the other research writes. */
   lock: <T>(project: ResolvedProject, task: () => Promise<T>) => Promise<T>;
   now: () => number;
@@ -45,7 +47,7 @@ export interface WebsiteReaderOptions {
 const SAFE_NAME = /[^a-z0-9._-]+/g;
 
 /** A file name that is safe inside a project folder: lower case, no directories, a known extension kept. */
-function safeFileName(name: string, fallback: string): string {
+export function safeFileName(name: string, fallback: string): string {
   const base = name.split(/[\\/]/).at(-1) ?? "";
   const cleaned = base
     .toLowerCase()
@@ -59,7 +61,7 @@ function safeFileName(name: string, fallback: string): string {
 }
 
 /** The folder name of a host under `assets/web/`: `example.com`, `docs.example.co.uk`. */
-function hostFolder(host: string): string {
+export function hostFolder(host: string): string {
   const cleaned = host
     .toLowerCase()
     .replace(SAFE_NAME, "-")
@@ -69,6 +71,60 @@ function hostFolder(host: string): string {
 
 function sha256Of(data: Uint8Array): string {
   return createHash("sha256").update(data).digest("hex");
+}
+
+export interface WebsiteProvenanceInput {
+  /** Project-relative path the file was written to. */
+  asset: string;
+  mediaKind: ProvenanceMediaKind;
+  title: string;
+  /** The URL the bytes came from, as requested. */
+  originalUrl: string;
+  pageUrl: string;
+  /** The site's host (`example.com`). */
+  host: string;
+  sha256: string;
+  bytes: number;
+  contentType: string | null;
+  retrievedBy: AssetProvenance["retrievedBy"];
+  policyMode: AssetSearchMode;
+  at: number;
+}
+
+/**
+ * A provenance record for a file saved from a website reference: source `website`, license unknown (the site's own
+ * terms were not checked). The id is derived from the bytes and the URL, so saving the same file again replaces its
+ * record instead of adding one.
+ */
+export function websiteProvenance(input: WebsiteProvenanceInput): AssetProvenance {
+  return {
+    id: `prov-${createHash("sha256").update(`${input.sha256}\0${input.originalUrl}`).digest("hex").slice(0, 12)}`,
+    asset: input.asset,
+    mediaKind: input.mediaKind,
+    title: input.title,
+    originalUrl: input.originalUrl,
+    pageUrl: input.pageUrl,
+    source: { id: WEBSITE_SOURCE_ID, name: input.host, trusted: false },
+    author: null,
+    authorUrl: null,
+    license: "Unknown",
+    licenseId: "unknown",
+    licenseUrl: null,
+    licenseConfidence: "none",
+    licenseStatus: "unknown",
+    licenseBasis: "Website reference: the site's own terms were not checked",
+    attribution: `From ${input.host} (website reference)`,
+    retrievedAt: input.at,
+    retrievedBy: input.retrievedBy,
+    policyMode: input.policyMode,
+    sha256: input.sha256,
+    originalSha256: input.sha256,
+    bytes: input.bytes,
+    contentType: input.contentType ?? "application/octet-stream",
+    converted: null,
+    storyNode: null,
+    need: null,
+  };
 }
 
 interface PlannedFile {
@@ -95,7 +151,10 @@ export class WebsiteReader {
     client?: AbortSignal,
   ): Promise<ReadWebsiteResult> {
     const policy = this.options.store.get();
-    if (!policy.websites.readLinkedPages) {
+    if (
+      !policy.websites.readLinkedPages &&
+      !this.options.grants.allows(project.dir, request.turnId, "read")
+    ) {
       throw new ResearchFailure(
         "blocked_by_policy",
         "Reading linked websites is turned off. The user can allow it in Settings → Asset Search → Websites.",
@@ -208,44 +267,29 @@ export class WebsiteReader {
       }
       return { entry, destination };
     });
-    const source: AssetSourceRef = { id: WEBSITE_SOURCE_ID, name: site.host, trusted: false };
     const now = this.options.now();
     const ledger = readLedger(project.dir);
-    const records = targets.map(({ entry }): AssetProvenance => {
-      const sha256 = sha256Of(entry.file.data);
-      return {
-        id: `prov-${createHash("sha256").update(`${sha256}\0${entry.originalUrl}`).digest("hex").slice(0, 12)}`,
-        asset: entry.asset,
-        mediaKind: entry.kind,
-        title: entry.title,
-        originalUrl: entry.originalUrl,
-        pageUrl: site.finalUrl,
-        source,
-        author: null,
-        authorUrl: null,
-        license: "Unknown",
-        licenseId: "unknown",
-        licenseUrl: null,
-        licenseConfidence: "none",
-        licenseStatus: "unknown",
-        licenseBasis: "Website reference: the site's own terms were not checked",
-        attribution: `From ${site.host} (website reference)`,
-        retrievedAt: now,
-        retrievedBy: {
-          agent: request.agent ?? "user",
-          turnId: request.turnId ?? null,
-          model: request.model ?? null,
-        },
-        policyMode: mode,
-        sha256,
-        originalSha256: sha256,
-        bytes: entry.file.data.byteLength,
-        contentType: entry.file.mimeType,
-        converted: null,
-        storyNode: null,
-        need: null,
-      };
-    });
+    const records = targets.map(
+      ({ entry }): AssetProvenance =>
+        websiteProvenance({
+          asset: entry.asset,
+          mediaKind: entry.kind,
+          title: entry.title,
+          originalUrl: entry.originalUrl,
+          pageUrl: site.finalUrl,
+          host: site.host,
+          sha256: sha256Of(entry.file.data),
+          bytes: entry.file.data.byteLength,
+          contentType: entry.file.mimeType,
+          retrievedBy: {
+            agent: request.agent ?? "user",
+            turnId: request.turnId ?? null,
+            model: request.model ?? null,
+          },
+          policyMode: mode,
+          at: now,
+        }),
+    );
 
     // The commit: files and records land together, with no await in between.
     guard.commit();

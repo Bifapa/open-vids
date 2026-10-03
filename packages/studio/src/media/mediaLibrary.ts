@@ -80,9 +80,19 @@ function originOf(provenance: ProjectSourceEntry | null): MediaOrigin {
   return provenance.retrievedBy.agent === "user" ? "download" : "research";
 }
 
-function kindOfResearch(record: ProjectSourceEntry): MediaKind {
-  if (record.mediaKind === "picture") return "image";
-  return record.mediaKind;
+/** The library's kind of a researched file; Lottie/Rive animations and other saved files are not media: null. */
+function kindOfResearch(record: ProjectSourceEntry): MediaKind | null {
+  switch (record.mediaKind) {
+    case "picture":
+      return "image";
+    case "video":
+    case "audio":
+    case "font":
+      return record.mediaKind;
+    case "animation":
+    case "file":
+      return null;
+  }
 }
 
 export interface MediaSources {
@@ -141,11 +151,13 @@ export function buildMediaItems(sources: MediaSources): MediaItem[] {
   }
   for (const record of sources.provenance) {
     if (record.present || seen.has(record.asset)) continue;
+    const kind = kindOfResearch(record);
+    if (!kind) continue;
     seen.add(record.asset);
     items.push({
       path: record.asset,
       name: fileName(record.asset),
-      kind: kindOfResearch(record),
+      kind,
       bytes: record.bytes,
       duration: null,
       width: null,

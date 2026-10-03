@@ -23,6 +23,7 @@ import {
   FakeStoryHost,
 } from "./testing/index.js";
 import { ScriptedAgentBackend } from "./testing/backend.js";
+import { researchPolicy } from "./testing/research.js";
 
 async function responseObject(response: Response): Promise<Record<string, unknown>> {
   const payload: unknown = await response.json();
@@ -903,6 +904,131 @@ describe("runtime HTTP server", () => {
       expect(await runTurn(chatId, "three")).toMatchObject({
         execution: { preset: "best", budget: EXECUTION_BUDGETS.best },
       });
+    } finally {
+      await app.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("answers a pending permission request over its route and rejects everything else", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openvids-agent-permissions-"));
+    const projectDir = join(root, "project");
+    await mkdir(projectDir);
+    const research = new FakeResearchHost();
+    research.policyResult = researchPolicy({
+      websites: { readLinkedPages: false, fullAccess: false },
+    });
+    const backend = new ScriptedAgentBackend();
+    const app = createRuntimeApp({
+      backend,
+      checkpoints: new FakeCheckpointHost(),
+      editing: () => new FakeEditingHost(),
+      analysis: () => new FakeAnalysisHost(),
+      story: () => new FakeStoryHost(),
+      research: () => research,
+      qa: () => new FakeQaHost(),
+      settings: new AgentSettingsStore(join(root, "settings")),
+      token: "runtime-secret",
+    });
+    const headers = {
+      [AGENT_HEADERS.token]: "Bearer runtime-secret",
+      [AGENT_HEADERS.projectId]: "project-one",
+      [AGENT_HEADERS.projectDir]: projectDir,
+      [AGENT_HEADERS.studioOrigin]: "http://localhost:4173",
+    };
+    const permissionOf = async (chatId: string) => {
+      const state = await responseObject(await app.request(`/v1/chats/${chatId}`, { headers }));
+      const messages = Array.isArray(state.messages) ? state.messages : [];
+      for (const message of messages) {
+        if (!isRecord(message) || !Array.isArray(message.parts)) continue;
+        for (const part of message.parts) {
+          if (isRecord(part) && part.type === "permission" && isRecord(part.permission))
+            return part.permission;
+        }
+      }
+      return null;
+    };
+    try {
+      const chat = await responseObject(
+        await app.request("/v1/chats", { method: "POST", headers, body: "{}" }),
+      );
+      const chatId = typeof chat.id === "string" ? chat.id : "";
+      backend.promptScript = async (_input, session) => {
+        if (session.input.agent === "director")
+          await session.callTool("read_website", { url: "https://linear.app" });
+        return "completed";
+      };
+      const started = await responseObject(
+        await app.request(`/v1/chats/${chatId}/turns`, {
+          method: "POST",
+          headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify({ prompt: "вот ссылка https://linear.app — сделай интро" }),
+        }),
+      );
+      const turnId =
+        isRecord(started.turn) && typeof started.turn.id === "string" ? started.turn.id : "";
+
+      let permission: Record<string, unknown> | null = null;
+      for (let i = 0; i < 100 && permission === null; i += 1) {
+        permission = await permissionOf(chatId);
+        if (permission === null) await delay(20);
+      }
+      expect(permission).toMatchObject({ state: "pending", kind: "read_linked_pages" });
+      const permissionId = typeof permission?.id === "string" ? permission.id : "";
+      const answer = (path: string, body: unknown) =>
+        app.request(path, {
+          method: "POST",
+          headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+      // Validation, unknown chat, unknown turn and an unknown request all fail with the documented codes.
+      expect(
+        (await answer(`/v1/chats/${chatId}/turns/${turnId}/permissions/${permissionId}`, {}))
+          .status,
+      ).toBe(400);
+      expect(
+        (
+          await answer(`/v1/chats/unknown/turns/${turnId}/permissions/${permissionId}`, {
+            decision: "once",
+          })
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await answer(`/v1/chats/${chatId}/turns/unknown/permissions/${permissionId}`, {
+            decision: "once",
+          })
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await answer(`/v1/chats/${chatId}/turns/${turnId}/permissions/unknown`, {
+            decision: "once",
+          })
+        ).status,
+      ).toBe(409);
+
+      const allowed = await responseObject(
+        await answer(`/v1/chats/${chatId}/turns/${turnId}/permissions/${permissionId}`, {
+          decision: "once",
+        }),
+      );
+      expect(allowed.permission).toMatchObject({ id: permissionId, state: "allowed_once" });
+      // The waiting call resumed with the grant, and the request is not pending any more.
+      expect(
+        (
+          await answer(`/v1/chats/${chatId}/turns/${turnId}/permissions/${permissionId}`, {
+            decision: "deny",
+          })
+        ).status,
+      ).toBe(409);
+      for (let i = 0; i < 100; i += 1) {
+        if (research.websiteRequests.length > 0) break;
+        await delay(20);
+      }
+      expect(research.grants).toEqual([{ turnId, access: "read" }]);
+      expect(research.websiteRequests).toEqual([{ url: "https://linear.app", turnId }]);
     } finally {
       await app.dispose();
       await rm(root, { recursive: true, force: true });

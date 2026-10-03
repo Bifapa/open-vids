@@ -48,6 +48,8 @@ export interface ResearchClient {
   setMode(mode: AssetSearchMode): Promise<AssetSearchPolicy>;
   /** Whether agents may read the pages the user links in chat (the policy's `websites.readLinkedPages`). */
   setReadLinkedPages(readLinkedPages: boolean): Promise<AssetSearchPolicy>;
+  /** Whether agents may also download any file of a linked site, read its code and record it (`websites.fullAccess`). */
+  setFullAccess(fullAccess: boolean): Promise<AssetSearchPolicy>;
   addSource(request: AddTrustedSourceRequest): Promise<AssetSearchPolicy>;
   updateSource(id: string, patch: UpdateTrustedSourceRequest): Promise<AssetSearchPolicy>;
   removeSource(id: string): Promise<AssetSearchPolicy>;
@@ -133,6 +135,8 @@ export function createResearchClient(fetchImpl?: typeof fetch): ResearchClient {
     setMode: (mode) => policyRequest(POLICY_URL, json("PUT", { mode })),
     setReadLinkedPages: (readLinkedPages) =>
       policyRequest(POLICY_URL, json("PUT", { websites: { readLinkedPages } })),
+    setFullAccess: (fullAccess) =>
+      policyRequest(POLICY_URL, json("PUT", { websites: { fullAccess } })),
     addSource: (body) => policyRequest(SOURCES_URL, json("POST", body)),
     updateSource: (id, patch) =>
       policyRequest(`${SOURCES_URL}/${encodeURIComponent(id)}`, json("PATCH", patch)),

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { AgentId, MissingAssetNode, StoryGraph } from "@hyperframes/agent-protocol";
-import type { BackendPromptInput, BackendPromptOutcome } from "../backend.js";
+import type {
+  AgentId,
+  MissingAssetNode,
+  PermissionPart,
+  StoryGraph,
+} from "@hyperframes/agent-protocol";
+import type { BackendPromptInput, BackendPromptOutcome, HostToolResult } from "../backend.js";
 import type { ScriptedSession } from "../testing/backend.js";
 import { ResearchToolError } from "./host.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "../testing/runtimeFixture.js";
@@ -187,7 +192,8 @@ describe("the Research team in a turn", () => {
 
       expect(prompt).toContain("Research is disabled in this chat");
       expect(prompt).toContain("tell them to enable Research");
-      expect(fixture.research.policyCalls).toBe(0);
+      // The policy is still read: it decides whether the website tools (full access) are offered to the readers.
+      expect(fixture.research.policyCalls).toBe(1);
       for (const session of fixture.backend.sessions) {
         expect(
           toolNames(session).filter((name) => name.includes("source") || EXTERNAL.includes(name)),
@@ -364,7 +370,8 @@ describe("resolve turns", () => {
       expect(prompt).toContain("Research is not available in this turn");
       expect(prompt).toContain("Do nothing");
       expect(prompt).not.toContain("Missing Asset nodes to resolve");
-      expect(fixture.research.policyCalls).toBe(0);
+      // The policy is still read for the website settings (full access), even with nobody to search.
+      expect(fixture.research.policyCalls).toBe(1);
       const director = toolNames(fixture.backend.sessionsOf("director")[0]);
       expect(director).not.toContain("edit_story");
       expect(director).not.toContain("read_sources");
@@ -395,6 +402,145 @@ describe("resolve turns", () => {
           toolNames(session).filter((name) => name === "read_sources" || EXTERNAL.includes(name)),
         ).toEqual([]);
       }
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+});
+
+// ── Permission requests in a running turn ────────────────────────────────────
+
+/** The permission part of a chat's main (Director) message of the turn, if the card is there. */
+function permissionPart(fixture: RuntimeFixture, chatId: string) {
+  const state = fixture.chats.get(chatId);
+  const turn = state?.turns.at(-1);
+  const message = state?.messages.find((entry) => entry.id === turn?.assistantMessageId);
+  if (!message || message.role !== "assistant") return null;
+  return message.parts.find((part): part is PermissionPart => part.type === "permission") ?? null;
+}
+
+describe("a website tool asks the user from the chat", () => {
+  it("shows the card in the main message, resumes the call on Allow once and revokes the grant at the end", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      fixture.research.policyResult = researchPolicy({
+        websites: { readLinkedPages: false, fullAccess: false },
+      });
+      const chat = await fixture.chats.create({}, ["motion"]);
+      let read: HostToolResult | null = null;
+      fixture.backend.promptScript = async (_input, session) => {
+        if (session.input.agent !== "director") return "completed";
+        read = await session.callTool("read_website", { url: "https://linear.app" });
+        return "completed";
+      };
+      const turn = await fixture.turns.start(chat.id, {
+        prompt: "вот ссылка https://linear.app — сделай интро",
+      });
+
+      await waitUntil(() => permissionPart(fixture, chat.id) !== null, "the permission card");
+      const pending = permissionPart(fixture, chat.id);
+      expect(pending?.permission).toMatchObject({
+        kind: "read_linked_pages",
+        action: "read",
+        site: "linear.app",
+        agent: "director",
+        state: "pending",
+      });
+      expect(fixture.research.websiteRequests).toEqual([]);
+
+      const answered = await fixture.turns.answerPermission(
+        chat.id,
+        turn.id,
+        pending?.permission.id ?? "",
+        "once",
+      );
+      expect(answered.permission.state).toBe("allowed_once");
+      await settled(fixture, chat.id);
+
+      expect(read).toMatchObject({
+        text: expect.stringContaining("allowed reading linked pages once"),
+      });
+      expect(fixture.research.grants).toEqual([{ turnId: turn.id, access: "read" }]);
+      expect(fixture.research.websiteRequests).toEqual([
+        { url: "https://linear.app", turnId: turn.id },
+      ]);
+      // The card's final state is in the live chat and in the durable event log (a reload shows it).
+      expect(permissionPart(fixture, chat.id)?.permission.state).toBe("allowed_once");
+      const reloaded = await fixture.store.load(chat.id);
+      const part = reloaded.state?.messages
+        .flatMap((message) => (message.role === "assistant" ? message.parts : []))
+        .find((entry) => entry.type === "permission");
+      expect(part).toMatchObject({ permission: { state: "allowed_once" } });
+      // The turn's grant is revoked when it ends.
+      expect(fixture.research.revokedGrants).toEqual([turn.id]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("expires a pending card when the turn is stopped, and the waiting call is refused", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      fixture.research.policyResult = researchPolicy({
+        websites: { readLinkedPages: false, fullAccess: false },
+      });
+      const chat = await fixture.chats.create({});
+      let read: HostToolResult | null = null;
+      fixture.backend.promptScript = async (_input, session) => {
+        read = await session.callTool("read_website", { url: "https://linear.app" });
+        return "completed";
+      };
+      const turn = await fixture.turns.start(chat.id, {
+        prompt: "вот ссылка https://linear.app — сделай интро",
+      });
+      await waitUntil(() => permissionPart(fixture, chat.id) !== null, "the permission card");
+
+      fixture.turns.abort(chat.id, turn.id);
+      await settled(fixture, chat.id);
+
+      expect(read).toMatchObject({
+        isError: true,
+        text: expect.stringContaining("turn ended before the user answered"),
+      });
+      expect(permissionPart(fixture, chat.id)?.permission.state).toBe("expired");
+      expect(fixture.research.grants).toEqual([]);
+      expect(fixture.research.websiteRequests).toEqual([]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("refuses an answer for an unknown request and after the turn ended", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      fixture.research.policyResult = researchPolicy({
+        websites: { readLinkedPages: false, fullAccess: false },
+      });
+      const chat = await fixture.chats.create({});
+      fixture.backend.promptScript = async (_input, session) => {
+        await session.callTool("read_website", { url: "https://linear.app" });
+        return "completed";
+      };
+      const turn = await fixture.turns.start(chat.id, {
+        prompt: "вот ссылка https://linear.app",
+      });
+      await waitUntil(() => permissionPart(fixture, chat.id) !== null, "the permission card");
+      const permissionId = permissionPart(fixture, chat.id)?.permission.id ?? "";
+      await expect(
+        fixture.turns.answerPermission(chat.id, turn.id, "unknown", "once"),
+      ).rejects.toMatchObject({ code: "turn_not_active" });
+      await expect(
+        fixture.turns.answerPermission(chat.id, "unknown-turn", permissionId, "once"),
+      ).rejects.toMatchObject({ code: "turn_not_found" });
+      await expect(
+        fixture.turns.answerPermission("unknown-chat", turn.id, permissionId, "once"),
+      ).rejects.toMatchObject({ code: "chat_not_found" });
+
+      await fixture.turns.answerPermission(chat.id, turn.id, permissionId, "deny");
+      await settled(fixture, chat.id);
+      await expect(
+        fixture.turns.answerPermission(chat.id, turn.id, permissionId, "once"),
+      ).rejects.toMatchObject({ code: "turn_not_active" });
     } finally {
       await fixture.cleanup();
     }

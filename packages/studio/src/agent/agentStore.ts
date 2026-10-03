@@ -22,6 +22,7 @@ import { runningTurn } from "./agentSelectors";
 import { draftCreation, mergeDraftChoices } from "./agentDraftChat";
 import { createAgentComposerSlice, type AgentComposerSlice } from "./agentComposerSlice";
 import { createAgentQaSlice, type AgentQaSlice } from "./agentQaSlice";
+import { createAgentPermissionSlice, type AgentPermissionSlice } from "./agentPermissionSlice";
 import { createAgentRevertSlice, type AgentRevertSlice } from "./agentRevertSlice";
 import {
   createAgentSettingsSlice,
@@ -49,7 +50,12 @@ export interface AgentNotice {
 }
 
 export interface AgentState
-  extends AgentSettingsSlice, AgentQaSlice, AgentRevertSlice, AgentComposerSlice {
+  extends
+    AgentSettingsSlice,
+    AgentQaSlice,
+    AgentRevertSlice,
+    AgentComposerSlice,
+    AgentPermissionSlice {
   availability: AgentAvailability;
   unavailableMessage: string | null;
   chats: ChatSummary[];
@@ -336,6 +342,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         updateOpenChat,
       }),
       ...createAgentQaSlice({ client }),
+      ...createAgentPermissionSlice({ client, get }),
       ...createAgentRevertSlice({ client, set, get, onTurnReverted: deps.onTurnReverted }),
       ...createAgentComposerSlice({
         client,

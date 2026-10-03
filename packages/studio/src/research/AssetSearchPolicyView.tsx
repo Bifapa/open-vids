@@ -189,16 +189,28 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
   );
 }
 
-/** Whether agents may open the pages the user links in chat, as one switch row on the prototype's box. */
-function WebsitesBox({ state, enabled }: { state: AssetSearchPolicyState; enabled: boolean }) {
+/**
+ * What agents may do with the pages the user links in chat, as switch rows on the prototype's box: read them, and
+ * (only while reading is on) take any file of the site, read its code and record its pages.
+ */
+function WebsitesBox({
+  state,
+  readLinkedPages,
+  fullAccess,
+}: {
+  state: AssetSearchPolicyState;
+  readLinkedPages: boolean;
+  fullAccess: boolean;
+}) {
   const { t } = useTranslation();
+  const fullAccessOn = readLinkedPages && fullAccess;
   return (
     <div className={BOX} data-websites-group>
       <div className="grid grid-cols-[28px_minmax(0,1fr)] items-start gap-2.5 px-3 py-2.5">
         <Toggle
           className="mt-0.5"
           label={t("research.policy.readLinked")}
-          checked={enabled}
+          checked={readLinkedPages}
           disabled={state.pending !== null}
           onCommit={(next) =>
             void state.change("websites", (client) => client.setReadLinkedPages(next))
@@ -206,12 +218,37 @@ function WebsitesBox({ state, enabled }: { state: AssetSearchPolicyState; enable
         />
         <div className="grid min-w-0 gap-px">
           <span
-            className={cn("text-base leading-4 font-medium", enabled ? "text-fg" : "text-fg-3")}
+            className={cn(
+              "text-base leading-4 font-medium",
+              readLinkedPages ? "text-fg" : "text-fg-3",
+            )}
           >
             {t("research.policy.readLinked")}
           </span>
           <span className="text-xs leading-[15px] text-fg-3 [text-wrap:pretty]">
             {t("research.policy.readLinked.hint")}
+          </span>
+        </div>
+      </div>
+      <div className="grid grid-cols-[28px_minmax(0,1fr)] items-start gap-2.5 border-t border-border-subtle px-3 py-2.5">
+        <Toggle
+          className="mt-0.5"
+          label={t("research.policy.fullAccess")}
+          checked={fullAccessOn}
+          disabled={!readLinkedPages || state.pending !== null}
+          onCommit={(next) => void state.change("websites", (client) => client.setFullAccess(next))}
+        />
+        <div className="grid min-w-0 gap-px">
+          <span
+            className={cn(
+              "text-base leading-4 font-medium",
+              readLinkedPages ? "text-fg" : "text-fg-3",
+            )}
+          >
+            {t("research.policy.fullAccess")}
+          </span>
+          <span className="text-xs leading-[15px] text-fg-3 [text-wrap:pretty]">
+            {t("research.policy.fullAccess.hint")}
           </span>
         </div>
       </div>
@@ -350,7 +387,11 @@ export function AssetSearchPolicyView({
           </section>
           <section className={section}>
             <SectionHeading title={t("research.policy.groupWebsites")} className={heading} />
-            <WebsitesBox state={state} enabled={policy.websites.readLinkedPages} />
+            <WebsitesBox
+              state={state}
+              readLinkedPages={policy.websites.readLinkedPages}
+              fullAccess={policy.websites.fullAccess}
+            />
           </section>
         </>
       )}

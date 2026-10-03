@@ -61,6 +61,7 @@ function assemble(over: Partial<RawPage>, css: CssSheet[] = [], files: CapturedF
     ],
     fontFiles: new Map(files.map((file) => [file.url, file])),
     logos: [],
+    resources: [],
     notes: [],
     now: 7,
   });

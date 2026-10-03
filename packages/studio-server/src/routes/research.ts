@@ -8,10 +8,14 @@ import {
   parseImportRequest,
   parseInspectRequest,
   parsePolicyUpdate,
+  parseRecordWebsiteRequest,
   parseRequestId,
   parseResolveRequest,
   parseSearchRequest,
+  parseTurnId,
   parseUpdateSource,
+  parseWebsiteFileRequest,
+  parseWebsiteGrantRequest,
   parseWebsiteRequest,
 } from "../research/requests.js";
 import { ResearchService, type ResearchServiceOptions } from "../research/service.js";
@@ -58,6 +62,17 @@ export function registerResearchRoutes(
               error: {
                 code: "unsupported",
                 message: "This Studio cannot render web pages (no browser capability)",
+              },
+            }),
+    recordWebsite:
+      options.recordWebsite ??
+      (async (opts) =>
+        adapter.recordWebsite
+          ? adapter.recordWebsite(opts)
+          : {
+              error: {
+                code: "unsupported",
+                message: "This Studio cannot record web pages (no browser capability)",
               },
             }),
   });
@@ -155,6 +170,39 @@ export function registerResearchRoutes(
     inProject(async (project, c) =>
       service.website(project, parseWebsiteRequest(await body(c)), c.req.raw.signal),
     ),
+  );
+
+  api.post(
+    "/projects/:id/research/website/file",
+    tooLarge,
+    inProject(async (project, c) =>
+      service.websiteFile(project, parseWebsiteFileRequest(await body(c)), c.req.raw.signal),
+    ),
+  );
+
+  api.post(
+    "/projects/:id/research/website/record",
+    tooLarge,
+    inProject(async (project, c) =>
+      service.websiteRecord(project, parseRecordWebsiteRequest(await body(c)), c.req.raw.signal),
+    ),
+  );
+
+  // One-time Websites grants from the chat's permission card ("Allow once"); revoked at the turn's end.
+  api.post(
+    "/projects/:id/research/website/grants",
+    tooLarge,
+    inProject(async (project, c) =>
+      service.websiteGrant(project, parseWebsiteGrantRequest(await body(c))),
+    ),
+  );
+
+  api.delete(
+    "/projects/:id/research/website/grants/:turnId",
+    inProject(async (project, c) => {
+      service.revokeWebsiteGrant(project, parseTurnId(c.req.param("turnId")));
+      return { ok: true };
+    }),
   );
 
   // A cancel answers with a guarantee about writes, see `CancelResearchRequestResult`.

@@ -147,6 +147,23 @@ describe("the media library", () => {
     expect(gone?.provenance?.source.name).toBe("Wikimedia Commons");
   });
 
+  it("keeps saved animations and other files out of the media library, present or gone", () => {
+    const items = buildMediaItems({
+      assets: ["assets/web/example.org/files/hero.json", "assets/web/example.org/files/hero.riv"],
+      inventory: new Map(),
+      analysis: new Map(),
+      ranges: new Map(),
+      provenance: [
+        record("assets/web/example.org/files/hero.json", { mediaKind: "animation" }),
+        record("assets/web/example.org/files/hero.riv", { mediaKind: "animation" }),
+        record("assets/web/example.org/files/app.js", { mediaKind: "file", present: false }),
+        record("assets/web/example.org/files/old.json", { mediaKind: "animation", present: false }),
+      ],
+      usedPaths: new Set(),
+    });
+    expect(items).toEqual([]);
+  });
+
   it("carries a picked fragment on video and audio items, never a whole-file or an image's", () => {
     const items = library();
     const rangeOf = (path: string) => items.find((item) => item.path === path)?.range;

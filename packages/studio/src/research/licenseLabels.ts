@@ -54,6 +54,8 @@ export const MEDIA_KIND_LABELS = {
   picture: "research.mediaKind.picture",
   audio: "research.mediaKind.audio",
   font: "research.mediaKind.font",
+  animation: "research.mediaKind.animation",
+  file: "research.mediaKind.file",
 } as const satisfies Record<ProvenanceMediaKind, TranslationKey>;
 
 /** "Research · Claude Haiku 4.5 · turn t-12" / "You": who brought the asset in. */

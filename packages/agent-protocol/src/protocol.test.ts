@@ -28,6 +28,7 @@ import {
   type ChatEvent,
   type ChatSummary,
   type OAuthLoginState,
+  type PermissionRequest,
   type TurnSummary,
 } from "./index.js";
 
@@ -132,6 +133,52 @@ describe("applyChatEvent", () => {
     expect(again).toBe(state);
     expect(isNextEvent(state, events[1]!)).toBe(true);
     expect(isNextEvent(state, events[3]!)).toBe(false);
+  });
+
+  it("folds a permission request into its part and settles a pending one when the turn ends", () => {
+    const request: PermissionRequest = {
+      id: "perm-1",
+      kind: "read_linked_pages",
+      action: "read",
+      site: "linear.app",
+      agent: "director",
+      state: "pending",
+      requestedAt: 4,
+    };
+    const events: Omit<ChatEvent, "seq" | "chatId" | "ts">[] = [
+      ...log().slice(0, 2),
+      { type: "permission.updated", messageId: "m2", permission: request },
+      {
+        type: "permission.updated",
+        messageId: "m2",
+        permission: { ...request, state: "allowed_once", answeredAt: 5 },
+      },
+      { type: "turn.completed", turn: { ...turn, status: "completed", endedAt: 9 } },
+    ];
+    const state = foldChatEvents(
+      events.map((event, index) => ({ ...event, seq: index + 1, chatId: "c1", ts: 10 + index })),
+    );
+    const message = state?.messages[1];
+    if (message?.role !== "assistant") throw new Error("the assistant message is missing");
+    expect(message.parts).toEqual([
+      {
+        type: "permission",
+        id: "perm-1",
+        permission: { ...request, state: "allowed_once", answeredAt: 5 },
+      },
+    ]);
+
+    // A still-pending request cannot outlive its turn: the terminal event expires it.
+    const open = foldChatEvents(
+      [
+        ...log().slice(0, 2),
+        { type: "permission.updated", messageId: "m2", permission: request },
+        { type: "turn.aborted", turn: { ...turn, status: "aborted", endedAt: 9 } },
+      ].map((event, index) => ({ ...event, seq: index + 1, chatId: "c1", ts: 10 + index })),
+    );
+    const aborted = open?.messages[1];
+    if (aborted?.role !== "assistant") throw new Error("the assistant message is missing");
+    expect(aborted.parts[0]).toMatchObject({ permission: { state: "expired" } });
   });
 
   it("marks a failed turn's streaming message failed", () => {

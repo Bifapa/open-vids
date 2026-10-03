@@ -7,6 +7,10 @@ import {
   RESEARCH_MEDIA_KINDS,
   WEB_SOURCE_ID,
   WEBSITE_SOURCE_ID,
+  type WebsiteFileRequest,
+  type WebsiteFileResult,
+  type WebsiteGrant,
+  type WebsiteGrantRequest,
   type AddTrustedSourceRequest,
   type CancelRequestState,
   type AssetCandidate,
@@ -25,6 +29,8 @@ import {
   type ProjectSourcesView,
   type ReadWebsiteRequest,
   type ReadWebsiteResult,
+  type RecordWebsiteRequest,
+  type RecordWebsiteResult,
   type ResearchMediaKind,
   type ResolveMissingRequest,
   type ResolveMissingResult,
@@ -71,6 +77,8 @@ import type {
 import { UrlGuard, sourceForHost } from "./sources/urlPolicy.js";
 import { DuckDuckGoSearch } from "./sources/webSearch.js";
 import { WebsiteReader } from "./website.js";
+import { WebsiteFiles } from "./websiteFiles.js";
+import { WebsiteGrantStore } from "./websiteGrants.js";
 
 const DEFAULT_LIMIT = 6;
 const MAX_BYTES: Record<ResearchMediaKind, number> = {
@@ -92,6 +100,8 @@ export interface ResearchServiceOptions {
   toolkit?: MediaToolkit;
   /** Renders a page for the website style reader (the adapter's CLI child); without it the reader is unsupported. */
   inspectWebsite?: StudioApiAdapter["inspectWebsite"];
+  /** Records a page as MP4 for full access (the adapter's CLI child); without it recording is unsupported. */
+  recordWebsite?: StudioApiAdapter["recordWebsite"];
   /** The address rules of the website reader (tests inject a DNS resolver). */
   websiteGuard?: UrlGuard;
   now?: () => number;
@@ -212,6 +222,8 @@ export class ResearchService {
   private readonly registry = new CandidateRegistry();
   private readonly requests: RequestRegistry;
   private readonly websites: WebsiteReader;
+  private readonly websiteFiles: WebsiteFiles;
+  private readonly grants: WebsiteGrantStore;
 
   constructor(private readonly options: ResearchServiceOptions) {
     this.store = options.store ?? new PolicyStore();
@@ -220,11 +232,23 @@ export class ResearchService {
     this.toolkit = options.toolkit ?? systemToolkit;
     this.now = options.now ?? Date.now;
     this.requests = new RequestRegistry(this.now);
+    this.grants = new WebsiteGrantStore(this.now);
     this.websites = new WebsiteReader({
       store: this.store,
       guard: options.websiteGuard ?? new UrlGuard(),
       inspect: options.inspectWebsite,
       requests: this.requests,
+      grants: this.grants,
+      lock: (project, task) => this.lock(project, task),
+      now: this.now,
+    });
+    this.websiteFiles = new WebsiteFiles({
+      store: this.store,
+      guard: options.websiteGuard ?? new UrlGuard(),
+      fetcher: this.fetcher,
+      record: options.recordWebsite,
+      requests: this.requests,
+      grants: this.grants,
       lock: (project, task) => this.lock(project, task),
       now: this.now,
     });
@@ -533,6 +557,38 @@ export class ResearchService {
     client?: AbortSignal,
   ): Promise<ReadWebsiteResult> {
     return this.websites.read(project, request, client);
+  }
+
+  /** Full access: downloads a file of a linked site, or returns its text (see `WebsiteFiles`). */
+  websiteFile(
+    project: ResolvedProject,
+    request: WebsiteFileRequest,
+    client?: AbortSignal,
+  ): Promise<WebsiteFileResult> {
+    return this.websiteFiles.file(project, request, client);
+  }
+
+  /** Full access: records a page of a linked site as an MP4 (see `WebsiteFiles`). */
+  websiteRecord(
+    project: ResolvedProject,
+    request: RecordWebsiteRequest,
+    client?: AbortSignal,
+  ): Promise<RecordWebsiteResult> {
+    return this.websiteFiles.record(project, request, client);
+  }
+
+  /**
+   * The user allowed a Websites setting once from the chat ("Allow once"): until the turn's runtime revokes it or it
+   * expires, website requests of this project carrying `turnId` pass the setting's check as if it were on (see
+   * `WebsiteGrantStore`).
+   */
+  websiteGrant(project: ResolvedProject, request: WebsiteGrantRequest): WebsiteGrant {
+    return this.grants.grant(project.dir, request.turnId, request.access);
+  }
+
+  /** Revokes the turn's one-time grant; `true` when there was one. Idempotent (the runtime calls it at turn end). */
+  revokeWebsiteGrant(project: ResolvedProject, turnId: string): boolean {
+    return this.grants.revoke(project.dir, turnId);
   }
 
   /** Cancels the import or resolution with this `requestId`; the answer says whether it can still write. */
