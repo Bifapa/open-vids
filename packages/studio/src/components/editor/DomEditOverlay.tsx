@@ -21,7 +21,6 @@ import { ChildRectOutlines, OffCanvasIndicators } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { useDomEditNudge } from "./useDomEditNudge";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
-import type { GestureRecordingState } from "./GestureRecordControl";
 import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { useCropOverlay } from "../../hooks/useCropOverlay";
@@ -84,8 +83,6 @@ interface DomEditOverlayProps {
   ) => Promise<void> | void;
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
-  recordingState?: GestureRecordingState;
-  onToggleRecording?: () => void;
   onMarqueeSelect?: (selections: DomEditSelection[], additive: boolean) => void;
   /**
    * Delete the selected canvas element.
@@ -93,6 +90,8 @@ interface DomEditOverlayProps {
    * same handler the Delete/Backspace hotkey uses.
    */
   onDeleteSelection?: (selection: DomEditSelection) => void;
+  /** Ask the agent about the right-clicked element (the canvas menu's "Ask Agent…"); hidden when absent. */
+  onAskAgent?: (selection: DomEditSelection) => void;
   /**
    * Called with the resolved z-order patch list and the menu action that
    * produced it (feeds the undo coalesce key). The patch list is tie-aware and
@@ -130,6 +129,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onStyleCommit,
   onMarqueeSelect,
   onDeleteSelection,
+  onAskAgent,
   onApplyZIndex,
 }: DomEditOverlayProps) {
   const { t } = useTranslation();
@@ -531,6 +531,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           y={contextMenu.y}
           selection={contextMenu.sel}
           onClose={closeContextMenu}
+          onAskAgent={onAskAgent}
           onDelete={
             onDeleteSelection && !readOnly
               ? (sel) => {

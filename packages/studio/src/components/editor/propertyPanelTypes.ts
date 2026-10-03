@@ -3,6 +3,7 @@ import type { ArcPathSegment, GsapAnimation } from "@hyperframes/parsers/gsap-pa
 import type { DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
+import type { GestureRecordingState } from "../../hooks/useGestureCommit";
 
 export interface BackgroundRemovalProgress {
   status: "processing" | "complete" | "failed";
@@ -41,7 +42,6 @@ export interface PropertyPanelProps {
   multiSelectedElements?: DomEditSelection[];
   onGroupSelection?: () => void;
   onHideAllSelected?: () => void;
-  copiedAgentPrompt: boolean;
   onClearSelection: () => void;
   onUngroup?: () => void;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
@@ -149,7 +149,7 @@ export interface PropertyPanelProps {
     props: Record<string, number | string>,
   ) => Promise<void>;
   onSeekToTime?: (time: number) => void;
-  recordingState?: "idle" | "recording" | "preview";
+  recordingState?: GestureRecordingState;
   recordingDuration?: number;
   onToggleRecording?: () => void;
 }

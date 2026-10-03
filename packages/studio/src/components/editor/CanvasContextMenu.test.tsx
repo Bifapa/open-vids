@@ -32,6 +32,8 @@ function renderMenu(props: {
   onApplyZIndex?: (patches: ZOrderPatch[], action: ZOrderAction) => void;
   onZOrderCrossed?: (crossed: HTMLElement, action: ZOrderAction) => void;
   onDelete?: (selection: DomEditSelection) => void;
+  onAskAgent?: (selection: DomEditSelection) => void;
+  onClose?: () => void;
 }) {
   root = createRoot(host);
   act(() => {
@@ -40,10 +42,11 @@ function renderMenu(props: {
         x: 10,
         y: 10,
         selection: props.selection,
-        onClose: () => {},
+        onClose: props.onClose ?? (() => {}),
         onApplyZIndex: props.onApplyZIndex,
         onZOrderCrossed: props.onZOrderCrossed,
         onDelete: props.onDelete,
+        onAskAgent: props.onAskAgent,
       }),
     );
   });
@@ -135,6 +138,39 @@ describe("CanvasContextMenu — handler gating", () => {
     expect(zOrderButtons()).toHaveLength(0);
     expect(hasDeleteItem()).toBe(true);
     expect(document.body.querySelector('[role="separator"]')).toBeNull();
+  });
+
+  it("offers Ask Agent… alone, and hands the selection over then closes", async () => {
+    const el = document.createElement("div");
+    el.id = "target";
+    document.body.append(el);
+    const selection = makeSelection("Target", el);
+    const onAskAgent = vi.fn();
+    const onClose = vi.fn();
+
+    renderMenu({ selection, onAskAgent, onClose });
+
+    expect(menuButtons().map((b) => b.textContent)).toEqual(["Ask Agent…"]);
+    expect(document.body.querySelector('[role="separator"]')).toBeNull();
+    await act(async () => pressMenuItem("Ask Agent…"));
+    expect(onAskAgent).toHaveBeenCalledWith(selection);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("sets Ask Agent… apart from the z-order items and Delete with dividers", () => {
+    const el = document.createElement("div");
+    el.id = "target";
+    document.body.append(el);
+
+    renderMenu({
+      selection: makeSelection("Target", el),
+      onApplyZIndex: vi.fn(),
+      onDelete: vi.fn(),
+      onAskAgent: vi.fn(),
+    });
+
+    expect(menuButtons()[0]?.textContent).toBe("Ask Agent…");
+    expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(2);
   });
 });
 

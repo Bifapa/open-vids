@@ -124,10 +124,7 @@ export { FileTree } from "./components/editor/FileTree";
 // App
 export { StudioApp } from "./App";
 
-// Ask-agent flow
-export { AskAgentModal } from "./components/AskAgentModal";
-export type { AskAgentModalProps } from "./components/AskAgentModal";
-export type { AgentModalAnchorPoint } from "./utils/studioHelpers";
+// Picker agent prompts
 export {
   buildPickerAgentPrompt,
   buildPickerAgentContextPreview,

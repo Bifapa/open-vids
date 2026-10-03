@@ -102,6 +102,7 @@ interface UseAppHotkeysParams {
   onDeleteSelectedKeyframes: () => void;
   onAfterUndoRedo?: UseEditHistoryActionsOptions["onAfterUndoRedo"];
   onToggleRecording?: () => void;
+  onCancelRecording?: () => boolean;
   /** Group the current multi-selection into a data-hf-group wrapper (⌘G). */
   onGroupSelection?: () => void;
   /** Ungroup the selected group wrapper (⌘⇧G). */
@@ -140,6 +141,7 @@ export function useAppHotkeys({
   onDeleteSelectedKeyframes,
   onAfterUndoRedo,
   onToggleRecording,
+  onCancelRecording,
   onGroupSelection,
   onUngroupSelection,
   activeCompPath,
@@ -217,6 +219,7 @@ export function useAppHotkeys({
     onResetKeyframes,
     onDeleteSelectedKeyframes,
     onToggleRecording,
+    onCancelRecording,
     onGroupSelection,
     onUngroupSelection,
     domEditSelectionRef,

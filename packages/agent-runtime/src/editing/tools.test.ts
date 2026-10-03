@@ -357,7 +357,7 @@ describe("editing tool results", () => {
       selection: {
         clips: [{ id: "el-1", hfId: "c1", tag: "video", start: 0, duration: 2, track: 0 }],
         assetPath: null,
-        previewElement: null,
+        previewElement: { hfId: "hf-9", label: "Logo", tagName: "img", sourceFile: "index.html" },
         range: { start: 1, end: 2.5 },
       },
       renderSettings: null,
@@ -370,6 +370,8 @@ describe("editing tool results", () => {
     expect(text).toContain("playhead 3.5 s (paused)");
     expect(text).toContain("selected clips c1");
     expect(text).toContain("selected range 1–2.5 s");
+    expect(text).toContain('selected canvas element "Logo" (img, hfId hf-9) in index.html');
+    expect(text).not.toContain("nothing selected");
     expect((await editing(host).call("inspect_timeline", {})).text).not.toContain("playhead");
   });
 

@@ -32,12 +32,34 @@ describe("PropertyPanelFlatFooter", () => {
     act(() => root.unmount());
   });
 
-  it("shows the idle record affordance and toggles recording on click", () => {
+  it("offers to arm a recording when idle and toggles it on click", () => {
     const onToggleRecording = vi.fn();
     const { host, root } = renderFooter({ recordingState: "idle", onToggleRecording });
     const recordButton = host.querySelector<HTMLButtonElement>('[data-flat-footer-record="true"]');
-    expect(recordButton?.title).toBe("Record gesture (R)");
+    expect(recordButton?.getAttribute("aria-pressed")).toBe("false");
+    expect(recordButton?.querySelector("kbd")?.textContent).toBe("R");
     act(() => recordButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onToggleRecording).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+
+  it("turns into a cancel control while armed, with Esc as its key", () => {
+    const onToggleRecording = vi.fn();
+    const idle = renderFooter({ recordingState: "idle", onToggleRecording });
+    const idleButton = idle.host.querySelector<HTMLButtonElement>(
+      '[data-flat-footer-record="true"]',
+    );
+    const idleLabel = idleButton?.textContent;
+    const idleTitle = idleButton?.title;
+    act(() => idle.root.unmount());
+
+    const { host, root } = renderFooter({ recordingState: "armed", onToggleRecording });
+    const armedButton = host.querySelector<HTMLButtonElement>('[data-flat-footer-record="true"]');
+    expect(armedButton?.getAttribute("aria-pressed")).toBe("true");
+    expect(armedButton?.querySelector("kbd")?.textContent).toBe("Esc");
+    expect(armedButton?.textContent).not.toBe(idleLabel);
+    expect(armedButton?.title).not.toBe(idleTitle);
+    act(() => armedButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onToggleRecording).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
@@ -50,6 +72,7 @@ describe("PropertyPanelFlatFooter", () => {
     });
     const recordButton = host.querySelector<HTMLButtonElement>('[data-flat-footer-record="true"]');
     expect(recordButton?.title).toBe("Stop recording 2.4s");
+    expect(recordButton?.getAttribute("aria-pressed")).toBe("true");
     act(() => root.unmount());
   });
 });

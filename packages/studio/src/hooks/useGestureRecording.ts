@@ -7,7 +7,15 @@ export interface GestureSample {
   properties: Record<string, number>;
 }
 
-interface Modifiers {
+export interface StartRecordingOptions {
+  /** Composition end of the recorded element; recording auto-seeks no further. */
+  elementEndTime?: number;
+  /** Pointer position the motion is measured from (the pointer-down point). */
+  startPointer: { x: number; y: number };
+  modifiers: Modifiers;
+}
+
+export interface Modifiers {
   shift: boolean;
   alt: boolean;
   meta: boolean;
@@ -213,7 +221,6 @@ function resolveGestureProperties(
 interface RecordingRefs {
   pointer: { x: number; y: number };
   startPointer: { x: number; y: number };
-  hasMoved: boolean;
   scrollDelta: number;
   modifiers: Modifiers;
   accumulated: AccumulatedState;
@@ -231,7 +238,6 @@ function createRecordingRefs(): RecordingRefs {
   return {
     pointer: { x: 0, y: 0 },
     startPointer: { x: 0, y: 0 },
-    hasMoved: false,
     scrollDelta: 0,
     modifiers: { shift: false, alt: false, meta: false },
     accumulated: { opacity: 1, scale: 1, z: 0 },
@@ -270,7 +276,23 @@ function releaseRuntimePreview(r: RecordingRefs): void {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useGestureRecording() {
+export interface GestureRecording {
+  /** Begin sampling; the pointer delta is measured from `options.startPointer`. */
+  startRecording: (
+    element: HTMLElement,
+    iframeEl: HTMLIFrameElement,
+    options: StartRecordingOptions,
+  ) => void;
+  /** Stop sampling, restore the preview and return the frozen samples. */
+  stopRecording: () => GestureSample[];
+  isRecording: boolean;
+  samplesRef: { current: GestureSample[] };
+  trailRef: { current: Array<{ x: number; y: number }> };
+  recordingDuration: number;
+  clearSamples: () => void;
+}
+
+export function useGestureRecording(): GestureRecording {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
 
@@ -296,14 +318,14 @@ export function useGestureRecording() {
   }, []);
 
   const startRecording = useCallback(
-    (element: HTMLElement, iframeEl: HTMLIFrameElement, elementEndTime?: number) => {
+    (element: HTMLElement, iframeEl: HTMLIFrameElement, options: StartRecordingOptions) => {
       if (isRecordingRef.current) return;
+      const { elementEndTime, startPointer, modifiers } = options;
       isRecordingRef.current = true;
 
       const r = refs.current;
       r.samples = [];
       r.trail = [];
-      r.hasMoved = false;
       r.scrollDelta = 0;
       samplesRef.current = r.samples;
       trailRef.current = r.trail;
@@ -330,18 +352,17 @@ export function useGestureRecording() {
       }
 
       // --- Phase 5: Attach event listeners ---
+      // The delta is anchored at the pointer-down point the caller hands in, so
+      // travelling to the canvas before pressing never counts as motion.
+      r.pointer = { ...startPointer };
+      r.startPointer = { ...startPointer };
+      r.modifiers = { ...modifiers };
       const handlePointerMove = (e: PointerEvent) => {
         r.pointer = { x: e.clientX, y: e.clientY };
         r.modifiers = { shift: e.shiftKey, alt: e.altKey, meta: e.metaKey || e.ctrlKey };
       };
 
       const handleWheel = (e: WheelEvent) => {
-        // Capture startPointer on first wheel if no pointermove has fired yet,
-        // preventing an enormous bogus first keyframe from stale startPointer.
-        if (!r.hasMoved) {
-          r.startPointer = { x: r.pointer.x, y: r.pointer.y };
-          r.hasMoved = true;
-        }
         r.scrollDelta += e.deltaY;
         r.modifiers = { shift: e.shiftKey, alt: e.altKey, meta: e.metaKey || e.ctrlKey };
       };
@@ -357,20 +378,6 @@ export function useGestureRecording() {
 
       const startMs = performance.now();
 
-      r.startPointer = { ...r.pointer };
-      const captureStart = (e: PointerEvent) => {
-        if (!r.hasMoved) {
-          // Anchor the delta at the grab point — the element then moves by the
-          // pointer's *movement* from its actual position (preserving both the
-          // manual-drag start position and the grab offset). Do NOT snap the
-          // element's center to the pointer: that discarded the manual position
-          // and made the recorded 0% keyframe wrong.
-          r.startPointer = { x: e.clientX, y: e.clientY };
-          r.hasMoved = true;
-        }
-      };
-      document.addEventListener("pointermove", captureStart, { passive: true, once: true });
-
       // --- Phase 6: RAF tick loop ---
       const tick = () => {
         if (!isRecordingRef.current) return;
@@ -381,12 +388,6 @@ export function useGestureRecording() {
         const dx = (r.pointer.x - r.startPointer.x) / scale;
         const dy = (r.pointer.y - r.startPointer.y) / scale;
         const scrollDelta = r.scrollDelta;
-
-        if (!r.hasMoved && dx === 0 && dy === 0 && scrollDelta === 0) {
-          r.rafId = requestAnimationFrame(tick);
-          return;
-        }
-        r.hasMoved = true;
 
         const { properties, nextState } = resolveGestureProperties(
           dx,
@@ -426,7 +427,6 @@ export function useGestureRecording() {
         document.removeEventListener("wheel", handleWheel);
         document.removeEventListener("keydown", handleKeyChange);
         document.removeEventListener("keyup", handleKeyChange);
-        document.removeEventListener("pointermove", captureStart);
       };
     },
     [], // No deps — uses refs only for all mutable state

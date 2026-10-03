@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { CaptionOverlay } from "../../captions/components/CaptionOverlay";
 import { useCaptionStore } from "../../captions/store";
 import { DomEditOverlay } from "../editor/DomEditOverlay";
+import { askAgentAboutElement } from "../chat/askAboutElement";
 import { TopologyLens } from "../editor/TopologyLens";
 import { MotionPathOverlay } from "../editor/MotionPathOverlay";
 import { GridOverlay } from "../editor/GridOverlay";
@@ -20,7 +21,6 @@ import { useCanvasZOrderTimelineMirror } from "./useCanvasZOrderTimelineMirror";
 import { runZLaneGesture } from "./zLaneGesture";
 import { useTranslation } from "../../i18n";
 import type { BlockPreviewInfo } from "../sidebar/BlocksTab";
-import type { GestureRecordingState } from "../editor/GestureRecordControl";
 import type { ReactNode } from "react";
 
 export interface PreviewOverlaysProps {
@@ -28,8 +28,6 @@ export interface PreviewOverlaysProps {
   shouldShowSelectedDomBounds: boolean;
   blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
-  recordingState?: GestureRecordingState;
-  onToggleRecording?: () => void;
   gestureOverlay?: ReactNode;
 }
 
@@ -133,8 +131,6 @@ export function PreviewOverlays({
   shouldShowSelectedDomBounds,
   blockPreview,
   isGestureRecording,
-  recordingState,
-  onToggleRecording,
   gestureOverlay,
 }: PreviewOverlaysProps) {
   const { t } = useTranslation();
@@ -279,6 +275,7 @@ export function PreviewOverlays({
         onRotationCommit={handleDomRotationCommit}
         onStyleCommit={handleDomStyleCommit}
         onDeleteSelection={handleDomEditElementDelete}
+        onAskAgent={askAgentAboutElement}
         onApplyZIndex={(sel, patches, action, crossed) => {
           const { entries, dropped } = resolveZIndexEntries(sel, patches);
           if (dropped.length > 0) {
@@ -315,8 +312,6 @@ export function PreviewOverlays({
               }),
           }).catch(() => undefined);
         }}
-        recordingState={recordingState}
-        onToggleRecording={onToggleRecording}
         onMarqueeSelect={applyMarqueeSelection}
       />
       {!readOnly && (

@@ -1,6 +1,5 @@
 import { formatNumber, useTranslation } from "../../i18n";
-
-export type GestureRecordingState = "idle" | "recording" | "preview";
+import type { GestureRecordingState } from "../../hooks/useGestureCommit";
 
 interface GestureRecordIconProps {
   recording: boolean;
@@ -31,6 +30,7 @@ export function GestureRecordPanelButton({
 }: GestureRecordPanelButtonProps) {
   const { t } = useTranslation();
   const recording = recordingState === "recording";
+  const armed = recordingState === "armed";
 
   return (
     <div className="px-4 pb-3">
@@ -41,12 +41,12 @@ export function GestureRecordPanelButton({
           onToggleRecording();
         }}
         className={`w-full flex items-center justify-center gap-2 rounded-lg py-2 text-[11px] font-medium transition-colors ${
-          recording
+          recording || armed
             ? "bg-red-500/15 text-red-400 border border-red-500/30 animate-pulse"
             : "bg-panel-input text-panel-text-2 hover:bg-panel-hover border border-panel-border"
         }`}
       >
-        <GestureRecordIcon recording={recording} />
+        <GestureRecordIcon recording={recording || armed} />
         {recording
           ? t("editor.gesture.stopPanel", {
               seconds: formatNumber(recordingDuration ?? 0, {
@@ -55,58 +55,10 @@ export function GestureRecordPanelButton({
               }),
               key: "R",
             })
-          : t("editor.gesture.recordPanel", { key: "R" })}
+          : armed
+            ? t("editor.gesture.cancelPanel", { key: "R" })
+            : t("editor.gesture.recordPanel", { key: "R" })}
       </button>
     </div>
-  );
-}
-
-interface GestureRecordBadgeProps {
-  rect: { left: number; top: number; width: number; height: number };
-  recordingState?: GestureRecordingState;
-  onToggleRecording: () => void;
-}
-
-export function GestureRecordBadge({
-  rect,
-  recordingState,
-  onToggleRecording,
-}: GestureRecordBadgeProps) {
-  const { t } = useTranslation();
-  const recording = recordingState === "recording";
-  const label = recording
-    ? t("editor.gesture.stopBadge", { key: "R" })
-    : t("editor.gesture.recordBadge", { key: "R" });
-
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      className={`pointer-events-auto absolute z-20 flex size-ctl items-center justify-center rounded-full border shadow-tip transition-colors ${
-        recording
-          ? "animate-pulse border-error/60 bg-error text-bg-0 motion-reduce:animate-none"
-          : "border-border bg-menu-bg/94 text-error backdrop-blur-xl hover:border-border-strong hover:bg-surface-2"
-      }`}
-      style={{
-        left: Math.max(0, rect.left + rect.width + 8),
-        top: Math.max(0, rect.top - 4),
-      }}
-      onPointerDown={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onMouseDown={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onToggleRecording();
-      }}
-    >
-      <GestureRecordIcon recording={recording} />
-    </button>
   );
 }

@@ -1,6 +1,7 @@
 import { Record as RecordIcon, Sparkle, Stop } from "@phosphor-icons/react";
 import { formatNumber, useTranslation } from "../../i18n";
 import { Button, Kbd } from "../ui";
+import type { GestureRecordingState } from "../../hooks/useGestureCommit";
 
 export function PropertyPanelFlatFooter({
   onAskAgent,
@@ -9,19 +10,22 @@ export function PropertyPanelFlatFooter({
   onToggleRecording,
 }: {
   onAskAgent?: () => void;
-  recordingState?: "idle" | "recording" | "preview";
+  recordingState?: GestureRecordingState;
   recordingDuration?: number;
   onToggleRecording?: () => void;
 }) {
   const { t } = useTranslation();
   const recording = recordingState === "recording";
+  const armed = recordingState === "armed";
   const seconds = formatNumber(recordingDuration ?? 0, {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   });
   const recordTitle = recording
     ? t("inspector.footer.stopRecordingHint", { seconds })
-    : t("inspector.footer.recordHint", { key: "R" });
+    : armed
+      ? t("inspector.footer.cancelRecordingHint", { key: "R" })
+      : t("inspector.footer.recordHint", { key: "R" });
 
   return (
     // The 1px line is a shadow, not a border: when the sections fill the body,
@@ -47,15 +51,15 @@ export function PropertyPanelFlatFooter({
           data-flat-footer-record="true"
           aria-label={recordTitle}
           title={recordTitle}
-          aria-pressed={recording}
+          aria-pressed={recording || armed}
           icon={
-            recording ? (
+            recording || armed ? (
               <Stop size={12} weight="fill" className="text-error" />
             ) : (
               <RecordIcon size={12} className="text-fg-2" />
             )
           }
-          className={`min-w-0 flex-auto justify-start ${recording ? "border-error/60" : ""}`}
+          className={`min-w-0 flex-auto justify-start ${recording || armed ? "border-error/60" : ""}`}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             onToggleRecording();
@@ -64,9 +68,11 @@ export function PropertyPanelFlatFooter({
           <span className="truncate">
             {recording
               ? t("inspector.footer.stopRecording", { seconds })
-              : t("inspector.footer.record")}
+              : armed
+                ? t("inspector.footer.cancelRecording")
+                : t("inspector.footer.record")}
           </span>
-          {!recording && <Kbd className="ml-auto">R</Kbd>}
+          {!recording && <Kbd className="ml-auto">{armed ? "Esc" : "R"}</Kbd>}
         </Button>
       )}
     </div>

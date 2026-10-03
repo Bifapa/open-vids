@@ -366,3 +366,47 @@ describe("hotkeys with the preview read-only", () => {
     expect(cb.handleDomEditElementDelete).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("dispatchPlainKey — motion path recording", () => {
+  it("lets Esc cancel an armed recording and keeps the key from any other handler", () => {
+    const onCancelRecording = vi.fn(() => true);
+    const cb = callbacks({ onCancelRecording });
+    const e = press("Escape");
+    const stop = vi.spyOn(e, "stopImmediatePropagation");
+    usePlayerStore.setState({ activeTool: "razor", selectedElementId: "bgm" });
+
+    dispatchPlainKey(e, "escape", cb);
+
+    expect(onCancelRecording).toHaveBeenCalledTimes(1);
+    expect(e.defaultPrevented).toBe(true);
+    expect(stop).toHaveBeenCalledTimes(1);
+    // The razor's own Esc handling (deselect) did not also run.
+    expect(usePlayerStore.getState().selectedElementId).toBe("bgm");
+    usePlayerStore.setState({ activeTool: "select" });
+  });
+
+  it("leaves Esc to the editor when no recording is armed", () => {
+    const cb = callbacks({ onCancelRecording: vi.fn(() => false) });
+    const e = press("Escape");
+    usePlayerStore.setState({ activeTool: "razor", selectedElementId: "bgm" });
+
+    dispatchPlainKey(e, "escape", cb);
+
+    expect(usePlayerStore.getState().selectedElementId).toBeNull();
+    usePlayerStore.setState({ activeTool: "select" });
+  });
+
+  it("ignores key-repeat of R so holding the key cannot arm and disarm in a loop", () => {
+    const onToggleRecording = vi.fn();
+    const cb = callbacks({ onToggleRecording });
+
+    dispatchPlainKey(press("r"), "r", cb);
+    dispatchPlainKey(
+      new KeyboardEvent("keydown", { key: "r", repeat: true, bubbles: true, cancelable: true }),
+      "r",
+      cb,
+    );
+
+    expect(onToggleRecording).toHaveBeenCalledTimes(1);
+  });
+});

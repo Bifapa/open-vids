@@ -1,10 +1,7 @@
 import type { ComponentProps } from "react";
 import { LintModal } from "./LintModal";
-import { AskAgentModal } from "./AskAgentModal";
 import { StudioToast } from "./StudioToast";
 import { ExportLicenseDialog } from "../research/ExportLicenseDialog";
-import { buildAgentContextPreview } from "./editor/domEditingAgentPrompt";
-import type { useDomEditSession } from "../hooks/useDomEditSession";
 import type { useToast } from "../hooks/useToast";
 
 type LintFindings = ComponentProps<typeof LintModal>["findings"];
@@ -16,15 +13,13 @@ export interface StudioOverlaysProps {
   closeLintModal: () => void;
   consoleErrors: LintFindings | null;
   clearConsoleErrors: () => void;
-  domEditSession: ReturnType<typeof useDomEditSession>;
-  activeCompPath: string | null;
   toasts: ReturnType<typeof useToast>["toasts"];
   dismissToast: (id: number) => void;
 }
 
 /**
  * Floating overlays for the studio shell: lint / console-error modals, the
- * ask-agent modal, the export license check and the toast. Extracted from
+ * export license check and the toast. Extracted from
  * `App.tsx` to keep the shell within the studio's 600-line decomposition budget.
  */
 export function StudioOverlays({
@@ -34,8 +29,6 @@ export function StudioOverlays({
   closeLintModal,
   consoleErrors,
   clearConsoleErrors,
-  domEditSession,
-  activeCompPath,
   toasts,
   dismissToast,
 }: StudioOverlaysProps) {
@@ -59,19 +52,6 @@ export function StudioOverlays({
           kind="console"
           promptIntro="Fix these runtime console errors from the composition preview"
           onClose={clearConsoleErrors}
-        />
-      )}
-      {domEditSession.agentModalOpen && domEditSession.domEditSelection && (
-        <AskAgentModal
-          selectionLabel={domEditSession.domEditSelection.label}
-          contextPreview={buildAgentContextPreview(domEditSession.domEditSelection, activeCompPath)}
-          anchorPoint={domEditSession.agentModalAnchorPoint}
-          onSubmit={domEditSession.handleAgentModalSubmit}
-          onClose={() => {
-            domEditSession.setAgentModalOpen(false);
-            domEditSession.setAgentPromptSelectionContext(undefined);
-            domEditSession.setAgentModalAnchorPoint(null);
-          }}
         />
       )}
       <ExportLicenseDialog />

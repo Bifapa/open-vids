@@ -50,7 +50,7 @@ import { StudioHeader } from "./components/StudioHeader";
 import { StudioStatusBar } from "./components/shell/StudioStatusBar";
 import { applyBootWorkspace } from "./story/WorkspaceSwitch";
 import { useGestureCommit } from "./hooks/useGestureCommit";
-import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
+import { GestureRecordingLayer } from "./components/editor/GestureRecordingLayer";
 import { StudioLeftPanels } from "./components/StudioLeftPanels";
 import { EditorShell } from "./components/EditorShell";
 import { StudioRightPanels } from "./components/StudioRightPanels";
@@ -268,6 +268,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     activeCompPath,
     forceReloadSdkSession: sdkHandle.forceReload,
     onToggleRecording: () => handleToggleRecordingRef.current(),
+    onCancelRecording: () => cancelRecordingRef.current(),
     readOnlyPreview,
   });
   const domEditSession = useDomEditSession({
@@ -293,7 +294,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     editHistory: { recordEdit: editHistory.recordEdit },
     fileTree: fileManager.fileTree,
     importedFontAssetsRef: fileManager.importedFontAssetsRef,
-    projectDir: fileManager.projectDir,
     projectIdRef: fileManager.projectIdRef,
     previewIframe,
     refreshKey,
@@ -350,9 +350,17 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   } = useConsoleErrorCapture(previewIframe);
   const fileDrop = useGlobalFileDrop(timelineEditing.handleTimelineFileDrop);
   const handleToggleRecordingRef = useRef<() => void>(() => {});
+  const cancelRecordingRef = useRef<() => boolean>(() => false);
   const domEditSessionRef = useRef(domEditSession);
   domEditSessionRef.current = domEditSession;
-  const { gestureState, gestureRecording, handleToggleRecording } = useGestureCommit({
+  const {
+    gestureState,
+    gestureRecording,
+    handleToggleRecording,
+    beginRecording,
+    finishRecording,
+    cancelRecording,
+  } = useGestureCommit({
     domEditSessionRef,
     previewIframeRef,
     showToast,
@@ -360,6 +368,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     readOnlyPreview,
   });
   handleToggleRecordingRef.current = handleToggleRecording;
+  cancelRecordingRef.current = cancelRecording;
   const canvasRectRef = useRef<DOMRect | null>(null);
   useLayoutEffect(() => {
     if (gestureState !== "recording" || !previewIframe) {
@@ -451,14 +460,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                 onDragOver={fileDrop.onDragOver}
                 onDrop={fileDrop.onDrop}
               >
-                <StudioHeader
-                  onExport={() => {
-                    void (async () => {
-                      await previewPersistence.waitForPendingDomEditSaves();
-                      await renderQueue.startRender(undefined);
-                    })();
-                  }}
-                />
+                <StudioHeader />
                 {previewPersistence.domEditSaveQueuePaused && !externalFileChanges.blocked && (
                   <SaveQueuePausedBanner
                     message={previewPersistence.domEditSaveQueuePaused}
@@ -542,21 +544,19 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                   setCompositionLoading={setCompositionLoading}
                   shouldShowMotionPath={shouldShowMotionPath}
                   shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
-                  isGestureRecording={gestureState === "recording"}
-                  recordingState={gestureState}
-                  onToggleRecording={handleToggleRecording}
+                  isGestureRecording={gestureState !== "idle"}
                   blockPreview={blockPreview}
                   gestureOverlay={
-                    gestureState === "recording" && previewIframe ? (
-                      <GestureTrailOverlay
-                        samples={gestureRecording.samplesRef.current}
-                        sampleCount={gestureRecording.samplesRef.current.length}
-                        trail={gestureRecording.trailRef.current}
-                        canvasRect={canvasRectRef.current!}
-                        compositionSize={compositionDimensions ?? undefined}
-                        mode="recording"
-                      />
-                    ) : undefined
+                    <GestureRecordingLayer
+                      state={gestureState}
+                      label={domEditSession.domEditSelection?.label ?? ""}
+                      gestureRecording={gestureRecording}
+                      canvasRect={canvasRectRef.current}
+                      compositionSize={compositionDimensions ?? undefined}
+                      onBegin={beginRecording}
+                      onFinish={finishRecording}
+                      onCancel={cancelRecording}
+                    />
                   }
                 />
                 <StudioStatusBar />
@@ -567,8 +567,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                   closeLintModal={lint.closeLintModal}
                   consoleErrors={consoleErrors}
                   clearConsoleErrors={() => setConsoleErrors(null)}
-                  domEditSession={domEditSession}
-                  activeCompPath={activeCompPath}
                   toasts={toasts}
                   dismissToast={dismissToast}
                 />

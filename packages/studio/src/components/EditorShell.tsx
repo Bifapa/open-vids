@@ -15,7 +15,6 @@ import { useDomEditActionsContext, useDomEditSelectionContext } from "../context
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import { usePlayerStore, type TimelineElement } from "../player";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
-import type { GestureRecordingState } from "./editor/GestureRecordControl";
 import { useTimelineSelectionPreviewSync } from "../hooks/useTimelineSelectionPreviewSync";
 import { StudioAgentTools } from "../webmcp/StudioAgentTools";
 import type { TimelineDropPlacement } from "../player/components/timelineCallbacks";
@@ -64,8 +63,6 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   shouldShowSelectedDomBounds: boolean;
   blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
-  recordingState?: GestureRecordingState;
-  onToggleRecording?: () => void;
   /**
    * Host layer over the preview, positioned with `usePreviewCompositionRect`. Hidden in
    * fullscreen and during a block preview; below the selection overlay past z-index 10.
@@ -111,8 +108,6 @@ export function EditorShell({
   shouldShowMotionPath,
   shouldShowSelectedDomBounds,
   isGestureRecording,
-  recordingState,
-  onToggleRecording,
   blockPreview,
   gestureOverlay,
   readOnlyPreview = false,
@@ -209,8 +204,6 @@ export function EditorShell({
                   shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                   blockPreview={blockPreview}
                   isGestureRecording={isGestureRecording}
-                  recordingState={recordingState}
-                  onToggleRecording={onToggleRecording}
                   gestureOverlay={gestureOverlay}
                 />
               }

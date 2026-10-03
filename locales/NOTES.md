@@ -239,7 +239,7 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `inspector.composition.path` — {path} is the composition file path.
 - `inspector.footer.stopRecordingHint` — {seconds} is the elapsed recording time, one decimal place.
 - `inspector.footer.stopRecording` — {seconds} is the elapsed recording time, one decimal place.
-- `inspector.footer.record` — Records a mouse gesture as animation keyframes.
+- `inspector.footer.record` — Arms recording of a motion path: the user then presses on the canvas and drags the element while the video plays; the drawn path becomes animation keyframes.
 - `inspector.group.styleSummary` — Collapsed summary of the Style section: the fill state, then the opacity.
 - `inspector.group.grade` — Inspector section for color grading.
 - `inspector.group.effects` — Inspector section of visual (shader) effects on media.
@@ -1299,3 +1299,19 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `menu.help.reportProblem` — Help submenu item that opens the bug-report window (Rust, apps/desktop/src-tauri/src/lib.rs).
 - `report.window.title` — Native title of the bug-report window (Rust, report.rs). Not the page heading — that is report.heading.
 - `dialog.reportPick.title` — Native title of the image picker behind POST /api/report/screenshots/pick (Rust, report.rs).
+
+## askagent
+
+- `editor.contextMenu.askAgent` — Canvas right-click menu item that opens the Chat panel with a starter about the element.
+- `chat.composer.aboutElement` — Starter text put in the chat composer by Ask Agent; {label} is the element name. Ends with a space so the user types right after the colon.
+
+## motion-path
+
+- `inspector.footer.cancelRecording` — Inspector footer button shown while motion-path recording is armed (waiting for the user to press on the canvas); clicking it disarms.
+- `inspector.footer.cancelRecordingHint` — Tooltip of the cancel button; {key} is the R hotkey.
+- `editor.gesture.cancelPanel` — Legacy inspector button label while a motion-path recording is armed; {key} is the R hotkey.
+- `editor.gesture.arm.title` — Heading of the instruction card over the preview while a motion path is armed; {label} is the selected element's name.
+- `editor.gesture.arm.instruction` — Instruction card over the preview: how to record a motion path (press, drag while the video plays, release).
+- `editor.gesture.arm.modifiers` — Compact modifier cheat sheet on the instruction card: each modifier key records a different property while dragging.
+- `editor.gesture.arm.cancel` — Lowercase word after the Esc key cap on the instruction card ("Esc cancel").
+- `editor.gesture.recording.status` — Status pill over the preview while the pointer is held and the motion path is being recorded.

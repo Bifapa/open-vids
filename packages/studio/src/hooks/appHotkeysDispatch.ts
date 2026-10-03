@@ -69,6 +69,8 @@ export interface HotkeyCallbacks {
   onResetKeyframes: () => boolean;
   onDeleteSelectedKeyframes: () => void;
   onToggleRecording?: () => void;
+  /** Esc: drops an armed / running motion-path recording; true when it handled the key. */
+  onCancelRecording?: () => boolean;
   onGroupSelection?: () => void;
   onUngroupSelection?: () => void;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
@@ -229,6 +231,11 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
   }
 
   if (event.key === "Escape") {
+    if (cb.onCancelRecording?.()) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     const { activeTool, selectedElementId, setActiveTool, setSelectedElementId } =
       usePlayerStore.getState();
     if (activeTool === "razor") {
@@ -288,6 +295,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     event.key === STUDIO_PLAIN_KEYS.record &&
     !event.shiftKey &&
     !event.altKey &&
+    !event.repeat &&
     cb.onToggleRecording
   ) {
     event.preventDefault();

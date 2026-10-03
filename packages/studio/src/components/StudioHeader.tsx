@@ -16,10 +16,6 @@ import {
 import { ReportProblemButton } from "./shell/ReportProblemButton";
 import { Button, IconButton, OpenvidsLogo, Tooltip } from "./ui";
 
-export interface StudioHeaderProps {
-  onExport?: () => void;
-}
-
 /**
  * Inside OpenVids the logo becomes a back button to the Projects home
  * screen. A plain <button> (not an <a href>): the home origin arrives via
@@ -54,7 +50,7 @@ function OpenvidsBackOrLogo({ homeOrigin }: { homeOrigin: string | null }) {
  * Export and Settings on the right. In the desktop app the traffic lights sit over its left edge,
  * and the bar itself drags the window.
  */
-export function StudioHeader({ onExport }: StudioHeaderProps) {
+export function StudioHeader() {
   const { t } = useTranslation();
   const { projectId, renderQueue } = useStudioShellContext();
   const { setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
@@ -106,19 +102,13 @@ export function StudioHeader({ onExport }: StudioHeaderProps) {
             variant="secondary"
             size="sm"
             data-testid="header-export"
-            disabled={isRendering}
             icon={<Export size={14} />}
             onClick={() => {
-              if (isRendering) return;
+              // Export only brings up Renders: the user picks format, quality and
+              // size there and starts the render with its button. A render in
+              // progress or a missing FFmpeg is shown in the same panel.
               setRightPanelTab("renders");
               setRightCollapsed(false);
-              // Without an encoder this render cannot finish, so the click
-              // delivers the user to the prompt that fixes it instead of
-              // queueing a job that exists only to fail. Disabling the button
-              // would leave them staring at a dead control with no route to
-              // the explanation.
-              if (ffmpegMissing) return;
-              onExport?.();
             }}
           >
             {isRendering ? t("shell.header.rendering") : t("shell.header.export")}

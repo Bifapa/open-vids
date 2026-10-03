@@ -78,13 +78,13 @@ afterEach(() => {
   host.remove();
 });
 
-function mount(search?: string, onExport = vi.fn()): HTMLElement {
+function mount(search?: string): HTMLElement {
   if (search !== undefined) window.history.replaceState(null, "", `/${search}`);
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   mounted = { root, host };
-  act(() => root.render(<StudioHeader onExport={onExport} />));
+  act(() => root.render(<StudioHeader />));
   return host;
 }
 
@@ -109,22 +109,11 @@ it("names the step Undo and Redo would take, and runs the shell's history", () =
   expect(shell.handleUndo).toHaveBeenCalledTimes(1);
 });
 
-it("opens Renders and starts the export, but only opens Renders when FFmpeg is missing", () => {
-  const onExport = vi.fn();
-  let host = mount(undefined, onExport);
+it("Export only opens Renders, so the user starts the render there", () => {
+  const host = mount();
   act(() => query(host, '[data-testid="header-export"]').click());
   expect(panelLayout.setRightPanelTab).toHaveBeenCalledWith("renders");
-  expect(onExport).toHaveBeenCalledTimes(1);
-
-  act(() => mounted?.root.unmount());
-  mounted?.host.remove();
-  mounted = null;
-  shell.renderQueue = { isRendering: false, ffmpegMissing: true };
-  onExport.mockClear();
-  host = mount(undefined, onExport);
-  act(() => query(host, '[data-testid="header-export"]').click());
   expect(panelLayout.setRightCollapsed).toHaveBeenCalledWith(false);
-  expect(onExport).not.toHaveBeenCalled();
 });
 
 it("shows each dock zone's toggle pressed while it shows, and hides the zone on click", () => {

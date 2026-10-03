@@ -15,7 +15,8 @@ export interface ContextChip {
   detail: string;
 }
 
-const elementKey = (element: NonNullable<EditorContext["selection"]["previewElement"]>) =>
+/** The chip key of a canvas-picked element; what removing its chip is remembered by. */
+export const elementKey = (element: NonNullable<EditorContext["selection"]["previewElement"]>) =>
   `element:${element.hfId ?? element.selector ?? element.domId ?? element.label ?? ""}`;
 
 const rangeKey = (range: { start: number; end: number }) => `range:${range.start}-${range.end}`;
@@ -74,12 +75,20 @@ export function contextChips(
 interface ComposerContextState {
   excluded: ReadonlySet<string>;
   exclude(key: string): void;
+  /** Takes the keys back into the next message, as when the user asks about them again. */
+  include(keys: readonly string[]): void;
   clear(): void;
 }
 
 export const useComposerContextStore = create<ComposerContextState>((set) => ({
   excluded: new Set(),
   exclude: (key) => set((state) => ({ excluded: new Set([...state.excluded, key]) })),
+  include: (keys) =>
+    set((state) =>
+      keys.some((key) => state.excluded.has(key))
+        ? { excluded: new Set([...state.excluded].filter((key) => !keys.includes(key))) }
+        : state,
+    ),
   clear: () => set({ excluded: new Set() }),
 }));
 

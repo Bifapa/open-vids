@@ -63,7 +63,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     multiSelectedElements,
     onGroupSelection,
     onHideAllSelected,
-    copiedAgentPrompt: _copiedAgentPrompt,
     onClearSelection,
     onUngroup,
     onSetStyle,

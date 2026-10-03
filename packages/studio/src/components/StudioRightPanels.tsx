@@ -9,8 +9,10 @@ import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueuePanel } from "./renders/RenderQueuePanel";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
 import { AgentChatPanel } from "./chat/AgentChatPanel";
+import { askAgentAboutElement } from "./chat/askAboutElement";
 import { useEditorRefreshAfterRevert } from "../agent/revertRefresh";
 import { useProjectAgentStore } from "../agent/agentContext";
+import { useComposerRequestBridge } from "../agent/composerRequest";
 import { useEditorContextSource } from "../agent/editorContext";
 import { StoryPanel } from "../story/StoryPanel";
 import { SettingsDialog } from "./settings/SettingsDialog";
@@ -68,7 +70,6 @@ export function StudioRightPanels({
   const {
     domEditSelection,
     domEditGroupSelections,
-    copiedAgentPrompt,
     clearDomSelection,
     handleUngroupSelection,
     handleGroupSelection,
@@ -85,7 +86,6 @@ export function StudioRightPanels({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
-    handleAskAgent,
     selectedGsapAnimations,
     gsapMultipleTimelines,
     gsapUnsupportedTimelinePattern,
@@ -186,6 +186,8 @@ export function StudioRightPanels({
     onAgentReverted,
     renderQueue.reloadRenders,
   );
+  // Asking about an element from the inspector or the canvas menu fills this store's composer draft.
+  useComposerRequestBridge(agentStore);
   // The story is loaded with the project so the agent's editor context knows its version from the start.
   useEffect(() => {
     void studioStoryStore.getState().open(projectId);
@@ -244,7 +246,6 @@ export function StudioRightPanels({
         multiSelectedElements={domEditGroupSelections}
         onGroupSelection={handleGroupSelection}
         onHideAllSelected={handleHideAllSelected}
-        copiedAgentPrompt={copiedAgentPrompt}
         onClearSelection={clearDomSelection}
         onToggleElementHidden={onToggleElementHidden}
         onAutoGroupCarveSources={onAutoGroupCarveSources}
@@ -264,7 +265,9 @@ export function StudioRightPanels({
         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
         onAddTextField={handleDomAddTextField}
         onRemoveTextField={handleDomRemoveTextField}
-        onAskAgent={handleAskAgent}
+        onAskAgent={() => {
+          if (domEditSelection) askAgentAboutElement(domEditSelection);
+        }}
         onImportAssets={handleImportFiles}
         onAddMediaOverlay={onAddMediaOverlay}
         fontAssets={fontAssets}

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { Window } from "happy-dom";
 import {
   buildDomEditStylePatchOperation,
-  buildElementAgentPrompt,
   collectDomEditLayerItems,
   countDomEditChildLayers,
   findElementForSelection,
@@ -13,7 +12,6 @@ import {
   isTextEditableSelection,
   resolveVisualDomEditSelectionTarget,
   serializeDomEditTextFields,
-  type DomEditSelection,
   resolveDomEditCapabilities,
   resolveDomEditSelection,
 } from "./domEditing";
@@ -1022,168 +1020,13 @@ describe("resolveDomEditSelection", () => {
   });
 });
 
-describe("patch builders and prompt builder", () => {
+describe("patch builders", () => {
   it("builds style patch operations", () => {
     expect(buildDomEditStylePatchOperation("background-color", "rgb(15, 23, 42)")).toEqual({
       type: "inline-style",
       property: "background-color",
       value: "rgb(15, 23, 42)",
     });
-  });
-
-  it("builds an agent prompt with source and selector context", () => {
-    const selection = {
-      element: {} as HTMLElement,
-      id: "editable-card",
-      selector: "#editable-card",
-      selectorIndex: undefined,
-      sourceFile: "index.html",
-      compositionPath: "index.html",
-      compositionSrc: undefined,
-      isCompositionHost: false,
-      label: "Drag me first",
-      tagName: "div",
-      boundingBox: { x: 108, y: 112, width: 380, height: 196 },
-      textContent: "Drag me first",
-      dataAttributes: {},
-      inlineStyles: {
-        left: "108px",
-        top: "112px",
-        width: "380px",
-        height: "196px",
-      },
-      computedStyles: {
-        position: "absolute",
-        left: "108px",
-        top: "112px",
-        width: "380px",
-        height: "196px",
-        color: "rgb(248, 250, 252)",
-      },
-      textFields: [
-        {
-          key: "self:0:div",
-          label: "Content",
-          value: "Drag me first",
-          tagName: "div",
-          attributes: [],
-          inlineStyles: {},
-          computedStyles: {},
-          source: "self",
-        },
-      ],
-      capabilities: {
-        canSelect: true,
-        canEditStyles: true,
-        canMove: true,
-        canResize: true,
-        canApplyManualOffset: true,
-        canApplyManualSize: true,
-        canApplyManualRotation: true,
-      },
-    } satisfies DomEditSelection;
-
-    const prompt = buildElementAgentPrompt({
-      selection,
-      currentTime: 1.25,
-      tagSnippet: `<div id="editable-card" style="position:absolute; left: 108px; top: 112px; width: 380px; height: 196px; color: rgb(248, 250, 252)"`,
-    });
-
-    expect(prompt).toContain("## HyperFrames element edit request v1");
-    expect(prompt).toContain("Schema version: 1");
-    expect(prompt).toContain("Source file: index.html");
-    expect(prompt).toContain("Selector: #editable-card");
-    expect(prompt).toContain("Playback time:");
-    expect(prompt).toContain("Text fields:");
-    expect(prompt).toContain('key=self:0:div; tag=<div>; source=self; text="Drag me first"');
-    expect(prompt).toContain("Inline styles:");
-    expect(prompt).toContain("Computed styles (browser-resolved):");
-    expect(prompt).toContain("Target HTML:");
-    expect(prompt).toContain("Guardrails:");
-    expect(prompt).toContain("Do not modify other elements' data-* attributes or positioning");
-  });
-
-  it("uses an absolute source path in copied agent prompts when provided", () => {
-    const selection = {
-      element: {} as HTMLElement,
-      id: "editable-card",
-      selector: "#editable-card",
-      selectorIndex: undefined,
-      sourceFile: "index.html",
-      compositionPath: "index.html",
-      compositionSrc: undefined,
-      isCompositionHost: false,
-      label: "Drag me first",
-      tagName: "div",
-      boundingBox: { x: 108, y: 112, width: 380, height: 196 },
-      textContent: "Drag me first",
-      dataAttributes: {},
-      inlineStyles: {},
-      computedStyles: {},
-      textFields: [],
-      capabilities: {
-        canSelect: true,
-        canEditStyles: true,
-        canMove: true,
-        canResize: true,
-        canApplyManualOffset: true,
-        canApplyManualSize: true,
-        canApplyManualRotation: true,
-      },
-    } satisfies DomEditSelection;
-
-    const prompt = buildElementAgentPrompt({
-      selection,
-      currentTime: 1.25,
-      sourceFilePath: "/tmp/hf-studio-project/index.html",
-    });
-
-    expect(prompt).toContain("Source file: /tmp/hf-studio-project/index.html");
-    expect(prompt).not.toContain("Source file: index.html");
-  });
-
-  it("includes raster click context in copied agent prompts", () => {
-    const selection = {
-      element: {} as HTMLElement,
-      id: undefined,
-      selector: ".hero-bg",
-      selectorIndex: undefined,
-      sourceFile: "index.html",
-      compositionPath: "index.html",
-      compositionSrc: undefined,
-      isCompositionHost: false,
-      label: "Hero Bg",
-      tagName: "img",
-      boundingBox: { x: 0, y: 0, width: 1920, height: 1080 },
-      textContent: null,
-      dataAttributes: {},
-      inlineStyles: {},
-      computedStyles: {},
-      textFields: [],
-      capabilities: {
-        canSelect: true,
-        canEditStyles: true,
-        canMove: true,
-        canResize: true,
-        canApplyManualOffset: true,
-        canApplyManualSize: true,
-        canApplyManualRotation: true,
-      },
-    } satisfies DomEditSelection;
-
-    const prompt = buildElementAgentPrompt({
-      selection,
-      currentTime: 3,
-      selectionContext:
-        "The user clicked visible text that is baked into the selected image/background.",
-      userInstruction: "Change the title copy.",
-    });
-
-    expect(prompt).toContain("Selection context:");
-    expect(prompt).toContain(
-      "The user clicked visible text that is baked into the selected image/background.",
-    );
-    expect(prompt).toContain("Change the title copy.");
   });
 
   it("serializes child text fields back into HTML", () => {

@@ -25,10 +25,6 @@ export type RightPanelTab =
   | "block-params"
   | "slideshow"
   | "variables";
-export interface AgentModalAnchorPoint {
-  x: number;
-  y: number;
-}
 
 export function getTimelineElementLabel(element: TimelineElement): string {
   return element.label || element.id || element.tag;

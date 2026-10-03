@@ -576,8 +576,6 @@ export function isTextEditableSelection(selection: DomEditSelection): boolean {
   return resolveEditingSections(domEditSelectionToFacts(selection)).text;
 }
 
-// buildElementAgentPrompt is in domEditingAgentPrompt.ts
-
 export function readHfId(element: Element): string | undefined {
   return element.getAttribute("data-hf-id")?.trim() || undefined;
 }

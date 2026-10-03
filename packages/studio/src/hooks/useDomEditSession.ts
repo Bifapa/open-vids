@@ -6,7 +6,6 @@ import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { Composition } from "@hyperframes/sdk";
 import { sdkCutoverPersist, sdkDeletePersist, type PublishSdkSession } from "../utils/sdkCutover";
-import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
@@ -38,7 +37,6 @@ export interface UseDomEditSessionParams extends DomEditTimelineParams {
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
   fileTree: string[];
   importedFontAssetsRef: React.MutableRefObject<ImportedFontAsset[]>;
-  projectDir: string | null;
   projectIdRef: React.MutableRefObject<string | null>;
   previewIframe: HTMLIFrameElement | null;
   refreshKey: number;
@@ -83,7 +81,6 @@ export function useDomEditSession({
   editHistory,
   fileTree,
   importedFontAssetsRef,
-  projectDir,
   projectIdRef,
   previewIframe,
   refreshKey,
@@ -138,26 +135,6 @@ export function useDomEditSession({
     previewIframe,
     refreshKey,
     rightPanelTab,
-  });
-
-  const {
-    agentModalOpen,
-    agentModalAnchorPoint,
-    copiedAgentPrompt,
-    agentPromptSelectionContext,
-    setAgentModalOpen,
-    setAgentPromptSelectionContext,
-    setAgentModalAnchorPoint,
-    handleAskAgent,
-    handleAgentModalSubmit,
-  } = useAskAgentModal({
-    projectId,
-    activeCompPath,
-    projectDir,
-    projectIdRef,
-    showToast,
-    domEditSelectionRef,
-    domEditSelection,
   });
 
   useStudioSelectionPublisher({
@@ -474,10 +451,6 @@ export function useDomEditSession({
     domEditGroupSelections,
     domEditHoverSelection,
     activeGroupElement,
-    agentModalOpen,
-    agentModalAnchorPoint,
-    copiedAgentPrompt,
-    agentPromptSelectionContext,
     domEditSelectionRef,
     // Callbacks
     handleTimelineElementSelect,
@@ -507,8 +480,6 @@ export function useDomEditSession({
     handleDomAddTextField,
     handleDomRemoveTextField,
     getGsapAnimationsForSelection,
-    handleAskAgent,
-    handleAgentModalSubmit,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
@@ -520,9 +491,6 @@ export function useDomEditSession({
     updateDomEditHoverSelection,
     applyMarqueeSelection,
     resolveImportedFontAsset,
-    setAgentModalOpen,
-    setAgentPromptSelectionContext,
-    setAgentModalAnchorPoint,
 
     // GSAP script editing
     selectedGsapAnimations,

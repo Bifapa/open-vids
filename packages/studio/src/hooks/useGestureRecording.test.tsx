@@ -3,12 +3,19 @@
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountReactHarness } from "./domSelectionTestHarness";
-import { useGestureRecording, type GestureSample } from "./useGestureRecording";
+import {
+  useGestureRecording,
+  type GestureRecording,
+  type GestureSample,
+} from "./useGestureRecording";
+
+const NO_MODIFIERS = { shift: false, alt: false, meta: false };
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   document.body.replaceChildren();
 });
 
@@ -32,14 +39,19 @@ describe("useGestureRecording", () => {
     element.id = "card";
     iframe.contentDocument!.body.append(element);
 
-    let recording: ReturnType<typeof useGestureRecording> | null = null;
+    let recording: GestureRecording | null = null;
     function Harness() {
       recording = useGestureRecording();
       return null;
     }
     const root = mountReactHarness(<Harness />);
 
-    act(() => recording?.startRecording(element, iframe));
+    act(() =>
+      recording?.startRecording(element, iframe, {
+        startPointer: { x: 0, y: 0 },
+        modifiers: NO_MODIFIERS,
+      }),
+    );
     document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 10 }));
     nowMs = 1;
     act(() => animationFrames.shift()?.(1));
@@ -59,8 +71,8 @@ describe("useGestureRecording", () => {
     });
 
     expect(samples).toEqual([
-      { time: 0, properties: { x: 10, y: 0 } },
-      { time: 1 / 30, properties: { x: 40, y: 0 } },
+      { time: 0, properties: { x: 20, y: 0 } },
+      { time: 1 / 30, properties: { x: 50, y: 0 } },
     ]);
     act(() => root.unmount());
   });
@@ -95,14 +107,20 @@ describe("useGestureRecording", () => {
     });
     Reflect.set(iframe.contentWindow!, "__player", { getTime: () => 1 });
 
-    let recording: ReturnType<typeof useGestureRecording> | null = null;
+    let recording: GestureRecording | null = null;
     function Harness() {
       recording = useGestureRecording();
       return null;
     }
     const root = mountReactHarness(<Harness />);
 
-    act(() => recording?.startRecording(element, iframe, 4));
+    act(() =>
+      recording?.startRecording(element, iframe, {
+        elementEndTime: 4,
+        startPointer: { x: 0, y: 0 },
+        modifiers: NO_MODIFIERS,
+      }),
+    );
     expect(element.style.getPropertyValue("--hf-studio-offset-x")).toBe("0px");
     expect(element.style.getPropertyValue("--hf-studio-offset-y")).toBe("0px");
 
@@ -116,5 +134,60 @@ describe("useGestureRecording", () => {
     expect(element.style.getPropertyValue("translate")).toBe("10px 20px");
     expect(element.style.getPropertyValue("--hf-studio-offset-x")).toBe("12px");
     expect(element.style.getPropertyValue("--hf-studio-offset-y")).toBe("-8px");
+  });
+
+  it("measures motion from the pointer-down point, so the element does not jump to the pointer", () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        animationFrames.push(callback);
+        return animationFrames.length;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let nowMs = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const element = iframe.contentDocument!.createElement("div");
+    element.id = "card";
+    iframe.contentDocument!.body.append(element);
+
+    let recording: GestureRecording | null = null;
+    function Harness() {
+      recording = useGestureRecording();
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+
+    // The pointer travelled from the inspector button to the canvas before the press.
+    document.dispatchEvent(
+      new MouseEvent("pointermove", { bubbles: true, clientX: 40, clientY: 700 }),
+    );
+    act(() =>
+      recording?.startRecording(element, iframe, {
+        startPointer: { x: 900, y: 300 },
+        modifiers: NO_MODIFIERS,
+      }),
+    );
+    act(() => animationFrames.shift()?.(0));
+    document.dispatchEvent(
+      new MouseEvent("pointermove", { bubbles: true, clientX: 910, clientY: 280 }),
+    );
+    nowMs = 40;
+    act(() => animationFrames.shift()?.(40));
+
+    let samples: GestureSample[] = [];
+    act(() => {
+      samples = recording?.stopRecording() ?? [];
+    });
+
+    expect(samples).toEqual([
+      { time: 0, properties: { x: 0, y: 0 } },
+      { time: 1 / 30, properties: { x: 10, y: -20 } },
+    ]);
+    act(() => root.unmount());
   });
 });

@@ -9,6 +9,7 @@ import type {
   TimelineSnapshot,
 } from "@hyperframes/agent-protocol";
 import { EditingError, type RenderOutput } from "./host.js";
+import { describePreviewElement } from "../promptContext.js";
 
 /** Everything the editing tools return is compact text for the model, capped at this many characters. */
 export const RESULT_CHARS = 8_000;
@@ -81,13 +82,21 @@ function describeContext(context: EditorContext, composition: string): string {
       `selected clips ${selection.clips.map((clip) => clip.hfId ?? clip.domId ?? clip.id).join(", ")}`,
     );
   }
+  if (selection.previewElement) {
+    parts.push(`selected canvas element ${describePreviewElement(selection.previewElement)}`);
+  }
   if (selection.assetPath) parts.push(`selected asset ${selection.assetPath}`);
   if (selection.range) {
     parts.push(
       `selected range ${seconds(selection.range.start)}–${seconds(selection.range.end)} s`,
     );
   }
-  if (selection.clips.length === 0 && !selection.assetPath && !selection.range) {
+  if (
+    selection.clips.length === 0 &&
+    !selection.previewElement &&
+    !selection.assetPath &&
+    !selection.range
+  ) {
     parts.push("nothing selected");
   }
   const scope =

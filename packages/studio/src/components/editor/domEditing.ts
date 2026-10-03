@@ -46,10 +46,5 @@ export {
 } from "./domEditingLayers";
 
 // Agent prompt
-export {
-  buildElementAgentPrompt,
-  buildAgentContextPreview,
-  buildPickerAgentPrompt,
-  buildPickerAgentContextPreview,
-} from "./domEditingAgentPrompt";
+export { buildPickerAgentPrompt, buildPickerAgentContextPreview } from "./domEditingAgentPrompt";
 export type { AgentPromptElementInfo } from "./domEditingAgentPrompt";

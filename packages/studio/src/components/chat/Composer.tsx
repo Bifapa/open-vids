@@ -5,6 +5,7 @@ import { activeThread, hasNoUsableModel, runningTurn } from "../../agent/agentSe
 import { draftChatSummary } from "../../agent/agentDraftChat";
 import { NEW_CHAT_DRAFT } from "../../agent/agentStore";
 import { useComposerContextStore } from "../../agent/composerContext";
+import { useComposerRequestStore } from "../../agent/composerRequest";
 import { useDockLayoutStore } from "../dock/dockLayoutStore";
 import { cn } from "../ui/cn";
 import { useTranslation } from "../../i18n";
@@ -23,6 +24,9 @@ const sendClass = cn(
   "outline-hidden transition-colors duration-hover",
   "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
 );
+
+/** Frames the composer keeps trying to take the focus after an outside request (the dock reveals the tab). */
+const FOCUS_ATTEMPTS = 20;
 
 /**
  * The prompt box (prototype `.ov-chat-composer`): context chips, the prompt, and the controls — Model · Effort,
@@ -62,6 +66,27 @@ export function Composer() {
     area.style.height = "auto";
     area.style.height = `${area.scrollHeight}px`;
   }, [draft]);
+  // Asked from outside (inspector, canvas menu): once the draft shows, the caret goes to its end. The Chat tab
+  // may still be hidden behind another tab when this runs, so the focus is retried while the dock reveals it.
+  const focusPending = useComposerRequestStore((state) => state.focusPending);
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!focusPending || !area) return;
+    let frame = 0;
+    let attempts = 0;
+    const focusAtEnd = () => {
+      area.focus({ preventScroll: true });
+      if (area.matches(":focus")) {
+        area.setSelectionRange(area.value.length, area.value.length);
+      } else if ((attempts += 1) < FOCUS_ATTEMPTS) {
+        frame = requestAnimationFrame(focusAtEnd);
+        return;
+      }
+      useComposerRequestStore.getState().focused();
+    };
+    focusAtEnd();
+    return () => cancelAnimationFrame(frame);
+  }, [focusPending, draft]);
   const [portal, setPortal] = useState<HTMLDivElement | null>(null);
 
   const running = runningTurn(chat) !== null;

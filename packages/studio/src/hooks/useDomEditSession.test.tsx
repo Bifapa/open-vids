@@ -83,7 +83,6 @@ function createSessionParams(
     editHistory: { recordEdit: async () => {} },
     fileTree: [],
     importedFontAssetsRef: { current: [] },
-    projectDir: null,
     projectIdRef: { current: "proj-1" },
     previewIframe: null,
     refreshKey: 0,
@@ -138,19 +137,6 @@ vi.mock("./useDomSelection", () => ({
     handleTimelineElementSelect: vi.fn(),
     refreshDomEditSelectionFromPreview: vi.fn(),
     applyMarqueeSelection: vi.fn(),
-  }),
-}));
-vi.mock("./useAskAgentModal", () => ({
-  useAskAgentModal: () => ({
-    agentModalOpen: false,
-    agentModalAnchorPoint: null,
-    copiedAgentPrompt: null,
-    agentPromptSelectionContext: null,
-    setAgentModalOpen: vi.fn(),
-    setAgentPromptSelectionContext: vi.fn(),
-    setAgentModalAnchorPoint: vi.fn(),
-    handleAskAgent: vi.fn(),
-    handleAgentModalSubmit: vi.fn(),
   }),
 }));
 vi.mock("./useStudioSelectionPublisher", () => ({

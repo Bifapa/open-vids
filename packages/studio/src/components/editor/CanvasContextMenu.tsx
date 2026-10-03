@@ -24,6 +24,7 @@
  */
 
 import { memo } from "react";
+import { ChatCircleDots } from "@phosphor-icons/react";
 import { createPortal } from "react-dom";
 import type { DomEditSelection } from "./domEditing";
 import { useTranslation, type TranslationKey } from "../../i18n";
@@ -76,6 +77,11 @@ interface CanvasContextMenuProps {
    * the Delete item is then hidden rather than shown as a silent no-op.
    */
   onDelete?: (selection: DomEditSelection) => void;
+  /**
+   * Ask the agent about the selected element: the Chat panel opens with a starter in its composer.
+   * Absent when no chat is wired (a mount outside the studio shell): the item is then hidden.
+   */
+  onAskAgent?: (selection: DomEditSelection) => void;
 }
 
 type ZAction = "bring-forward" | "send-backward" | "bring-to-front" | "send-to-back";
@@ -146,6 +152,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   onApplyZIndex,
   onZOrderCrossed,
   onDelete,
+  onAskAgent,
 }: CanvasContextMenuProps) {
   const { t } = useTranslation();
   const menuRef = useContextMenuDismiss(onClose);
@@ -157,13 +164,19 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   // don't render the menu — an empty menu is itself a dead-end.
   const hasZActions = Boolean(onApplyZIndex);
   const hasDelete = Boolean(onDelete);
+  const hasAsk = Boolean(onAskAgent);
   const hasDivider = hasZActions && hasDelete;
+  const groupCount = [hasAsk, hasZActions, hasDelete].filter(Boolean).length;
 
   // Overflow correction — match ClipContextMenu approach. Only the rendered
   // groups contribute height (keeps positioning correct when a group is hidden).
   const menuWidth = 200;
   const menuHeight =
-    8 + (hasZActions ? Z_ACTIONS.length * 24 : 0) + (hasDivider ? 9 : 0) + (hasDelete ? 24 : 0); // padding + items + divider + delete
+    8 +
+    (hasAsk ? 24 : 0) +
+    (hasZActions ? Z_ACTIONS.length * 24 : 0) +
+    (hasDelete ? 24 : 0) +
+    Math.max(groupCount - 1, 0) * 9; // padding + items + dividers
   const overflowY = y + menuHeight - window.innerHeight;
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
   const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
@@ -195,7 +208,13 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
     onClose();
   }
 
-  if (!hasZActions && !hasDelete) return null;
+  function handleAskAgent() {
+    if (!onAskAgent) return;
+    onAskAgent(selection);
+    onClose();
+  }
+
+  if (groupCount === 0) return null;
 
   // The menu is portaled to document.body, but in the React tree it is still a
   // child of the DomEditOverlay <div>. React synthetic events bubble through the
@@ -225,6 +244,26 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
         e.stopPropagation();
       }}
     >
+      {hasAsk && (
+        <button
+          type="button"
+          className="group/item flex h-ctl-sm w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-left text-sm text-fg hover:bg-accent hover:text-accent-ink"
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            handleAskAgent();
+          }}
+        >
+          <ChatCircleDots aria-hidden size={16} className="shrink-0" />
+          <span>{t("editor.contextMenu.askAgent")}</span>
+        </button>
+      )}
+
+      {hasAsk && (hasZActions || hasDelete) && (
+        <div role="separator" className="mx-1.5 my-1 h-px bg-border" />
+      )}
+
       {hasZActions &&
         Z_ACTIONS.map(({ action, label }) => {
           const enabled = isZOrderActionEnabled(el, action);

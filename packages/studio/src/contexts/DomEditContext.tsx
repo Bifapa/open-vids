@@ -33,8 +33,6 @@ export interface DomEditActionsValue extends Pick<
   | "handleDomAddTextField"
   | "handleDomRemoveTextField"
   | "getGsapAnimationsForSelection"
-  | "handleAskAgent"
-  | "handleAgentModalSubmit"
   | "handleBlockedDomMove"
   | "handleDomManualDragStart"
   | "handleDomEditElementDelete"
@@ -45,9 +43,6 @@ export interface DomEditActionsValue extends Pick<
   | "buildDomSelectionForTimelineElement"
   | "updateDomEditHoverSelection"
   | "resolveImportedFontAsset"
-  | "setAgentModalOpen"
-  | "setAgentPromptSelectionContext"
-  | "setAgentModalAnchorPoint"
   | "handleGsapUpdateProperty"
   | "handleGsapUpdateMeta"
   | "handleGsapDeleteAnimation"
@@ -91,10 +86,6 @@ export interface DomEditSelectionValue extends Pick<
   | "selectedGsapAnimations"
   | "gsapMultipleTimelines"
   | "gsapUnsupportedTimelinePattern"
-  | "agentModalOpen"
-  | "agentModalAnchorPoint"
-  | "copiedAgentPrompt"
-  | "agentPromptSelectionContext"
 > {}
 
 const DomEditActionsContext = createStableContext<DomEditActionsValue | null>(
@@ -144,10 +135,6 @@ export function DomEditProvider({
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
-    agentModalOpen,
-    agentModalAnchorPoint,
-    copiedAgentPrompt,
-    agentPromptSelectionContext,
     domEditSelectionRef,
     handleTimelineElementSelect,
     handlePreviewCanvasMouseDown,
@@ -177,8 +164,6 @@ export function DomEditProvider({
     handleDomAddTextField,
     handleDomRemoveTextField,
     getGsapAnimationsForSelection,
-    handleAskAgent,
-    handleAgentModalSubmit,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
@@ -190,9 +175,6 @@ export function DomEditProvider({
     buildDomSelectionForTimelineElement,
     updateDomEditHoverSelection,
     resolveImportedFontAsset,
-    setAgentModalOpen,
-    setAgentPromptSelectionContext,
-    setAgentModalAnchorPoint,
     selectedGsapAnimations,
     gsapMultipleTimelines,
     gsapUnsupportedTimelinePattern,
@@ -270,8 +252,6 @@ export function DomEditProvider({
       handleDomAddTextField,
       handleDomRemoveTextField,
       getGsapAnimationsForSelection,
-      handleAskAgent,
-      handleAgentModalSubmit,
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
@@ -282,9 +262,6 @@ export function DomEditProvider({
       buildDomSelectionForTimelineElement,
       updateDomEditHoverSelection,
       resolveImportedFontAsset,
-      setAgentModalOpen,
-      setAgentPromptSelectionContext,
-      setAgentModalAnchorPoint,
       handleGsapUpdateProperty,
       handleGsapUpdateMeta,
       handleGsapDeleteAnimation,
@@ -345,8 +322,6 @@ export function DomEditProvider({
       handleDomAddTextField,
       handleDomRemoveTextField,
       getGsapAnimationsForSelection,
-      handleAskAgent,
-      handleAgentModalSubmit,
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
@@ -357,9 +332,6 @@ export function DomEditProvider({
       buildDomSelectionForTimelineElement,
       updateDomEditHoverSelection,
       resolveImportedFontAsset,
-      setAgentModalOpen,
-      setAgentPromptSelectionContext,
-      setAgentModalAnchorPoint,
       handleGsapUpdateProperty,
       handleGsapUpdateMeta,
       handleGsapDeleteAnimation,
@@ -404,10 +376,6 @@ export function DomEditProvider({
       selectedGsapAnimations,
       gsapMultipleTimelines,
       gsapUnsupportedTimelinePattern,
-      agentModalOpen,
-      agentModalAnchorPoint,
-      copiedAgentPrompt,
-      agentPromptSelectionContext,
     }),
     [
       domEditSelection,
@@ -418,10 +386,6 @@ export function DomEditProvider({
       selectedGsapAnimations,
       gsapMultipleTimelines,
       gsapUnsupportedTimelinePattern,
-      agentModalOpen,
-      agentModalAnchorPoint,
-      copiedAgentPrompt,
-      agentPromptSelectionContext,
     ],
   );
   return (

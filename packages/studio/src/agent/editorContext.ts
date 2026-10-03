@@ -49,7 +49,7 @@ const finite = (value: number): number => (Number.isFinite(value) ? round(value)
 const round = (value: number): number => Math.round(value * 1000) / 1000;
 
 /** The id the timeline selects by: the scope-qualified key, else the bare id. */
-const clipKey = (element: TimelineElement): string => element.key ?? element.id;
+export const clipKey = (element: TimelineElement): string => element.key ?? element.id;
 
 function toClip(element: TimelineElement): EditorClipSummary {
   const clip: EditorClipSummary = {
@@ -87,7 +87,7 @@ function selectionRange(input: EditorContextInput): { start: number; end: number
   return null;
 }
 
-function previewElement(
+export function previewElement(
   selection: PreviewSelectionLike | null,
 ): EditorContext["selection"]["previewElement"] {
   if (!selection) return null;

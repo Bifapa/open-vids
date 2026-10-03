@@ -13,6 +13,7 @@ import type { Composition } from "@hyperframes/sdk";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 import type { AddMediaOverlayHandler } from "./editor/propertyPanelTypes";
 import type { ToggleHiddenHandler } from "../utils/studioHelpers";
+import type { GestureRecordingState } from "../hooks/useGestureCommit";
 
 export interface StudioRightPanelsProps extends StudioEditPersistenceProps {
   activeBlockParams?: {
@@ -24,7 +25,7 @@ export interface StudioRightPanelsProps extends StudioEditPersistenceProps {
   onCloseBlockParams?: () => void;
   /** Drops the block-params view without touching the dock (selection or leaving Design). */
   onDismissBlockParams: () => void;
-  recordingState?: "idle" | "recording" | "preview";
+  recordingState?: GestureRecordingState;
   recordingDuration?: number;
   onToggleRecording?: () => void;
   /** Dependencies for the Slideshow persist callback, threaded from App.tsx. */
