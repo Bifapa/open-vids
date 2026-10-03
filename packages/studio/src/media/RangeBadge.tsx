@@ -21,6 +21,7 @@ export function RangeBadge({
   const { t } = useTranslation();
   const label = formatRangeLabel(range);
   const title = t("media.range.badgeTitle", { range: label });
+  const onMedia = tone === "media";
   return (
     <span
       title={title}
@@ -28,7 +29,7 @@ export function RangeBadge({
       data-testid="media-range-badge"
       className={cn(
         "inline-flex flex-none items-center gap-[3px] rounded-xs px-[5px] text-num leading-[14px] font-medium tabular-nums",
-        tone === "media" ? "bg-on-media-bg text-on-media" : "bg-surface-2 text-fg-2",
+        onMedia ? "bg-on-media-bg text-on-media" : "bg-surface-2 text-fg-2",
         className,
       )}
     >

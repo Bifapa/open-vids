@@ -472,12 +472,8 @@ export function parseStoryOfferArgs(args: unknown): ParsedArgs<StoryOfferArgs> {
     const material = raw.material?.trim();
     chapters.push({
       title: title.value,
-      ...(summary
-        ? { summary: summary.slice(0, LIMITS.chapterSummaryChars) }
-        : {}),
-      ...(typeof raw.durationSeconds === "number"
-        ? { durationSeconds: raw.durationSeconds }
-        : {}),
+      ...(summary ? { summary: summary.slice(0, LIMITS.chapterSummaryChars) } : {}),
+      ...(typeof raw.durationSeconds === "number" ? { durationSeconds: raw.durationSeconds } : {}),
       ...(material ? { material: material.slice(0, LIMITS.chapterMaterialChars) } : {}),
     });
   }

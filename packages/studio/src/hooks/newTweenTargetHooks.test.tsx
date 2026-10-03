@@ -181,9 +181,9 @@ function renderGestureCommit(
   mutations: Array<Record<string, unknown>>,
   selection: DomEditSelection,
 ) {
-  let toggle: (() => void) | undefined;
+  let hook: ReturnType<typeof useGestureCommit> | undefined;
   function Harness() {
-    const { handleToggleRecording } = useGestureCommit({
+    hook = useGestureCommit({
       domEditSessionRef: {
         current: {
           domEditSelection: selection,
@@ -198,24 +198,28 @@ function renderGestureCommit(
       isGestureRecordingRef: { current: false },
       readOnlyPreview: false,
     });
-    toggle = handleToggleRecording;
     return null;
   }
   const root = mountReactHarness(<Harness />);
-  return { root, toggle: () => toggle!() };
+  /** Arm (button / R), press on the canvas, release: the recording is committed. */
+  const record = async () => {
+    act(() => hook!.handleToggleRecording());
+    act(() => hook!.beginRecording({ x: 10, y: 10 }, { shift: false, alt: false, meta: false }));
+    await act(async () => {
+      hook!.finishRecording();
+      await Promise.resolve();
+    });
+  };
+  return { root, record };
 }
 
 describe("useGestureCommit — new-tween targets", () => {
   it("authors the recorded tween against one element", async () => {
     const groups = mountGroupSiblings();
     const mutations: Array<Record<string, unknown>> = [];
-    const { root, toggle } = renderGestureCommit([], mutations, classOnlySelection(groups[3]!));
+    const { root, record } = renderGestureCommit([], mutations, classOnlySelection(groups[3]!));
 
-    act(() => toggle()); // start
-    await act(async () => {
-      toggle(); // stop + commit
-      await Promise.resolve();
-    });
+    await record();
 
     const added = mutations.find((m) => m.type === "add-with-keyframes");
     expect(added).toBeTruthy();
@@ -236,17 +240,13 @@ describe("useGestureCommit — new-tween targets", () => {
       keyframes: { keyframes: [{ percentage: 0, properties: { x: 0, y: 0 } }] },
     } as unknown as GsapAnimation;
     const mutations: Array<Record<string, unknown>> = [];
-    const { root, toggle } = renderGestureCommit(
+    const { root, record } = renderGestureCommit(
       [existing],
       mutations,
       classOnlySelection(groups[3]!),
     );
 
-    act(() => toggle());
-    await act(async () => {
-      toggle();
-      await Promise.resolve();
-    });
+    await record();
 
     const replaced = mutations.find((m) => m.type === "replace-with-keyframes");
     expect(replaced).toBeTruthy();

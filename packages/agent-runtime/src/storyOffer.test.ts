@@ -27,7 +27,12 @@ function offerOf(fixture: RuntimeFixture, chatId: string): { turnId: string; off
   throw new Error("no Story Mode offer in the chat");
 }
 
-const CHAPTER_SCRIPT: Array<{ title: string; summary?: string; durationSeconds?: number; material?: string }> = [
+const CHAPTER_SCRIPT: Array<{
+  title: string;
+  summary?: string;
+  durationSeconds?: number;
+  material?: string;
+}> = [
   { title: "Старт ракеты" },
   { title: "Туманность Карина", summary: "фото из архива" },
   { title: "Финал с титрами", durationSeconds: 12, material: "музыка" },
@@ -40,7 +45,8 @@ async function runOfferTurn(fixture: RuntimeFixture, chatId: string): Promise<vo
     return "completed";
   };
   await fixture.turns.start(chatId, {
-    prompt: "Сделай ролик: сначала покажи старт ракеты, потом фото туманности Карина, затем финал с титрами и музыкой",
+    prompt:
+      "Сделай ролик: сначала покажи старт ракеты, потом фото туманности Карина, затем финал с титрами и музыкой",
   });
   await finishTurn(fixture, chatId);
 }
@@ -64,7 +70,9 @@ describe("Story Mode offers in chat", () => {
           operations: [{ op: "remove_clip", clip: "a" }],
         });
         const render = await session.callTool("render_video", {});
-        const propose = await session.callTool("propose_plan", { steps: [{ title: "Another plan" }] });
+        const propose = await session.callTool("propose_plan", {
+          steps: [{ title: "Another plan" }],
+        });
         calls = {
           offered: offered.text,
           edit: edit.text,
@@ -74,7 +82,9 @@ describe("Story Mode offers in chat", () => {
         };
         return "completed";
       };
-      await fixture.turns.start(chat.id, { prompt: "Сделай ролик: сначала старт ракеты, потом Карина и финал" });
+      await fixture.turns.start(chat.id, {
+        prompt: "Сделай ролик: сначала старт ракеты, потом Карина и финал",
+      });
       await finishTurn(fixture, chat.id);
       const session = fixture.backend.sessionsOf("director").at(-1);
       expect(toolNames(session)).toContain("offer_story_mode");
@@ -143,7 +153,10 @@ describe("Story Mode offers in chat", () => {
       // Story-mode and Ask turns never get the offer either.
       fixture.story.viewResult = storyView(null);
       const storyModeChat = await fixture.chats.create({ title: "Story mode" }, []);
-      await fixture.turns.start(storyModeChat.id, { prompt: "Review the story", storyAction: "review" });
+      await fixture.turns.start(storyModeChat.id, {
+        prompt: "Review the story",
+        storyAction: "review",
+      });
       await finishTurn(fixture, storyModeChat.id);
       expect(toolNames(fixture.backend.sessionsOf("director").at(-1))).not.toContain(
         "offer_story_mode",
@@ -261,7 +274,12 @@ describe("Story Mode offers in chat", () => {
       expect(fixture.chats.get(chat.id)?.chat.storyDeclined).toBe(true);
       // A declined offer is answered once: it cannot be accepted afterwards.
       await expect(
-        fixture.turns.answerStoryOffer(chat.id, declinedOffer.turnId, declinedOffer.offer.id, "accept"),
+        fixture.turns.answerStoryOffer(
+          chat.id,
+          declinedOffer.turnId,
+          declinedOffer.offer.id,
+          "accept",
+        ),
       ).rejects.toMatchObject({ code: "turn_not_active" });
 
       // A pending offer outlives its own turn, and a new user turn is what expires it.

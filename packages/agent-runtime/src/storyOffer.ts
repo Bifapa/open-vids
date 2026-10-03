@@ -35,9 +35,7 @@ export function renderStoryDeclinedBlock(): string {
  * The batch that turns an accepted offer into the first chapters of the graph: AI-authored chapter nodes in the
  * user's order, linked by sequence edges. Positions are the service's (agents never place nodes).
  */
-export function storyOfferOperations(
-  chapters: readonly StoryOfferChapter[],
-): StoryOperation[] {
+export function storyOfferOperations(chapters: readonly StoryOfferChapter[]): StoryOperation[] {
   const operations: StoryOperation[] = chapters.map((chapter, index) => ({
     op: "add_node",
     ref: `chapter-${index + 1}`,

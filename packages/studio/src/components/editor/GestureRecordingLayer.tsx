@@ -65,7 +65,7 @@ function GestureCaptureSurface({
       >
         {armed ? (
           <>
-            <p className="truncate text-sm font-medium text-fg-1">
+            <p className="truncate text-sm font-medium text-fg">
               {t("editor.gesture.arm.title", { label })}
             </p>
             <p>{t("editor.gesture.arm.instruction")}</p>
