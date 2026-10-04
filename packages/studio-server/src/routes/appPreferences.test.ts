@@ -1,10 +1,15 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AppPreferencesStore, defaultAppPreferences } from "../app/preferences.js";
+import {
+  AppPreferencesStore,
+  defaultAppPreferences,
+  defaultProjectLocation,
+  migrateLegacyProjectLocation,
+} from "../app/preferences.js";
 import { registerAppPreferencesRoutes } from "./appPreferences.js";
 
 let dir: string;
@@ -67,10 +72,42 @@ describe("app preferences route", () => {
         width: 1920,
         height: 1920,
         openIn: "story",
-        location: "~/Movies/OpenVids",
+        location: defaultProjectLocation(),
         extra: true,
       },
     });
+  });
+
+  it("defaults the project folder per platform and migrates only the legacy Windows default", async () => {
+    expect(defaultAppPreferences("win32").newProject.location).toBe("~/Documents/OpenVids");
+    expect(defaultAppPreferences("darwin").newProject.location).toBe("~/Movies/OpenVids");
+    expect(defaultAppPreferences("linux").newProject.location).toBe("~/Movies/OpenVids");
+    const home = "C:\\Users\\Alice";
+    for (const legacy of [
+      "~/Movies/OpenVids",
+      "~\\Movies\\OpenVids",
+      "c:\\users\\alice\\movies\\openvids",
+      "C:/Users/Alice/Movies/OpenVids",
+    ]) {
+      expect(migrateLegacyProjectLocation(legacy, "win32", home)).toBe("~/Documents/OpenVids");
+      expect(migrateLegacyProjectLocation(legacy, "darwin", home)).toBeUndefined();
+    }
+    expect(migrateLegacyProjectLocation("D:\\Work", "win32", home)).toBeUndefined();
+    expect(migrateLegacyProjectLocation("~/Videos/OpenVids", "win32", home)).toBeUndefined();
+  });
+
+  it("rewrites the legacy default only on Windows and preserves custom locations", async () => {
+    writeFileSync(path, JSON.stringify({ newProject: { location: "~/Movies/OpenVids" } }));
+    const value = await get();
+    if (process.platform === "win32") {
+      expect(value.newProject.location).toBe("~/Documents/OpenVids");
+      expect(stored()).toMatchObject({ newProject: { location: "~/Documents/OpenVids" } });
+    } else {
+      expect(value.newProject.location).toBe("~/Movies/OpenVids");
+    }
+    const custom = process.platform === "win32" ? "D:\\Work" : "/tmp/openvids-custom";
+    writeFileSync(path, JSON.stringify({ newProject: { location: custom } }));
+    expect((await get()).newProject.location).toBe(custom);
   });
 
   it("stores the language choice", async () => {
@@ -172,6 +209,7 @@ describe("app preferences route", () => {
     [{ newProject: { height: 1.5 } }, "newProject.height"],
     [{ newProject: { openIn: "timeline" } }, "newProject.openIn"],
     [{ newProject: { location: "relative/path" } }, "newProject.location"],
+    [{ newProject: { location: "~someone/else" } }, "newProject.location"],
     [{ newProject: "media" }, "newProject"],
   ])("refuses %j and leaves the file alone", async (patch, key) => {
     writeFileSync(path, JSON.stringify({ theme: "dark" }));
@@ -193,6 +231,88 @@ describe("app preferences route", () => {
     expect(body.error.params?.key).toBe(key);
     expect(stored()).toEqual({ theme: "dark" });
   });
+
+  it.each([
+    "C:\\Users\\me\\Movies\\OpenVids",
+    "C:/Users/me/Movies/OpenVids",
+    "~\\Movies\\OpenVids",
+    "C:",
+  ])("accepts the Windows location %s on win32 only", async (location) => {
+    const response = await put({ newProject: { location } });
+    if (process.platform === "win32") {
+      expect(response.status).toBe(200);
+      expect(stored()).toMatchObject({
+        newProject: {
+          location: location === "~\\Movies\\OpenVids" ? "~/Documents/OpenVids" : location,
+        },
+      });
+    } else {
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it("accepts POSIX locations on every platform", async () => {
+    for (const location of ["/x", "~", "~/Movies/OpenVids"]) {
+      const response = await put({ newProject: { location } });
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it.each([
+    "\\\\server\\share\\OpenVids",
+    "//server/share/OpenVids",
+    "\\/server/share",
+    "\\\\?\\C:\\Users\\me",
+    "//?/C:/Users/me",
+    "\\\\.\\pipe\\x",
+    "//./pipe/x",
+    "  \\\\server\\share",
+  ])(
+    "refuses the network or device location %j from Studio on every platform",
+    async (location) => {
+      writeFileSync(path, JSON.stringify({ theme: "dark" }));
+      const response = await put({ newProject: { location } });
+      expect(response.status).toBe(400);
+      const body: { error: { code: string; params?: { key?: string } } } = await response.json();
+      expect(body.error.code).toBe("invalid_preferences.value");
+      expect(body.error.params?.key).toBe("newProject.location");
+      expect(stored()).toEqual({ theme: "dark" });
+    },
+  );
+
+  it.each([
+    "//server/share/OpenVids",
+    ...(process.platform === "win32" ? ["\\\\server\\share\\OpenVids"] : []),
+  ])(
+    "keeps the network location %j the desktop stored through unrelated Studio updates",
+    async (location) => {
+      writeFileSync(path, JSON.stringify({ newProject: { location } }));
+      expect((await get()).newProject.location).toBe(location);
+
+      expect((await put({ theme: "light" })).status).toBe(200);
+      expect(stored()).toMatchObject({ theme: "light", newProject: { location } });
+      expect((await get()).newProject.location).toBe(location);
+    },
+  );
+
+  it.skipIf(process.platform !== "win32")(
+    "serves the migrated default when the migration cannot be written, and keeps serving it",
+    async () => {
+      writeFileSync(path, JSON.stringify({ newProject: { location: "~/Movies/OpenVids" } }));
+      // A read-only file makes the atomic rename fail, as a locked or protected file would.
+      chmodSync(path, 0o444);
+      try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const response = await api.request("/app/preferences");
+          expect(response.status).toBe(200);
+          expect((await response.json()).newProject.location).toBe("~/Documents/OpenVids");
+        }
+        expect(stored()).toMatchObject({ newProject: { location: "~/Movies/OpenVids" } });
+      } finally {
+        chmodSync(path, 0o644);
+      }
+    },
+  );
 
   it("refuses a body that is not a JSON object", async () => {
     const list = await put([1, 2]);

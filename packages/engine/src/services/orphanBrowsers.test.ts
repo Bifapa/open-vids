@@ -20,11 +20,18 @@ const root = () => {
   return dir;
 };
 
-/** A live process whose command line contains `label`: stands in for a browser. */
-async function sleeper(label: string): Promise<ChildProcess & { pid: number }> {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", label], {
-    stdio: "ignore",
-  });
+/** A live process whose command line carries `label` and `args`: stands in for a browser. */
+async function sleeper(label: string, ...args: string[]): Promise<ChildProcess & { pid: number }> {
+  const child = spawn(
+    process.execPath,
+    ["-e", "setInterval(() => {}, 1000)", "--", label, ...args],
+    {
+      stdio: "ignore",
+      // A GUI-launched test run has no console; without this every sleeper
+      // flashes one on Windows. No-op on POSIX.
+      windowsHide: true,
+    },
+  );
   children.push(child);
   await once(child, "spawn");
   if (child.pid === undefined) throw new Error("no pid");
@@ -54,11 +61,15 @@ const record = (base: string, browserPid: number, ownerPid: number) => {
 };
 const recordFile = (base: string, pid: number) => join(base, "hyperframes-browsers", `${pid}.json`);
 
+/** The profile argument every browser the engine launches carries (puppeteer's default profile in the temp dir). */
+const engineProfile = (suffix: string, parent = join(tmpdir(), "hf-orphan-profiles")) =>
+  `--user-data-dir=${join(parent, `puppeteer_dev_chrome_profile-${suffix}`)}`;
+
 describe("sweepOrphanBrowsers", () => {
   it("kills a browser whose owner died, and only that one", async () => {
     const base = root();
-    const orphan = await sleeper("chrome-headless-shell-orphan");
-    const kept = await sleeper("chrome-headless-shell-kept");
+    const orphan = await sleeper("chrome-headless-shell", engineProfile("orphan"));
+    const kept = await sleeper("chrome-headless-shell", engineProfile("kept"));
     record(base, orphan.pid, deadPid());
     record(base, kept.pid, process.pid);
 
@@ -69,6 +80,18 @@ describe("sweepOrphanBrowsers", () => {
     expect(existsSync(recordFile(base, kept.pid))).toBe(true);
   });
 
+  it("finds the profile when its directory has spaces", async () => {
+    const base = root();
+    const orphan = await sleeper(
+      "chrome-headless-shell",
+      engineProfile("spaced", join(tmpdir(), "hf orphan profiles", "with spaces")),
+    );
+    record(base, orphan.pid, deadPid());
+
+    expect(sweepOrphanBrowsers(base)).toEqual([orphan.pid]);
+    await once(orphan, "exit");
+  });
+
   it("never kills a pid that no longer runs a browser (reused by another program)", async () => {
     const base = root();
     const unrelated = await sleeper("some-other-program");
@@ -77,6 +100,31 @@ describe("sweepOrphanBrowsers", () => {
     expect(sweepOrphanBrowsers(base)).toEqual([]);
     expect(isAlive(unrelated.pid)).toBe(true);
     expect(existsSync(recordFile(base, unrelated.pid)), "the stale record is dropped").toBe(false);
+  });
+
+  it("never kills a Chrome that is not running an engine profile", async () => {
+    const base = root();
+    // The user's own browser: right image name, wrong (or no) profile.
+    const plain = await sleeper("chrome");
+    const headlessShell = await sleeper("chrome-headless-shell");
+    const userProfile = await sleeper(
+      "chrome",
+      `--user-data-dir=${join(tmpdir(), "Google", "Chrome", "User Data")}`,
+    );
+    // The profile name must be the directory, not a substring of another path segment.
+    const lookalike = await sleeper(
+      "chrome",
+      `--user-data-dir=${join(tmpdir(), "puppeteer_dev_chrome_profile-elsewhere", "Default")}`,
+    );
+    for (const survivor of [plain, headlessShell, userProfile, lookalike]) {
+      record(base, survivor.pid, deadPid());
+    }
+
+    expect(sweepOrphanBrowsers(base)).toEqual([]);
+    for (const survivor of [plain, headlessShell, userProfile, lookalike]) {
+      expect(isAlive(survivor.pid)).toBe(true);
+      expect(existsSync(recordFile(base, survivor.pid)), "the stale record is dropped").toBe(false);
+    }
   });
 
   it("drops a damaged record and records this process as the owner of a launch", () => {

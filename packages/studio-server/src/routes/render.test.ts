@@ -548,31 +548,37 @@ describe("GET /projects/:id/renders/file/* — path safety", () => {
       }
     });
 
-    it("streams a render too large to buffer: a 3 GiB file answers a window and a cancelled full read", async () => {
-      const { app, rendersDir } = buildApp();
-      const big = join(rendersDir, "big.mp4");
-      const size = 3 * 1024 * 1024 * 1024;
-      const fd = openSync(big, "w");
-      try {
-        ftruncateSync(fd, size);
-        writeSync(fd, "WXYZ", 2 * 1024 * 1024 * 1024);
-      } finally {
-        closeSync(fd);
-      }
-      const base = "http://localhost/projects/demo/renders/file/big.mp4";
+    // NTFS zero-fills a file up to a write past its end, so the 3 GiB fixture writes 2 GiB of zeros there.
+    it.skipIf(process.platform === "win32")(
+      "streams a render too large to buffer: a 3 GiB file answers a window and a cancelled full read",
+      async () => {
+        const { app, rendersDir } = buildApp();
+        const big = join(rendersDir, "big.mp4");
+        const size = 3 * 1024 * 1024 * 1024;
+        const fd = openSync(big, "w");
+        try {
+          ftruncateSync(fd, size);
+          writeSync(fd, "WXYZ", 2 * 1024 * 1024 * 1024);
+        } finally {
+          closeSync(fd);
+        }
+        const base = "http://localhost/projects/demo/renders/file/big.mp4";
 
-      const window = await app.request(base, { headers: { Range: "bytes=2147483648-2147483651" } });
-      expect(window.status).toBe(206);
-      expect(window.headers.get("Content-Range")).toBe(`bytes 2147483648-2147483651/${size}`);
-      expect(await window.text()).toBe("WXYZ");
+        const window = await app.request(base, {
+          headers: { Range: "bytes=2147483648-2147483651" },
+        });
+        expect(window.status).toBe(206);
+        expect(window.headers.get("Content-Range")).toBe(`bytes 2147483648-2147483651/${size}`);
+        expect(await window.text()).toBe("WXYZ");
 
-      const full = await app.request(base);
-      expect(full.status).toBe(200);
-      expect(full.headers.get("Content-Length")).toBe(String(size));
-      const reader = full.body!.getReader();
-      expect((await reader.read()).value?.byteLength).toBeGreaterThan(0);
-      await reader.cancel();
-    });
+        const full = await app.request(base);
+        expect(full.status).toBe(200);
+        expect(full.headers.get("Content-Length")).toBe(String(size));
+        const reader = full.body!.getReader();
+        expect((await reader.read()).value?.byteLength).toBeGreaterThan(0);
+        await reader.cancel();
+      },
+    );
   });
 
   it("rejects a file reached through a symlink inside rendersDir pointing outside it", async () => {
@@ -854,5 +860,28 @@ describe("POST /projects/:id/renders/:filename/open — OS default player", () =
     expect(await res.json()).toMatchObject({
       error: expect.stringContaining("no player for .mp4"),
     });
+  });
+});
+
+describe("GET /render/:jobId/download — Windows output paths", () => {
+  it("serves the leaf filename when the on-disk file was registered from the list route", async () => {
+    // The list route seeds `renderJobs` from on-disk files with
+    // `join(rendersDir, filename)` — backslash-separated on win32 — so the
+    // download filename must be separator-agnostic, not `/`-split.
+    const spy = vi.fn();
+    const { app, rendersDir, cleanup } = buildApp(spy);
+    try {
+      const jobId = "win-job_2026-10-02_00-00-00";
+      writeFileSync(join(rendersDir, `${jobId}.mp4`), "render-bytes");
+      const list = await app.request("http://localhost/projects/demo/renders");
+      expect(list.status).toBe(200);
+      const res = await app.request(`http://localhost/render/${jobId}/download`);
+      expect(res.status).toBe(200);
+      const header = res.headers.get("content-disposition") ?? "";
+      expect(header).toContain(`${jobId}.mp4`);
+      expect(header).not.toContain("\\");
+    } finally {
+      cleanup();
+    }
   });
 });

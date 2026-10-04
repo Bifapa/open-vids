@@ -93,13 +93,39 @@ export interface AppPreferences {
   onboarding: OnboardingPreferences;
 }
 
-export function defaultAppPreferences(): AppPreferences {
+/** Windows' Documents-based default; other platforms retain their Movies default. */
+export function defaultProjectLocation(platform: NodeJS.Platform = process.platform): string {
+  return platform === "win32" ? "~/Documents/OpenVids" : "~/Movies/OpenVids";
+}
+
+/** Maps only the previous Windows default to the current Windows default. */
+export function migrateLegacyProjectLocation(
+  location: string,
+  platform: NodeJS.Platform,
+  home: string,
+): string | undefined {
+  if (platform !== "win32") return undefined;
+  const normalize = (value: string) => value.replaceAll("\\", "/").toLowerCase();
+  const normalized = normalize(location);
+  const expanded = normalize(join(home, "Movies", "OpenVids"));
+  return normalized === "~/movies/openvids" || normalized === expanded
+    ? "~/Documents/OpenVids"
+    : undefined;
+}
+
+/**
+ * The default New Projects folder is `~/Documents/OpenVids` on Windows and
+ * `~/Movies/OpenVids` elsewhere.
+ */
+export function defaultAppPreferences(
+  platform: NodeJS.Platform = process.platform,
+): AppPreferences {
   return {
     version: 1,
     theme: "system",
     language: "system",
     newProject: {
-      location: "~/Movies/OpenVids",
+      location: defaultProjectLocation(platform),
       openIn: "media",
       width: 1920,
       height: 1080,
@@ -150,21 +176,70 @@ const isTimestamp = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 const isFrameSize = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_FRAME_SIZE;
-const isLocation = (value: unknown): value is string =>
-  typeof value === "string" &&
-  value.trim().length > 0 &&
-  value.length <= MAX_LOCATION_LENGTH &&
-  (value.trim().startsWith("/") || value.trim().startsWith("~"));
+const isWindowsAbsolute = (value: string): boolean => /^[A-Za-z]:[\\/]/.test(value);
 
+/**
+ * A location on this machine, as a shape check only (the desktop shell resolves the path): `/...`, `~` and
+ * `~/...` everywhere; drive-letter (`C:\...`, `C:/...`, `C:`) and `~\...` forms only on Windows, where `\` is a
+ * separator. `~anything` is not a location.
+ */
+function isLocalLocation(trimmed: string, platform: NodeJS.Platform = process.platform): boolean {
+  if (trimmed.startsWith("/") || trimmed === "~" || trimmed.startsWith("~/")) return true;
+  if (platform !== "win32") return false;
+  return trimmed.startsWith("~\\") || isWindowsAbsolute(trimmed) || /^[A-Za-z]:$/.test(trimmed);
+}
+
+const locationText = (value: unknown): string | null => {
+  if (typeof value !== "string" || value.length > MAX_LOCATION_LENGTH) return null;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+};
+
+/**
+ * A location already on disk. The trusted desktop side (its native folder picker, `/api/preferences` in Rust)
+ * may have stored a network share (`\\server\share`) or device path (`\\?\...`) on Windows, so reading accepts
+ * those there.
+ */
+const isStoredLocation = (value: unknown): value is string => {
+  const trimmed = locationText(value);
+  if (trimmed === null) return false;
+  return isLocalLocation(trimmed) || (process.platform === "win32" && trimmed.startsWith("\\\\"));
+};
+
+/** Two leading separators of either kind: UNC (`\\server`, `//server`) and device (`\\?\`, `//?/`, `\\.\`) paths. */
+const isNetworkOrDevicePath = (trimmed: string): boolean => /^[\\/]{2}/.test(trimmed);
+
+/**
+ * A location the Studio HTTP API will accept. Studio runs next to composition code that can reach this route, so
+ * it may only choose a path on this machine: network and device prefixes are refused before anything else
+ * (before the `/` rule would admit `//server/share`). Only the native picker can store one.
+ */
+const isPublicLocation = (value: unknown): value is string => {
+  const trimmed = locationText(value);
+  return trimmed !== null && !isNetworkOrDevicePath(trimmed) && isLocalLocation(trimmed);
+};
+
+function migrateStoredLocation(stored: Document, platform: NodeJS.Platform, home: string): boolean {
+  if (!isRecord(stored.newProject) || typeof stored.newProject.location !== "string") return false;
+  const location = migrateLegacyProjectLocation(stored.newProject.location, platform, home);
+  if (!location) return false;
+  stored.newProject.location = location;
+  return true;
+}
 type Document = Record<string, unknown>;
 
 /** The stored document with every known key validated (invalid or missing → default), unknown keys kept. */
-function normalize(stored: Document): Document & AppPreferences {
-  const base = defaultAppPreferences();
+function normalize(
+  stored: Document,
+  platform: NodeJS.Platform = process.platform,
+): Document & AppPreferences {
+  const base = defaultAppPreferences(platform);
   const project = isRecord(stored.newProject) ? stored.newProject : {};
   const newProject: Document & NewProjectPreferences = {
     ...project,
-    location: isLocation(project.location) ? project.location.trim() : base.newProject.location,
+    location: isStoredLocation(project.location)
+      ? project.location.trim()
+      : base.newProject.location,
     openIn: isWorkspace(project.openIn) ? project.openIn : base.newProject.openIn,
     width: isFrameSize(project.width) ? project.width : base.newProject.width,
     height: isFrameSize(project.height) ? project.height : base.newProject.height,
@@ -209,7 +284,7 @@ const KNOWN_TOP: Record<string, (value: unknown) => boolean> = {
 };
 
 const KNOWN_NEW_PROJECT: Record<string, (value: unknown) => boolean> = {
-  location: isLocation,
+  location: isPublicLocation,
   openIn: isWorkspace,
   width: isFrameSize,
   height: isFrameSize,
@@ -336,13 +411,26 @@ export class AppPreferencesStore {
   }
 
   read(): Document & AppPreferences {
-    return normalize(this.readRaw());
+    const stored = this.readRaw();
+    if (!migrateStoredLocation(stored, process.platform, homedir())) return normalize(stored);
+    const migrated = normalize(stored);
+    // Best effort: a read-only or locked preferences file must not fail the GET. The migrated value is still
+    // returned (and recomputed on the next read); only an explicit `update()` reports a write failure.
+    try {
+      mkdirSync(dirname(this.path), { recursive: true });
+      replaceFileAtomically(this.path, `${JSON.stringify(migrated, null, 2)}\n`, 0o644);
+    } catch {
+      // Keep serving the migrated value.
+    }
+    return migrated;
   }
 
   /** Validates `patch`, deep-merges it into the stored document and writes the effective result atomically. */
   update(patch: unknown): Document & AppPreferences {
     const valid = validatePreferencesPatch(patch);
-    const next = normalize(merge(this.readRaw(), valid));
+    const stored = merge(this.readRaw(), valid);
+    migrateStoredLocation(stored, process.platform, homedir());
+    const next = normalize(stored);
     mkdirSync(dirname(this.path), { recursive: true });
     replaceFileAtomically(this.path, `${JSON.stringify(next, null, 2)}\n`, 0o644);
     return next;
