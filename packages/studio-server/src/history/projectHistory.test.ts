@@ -863,18 +863,19 @@ describe("openProjectHistory", () => {
       "c.html": "c1",
     });
     await history.close();
-    // A file's change time is its ctime, which only the clock sets: the writes are spaced in real time.
+    // A file's change time is its ctime, which only the clock sets: the writes are spaced in real time,
+    // with margins wide enough for a slow CI clock (Windows runners drifted past 100 ms).
     const lastWriteAt = Date.now();
-    await pause(300);
+    await pause(500);
     write("a.html", "2");
-    await pause(300);
-    write("b.html", "2"); // 600 ms after the window's last write, but 300 ms after a.html: still the window's
-    await pause(700);
-    write("c.html", "2"); // 700 ms without a write: the window had ended
+    await pause(500);
+    write("b.html", "2"); // 1 s after the window's last write, but 500 ms after a.html: still the window's
+    await pause(1_400);
+    write("c.html", "2"); // 1.4 s without a write: the window had ended
     const closedWindow = { id: "turn-1", who: agent, label: "Turn", startedAt: 1, lastWriteAt };
 
     const reopened = await open(projectDir, historyRoot, {
-      closedWindow: { ...closedWindow, idleMs: 400 },
+      closedWindow: { ...closedWindow, idleMs: 800 },
     });
     const [turn, outside] = reopened.list();
     expect([turn, outside].map((entry) => entry?.files.map((file) => file.path))).toEqual([
@@ -891,7 +892,7 @@ describe("openProjectHistory", () => {
       "startedAt",
       "who",
     ]);
-  });
+  }, 15_000);
 
   it("gives a window its owner died holding (killed mid-turn) the writes it made, under its own id, label and start", async () => {
     const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
