@@ -75,23 +75,16 @@ jobs:
       - name: Script tests
         run: bun run test:scripts
 
-      # The Windows Rust shell lands with its own PR; until then the desktop
-      # crate is only built and tested on macOS, and Windows proves the
-      # runtime staging that the installer will bundle.
       - name: Setup Rust
-        if: runner.os == 'macOS'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Check desktop
-        if: runner.os == 'macOS'
         run: bun run desktop:check
 
       - name: Desktop Rust tests
-        if: runner.os == 'macOS'
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
       - name: Desktop tests
-        if: runner.os == 'macOS'
         run: bun run --cwd apps/desktop test
 
       - name: Stage desktop runtime (Windows)
