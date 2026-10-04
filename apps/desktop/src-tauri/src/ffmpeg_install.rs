@@ -400,9 +400,10 @@ pub fn managed_ffprobe() -> Option<PathBuf> {
     (ffmpeg.is_file() && ffprobe.is_file()).then_some(ffprobe)
 }
 
+/// The environment every child (sidecar, CLI, agent runtime) is spawned with:
 /// `HYPERFRAMES_FFMPEG_PATH` / `HYPERFRAMES_FFPROBE_PATH` pointing at the
-/// downloaded build, or nothing when no build is installed. Computed at each
-/// child spawn (sidecar, CLI, agent runtime), so a download that finishes
+/// downloaded build when one is installed, and a `PATH` that can find
+/// ffmpeg/ffprobe. Computed at each spawn, so a download that finishes
 /// mid-session takes effect the next time a project opens without a restart.
 /// Explicit user overrides in the environment win: they are left untouched.
 pub fn managed_env() -> Vec<(String, String)> {
@@ -421,7 +422,47 @@ pub fn managed_env() -> Vec<(String, String)> {
             env.push(("HYPERFRAMES_FFPROBE_PATH".to_string(), ffprobe.to_string_lossy().into_owned()));
         }
     }
+    // Tools that look ffmpeg up by name (the agents' `read` of a video frame)
+    // only see PATH. An app opened from Finder gets launchd's bare
+    // `/usr/bin:/bin:/usr/sbin:/sbin`, without Homebrew, and the Windows
+    // download lives outside PATH: put both where a lookup finds them.
+    let mut prepend = Vec::new();
+    if managed_ffmpeg().is_some() {
+        prepend.push(managed_dir());
+    }
+    #[cfg(not(windows))]
+    let append: Vec<PathBuf> = ["/opt/homebrew/bin", "/usr/local/bin"]
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|dir| dir.is_dir())
+        .collect();
+    #[cfg(windows)]
+    let append: Vec<PathBuf> = Vec::new();
+    if let Some(path) = child_path(std::env::var_os("PATH"), &prepend, &append) {
+        env.push(("PATH".to_string(), path.to_string_lossy().into_owned()));
+    }
     env
+}
+
+/// `inherited` with `prepend` in front and `append` behind it, each directory
+/// added only when the inherited PATH does not already list it. None when
+/// nothing would change, so the child simply inherits PATH.
+fn child_path(
+    inherited: Option<std::ffi::OsString>,
+    prepend: &[PathBuf],
+    append: &[PathBuf],
+) -> Option<std::ffi::OsString> {
+    let current: Vec<PathBuf> = inherited
+        .as_deref()
+        .map(|p| std::env::split_paths(p).collect())
+        .unwrap_or_default();
+    let missing = |dir: &&PathBuf| !current.iter().any(|known| known == *dir);
+    let front: Vec<PathBuf> = prepend.iter().filter(missing).cloned().collect();
+    let back: Vec<PathBuf> = append.iter().filter(missing).cloned().collect();
+    if front.is_empty() && back.is_empty() {
+        return None;
+    }
+    std::env::join_paths(front.into_iter().chain(current).chain(back)).ok()
 }
 
 /// Where the build comes from and the SHA-256 it must have. Production: the pinned constants, borrowed — the
@@ -1827,18 +1868,38 @@ mod tests {
     #[test]
     fn managed_env_points_children_at_the_download_until_the_user_overrides() {
         with_managed_dir(|| {
-            assert!(managed_env().is_empty());
+            assert!(!managed_env().iter().any(|(k, _)| k.starts_with("HYPERFRAMES_")));
             std::fs::create_dir_all(managed_dir()).unwrap();
             std::fs::write(managed_dir().join("ffmpeg.exe"), "f").unwrap();
             std::fs::write(managed_dir().join("ffprobe.exe"), "p").unwrap();
             let env = managed_env();
             assert!(env.iter().any(|(k, v)| k == "HYPERFRAMES_FFMPEG_PATH" && v.ends_with("ffmpeg.exe")));
             assert!(env.iter().any(|(k, v)| k == "HYPERFRAMES_FFPROBE_PATH" && v.ends_with("ffprobe.exe")));
+            // Tools that look ffmpeg up by name find the download first.
+            let path = env.iter().find(|(k, _)| k == "PATH").map(|(_, v)| v.clone()).unwrap();
+            assert_eq!(std::env::split_paths(&path).next(), Some(managed_dir()));
             std::env::set_var("HYPERFRAMES_FFMPEG_PATH", "C:\\user\\ffmpeg.exe");
             let env = managed_env();
             assert!(!env.iter().any(|(k, _)| k == "HYPERFRAMES_FFMPEG_PATH"));
             assert!(env.iter().any(|(k, _)| k == "HYPERFRAMES_FFPROBE_PATH"));
             std::env::remove_var("HYPERFRAMES_FFMPEG_PATH");
         });
+    }
+
+    #[test]
+    fn child_path_adds_only_the_missing_tool_dirs_around_the_inherited_path() {
+        let bin = |name: &str| std::env::temp_dir().join(name);
+        let inherited = std::env::join_paths([bin("usr-bin"), bin("homebrew-bin")]).unwrap();
+        let path = child_path(Some(inherited.clone()), &[bin("managed")], &[bin("homebrew-bin"), bin("local-bin")])
+            .unwrap();
+        assert_eq!(
+            std::env::split_paths(&path).collect::<Vec<_>>(),
+            vec![bin("managed"), bin("usr-bin"), bin("homebrew-bin"), bin("local-bin")]
+        );
+        // Everything already listed: the child keeps inheriting PATH as is.
+        assert_eq!(child_path(Some(inherited), &[], &[bin("usr-bin")]), None);
+        // A bare launchd environment with no PATH at all still gets the tool dirs.
+        let path = child_path(None, &[], &[bin("homebrew-bin")]).unwrap();
+        assert_eq!(std::env::split_paths(&path).collect::<Vec<_>>(), vec![bin("homebrew-bin")]);
     }
 }
