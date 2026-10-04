@@ -19,10 +19,28 @@ env:
 
 jobs:
   checks:
-    name: Checks
-    runs-on: macos-latest
+    # Branch protection requires the macOS job by its exact name `Checks`.
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Checks
+            os: macos-latest
+          - name: Checks (windows)
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
+      # .gitattributes already pins `* text=auto eol=lf`, and oxfmt --check
+      # needs LF sources; keep autocrlf off so a Windows checkout cannot
+      # reintroduce CRLF.
+      - name: Enforce LF line endings
+        run: git config --global core.autocrlf false
+
       - name: Checkout
         uses: actions/checkout@v5
 
@@ -57,21 +75,36 @@ jobs:
       - name: Script tests
         run: bun run test:scripts
 
+      # The Windows Rust shell lands with its own PR; until then the desktop
+      # crate is only built and tested on macOS, and Windows proves the
+      # runtime staging that the installer will bundle.
       - name: Setup Rust
+        if: runner.os == 'macOS'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Check desktop
+        if: runner.os == 'macOS'
         run: bun run desktop:check
 
       - name: Desktop Rust tests
+        if: runner.os == 'macOS'
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
       - name: Desktop tests
+        if: runner.os == 'macOS'
         run: bun run --cwd apps/desktop test
 
+      - name: Stage desktop runtime (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -euo pipefail
+          bun run desktop:stage
+          apps/desktop/runtime/bun.exe apps/desktop/runtime/hyperframes/cli.js --help
+
   test:
+    # Branch protection requires `Test (studio)`, `Test (render)` and `Test (services)` by exact name.
     name: Test (${{ matrix.name }})
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -79,17 +112,31 @@ jobs:
         include:
           - name: studio
             packages: studio
+            os: macos-latest
           - name: render
             packages: core engine producer cli
+            os: macos-latest
           - name: services
             packages: agent-protocol agent-runtime studio-server parsers lint sdk shader-transitions player
             skills: true
+            os: macos-latest
+          # Windows smoke: studio unit tests against the full-codec FFmpeg below.
+          - name: windows
+            packages: studio
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Enforce LF line endings
+        run: git config --global core.autocrlf false
+
       - name: Checkout
         uses: actions/checkout@v5
 
       # The engine's HDR PNG tests read one LFS fixture; the rest of LFS is the producer's regression corpus.
       - name: Fetch test fixtures from LFS
+        if: runner.os == 'macOS'
         run: git lfs pull --include="packages/producer/tests/hdr-regression/src/hdr-photo-pq.png"
 
       - name: Setup Bun
@@ -103,10 +150,35 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       # Tests synthesize fixtures with libvorbis, libaom-av1, libvpx and x264; Homebrew's `ffmpeg` lacks some of them.
-      - name: Install FFmpeg
+      - name: Install FFmpeg (macOS)
+        if: runner.os == 'macOS'
         run: |
           brew install ffmpeg-full
           echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
+
+      # gyan.dev full builds carry libx264/libx265/libvpx/libaom/libvorbis,
+      # matching the ffmpeg-full codec set the tests synthesize fixtures with.
+      - name: Install FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -euo pipefail
+          # A versioned archive and a digest pinned here, never fetched from the
+          # server that serves the archive: a moved or tampered file fails the
+          # check before anything is extracted. Bump both together after
+          # checking the new artifact.
+          version="9.0.2"
+          sha256="f0e46253c70dfe902bac915dfb4224f0cf1b7c6eeab9da2ccc9a5581f9a71b13"
+          archive="$RUNNER_TEMP/ffmpeg-$version-full_build.7z"
+          curl --fail --silent --show-error --location -o "$archive" "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-$version-full_build.7z"
+          echo "$sha256  $archive" | sha256sum --check -
+          7z x "$archive" -o"$RUNNER_TEMP/ffmpeg" -y > /dev/null
+          bindir="$RUNNER_TEMP/ffmpeg/ffmpeg-$version-full_build/bin"
+          test -x "$bindir/ffmpeg.exe"
+          encoders="$("$bindir/ffmpeg.exe" -hide_banner -encoders)"
+          for encoder in libx264 libx265 libvpx libaom-av1 libvorbis; do
+            echo "$encoders" | grep -qw "$encoder" || { echo "::error::FFmpeg build lacks $encoder"; exit 1; }
+          done
+          echo "$bindir" >> "$GITHUB_PATH"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

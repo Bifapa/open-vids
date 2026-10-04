@@ -18,7 +18,7 @@
  * (`v1.2.3`) and the version it represents (`1.2.3`) are deliberately different strings.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,6 +29,11 @@ export const PATHS = {
   cargoLock: "apps/desktop/src-tauri/Cargo.lock",
   packageJson: "apps/desktop/package.json",
   tauriConf: "apps/desktop/src-tauri/tauri.conf.json",
+  tauriWindowsConf: "apps/desktop/src-tauri/tauri.windows.conf.json",
+  tauriMacosConf: "apps/desktop/src-tauri/tauri.macos.conf.json",
+  tauriProdConf: "apps/desktop/src-tauri/tauri.prod.conf.json",
+  tauriProdMacosConf: "apps/desktop/src-tauri/tauri.prod.macos.conf.json",
+  tauriProdWindowsConf: "apps/desktop/src-tauri/tauri.prod.windows.conf.json",
 } as const;
 
 /** The `[[package]]` entry in Cargo.lock that mirrors the app version. */
@@ -192,6 +197,11 @@ export interface VersionSources {
   cargoLock: string;
   packageJson: string;
   tauriConf: string;
+  tauriWindowsConf?: string;
+  tauriMacosConf?: string;
+  tauriProdConf?: string;
+  tauriProdMacosConf?: string;
+  tauriProdWindowsConf?: string;
 }
 
 export interface VersionCheckResult {
@@ -227,6 +237,24 @@ export function checkVersionMirrors(sources: VersionSources): VersionCheckResult
     );
   }
 
+  // The platform overlays (`tauri.windows.conf.json`, `tauri.macos.conf.json`)
+  // and the prod resource maps (`tauri.prod*.conf.json`) are merged over the
+  // base config: none of them may set a version either. Missing files (a
+  // fresh checkout before they exist) are not a problem; a stray version is.
+  const overlays: Array<[path: string, json: string | undefined]> = [
+    [PATHS.tauriWindowsConf, sources.tauriWindowsConf],
+    [PATHS.tauriMacosConf, sources.tauriMacosConf],
+    [PATHS.tauriProdConf, sources.tauriProdConf],
+    [PATHS.tauriProdMacosConf, sources.tauriProdMacosConf],
+    [PATHS.tauriProdWindowsConf, sources.tauriProdWindowsConf],
+  ];
+  for (const [path, json] of overlays) {
+    if (json === undefined) continue;
+    if (tauriConfSetsVersion(json)) {
+      problems.push(`${path}: remove "version" so Tauri reads the version from ${PATHS.cargoToml}`);
+    }
+  }
+
   return { version, problems };
 }
 
@@ -255,6 +283,11 @@ async function main(): Promise<void> {
   const cargoLockPath = join(ROOT, PATHS.cargoLock);
   const packageJsonPath = join(ROOT, PATHS.packageJson);
   const tauriConfPath = join(ROOT, PATHS.tauriConf);
+  // Overlays may not exist yet on a fresh checkout; missing reads as undefined (not a problem).
+  const readOverlay = (path: string) => {
+    const absolute = join(ROOT, path);
+    return existsSync(absolute) ? readFileSync(absolute, "utf8") : undefined;
+  };
 
   if (argument === "--print") {
     console.log(readCargoTomlVersion(readFileSync(cargoTomlPath, "utf8")));
@@ -265,13 +298,20 @@ async function main(): Promise<void> {
   const cargoLock = readFileSync(cargoLockPath, "utf8");
   const packageJson = readFileSync(packageJsonPath, "utf8");
   const tauriConf = readFileSync(tauriConfPath, "utf8");
-
+  const overlaySources = {
+    tauriWindowsConf: readOverlay(PATHS.tauriWindowsConf),
+    tauriMacosConf: readOverlay(PATHS.tauriMacosConf),
+    tauriProdConf: readOverlay(PATHS.tauriProdConf),
+    tauriProdMacosConf: readOverlay(PATHS.tauriProdMacosConf),
+    tauriProdWindowsConf: readOverlay(PATHS.tauriProdWindowsConf),
+  };
   if (argument === "--check") {
     const { version, problems } = checkVersionMirrors({
       cargoToml,
       cargoLock,
       packageJson,
       tauriConf,
+      ...overlaySources,
     });
     if (problems.length > 0) {
       for (const problem of problems) console.error(`ERROR ${problem}`);
@@ -310,6 +350,7 @@ async function main(): Promise<void> {
     cargoLock: nextLock,
     packageJson: nextPackage,
     tauriConf,
+    ...overlaySources,
   });
   for (const problem of after.problems) console.error(`WARNING ${problem}`);
 }
