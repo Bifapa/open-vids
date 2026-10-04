@@ -54,7 +54,7 @@ bun run desktop:build
 
 ### Models for the agents
 
-Connect a model provider in **Settings → Models & Providers** by adding an API key; OpenVids keeps it in a private file in `~/.openvids/agent`. If you already use [oh-my-pi](https://github.com/can1357/oh-my-pi), Agent Chat also picks up the providers and sign-ins of your setup in `~/.omp/agent`; OpenVids reads it and never writes to it. Which model each agent uses is chosen in OpenVids settings. The manual editor works without any of this.
+Connect a model provider in **Settings → Models & Providers** by adding an API key; OpenVids keeps it in a private file in `~/.openvids/agent`. If you already use [oh-my-pi](https://github.com/can1357/oh-my-pi), Agent Chat also picks up the providers and sign-ins of your setup in `~/.omp/agent`; OpenVids reads it and never writes to it. Which model each agent uses is chosen in OpenVids settings. The Director is always on; the specialists are switched on or off in **Settings → Agents** and in the chat's Agents menu. The manual editor works without any of this.
 
 ## Contributing
 

@@ -178,7 +178,6 @@
   "home.composer.lead.mono": "M",
   "home.composer.lead.role": "Coordinates this project",
   "home.composer.lead.alwaysOn": "Always on",
-  "home.composer.lead.alwaysOnAria": "{agent} is always on",
   "home.composer.agent.settingsAria": "Settings for {agent}",
   "home.composer.agent.settingsTip": "{agent} settings",
   "home.composer.agent.switchAria": "{agent} agent",

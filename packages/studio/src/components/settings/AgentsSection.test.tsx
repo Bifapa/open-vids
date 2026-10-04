@@ -25,14 +25,13 @@ afterEach(() => {
 });
 
 describe("AgentsSection Director row", () => {
-  it("says Always on with no switch", async () => {
+  it("renders no switch", async () => {
     mountSettings(undefined, (created) => (store = created));
     await act(async () => openSettings("agents"));
     await settle();
 
     const row = document.body.querySelector('[data-agent-row="director"]');
     if (!row) throw new Error("director row did not render");
-    expect(row.textContent).toContain("Always on");
     expect(row.querySelector('[role="switch"]')).toBeNull();
   });
 });

@@ -70,11 +70,12 @@ const AGENT_TEXT: Record<
   },
 };
 
-/** Agent, Model, Thinking effort, On — the prototype's `.st-agents` columns. The last column sizes to its
-    content (`auto`, not a fixed toggle width) so the Director's "Always on" text fits while every row's
-    right edge still lines up: switches and the header cell stay `justify-self-end`. */
+/** Agent, Model, Thinking effort, On — the prototype's `.st-agents` columns. The header and every row are
+    separate grids, so the last track is one fixed width (64 px; 100 px in Russian, where "Всегда включён"
+    is wider) rather than `auto`: an `auto` track would size to each row's own content and misalign the
+    columns. The Director's "Always on" text is `justify-self-end` inside that track. */
 const AGENT_GRID =
-  "grid grid-cols-[minmax(0,1fr)_152px_144px_auto] items-center gap-3 px-3 [&:lang(ru)]:grid-cols-[minmax(0,1fr)_184px_192px_auto]";
+  "grid grid-cols-[minmax(0,1fr)_152px_144px_64px] items-center gap-3 px-3 [&:lang(ru)]:grid-cols-[minmax(0,1fr)_184px_192px_100px]";
 
 /** ModelPicker in the prototype's 28 px window-form `.sel` look, caret at the right edge. */
 const MODEL_TRIGGER =
