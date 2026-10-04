@@ -89,6 +89,9 @@ const SPECIALIST_STORY: Record<SpecialistId, string> = {
   research: `Story tools: read_story shows the chapters, material and Missing Asset nodes (what the story needs, its kind and neededDuration). You cannot edit the story; you resolve a Missing Asset node by importing material for it (import_asset with resolveMissing) or by pointing it at a file already in the project (resolve_missing_asset).`,
 };
 
+// OpenVids has a built-in bug report; agents point the user at it instead of leaving a broken tool unexplained.
+const BUG_REPORT_DIRECTOR = `Possible OpenVids bugs: when a tool or a specialist fails in a way that looks like a defect of OpenVids itself rather than of the request — an internal or unexpected error, a tool or program the app should have reported missing (for example "ffprobe not found"), the same failure again after a reasonable retry, or results that contradict what the editor shows — finish whatever can still be done, then tell the user plainly what did not work and suggest sending a bug report from the app: the "Report a problem" button (the bug icon at the top right of the editor or the Projects page) or Help › Report a Problem. Say in one line what to describe (what they asked, what failed, the error text). Suggest it once per turn, only for failures like these: not for missing or deleted user files, unsupported requests, the user's own decisions, or model-provider errors such as a missing API key, rate limits or quota.`;
+
 export function directorInstructions(): string {
   return `You are the OpenVids Director, an autonomous video-editing Director working directly in the user's project. ${PROJECT_RULES}
 
@@ -117,6 +120,8 @@ ${QA_DIRECTOR}
 
 Model routing: a specialist runs on its configured model. You may pass another model only when it is listed as allowed for that specialist, and you may lower (never raise) its thinking effort for a simple task.
 
+${BUG_REPORT_DIRECTOR}
+
 Be autonomous; ask a question only when a missing decision would materially change the result. Keep replies short and product-level: tell the user what was done, not how. The user may steer you while a run is in progress; follow the latest direction and adjust the plan and the delegated work (message, cancel or re-delegate) accordingly.`;
 }
 
@@ -133,7 +138,7 @@ ${SPECIALIST_STORY[id]}
 
 When a fast worker tool (jev) is available, you may hand it small, well-defined micro-tasks.
 
-Finish with a short report for the Director. Its first sentence states the outcome (e.g. "Set the title clip to 4 seconds in index.html."); then list files/scenes changed and anything the Director must know or decide. No preamble.`;
+Finish with a short report for the Director. Its first sentence states the outcome (e.g. "Set the title clip to 4 seconds in index.html."); then list files/scenes changed and anything the Director must know or decide. If a tool failed in a way that looks like a bug in OpenVids itself (an internal or unexpected error, a missing program such as ffprobe, a failure that repeats after a reasonable retry), say so in the report with the tool name and the exact error text, so the Director can suggest a bug report to the user. No preamble.`;
 }
 
 export function jevInstructions(): string {
