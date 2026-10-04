@@ -14,8 +14,8 @@
  * process records OpenVids' pid, and while `process.kill(pid, 0)` — a
  * permission probe, not a signal — keeps succeeding the server is healthy. When
  * it starts failing, OpenVids is gone and the server is killed outright.
- * (`EPERM` still counts as alive: the process exists but belongs to someone
- * else, e.g. an elevated OpenVids.)
+ * (On Windows `EPERM` still counts as alive: the process exists but belongs to
+ * someone else, e.g. an elevated OpenVids.)
  *
  * Everything else — argument handling, the port, the lifecycle line on stdout —
  * is the CLI's own. This launcher only wraps it and guarantees teardown.
@@ -78,7 +78,7 @@ function stop(initial) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   // On Windows a signal only reaches the direct child, so go straight for
   // the tree; elsewhere ask the child first and escalate below.
-  if (!killWindowsTree(child.pid)) {
+  if (!(process.platform === "win32" && killWindowsTree(child.pid))) {
     try {
       child.kill(process.platform === "win32" ? "SIGKILL" : initial);
     } catch {
@@ -89,7 +89,7 @@ function stop(initial) {
   // An exit that races the escalation leaves the server running unsupervised.
   escalation = setTimeout(() => {
     if (child.exitCode === null && child.signalCode === null) {
-      if (!killWindowsTree(child.pid)) {
+      if (!(process.platform === "win32" && killWindowsTree(child.pid))) {
         try {
           child.kill("SIGKILL");
         } catch {
@@ -100,14 +100,21 @@ function stop(initial) {
   }, 3000);
 }
 
-/** Whether OpenVids is still alive. `EPERM` means it exists but belongs to
- * someone else — alive; anything else (`ESRCH`, `EINVAL`) means it is gone. */
+/** Whether OpenVids is still alive. On Windows `EPERM` means it exists but
+ * belongs to someone else — alive. Elsewhere any error (`ESRCH`, `EINVAL`, and
+ * `EPERM` from a reused pid of another user) means OpenVids is gone. */
 function ownerAlive() {
   try {
     process.kill(owner, 0);
     return true;
   } catch (error) {
-    return error !== null && typeof error === "object" && "code" in error && error.code === "EPERM";
+    return (
+      process.platform === "win32" &&
+      error !== null &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "EPERM"
+    );
   }
 }
 

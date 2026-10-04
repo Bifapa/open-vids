@@ -608,14 +608,12 @@ fn ffprobe() -> Option<PathBuf> {
     // macOS list unchanged: Homebrew's bins, then the system path.
     #[cfg(not(target_os = "windows"))]
     dirs.extend(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].map(PathBuf::from));
-    // Windows extras beyond PATH: winget's user links and Chocolatey's bin.
-    // PATH itself already covers the common installers (MediaMT, BtbN).
+    // Windows extras beyond PATH: winget's user links. PATH itself already covers the common
+    // installers (MediaMT, BtbN, Chocolatey's shim dir). A fixed folder under C:\ProgramData is not
+    // searched: any local user may create it, so a binary there is not trusted to run.
     #[cfg(target_os = "windows")]
-    {
-        if let Some(local) = std::env::var_os("LOCALAPPDATA").filter(|v| !v.is_empty()) {
-            dirs.push(PathBuf::from(local).join(r"Microsoft\WinGet\Links"));
-        }
-        dirs.push(PathBuf::from(r"C:\ProgramData\chocolatey\bin"));
+    if let Some(local) = std::env::var_os("LOCALAPPDATA").filter(|v| !v.is_empty()) {
+        dirs.push(PathBuf::from(local).join(r"Microsoft\WinGet\Links"));
     }
     dirs.into_iter().map(|d| d.join(&tool)).find(|p| p.is_file())
 }

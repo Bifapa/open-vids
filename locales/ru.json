@@ -660,6 +660,7 @@
   "onboarding.system.source.openvids": "установлено OpenVids",
   "onboarding.system.source.env": "задано переменной окружения",
   "onboarding.system.source.system": "найдено на этом Mac",
+  "onboarding.system.source.system.win": "найдено на этом компьютере",
   "onboarding.system.phase.checking": "Проверка…",
   "onboarding.system.phase.installing": "Установка…",
   "onboarding.system.phase.downloadingOf": "Загрузка · {downloaded} из {total}",

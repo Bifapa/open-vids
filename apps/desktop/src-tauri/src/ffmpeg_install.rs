@@ -1200,7 +1200,8 @@ mod tests {
             p = probe_escaped,
         );
         script.push_str("try { readFileSync('/dev/tty'); writeFileSync(p, '\\nHAS_TTY', {flag:'a'}); } catch { writeFileSync(p, '\\nNO_TTY', {flag:'a'}); }\n");
-        script.push_str("writeFileSync(p, '\\nSTDIN_CLOSED', {flag:'a'});\n");
+        // Reads stdin to EOF before the marker: a stdin left attached would block here and fail the test.
+        script.push_str("for await (const _ of process.stdin) {}\nwriteFileSync(p, '\\nSTDIN_CLOSED', {flag:'a'});\n");
         script.push_str("console.log('==> Fetching ffmpeg');\nawait Bun.sleep(1000);\nconsole.log('==> Pouring ffmpeg--9.0.2.arm64.bottle.tar.gz');\nawait Bun.sleep(1000);\nconsole.error('done');\n");
         with_fake_brew(&script, CLI_FOUND, |_| {
             // Drive the brew slot directly: on Windows `start()` enters the

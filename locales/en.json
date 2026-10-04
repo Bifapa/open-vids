@@ -660,6 +660,7 @@
   "onboarding.system.source.openvids": "installed by OpenVids",
   "onboarding.system.source.env": "set by an environment variable",
   "onboarding.system.source.system": "found on this Mac",
+  "onboarding.system.source.system.win": "found on this PC",
   "onboarding.system.phase.checking": "Checking…",
   "onboarding.system.phase.installing": "Installing…",
   "onboarding.system.phase.downloadingOf": "Downloading · {downloaded} of {total}",

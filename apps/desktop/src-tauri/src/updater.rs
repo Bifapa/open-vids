@@ -658,9 +658,11 @@ fn apply_unix(app: &tauri::AppHandle, generation: u64, update: &Update, bytes: &
 #[cfg(windows)]
 fn apply_windows(generation: u64, update: &Update, bytes: &[u8]) {
     eprintln!("[openvids] installing update {}", update.version);
+    crate::logfile::shell(&format!("installing update {}", update.version));
     if let Err(err) = update.install(bytes) {
         let err = install_error(&err.to_string());
         eprintln!("[openvids] {err}");
+        crate::logfile::shell(&err.to_string());
         slot().install_failed(generation, &err);
     }
 }

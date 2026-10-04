@@ -11,8 +11,9 @@ on:
   push:
     tags: ["v*"]
 
+# Read-only by default; only the publish job, which creates the draft release, may write.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref_name }}
@@ -188,6 +189,8 @@ jobs:
     name: Publish draft release ${{ github.ref_name }}
     needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         shell: bash

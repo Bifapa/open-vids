@@ -20,7 +20,9 @@ html.custom-frame .window {
 }
 html.custom-frame .titlebar {
   min-width: 0;
-  overflow: hidden;
+  /* Clip only sideways (overflowing tools): toolbar tooltips hang below the bar. */
+  overflow-x: clip;
+  overflow-y: visible;
 }
 body {
   background: var(--bg-0);

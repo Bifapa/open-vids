@@ -191,7 +191,7 @@
     if (c.found) {
       const bits = [
         c.version && tr("onboarding.system.version", { version: c.version }),
-        c.source && SOURCES[c.source] && tr(SOURCES[c.source]),
+        c.source && SOURCES[c.source] && OV.pt(SOURCES[c.source]),
       ].filter(Boolean);
       return `<div class="ob-tool">${label}${c.path ? `<span class="mono" title="${esc(c.path)}">${esc(c.path)}</span>` : ""}${
         bits.length ? `<span>${esc(bits.join(" · "))}</span>` : ""
