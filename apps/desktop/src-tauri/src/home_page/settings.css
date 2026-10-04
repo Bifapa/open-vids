@@ -317,7 +317,7 @@ html.st-embed {
 
 /* ---- Agents table ---- */
 .st-agents .st-row {
-  grid-template-columns: minmax(0, 1fr) 152px 144px var(--h-md);
+  grid-template-columns: minmax(0, 1fr) 152px 144px 64px;
   gap: var(--sp-3);
 }
 .st-th {
@@ -383,6 +383,14 @@ html.st-embed {
 }
 .st-agents .st-row > .sw {
   justify-self: end;
+}
+/* The Director cell reads "Always on" instead of a switch. It sits in the same fixed last track as the
+   specialists' switches (64px; 100px in the Russian layout), so every row keeps one right edge. */
+.st-agents .st-row > .st-always {
+  justify-self: end;
+  white-space: nowrap;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
 }
 .st-row.is-off .st-mono {
   background: transparent;
@@ -622,13 +630,13 @@ html.st-embed {
 }
 /* The effort column holds five choices (Default and Off next to the prototype's Low / Med / High). */
 .st-agents .st-row {
-  grid-template-columns: minmax(0, 1fr) 152px 212px var(--h-md);
+  grid-template-columns: minmax(0, 1fr) 152px 212px 64px;
 }
 /* Languages whose five effort labels do not fit in 212px (Russian «По умолчанию», «Средний», «Высокий»): the
    effort control moves to a second line under the agent and model columns, so the name, the model select
    and the toggle keep the widths they have in English. The header drops its effort cell. */
 html:lang(ru) .st-agents .st-row {
-  grid-template-columns: minmax(0, 1fr) 152px var(--h-md);
+  grid-template-columns: minmax(0, 1fr) 152px 100px;
   grid-template-areas:
     "agent model toggle"
     "effort effort .";
