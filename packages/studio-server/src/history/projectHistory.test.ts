@@ -1139,7 +1139,8 @@ describe("openProjectHistory", () => {
     const { history, write } = await project({ "index.html": "a" });
     const window = await history.beginWindow(agent, "Short", { idleMs: 40 });
     write("index.html", "b");
-    await vi.waitFor(() => expect(history.list()).toHaveLength(1));
+    // The file watcher reports the write; on a slow Windows runner that took over the 1 s default.
+    await vi.waitFor(() => expect(history.list()).toHaveLength(1), { timeout: 10_000 });
     write("index.html", "c");
     await history.flush();
     expect(history.list().map((entry) => [entry.label, entry.who.kind])).toEqual([
