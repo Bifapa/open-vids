@@ -237,10 +237,13 @@ describe("RenderQueue controls", () => {
       quality: "standard",
       fps: 30,
     });
-    const quality = host.querySelector<HTMLButtonElement>(
-      '[role="group"][aria-label="Quality"] button',
-    );
-    quality?.click();
+    const otherQuality = Array.from(
+      host.querySelectorAll<HTMLButtonElement>(
+        '[role="radiogroup"][aria-label="Quality"] [role="radio"]',
+      ),
+    ).find((option) => option.getAttribute("aria-checked") !== "true");
+    expect(otherQuality).toBeDefined();
+    otherQuality?.click();
     expect(getPersistedRenderSettings()).toEqual({
       format: "mp4",
       quality: "standard",

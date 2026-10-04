@@ -206,7 +206,7 @@ function VariablesLine({ disabled }: { disabled: boolean }) {
         type="button"
         disabled={disabled}
         onClick={() => useDockLayoutStore.getState().activatePanel("variables")}
-        className="shrink-0 rounded-xs text-xs text-fg-2 underline decoration-border-strong underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:text-fg-3 disabled:no-underline"
+        className="shrink-0 rounded-xs text-xs text-fg-2 underline decoration-border-strong underline-offset-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:text-fg-3 disabled:no-underline"
       >
         {t("renders.settings.editVariables")}
       </button>
