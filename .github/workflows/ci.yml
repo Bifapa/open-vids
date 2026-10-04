@@ -120,9 +120,16 @@ jobs:
             packages: agent-protocol agent-runtime studio-server parsers lint sdk shader-transitions player
             skills: true
             os: macos-latest
-          # Windows smoke: studio unit tests against the full-codec FFmpeg below.
-          - name: windows
+          # Windows runs every package, split like macOS, under names of their own so the macOS legs keep the
+          # exact `Test (studio|render|services)` contexts that branch protection requires. Skills tests stay macOS-only.
+          - name: windows-studio
             packages: studio
+            os: windows-latest
+          - name: windows-render
+            packages: core engine producer cli
+            os: windows-latest
+          - name: windows-services
+            packages: agent-protocol agent-runtime studio-server parsers lint sdk shader-transitions player
             os: windows-latest
     defaults:
       run:
@@ -136,7 +143,6 @@ jobs:
 
       # The engine's HDR PNG tests read one LFS fixture; the rest of LFS is the producer's regression corpus.
       - name: Fetch test fixtures from LFS
-        if: runner.os == 'macOS'
         run: git lfs pull --include="packages/producer/tests/hdr-regression/src/hdr-photo-pq.png"
 
       - name: Setup Bun

@@ -127,8 +127,11 @@ describe("AgentSettingsStore", () => {
       ]);
 
       const file = join(dir, "nested", "provider-credentials.json");
-      expect((await stat(file)).mode & 0o777).toBe(0o600);
-      expect((await stat(join(dir, "nested"))).mode & 0o777).toBe(0o700);
+      // Windows has no owner-only mode bits (stat reports 0666-style masks), so the mode is asserted on POSIX only.
+      if (process.platform !== "win32") {
+        expect((await stat(file)).mode & 0o777).toBe(0o600);
+        expect((await stat(join(dir, "nested"))).mode & 0o777).toBe(0o700);
+      }
       // Nothing about the keys reaches the settings the API serves.
       expect(JSON.stringify(await desktop.get())).not.toContain("secret");
       expect(

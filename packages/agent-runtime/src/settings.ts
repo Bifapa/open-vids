@@ -74,7 +74,8 @@ function applyUpdate(current: AgentSettings, update: UpdateAgentSettingsRequest)
 
 /**
  * Global agent settings (defaults for new chats and the Jev worker) plus Jev's API key and the per-provider API keys
- * the user entered in OpenVids. All files are private to the user (mode 0600); the keys are kept in their own files and
+ * the user entered in OpenVids. All files are private to the user (mode 0600 on POSIX; Windows has no mode bits, so
+ * access there follows the profile directory's ACL); the keys are kept in their own files and
  * never returned through {@link get}. The files are tiny and are read from disk on every access, so several runtimes
  * on one machine (desktop app, dev shell) never overwrite each other's changes with a stale copy and pick up each
  * other's keys.
