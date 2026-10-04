@@ -19,13 +19,16 @@ env:
 
 jobs:
   checks:
-    name: Checks (${{ matrix.os }})
+    # Branch protection requires the macOS job by its exact name `Checks`.
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-          - os: windows-latest
+          - name: Checks
+            os: macos-latest
+          - name: Checks (windows)
+            os: windows-latest
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -99,7 +102,8 @@ jobs:
           apps/desktop/runtime/bun.exe apps/desktop/runtime/hyperframes/cli.js --help
 
   test:
-    name: Test (${{ matrix.name }}, ${{ matrix.os }})
+    # Branch protection requires `Test (studio)`, `Test (render)` and `Test (services)` by exact name.
+    name: Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:

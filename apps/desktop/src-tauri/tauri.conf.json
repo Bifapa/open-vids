@@ -17,8 +17,6 @@
     "active": true,
     "targets": ["app", "dmg"],
     "createUpdaterArtifacts": true,
-    "publisher": "OpenVids",
-    "copyright": "Copyright 2026 The OpenVids Authors",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -29,8 +27,7 @@
     "macOS": {
       "minimumSystemVersion": "11.0",
       "signingIdentity": "-"
-    },
-    "licenseFile": "../../../LICENSE"
+    }
   },
   "plugins": {
     "updater": {

@@ -2,6 +2,9 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "targets": ["nsis"],
+    "publisher": "OpenVids",
+    "copyright": "Copyright 2026 The OpenVids Authors",
+    "licenseFile": "../../../LICENSE",
     "windows": {
       "nsis": {
         "installMode": "currentUser",

@@ -311,9 +311,9 @@ export const STAGED_VERSION_OVERRIDES = {
  * nesting the exporters' pinned 2.9.0 under the hoisted 2.11.0 (and the old
  * dom stack under linkedom's latest). Bun reads `overrides` (npm reads the
  * same field); the root `package.json` already uses it for the React line, so
- * this follows the existing convention. macOS installs read the same
- * manifest, so macOS staging is unchanged apart from resolving the same
- * single versions.
+ * this follows the existing convention. Only Windows staging applies it (the
+ * nesting only matters under `makensis`'s path limit), so the macOS app keeps
+ * resolving the ranges as before.
  */
 export function dedupeOpenTelemetryVersions(manifest) {
   manifest.overrides = { ...(manifest.overrides ?? {}), ...STAGED_VERSION_OVERRIDES };
@@ -458,6 +458,10 @@ function pruneStagedTree(dir, label, { unusedEngines }) {
 }
 
 function main() {
+  // The version-family pins only exist for the Windows installer's path budget.
+  const stagedManifest = (manifest) =>
+    process.platform === "win32" ? dedupeOpenTelemetryVersions(manifest) : manifest;
+
   // ── 1. The Studio + CLI bundle ────────────────────────────────────────────
 
   if (!existsSync(join(CLI_DIST, "studio", "index.html"))) {
@@ -498,7 +502,7 @@ function main() {
   writeFileSync(
     join(HF_DIR, "package.json"),
     `${JSON.stringify(
-      dedupeOpenTelemetryVersions({
+      stagedManifest({
         name: "hyperframes",
         version: cliPkg.version,
         private: true,
@@ -550,7 +554,7 @@ function main() {
     writeFileSync(
       join(AGENT_DIR, "package.json"),
       `${JSON.stringify(
-        dedupeOpenTelemetryVersions({
+        stagedManifest({
           ...agentRuntimePackage,
           dependencies: agentRuntimeDependencies,
           devDependencies: undefined,
