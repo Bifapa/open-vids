@@ -77,3 +77,117 @@ export function takeOpenvidsWorkspaceParam(): string | null {
   window.history.replaceState(window.history.state, "", url);
   return value;
 }
+
+export const OPENVIDS_FRAME_PARAM = "openvidsFrame";
+
+/** Which titlebar chrome the desktop shell draws around Studio. */
+export type OpenvidsFrame = "overlay" | "custom" | "system";
+
+/**
+ * Read the desktop's frame hint (`openvidsFrame`, appended to the Studio URL
+ * by Rust's `studio_url`). `overlay` is the default — macOS traffic lights,
+ * and any page without the parameter (plain `hyperframes preview`, hosted
+ * Studio, the CLI) keeps the traffic-light inset exactly as before. `custom`
+ * is the Windows frameless frame (the header draws caption buttons);
+ * `system` is the Windows fallback (the OS draws its frame; no buttons).
+ * Unknown values fall back to `overlay`, never to buttons.
+ */
+export function readOpenvidsFrame(search?: string): OpenvidsFrame {
+  let raw: string | null = null;
+  try {
+    const query = search ?? (typeof window === "undefined" ? "" : window.location.search);
+    raw = new URLSearchParams(query).get(OPENVIDS_FRAME_PARAM);
+  } catch {
+    return "overlay";
+  }
+  return raw === "custom" || raw === "system" ? raw : "overlay";
+}
+
+declare global {
+  interface Window {
+    __TAURI_INTERNALS__?: {
+      invoke?: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+    };
+  }
+}
+
+/**
+ * The only Tauri IPC Studio may use: `window.__TAURI_INTERNALS__.invoke`
+ * (`plugin:window|…`), injected in every webview — remote loopback origins
+ * included — for exactly the commands `capabilities/main.json` and (Windows
+ * only) `capabilities/windows-frame.json` grant.
+ * Returns null outside the desktop shell (or when the channel is absent),
+ * so callers degrade to a no-op instead of throwing.
+ */
+export function invokeWindowCommand(
+  cmd: "minimize" | "toggle_maximize" | "close" | "is_maximized",
+): Promise<unknown> | null {
+  try {
+    const invoke = window.__TAURI_INTERNALS__?.invoke;
+    if (typeof invoke !== "function") return null;
+    return invoke(`plugin:window|${cmd}`, { label: "main" });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ask the home server for one title-bar app menu action
+ * (`POST /api/menu/:action` → the shared `menu_action` in Rust, the same
+ * handler the hidden native menu runs). The webview has no Tauri IPC beyond
+ * the window commands `capabilities/windows-frame.json` grants, so a loopback
+ * `fetch` to the validated home origin is the channel; the home server answers
+ * its CORS preflight for exactly `open_project`, `welcome` and `check_updates`
+ * (and the About read) from this Studio origin, on the custom frame only.
+ * Never throws: a refused request resolves false so the menu just closes.
+ */
+export async function invokeHomeMenuAction(homeOrigin: string, action: string): Promise<boolean> {
+  try {
+    if (!isValidOpenvidsHomeOrigin(homeOrigin)) return false;
+    const response = await fetch(`${homeOrigin}/api/menu/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** The About sheet strings (`GET /api/menu/about`: the native dialog's own values). */
+export interface HomeAboutInfo {
+  name?: string;
+  version?: string;
+  website?: string;
+  websiteLabel?: string;
+  comment?: string;
+  credits?: string;
+}
+
+const ABOUT_FIELDS = ["name", "version", "website", "websiteLabel", "comment", "credits"] as const;
+
+/** A JSON object whose About fields, where present, are strings (absent ones are fine). */
+export function isHomeAboutInfo(value: unknown): value is HomeAboutInfo {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const fields: Record<string, unknown> = Object.fromEntries(Object.entries(value));
+  return ABOUT_FIELDS.every((key) => fields[key] === undefined || typeof fields[key] === "string");
+}
+
+/**
+ * Read the About strings for the title-bar app menu's About sheet. Null when
+ * the home server cannot be reached (dev servers without the route) or answers
+ * something that is not an About object: callers fall back to the app name,
+ * never to a thrown error.
+ */
+export async function readHomeAbout(homeOrigin: string): Promise<HomeAboutInfo | null> {
+  try {
+    if (!isValidOpenvidsHomeOrigin(homeOrigin)) return null;
+    const response = await fetch(`${homeOrigin}/api/menu/about`);
+    if (!response.ok) return null;
+    const data: unknown = await response.json().catch(() => null);
+    return isHomeAboutInfo(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
