@@ -39,10 +39,26 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 # Client-side log redaction (report.rs): a dozen patterns for keys, tokens,
 # JWTs and emails. Already in the tree via Tauri.
 regex = "1"
+# The FFmpeg download on Windows (ffmpeg_install.rs): zip extraction of the pinned
+# official build. `zip` reads only local data (no network features); `sha2`
+# above verifies the archive against the digest pinned in the binary.
+zip = { version = "4", default-features = false, features = ["deflate"] }
 
 [target.'cfg(unix)'.dependencies]
 # killpg, for reaping the sidecar's whole process group. See sidecar::terminate.
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Job Objects + CREATE_NO_WINDOW for the whole-tree child supervision in
+# proc.rs, and the reparse-point attribute the directory copies skip. Same
+# 0.61 line the tree already links, so nothing new is vendored.
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Reading the drag pasteboard for real file paths of a drop on the Projects

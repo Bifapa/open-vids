@@ -40,6 +40,11 @@
 //!   first-run System check and the Chrome installer (`home_system`).
 //! - `GET /api/update/status`, `POST /api/update/check`, `POST /api/update/install`
 //!   — the in-app update (`home_update`, `updater`).
+//! - `GET /api/menu/about` — the About sheet strings (name, version, site;
+//!   the same values the native About dialog shows).
+//! - `POST /api/menu/:action` — one title-bar app menu action through the
+//!   shared `menu_action` (`lib.rs`), for pages with no Tauri IPC. Only the
+//!   `MENU_ACTIONS` ids run; anything else 404s.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -91,6 +96,12 @@ pub struct HomeInner {
     /// Id of the project currently loaded in the Studio window, if any.
     /// Set when an open completes, cleared by Show All Projects.
     pub current_id: Option<String>,
+    /// What `studio_menu_grant` compares the request `Origin` against:
+    /// the Studio sidecar origin the window currently shows, if any. Set by
+    /// lib.rs whenever it navigates to (or away from) a project, so Studio's
+    /// token-less menu requests only pass while they come from the live Studio
+    /// server. Never used for routing or navigation decisions.
+    pub studio_origin: Option<String>,
     /// Skip the launch intro on the next page load: the window is coming
     /// back from a project, or a project is opening at launch.
     pub skip_intro: bool,
@@ -110,6 +121,7 @@ impl HomeInner {
             open_phase: OpenPhase::Idle,
             opener: None,
             current_id: None,
+            studio_origin: None,
             skip_intro: false,
             prefs_listener: None,
             pending_onboarding: false,
@@ -135,17 +147,36 @@ pub fn serve_one(mut stream: TcpStream, state: &Arc<Mutex<HomeInner>>, token: &s
         respond(&mut stream, 400, "text/plain", b"bad request");
         return;
     };
-    if !home_auth::origin_allowed(&head, port) {
+    let studio = studio_menu_grant(
+        super::window_frame(),
+        &head,
+        &studio_origins_for(state),
+        port,
+    );
+    if !home_auth::origin_allowed(&head, port) && studio.is_none() {
         respond(&mut stream, 403, "text/plain", b"foreign origin");
         return;
     }
     if home_auth::requires_token(&head.method, &head.path)
+        && studio.is_none()
         && !HomeToken::matches(&HomeToken::from_value(token), head.header(TOKEN_HEADER))
     {
         respond(&mut stream, 403, "text/plain", b"bad token");
         return;
     }
-    route(stream, state, token, &head, &body);
+    if let Some(grant) = studio.as_ref().filter(|grant| grant.preflight_method.is_some()) {
+        let allow_headers = head.header("access-control-request-headers").is_some();
+        respond_preflight(&mut stream, grant, allow_headers);
+        return;
+    }
+    route(
+        stream,
+        state,
+        token,
+        &head,
+        &body,
+        studio.as_ref().map(|grant| grant.origin.as_str()),
+    );
 }
 
 // ── Request reading ─────────────────────────────────────────────────────────
@@ -209,6 +240,7 @@ fn route(
     token: &str,
     head: &Head,
     body: &[u8],
+    cors_origin: Option<&str>,
 ) {
     let path = percent_decode(&head.path);
     let method = head.method.to_ascii_uppercase();
@@ -227,6 +259,8 @@ fn route(
         ("GET", p) if p.starts_with("/locales/") => serve_locale(s, &p["/locales/".len()..]),
         ("GET", p) if p.starts_with("/thumb/") => serve_thumb(s, state, p),
         ("GET", "/api/recents") => home_api::serve_recents(s, state),
+        // Token-free like the pages and assets: plain `fetch` from the page, no secret to leak.
+        ("GET", "/api/menu/about") => serve_menu_about(s, cors_origin),
         ("GET", "/api/open-state") => serve_open_state(s, state),
         ("GET", "/api/locations") => home_api::serve_locations(s, state),
         ("GET", "/api/preferences") => home_api::serve_prefs(s),
@@ -280,8 +314,122 @@ fn route(
         ("POST", "/api/files/dropped") => home_api::handle_dropped(s, body),
         ("POST", "/api/start/name") => home_api::handle_start_name(s, state, body),
         ("POST", "/api/start") => home_api::handle_start(s, state, body),
+        (_, p) if p.starts_with("/api/menu/") => handle_menu_action(s, &method, p, cors_origin),
         _ => respond(s, 404, "text/plain", b"not found"),
     }
+}
+
+/// Run one title-bar app menu action through the same `menu_action` the
+/// hidden native menu uses, so the two cannot drift apart. `POST` only
+/// (a GET must never quit the app); unknown actions 404 so a stale page
+/// cannot trigger something new.
+fn handle_menu_action(stream: &mut TcpStream, method: &str, path: &str, cors_origin: Option<&str>) {
+    let action = path.trim_start_matches("/api/menu/");
+    if method != "POST"
+        || action.is_empty()
+        || action.contains('/')
+        || !super::MENU_ACTIONS.contains(&action)
+    {
+        respond_menu(stream, 404, "text/plain", b"not found", cors_origin);
+        return;
+    }
+    match super::menu_app() {
+        Some(app) => {
+            super::menu_action(&app, action);
+            respond_menu(stream, 200, "application/json", br#"{"ok":true}"#, cors_origin);
+        }
+        None => respond_menu(stream, 503, "text/plain", b"app not ready", cors_origin),
+    }
+}
+
+/// What a Studio page may ask of this server across origins. Granted once per request by
+/// [`studio_menu_grant`]; `origin` is the exact `Origin` to echo back.
+struct StudioMenuGrant {
+    origin: String,
+    /// Set for a CORS preflight: the method it announced (the endpoint's own).
+    preflight_method: Option<&'static str>,
+}
+
+/// The actions Studio's title-bar menu posts to this server from its own origin on the Windows custom frame
+/// (the other entries of that menu are in-page navigation or the window IPC). Not the full `MENU_ACTIONS`:
+/// quit, reload, show_home and open_settings never cross origins without the home token.
+const STUDIO_MENU_POSTS: [&str; 3] = ["open_project", "welcome", "check_updates"];
+
+/// Studio is another loopback origin, so its `fetch` to this server is cross-origin. Only the title-bar menu's
+/// own requests are let through, token-free and with a CORS grant — and only when every condition holds:
+///
+/// - the window really is the Windows custom frame (`frame == "custom"`; a query string never grants anything),
+/// - `Host` names this server and `Origin` is the Studio origin the window currently shows,
+/// - the request is `POST /api/menu/{open_project,welcome,check_updates}`, `GET /api/menu/about`, or the
+///   `OPTIONS` preflight of exactly one of them (requested method = that endpoint's method, requested headers
+///   only `content-type`).
+///
+/// Anything else — another action, a stale or missing `Origin`, a foreign `Host`, the system or macOS frame —
+/// gets no grant, so it is judged by the ordinary same-origin and token rules (403 for a foreign origin).
+fn studio_menu_grant(
+    frame: &str,
+    head: &Head,
+    studio_origins: &[String],
+    port: u16,
+) -> Option<StudioMenuGrant> {
+    if !cfg!(windows) || frame != "custom" || !home_auth::host_is_this_server(head, port) {
+        return None;
+    }
+    let origin = head.header("origin")?.trim().to_lowercase();
+    if !studio_origins.contains(&origin) || !home_auth::origin_allowed_studio_origin(&origin, port) {
+        return None;
+    }
+    let endpoint_method = match head.path.strip_prefix("/api/menu/")? {
+        "about" => "GET",
+        action if STUDIO_MENU_POSTS.contains(&action) => "POST",
+        _ => return None,
+    };
+    if head.method.eq_ignore_ascii_case(endpoint_method) {
+        return Some(StudioMenuGrant { origin, preflight_method: None });
+    }
+    if head.method.eq_ignore_ascii_case("OPTIONS") {
+        if head.header("access-control-request-method").map(str::trim) != Some(endpoint_method) {
+            return None;
+        }
+        if let Some(requested) = head.header("access-control-request-headers") {
+            if !requested.split(',').all(|name| name.trim().eq_ignore_ascii_case("content-type")) {
+                return None;
+            }
+        }
+        return Some(StudioMenuGrant { origin, preflight_method: Some(endpoint_method) });
+    }
+    None
+}
+
+/// The `Origin` values Studio may currently send: the live sidecar origin
+/// plus the `localhost` spelling of the same port, so the check survives the
+/// host alias the browser normalises to.
+fn studio_origins_for(state: &Arc<Mutex<HomeInner>>) -> Vec<String> {
+    let Some(origin) = state.lock().ok().and_then(|inner| inner.studio_origin.clone()) else {
+        return Vec::new();
+    };
+    let mut origins = vec![origin.to_lowercase()];
+    if let Some(rest) = origins[0].strip_prefix("http://127.0.0.1:") {
+        origins.push(format!("http://localhost:{rest}"));
+    } else if let Some(rest) = origins[0].strip_prefix("http://localhost:") {
+        origins.push(format!("http://127.0.0.1:{rest}"));
+    }
+    origins
+}
+
+/// What the pages show in their About sheet: the same name, version and site
+/// the native About dialog shows (`AboutMetadata` in `build_menu`), read from
+/// one place instead of two. GET is safe here: it only reads strings.
+fn serve_menu_about(stream: &mut TcpStream, cors_origin: Option<&str>) {
+    let about = serde_json::json!({
+        "name": "OpenVids",
+        "version": env!("CARGO_PKG_VERSION"),
+        "website": "https://openvids.ai",
+        "websiteLabel": "openvids.ai",
+        "comment": super::i18n::t("menu.app.aboutComment"),
+        "credits": super::i18n::t("menu.app.aboutCredits"),
+    });
+    respond_menu(stream, 200, "application/json", about.to_string().as_bytes(), cors_origin);
 }
 
 /// The page, with the token and the boot state (intro flag + preferences)
@@ -304,6 +452,7 @@ fn serve_page(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, token: &str
         "prefs": prefs,
         "locales": boot_locales(&prefs),
         "version": env!("CARGO_PKG_VERSION"),
+        "frame": super::window_frame(),
     });
     // `<` cannot close the inline script: JSON-escape it.
     let boot = boot.to_string().replace('<', "\\u003c");
@@ -616,15 +765,55 @@ fn status_line(code: u16) -> &'static str {
 }
 
 pub fn respond(stream: &mut TcpStream, code: u16, content_type: &'static str, body: &[u8]) {
+    write_response(stream, code, content_type, body, "");
+}
+
+/// The one HTTP serializer. `extra_headers` is zero or more complete `Name: value\r\n` lines.
+fn write_response(
+    stream: &mut TcpStream,
+    code: u16,
+    content_type: &'static str,
+    body: &[u8],
+    extra_headers: &str,
+) {
     let head = format!(
-        "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\n{}Connection: close\r\n\r\n",
         status_line(code),
         content_type,
-        body.len()
+        body.len(),
+        extra_headers
     );
     let _ = stream.write_all(head.as_bytes());
     let _ = stream.write_all(body);
     let _ = stream.flush();
+}
+
+/// `respond` for the title-bar menu endpoints: when `cors_origin` is a Studio origin that
+/// `studio_menu_grant` approved, the answer lets exactly that origin read it. Never `*`, never credentials.
+fn respond_menu(
+    stream: &mut TcpStream,
+    code: u16,
+    content_type: &'static str,
+    body: &[u8],
+    cors_origin: Option<&str>,
+) {
+    let headers = cors_origin
+        .map(|origin| format!("Access-Control-Allow-Origin: {origin}\r\nVary: Origin\r\n"))
+        .unwrap_or_default();
+    write_response(stream, code, content_type, body, &headers);
+}
+
+/// The 204 answer to an approved preflight.
+fn respond_preflight(stream: &mut TcpStream, grant: &StudioMenuGrant, allow_headers: bool) {
+    let mut headers = format!(
+        "Access-Control-Allow-Origin: {}\r\nVary: Origin\r\nAccess-Control-Allow-Methods: {}\r\n",
+        grant.origin,
+        grant.preflight_method.unwrap_or("POST")
+    );
+    if allow_headers {
+        headers.push_str("Access-Control-Allow-Headers: content-type\r\n");
+    }
+    write_response(stream, 204, "text/plain", b"", &headers);
 }
 
 #[cfg(test)]
@@ -717,5 +906,27 @@ mod tests {
             Some(super::super::locales::LOCALE_CODES.len())
         );
         assert!(asset("i18n.js").is_some());
+    }
+
+    #[test]
+    fn a_studio_menu_grant_needs_the_windows_custom_frame() {
+        let studio = "http://127.0.0.1:5210".to_string();
+        let head = Head {
+            method: "POST".into(),
+            path: "/api/menu/open_project".into(),
+            headers: [("host", "127.0.0.1:5199"), ("origin", studio.as_str())]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        };
+        let origins = [studio.clone()];
+        // macOS ("overlay") and the Windows system-frame fallback never grant, whatever else matches.
+        for frame in ["overlay", "system", "", "Custom", "custom "] {
+            assert!(studio_menu_grant(frame, &head, &origins, 5199).is_none(), "frame {frame:?}");
+        }
+        // The custom frame grants on Windows builds only.
+        assert_eq!(studio_menu_grant("custom", &head, &origins, 5199).is_some(), cfg!(windows));
+        // And never for an origin that is not the live Studio one.
+        assert!(studio_menu_grant("custom", &head, &[], 5199).is_none());
     }
 }

@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   OPENVIDS_HOME_PARAM,
+  isHomeAboutInfo,
   isValidOpenvidsHomeOrigin,
+  readHomeAbout,
+  readOpenvidsFrame,
   readOpenvidsHomeOrigin,
 } from "./openvidsHost";
 
@@ -70,5 +73,74 @@ describe("readOpenvidsHomeOrigin", () => {
         `?${OPENVIDS_HOME_PARAM}=${encodeURIComponent("javascript:alert(1)")}`,
       ),
     ).toBeNull();
+  });
+});
+
+describe("readOpenvidsFrame", () => {
+  it("defaults to overlay without the param", () => {
+    expect(readOpenvidsFrame("")).toBe("overlay");
+    expect(readOpenvidsFrame("?tab=design")).toBe("overlay");
+  });
+
+  it("reads the Windows frames", () => {
+    expect(readOpenvidsFrame("?openvidsFrame=custom")).toBe("custom");
+    expect(readOpenvidsFrame("?openvidsFrame=system")).toBe("system");
+  });
+
+  it("falls back to overlay for unknown values, never to buttons", () => {
+    expect(readOpenvidsFrame("?openvidsFrame=overlay")).toBe("overlay");
+    expect(readOpenvidsFrame("?openvidsFrame=frameless")).toBe("overlay");
+    expect(readOpenvidsFrame("?openvidsFrame=")).toBe("overlay");
+  });
+});
+
+describe("isHomeAboutInfo", () => {
+  it("accepts an object whose present fields are strings, absent ones included", () => {
+    expect(isHomeAboutInfo({})).toBe(true);
+    expect(isHomeAboutInfo({ name: "OpenVids", version: "0.2.0" })).toBe(true);
+    expect(isHomeAboutInfo({ extra: 1, website: "https://openvids.ai", credits: "x" })).toBe(true);
+  });
+
+  it.each([
+    null,
+    undefined,
+    "OpenVids",
+    7,
+    [],
+    [{ name: "OpenVids" }],
+    { name: 1 },
+    { version: null },
+    { website: ["https://openvids.ai"] },
+    { comment: {} },
+  ])("rejects %j", (value) => {
+    expect(isHomeAboutInfo(value)).toBe(false);
+  });
+});
+
+describe("readHomeAbout", () => {
+  const HOME = "http://127.0.0.1:57035";
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  const answer = (body: unknown, ok = true) =>
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok, json: async () => body })),
+    );
+
+  it("returns the strings the home server sent", async () => {
+    answer({ name: "OpenVids", version: "0.2.0" });
+    await expect(readHomeAbout(HOME)).resolves.toEqual({ name: "OpenVids", version: "0.2.0" });
+  });
+
+  it("returns null for a body of the wrong shape, a failed status or a bad origin", async () => {
+    answer([{ name: "OpenVids" }]);
+    await expect(readHomeAbout(HOME)).resolves.toBeNull();
+    answer({ name: 42 });
+    await expect(readHomeAbout(HOME)).resolves.toBeNull();
+    answer({ name: "OpenVids" }, false);
+    await expect(readHomeAbout(HOME)).resolves.toBeNull();
+    answer({ name: "OpenVids" });
+    await expect(readHomeAbout("http://example.com:57035")).resolves.toBeNull();
   });
 });

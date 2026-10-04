@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "windows-frame",
+  "description": "On Windows the main window is frameless and the pages draw their own minimize / maximize / close buttons, which need exactly these four window commands (reading is_maximized picks the restore icon). Scoped to Windows so macOS, whose native traffic lights need none of it, never grants them. No file, process or shell access: every read, write and launch goes through the home and Studio HTTP APIs.",
+  "platforms": ["windows"],
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*", "http://localhost:*"]
+  },
+  "permissions": [
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized"
+  ]
+}

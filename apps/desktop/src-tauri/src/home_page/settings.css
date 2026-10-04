@@ -78,6 +78,94 @@ html.st-embed {
   outline-offset: 2px;
 }
 
+/* Apply before first paint; settings.js later promotes the close button to win-btn. */
+html.custom-frame .st-titlebar .tl.min,
+html.custom-frame .st-titlebar .tl.max {
+  display: none;
+}
+html.custom-frame .st-titlebar button.tl.close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 46px;
+  height: 100%;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg-2);
+}
+html.custom-frame .st-titlebar button.tl.close:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+html.custom-frame .st-titlebar button.tl.close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+html.custom-frame .st-titlebar button.tl.close svg {
+  display: none;
+}
+html.custom-frame .st-titlebar button.tl.close::before,
+html.custom-frame .st-titlebar button.tl.close::after {
+  position: absolute;
+  width: 12px;
+  height: 1px;
+  border: 0;
+  border-radius: 0;
+  background: currentColor;
+  content: "";
+}
+html.custom-frame .st-titlebar button.tl.close::before {
+  transform: rotate(45deg);
+}
+html.custom-frame .st-titlebar button.tl.close::after {
+  transform: rotate(-45deg);
+}
+
+/* Windows custom frame: use the same 46 px caption close control as Projects. */
+.st-titlebar button.win-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg-2);
+}
+.st-titlebar button.win-btn:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+.st-titlebar button.win-btn.close:hover {
+  background: oklch(62% 0.22 25);
+  color: white;
+}
+.st-titlebar button.win-btn svg {
+  display: none;
+}
+.st-titlebar button.win-btn.close::before,
+.st-titlebar button.win-btn.close::after {
+  position: absolute;
+  width: 12px;
+  height: 1px;
+  background: currentColor;
+  content: "";
+}
+.st-titlebar button.win-btn.close::before {
+  transform: rotate(45deg);
+}
+.st-titlebar button.win-btn.close::after {
+  transform: rotate(-45deg);
+}
+.st-titlebar button.win-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .st-layout {
   display: grid;
   grid-template-columns: 196px minmax(0, 1fr);
