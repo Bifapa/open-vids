@@ -38,6 +38,43 @@ describe("runtime persistence and prompt rendering", () => {
     }
   });
 
+  it("drain waits for fire-and-forget emits so teardown can remove the directory", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({ title: "Drain" });
+      // Hold the store write so the emit is provably still in flight when drain starts.
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const append = fixture.store.append.bind(fixture.store);
+      fixture.store.append = async (event) => {
+        entered.resolve();
+        await release.promise;
+        return append(event);
+      };
+      // The orchestrator's `onModel` path emits without awaiting: the write may still be in flight when the turn ends.
+      const pending = fixture.chats.emit(chat.id, {
+        type: "chat.updated",
+        chat: { ...chat, title: "Late update" },
+      });
+      await entered.promise;
+      const drained = fixture.chats.drain().then(() => "drained" as const);
+      const beforeRelease = await Promise.race([
+        drained,
+        new Promise<"pending">((resolve) => setImmediate(() => resolve("pending"))),
+      ]);
+      expect(beforeRelease).toBe("pending");
+
+      release.resolve();
+      expect(await drained).toBe("drained");
+      // Once drain resolves the event is on disk, before the caller awaits the emit itself.
+      const loaded = await fixture.store.load(chat.id);
+      expect(loaded.state?.chat.title).toBe("Late update");
+      await pending;
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("renders editor context and references as explicit prompt blocks", () => {
     const rendered = renderPromptContext(
       "Make the intro shorter",
