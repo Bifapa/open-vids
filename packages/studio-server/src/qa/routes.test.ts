@@ -15,6 +15,7 @@ import {
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { registerQaRoutes } from "../routes/qa.js";
 import { writeHangExe } from "../helpers/fakeFfmpeg.js";
+import type { QaAnalysis } from "./service.js";
 import {
   RENDERS,
   composition,

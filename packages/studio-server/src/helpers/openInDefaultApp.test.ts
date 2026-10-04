@@ -36,4 +36,24 @@ describe("openerCommand", () => {
     await done;
     expect(spawnMock.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ windowsHide: true }));
   });
+
+  it.each([
+    ["darwin", true],
+    ["linux", true],
+    ["win32", false],
+  ] as const)("on %s, a launcher exiting 1 rejects: %s", async (platform, rejects) => {
+    // explorer.exe exits 1 after handing a file to the shell, so only Windows ignores the code.
+    const original = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: platform });
+    try {
+      const proc = Object.assign(new EventEmitter(), { killed: false });
+      spawnMock.mockReturnValueOnce(proc);
+      const done = openInDefaultApp("/renders/out.mp4");
+      proc.emit("close", 1);
+      if (rejects) await expect(done).rejects.toThrow("exited with code 1");
+      else await expect(done).resolves.toBeUndefined();
+    } finally {
+      if (original) Object.defineProperty(process, "platform", original);
+    }
+  });
 });

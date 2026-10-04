@@ -160,6 +160,7 @@ test("url library entries respect localOnly and freeze through fetch", async () 
     assert.equal(fetchCalls, 1);
     assert.match(frozen.localPath, /^\.media\/luts\/lut_001\.cube$/);
     assert.equal(validateCubeFile(join(projectDir, frozen.localPath)).ok, true);
+    assert.equal(frozen.metadata.provenance.via, "url");
     assert.equal(readFileSync(join(projectDir, "victim.cube"), "utf8"), "unchanged");
     // Without the planted symlink (Windows, unprivileged) the staging .tmp is
     // consumed into the final .cube; with it (POSIX) the guard preserves it.

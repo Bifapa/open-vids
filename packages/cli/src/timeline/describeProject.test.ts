@@ -669,7 +669,9 @@ const docLines = (kind: "jq" | "node -e"): string[] =>
 const oneLiners = (kind: "jq" | "node -e"): string[] =>
   docLines(kind).map((l) => l.replace("12.5", "7").replace("tsfx-pet2", "nested"));
 
+// The jq lines run through bash; on Windows the in-process runner only covers the `node -e` lines.
 const hasJq = (() => {
+  if (process.platform === "win32") return false;
   try {
     execFileSync("jq", ["--version"]);
     return true;

@@ -42,7 +42,11 @@ export async function openInDefaultApp(path: string): Promise<void> {
     // `once` also rejects when the launcher cannot be spawned at all (ENOENT).
     const [code] = (await once(child, "close")) as [number | null];
     if (child.killed) throw new Error(`${command} did not finish within ${OPENER_TIMEOUT_MS} ms`);
-    if (code !== 0) throw new Error(`${command} exited with code ${code ?? "null"}`);
+    // explorer.exe hands the file to the running shell and commonly exits 1 even when it opened;
+    // only a spawn error or the timeout proves it did not.
+    if (code !== 0 && process.platform !== "win32") {
+      throw new Error(`${command} exited with code ${code ?? "null"}`);
+    }
   } finally {
     clearTimeout(timer);
   }

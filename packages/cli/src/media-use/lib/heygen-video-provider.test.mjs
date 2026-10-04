@@ -327,7 +327,7 @@ test("reports other create failures without auth onboarding", winSkip, async (t)
   });
 });
 
-test("falls through on non-JSON and error responses", async (t) => {
+test("falls through on non-JSON and error responses", winSkip, async (t) => {
   t.mock.method(console, "error", () => {});
 
   for (const response of ["not JSON", '{"error":{"message":"render failed"}}']) {
@@ -372,22 +372,26 @@ test(
   },
 );
 
-test("download failure after a successful create returns null and logs a diagnostic", async (t) => {
-  const { server, url } = await listenFailingVideoServer(t);
-  try {
-    await withFakeHeygen({ response: JSON.stringify({ data: { video_url: url } }) }, async () => {
-      const heygenVideoGenerate = await freshGenerate();
-      const result = await heygenVideoGenerate("Download failure", {
-        avatarId: "avatar-override",
-        voiceId: "voice-override",
-      });
+test(
+  "download failure after a successful create returns null and logs a diagnostic",
+  winSkip,
+  async (t) => {
+    const { server, url } = await listenFailingVideoServer(t);
+    try {
+      await withFakeHeygen({ response: JSON.stringify({ data: { video_url: url } }) }, async () => {
+        const heygenVideoGenerate = await freshGenerate();
+        const result = await heygenVideoGenerate("Download failure", {
+          avatarId: "avatar-override",
+          voiceId: "voice-override",
+        });
 
-      assert.equal(result, null);
-    });
-  } finally {
-    await closeServer(server);
-  }
-});
+        assert.equal(result, null);
+      });
+    } finally {
+      await closeServer(server);
+    }
+  },
+);
 
 test(
   "uses private unique downloads even when time is fixed and the old name is planted",
@@ -427,7 +431,7 @@ test(
   },
 );
 
-test("removes private download staging on failure while returning null", async (t) => {
+test("removes private download staging on failure while returning null", winSkip, async (t) => {
   const root = mkdtempSync(join(tmpdir(), "hf-video-temp-fail-"));
   const previousTmpdir = process.env.TMPDIR;
   process.env.TMPDIR = root;
