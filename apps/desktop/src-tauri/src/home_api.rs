@@ -143,7 +143,8 @@ fn find(state: &Arc<Mutex<HomeInner>>, id: &str) -> Option<RecentEntry> {
         .and_then(|inner| inner.recents.find_by_id(id).cloned())
 }
 
-/// `POST /api/reveal {id}` — show the folder in Finder.
+/// `POST /api/reveal {id}` — show the folder in the OS file manager
+/// (Finder on macOS, Explorer on Windows, the default opener elsewhere).
 pub fn handle_reveal(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
     let id = str_field(&body_json(body), "id").unwrap_or_default().to_string();
     let Some(entry) = find(state, &id) else {
@@ -157,18 +158,20 @@ pub fn handle_reveal(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
         .arg("-R")
         .arg(&entry.dir)
         .status();
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    let result = reveal_in_explorer(&entry.dir);
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let result = std::process::Command::new("xdg-open")
         .arg(entry.dir.parent().unwrap_or(&entry.dir))
         .status();
     match result {
-        Ok(status) if status.success() => respond_json(stream, 200, &json!({ "ok": true })),
+        Ok(status) if reveal_succeeded(&status) => respond_json(stream, 200, &json!({ "ok": true })),
         Ok(status) => error(
             stream,
             500,
             CodedError::new(
                 "reveal_failed_status",
-                format!("Finder could not reveal the folder ({status})"),
+                format!("{} could not reveal the folder ({status})", file_manager_name()),
                 json!({ "status": status.to_string() }),
             ),
         ),
@@ -177,13 +180,73 @@ pub fn handle_reveal(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
             500,
             CodedError::new(
                 "reveal_failed",
-                format!("Finder could not reveal the folder: {err}"),
+                format!("{} could not reveal the folder: {err}", file_manager_name()),
                 json!({ "detail": err.to_string() }),
             ),
         ),
     }
 }
 
+/// The file manager named in user-facing reveal errors.
+fn file_manager_name() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Finder"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "Explorer"
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        "Finder"
+    }
+}
+
+/// Whether a reveal spawn counts as success. `explorer.exe /select,…` returns
+/// exit code 1 even when the window opens (it reports "one item selected"
+/// that way), so success there is "launched", not "code 0".
+fn reveal_succeeded(status: &std::process::ExitStatus) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        status.code().map(|code| code == 0 || code == 1).unwrap_or_else(|| status.success())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        status.success()
+    }
+}
+
+/// The single `explorer.exe` command-line element that selects `dir`:
+/// `/select,"<path>"`, with the path in stable form (no `\\?\` verbatim
+/// prefix, backslashes). Explorer parses `/select,<path>` itself, so the
+/// argument must arrive as ONE element whose path part is quoted: passing
+/// `/select,<path with spaces>` through `Command::arg` wraps the WHOLE
+/// element in quotes (`"/select,C:\... with spaces"`), which Explorer does
+/// not parse, and it falls back to Documents. Pure, so the quoting is
+/// unit-testable without spawning Explorer.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn explorer_select_arg(dir: &Path) -> String {
+    let stable = super::platform::from_verbatim(dir);
+    let text = stable.to_string_lossy().replace('/', "\\");
+    format!("/select,\"{text}\"")
+}
+
+/// Show `dir` selected in Explorer without flashing a console window.
+/// `explorer.exe` is a GUI binary, so no console is created; the `/select`
+/// element goes through `raw_arg` (appended verbatim, so Explorer sees
+/// `/select,"<path>"` exactly — `arg` would re-quote it, see above).
+/// `CREATE_NO_WINDOW` is set anyway for the rare case the lookup resolves
+/// to a console-hosted stub.
+ #[cfg(target_os = "windows")]
+fn reveal_in_explorer(dir: &Path) -> std::io::Result<std::process::ExitStatus> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    std::process::Command::new("explorer.exe")
+        .raw_arg(explorer_select_arg(dir))
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()
+}
 // ── External links ───────────────────────────────────────────────────────────
 
 /// Longest address the page may ask to open.
@@ -211,16 +274,35 @@ pub fn parse_external_url(raw: &str) -> Result<url::Url, CodedError> {
     Ok(parsed)
 }
 
-/// `POST /api/open-external {url}` → open an `https://` URL in the user's
-/// default browser. The URL is passed as one argument to `open` / `xdg-open`
-/// (no shell), in its normalised serialisation.
+/// default browser. The URL is passed as one argument to `open` /
+/// `rundll32 url.dll,FileProtocolHandler` / `xdg-open` (no shell), in its
+/// normalised serialisation.
 /// Hand a checked address ([`parse_external_url`]) to the default browser.
 pub fn open_external(url: &url::Url) -> std::io::Result<std::process::ExitStatus> {
+    // Windows: `rundll32 url.dll,FileProtocolHandler <url>` opens the default
+    // browser for the URL without a shell (`cmd /c start` would re-parse `&`
+    // and friends) and without flashing a console (rundll32 is a GUI binary;
+    // CREATE_NO_WINDOW covers stub resolutions).
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        // The URL was allow-listed by `parse_external_url` (https, host, no
+        // credentials or control chars), so one argv element is safe.
+        std::process::Command::new("rundll32.exe")
+            .arg("url.dll,FileProtocolHandler")
+            .arg(url.as_str())
+            .creation_flags(CREATE_NO_WINDOW)
+            .status()
+    }
     #[cfg(target_os = "macos")]
-    let opener = "/usr/bin/open";
-    #[cfg(not(target_os = "macos"))]
-    let opener = "xdg-open";
-    std::process::Command::new(opener).arg(url.as_str()).status()
+    {
+        std::process::Command::new("/usr/bin/open").arg(url.as_str()).status()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        std::process::Command::new("xdg-open").arg(url.as_str()).status()
+    }
 }
 
 pub fn handle_open_external(stream: &mut TcpStream, body: &[u8]) {
@@ -265,6 +347,10 @@ fn skip_in_duplicate(rel: &Path) -> bool {
         || rel == Path::new(".hyperframes/agent/intake.json")
 }
 
+/// Duplicate a project folder. Unix keeps a symlink as a link. On Windows every symlink, junction and other
+/// reparse point is left out: such an entry can point anywhere (a junction to an ancestor makes the walk cycle;
+/// one to another folder would copy that folder's files into the duplicate), so none is followed, resolved or
+/// materialized — the duplicate holds only what physically lives in the project.
 fn copy_tree(from: &Path, to: &Path, root: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
@@ -276,9 +362,13 @@ fn copy_tree(from: &Path, to: &Path, root: &Path) -> std::io::Result<()> {
         }
         let dst = to.join(entry.file_name());
         let kind = entry.file_type()?;
+        // `DirEntry::metadata` does not follow links on Windows, so this sees the entry itself.
+        #[cfg(windows)]
+        if crate::platform::is_link_like(&entry.metadata()?) {
+            continue;
+        }
         if kind.is_symlink() {
-            #[cfg(unix)]
-            std::os::unix::fs::symlink(std::fs::read_link(&src)?, &dst)?;
+            copy_symlink(&src, &dst)?;
         } else if kind.is_dir() {
             copy_tree(&src, &dst, root)?;
         } else {
@@ -287,6 +377,19 @@ fn copy_tree(from: &Path, to: &Path, root: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Copy one symlink entry of a duplicated project as a link (Unix; Windows never reaches this).
+fn copy_symlink(src: &Path, dst: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(std::fs::read_link(src)?, dst)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (src, dst);
+        Ok(())
+    }
 }
 
 fn set_meta_name(dir: &Path, name: &str) {
@@ -493,23 +596,47 @@ pub fn handle_name_status(stream: &mut TcpStream, body: &[u8]) {
 // ── Files for the start composer ────────────────────────────────────────────
 
 fn ffprobe() -> Option<PathBuf> {
+    // The downloaded Windows build wins: it is the install the System step
+    // offers, and the app must use it even before it reaches PATH.
+    if let Some(managed) = super::ffmpeg_install::managed_ffprobe() {
+        return Some(managed);
+    }
+    let tool = super::platform::exe_name("ffprobe");
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
         .unwrap_or_default();
+    // macOS list unchanged: Homebrew's bins, then the system path.
+    #[cfg(not(target_os = "windows"))]
     dirs.extend(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].map(PathBuf::from));
-    dirs.into_iter().map(|d| d.join("ffprobe")).find(|p| p.is_file())
+    // Windows extras beyond PATH: winget's user links and Chocolatey's bin.
+    // PATH itself already covers the common installers (MediaMT, BtbN).
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(local) = std::env::var_os("LOCALAPPDATA").filter(|v| !v.is_empty()) {
+            dirs.push(PathBuf::from(local).join(r"Microsoft\WinGet\Links"));
+        }
+        dirs.push(PathBuf::from(r"C:\ProgramData\chocolatey\bin"));
+    }
+    dirs.into_iter().map(|d| d.join(&tool)).find(|p| p.is_file())
 }
 
 /// Media duration in seconds via ffprobe, best-effort (missing tool → None).
 fn probe_duration(path: &Path) -> Option<f64> {
     let tool = ffprobe()?;
-    let mut child = std::process::Command::new(tool)
+    let mut command = std::process::Command::new(tool);
+    command
         .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
         .arg(path)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .ok()?;
+        .stderr(std::process::Stdio::null());
+    // ffprobe is a console binary: keep probing a folder of clips from
+    // flashing a console per file on Windows.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    let mut child = command.spawn().ok()?;
     let deadline = std::time::Instant::now() + Duration::from_secs(4);
     loop {
         match child.try_wait() {
@@ -886,6 +1013,154 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn duplicate_keeps_symlinks_as_links() {
+        let base = std::env::temp_dir().join(format!("openvids-dup-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let src = base.join("p");
+        std::fs::create_dir_all(src.join("assets")).unwrap();
+        std::fs::write(src.join("assets/real.mov"), "frames").unwrap();
+        std::fs::write(src.join("index.html"), "x").unwrap();
+        std::os::unix::fs::symlink(src.join("assets/real.mov"), src.join("assets/link.mov")).unwrap();
+        // A duplicate keeps the link as a link on Unix.
+        let dst = base.join("p copy");
+        copy_tree(&src, &dst, &src).unwrap();
+        assert!(dst.join("assets/real.mov").is_file());
+        assert!(std::fs::symlink_metadata(dst.join("assets/link.mov")).unwrap().is_symlink());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn duplicate_keeps_dangling_symlinks_without_failing() {
+        let base = std::env::temp_dir().join(format!("openvids-dup-dangle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let src = base.join("p");
+        std::fs::create_dir_all(src.join("assets")).unwrap();
+        std::fs::write(src.join("index.html"), "x").unwrap();
+        std::os::unix::fs::symlink("gone.mov", src.join("assets/gone.mov")).unwrap();
+        let dst = base.join("p copy");
+        copy_tree(&src, &dst, &src).unwrap();
+        assert!(std::fs::symlink_metadata(dst.join("assets/gone.mov")).unwrap().is_symlink());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// `cmd /c mklink /J`: a junction needs neither Developer Mode nor elevation.
+    #[cfg(windows)]
+    fn junction(link: &Path, target: &Path) {
+        let status = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "mklink /J {link:?} {target:?}");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn duplicate_skips_junctions_to_other_folders_and_to_an_ancestor() {
+        let base = std::env::temp_dir().join(format!("openvids-dup-junction-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let outside = base.join("outside");
+        let src = base.join("p");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret.txt"), "not part of the project").unwrap();
+        std::fs::create_dir_all(src.join("assets")).unwrap();
+        std::fs::write(src.join("index.html"), "x").unwrap();
+        std::fs::write(src.join("assets/clip.mov"), "frames").unwrap();
+        junction(&src.join("assets").join("outside-link"), &outside);
+        // A cycle: a junction inside the project that points at the project itself.
+        junction(&src.join("assets").join("loop"), &src);
+        let dst = base.join("p copy");
+
+        copy_tree(&src, &dst, &src).unwrap();
+
+        assert_eq!(std::fs::read(dst.join("index.html")).unwrap(), b"x");
+        assert_eq!(std::fs::read(dst.join("assets/clip.mov")).unwrap(), b"frames");
+        assert!(std::fs::symlink_metadata(dst.join("assets/outside-link")).is_err(), "the link is not duplicated");
+        assert!(std::fs::symlink_metadata(dst.join("assets/loop")).is_err(), "the cycle is not duplicated");
+        // The external bytes are nowhere in the duplicate.
+        let mut stack = vec![dst.clone()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+                let path = entry.path();
+                assert_ne!(path.file_name().and_then(|n| n.to_str()), Some("secret.txt"), "{path:?}");
+                if entry.file_type().unwrap().is_dir() {
+                    stack.push(path);
+                }
+            }
+        }
+        // The sources are intact (removing a junction must not touch what it points at).
+        assert!(outside.join("secret.txt").is_file());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn ffprobe_lookup_uses_the_platform_executable_name() {
+        // `ffprobe()` joins `platform::exe_name("ffprobe")` onto each dir; on
+        // Windows that is `ffprobe.exe`, elsewhere `ffprobe`.
+        if cfg!(windows) {
+            assert_eq!(super::super::platform::exe_name("ffprobe"), "ffprobe.exe");
+        } else {
+            assert_eq!(super::super::platform::exe_name("ffprobe"), "ffprobe");
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn ffprobe_lookup_prefers_the_managed_download() {
+        let _lock = super::super::ffmpeg_install::FFMPEG_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Isolate the managed dir so the real ~/.openvids/ffmpeg cannot flip
+        // the assertion on this machine.
+        let dir = std::env::temp_dir().join(format!(
+            "openvids-ffprobe-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0)
+        ));
+        std::env::set_var("OPENVIDS_FFMPEG_DIR", &dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("ffmpeg.exe"), "f").unwrap();
+        std::fs::write(dir.join("ffprobe.exe"), "p").unwrap();
+        assert_eq!(ffprobe(), Some(dir.join("ffprobe.exe")));
+        std::env::remove_var("OPENVIDS_FFMPEG_DIR");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_explorer_select_element_quotes_the_path_part_only() {
+        // The reported bug: a project name with spaces opened Documents.
+        // The element must be `/select,"<path>"` — the path part quoted, not
+        // the whole `/select,…` element (`Command::arg` would do the latter).
+        assert_eq!(
+            explorer_select_arg(Path::new(
+                r"C:\Users\me\Videos\OpenVids\Introducing the OpenVids Windows Release"
+            )),
+            r#"/select,"C:\Users\me\Videos\OpenVids\Introducing the OpenVids Windows Release""#
+        );
+        // A comma in the path must not split the element either.
+        assert_eq!(
+            explorer_select_arg(Path::new(r"C:\Users\me\Videos\OpenVids\Talk, part 2")),
+            r#"/select,"C:\Users\me\Videos\OpenVids\Talk, part 2""#
+        );
+        // Forward slashes are normalised to backslashes, the Explorer form.
+        assert_eq!(
+            explorer_select_arg(Path::new("C:/Users/me/Videos/OpenVids/Talk")),
+            r#"/select,"C:\Users\me\Videos\OpenVids\Talk""#
+        );
+    }
+
+    #[test]
+    fn reveal_names_the_platform_file_manager() {
+        if cfg!(target_os = "macos") {
+            assert_eq!(file_manager_name(), "Finder");
+        } else if cfg!(target_os = "windows") {
+            assert_eq!(file_manager_name(), "Explorer");
+        }
+    }
+
+    #[test]
     fn an_explicit_start_name_wins_over_the_derivation() {
         let value = json!({
             "name": "Тизер интервью",
@@ -908,6 +1183,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn not_a_project_matches_the_prototype_wording_and_names_the_folder() {
         let err = not_a_project_error(Path::new("/x/Footage Dump"), &StructureError::MissingIndex);
         assert_eq!(
@@ -919,6 +1195,19 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
+    fn not_a_project_matches_the_prototype_wording_and_names_the_folder() {
+        let err = not_a_project_error(Path::new(r"C:\x\Footage Dump"), &StructureError::MissingIndex);
+        assert_eq!(
+            err.message,
+            "Not an OpenVids project — index.html with data-composition-id is missing in Footage Dump."
+        );
+        assert_eq!(err.code, Some("not_a_project"));
+        assert_eq!(err.params, json!({ "name": "Footage Dump" }));
+    }
+
+    #[test]
+    #[cfg(not(windows))]
     fn a_folder_that_is_not_a_directory_gets_its_own_code_and_the_old_sentence() {
         let err = not_a_project_error(
             Path::new("/x/file.txt"),
@@ -927,6 +1216,20 @@ mod tests {
         assert_eq!(err.message, "file.txt can’t be opened: /x/file.txt is not a directory");
         assert_eq!(err.code, Some("cannot_open_not_a_directory"));
         assert_eq!(err.params, json!({ "path": "/x/file.txt", "name": "file.txt" }));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn a_folder_that_is_not_a_directory_gets_its_own_code_and_the_old_sentence() {
+        let err = not_a_project_error(
+            Path::new(r"C:\x\file.txt"),
+            &StructureError::Project(super::super::project::ProjectError::NotADirectory(
+                r"C:\x\file.txt".into(),
+            )),
+        );
+        assert_eq!(err.message, r"file.txt can’t be opened: C:\x\file.txt is not a directory");
+        assert_eq!(err.code, Some("cannot_open_not_a_directory"));
+        assert_eq!(err.params, json!({ "path": r"C:\x\file.txt", "name": "file.txt" }));
     }
 
     #[test]
@@ -942,10 +1245,20 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn a_missing_folder_carries_its_path_as_a_param() {
         let err = folder_missing_remove(Path::new("/x/Gone"));
         assert_eq!(err.message, "/x/Gone no longer exists — remove it from recents");
         assert_eq!(err.body()["code"], "folder_missing_remove");
         assert_eq!(err.body()["params"]["path"], "/x/Gone");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn a_missing_folder_carries_its_path_as_a_param() {
+        let err = folder_missing_remove(Path::new(r"C:\x\Gone"));
+        assert_eq!(err.message, r"C:\x\Gone no longer exists — remove it from recents");
+        assert_eq!(err.body()["code"], "folder_missing_remove");
+        assert_eq!(err.body()["params"]["path"], r"C:\x\Gone");
     }
 }

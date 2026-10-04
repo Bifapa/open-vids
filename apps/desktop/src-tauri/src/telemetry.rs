@@ -599,30 +599,32 @@ mod tests {
         let client = Client::new(url, dir.clone());
         let ended = AtomicBool::new(false);
         let (signals, received) = mpsc::channel();
-        // One heartbeat lands 400 ms after a start, the next at 800 ms: each
-        // check sits 200 ms from both.
-        let every = Duration::from_millis(400);
+        // One heartbeat lands one period after a start, the next at two: each check sits half a
+        // period from both. The first send builds a TLS client, which on a slow Windows CI runner
+        // takes longer than 200 ms, so there the whole clock runs three times slower.
+        let scale: u64 = if cfg!(windows) { 3 } else { 1 };
+        let every = Duration::from_millis(400 * scale);
         // Assertions run after the scope, so a failure cannot leave the loop
         // waiting on a sender that is never dropped.
         let seen = std::thread::scope(|scope| {
             scope.spawn(|| run(&client, received, true, every, &ended, || true));
             let wait = |ms| std::thread::sleep(Duration::from_millis(ms));
             let mut seen = Vec::new();
-            wait(600);
+            wait(600 * scale);
             seen.push(names(&rx));
             // Off: the opt-out once, then silence, heartbeats included.
             signals.send(false).unwrap();
             signals.send(false).unwrap();
-            wait(1000);
+            wait(1000 * scale);
             seen.push(names(&rx));
             // On again: a new start, then heartbeats.
             signals.send(true).unwrap();
-            wait(600);
+            wait(600 * scale);
             seen.push(names(&rx));
             // After app_end nothing more leaves.
             ended.store(true, Ordering::SeqCst);
             signals.send(false).unwrap();
-            wait(600);
+            wait(600 * scale);
             seen.push(names(&rx));
             drop(signals);
             seen
