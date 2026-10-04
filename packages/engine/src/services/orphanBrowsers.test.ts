@@ -65,7 +65,8 @@ const recordFile = (base: string, pid: number) => join(base, "hyperframes-browse
 const engineProfile = (suffix: string, parent = join(tmpdir(), "hf-orphan-profiles")) =>
   `--user-data-dir=${join(parent, `puppeteer_dev_chrome_profile-${suffix}`)}`;
 
-describe("sweepOrphanBrowsers", () => {
+// Each sweep on Windows reads command lines through PowerShell, which can take seconds per process.
+describe("sweepOrphanBrowsers", { timeout: 60_000 }, () => {
   it("kills a browser whose owner died, and only that one", async () => {
     const base = root();
     const orphan = await sleeper("chrome-headless-shell", engineProfile("orphan"));

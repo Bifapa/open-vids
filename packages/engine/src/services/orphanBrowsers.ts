@@ -44,7 +44,8 @@ function windowsCommandOf(pid: number): string | null {
       ],
       {
         encoding: "utf-8",
-        timeout: 5000,
+        // A cold PowerShell + CIM start takes over 5 s on a busy machine; a timeout leaves the orphan running.
+        timeout: 15_000,
         stdio: ["ignore", "pipe", "ignore"],
         windowsHide: true,
       },

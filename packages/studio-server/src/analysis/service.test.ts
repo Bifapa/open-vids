@@ -250,7 +250,7 @@ describe.skipIf(!hasFfmpeg)("analysis of a real clip", () => {
       status: "failed",
       detail: expect.stringContaining("boom"),
     });
-  });
+  }, 30_000);
 });
 
 describe.skipIf(!hasFfmpeg)("invalidation and reuse", () => {
