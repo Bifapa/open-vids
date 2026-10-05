@@ -54,20 +54,7 @@ export class TransportClock {
     // fresh from `_playStartMs` instead of a timestamp audio just made
     // meaningless — see the PR body.
     if (this._audioSource) {
-      let audioTime: number | null = null;
-      if ("currentTimeSeconds" in this._audioSource) {
-        audioTime = this._audioSource.currentTimeSeconds;
-      } else {
-        const { el, compositionStart, mediaStart, rate } = this._audioSource;
-        if (!el.paused && Number.isFinite(el.currentTime)) {
-          audioTime =
-            typeof rate === "object"
-              ? timeAtSourceTime(rate, el.currentTime - mediaStart) + compositionStart
-              : ((el.currentTime - mediaStart) / (el.playbackRate > 0 ? el.playbackRate : 1)) *
-                  this._rate +
-                compositionStart;
-        }
-      }
+      const audioTime = this.timeFromAudio(this._audioSource);
       if (audioTime !== null) {
         this._lastReadMs = null;
         if (Number.isFinite(this._duration) && audioTime >= this._duration) {
@@ -163,6 +150,22 @@ export class TransportClock {
 
   attachAudioSource(source: AudioClockSource): void {
     this._audioSource = source;
+  }
+
+  /** The composition time `source` reports, or null while it reports none (an element paused). */
+  timeFromAudio(source: AudioClockSource): number | null {
+    if ("currentTimeSeconds" in source) return source.currentTimeSeconds;
+    const { el, compositionStart, mediaStart, rate } = source;
+    if (el.paused || !Number.isFinite(el.currentTime)) return null;
+    return typeof rate === "object"
+      ? timeAtSourceTime(rate, el.currentTime - mediaStart) + compositionStart
+      : ((el.currentTime - mediaStart) / (el.playbackRate > 0 ? el.playbackRate : 1)) * this._rate +
+          compositionStart;
+  }
+
+  /** The media element the clock follows, if it follows one. */
+  audioElement(): HTMLMediaElement | null {
+    return this._audioSource && "el" in this._audioSource ? this._audioSource.el : null;
   }
 
   detachAudioSource(): void {

@@ -88,6 +88,7 @@ import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorG
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
 import { initVfx, paintVfx } from "./vfx";
 import { TransportClock } from "./clock";
+import { type AudioClockCandidate, chooseAudioClockMaster } from "./audioClockMaster";
 import { WebAudioTransport } from "./webAudioTransport";
 import {
   classifyWebAudioMediaRoute,
@@ -4417,9 +4418,8 @@ export function initSandboxRuntimeModular(): void {
             clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
           }
         } else {
-          const audioEls = document.querySelectorAll("audio[data-start]");
-          let foundActive = false;
-          for (const rawEl of audioEls) {
+          const candidates: AudioClockCandidate[] = [];
+          for (const rawEl of document.querySelectorAll("audio[data-start]")) {
             if (!isMediaElement(rawEl) || !rawEl.isConnected) continue;
             if (isSilencedByHidden(rawEl)) continue;
             // A looping element wraps its own currentTime at the end of the
@@ -4431,26 +4431,31 @@ export function initSandboxRuntimeModular(): void {
             const start = resolveAbsoluteMediaStartSeconds(rawEl);
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
-            const mediaStart = readElementPlaybackStart(rawEl);
-            if (Number.isFinite(start) && isInClipWindow(state.currentTime, start, end)) {
-              if (!rawEl.paused) {
-                clock.attachAudioSource({
-                  el: rawEl,
-                  compositionStart: start,
-                  mediaStart,
-                  rate: readElementRateSpec(rawEl),
-                });
-                foundActive = true;
-              } else if (!rawEl.error && rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
-                // Audio is buffering — freeze visuals at last known position
-                // instead of falling through to monotonic (which runs ahead).
-                clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
-                foundActive = true;
-              }
-              break;
-            }
+            if (!Number.isFinite(start) || !isInClipWindow(state.currentTime, start, end)) continue;
+            candidates.push({
+              el: rawEl,
+              start,
+              end,
+              source: {
+                el: rawEl,
+                compositionStart: start,
+                mediaStart: readElementPlaybackStart(rawEl),
+                rate: readElementRateSpec(rawEl),
+              },
+            });
           }
-          if (!foundActive && clock.hasAudioSource()) {
+          const choice = chooseAudioClockMaster(
+            candidates,
+            { el: clock.audioElement(), time: clock.now() },
+            (source) => clock.timeFromAudio(source),
+          );
+          if (choice.kind === "follow") {
+            clock.attachAudioSource(choice.candidate.source);
+          } else if (choice.kind === "hold") {
+            // Audio is buffering — freeze visuals at last known position
+            // instead of falling through to monotonic (which runs ahead).
+            clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
+          } else if (clock.hasAudioSource()) {
             clock.detachAudioSource();
           }
         }
