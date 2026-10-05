@@ -28,7 +28,7 @@ import {
 } from "./getVariables";
 import { isElementNode, isHtmlElement, isLinkElement, isStyleElement } from "./domRealm";
 import {
-  detachPreviewVideoSources,
+  deferPreviewMediaSources,
   importPreviewNode,
   isPreviewMediaBudgetActive,
 } from "./previewMediaBudget";
@@ -211,12 +211,12 @@ function prepareFlattenedInnerRoot(innerRoot: HTMLElement): HTMLElement {
   return prepared;
 }
 
-/** A fallback body, parsed in an inert document so its managed videos never see a live `src`. */
+/** A fallback body, parsed in an inert document so its media never sees a live `src` it would load. */
 function previewBodyHtml(html: string): string {
   if (!isPreviewMediaBudgetActive(document, window)) return html;
   const body = document.implementation.createHTMLDocument("").body;
   body.innerHTML = html;
-  detachPreviewVideoSources(body);
+  deferPreviewMediaSources(body);
   return body.innerHTML;
 }
 

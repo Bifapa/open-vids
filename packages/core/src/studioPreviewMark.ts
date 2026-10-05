@@ -24,6 +24,14 @@ export interface PreviewVideoProbe {
   querySelector(selectors: string): unknown;
 }
 
+/** The window comes from the author, so the clip's length does not depend on the decoder. */
+function hasAuthoredWindow(el: PreviewVideoProbe): boolean {
+  if (el.hasAttribute("loop") || el.hasAttribute("data-var-src")) return false;
+  if (el.querySelector("source") !== null) return false;
+  const duration = Number(el.getAttribute("data-duration"));
+  return el.getAttribute("data-duration") !== null && Number.isFinite(duration) && duration > 0;
+}
+
 /**
  * Whether the preview may hold no source for this `<video>`: the one rule the server (which strips
  * the source at parse) and the runtime (which attaches and releases it) share.
@@ -33,13 +41,23 @@ export interface PreviewVideoProbe {
  * - No `<source>` children: the Studio reads the authored `src` attribute.
  * - No `loop` (wrapping reads the source duration) and no `data-var-src` (variable bindings write
  *   `src` themselves and would attach it behind the budget's back).
- * - `<audio>` is never managed: the Web Audio transport decodes it from its `src`.
+ * - `<audio>` is never managed this way: the Web Audio transport captures and decodes it from its
+ *   `src`. It is paced instead (`isPreviewPacedAudio`).
  */
 export function isPreviewManagedVideo(el: PreviewVideoProbe): boolean {
   if (el.tagName.toUpperCase() !== "VIDEO") return false;
   if (!el.hasAttribute("src") && !el.hasAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR)) return false;
-  if (el.hasAttribute("loop") || el.hasAttribute("data-var-src")) return false;
-  if (el.querySelector("source") !== null) return false;
-  const duration = Number(el.getAttribute("data-duration"));
-  return el.getAttribute("data-duration") !== null && Number.isFinite(duration) && duration > 0;
+  return hasAuthoredWindow(el);
+}
+
+/**
+ * Whether the preview may defer loading this `<audio>`: it keeps its `src` (the Web Audio transport
+ * reads it) but is served with `preload="none"`, so no media player opens an asset at parse, and the
+ * runtime's preview media budget starts its load when the playhead nears it, a few at a time. The
+ * same authored-window conditions as a managed video apply.
+ */
+export function isPreviewPacedAudio(el: PreviewVideoProbe): boolean {
+  if (el.tagName.toUpperCase() !== "AUDIO") return false;
+  if (!el.hasAttribute("src")) return false;
+  return hasAuthoredWindow(el);
 }

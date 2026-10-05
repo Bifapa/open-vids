@@ -53,14 +53,21 @@ Preview media budget (`previewMediaBudget.ts`):
 - Only a page the Studio server marked as a preview (`<meta name="hyperframes-studio-preview">`)
   and that no render is driving (`__HF_EXPORT_RENDER_SEEK_CONFIG`, `__HF_RENDER_CAPTURE_MODE`)
   runs it. A render, capture, thumbnail or `check` page never does, so their frames are unchanged.
-- WebKit opens an AVURLAsset (a byte stream in the GPU process) for every `<video src>` the parser
-  meets, and deleting players whose asset is still opening deadlocked the WebContent process. So the
-  preview server serves every managed video with no `src` at parse (`detachPreviewVideos` in
-  studio-server: the source in `data-hf-detached-src`, `preload="none"`), and the runtime strips the
-  videos of compositions it mounts itself (`importPreviewNode`, scene swaps) the same way before they
-  reach the live document. What counts as managed is `isPreviewManagedVideo` (studioPreviewMark.ts):
-  a `<video src>` with an authored `data-duration`, no `<source>` children, no `loop`, no
-  `data-var-src`. `<audio>` and a clip whose length comes from the decoder are left alone.
+- WebKit opens an AVURLAsset (a byte stream in the GPU process) for every `<video src>` /
+  `<audio src>` the parser meets, and deleting players whose asset is still opening deadlocked the
+  WebContent and GPU processes. So the preview server serves its media opening nothing at parse
+  (`deferPreviewMedia` in studio-server), and the runtime does the same to compositions it mounts
+  itself (`importPreviewNode`, scene swaps, `deferPreviewMediaSources`) before they reach the live
+  document:
+  - a managed video holds no `src` (the source in `data-hf-detached-src`, `preload="none"`).
+    Managed is `isPreviewManagedVideo` (studioPreviewMark.ts): a `<video src>` with an authored
+    `data-duration`, no `<source>` children, no `loop`, no `data-var-src`;
+  - paced audio keeps its `src` (the Web Audio transport captures and decodes it from there) with
+    `preload="none"`. Paced is `isPreviewPacedAudio`: an `<audio src>` under the same conditions.
+    A clip whose length comes from the decoder is left alone.
+- Paced audio is never released: the budget switches it to `preload="auto"` when it sits under the
+  playhead, starts within `RETAIN_AHEAD_SECONDS` or is among the next `RETAIN_UPCOMING_CLIPS`,
+  sharing the load slots below with the videos; an opening one also holds back every release.
 - The budget attaches a source only to videos that are playing, leased (scrub audio, grading
   preview), hold the last frame of the film, sit inside the playhead's window
   (`RETAIN_BEHIND_SECONDS` behind, `RETAIN_AHEAD_SECONDS` ahead, the next `RETAIN_UPCOMING_CLIPS`),

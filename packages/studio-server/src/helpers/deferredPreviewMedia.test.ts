@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { detachPreviewVideos } from "./detachedPreviewVideos.js";
+import { deferPreviewMedia } from "./deferredPreviewMedia.js";
 
 const page = (body: string) =>
   `<!DOCTYPE html><html><head><title>x</title></head><body>${body}</body></html>`;
 
-describe("detachPreviewVideos", () => {
+describe("deferPreviewMedia", () => {
   it("serves a managed video without src, its source in the detached attribute and preload none", () => {
     const html = page(
       `<video id="a" class="clip" src="assets/a.mp4" data-start="0" data-duration="3" muted playsinline></video>`,
     );
-    expect(detachPreviewVideos(html)).toBe(
+    expect(deferPreviewMedia(html)).toBe(
       page(
         `<video preload="none" id="a" class="clip" data-hf-detached-src="assets/a.mp4" data-start="0" data-duration="3" muted playsinline></video>`,
       ),
@@ -17,7 +17,7 @@ describe("detachPreviewVideos", () => {
   });
 
   it("replaces an authored preload instead of adding a second one", () => {
-    const out = detachPreviewVideos(
+    const out = deferPreviewMedia(
       page(`<video src='a b.mp4' preload = "auto" data-duration=2></video>`),
     );
     expect(out).toContain(`data-hf-detached-src='a b.mp4'`);
@@ -27,7 +27,7 @@ describe("detachPreviewVideos", () => {
   });
 
   it("touches only the `src` attribute, not a value that merely contains the text", () => {
-    const out = detachPreviewVideos(
+    const out = deferPreviewMedia(
       page(`<video data-note="has src=x in it > really" src="a.mp4" data-duration="2"></video>`),
     );
     expect(out).toContain(`data-note="has src=x in it > really"`);
@@ -46,11 +46,11 @@ describe("detachPreviewVideos", () => {
     ["has a non-numeric length", `<video src="a.mp4" data-duration="soon"></video>`],
   ])("leaves a video that %s alone", (_why, video) => {
     const html = page(video);
-    expect(detachPreviewVideos(html)).toBe(html);
+    expect(deferPreviewMedia(html)).toBe(html);
   });
 
   it("only rewrites the managed videos of a mixed film, in order", () => {
-    const out = detachPreviewVideos(
+    const out = deferPreviewMedia(
       page(
         `<video id="a" src="a.mp4" data-duration="2"></video>` +
           `<video id="b" src="b.mp4"></video>` +
@@ -64,17 +64,45 @@ describe("detachPreviewVideos", () => {
     expect(out).toContain(`id="c" data-hf-detached-src="c.mp4"`);
   });
 
+  it("serves audio with an authored length with preload none, keeping its src", () => {
+    const out = deferPreviewMedia(
+      page(
+        `<audio id="s" class="clip" src="sfx.mp3" data-start="1" data-duration="0.4"></audio>` +
+          `<audio id="t" src='t.mp3' preload="auto" data-duration="2"></audio>` +
+          `<video id="v" src="v.mp4" data-duration="2"></video>`,
+      ),
+    );
+    expect(out).toContain(
+      `<audio preload="none" id="s" class="clip" src="sfx.mp3" data-start="1" data-duration="0.4">`,
+    );
+    expect(out).toContain(`<audio id="t" src='t.mp3' preload="none" data-duration="2">`);
+    expect(out).toContain(`id="v" data-hf-detached-src="v.mp4"`);
+  });
+
+  it.each([
+    ["has no authored length", `<audio src="a.mp3" data-start="0"></audio>`],
+    ["loops", `<audio src="a.mp3" data-duration="2" loop></audio>`],
+    [
+      "binds its source to a variable",
+      `<audio src="a.mp3" data-duration="2" data-var-src="x"></audio>`,
+    ],
+    ["uses <source> children", `<audio data-duration="2"><source src="a.mp3"></audio>`],
+  ])("leaves audio that %s alone", (_why, audio) => {
+    const html = page(audio);
+    expect(deferPreviewMedia(html)).toBe(html);
+  });
+
   it("does not rewrite what is not markup: comments, scripts, or a fragment without a document", () => {
     const inScript = page(
       `<script>const tpl = '<video src="a.mp4" data-duration="2"></video>';</script><!-- <video src="b.mp4" data-duration="2"> -->`,
     );
-    expect(detachPreviewVideos(inScript)).toBe(inScript);
+    expect(deferPreviewMedia(inScript)).toBe(inScript);
     const fragment = `<video src="a.mp4" data-duration="2"></video>`;
-    expect(detachPreviewVideos(fragment)).toBe(fragment);
+    expect(deferPreviewMedia(fragment)).toBe(fragment);
   });
 
   it("serves a video after a <template> in the same document, matching the right tags", () => {
-    const out = detachPreviewVideos(
+    const out = deferPreviewMedia(
       page(
         `<template id="t"><video id="in" src="in.mp4" data-duration="2"></video></template>` +
           `<video id="live" src="live.mp4" data-duration="2"></video>`,
@@ -86,7 +114,11 @@ describe("detachPreviewVideos", () => {
   });
 
   it("is idempotent", () => {
-    const once = detachPreviewVideos(page(`<video src="a.mp4" data-duration="2"></video>`));
-    expect(detachPreviewVideos(once)).toBe(once);
+    const once = deferPreviewMedia(
+      page(
+        `<video src="a.mp4" data-duration="2"></video><audio src="s.mp3" data-duration="1"></audio>`,
+      ),
+    );
+    expect(deferPreviewMedia(once)).toBe(once);
   });
 });

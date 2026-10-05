@@ -108,13 +108,15 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
     if (!win || !doc) return lastResult;
 
     for (const el of doc.querySelectorAll("video, audio")) {
-      // A video the preview holds no source for (see the runtime's preview media budget) has
-      // nothing to load: it is attached when the playhead nears it, not waited for here.
+      if (!isPreviewMediaElement(el)) continue;
+      // A video the preview holds no source for, or audio it has not started loading (see the
+      // runtime's preview media budget), has nothing to load: it opens when the playhead nears it.
       const holdsNoSource =
         el.hasAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR) && !el.hasAttribute("src");
+      const deferred = el.preload === "none" && el.readyState === 0;
       if (
-        isPreviewMediaElement(el) &&
         !holdsNoSource &&
+        !deferred &&
         !el.error &&
         el.networkState !== MEDIA_NETWORK_NO_SOURCE &&
         el.readyState < MEDIA_HAVE_FUTURE_DATA

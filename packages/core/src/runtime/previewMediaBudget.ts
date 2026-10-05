@@ -1,10 +1,11 @@
 import {
   isPreviewManagedVideo,
+  isPreviewPacedAudio,
   STUDIO_PREVIEW_DETACHED_SRC_ATTR,
   STUDIO_PREVIEW_MARK_META,
 } from "../studioPreviewMark";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
-import { isElementNode, isMediaElement, isVideoElement } from "./domRealm";
+import { isAudioElement, isElementNode, isMediaElement, isVideoElement } from "./domRealm";
 import { swappedElements } from "./proxySrc";
 
 /**
@@ -24,6 +25,10 @@ import { swappedElements } from "./proxySrc";
  *   time (`MAX_IN_FLIGHT_URGENT_LOADS` for the clips the viewer is looking at), nearest first.
  * - It releases a source (`src` removed, `load()`) only once its load has settled and no other load
  *   is in flight, at most `DETACH_BATCH_SIZE` per `DETACH_INTERVAL_MS`, farthest first.
+ * - `<audio>` keeps its `src` (the Web Audio transport captures and decodes it from there), so it is
+ *   paced rather than released: the server serves it with `preload="none"` (`isPreviewPacedAudio`)
+ *   and this module switches it to `preload="auto"` when the playhead nears it, sharing the same
+ *   load slots. Audio that has loaded stays loaded.
  *
  * The policy (`planPreviewMediaBudget`, `decidePreviewMediaBudget`) is pure. `createPreviewMediaBudget`
  * applies it to elements; the DOM is the state (a video with `data-hf-detached-src` and no `src` is
@@ -70,24 +75,30 @@ export function isPreviewMediaBudgetActive(doc: Document, win: Window): boolean 
   );
 }
 
-function videosIn(root: Node): Element[] {
-  const videos: Element[] = [];
-  if (isElementNode(root) && root.localName === "video") videos.push(root);
+function mediaIn(root: Node): Element[] {
+  const media: Element[] = [];
+  if (isElementNode(root) && (root.localName === "video" || root.localName === "audio"))
+    media.push(root);
   for (let child = root.firstChild; child; child = child.nextSibling) {
     if (!isElementNode(child)) continue;
-    if (child.localName === "video") videos.push(child);
-    videos.push(...child.querySelectorAll("video"));
+    if (child.localName === "video" || child.localName === "audio") media.push(child);
+    media.push(...child.querySelectorAll("video, audio"));
   }
-  return videos;
+  return media;
 }
 
 /**
- * Serve managed videos without a source, as the preview server does for the main document: for
- * compositions the runtime mounts itself (inline templates, fetched sub-compositions, scene swaps),
- * before the nodes enter the live document where a `src` would open a player at once.
+ * Serve media as the preview server does for the main document (managed videos without a source,
+ * paced audio with `preload="none"`): for compositions the runtime mounts itself (inline templates,
+ * fetched sub-compositions, scene swaps), before the nodes enter the live document where a `src`
+ * would open a player at once.
  */
-export function detachPreviewVideoSources(root: Node): void {
-  for (const el of videosIn(root)) {
+export function deferPreviewMediaSources(root: Node): void {
+  for (const el of mediaIn(root)) {
+    if (isPreviewPacedAudio(el)) {
+      el.setAttribute("preload", "none");
+      continue;
+    }
     const src = el.getAttribute("src");
     if (src === null || !isPreviewManagedVideo(el)) continue;
     el.setAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR, src);
@@ -98,13 +109,13 @@ export function detachPreviewVideoSources(root: Node): void {
 
 /**
  * `doc.importNode(node, true)` for a preview: a clone into the live document starts loading every
- * `<video src>` at once, so the copy is made in an inert document, stripped of its managed videos'
- * sources there, and only then imported.
+ * `<video src>` / `<audio src>` at once, so the copy is made in an inert document, its media
+ * deferred there, and only then imported.
  */
 export function importPreviewNode<T extends Node>(doc: Document, win: Window, node: T): T {
   if (!isPreviewMediaBudgetActive(doc, win)) return doc.importNode(node, true);
   const copy = doc.implementation.createHTMLDocument("").importNode(node, true);
-  detachPreviewVideoSources(copy);
+  deferPreviewMediaSources(copy);
   return doc.importNode(copy, true);
 }
 
@@ -256,6 +267,51 @@ export function decidePreviewMediaBudget<K>(
   return { attach, detach, pending: deferredDetach > 0 || deferredAttach > 0 };
 }
 
+export interface AudioWarmupClip<K> extends BudgetClip<K> {
+  /** Its load is held back (`preload="none"`): the only kind a pass may start. */
+  waiting: boolean;
+}
+
+/**
+ * Which waiting paced audio clips start loading in this pass: those under the playhead, starting
+ * within `aheadSeconds`, or among the next `upcomingClips` to start (counted over every paced clip,
+ * loaded or not, so the queue does not run ahead to the end of the film), urgent ones first, then
+ * nearest, while load slots are free (`inFlight` counts every load already opening, video
+ * included). There is no cap: audio is never released, so what has loaded stays loaded.
+ */
+export function decidePreviewAudioWarmup<K>(
+  clips: readonly AudioWarmupClip<K>[],
+  time: number,
+  inFlight: number,
+  options: BudgetOptions = {},
+): { warm: K[]; pending: boolean } {
+  const maxInFlight = options.maxInFlight ?? MAX_IN_FLIGHT_LOADS;
+  const maxInFlightUrgent = options.maxInFlightUrgent ?? MAX_IN_FLIGHT_URGENT_LOADS;
+  // A clip behind the playhead needs nothing until a seek brings it back ahead.
+  const plan = planPreviewMediaBudget(clips, time, {
+    ...options,
+    cap: Number.POSITIVE_INFINITY,
+    behindSeconds: -1,
+  });
+  const waiting = new Set(clips.filter((clip) => clip.waiting).map((clip) => clip.key));
+  const wanted = plan.wanted.filter((key) => waiting.has(key));
+  const warm: K[] = [];
+  let pending = false;
+  let slots = inFlight;
+  for (const key of [
+    ...wanted.filter((key) => plan.urgent.has(key)),
+    ...wanted.filter((key) => !plan.urgent.has(key)),
+  ]) {
+    if (slots < (plan.urgent.has(key) ? maxInFlightUrgent : maxInFlight)) {
+      warm.push(key);
+      slots += 1;
+    } else {
+      pending = true;
+    }
+  }
+  return { warm, pending };
+}
+
 /** What the clip index knows about a media clip. */
 export interface PreviewMediaClip {
   el: HTMLMediaElement;
@@ -400,6 +456,13 @@ export function createPreviewMediaBudget(
     );
   }
 
+  /** Start a paced audio clip's load: its `src` is already set, `preload` alone holds it back. */
+  function warm(el: HTMLMediaElement, nowMs: number): void {
+    el.preload = "auto";
+    loads.set(el, nowMs);
+    for (const type of LOAD_SETTLE_EVENTS) el.addEventListener(type, onLoadSettled, true);
+  }
+
   return {
     update(input: PreviewMediaBudgetUpdate): { pending: boolean } {
       for (const el of loads.keys()) if (!el.isConnected) settleLoad(el);
@@ -431,6 +494,38 @@ export function createPreviewMediaBudget(
         });
       }
 
+      // Paced audio. An opening one takes a load slot like a video does, and as a pinned clip it can
+      // never be released and holds back every release until it settles.
+      const openingAudio: Array<{ clip: PreviewMediaClip; since: number }> = [];
+      const pacedAudio: Array<AudioWarmupClip<PreviewMediaClip>> = [];
+      for (const clip of input.clips) {
+        const { el } = clip;
+        if (!isAudioElement(el) || !el.isConnected || !isPreviewPacedAudio(el)) continue;
+        const since = loadingSince(el, input.nowMs);
+        if (since !== null) openingAudio.push({ clip, since });
+        const waiting = since === null && el.preload === "none";
+        pacedAudio.push({ key: clip, start: clip.start, end: clip.end, pinned: false, waiting });
+      }
+      const inFlight =
+        managed.filter((clip) => clip.loading && !clip.stalled).length +
+        openingAudio.filter(({ since }) => input.nowMs - since <= LOAD_STALL_MS).length;
+      const warmup = decidePreviewAudioWarmup(pacedAudio, input.time, inFlight, options);
+      for (const clip of warmup.warm) {
+        warm(clip.el, input.nowMs);
+        openingAudio.push({ clip, since: input.nowMs });
+      }
+      for (const { clip, since } of openingAudio) {
+        managed.push({
+          key: clip,
+          start: clip.start,
+          end: clip.end,
+          pinned: true,
+          attached: true,
+          loading: true,
+          stalled: input.nowMs - since > LOAD_STALL_MS,
+        });
+      }
+
       const decision = decidePreviewMediaBudget(
         managed,
         input.time,
@@ -445,7 +540,7 @@ export function createPreviewMediaBudget(
         if (isInClipWindow(input.time, clip.start, clip.end)) attach(clip.el, input.nowMs, null);
         else attach(clip.el, input.nowMs, input.time < clip.start ? clip.mediaStart : null);
       }
-      return { pending: decision.pending };
+      return { pending: decision.pending || warmup.pending };
     },
 
     isReleased,

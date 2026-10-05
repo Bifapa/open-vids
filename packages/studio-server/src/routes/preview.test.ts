@@ -182,12 +182,13 @@ describe("registerPreviewRoutes", () => {
     }
   });
 
-  it("serves managed videos without a src, and keeps every source in a capture", async () => {
+  it("serves media that opens nothing at parse, and keeps every source in a capture", async () => {
     const projectDir = createProjectDir();
     const film =
       '<!DOCTYPE html><html><head></head><body><div data-composition-id="main">' +
       '<video id="a" src="a.mp4" data-start="0" data-duration="2"></video>' +
-      '<video id="b" src="b.mp4" data-start="2"></video></div></body></html>';
+      '<video id="b" src="b.mp4" data-start="2"></video>' +
+      '<audio id="s" src="s.mp3" data-start="1" data-duration="0.5"></audio></div></body></html>';
     writeFileSync(join(projectDir, "index.html"), film);
     writeFileSync(join(projectDir, "scene.html"), film);
     const app = new Hono();
@@ -200,12 +201,15 @@ describe("registerPreviewRoutes", () => {
       expect(preview, path).not.toMatch(/<video[^>]*\ssrc="a.mp4"/);
       // A video whose length comes from its source keeps its src.
       expect(preview, path).toMatch(/<video[^>]*\ssrc="b.mp4"/);
+      // Paced audio keeps its src (the Web Audio transport reads it) but preloads nothing.
+      expect(preview, path).toMatch(/<audio preload="none"[^>]*\ssrc="s.mp3"/);
       expect(capture, path).toMatch(/<video[^>]*\ssrc="a.mp4"/);
       expect(capture, path).not.toContain("data-hf-detached-src");
+      expect(capture, path).not.toContain('preload="none"');
     }
   });
 
-  it("does not revalidate or reuse a preview built before videos were served without src", async () => {
+  it("does not revalidate or reuse a preview built before its media was deferred", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
       join(projectDir, "index.html"),
@@ -215,11 +219,13 @@ describe("registerPreviewRoutes", () => {
     registerPreviewRoutes(app, createAdapter(projectDir));
     const first = await app.request("http://localhost/projects/demo/preview");
     const etag = first.headers.get("ETag") ?? "";
-    expect(etag).toMatch(/:vs1"$/);
-    const stale = await app.request("http://localhost/projects/demo/preview", {
-      headers: { "If-None-Match": etag.replace(":vs1", "") },
-    });
-    expect(stale.status).toBe(200);
+    expect(etag).toMatch(/:vs2"$/);
+    for (const older of [etag.replace(":vs2", ""), etag.replace(":vs2", ":vs1")]) {
+      const stale = await app.request("http://localhost/projects/demo/preview", {
+        headers: { "If-None-Match": older },
+      });
+      expect(stale.status).toBe(200);
+    }
   });
 
   it("injects Studio GSAP motion manifest runtime into project preview", async () => {

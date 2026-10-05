@@ -6,8 +6,9 @@ import {
   createPreviewMediaBudget,
   DETACH_BATCH_SIZE,
   DETACH_INTERVAL_MS,
+  decidePreviewAudioWarmup,
   decidePreviewMediaBudget,
-  detachPreviewVideoSources,
+  deferPreviewMediaSources,
   importPreviewNode,
   isAwaitingRestoredSource,
   isPreviewMediaBudgetActive,
@@ -316,6 +317,38 @@ describe("decidePreviewMediaBudget: releasing", () => {
   });
 });
 
+describe("decidePreviewAudioWarmup", () => {
+  const waiting = (clips: BudgetClip<number>[], loaded: number[] = []) =>
+    clips.map((clip) => ({ ...clip, waiting: !loaded.includes(clip.key) }));
+
+  it("warms what is under or ahead of the playhead, never what it has passed", () => {
+    // 1 s clips; the playhead rests in clip 5. Unlimited slots: the window alone decides.
+    const { warm } = decidePreviewAudioWarmup(waiting(strip(30, 1)), 5.5, 0, {
+      maxInFlight: 100,
+      maxInFlightUrgent: 100,
+    });
+    expect(warm[0]).toBe(5);
+    expect([...warm].sort((a, b) => a - b)).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  });
+
+  it("does not run ahead to the end of the film once the near clips have loaded", () => {
+    // 5 s apart: only the clip under the playhead, the next within 10 s and the next three upcoming
+    // clips are wanted. Loaded ones still count as upcoming, so the queue stops there.
+    const clips = strip(40, 5);
+    const { warm } = decidePreviewAudioWarmup(waiting(clips, [0, 1, 2, 3]), 0.5, 0);
+    expect(warm).toEqual([]);
+  });
+
+  it("leaves the rest for a later pass while the load slots are taken", () => {
+    expect(
+      decidePreviewAudioWarmup(waiting(strip(30, 1)), 5.5, MAX_IN_FLIGHT_URGENT_LOADS),
+    ).toEqual({ warm: [], pending: true });
+    // The ordinary slots are full: only the clips the viewer is about to hear (within 2 s) still open.
+    const { warm } = decidePreviewAudioWarmup(waiting(strip(30, 1)), 5.5, MAX_IN_FLIGHT_LOADS);
+    expect(warm).toEqual([5, 6, 7]);
+  });
+});
+
 describe("createPreviewMediaBudget", () => {
   beforeEach(() => {
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
@@ -586,9 +619,71 @@ describe("createPreviewMediaBudget", () => {
     expect(second.isReleased(clips[39]!.el)).toBe(true);
     expect(second.isReleased(clips[0]!.el)).toBe(false);
   });
+
+  /** A sound effect as the preview server serves it: its src kept, preload none. */
+  function sfx(index: number): PreviewMediaClip {
+    const el = document.createElement("audio");
+    el.setAttribute("src", `sfx-${index}.mp3`);
+    el.setAttribute("preload", "none");
+    el.setAttribute("data-start", String(index * 2));
+    el.setAttribute("data-duration", "0.5");
+    document.body.appendChild(el);
+    return { el, start: index * 2, end: index * 2 + 0.5, mediaStart: 0 };
+  }
+  const warmed = (clips: PreviewMediaClip[]) =>
+    clips.flatMap((clip, index) => (clip.el.preload === "auto" ? [index] : []));
+
+  it("starts loading only the sound effects near the playhead, a few at a time", () => {
+    const clips = Array.from({ length: 40 }, (_, i) => sfx(i));
+    const budget = createPreviewMediaBudget();
+    // Clip 0 holds the playhead and clip 1 starts in 2 s (both urgent), clip 2 is the nearest queued.
+    expect(run(budget, clips, 0, 1000).pending).toBe(true);
+    expect(warmed(clips)).toEqual([0, 1, 2]);
+    run(budget, clips, 0, 1100);
+    expect(warmed(clips)).toEqual([0, 1, 2]);
+
+    settle(clips[0]!.el);
+    settle(clips[1]!.el);
+    run(budget, clips, 0, 1200);
+    expect(warmed(clips)).toEqual([0, 1, 2, 3, 4]);
+
+    // Loads keep settling while the playhead rests: the queue stops at the playhead's window.
+    for (let pass = 0; pass < 20; pass += 1) {
+      for (const { el } of clips) if (el.preload === "auto") settle(el);
+      run(budget, clips, 0, 1300 + pass * 100);
+    }
+    // Clip 0 under the playhead, clips 1–5 starting within 10 s; clip 6 starts in 12 s.
+    expect(warmed(clips)).toEqual([0, 1, 2, 3, 4, 5]);
+    // The source stays: the Web Audio transport reads it, and nothing ever restarts a load.
+    expect(clips.every(({ el }) => el.hasAttribute("src"))).toBe(true);
+    expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled();
+  });
+
+  it("releases no video while a sound effect is opening, and never releases the sound effect", () => {
+    const videos = film(12);
+    const effects = [sfx(30)];
+    const budget = createPreviewMediaBudget();
+    run(budget, videos, 0, 1000);
+    for (const { el } of videos) if (el.hasAttribute("src")) settle(el);
+    run(budget, videos, 0, 1100);
+    expect(withSource(videos)).toEqual([0, 1, 2, 3, 4, 5]);
+    for (const { el } of videos) if (el.hasAttribute("src")) settle(el);
+
+    // The playhead jumps next to the sound effect, past every opened video.
+    run(budget, [...videos, ...effects], 60, 2000);
+    expect(warmed(effects)).toEqual([0]);
+    expect(withSource(videos)).toEqual([0, 1, 2, 3, 4, 5]);
+    run(budget, [...videos, ...effects], 60, 2000 + DETACH_INTERVAL_MS);
+    expect(withSource(videos)).toEqual([0, 1, 2, 3, 4, 5]);
+
+    settle(effects[0]!.el);
+    run(budget, [...videos, ...effects], 60, 2000 + 2 * DETACH_INTERVAL_MS);
+    expect(withSource(videos).length).toBeLessThan(6);
+    expect(effects[0]!.el.getAttribute("src")).toBe("sfx-30.mp3");
+  });
 });
 
-describe("detachPreviewVideoSources / importPreviewNode", () => {
+describe("deferPreviewMediaSources / importPreviewNode", () => {
   const markAsPreview = () =>
     document.head.appendChild(
       Object.assign(document.createElement("meta"), { name: STUDIO_PREVIEW_MARK_META }),
@@ -602,19 +697,25 @@ describe("detachPreviewVideoSources / importPreviewNode", () => {
     const tpl = document.createElement("template");
     tpl.innerHTML = `<div><video id="a" src="a.mp4" data-duration="3"></video>
       <video id="loop" src="l.mp4" data-duration="3" loop></video>
-      <video id="free" src="f.mp4"></video></div>`;
+      <video id="free" src="f.mp4"></video>
+      <audio id="sfx" src="s.mp3" data-duration="0.5"></audio>
+      <audio id="bed" src="b.mp3"></audio></div>`;
     return tpl.content;
   };
 
-  it("moves the source of managed videos only", () => {
+  it("moves the source of managed videos and holds back paced audio only", () => {
     const content = template();
-    detachPreviewVideoSources(content);
+    deferPreviewMediaSources(content);
     const a = content.querySelector("#a")!;
     expect(a.hasAttribute("src")).toBe(false);
     expect(a.getAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR)).toBe("a.mp4");
     expect(a.getAttribute("preload")).toBe("none");
     expect(content.querySelector("#loop")!.getAttribute("src")).toBe("l.mp4");
     expect(content.querySelector("#free")!.getAttribute("src")).toBe("f.mp4");
+    const effect = content.querySelector("#sfx")!;
+    expect(effect.getAttribute("src")).toBe("s.mp3");
+    expect(effect.getAttribute("preload")).toBe("none");
+    expect(content.querySelector("#bed")!.hasAttribute("preload")).toBe(false);
   });
 
   it("imports a preview clone with no live src ever reaching the document", () => {

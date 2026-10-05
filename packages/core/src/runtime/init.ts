@@ -14,6 +14,7 @@ import { isInClipWindow } from "./clipWindow";
 import { revealTimedClipsAfterFirstPass, SKIPPED_CLIP, skipsHiddenImages } from "./timedClipHide";
 import {
   isPreviewManagedVideo,
+  isPreviewPacedAudio,
   STUDIO_PREVIEW_DETACHED_SRC_ATTR,
   STUDIO_PREVIEW_LAZY_ATTR,
   STUDIO_PREVIEW_UPCOMING_ATTR,
@@ -2389,8 +2390,10 @@ export function initSandboxRuntimeModular(): void {
     enforcePreviewMediaBudget(true);
     const budgetActive = isPreviewMediaBudgetActive(document, window);
     for (const mediaEl of toPreload) {
-      // The budget owns when a managed video loads; a `load()` here would restart the one it began.
-      if (budgetActive && isPreviewManagedVideo(mediaEl)) continue;
+      // The budget owns when a managed video or paced audio loads; a `load()` here would restart the
+      // one it began, or open every sound effect of the film at once.
+      if (budgetActive && (isPreviewManagedVideo(mediaEl) || isPreviewPacedAudio(mediaEl)))
+        continue;
       preloadMedia(mediaEl);
     }
   };

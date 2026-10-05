@@ -144,6 +144,27 @@ describe("preview media budget in the runtime", () => {
     expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled();
   });
 
+  it("starts loading only the sound effects near the playhead at boot, never the whole film", () => {
+    const effects = Array.from(
+      { length: CLIPS },
+      (_unused, i) =>
+        `<audio id="sfx${i}" src="assets/sfx.mp3" preload="none" data-start="${i * 2}" data-duration="0.5"></audio>`,
+    ).join("");
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0">${effects}</div>`;
+    window.__timelines = { main: createMockTimeline(CLIPS * 2) };
+    markAsStudioPreview();
+    initSandboxRuntimeModular();
+
+    const audio = Array.from(document.querySelectorAll("audio"));
+    const loading = audio.filter((el) => el.preload === "auto");
+    expect(loading.map((el) => el.id)).toContain("sfx0");
+    expect(loading.length).toBeLessThanOrEqual(MAX_IN_FLIGHT_URGENT_LOADS);
+    expect(document.getElementById("sfx39")).toHaveProperty("preload", "none");
+    expect(audio.every((el) => el.getAttribute("src") === "assets/sfx.mp3")).toBe(true);
+    const reloaded = vi.mocked(HTMLMediaElement.prototype.load).mock.contexts;
+    expect(reloaded.filter((el) => el instanceof HTMLAudioElement)).toHaveLength(0);
+  });
+
   it("leaves every source alone outside a Studio preview", () => {
     mountServedClips(false);
     initSandboxRuntimeModular();
