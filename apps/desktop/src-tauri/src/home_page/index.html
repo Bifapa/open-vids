@@ -417,6 +417,20 @@
                 data-kbd="⌘2"
               ></button>
             </div>
+            <!-- An update waits (home.js paintUpdate): label, accessible name and tooltip come from script; hidden
+              in every other phase. Opens Settings on General, where the notes and the install button are. -->
+            <button
+              class="btn upd-btn"
+              id="updateBtn"
+              type="button"
+              hidden
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              data-tip-align="end"
+            >
+              <span class="upd-ic" aria-hidden="true"></span>
+              <span class="upd-text"></span>
+            </button>
             <button
               class="icon-btn"
               id="settingsBtn"

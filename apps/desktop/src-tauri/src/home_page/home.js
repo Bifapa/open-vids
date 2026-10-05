@@ -63,8 +63,13 @@
   const itemEl = (id) => body.querySelector('[data-item][data-id="' + CSS.escape(id) + '"]');
   const SORTS = { opened: "home.sort.opened", name: "home.sort.name", dur: "home.sort.duration" };
   const monoWrap = (inner) => '<span class="mono" style="font-size:11px">' + inner + "</span>";
-  /* The version the Settings button announces while an update waits (paintUpdate); null otherwise. */
-  let updateVersion = null;
+  /* The update waiting for the user, from GET /api/update/status: {phase, version, percent} while one is
+     available, downloading or downloaded (paintUpdate, settingsSection); null otherwise. */
+  let update = null,
+    updateTimer = 0;
+  /* The update pill keeps its text label only while the search field stays at least this wide beside it (px);
+     the field's own minimum is 120. */
+  const PILL_LABEL_FIELD_MIN = 200;
 
   /* ---------- static chrome ---------- */
   $("#fieldIcon").innerHTML = ic("search", 14);
@@ -187,15 +192,36 @@
     const savedMargin = tools ? tools.style.marginRight : "";
     if (tools) tools.style.marginRight = "0";
     const leftW = document.querySelector("#tb-new")?.getBoundingClientRect().width || 0;
-    const rightW = document.querySelector("#tb-tools")?.getBoundingClientRect().width || 0;
-    if (tools) tools.style.marginRight = savedMargin;
+    const toolsW = () => document.querySelector("#tb-tools")?.getBoundingClientRect().width || 0;
     const gap = 8;
     const reserve = 138 + 16;
     // The field is window-centred: its half-width plus the wider flank must
-    // fit in half the bar (8 px outer slack), and the whole row must clear
-    // the caption strip. Below 1100 px the field takes its 120 px minimum.
+    // fit in half the bar (8 px outer slack), and the right flank, which the
+    // update pill can make the wider one, must still clear the caption strip
+    // (2 px less: the row is laid out in whole pixels). Below 1100 px the
+    // field takes its 120 px minimum.
     const halfFree = Math.max(0, barW / 2 - 8);
-    const fieldW = Math.max(120, Math.min(420, halfFree - Math.max(leftW, rightW) - gap));
+    const fieldFor = (rightW) =>
+      Math.max(
+        120,
+        Math.min(
+          420,
+          halfFree - Math.max(leftW, rightW) - gap,
+          barW - 2 * (reserve + gap + rightW) - 2,
+        ),
+      );
+    // The update pill wears its label only while the search keeps a comfortable
+    // width beside it; past that it shrinks to its icon (same name and tooltip),
+    // so the right flank never crowds the centred field.
+    const pill = document.querySelector("#updateBtn");
+    pill?.classList.remove("is-icon");
+    let rightW = toolsW();
+    if (pill && !pill.hidden && fieldFor(rightW) < PILL_LABEL_FIELD_MIN) {
+      pill.classList.add("is-icon");
+      rightW = toolsW();
+    }
+    if (tools) tools.style.marginRight = savedMargin;
+    const fieldW = fieldFor(rightW);
     mid.style.width = Math.round(leftW + gap + fieldW + gap + rightW + reserve) + "px";
     collapseOnOverlap();
     // The row is centred as a whole, but the FIELD must be window-centred:
@@ -238,37 +264,80 @@
     if (!narrow) collapseOnOverlap();
   }
 
-  /* ---------- update badge: an accent dot on Settings while a newer version waits (GET /api/update/status) ---------- */
+  /* ---------- update: an accent dot on Settings and a pill beside it while a newer version waits (GET /api/update/status) ---------- */
+  const updatePillLabel = (u) =>
+    u.phase === "downloading"
+      ? u.percent === null
+        ? tr("home.update.pillDownloadingUnknown")
+        : tr("home.update.pillDownloading", { percent: u.percent })
+      : u.phase === "ready"
+        ? tr("home.update.pillReady")
+        : tr("home.update.pillAvailable", { version: u.version });
   function paintUpdate() {
     const btn = $("#settingsBtn");
-    const label = updateVersion
-      ? tr("home.update.settingsTip", { version: updateVersion })
+    const label = update
+      ? tr("home.update.settingsTip", { version: update.version })
       : tr("home.toolbar.settings");
-    btn.classList.toggle("has-update", !!updateVersion);
+    btn.classList.toggle("has-update", !!update);
     btn.setAttribute("aria-label", label);
     btn.dataset.tip = label;
+    const pill = $("#updateBtn");
+    pill.hidden = !update;
+    if (update) {
+      const text = updatePillLabel(update);
+      pill.dataset.phase = update.phase;
+      pill.querySelector(".upd-ic").innerHTML = ic(
+        update.phase === "ready" ? "refresh" : "import",
+        14,
+      );
+      pill.querySelector(".upd-text").textContent = text;
+      pill.setAttribute("aria-label", text);
+      pill.dataset.tip = tr("home.update.pillTip", { label: text });
+    }
   }
-  function loadUpdateBadge() {
+  /* The pill changes the width of the centred row's right flank (custom frame): fit the search again, then let
+     the menu bar come back or step aside against the new geometry. Both are no-ops off the custom frame. */
+  function refitToolbar() {
+    fitSearch();
+    checkCompact();
+  }
+  function loadUpdateStatus() {
+    clearTimeout(updateTimer);
     return api("/api/update/status", undefined, undefined, { plainBody: true })
       .then((st) => {
         const waiting =
           st.phase === "available" || st.phase === "downloading" || st.phase === "ready";
-        const next = waiting && typeof st.version === "string" ? st.version : null;
-        if (next !== updateVersion) {
-          updateVersion = next;
+        const total = typeof st.total === "number" && st.total > 0 ? st.total : 0;
+        const next =
+          waiting && typeof st.version === "string"
+            ? {
+                phase: st.phase,
+                version: st.version,
+                percent:
+                  st.phase === "downloading" && total
+                    ? Math.min(100, Math.round(((Number(st.downloaded) || 0) / total) * 100))
+                    : null,
+              }
+            : null;
+        if (JSON.stringify(next) !== JSON.stringify(update)) {
+          update = next;
           paintUpdate();
+          refitToolbar();
         }
+        /* A running download moves every second: look again soon so the pill's percentage follows. */
+        if (update && update.phase === "downloading")
+          updateTimer = setTimeout(loadUpdateStatus, 1000);
       })
       .catch(() => {
-        /* no updater in this build, or the server is busy: keep the badge as it is */
+        /* no updater in this build, or the server is busy: keep the dot and the pill as they are */
       });
   }
-  loadUpdateBadge();
+  loadUpdateStatus();
   setInterval(() => {
-    if (document.visibilityState === "visible") loadUpdateBadge();
+    if (document.visibilityState === "visible") loadUpdateStatus();
   }, 30000);
-  /* Settings opens on General while the badge shows, so the update is one click away. */
-  const settingsSection = () => (updateVersion ? "general" : undefined);
+  /* Settings opens on General while an update waits, so the update is one click away. */
+  const settingsSection = () => (update ? "general" : undefined);
 
   /* ---------- data ---------- */
   const toItem = (r) => ({
@@ -1391,6 +1460,11 @@
   /* ---------- Settings window: framed over the page (a separate window in the prototype's native shell) ---------- */
   let settingsFrame = null,
     settingsReturn = null;
+  /* The gear and the update pill open the same window: both announce it. */
+  function setSettingsExpanded(open) {
+    for (const id of ["#settingsBtn", "#updateBtn"])
+      $(id).setAttribute("aria-expanded", String(open));
+  }
   function openSettings(trigger, section) {
     if (settingsFrame) {
       settingsFrame.contentWindow.focus();
@@ -1418,16 +1492,16 @@
     });
     document.body.appendChild(f);
     settingsFrame = f;
-    $("#settingsBtn").setAttribute("aria-expanded", "true");
+    setSettingsExpanded(true);
   }
   function closeSettings() {
     if (!settingsFrame) return;
     settingsFrame.remove();
     settingsFrame = null;
-    $("#settingsBtn").setAttribute("aria-expanded", "false");
+    setSettingsExpanded(false);
     if (settingsReturn && settingsReturn.focus) settingsReturn.focus();
     settingsReturn = null;
-    loadUpdateBadge();
+    loadUpdateStatus();
   }
   window.addEventListener("message", (e) => {
     if (!settingsFrame || e.source !== settingsFrame.contentWindow || !e.data) return;
@@ -1453,6 +1527,9 @@
   $("#settingsBtn").addEventListener("click", () =>
     openSettings($("#settingsBtn"), settingsSection()),
   );
+  /* The pill is shown only while an update waits, so settingsSection() is General: the notes and the install
+     button are what the user came for. */
+  $("#updateBtn").addEventListener("click", () => openSettings($("#updateBtn"), settingsSection()));
   /* Report a problem: a window of its own (the shell opens or focuses it), so the page stays usable beside it. */
   $("#reportBtn").addEventListener("click", () =>
     api("/api/report/open", { context: "projects" }).catch(fail("home.error.reportOpen")),

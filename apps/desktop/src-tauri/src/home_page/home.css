@@ -331,7 +331,7 @@ html.custom-frame .tb-sep-actions {
   pointer-events: none;
 }
 
-/* An update is available (home.js paintUpdate): an accent dot on the Settings button, nothing more. */
+/* An update waits (home.js paintUpdate): an accent dot on the Settings button (the pill below says it in words). */
 #settingsBtn.has-update::before {
   content: "";
   position: absolute;
@@ -343,6 +343,41 @@ html.custom-frame .tb-sep-actions {
   background: var(--accent);
   box-shadow: 0 0 0 2px var(--bg-1);
   pointer-events: none;
+}
+
+/* The update pill (home.js paintUpdate), beside Settings while a newer version waits: the dot's louder sibling.
+   A soft accent fill and line with primary-colour text (the accent itself is too pale to carry 12 px text on
+   the light theme); the icon wears the accent. Narrow rows shrink it to the icon (.is-icon, set by fitSearch),
+   keeping its aria-label and tooltip. */
+#updateBtn {
+  flex: none;
+  padding: 0 10px 0 8px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--fg);
+}
+#updateBtn:hover {
+  background: color-mix(in oklab, var(--accent) 22%, var(--bg-0));
+  border-color: var(--accent);
+}
+#updateBtn:active {
+  background: color-mix(in oklab, var(--accent) 30%, var(--bg-0));
+}
+#updateBtn .upd-ic {
+  display: inline-flex;
+  color: var(--accent);
+}
+#updateBtn .upd-text {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+#updateBtn.is-icon {
+  width: var(--h-md);
+  padding: 0;
+}
+#updateBtn.is-icon .upd-text {
+  display: none;
 }
 
 [hidden] {

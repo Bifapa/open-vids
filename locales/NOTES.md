@@ -220,6 +220,11 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `settings.general.updates.busy` — Inline confirmation when the open project is still rendering or running an agent turn (a “turn” is one agent run in the project chat); buttons: settings.general.updates.busy.restart and common.cancel.
 - `settings.general.updates.requestFailed` — Shown when the local updater service cannot be reached at all; {message} is the system's text.
 - `home.update.settingsTip` — Tooltip and accessible name of the Settings toolbar button while an update is available; {version} is the new version.
+- `home.update.pillAvailable` — Label of the pill button in the Projects toolbar while an update waits; {version} is the new version, e.g. “0.5.0”. Clicking it opens Settings → General.
+- `home.update.pillDownloading` — Same pill while the update downloads; {percent} is a whole number, 0–100.
+- `home.update.pillDownloadingUnknown` — Same pill while the update downloads and the total size is not known (no percentage).
+- `home.update.pillReady` — Same pill once the update is downloaded and waits for the user to restart OpenVids. Same wording as settings.general.updates.restart.
+- `home.update.pillTip` — Tooltip of the pill; {label} is the pill’s own text (one of the pill keys above), “Settings” is the window opened by the toolbar’s gear button.
 
 ## studio-editor-a
 

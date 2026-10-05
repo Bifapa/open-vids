@@ -170,8 +170,11 @@ capability for the plugin, and the pages only see the token-gated home API:
 **Check for Updates…** in the app menu runs the same check: with the Projects page open it opens
 Settings › General, where the page shows progress and the install button; with a project open Rust
 shows native dialogs instead. When `updates.autoCheck` (Settings › General, default on) is set,
-release builds also do one quiet check about 15 seconds after launch and the Projects page shows an
-unobtrusive mark — still nothing is downloaded or installed until the user asks for it.
+release builds also do one quiet check about 15 seconds after launch; while a version waits, the
+Projects page shows a dot on the Settings button and a compact pill beside it ("Update to x.y.z",
+then the download percentage, then "Restart to Update") that opens Settings › General. The pill
+shrinks to its icon when the toolbar is tight. Still nothing is downloaded or installed until the
+user asks for it.
 
 A downloaded archive is authenticated with a minisign signature checked against the updater key in
 `tauri.conf.json` (`plugins.updater.pubkey`); the private key exists only as a GitHub Actions

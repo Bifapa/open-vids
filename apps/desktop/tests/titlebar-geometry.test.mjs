@@ -73,9 +73,13 @@ function bootFor(frame) {
 
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
 
-function serve(t) {
+function serve(t, updateStatus = {}) {
   const server = createServer((req, res) => {
     const url = new URL(req.url, "http://x");
+    if (url.pathname === "/api/update/status") {
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(updateStatus));
+      return;
+    }
     if (url.pathname === "/") {
       const frame = url.searchParams.get("frame") === "overlay" ? "overlay" : "custom";
       res.writeHead(200, { "content-type": "text/html" }).end(
@@ -325,5 +329,117 @@ test("custom frame: the gear and the New button take real clicks (the row is cli
     }
   } finally {
     if (browser) await browser.close();
+  }
+});
+
+test("custom frame: the update pill sits between the toggle and the gear, never overlaps, and shrinks to its icon", async (t) => {
+  if (!EXE) t.skip("managed chrome-headless-shell not found under ~/.cache/hyperframes/chrome");
+  const puppeteer = await loadPuppeteer();
+  if (!puppeteer) t.skip("puppeteer-core unavailable in packages/engine/node_modules");
+  const { port } = await serve(t, { phase: "available", version: "0.5.0" });
+
+  let browser = null;
+  try {
+    browser = await puppeteer.launch({ executablePath: EXE, headless: "shell" });
+    for (const width of WIDTHS) {
+      await t.test(`at ${width}px`, async () => {
+        const page = await browser.newPage();
+        try {
+          await page.setViewport({ width, height: 800, deviceScaleFactor: 1 });
+          await page.goto(`http://127.0.0.1:${port}/?frame=custom`, { waitUntil: "networkidle0" });
+          await page.waitForFunction(() => !document.querySelector("#updateBtn").hidden);
+          await new Promise((r) => setTimeout(r, 600));
+          const g = await page.evaluate(() => {
+            const q = (s) => document.querySelector(s);
+            const r = (sel) => {
+              const el = q(sel);
+              if (!el || el.hidden) return null;
+              if (getComputedStyle(el).display === "none") return null;
+              const b = el.getBoundingClientRect();
+              return { x: b.x, y: b.y, w: b.width, h: b.height };
+            };
+            const fb = q("#field").getBoundingClientRect();
+            const pill = q("#updateBtn");
+            return {
+              mark: r("#appMenuBtn"),
+              menu: r("#menuBar"),
+              open: r("#openBtn"),
+              nb: r("#newBtn"),
+              field: r("#field"),
+              fieldCenter: fb.x + fb.width / 2,
+              seg: r(".seg"),
+              pill: r("#updateBtn"),
+              gear: r("#settingsBtn"),
+              report: r("#reportBtn"),
+              caps: r("#winControls"),
+              icon: pill.classList.contains("is-icon"),
+              textShown: getComputedStyle(pill.querySelector(".upd-text")).display !== "none",
+              name: pill.getAttribute("aria-label"),
+              tip: pill.dataset.tip,
+            };
+          });
+          assert.equal(g.name, "Update to 0.5.0", "accessible name in both label and icon states");
+          assert.ok(g.tip.startsWith("Update to 0.5.0"), "tooltip carries the label");
+          assert.equal(g.icon, !g.textShown, "is-icon and the hidden label agree");
+          // Shrinks to the icon where the row is tight; keeps its label where there is room.
+          if (width <= 826) assert.equal(g.icon, true, `label kept at ${width}px`);
+          if (width >= 1600) assert.equal(g.icon, false, `icon only at ${width}px`);
+          if (g.icon) assert.ok(Math.abs(g.pill.w - g.pill.h) <= 1, "icon state is square");
+          // In the right flank, between the view toggle and the gear.
+          assert.ok(g.seg.x + g.seg.w <= g.pill.x + 0.5, "pill not right of the toggle");
+          assert.ok(g.pill.x + g.pill.w <= g.gear.x + 0.5, "pill not left of the gear");
+          // The last tool still clears the caption strip, and the search stays window-centred.
+          const gap = g.caps.x - (g.report.x + g.report.w);
+          assert.ok(gap >= 15.5, `last-tool-to-caption gap ${gap} < 16px`);
+          if (width >= 1100) {
+            assert.ok(
+              Math.abs(g.fieldCenter - width / 2) <= 2,
+              `search not centred: ${g.fieldCenter} vs ${width / 2}`,
+            );
+          }
+          const boxes = [
+            g.mark,
+            g.menu,
+            g.open,
+            g.nb,
+            g.field,
+            g.seg,
+            g.pill,
+            g.gear,
+            g.report,
+            g.caps,
+          ].filter(Boolean);
+          for (let i = 0; i < boxes.length; i++) {
+            for (let j = i + 1; j < boxes.length; j++) {
+              const a = boxes[i];
+              const b = boxes[j];
+              const overlap = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+              assert.ok(
+                overlap <= 0.5,
+                `overlap ${overlap}px between boxes ${i} and ${j} at ${width}px`,
+              );
+            }
+          }
+          // The row is click-through: the pill itself must take a real click and open Settings on General.
+          const centre = { x: g.pill.x + g.pill.w / 2, y: g.pill.y + g.pill.h / 2 };
+          const hit = await page.evaluate(
+            (x, y) => document.elementFromPoint(x, y)?.closest("#updateBtn") !== null,
+            centre.x,
+            centre.y,
+          );
+          assert.equal(hit, true, `the pill is not hit-testable at ${width}px`);
+          await page.mouse.click(centre.x, centre.y);
+          await page.waitForSelector("iframe.ov-settings-frame");
+          const src = await page.evaluate(() =>
+            document.querySelector("iframe.ov-settings-frame").getAttribute("src"),
+          );
+          assert.match(src, /section=general/);
+        } finally {
+          await page.close();
+        }
+      });
+    }
+  } finally {
+    if (browser) await browser.close().catch(() => {});
   }
 });

@@ -47,6 +47,10 @@ pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// How long after launch the automatic check runs.
 const AUTO_CHECK_DELAY: Duration = Duration::from_secs(15);
+/// How often the automatic check runs again while the app stays open: a release
+/// published after launch (or one whose download link had not switched over yet
+/// at launch) is still offered the same day.
+const AUTO_CHECK_INTERVAL: Duration = Duration::from_secs(4 * 60 * 60);
 /// The check request (`latest.json`); the download has no overall deadline.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 /// Release notes beyond this are cut: they are shown in a settings row and a dialog.
@@ -493,6 +497,13 @@ pub fn check() -> UpdateState {
     };
     tauri::async_runtime::spawn(async move {
         let outcome = find_update(&app).await;
+        crate::logfile::shell(&match &outcome {
+            Ok(None) => format!("update check: {CURRENT_VERSION} is up to date"),
+            Ok(Some((_, release))) => {
+                format!("update check: {} available (running {CURRENT_VERSION})", release.version)
+            }
+            Err(err) => format!("update check failed: {err}"),
+        });
         slot().finish_check(generation, outcome);
     });
     state()
@@ -527,14 +538,22 @@ async fn find_update(app: &tauri::AppHandle) -> Result<Option<(Update, Release)>
     Ok(Some((update, release)))
 }
 
-/// The automatic check: once, a little after launch, when the preference says so.
-/// Nothing is downloaded; the Projects page shows a mark when a version is available.
+/// The automatic check: a little after launch, then every `AUTO_CHECK_INTERVAL`
+/// while the app runs, each time only when the preference says so (it is read
+/// again before every check). Nothing is downloaded; the Projects page shows a
+/// mark when a version is available. A check is skipped while an update is
+/// being fetched or applied (`begin_check`), and a version already offered stays
+/// offered (re-checking could only turn the mark into a network error).
 pub fn schedule_auto_check() {
     std::thread::spawn(|| {
         std::thread::sleep(AUTO_CHECK_DELAY);
-        let preferences = prefs::load(&prefs::prefs_path());
-        if prefs::auto_check_updates(&preferences) {
-            check();
+        loop {
+            let offered = matches!(state(), UpdateState::Available { .. });
+            let preferences = prefs::load(&prefs::prefs_path());
+            if !offered && prefs::auto_check_updates(&preferences) {
+                check();
+            }
+            std::thread::sleep(AUTO_CHECK_INTERVAL);
         }
     });
 }
@@ -596,7 +615,8 @@ async fn download(app: tauri::AppHandle, generation: u64, update: Update) {
             || {},
         )
         .await
-        .map_err(|e| download_error(&e));
+        .map_err(|e| download_error(&e))
+        .inspect_err(|err| crate::logfile::shell(&format!("update download failed: {err}")));
     let ready = slot().finish_download(generation, outcome);
     if let Some((forced, bytes)) = ready {
         std::thread::spawn(move || apply(&app, generation, update, bytes, forced));
