@@ -19,7 +19,7 @@
     },
     "apps/desktop": {
       "name": "@openvids/desktop",
-      "version": "0.3.1",
+      "version": "0.4.0",
     },
     "packages/agent-protocol": {
       "name": "@hyperframes/agent-protocol",
