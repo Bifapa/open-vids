@@ -19,7 +19,7 @@ import {
   setGsapScript,
   setStyleSheet,
 } from "./model.js";
-import { keyToPath, stylePath } from "./patches.js";
+import { decodePathSegment, keyToPath, stylePath } from "./patches.js";
 import {
   writeVariableDefault,
   clearVariableDefault,
@@ -56,29 +56,31 @@ interface ParsedPath {
   field?: string;
 }
 
+const ELEMENT_PATH_RE = /^\/elements\/([^/]+)$/;
+
 function parsePath(path: string): ParsedPath | null {
   const styleM = /^\/elements\/([^/]+)\/inlineStyles\/(.+)$/.exec(path);
-  if (styleM) return { type: "style", id: styleM[1], prop: styleM[2] };
+  if (styleM) return { type: "style", id: decodePathSegment(styleM[1]!), prop: styleM[2] };
 
   const textM = /^\/elements\/([^/]+)\/text$/.exec(path);
-  if (textM) return { type: "text", id: textM[1] };
+  if (textM) return { type: "text", id: decodePathSegment(textM[1]!) };
 
   const attrM = /^\/elements\/([^/]+)\/attributes\/(.+)$/.exec(path);
   if (attrM)
     return {
       type: "attribute",
-      id: attrM[1],
-      prop: attrM[2]?.replace(/~1/g, "/").replace(/~0/g, "~"),
+      id: decodePathSegment(attrM[1]!),
+      prop: attrM[2] ? decodePathSegment(attrM[2]) : undefined,
     };
 
   const timingM = /^\/elements\/([^/]+)\/timing\/(.+)$/.exec(path);
-  if (timingM) return { type: "timing", id: timingM[1], field: timingM[2] };
+  if (timingM) return { type: "timing", id: decodePathSegment(timingM[1]!), field: timingM[2] };
 
   const holdM = /^\/elements\/([^/]+)\/hold\/(.+)$/.exec(path);
-  if (holdM) return { type: "hold", id: holdM[1], field: holdM[2] };
+  if (holdM) return { type: "hold", id: decodePathSegment(holdM[1]!), field: holdM[2] };
 
-  const elemM = /^\/elements\/([^/]+)$/.exec(path);
-  if (elemM) return { type: "element", id: elemM[1] };
+  const elemM = ELEMENT_PATH_RE.exec(path);
+  if (elemM) return { type: "element", id: decodePathSegment(elemM[1]!) };
 
   const varDeclM = /^\/variableDeclarations\/(.+)$/.exec(path);
   if (varDeclM) return { type: "variableDeclaration", id: varDeclM[1] };
@@ -142,6 +144,11 @@ export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet)
     if (!path) continue;
     if (value === null) {
       patches.push({ op: "remove", path });
+    } else if (ELEMENT_PATH_RE.test(path)) {
+      // A bare element key carries {html, parentId, siblingIndex} — the record
+      // of an element added during the session. Replaying it is an insertion;
+      // a "replace" would be dropped by the element branch of applyOne.
+      patches.push({ op: "add", path, value });
     } else {
       patches.push({ op: "replace", path, value });
     }
@@ -242,6 +249,9 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
         const el = findById(parsed.document, p.id);
         el?.remove();
       } else if (patch.op === "add" && patch.value) {
+        // Idempotent: replaying an add onto a document that already holds the
+        // element (e.g. a re-applied override set) must not duplicate the id.
+        if (findById(parsed.document, p.id)) return;
         const v = patch.value as { html: string; parentId: string | null; siblingIndex: number };
         const parent = v.parentId
           ? findById(parsed.document, v.parentId)

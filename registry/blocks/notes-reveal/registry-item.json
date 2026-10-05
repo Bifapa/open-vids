@@ -197,13 +197,23 @@
       "type": "hyperframes:asset"
     },
     {
+      "path": "assets/CourierPrime-LICENSE.txt",
+      "target": "assets/CourierPrime-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/PermanentMarker-LICENSE.txt",
+      "target": "assets/PermanentMarker-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
       "path": "assets/hyperframes-logo-black.svg",
       "target": "assets/hyperframes-logo-black.svg",
       "type": "hyperframes:asset"
     },
     {
       "path": "TEMPLATE.md",
-      "target": "TEMPLATE.md",
+      "target": "compositions/notes-reveal.TEMPLATE.md",
       "type": "hyperframes:asset"
     }
   ]

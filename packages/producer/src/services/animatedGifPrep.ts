@@ -10,7 +10,11 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { parseHTML } from "linkedom";
-import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes/core";
+import {
+  decodeUrlPathVariants,
+  parseAnimatedGifMetadata,
+  type AnimatedGifMetadata,
+} from "@hyperframes/core";
 import { DEFAULT_VP9_CPU_USED, runFfmpeg } from "@hyperframes/engine";
 import { isHttpUrl } from "../utils/urlDownloader.js";
 import { encoderFailureError } from "./render/encoderInterruption.js";
@@ -99,11 +103,16 @@ function resolveGifSourcePath(
   if (mapped && existsSync(mapped)) return mapped;
   if (isHttpUrl(trimmed)) return null;
 
-  const projectRelative = basePath.startsWith("/") ? basePath.slice(1) : basePath;
-  const candidates = [
-    isAbsolute(basePath) ? basePath : resolve(options.projectDir, projectRelative),
-    resolve(options.downloadDir, normalizedBase),
-  ];
+  const candidates = decodeUrlPathVariants(basePath).flatMap((variant) => {
+    const projectRelative = variant.startsWith("/") ? variant.slice(1) : variant;
+    // A root-relative src ("/assets/x.gif") names a file under the project root, as the preview and render file
+    // servers resolve it, so that is probed before the same string is taken as a filesystem path.
+    return [
+      resolve(options.projectDir, projectRelative),
+      ...(isAbsolute(variant) ? [variant] : []),
+      resolve(options.downloadDir, normalizeRelPath(variant)),
+    ];
+  });
 
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }

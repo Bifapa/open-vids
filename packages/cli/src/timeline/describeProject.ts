@@ -8,7 +8,7 @@ import {
 import { HF_AUDIO_FX_ATTR, parseAudioFxChain } from "@hyperframes/core/audio-fx";
 import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
 import { byStart, type ClipFact, type ClipLane } from "@hyperframes/core/clip-facts";
-import { parseNumeric } from "@hyperframes/core";
+import { decodeUrlPathVariants, parseNumeric } from "@hyperframes/core";
 import {
   readMediaOffsetSeconds,
   readPlaybackRate,
@@ -175,7 +175,7 @@ async function probeSource(scope: DocScope, el: Element, tag: MediaTag): Promise
   const src = el.getAttribute("src");
   if (!src) return { ok: false, reason: "no src attribute" };
   if (/^https?:\/\//i.test(src)) return { ok: false, reason: "remote source not probed" };
-  const file = realFileInside(scope.projectDir, resolve(scope.dir, src));
+  const file = authoredFile(scope.projectDir, scope.dir, src)?.file;
   if (!file) return { ok: false, reason: "source file not found" };
   return scope.withProbeSlot(async () => {
     try {
@@ -280,6 +280,16 @@ async function resolveRowTiming(scope: DocScope, node: DomNode, depth: number): 
   return { start, authored, absStart, children, duration };
 }
 
+/**
+ * A local `src` as the file name on disk: the value is a URL, so the query and fragment are cut and percent escapes
+ * decoded (`my%20clip.mp4` is `my clip.mp4`), the name an `asset` reference takes. Remote and `data:` URLs stay as
+ * written.
+ */
+function localFileName(src: string | null): string | null {
+  if (src === null || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(src)) return src;
+  return decodeUrlPathVariants(src.replace(/[?#].*$/, ""))[0] ?? src;
+}
+
 function describeRowFields(scope: DocScope, node: DomNode, timing: RowTiming): ClipDraft {
   const { el } = node;
   const kind = el.tagName.toLowerCase();
@@ -297,8 +307,8 @@ function describeRowFields(scope: DocScope, node: DomNode, timing: RowTiming): C
     absEnd: roundMs(timing.absStart + timing.duration.duration),
     file: scope.file,
     trackIndex: parseNumeric(el.getAttribute("data-track-index")) ?? 0,
-    src: el.getAttribute("src") ?? host,
-    sourceFile: host,
+    src: localFileName(el.getAttribute("src")) ?? localFileName(host),
+    sourceFile: localFileName(host),
     volume: parseNumeric(el.getAttribute("data-volume")),
     ...readLanes(el),
     playbackRate: rate === 1 ? null : rate,
@@ -324,9 +334,9 @@ async function readSubComposition(
   parent: DocScope,
   origin: number,
 ): Promise<ClipDraft[]> {
-  const authored = resolve(parent.dir, src);
-  const file = realFileInside(parent.projectDir, authored);
-  if (!file) return [];
+  const found = authoredFile(parent.projectDir, parent.dir, src);
+  if (!found) return [];
+  const { authored, file } = found;
   const relativeFile = relative(parent.projectDir, authored).split(sep).join("/");
   const source = parent.sourceOverrides.get(relativeFile) ?? readFileSync(file, "utf-8");
   const doc = new DOMParser().parseFromString(source, "text/html");
@@ -348,6 +358,23 @@ async function readSubComposition(
     topLevelElements(toNode(root)).map((node) => describeRow(scope, node, 1)),
   );
   return rows.sort(byStart);
+}
+
+/**
+ * The file an authored `src` names, relative to the composition's folder: the value is a URL, so the query and
+ * fragment are cut and the percent-decoded name is tried before the literal one (`a%20b.mp4` is the file `a b.mp4`).
+ */
+function authoredFile(
+  projectDir: string,
+  dir: string,
+  src: string,
+): { authored: string; file: string } | null {
+  for (const variant of decodeUrlPathVariants(src.replace(/[?#].*$/, ""))) {
+    const authored = resolve(dir, variant);
+    const file = realFileInside(projectDir, authored);
+    if (file) return { authored, file };
+  }
+  return null;
 }
 
 /** The file's real path when it is a regular file inside the project (symlinks resolved), else null. */

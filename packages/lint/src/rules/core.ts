@@ -11,16 +11,21 @@ import {
   readDecodedAttr,
   truncateSnippet,
   stripJsComments,
-  stripStringLiterals,
+  stripJsStringLiterals,
   extractCompositionIdsFromCss,
   extractTimelineRegistryKeys,
   getInlineScriptSyntaxError,
+  classifyInlineScript,
   hasUnquotedLessThan,
   TIMELINE_REGISTRY_INIT_PATTERN,
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
   TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
   INVALID_SCRIPT_CLOSE_PATTERN,
 } from "../utils";
+
+// A call whose first argument is an absolute http(s)/ws(s) or protocol-relative URL
+// literal (the leading `(` is already consumed by the call pattern).
+const REMOTE_URL_ARGUMENT = /^\s*["'`]\s*(?:(?:https?|wss?):)?\/\//i;
 
 function repeatedDescendantId(selector: string): string | null {
   let repeated: string | null = null;
@@ -589,14 +594,14 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
       const attrs = script.attrs || "";
-      if (
-        /\bsrc\s*=/.test(attrs) ||
-        /\btype\s*=\s*["'](?:application\/json|application\/hyperframes-slideshow\+json|importmap|module)["']/.test(
-          attrs,
-        )
-      )
-        continue;
-      const syntaxError = getInlineScriptSyntaxError(script.content);
+      if (/\bsrc\s*=/.test(attrs)) continue;
+      // JSON, import maps, shaders, templates and `text/plain` samples are not JavaScript.
+      const kind = classifyInlineScript(attrs);
+      if (kind === "other") continue;
+      const syntaxError = getInlineScriptSyntaxError(
+        script.content,
+        kind === "module" ? "module" : "script",
+      );
       if (!syntaxError) continue;
       findings.push({
         ...locate(script, syntaxError.offset),
@@ -683,8 +688,16 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       pattern: RegExp;
       label: string;
       hint: string;
+      /** What is wrong with the call; defaults to non-deterministic output. */
+      reason?: string;
       /** Match against raw source, because the value being matched is a string GSAP parses. */
       scansStrings?: boolean;
+      /**
+       * Tested against the raw source right after the matched call, because the URL is a
+       * string literal that the executable view blanks. A call that passes it is network
+       * access; a call that does not (a bundled asset path) is left alone.
+       */
+      remoteArgument?: RegExp;
     }> = [
       {
         pattern: /Math\.random\s*\(/,
@@ -729,27 +742,73 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         label: '"random(...)" tween value',
         hint: "GSAP random string values re-roll at tween init and each render worker initializes independently. Use fixed values or precompute with a seeded PRNG.",
       },
+      {
+        pattern: /(?<![\w$.])fetch\s*\(|\b(?:window|globalThis|self)\s*\.\s*fetch\s*\(/,
+        remoteArgument: REMOTE_URL_ARGUMENT,
+        label: "fetch() of a remote URL",
+        reason: "reads the network at render time",
+        hint: "Download the data ahead of time and load it from a project file; the response of a remote request can differ between render workers.",
+      },
+      {
+        pattern: /\bnew\s+(?:WebSocket|EventSource)\s*\(/,
+        remoteArgument: REMOTE_URL_ARGUMENT,
+        label: "WebSocket/EventSource connection",
+        reason: "reads the network at render time",
+        hint: "Use data stored in the project instead of a live connection.",
+      },
+      {
+        // The method string is blanked in the executable view, so match any quoted text.
+        pattern: /\.\s*open\s*\(\s*["'`][^"'`]*["'`]\s*,/,
+        remoteArgument: REMOTE_URL_ARGUMENT,
+        label: "XMLHttpRequest of a remote URL",
+        reason: "reads the network at render time",
+        hint: "Download the data ahead of time and load it from a project file; the response of a remote request can differ between render workers.",
+      },
+      {
+        pattern: /(?<![\w$.])import\s*\(/,
+        remoteArgument: REMOTE_URL_ARGUMENT,
+        label: "dynamic import() of a remote URL",
+        reason: "loads code from the network at render time",
+        hint: "Load the library with a pinned <script src> tag or vendor it into the project.",
+      },
     ];
 
     for (const script of scripts) {
+      // Only text a browser runs can be non-deterministic. JSON, import maps, shaders,
+      // templates and `text/plain` code samples are inert.
+      if (classifyInlineScript(script.attrs || "") === "other") continue;
       const withoutComments = stripJsComments(script.content);
       // Strings are content, not code. A composition that DISPLAYS source (the
       // code-snippet blocks, /pr-to-video) carries `Math.random()` inside a string
       // literal it never executes, and reported itself non-deterministic with no
-      // way to clear the error while still rendering the snippet.
-      const executable = stripStringLiterals(withoutComments);
-      for (const { pattern, label, hint, scansStrings } of patterns) {
-        const match = pattern.exec(scansStrings ? withoutComments : executable);
-        if (match) {
-          findings.push({
-            ...locate(script, match.index),
-            code: "non_deterministic_code",
-            severity: "error",
-            message: `Script contains \`${label}\` which produces non-deterministic output. Renders may differ between frames or runs.`,
-            fixHint: hint,
-            snippet: truncateSnippet(script.content),
-          });
+      // way to clear the error while still rendering the snippet. Template and regex
+      // literals are blanked too (their `${…}` expressions are kept, being code), so an
+      // apostrophe in either cannot be read as an opening quote that hides real calls.
+      const executable = stripJsStringLiterals(withoutComments);
+      for (const { pattern, label, hint, reason, scansStrings, remoteArgument } of patterns) {
+        const searched = scansStrings ? withoutComments : executable;
+        // A local `fetch("./data.json")` must not hide a later remote one, so look at every call.
+        let match: RegExpExecArray | null = null;
+        const globalPattern = new RegExp(pattern.source, `${pattern.flags}g`);
+        for (let candidate = globalPattern.exec(searched); candidate; ) {
+          if (
+            !remoteArgument ||
+            remoteArgument.test(withoutComments.slice(candidate.index + candidate[0].length))
+          ) {
+            match = candidate;
+            break;
+          }
+          candidate = globalPattern.exec(searched);
         }
+        if (!match) continue;
+        findings.push({
+          ...locate(script, match.index),
+          code: "non_deterministic_code",
+          severity: "error",
+          message: `Script contains \`${label}\` which ${reason ?? "produces non-deterministic output"}. Renders may differ between frames or runs.`,
+          fixHint: hint,
+          snippet: truncateSnippet(script.content),
+        });
       }
     }
     return findings;

@@ -112,4 +112,27 @@ describe("the story graph in project history", () => {
     // The agent's own edit before it is a separate entry, not the person's.
     expect(engine.list().length).toBeGreaterThan(1);
   });
+
+  it("keeps an agent turn's earlier graph edit in the turn's entry when the user saves on top of it", async () => {
+    const { f, engine } = await open();
+    await f.edit([{ op: "add_node", node: { kind: "chapter", title: "Before" } }]);
+    await engine.flush();
+
+    const window = await engine.beginWindow(agent, "Director turn");
+    await f.edit([{ op: "add_node", node: { kind: "chapter", title: "Added by the agent" } }]);
+    const view = await f.view();
+    const graph = structuredClone(await f.graph());
+    graph.title = "Dragged by the user";
+    await f.service.save(f.project, { baseVersion: view.version, graph });
+    const entry = await window.close();
+    await engine.flush();
+
+    // The turn keeps its own graph edit; the user's entry starts exactly where the turn's ended.
+    const turnChange = entry?.files.find((file) => file.path === STORY_GRAPH_PATH);
+    const saved = engine.list().find((candidate) => candidate.label === "Edited story");
+    expect(turnChange).toBeDefined();
+    expect(saved?.files).toHaveLength(1);
+    expect(saved?.files[0]?.path).toBe(STORY_GRAPH_PATH);
+    expect(saved?.files[0]?.before).toBe(turnChange?.after);
+  });
 });

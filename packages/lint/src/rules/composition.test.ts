@@ -1647,6 +1647,19 @@ describe("composition rules", () => {
       expect(finding?.severity).toBe("error");
     });
 
+    it("accepts an object-literal window.__timelines registration as the duration source", async () => {
+      const html = `<html><body>
+        <div id="t" data-composition-id="main" data-start="0" data-width="1920" data-height="1080"></div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.to("#t", { x: 100, duration: 2 });
+          window.__timelines = { main: tl };
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
     it("warns, and says where to author the length, when timed clips give the root a length", async () => {
       const html = `<html><body>
         <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">

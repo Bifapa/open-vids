@@ -22,9 +22,46 @@ use serde_json::json;
 
 use super::coded_error::CodedError;
 
-/// Characters a folder name may not contain (Studio's project-id rule).
+/// Characters a project folder name may not contain: Studio's project-id rule
+/// (`:` `/` `\` and controls) plus what Windows refuses in a file name
+/// (`"` `*` `<` `>` `|` `?`). The names are made for every platform, so a
+/// project created on a Mac still opens when its folder is copied to Windows.
 fn is_bad_name_char(c: char) -> bool {
-    matches!(c, ':' | '/' | '\\') || (c as u32) < 0x20 || c as u32 == 0x7f
+    matches!(c, ':' | '/' | '\\' | '"' | '*' | '<' | '>' | '|' | '?')
+        || (c as u32) < 0x20
+        || c as u32 == 0x7f
+}
+
+/// Windows device names: a folder cannot be called any of these, with or
+/// without an extension.
+const RESERVED_NAMES: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// A folder name every platform accepts, from a name that is only valid by
+/// Studio's rule: invalid characters become spaces, whitespace collapses, and
+/// dots and spaces at the ends go (Windows drops trailing ones silently).
+/// A Windows device name gets a suffix. Empty when nothing usable is left.
+pub fn portable_name(raw: &str) -> String {
+    let cleaned: String = raw
+        .chars()
+        .map(|c| if is_bad_name_char(c) { ' ' } else { c })
+        .collect();
+    let joined = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let name = joined.trim_matches(['.', ' ']);
+    // The device test reads the part before the first dot, so the marker goes
+    // right after it, ahead of any extension.
+    let (stem, extension) = name.split_at(name.find('.').unwrap_or(name.len()));
+    let stem = stem.trim_end();
+    if RESERVED_NAMES
+        .iter()
+        .any(|reserved| stem.eq_ignore_ascii_case(reserved))
+    {
+        format!("{stem} project{extension}")
+    } else {
+        name.to_string()
+    }
 }
 
 const STOP_WORDS: [&str; 15] = [
@@ -102,6 +139,7 @@ pub fn derive_name(prompt: &str, file_names: &[String]) -> String {
                 .to_string();
         }
     }
+    let name = portable_name(&name);
     if name.is_empty() {
         "Untitled Project".to_string()
     } else {
@@ -266,6 +304,30 @@ mod tests {
         assert_eq!(derive_name("..hidden", &[]), "Untitled Project");
         assert_eq!(derive_name(" .x ,y", &[]), "Untitled Project");
         assert_eq!(derive_name("supercalifragilisticexpialidocious-and-more", &[]).chars().count(), 32);
+    }
+
+    #[test]
+    fn names_never_carry_characters_windows_refuses() {
+        assert_eq!(
+            derive_name("Make a promo for \"Acme\" shoes", &[]),
+            "Make a promo for Acme shoes"
+        );
+        assert_eq!(derive_name("Q&A | Founders <live>", &[]), "Q&A Founders live");
+        assert_eq!(derive_name("5 * 5 tricks", &[]), "5 5 tricks");
+        assert_eq!(derive_name("", &names(&["a|b*c.mov"])), "a b c");
+        // Device names are not usable as a folder, with or without extension.
+        assert_eq!(derive_name("con", &[]), "con project");
+        assert_eq!(derive_name("", &names(&["aux.mov"])), "aux project");
+        assert_eq!(derive_name("console", &[]), "console");
+    }
+
+    #[test]
+    fn portable_name_trims_and_refuses_what_leaves_nothing() {
+        assert_eq!(portable_name("  .Intro v2.  "), "Intro v2");
+        assert_eq!(portable_name("Lpt1.draft"), "Lpt1 project.draft");
+        assert_eq!(portable_name("NUL.txt"), "NUL project.txt");
+        assert_eq!(portable_name("<>|?*\""), "");
+        assert_eq!(portable_name("Тизер: интервью"), "Тизер интервью");
     }
 
     #[test]

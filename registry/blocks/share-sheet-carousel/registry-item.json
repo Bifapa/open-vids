@@ -137,7 +137,7 @@
     },
     {
       "path": "TEMPLATE.md",
-      "target": "TEMPLATE.md",
+      "target": "compositions/share-sheet-carousel.TEMPLATE.md",
       "type": "hyperframes:asset"
     }
   ]

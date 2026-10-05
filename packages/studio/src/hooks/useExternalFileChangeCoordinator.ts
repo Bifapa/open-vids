@@ -183,17 +183,28 @@ export function useExternalFileChangeCoordinator({
 
   useEffect(() => {
     generationRef.current += 1;
+    blockedRef.current = null;
     setBlocked(null);
     lastEventIdentityRef.current = null;
   }, [projectId, activeCompPath]);
 
   useEffect(() => {
     if (!projectId || !recoveryFilePath || !loadConflictSnapshot) return;
-    const generation = ++generationRef.current;
+    // Restoring a stored conflict is not an event that supersedes anything, so it takes no new
+    // generation: opening another file in the editor re-runs this effect and must leave a live
+    // banner (whose actions compare against the generation) and an in-flight drain alone. The
+    // stored record applies only if nothing newer happened while it loaded.
+    const generation = generationRef.current;
     let cancelled = false;
     void loadConflictSnapshot(projectId, recoveryFilePath)
       .then((snapshot) => {
-        if (cancelled || !snapshot || !mountedRef.current || generation !== generationRef.current) {
+        if (
+          cancelled ||
+          !snapshot ||
+          !mountedRef.current ||
+          generation !== generationRef.current ||
+          blockedRef.current
+        ) {
           return;
         }
         const payload = {

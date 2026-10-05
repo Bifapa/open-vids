@@ -13,6 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+    <script src="assets/us-atlas-states-10m.js"></script>
     <style>
       * {
         margin: 0;
@@ -165,8 +166,6 @@
 
       <script>
         (function () {
-          var US_TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
-
           var cities = [
             { name: "New York", lat: 40.7128, lon: -74.006, pop: 8300000 },
             { name: "Los Angeles", lat: 34.0522, lon: -118.2437, pop: 3900000 },
@@ -206,152 +205,148 @@
             return (n / 1000).toFixed(0) + "K";
           }
 
-          fetch(US_TOPO_URL)
-            .then(function (r) {
-              return r.json();
-            })
-            .then(function (us) {
-              var states = topojson.feature(us, us.objects.states).features;
-              var projection = d3.geoAlbersUsa().fitSize([1380, 800], {
-                type: "FeatureCollection",
-                features: states,
+          (function (us) {
+            var states = topojson.feature(us, us.objects.states).features;
+            var projection = d3.geoAlbersUsa().fitSize([1380, 800], {
+              type: "FeatureCollection",
+              features: states,
+            });
+            var path = d3.geoPath().projection(projection);
+
+            states.forEach(function (feature) {
+              var d = path(feature);
+              if (!d) return;
+
+              var el = document.createElementNS("http://www.w3.org/2000/svg", "path");
+              el.setAttribute("d", d);
+              el.setAttribute("class", "state-path");
+              statesGroup.appendChild(el);
+            });
+
+            var projectedCities = [];
+            cities.forEach(function (city) {
+              var coords = projection([city.lon, city.lat]);
+              if (!coords) return;
+              projectedCities.push({
+                name: city.name,
+                pop: city.pop,
+                x: coords[0],
+                y: coords[1],
+                r: radiusScale(city.pop),
               });
-              var path = d3.geoPath().projection(projection);
+            });
 
-              states.forEach(function (feature) {
-                var d = path(feature);
-                if (!d) return;
+            projectedCities.sort(function (a, b) {
+              return b.pop - a.pop;
+            });
 
-                var el = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                el.setAttribute("d", d);
-                el.setAttribute("class", "state-path");
-                statesGroup.appendChild(el);
+            var nycCoords = null;
+            projectedCities.forEach(function (city) {
+              if (city.name === "New York") {
+                nycCoords = { x: city.x, y: city.y };
+              }
+            });
+
+            var connectionTargets = ["Los Angeles", "Chicago", "Houston", "Phoenix"];
+            connectionTargets.forEach(function (targetName) {
+              if (!nycCoords) return;
+              var target = null;
+              projectedCities.forEach(function (c) {
+                if (c.name === targetName) target = c;
               });
+              if (!target) return;
 
-              var projectedCities = [];
-              cities.forEach(function (city) {
-                var coords = projection([city.lon, city.lat]);
-                if (!coords) return;
-                projectedCities.push({
-                  name: city.name,
-                  pop: city.pop,
-                  x: coords[0],
-                  y: coords[1],
-                  r: radiusScale(city.pop),
-                });
-              });
+              var midX = (nycCoords.x + target.x) / 2;
+              var midY = Math.min(nycCoords.y, target.y) - 60;
 
-              projectedCities.sort(function (a, b) {
-                return b.pop - a.pop;
-              });
+              var pathD =
+                "M " +
+                nycCoords.x +
+                " " +
+                nycCoords.y +
+                " Q " +
+                midX +
+                " " +
+                midY +
+                " " +
+                target.x +
+                " " +
+                target.y;
 
-              var nycCoords = null;
-              projectedCities.forEach(function (city) {
-                if (city.name === "New York") {
-                  nycCoords = { x: city.x, y: city.y };
-                }
-              });
+              var line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+              line.setAttribute("d", pathD);
+              line.setAttribute("class", "connection-line");
+              connectionsGroup.appendChild(line);
 
-              var connectionTargets = ["Los Angeles", "Chicago", "Houston", "Phoenix"];
-              connectionTargets.forEach(function (targetName) {
-                if (!nycCoords) return;
-                var target = null;
-                projectedCities.forEach(function (c) {
-                  if (c.name === targetName) target = c;
-                });
-                if (!target) return;
+              var length = line.getTotalLength();
+              line.style.strokeDasharray = length;
+              line.style.strokeDashoffset = length;
+            });
 
-                var midX = (nycCoords.x + target.x) / 2;
-                var midY = Math.min(nycCoords.y, target.y) - 60;
+            projectedCities.forEach(function (city) {
+              var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+              circle.setAttribute("cx", city.x);
+              circle.setAttribute("cy", city.y);
+              circle.setAttribute("r", city.r);
+              circle.setAttribute("class", "city-bubble");
+              circle.setAttribute("data-city", city.name);
+              bubblesGroup.appendChild(circle);
+            });
 
-                var pathD =
-                  "M " +
-                  nycCoords.x +
-                  " " +
-                  nycCoords.y +
-                  " Q " +
-                  midX +
-                  " " +
-                  midY +
-                  " " +
-                  target.x +
-                  " " +
-                  target.y;
+            var pulseCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            if (nycCoords) {
+              pulseCircle.setAttribute("cx", nycCoords.x);
+              pulseCircle.setAttribute("cy", nycCoords.y);
+              pulseCircle.setAttribute("r", radiusScale(8300000));
+              pulseCircle.setAttribute("class", "city-pulse");
+              bubblesGroup.appendChild(pulseCircle);
+            }
 
-                var line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                line.setAttribute("d", pathD);
-                line.setAttribute("class", "connection-line");
-                connectionsGroup.appendChild(line);
+            var top5 = projectedCities.slice(0, 5);
+            top5.forEach(function (city, i) {
+              var g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+              g.setAttribute("class", "callout-group");
 
-                var length = line.getTotalLength();
-                line.style.strokeDasharray = length;
-                line.style.strokeDashoffset = length;
-              });
+              var offsetX = city.r + 12;
+              var offsetY = -8;
 
-              projectedCities.forEach(function (city) {
-                var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                circle.setAttribute("cx", city.x);
-                circle.setAttribute("cy", city.y);
-                circle.setAttribute("r", city.r);
-                circle.setAttribute("class", "city-bubble");
-                circle.setAttribute("data-city", city.name);
-                bubblesGroup.appendChild(circle);
-              });
-
-              var pulseCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-              if (nycCoords) {
-                pulseCircle.setAttribute("cx", nycCoords.x);
-                pulseCircle.setAttribute("cy", nycCoords.y);
-                pulseCircle.setAttribute("r", radiusScale(8300000));
-                pulseCircle.setAttribute("class", "city-pulse");
-                bubblesGroup.appendChild(pulseCircle);
+              if (city.name === "Los Angeles" || city.name === "San Francisco") {
+                offsetX = -(city.r + 80);
               }
 
-              var top5 = projectedCities.slice(0, 5);
-              top5.forEach(function (city, i) {
-                var g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-                g.setAttribute("class", "callout-group");
+              var calloutLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+              calloutLine.setAttribute("x1", city.x);
+              calloutLine.setAttribute("y1", city.y);
+              calloutLine.setAttribute("x2", city.x + offsetX);
+              calloutLine.setAttribute("y2", city.y + offsetY);
+              calloutLine.setAttribute("class", "callout-line");
+              g.appendChild(calloutLine);
 
-                var offsetX = city.r + 12;
-                var offsetY = -8;
+              var nameText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+              nameText.setAttribute("x", city.x + offsetX + (offsetX > 0 ? 6 : -6));
+              nameText.setAttribute("y", city.y + offsetY - 2);
+              nameText.setAttribute("class", "callout-name");
+              if (offsetX < 0) {
+                nameText.setAttribute("text-anchor", "end");
+              }
+              nameText.textContent = city.name;
+              g.appendChild(nameText);
 
-                if (city.name === "Los Angeles" || city.name === "San Francisco") {
-                  offsetX = -(city.r + 80);
-                }
+              var valueText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+              valueText.setAttribute("x", city.x + offsetX + (offsetX > 0 ? 6 : -6));
+              valueText.setAttribute("y", city.y + offsetY + 14);
+              valueText.setAttribute("class", "callout-value");
+              if (offsetX < 0) {
+                valueText.setAttribute("text-anchor", "end");
+              }
+              valueText.textContent = formatPop(city.pop) + " residents";
+              g.appendChild(valueText);
 
-                var calloutLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                calloutLine.setAttribute("x1", city.x);
-                calloutLine.setAttribute("y1", city.y);
-                calloutLine.setAttribute("x2", city.x + offsetX);
-                calloutLine.setAttribute("y2", city.y + offsetY);
-                calloutLine.setAttribute("class", "callout-line");
-                g.appendChild(calloutLine);
-
-                var nameText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-                nameText.setAttribute("x", city.x + offsetX + (offsetX > 0 ? 6 : -6));
-                nameText.setAttribute("y", city.y + offsetY - 2);
-                nameText.setAttribute("class", "callout-name");
-                if (offsetX < 0) {
-                  nameText.setAttribute("text-anchor", "end");
-                }
-                nameText.textContent = city.name;
-                g.appendChild(nameText);
-
-                var valueText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-                valueText.setAttribute("x", city.x + offsetX + (offsetX > 0 ? 6 : -6));
-                valueText.setAttribute("y", city.y + offsetY + 14);
-                valueText.setAttribute("class", "callout-value");
-                if (offsetX < 0) {
-                  valueText.setAttribute("text-anchor", "end");
-                }
-                valueText.textContent = formatPop(city.pop) + " residents";
-                g.appendChild(valueText);
-
-                calloutsGroup.appendChild(g);
-              });
-
-              buildTimeline(projectedCities, pulseCircle);
+              calloutsGroup.appendChild(g);
             });
+
+            buildTimeline(projectedCities, pulseCircle);
+          })(window.US_ATLAS_STATES_10M);
 
           function buildTimeline(projectedCities, pulseCircle) {
             var statePaths = statesGroup.querySelectorAll(".state-path");

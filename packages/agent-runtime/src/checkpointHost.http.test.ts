@@ -24,7 +24,12 @@ afterEach(async () => {
   );
 });
 
-async function fakeHistoryServer(entries: unknown[], undoResponses: Record<string, unknown> = {}) {
+async function fakeHistoryServer(
+  entries: unknown[],
+  undoResponses: Record<string, unknown> = {},
+  /** Entry ids whose undo request fails with this HTTP status. */
+  undoFailures: Record<string, number> = {},
+) {
   const requests: RequestRecord[] = [];
   const server = createServer((request, response) => {
     let bodyText = "";
@@ -48,6 +53,14 @@ async function fakeHistoryServer(entries: unknown[], undoResponses: Record<strin
       else if (request.url?.endsWith("/window/window-1/close")) result = { entry: null };
       else if (request.url?.endsWith("/undo")) {
         const entryId = isRecord(body) && typeof body.entryId === "string" ? body.entryId : "";
+        const failure = undoFailures[entryId];
+        if (failure !== undefined) {
+          response.writeHead(failure, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({ error: "That change is no longer kept in this project's history" }),
+          );
+          return;
+        }
         result = undoResponses[entryId] ?? { ok: true, entry: null };
       } else result = { ok: true };
       response.writeHead(200, { "content-type": "application/json" });
@@ -129,6 +142,23 @@ describe("HttpCheckpointHost", () => {
       "just-this",
       "just-this",
     ]);
+  });
+
+  it("returns what was already undone when a later undo request fails", async () => {
+    const fixture = await fakeHistoryServer(
+      [],
+      { newer: { ok: true, entry: { id: "undo-newer" } } },
+      { older: 409 },
+    );
+    const host = new HttpCheckpointHost();
+    expect(await host.revert(fixture.scope, ["older", "newer"], undefined)).toMatchObject({
+      ok: false,
+      failure: expect.stringContaining("no longer kept"),
+      remainingEntryIds: ["older"],
+      undoEntryIds: ["undo-newer"],
+    });
+    // Nothing was undone yet: the failure is the caller's to see as it is.
+    await expect(host.revert(fixture.scope, ["older"], undefined)).rejects.toThrow();
   });
 
   it("asks without a mode so a conflict comes back, and lists the files of entries", async () => {

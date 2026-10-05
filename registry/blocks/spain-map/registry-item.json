@@ -3,7 +3,7 @@
   "name": "spain-map",
   "type": "hyperframes:block",
   "title": "Spain Map",
-  "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend — D3 conic conformal projection",
+  "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend \u2014 D3 conic conformal projection",
   "tags": ["data", "map", "geography", "spain", "europe", "choropleth"],
   "dimensions": {
     "width": 1920,
@@ -13,8 +13,18 @@
   "files": [
     {
       "path": "spain-map.html",
-      "target": "compositions/spain-map.html",
+      "target": "compositions/spain-map/spain-map.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/es-atlas-autonomous-regions.js",
+      "target": "compositions/spain-map/assets/es-atlas-autonomous-regions.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/es-atlas-LICENSE.txt",
+      "target": "compositions/spain-map/assets/es-atlas-LICENSE.txt",
+      "type": "hyperframes:asset"
     }
   ],
   "preview": {

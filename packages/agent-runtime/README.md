@@ -54,7 +54,7 @@ from before either existed reads with its defaults and gains it on the next writ
 
 ## Providers and credentials
 
-The model catalog and the credentials come from the user's OMP setup (`~/.omp/agent`, read-only for OpenVids) **plus the
+The model catalog and the credentials come from the user's OMP setup (`~/.omp/agent`; OpenVids stores nothing of its own there) **plus the
 API keys the user enters in OpenVids**, so a user with no OMP login can still use the agents.
 
 - **Storage.** `provider-credentials.json` in the settings directory: `{"version":1,"apiKeys":{"<provider>":"<key>"}}`,
@@ -143,11 +143,14 @@ state carries.
 
 ## Autonomy
 
-`AgentSettings.autonomy` (`PATCH /v1/settings` with a partial `autonomy` group) holds three values, defaults `plan`, `true`,
+`AgentSettings.autonomy` (`PATCH /v1/settings` with a partial `autonomy` group) holds three values, defaults `big`, `true`,
 `true`:
 
-- `defaultIntent` (`plan` | `edit` | `ask`): the Mode chip a new chat's composer starts with. The runtime only stores it;
-  turns still use the intent the request or chat carries.
+- `planApproval` (`big` | `always` | `never`): when the Director proposes a plan (`propose_plan`) that the user approves with
+  "Carry out the plan" before anything changes. `big` (default): only for a big request (more than two steps, two or more
+  specialists, a render, import or download, removing or replacing what the user made, long-form analysis); `always`: every
+  request that changes the project; `never`: run directly. After a proposal the rest of that turn changes nothing. The old
+  `defaultIntent` key was removed; the validator ignores it like any unknown key.
 - `askBeforeLockedEdits`: locks are never overridden — the editing and story services refuse a change to a locked or
   hand-set item (and the file-tool guard refuses to rewrite a locked clip) whatever this says. The setting decides what the
   agent does about it. On: the Director's `<team>` block, every delegated task (`<autonomy>`) and every such refusal
@@ -381,7 +384,8 @@ never from model-supplied text.
   refuses every later call of that kind in the turn. Concurrent asks of the same kind share one request, and an answered
   kind is not asked again; an answered `website_full_access` request also covers reading, because full access includes
   it. The waiting call resumes on the answer (its result tells the model the user allowed it once /
-  turned it on, and the answer also counts as the turn's `askBeforeDownloads` approval for the website tools) or returns
+  turned it on; when the card was about a download or a recording, the answer also counts as the turn's
+  `askBeforeDownloads` approval for the website tools, an answer to an open/read card never does) or returns
   a refusal on deny/expiry ("continue without it, do not retry this turn"). The request never times out by itself:
   Stop, turn end or failure expires it (part updated) and revokes the turn's grant (best effort). When Studio cannot
   apply an `always`/`once` answer the request stays pending and the route fails, so the user can retry. The policy
@@ -546,7 +550,7 @@ emits its own events), editing tools report labelled activity rows. Role
 instructions (system prompts) come from the runtime (`src/agents/roles.ts`). Edit mode is pinned to
 path-based `replace`; skills and rules are empty; only `<project>/AGENTS.md` (or `CLAUDE.md`) is
 loaded as context. Providers, auth and model catalog come from the user's existing OMP setup
-(`~/.omp/agent`; the runtime never writes to it) plus the API keys stored in OpenVids (see Providers and credentials). A `tool_call` guard (`src/omp/path-guard.ts`)
+(`~/.omp/agent`; the runtime stores no key or sign-in of its own there, see "What still writes to OMP's database") plus the API keys stored in OpenVids (see Providers and credentials). A `tool_call` guard (`src/omp/path-guard.ts`)
 blocks every path outside the project or inside `.hyperframes/`, checks each target of OMP's `a;b` /
 `a,b` / `a b` / brace path fan-out, and fails closed for `edit`/`write` calls whose target it cannot
 read. The guard is bound through `preloadedPreparedExtensions`: OMP silently drops `extensions` when

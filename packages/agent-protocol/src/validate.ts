@@ -27,6 +27,7 @@ import {
   PLAN_APPROVALS,
   SPECIALIST_IDS,
   STORY_ACTIONS,
+  STORY_OFFER_STATES,
   THINKING_EFFORTS,
   isChatIntent,
   isSpecialistId,
@@ -45,6 +46,9 @@ import {
   type SpecialistDefaults,
   type SpecialistId,
   type StoryActionOptions,
+  type StoryOffer,
+  type StoryOfferChapter,
+  type StoryOfferState,
   type ThinkingEffort,
 } from "./types.js";
 import { parseExecutionQuality } from "./qa.js";
@@ -105,6 +109,33 @@ function num(value: unknown): number | undefined {
 
 export function isThinkingEffort(value: unknown): value is ThinkingEffort {
   return typeof value === "string" && (THINKING_EFFORTS as readonly string[]).includes(value);
+}
+
+function isStoryOfferState(value: unknown): value is StoryOfferState {
+  return typeof value === "string" && STORY_OFFER_STATES.some((state) => state === value);
+}
+
+function isStoryOfferChapter(value: unknown): value is StoryOfferChapter {
+  return (
+    isRecord(value) &&
+    typeof value.title === "string" &&
+    (value.summary === undefined || typeof value.summary === "string") &&
+    (value.material === undefined || typeof value.material === "string") &&
+    (value.durationSeconds === undefined || num(value.durationSeconds) !== undefined)
+  );
+}
+
+/** A Story Mode offer as persisted in a chat log or carried by a `storyOffer.updated` event. */
+export function isStoryOffer(value: unknown): value is StoryOffer {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    isStoryOfferState(value.state) &&
+    num(value.requestedAt) !== undefined &&
+    (value.answeredAt === undefined || num(value.answeredAt) !== undefined) &&
+    Array.isArray(value.chapters) &&
+    value.chapters.every(isStoryOfferChapter)
+  );
 }
 
 export function parseModelSelection(value: unknown): ModelSelection | null {
@@ -895,8 +926,8 @@ export function parseAgentIntake(value: unknown): Parsed<AgentIntake> {
   if (!isRecord(value)) return fail("intake must be an object");
   if (value.version !== 1) return fail("unsupported intake version");
   const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
-  if (prompt.length > LIMITS.promptChars)
-    return fail(`prompt is longer than ${LIMITS.promptChars} characters`);
+  // A prompt over the turn limit is kept whole, not refused: the intake file is deleted once claimed, and starting
+  // the turn refuses it visibly and leaves the text in the chat's draft box.
   // An intake written before the plan-approval rework may still say `plan`: it is read as `edit`.
   const intent = normalizeChatIntent(value.intent ?? "edit");
   if (!intent) return fail(`intent must be one of: ${CHAT_INTENTS.join(", ")}`);
@@ -919,10 +950,11 @@ export function parseAgentIntake(value: unknown): Parsed<AgentIntake> {
     }
   }
   const rawFiles = value.files ?? [];
-  if (!Array.isArray(rawFiles) || rawFiles.length > INTAKE_FILES)
-    return fail(`files must be an array of at most ${INTAKE_FILES} files`);
+  if (!Array.isArray(rawFiles)) return fail("files must be an array");
+  // Home imports every dropped file into the project; the list only names references for the first turn (Studio
+  // attaches far fewer), so a long one is clamped rather than losing the whole intake.
   const files: AgentIntakeFile[] = [];
-  for (const [index, raw] of rawFiles.entries()) {
+  for (const [index, raw] of rawFiles.slice(0, INTAKE_FILES).entries()) {
     const file = parseIntakeFile(raw, index);
     if (!file.ok) return file;
     files.push(file.value);

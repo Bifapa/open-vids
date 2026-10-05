@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentId } from "@hyperframes/agent-protocol";
+import { MAX_ALLOWED_SITES, type AgentId } from "@hyperframes/agent-protocol";
 import type { BackendPromptOutcome } from "../backend.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "../testing/runtimeFixture.js";
 import { FakeResearchHost, researchPolicy, sampleWebsiteStyle } from "../testing/research.js";
@@ -27,7 +27,9 @@ function executor(overrides: Partial<TurnResearchOptions> = {}) {
   });
   const call = (args: unknown, caller: AgentId = "director") =>
     turn.execute(caller, "read_website", args, new AbortController().signal);
-  return { host, call };
+  const callTool = (name: string, args: unknown, caller: AgentId = "director") =>
+    turn.execute(caller, name, args, new AbortController().signal);
+  return { host, call, callTool, resources: overrides.websites?.resources };
 }
 
 describe("read_website scope: only a site the user linked", () => {
@@ -78,6 +80,239 @@ describe("read_website scope: only a site the user linked", () => {
     }
     expect((await call({ url: "https://linear.app" }, "motion")).isError).toBeUndefined();
     expect(host.websiteRequests).toHaveLength(1);
+  });
+});
+
+describe("a redirect off the linked site", () => {
+  const OTHER = "https://victim-other-site.com/dashboard";
+  const redirecting = "https://www.linear.app/out?to=https://victim-other-site.com/dashboard";
+
+  it("shows and remembers nothing of a read that ended on another site", async () => {
+    const resources = new WebsiteResourceLog();
+    const { host, call, callTool } = executor({
+      access: { assets: true, websites: true, websiteFiles: true },
+      websites: { chatId: "chat-1", resources },
+    });
+    host.websiteResult = {
+      site: { ...sampleWebsiteStyle(OTHER), url: redirecting },
+      screenshots: [
+        { name: "viewport.jpg", mimeType: "image/jpeg", data: "AAAA", width: 1440, height: 900 },
+      ],
+    };
+
+    const refused = await call({ url: redirecting });
+
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toContain("blocked_by_policy");
+    expect(refused.text).toContain("redirected to https://victim-other-site.com/dashboard");
+    expect(refused.text).not.toContain("Example — build better");
+    expect(refused.images ?? []).toEqual([]);
+    // The other site's files were not remembered, so its API is still out of reach.
+    const file = await callTool("get_website_file", {
+      url: "https://victim-other-site.com/api/export.json",
+      mode: "read",
+    });
+    expect(file.isError).toBe(true);
+    expect(host.websiteFileRequests).toEqual([]);
+  });
+
+  it("refuses a file or a recording whose redirect left the linked site, but not one inside it", async () => {
+    const { host, callTool } = executor({
+      access: { assets: true, websites: true, websiteFiles: true },
+    });
+
+    host.websiteFileResult = {
+      url: redirecting,
+      finalUrl: OTHER,
+      kind: "stylesheet",
+      mimeType: "text/css",
+      bytes: 10,
+      text: "body { color: red }",
+    };
+    const file = await callTool("get_website_file", { url: redirecting, mode: "read" });
+    expect(file.isError).toBe(true);
+    expect(file.text).not.toContain("body { color: red }");
+
+    host.recordResult = {
+      path: "assets/web/victim-other-site.com/recordings/page.mp4",
+      finalUrl: OTHER,
+      width: 1920,
+      height: 1080,
+      duration: 4,
+      bytes: 100,
+      notes: [],
+    };
+    const recording = await callTool("record_website", { url: redirecting, seconds: 4 });
+    expect(recording.isError).toBe(true);
+
+    host.websiteFileResult = {
+      url: "https://linear.app/a.css",
+      finalUrl: "https://docs.linear.app/a.css",
+      kind: "stylesheet",
+      mimeType: "text/css",
+      bytes: 10,
+      text: "body { color: blue }",
+    };
+    const inside = await callTool("get_website_file", {
+      url: "https://linear.app/a.css",
+      mode: "read",
+    });
+    expect(inside.isError).toBeUndefined();
+    expect(inside.text).toContain("body { color: blue }");
+  });
+});
+
+describe("the site scope the runtime hands Studio", () => {
+  it("names the linked sites on a read, a file and a recording, so Studio can stop a redirect itself", async () => {
+    const { host, call, callTool } = executor({
+      access: { assets: true, websites: true, websiteFiles: true },
+    });
+    await call({ url: "https://www.linear.app/pricing" });
+    await callTool("get_website_file", { url: "https://linear.app/a.css", mode: "read" });
+    await callTool("record_website", { url: "https://docs.linear.app/", seconds: 4 });
+
+    expect(host.websiteRequests.map((request) => request.allowedSites)).toEqual([["linear.app"]]);
+    expect(host.websiteFileRequests.map((request) => request.allowedSites)).toEqual([
+      ["linear.app"],
+    ]);
+    expect(host.recordRequests.map((request) => request.allowedSites)).toEqual([["linear.app"]]);
+  });
+
+  it("adds the site of a CDN file an earlier read listed, and nothing else", async () => {
+    const resources = new WebsiteResourceLog();
+    const { host, call, callTool } = executor({
+      access: { assets: true, websites: true, websiteFiles: true },
+      websites: { chatId: "chat-1", resources },
+    });
+    const site = sampleWebsiteStyle("https://linear.app/");
+    host.websiteResult = {
+      site: {
+        ...site,
+        resources: [
+          {
+            url: "https://cdn.assets-example.net/hero.mp4",
+            kind: "video",
+            mimeType: "video/mp4",
+            bytes: 1000,
+            width: null,
+            height: null,
+            duration: null,
+            usage: "video",
+          },
+        ],
+      },
+      screenshots: [],
+    };
+    await call({ url: "https://linear.app/" });
+    await callTool("get_website_file", {
+      url: "https://cdn.assets-example.net/hero.mp4",
+      mode: "save",
+    });
+
+    expect(host.websiteFileRequests[0]?.allowedSites).toEqual(["linear.app", "assets-example.net"]);
+  });
+
+  it("sends at most the cap of sites when the chat linked more, always with the request's own site", async () => {
+    const many = Array.from({ length: 60 }, (_, index) => `https://site-${index}.example`);
+    const resources = new WebsiteResourceLog();
+    const { host, call, callTool } = executor({
+      access: { assets: true, websites: true, websiteFiles: true },
+      websites: { chatId: "chat-1", resources },
+      userTexts: () => [many.join(" ")],
+    });
+    const site = sampleWebsiteStyle("https://site-59.example/");
+    host.websiteResult = {
+      site: {
+        ...site,
+        resources: [
+          {
+            url: "https://cdn.assets-example.net/hero.mp4",
+            kind: "video",
+            mimeType: "video/mp4",
+            bytes: 1000,
+            width: null,
+            height: null,
+            duration: null,
+            usage: "video",
+          },
+        ],
+      },
+      screenshots: [],
+    };
+
+    await call({ url: "https://site-59.example/" });
+    await callTool("get_website_file", {
+      url: "https://cdn.assets-example.net/hero.mp4",
+      mode: "save",
+    });
+    await callTool("record_website", { url: "https://site-58.example/", seconds: 4 });
+
+    const read = host.websiteRequests[0]?.allowedSites ?? [];
+    const file = host.websiteFileRequests[0]?.allowedSites ?? [];
+    const record = host.recordRequests[0]?.allowedSites ?? [];
+    expect(read).toHaveLength(MAX_ALLOWED_SITES);
+    expect(read[0]).toBe("site-59.example");
+    expect(file).toHaveLength(MAX_ALLOWED_SITES);
+    expect(file[0]).toBe("assets-example.net");
+    expect(record).toHaveLength(MAX_ALLOWED_SITES);
+    expect(record[0]).toBe("site-58.example");
+  });
+
+  it("judges a redirect by the sites it sent Studio, so a CDN file that moves within its CDN is not reported blocked", async () => {
+    const resources = new WebsiteResourceLog();
+    const { host, call, callTool } = executor({
+      access: { assets: true, websites: true, websiteFiles: true },
+      websites: { chatId: "chat-1", resources },
+    });
+    const site = sampleWebsiteStyle("https://linear.app/");
+    host.websiteResult = {
+      site: {
+        ...site,
+        resources: [
+          {
+            url: "https://cdn.assets-example.net/pkg",
+            kind: "video",
+            mimeType: "video/mp4",
+            bytes: 1000,
+            width: null,
+            height: null,
+            duration: null,
+            usage: "video",
+          },
+        ],
+      },
+      screenshots: [],
+    };
+    await call({ url: "https://linear.app/" });
+    host.websiteFileResult = {
+      url: "https://cdn.assets-example.net/pkg",
+      finalUrl: "https://cdn.assets-example.net/pkg@1.2.3/hero.mp4",
+      kind: "video",
+      mimeType: "video/mp4",
+      bytes: 10,
+    };
+
+    const moved = await callTool("get_website_file", {
+      url: "https://cdn.assets-example.net/pkg",
+      mode: "save",
+    });
+    expect(moved.isError).toBeUndefined();
+    expect(moved.text).not.toContain("blocked_by_policy");
+
+    // Studio would refuse a hop outside the list it was sent, so the runtime refuses it too.
+    host.websiteFileResult = {
+      url: "https://cdn.assets-example.net/pkg",
+      finalUrl: "https://elsewhere.example.org/hero.mp4",
+      kind: "video",
+      mimeType: "video/mp4",
+      bytes: 10,
+    };
+    const left = await callTool("get_website_file", {
+      url: "https://cdn.assets-example.net/pkg",
+      mode: "save",
+    });
+    expect(left.isError).toBe(true);
+    expect(left.text).toContain("blocked_by_policy");
   });
 });
 
@@ -156,7 +391,9 @@ describe("read_website results", () => {
     const { host, call } = executor();
     const result = await call({ url: "https://linear.app" });
     expect(result.text).toContain("Nothing was saved");
-    expect(host.websiteRequests).toEqual([{ url: "https://linear.app", turnId: "turn-1" }]);
+    expect(host.websiteRequests).toEqual([
+      { url: "https://linear.app", allowedSites: ["linear.app"], turnId: "turn-1" },
+    ]);
   });
 
   it("sets turn, agent and model itself for a save, whatever the model sends", async () => {
@@ -170,7 +407,14 @@ describe("read_website results", () => {
       requestId: "x",
     });
     expect(host.websiteRequests).toEqual([
-      { url: "https://linear.app", save: true, turnId: "turn-1", agent: "director", model: null },
+      {
+        url: "https://linear.app",
+        allowedSites: ["linear.app"],
+        save: true,
+        turnId: "turn-1",
+        agent: "director",
+        model: null,
+      },
     ]);
   });
 
@@ -302,7 +546,14 @@ describe("read_website in a running turn", () => {
 
       const turnId = fixture.chats.get(chat.id)?.turns[0]?.id;
       expect(fixture.research.websiteRequests).toEqual([
-        { url: "https://linear.app", save: true, turnId, agent: "motion", model: null },
+        {
+          url: "https://linear.app",
+          allowedSites: ["linear.app"],
+          save: true,
+          turnId,
+          agent: "motion",
+          model: null,
+        },
       ]);
       expect(
         fixture.backend.sessionsOf("motion")[0]?.input.hostTools.map((tool) => tool.name),
@@ -408,6 +659,7 @@ describe("full access in a running turn", () => {
         {
           url: "https://linear.app/app.css",
           mode: "read",
+          allowedSites: ["linear.app"],
           turnId: fixture.chats.get(chat.id)?.turns[0]?.id,
         },
       ]);

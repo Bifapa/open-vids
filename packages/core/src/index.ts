@@ -174,7 +174,13 @@ export {
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
 } from "./compiler/rewriteSubCompPaths";
-export { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "./compiler/assetPaths";
+export {
+  ASSET_PATH_SELECTOR,
+  isNonRelativeUrl,
+  isPathInside,
+  replaceCssUrls,
+  rewriteSrcset,
+} from "./compiler/assetPaths";
 export {
   checkSubCompositionUsability,
   type ParsableDocumentLike,

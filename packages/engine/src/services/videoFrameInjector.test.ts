@@ -263,9 +263,54 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     await hook!(fakePage, 0);
     expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(1);
 
+    // Same frameIndex: the image is not re-sent, but the page is still asked
+    // to re-sync the video's style (see the held-frame test below).
+    injectVideoFramesBatchMock.mockResolvedValueOnce(["pip"]);
     await hook!(fakePage, 0);
-    // Cache hit — no second inject for the same frameIndex.
-    expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(1);
+    expect(injectVideoFramesBatchMock).toHaveBeenLastCalledWith(fakePage, [
+      { videoId: "pip", dataUri: null },
+    ]);
+  });
+
+  it("re-syncs style every frame while the frame index holds still, without re-sending the image", async () => {
+    // A clip whose slot outlasts its media (or a slow-motion/VFR source) keeps
+    // the same frame index across many output frames. GSAP-animated
+    // opacity/transform on the <video> must still reach the replacement <img>
+    // on each of them, or a fade on a held tail never fades in the export.
+    const { evaluate, page, hook } = makeGpuInjector();
+    injectVideoFramesBatchMock.mockResolvedValue(["facet"]);
+
+    await hook!(page, 0);
+    await hook!(page, 0.5);
+    await hook!(page, 1);
+
+    expect(injectVideoFramesBatchMock.mock.calls.map((call) => call[1])).toEqual([
+      [{ videoId: "facet", dataUri: "data:image/png;base64,fake-/f" }],
+      [{ videoId: "facet", dataUri: null }],
+      [{ videoId: "facet", dataUri: null }],
+    ]);
+    // Only the frame that actually changed re-renders GPU adapters.
+    expect(evaluate.mock.calls.map((call) => call[1])).toEqual([0]);
+  });
+
+  it("re-reads the frame when a style-only update found nothing on the page", async () => {
+    const fakePage = { evaluate: async () => undefined } as unknown as Page;
+    const hook = createVideoFrameInjector(
+      fakeTable({ videoId: "pip", framePath: "/p", frameIndex: 5 }),
+      { frameSrcResolver: inlineResolver },
+    );
+
+    injectVideoFramesBatchMock.mockResolvedValueOnce(["pip"]);
+    await hook!(fakePage, 0);
+    // Page dropped the video on the style-only call (e.g. host hidden).
+    injectVideoFramesBatchMock.mockResolvedValueOnce([]);
+    await hook!(fakePage, 0);
+    injectVideoFramesBatchMock.mockResolvedValueOnce(["pip"]);
+    await hook!(fakePage, 0);
+
+    expect(injectVideoFramesBatchMock).toHaveBeenLastCalledWith(fakePage, [
+      { videoId: "pip", dataUri: "data:image/png;base64,fake-/p" },
+    ]);
   });
 
   it("reinjects frame zero when a whole-chunk retry uses a fresh hook and page", async () => {

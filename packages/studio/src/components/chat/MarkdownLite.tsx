@@ -59,6 +59,14 @@ function InlineRun({ nodes }: { nodes: Inline[] }) {
   );
 }
 
+/** A column's alignment from its delimiter row; `start` (none given) follows the reading direction. */
+const ALIGN_CLASS: Record<"start" | "left" | "center" | "right", string> = {
+  start: "text-start",
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+};
+
 function BlockView({ block }: { block: Block }): ReactNode {
   switch (block.kind) {
     case "paragraph":
@@ -99,6 +107,46 @@ function BlockView({ block }: { block: Block }): ReactNode {
         </Tag>
       );
     }
+    case "table":
+      return (
+        <div className="mb-1.5 max-w-full overflow-x-auto last:mb-0" data-testid="markdown-table">
+          <table className="w-full border-collapse text-xs leading-[15px]">
+            <thead>
+              <tr>
+                {block.header.map((cell, column) => (
+                  <th
+                    key={column}
+                    scope="col"
+                    className={cn(
+                      "border border-border-subtle bg-surface-1 px-1.5 py-1 font-semibold text-fg",
+                      ALIGN_CLASS[block.align[column] ?? "start"],
+                    )}
+                  >
+                    <InlineRun nodes={cell} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {row.map((cell, column) => (
+                    <td
+                      key={column}
+                      className={cn(
+                        "border border-border-subtle px-1.5 py-1 align-top",
+                        ALIGN_CLASS[block.align[column] ?? "start"],
+                      )}
+                    >
+                      <InlineRun nodes={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
   }
 }
 

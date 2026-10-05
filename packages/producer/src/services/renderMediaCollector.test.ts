@@ -91,8 +91,9 @@ describe("collectRenderMedia host windows", () => {
     const { videos, audios } = collectRenderMedia(html);
     expect(videos.find((video) => video.id === "local")).toMatchObject({ start: 4, end: 6 });
     expect(videos.find((video) => video.id === "global")).toMatchObject({ start: 2, end: 4 });
-    // Open-ended audio tracks close with the host (data-start 2 + data-duration 6).
-    expect(audios.find((audio) => audio.id === "local-audio")).toMatchObject({ start: 4, end: 8 });
-    expect(audios.find((audio) => audio.id === "global-audio")).toMatchObject({ start: 2, end: 8 });
+    // An audible video's soundtrack closes with its picture (start + data-duration), the same
+    // window the video itself gets.
+    expect(audios.find((audio) => audio.id === "local-audio")).toMatchObject({ start: 4, end: 6 });
+    expect(audios.find((audio) => audio.id === "global-audio")).toMatchObject({ start: 2, end: 4 });
   });
 });

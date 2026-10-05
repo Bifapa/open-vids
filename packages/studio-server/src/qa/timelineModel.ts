@@ -5,7 +5,7 @@ import type {
   TimelineSnapshot,
   TranscriptArtifact,
 } from "@hyperframes/agent-protocol";
-import { CAPTIONS_FILE } from "../editing/captions.js";
+import { isCaptionsFile } from "../editing/captions.js";
 
 /** Everything the timeline-derived checks, the layout mapping and the sample planner read, gathered once per check. */
 export interface QaTimeline {
@@ -46,7 +46,7 @@ export function isContent(clip: TimelineClip): boolean {
 }
 
 export function isCaptionsHost(clip: TimelineClip): boolean {
-  return clip.compositionSrc === CAPTIONS_FILE;
+  return isCaptionsFile(clip.compositionSrc ?? null);
 }
 
 /** The clip's id, as issues and humans name it. */

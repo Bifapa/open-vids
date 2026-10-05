@@ -100,11 +100,22 @@ describe("BeginFrame capability probe", () => {
       }),
     } as unknown as Browser;
 
-    const result = await _probeBeginFrameSupportForTests(browser, 25);
+    // Fake clock: the probe checks `deadline - Date.now()` before every step, so a
+    // real 25 ms budget can expire early on a loaded host and read "before"
+    // instead of "during". Frozen time keeps every step inside the budget until
+    // the never-resolving call is pending, then the advance expires it.
+    vi.useFakeTimers();
+    try {
+      const pending = _probeBeginFrameSupportForTests(browser, 25);
+      await vi.advanceTimersByTimeAsync(25);
+      const result = await pending;
 
-    expect(result.supported).toBe(false);
-    expect(result.detail).toContain("timeout during screenshot beginFrame attempt 1");
-    expect(close).toHaveBeenCalledOnce();
+      expect(result.supported).toBe(false);
+      expect(result.detail).toContain("timeout during screenshot beginFrame attempt 1");
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("force-kills and disconnects when graceful browser cleanup never resolves", async () => {

@@ -104,4 +104,75 @@ describe("parseMarkdownLite", () => {
       { kind: "code", language: "ts", text: "const a = 1;" },
     ]);
   });
+
+  describe("tables", () => {
+    const text = (cells: readonly (readonly { kind: string; text?: string }[])[]) =>
+      cells.map((cell) => cell.map((node) => node.text ?? "").join(""));
+
+    it("reads a pipe table with its header, per-column alignment and rows", () => {
+      const [table] = parseMarkdownLite(
+        "| Chapter | Start | Length |\n| :--- | :---: | ---: |\n| Intro | 0:00 | 12 s |\n| Outro | 1:40 | 8 s |",
+      );
+      expect(table?.kind).toBe("table");
+      if (table?.kind !== "table") return;
+      expect(text(table.header)).toEqual(["Chapter", "Start", "Length"]);
+      expect(table.align).toEqual(["left", "center", "right"]);
+      expect(table.rows.map(text)).toEqual([
+        ["Intro", "0:00", "12 s"],
+        ["Outro", "1:40", "8 s"],
+      ]);
+      // The cells are inline Markdown: a timecode in a cell still seeks.
+      expect(table.rows[0]?.[1]).toEqual([{ kind: "timecode", text: "0:00", seconds: 0 }]);
+    });
+
+    it("takes tables without outer pipes, and fills every row to the header's width", () => {
+      const [table] = parseMarkdownLite("a | b\n--- | ---\n1 |\n2 | 3 | 4");
+      if (table?.kind !== "table") throw new Error("not a table");
+      expect(table.align).toEqual([null, null]);
+      expect(table.rows.map(text)).toEqual([
+        ["1", ""],
+        ["2", "3"],
+      ]);
+    });
+
+    it("keeps an escaped pipe inside its cell", () => {
+      const [table] = parseMarkdownLite("| cmd |\n| --- |\n| a \\| b |");
+      if (table?.kind !== "table") throw new Error("not a table");
+      expect(table.rows.map(text)).toEqual([["a | b"]]);
+    });
+
+    it("starts right after a paragraph line and ends at a blank line or the next block", () => {
+      const blocks = parseMarkdownLite(
+        "Summary:\n| a | b |\n|---|---|\n| 1 | 2 |\n\nafter\n\n| c |\n|---|\n| 3 |\n- item",
+      );
+      expect(blocks.map((block) => block.kind)).toEqual([
+        "paragraph",
+        "table",
+        "paragraph",
+        "table",
+        "list",
+      ]);
+    });
+
+    it("leaves text with pipes alone unless a matching delimiter row follows", () => {
+      for (const source of [
+        "a | b | c",
+        "a | b\nnot a delimiter",
+        "| a | b |\n|---|\n| 1 | 2 |",
+        "| a |\n| -- x |",
+      ]) {
+        expect(
+          parseMarkdownLite(source).map((block) => block.kind),
+          source,
+        ).toEqual(["paragraph"]);
+      }
+    });
+
+    it("shows a table whose delimiter row has not arrived yet as text, then as a table", () => {
+      expect(parseMarkdownLite("| a | b |\n|--").map((block) => block.kind)).toEqual(["paragraph"]);
+      expect(parseMarkdownLite("| a | b |\n|---|---|").map((block) => block.kind)).toEqual([
+        "table",
+      ]);
+    });
+  });
 });

@@ -3,7 +3,7 @@
   "name": "us-map",
   "type": "hyperframes:block",
   "title": "US Map",
-  "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG with GSAP",
+  "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend \u2014 pure inline SVG with GSAP",
   "tags": ["data", "map", "geography", "usa", "choropleth"],
   "dimensions": {
     "width": 1920,
@@ -13,8 +13,18 @@
   "files": [
     {
       "path": "us-map.html",
-      "target": "compositions/us-map.html",
+      "target": "compositions/us-map/us-map.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/us-atlas-states-10m.js",
+      "target": "compositions/us-map/assets/us-atlas-states-10m.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/us-atlas-LICENSE.txt",
+      "target": "compositions/us-map/assets/us-atlas-LICENSE.txt",
+      "type": "hyperframes:asset"
     }
   ],
   "preview": {

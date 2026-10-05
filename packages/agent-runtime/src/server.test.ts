@@ -1037,7 +1037,9 @@ describe("runtime HTTP server", () => {
         await delay(20);
       }
       expect(research.grants).toEqual([{ turnId, access: "read" }]);
-      expect(research.websiteRequests).toEqual([{ url: "https://linear.app", turnId }]);
+      expect(research.websiteRequests).toEqual([
+        { url: "https://linear.app", allowedSites: ["linear.app"], turnId },
+      ]);
     } finally {
       await app.dispose();
       await rm(root, { recursive: true, force: true });

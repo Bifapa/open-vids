@@ -49,7 +49,7 @@
     },
     {
       "path": "TEMPLATE.md",
-      "target": "TEMPLATE.md",
+      "target": "compositions/slack-notification-ad.TEMPLATE.md",
       "type": "hyperframes:asset"
     }
   ]

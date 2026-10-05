@@ -31,8 +31,8 @@ function runInit(args: string[]): { status: number; stdout: string; stderr: stri
   const res = spawnSync("bun", ["run", cliEntry, "init", ...args], {
     encoding: "utf-8",
     timeout: 30_000,
-    // The `--skip-skills` flag is neutered (see init.ts); the GitHub skills check
-    // is opted out only via this env var, so tests stay offline and fast.
+    // The `--skip-skills` flag is neutered (see init.ts); the bundled-skills check
+    // is opted out only via this env var, so tests stay fast.
     env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: "1" },
   });
   return {
@@ -42,17 +42,12 @@ function runInit(args: string[]): { status: number; stdout: string; stderr: stri
   };
 }
 
-function expectScaffoldedScripts(target: string): void {
+function expectScaffoldedPackage(target: string): void {
   const pkg = JSON.parse(readFileSync(join(target, "package.json"), "utf-8")) as {
     scripts?: Record<string, string>;
   };
-  expect(pkg.scripts).toMatchObject({
-    dev: "npx --yes hyperframes preview",
-    check: "npx --yes hyperframes check",
-    render: "npx --yes hyperframes render",
-    publish: "npx --yes hyperframes publish",
-  });
-  expect(Object.keys(pkg.scripts ?? {}).sort()).toEqual(["check", "dev", "publish", "render"]);
+  // The CLI is not published to npm, so the project must not carry scripts that fetch it from there.
+  expect(pkg.scripts).toBeUndefined();
 }
 
 describe("hyperframes init flag rename", () => {
@@ -79,7 +74,7 @@ describe("hyperframes init flag rename", () => {
       expect(html).not.toMatch(/transform:\s*translate\(-50%/);
       expect(html).toMatch(/#root\s*\{[^}]*width:\s*100%/);
       expect(html).not.toContain("window.__timelines = window.__timelines || {}");
-      expectScaffoldedScripts(target);
+      expectScaffoldedPackage(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -107,22 +102,22 @@ describe("hyperframes init flag rename", () => {
       const html = readFileSync(join(target, "index.html"), "utf-8");
       expect(html).toContain("font-family: Inter");
       expect(html).toContain("tl.seek(0)");
-      expectScaffoldedScripts(target);
+      expectScaffoldedPackage(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("--example blank scaffolds a bundled project with npm scripts", () => {
+  it("--example blank scaffolds a bundled project without npm scripts", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
     try {
       const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
       expect(res.status).toBe(0);
       expect(existsSync(join(target, "index.html"))).toBe(true);
-      expect(res.stdout).toContain("npm run dev");
-      expect(res.stdout).toContain("npm run check");
-      expect(res.stdout).toContain("npm run render");
+      expect(res.stdout).toContain("hyperframes preview");
+      expect(res.stdout).toContain("hyperframes check");
+      expect(res.stdout).toContain("hyperframes render");
 
       const pkg = JSON.parse(readFileSync(join(target, "package.json"), "utf-8")) as {
         private?: boolean;
@@ -130,7 +125,7 @@ describe("hyperframes init flag rename", () => {
       };
       expect(pkg.private).toBe(true);
       expect(pkg.type).toBe("module");
-      expectScaffoldedScripts(target);
+      expectScaffoldedPackage(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -154,7 +149,7 @@ describe("hyperframes init flag rename", () => {
       expect(html).toContain(tailwindScript);
       expect(html).toContain("window.__tailwindReady");
 
-      expectScaffoldedScripts(target);
+      expectScaffoldedPackage(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

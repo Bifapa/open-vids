@@ -1,5 +1,5 @@
 import type { QaIssueDraft, QaIssueKind, TimelineClip } from "@hyperframes/agent-protocol";
-import { CAPTIONS_FILE } from "../editing/captions.js";
+import { isCaptionsFile } from "../editing/captions.js";
 import type { LayoutCheckFinding } from "../types.js";
 import { activeAt, clipName, isCaptionsHost, round3, type QaTimeline } from "./timelineModel.js";
 
@@ -60,7 +60,7 @@ export function layoutSampleTimes(timeline: QaTimeline, duration: number): numbe
 /** The audited element (`selector`) is a caption: its own name, its file or its data attributes say so. */
 function selfIsCaption(finding: LayoutCheckFinding): boolean {
   return (
-    finding.sourceFile === CAPTIONS_FILE ||
+    isCaptionsFile(finding.sourceFile ?? null) ||
     CAPTION_NAME.test(finding.selector) ||
     Object.values(finding.dataAttributes ?? {}).some((value) => CAPTION_NAME.test(value))
   );

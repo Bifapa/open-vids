@@ -25,9 +25,9 @@ function run(args) {
 }
 
 const vitestFiles = tests.filter((test) => test.runner === "vitest").map((test) => test.file);
-// Real-media tests spawn ffmpeg several times; process start-up on the Windows runner pushes
-// them past vitest's 5 s default.
-const vitestTimeout = process.platform === "win32" ? ["--testTimeout", "30000"] : [];
+// Real-media tests spawn ffmpeg several times per case: process start-up on the Windows runner and
+// efficiency cores on Apple Silicon both push them past vitest's 5 s default.
+const vitestTimeout = ["--testTimeout", "30000"];
 if (vitestFiles.length > 0) run(["x", "vitest", "run", ...vitestTimeout, ...vitestFiles]);
 
 // Bun's mock.module registry is process-global. Run each file in a fresh

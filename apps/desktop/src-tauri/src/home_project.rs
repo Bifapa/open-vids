@@ -26,13 +26,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use super::coded_error::CodedError;
-use super::home_api::{respond_error, unknown_project};
+use super::home_api::{recent_json, respond_error, respond_json, unknown_project};
 use super::home_routes::{json_field, respond, HomeInner, OpenPhase};
 #[cfg(target_os = "macos")]
 use trash::macos::TrashContextExtMacos;
 
 pub fn handle_rename(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
-    let id = json_field(body, "id").unwrap_or_default();
+    let key = json_field(body, "id").unwrap_or_default();
     let new_name = json_field(body, "new_name").unwrap_or_default();
     if !super::project::is_valid_project_id(&new_name) {
         respond_error(
@@ -46,69 +46,101 @@ pub fn handle_rename(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
         );
         return;
     }
-    let outcome = state.lock().ok().and_then(|inner| {
-        let entry = inner.recents.find_by_id(&id)?.clone();
-        if matches!(inner.open_phase, OpenPhase::Opening { .. }) {
-            return Some(Err(CodedError::plain(
-                "project_opening_busy",
-                "a project is opening — try again in a moment",
-            )));
-        }
-        // The folder name IS the Studio id, so the open project cannot move
-        // out from under the running server (`#project/<id>` names it).
-        // `current_id` is set when an open completes and cleared by
-        // Show All Projects; the transient Opening phase above covers the
-        // window between request and completion.
-        if inner.current_id.as_deref() == Some(id.as_str()) {
-            return Some(Err(CodedError::plain(
-                "project_in_use",
-                "that project is open — use Show All Projects first",
-            )));
-        }
-        let new_dir = entry.dir.parent()?.join(&new_name);
-        if new_dir.exists() {
-            return Some(Err(CodedError::new(
-                "rename_target_exists",
-                format!("{} already exists", new_dir.display()),
-                serde_json::json!({ "path": new_dir.display().to_string() }),
-            )));
-        }
-        match std::fs::rename(&entry.dir, &new_dir) {
-            Ok(()) => {
-                update_meta_name(&new_dir, &new_name);
-                // Dev serves projects through symlinks in the Studio data
-                // dir; drop the stale one so it does not dangle at the old
-                // id. Re-opening the renamed project re-links the new id.
-                remove_dev_link(&entry.dir);
-                Some(Ok((id.clone(), new_name.clone(), new_dir)))
-            }
-            Err(err) => Some(Err(CodedError::new(
-                "rename_failed",
-                format!("could not rename the folder: {err}"),
-                serde_json::json!({ "detail": err.to_string() }),
-            ))),
-        }
-    });
+    let outcome = state
+        .lock()
+        .ok()
+        .and_then(|mut inner| rename_recent(&mut inner, &key, &new_name));
     match outcome {
-        Some(Ok((old, new, dir))) => {
-            let renamed = state
-                .lock()
-                .ok()
-                .map(|mut inner| inner.recents.rename(&old, &new, &dir))
-                .unwrap_or(false);
-            if renamed {
-                respond(stream, 200, "application/json", br#"{"ok":true}"#);
-            } else {
-                respond_error(
-                    stream,
-                    409,
-                    &CodedError::plain("rename_name_taken", "another project already uses that name"),
-                );
-            }
+        Some(Ok(project)) => {
+            respond_json(stream, 200, &serde_json::json!({ "ok": true, "project": project }));
         }
-        Some(Err(error)) => respond_error(stream, 400, &error),
+        Some(Err(RenameRefusal::Taken)) => respond_error(
+            stream,
+            409,
+            &CodedError::plain("rename_name_taken", "another project already uses that name"),
+        ),
+        Some(Err(RenameRefusal::Failed(error))) => respond_error(stream, 400, &error),
         None => respond_error(stream, 404, &unknown_project()),
     }
+}
+
+/// Why a rename did not happen.
+enum RenameRefusal {
+    /// Another recent already lives at the new path.
+    Taken,
+    Failed(CodedError),
+}
+
+/// Rename the folder of the recent `key` and its entry, under the caller's
+/// one hold of the home state. Every refusal comes before the folder moves:
+/// moving it first and then finding the recents entry's new path taken would
+/// leave the folder renamed and the entry pointing at a path that is gone.
+/// `None` is an unknown project.
+fn rename_recent(
+    inner: &mut HomeInner,
+    key: &str,
+    new_name: &str,
+) -> Option<Result<serde_json::Value, RenameRefusal>> {
+    let entry = inner.recents.find_by_key(key)?.clone();
+    if matches!(inner.open_phase, OpenPhase::Opening { .. }) {
+        return Some(Err(RenameRefusal::Failed(CodedError::plain(
+            "project_opening_busy",
+            "a project is opening — try again in a moment",
+        ))));
+    }
+    // The folder name IS the Studio id, so the open project cannot move
+    // out from under the running server (`#project/<id>` names it).
+    // `current_id` is set when an open completes and cleared by
+    // Show All Projects; the transient Opening phase above covers the
+    // window between request and completion.
+    if inner.current_id.as_deref() == Some(entry.id.as_str()) {
+        return Some(Err(RenameRefusal::Failed(CodedError::plain(
+            "project_in_use",
+            "that project is open — use Show All Projects first",
+        ))));
+    }
+    let new_dir = entry.dir.parent()?.join(new_name);
+    // On a case-insensitive filesystem (APFS and NTFS defaults) a case-only
+    // rename ("demo" → "Demo") resolves to the project's own folder: that is
+    // the same folder, not a collision.
+    if new_dir.exists() && !is_same_folder(&entry.dir, &new_dir) {
+        return Some(Err(RenameRefusal::Failed(CodedError::new(
+            "rename_target_exists",
+            format!("{} already exists", new_dir.display()),
+            serde_json::json!({ "path": new_dir.display().to_string() }),
+        ))));
+    }
+    // A listed recent at the new path (a folder that has since gone missing)
+    // counts as taken even though nothing is on disk there.
+    if inner.recents.rename_collides(key, &new_dir) {
+        return Some(Err(RenameRefusal::Taken));
+    }
+    if let Err(err) = std::fs::rename(&entry.dir, &new_dir) {
+        return Some(Err(RenameRefusal::Failed(CodedError::new(
+            "rename_failed",
+            format!("could not rename the folder: {err}"),
+            serde_json::json!({ "detail": err.to_string() }),
+        ))));
+    }
+    update_meta_name(&new_dir, new_name);
+    // Dev serves projects through symlinks in the Studio data
+    // dir; drop the stale one so it does not dangle at the old
+    // id. Re-opening the renamed project re-links the new id.
+    remove_dev_link(&entry.dir);
+    // The collision was ruled out above under this same hold.
+    inner.recents.rename(key, new_name, &new_dir);
+    inner
+        .recents
+        .find_by_dir(&new_dir)
+        .map(|entry| Ok(recent_json(entry)))
+}
+
+/// Whether two spellings reach the same folder on disk.
+fn is_same_folder(a: &Path, b: &Path) -> bool {
+    super::platform::same_path(
+        &super::platform::canonical_stable(a),
+        &super::platform::canonical_stable(b),
+    )
 }
 
 fn update_meta_name(dir: &Path, name: &str) {
@@ -156,11 +188,11 @@ fn remove_dev_link(old_dir: &Path) {
 }
 
 pub fn handle_trash(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
-    let id = json_field(body, "id").unwrap_or_default();
+    let key = json_field(body, "id").unwrap_or_default();
     let dir = state
         .lock()
         .ok()
-        .and_then(|inner| inner.recents.find_by_id(&id).map(|e| e.dir.clone()));
+        .and_then(|inner| inner.recents.find_by_key(&key).map(|e| e.dir.clone()));
     let Some(dir) = dir else {
         respond_error(stream, 404, &unknown_project());
         return;
@@ -182,7 +214,7 @@ pub fn handle_trash(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
     match trash_result {
         Ok(()) => {
             if let Ok(mut inner) = state.lock() {
-                inner.recents.remove(&id);
+                inner.recents.remove(&key);
             }
             respond(stream, 200, "application/json", br#"{"ok":true}"#);
         }
@@ -195,5 +227,100 @@ pub fn handle_trash(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
                 serde_json::json!({ "detail": err.to_string() }),
             ),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("openvids-rename-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        // The recents store keeps canonical paths (macOS temp dirs sit behind a symlink).
+        super::super::platform::canonical_stable(&dir)
+    }
+
+    fn home(base: &Path) -> HomeInner {
+        HomeInner::load(base.join("recents.json"), base.join("thumbs")).expect("home state")
+    }
+
+    #[test]
+    fn a_rename_onto_a_listed_but_missing_recent_is_refused_before_the_folder_moves() {
+        let base = temp_dir("collision");
+        let bar = base.join("bar");
+        std::fs::create_dir_all(&bar).expect("project folder");
+        // `foo` is listed in recents but its folder is gone.
+        let foo = base.join("foo");
+        let mut inner = home(&base);
+        inner.recents.record("bar", &bar, None, None);
+        inner.recents.record("foo", &foo, None, None);
+        let key = inner.recents.find_by_dir(&bar).expect("bar is listed").key();
+
+        let outcome = rename_recent(&mut inner, &key, "foo");
+        assert!(matches!(outcome, Some(Err(RenameRefusal::Taken))));
+        assert!(bar.is_dir(), "the folder must not have been renamed");
+        assert!(!foo.exists());
+        assert_eq!(
+            inner.recents.find_by_key(&key).map(|entry| entry.dir.clone()),
+            Some(bar),
+            "the entry still points at the folder"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_rename_moves_the_folder_and_its_entry_together() {
+        let base = temp_dir("ok");
+        let bar = base.join("bar");
+        std::fs::create_dir_all(&bar).expect("project folder");
+        let mut inner = home(&base);
+        inner.recents.record("bar", &bar, None, None);
+        let key = inner.recents.find_by_dir(&bar).expect("bar is listed").key();
+
+        let renamed = base.join("baz");
+        let outcome = rename_recent(&mut inner, &key, "baz");
+        assert!(matches!(outcome, Some(Ok(_))));
+        assert!(renamed.is_dir());
+        assert!(!bar.exists());
+        assert!(inner.recents.find_by_dir(&renamed).is_some_and(|entry| entry.id == "baz"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_case_only_rename_is_not_a_collision() {
+        let base = temp_dir("case");
+        let bar = base.join("bar");
+        std::fs::create_dir_all(&bar).expect("project folder");
+        let case_insensitive = base.join("BAR").exists();
+        let mut inner = home(&base);
+        inner.recents.record("bar", &bar, None, None);
+        let key = inner.recents.find_by_dir(&bar).expect("bar is listed").key();
+
+        if case_insensitive {
+            assert!(is_same_folder(&bar, &base.join("BAR")));
+            let outcome = rename_recent(&mut inner, &key, "BAR");
+            assert!(matches!(outcome, Some(Ok(_))), "a case-only rename must go through");
+            let names: Vec<String> = std::fs::read_dir(&base)
+                .expect("base")
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect();
+            assert!(names.contains(&"BAR".to_string()), "{names:?}");
+        } else {
+            // A distinct folder that merely differs in case is still refused.
+            std::fs::create_dir_all(base.join("BAR")).expect("second folder");
+            assert!(!is_same_folder(&bar, &base.join("BAR")));
+            assert!(matches!(
+                rename_recent(&mut inner, &key, "BAR"),
+                Some(Err(RenameRefusal::Failed(_)))
+            ));
+        }
+        // Another folder is never "the same".
+        let other = base.join("other");
+        std::fs::create_dir_all(&other).expect("other folder");
+        assert!(!is_same_folder(&base.join("bar"), &other));
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

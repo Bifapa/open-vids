@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { posix } from "node:path";
 import {
   type AssetProvenance,
   type AssetSearchMode,
@@ -10,10 +11,36 @@ import { MAIN_COMPOSITION } from "../editing/inventory.js";
 import { parseComposition } from "../editing/timeline.js";
 import { isCompositionSource } from "../helpers/hfIdPersist.js";
 import { isInHiddenOrVendorDir, resolveWithinProject, walkDir } from "../helpers/safePath.js";
+import { referencedPaths } from "./assetReferences.js";
 
 interface CompositionRefs {
   media: Set<string>;
   hosted: Set<string>;
+}
+
+/** Stylesheets read per composition while following `<link>` and `@import`; real projects have one or two. */
+const MAX_STYLESHEETS = 20;
+
+/** Project paths a composition's markup references, and those of the local stylesheets it links (transitively). */
+function markupReferences(projectDir: string, file: string, html: string): Set<string> {
+  const found = referencedPaths(html, posix.dirname(file), false);
+  const sheets = [...found].filter((path) => path.toLowerCase().endsWith(".css"));
+  const read = new Set<string>();
+  for (let next = sheets.shift(); next !== undefined; next = sheets.shift()) {
+    if (read.has(next) || read.size >= MAX_STYLESHEETS) continue;
+    read.add(next);
+    let css: string;
+    try {
+      css = readFileSync(resolveWithinProject(projectDir, next) ?? "", "utf-8");
+    } catch {
+      continue;
+    }
+    for (const path of referencedPaths(css, posix.dirname(next), true)) {
+      found.add(path);
+      if (path.toLowerCase().endsWith(".css")) sheets.push(path);
+    }
+  }
+  return found;
 }
 
 /** What every composition file of the project references directly: media paths and hosted sub-compositions. */
@@ -36,6 +63,7 @@ function readReferences(projectDir: string): Map<string, CompositionRefs> {
       if (clip.src !== null) entry.media.add(clip.src);
       if (clip.compositionSrc !== null) entry.hosted.add(clip.compositionSrc);
     }
+    for (const path of markupReferences(projectDir, file, html)) entry.media.add(path);
     refs.set(file, entry);
   }
   return refs;

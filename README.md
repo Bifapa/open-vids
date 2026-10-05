@@ -2,9 +2,9 @@
 
 **Website: [openvids.ai](https://openvids.ai)**
 
-OpenVids is an open-source desktop video editor for macOS and Windows that you work in together with AI agents. You describe the video in chat; the agents cut footage, build the timeline, add captions and motion graphics, then render the result and check it. Everything runs on your machine, and the project is a folder of plain files you can open and edit by hand.
+OpenVids is an open-source desktop video editor for macOS and Windows that you work in together with AI agents. You describe the video in chat; the agents cut footage, build the timeline, add captions and motion graphics, then render the result and check it. Editing, analysis and rendering run on your machine, and the project is a folder of plain files you can open and edit by hand. Agents call the model provider you connect (your prompts, transcripts and sampled video frames go there), Research searches and downloads from the sources the Asset Search policy allows, and OpenVids itself receives only anonymous usage statistics (which you can turn off) and the bug reports you choose to send; see [Usage statistics](#usage-statistics) and [Bug reports](#bug-reports).
 
-It began as a snapshot of [HyperFrames](https://github.com/heygen-com/hyperframes) (HeyGen, Apache-2.0) and is developed here as its own app, with no npm distribution and no cloud backend.
+It began as a snapshot of [HyperFrames](https://github.com/heygen-com/hyperframes) (HeyGen, Apache-2.0) and is developed here as its own app, with no npm distribution and no OpenVids account or cloud editing backend.
 
 ## What it does
 
@@ -24,7 +24,7 @@ OpenVids is at an early stage.
 - Prebuilt downloads are on [GitHub Releases](https://github.com/bazodev/open-vids/releases/latest): a `.dmg` for macOS and an NSIS `*-setup.exe` for Windows; you can also build from source.
 - The app checks GitHub Releases for updates and installs them on a button press; updates are verified with the project's updater signing key, not by OS code signing.
 - macOS builds are ad-hoc signed and not notarized, so macOS blocks the first launch (see [Install](#install)). Windows builds are unsigned, so SmartScreen warns about an unknown publisher at install/first launch.
-- Rendering and thumbnails need Chrome and FFmpeg installed on the machine; OpenVids does not ship them. On Windows the app offers a download button that fetches the official gyan.dev FFmpeg essentials build (SHA-256 verified) into `%USERPROFILE%\.openvids\ffmpeg`; an FFmpeg already on `PATH` (or pointed at by `HYPERFRAMES_FFMPEG_PATH` / `HYPERFRAMES_FFPROBE_PATH`) is used first.
+- Rendering and thumbnails need Chrome and FFmpeg installed on the machine; OpenVids does not ship them. On Windows the app offers a download button that fetches the official gyan.dev FFmpeg essentials build (SHA-256 verified) into `%USERPROFILE%\.openvids\ffmpeg`; the order is `HYPERFRAMES_FFMPEG_PATH` / `HYPERFRAMES_FFPROBE_PATH` if you set them, then that downloaded copy, then an FFmpeg on `PATH`.
 - The local Studio server is unauthenticated on loopback while a project is open. See [SECURITY.md](SECURITY.md).
 
 ## Install
@@ -64,7 +64,7 @@ bun run desktop:build
 
 ### Models for the agents
 
-Connect a model provider in **Settings → Models & Providers** by adding an API key; OpenVids keeps it in a private file in `~/.openvids/agent`. If you already use [oh-my-pi](https://github.com/can1357/oh-my-pi), Agent Chat also picks up the providers and sign-ins of your setup in `~/.omp/agent`; OpenVids reads it and never writes to it. Which model each agent uses is chosen in OpenVids settings. The Director is always on; the specialists are switched on or off in **Settings → Agents** and in the chat's Agents menu. The manual editor works without any of this.
+Connect a model provider in **Settings → Models & Providers** by adding an API key; OpenVids keeps it in a private file in `~/.openvids/agent`. If you already use [oh-my-pi](https://github.com/can1357/oh-my-pi), Agent Chat also picks up the providers and sign-ins of your setup in `~/.omp/agent`; OpenVids never stores its own keys or sign-ins there. The agent library it uses may still refresh the sign-ins you made in oh-my-pi, and it keeps its caches and logs in that folder. Which model each agent uses is chosen in OpenVids settings. The Director is always on; the specialists are switched on or off in **Settings → Agents** and in the chat's Agents menu. The manual editor works without any of this.
 
 ## Contributing
 
@@ -108,9 +108,9 @@ Details: `packages/agent-runtime/README.md`.
 
 The desktop app sends anonymous usage statistics so we can see how many people use OpenVids, and on which versions and systems.
 
-- **Sent** — that the app started, a heartbeat every few minutes while it is open, and that it closed, with the app version, OS, architecture, UI language and a random installation id.
+- **Sent** — that the app started, a heartbeat every few minutes while it is open, and that it closed, each with the app version, OS, architecture, UI language, whether the main window is in focus, and a random installation id. When you turn statistics off, one last request (`telemetry_disabled`) says so; it carries no installation id.
 - **Never sent** — names or paths of files and projects, project content, chat or prompt text, URLs, API keys, error messages.
-- **Turning it off** — Settings › General › **Share anonymous usage statistics**, or `DO_NOT_TRACK=1` / `OPENVIDS_TELEMETRY=0` in the environment.
+- **Turning it off** — Settings › General › **Share anonymous usage statistics**, or `DO_NOT_TRACK=1` / `OPENVIDS_TELEMETRY=0` in the environment. After that nothing is sent except the one opt-out request above.
 
 ## Bug reports
 
@@ -118,13 +118,15 @@ Help › **Report a Problem…** opens a window that does not block the editor: 
 
 - **Public** — your text and screenshots become an issue in this repository, so a screenshot shows whatever was on screen.
 - **Private** — the optional email and the app log attached to the report. Keys, tokens, email addresses and your user name are removed from the log before it leaves your computer.
-- **Also attached** — app version, macOS version, architecture, UI language, FFmpeg version and the names of the AI models you selected (never keys).
+- **Also attached** — app version, operating system and its version (where the system reports one), architecture, UI language, FFmpeg version and the names of the AI providers and models you selected (never keys).
+- **Reporter id** — a random id, separate from the statistics installation id, is stored on your computer the first time you send a report and goes with every report, so reports from one computer can be linked to each other. It is not shared with the statistics.
+- **Turning it off** — reports are sent only when you press Send. The statistics setting and `DO_NOT_TRACK` do not apply to them; to send none, don't use **Report a Problem…**.
 
 ## Requirements
 
 - [Bun](https://bun.sh) (package manager and the sidecar JS runtime)
 - Rust stable toolchain (Tauri builds; `desktop:check` runs `cargo check`). On Windows: the MSVC Build Tools (C++ workload) plus a WebView2 runtime (the installer bootstraps it).
-- Node.js 22+, FFmpeg + ffprobe on PATH, and a Chrome the CLI can drive (`npx hyperframes doctor` reports all of these; see `packages/cli/src/commands/doctor.ts` and `packages/cli/src/browser/preflight.ts`). On Windows FFmpeg may instead come from the app's download button (`%USERPROFILE%\.openvids\ffmpeg`).
+- Node.js 22+, FFmpeg + ffprobe on PATH, and a Chrome the CLI can drive (`bun packages/cli/src/cli.ts doctor` reports all of these; see `packages/cli/src/commands/doctor.ts` and `packages/cli/src/browser/preflight.ts`). On Windows FFmpeg may instead come from the app's download button (`%USERPROFILE%\.openvids\ffmpeg`).
 - Long-form analysis: `whisper-cli` (`brew install whisper-cpp` on macOS; the CLI installs it when possible) and its model are fetched on first use; the diarization runtime and models download into `~/.cache/hyperframes/` on first use
 
 ## Commands

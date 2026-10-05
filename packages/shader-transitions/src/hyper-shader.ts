@@ -1,5 +1,7 @@
 import {
   createContext,
+  configureContext,
+  watchContextLoss,
   setupQuad,
   createProgram,
   createProgramWithVertex,
@@ -28,6 +30,7 @@ declare const gsap: {
 
 interface GsapTimeline {
   paused: () => boolean;
+  duration: () => number;
   play: (from?: number, suppressEvents?: boolean) => GsapTimeline;
   pause: (atTime?: number, suppressEvents?: boolean) => GsapTimeline;
   time: {
@@ -118,6 +121,23 @@ interface CachedTransition {
   textureGeneration: number;
   textureAccess: number;
   lastError?: string;
+}
+
+// The GL objects HyperShader owns; all of them are invalid once the context is lost.
+interface GlResources {
+  quadBuf: WebGLBuffer;
+  programs: Map<string, WebGLProgram>;
+  blendProg: WebGLProgram;
+  blendLoc: {
+    a: WebGLUniformLocation | null;
+    b: WebGLUniformLocation | null;
+    mix: WebGLUniformLocation | null;
+    pos: number;
+  };
+  fromTex: WebGLTexture;
+  toTex: WebGLTexture;
+  fromFbo: WebGLFramebuffer;
+  toFbo: WebGLFramebuffer;
 }
 
 interface SnapshotLoadingOverlay {
@@ -416,8 +436,59 @@ function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
   });
 }
 
+/**
+ * Prefix shared by every snapshot-cache key of one composition in one project. All projects are
+ * served from the same origin and share one IndexedDB, and most roots use the same composition
+ * id, so the id alone cannot scope pruning: the document path (which carries the project id when
+ * served by the studio) keeps one project's prune from deleting another project's snapshots.
+ */
+export function snapshotCachePrefix(compId: string, documentPath: string): string {
+  return `${compId}:${stableHash(documentPath)}:`;
+}
+
+function currentDocumentPath(): string {
+  try {
+    return window.location.pathname;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Keys to delete from the snapshot cache: entries under `projectPrefix` that no longer belong to
+ * an active transition, then the least recently updated inactive entries beyond `maxEntries`.
+ */
+export function selectSnapshotKeysToDelete(
+  entries: Array<{ key: string; updatedAt: number }>,
+  projectPrefix: string,
+  activeCacheKeys: Set<string>,
+  maxEntries: number,
+): string[] {
+  const isActiveSnapshot = (key: string): boolean => {
+    for (const cacheKey of activeCacheKeys) {
+      if (key.startsWith(`${cacheKey}:sample:`)) return true;
+    }
+    return false;
+  };
+  const staleProjectKeys = entries
+    .filter((entry) => entry.key.startsWith(projectPrefix) && !isActiveSnapshot(entry.key))
+    .map((entry) => entry.key);
+  const staleProjectKeySet = new Set(staleProjectKeys);
+  const remaining = entries.filter((entry) => !staleProjectKeySet.has(entry.key));
+  const activeCount = remaining.filter((entry) => isActiveSnapshot(entry.key)).length;
+  const removable = remaining
+    .filter((entry) => !isActiveSnapshot(entry.key))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  const removableBudget = Math.max(0, maxEntries - activeCount);
+  const overflowKeys =
+    removable.length > removableBudget
+      ? removable.slice(removableBudget).map((entry) => entry.key)
+      : [];
+  return Array.from(new Set([...staleProjectKeys, ...overflowKeys]));
+}
+
 async function pruneSnapshotCache(
-  compId: string,
+  projectPrefix: string,
   activeCacheKeys: Set<string>,
   maxEntries: number = MAX_SNAPSHOT_CACHE_ENTRIES,
 ): Promise<void> {
@@ -449,28 +520,12 @@ async function pruneSnapshotCache(
       resolve([]);
     }
   });
-  const projectPrefix = `${compId}:`;
-  const isActiveSnapshot = (key: string): boolean => {
-    for (const cacheKey of activeCacheKeys) {
-      if (key.startsWith(`${cacheKey}:sample:`)) return true;
-    }
-    return false;
-  };
-  const staleProjectKeys = entries
-    .filter((entry) => entry.key.startsWith(projectPrefix) && !isActiveSnapshot(entry.key))
-    .map((entry) => entry.key);
-  const staleProjectKeySet = new Set(staleProjectKeys);
-  const remaining = entries.filter((entry) => !staleProjectKeySet.has(entry.key));
-  const activeCount = remaining.filter((entry) => isActiveSnapshot(entry.key)).length;
-  const removable = remaining
-    .filter((entry) => !isActiveSnapshot(entry.key))
-    .sort((a, b) => b.updatedAt - a.updatedAt);
-  const removableBudget = Math.max(0, maxEntries - activeCount);
-  const overflowKeys =
-    removable.length > removableBudget
-      ? removable.slice(removableBudget).map((entry) => entry.key)
-      : [];
-  const keysToDelete = Array.from(new Set([...staleProjectKeys, ...overflowKeys]));
+  const keysToDelete = selectSnapshotKeysToDelete(
+    entries,
+    projectPrefix,
+    activeCacheKeys,
+    maxEntries,
+  );
   if (keysToDelete.length === 0) return;
   await new Promise<void>((resolve) => {
     try {
@@ -915,28 +970,8 @@ export function init(config: HyperShaderConfig): GsapTimeline {
 
   const gl = createContext(glCanvas, compWidth, compHeight);
   if (!gl) {
-    console.warn("[HyperShader] WebGL unavailable — shader transitions disabled.");
-    const fallback = config.timeline || gsap.timeline({ paused: true });
-    registerTimeline(compId, fallback, config.timeline);
-    return fallback;
-  }
-
-  const quadBuf = setupQuad(gl);
-
-  const programs = new Map<string, WebGLProgram>();
-  for (const t of transitions) {
-    // Strict undefined check — an explicit empty string from a vanilla-JS
-    // caller (the IIFE bundle is hand-loaded via <script> tags) should NOT
-    // be silently coerced into a CSS crossfade. The shader registry will
-    // throw a clear "unknown shader" error for it.
-    if (t.shader === undefined) continue;
-    if (!programs.has(t.shader)) {
-      try {
-        programs.set(t.shader, createProgram(gl, getFragSource(t.shader)));
-      } catch (e) {
-        console.error(`[HyperShader] Failed to compile "${t.shader}":`, e);
-      }
-    }
+    console.warn("[HyperShader] WebGL unavailable — shader transitions play as CSS crossfades.");
+    return initWithoutWebGL(config, scenes, transitions, compId, root);
   }
 
   const canvasEl = glCanvas;
@@ -946,30 +981,59 @@ export function init(config: HyperShaderConfig): GsapTimeline {
   const previewTextureWidth = Math.max(1, Math.round(compWidth * previewCaptureScale));
   const previewTextureHeight = Math.max(1, Math.round(compHeight * previewCaptureScale));
   const cachedTransitions: CachedTransition[] = [];
-  const blendProg = createProgramWithVertex(
-    gl,
-    NO_FLIP_VERT_SRC,
-    [
-      "precision mediump float;",
-      "varying vec2 v_uv;",
-      "uniform sampler2D u_a;",
-      "uniform sampler2D u_b;",
-      "uniform float u_mix;",
-      "void main(){",
-      "gl_FragColor=mix(texture2D(u_a,v_uv),texture2D(u_b,v_uv),u_mix);",
-      "}",
-    ].join(""),
-  );
-  const blendLoc = {
-    a: gl.getUniformLocation(blendProg, "u_a"),
-    b: gl.getUniformLocation(blendProg, "u_b"),
-    mix: gl.getUniformLocation(blendProg, "u_mix"),
-    pos: gl.getAttribLocation(blendProg, "a_pos"),
+  // Everything below dies with a lost context, so it is built by one function the
+  // restore handler can call again.
+  const buildGlResources = (): GlResources => {
+    const quadBuf = setupQuad(gl);
+    const programs = new Map<string, WebGLProgram>();
+    for (const t of transitions) {
+      // Strict undefined check — an explicit empty string from a vanilla-JS
+      // caller (the IIFE bundle is hand-loaded via <script> tags) should NOT
+      // be silently coerced into a CSS crossfade. The shader registry will
+      // throw a clear "unknown shader" error for it.
+      if (t.shader === undefined) continue;
+      if (!programs.has(t.shader)) {
+        try {
+          programs.set(t.shader, createProgram(gl, getFragSource(t.shader)));
+        } catch (e) {
+          console.error(`[HyperShader] Failed to compile "${t.shader}":`, e);
+        }
+      }
+    }
+    const blendProg = createProgramWithVertex(
+      gl,
+      NO_FLIP_VERT_SRC,
+      [
+        "precision mediump float;",
+        "varying vec2 v_uv;",
+        "uniform sampler2D u_a;",
+        "uniform sampler2D u_b;",
+        "uniform float u_mix;",
+        "void main(){",
+        "gl_FragColor=mix(texture2D(u_a,v_uv),texture2D(u_b,v_uv),u_mix);",
+        "}",
+      ].join(""),
+    );
+    const fromTex = createRenderTexture(gl, previewTextureWidth, previewTextureHeight);
+    const toTex = createRenderTexture(gl, previewTextureWidth, previewTextureHeight);
+    return {
+      quadBuf,
+      programs,
+      blendProg,
+      blendLoc: {
+        a: gl.getUniformLocation(blendProg, "u_a"),
+        b: gl.getUniformLocation(blendProg, "u_b"),
+        mix: gl.getUniformLocation(blendProg, "u_mix"),
+        pos: gl.getAttribLocation(blendProg, "a_pos"),
+      },
+      fromTex,
+      toTex,
+      fromFbo: createFramebuffer(gl, fromTex),
+      toFbo: createFramebuffer(gl, toTex),
+    };
   };
-  const interpolatedFromTex = createRenderTexture(gl, previewTextureWidth, previewTextureHeight);
-  const interpolatedToTex = createRenderTexture(gl, previewTextureWidth, previewTextureHeight);
-  const interpolatedFromFbo = createFramebuffer(gl, interpolatedFromTex);
-  const interpolatedToFbo = createFramebuffer(gl, interpolatedToTex);
+  let res = buildGlResources();
+  let contextLost = false;
   let loadingOverlay: SnapshotLoadingOverlay | null = null;
   const getLoadingOverlay = (): SnapshotLoadingOverlay | null => {
     if (loadingMode !== "internal") return null;
@@ -1071,17 +1135,17 @@ export function init(config: HyperShaderConfig): GsapTimeline {
   ): void => {
     gl.bindFramebuffer(gl.FRAMEBUFFER, target);
     gl.viewport(0, 0, previewTextureWidth, previewTextureHeight);
-    gl.useProgram(blendProg);
+    gl.useProgram(res.blendProg);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texA);
-    gl.uniform1i(blendLoc.a, 0);
+    gl.uniform1i(res.blendLoc.a, 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, texB);
-    gl.uniform1i(blendLoc.b, 1);
-    gl.uniform1f(blendLoc.mix, mix);
-    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-    gl.enableVertexAttribArray(blendLoc.pos);
-    gl.vertexAttribPointer(blendLoc.pos, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform1i(res.blendLoc.b, 1);
+    gl.uniform1f(res.blendLoc.mix, mix);
+    gl.bindBuffer(gl.ARRAY_BUFFER, res.quadBuf);
+    gl.enableVertexAttribArray(res.blendLoc.pos);
+    gl.vertexAttribPointer(res.blendLoc.pos, 2, gl.FLOAT, false, 0, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, compWidth, compHeight);
@@ -1133,16 +1197,18 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     }
 
     const currentTime = tl.time();
-    const upcoming = cachedTransitions.find((cache) => {
-      return (
-        !cache.fallback &&
-        cache.ready &&
-        !cache.dirty &&
-        !cache.textureReady &&
-        currentTime >= cache.time - TEXTURE_PRELOAD_LOOKAHEAD_SECONDS &&
-        currentTime < cache.time + cache.duration
-      );
-    });
+    const upcoming = contextLost
+      ? undefined
+      : cachedTransitions.find((cache) => {
+          return (
+            !cache.fallback &&
+            cache.ready &&
+            !cache.dirty &&
+            !cache.textureReady &&
+            currentTime >= cache.time - TEXTURE_PRELOAD_LOOKAHEAD_SECONDS &&
+            currentTime < cache.time + cache.duration
+          );
+        });
     if (upcoming) {
       preloadTransitionTextures(upcoming);
     }
@@ -1167,7 +1233,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     // fallback flag is the normal signal, but we also guard on prog to keep
     // the invariant even if some path momentarily resets fallback while prog
     // stays null (it can't be re-created — there is no shader to compile).
-    if (cache.fallback || cache.prog === null) {
+    if (cache.fallback || cache.prog === null || contextLost) {
       state.active = true;
       state.transitionIndex = activeIndex;
       state.prog = null;
@@ -1196,16 +1262,16 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       return;
     }
     paintScenePairState(cache.fromId, cache.toId, "1", "1");
-    renderTextureBlend(interpolatedFromFbo, frame.a.fromTex, frame.b.fromTex, frame.mix);
-    renderTextureBlend(interpolatedToFbo, frame.a.toTex, frame.b.toTex, frame.mix);
+    renderTextureBlend(res.fromFbo, frame.a.fromTex, frame.b.fromTex, frame.mix);
+    renderTextureBlend(res.toFbo, frame.a.toTex, frame.b.toTex, frame.mix);
 
     canvasEl.style.display = "block";
     renderShader(
       gl,
-      quadBuf,
+      res.quadBuf,
       prog,
-      interpolatedFromTex,
-      interpolatedToTex,
+      res.fromTex,
+      res.toTex,
       state.progress,
       accentColors,
       compWidth,
@@ -1216,8 +1282,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
   let tl: GsapTimeline;
   if (config.timeline) {
     tl = config.timeline;
-    const duration = Number(root?.getAttribute("data-duration") || "40");
-    tl.to({ t: 0 }, { t: 1, duration, ease: "none", onUpdate: tickShader }, 0);
+    anchorProvidedTimeline(tl, root, transitions, tickShader);
   } else {
     tl = gsap.timeline({ paused: true, onUpdate: tickShader });
   }
@@ -1369,7 +1434,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     // opacity timeline still runs and scene progression isn't broken. Both
     // paths land in the always-ready prog=null cache.
     const requestedShader = t.shader !== undefined;
-    const compiledProg = requestedShader ? (programs.get(t.shader!) ?? null) : null;
+    const compiledProg = requestedShader ? (res.programs.get(t.shader!) ?? null) : null;
     const isCssFallback = !requestedShader || compiledProg === null;
     if (requestedShader && compiledProg === null) {
       console.warn(
@@ -1414,7 +1479,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
           state.progress = 0;
           state.active = true;
           const cache = cachedTransitions[cacheIndex];
-          if (cache?.fallback) {
+          if (cache && (cache.fallback || contextLost)) {
             applyFallbackTransition(cache, 0);
             return;
           }
@@ -1482,6 +1547,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
   };
 
   const getPlaybackTextureWindow = (currentTime: number): CachedTransition[] => {
+    if (contextLost) return [];
     const selected: CachedTransition[] = [];
     const selectedIndexes = new Set<number>();
     const addIfNeeded = (cache: CachedTransition): void => {
@@ -1594,7 +1660,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       compWidth,
       compHeight,
     ].join("|");
-    return `${compId}:${cache.index}:${stableHash(source)}`;
+    return `${snapshotCachePrefix(compId, currentDocumentPath())}${cache.index}:${stableHash(source)}`;
   };
 
   const setShaderReadyState = (status: Partial<ShaderReadyState>) => {
@@ -1772,7 +1838,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
   };
 
   const ensureTransitionTextures = (cache: CachedTransition): Promise<boolean> => {
-    if (cache.fallback || cache.dirty || !cache.ready) return Promise.resolve(false);
+    if (contextLost || cache.fallback || cache.dirty || !cache.ready) return Promise.resolve(false);
     if (cache.textureReady) {
       markTextureAccess(cache);
       return Promise.resolve(true);
@@ -1885,6 +1951,11 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       .catch((e) => {
         disposeUploadedTextures();
         if (isStaleTextureJob()) {
+          return false;
+        }
+        // A dropped context fails uploads before its loss event is delivered; that is not
+        // a broken transition, and the restore re-uploads the textures.
+        if (contextLost || gl.isContextLost()) {
           return false;
         }
         disposeTransitionTextures(cache);
@@ -2155,7 +2226,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
           completed = completedBeforeTransition + sampleCount;
         }
         void pruneSnapshotCache(
-          compId,
+          snapshotCachePrefix(compId, currentDocumentPath()),
           new Set(cachedTransitions.map((cache) => cache.cacheKey).filter(Boolean)),
         );
         shaderCacheReady = areAllCachesReady();
@@ -2240,6 +2311,43 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     return transitionCachePromise;
   };
 
+  watchContextLoss(canvasEl, {
+    // Every GL object dies with the context: stop compositing, drop the textures and let the
+    // CSS crossfade carry the transition until the browser restores it.
+    onLost: () => {
+      contextLost = true;
+      canvasEl.style.display = "none";
+      for (const cache of cachedTransitions) {
+        disposeTransitionTextures(cache);
+        cache.texturePromise = null;
+      }
+      state.prog = null;
+      tickShader();
+    },
+    onRestored: () => {
+      configureContext(gl, compWidth, compHeight);
+      try {
+        res = buildGlResources();
+      } catch (e) {
+        console.warn("[HyperShader] Could not rebuild WebGL after a context restore:", e);
+        return;
+      }
+      for (const cache of cachedTransitions) {
+        const shader = transitions[cache.index]?.shader;
+        if (cache.prog === null || shader === undefined) continue;
+        cache.prog = res.programs.get(shader) ?? null;
+        if (cache.prog === null) {
+          cache.fallback = true;
+          cache.ready = true;
+          cache.dirty = false;
+          cache.persisted = true;
+        }
+      }
+      contextLost = false;
+      tickShader();
+    },
+  });
+
   const sceneEditObservers = observeSceneEdits();
   window.addEventListener(
     "beforeunload",
@@ -2276,28 +2384,46 @@ function registerTimeline(
   }
 }
 
-// Engine-mode initialization: skip every GL/canvas/html2canvas branch and only
-// schedule deterministic opacity flips so the producer can read each scene's
-// effective opacity at any seek time. tl.set() (zero-duration tweens) is used
-// instead of tl.call() because tl.call only fires in the direction of motion —
-// the engine's warmup loop seeks forward through transition start times and
-// then the main render loop seeks back to t=0, which would leave callback-set
-// state stuck. tl.set tweens revert correctly on backward seeks.
-function initEngineMode(
+// A caller-supplied timeline keeps its own length. The anchor tween only stretches it to
+// cover the last transition and a `data-duration` the composition declares; it is never
+// padded with a made-up constant. `onUpdate` rides the anchor so the caller's timeline
+// drives the compositor on every frame inside that span.
+function anchorProvidedTimeline(
+  tl: GsapTimeline,
+  root: HTMLElement | null,
+  transitions: TransitionConfig[],
+  onUpdate?: () => void,
+): void {
+  const declared = Number(root?.getAttribute("data-duration"));
+  const transitionsEnd = transitions.reduce(
+    (end, t) => Math.max(end, t.time + (t.duration ?? DEFAULT_DURATION)),
+    0,
+  );
+  const duration = Math.max(
+    tl.duration(),
+    transitionsEnd,
+    Number.isFinite(declared) ? declared : 0,
+  );
+  if (duration <= 0) return;
+  tl.to({ t: 0 }, { t: 1, duration, ease: "none", onUpdate }, 0);
+}
+
+// Schedules the scene opacity timeline that engine render mode and the no-WebGL preview
+// share. `layeredShaders` keeps both scenes of a shader transition at opacity 1 for the
+// Node-side compositor to blend; without it every transition is a CSS crossfade.
+function buildSceneTimeline(
   config: HyperShaderConfig,
   scenes: string[],
   transitions: TransitionConfig[],
-  compId: string,
   root: HTMLElement | null,
+  layeredShaders: boolean,
 ): GsapTimeline {
   const tl: GsapTimeline = config.timeline || gsap.timeline({ paused: true });
 
-  // Match the user-facing branch: when the user supplies a timeline, we
-  // anchor a no-op duration tween at 0 so the timeline length covers the
-  // composition. Without it a brand-new injected timeline would be empty.
+  // When the user supplies a timeline, anchor a no-op tween at 0 so the timeline length
+  // covers the transitions. Without it a brand-new injected timeline would be empty.
   if (config.timeline) {
-    const duration = Number(root?.getAttribute("data-duration") || "40");
-    tl.to({ t: 0 }, { t: 1, duration, ease: "none" }, 0);
+    anchorProvidedTimeline(tl, root, transitions);
   }
 
   // Initial state: every non-first scene starts hidden. CSS defaults
@@ -2324,7 +2450,7 @@ function initEngineMode(
     const ease = t.ease ?? DEFAULT_EASE;
     const T = t.time;
 
-    if (t.shader === undefined) {
+    if (t.shader === undefined || !layeredShaders) {
       // CSS-crossfade transition: schedule an actual opacity tween so the
       // page produces a correct blended frame at every seek time. This
       // matters when the producer captures with page-side compositing
@@ -2344,6 +2470,39 @@ function initEngineMode(
       tl.set(`#${fromId}`, { opacity: 0 }, T + dur);
     }
   }
+
+  return tl;
+}
+
+// Preview without a WebGL context: scene sequencing and crossfades need no GL, so the
+// film still plays scene by scene; shader transitions degrade to crossfades.
+function initWithoutWebGL(
+  config: HyperShaderConfig,
+  scenes: string[],
+  transitions: TransitionConfig[],
+  compId: string,
+  root: HTMLElement | null,
+): GsapTimeline {
+  const tl = buildSceneTimeline(config, scenes, transitions, root, false);
+  registerTimeline(compId, tl, config.timeline);
+  return tl;
+}
+
+// Engine-mode initialization: skip every GL/canvas/html2canvas branch and only
+// schedule deterministic opacity flips so the producer can read each scene's
+// effective opacity at any seek time. tl.set() (zero-duration tweens) is used
+// instead of tl.call() because tl.call only fires in the direction of motion —
+// the engine's warmup loop seeks forward through transition start times and
+// then the main render loop seeks back to t=0, which would leave callback-set
+// state stuck. tl.set tweens revert correctly on backward seeks.
+function initEngineMode(
+  config: HyperShaderConfig,
+  scenes: string[],
+  transitions: TransitionConfig[],
+  compId: string,
+  root: HTMLElement | null,
+): GsapTimeline {
+  const tl = buildSceneTimeline(config, scenes, transitions, root, true);
 
   // Page-side compositing opt-in (default OFF). When the producer launches
   // with `EngineConfig.enablePageSideCompositing: true`, it sets the

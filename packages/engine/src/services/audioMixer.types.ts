@@ -16,6 +16,11 @@ export interface AudioElement {
   layer: number;
   volume?: number;
   volumeKeyframes?: AudioVolumeKeyframe[];
+  /**
+   * The `loop` attribute: the clip repeats its source from `mediaStart` for as
+   * long as its slot lasts, instead of ending with the source.
+   */
+  loop?: boolean;
   /** Clip-edge fades from `data-fade-in` / `data-fade-out`, seconds; absent means none. */
   fadeIn?: number;
   fadeOut?: number;

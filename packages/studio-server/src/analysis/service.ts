@@ -307,8 +307,13 @@ export class AnalysisService {
     const rerun = `run analysis for ${view.ref.path} (analyze_media)`;
     switch (state?.status) {
       case "fresh":
-      case "running":
         return state;
+      case "running":
+        // Whatever is stored for a stage being recomputed (nothing, an outdated artifact) must not pass for its result.
+        throw new AnalysisFailure(
+          "conflict",
+          `The ${where} is being computed by a running analysis; wait for it to finish, then try again`,
+        );
       case "stale":
         throw new AnalysisFailure(
           "stale",
@@ -365,18 +370,20 @@ export class AnalysisService {
 
   // ── Jobs ──────────────────────────────────────────────────────────────────
 
-  /** Starts analysing a source, or joins the job already running for it. */
+  /** Starts analysing a source, or joins the job already running for it when that job does what the request asks. */
   async startJob(project: ResolvedProject, request: AnalyzeRequest): Promise<AnalysisJob> {
     await this.cleanOrphans(project);
     const ref = await this.resolveSource(project, request.source);
     const plan = planStages(request.stages);
     const weights: Partial<Record<(typeof COMPUTED_STAGES)[number], number>> = {};
     for (const stage of plan) weights[stage] = STAGE_WEIGHTS[stage];
+    const force = request.force ? (request.stages ?? COMPUTED_STAGES) : [];
     const store = this.store(project);
     return this.jobs.start({
       projectDir: project.dir,
       source: ref.path,
       weights,
+      want: { language: request.language, force },
       run: async (reporter) => {
         const { source } = await this.prepare(project, ref, true);
         await runAnalysis(
@@ -386,7 +393,7 @@ export class AnalysisService {
             source,
             ffmpegPath: this.options.ffmpegPath,
             language: request.language,
-            force: request.force ? (request.stages ?? COMPUTED_STAGES) : [],
+            force,
             plan,
           },
           reporter,
@@ -635,7 +642,7 @@ export class AnalysisService {
     const map = semanticSegments({
       transcript,
       transcriptVersion: version,
-      request: { ...request, transcriptVersion: version },
+      request: { ...request, source: ref.path, transcriptVersion: version },
       speakers,
     });
     await this.store(project).commit(ref.path, "segments", map, {
@@ -737,6 +744,7 @@ export class AnalysisService {
   async planCut(project: ResolvedProject, request: CutPlanRequest): Promise<CutPlan> {
     const ref = await this.resolveSource(project, request.source);
     const store = this.store(project);
+    const normalised: CutPlanRequest = { ...request, source: ref.path };
     const base = request.basedOn ? await this.baseCut(project, request.basedOn, ref) : null;
     const view = await this.view(project, ref);
     const { artifact: transcript, version: transcriptVersion } = await this.requireArtifact(
@@ -755,7 +763,7 @@ export class AnalysisService {
     const silence = await this.freshArtifact(project, view, "silence", isSilenceMap);
     const shots = await this.freshArtifact(project, view, "shots", isShotMap);
     const sourceDuration = view.manifest?.fingerprint.duration ?? 0;
-    const merged = mergeCutRequest(base?.request ?? null, request);
+    const merged = mergeCutRequest(base?.request ?? null, normalised);
     const mediaRange = effectiveRange(
       readAssetRanges(project.dir).get(ref.path),
       sourceDuration > 0 ? sourceDuration : null,
@@ -809,7 +817,11 @@ export class AnalysisService {
     const [current] = await this.withApplied(project, [plan]);
     const derived = current ?? plan;
     return stale
-      ? { ...derived, warnings: [...derived.warnings, `This plan is out of date: ${stale}`] }
+      ? {
+          ...derived,
+          warnings: [...derived.warnings, `This plan is out of date: ${stale}`],
+          outOfDate: stale,
+        }
       : derived;
   }
 

@@ -1,4 +1,14 @@
-import { closeSync, constants, mkdirSync, openSync, readFileSync, writeSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  ftruncateSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  writeSync,
+} from "node:fs";
 import { dirname } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 
@@ -60,8 +70,11 @@ export function readLog(file: string, onUnreadable: (line: number) => void): His
   let text: string;
   try {
     text = readFileSync(file, "utf-8");
-  } catch {
-    return null;
+  } catch (error) {
+    // Only a log that is not there is a first open; any other failure (EACCES, EMFILE, EIO) must not let the
+    // caller write a fresh baseline over the history that is still on disk.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
   const log: HistoryLog = { baseline: new Map(), entries: [], pins: new Set() };
   const lines = text.split("\n");
@@ -80,18 +93,48 @@ function applyRecord(log: HistoryLog, record: LogRecord): void {
   else log.pins.delete(record.id);
 }
 
+/**
+ * Makes the log end at a record boundary. A crash mid-append leaves a last line with no newline: a complete record
+ * only lacking its newline gets one; a fragment is cut off, so the next record is never glued onto it.
+ */
+function endAtRecordBoundary(fd: number): void {
+  const size = fstatSync(fd).size;
+  if (size === 0) return;
+  const last = Buffer.alloc(1);
+  readSync(fd, last, 0, 1, size - 1);
+  if (last[0] === 0x0a) return;
+  const bytes = Buffer.alloc(size);
+  readSync(fd, bytes, 0, size, 0);
+  const start = bytes.lastIndexOf(0x0a) + 1;
+  if (parseRecord(bytes.subarray(start).toString("utf-8"))) writeSync(fd, "\n");
+  else ftruncateSync(fd, start);
+}
+
 /** Appends `record`, already applied to `log`; a log file that is gone is written whole, so a restart replays it. */
 export function saveRecord(file: string, log: HistoryLog, record: LogRecord): void {
   let fd: number;
   try {
     // No O_CREAT: an append never creates a log that would lack its baseline.
-    fd = openSync(file, constants.O_WRONLY | constants.O_APPEND);
+    fd = openSync(file, constants.O_RDWR | constants.O_APPEND);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     return writeLog(file, log);
   }
   try {
-    writeSync(fd, `${JSON.stringify(record)}\n`);
+    endAtRecordBoundary(fd);
+    const whole = fstatSync(fd).size;
+    const line = Buffer.from(`${JSON.stringify(record)}\n`);
+    try {
+      // A short write (a full disk) must not leave a fragment: it is cut off, and the failure reaches the caller.
+      for (let done = 0; done < line.length; ) done += writeSync(fd, line, done);
+    } catch (error) {
+      try {
+        ftruncateSync(fd, whole);
+      } catch {
+        // The next append cuts a remaining fragment off.
+      }
+      throw error;
+    }
   } finally {
     closeSync(fd);
   }

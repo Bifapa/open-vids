@@ -23,7 +23,10 @@ import type {
  * Analysis artifacts live outside project history, so none of these calls is part of a turn's checkpoint.
  */
 export interface AnalysisHost {
-  /** Starts the analysis of a source, or joins the running job of that source. */
+  /**
+   * Starts the analysis of a source, or joins the running job of that source when it does what the request asks;
+   * rejects with `conflict` when a running job would not (force, another language).
+   */
   startJob(request: AnalyzeRequest, signal: AbortSignal): Promise<AnalysisJob>;
   getJob(jobId: string, signal: AbortSignal): Promise<AnalysisJob>;
   /** Kills the job's child processes; resolves with the job in its final state. */

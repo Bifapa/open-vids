@@ -28,6 +28,8 @@ export interface AgentGateway {
 
 export interface AgentGatewayOptions {
   launch: () => AgentRuntimeLaunch | null;
+  /** The wait after a first failed start before the next may begin; it doubles per failure (default 1 s). */
+  backoffMinMs?: number;
 }
 
 interface RuntimeInstance {
@@ -182,7 +184,8 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
   let starting: Promise<RuntimeInstance> | null = null;
   let disposed = false;
   let disposePromise: Promise<void> | null = null;
-  let restartDelayMs = BACKOFF_MIN_MS;
+  const backoffMinMs = options.backoffMinMs ?? BACKOFF_MIN_MS;
+  let restartDelayMs = backoffMinMs;
   let retryAfter = 0;
   let backoffTimer: ReturnType<typeof setTimeout> | null = null;
   let cancelBackoff: (() => void) | null = null;
@@ -391,7 +394,7 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
       state = "running";
       retryAfter = 0;
       instance.healthyTimer = setTimeout(() => {
-        restartDelayMs = BACKOFF_MIN_MS;
+        restartDelayMs = backoffMinMs;
         retryAfter = 0;
       }, HEALTHY_RESET_MS);
       instance.healthyTimer.unref?.();

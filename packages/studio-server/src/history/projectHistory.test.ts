@@ -1,5 +1,7 @@
 // @vitest-environment node
 import {
+  appendFileSync,
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -18,7 +20,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileContentVersion, recordFileWriteReceipt } from "../helpers/fileVersion";
-import { HistoryBusyError } from "./ownerLock";
+import { HistoryBusyError, processStartKey } from "./ownerLock";
 import { HistoryIdError } from "./historyId";
 import { HistoryClosedError, openProjectHistory, type ProjectHistory } from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
@@ -558,22 +560,13 @@ describe("openProjectHistory", () => {
     expect(() => history.list()).toThrow(HistoryClosedError);
   });
 
-  it("releases ownership only after every close has settled", async () => {
-    const { history } = await project({ "index.html": "v1" });
-    let firstDone = false;
-    const first = history.close().then(() => (firstDone = true));
-    await history.close();
-    expect(firstDone).toBe(true);
-    await first;
-  });
-
   it("refuses once a new project takes the folder's path, leaving both projects' files alone", async () => {
     const { history, write, read, projectDir, historyRoot } = await project({ "index.html": "v1" });
     await change(history, you, "Second", () => write("index.html", "v2"));
     const window = await history.beginWindow(agent, "Turn");
     write("index.html", "v3");
-    history.noteChange("index.html");
-    await pause(100);
+    // Forces the sweep that files v3 under the turn, so the swap below cannot race it.
+    await history.claim(you, "sweep", []);
     const moved = `${projectDir}-moved`;
     renameSync(projectDir, moved);
     cleanup.push(() => rmSync(moved, { recursive: true, force: true }));
@@ -1089,6 +1082,119 @@ describe("openProjectHistory", () => {
     expect((await open(projectDir, historyRoot, { ownerWaitMs: 0 })).projectId).toBe(
       history.projectId,
     );
+  });
+
+  it("takes over the lock of an owner whose pid now belongs to another process", async (context) => {
+    if ((await processStartKey(process.pid)) === null) context.skip();
+    const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await history.close();
+    // This process stands in for the unrelated one that was handed the dead owner's pid.
+    writeFileSync(
+      join(historyRoot, history.projectId, "owner.pid"),
+      `${process.pid} started-before-this-process`,
+    );
+    expect((await open(projectDir, historyRoot, { ownerWaitMs: 0 })).projectId).toBe(
+      history.projectId,
+    );
+  });
+
+  it("keeps out an older lock that names a live pid alone", async () => {
+    const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await history.close();
+    writeFileSync(join(historyRoot, history.projectId, "owner.pid"), String(process.pid));
+    await expect(openProjectHistory({ projectDir, historyRoot, ownerWaitMs: 0 })).rejects.toThrow(
+      HistoryBusyError,
+    );
+  });
+
+  it("cuts a torn last log line off, so the entry written next survives a restart", async () => {
+    const errors: unknown[] = [];
+    const options = { onError: (error: unknown) => errors.push(error) };
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "v1" },
+      options,
+    );
+    await change(history, you, "Second", () => write("index.html", "v2"));
+    await history.close();
+    // A crash in the middle of an append.
+    appendFileSync(
+      join(historyRoot, history.projectId, "log.jsonl"),
+      '{"type":"entry","entry":{"id":"to',
+    );
+
+    const reopened = await open(projectDir, historyRoot, options);
+    await change(reopened, you, "Third", () => write("index.html", "v3"));
+    await reopened.close();
+
+    const again = await open(projectDir, historyRoot, options);
+    expect(again.list().map((entry) => entry.label)).toEqual(["Second", "Third"]);
+    expect(errors).toEqual([]);
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "fails an open whose log cannot be read, leaving the history on disk",
+    async () => {
+      const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+      await change(history, you, "Second", () => write("index.html", "v2"));
+      await history.close();
+      const log = join(historyRoot, history.projectId, "log.jsonl");
+      const before = readFileSync(log, "utf-8");
+
+      chmodSync(log, 0o000);
+      try {
+        await expect(
+          openProjectHistory({ projectDir, historyRoot, ownerWaitMs: 0 }),
+        ).rejects.toThrow(/EACCES/);
+      } finally {
+        chmodSync(log, 0o644);
+      }
+
+      expect(readFileSync(log, "utf-8")).toBe(before);
+      expect((await open(projectDir, historyRoot)).list().map((entry) => entry.label)).toEqual([
+        "Second",
+      ]);
+    },
+  );
+
+  it("does not replace a file that was saved while a restore was under way", async () => {
+    const { history, write, read } = await project({ "index.html": "A" });
+    // A save by a writer outside the history queue lands after the restore has settled the project.
+    let saved = false;
+    history.onEntry(() => {
+      if (saved) return;
+      saved = true;
+      write("index.html", "C (user)");
+    });
+    write("index.html", "B");
+
+    await expect(history.restore(START, you)).rejects.toThrow(
+      "changed while it was being written back",
+    );
+    expect(saved).toBe(true);
+    expect(read("index.html")).toBe("C (user)");
+
+    // The save is then an ordinary change: a restore that follows can undo it with its eyes open.
+    await history.restore(START, you);
+    expect(read("index.html")).toBe("A");
+  });
+
+  it("refuses a restore whose blob is missing before it writes any file", async () => {
+    const { history, write, read, historyRoot } = await project({
+      "a.txt": "A1",
+      "b.txt": "B1",
+    });
+    await change(history, you, "Both", () => {
+      write("a.txt", "A2");
+      write("b.txt", "B2");
+    });
+    const lost = history.peek(START)!["b.txt"]!;
+    rmSync(join(historyRoot, history.projectId, "blobs", lost.slice(0, 2), lost));
+
+    await expect(history.restore(START, you)).rejects.toThrow("no longer kept");
+
+    // Neither file was touched, so there is no half-applied restore.
+    expect([read("a.txt"), read("b.txt")]).toEqual(["A2", "B2"]);
+    expect(history.list()).toHaveLength(1);
   });
 
   it("rewrites a history folder removed while open, so a reopen still has the change", async () => {

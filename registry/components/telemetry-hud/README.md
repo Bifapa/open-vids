@@ -62,7 +62,7 @@ Rules:
 Install, then fill the slot with a product screenshot:
 
 ```bash
-npx hyperframes add telemetry-hud
+hyperframes add telemetry-hud
 ```
 
 In `compositions/components/telemetry-hud.html`, replace the slot's default

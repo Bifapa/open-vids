@@ -323,6 +323,7 @@ export {
   assertPublicHttpsUrl,
   isBlockedNetworkHost,
   downloadToTemp,
+  fetchPublicHttpsBytes,
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,

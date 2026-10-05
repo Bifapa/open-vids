@@ -2,7 +2,8 @@ import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode 
 import { ChatCircleDots } from "@phosphor-icons/react";
 import { AgentStoreProvider, useAgentStore } from "../../agent/agentContext";
 import type { ChatSummary } from "@hyperframes/agent-protocol";
-import { NEW_CHAT_DRAFT, type AgentStore } from "../../agent/agentStore";
+import { NEW_CHAT_DRAFT } from "../../agent/agentDraftChat";
+import type { AgentStore } from "../../agent/agentStore";
 import { useTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import { ChatDropZone } from "./ChatDropZone";

@@ -79,8 +79,32 @@ export interface HotkeyCallbacks {
   readOnlyPreview: boolean;
 }
 
+/** Surfaces whose keys are their own (a clip, a canvas element) even with text selected somewhere else. */
+const KEY_OWNER_SELECTOR = "[data-studio-timeline], [data-studio-canvas]";
+
 function timelineOwnsKey(event: KeyboardEvent): boolean {
   return event.target instanceof Element && event.target.closest("[data-studio-timeline]") !== null;
+}
+
+/**
+ * Text the user selected in the document this key landed in (a chat message, a panel label, an error
+ * path). ⌘C / ⌘X then belong to the browser: claiming them would copy or cut a clip instead of the text, or toast
+ * "nothing to copy" over it. `event.view` is the iframe's own window for a key pressed in the preview,
+ * whose selection is not the top document's. A key inside the timeline or the canvas overlay is that surface's
+ * own unless the selection lies inside it: a leftover selection elsewhere (the overlay takes focus on press
+ * without clearing it) must not take the key.
+ */
+function hasSelectedText(event: KeyboardEvent): boolean {
+  const selection = (event.view ?? window).getSelection();
+  if (selection === null || selection.isCollapsed || selection.toString() === "") return false;
+  const owner = event.target instanceof Element ? event.target.closest(KEY_OWNER_SELECTOR) : null;
+  if (owner === null) return true;
+  return (
+    selection.anchorNode !== null &&
+    selection.focusNode !== null &&
+    owner.contains(selection.anchorNode) &&
+    owner.contains(selection.focusNode)
+  );
 }
 
 /** Exported for tests, like dispatchPlainKey below: lets the Cmd+C/Cmd+V
@@ -125,6 +149,9 @@ export function dispatchModifierKey(
   }
 
   if (!event.shiftKey && !event.altKey && !isEditableTarget(event.target)) {
+    // Selected text is the browser's for copy and cut alike: cutting a clip instead would be destructive. The
+    // timeline and the canvas keep their own keys unless the selection lies inside them (see hasSelectedText).
+    if ((key === "c" || key === "x") && hasSelectedText(event)) return false;
     // An active automation range owns Cmd+C/Cmd+V, same as Delete below: this
     // capture listener runs before useAutomationSelectionKeyboard's, so without
     // this both clipboards raced the same key. No preventDefault, so the

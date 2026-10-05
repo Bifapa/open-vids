@@ -1627,13 +1627,18 @@ export const gsapRules: LintRule<LintContext>[] = [
     const canInheritFromHost =
       options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template");
 
-    for (const script of scripts) {
-      const content = script.content;
-      if (!/gsap\.timeline/.test(content)) continue;
-      const hasRegistration =
+    // Registration is a document-level fact: the timeline may be built in one
+    // script and registered in another. Comments do not register anything.
+    const uncommented = scripts.map((script) => stripJsComments(script.content));
+    const hasRegistration = uncommented.some(
+      (content) =>
         WINDOW_TIMELINE_ASSIGN_PATTERN.test(content) ||
-        TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(content);
-      if (hasRegistration || canInheritFromHost) continue;
+        TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(content),
+    );
+    if (hasRegistration || canInheritFromHost) return findings;
+
+    for (const [index, script] of scripts.entries()) {
+      if (!/gsap\.timeline/.test(uncommented[index] ?? "")) continue;
       findings.push({
         ...locate(script, gsapCallOffset(script, "timeline")),
         code: "gsap_timeline_not_registered",

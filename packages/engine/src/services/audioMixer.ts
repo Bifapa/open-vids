@@ -4,7 +4,16 @@
  * Processes and mixes audio tracks using FFmpeg.
  */
 
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
@@ -21,6 +30,7 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { formatFfmpegError, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import { MAX_CONCURRENT_MEDIA_JOBS, Slots } from "../utils/slots.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
+import { safePathSegment } from "../utils/safePathSegment.js";
 import { resolveMediaElementSrc, resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
@@ -95,26 +105,6 @@ function memberGroupKey(el: RefResolverEl): string | null {
 
 function clampVolume(volume: number): number {
   return clampAudioGain(volume);
-}
-
-/**
- * An author-controlled id, made safe to put in a filename.
- *
- * `data-audio-group` reaches this file straight from the document — the
- * studio's `GROUP_ID_PATTERN` guards only ids the studio itself mints, and a
- * hand-authored or agent-written one is unvalidated. Interpolated raw it could
- * carry `/` or `..`, and `mkdirSync(recursive)` inside ffmpeg's own path
- * handling would then write outside `workDir`, where `bail()`'s `rmSync` never
- * cleans it up. Everything outside [A-Za-z0-9_-] collapses to `_`, and every
- * result gets a stable positional suffix so distinct ids that sanitize alike
- * cannot share one intermediate file.
- */
-function safePathSegment(id: string, fallbackIndex: number): string {
-  const cleaned = id.replace(/[^A-Za-z0-9_-]/g, "_");
-  // Sanitisation is many-to-one (`bed/a` and `bed?a` both become `bed_a`).
-  // The stable position keeps every authored group on a distinct temp path
-  // even when their readable portions collide.
-  return `${cleaned || "group"}-${fallbackIndex}`;
 }
 
 function formatFilterNumber(value: number): string {
@@ -585,11 +575,17 @@ export function parseAudioElements(html: string): AudioElement[] {
   const visiting = new Set<RefResolverEl>();
   const resolveStart = (el: RefResolverEl): number =>
     el.getAttribute("data-start") ? resolveReferencedStart(document, el, startCache, visiting) : 0;
-  // `end` stays a plain numeric read (the mixer derives the real segment length
-  // from data-duration / natural media downstream); guard NaN so a malformed
-  // value never poisons the mix instead of falling back to 0.
-  const parseEnd = (raw: string | null): number => {
-    return parseStrictFiniteTimingNumber(raw) ?? 0;
+  // The timing compiler only injects `data-end` for numeric starts. A relative
+  // `data-start` ("start when clip X ends") keeps just `data-duration`, so the
+  // end is derived from the resolved start, exactly as the video parse does;
+  // left at 0 the mixer would play the clip to its natural length and overlap
+  // whatever follows. Malformed values (NaN) fall back to 0 so they never
+  // poison the mix.
+  const resolveEnd = (el: RefResolverEl, start: number): number => {
+    const explicit = parseStrictFiniteTimingNumber(el.getAttribute("data-end")) ?? 0;
+    if (explicit > 0) return explicit;
+    const duration = parseStrictFiniteTimingNumber(el.getAttribute("data-duration"));
+    return duration !== null && duration > 0 ? start + duration : explicit;
   };
   const isHidden = (el: AudioMediaElement): boolean => {
     for (let current: AudioMediaElement | null = el; current; current = current.parentElement) {
@@ -609,8 +605,12 @@ export function parseAudioElements(html: string): AudioElement[] {
     return groupId ? (groupsById.get(groupId)?.hidden ?? false) : false;
   };
 
-  // <audio> and <video data-has-audio> tracks differ only in the emitted id
+  // Muted media is silent in preview, so it never enters the mix — mute-by-drop
+  // like `data-hidden`, not mute-by-volume-0. Studio's Muted toggle only sets
+  // `muted` and leaves a video's `data-has-audio` in place.
+  const isMuted = (el: AudioMediaElement): boolean => el.hasAttribute("muted");
 
+  // <audio> and <video data-has-audio> tracks differ only in the emitted id
   // and `type`; everything else (timing, layer, volume) is read identically.
   const build = (
     el: RefResolverEl,
@@ -627,11 +627,12 @@ export function parseAudioElements(html: string): AudioElement[] {
     // `audio[data-audio-group]`) — a stray attribute on a <video> is inert.
     const groupId = type === "audio" ? memberGroupKey(el) : null;
     const group = groupId ? groupsById.get(groupId) : undefined;
+    const start = resolveStart(el);
     return {
       id,
       src,
-      start: resolveStart(el),
-      end: parseEnd(el.getAttribute("data-end")),
+      start,
+      end: resolveEnd(el, start),
       mediaStart: readMediaStart(el),
       playbackRate: readElementRateSpec(el),
       layer: layerAttr ? parseInt(layerAttr) : 0,
@@ -648,6 +649,7 @@ export function parseAudioElements(html: string): AudioElement[] {
             groupVolume: group.volume,
           }
         : {}),
+      ...(el.getAttribute("loop") !== null ? { loop: true } : {}),
       type,
     };
   };
@@ -663,7 +665,7 @@ export function parseAudioElements(html: string): AudioElement[] {
     const src = resolveMediaElementSrc(el);
     // `memberGroupHidden` is the group's own mute: a hidden BUS drops every
     // member from the mix, the same way `isHidden` drops one track.
-    if (!id || !src || isHidden(el) || memberGroupHidden(el)) continue;
+    if (!id || !src || isHidden(el) || isMuted(el) || memberGroupHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
     elements.push(build(el, id, src, "audio"));
   }
@@ -671,7 +673,7 @@ export function parseAudioElements(html: string): AudioElement[] {
   for (const el of document.querySelectorAll('video[id][data-has-audio="true"]')) {
     const id = trackId(el);
     const src = resolveMediaElementSrc(el);
-    if (!id || !src || isHidden(el)) continue;
+    if (!id || !src || isHidden(el) || isMuted(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
     elements.push(build(el, `${id}-audio`, src, "video"));
   }
@@ -682,7 +684,7 @@ export function parseAudioElements(html: string): AudioElement[] {
 async function extractAudioFromVideo(
   videoPath: string,
   outputPath: string,
-  options?: { startTime?: number; duration?: number; playbackRate?: RateSpec },
+  options?: { startTime?: number; duration?: number; playbackRate?: RateSpec; loop?: boolean },
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<ExtractResult> {
@@ -691,15 +693,36 @@ async function extractAudioFromVideo(
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
   const playbackRate = normalizeRateSpec(options?.playbackRate);
-  const args: string[] = [];
-  if (options?.startTime !== undefined) args.push("-ss", String(options.startTime));
-  if (options?.duration !== undefined) {
-    args.push("-t", String(sourceTimeAt(playbackRate, options.duration)));
+  let looped = false;
+  let inputPath = videoPath;
+  if (options?.loop && options.duration !== undefined) {
+    const region = await decodeLoopRegion(
+      videoPath,
+      `${outputPath}.loop.wav`,
+      options.startTime ?? 0,
+      sourceTimeAt(playbackRate, options.duration),
+      "extract",
+      signal,
+      ffmpegProcessTimeout,
+    );
+    if (!region.success) return region;
+    looped = region.looped;
+    if (looped) inputPath = region.outputPath;
   }
-  args.push("-i", videoPath);
+  const args: string[] = [];
+  if (looped) {
+    args.push("-stream_loop", "-1");
+  } else {
+    if (options?.startTime !== undefined) args.push("-ss", String(options.startTime));
+    if (options?.duration !== undefined) {
+      args.push("-t", String(sourceTimeAt(playbackRate, options.duration)));
+    }
+  }
+  args.push("-i", inputPath);
   const outputArgs = await preparedAudioOutputArgs(videoPath, playbackRate, options?.duration);
   args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...outputArgs);
-  if (playbackRate !== 1 && options?.duration !== undefined) {
+  // The looped input is endless, so the output length is what bounds it.
+  if ((playbackRate !== 1 || looped) && options?.duration !== undefined) {
     args.push("-t", String(options.duration));
   }
   args.push("-y", outputPath);
@@ -735,6 +758,81 @@ async function extractAudioFromVideo(
   return { success: true, outputPath, durationMs: result.durationMs };
 }
 
+/**
+ * A WAV with no more than this many bytes holds a header and no usable audio.
+ */
+const MIN_LOOPABLE_WAV_BYTES = 1024;
+
+/**
+ * Decode the region a looping clip repeats — from its media start to the end
+ * of the source, capped at `sourceSeconds` (what the clip consumes at most) so
+ * the intermediate is never longer than the output. The preview wraps a loop
+ * back to the media start, while FFmpeg's `-stream_loop` restarts at the file
+ * start, so the region is materialised and the loop runs over it.
+ *
+ * `looped` is false when the region holds no audio (media start past the end
+ * of the source): the caller keeps its single-pass path and the clip stays
+ * silent, as it would without `loop`.
+ */
+async function decodeLoopRegion(
+  srcPath: string,
+  regionPath: string,
+  mediaStart: number,
+  sourceSeconds: number,
+  stage: "extract" | "prepare",
+  signal: AbortSignal | undefined,
+  ffmpegProcessTimeout: number,
+): Promise<ExtractResult & { looped: boolean }> {
+  const result = await runFfmpeg(
+    [
+      "-ss",
+      String(mediaStart),
+      "-t",
+      String(sourceSeconds),
+      "-i",
+      srcPath,
+      "-vn",
+      "-acodec",
+      "pcm_s16le",
+      "-ar",
+      "48000",
+      "-y",
+      regionPath,
+    ],
+    { signal, timeout: ffmpegProcessTimeout },
+  );
+  if (signal?.aborted) {
+    const failure: AudioProcessingFailure = {
+      stage: "cancelled",
+      reason: "cancelled",
+      owner: "user",
+      retryable: false,
+      detail: `Audio ${stage} cancelled`,
+    };
+    return {
+      success: false,
+      looped: false,
+      outputPath: regionPath,
+      durationMs: result.durationMs,
+      error: failure.detail,
+      failure,
+    };
+  }
+  if (!result.success) {
+    const failure = ffmpegFailure(stage, result);
+    return {
+      success: false,
+      looped: false,
+      outputPath: regionPath,
+      durationMs: result.durationMs,
+      error: failure.detail,
+      failure,
+    };
+  }
+  const looped = existsSync(regionPath) && statSync(regionPath).size > MIN_LOOPABLE_WAV_BYTES;
+  return { success: true, looped, outputPath: regionPath, durationMs: result.durationMs };
+}
+
 async function prepareAudioTrack(
   srcPath: string,
   outputPath: string,
@@ -743,27 +841,38 @@ async function prepareAudioTrack(
   playbackRate: RateSpec = 1,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+  loop = false,
 ): Promise<ExtractResult> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   const normalizedPlaybackRate = normalizeRateSpec(playbackRate);
+  const sourceSeconds = sourceTimeAt(normalizedPlaybackRate, duration);
   const outputArgs = await preparedAudioOutputArgs(srcPath, normalizedPlaybackRate, duration);
 
-  const args = [
-    "-ss",
-    String(mediaStart),
-    "-t",
-    String(sourceTimeAt(normalizedPlaybackRate, duration)),
-    "-i",
-    srcPath,
-    "-acodec",
-    "pcm_s16le",
-    "-ar",
-    "48000",
-    ...outputArgs,
-  ];
-  if (normalizedPlaybackRate !== 1) args.push("-t", String(duration));
+  let looped = false;
+  let inputPath = srcPath;
+  if (loop) {
+    const region = await decodeLoopRegion(
+      srcPath,
+      `${outputPath}.loop.wav`,
+      mediaStart,
+      sourceSeconds,
+      "prepare",
+      signal,
+      ffmpegProcessTimeout,
+    );
+    if (!region.success) return region;
+    looped = region.looped;
+    if (looped) inputPath = region.outputPath;
+  }
+
+  const args = looped
+    ? ["-stream_loop", "-1", "-i", inputPath]
+    : ["-ss", String(mediaStart), "-t", String(sourceSeconds), "-i", srcPath];
+  args.push("-acodec", "pcm_s16le", "-ar", "48000", ...outputArgs);
+  // The looped input is endless, so the output length is what bounds it.
+  if (normalizedPlaybackRate !== 1 || looped) args.push("-t", String(duration));
   args.push("-y", outputPath);
 
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
@@ -1179,7 +1288,7 @@ export async function processCompositionAudio(
   // Each element trims/decodes its source with its own ffmpeg; a long-form cut has hundreds of elements, so they take
   // turns (Slots). The cancellation check below runs once a slot is granted, so a cancelled mix drains quickly.
   await Promise.all(
-    elements.map((element) =>
+    elements.map((element, elementIndex) =>
       audioElementSlots.run(async () => {
         if (effectiveSignal.aborted) {
           failures.push({
@@ -1271,9 +1380,14 @@ export async function processCompositionAudio(
               (effectiveDuration > 0 ? effectiveDuration : metadata.durationSeconds);
           }
 
+          // Intermediates are named from the author-controlled element id, which
+          // may carry `/` or `..`; ffmpeg would write (and overwrite, `-y`) outside
+          // `workDir`. The `track-` prefix keeps these names disjoint from the
+          // `group-*` sub-mix files.
+          const trackPathId = `track-${safePathSegment(element.id, elementIndex)}`;
           let audioSrcPath = srcPath;
           if (element.type === "video") {
-            const extractedPath = join(workDir, `${element.id}-extracted.wav`);
+            const extractedPath = join(workDir, `${trackPathId}-extracted.wav`);
             const extractResult = await extractAudioFromVideo(
               srcPath,
               extractedPath,
@@ -1281,6 +1395,7 @@ export async function processCompositionAudio(
                 startTime: element.mediaStart,
                 duration: element.end - element.start,
                 playbackRate: element.playbackRate,
+                loop: element.loop === true,
               },
               effectiveSignal,
               config,
@@ -1302,7 +1417,7 @@ export async function processCompositionAudio(
             }
             audioSrcPath = extractedPath;
           } else {
-            const trimmedPath = join(workDir, `${element.id}-trimmed.wav`);
+            const trimmedPath = join(workDir, `${trackPathId}-trimmed.wav`);
             const prepResult = await prepareAudioTrack(
               srcPath,
               trimmedPath,
@@ -1311,6 +1426,7 @@ export async function processCompositionAudio(
               element.playbackRate,
               effectiveSignal,
               config,
+              element.loop === true,
             );
             if (!prepResult.success) {
               failures.push(
@@ -1375,7 +1491,7 @@ export async function processCompositionAudio(
             const fxResult = await applyAudioFxChain(
               audioSrcPath,
               chain,
-              join(workDir, `${element.id}-fx.wav`),
+              join(workDir, `${trackPathId}-fx.wav`),
               {
                 trackId: element.id,
                 signal: effectiveSignal,
@@ -1501,7 +1617,7 @@ export async function processCompositionAudio(
     groupIndex += 1;
     const meta = groupMeta.get(groupId);
     if (!meta) continue;
-    const pathId = safePathSegment(groupId, groupIndex);
+    const pathId = safePathSegment(groupId, groupIndex, "group");
     const groupWavPath = join(workDir, `group-${pathId}.wav`);
     // Same contract the per-element loop above gives: a malformed `data-fx-chain`
     // or `data-automation` on a BUS threw straight out of processCompositionAudio,

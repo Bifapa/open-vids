@@ -909,7 +909,7 @@
     render();
     land(at, p.id);
     api("/api/rename", { id: p.id, new_name: next })
-      .then(() => load(() => land(at, next)))
+      .then((res) => load(() => land(at, res && res.project ? res.project.id : p.id)))
       .catch((err) => {
         p.name = old;
         render();

@@ -9,7 +9,7 @@ description: >
   including transcription and subject matting; split multi-shot footage before applying it.
 ---
 
-> **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update embedded-captions`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+> **First, keep this skill fresh — confirm with the user before running:** `hyperframes skills update embedded-captions`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Embedded Captions
 
@@ -84,7 +84,7 @@ Procedure: probe the clip → shortlist 2–3 identities from the catalog → re
 
 (The full identity table lives in [CATALOG.md](CATALOG.md) — single source of truth for routing. The engine docs below describe each backend's authoring contract.)
 
-**CATALOG.md is the whole answer space here: this workflow does not search the HyperFrames component registry.** The composition workflows run `npx hyperframes catalog` before authoring a named look; this one must not. Its engines are locked compilers that consume `cinematic.json` / `theme.json` and emit the composition themselves, so a registry item — the `caption-*` blocks included — has nothing to mount into. A registry block styles text on a designed canvas; this skill burns captions into somebody's footage through a matte. When no identity fits the ask, say so and pick the nearest, rather than reaching outside the catalog.
+**CATALOG.md is the whole answer space here: this workflow does not search the HyperFrames component registry.** The composition workflows run `hyperframes catalog` before authoring a named look; this one must not. Its engines are locked compilers that consume `cinematic.json` / `theme.json` and emit the composition themselves, so a registry item — the `caption-*` blocks included — has nothing to mount into. A registry block styles text on a designed canvas; this skill burns captions into somebody's footage through a matte. When no identity fits the ask, say so and pick the nearest, rather than reaching outside the catalog.
 
 **Recommendation heuristic**: use the "Shortlisting heuristics" in [CATALOG.md](CATALOG.md) — they are identity-level (e.g. "炸" shortlists ordnance/stomp/terminal/loud and picks by WHAT should explode), never category-level. Unsure → `anchor`.
 
@@ -135,7 +135,7 @@ Read the samples. Refuse if:
     + _postfx.sh; the deliverable is final_fx.mp4, final.mp4 is pre-plate-reaction)
 ```
 
-Step 1's `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
+Step 1's `init` checks the installed skills against the skills bundled with the CLI and refreshes the global set if any are out of date.
 
 Step 3 differs by mode:
 

@@ -10,8 +10,9 @@ import {
   realpathSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { readNodeRequestBody } from "./vite.request-body.js";
+import { clientAbortSignal, readNodeRequestBody } from "./vite.request-body.js";
 import { watch } from "chokidar";
+import { studioRequestGuard } from "./vite.request-guard";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 import { previewConfigPayload } from "./vite.preview-config";
 import { loadStudioServerDevModule } from "./vite.studio-server-module";
@@ -249,6 +250,9 @@ function devProjectApi(): Plugin {
         }
       };
 
+      // Gate every request (config probe, /api, Vite assets) before anything answers it.
+      server.middlewares.use(studioRequestGuard());
+
       server.middlewares.use((req, res, next) => {
         if (req.url !== "/__hyperframes_config") return next();
         const payload = previewConfigPayload(process.env, process.pid, studioPkg.version);
@@ -288,6 +292,8 @@ function devProjectApi(): Plugin {
       // API middleware
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith("/api/")) return next();
+        // Before anything is awaited: a disconnect during the module load or the body read is not replayed later.
+        const signal = clientAbortSignal(res);
         try {
           const api = await getApi();
           const url = new URL(req.url, `http://${req.headers.host}`);
@@ -305,6 +311,7 @@ function devProjectApi(): Plugin {
             method: req.method,
             headers,
             body,
+            signal,
           });
           const response = await api.fetch(fetchReq);
           await bridgeHonoResponse(response, res);

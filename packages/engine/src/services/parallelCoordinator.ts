@@ -877,15 +877,34 @@ async function executeWorkerTask(
   };
 
   try {
-    session = await runPhase("browser_launch", () =>
-      createCaptureSession(
-        serverUrl,
-        task.outputDir,
-        captureOptions,
-        createBeforeCaptureHook(),
-        workerConfig,
-      ),
-    );
+    // The deadline race rejects without cancelling the launch, and
+    // `createCaptureSession` takes no signal. When the race loses (user abort,
+    // peer failure, phase timeout) the browser can still finish launching
+    // afterwards, and with `session` unset the `finally` below would never
+    // close it — a leaked pooled lease or an orphaned Chrome. So the late
+    // result is closed here.
+    const launches: Promise<CaptureSession>[] = [];
+    try {
+      session = await runPhase("browser_launch", () => {
+        const launch = createCaptureSession(
+          serverUrl,
+          task.outputDir,
+          captureOptions,
+          createBeforeCaptureHook(),
+          workerConfig,
+        );
+        launches.push(launch);
+        return launch;
+      });
+    } catch (launchError) {
+      for (const launch of launches) {
+        void launch.then(
+          (lateSession) => closeCaptureSession(lateSession).catch(() => {}),
+          () => {},
+        );
+      }
+      throw launchError;
+    }
     const activeSession = session;
     browserExecutable = activeSession.browser?.process?.()?.spawnfile || browserExecutable;
     logParDebug(() => `[par:w${task.workerId}] session created`);

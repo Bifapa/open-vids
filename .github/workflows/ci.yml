@@ -201,6 +201,25 @@ jobs:
             exit 1
           fi
 
+      # The site-inspection and layout-audit suites drive a real browser and skip themselves unless
+      # PUPPETEER_EXECUTABLE_PATH is set, so the Test step above never runs them (one of them is the in-browser
+      # private-address guard). Point them at the managed chrome-headless-shell, fetched the way an install does.
+      # Scoped to these two files: other CLI tests resolve the browser themselves and must not see the variable.
+      - name: Test (Chromium)
+        if: runner.os == 'macOS' && matrix.name == 'render'
+        working-directory: packages/cli
+        run: |
+          set -euo pipefail
+          chrome="$(bun dist/cli.js browser ensure --force --json | sed -n 's/.*"event":"done","path":"\([^"]*\)".*/\1/p')"
+          case "$chrome" in
+            *chrome-headless-shell*) ;;
+            *) echo "::error::browser ensure did not return the managed chrome-headless-shell: '$chrome'"; exit 1 ;;
+          esac
+          test -x "$chrome"
+          PUPPETEER_EXECUTABLE_PATH="$chrome" bunx vitest run \
+            src/siteInspect/inspectSite.chromium.test.ts \
+            src/commands/layout-audit.chromium.test.ts
+
       - name: Skills tests
         if: ${{ matrix.skills }}
         run: bun run test:skills

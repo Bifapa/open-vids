@@ -7,7 +7,16 @@ export type { ClipFact } from "@hyperframes/core/clip-facts";
 
 /** The store holds preview URLs; the agent edits project files, so drop the origin and preview prefix. */
 function projectRelativeSrc(src: string): string {
-  return src.replace(/^https?:\/\/[^/]+/, "").replace(/^\/api\/projects\/[^/]+\/preview\//, "");
+  const path = src
+    .replace(/^https?:\/\/[^/]+/, "")
+    .replace(/^\/api\/projects\/[^/]+\/preview\//, "")
+    .replace(/[?#].*$/, "");
+  // The attribute is a URL (`a%20b%231.mp4`); the agent names the file on disk (`a b#1.mp4`).
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
 }
 
 export function describeClip(element: TimelineElement): ClipFact {

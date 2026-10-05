@@ -209,3 +209,43 @@ describe("@ mentions", () => {
     expect(chips?.textContent).toContain("intro.mp4");
   });
 });
+
+describe("input method composition", () => {
+  // WebKit ends the composition before it delivers the Enter that committed it: `isComposing` is already false, and
+  // only keyCode 229 marks the key as the input method's.
+  const IME_COMMIT = { keyCode: 229 };
+
+  it("does not send on the Enter that commits a composition, or while one is open", async () => {
+    mounted = mountChat({ view: "chat", chatId: "c1", chat: chatState() });
+    const field = textarea(mounted.host);
+    await type(field, "こんにちは");
+
+    await pressKey(field, "Enter", IME_COMMIT);
+    await pressKey(field, "Enter", { isComposing: true });
+    expect(mounted.client.startTurn).not.toHaveBeenCalled();
+    expect(field.value).toBe("こんにちは");
+
+    // The next Enter is the user's own.
+    await pressKey(field, "Enter", { keyCode: 13 });
+    expect(mounted.client.startTurn).toHaveBeenCalledWith(
+      "c1",
+      expect.objectContaining({ prompt: "こんにちは" }),
+    );
+  });
+
+  it("does not pick a file from the @ popup on the Enter that commits a composition", async () => {
+    const assets = ["assets/intro.mp4"];
+    fileManager.value = { assets, fileTree: assets };
+    mounted = mountChat({ view: "chat", chatId: "c1", chat: chatState() });
+    const field = textarea(mounted.host);
+    await act(async () => field.focus());
+    await type(field, "@int");
+    await act(async () => field.setSelectionRange(4, 4));
+    expect(mounted.host.querySelector('[data-testid="composer-mention-menu"]')).not.toBeNull();
+
+    await pressKey(field, "Enter", IME_COMMIT);
+
+    expect(field.value).toBe("@int");
+    expect(mounted.host.querySelector('[data-testid="composer-attachments"]')).toBeNull();
+  });
+});

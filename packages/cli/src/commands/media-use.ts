@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { finishCommand } from "../utils/commandResult.js";
+import { selfInvocation } from "../server/cliChild.js";
 
 const MEDIA_USE_ARGS = {
   type: { type: "string" },
@@ -69,6 +70,22 @@ export function mediaUsePassthroughArgs(argv: readonly string[]): string[] {
   return argv.slice(commandIndex + 2);
 }
 
+/**
+ * Hands the engine this CLI's own invocation (runtime flags, then the CLI entry) so it can run
+ * `tts` and friends without a `hyperframes` binary on PATH, which neither the packaged app nor a
+ * source checkout provides. The engine runs under `process.execPath`, so only the prefix travels.
+ */
+export function mediaUseEngineEnv(
+  base: NodeJS.ProcessEnv = process.env,
+  invocation: () => { prefix: string[] } = selfInvocation,
+): NodeJS.ProcessEnv {
+  try {
+    return { ...base, HYPERFRAMES_CLI_INVOCATION: JSON.stringify(invocation().prefix) };
+  } catch {
+    return base;
+  }
+}
+
 export function mediaUseVerbFlags(verb: MediaUseVerb): string[] {
   return verb === "resolve" ? [] : [`--${verb}`];
 }
@@ -84,6 +101,7 @@ function invokeEngine(verb: MediaUseVerb): never {
     [resolveMediaUseEnginePath(here), ...flag, ...passed],
     {
       stdio: "inherit",
+      env: mediaUseEngineEnv(),
     },
   );
   if (result.error) throw result.error;

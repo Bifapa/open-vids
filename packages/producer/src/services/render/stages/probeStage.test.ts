@@ -555,6 +555,28 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(fileServerCloseCallCount).toBe(1);
   });
 
+  // The orchestrator only adopts the file server and session once the stage returns;
+  // a failure anywhere in between used to strand them in a long-lived host.
+  it.each([
+    { abortOnCall: 1, sessions: 0, label: "right after the file server starts" },
+    { abortOnCall: 2, sessions: 1, label: "after the probe browser is ready" },
+  ])("releases probe-owned resources when cancelled $label", async ({ abortOnCall, sessions }) => {
+    resetRetryMocks();
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    let calls = 0;
+    input.assertNotAborted = () => {
+      calls += 1;
+      if (calls === abortOnCall) throw new Error("render cancelled");
+    };
+
+    await expect(runProbeStage(input)).rejects.toThrow("render cancelled");
+
+    expect(createSessionCallCount).toBe(sessions);
+    expect(closeCaptureSessionCallCount).toBe(sessions);
+    expect(fileServerCloseCallCount).toBe(1);
+  });
+
   it("launches a probe when a static-duration composition inserts video at runtime", async () => {
     capturedCfgs.length = 0;
     const { runProbeStage } = await import("./probeStage.js");
@@ -907,6 +929,8 @@ describe("runProbeStage — transient browser error retry (#1687)", () => {
     await expect(runProbeStage(probeInput)).rejects.toThrow(input.expectedMessage);
     expect(initializeSessionCallCount).toBe(input.expectedAttempts);
     expect(closeCaptureSessionCallCount).toBe(input.expectedAttempts);
+    // The orchestrator never adopts a server the stage failed to return.
+    expect(fileServerCloseCallCount).toBe(1);
   }
 
   it("uses the replacement session after a BeginFrame liveness fallback", async () => {

@@ -39,7 +39,7 @@
     },
     {
       "path": "TEMPLATE.md",
-      "target": "TEMPLATE.md",
+      "target": "compositions/chatgpt-exchange.TEMPLATE.md",
       "type": "hyperframes:asset"
     }
   ]

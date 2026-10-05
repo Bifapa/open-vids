@@ -96,6 +96,7 @@ import {
   cloneTurn,
   createDeferredVoid,
   sameIds,
+  writesProjectFiles,
   writesTimeline,
   type TurnRunnerOptions,
 } from "./turnSupport.js";
@@ -242,12 +243,6 @@ export class TurnRunner {
         activeTurn: null,
       });
     }
-    // A new user turn moves the chat on: a Story Mode offer still waiting for its answer is expired. (The offer of
-    // the turn that just ended stays answerable, so this is the only place a pending offer is taken down.)
-    await this.expireStoryOffers(chatId);
-    // A start-from-chat project on Auto: the format stays open across turns (a proposal now, the edit later) until
-    // an edit sets the canvas. Durable on the chat, so a restart does not lose the choice.
-    if (input.canvas === "auto") await this.chats.setCanvasAuto(chatId, true);
     // "Carry out the plan": the proposal must exist on the chat before anything is reserved.
     const executePlan = this.resolveExecutePlan(chatState, input);
     // A Story workspace action is always a story-mode turn; a plan is carried out in a normal turn; otherwise the
@@ -337,20 +332,34 @@ export class TurnRunner {
       finalizing: false,
       heartbeat: null,
     };
+    // The project is reserved before the first await: every check above and this assignment run in one tick, so a
+    // concurrent start cannot slip in while the chat log is written or the setup resolved. Any failure releases it.
     this.active = reservation;
 
-    // The team and the Director's model are fixed for the whole turn, from the chat and the global defaults.
-    const prepared = await this.prepareTurn(chatState.chat, input);
-    reservation.setup = prepared.setup;
-    reservation.planApproval = prepared.setup.autonomy.planApproval;
-    turn.model = prepared.model;
-    turn.thinking = prepared.thinking;
-    reservation.turn.model = prepared.model;
-    reservation.turn.thinking = prepared.thinking;
-    assistantMessage.model = prepared.model;
-    const execution = prepared.setup.execution;
-    turn.execution = { preset: execution.preset, budget: { ...execution.budget } };
-    reservation.turn.execution = { preset: execution.preset, budget: { ...execution.budget } };
+    try {
+      // A new user turn moves the chat on: a Story Mode offer still waiting for its answer is expired. (The offer of
+      // the turn that just ended stays answerable, so this is the only place a pending offer is taken down.)
+      await this.expireStoryOffers(chatId);
+      // A start-from-chat project on Auto: the format stays open across turns (a proposal now, the edit later)
+      // until an edit sets the canvas. Durable on the chat, so a restart does not lose the choice.
+      if (input.canvas === "auto") await this.chats.setCanvasAuto(chatId, true);
+
+      // The team and the Director's model are fixed for the whole turn, from the chat and the global defaults.
+      const prepared = await this.prepareTurn(chatState.chat, input);
+      reservation.setup = prepared.setup;
+      reservation.planApproval = prepared.setup.autonomy.planApproval;
+      turn.model = prepared.model;
+      turn.thinking = prepared.thinking;
+      reservation.turn.model = prepared.model;
+      reservation.turn.thinking = prepared.thinking;
+      assistantMessage.model = prepared.model;
+      const execution = prepared.setup.execution;
+      turn.execution = { preset: execution.preset, budget: { ...execution.budget } };
+      reservation.turn.execution = { preset: execution.preset, budget: { ...execution.budget } };
+    } catch (error) {
+      if (this.active === reservation) this.active = null;
+      throw error;
+    }
 
     try {
       await this.recoverCheckpoints();
@@ -659,6 +668,7 @@ export class TurnRunner {
             revertEntryIds: undoEntryIds,
           });
         }
+        if ("failure" in outcome) throw this.undoFailure(outcome.failure);
         return { ok: false, conflict: outcome.conflict };
       }
       // Revert untouched files leaves the files that changed later as they are: the turn's files no undo touched.
@@ -696,6 +706,7 @@ export class TurnRunner {
         if (remaining && !sameIds(undoEntryIds, remaining)) {
           await this.emitCheckpoint(chatId, turnId, { ...checkpoint, revertEntryIds: remaining });
         }
+        if ("failure" in outcome) throw this.undoFailure(outcome.failure);
         return { ok: false, conflict: outcome.conflict };
       }
       const restored: TurnCheckpoint = {
@@ -752,8 +763,12 @@ export class TurnRunner {
     try {
       return await this.checkpoints.revert(this.chats.scope, entryIds, mode);
     } catch (error) {
-      throw new RuntimeError("runtime_unavailable", errorMessage(error, failure), 503);
+      throw this.undoFailure(errorMessage(error, failure));
     }
+  }
+
+  private undoFailure(message: string): RuntimeError {
+    return new RuntimeError("runtime_unavailable", message, 503);
   }
 
   private async emitCheckpoint(
@@ -828,11 +843,28 @@ export class TurnRunner {
     return run.storyOffer !== null;
   }
 
-  /** The harness's own file writes (edit/write) are refused in an Ask turn and after a plan or story offer. */
+  /**
+   * The harness's own file writes (edit/write) follow the same per-turn rules as the host tools: refused in an Ask
+   * turn and after a plan or story offer (intent), once Render QA is over (the final report must describe a state QA
+   * checked), and in a story-mode turn that does not build (the timeline is composition HTML these tools could
+   * rewrite behind the story's rules).
+   */
   private fileWriteRefusal(chatId: string, toolName: string): string | null {
     const run = this.active;
     if (!run || run.chatId !== chatId) return null;
-    return intentRefusal(run.intent, toolName, this.planProposed(run), this.storyOffered(run));
+    const intent = intentRefusal(
+      run.intent,
+      toolName,
+      this.planProposed(run),
+      this.storyOffered(run),
+    );
+    if (intent || !writesProjectFiles(toolName)) return intent;
+    if (run.qaPhase === "final") {
+      return `Render QA is over and the Director is writing the final report: ${toolName} is refused now. Nothing may be edited, delegated, imported, built or rendered any more; report what was done and what QA found.`;
+    }
+    if (!timelineWritesAllowed({ mode: run.mode, action: run.storyAction }))
+      return STORY_TURN_TIMELINE_REFUSAL;
+    return null;
   }
 
   /** The user's "ask before changing locked sections" setting for the turn that is running (true when none is). */
@@ -847,22 +879,20 @@ export class TurnRunner {
    * become "interrupted", and checkpoints still "active" (a turn ended while Studio was unreachable) are closed and
    * given their entries. Delegated runs left open by a dead runtime are closed as "interrupted" first, so no run
    * outlives its turn. Runs on project load and before each new turn.
+   *
+   * A turn is only written off once Studio's history answers for it. Another runtime (a second Studio server on the
+   * same project) may still be running that turn: its history is then busy and the lookup fails, so the turn and its
+   * delegated runs stay as they are until a later attempt can tell a dead turn from a live one.
    */
   async recoverCheckpoints(): Promise<void> {
     for (const chat of this.chats.list()) {
-      const orphans = this.chats
-        .get(chat.id)
-        ?.runs.filter(
-          (run) => !isAgentRunTerminal(run.status) && run.turnId !== this.active?.turn.id,
-        );
-      for (const orphan of orphans ?? []) {
-        await this.chats.emit(chat.id, {
-          type: "agent.completed",
-          run: { ...orphan, status: "interrupted", endedAt: this.now() },
-        });
-      }
       const state = this.chats.get(chat.id);
       if (!state) continue;
+      const recovered = new Map<
+        string,
+        { entryIds: string[]; createdAt: number; crashed: boolean }
+      >();
+      const deferred = new Set<string>();
       for (const previous of state.turns) {
         if (this.active?.turn.id === previous.id) continue;
         const crashed = previous.status === "running";
@@ -873,25 +903,44 @@ export class TurnRunner {
         );
         const prompt = promptMessage?.parts.find((part) => part.type === "text")?.text ?? "";
         const createdAt = previous.checkpoint?.createdAt ?? previous.startedAt;
-        let entryIds: string[];
         try {
-          entryIds = await this.checkpoints.recover(this.chats.scope, {
+          const entryIds = await this.checkpoints.recover(this.chats.scope, {
             label: labelFor(prompt),
             startedAt: createdAt,
             ...(previous.checkpoint?.transactionId && {
               transactionId: previous.checkpoint.transactionId,
             }),
           });
+          recovered.set(previous.id, { entryIds, createdAt, crashed });
         } catch {
-          // Studio is unreachable: leave it pending for the next attempt rather than record "no changes".
-          if (!crashed) continue;
-          entryIds = [];
+          // Studio is unreachable or busy: leave the turn pending for the next attempt rather than record "no
+          // changes" for work that may be running right now.
+          deferred.add(previous.id);
         }
+      }
+
+      const orphans = this.chats
+        .get(chat.id)
+        ?.runs.filter(
+          (run) =>
+            !isAgentRunTerminal(run.status) &&
+            run.turnId !== this.active?.turn.id &&
+            !deferred.has(run.turnId),
+        );
+      for (const orphan of orphans ?? []) {
+        await this.chats.emit(chat.id, {
+          type: "agent.completed",
+          run: { ...orphan, status: "interrupted", endedAt: this.now() },
+        });
+      }
+      for (const previous of state.turns) {
+        const found = recovered.get(previous.id);
+        if (!found) continue;
         const checkpoint: TurnCheckpoint = {
           status: "ready",
-          entryIds,
-          ...(await this.checkpointFiles(entryIds)),
-          createdAt,
+          entryIds: found.entryIds,
+          ...(await this.checkpointFiles(found.entryIds)),
+          createdAt: found.createdAt,
           closedAt: this.now(),
         };
         await this.chats.emit(chat.id, {
@@ -899,7 +948,7 @@ export class TurnRunner {
           turnId: previous.id,
           checkpoint,
         });
-        if (!crashed) continue;
+        if (!found.crashed) continue;
         const turn: TurnSummary = {
           ...previous,
           status: "interrupted",
@@ -990,6 +1039,7 @@ export class TurnRunner {
             turnSignal: signal,
             turnId: run.turn.id,
             framesPerSource: setup.execution.budget.analysisFramesPerSource,
+            projectDir: this.chats.scope.projectDir,
             ...(this.analysisPollMs !== undefined && { pollMs: this.analysisPollMs }),
           })
         : null;
@@ -1436,8 +1486,8 @@ export class TurnRunner {
     if (!run || run.chatId !== chatId || run.finalizing)
       return { text: "There is no running turn for this tool call.", isError: true };
     const refusal =
-      qaPhaseRefusal(run.qaPhase, name) ??
-      intentRefusal(run.intent, name, this.planProposed(run), run.storyOffer !== null);
+      qaPhaseRefusal(run.qaPhase, name, args) ??
+      intentRefusal(run.intent, name, this.planProposed(run), run.storyOffer !== null, args);
     if (refusal) return { text: refusal, isError: true };
     // A reused session keeps its old tool list: propose_plan is refused unless this turn actually offers it.
     if (

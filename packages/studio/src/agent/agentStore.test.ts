@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChatState, EditorContext } from "@hyperframes/agent-protocol";
+import type { ChatState, EditorContext, TurnSummary } from "@hyperframes/agent-protocol";
 import { AgentApiError } from "./agentClient";
+import { projectAttachment } from "./composerAttachments";
+import { agentTurnRunning } from "./agentSelectors";
 import { createAgentStore, type AgentStore } from "./agentStore";
 import {
   ACTIVE,
@@ -82,6 +84,28 @@ describe("availability", () => {
     const created = setup(client);
     await expect(created.getState().init()).resolves.toBeUndefined();
     expect(created.getState().availability).toBe("unavailable");
+  });
+
+  it("releases the timeline lock while the agent is unreachable, and the project stream brings it back", async () => {
+    const client = createFakeClient({ list: { chats: [summary()], activeTurn: ACTIVE } });
+    const created = setup(client);
+    await created.getState().init();
+    const source = log.latest("/events");
+    source.open();
+    expect(agentTurnRunning(created.getState())).toBe(true);
+
+    client.listChats.mockRejectedValueOnce(new AgentApiError("runtime_unavailable", "down", 503));
+    await created.getState().refreshChats();
+    expect(created.getState().availability).toBe("unavailable");
+    expect(agentTurnRunning(created.getState())).toBe(false);
+
+    // The runtime restarts: the stream drops and reconnects, and the fresh list is the truth again.
+    source.fail();
+    vi.advanceTimersByTime(500);
+    log.latest("/events").open();
+    await flush();
+    expect(created.getState().availability).toBe("ready");
+    expect(agentTurnRunning(created.getState())).toBe(true);
   });
 
   it("keeps the model catalog failure separate from availability", async () => {
@@ -397,6 +421,96 @@ describe("send, steer and abort", () => {
     const created = await openChat(client);
     await created.getState().abort();
     expect(client.abortTurn).toHaveBeenCalledWith("c1", "t1");
+  });
+});
+
+describe("send while the box stays editable", () => {
+  /** A `startTurn` the test releases by hand, so text can be typed while the request is in flight. */
+  function pendingStart(client: FakeClient) {
+    const start = Promise.withResolvers<{ turn: TurnSummary }>();
+    client.startTurn.mockReturnValue(start.promise);
+    return { release: () => start.resolve({ turn: turn() }) };
+  }
+
+  it("clears only the text that went out and the files that went with it", async () => {
+    const client = createFakeClient();
+    const start = pendingStart(client);
+    const created = await openChat(client);
+    const sentFile = projectAttachment({ path: "assets/a.mp4" });
+    created.getState().setDraft("Trim the intro");
+    created.getState().addAttachments("c1", [sentFile]);
+
+    const sending = created.getState().send();
+    const laterFile = projectAttachment({ path: "assets/b.mp3" });
+    created.getState().setDraft("Trim the intro and fade out");
+    created.getState().addAttachments("c1", [laterFile]);
+    start.release();
+    await sending;
+
+    expect(created.getState().drafts.c1).toBe("and fade out");
+    expect(created.getState().attachments.c1).toEqual([laterFile]);
+  });
+
+  it("empties the box when nothing was typed after Send", async () => {
+    const client = createFakeClient();
+    const start = pendingStart(client);
+    const created = await openChat(client);
+    created.getState().setDraft("Trim the intro");
+    created.getState().addAttachments("c1", [projectAttachment({ path: "assets/a.mp4" })]);
+
+    const sending = created.getState().send();
+    start.release();
+    await sending;
+
+    expect(created.getState().drafts.c1).toBe("");
+    expect(created.getState().attachments.c1).toEqual([]);
+  });
+
+  it("leaves a draft that was edited inside the sent text whole", async () => {
+    const client = createFakeClient();
+    const start = pendingStart(client);
+    const created = await openChat(client);
+    created.getState().setDraft("Trim the intro");
+
+    const sending = created.getState().send();
+    created.getState().setDraft("Cut the intro");
+    start.release();
+    await sending;
+
+    expect(created.getState().drafts.c1).toBe("Cut the intro");
+  });
+
+  it("keeps what was typed while a steering message was in flight", async () => {
+    const client = createFakeClient({ chat: runningChatState() });
+    const steer = Promise.withResolvers<{ messageId: string }>();
+    client.steerTurn.mockReturnValue(steer.promise);
+    const created = await openChat(client);
+    created.getState().setDraft("Make it shorter");
+
+    const sending = created.getState().send();
+    created.getState().setDraft("Make it shorter and louder");
+    steer.resolve({ messageId: "m9" });
+    await sending;
+
+    expect(created.getState().drafts.c1).toBe("and louder");
+  });
+
+  it("carries what was typed after the first message into the chat the draft became", async () => {
+    const client = createFakeClient();
+    const start = pendingStart(client);
+    const created = setup(client);
+    await created.getState().init();
+    created.getState().startDraft();
+    created.getState().setDraft("Make a teaser");
+
+    const sending = created.getState().send();
+    await flush();
+    created.getState().setDraft("Make a teaser 30 seconds");
+    start.release();
+    await sending;
+
+    expect(created.getState().drafts["draft:new"]).toBe("");
+    expect(created.getState().drafts.new).toBe("30 seconds");
   });
 });
 

@@ -495,13 +495,24 @@ describe("full-access website tools in the executor", () => {
       ).toBeUndefined();
     }
     expect(second.host.websiteFileRequests).toEqual([
-      { url: "https://cdn.example-cdn.com/lottie/loader.json", mode: "read", turnId: "turn-1" },
+      {
+        url: "https://cdn.example-cdn.com/lottie/loader.json",
+        mode: "read",
+        allowedSites: ["linear.app", "example-cdn.com"],
+        turnId: "turn-1",
+      },
       {
         url: "https://cdn.example-cdn.com/lottie/loader.json#badge",
         mode: "read",
+        allowedSites: ["linear.app", "example-cdn.com"],
         turnId: "turn-1",
       },
-      { url: "https://CDN.Example-CDN.com/lottie/loader.json", mode: "read", turnId: "turn-1" },
+      {
+        url: "https://CDN.Example-CDN.com/lottie/loader.json",
+        mode: "read",
+        allowedSites: ["linear.app", "example-cdn.com"],
+        turnId: "turn-1",
+      },
     ]);
 
     // Another chat never read the site: the same URL is outside the scope there.
@@ -535,6 +546,7 @@ describe("full-access website tools in the executor", () => {
         url: "https://linear.app/lottie/loader.json",
         mode: "save",
         pageUrl: "https://linear.app/pricing",
+        allowedSites: ["linear.app"],
         turnId: "turn-1",
         agent: "motion",
         model: null,
@@ -557,6 +569,7 @@ describe("full-access website tools in the executor", () => {
       "record_website",
       {
         url: "https://linear.app/pricing",
+        allowedSites: ["linear.app"],
         seconds: 6,
         selector: ".hero",
         scroll: true,
@@ -569,6 +582,7 @@ describe("full-access website tools in the executor", () => {
     expect(host.recordRequests).toEqual([
       {
         url: "https://linear.app/pricing",
+        allowedSites: ["linear.app"],
         seconds: 6,
         selector: ".hero",
         scroll: true,
@@ -632,6 +646,26 @@ describe("full-access website tools in the executor", () => {
       ).isError,
     ).toBeUndefined();
     expect(host.websiteFileRequests).toHaveLength(1);
+  });
+
+  it("reads a padded mode like the gates do: a padded save is a save, a padded read is a read", async () => {
+    const asked = fullAccess({ intent: "ask" });
+    const saved = await asked.call(
+      "get_website_file",
+      { url: "https://linear.app/a.json", mode: " save " },
+      "director",
+    );
+    expect(saved.isError).toBe(true);
+    expect(saved.text).toContain("Ask turn");
+    expect(asked.host.websiteFileRequests).toEqual([]);
+
+    const { host, call } = fullAccess({ intent: "edit" });
+    await call(
+      "get_website_file",
+      { url: "https://linear.app/app.css", mode: " read" },
+      "director",
+    );
+    expect(host.websiteFileRequests.map((request) => request.mode)).toEqual(["read"]);
   });
 
   it("needs the user's download approval for save and record, but not for read", async () => {

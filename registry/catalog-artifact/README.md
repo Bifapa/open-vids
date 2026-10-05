@@ -1,9 +1,9 @@
 # Catalog artifact
 
-The CLI fetches these files over HTTP when a user opts into on-device catalog
-search (`catalog --query ... --on-device`), so they are served from the registry
-rather than bundled in the package. How the search uses them is in
-[How catalog search works](https://hyperframes.heygen.com/developers/catalog-search).
+The CLI copies these files from the local registry into `~/.hyperframes/catalog/`
+when a user opts into on-device catalog search (`catalog --query ... --on-device`);
+nothing is fetched over the network. How the search uses them is in
+`packages/cli/src/registry/localSemantic.ts`.
 
 | File                 | What it is                                                                                       |
 | -------------------- | ------------------------------------------------------------------------------------------------ |
@@ -20,8 +20,10 @@ Everything below is about `local-vectors.*`.
 
 `revision` is a sha256 over the model, its revision, the dimensions, the batch
 size and every item's name and embedded text, and the build writes the same value
-to `registry.json` as `catalogArtifact.revision`. The CLI refetches its cached copy
-when the two differ. That names the inputs the build claims, not that the floats
+to `registry.json` as `catalogArtifact.revision`. The CLI recopies its cached copy
+when the two differ, so any change to the rows (an item added, removed or edited)
+must move the revision, or users who already cached the old pair keep it. That
+names the inputs the build claims, not that the floats
 came from them, so the only real provenance check is to rebuild the rows and
 compare them, which works because both inputs are in this repository:
 

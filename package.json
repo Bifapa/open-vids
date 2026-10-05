@@ -20,7 +20,7 @@
     "build:hyperframes-runtime:modular": "bun run --filter @hyperframes/core build:hyperframes-runtime:modular",
     "sync:package-subpaths": "node scripts/package-subpaths.mjs --write",
     "check:package-subpaths": "node scripts/package-subpaths.mjs",
-    "lint": "bun run check:workspace-contracts && bun run check:package-cycles && bun run check:package-subpaths && oxlint . && tsx scripts/lint-skills.ts && bun scripts/desktop-version.ts --check",
+    "lint": "bun run check:workspace-contracts && bun run check:package-cycles && bun run check:package-subpaths && oxlint . && tsx scripts/lint-skills.ts && bun packages/cli/scripts/gen-skills-manifest.ts --check && bun scripts/desktop-version.ts --check",
     "lint:skills": "tsx scripts/lint-skills.ts",
     "lint:fix": "oxlint --fix .",
     "check:workspace-contracts": "node scripts/check-workspace-contracts.mjs",
@@ -37,7 +37,7 @@
     "test:regression": "bun run --cwd packages/producer test:regression",
     "player:perf": "bun run --filter @hyperframes/player perf",
     "format:check": "oxfmt --check .",
-    "test:scripts": "node --import tsx --test scripts/check-workspace-contracts.test.mjs scripts/check-media-use-copy-parity.test.mjs scripts/check-svg-sanitize-parity.test.mjs scripts/check-media-use-svg-sanitize-generated.test.mjs scripts/check-package-cycles.test.mjs scripts/package-subpaths.test.mjs scripts/cli-options.test.ts scripts/check-locales.test.ts scripts/desktop-version.test.ts scripts/stage-runtime.test.mjs scripts/lint-skills.test.mjs",
+    "test:scripts": "node --import tsx --test scripts/check-workspace-contracts.test.mjs scripts/check-media-use-copy-parity.test.mjs scripts/check-svg-sanitize-parity.test.mjs scripts/check-media-use-svg-sanitize-generated.test.mjs scripts/check-package-cycles.test.mjs scripts/package-subpaths.test.mjs scripts/cli-options.test.ts scripts/check-locales.test.ts scripts/desktop-version.test.ts scripts/stage-runtime.test.mjs scripts/stage-licenses.test.mjs scripts/lint-skills.test.mjs",
     "typecheck:scripts": "tsc --noEmit -p scripts/tsconfig.json",
     "test:skills": "HYPERFRAMES_MEDIA_HOME_REQUIRED=1 node --import ./packages/cli/scripts/test-home.mjs --test 'skills/**/*.test.mjs' 'packages/cli/src/media-use/**/*.test.mjs'",
     "typecheck": "bun run --filter '*' typecheck"

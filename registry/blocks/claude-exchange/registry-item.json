@@ -54,7 +54,7 @@
     },
     {
       "path": "TEMPLATE.md",
-      "target": "TEMPLATE.md",
+      "target": "compositions/claude-exchange.TEMPLATE.md",
       "type": "hyperframes:asset"
     }
   ]

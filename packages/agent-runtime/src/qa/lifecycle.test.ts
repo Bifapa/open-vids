@@ -187,6 +187,57 @@ describe("TurnQa", () => {
     ).toBeUndefined();
     expect(qa.closeReview()).toMatchObject({ frames: 4, rounds: 1 });
   });
+
+  it("reserves the frame and round budget before the frames arrive, so parallel looks cannot exceed it", async () => {
+    const { host, qa } = open();
+    let release = () => {};
+    host.framesGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    qa.openReview({
+      pass: 1,
+      render: "renders/final.mp4",
+      duration: 30,
+      samples: SAMPLES,
+      maxFrames: 12,
+      critiqueRounds: 1,
+    });
+    const times = Array.from({ length: 12 }, (_, index) => index + 1);
+    const first = qa.execute("vision", "inspect_render", { times }, signal());
+    const second = qa.execute("vision", "inspect_render", { times }, signal());
+    release();
+    const [one, two] = await Promise.all([first, second]);
+    expect(one.isError).toBeUndefined();
+    expect(two).toMatchObject({
+      isError: true,
+      text: expect.stringContaining("Critique rounds used"),
+    });
+    expect(host.frameRequests).toHaveLength(1);
+    expect(qa.closeReview()).toMatchObject({ frames: 12, rounds: 1 });
+  });
+
+  it("lets parallel looks share the frame budget and refuses the one that no longer fits", async () => {
+    const { host, qa } = open();
+    let release = () => {};
+    host.framesGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    qa.openReview({
+      pass: 1,
+      render: "renders/final.mp4",
+      duration: 30,
+      samples: SAMPLES,
+      maxFrames: 5,
+      critiqueRounds: 3,
+    });
+    const first = qa.execute("vision", "inspect_render", { times: [1, 2, 3] }, signal());
+    const second = qa.execute("vision", "inspect_render", { times: [4, 5, 6] }, signal());
+    release();
+    const [one, two] = await Promise.all([first, second]);
+    expect(one.isError).toBeUndefined();
+    expect(two).toMatchObject({ isError: true, text: expect.stringContaining("only 2 of 5") });
+    expect(qa.closeReview()).toMatchObject({ frames: 3, rounds: 1 });
+  });
 });
 
 describe("qaPhaseRefusal", () => {
@@ -202,6 +253,7 @@ describe("qaPhaseRefusal", () => {
     "delegate",
     "message_agent",
     "jev",
+    "record_website",
   ];
   const READS = [
     "inspect_project",
@@ -226,5 +278,31 @@ describe("qaPhaseRefusal", () => {
     for (const name of [...CHANGES.filter((tool) => tool !== "render_video"), ...READS])
       expect(qaPhaseRefusal("correction", name)).toBeNull();
     for (const name of [...CHANGES, ...READS]) expect(qaPhaseRefusal(null, name)).toBeNull();
+  });
+
+  it("closes the website save modes in the final prompt, and leaves reading them open", () => {
+    for (const [name, args] of [
+      ["read_website", { url: "https://linear.app", save: true }],
+      ["get_website_file", { url: "https://linear.app/a.svg", mode: "save" }],
+    ] as const) {
+      expect(qaPhaseRefusal("final", name, args)).toContain(name);
+      expect(qaPhaseRefusal("correction", name, args)).toBeNull();
+      expect(qaPhaseRefusal(null, name, args)).toBeNull();
+    }
+    for (const [name, args] of [
+      ["read_website", { url: "https://linear.app" }],
+      ["read_website", { url: "https://linear.app", save: false }],
+      ["get_website_file", { url: "https://linear.app/a.css", mode: "read" }],
+    ] as const) {
+      expect(qaPhaseRefusal("final", name, args)).toBeNull();
+    }
+  });
+
+  it("closes a whitespace-padded save mode in the final prompt", () => {
+    for (const mode of ["save ", " save"]) {
+      expect(
+        qaPhaseRefusal("final", "get_website_file", { url: "https://linear.app/a.svg", mode }),
+      ).toContain("get_website_file");
+    }
   });
 });

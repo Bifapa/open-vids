@@ -8,7 +8,12 @@ import {
   type StoryGraph,
 } from "@hyperframes/agent-protocol";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
-import { fileContentVersion } from "../helpers/fileVersion.js";
+import {
+  DELETED_VERSION,
+  createWriteToken,
+  fileContentVersion,
+  recordFileWriteReceipt,
+} from "../helpers/fileVersion.js";
 import { pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
 import { StoryFailure } from "./errors.js";
 
@@ -69,14 +74,54 @@ export function readStoredStoryOrNone(
   }
 }
 
-/** Writes the graph (pretty JSON, atomically) and returns its new version. No history claim: the caller decides. */
-export function writeStoredStory(projectDir: string, graph: StoryGraph): string {
+/** The bare version of the graph file's bytes as they are on disk now, or null when there is no file. */
+export function currentStoryVersion(projectDir: string): string | null {
+  const abs = resolveWithinProject(projectDir, STORY_GRAPH_PATH);
+  if (!abs || !existsSync(abs) || !statSync(abs).isFile()) return null;
+  return storyVersion(readFileSync(abs));
+}
+
+/** Refuses (`conflict`) when the graph file is not the one the caller read, i.e. changed while it worked. */
+export function assertStoryUnchanged(projectDir: string, readVersion: string | null): void {
+  if (currentStoryVersion(projectDir) === readVersion) return;
+  throw new StoryFailure(
+    "conflict",
+    `${STORY_GRAPH_PATH} changed while the story was being worked on; read it again`,
+  );
+}
+
+/**
+ * Writes the graph (pretty JSON, atomically) and returns its new version. No history claim: the caller decides.
+ * With `readVersion` (the version the graph was read at, null for none) the write is refused when the file moved on.
+ * The write leaves a receipt holding the bytes it replaced, as Studio's own file writes do: a later claim of this
+ * write (the user's save on top of an agent's unclaimed edit) can then cut the history exactly where it began.
+ */
+export function writeStoredStory(
+  projectDir: string,
+  graph: StoryGraph,
+  readVersion?: string | null,
+): string {
   const abs = pinWithinProject(projectDir, STORY_GRAPH_PATH);
   if (!abs) throw new StoryFailure("invalid_request", `${STORY_GRAPH_PATH} is outside the project`);
+  if (readVersion !== undefined) assertStoryUnchanged(projectDir, readVersion);
   const content = `${JSON.stringify(graph, null, 2)}\n`;
   mkdirSync(dirname(abs), { recursive: true });
-  replaceFileAtomically(abs, content, existsSync(abs) ? statSync(abs).mode : 0o644);
+  const exists = existsSync(abs);
+  const overwrote = exists ? readFileSync(abs) : undefined;
+  replaceFileAtomically(abs, content, exists ? statSync(abs).mode : 0o644);
+  recordFileWriteReceipt(abs, {
+    path: STORY_GRAPH_PATH,
+    version: fileContentVersion(content),
+    writeToken: createWriteToken(),
+    ...(overwrote !== undefined && { overwrote }),
+  });
   return storyVersion(content);
+}
+
+/** The graph file as project history names a version (the `overwrote` of a claim): quoted hash, or `deleted`. */
+export function storyFileVersion(projectDir: string): string {
+  const version = currentStoryVersion(projectDir);
+  return version === null ? DELETED_VERSION : `"${version}"`;
 }
 
 export function emptyGraph(now: number, by: "ai" | "user"): StoryGraph {

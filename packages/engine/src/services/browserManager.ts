@@ -693,9 +693,10 @@ export async function acquireBrowser(
 /** Leaves a record that lets a later process kill this browser if its owner dies without closing it. */
 function trackBrowserOwner(browser: Browser): void {
   try {
-    const pid = browser.process()?.pid;
-    if (pid === undefined) return;
-    recordBrowserOwner(pid);
+    const child = browser.process();
+    const pid = child?.pid;
+    if (child === null || pid === undefined) return;
+    recordBrowserOwner(pid, undefined, child.spawnargs);
     browser.once("disconnected", () => forgetBrowserOwner(pid));
   } catch {
     // The registry only backs crash cleanup; a launch never fails for it.

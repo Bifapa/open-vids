@@ -17,7 +17,6 @@ export const MEDIA_USE_COPY_NAMES = [
   "manifest.mjs",
   "media-fetch.mjs",
   "media-home.mjs",
-  "npx-sync.mjs",
   "parakeet-words.mjs",
   "prefs-store.mjs",
   "recipe-store.mjs",
@@ -25,12 +24,7 @@ export const MEDIA_USE_COPY_NAMES = [
   "words.mjs",
 ];
 
-export const INTENTIONAL_MEDIA_USE_DIVERGENCES = new Map([
-  [
-    "npx-sync.mjs",
-    "the standalone skill stays self-contained while the CLI copy uses the shared audio helper",
-  ],
-]);
+export const INTENTIONAL_MEDIA_USE_DIVERGENCES = new Map();
 
 function copyPaths(name, skillDir, cliDir) {
   return { skillPath: join(skillDir, name), cliPath: join(cliDir, name) };

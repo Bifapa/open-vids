@@ -110,6 +110,7 @@ describe("page-side compositor seek", () => {
       firstChild: null,
       setAttribute: () => undefined,
       remove: () => undefined,
+      addEventListener: () => undefined,
       getContext: (type: string) => (type === "2d" ? { drawElementImage: () => undefined } : gl),
     });
     const scenes = new Map(
@@ -256,6 +257,10 @@ describe("page-side compositor scene copies", () => {
       },
     });
     const canvases: Array<{ id?: string; style: Record<string, string> }> = [];
+    interface FakeEvent {
+      preventDefault: () => void;
+    }
+    const listeners = new Map<string, Array<(event: FakeEvent) => void>>();
     const createCanvas = () => {
       const index = canvases.length;
       const children: FakeEl[] = [];
@@ -287,6 +292,9 @@ describe("page-side compositor scene copies", () => {
         appendChild: (child: FakeEl) => children.push(child),
         removeChild: () => children.shift(),
         querySelectorAll: () => [],
+        addEventListener: (type: string, listener: (event: FakeEvent) => void) => {
+          listeners.set(type, [...(listeners.get(type) ?? []), listener]);
+        },
         getContext: (type: string) => (type === "2d" ? ctx : gl),
       };
       canvases.push(canvas);
@@ -335,7 +343,18 @@ describe("page-side compositor scene copies", () => {
       return (win.__hf_page_composite_resolve as () => boolean)();
     };
     const overlay = () => canvases.find((c) => c.id === PAGE_COMPOSITOR_CANVAS_ID)!;
-    return { calls, composite, overlay };
+    // Fires a WebGL context event on the compositor canvas; true when the page prevented its default.
+    const emit = (type: string): boolean => {
+      const event = {
+        defaultPrevented: false,
+        preventDefault() {
+          this.defaultPrevented = true;
+        },
+      };
+      for (const listener of listeners.get(type) ?? []) listener(event);
+      return event.defaultPrevented;
+    };
+    return { calls, composite, overlay, emit };
   }
 
   it("stages each scene copy inside unaltered ancestor copies in a full-frame box", async () => {
@@ -410,6 +429,22 @@ describe("page-side compositor scene copies", () => {
     const drawn = calls.find((c) => c.op === "drawElementImage")?.canvas;
     expect(calls.some((c) => c.canvas === drawn && c.op === "clearRect")).toBe(true);
     expect(overlay().style.display).toBe("none");
+  });
+
+  it("hides the overlay while the GL context is lost and composites again once it is restored", async () => {
+    const { composite, overlay, emit } = installTransparentInsetFilm();
+    expect(await composite(1.2)).toBe(true);
+    expect(overlay().style.display).toBe("block");
+
+    // preventDefault on the loss event is what lets the browser restore the context.
+    expect(emit("webglcontextlost")).toBe(true);
+    expect(overlay().style.display).toBe("none");
+    expect(await composite(1.2)).toBe(false);
+    expect(overlay().style.display).toBe("none");
+
+    emit("webglcontextrestored");
+    expect(await composite(1.2)).toBe(true);
+    expect(overlay().style.display).toBe("block");
   });
 });
 

@@ -326,6 +326,78 @@ describe("the address rules", () => {
   });
 });
 
+describe("the site scope of a request", () => {
+  const sites = ["linear.app"];
+
+  it("never follows a redirect off the linked sites, and writes nothing", async () => {
+    const f = setup();
+    f.net.when("https://linear.app/out", redirect("https://victim.example.com/export.json"));
+    f.net.when("https://victim.example.com/export.json", media("{}", "application/json"));
+    for (const mode of ["save", "read"] as const) {
+      const refused = await failure(
+        f.service.websiteFile(f.project, {
+          url: "https://linear.app/out",
+          mode,
+          allowedSites: sites,
+        }),
+      );
+      expect(refused.code).toBe("blocked_by_policy");
+      expect(refused.message).toContain("victim.example.com");
+    }
+    expect(f.net.calls).toEqual(["https://linear.app/out", "https://linear.app/out"]);
+    expect(webFiles(f)).toEqual([]);
+  });
+
+  it("follows a redirect inside the linked sites", async () => {
+    const f = setup();
+    f.net.when("https://linear.app/a.png", redirect("https://cdn.linear.app/a.png"));
+    f.net.when("https://cdn.linear.app/a.png", media("PNGDATA", "image/png"));
+    const result = await f.service.websiteFile(f.project, {
+      url: "https://linear.app/a.png",
+      mode: "save",
+      allowedSites: sites,
+    });
+    expect(result.finalUrl).toBe("https://cdn.linear.app/a.png");
+  });
+
+  it("refuses a requested address outside the sites before any request", async () => {
+    const f = setup();
+    const refused = await failure(
+      f.service.websiteFile(f.project, {
+        url: "https://victim.example.com/a.png",
+        mode: "save",
+        allowedSites: sites,
+      }),
+    );
+    expect(refused.code).toBe("blocked_by_policy");
+    expect(f.net.calls).toEqual([]);
+  });
+
+  it("drops a recording that ended off the linked sites without writing it", async () => {
+    const recordWebsite: NonNullable<ResearchServiceOptions["recordWebsite"]> = async (opts) => {
+      writeFileSync(opts.outFile, "MP4DATA");
+      return {
+        finalUrl: "https://victim.example.com/",
+        width: opts.width,
+        height: opts.height,
+        duration: opts.seconds,
+        notes: [],
+      };
+    };
+    const f = setup({ recordWebsite });
+    const refused = await failure(
+      f.service.websiteRecord(f.project, {
+        url: "https://linear.app/out",
+        seconds: 4,
+        allowedSites: sites,
+      }),
+    );
+    expect(refused.code).toBe("blocked_by_policy");
+    expect(webFiles(f)).toEqual([]);
+    expect(existsSync(join(f.project.dir, PROVENANCE_PATH))).toBe(false);
+  });
+});
+
 describe("limits", () => {
   it("refuses a file the server says is over the limit", async () => {
     const f = setup();

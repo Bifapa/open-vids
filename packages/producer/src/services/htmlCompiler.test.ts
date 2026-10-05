@@ -511,6 +511,75 @@ describe("inlineExternalScripts", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  // The inlined text lands in compiled/index.html, where page script can read it and
+  // draw it into the video — so the fetch follows the same public-HTTPS policy as every
+  // other remote asset instead of reaching loopback/private services.
+  it.each([
+    "http://cdn.example.com/lib.js",
+    "https://127.0.0.1:8080/secret",
+    "https://localhost/secret",
+    "https://169.254.169.254/latest/meta-data",
+    "https://10.0.0.5/internal.js",
+  ])("never fetches or inlines %s and keeps the original tag", async (src) => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => new Response("INTERNAL-SECRET", { status: 200 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const html = `<html><body><script src="${src}"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result).not.toContain("INTERNAL-SECRET");
+      expect(result).toContain(`src="${src}"`);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("refuses to inline a script that exceeds the size cap", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(
+      async () =>
+        new Response("var big = 1;", {
+          status: 200,
+          headers: { "content-length": String(64 * 1024 * 1024) },
+        }),
+    ) as unknown as typeof fetch;
+
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/huge.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+      expect(result).not.toContain("var big = 1;");
+      expect(result).toContain('src="https://cdn.example.com/huge.js"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not follow a redirect to a private host", async () => {
+    const originalFetch = globalThis.fetch;
+    const requested: string[] = [];
+    globalThis.fetch = mock(async (input: string | URL | Request) => {
+      requested.push(String(input));
+      if (requested.length === 1) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://10.0.0.5/internal.js" },
+        });
+      }
+      return new Response("INTERNAL-SECRET", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/redir.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+      expect(requested).toEqual(["https://cdn.example.com/redir.js"]);
+      expect(result).not.toContain("INTERNAL-SECRET");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 describe("detectRenderModeHints", () => {
@@ -2092,6 +2161,49 @@ h1 { font-size: 2rem; }`;
     }
   });
 
+  it("keeps every rule of the stylesheet and rebases its relative URLs onto the sheet URL", async () => {
+    const STYLESHEET_URL = "https://cdn.example.com/fa/css/all.min.css";
+    const fakeCss = `
+.fa-house:before { content: "\\f015"; }
+.fa-solid { font-family: "FA"; background: url(../img/sprite.png); }
+.price:after { content: "$&"; }
+@font-face {
+  font-family: "FA";
+  src: url(../webfonts/fa-solid.woff2) format("woff2"), url('//cdn.example.com/fa/webfonts/fa-solid.ttf') format("truetype");
+}`;
+    const requested: string[] = [];
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      requested.push(url);
+      return url === STYLESHEET_URL
+        ? new Response(fakeCss, { status: 200 })
+        : new Response(new Uint8Array(16), { status: 200 });
+    }) as unknown as typeof fetch;
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-fullsheet-"));
+      const html = `<link rel="stylesheet" media="screen" href="${STYLESHEET_URL}">`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+
+      expect(result).not.toContain("<link");
+      expect(result).toContain('<style media="screen">');
+      // Non-@font-face rules survive (they used to be dropped with the <link>).
+      expect(result).toContain(".fa-house:before");
+      expect(result).toContain(".fa-solid");
+      // `$&` in sheet text is not expanded by String.replace.
+      expect(result).toContain('content: "$&"');
+      // Relative URLs are rebased onto the stylesheet URL rather than the render server.
+      expect(result).toContain('url("https://cdn.example.com/fa/img/sprite.png")');
+      expect(result).not.toContain("../webfonts/");
+      expect(requested).toContain("https://cdn.example.com/fa/webfonts/fa-solid.woff2");
+      expect(requested).toContain("https://cdn.example.com/fa/webfonts/fa-solid.ttf");
+      expect(remoteMediaAssets.size).toBe(2);
+      expect(result).toContain("_remote_media/");
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
   it("keeps <link> tag when external stylesheet fetch fails (graceful degradation)", async () => {
     const STYLESHEET_URL = "https://down.example.com/fonts.css";
     const orig = globalThis.fetch;
@@ -2356,6 +2468,114 @@ describe("discoverAudioVolumeAutomationFromTimeline", () => {
       ]);
       expect(seekCalls.length).toBeGreaterThan(0);
       expect(seekCalls.every((call) => call.suppressEvents === true)).toBe(true);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+      globalThis.HTMLAudioElement = previousAudioElement;
+      globalThis.HTMLVideoElement = previousVideoElement;
+    }
+  });
+
+  it("samples the window at the runtime-resolved absolute start of nested media", async () => {
+    class TestAudioElement {
+      id = "vo";
+      // Composition-local start: the clip sits at 1 s on the root timeline.
+      dataset = { start: "0", duration: "2", volume: "1" };
+      volume = 1;
+    }
+    class TestVideoElement {}
+
+    const audio = new TestAudioElement();
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const previousAudioElement = globalThis.HTMLAudioElement;
+    const previousVideoElement = globalThis.HTMLVideoElement;
+
+    globalThis.window = {
+      __hfResolveMediaStartSeconds: () => 1,
+      __timelines: { root: { totalTime: (time: number) => (audio.volume = time < 1.5 ? 1 : 0) } },
+    } as any;
+    globalThis.document = {
+      querySelector: (selector: string) =>
+        selector === "[data-composition-id]"
+          ? { getAttribute: (name: string) => (name === "data-composition-id" ? "root" : null) }
+          : null,
+      getElementById: (id: string) => (id === "vo" ? audio : null),
+    } as any;
+    globalThis.HTMLAudioElement = TestAudioElement as any;
+    globalThis.HTMLVideoElement = TestVideoElement as any;
+
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+
+      const [automation] = await discoverAudioVolumeAutomationFromTimeline(page, ["vo"], 4, 10);
+
+      const times = (automation?.keyframes ?? []).map((keyframe) => keyframe.time);
+      expect(Math.min(...times)).toBe(1);
+      expect(Math.max(...times)).toBe(3);
+      expect(interpolateVolumeGain(automation?.keyframes ?? [], 1.2)).toBeCloseTo(1, 6);
+      expect(interpolateVolumeGain(automation?.keyframes ?? [], 2.5)).toBeCloseTo(0, 6);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+      globalThis.HTMLAudioElement = previousAudioElement;
+      globalThis.HTMLVideoElement = previousVideoElement;
+    }
+  });
+
+  it("drives sampling through the runtime timeline seek so tweens in sub-composition timelines count", async () => {
+    class TestAudioElement {
+      id = "vo";
+      dataset = { start: "0", duration: "2", volume: "1" };
+      volume = 1;
+    }
+    class TestVideoElement {}
+
+    const audio = new TestAudioElement();
+    const rootSeeks: number[] = [];
+    const runtimeSeeks: { time: number; suppressEvents: boolean | undefined }[] = [];
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const previousAudioElement = globalThis.HTMLAudioElement;
+    const previousVideoElement = globalThis.HTMLVideoElement;
+
+    globalThis.window = {
+      __hfResolveMediaStartSeconds: () => 1,
+      // The root timeline alone never moves the volume: the tween lives in a
+      // sub-composition timeline that only the runtime's seek positions.
+      __timelines: { root: { totalTime: (time: number) => void rootSeeks.push(time) } },
+      __hfSeekTimelines: (time: number, options?: { suppressEvents?: boolean }) => {
+        runtimeSeeks.push({ time, suppressEvents: options?.suppressEvents });
+        // Sub-composition host at 1 s: its tween fades 1 -> 0 over local 1..1.5.
+        const local = time - 1;
+        audio.volume = local < 1 ? 1 : local > 1.5 ? 0 : 1 - (local - 1) / 0.5;
+      },
+    } as any;
+    globalThis.document = {
+      querySelector: (selector: string) =>
+        selector === "[data-composition-id]"
+          ? { getAttribute: (name: string) => (name === "data-composition-id" ? "root" : null) }
+          : null,
+      getElementById: (id: string) => (id === "vo" ? audio : null),
+    } as any;
+    globalThis.HTMLAudioElement = TestAudioElement as any;
+    globalThis.HTMLVideoElement = TestVideoElement as any;
+
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+
+      const [automation] = await discoverAudioVolumeAutomationFromTimeline(page, ["vo"], 4, 10);
+
+      expect(rootSeeks).toEqual([]);
+      expect(runtimeSeeks.length).toBeGreaterThan(0);
+      expect(runtimeSeeks.every((call) => call.suppressEvents === true)).toBe(true);
+      expect(interpolateVolumeGain(automation?.keyframes ?? [], 1.5)).toBeCloseTo(1, 6);
+      expect(interpolateVolumeGain(automation?.keyframes ?? [], 2.25)).toBeCloseTo(0.5, 2);
+      expect(interpolateVolumeGain(automation?.keyframes ?? [], 2.9)).toBeCloseTo(0, 6);
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;

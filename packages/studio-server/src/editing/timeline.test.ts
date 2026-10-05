@@ -146,6 +146,19 @@ describe("parseComposition", () => {
     expect(model?.clips.map((clip) => clip.domId)).toEqual(["x"]);
   });
 
+  it("keeps a nested composition host's own length off the root when the root has no data-duration", () => {
+    const model = parseComposition(
+      `<div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="host" class="clip" data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="3" data-width="640" data-height="360" data-track-index="0"></div>
+        <div id="tail" class="clip" data-start="3" data-duration="2" data-track-index="1">tail</div>
+      </div>`,
+      "index.html",
+    );
+    expect(model?.durationHolder.id).toBe("root");
+    expect(model).toMatchObject({ width: 1920, height: 1080, duration: 0 });
+    expect(model?.clips.find((clip) => clip.domId === "host")).toMatchObject({ duration: 3 });
+  });
+
   it("resolves a start that references another clip's end", () => {
     const model = parseComposition(
       `<div data-composition-id="main" data-duration="10">
@@ -165,10 +178,33 @@ describe("parseComposition", () => {
 describe("resolveProjectRelative", () => {
   it("resolves against the composition's directory and refuses URLs and escapes", () => {
     expect(resolveProjectRelative("compositions/a.html", "../assets/x.png")).toBe("assets/x.png");
-    expect(resolveProjectRelative("index.html", "./assets/x.png?v=1")).toBe("assets/x.png");
+    expect(resolveProjectRelative("index.html", "./assets/x.png?v=1", { url: true })).toBe(
+      "assets/x.png",
+    );
+    expect(resolveProjectRelative("index.html", "assets/a b#1.mp4")).toBe("assets/a b#1.mp4");
     expect(resolveProjectRelative("index.html", "/assets/x.png")).toBe("assets/x.png");
     expect(resolveProjectRelative("index.html", "https://cdn.example/x.png")).toBeNull();
     expect(resolveProjectRelative("index.html", "../x.png")).toBeNull();
     expect(resolveProjectRelative("index.html", "data:image/png;base64,AA")).toBeNull();
+  });
+});
+
+describe("resolveProjectRelative — URL values", () => {
+  it("decodes the file name from a src attribute and cuts only a real query or fragment", () => {
+    const url = { url: true };
+    expect(resolveProjectRelative("index.html", "assets/a%20b%231.mp4", url)).toBe(
+      "assets/a b#1.mp4",
+    );
+    expect(resolveProjectRelative("index.html", "assets/what%3F.mp4?v=1#t=2", url)).toBe(
+      "assets/what?.mp4",
+    );
+    expect(resolveProjectRelative("compositions/a.html", "../assets/100%25.mp4", url)).toBe(
+      "assets/100%.mp4",
+    );
+    // A malformed escape is a literal file name.
+    expect(resolveProjectRelative("index.html", "assets/100%.mp4", url)).toBe("assets/100%.mp4");
+    // An encoded escape out of the project is still refused.
+    expect(resolveProjectRelative("index.html", "%2E%2E/x.mp4", url)).toBeNull();
+    expect(resolveProjectRelative("index.html", "assets/a%20b.mp4")).toBe("assets/a%20b.mp4");
   });
 });

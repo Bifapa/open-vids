@@ -356,16 +356,55 @@ function readTimelineRegistryTopLevelKeys(source: string): string[] {
   return keys;
 }
 
+export type InlineScriptKind = "classic" | "module" | "other";
+
+// MIME types the HTML spec treats as classic JavaScript (compared case-insensitively).
+const CLASSIC_SCRIPT_TYPES: Record<string, true> = {
+  "application/ecmascript": true,
+  "application/javascript": true,
+  "application/x-ecmascript": true,
+  "application/x-javascript": true,
+  "text/ecmascript": true,
+  "text/javascript": true,
+  "text/javascript1.0": true,
+  "text/javascript1.1": true,
+  "text/javascript1.2": true,
+  "text/javascript1.3": true,
+  "text/javascript1.4": true,
+  "text/javascript1.5": true,
+  "text/jscript": true,
+  "text/livescript": true,
+  "text/x-ecmascript": true,
+  "text/x-javascript": true,
+};
+
+/**
+ * What the browser does with a `<script>`'s text: run it as a classic script, run it as a
+ * module, or treat it as inert data (JSON, import maps, shaders, templates, code samples).
+ * Follows the HTML "prepare the script element" type rules: a missing or empty `type` is
+ * classic; values are trimmed, ASCII case-insensitive, and may be unquoted.
+ */
+export function classifyInlineScript(attrs: string): InlineScriptKind {
+  const type = readDecodedAttr(`<script${attrs}>`, "type");
+  if (type === null) return "classic";
+  const normalized = type.trim().toLowerCase();
+  if (normalized === "") return "classic";
+  if (normalized === "module") return "module";
+  return Object.hasOwn(CLASSIC_SCRIPT_TYPES, normalized) ? "classic" : "other";
+}
+
 export function getInlineScriptSyntaxError(
   source: string,
+  sourceType: "script" | "module" = "script",
 ): { message: string; offset?: number } | null {
   if (!source.trim()) return null;
   try {
-    // Match the former Function-body grammar (including top-level return), without eval.
+    // Classic scripts keep the former Function-body grammar (including top-level
+    // return), without eval; modules parse as modules.
     parse(source, {
       ecmaVersion: "latest",
-      sourceType: "script",
-      allowReturnOutsideFunction: true,
+      sourceType,
+      allowReturnOutsideFunction: sourceType === "script",
     });
     return null;
   } catch (error) {
@@ -377,26 +416,6 @@ export function getInlineScriptSyntaxError(
           : undefined,
     };
   }
-}
-
-/**
- * Blank the contents of every `'...'` and `"..."` literal, keeping the quotes so
- * the source stays the same shape.
- *
- * Needed because a composition that *displays* source code carries things like
- * `Math.random()` inside a string it never executes. Scanning raw script text for
- * non-determinism reported those compositions as non-deterministic, and no edit
- * could clear it while keeping the displayed snippet intact.
- *
- * Template literals are deliberately left alone: `${Math.random()}` inside one IS
- * executed, and blanking it would hide real non-determinism. A snippet stored in a
- * backtick string therefore still reports — a narrower gap than the one this closes.
- */
-export function stripStringLiterals(source: string): string {
-  return source.replace(
-    /(['"])(?:\\.|(?!\1)[^\\\n])*\1?/g,
-    (literal) => literal[0] + " ".repeat(Math.max(0, literal.length - 1)),
-  );
 }
 
 function scanJsComments(source: string): { out: string; balanced: boolean } {

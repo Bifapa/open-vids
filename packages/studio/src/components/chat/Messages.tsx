@@ -171,7 +171,7 @@ export function UserMessageView({
             {t("chat.message.steering")}
           </Badge>
         )}
-        {turn?.mode === "story" && <Badge size="sm">Story</Badge>}
+        {turn?.mode === "story" && <Badge size="sm">{t("chat.message.storyTag")}</Badge>}
         {asked && <Badge size="sm">{t(INTENT_TAGS.ask)}</Badge>}
       </MessageHead>
       {references.length > 0 && (

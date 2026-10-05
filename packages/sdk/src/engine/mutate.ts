@@ -19,6 +19,7 @@ import type {
 import type { ParsedDocument } from "./model.js";
 import {
   resolveScoped,
+  querySelectorAllDeep,
   escapeHfId,
   findRoot,
   declarationElement,
@@ -91,11 +92,7 @@ import {
   isScalarVariableValue as isScalar,
 } from "@hyperframes/core/variables";
 import type { CompositionVariable } from "@hyperframes/core/variables";
-import {
-  URI_BEARING_ATTRS,
-  DANGEROUS_URI_SCHEMES,
-  DANGEROUS_DATA_URI,
-} from "@hyperframes/core/html-attr-safety";
+import { isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 
 export interface MutationResult {
   forward: JsonPatchOp[];
@@ -136,11 +133,8 @@ function validateSetAttribute(name: string, value: string | null): void {
         `they produce executable HTML that cannot be safely serialized.`,
     );
   }
-  if (value !== null && URI_BEARING_ATTRS.has(lower)) {
-    const trimmed = value.trim();
-    if (DANGEROUS_URI_SCHEMES.test(trimmed) || DANGEROUS_DATA_URI.test(trimmed)) {
-      throw new Error(`setAttribute: unsafe URI value for "${name}".`);
-    }
+  if (value !== null && !isSafeAttributeValue(name, value)) {
+    throw new Error(`setAttribute: unsafe URI value for "${name}".`);
   }
 }
 
@@ -680,7 +674,9 @@ function handleRemoveElement(parsed: ParsedDocument, ids: HfId[]): MutationResul
  */
 function collectDocumentHfIds(document: Document): Set<string> {
   const assigned = new Set<string>();
-  for (const el of Array.from(document.querySelectorAll("[data-hf-id]"))) {
+  // querySelectorAll skips composition <template> content, whose ids still
+  // address elements (scoped paths), so the deep walk is required here.
+  for (const el of querySelectorAllDeep(document, "[data-hf-id]")) {
     const id = el.getAttribute("data-hf-id");
     if (id) assigned.add(id);
   }
@@ -688,19 +684,25 @@ function collectDocumentHfIds(document: Document): Set<string> {
 }
 
 /**
- * Stamp data-hf-id onto every un-stamped element in `root` and its
- * descendants, minting ids against `assigned` (the live document's id set).
- * Returns the minted id of `root` (or its existing id if already stamped).
+ * Stamp data-hf-id onto every element in `root` and its descendants, minting
+ * ids against `assigned` (the live document's id set). An id the fragment
+ * already carries is kept only when it is free in the document and not already
+ * taken earlier in the fragment; a colliding id (e.g. serialized HTML pasted
+ * back next to its source) is re-minted, so an add can never create duplicate
+ * ids. Returns the final id of `root`.
  */
 function mintFragmentIds(root: Element, assigned: Set<string>): string {
-  if (!root.getAttribute("data-hf-id") && !EXCLUDED_TAGS.has(root.tagName.toLowerCase())) {
-    root.setAttribute("data-hf-id", mintHfId(root, assigned));
-  }
-  for (const el of Array.from(root.querySelectorAll("*"))) {
-    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
-    if (el.getAttribute("data-hf-id")) continue; // pinned
+  const stamp = (el: Element): void => {
+    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) return;
+    const existing = el.getAttribute("data-hf-id");
+    if (existing && !assigned.has(existing)) {
+      assigned.add(existing); // pinned and free
+      return;
+    }
     el.setAttribute("data-hf-id", mintHfId(el, assigned));
-  }
+  };
+  stamp(root);
+  for (const el of Array.from(root.querySelectorAll("*"))) stamp(el);
   return root.getAttribute("data-hf-id") ?? "";
 }
 

@@ -1,4 +1,4 @@
-import { COMPOSITION_ROOT_OPEN_TAG_RE } from "@hyperframes/core/editing/timeline-asset";
+import { findCompositionRootOpenTag } from "@hyperframes/core/editing/timeline-asset";
 
 const CLIPBOARD_MARKER = "hyperframes-clipboard:v1";
 
@@ -119,10 +119,9 @@ export function insertAsSibling(
   }
 
   // Fallback: insert after composition root opening tag (same as timeline clips)
-  const rootMatch = COMPOSITION_ROOT_OPEN_TAG_RE.exec(source);
-  if (rootMatch && rootMatch.index != null) {
-    const insertAt = rootMatch.index + rootMatch[0].length;
-    return source.slice(0, insertAt) + newHtml + source.slice(insertAt);
+  const root = findCompositionRootOpenTag(source);
+  if (root) {
+    return source.slice(0, root.end) + newHtml + source.slice(root.end);
   }
 
   return source + newHtml;

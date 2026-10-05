@@ -7,6 +7,8 @@
 
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
+import { safeIdPathName } from "../utils/safePathSegment.js";
+import { image2PatternPath } from "../utils/image2Pattern.js";
 import { parseHTML } from "linkedom";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import {
@@ -697,7 +699,8 @@ export function parseVideoElements(html: string): VideoElement[] {
       mediaStart: readMediaStart(el),
       playbackRate: readElementRateSpec(el),
       loop: el.hasAttribute("loop"),
-      hasAudio: hasAudioAttr === "true",
+      // A muted <video> is silent in preview, so its soundtrack stays out of the mix.
+      hasAudio: hasAudioAttr === "true" && !el.hasAttribute("muted"),
     });
   }
 
@@ -865,7 +868,7 @@ async function extractVideoFramesRangeNow(
   const fps = fpsToNumber(normalizedFps);
   const ffmpegFps = fpsToFfmpegArg(normalizedFps);
 
-  const videoOutputDir = outputDirOverride ?? join(outputDir, videoId);
+  const videoOutputDir = outputDirOverride ?? join(outputDir, safeIdPathName(videoId));
   if (!existsSync(videoOutputDir)) mkdirSync(videoOutputDir, { recursive: true });
 
   let metadata: VideoMetadata;
@@ -893,7 +896,7 @@ async function extractVideoFramesRangeNow(
   }
   const format = resolveFrameFormat(metadata, options.format);
   const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${format}`;
-  const outputPattern = join(videoOutputDir, framePattern);
+  const outputPattern = image2PatternPath(videoOutputDir, framePattern);
 
   // Forced-SDR extraction tone-maps HDR before the intermediate frames reach Chrome.
   // macOS: VideoToolbox hardware decoder does HDR→SDR natively on Apple Silicon.
@@ -2004,7 +2007,7 @@ export async function extractAllVideoFrames(
   ): Promise<ExtractedFrames> {
     const { work, cacheTarget } = miss;
     if (!cacheTarget) {
-      const outputDir = join(options.outputDir, work.video.id);
+      const outputDir = join(options.outputDir, safeIdPathName(work.video.id));
       const attempted = await runVideoExtractionWithRetry(
         () =>
           extractVideoFramesRange(
@@ -2083,7 +2086,7 @@ export async function extractAllVideoFrames(
       return sliceSupersetMember(
         member,
         superset,
-        join(options.outputDir, work.video.id),
+        join(options.outputDir, safeIdPathName(work.video.id)),
         fps,
         configuredFps,
       );

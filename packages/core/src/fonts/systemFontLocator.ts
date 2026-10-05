@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { homedir, platform } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -132,7 +132,14 @@ function isRegularWeight(fileName: string): boolean {
   return !lower.includes("bold") && !lower.includes("italic") && !lower.includes("light");
 }
 
+/**
+ * The directories searched for installed fonts. `HYPERFRAMES_SYSTEM_FONT_DIRS` (absolute paths separated by the
+ * platform's path delimiter) replaces the platform defaults, so a test or a sandboxed render can use a private set
+ * of fonts without touching the real font folders.
+ */
 export function fontDirectories(): string[] {
+  const override = process.env.HYPERFRAMES_SYSTEM_FONT_DIRS;
+  if (override) return override.split(delimiter).filter((dir) => dir !== "" && isAbsolute(dir));
   const home = homedir();
   if (platform() === "darwin") {
     return [
@@ -236,6 +243,8 @@ type SystemProfilerEntry = {
 let profilerIndex: Promise<Map<string, SystemProfilerEntry[]>> | null = null;
 
 function getSystemProfilerIndex(): Promise<Map<string, SystemProfilerEntry[]>> {
+  // The OS font indexes know the real font folders only; an explicit directory list is searched on its own.
+  if (process.env.HYPERFRAMES_SYSTEM_FONT_DIRS) return Promise.resolve(new Map());
   profilerIndex ??= readSystemProfilerIndex();
   return profilerIndex;
 }
@@ -294,7 +303,7 @@ async function locateViaSystemProfiler(targetFamily: string): Promise<LocatedFon
 }
 
 async function locateViaFcMatch(targetFamily: string): Promise<LocatedFont | null> {
-  if (platform() !== "linux") return null;
+  if (platform() !== "linux" || process.env.HYPERFRAMES_SYSTEM_FONT_DIRS) return null;
   try {
     const { stdout } = await execFileAsync("fc-match", [targetFamily, "--format=%{file}"], {
       encoding: "utf8",

@@ -193,7 +193,7 @@ describe("runEnvironmentChecks", () => {
       expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
         ok: false,
         title: "Chrome not found",
-        hint: "Run: npx hyperframes browser ensure",
+        hint: "Run: hyperframes browser ensure",
       });
       expect(result.browser).toBeUndefined();
     } finally {
@@ -335,7 +335,7 @@ describe("runEnvironmentChecks — Chrome shared libraries (Linux/WSL)", () => {
   it("resolveRenderBrowser refuses with the Chrome check's own message when none resolves", async () => {
     vi.spyOn(manager, "findBrowser").mockResolvedValue(undefined);
     await expect(resolveRenderBrowser()).rejects.toThrow(
-      /Chrome not found: Chrome Headless Shell is required.*npx hyperframes browser ensure/,
+      /Chrome not found: Chrome Headless Shell is required.*hyperframes browser ensure/,
     );
   });
 });

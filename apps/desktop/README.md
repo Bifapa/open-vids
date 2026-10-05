@@ -411,6 +411,14 @@ bundles every `@hyperframes/*` workspace package into `dist/cli.js` (tsup
 `noExternal`), so only its npm dependencies stay external. That comes to about
 86 MB, against 1.5 GB for the repository's own `node_modules`.
 
+The versions are not resolved from those ranges at release time: each staged tree is seeded with the
+repository `bun.lock`, resolved with `bun install --lockfile-only`, checked so that every `name@version`
+is one the repository lockfile already pins (staging fails otherwise; only the exact Windows dedupe
+pins above are exempt), and then installed with `--frozen-lockfile`. What ships is what CI tested. The
+sidecar, the CLI launcher and the agent runtime run Bun with `--no-install`, so a module that fails to
+resolve is an error and never an npm download, and the sidecar sets `OPENVIDS_EMBEDDED_STUDIO=1` so a
+project folder can never supply its own Studio.
+
 A `package.json` named `hyperframes` is written beside the bundle. Two reasons:
 the render pipeline stamps provenance by walking up from its own module URL
 looking for a package.json whose name matches
@@ -449,7 +457,8 @@ Tauri resource mapping still resolves) without sources or dependencies; Chat the
 
 ## Security
 
-The webview gets no native access beyond moving its own window.
+The webview gets no native access beyond moving its own window; on Windows only, the
+page-drawn caption buttons add minimize, maximize and close (`capabilities/windows-frame.json`).
 
 - `withGlobalTauri` is `false`, so there is no `window.__TAURI__`.
 - On macOS the window uses an overlay titlebar (traffic lights over the pages' own 52 px
@@ -499,12 +508,26 @@ The webview gets no native access beyond moving its own window.
   and required as `X-OpenVids-Token` on every `/api` request; `Host` must
   name the server and a present `Origin` must match it, so a foreign website
   that guesses the port still cannot trigger pickers or deletes. Plain
-  page/thumbnail GETs stay open so `<img>` tags load without scripting. One
-  narrow exception: the Studio menu on the Windows custom frame (see "Menus and
-  shortcuts") — Studio never receives the token, so the server answers its
-  own-origin requests for `open_project`, `welcome`, `check_updates` and the
-  About read (plus their CORS preflights) only, and only while that Studio
+  page/thumbnail GETs stay open so `<img>` tags load without scripting. Three
+  narrow exceptions:
+  `GET /api/menu/about` (static strings, read by the title-bar menu with a plain
+  `fetch`); `POST /api/report/open` (opens or focuses the bug-report window; the
+  Studio page has no token, and a loopback `Origin` is still required); and, on the
+  Windows custom frame only, the Studio menu (see "Menus and shortcuts") — the server
+  answers its own-origin requests for `open_project`, `welcome`, `check_updates` and
+  the About read (plus their CORS preflights) only, and only while that Studio
   server is the open project.
+- Home pages (Projects, Settings, Report) are served with
+  `Content-Security-Policy: frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN`,
+  so a foreign page cannot frame them (Settings is framed by the Projects page of
+  the same origin).
+- The main window's top-level navigation is not restricted to the loopback
+  servers: wry's navigation handler (0.57) receives only a URL string and, on macOS, is
+  called for subframe loads as well as the main frame, so a deny-list for unknown
+  origins would also cancel external iframes a composition embeds. A navigated-away
+  page still has no IPC beyond window dragging. `target="_blank"` links and
+  `window.open` never navigate the window: `shell_links` sends web and mail links to the
+  default apps.
 - `dragDropEnabled` is **off**. Tauri otherwise intercepts OS file drops and
   re-emits them as its own drag-drop event, so the webview never sees the HTML5
   drop — and Studio imports assets through exactly that
@@ -595,15 +618,17 @@ saved change; it does not perform an additional save.
 ## Known limitation: the Studio loopback API is unauthenticated
 
 The Studio server on `127.0.0.1` exposes project file read/write/delete, render
-spawning and media proxy transcoding with no authentication — this is upstream
-HyperFrames behaviour, and OpenVids does not change it. Any other local process,
-and any web page the user visits, can reach that port while OpenVids is running.
+spawning and media proxy transcoding with no token. Any other local process can
+reach that port while OpenVids is running. Web pages cannot: the server checks the
+`Host` header (DNS rebinding) and refuses cross-site or foreign-`Origin`
+state-changing requests (`packages/studio-server/src/helpers/hostGuard.ts`, used by
+the production host and the dev host alike).
 The port is chosen per-launch and is not guessable in advance, but it is
 discoverable (it is in the window's own origin; on macOS `lsof` lists it, on Windows `netstat -ano`).
 
 The Projects home-screen API does not share this limitation: it mints a
-per-launch token (see Security above). Only the Studio server itself is
-reported, not redesigned — the fix belongs in `@hyperframes/studio-server`.
+per-launch token (see Security above). The Studio server itself has no token;
+adding one would belong in `@hyperframes/studio-server`.
 
 ## Known limitation: drag-and-drop onto the Projects page (Windows)
 

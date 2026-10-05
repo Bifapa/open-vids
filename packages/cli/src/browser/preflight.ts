@@ -276,7 +276,7 @@ async function chromeLaunchOutcome(
       detail: `Failed to run "${executablePath}" --version${details ? ` (${details})` : ""}.`,
       hint:
         "Select a working Chrome/Chromium binary for this OS and architecture with " +
-        "HYPERFRAMES_BROWSER_PATH, or reinstall with: npx hyperframes browser ensure --force",
+        "HYPERFRAMES_BROWSER_PATH, or reinstall with: hyperframes browser ensure --force",
       path: executablePath,
     };
   }
@@ -306,7 +306,7 @@ async function checkChrome(
       level: "error",
       title: "Chrome not found",
       detail: `Chrome binary not found at "${browserPath}".`,
-      hint: "Run: npx hyperframes browser ensure",
+      hint: "Run: hyperframes browser ensure",
     };
   }
 
@@ -344,7 +344,7 @@ async function checkChrome(
     level: "error",
     title: "Chrome not found",
     detail: "Chrome Headless Shell is required for local rendering.",
-    hint: "Run: npx hyperframes browser ensure",
+    hint: "Run: hyperframes browser ensure",
   };
 }
 

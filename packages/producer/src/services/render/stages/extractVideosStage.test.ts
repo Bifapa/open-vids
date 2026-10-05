@@ -105,6 +105,12 @@ describe("appendAutoDetectedVideoAudio", () => {
     });
   });
 
+  it("carries a looping video's loop onto its soundtrack track", () => {
+    const composition = { videos: [makeVideo({ loop: true })], audios: [] as never[] };
+    appendAutoDetectedVideoAudio(composition, [makeExtracted("v1", true)]);
+    expect(composition.audios[0]).toMatchObject({ id: "v1-audio", loop: true });
+  });
+
   it("skips a muted video even when the source file has audio", () => {
     const composition = {
       videos: [makeVideo({ hasAudio: false })],

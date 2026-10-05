@@ -1,6 +1,7 @@
 // executeGsapMutationRecast and executeGsapMutationAcorn are intentionally
 // parallel — two writers, same switch-case interface. Structural duplication
 // is load-bearing (both paths must remain testable in isolation).
+import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
@@ -13,20 +14,25 @@ import {
   writeFileSync,
   writeSync,
   mkdirSync,
-  unlinkSync,
   rmSync,
   statSync,
   fstatSync,
   renameSync,
   readdirSync,
 } from "node:fs";
-import { resolve, dirname, join, sep } from "node:path";
+import { resolve, basename, dirname, join, relative, sep } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
-import { isSafePath, pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
+import {
+  isSafePath,
+  pinWithinProject,
+  realFilePath,
+  resolveWithinProject,
+  walkDir,
+} from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import {
   createWriteToken,
@@ -88,6 +94,8 @@ import {
 } from "../helpers/compositionInsertion.js";
 import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
+import { rewriteJsonPathStrings, rewritePathReferences } from "../helpers/pathReferences.js";
+import { HISTORY_ONLY_TRACKED_PATHS } from "../helpers/projectSignature.js";
 import { extractGsapScriptBlock, type GsapScriptBlock } from "../helpers/gsapScript.js";
 import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
 
@@ -174,7 +182,7 @@ async function resolveProjectPath(
   c: RouteContext,
   adapter: StudioApiAdapter,
   route: string,
-  opts?: { mustExist?: boolean; pin?: boolean },
+  opts?: { mustExist?: boolean; pin?: boolean; allowRoot?: boolean },
 ) {
   const id = c.req.param("id");
   const project = await adapter.resolveProject(id);
@@ -210,6 +218,14 @@ async function resolveProjectPath(
     return { error: c.json({ error: "forbidden", why: "outside_project" }, 403) } as const;
   }
 
+  // A file route names a file or folder inside the project. An empty subpath, `.` or `%2E` resolves to the project
+  // folder itself, which a delete or rename would then act on as a whole; reads answer for it as before.
+  if (!opts?.allowRoot && relative(realFilePath(project.dir), realFilePath(absPath)) === "") {
+    return {
+      error: c.json({ error: "a file path is required", why: "project_root" }, 400),
+    } as const;
+  }
+
   if (opts?.mustExist && !existsSync(absPath)) {
     return { error: c.json({ error: "not found" }, 404) } as const;
   }
@@ -220,7 +236,7 @@ async function resolveProjectPath(
 function resolveProjectFile(
   c: RouteContext,
   adapter: StudioApiAdapter,
-  opts?: { mustExist?: boolean; pin?: boolean },
+  opts?: { mustExist?: boolean; pin?: boolean; allowRoot?: boolean },
 ) {
   return resolveProjectPath(c, adapter, "files", opts);
 }
@@ -625,6 +641,21 @@ function ensureDir(filePath: string) {
 }
 
 /**
+ * Whether `to` is `from` under another letter case: the names differ only in case and both resolve to one directory
+ * entry (a case-insensitive volume). Two hard links, or two files on a case-sensitive volume, are not.
+ */
+function isSameEntryRenamedByCase(from: string, to: string): boolean {
+  if (from.toLowerCase() !== to.toLowerCase()) return false;
+  try {
+    const a = statSync(from, { bigint: true });
+    const b = statSync(to, { bigint: true });
+    return a.dev === b.dev && a.ino === b.ino;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Generate a copy name: foo.html → foo (copy).html → foo (copy 2).html
  */
 function generateCopyPath(projectDir: string, originalPath: string): string {
@@ -647,19 +678,17 @@ function generateCopyPath(projectDir: string, originalPath: string): string {
 
 /**
  * Walk a directory recursively and return all file paths matching a filter.
+ * Skips dependencies, renders and every dot folder: `.hyperframes` holds chats, caches and backups that must keep
+ * what they recorded (the few records there that name project files are handled by `updateReferences`).
  */
 function walkFiles(dir: string, filter: (name: string) => boolean): string[] {
   const results: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (
-        entry.name === "node_modules" ||
-        entry.name === ".thumbnails" ||
-        entry.name === "renders" ||
-        entry.name === ".transcode-cache"
-      )
+      if (entry.name === "node_modules" || entry.name === "renders" || entry.name.startsWith(".")) {
         continue;
+      }
       results.push(...walkFiles(full, filter));
     } else if (filter(entry.name)) {
       results.push(full);
@@ -669,24 +698,35 @@ function walkFiles(dir: string, filter: (name: string) => boolean): string[] {
 }
 
 /**
- * After a rename, update all references to the old path in project files.
- * Scans HTML, CSS, JS, and JSON files for the old filename/path and replaces.
+ * After a rename, point the references to the old path in project files at the new one. Scans HTML, CSS, JS, JSON and
+ * Markdown for the path as a whole token (see `rewritePathReferences`), and the story / sync / provenance / range
+ * records under `.hyperframes` for it as a whole JSON string.
  */
-function updateReferences(projectDir: string, oldPath: string, newPath: string): number {
-  const textFiles = walkFiles(projectDir, (name) =>
-    /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(name),
-  );
+function updateReferences(
+  projectDir: string,
+  oldPath: string,
+  newPath: string,
+  isDirectory: boolean,
+): number {
+  const from = oldPath.replace(/^(?:\.?\/)+/, "");
+  const to = newPath.replace(/^(?:\.?\/)+/, "");
+  if (!from || from === to) return 0;
+
+  const targets: Array<{ file: string; rewrite: typeof rewritePathReferences }> = [
+    ...walkFiles(projectDir, (name) =>
+      /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(name),
+    ).map((file) => ({ file, rewrite: rewritePathReferences })),
+    ...HISTORY_ONLY_TRACKED_PATHS.map((tracked) => ({
+      file: join(projectDir, tracked),
+      rewrite: rewriteJsonPathStrings,
+    })),
+  ];
 
   let updatedCount = 0;
-  for (const file of textFiles) {
-    if (!isSafePath(projectDir, file)) continue;
+  for (const { file, rewrite } of targets) {
+    if (!existsSync(file) || !isSafePath(projectDir, file)) continue;
     const content = readFileSync(file, "utf-8");
-
-    // Only replace full relative paths — never bare filenames, which can
-    // corrupt unrelated content (e.g. "logo.png" inside "my-logo.png").
-    if (!content.includes(oldPath)) continue;
-
-    const updated = content.split(oldPath).join(newPath);
+    const updated = rewrite(content, from, to, isDirectory);
     if (updated !== content) {
       replaceFileAtomically(file, updated, statSync(file).mode);
       updatedCount++;
@@ -2335,11 +2375,17 @@ async function processUploadedFiles(
 
 // ── Route registration ──────────────────────────────────────────────────────
 
+/**
+ * The largest file a delete copies into the backup journal; larger ones rely on project history. The journal is a
+ * second copy inside the project, so a video deleted to free space must not be written out again (or refused).
+ */
+const DELETE_BACKUP_MAX_BYTES = 256 * 1024 * 1024;
+
 export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── Read ──
 
   api.get("/projects/:id/files/*", async (c) => {
-    const res = await resolveProjectFile(c, adapter);
+    const res = await resolveProjectFile(c, adapter, { allowRoot: true });
     if ("error" in res) return res.error;
 
     // Opened once and checked/read through the same descriptor, not the path,
@@ -2532,14 +2578,59 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const res = await resolveProjectFile(c, adapter, { mustExist: true });
     if ("error" in res) return res.error;
 
-    const stat = statSync(res.absPath);
+    // The project's own bookkeeping folder and its backup journal are not content a delete may take with it. Judged
+    // on the real location of the entry (a linked folder in the path leads to it too), lower-cased, because the
+    // default volumes of macOS and Windows read `.HYPERFRAMES/Backup` as the same folder.
+    const target = relative(resolve(res.project.dir), res.absPath).split(sep).join("/");
+    const real = relative(
+      realFilePath(res.project.dir),
+      join(realFilePath(dirname(res.absPath)), basename(res.absPath)),
+    )
+      .split(sep)
+      .join("/")
+      .toLowerCase();
+    if (real === ".hyperframes" || real.startsWith(".hyperframes/backup")) {
+      return c.json({ error: "this folder cannot be deleted", why: "protected" }, 400);
+    }
+
+    // A link is removed itself, never followed into what it points at.
+    const stat = lstatSync(res.absPath);
+    const backups: string[] = [];
+    const unbacked: string[] = [];
+    if (stat.isDirectory()) {
+      // Journal every file the folder holds before anything is removed, so one failed backup leaves it all in place.
+      // A file over the cap is left to project history (which keeps every tracked file outside the folder): the
+      // journal reads a file whole, and a folder of footage must stay deletable.
+      for (const file of walkDir(res.absPath)) {
+        const absFile = join(res.absPath, file);
+        const projectRelativeFile = relative(resolve(res.project.dir), absFile)
+          .split(sep)
+          .join("/");
+        if (lstatSync(absFile).size > DELETE_BACKUP_MAX_BYTES) {
+          unbacked.push(projectRelativeFile);
+          continue;
+        }
+        const backup = snapshotBeforeWrite(res.project.dir, absFile);
+        if (backup.error) {
+          return c.json({ error: `backup failed: ${projectRelativeFile}: ${backup.error}` }, 500);
+        }
+        const path = backupPathForResponse(res.project.dir, backup.backupPath);
+        if (path) backups.push(path);
+      }
+      rmSync(res.absPath, { recursive: true });
+      invalidateSignatureAfterWrite(adapter, res.project.dir);
+      return c.json({ ok: true, backupPath: null, backupPaths: backups, unbackedFiles: unbacked });
+    }
+
+    if (stat.size > DELETE_BACKUP_MAX_BYTES) {
+      rmSync(res.absPath);
+      invalidateSignatureAfterWrite(adapter, res.project.dir);
+      return c.json({ ok: true, backupPath: null, unbackedFiles: [target] });
+    }
+
     const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
     if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
-    if (stat.isDirectory()) {
-      rmSync(res.absPath, { recursive: true });
-    } else {
-      unlinkSync(res.absPath);
-    }
+    rmSync(res.absPath);
     invalidateSignatureAfterWrite(adapter, res.project.dir);
 
     return c.json({
@@ -3213,15 +3304,29 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (!newAbs) {
       return c.json({ error: "forbidden" }, 403);
     }
-    if (existsSync(newAbs)) {
+    // On a case-insensitive volume (default APFS, NTFS) the case variant of a name resolves to the file itself:
+    // that is a rename of the letter case, not a collision, and goes through a temporary name.
+    const caseOnly = newAbs !== res.absPath && isSameEntryRenamedByCase(res.absPath, newAbs);
+    if (existsSync(newAbs) && !caseOnly) {
       return c.json({ error: "already exists" }, 409);
     }
 
     ensureDir(newAbs);
-    renameSync(res.absPath, newAbs);
+    if (caseOnly) {
+      const temporary = join(dirname(res.absPath), `.${randomUUID()}.rename`);
+      renameSync(res.absPath, temporary);
+      renameSync(temporary, newAbs);
+    } else {
+      renameSync(res.absPath, newAbs);
+    }
 
     // Update references to the old path across all project files
-    const updatedFiles = updateReferences(res.project.dir, res.filePath, body.newPath);
+    const updatedFiles = updateReferences(
+      res.project.dir,
+      res.filePath,
+      body.newPath,
+      statSync(newAbs).isDirectory(),
+    );
     invalidateSignatureAfterWrite(adapter, res.project.dir);
 
     return c.json({ ok: true, path: body.newPath, updatedReferences: updatedFiles });

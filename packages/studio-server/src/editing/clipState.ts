@@ -1,4 +1,10 @@
 import { createHash } from "node:crypto";
+import {
+  STUDIO_HEIGHT_PROP,
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
+  STUDIO_WIDTH_PROP,
+} from "@hyperframes/core/editing/draft-markers";
 import type { ClipKind } from "@hyperframes/agent-protocol";
 import type { ClipNode } from "./timeline.js";
 
@@ -24,6 +30,11 @@ export interface ClipState {
   frame: { left: number; top: number; width: number; height: number } | null;
   fit: string | null;
   locked: boolean;
+  /**
+   * Studio canvas edits: the offset, size and rotation properties, the motion marker and the transform channels it
+   * writes. Absent (not null) when there are none, so states stored before this field was tracked still compare.
+   */
+  studio?: Record<string, string>;
 }
 
 /** Marks a clip an agent turn changed: `<turn>@<hash of the clip's state without its start>`. */
@@ -48,6 +59,42 @@ function numberAttr(element: Element, name: string): number | null {
   if (raw === null || raw.trim() === "") return null;
   const value = Number.parseFloat(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+/** Studio's persisted canvas-edit markers (`manualEditsTypes.ts` in Studio): the attributes it stamps on an element. */
+const STUDIO_ATTRIBUTES = [
+  "data-hf-studio-path-offset",
+  "data-hf-studio-box-size",
+  "data-hf-studio-rotation",
+  "data-hf-studio-motion",
+] as const;
+
+/** The inline style properties a drag, resize, rotation or motion edit leaves on the element. */
+const STUDIO_STYLE_PROPERTIES = [
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
+  STUDIO_WIDTH_PROP,
+  STUDIO_HEIGHT_PROP,
+  "--hf-studio-rotation",
+  "translate",
+  "rotate",
+  "scale",
+  "transform",
+  "opacity",
+] as const;
+
+/** What Studio's canvas wrote on the element, in a fixed order; absent when the clip carries none of it. */
+function studioEdits(element: Element, style: string): { studio?: Record<string, string> } {
+  const found: Record<string, string> = {};
+  for (const name of STUDIO_ATTRIBUTES) {
+    const value = element.getAttribute(name);
+    if (value !== null) found[name] = value;
+  }
+  for (const property of STUDIO_STYLE_PROPERTIES) {
+    const value = styleValue(style, property);
+    if (value !== null) found[property] = value;
+  }
+  return Object.keys(found).length > 0 ? { studio: found } : {};
 }
 
 export function clipState(clip: ClipNode): ClipState {
@@ -79,6 +126,7 @@ export function clipState(clip: ClipNode): ClipState {
         : null,
     fit: styleValue(style, "object-fit"),
     locked: clip.locked,
+    ...studioEdits(element, style),
   };
 }
 
@@ -99,6 +147,7 @@ const FIELD_NAMES: Array<[keyof ClipState, string]> = [
   ["frame", "frame"],
   ["fit", "fit"],
   ["locked", "locked"],
+  ["studio", "canvas"],
 ];
 
 function same(a: unknown, b: unknown): boolean {

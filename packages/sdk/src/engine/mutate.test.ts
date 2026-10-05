@@ -217,6 +217,15 @@ describe("setText", () => {
     expect(serializeDocument(parsed)).toBe(before);
   });
 
+  it("does not destroy elements nested inside a single child", () => {
+    const parsed = parseMutable(
+      '<div data-hf-id="hf-a" data-hf-root><p data-hf-id="hf-b"><strong data-hf-id="hf-c">Big</strong> deal</p></div>',
+    );
+    applyOp(parsed, { type: "setText", target: "hf-a", value: "Big deal!" });
+    expect(parsed.document.querySelector('[data-hf-id="hf-c"]')?.textContent).toBe("Big");
+    expect(parsed.document.querySelector('[data-hf-id="hf-b"]')).not.toBeNull();
+  });
+
   it("creates text node when element has no existing text node", () => {
     const parsed = parseMutable(
       '<div data-hf-id="hf-s" data-hf-root><span data-hf-id="hf-empty"></span></div>',
@@ -490,6 +499,53 @@ describe("addElement", () => {
     const stageAfter = parsed.document.querySelector('[data-hf-id="hf-stage"]');
     expect(stageAfter?.lastElementChild?.getAttribute("data-hf-id")).toBe(newId);
     expect(Array.from(stageAfter?.children ?? []).length).toBe(countBefore + 1);
+  });
+
+  it("re-mints a fragment id that collides with the document and undo removes only the copy", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: '<h1 data-hf-id="hf-title" class="copy">dup<b data-hf-id="hf-title">x</b></h1>',
+    });
+    const newId = result.meta!.newId!;
+    expect(newId).not.toBe("hf-title");
+    const ids = Array.from(parsed.document.querySelectorAll("[data-hf-id]")).map((e) =>
+      e.getAttribute("data-hf-id"),
+    );
+    expect(new Set(ids).size).toBe(ids.length);
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(parsed.document.querySelector('[data-hf-id="hf-title"]')?.textContent).toBe(
+      "Hello World",
+    );
+    expect(parsed.document.querySelector(".copy")).toBeNull();
+  });
+
+  it("re-mints a fragment id that collides with an id inside a composition template", () => {
+    const parsed = parseMutable(
+      `<div data-hf-id="hf-stage" data-hf-root><div data-hf-id="hf-host" data-composition-src="compositions/a.html"><template><div data-composition-id="a" data-hf-id="hf-a"><p data-hf-id="hf-leaf">leaf</p></div></template></div></div>`,
+    );
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: '<p data-hf-id="hf-leaf" class="copy">copy</p>',
+    });
+    const newId = result.meta!.newId!;
+    expect(newId).not.toBe("hf-leaf");
+    expect(parsed.document.querySelector(".copy")?.getAttribute("data-hf-id")).toBe(newId);
+  });
+
+  it("keeps a free pinned fragment id", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: '<p data-hf-id="hf-free">p</p>',
+    });
+    expect(result.meta?.newId).toBe("hf-free");
   });
 
   it("minted id is unique vs all existing doc ids", () => {

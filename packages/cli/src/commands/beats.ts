@@ -40,7 +40,7 @@ async function detect(audioPath: string): Promise<HeadlessBeatResult> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const hint = /chrome|executable|browser|ENOENT/i.test(msg)
-      ? "\nRun: npx hyperframes browser ensure"
+      ? "\nRun: hyperframes browser ensure"
       : "";
     fail(`Beat detection failed: ${msg}${hint}`);
   }

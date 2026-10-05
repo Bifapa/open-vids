@@ -773,6 +773,33 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     };
   }
 
+  it("keeps a traversal-shaped video id from placing the staged link outside the frame root", () => {
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const extracted = {
+      ...createExtractedFrames(outputDir, win32.join(outputDir, "frame_000001.jpg")),
+      videoId: "..\\..\\escaped",
+    };
+    const symlinks: Array<{ target: string; path: string }> = [];
+
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: (target, path) => {
+          symlinks.push({ target, path });
+        },
+        cpSync: () => undefined,
+      },
+    });
+
+    const frameRoot = win32.join(compiledDir, "__hyperframes_video_frames");
+    expect(symlinks).toHaveLength(1);
+    expect(win32.dirname(symlinks[0]!.path)).toBe(frameRoot);
+    expect(extracted.outputDir).toBe(symlinks[0]!.path);
+  });
+
   it("leaves Windows frame paths already under compiledDir unchanged", () => {
     const compiledDir = win32.resolve("C:\\compiled");
     const outputDir = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");

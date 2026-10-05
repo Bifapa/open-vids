@@ -8,6 +8,18 @@ import { ExternalFileConflictBanner } from "./ExternalFileConflictBanner";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+function buttonIncluding(text: string): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll("button")).find((button) =>
+    button.textContent?.includes(text),
+  );
+}
+
+function buttonNamed(text: string): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll("button")).find(
+    (button) => button.textContent?.trim() === text,
+  );
+}
+
 describe("ExternalFileConflictBanner", () => {
   afterEach(() => {
     document.body.replaceChildren();
@@ -103,15 +115,101 @@ describe("ExternalFileConflictBanner", () => {
 
     await act(async () => root.render(<ExternalFileConflictBanner coordinator={coordinator} />));
     expect(document.body.textContent).not.toContain("Retry save");
-    const overwrite = Array.from(document.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("Overwrite file with recovered Studio draft"),
+    await act(async () => buttonIncluding("Overwrite file with recovered Studio draft")?.click());
+    expect(keepStudioFile).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      "Overwrite the file with the recovered Studio draft?",
     );
-    expect(overwrite).toBeTruthy();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-    await act(async () => overwrite?.click());
+    await act(async () => buttonNamed("Overwrite")?.click());
     expect(keepStudioFile).toHaveBeenCalledOnce();
 
     await act(async () => root.unmount());
+  });
+
+  // The desktop shell's web view has no native confirm panel and answers every
+  // `window.confirm` with "cancel", so the keep action has to be asked in-app.
+  describe("overwriting the file with Studio's version", () => {
+    function conflictCoordinator(
+      keepStudioFile: () => Promise<void>,
+      generation: number,
+    ): ExternalFileChangeCoordinatorHandle {
+      return {
+        blocked: {
+          status: "conflict",
+          generation,
+          error: new StudioFileConflictError({
+            filePath: "index.html",
+            currentVersion: "v2",
+            currentContent: "<html>external</html>",
+            attemptedContent: "<html>studio</html>",
+          }),
+          payload: {},
+        },
+        retry: vi.fn(async () => undefined),
+        useExternalFile: vi.fn(async () => undefined),
+        keepStudioFile,
+      };
+    }
+
+    async function mountBanner(coordinator: ExternalFileChangeCoordinatorHandle) {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      const render = (next: ExternalFileChangeCoordinatorHandle) =>
+        act(async () => root.render(<ExternalFileConflictBanner coordinator={next} />));
+      await render(coordinator);
+      return { render, unmount: () => act(async () => root.unmount()) };
+    }
+
+    it("asks in the app, and writes the Studio version only after the author confirms", async () => {
+      const nativeConfirm = vi.spyOn(window, "confirm");
+      const keepStudioFile = vi.fn(async () => undefined);
+      const { unmount } = await mountBanner(conflictCoordinator(keepStudioFile, 1));
+
+      await act(async () => buttonIncluding("Overwrite file with Studio version")?.click());
+      const dialog = document.querySelector('[role="dialog"]');
+      expect(dialog?.textContent).toContain("Overwrite the file on disk?");
+      expect(dialog?.textContent).toContain(
+        "Overwrite the externally changed file with the Studio version?",
+      );
+      expect(keepStudioFile).not.toHaveBeenCalled();
+
+      await act(async () => buttonNamed("Overwrite")?.click());
+      expect(keepStudioFile).toHaveBeenCalledOnce();
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(nativeConfirm).not.toHaveBeenCalled();
+
+      await unmount();
+    });
+
+    it("leaves the file alone when the author cancels", async () => {
+      const keepStudioFile = vi.fn(async () => undefined);
+      const { unmount } = await mountBanner(conflictCoordinator(keepStudioFile, 1));
+
+      await act(async () => buttonIncluding("Overwrite file with Studio version")?.click());
+      expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+      await act(async () => buttonNamed("Cancel")?.click());
+
+      expect(keepStudioFile).not.toHaveBeenCalled();
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(document.body.textContent).toContain("Overwrite file with Studio version");
+
+      await unmount();
+    });
+
+    it("drops a question about a conflict that has since been replaced", async () => {
+      const keepStudioFile = vi.fn(async () => undefined);
+      const { render, unmount } = await mountBanner(conflictCoordinator(keepStudioFile, 1));
+
+      await act(async () => buttonIncluding("Overwrite file with Studio version")?.click());
+      expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+      await render(conflictCoordinator(keepStudioFile, 2));
+
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(keepStudioFile).not.toHaveBeenCalled();
+
+      await unmount();
+    });
   });
 
   it("does not offer retry when a failed DOM edit has no recoverable source candidate", async () => {

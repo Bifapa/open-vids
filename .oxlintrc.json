@@ -12,8 +12,7 @@
     "playground/",
     "packages/producer/tests/**/src/vendor/**",
     "registry/blocks/**/lib/*.iife.js",
-    "registry/blocks/{glass-shard-title,code-slice-hero,cuboid-carousel,frost-sequence-camera-orbit,orbit-card}/**/*.{js,mjs}",
-    "registry/blocks/frost-sequence-camera-orbit/source/**",
+    "registry/blocks/{code-slice-hero,cuboid-carousel,orbit-card}/**/*.{js,mjs}",
     "chrome/",
     "packages/cli/src/media-use/lib/svg-sanitize.mjs"
   ],

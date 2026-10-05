@@ -296,6 +296,91 @@ describe("ParentMediaManager lazy iframe proxies", () => {
   });
 });
 
+describe("ParentMediaManager clips sharing one source file", () => {
+  afterEach(() => document.body.replaceChildren());
+
+  const shared = "https://example.test/sfx.mp3";
+
+  function promotedWithTwoRanges() {
+    const mgr = makeManager();
+    const first = addClip(shared, { "data-start": "1", "data-duration": "2" });
+    const second = addClip(shared, { "data-start": "8", "data-duration": "3" });
+    mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
+    return { mgr, first, second };
+  }
+
+  it("gives every clip its own proxy with its own bounds", () => {
+    const { mgr, first, second } = promotedWithTwoRanges();
+
+    expect(mgr.entries.map((m) => [m.el.src, m.start, m.duration, m.source])).toEqual([
+      [shared, 1, 2, first],
+      [shared, 8, 3, second],
+    ]);
+    mgr.destroy();
+  });
+
+  it("plays the later occurrence inside its own window", () => {
+    const { mgr } = promotedWithTwoRanges();
+
+    mgr.scrubAll(9);
+
+    const [early, late] = mgr.entries;
+    expect(early.el.paused).toBe(true);
+    expect(late.el.currentTime).toBe(1);
+    expect(late.el.paused).toBe(false);
+    mgr.destroy();
+  });
+
+  it("removing one clip leaves the other clip's proxy alone", async () => {
+    const { mgr, first, second } = promotedWithTwoRanges();
+    const kept = mgr.entries[1];
+
+    first.remove();
+    await Promise.resolve();
+
+    expect(mgr.entries).toEqual([kept]);
+    expect(kept.source).toBe(second);
+    expect(kept.el.src).toBe(shared);
+    mgr.destroy();
+  });
+
+  it("removing a clip keeps the audio-src proxy that shares its URL", async () => {
+    const mgr = makeManager();
+    const clip = addClip(shared, { "data-start": "2", "data-duration": "3" });
+    mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
+    // The composition owns the URL, so audio-src defers to its clip until a reset.
+    mgr.setupFromUrl(shared);
+    mgr.resetForIframeLoad();
+    const track = mgr.entries[0];
+    expect(track.source ?? null).toBeNull();
+
+    const later = addClip(shared, { "data-start": "5", "data-duration": "1" });
+    mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
+    expect(mgr.entries).toHaveLength(3);
+    later.remove();
+    clip.remove();
+    await Promise.resolve();
+
+    expect(mgr.entries).toEqual([track]);
+    expect(track.el.src).toBe(shared);
+    mgr.destroy();
+  });
+
+  it("does not queue the same element twice", () => {
+    const mgr = makeManager();
+    const clip = addClip(shared, { "data-start": "1" });
+    mgr.promoteToParentProxy(document);
+    mgr.setupFromIframe(document);
+    mgr.setupFromIframe(document);
+
+    expect(mgr.entries.map((m) => m.source)).toEqual([clip]);
+    mgr.destroy();
+  });
+});
+
 describe("ParentMediaManager proxy load bound", () => {
   afterEach(() => document.body.replaceChildren());
 

@@ -19,7 +19,7 @@
     },
     "apps/desktop": {
       "name": "@openvids/desktop",
-      "version": "0.1.0",
+      "version": "0.3.1",
     },
     "packages/agent-protocol": {
       "name": "@hyperframes/agent-protocol",
@@ -43,6 +43,7 @@
         "@oh-my-pi/pi-coding-agent": "18.4.3",
         "hono": "^4.0.0",
         "linkedom": "^0.18.12",
+        "tldts": "^7.0.30",
       },
       "devDependencies": {
         "@hyperframes/studio-server": "workspace:*",

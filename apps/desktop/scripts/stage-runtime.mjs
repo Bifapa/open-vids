@@ -30,6 +30,15 @@
  * `bun.exe` on Windows — the same name `platform::BUN_BIN` uses in Rust and
  * `tauri.prod*.conf.json` bundles, so the three must agree.
  *
+ *   runtime/licenses/
+ *     OpenVids' LICENSE, NOTICE and CREDITS.md, the texts kept in `apps/desktop/licenses/` (Bun,
+ *     LGPL/GPL, libvips) and a generated third-party notice for every staged package
+ *     (`licenses.mjs`). The app must not ship without them.
+ *
+ * Dependencies are installed from the repo `bun.lock` (`installFromRepoLock`):
+ * the staged trees contain exactly the `name@version`s the repo lockfile
+ * resolves, and staging fails if a range would pull anything else.
+ *
  * Platform notes:
  *
  * - `bun install` only installs the optional native prebuilds for the host
@@ -71,6 +80,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stageLicenses } from "./licenses.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DESKTOP = resolve(HERE, "..");
@@ -321,6 +331,99 @@ export function dedupeOpenTelemetryVersions(manifest) {
 }
 
 /**
+ * Parse a `bun.lock` (JSONC: JSON with trailing commas) into an object.
+ * Commas before a closing bracket are dropped outside string literals.
+ */
+export function parseBunLock(text) {
+  let json = "";
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      json += ch;
+      if (ch === "\\") json += text[++i] ?? "";
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === ",") {
+      let next = i + 1;
+      while (next < text.length && /\s/.test(text[next])) next++;
+      if (text[next] === "}" || text[next] === "]") continue;
+    }
+    json += ch;
+  }
+  return JSON.parse(json);
+}
+
+/**
+ * The `name@version` of every registry package a parsed `bun.lock` resolves.
+ * Workspace, file and link entries are the repo's own code, not downloads.
+ */
+export function lockedPackageIds(lock) {
+  const ids = new Set();
+  for (const entry of Object.values(lock.packages ?? {})) {
+    const id = Array.isArray(entry) ? entry[0] : undefined;
+    if (typeof id !== "string") continue;
+    if (/@(?:workspace|file|link):/.test(id)) continue;
+    ids.add(id);
+  }
+  return ids;
+}
+
+/**
+ * Packages `staged` resolves that `root` (the repo lockfile CI tests) does not:
+ * what would ship but was never resolved, installed or tested by the repo.
+ * `allowed` lists exact `name@version` ids the staging script itself pins.
+ */
+export function packagesOutsideLock(staged, root, allowed = []) {
+  const pinned = lockedPackageIds(root);
+  for (const id of allowed) pinned.add(id);
+  return [...lockedPackageIds(staged)].filter((id) => !pinned.has(id)).sort();
+}
+
+/**
+ * Install a staged manifest's dependencies from the repo lockfile.
+ *
+ * The staged manifest holds only the ranges of one package, so the repo's
+ * `bun.lock` cannot be frozen against it as is. Seeding the staging directory
+ * with that lockfile makes `bun install --lockfile-only` keep every version it
+ * already resolved (bun reuses locked resolutions for unchanged ranges) and drop
+ * the other workspaces. The resulting lockfile is then checked against the repo
+ * lockfile — any `name@version` outside it fails staging, so a range can never
+ * silently pull a fresh publish into a signed release — and installed frozen,
+ * so the tree is exactly the checked lockfile.
+ */
+function installFromRepoLock(bunPath, dir, label) {
+  const rootLockPath = join(REPO_ROOT, "bun.lock");
+  if (!existsSync(rootLockPath))
+    fail(`${label}: ${rootLockPath} is missing; cannot pin dependencies`);
+  const rootLockText = readFileSync(rootLockPath, "utf8");
+  const stdio = ["ignore", "inherit", "inherit"];
+  writeFileSync(join(dir, "bun.lock"), rootLockText);
+  execFileSync(bunPath, ["install", "--lockfile-only"], { cwd: dir, stdio });
+  // The Windows dedupe pins are exact versions chosen in this script; they are
+  // the only resolutions allowed to differ from the repo lockfile.
+  const ownPins =
+    process.platform === "win32"
+      ? Object.entries(STAGED_VERSION_OVERRIDES).map(([name, version]) => `${name}@${version}`)
+      : [];
+  const outside = packagesOutsideLock(
+    parseBunLock(readFileSync(join(dir, "bun.lock"), "utf8")),
+    parseBunLock(rootLockText),
+    ownPins,
+  );
+  if (outside.length > 0) {
+    fail(
+      `${label}: ${outside.length} package(s) resolve outside the repo bun.lock ` +
+        `(${outside.slice(0, 8).join(", ")}${outside.length > 8 ? ", ..." : ""}). ` +
+        `Run \`bun install\` in the repo and commit the lockfile, then stage again.`,
+    );
+  }
+  execFileSync(bunPath, ["install", "--frozen-lockfile"], { cwd: dir, stdio });
+}
+
+/**
  * The classic Windows `MAX_PATH` (260 characters) minus a small safety
  * margin for the separator and NUL. `makensis` has no long-path support, so
  * any staged file at or past this absolute length fails the installer build
@@ -435,6 +538,29 @@ export function pruneBundlerOnlyBuilds(roots) {
   return removed;
 }
 
+/**
+ * The manifest of a workspace package vendored as a `file:` dependency. Bun installs the devDependencies of
+ * `file:` dependencies too, so copying the source manifest verbatim would ship its build and test tooling
+ * (typescript, tsx, vitest, ...) in the app. Only the fields that decide how the package resolves and loads stay.
+ */
+export function vendoredManifest(manifest) {
+  const keep = [
+    "name",
+    "version",
+    "private",
+    "type",
+    "sideEffects",
+    "main",
+    "module",
+    "types",
+    "exports",
+    "dependencies",
+  ];
+  return Object.fromEntries(
+    keep.filter((key) => manifest[key] !== undefined).map((key) => [key, manifest[key]]),
+  );
+}
+
 function pruneStagedTree(dir, label, { unusedEngines }) {
   // The CLI tree needs `onnxruntime-node` (background removal, diarization), so
   // only the Agent Runtime tree drops the lazy engines.
@@ -458,9 +584,14 @@ function pruneStagedTree(dir, label, { unusedEngines }) {
 }
 
 function main() {
+  // The repo's own `overrides` (the React line) must be in every staged manifest, or bun
+  // re-resolves those packages instead of keeping the versions the repo lockfile pins.
+  const repoOverrides = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")).overrides;
   // The version-family pins only exist for the Windows installer's path budget.
-  const stagedManifest = (manifest) =>
-    process.platform === "win32" ? dedupeOpenTelemetryVersions(manifest) : manifest;
+  const stagedManifest = (manifest) => {
+    manifest.overrides = { ...repoOverrides, ...(manifest.overrides ?? {}) };
+    return process.platform === "win32" ? dedupeOpenTelemetryVersions(manifest) : manifest;
+  };
 
   // ── 1. The Studio + CLI bundle ────────────────────────────────────────────
 
@@ -515,10 +646,7 @@ function main() {
   );
 
   log(`installing ${Object.keys(runtimeDeps).length} runtime dependencies`);
-  // A fresh directory has no lockfile to freeze against. The dependency set is
-  // pinned by the range table generated above, which is itself derived from the
-  // CLI manifest rather than hand-written.
-  execFileSync(bunPath, ["install"], { cwd: HF_DIR, stdio: ["ignore", "inherit", "inherit"] });
+  installFromRepoLock(bunPath, HF_DIR, "hyperframes");
   pruneStagedTree(HF_DIR, "hyperframes", { unusedEngines: false });
 
   // ── 3. The separate, optional local Agent Runtime ──────────────────────────
@@ -545,7 +673,16 @@ function main() {
     });
     writeFileSync(join(AGENT_DIR, "main.ts"), 'import "./src/main.ts";\n');
     mkdirSync(protocolVendor, { recursive: true });
-    cpSync(join(AGENT_PROTOCOL_SOURCE, "package.json"), join(protocolVendor, "package.json"));
+    writeFileSync(
+      join(protocolVendor, "package.json"),
+      `${JSON.stringify(
+        vendoredManifest(
+          JSON.parse(readFileSync(join(AGENT_PROTOCOL_SOURCE, "package.json"), "utf8")),
+        ),
+        null,
+        2,
+      )}\n`,
+    );
     cpSync(join(AGENT_PROTOCOL_SOURCE, "src"), join(protocolVendor, "src"), {
       recursive: true,
       dereference: true,
@@ -564,10 +701,7 @@ function main() {
       )}\n`,
     );
     log(`installing ${Object.keys(agentRuntimeDependencies).length} Agent Runtime dependencies`);
-    execFileSync(bunPath, ["install"], {
-      cwd: AGENT_DIR,
-      stdio: ["ignore", "inherit", "inherit"],
-    });
+    installFromRepoLock(bunPath, AGENT_DIR, "agent-runtime");
     // The Director enables no memory/voice features, but the OMP SDK declares their engines as hard
     // dependencies (~500 MB: onnxruntime, sherpa-onnx, huggingface tokenizers, an icon set). They are
     // loaded lazily, so the runtime starts and runs sessions without them (verified with the staged bun).
@@ -593,6 +727,16 @@ function main() {
   // The launcher the app spawns instead of `cli.js` directly. See its header for
   // why the parent-death watch has to live in the child.
   cpSync(join(DESKTOP, "sidecar", "serve.mjs"), join(RUNTIME, "serve.mjs"), { dereference: true });
+
+  // ── 4b. License texts and third-party notices ─────────────────────────────
+
+  const licenses = stageLicenses({
+    runtimeDir: RUNTIME,
+    repoRoot: REPO_ROOT,
+    keptDir: join(DESKTOP, "licenses"),
+    treeDirs: [HF_DIR, AGENT_DIR],
+  });
+  log(`staged ${licenses.directory} (${licenses.packages} package notices)`);
 
   // ── 5. Manifest the Rust side reads at startup ────────────────────────────
 

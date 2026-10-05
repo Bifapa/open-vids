@@ -21,7 +21,7 @@ Composition id: `code-slice-hero`. Duration 8 s at 30 fps, 1920×1080.
 
 ## Install
 
-Install with `npx hyperframes add code-slice-hero`; by default the files above land under `compositions/code-slice-hero/`. Then mount the block from the host `index.html`:
+Install with `hyperframes add code-slice-hero`; by default the files above land under `compositions/code-slice-hero/`. Then mount the block from the host `index.html`:
 
 ```html
 <div
@@ -38,7 +38,7 @@ Install with `npx hyperframes add code-slice-hero`; by default the files above l
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'compositions/code-slice-hero/code-slice-hero.html' --variables '{"headline":"MAKE IT","reverseHeadline":"MATTER."}'
+hyperframes render 'compositions/code-slice-hero/code-slice-hero.html' --variables '{"headline":"MAKE IT","reverseHeadline":"MATTER."}'
 ```
 
 ## Variables

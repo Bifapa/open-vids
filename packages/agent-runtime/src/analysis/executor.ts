@@ -1,3 +1,4 @@
+import { isAbsolute, posix, relative } from "node:path";
 import {
   ANALYSIS_LIMITS,
   EDIT_LIMITS,
@@ -54,6 +55,18 @@ export interface TurnAnalysisOptions {
   framesPerSource?: number;
   /** The running agent turn: stamped on the clips of a rough cut. */
   turnId?: string;
+  /** The project folder: lets an absolute in-project source path count against the same budget as its relative form. */
+  projectDir?: string;
+}
+
+/**
+ * The project-relative path a source names, spelled as the analysis service resolves it (trimmed, `/` separators,
+ * no leading `./`, absolute in-project paths made relative), so one file has one frame budget.
+ */
+function sourceKey(projectDir: string | undefined, raw: string): string {
+  const text = raw.trim().replaceAll("\\", "/");
+  const inside = projectDir !== undefined && isAbsolute(text) ? relative(projectDir, text) : text;
+  return posix.normalize(inside.replaceAll("\\", "/").replace(/^\.\//, ""));
 }
 
 const refuse = (text: string): HostToolResult => ({ text, isError: true });
@@ -216,19 +229,26 @@ export class TurnAnalysis {
       case ANALYSIS_TOOL_NAMES.frames: {
         const request = checked(parseFramesRequest(withoutNulls(args)));
         const cap = this.options.framesPerSource;
-        const seen = this.inspectedFrames.get(request.source) ?? new Set<number>();
-        if (cap !== undefined) {
-          const fresh = new Set(request.times.filter((time) => !seen.has(time)));
-          if (seen.size + fresh.size > cap) {
-            const left = Math.max(0, cap - seen.size);
-            return refuse(
-              `Frame budget of ${request.source} reached: ${seen.size} of ${cap} frames were already inspected in this turn (the turn's Execution Quality budget) and this call would add ${fresh.size}. ${left > 0 ? `Ask for at most ${left} new ${left === 1 ? "frame" : "frames"}` : "Work from the frames you already saw, the vision notes and the analysis"}; frames at times you already inspected cost nothing.`,
-            );
-          }
+        // The budget belongs to the file, whichever way the model spells its path.
+        const key = sourceKey(this.options.projectDir, request.source);
+        const seen = this.inspectedFrames.get(key) ?? new Set<number>();
+        this.inspectedFrames.set(key, seen);
+        const fresh = new Set(request.times.filter((time) => !seen.has(time)));
+        if (cap !== undefined && seen.size + fresh.size > cap) {
+          const left = Math.max(0, cap - seen.size);
+          return refuse(
+            `Frame budget of ${request.source} reached: ${seen.size} of ${cap} frames were already inspected in this turn (the turn's Execution Quality budget) and this call would add ${fresh.size}. ${left > 0 ? `Ask for at most ${left} new ${left === 1 ? "frame" : "frames"}` : "Work from the frames you already saw, the vision notes and the analysis"}; frames at times you already inspected cost nothing.`,
+          );
         }
-        const { frames } = await host.frames(request, signal);
-        for (const time of request.times) seen.add(time);
-        this.inspectedFrames.set(request.source, seen);
+        // Reserved before the await, so parallel calls of one assistant message share the budget.
+        for (const time of fresh) seen.add(time);
+        let frames;
+        try {
+          ({ frames } = await host.frames(request, signal));
+        } catch (error) {
+          for (const time of fresh) seen.delete(time);
+          throw error;
+        }
         return {
           text: formatFrames(request.source, frames),
           images: frames.map((frame) => ({ mimeType: frame.mimeType, data: frame.data })),
@@ -290,6 +310,14 @@ export class TurnAnalysis {
       throw invalid("captions must be the name of a caption preset from browse_presets");
 
     const plan = await host.getCut(planId, signal);
+    // The ranges are source times of the state the plan was made for; on changed media or a redone transcript they
+    // would keep and cut the wrong words and the turn would still report success.
+    if (plan.outOfDate !== undefined) {
+      throw new AnalysisToolError(
+        "stale",
+        `Cut plan ${plan.id} is out of date: ${plan.outOfDate}. Nothing was built; plan the cut again with plan_cut.`,
+      );
+    }
     this.planRanges.set(plan.id, plan.ranges.length);
     const [timeline, overview] = await Promise.all([
       editing.timeline(composition, signal),

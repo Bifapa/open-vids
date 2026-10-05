@@ -58,7 +58,7 @@ Rules:
 Install, then fill the slots with two screenshots:
 
 ```bash
-npx hyperframes add before-after-wipe
+hyperframes add before-after-wipe
 ```
 
 In `compositions/components/before-after-wipe.html`, replace each slot's

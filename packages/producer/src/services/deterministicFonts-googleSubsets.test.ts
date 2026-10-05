@@ -20,37 +20,43 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fontDirectories } from "@hyperframes/core/fonts/system-locator";
+import { clearSystemFontCache } from "@hyperframes/core/fonts/system-locator";
 import { _clearGoogleFontCssCacheForTests } from "./deterministicFonts.js";
 
 beforeEach(() => _clearGoogleFontCssCacheForTests());
 
 let cacheDir: string;
 let prevCacheEnv: string | undefined;
-// The system font locator only scans this platform's font directories: the first one under the home
-// directory (~/Library/Fonts on macOS, ~/.fonts on Linux) holds the test's "installed" font.
-const LOCAL_FONT_DIR =
-  fontDirectories().find((dir) => dir.startsWith(homedir())) ??
-  join(homedir(), ".local", "share", "fonts");
-const LOCAL_FONT_FILE = join(LOCAL_FONT_DIR, "hf-authored-fail-test.woff2");
+// The system font locator scans only the directory named by HYPERFRAMES_SYSTEM_FONT_DIRS, a temp dir for the
+// whole file: the test's "installed" font never lands in the user's real font folder, and a crashed run leaves
+// nothing behind.
+let prevFontDirsEnv: string | undefined;
+let fontHome: string;
 const LOCAL_FONT_BYTES = "LOCAL_ONLY_BYTES";
 
 beforeAll(() => {
   prevCacheEnv = process.env.HYPERFRAMES_FONT_CACHE_DIR;
   cacheDir = mkdtempSync(join(tmpdir(), "hf-font-cache-"));
   process.env.HYPERFRAMES_FONT_CACHE_DIR = cacheDir;
-  mkdirSync(LOCAL_FONT_DIR, { recursive: true });
-  writeFileSync(LOCAL_FONT_FILE, LOCAL_FONT_BYTES);
+
+  prevFontDirsEnv = process.env.HYPERFRAMES_SYSTEM_FONT_DIRS;
+  fontHome = mkdtempSync(join(tmpdir(), "hf-font-home-"));
+  process.env.HYPERFRAMES_SYSTEM_FONT_DIRS = fontHome;
+  clearSystemFontCache();
+  writeFileSync(join(fontHome, "hf-authored-fail-test.woff2"), LOCAL_FONT_BYTES);
 });
 
 afterAll(() => {
   if (prevCacheEnv === undefined) delete process.env.HYPERFRAMES_FONT_CACHE_DIR;
   else process.env.HYPERFRAMES_FONT_CACHE_DIR = prevCacheEnv;
+  if (prevFontDirsEnv === undefined) delete process.env.HYPERFRAMES_SYSTEM_FONT_DIRS;
+  else process.env.HYPERFRAMES_SYSTEM_FONT_DIRS = prevFontDirsEnv;
+  clearSystemFontCache();
   rmSync(cacheDir, { recursive: true, force: true });
-  rmSync(LOCAL_FONT_FILE, { force: true });
+  rmSync(fontHome, { recursive: true, force: true });
 });
 
 const VIET_RANGE = "U+0102-0103, U+1EA0-1EF9, U+20AB";

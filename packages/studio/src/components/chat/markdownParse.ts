@@ -1,6 +1,6 @@
 /**
  * A deliberately small Markdown subset for assistant text: paragraphs, headings, bullet and
- * numbered lists, fenced code, and inline code, bold, links and timecodes. It produces a tree, never
+ * numbered lists, tables, fenced code, and inline code, bold, links and timecodes. It produces a tree, never
  * HTML, so nothing the model writes can become markup; the renderer turns the tree into React elements.
  */
 
@@ -12,11 +12,20 @@ export type Inline =
   /** `0:42`, `1:05.5`, `00:01:23`: a point in the composition the reader can jump to. */
   | { kind: "timecode"; text: string; seconds: number };
 
+export type TableAlignment = "left" | "center" | "right" | null;
+
 export type Block =
   | { kind: "paragraph"; inline: Inline[] }
   | { kind: "heading"; level: number; inline: Inline[] }
   | { kind: "code"; language: string; text: string }
-  | { kind: "list"; ordered: boolean; items: Inline[][] };
+  | { kind: "list"; ordered: boolean; items: Inline[][] }
+  /** `align` is the delimiter row's choice per column (null: none given); every row has one cell per column. */
+  | {
+      kind: "table";
+      header: Inline[][];
+      align: TableAlignment[];
+      rows: Inline[][][];
+    };
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
@@ -87,6 +96,42 @@ function startsBlock(line: string): boolean {
   return FENCE_OPEN.test(line) || HEADING.test(line) || BULLET.test(line) || NUMBERED.test(line);
 }
 
+const TABLE_DELIMITER_CELL = /^:?-+:?$/;
+
+/** The cells of a table row: the outer pipes are optional, and `\|` is a literal pipe. */
+function splitTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/(?<!\\)\|$/, "")
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.trim().replace(/\\\|/g, "|"));
+}
+
+/**
+ * A GFM table starting at `lines[index]`: a row of cells followed by a delimiter row (`| --- | :-: |`) with as many
+ * cells. Anything else with pipes in it is ordinary text. Partial text that has not reached its delimiter row yet is
+ * still a paragraph, and becomes the table once the delimiter row streams in.
+ */
+function tableHeaderAt(
+  lines: readonly string[],
+  index: number,
+): { cells: string[]; align: TableAlignment[] } | null {
+  const line = lines[index] ?? "";
+  const delimiter = lines[index + 1] ?? "";
+  if (!line.includes("|") || !delimiter.includes("|")) return null;
+  const cells = splitTableRow(line);
+  const marks = splitTableRow(delimiter);
+  if (marks.length !== cells.length || !marks.every((mark) => TABLE_DELIMITER_CELL.test(mark))) {
+    return null;
+  }
+  const align = marks.map((mark): TableAlignment => {
+    if (mark.startsWith(":")) return mark.endsWith(":") ? "center" : "left";
+    return mark.endsWith(":") ? "right" : null;
+  });
+  return { cells, align };
+}
+
 /** Parses partial text too: an unterminated fence is a code block so far, so streaming never flickers. */
 export function parseMarkdownLite(source: string): Block[] {
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
@@ -138,10 +183,32 @@ export function parseMarkdownLite(source: string): Block[] {
       continue;
     }
 
+    const header = tableHeaderAt(lines, index);
+    if (header) {
+      const rows: Inline[][][] = [];
+      index += 2; // the header row and its delimiter row
+      while (index < lines.length) {
+        const row = lines[index] ?? "";
+        if (row.trim() === "" || !row.includes("|") || startsBlock(row)) break;
+        // A short row is padded with empty cells and a long one loses its excess, so every row fills the header.
+        const cells = splitTableRow(row);
+        rows.push(header.cells.map((_, column) => parseInline(cells[column] ?? "")));
+        index += 1;
+      }
+      blocks.push({
+        kind: "table",
+        header: header.cells.map((cell) => parseInline(cell)),
+        align: header.align,
+        rows,
+      });
+      continue;
+    }
+
     const paragraph: string[] = [];
     while (index < lines.length) {
       const next = lines[index] ?? "";
-      if (next.trim() === "" || (paragraph.length > 0 && startsBlock(next))) break;
+      if (next.trim() === "") break;
+      if (paragraph.length > 0 && (startsBlock(next) || tableHeaderAt(lines, index))) break;
       paragraph.push(next);
       index += 1;
     }

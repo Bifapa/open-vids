@@ -47,7 +47,11 @@ function stubWebGl() {
     {},
     {
       get: (_target, key) =>
-        key === "getShaderParameter" || key === "getProgramParameter" ? () => true : () => ({}),
+        key === "getShaderParameter" || key === "getProgramParameter"
+          ? () => true
+          : key === "isContextLost"
+            ? () => false
+            : () => ({}),
     },
   );
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((type: string) =>

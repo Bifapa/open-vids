@@ -47,12 +47,12 @@ use tauri::Manager;
 use crate::{i18n, prefs};
 
 const DEFAULT_URL: &str = "https://analytics.openvids.ai/api/send";
-/// Umami's "OpenVids Desktop" site. Not a secret: it only names the site.
+/// The analytics site id. Not a secret: it only names the site.
 const WEBSITE_ID: &str = "fd14d201-a374-456b-a581-fd0cb8f1c53a";
 const HOSTNAME: &str = "app.openvids.ai";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const ID_FILE: &str = "installation-id";
-/// Every event is a row on the server: not more often than this.
+/// The heartbeat is sent no more often than this.
 const HEARTBEAT: Duration = Duration::from_secs(5 * 60);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long `app_end` may take, and so how long it can hold the quit up.
@@ -109,7 +109,7 @@ fn endpoint(env: impl Fn(&str) -> Option<String>, debug: bool) -> Result<String,
     Ok(DEFAULT_URL.to_string())
 }
 
-/// The request body Umami's `/api/send` takes. `id` is left out of
+/// The request body the statistics endpoint takes. `id` is left out of
 /// `telemetry_disabled` whatever the caller passes.
 fn body(event: Event, id: Option<&str>, language: &str, active: bool) -> Value {
     let mut payload = json!({
@@ -430,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn the_body_is_umamis_event_with_exactly_the_documented_fields() {
+    fn the_body_has_exactly_the_documented_fields() {
         let id = "0b6a6c4e-2f1d-4b8e-9c3a-5d7e8f9a0b1c";
         assert_eq!(
             body(Event::AppStart, Some(id), "ru", true),

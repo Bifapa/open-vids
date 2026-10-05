@@ -186,10 +186,15 @@ function parseOpenAI(data: Record<string, unknown>): Word[] {
     .filter((w) => w.text.length > 0);
 }
 
+/** Subtitle tools on Windows write CRLF (old Mac editors CR): cue splitting below is by `\n\n`. */
+function lineFeeds(content: string): string {
+  return content.replace(/\r\n?/g, "\n");
+}
+
 function parseSrt(content: string): Word[] {
   // SRT doesn't have word-level timestamps — parse as phrase-level entries.
   // Each cue becomes one "word" entry (the full phrase).
-  const blocks = content.trim().split(/\n\n+/);
+  const blocks = lineFeeds(content).trim().split(/\n\n+/);
   const words: Word[] = [];
 
   for (const block of blocks) {
@@ -219,7 +224,9 @@ function parseSrt(content: string): Word[] {
 
 function parseVtt(content: string): Word[] {
   // Strip the WEBVTT header and any metadata blocks
-  const body = content.replace(/^WEBVTT[^\n]*\n/, "").replace(/^[A-Z-]+:.*\n/gm, "");
+  const body = lineFeeds(content)
+    .replace(/^WEBVTT[^\n]*\n/, "")
+    .replace(/^[A-Z-]+:.*\n/gm, "");
   // VTT is structurally similar to SRT (without numeric indices)
   const blocks = body.trim().split(/\n\n+/);
   const words: Word[] = [];

@@ -141,6 +141,44 @@ describe("preflightCompositionAssetMediaTypes", () => {
     await expect(run({ audioSrc: "extensionless-mixed" })).resolves.toBeUndefined();
   });
 
+  // The compiler stamps `data-has-audio` on every unmuted <video> without probing
+  // it, so a silent clip yields a soundtrack entry for a stream that is not there.
+  describe("soundtrack entries derived from a <video>", () => {
+    function videoWithSoundtrack(src: string) {
+      const base = composition({ videoSrc: src });
+      const video = { ...base.videos[0]!, hasAudio: true };
+      const soundtrack = {
+        id: "video-element-audio",
+        src,
+        start: 0,
+        end: 1,
+        mediaStart: 0,
+        layer: 0,
+        type: "video" as const,
+      };
+      return { videos: [video], audios: [soundtrack], images: [] };
+    }
+
+    it("treats a clip without an audio stream as silent instead of a mismatch", async () => {
+      const silent = videoWithSoundtrack("extensionless-video");
+      await expect(
+        preflightCompositionAssetMediaTypes({ projectDir, compiledDir, composition: silent }),
+      ).resolves.toBeUndefined();
+      // Dropped, so the mixer never tries to extract audio that is not there.
+      expect(silent.audios).toEqual([]);
+      expect(silent.videos[0]!.hasAudio).toBe(false);
+    });
+
+    it("keeps the soundtrack of a clip that has an audio stream", async () => {
+      const withAudio = videoWithSoundtrack("extensionless-mixed");
+      await expect(
+        preflightCompositionAssetMediaTypes({ projectDir, compiledDir, composition: withAudio }),
+      ).resolves.toBeUndefined();
+      expect(withAudio.audios).toHaveLength(1);
+      expect(withAudio.videos[0]!.hasAudio).toBe(true);
+    });
+  });
+
   it.each([
     { name: "image under video", input: { videoSrc: "extensionless-still" }, detected: "image" },
     { name: "audio under video", input: { videoSrc: "extensionless-audio" }, detected: "audio" },

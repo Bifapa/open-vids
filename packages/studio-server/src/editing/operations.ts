@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  rmdirSync,
+  statSync,
+} from "node:fs";
 import { dirname, posix } from "node:path";
 import postcss from "postcss";
 import type {
@@ -30,7 +38,12 @@ import {
   insertCompositionIntoSource,
 } from "../helpers/compositionInsertion.js";
 import { pickedForUse } from "../helpers/pickedRange.js";
-import { pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
+import {
+  isInHiddenOrVendorDir,
+  pinWithinProject,
+  resolveWithinProject,
+  walkDir,
+} from "../helpers/safePath.js";
 import {
   removeElementFromHtml,
   removeElementsFromHtml,
@@ -39,10 +52,11 @@ import {
 import { patchStyleAttrString } from "../helpers/sourceStyleMutation.js";
 import { mediaBounds, readAssetRanges, type MediaBounds } from "./assetRanges.js";
 import {
-  CAPTIONS_FILE,
+  captionsFileFor,
   buildCaptionsComposition,
   captionSkinPath,
   cuesToGroups,
+  findCaptionsHost,
 } from "./captions.js";
 import { AI_EDIT_ATTRIBUTE, aiEditStamp, clipState } from "./clipState.js";
 import { EditFailure, isEditFailure } from "./errors.js";
@@ -99,6 +113,10 @@ interface Batch {
   files: Map<string, string>;
   /** Files the registry install wrote (already on disk). */
   installed: string[];
+  /** The part of `installed` that did not exist before the batch: removed again when the batch is refused. */
+  fresh: string[];
+  /** The project config and install record as they were before the batch's first install. */
+  bookkeeping?: Map<string, string | null>;
   /** Existing clips (hf id or DOM id) the batch changed; stamped with the turn at the end. */
   touched: Set<string>;
   /** The user's picked asset fragments, read once per batch on first use. */
@@ -584,6 +602,51 @@ function addText(
   return { op: op.op, clipId: hfId, newClipId: null };
 }
 
+/** The files an install updates besides the item's own: the project config and the install record. */
+const INSTALL_BOOKKEEPING = ["hyperframes.json", "hyperframes.lock.json"];
+
+function readBookkeeping(projectDir: string): Map<string, string | null> {
+  const contents = new Map<string, string | null>();
+  for (const file of INSTALL_BOOKKEEPING) {
+    const abs = resolveWithinProject(projectDir, file);
+    contents.set(file, abs && existsSync(abs) ? readFileSync(abs, "utf-8") : null);
+  }
+  return contents;
+}
+
+/** Removes the folders left empty by taking a file away, innermost first, stopping at the project root. */
+function pruneEmptyParents(projectDir: string, file: string): void {
+  const segments = file.split("/").slice(0, -1);
+  while (segments.length > 0) {
+    const abs = resolveWithinProject(projectDir, segments.join("/"));
+    if (!abs || !existsSync(abs)) {
+      segments.pop();
+      continue;
+    }
+    if (readdirSync(abs).length > 0) return;
+    rmdirSync(abs);
+    segments.pop();
+  }
+}
+
+/** Takes back what the batch's installs put in the project: new files and the folders they made are removed, the config and record restored. */
+function undoInstalls(projectDir: string, batch: Batch): void {
+  for (const file of batch.fresh) {
+    const abs = resolveWithinProject(projectDir, file);
+    if (abs) rmSync(abs, { force: true });
+  }
+  // A folder is only taken once empty, so one that held anything before the install stays.
+  for (const file of batch.fresh) pruneEmptyParents(projectDir, file);
+  for (const [file, content] of batch.bookkeeping ?? []) {
+    const abs = resolveWithinProject(projectDir, file);
+    if (!abs) continue;
+    if (content === null) rmSync(abs, { force: true });
+    else if (!existsSync(abs) || readFileSync(abs, "utf-8") !== content) {
+      replaceFileAtomically(abs, content, existsSync(abs) ? statSync(abs).mode : 0o644);
+    }
+  }
+}
+
 /** Restyles installed components to sit over the video, as Studio's Catalog does after installing one. */
 function makeComponentBackgroundTransparent(projectDir: string, file: string): void {
   const abs = resolveWithinProject(projectDir, file);
@@ -614,6 +677,9 @@ async function addComponent(
   if (!item) {
     throw new EditFailure("unknown_preset", `No block or component "${op.name}" in the registry`);
   }
+  // What the install adds is taken back if the batch is refused, so the project keeps what it had.
+  const existing = new Set(walkDir(env.project.dir));
+  batch.bookkeeping ??= readBookkeeping(env.project.dir);
   let installed;
   try {
     installed = await installRegistryBlock({ project: env.project, blockName: item.name });
@@ -622,11 +688,15 @@ async function addComponent(
     throw new EditFailure("unsupported", `Installing "${item.name}" failed: ${message}`);
   }
   batch.installed.push(...installed.written);
+  for (const path of installed.written) {
+    if (!existing.has(path) && !isInHiddenOrVendorDir(path)) batch.fresh.push(path);
+  }
   const file = installed.primary ?? installed.written.find((path) => path.endsWith(".html"));
   if (!file?.endsWith(".html")) {
     throw new EditFailure("unsupported", `"${item.name}" installs no composition file to mount`);
   }
-  if (item.type === "hyperframes:component") {
+  // A file the install kept because the user changed it since is theirs: it is mounted as it is, never restyled.
+  if (item.type === "hyperframes:component" && installed.written.includes(file)) {
     makeComponentBackgroundTransparent(env.project.dir, file);
   }
 
@@ -679,8 +749,10 @@ async function applyCaptions(
   }
 
   const model = await loadModel(env, batch.html);
-  const hostSrc = resolveTimelineAssetSrc(env.compositionPath, CAPTIONS_FILE);
-  const existing = model.clips.find((clip) => clip.compositionSrc === CAPTIONS_FILE);
+  const captionsFile = captionsFileFor(env.compositionPath);
+  const hostSrc = resolveTimelineAssetSrc(env.compositionPath, captionsFile);
+  const found = findCaptionsHost(model.clips, env.compositionPath);
+  const existing = found?.host;
   if (existing?.locked) throw new EditFailure("locked", "The captions clip is locked");
 
   // Captions span the composition: its declared length when set explicitly, else what the other clips add up to.
@@ -708,7 +780,7 @@ async function applyCaptions(
   // or project open — a second write outside the turn that made the captions, which `Revert this turn` then treats as
   // a later edit and keeps.
   batch.files.set(
-    CAPTIONS_FILE,
+    captionsFile,
     ensureHfIds(
       buildCaptionsComposition({
         skin: readFileSync(skinFile, "utf-8"),
@@ -721,6 +793,9 @@ async function applyCaptions(
   );
 
   if (existing) {
+    // A host still mounting the shared captions file is pointed at this composition's own, so it stops playing
+    // the main video's cues and re-captioning replaces it instead of stacking a second layer.
+    if (found?.legacy) existing.element.setAttribute("data-composition-src", hostSrc);
     writeClipTiming(existing.element, {
       start: 0,
       duration: round3(duration),
@@ -823,13 +898,15 @@ async function moveClip(
 ): Promise<EditOperationResult> {
   const model = await loadModel(env, batch.html);
   const clip = requireClip(model, op.clip, env);
-  const start = round3(op.start ?? clip.start);
+  const start = op.start === undefined ? null : round3(op.start);
+  // A track-only move leaves data-start alone: it may be a reference ("first + 0.5") the resolved number would flatten.
   writeClipTiming(clip.element, {
-    start,
+    ...(start !== null && { start }),
     ...(op.track !== undefined && { trackIndex: op.track }),
   });
   commit(batch, model);
-  if (clip.domId) applyGsap(batch, [{ domId: clip.domId, delta: start - clip.start }]);
+  if (clip.domId && start !== null)
+    applyGsap(batch, [{ domId: clip.domId, delta: start - clip.start }]);
   return { op: op.op, clipId: clip.id, newClipId: null };
 }
 
@@ -1226,17 +1303,32 @@ export async function applyEdits(
     explicitDuration: false,
     files: new Map(),
     installed: [],
+    fresh: [],
     touched: new Set(),
   };
   const results: EditOperationResult[] = [];
-  for (const [index, op] of request.operations.entries()) {
-    try {
-      results.push(await applyOperation(scoped, batch, op));
-    } catch (error) {
-      throw isEditFailure(error) ? error.atOperation(index) : error;
+  try {
+    for (const [index, op] of request.operations.entries()) {
+      try {
+        results.push(await applyOperation(scoped, batch, op));
+      } catch (error) {
+        throw isEditFailure(error) ? error.atOperation(index) : error;
+      }
     }
+    await followContentLength(scoped, batch);
+
+    // The composition is checked before anything is written: the first write must not land when the batch is refused.
+    if (
+      (batch.files.size > 0 || batch.html !== original) &&
+      readFileSync(abs, "utf-8") !== original
+    ) {
+      throw conflict(path);
+    }
+  } catch (error) {
+    // A refused batch leaves nothing behind, the registry files its add_component operations installed included.
+    undoInstalls(env.project.dir, batch);
+    throw error;
   }
-  await followContentLength(scoped, batch);
 
   const changedFiles: string[] = [];
   for (const [file, content] of batch.files) {

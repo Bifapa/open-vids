@@ -4,16 +4,16 @@
 <!-- allow= entries above are deliberately NOT registry items: geo-*/flag-borders/pin-rollout and stat-motion are hand-authored gaps this file names in order to say they are gaps. -->
 
 **Search the live catalog before you use this table, and again before any hand-authored effect.** Run
-`npx hyperframes catalog --query "<the move, in plain English>" --json` — once per named look or effect the
+`hyperframes catalog --query "<the move, in plain English>" --json` — once per named look or effect the
 user asks for ("CRT scanlines", "glitch", "film grain", "shimmer sweep"), including effects asked for
-mid-build. **The search needs nothing installed**: it ranks the whole hosted registry (~400 items) from any
+mid-build. **The search needs nothing installed**: it ranks the whole bundled registry (~360 items) from any
 directory, with no project, no prior `add`, and no account. The table below is a hand-maintained snapshot of
 part of that registry and it under-covers by design — treat a miss here as unproven, and only the search's
 own empty result as evidence the catalog lacks the move. When it does, say so with
 the query, the move you needed, and which tier answered
 before hand-authoring. Full flags and tiers: `/hyperframes-registry` → § Discovery.
 
-The Builder's **default is to compose existing HF catalog blocks, not hand-author.** `npx hyperframes add <block>` drops a block's source into `compositions/`; the Builder then **customizes in place** — most blocks bake their content/data into their own script (only a few expose CSS-var `params`), so reuse = **add + edit**, not pure variable injection. Hand-author only (a) gaps no block covers and (b) the asset-fusion affordance binding.
+The Builder's **default is to compose existing HF catalog blocks, not hand-author.** `hyperframes add <block>` drops a block's source into `compositions/`; the Builder then **customizes in place** — most blocks bake their content/data into their own script (only a few expose CSS-var `params`), so reuse = **add + edit**, not pure variable injection. Hand-author only (a) gaps no block covers and (b) the asset-fusion affordance binding.
 
 After classifying intent → category, the **Director names the block(s) + what to customize** in the shot-plan IR:
 
@@ -38,7 +38,7 @@ After classifying intent → category, the **Director names the block(s) + what 
 
 ## Reuse mechanics
 
-- `npx hyperframes add <block>` → source lands in `compositions/<block>.html`; inline it or reference via `data-composition-src`; customize content/data/palette/positions in place.
+- `hyperframes add <block>` → source lands in `compositions/<block>.html`; inline it or reference via `data-composition-src`; customize content/data/palette/positions in place.
 - Blocks ship at fixed canvases (1920×1080 / 1080×1920 / 1080×1080) — match or adapt.
 - Blocks already follow the HF contract (paused timeline, seek) — keep it.
 

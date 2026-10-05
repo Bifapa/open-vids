@@ -3,6 +3,8 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { usePlayerStore } from "../../player/store/playerStore";
+import { PropertyPanel } from "./PropertyPanel";
 import type { PropertyPanelProps } from "./propertyPanelHelpers";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -18,8 +20,7 @@ vi.mock("../../contexts/StudioContext", async () => {
 
 afterEach(() => {
   document.body.innerHTML = "";
-  vi.doUnmock("./manualEditingAvailability");
-  vi.resetModules();
+  usePlayerStore.getState().reset();
 });
 
 function baseElement(): NonNullable<PropertyPanelProps["element"]> {
@@ -237,21 +238,8 @@ async function renderPanel(
   propsOverride: Partial<PropertyPanelProps> = {},
   currentTime?: number,
 ) {
-  vi.resetModules();
-  vi.doMock("./manualEditingAvailability", async () => {
-    const actual = await vi.importActual<typeof import("./manualEditingAvailability")>(
-      "./manualEditingAvailability",
-    );
-    return { ...actual, STUDIO_FLAT_INSPECTOR_ENABLED: flatEnabled };
-  });
-  // Seed the playhead on the SAME store instance PropertyPanel.tsx will read via
-  // usePlayerStore (module-fresh since the resetModules() above) — must happen
-  // before PropertyPanel is imported/rendered so its initial render sees it.
-  if (currentTime !== undefined) {
-    const { usePlayerStore } = await import("../../player/store/playerStore");
-    usePlayerStore.getState().setCurrentTime(currentTime);
-  }
-  const { PropertyPanel } = await import("./PropertyPanel");
+  // Seed the playhead before the first render so the initial render sees it.
+  if (currentTime !== undefined) usePlayerStore.getState().setCurrentTime(currentTime);
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -260,6 +248,7 @@ async function renderPanel(
   // props shape rather than stubbing all ~15 required fields.
   const props = {
     element: elementOverride,
+    flatInspector: flatEnabled,
     assets: [],
     onSetStyle: vi.fn(),
     onSetText: vi.fn(),
@@ -272,14 +261,10 @@ async function renderPanel(
   return { host, root };
 }
 
-// renderPanel resetModules()+dynamic-imports PropertyPanel (needed for a fresh
-// flag read); transforming the full section graph uncached can exceed the 5s
-// default under heavy parallel full-suite load, so give these a wider margin.
-// 20s itself has now been observed timing out in CI's full-monorepo run (the
-// same suite passes in well under 2s standalone) — widened again rather than
-// re-tuned down to a number that will just need doing again next time CI adds
-// load.
-const RENDER_TIMEOUT_MS = 45_000;
+// PropertyPanel is imported once for the file (the flat-inspector flag is a prop, not a
+// per-test module re-evaluation), so a test only pays for its own render. The margin is a
+// flake guard for a loaded full-suite run, not an expected runtime.
+const RENDER_TIMEOUT_MS = 15_000;
 
 // Find the collapsed accordion row whose title matches and click it open.
 function openFlatGroup(host: HTMLElement, title: string) {

@@ -95,7 +95,9 @@ function isState(value: unknown): value is ClipState {
         num(frame.width) &&
         num(frame.height))) &&
     strOrNull(value.fit) &&
-    typeof value.locked === "boolean"
+    typeof value.locked === "boolean" &&
+    (value.studio === undefined ||
+      (isRecord(value.studio) && Object.values(value.studio).every(str)))
   );
 }
 

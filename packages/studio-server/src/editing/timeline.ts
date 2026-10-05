@@ -71,10 +71,28 @@ function numberAttr(element: Element, name: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Project-relative path of a media `src`, or null for URLs and anything that leaves the project. */
-export function resolveProjectRelative(compositionPath: string, src: string | null): string | null {
-  const raw = (src ?? "").trim().replace(/[?#].*$/, "");
+/**
+ * Project-relative path of a media `src`, or null for URLs and anything that leaves the project.
+ * `url: true` reads the value as the URL an HTML attribute holds: the query and fragment are cut and the rest is
+ * percent-decoded back to the file name on disk (`a%20b%231.mp4` is `a b#1.mp4`; a malformed escape is a literal name).
+ * Without it the value is a plain path as an agent or the Studio names it, taken as written: `#` and `?` are part
+ * of the file name.
+ */
+export function resolveProjectRelative(
+  compositionPath: string,
+  src: string | null,
+  options: { url?: boolean } = {},
+): string | null {
+  let raw = (src ?? "").trim();
+  if (options.url) raw = raw.replace(/[?#].*$/, "");
   if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) return null;
+  if (options.url) {
+    try {
+      raw = decodeURIComponent(raw);
+    } catch {
+      // Not a percent-encoded URL: the name is literal.
+    }
+  }
   const joined = raw.startsWith("/")
     ? posix.normalize(raw.slice(1))
     : posix.normalize(posix.join(posix.dirname(compositionPath), raw));
@@ -115,7 +133,16 @@ export function parseComposition(html: string, compositionPath: string): Composi
   const roots = findAll(document, "[data-composition-id]");
   const root = roots[0];
   if (!root) return null;
-  const withAttr = (name: string) => roots.find((element) => element.hasAttribute(name)) ?? root;
+  // The composition's own elements carry its length and size: the root, or an inner element of it (a `<template>`
+  // wrapper keeps `data-duration` on the element inside). A clip that mounts another composition is not one of
+  // them: its `data-duration` is the clip's own length, however long the composition itself runs.
+  const isClipHost = (element: Element) =>
+    element !== root &&
+    (element.hasAttribute("data-start") ||
+      element.hasAttribute("data-composition-src") ||
+      element.closest("[data-start]") !== null);
+  const own = roots.filter((element) => !isClipHost(element));
+  const withAttr = (name: string) => own.find((element) => element.hasAttribute(name)) ?? root;
   const durationHolder = withAttr("data-duration");
   const width = numberAttr(withAttr("data-width"), "data-width") ?? 0;
   const height = numberAttr(withAttr("data-height"), "data-height") ?? 0;
@@ -174,9 +201,11 @@ export function parseComposition(html: string, compositionPath: string): Composi
       duration: timing.duration ?? 0,
       end: start + (timing.duration ?? 0),
       track,
-      src: src === null ? null : resolveProjectRelative(compositionPath, src),
+      src: src === null ? null : resolveProjectRelative(compositionPath, src, { url: true }),
       compositionSrc:
-        compositionSrc === null ? null : resolveProjectRelative(compositionPath, compositionSrc),
+        compositionSrc === null
+          ? null
+          : resolveProjectRelative(compositionPath, compositionSrc, { url: true }),
       mediaStart,
       playbackRate,
       locked: element.hasAttribute("data-timeline-locked"),

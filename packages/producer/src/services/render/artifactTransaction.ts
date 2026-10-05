@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { HLS_MASTER_PLAYLIST, HLS_VIDEO_PLAYLIST } from "@hyperframes/engine";
+import { claimRenderDirectory } from "./directoryOwner.js";
 import { extractMediaMetadata } from "../../utils/ffprobe.js";
 import type { RenderOutputFormat } from "./renderFormat.js";
 
@@ -258,6 +259,7 @@ export class ArtifactTransaction {
   readonly destinationPath: string;
   readonly stagingPath: string;
   private readonly transactionDirectory: string;
+  private readonly releaseTransactionClaim: () => void;
   private readonly backupPath: string;
   private state: "active" | "committed" | "rolled-back" = "active";
   private readonly durationProbe: ArtifactDurationProbe;
@@ -270,6 +272,7 @@ export class ArtifactTransaction {
   ) {
     this.destinationPath = resolve(destinationPath);
     this.transactionDirectory = createSiblingTransactionDirectory(this.destinationPath);
+    this.releaseTransactionClaim = claimRenderDirectory(this.transactionDirectory);
     this.stagingPath = join(this.transactionDirectory, basename(this.destinationPath));
     this.backupPath = join(this.transactionDirectory, "backup");
     this.durationProbe = durationProbe;
@@ -432,6 +435,7 @@ export class ArtifactTransaction {
   }
 
   private cleanupTransactionDirectory(): void {
+    this.releaseTransactionClaim();
     try {
       this.fileSystem.rmSync(this.transactionDirectory, { recursive: true, force: true });
     } catch {

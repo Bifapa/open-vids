@@ -66,7 +66,7 @@ Rules:
 Install, then fill the slots with two screenshots:
 
 ```bash
-npx hyperframes add iris-reveal
+hyperframes add iris-reveal
 ```
 
 In `compositions/components/iris-reveal.html`, replace each slot's default

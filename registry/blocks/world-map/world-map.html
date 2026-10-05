@@ -13,6 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+    <script src="assets/world-atlas-countries-110m.js"></script>
     <style>
       * {
         margin: 0;
@@ -277,58 +278,53 @@
         /* Tooltip element */
         var tooltipEl = document.querySelector("#world-map .tooltip");
 
-        /* Fetch topology and render countries */
-        d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(
-          function (world) {
-            var countries = topojson.feature(world, world.objects.countries).features;
+        /* Render countries from the bundled topology */
+        (function (world) {
+          var countries = topojson.feature(world, world.objects.countries).features;
 
-            svg
-              .selectAll(".country-path")
-              .data(countries)
-              .enter()
-              .append("path")
-              .attr("class", "country-path")
-              .attr("d", pathGenerator)
-              .attr("data-country", function (d) {
-                return String(d.id).padStart(3, "0");
-              })
-              .attr("fill", function (d) {
-                var code = String(d.id).padStart(3, "0");
-                if (gdpData[code]) {
-                  return gdpToColor(gdpData[code].gdp);
-                }
-                return defaultFill;
-              })
-              .on("mouseenter", function (event, d) {
-                var code = String(d.id).padStart(3, "0");
-                if (gdpData[code]) {
-                  var entry = gdpData[code];
-                  tooltipEl.innerHTML =
-                    entry.name +
-                    '<span class="tt-value">$' +
-                    entry.gdp.toLocaleString() +
-                    "</span>";
-                  tooltipEl.style.opacity = "1";
-                  tooltipEl.style.transform = "translateY(0)";
-                }
-              })
-              .on("mousemove", function (event) {
-                var container = document.querySelector("#world-map");
-                var rect = container.getBoundingClientRect();
-                var x = event.clientX - rect.left + 16;
-                var y = event.clientY - rect.top - 40;
-                tooltipEl.style.left = x + "px";
-                tooltipEl.style.top = y + "px";
-              })
-              .on("mouseleave", function () {
-                tooltipEl.style.opacity = "0";
-                tooltipEl.style.transform = "translateY(4px)";
-              });
+          svg
+            .selectAll(".country-path")
+            .data(countries)
+            .enter()
+            .append("path")
+            .attr("class", "country-path")
+            .attr("d", pathGenerator)
+            .attr("data-country", function (d) {
+              return String(d.id).padStart(3, "0");
+            })
+            .attr("fill", function (d) {
+              var code = String(d.id).padStart(3, "0");
+              if (gdpData[code]) {
+                return gdpToColor(gdpData[code].gdp);
+              }
+              return defaultFill;
+            })
+            .on("mouseenter", function (event, d) {
+              var code = String(d.id).padStart(3, "0");
+              if (gdpData[code]) {
+                var entry = gdpData[code];
+                tooltipEl.innerHTML =
+                  entry.name + '<span class="tt-value">$' + entry.gdp.toLocaleString() + "</span>";
+                tooltipEl.style.opacity = "1";
+                tooltipEl.style.transform = "translateY(0)";
+              }
+            })
+            .on("mousemove", function (event) {
+              var container = document.querySelector("#world-map");
+              var rect = container.getBoundingClientRect();
+              var x = event.clientX - rect.left + 16;
+              var y = event.clientY - rect.top - 40;
+              tooltipEl.style.left = x + "px";
+              tooltipEl.style.top = y + "px";
+            })
+            .on("mouseleave", function () {
+              tooltipEl.style.opacity = "0";
+              tooltipEl.style.transform = "translateY(4px)";
+            });
 
-            /* ── GSAP Timeline ── */
-            buildTimeline();
-          },
-        );
+          /* ── GSAP Timeline ── */
+          buildTimeline();
+        })(window.WORLD_ATLAS_COUNTRIES_110M);
 
         function buildTimeline() {
           var tl = gsap.timeline({ paused: true });

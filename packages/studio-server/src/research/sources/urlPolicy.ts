@@ -1,5 +1,6 @@
 import {
   RESEARCH_LIMITS,
+  urlInAllowedSites,
   type AssetSearchPolicy,
   type TrustedSource,
 } from "@hyperframes/agent-protocol";
@@ -24,6 +25,23 @@ export function sourceForHost(policy: AssetSearchPolicy, host: string): TrustedS
 }
 
 const blocked = (message: string) => new ResearchFailure("blocked_by_policy", message);
+
+/**
+ * The site scope a request carries (`allowedSites`, the websites the user linked): a URL, or a redirect hop or final
+ * address, outside it is refused before anything is fetched further or written. No scope: nothing to enforce here.
+ */
+export function assertInAllowedSites(url: string, sites: readonly string[] | undefined): void {
+  if (sites === undefined || urlInAllowedSites(url, sites)) return;
+  let host = url.slice(0, 80);
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    // The raw text is reported.
+  }
+  throw blocked(
+    `${host} is not a website the user linked in this chat${sites.length > 0 ? ` (linked: ${sites.join(", ")})` : ""}, so it is not opened or saved.`,
+  );
+}
 
 /** A URL that passed the guard, with the public addresses its host resolved to at that moment. */
 export interface VettedUrl {

@@ -50,7 +50,7 @@ async function mountTestFileManager(projectId = "project-a", showToast = vi.fn()
   await act(async () => root.render(<Probe />));
   const manager = captured.manager;
   if (!manager) throw new Error("file manager did not render");
-  return { manager, root };
+  return { manager, root, latest: () => captured.manager ?? manager };
 }
 
 async function mountOverwriteRequest(response: Response) {
@@ -282,5 +282,70 @@ describe("useFileManager uploads", () => {
     expect(showToast).toHaveBeenCalledWith(
       "Not added: clip.mp4 (no supported video stream found), song.mp3 (no supported audio stream found)",
     );
+  });
+});
+
+describe("useFileManager file select", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A project whose file reads stay open until the test answers them, by file path. */
+  function stubSlowFileReads() {
+    const answers = new Map<string, (response: Response) => void>();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (url: string) =>
+          new Promise<Response>((resolve) => {
+            answers.set(decodeURIComponent(url.split("/files/")[1] ?? ""), resolve);
+          }),
+      ),
+    );
+    return (path: string, response: Response) => answers.get(path)?.(response);
+  }
+
+  const file = (content: string) => Response.json({ content, version: "v1" });
+
+  it("shows the file that was clicked last, whatever order the answers arrive in", async () => {
+    const answer = stubSlowFileReads();
+    const { manager, root, latest } = await mountTestFileManager();
+
+    await act(async () => {
+      manager.handleFileSelect("a.html");
+      manager.handleFileSelect("b.html");
+    });
+    await act(async () => answer("b.html", file("<b>")));
+    await act(async () => answer("a.html", file("<a>")));
+
+    expect(latest().editingFile).toEqual({ path: "b.html", content: "<b>" });
+    await act(async () => root.unmount());
+  });
+
+  it("stays quiet about a file that failed to load after the user moved on", async () => {
+    const answer = stubSlowFileReads();
+    const showToast = vi.fn();
+    const { manager, root, latest } = await mountTestFileManager("project-a", showToast);
+
+    await act(async () => {
+      manager.handleFileSelect("a.html");
+      manager.handleFileSelect("b.html");
+    });
+    await act(async () => answer("b.html", file("<b>")));
+    await act(async () => answer("a.html", new Response("nope", { status: 500 })));
+
+    expect(latest().editingFile).toEqual({ path: "b.html", content: "<b>" });
+    expect(showToast).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+
+  it("still says so when the file clicked last fails to load", async () => {
+    const answer = stubSlowFileReads();
+    const showToast = vi.fn();
+    const { manager, root } = await mountTestFileManager("project-a", showToast);
+
+    await act(async () => manager.handleFileSelect("a.html"));
+    await act(async () => answer("a.html", new Response("nope", { status: 500 })));
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("a.html"), "error");
+    await act(async () => root.unmount());
   });
 });

@@ -102,6 +102,32 @@ describe("parseAudioElements — <source> children", () => {
     ]);
   });
 });
+
+describe("parseAudioElements — muted and loop", () => {
+  it("keeps muted <audio> and muted <video data-has-audio> out of the mix", () => {
+    const tracks = parseAudioElements(`
+      <audio id="mutedBed" src="bed.wav" muted data-start="0" data-duration="3"></audio>
+      <video id="mutedClip" src="clip.mp4" muted data-has-audio="true" data-start="0" data-duration="3"></video>
+      <audio id="bed" src="bed.wav" data-start="0" data-duration="3"></audio>
+      <video id="clip" src="clip.mp4" data-has-audio="true" data-start="0" data-duration="3"></video>
+    `);
+    expect(tracks.map((track) => track.id)).toEqual(["bed", "clip-audio"]);
+  });
+
+  it("reads the loop attribute from <audio> and <video>", () => {
+    const tracks = parseAudioElements(`
+      <audio id="loopBed" src="bed.wav" loop data-start="0" data-duration="3"></audio>
+      <audio id="onceBed" src="bed.wav" data-start="0" data-duration="3"></audio>
+      <video id="loopClip" src="clip.mp4" loop data-has-audio="true" data-start="0" data-duration="3"></video>
+    `);
+    expect(tracks.map((track) => [track.id, track.loop])).toEqual([
+      ["loopBed", true],
+      ["onceBed", undefined],
+      ["loopClip-audio", true],
+    ]);
+  });
+});
+
 describe("processCompositionAudio", () => {
   const tempDirs: string[] = [];
 
@@ -398,6 +424,87 @@ describe("processCompositionAudio", () => {
     expect(prepareArgs).toEqual(expect.arrayContaining(["-ss", "1", "-t", "4", "-af", "atempo=2"]));
     expect(prepareArgs.filter((arg) => arg === "-t")).toHaveLength(2);
     expect(prepareArgs.at(-3)).toBe("2");
+  });
+
+  it("loops a clip's source region from its media start for the whole slot", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "bed.wav"), "stub");
+    const defaultImplementation = runFfmpegMock.getMockImplementation()!;
+    runFfmpegMock.mockImplementation(async (args: string[]) => {
+      const outputPath = args.at(-1) ?? "";
+      // The decoded loop region: more than a bare WAV header.
+      if (outputPath.endsWith(".loop.wav")) writeFileSync(outputPath, Buffer.alloc(4096));
+      return defaultImplementation(args);
+    });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "bed",
+          src: "bed.wav",
+          start: 0,
+          end: 3,
+          mediaStart: 0.5,
+          layer: 0,
+          volume: 1,
+          loop: true,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      3,
+    );
+
+    expect(result.success).toBe(true);
+    const regionArgs: string[] = runFfmpegMock.mock.calls[0]?.[0] ?? [];
+    const regionPath = regionArgs.at(-1) ?? "";
+    expect(regionPath).toMatch(/\.loop\.wav$/);
+    // The region is decoded once from the media start, capped at what the slot consumes.
+    expect(regionArgs).toEqual(
+      expect.arrayContaining(["-ss", "0.5", "-t", "3", "-i", join(baseDir, "bed.wav")]),
+    );
+
+    const loopArgs: string[] = runFfmpegMock.mock.calls[1]?.[0] ?? [];
+    expect(loopArgs.slice(0, 4)).toEqual(["-stream_loop", "-1", "-i", regionPath]);
+    // The endless looped input is bounded by the slot length, not by the source.
+    expect(loopArgs).not.toContain("-ss");
+    expect(loopArgs.slice(-4, -1)).toEqual(["-t", "3", "-y"]);
+  });
+
+  it("keeps the single-pass path for a looping clip whose media start is past the source end", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "bed.wav"), "stub");
+
+    // The mocked ffmpeg writes no region file, like a decode that found no audio.
+    await processCompositionAudio(
+      [
+        {
+          id: "bed",
+          src: "bed.wav",
+          start: 0,
+          end: 3,
+          mediaStart: 9,
+          layer: 0,
+          volume: 1,
+          loop: true,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      3,
+    );
+
+    const prepareArgs: string[] = runFfmpegMock.mock.calls[1]?.[0] ?? [];
+    expect(prepareArgs).not.toContain("-stream_loop");
+    expect(prepareArgs).toEqual(expect.arrayContaining(["-ss", "9", "-t", "3"]));
   });
 
   it.each([
@@ -1560,6 +1667,36 @@ describe("parseAudioElements — relative data-start resolution", () => {
     const els = parseAudioElements(html);
     expect(els.find((e) => e.id === "a1")!.start).toBe(4); // v1 ends at 2+2
     expect(els.find((e) => e.id === "a2")!.start).toBe(0); // unknown ref → 0, not NaN
+  });
+
+  // The timing compiler injects `data-end` only for numeric starts, so a relative
+  // start keeps nothing but `data-duration`. Without an end the mixer plays the
+  // source to its natural length, overlapping whatever follows the slot.
+  it("derives the end from the resolved start plus data-duration for a relative start", () => {
+    const html = wrap(
+      `<video id="v0" class="clip" data-start="0" data-duration="3" src="a.mp4" muted></video>` +
+        `<audio id="a0" data-start="v0" data-duration="2" src="a.m4a"></audio>` +
+        `<video id="v1" class="clip" data-start="v0" data-duration="1.5" src="b.mp4" data-has-audio="true"></video>`,
+    );
+    const els = parseAudioElements(html);
+    const a0 = els.find((e) => e.id === "a0")!;
+    expect(a0.start).toBe(3);
+    expect(a0.end).toBe(5);
+    const v1 = els.find((e) => e.id === "v1-audio")!;
+    expect(v1.start).toBe(3);
+    expect(v1.end).toBe(4.5);
+  });
+
+  it("lets an explicit data-end win over data-duration and leaves an untimed clip open-ended", () => {
+    const html = wrap(
+      `<video id="v0" class="clip" data-start="0" data-duration="3" src="a.mp4" muted></video>` +
+        `<audio id="a0" data-start="v0" data-duration="2" data-end="4" src="a.m4a"></audio>` +
+        `<audio id="a1" data-start="v0" src="b.m4a"></audio>`,
+    );
+    const els = parseAudioElements(html);
+    expect(els.find((e) => e.id === "a0")!.end).toBe(4);
+    // No end, no duration: the mixer falls back to the natural media length.
+    expect(els.find((e) => e.id === "a1")!.end).toBe(0);
   });
 
   it("still reads a numeric data-start unchanged", () => {

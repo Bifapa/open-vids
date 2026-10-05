@@ -571,6 +571,7 @@ export function appendAutoDetectedVideoAudio(
       mediaStart: video.mediaStart,
       layer: 0,
       volume: 1.0,
+      ...(video.loop ? { loop: true } : {}),
       type: "video",
     });
     existingAudioSrcs.add(video.src);

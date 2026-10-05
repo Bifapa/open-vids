@@ -337,8 +337,10 @@ async function transcribeAudio(
   spin?.start(`Transcribing with ${label(runner)}...`);
   const onProgress = spin ? (msg: string) => spin.message(msg) : undefined;
   let wavPath = inputPath;
-  // Before audio prep: under --json no spinner listens for SIGINT, so Ctrl-C would kill Node.
-  const cancellation = runner === "sherpa" ? createRenderCancellationScope() : null;
+  // Before audio prep: under --json no spinner listens for SIGINT, so Ctrl-C would kill Node. The scope also watches
+  // the parent: a Studio server that died must not leave a recognizer decoding for hours.
+  const cancellation =
+    runner === "sherpa" || runner === "whisper" ? createRenderCancellationScope() : null;
   const run = (r: Runner) =>
     r === "sherpa"
       ? transcribeWithSherpa(wavPath, dir, { onProgress, signal: cancellation!.signal })
@@ -349,6 +351,7 @@ async function transcribeAudio(
             language: opts.language,
             onProgress,
             timeoutMs: opts.timeoutMs,
+            signal: cancellation?.signal,
           });
 
   try {
@@ -419,7 +422,13 @@ async function transcribeAudio(
       );
     }
   } catch (err) {
-    if (err instanceof DecodeCancelled || cancellation?.signal.aborted) {
+    // The cancel signal may stop the whisper child before this process's own handler has aborted the scope.
+    const stoppedBySignal =
+      err instanceof Error &&
+      "signal" in err &&
+      typeof err.signal === "string" &&
+      stoppedByCancelSignal({ signal: err.signal });
+    if (err instanceof DecodeCancelled || cancellation?.signal.aborted || stoppedBySignal) {
       const message = "Transcription cancelled";
       if (opts.json) console.log(JSON.stringify({ ok: false, error: message }));
       else spin?.stop(c.warn(message));

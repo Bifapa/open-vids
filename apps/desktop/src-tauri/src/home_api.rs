@@ -73,7 +73,8 @@ fn str_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
 
 // ── Recents ─────────────────────────────────────────────────────────────────
 
-/// One recent as the page renders it, with on-disk metadata.
+/// One recent as the page renders it, with on-disk metadata. `id` is the
+/// recent's path key (unique per folder); `name` is the folder name.
 pub fn recent_json(entry: &RecentEntry) -> Value {
     let missing = !entry.dir.is_dir();
     let meta = if missing {
@@ -82,7 +83,7 @@ pub fn recent_json(entry: &RecentEntry) -> Value {
         project_meta::for_project(&entry.dir)
     };
     json!({
-        "id": entry.id,
+        "id": entry.key(),
         "name": entry.id,
         "dir": entry.dir.to_string_lossy(),
         "path": prefs::abbreviate_home(&entry.dir),
@@ -107,7 +108,7 @@ pub fn serve_recents(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
     }
 }
 
-/// `POST /api/remove {id}` → `{ok, index, entry}`; the page keeps the entry
+/// `POST /api/remove {id}` (the recent's path key) → `{ok, index, entry}`; the page keeps the entry
 /// for Undo (`POST /api/recents/restore {entry}`).
 pub fn handle_remove(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
     let id = str_field(&body_json(body), "id").unwrap_or_default().to_string();
@@ -140,7 +141,27 @@ fn find(state: &Arc<Mutex<HomeInner>>, id: &str) -> Option<RecentEntry> {
     state
         .lock()
         .ok()
-        .and_then(|inner| inner.recents.find_by_id(id).cloned())
+        .and_then(|inner| inner.recents.find_by_key(id).cloned())
+}
+
+/// Show `path` selected in the platform file manager (Finder `open -R`,
+/// Explorer `/select`, the containing folder through the default opener
+/// elsewhere). Judge the outcome with `reveal_succeeded`.
+pub fn reveal_in_file_manager(path: &Path) -> std::io::Result<std::process::ExitStatus> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("/usr/bin/open").arg("-R").arg(path).status()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        reveal_in_explorer(path)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path.parent().unwrap_or(path))
+            .status()
+    }
 }
 
 /// `POST /api/reveal {id}` — show the folder in the OS file manager
@@ -153,17 +174,7 @@ pub fn handle_reveal(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
     if !entry.dir.exists() {
         return error(stream, 410, folder_missing(&entry.dir));
     }
-    #[cfg(target_os = "macos")]
-    let result = std::process::Command::new("/usr/bin/open")
-        .arg("-R")
-        .arg(&entry.dir)
-        .status();
-    #[cfg(target_os = "windows")]
-    let result = reveal_in_explorer(&entry.dir);
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let result = std::process::Command::new("xdg-open")
-        .arg(entry.dir.parent().unwrap_or(&entry.dir))
-        .status();
+    let result = reveal_in_file_manager(&entry.dir);
     match result {
         Ok(status) if reveal_succeeded(&status) => respond_json(stream, 200, &json!({ "ok": true })),
         Ok(status) => error(
@@ -206,7 +217,7 @@ fn file_manager_name() -> &'static str {
 /// Whether a reveal spawn counts as success. `explorer.exe /select,…` returns
 /// exit code 1 even when the window opens (it reports "one item selected"
 /// that way), so success there is "launched", not "code 0".
-fn reveal_succeeded(status: &std::process::ExitStatus) -> bool {
+pub fn reveal_succeeded(status: &std::process::ExitStatus) -> bool {
     #[cfg(target_os = "windows")]
     {
         status.code().map(|code| code == 0 || code == 1).unwrap_or_else(|| status.success())
@@ -452,7 +463,7 @@ pub fn handle_duplicate(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, b
                 inner.recents.update_meta(&dest, Some(new_thumb), None, None);
             }
         }
-        inner.recents.find_by_id(&name).cloned()
+        inner.recents.find_by_dir(&dest).cloned()
     });
     match recorded.flatten() {
         Some(entry) => respond_json(stream, 200, &json!({ "ok": true, "project": recent_json(&entry) })),
@@ -486,7 +497,7 @@ pub fn handle_locate(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
     };
     let relinked = state.lock().ok().map(|mut inner| {
         inner.recents.relink(&id, &project.id, &project.dir);
-        inner.recents.find_by_id(&project.id).cloned()
+        inner.recents.find_by_dir(&project.dir).cloned()
     });
     match relinked.flatten() {
         Some(entry) => respond_json(stream, 200, &json!({ "ok": true, "project": recent_json(&entry) })),
@@ -781,12 +792,14 @@ const MAX_START_NAME: usize = 64;
 
 /// The base name for a start: an explicit `name` when the caller sent a usable one (the title the model chose from
 /// the prompt), else the derivation from the prompt and files (see [`intake::derive_name`]). A name that is blank,
-/// too long or not a valid project id is ignored, never an error: naming must not block a start.
+/// too long, not a valid project id or empty once made portable (`intake::portable_name`: no characters Windows
+/// refuses in a folder name) is ignored, never an error: naming must not block a start.
 fn start_base_name(value: &Value, prompt: &str) -> String {
     str_field(value, "name")
         .map(str::trim)
         .filter(|name| name.chars().count() <= MAX_START_NAME && super::project::is_valid_project_id(name))
-        .map(str::to_string)
+        .map(intake::portable_name)
+        .filter(|name| super::project::is_valid_project_id(name))
         .unwrap_or_else(|| intake::derive_name(prompt, &file_names(value)))
 }
 
@@ -852,13 +865,17 @@ pub fn handle_start(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
         height,
         duration: 10.0,
     };
-    let dest = match super::home_create::scaffold_blank(&params) {
-        Ok(dest) => dest,
+    let scaffolded = match super::home_create::scaffold_blank(&params) {
+        Ok(scaffolded) => scaffolded,
         Err(err) => return error(stream, 400, err),
     };
+    let dest = scaffolded.dir.clone();
     let imported = match intake::import_files(&dest, &sources) {
         Ok(imported) => imported,
-        Err(err) => return error(stream, 500, err),
+        Err(err) => {
+            scaffolded.discard();
+            return error(stream, 500, err);
+        }
     };
     let files: Vec<Value> = imported
         .iter()
@@ -891,6 +908,7 @@ pub fn handle_start(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
         document["agentOverrides"] = overrides.clone();
     }
     if let Err(err) = intake::write_intake(&dest, &document) {
+        scaffolded.discard();
         return error(
             stream,
             500,
@@ -1178,6 +1196,20 @@ mod tests {
         // Files-only starts keep the first media file's name.
         let files_only = json!({ "name": null, "prompt": "", "files": ["assets/cam-a.mov"] });
         assert_eq!(start_base_name(&files_only, ""), "cam-a");
+    }
+
+    #[test]
+    fn a_start_name_is_made_portable_before_it_names_a_folder() {
+        let name = |title: &str| start_base_name(&json!({ "name": title }), "Build a product teaser");
+        // Valid by Studio's rule, refused by Windows file systems.
+        assert_eq!(name("Why Sleep Matters? A Guide"), "Why Sleep Matters A Guide");
+        assert_eq!(name("The \"Acme\" Launch"), "The Acme Launch");
+        assert_eq!(name("Q&A | Founders"), "Q&A Founders");
+        assert_eq!(name("5 * 5 Tricks"), "5 5 Tricks");
+        assert_eq!(name("Trailing dots..."), "Trailing dots");
+        assert_eq!(name("NUL"), "NUL project");
+        // Nothing usable is left: the derivation stands in.
+        assert_eq!(name("???"), "Build a product teaser");
     }
 
     #[test]

@@ -4,7 +4,8 @@
       "../runtime/serve.mjs": "serve.mjs",
       "../runtime/hyperframes": "hyperframes",
       "../runtime/agent-runtime": "agent-runtime",
-      "../runtime/runtime.json": "runtime.json"
+      "../runtime/runtime.json": "runtime.json",
+      "../runtime/licenses": "licenses"
     }
   }
 }

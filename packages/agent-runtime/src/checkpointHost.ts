@@ -42,6 +42,14 @@ export type RevertOutcome =
       remainingEntryIds?: string[];
       /** Undo entries already written for the newer entries before the conflict stopped the revert. */
       undoEntryIds?: string[];
+    }
+  | {
+      ok: false;
+      /** An undo request failed (transport, or Studio refused one entry) after newer entries were already undone. */
+      failure: string;
+      remainingEntryIds: string[];
+      /** Undo entries written for the newer entries before the failure. */
+      undoEntryIds: string[];
     };
 
 /**

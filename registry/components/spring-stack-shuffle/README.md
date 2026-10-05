@@ -74,7 +74,7 @@ Rules:
 Install, then fill the slots with three screens and shuffle between them:
 
 ```bash
-npx hyperframes add spring-stack-shuffle
+hyperframes add spring-stack-shuffle
 ```
 
 In `compositions/components/spring-stack-shuffle.html`, replace each slot's

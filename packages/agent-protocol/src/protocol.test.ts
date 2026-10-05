@@ -12,6 +12,7 @@ import {
   isOAuthLoginId,
   isOAuthLoginState,
   isProviderId,
+  isStoryOffer,
   normalizeChatIntent,
   parseAgentIntake,
   parseAnswerStoryOffer,
@@ -415,6 +416,23 @@ describe("validators", () => {
     expect(parseAgentIntake({ version: 1, prompt: "x", files: [], format: "9:16" }).ok).toBe(false);
   });
 
+  it("keeps an intake whose file list or prompt exceeds the limits instead of refusing it", () => {
+    const files = Array.from({ length: 250 }, (_, index) => ({
+      path: `assets/photo-${index}.jpg`,
+      kind: "image",
+    }));
+    const many = parseAgentIntake({ version: 1, prompt: "Make a slideshow", files });
+    expect(many.ok && many.value.files.length).toBe(200);
+    expect(many.ok && many.value.files[0]?.path).toBe("assets/photo-0.jpg");
+    expect(many.ok && many.value.prompt).toBe("Make a slideshow");
+
+    // The turn that follows refuses a prompt this long visibly, with the text kept in the draft box.
+    const long = "x".repeat(100_001);
+    const intake = parseAgentIntake({ version: 1, prompt: long, files: [] });
+    expect(intake.ok && intake.value.prompt).toBe(long);
+    expect(parseStartTurn({ prompt: long }).ok).toBe(false);
+  });
+
   it("validates revert modes", () => {
     expect(parseRevertTurn(undefined)).toEqual({ ok: true, value: {} });
     expect(parseRevertTurn({ mode: "just-this" })).toEqual({
@@ -422,6 +440,25 @@ describe("validators", () => {
       value: { mode: "just-this" },
     });
     expect(parseRevertTurn({ mode: "back-to-before" }).ok).toBe(false);
+  });
+
+  it("recognises a well-formed Story Mode offer and rejects the rest", () => {
+    const offer = {
+      id: "offer-1",
+      chapters: [
+        { title: "Intro", durationSeconds: 4 },
+        { title: "Outro", summary: "end" },
+      ],
+      state: "pending",
+      requestedAt: 4,
+    };
+    expect(isStoryOffer(offer)).toBe(true);
+    expect(isStoryOffer({ ...offer, state: "accepted", answeredAt: 7 })).toBe(true);
+    expect(isStoryOffer({ ...offer, state: "mystery" })).toBe(false);
+    expect(isStoryOffer({ ...offer, chapters: [{ summary: "no title" }] })).toBe(false);
+    expect(isStoryOffer({ ...offer, requestedAt: "now" })).toBe(false);
+    expect(isStoryOffer({ ...offer, answeredAt: "later" })).toBe(false);
+    expect(isStoryOffer(null)).toBe(false);
   });
 
   it("validates a Story Mode offer answer", () => {

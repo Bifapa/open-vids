@@ -22,7 +22,7 @@ const LIB_DIR =
   ].find((candidate) => existsSync(candidate)) ||
   join(import.meta.dirname, "..", "..", "audio", "assets", "sfx");
 
-export const BUNDLED_SFX_RECOVERY_COMMAND = "npx hyperframes skills update media-use";
+export const BUNDLED_SFX_RECOVERY_COMMAND = "hyperframes skills update media-use";
 
 export class BundledSfxAssetsError extends Error {
   constructor(health) {

@@ -254,3 +254,54 @@ describe("ensureHfIds — edit lifecycle (R1 stability)", () => {
     expect(pair[1]).not.toBe(single); // second: dedup id, exists only by position
   });
 });
+
+describe("mintHfId — identical-element overflow", () => {
+  it("stays unique and linear past the 4-char rehash limit", () => {
+    const { document } = parseHTML(doc(`<i class="dot"></i>`));
+    const el = document.querySelector("i.dot");
+    if (!el) throw new Error("fixture element missing");
+    // Counts how often minting probes the id set: deterministic, unlike wall-clock time.
+    class ProbeCountingSet extends Set<string> {
+      probes = 0;
+      override has(value: string): boolean {
+        this.probes += 1;
+        return super.has(value);
+      }
+    }
+    const assigned = new ProbeCountingSet();
+    const minted: string[] = [];
+    const count = 10_050;
+    for (let i = 0; i < count; i++) minted.push(mintHfId(el, assigned));
+
+    expect(new Set(minted).size).toBe(minted.length);
+    expect(assigned.size).toBe(minted.length);
+    // Re-walking every earlier dup per mint is quadratic (~count²/2 probes); resuming keeps it near one per mint.
+    expect(assigned.probes).toBeLessThan(count * 3);
+  });
+
+  it("stays deterministic across independent assigned sets", () => {
+    const { document } = parseHTML(doc(`<i class="dot"></i>`));
+    const el = document.querySelector("i.dot");
+    if (!el) throw new Error("fixture element missing");
+    const mintMany = (): string[] => {
+      const assigned = new Set<string>();
+      return Array.from({ length: 10_010 }, () => mintHfId(el, assigned));
+    };
+    expect(mintMany()).toEqual(mintMany());
+  });
+
+  it("skips a widened id already taken by a pinned element", () => {
+    const { document } = parseHTML(doc(`<i class="dot"></i>`));
+    const el = document.querySelector("i.dot");
+    if (!el) throw new Error("fixture element missing");
+    const first = new Set<string>();
+    const reference = Array.from({ length: 10_003 }, () => mintHfId(el, first));
+    const widened = reference[reference.length - 1];
+    expect(widened).toMatch(/^hf-[0-9a-z]+-\d+$/);
+
+    const second = new Set<string>([widened]);
+    const minted = Array.from({ length: 10_003 }, () => mintHfId(el, second));
+    expect(new Set(minted).size).toBe(minted.length);
+    expect(minted).not.toContain(widened);
+  });
+});

@@ -135,7 +135,7 @@
     },
     {
       "path": "TEMPLATE.md",
-      "target": "TEMPLATE.md",
+      "target": "compositions/ai-chat-reveal.TEMPLATE.md",
       "type": "hyperframes:asset"
     }
   ]

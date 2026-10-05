@@ -30,6 +30,8 @@
 
 import {
   createContext,
+  configureContext,
+  watchContextLoss,
   setupQuad,
   createProgram,
   createTexture,
@@ -67,10 +69,10 @@ export interface PageCompositorInstallOptions {
 interface ResolvedTransition {
   time: number;
   duration: number;
-  shader: string;
+  shader: ShaderName;
   fromSceneId: string;
   toSceneId: string;
-  prog: WebGLProgram;
+  prog: WebGLProgram | null;
 }
 
 export const PAGE_COMPOSITOR_CANVAS_ID = "__hf-page-side-compositor";
@@ -175,7 +177,7 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     glCanvas.remove();
     return false;
   }
-  const quadBuf = setupQuad(gl);
+  let quadBuf = setupQuad(gl);
 
   const programs = new Map<string, WebGLProgram>();
   for (const t of transitions) {
@@ -218,8 +220,45 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     return false;
   }
 
-  const fromTex = createTexture(gl);
-  const toTex = createTexture(gl);
+  let fromTex = createTexture(gl);
+  let toTex = createTexture(gl);
+  let contextLost = false;
+  // A dropped context takes the quad, programs and textures with it; until the browser
+  // restores it the opacity timeline's hard cut is all this compositor can show.
+  watchContextLoss(glCanvas, {
+    onLost: () => {
+      contextLost = true;
+      glCanvas.style.display = "none";
+    },
+    onRestored: () => {
+      configureContext(gl, width, height);
+      try {
+        quadBuf = setupQuad(gl);
+        fromTex = createTexture(gl);
+        toTex = createTexture(gl);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[HyperShader] page-side compositor: could not rebuild after a context restore:",
+          err,
+        );
+        return;
+      }
+      for (const t of resolved) {
+        try {
+          t.prog = createProgram(gl, getFragSource(t.shader));
+        } catch (err) {
+          t.prog = null;
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[HyperShader] page-side compositor: failed to recompile "${t.shader}":`,
+            err,
+          );
+        }
+      }
+      contextLost = false;
+    },
+  });
 
   type DrawElementImageCtx = CanvasRenderingContext2D & {
     drawElementImage: (el: Element, x: number, y: number, w: number, h: number) => void;
@@ -367,6 +406,12 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
       // The staging canvases sit behind the page, so a bitmap left on them would show
       // through any transparent area of the composition for the rest of the film.
       for (const [ctx] of staged) ctx.clearRect(0, 0, width, height);
+    }
+
+    if (contextLost || !active.prog) {
+      glCanvas.style.display = "none";
+      pWin.__hf_page_composite_pending = false;
+      return false;
     }
 
     try {

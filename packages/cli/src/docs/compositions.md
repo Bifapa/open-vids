@@ -22,7 +22,7 @@ Embed one composition inside another:
 
 ## Listing Compositions
 
-Use `npx hyperframes compositions` to see all compositions in a project.
+Use `hyperframes compositions` to see all compositions in a project.
 
 ## Variables
 
@@ -35,7 +35,7 @@ They aren't redundant — one is "what variables does this composition have?" an
 
 1. Declared defaults from `data-composition-variables`
 2. Per-instance overrides from the host's `data-variable-values` (sub-comp embeds only)
-3. CLI overrides from `npx hyperframes render --variables '{...}'` (top-level renders only)
+3. CLI overrides from `hyperframes render --variables '{...}'` (top-level renders only)
 
 ```html
 <!-- compositions/card.html -->

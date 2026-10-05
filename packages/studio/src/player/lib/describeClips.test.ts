@@ -76,6 +76,15 @@ describe("formatTimelineBlock", () => {
     expect(block).not.toContain("rate=");
   });
 
+  it("prints the file name a percent-encoded src stands for", () => {
+    const block = formatTimelineBlock([
+      audio("odd", 0, 1, {
+        src: "http://localhost:5190/api/projects/p1/preview/assets/a%20b%231.mp3",
+      }),
+    ]);
+    expect(block).toContain('- audio "odd" src=assets/a b#1.mp3 ');
+  });
+
   it("is empty for an empty timeline and caps long ones", () => {
     expect(formatTimelineBlock([])).toBe("");
     const many = Array.from({ length: 250 }, (_, i) => audio(`a${i}`, i, 1));

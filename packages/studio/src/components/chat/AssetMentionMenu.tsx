@@ -12,7 +12,7 @@ import {
   type SyntheticEvent,
 } from "react";
 import { useAgentStore } from "../../agent/agentContext";
-import { NEW_CHAT_DRAFT } from "../../agent/agentStore";
+import { NEW_CHAT_DRAFT } from "../../agent/agentDraftChat";
 import { attachmentKindOf, projectAttachment } from "../../agent/composerAttachments";
 import {
   activeMention,
@@ -21,6 +21,7 @@ import {
   mentionBasename,
   mentionDirectory,
 } from "../../agent/composerMentions";
+import { isImeKeyEvent } from "../../utils/imeKey";
 import { useFileManagerContextOptional } from "../../contexts/FileManagerContext";
 import { isLibraryPath, mediaKindOf } from "../../media/mediaLibrary";
 import { useTranslation } from "../../i18n";
@@ -223,7 +224,7 @@ export function useAssetMentions({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if (!open || event.nativeEvent.isComposing) return false;
+    if (!open || isImeKeyEvent(event.nativeEvent)) return false;
     if (event.key === "Escape") {
       event.preventDefault();
       if (mention) setDismissed(mention.start);

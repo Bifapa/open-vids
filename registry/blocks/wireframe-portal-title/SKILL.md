@@ -19,7 +19,7 @@ Composition id: `wireframe-portal-title`. Duration 8 s at 30 fps, 1920×1080.
 
 ## Install
 
-Install with `npx hyperframes add wireframe-portal-title`; by default the files above land under `compositions/wireframe-portal-title/`. Then mount the block from the host `index.html`:
+Install with `hyperframes add wireframe-portal-title`; by default the files above land under `compositions/wireframe-portal-title/`. Then mount the block from the host `index.html`:
 
 ```html
 <div
@@ -36,7 +36,7 @@ Install with `npx hyperframes add wireframe-portal-title`; by default the files 
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'compositions/wireframe-portal-title/wireframe-portal-title.html' --variables '{"title":"BREAKTHROUGH","replacementPhrase":"Lets do this sir!"}'
+hyperframes render 'compositions/wireframe-portal-title/wireframe-portal-title.html' --variables '{"title":"BREAKTHROUGH","replacementPhrase":"Lets do this sir!"}'
 ```
 
 ## Variables

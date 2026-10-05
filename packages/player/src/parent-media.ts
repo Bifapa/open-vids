@@ -379,7 +379,8 @@ export class ParentMediaManager {
 
   /**
    * Create a parent-frame media element and start preloading it. Returns the
-   * new entry, or `null` if a proxy for this src already exists (dedup).
+   * new entry, or `null` when a URL-driven proxy (no `source`) would duplicate
+   * a src the composition already plays. Iframe clips are never deduplicated by URL.
    */
   private _createEntry(
     src: string,
@@ -388,7 +389,7 @@ export class ParentMediaManager {
     duration: number,
     source?: HTMLMediaElement | null,
   ): ProxyEntry | null {
-    if (this._entries.some((m) => m.el.src === src)) return null;
+    if (!source && this._entries.some((m) => m.el.src === src)) return null;
 
     const el = tag === "video" ? document.createElement("video") : new Audio();
     el.preload = "auto";
@@ -462,10 +463,12 @@ export class ParentMediaManager {
     // A released element has no source loaded; its re-attach flips preload to auto.
     if (this._isReleased(iframeEl)) return;
 
+    // Each clip gets its own proxy even when several share one file: bounds and
+    // lifetime belong to the element, not to the URL.
     const src = this._resolveIframeMediaSrc(iframeEl);
     if (!src) return;
-    if (this._entries.some((m) => m.el.src === src)) return;
-    if (this._queue.some((q) => q.src === src)) return;
+    if (this._entries.some((m) => m.source === iframeEl)) return;
+    if (this._queue.some((q) => q.source === iframeEl)) return;
 
     const timing = readClipTiming(iframeEl);
     this._queue.push({
@@ -479,10 +482,8 @@ export class ParentMediaManager {
   }
 
   private _detachIframeMedia(iframeEl: HTMLMediaElement): void {
-    const src = this._resolveIframeMediaSrc(iframeEl);
-    if (!src) return;
-    this._queue = this._queue.filter((q) => q.src !== src);
-    const idx = this._entries.findIndex((m) => m.el.src === src);
+    this._queue = this._queue.filter((q) => q.source !== iframeEl);
+    const idx = this._entries.findIndex((m) => m.source === iframeEl);
     if (idx === -1) return;
     const entry = this._entries[idx];
     entry.el.pause();

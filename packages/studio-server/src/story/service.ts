@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import {
   STORY_GRAPH_PATH,
+  boundBuildWarnings,
   isChapter,
   storyOrder,
   validateStoryGraph,
@@ -29,7 +30,7 @@ import { isAnalysisFailure } from "../analysis/errors.js";
 import type { AnalysisService, SourceAnalysisData } from "../analysis/service.js";
 import { serialized } from "../analysis/store.js";
 import { readAssetRanges } from "../editing/assetRanges.js";
-import { CAPTIONS_FILE } from "../editing/captions.js";
+import { captionsFileFor, findCaptionsHost } from "../editing/captions.js";
 import { isEditFailure, type EditFailure } from "../editing/errors.js";
 import { MAIN_COMPOSITION } from "../editing/inventory.js";
 import { assetKindOf, MediaFacts, type MediaProber } from "../editing/mediaFacts.js";
@@ -41,7 +42,7 @@ import {
   readComposition,
   type ReadComposition,
 } from "../editing/service.js";
-import { resolveProjectRelative, serializeModel } from "../editing/timeline.js";
+import { resolveProjectRelative, serializeModel, type ClipNode } from "../editing/timeline.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { parseSourceDocument } from "../helpers/sourceMutation.js";
 import type { HistoryWho } from "../history/historyLog.js";
@@ -59,6 +60,8 @@ import {
   readStoredStory,
   readStoredStoryOrNone,
   sameJson,
+  assertStoryUnchanged,
+  storyFileVersion,
   writeStoredStory,
   type StoredStory,
 } from "./graphIo.js";
@@ -101,8 +104,15 @@ const rangesKey = (ranges: ReadonlyMap<string, AssetRange>): string =>
  * `data-hf-id` attributes: Studio stamps ids into composition files it opens (and re-serializes them), which is
  * not an edit of the captions.
  */
-function captionsFingerprint(project: ResolvedProject): string | null {
-  const abs = resolveWithinProject(project.dir, CAPTIONS_FILE);
+function captionsFingerprint(
+  project: ResolvedProject,
+  composition: string,
+  clips: readonly ClipNode[],
+): string | null {
+  // The file the composition's captions host mounts; none yet means the one an apply would write.
+  const file =
+    findCaptionsHost(clips, composition)?.host.compositionSrc ?? captionsFileFor(composition);
+  const abs = resolveWithinProject(project.dir, file);
   if (!abs || !existsSync(abs) || !statSync(abs).isFile()) return null;
   const parsed = parseSourceDocument(readFileSync(abs, "utf-8"));
   for (const element of parsed.document.querySelectorAll("[data-hf-id]")) {
@@ -111,11 +121,15 @@ function captionsFingerprint(project: ResolvedProject): string | null {
   return fingerprint(serializeModel(parsed));
 }
 
-function timelineStateOf(project: ResolvedProject, read: ReadComposition): TimelineState {
+function timelineStateOf(
+  project: ResolvedProject,
+  composition: string,
+  read: ReadComposition,
+): TimelineState {
   return {
     clips: read.model.clips,
     duration: read.model.duration,
-    captionsFile: captionsFingerprint(project),
+    captionsFile: captionsFingerprint(project, composition, read.model.clips),
   };
 }
 
@@ -252,7 +266,8 @@ export class StoryService {
       stored.version,
       read.snapshot.version,
       ledger.state === "ok" ? fingerprint(ledger.bytes) : ledger.state,
-      captionsFingerprint(project) ?? "no-captions",
+      captionsFingerprint(project, read.snapshot.composition.path, read.model.clips) ??
+        "no-captions",
       rangesKey(readAssetRanges(project.dir)),
       ...sources.map((source, i) => `${source}@${versions[i]}`),
     ].join("\0");
@@ -317,7 +332,7 @@ export class StoryService {
       graph,
       intent,
       ledger,
-      timeline: timelineStateOf(project, read),
+      timeline: timelineStateOf(project, composition, read),
       transcripts,
       mode: options.mode,
       chapters: options.chapters === null ? null : new Set(options.chapters),
@@ -372,19 +387,24 @@ export class StoryService {
       if (stored && sameJson(withoutStamp(stored.graph), withoutStamp(graph))) {
         return this.viewOf(project, stored);
       }
+      const overwrote = storyFileVersion(project.dir);
       writeStoredStory(project.dir, graph);
-      await this.claimForUser(project);
+      await this.claimForUser(project, overwrote);
       return this.viewOf(project, readStoredStory(project.dir));
     });
   }
 
-  /** Files the user's save in project history as "You": canvas bursts merge into one entry, never a checkpoint. */
-  private async claimForUser(project: ResolvedProject): Promise<void> {
+  /**
+   * Files the user's save in project history as "You": canvas bursts merge into one entry, never a checkpoint. The
+   * claim names the graph bytes the save replaced, so an agent's earlier, still unclaimed graph edit stays its own.
+   */
+  private async claimForUser(project: ResolvedProject, overwrote: string): Promise<void> {
     try {
       const history = await this.adapter.history?.(project);
       await history?.claim(PERSON, USER_SAVE_LABEL, [STORY_GRAPH_PATH], {
         coalesceKey: USER_SAVE_KEY,
         idleMs: USER_SAVE_IDLE_MS,
+        overwrote: { [STORY_GRAPH_PATH]: overwrote },
       });
     } catch {
       // History is best effort: the save itself already happened.
@@ -523,7 +543,7 @@ export class StoryService {
       );
       const graph: StoryGraph = { ...outcome.graph, updatedAt: now, updatedBy: "ai" };
       if (!stored || !sameJson(withoutStamp(stored.graph), withoutStamp(graph))) {
-        writeStoredStory(project.dir, graph);
+        writeStoredStory(project.dir, graph, stored?.version ?? null);
       }
       return {
         view: await this.viewOf(project, readStoredStory(project.dir)),
@@ -658,6 +678,8 @@ export class StoryService {
         let clipIds: Array<string | null> = plan.operations.map(() => null);
         const changed = plan.operations.length > 0;
         if (changed && !dryRun) {
+          // Nothing is written yet: a graph that moved on since it was read (the user's undo) refuses the build here.
+          assertStoryUnchanged(project.dir, stored.version);
           let response: ApplyEditsResponse;
           try {
             response = await applyEdits(
@@ -670,27 +692,48 @@ export class StoryService {
           timelineVersion = response.timeline.version;
           clipIds = response.results.map((result) => result.clipId);
           const after = await readComposition(project, compositionPath, this.facts);
-          writeLedger(project.dir, plan.finish(response.results, timelineStateOf(project, after)));
+          writeLedger(
+            project.dir,
+            plan.finish(response.results, timelineStateOf(project, compositionPath, after)),
+          );
           const now = Date.now();
-          writeStoredStory(project.dir, {
-            ...graph,
-            build: {
-              at: now,
-              turnId: request.turnId ?? null,
-              composition: compositionPath,
-              version: timelineVersion,
-              duration: plan.duration,
-              chapters: plan.sections.map(({ chapter, start, end, clips }) => ({
-                node: chapter,
-                start,
-                end,
-                clips,
-              })),
-              warnings: plan.report.warnings,
-            },
-            updatedAt: now,
-            updatedBy: "ai",
-          });
+          // The edits have landed, so the build is recorded whatever happened to the graph meanwhile (the user's
+          // undo or a history restore): refusing here would leave a rebuilt timeline described by the old record.
+          const current = readStoredStoryOrNone(project.dir, false);
+          const moved = current !== null && current.version !== stored.version;
+          const warnings = plan.report.warnings;
+          if (current) {
+            writeStoredStory(
+              project.dir,
+              {
+                ...current.graph,
+                build: {
+                  at: now,
+                  turnId: request.turnId ?? null,
+                  composition: compositionPath,
+                  version: timelineVersion,
+                  duration: plan.duration,
+                  chapters: plan.sections.map(({ chapter, start, end, clips }) => ({
+                    node: chapter,
+                    start,
+                    end,
+                    clips,
+                  })),
+                  warnings: boundBuildWarnings(
+                    moved
+                      ? [
+                          ...warnings,
+                          "The story changed while it was building; review it against the new timeline.",
+                        ]
+                      : warnings,
+                  ),
+                },
+                updatedAt: now,
+                updatedBy: "ai",
+              },
+              current.version,
+            );
+          }
         }
         const view = await this.viewOf(project, readStoredStory(project.dir));
         return {

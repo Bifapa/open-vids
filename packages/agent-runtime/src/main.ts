@@ -8,6 +8,7 @@ import { HttpEditingHost } from "./editing/host.http.js";
 import { HttpStoryHost } from "./story/host.http.js";
 import { HttpResearchHost } from "./research/host.http.js";
 import { HttpQaHost } from "./qa/host.http.js";
+import { createShutdown, watchParent } from "./lifecycle.js";
 import { createRuntimeApp } from "./server.js";
 import { AgentSettingsStore } from "./settings.js";
 
@@ -46,39 +47,44 @@ const server = serve(
   },
 );
 
-let shutdownPromise: Promise<void> | null = null;
-let parentPoll: NodeJS.Timeout | undefined;
-const shutdown = (): Promise<void> => {
-  if (shutdownPromise) return shutdownPromise;
-  shutdownPromise = (async () => {
-    clearInterval(parentPoll);
-    parentPoll = undefined;
+/** Longest the graceful stop may take: past it the process ends, so no orphan keeps its tools and the chat log. */
+const SHUTDOWN_DEADLINE_MS = 5_000;
+
+let stopParentWatch: (() => void) | undefined;
+const shutdown = createShutdown({
+  stop: async () => {
     server.close();
-    await app.dispose();
-    if ("closeAllConnections" in server && typeof server.closeAllConnections === "function")
-      server.closeAllConnections();
-  })();
-  return shutdownPromise;
-};
+    try {
+      await app.dispose();
+    } finally {
+      // A throwing dispose must not leave keep-alive connections holding the server open.
+      if ("closeAllConnections" in server && typeof server.closeAllConnections === "function")
+        server.closeAllConnections();
+    }
+  },
+  deadlineMs: SHUTDOWN_DEADLINE_MS,
+  onDeadline: (stage) =>
+    process.stderr.write(
+      stage === "stopping"
+        ? `OpenVids Agent Runtime did not shut down within ${SHUTDOWN_DEADLINE_MS} ms; exiting\n`
+        : `OpenVids Agent Runtime is still running ${SHUTDOWN_DEADLINE_MS} ms after its shutdown (${stage}); exiting\n`,
+    ),
+  exit: (code) => process.exit(code),
+});
 
 const handleSignal = () => {
-  void shutdown().catch((error: unknown) => {
-    process.stderr.write(`OpenVids Agent Runtime shutdown failed: ${errorMessage(error)}\n`);
-    process.exitCode = 1;
-  });
+  void shutdown()
+    .catch((error: unknown) => {
+      process.stderr.write(`OpenVids Agent Runtime shutdown failed: ${errorMessage(error)}\n`);
+      process.exitCode = 1;
+    })
+    // The parent watch keeps running through the shutdown and only stops once it is over.
+    .finally(() => stopParentWatch?.());
 };
 process.once("SIGTERM", handleSignal);
 process.once("SIGINT", handleSignal);
 
-if (parentPid !== null) {
-  parentPoll = setInterval(() => {
-    try {
-      process.kill(parentPid, 0);
-    } catch (error) {
-      if (isProcessGone(error)) handleSignal();
-    }
-  }, 1_000);
-}
+if (parentPid !== null) stopParentWatch = watchParent(parentPid, handleSignal, 1_000);
 
 function parsePort(value: string | undefined): number {
   if (value === undefined || value === "") return 0;
@@ -95,10 +101,6 @@ function parseParentPid(value: string | undefined): number | null {
   if (!Number.isSafeInteger(pid) || pid <= 0)
     throw new Error("OPENVIDS_AGENT_PARENT_PID must be a positive process id");
   return pid;
-}
-
-function isProcessGone(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "ESRCH";
 }
 
 function errorMessage(error: unknown): string {

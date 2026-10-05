@@ -128,7 +128,7 @@
     };
     AGENTS.forEach((a) => {
       state.agents[a.id] = a.id !== "research" && a.id !== "audio";
-      state.agentPrefs[a.id] = { model: null, effort: null };
+      state.agentPrefs[a.id] = { model: null, effort: null, allowedModels: [] };
     });
     const refs = {};
     const node = (tag, cls, text) => {
@@ -286,6 +286,8 @@
             state.agentPrefs[a.id] = {
               model: d.model || null,
               effort: d.thinking && EFFORTS.includes(d.thinking) ? d.thinking : null,
+              /* A chat override replaces the global config wholesale: carry the user's alternates over. */
+              allowedModels: Array.isArray(d.allowedModels) ? d.allowedModels.slice() : [],
             };
           });
           state.dirty = {};
@@ -958,7 +960,11 @@
       const overrides = {};
       Object.keys(state.dirty).forEach((id) => {
         const p = state.agentPrefs[id];
-        overrides[id] = { model: p.model, thinking: p.effort, allowedModels: [] };
+        overrides[id] = {
+          model: p.model,
+          thinking: p.effort,
+          allowedModels: p.allowedModels.slice(),
+        };
       });
       opts.onSubmit({
         prompt,

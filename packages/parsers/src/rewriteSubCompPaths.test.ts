@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { rewriteSrcset } from "./assetUrls.js";
 import {
   rewriteAssetPath,
+  rewriteAssetPaths,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
 } from "./rewriteSubCompPaths.js";
@@ -39,6 +41,49 @@ describe("rewriteAssetPath", () => {
     expect(out).toContain(`url("fonts/brand.woff2")`);
     expect(out).not.toMatch(/\\/);
     expect(out).not.toMatch(/:\\/);
+  });
+
+  it("rewrites quoted url() values that contain parentheses or the other quote character", () => {
+    const comp = "compositions/intro.html";
+    expect(rewriteCssAssetUrls(`a{background:url("../assets/bg (2).png")}`, comp)).toBe(
+      `a{background:url("assets/bg (2).png")}`,
+    );
+    expect(rewriteCssAssetUrls(`a{background:url('../assets/it"s.png')}`, comp)).toBe(
+      `a{background:url('assets/it"s.png')}`,
+    );
+    expect(rewriteCssAssetUrls(`a{background:url("../assets/it's.png")}`, comp)).toBe(
+      `a{background:url("assets/it's.png")}`,
+    );
+    expect(rewriteCssAssetUrls(`a{background:url( ../assets/bg.png )}`, comp)).toBe(
+      `a{background:url(assets/bg.png)}`,
+    );
+  });
+
+  it("rewrites poster, xlink:href and each srcset candidate", () => {
+    const attrs: Record<string, string> = {
+      src: "../assets/a.png",
+      poster: "../assets/p.jpg",
+      "xlink:href": "../assets/s.svg",
+      srcset: "../assets/a.png 1x, ../assets/a@2x.png 2x",
+    };
+    rewriteAssetPaths(
+      [attrs],
+      "compositions/intro.html",
+      (el, attr) => el[attr],
+      (el, attr, value) => {
+        el[attr] = value;
+      },
+    );
+    expect(attrs).toEqual({
+      src: "assets/a.png",
+      poster: "assets/p.jpg",
+      "xlink:href": "assets/s.svg",
+      srcset: "assets/a.png 1x, assets/a@2x.png 2x",
+    });
+  });
+
+  it("leaves a srcset with nothing to rewrite byte-identical", () => {
+    expect(rewriteSrcset("a.png 1x,b.png 2x", (url) => url)).toBe("a.png 1x,b.png 2x");
   });
 
   it("rewrites CSS urls inside inline style attributes", () => {
@@ -94,6 +139,21 @@ describe("rewriteAssetPath", () => {
     it("is a no-op without the probe (unchanged default)", () => {
       expect(rewriteAssetPath("design/styleframes/frame-01.html", "_shared.css")).toBe(
         "_shared.css",
+      );
+    });
+
+    it("finds a sibling whose on-disk name is percent-encoded in the src", () => {
+      const present = (p: string) =>
+        ["compositions/media/клип 1.mp4", "compositions/my clip.mp4"].includes(p);
+      expect(
+        rewriteAssetPath(
+          "compositions/scene.html",
+          "media/%D0%BA%D0%BB%D0%B8%D0%BF%201.mp4?v=2",
+          present,
+        ),
+      ).toBe("compositions/media/%D0%BA%D0%BB%D0%B8%D0%BF%201.mp4?v=2");
+      expect(rewriteAssetPath("compositions/scene.html", "my%20clip.mp4", present)).toBe(
+        "compositions/my%20clip.mp4",
       );
     });
   });

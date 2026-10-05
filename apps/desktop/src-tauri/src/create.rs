@@ -14,8 +14,8 @@
 //!   `render` defaults to — see `packages/cli/src/utils/compositionFps.ts`).
 //! - `meta.json` (`{id, name, createdAt}`), `hyperframes.json` (registry
 //!   paths, via the same shape `createProjectConfig` writes in
-//!   `packages/cli/src/utils/projectConfig.ts`) and a `package.json` with
-//!   the stock `dev`/`check`/`render` scripts are stamped beside it.
+//!   `packages/cli/src/utils/projectConfig.ts`) and a script-less
+//!   `package.json` are stamped beside it.
 //!
 //! What the CLI's interactive `init` does that this deliberately skips:
 //! video/audio ingest + whisper transcription, registry example install,
@@ -90,8 +90,39 @@ impl CreateError {
 
 impl std::error::Error for CreateError {}
 
-/// Scaffold the project. Returns the created directory.
-pub fn scaffold(template_index: &Path, params: &CreateParams) -> Result<PathBuf, CreateError> {
+/// A scaffolded project folder and how this request came by it.
+#[derive(Debug)]
+pub struct Scaffolded {
+    pub dir: PathBuf,
+    /// `true` when this call made the folder; `false` when it filled a folder
+    /// that already existed empty.
+    pub created: bool,
+}
+
+impl Scaffolded {
+    /// Undo this call's work: the whole folder when it made it, only the
+    /// contents when it adopted an empty one.
+    pub fn discard(&self) {
+        if self.created {
+            let _ = std::fs::remove_dir_all(&self.dir);
+            return;
+        }
+        if let Ok(entries) = std::fs::read_dir(&self.dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let _ = if path.is_dir() {
+                    std::fs::remove_dir_all(&path)
+                } else {
+                    std::fs::remove_file(&path)
+                };
+            }
+        }
+    }
+}
+
+/// Scaffold the project. A failure after the folder was claimed removes what
+/// this call put there; a folder somebody else filled is never touched.
+pub fn scaffold(template_index: &Path, params: &CreateParams) -> Result<Scaffolded, CreateError> {
     if !is_valid_project_id(&params.name) {
         return Err(CreateError::BadName(params.name.clone()));
     }
@@ -114,16 +145,36 @@ pub fn scaffold(template_index: &Path, params: &CreateParams) -> Result<PathBuf,
         return Err(CreateError::NoParent(params.parent.clone()));
     }
     let dest = params.parent.join(&params.name);
-    if dest.exists() {
+    let created = if dest.exists() {
         let non_empty = std::fs::read_dir(&dest)
             .map(|mut entries| entries.next().is_some())
             .unwrap_or(true);
         if non_empty {
             return Err(CreateError::Exists(dest));
         }
+        false
+    } else {
+        // Atomic claim: of two requests racing for one free name only one
+        // creates the folder, the other sees `Exists` and touches nothing.
+        match std::fs::create_dir(&dest) {
+            Ok(()) => true,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                return Err(CreateError::Exists(dest));
+            }
+            Err(e) => return Err(CreateError::Io(e.to_string())),
+        }
+    };
+    let scaffolded = Scaffolded { dir: dest, created };
+    match fill(template_index, params, &scaffolded.dir) {
+        Ok(()) => Ok(scaffolded),
+        Err(err) => {
+            scaffolded.discard();
+            Err(err)
+        }
     }
-    std::fs::create_dir_all(&dest).map_err(|e| CreateError::Io(e.to_string()))?;
+}
 
+fn fill(template_index: &Path, params: &CreateParams, dest: &Path) -> Result<(), CreateError> {
     let template = std::fs::read_to_string(template_index)
         .map_err(|e| CreateError::NoTemplate(format!("{}: {e}", template_index.display())))?;
     let mut html = set_composition_dimensions(&template, params.width, params.height)
@@ -171,12 +222,7 @@ pub fn scaffold(template_index: &Path, params: &CreateParams) -> Result<PathBuf,
                     "{{\n",
                     "  \"name\": {},\n",
                     "  \"private\": true,\n",
-                    "  \"type\": \"module\",\n",
-                    "  \"scripts\": {{\n",
-                    "    \"dev\": \"npx --yes hyperframes preview\",\n",
-                    "    \"check\": \"npx --yes hyperframes check\",\n",
-                    "    \"render\": \"npx --yes hyperframes render\"\n",
-                    "  }}\n",
+                    "  \"type\": \"module\"\n",
                     "}}\n",
                 ),
                 json_string(&to_package_name(&params.name)),
@@ -203,7 +249,7 @@ pub fn scaffold(template_index: &Path, params: &CreateParams) -> Result<PathBuf,
         }
     }
 
-    Ok(dest)
+    Ok(())
 }
 
 fn json_string(value: &str) -> String {
@@ -320,7 +366,7 @@ mod tests {
         let base = std::env::temp_dir().join("openvids-create-ok");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
-        let dest = scaffold(&template(), &params(&base, "my-video")).unwrap();
+        let dest = scaffold(&template(), &params(&base, "my-video")).unwrap().dir;
         let html = std::fs::read_to_string(dest.join("index.html")).unwrap();
         assert!(is_composition_source(&html));
         assert_eq!(composition_dimensions(&html), (1080, 1920));
@@ -328,7 +374,13 @@ mod tests {
         assert!(html.contains("data-duration=\"15\""));
         assert!(dest.join("meta.json").is_file());
         assert!(dest.join("hyperframes.json").is_file());
-        assert!(dest.join("package.json").is_file());
+        let package: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dest.join("package.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(package["name"], "my-video");
+        // The OpenVids CLI is not on npm: no script may fetch it from there.
+        assert!(package.get("scripts").is_none());
         let meta: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dest.join("meta.json")).unwrap())
                 .unwrap();
@@ -361,5 +413,50 @@ mod tests {
             scaffold(&template(), &p),
             Err(CreateError::BadName(_))
         ));
+    }
+
+    #[test]
+    fn reports_whether_it_created_or_adopted_the_folder() {
+        let base = std::env::temp_dir().join(format!("openvids-create-claim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("adopted")).unwrap();
+        let made = scaffold(&template(), &params(&base, "made")).unwrap();
+        assert!(made.created);
+        let adopted = scaffold(&template(), &params(&base, "adopted")).unwrap();
+        assert!(!adopted.created);
+        // Discard mirrors it: the made folder goes, the adopted one stays empty.
+        made.discard();
+        adopted.discard();
+        assert!(!base.join("made").exists());
+        assert_eq!(std::fs::read_dir(base.join("adopted")).unwrap().count(), 0);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_failed_scaffold_removes_only_its_own_work() {
+        let base = std::env::temp_dir().join(format!("openvids-create-fail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("adopted")).unwrap();
+        let missing = base.join("no-such-template.html");
+        assert!(matches!(
+            scaffold(&missing, &params(&base, "fresh")),
+            Err(CreateError::NoTemplate(_))
+        ));
+        assert!(!base.join("fresh").exists(), "a folder the call made is removed");
+        assert!(matches!(
+            scaffold(&missing, &params(&base, "adopted")),
+            Err(CreateError::NoTemplate(_))
+        ));
+        assert!(base.join("adopted").is_dir(), "an adopted empty folder stays");
+
+        // A folder another request already filled is never rolled back.
+        std::fs::create_dir_all(base.join("taken")).unwrap();
+        std::fs::write(base.join("taken/mine.txt"), b"x").unwrap();
+        assert!(matches!(
+            scaffold(&template(), &params(&base, "taken")),
+            Err(CreateError::Exists(_))
+        ));
+        assert!(base.join("taken/mine.txt").exists());
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

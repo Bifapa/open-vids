@@ -667,7 +667,6 @@ describe("inlineSubCompositions – sub-composition asset paths", () => {
     const result = inlineSubCompositions(document, [host], {
       resolveHtml: () => SUB_COMP,
       parseHtml: (html) => parseHTML(html).document,
-      rewriteInlineStyles: true,
       assetExists: (path: string) => PROJECT_FILES.includes(path),
     });
     return { document, result };
@@ -693,6 +692,48 @@ describe("inlineSubCompositions – sub-composition asset paths", () => {
     expect(result.styles.join("\n")).toContain("design/styleframes/frame.png");
     expect(document.querySelector("[style]")?.getAttribute("style")).toContain(
       "design/styleframes/frame.png",
+    );
+  });
+});
+
+describe("inlineSubCompositions – poster, srcset and parenthesised url()", () => {
+  const SUB_COMP = `<div data-composition-id="intro" data-width="1920" data-height="1080">
+  <style>.bg { background-image: url("../assets/bg (2).png"); }</style>
+  <video src="../assets/clip.mp4" poster="../assets/poster.jpg"></video>
+  <img src="../assets/a.png" srcset="../assets/a.png 1x, ../assets/a@2x.png 2x">
+  <div class="bg" style="background-image: url('../assets/bg (2).png')"></div>
+</div>`;
+
+  function inlineIntro() {
+    const { document } = parseHTML(`<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main">
+    <div data-composition-id="intro" data-composition-src="compositions/intro.html"
+         data-start="0" data-duration="4" data-track-index="0"></div>
+  </div>
+</body></html>`);
+    const host = document.querySelector("[data-composition-src]")!;
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+    return { document, result };
+  }
+
+  it("rebases poster and every srcset candidate like src", () => {
+    const { document } = inlineIntro();
+    expect(document.querySelector("video")?.getAttribute("src")).toBe("assets/clip.mp4");
+    expect(document.querySelector("video")?.getAttribute("poster")).toBe("assets/poster.jpg");
+    expect(document.querySelector("img")?.getAttribute("srcset")).toBe(
+      "assets/a.png 1x, assets/a@2x.png 2x",
+    );
+  });
+
+  it("rewrites quoted url() values that contain parentheses in hoisted CSS and inline styles", () => {
+    const { document, result } = inlineIntro();
+    expect(result.styles.join("\n")).toContain(`url("assets/bg (2).png")`);
+    expect(document.querySelector(".bg")?.getAttribute("style")).toContain(
+      `url('assets/bg (2).png')`,
     );
   });
 });

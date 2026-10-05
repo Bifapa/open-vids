@@ -2,25 +2,23 @@
 
 Types, parsers, generators, compiler, linter, runtime, and frame adapters for the Hyperframes video framework.
 
-## Install
+## Use
 
-```bash
-npm install @hyperframes/core
-```
+This package is private to the OpenVids workspace and is not published to npm. Other workspace packages depend on it as `@hyperframes/core` (`bun install` at the repository root links it).
 
-> Most users don't need to install core directly — the [CLI](../cli), [producer](../producer), and [studio](../studio) packages depend on it internally.
+> Most users don't need to use core directly — the [CLI](../cli), [producer](../producer), and [studio](../studio) packages depend on it internally.
 
 ## What's inside
 
-| Module             | Description                                                                                          |
-| ------------------ | ---------------------------------------------------------------------------------------------------- |
-| **Types**          | `TimelineElement`, `CompositionSpec`, `Asset`, canvas dimensions, defaults                           |
-| **Parsers**        | `parseHtml` — extract timeline elements from HTML; `parseGsapScript` — parse GSAP animations         |
-| **Generators**     | `generateHyperframesHtml` — produce valid Hyperframes HTML from a composition spec                   |
-| **Compiler**       | `compileTimingAttrs` — resolve `data-start` / `data-duration` into absolute times                    |
-| **Linter**         | `lintHyperframeHtml` — validate Hyperframes HTML (missing attributes, overlapping tracks, etc.)      |
-| **Runtime**        | IIFE script injected into the browser — manages seek, media playback, and the `window.__hf` protocol |
-| **Frame Adapters** | Pluggable animation drivers (GSAP, Lottie, CSS, or custom)                                           |
+| Module             | Description                                                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Types**          | `TimelineElement`, `CompositionSpec`, `Asset`, canvas dimensions, defaults                                                    |
+| **Parsers**        | `parseHtml` — extract timeline elements from HTML (re-exported from `@hyperframes/parsers`, which also has `parseGsapScript`) |
+| **Generators**     | `generateHyperframesHtml` — produce valid Hyperframes HTML from timeline elements                                             |
+| **Compiler**       | `compileTimingAttrs` — resolve `data-start` / `data-duration` into absolute times                                             |
+| **Linter**         | `lintHyperframeHtml` (`@hyperframes/core/lint`, async) — validate Hyperframes HTML                                            |
+| **Runtime**        | IIFE script injected into the browser — manages seek, media playback, and the `window.__hf` protocol                          |
+| **Frame Adapters** | `FrameAdapter` interface for animation drivers, and `createGSAPFrameAdapter` for GSAP timelines                               |
 
 ## Generated composition trust
 
@@ -45,8 +43,9 @@ A frame adapter tells the engine how to seek your animation to a specific frame:
 import { createGSAPFrameAdapter } from "@hyperframes/core";
 
 const adapter = createGSAPFrameAdapter({
-  getTimeline: () => gsap.timeline(),
-  compositionId: "my-video",
+  fps: 30,
+  timeline: gsap.timeline({ paused: true }),
+  // id?: string — defaults to "gsap"
 });
 ```
 
@@ -61,16 +60,20 @@ const myAdapter: FrameAdapter = {
   seekFrame: (frame) => {
     /* seek your animation */
   },
+  // optional: init(ctx), destroy()
 };
 ```
 
 ## Parsing and generating HTML
 
 ```typescript
-import { parseHtml, generateHyperframesHtml } from "@hyperframes/core";
+import { parseHtml, extractCompositionMetadata, generateHyperframesHtml } from "@hyperframes/core";
 
-const { elements, metadata } = parseHtml(htmlString);
-const html = generateHyperframesHtml(spec);
+// parseHtml uses DOMParser: run it in a browser or provide a DOM (for example linkedom).
+const { elements, gsapScript, styles, resolution } = parseHtml(htmlString);
+const metadata = extractCompositionMetadata(htmlString);
+// elements: TimelineElement[]; the second argument is the total duration in seconds.
+const html = generateHyperframesHtml(elements, 10, { resolution });
 ```
 
 ## Linting
@@ -78,8 +81,9 @@ const html = generateHyperframesHtml(spec);
 ```typescript
 import { lintHyperframeHtml } from "@hyperframes/core/lint";
 
-const result = lintHyperframeHtml(htmlString);
-// result.findings: { severity, message, elementId }[]
+const result = await lintHyperframeHtml(htmlString);
+// result.ok, result.errorCount / warningCount / infoCount
+// result.findings: { code, severity, message, elementId?, selector?, line?, fixHint? }[]
 ```
 
 ## Documentation

@@ -7,6 +7,7 @@ import type {
 import { Trans, useTranslation } from "../i18n";
 import { StudioBanner } from "./StudioBanner";
 import { Button } from "./ui/Button";
+import { Dialog } from "./ui/Dialog";
 import { IconButton } from "./ui/IconButton";
 import { useDialogBehavior } from "./ui/useDialogBehavior";
 
@@ -158,6 +159,41 @@ function ConflictReview({
   );
 }
 
+/**
+ * The "are you sure" in front of writing Studio's version over the file on disk. An in-app dialog, not
+ * `window.confirm`: the desktop shell's web view has no native confirm panel and answers every one with "cancel".
+ */
+function OverwriteConfirm({
+  message,
+  onCancel,
+  onConfirm,
+}: {
+  message: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Dialog
+      open
+      onClose={onCancel}
+      title={t("shell.fileConflict.confirmTitle")}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel}>
+            {t("common.cancel")}
+          </Button>
+          <Button variant="danger" onClick={onConfirm}>
+            {t("shell.fileConflict.confirmAction")}
+          </Button>
+        </>
+      }
+    >
+      <p className="m-0 text-sm leading-[17px] text-fg-2 text-pretty">{message}</p>
+    </Dialog>
+  );
+}
+
 export function ExternalFileConflictBanner({
   coordinator,
 }: {
@@ -165,14 +201,14 @@ export function ExternalFileConflictBanner({
 }) {
   const { t } = useTranslation();
   const [reviewing, setReviewing] = useState(false);
+  const [confirming, setConfirming] = useState<{ generation: number; draft: boolean } | null>(null);
   const blocked = coordinator.blocked;
   if (!blocked) return null;
 
   const conflict = blocked.status === "conflict" ? blocked : null;
   const failure = blocked.status === "failed" ? blocked : null;
-  const overwrite = (message: string) => {
-    if (window.confirm(message)) void coordinator.keepStudioFile();
-  };
+  const pendingOverwrite = confirming?.generation === blocked.generation ? confirming : null;
+  const askOverwrite = (draft: boolean) => setConfirming({ generation: blocked.generation, draft });
   return (
     <>
       <StudioBanner
@@ -199,20 +235,12 @@ export function ExternalFileConflictBanner({
               {t("shell.fileConflict.discard")}
             </Button>
             {conflict && (
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={() => overwrite(t("shell.fileConflict.confirmOverwrite"))}
-              >
+              <Button size="sm" variant="danger" onClick={() => askOverwrite(false)}>
                 {t("shell.fileConflict.overwrite")}
               </Button>
             )}
             {failure?.recovered && failure.studioContent != null && (
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={() => overwrite(t("shell.fileConflict.confirmOverwriteDraft"))}
-              >
+              <Button size="sm" variant="danger" onClick={() => askOverwrite(true)}>
                 {t("shell.fileConflict.overwriteDraft")}
               </Button>
             )}
@@ -247,6 +275,20 @@ export function ExternalFileConflictBanner({
             filename={`${failure.path}.studio.html`}
           />
         </ReviewDialog>
+      )}
+      {pendingOverwrite && (
+        <OverwriteConfirm
+          message={
+            pendingOverwrite.draft
+              ? t("shell.fileConflict.confirmOverwriteDraft")
+              : t("shell.fileConflict.confirmOverwrite")
+          }
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            setConfirming(null);
+            void coordinator.keepStudioFile();
+          }}
+        />
       )}
     </>
   );

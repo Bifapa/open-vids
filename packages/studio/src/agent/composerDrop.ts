@@ -1,5 +1,5 @@
 import type { AgentStore } from "./agentStore";
-import { NEW_CHAT_DRAFT } from "./agentStore";
+import { NEW_CHAT_DRAFT } from "./agentDraftChat";
 import {
   projectAttachment,
   readDroppedProjectFile,

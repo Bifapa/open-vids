@@ -1,6 +1,15 @@
-import { mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  constants,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
 import { Buffer } from "node:buffer";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { isSafePath } from "./safePath.js";
 
 const DEFAULT_KEEP_PER_FILE = 10;
@@ -10,7 +19,25 @@ export interface BackupJournalResult {
   error?: string;
 }
 
+/** The longest readable part of a backup name, in UTF-8 bytes; the whole name stays far inside a 255-byte limit. */
+const READABLE_KEY_BYTES = 96;
+
+/**
+ * Names a backup after its project-relative path without growing with it: a readable cut of the file's own name,
+ * then a hash of the whole path (which is what tells two files apart). Long or Cyrillic paths stay saveable.
+ */
 function backupKeyForPath(path: string): string {
+  let readable = "";
+  for (const char of basename(path).replace(/[^\p{L}\p{N}._ -]/gu, "_")) {
+    if (Buffer.byteLength(readable + char) > READABLE_KEY_BYTES) break;
+    readable += char;
+  }
+  const digest = createHash("sha256").update(path, "utf-8").digest("hex").slice(0, 32);
+  return readable ? `${readable}-${digest}` : digest;
+}
+
+/** How backups were named before: the whole path in base64, which only fits short paths. */
+function legacyBackupKeyForPath(path: string): string {
   return Buffer.from(path, "utf-8").toString("base64url");
 }
 
@@ -36,7 +63,8 @@ export function snapshotBeforeWrite(
   if (!isSafePath(projectDir, absPath)) return { backupPath: null };
 
   try {
-    const content = readFileSync(absPath);
+    const info = statSync(absPath);
+    if (info.isDirectory()) return { backupPath: null };
 
     const relativePath = relative(projectDir, absPath);
     const backupDir = join(projectDir, ".hyperframes", "backup");
@@ -44,8 +72,13 @@ export function snapshotBeforeWrite(
 
     const backupKey = backupKeyForPath(relativePath);
     const backupPath = nextBackupPath(backupDir, backupKey);
-    writeFileSync(backupPath, content);
-    pruneBackups(backupDir, backupKey, options.keepPerFile ?? DEFAULT_KEEP_PER_FILE);
+    // Copied by the file system, not read whole into memory: a backup of a large file must not need its size in RAM.
+    copyFileSync(absPath, backupPath, constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL);
+    pruneBackups(
+      backupDir,
+      [backupKey, legacyBackupKeyForPath(relativePath)],
+      options.keepPerFile ?? DEFAULT_KEEP_PER_FILE,
+    );
     return { backupPath };
   } catch (error) {
     if (
@@ -63,27 +96,19 @@ export function snapshotBeforeWrite(
 function nextBackupPath(backupDir: string, backupKey: string): string {
   const base = `${timestampPrefix()}-${backupKey}`;
   let candidate = join(backupDir, base);
-  let counter = 2;
-  while (true) {
-    try {
-      readFileSync(candidate);
-    } catch (error) {
-      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-        return candidate;
-      }
-      throw error;
-    }
+  for (let counter = 2; existsSync(candidate); counter += 1) {
     candidate = join(backupDir, `${base}-${counter}`);
-    counter += 1;
   }
+  return candidate;
 }
 
-function pruneBackups(backupDir: string, backupKey: string, keepPerFile: number): void {
+function pruneBackups(backupDir: string, backupKeys: string[], keepPerFile: number): void {
   const keep = Math.max(1, Math.floor(keepPerFile));
-  const suffix = `-${backupKey}`;
-  const numberedSuffix = new RegExp(`-${backupKey}-\\d+$`);
   const matches = readdirSync(backupDir)
-    .filter((name) => name.endsWith(suffix) || numberedSuffix.test(name))
+    .filter((name) => {
+      const counterless = name.replace(/-\d+$/, "");
+      return backupKeys.some((key) => name.endsWith(`-${key}`) || counterless.endsWith(`-${key}`));
+    })
     .map((name) => join(backupDir, name))
     .sort((a, b) => {
       return b.localeCompare(a);

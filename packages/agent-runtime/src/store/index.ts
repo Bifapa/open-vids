@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile, readdir, truncate } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { ChatEvent, SpecialistId } from "@hyperframes/agent-protocol";
-import { foldChatEvents, isRecord } from "@hyperframes/agent-protocol";
+import { foldChatEvents, isRecord, isStoryOffer } from "@hyperframes/agent-protocol";
 
 const agentRoot = (projectDir: string) => join(projectDir, ".hyperframes", "agent", "chats");
 const chatDirectory = (projectDir: string, chatId: string) => {
@@ -52,15 +52,13 @@ export class FileChatStore {
     for (let index = 0; index < completeLineCount; index += 1) {
       const line = lines[index];
       if (!line) continue;
-      try {
-        const value: unknown = JSON.parse(line);
-        if (isChatEvent(value)) events.push(value);
-        else throw new Error(`Invalid chat event at line ${index + 1}`);
-      } catch (error) {
-        if (error instanceof SyntaxError)
-          throw new Error(`Invalid chat event at line ${index + 1}`, { cause: error });
-        throw error;
-      }
+      // One damaged or unknown record must not make the whole project's chats unreadable: skip it and say so.
+      const value = parseLine(line);
+      if (isChatEvent(value)) events.push(value);
+      else
+        console.error(
+          `[openvids-agent] skipping invalid chat event at line ${index + 1} of ${file}`,
+        );
     }
     return { events, state: foldChatEvents(events) };
   }
@@ -117,6 +115,14 @@ function isMissing(error: unknown): boolean {
   );
 }
 
+function parseLine(line: string): unknown {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+}
+
 function isChatEvent(value: unknown): value is ChatEvent {
   if (
     !isRecord(value) ||
@@ -159,6 +165,8 @@ function isChatEvent(value: unknown): value is ChatEvent {
       return typeof value.messageId === "string" && isRecord(value.activity);
     case "permission.updated":
       return typeof value.messageId === "string" && isRecord(value.permission);
+    case "storyOffer.updated":
+      return typeof value.messageId === "string" && isStoryOffer(value.offer);
     case "message.completed":
       return typeof value.messageId === "string" && typeof value.status === "string";
     case "checkpoint.updated":

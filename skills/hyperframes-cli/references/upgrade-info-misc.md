@@ -5,9 +5,9 @@ Catch-all reference for commands that don't fit the main dev loop.
 ## info
 
 ```bash
-npx hyperframes info                   # project metadata
-npx hyperframes info ./my-video        # specific project
-npx hyperframes info --json
+hyperframes info                   # project metadata
+hyperframes info ./my-video        # specific project
+hyperframes info --json
 ```
 
 Prints **project** metadata: name, resolution, duration, element counts by type, track count, and total project size. Project-level — not environment. For environment health use `doctor`.
@@ -15,11 +15,11 @@ Prints **project** metadata: name, resolution, duration, element counts by type,
 ## compositions, docs
 
 ```bash
-npx hyperframes compositions           # list compositions in project
-npx hyperframes compositions --json
-npx hyperframes docs                   # list available topics
-npx hyperframes docs rendering         # print one topic inline in the terminal
-npx hyperframes docs --json
+hyperframes compositions           # list compositions in project
+hyperframes compositions --json
+hyperframes docs                   # list available topics
+hyperframes docs rendering         # print one topic inline in the terminal
+hyperframes docs --json
 ```
 
 `compositions` lists every `data-composition-id` in the project (including sub-comps) with duration, resolution, and element count.
@@ -29,8 +29,8 @@ npx hyperframes docs --json
 ## timeline
 
 ```bash
-npx hyperframes timeline [project-dir]          # tracks and clips as a table with bars
-npx hyperframes timeline [project-dir] --json
+hyperframes timeline [project-dir]          # tracks and clips as a table with bars
+hyperframes timeline [project-dir] --json
 ```
 
 Reach for `timeline` instead of opening `index.html` and each `data-composition-src` file when you need to know what is on the timeline: which clips exist, when they start and end, what they play, and how loud. It reads the project's files statically (no browser).
@@ -56,7 +56,7 @@ audio (1)
 ### Query one-liners (jq, node fallback if jq is absent)
 
 ```bash
-TL=$(npx hyperframes timeline --json)
+TL=$(hyperframes timeline --json)
 # 1. what plays at absolute time T=12.5
 jq --argjson t 12.5 '[.timeline.tracks[].rows[] | select(.absStart<=$t and .absEnd>$t)]' <<<"$TL"
 node -e 'const t=12.5,j=JSON.parse(require("fs").readFileSync(0,"utf8"));j.timeline.tracks.forEach(tr=>tr.rows.forEach(x=>{if(x.absStart<=t&&x.absEnd>t)console.log(x.id,x.file)}))' <<<"$TL"
@@ -77,10 +77,10 @@ node -e 'const k="video",n=2,j=JSON.parse(require("fs").readFileSync(0,"utf8"));
 ## benchmark
 
 ```bash
-npx hyperframes benchmark              # run the preset matrix in current project
-npx hyperframes benchmark ./my-video   # specific project
-npx hyperframes benchmark --runs 5     # repeat each config N times (default 3)
-npx hyperframes benchmark --json
+hyperframes benchmark              # run the preset matrix in current project
+hyperframes benchmark ./my-video   # specific project
+hyperframes benchmark --runs 5     # repeat each config N times (default 3)
+hyperframes benchmark --json
 ```
 
 Renders the project with 5 preset configurations — `30fps draft 2w`, `30fps standard 2w`, `30fps high 2w`, `30fps standard 4w`, `60fps standard 4w` — and prints a comparison of render speed and output file size. Use it to find the fastest acceptable preset for your machine. Not a single-render-with-stage-breakdown.
@@ -88,9 +88,9 @@ Renders the project with 5 preset configurations — `30fps draft 2w`, `30fps st
 ## Asset Preprocessing
 
 ```bash
-npx hyperframes tts
-npx hyperframes transcribe
-npx hyperframes remove-background
+hyperframes tts
+hyperframes transcribe
+hyperframes remove-background
 ```
 
 These produce assets (narration audio, word-level transcripts, transparent video) that get dropped into a composition. Each may download its own model on first run.

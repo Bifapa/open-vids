@@ -13,6 +13,7 @@ import {
   prepareWav,
   resolveAudioPreparationTimeoutMs,
   resolveWhisperTimeoutMs,
+  runWhisperCli,
   whisperModelSlowdownFactor,
   wrapWhisperTimeoutError,
 } from "./transcribe.js";
@@ -411,5 +412,44 @@ describe.skipIf(process.platform === "win32")("prepareWav", () => {
     const err = failWith(`${flood} process.exit(255);`) as { code?: string; cancelled?: boolean };
     expect(err.code).toBe("ENOBUFS");
     expect(err.cancelled).toBeUndefined();
+  });
+});
+
+describe("runWhisperCli", () => {
+  const sleeper = ["-e", "setInterval(() => {}, 1000)"];
+
+  it("resolves when the recognizer exits cleanly", async () => {
+    await expect(
+      runWhisperCli(process.execPath, ["-e", ""], { timeoutMs: 10_000 }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a failed run with its exit status", async () => {
+    await expect(
+      runWhisperCli(process.execPath, ["-e", "process.exit(3)"], { timeoutMs: 10_000 }),
+    ).rejects.toMatchObject({ status: 3 });
+  });
+
+  it("stops the recognizer when the signal aborts, without waiting for its timeout", async () => {
+    const controller = new AbortController();
+    const run = runWhisperCli(process.execPath, sleeper, {
+      timeoutMs: 60_000,
+      signal: controller.signal,
+    });
+    setTimeout(() => controller.abort(new Error("parent exited")), 100);
+    await expect(run).rejects.toThrow("parent exited");
+  });
+
+  it("does not start a recognizer for a signal that is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("already cancelled"));
+    await expect(
+      runWhisperCli(process.execPath, sleeper, { timeoutMs: 60_000, signal: controller.signal }),
+    ).rejects.toThrow("already cancelled");
+  });
+
+  it("reports its own timeout as ETIMEDOUT, the shape wrapWhisperTimeoutError reads", async () => {
+    const run = runWhisperCli(process.execPath, sleeper, { timeoutMs: 100 });
+    await expect(run).rejects.toSatisfy(isWhisperTimeoutError);
   });
 });

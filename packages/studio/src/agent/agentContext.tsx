@@ -50,6 +50,7 @@ export function useProjectAgentStore(
   });
 
   useEffect(() => {
+    let cancelled = false;
     const client = createAgentClient(projectId);
     const next = createAgentStore({
       client,
@@ -68,8 +69,9 @@ export function useProjectAgentStore(
     void next
       .getState()
       .init()
-      .then(() => consumeIntake(next, client));
+      .then(() => consumeIntake(next, client, { projectId, isCancelled: () => cancelled }));
     return () => {
+      cancelled = true;
       unsubscribeTurnLock();
       next.getState().dispose();
       clearAgentTurnRunning(projectId);

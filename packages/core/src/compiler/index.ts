@@ -94,7 +94,14 @@ export {
 } from "./subCompositionValidity";
 
 // Asset-path primitives (shared across core, producer, CLI)
-export { CSS_URL_RE, PATH_ATTRS, isNonRelativeUrl, isPathInside } from "./assetPaths";
+export {
+  ASSET_PATH_SELECTOR,
+  PATH_ATTRS,
+  isNonRelativeUrl,
+  isPathInside,
+  replaceCssUrls,
+  rewriteSrcset,
+} from "./assetPaths";
 
 export {
   AUDIO_GROUP_RENDER_ID_ATTR,

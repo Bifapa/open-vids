@@ -51,7 +51,7 @@ one line by design.
 ## Worked example
 
 ```bash
-npx hyperframes add vox-annotate
+hyperframes add vox-annotate
 ```
 
 Mount it from a host composition like any sub-composition:

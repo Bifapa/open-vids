@@ -207,16 +207,21 @@ export function createVideoFrameInjector(
   return async (page: Page, time: number) => {
     const activePayloads = frameLookup.getActiveFramePayloads(time);
 
-    const updates: Array<{ videoId: string; dataUri: string; frameIndex: number }> = [];
+    // `dataUri: null` = the page already shows this frame index; only the
+    // style copied from the <video> (GSAP opacity/transform) needs re-syncing.
+    const updates: Array<{ videoId: string; dataUri: string | null; frameIndex: number }> = [];
     const activeIds = new Set<string>();
     if (activePayloads.size > 0) {
-      const pendingReads: Array<Promise<{ videoId: string; dataUri: string; frameIndex: number }>> =
-        [];
+      const pendingReads: Array<
+        Promise<{ videoId: string; dataUri: string | null; frameIndex: number }>
+      > = [];
       for (const [videoId, payload] of activePayloads) {
         activeIds.add(videoId);
         renewCacheLease(payload.framePath);
-        const lastFrameIndex = lastInjectedFrameByVideo.get(videoId);
-        if (lastFrameIndex === payload.frameIndex) continue;
+        if (lastInjectedFrameByVideo.get(videoId) === payload.frameIndex) {
+          updates.push({ videoId, dataUri: null, frameIndex: payload.frameIndex });
+          continue;
+        }
         pendingReads.push(
           frameCache
             .get(payload.framePath)
@@ -246,12 +251,18 @@ export function createVideoFrameInjector(
           updates.map((u) => ({ videoId: u.videoId, dataUri: u.dataUri })),
         ),
       );
+      let injectedNewFrame = false;
       for (const update of updates) {
         if (injectedIds.has(update.videoId)) {
           lastInjectedFrameByVideo.set(update.videoId, update.frameIndex);
+          if (update.dataUri !== null) injectedNewFrame = true;
+        } else if (update.dataUri === null) {
+          // The page had no frame to re-sync (hidden host, replaced DOM):
+          // read it again on the next call instead of trusting the index.
+          lastInjectedFrameByVideo.delete(update.videoId);
         }
       }
-      if (injectedIds.size > 0) {
+      if (injectedNewFrame) {
         // GPU compositions (WebGL / WebGPU) that sample these videos as
         // textures already rendered once on the pre-injection seek, reading a
         // stale/black frame. Now that the decoded `__render_frame__` images are

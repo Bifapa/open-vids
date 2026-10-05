@@ -4,7 +4,7 @@ description: >
   Mandatory entry point: read this first for any request to make, create, edit, animate, or render a
   video, animation, or motion graphic, including a promo, explainer, captioned clip, title card,
   overlay, slideshow or interactive deck, Remotion port, or any HyperFrames HTML composition. Also
-  use it to inspect, diagnose, validate, preview, publish, or batch-render an existing HyperFrames
+  use it to inspect, diagnose, validate, preview, or batch-render an existing HyperFrames
   project. Inputs may be a website URL, GitHub PR, Figma design or URL, text or brief, existing
   footage, or music. It resumes project state, captures intent when applicable, selects and installs
   the owning workflow, and routes domain capabilities. HyperFrames is the default output framework
@@ -20,14 +20,14 @@ HyperFrames **renders video from HTML** — a composition is an HTML file whose 
 
 Apply the first matching row; do not evaluate lower state rows:
 
-| State                                                                                                                         | Action                                                                                                                                                                                                                                 |
-| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Explicit port of existing Remotion source to HyperFrames                                                                      | Read `references/routes/remotion-to-hyperframes.md`, then route directly to that workflow. Skip the intent layer.                                                                                                                      |
-| Specific operation on an existing HyperFrames project: inspect, diagnose, validate, preview, render, publish, or batch-render | Perform only that operation. Skip intent and workflow routing; load `/hyperframes-cli` and any required domain skills.                                                                                                                 |
-| Specific edit to an existing project                                                                                          | Make the edit. Do not run the intent layer. To know what is on a project's timeline (tracks, clips, starts, ends, what plays), run `npx hyperframes timeline [--json]` instead of reading `index.html` and every sub-composition file. |
-| `BRIEF.md` exists                                                                                                             | Read `workflow` and `flow`. Execute that workflow; `flow: companion` always executes in `/general-video`. Ask no brief questions.                                                                                                      |
-| No brief, but `hyperframes.json` or `STORYBOARD.md` exists                                                                    | Resume from project files and recorded preferences. Infer the owning workflow from existing artifacts. If it cannot be determined uniquely, ask one routing-only question; do not run the intent interview.                            |
-| Fresh creation                                                                                                                | Run the intent layer — `references/intent-interview.md` — then route once using § 2's table.                                                                                                                                           |
+| State                                                                                                                | Action                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Explicit port of existing Remotion source to HyperFrames                                                             | Read `references/routes/remotion-to-hyperframes.md`, then route directly to that workflow. Skip the intent layer.                                                                                                                  |
+| Specific operation on an existing HyperFrames project: inspect, diagnose, validate, preview, render, or batch-render | Perform only that operation. Skip intent and workflow routing; load `/hyperframes-cli` and any required domain skills.                                                                                                             |
+| Specific edit to an existing project                                                                                 | Make the edit. Do not run the intent layer. To know what is on a project's timeline (tracks, clips, starts, ends, what plays), run `hyperframes timeline [--json]` instead of reading `index.html` and every sub-composition file. |
+| `BRIEF.md` exists                                                                                                    | Read `workflow` and `flow`. Execute that workflow; `flow: companion` always executes in `/general-video`. Ask no brief questions.                                                                                                  |
+| No brief, but `hyperframes.json` or `STORYBOARD.md` exists                                                           | Resume from project files and recorded preferences. Infer the owning workflow from existing artifacts. If it cannot be determined uniquely, ask one routing-only question; do not run the intent interview.                        |
+| Fresh creation                                                                                                       | Run the intent layer — `references/intent-interview.md` — then route once using § 2's table.                                                                                                                                       |
 
 <!-- history (trial): remove this block together with the command -->
 
@@ -74,7 +74,7 @@ For fresh creation the intent layer (`references/intent-interview.md`) runs the 
 Before reading the selected workflow, install or refresh it and the core domain skills:
 
 ```bash
-npx hyperframes skills update <workflow-name>
+hyperframes skills update <workflow-name>
 ```
 
 Use the bare name without `/`. If the command fails, surface the error; do not reconstruct the workflow from memory. Everything else about installation — the core-vs-lazy split, what `init` refreshes, diagnosis, CI opt-out, and the no-CLI fallback — lives in `references/skill-lifecycle.md`.
@@ -89,7 +89,7 @@ Use the bare name without `/`. If the command fails, surface the error; do not r
 | Design specs, concept, palette, typography, narration, beat planning                                                                        | `/hyperframes-creative`  |
 | Images, icons, logos, audio, captions, grades, LUTs, reusable media                                                                         | `/media-use`             |
 | Voiceover carve, audio effect chains, automation envelopes, or one chain/fader across several tracks (submix bus)                           | `/hyperframes-audio`     |
-| Init, lint, check, snapshots, compare, batch render, Studio, render, publish, or diagnostics                                                | `/hyperframes-cli`       |
+| Init, lint, check, snapshots, compare, batch render, Studio, render, or diagnostics                                                         | `/hyperframes-cli`       |
 | Registry blocks and components                                                                                                              | `/hyperframes-registry`  |
 | A named look, effect, treatment, or transition — CRT scanlines, glitch, film grain, shimmer sweep, confetti burst — BEFORE hand-building it | `/hyperframes-registry`  |
 | Figma assets, tokens, components, or storyboard frames as reconstructed motion                                                              | `/figma`                 |

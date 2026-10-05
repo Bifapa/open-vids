@@ -296,6 +296,25 @@ describe("describeProject", () => {
     expect(text).toContain("duration=media");
   });
 
+  it("probes the file a percent-encoded src names, not the literal text of the attribute", async () => {
+    const probed: string[] = [];
+    const {
+      rows: [row],
+    } = await rowsOf(
+      `<div data-composition-id="m"><audio id="odd" src="my%20sting%231.mp3" data-start="0"></audio></div>`,
+      false,
+      (root) => copyFileSync(REAL_AUDIO, join(root, "my sting#1.mp3")),
+      async (file, tag) => {
+        probed.push(`${tag}:${basename(file)}`);
+        return POP_SECONDS();
+      },
+    );
+    expect(probed).toEqual(["audio:my sting#1.mp3"]);
+    // The row names the file as it is on disk, so an agent can hand it back as an `asset`.
+    expect(row!.src).toBe("my sting#1.mp3");
+    expect(row!.pendingReason).toBeNull();
+  });
+
   it.skipIf(!hasFfprobe)("measures a real audio file with ffprobe by default", async () => {
     const {
       rows: [row],

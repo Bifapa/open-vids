@@ -29,7 +29,7 @@ describe("hyperframes-core contract docs", () => {
     const skill = read("skills", "hyperframes-core", "SKILL.md");
     const brief = read("skills", "hyperframes", "references", "brief-contract.md");
 
-    expect(skill).toContain("`npx hyperframes check`");
+    expect(skill).toContain("`hyperframes check`");
     expect(brief).toContain("`hyperframes check`");
     expect(brief).not.toContain("`lint` / `validate` / `inspect`");
   });
@@ -124,7 +124,7 @@ describe("media treatment routing documentation", () => {
       ["skills", "motion-graphics", "agents", "director.md"],
       ["skills", "motion-graphics", "agents", "builder.md"],
     ]) {
-      expect(read(...file)).toContain("npx hyperframes catalog --query");
+      expect(read(...file)).toContain("hyperframes catalog --query");
     }
     // And it must say the search stands alone, or the next reader re-derives the
     // creator's wrong diagnosis: that a catalog you have not installed cannot be searched.
@@ -151,7 +151,7 @@ describe("media treatment routing documentation", () => {
       ["skills", "remotion-to-hyperframes", "SKILL.md"],
     ]) {
       const doc = read(...file);
-      expect(doc, file.join("/")).toContain("npx hyperframes catalog --query");
+      expect(doc, file.join("/")).toContain("hyperframes catalog --query");
       // "I forgot to install the components" was the wrong self-diagnosis that
       // hid this bug. Every copy of the instruction has to kill it on the spot.
       expect(doc, file.join("/")).toContain("nothing installed");
@@ -189,9 +189,9 @@ describe("media treatment routing documentation", () => {
   it("gives agents a process-owned preview lifecycle in new project instructions", () => {
     for (const file of ["AGENTS.md", "CLAUDE.md"]) {
       const template = read("packages", "cli", "src", "templates", "_shared", file);
-      expect(template).toContain("npx hyperframes preview --background");
-      expect(template).toContain("npx hyperframes preview --status");
-      expect(template).toContain("npx hyperframes preview --stop");
+      expect(template).toContain("hyperframes preview --background");
+      expect(template).toContain("hyperframes preview --status");
+      expect(template).toContain("hyperframes preview --stop");
       expect(template).toContain("leaving refreshes at `ERR_CONNECTION_TIMED_OUT`");
       expect(template).not.toContain("run_in_background: true");
     }

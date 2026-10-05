@@ -1,21 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { localTtsGenerate } from "./tts-local-provider.mjs";
+import { cliInvocation, localTtsGenerate } from "./tts-local-provider.mjs";
 
-// Regression: on Windows, a bare "npx" is npx.cmd, which execFileSync cannot
-// exec — the Kokoro delegation failed with `spawnSync npx ENOENT` instead of
-// synthesizing (or cleanly falling through to the next provider). The spawn
-// must route through node + npx-cli.js on win32, same as the audio engine's
-// TTS spawns (see ../../audio/scripts/lib/tts.spawn.test.mjs).
+// The Kokoro delegation runs the CLI that spawned the engine (execPath + its own entry, handed
+// over in HYPERFRAMES_CLI_INVOCATION); PATH `hyperframes` is only the fallback. argv is data.
+const NO_ENV = {};
 
-const envWithNpxCli = {
-  npm_execpath: "C:/Program Files/nodejs/node_modules/npm/bin/npm-cli.js",
-  npm_node_execpath: "C:/Program Files/nodejs/node.exe",
-};
-const npxCliPath = "C:/Program Files/nodejs/node_modules/npm/bin/npx-cli.js";
-const pathExists = (path) => path === npxCliPath;
-
-test("win32: routes the hyperframes tts call through node + npx-cli, never bare npx", async () => {
+test("runs the handed-over CLI entry with the voice option and piped stdio", async () => {
   const captured = [];
   const fakeExec = (cmd, args, opts) => {
     captured.push({ cmd, args, opts });
@@ -23,50 +14,54 @@ test("win32: routes the hyperframes tts call through node + npx-cli, never bare 
     // missing-output check, which is fine: we only assert the spawn shape.
   };
 
-  await localTtsGenerate(
-    "hello there",
-    { voice: "am_michael" },
-    "win32",
-    fakeExec,
-    envWithNpxCli,
-    pathExists,
-  );
+  const env = { HYPERFRAMES_CLI_INVOCATION: JSON.stringify(["--import", "tsx", "/x/cli.ts"]) };
+  const result = await localTtsGenerate("hello there", { voice: "am_michael" }, fakeExec, env);
 
+  assert.equal(result, null);
   assert.equal(captured.length, 1);
-  assert.equal(captured[0].cmd, envWithNpxCli.npm_node_execpath);
-  assert.equal(captured[0].args[0], npxCliPath);
-  assert.deepEqual(captured[0].args.slice(1, 4), ["hyperframes", "tts", "hello there"]);
+  assert.equal(captured[0].cmd, process.execPath);
+  assert.deepEqual(captured[0].args.slice(0, 4), ["--import", "tsx", "/x/cli.ts", "tts"]);
+  assert.equal(captured[0].args[4], "hello there");
   assert.ok(captured[0].args.includes("--voice"));
-  // execFileSync options survive the rerouting (pipes are what let the caller
-  // read the "kokoro-onnx not installed" hint back out).
+  // Pipes are what let the caller read the "kokoro-onnx not installed" hint back out.
   assert.deepEqual(captured[0].opts.stdio, ["ignore", "pipe", "pipe"]);
 });
 
-test("win32 without a resolvable npx-cli: falls through to the next provider (null), no spawn", async () => {
-  const captured = [];
-  const fakeExec = (...call) => captured.push(call);
-
-  const result = await localTtsGenerate(
-    "hello",
-    {},
-    "win32",
-    fakeExec,
-    {}, // no npm_execpath, and pathExists finds nothing
-    () => false,
-  );
-
-  assert.equal(result, null);
-  assert.equal(captured.length, 0);
-});
-
-test("non-win32: spawns plain npx unchanged", async () => {
+test("adds --lang for non-English voices", async () => {
   const captured = [];
   const fakeExec = (cmd, args) => captured.push({ cmd, args });
 
-  await localTtsGenerate("hola", { lang: "es" }, "darwin", fakeExec, {}, () => false);
+  await localTtsGenerate("hola", { lang: "es" }, fakeExec, NO_ENV);
 
   assert.equal(captured.length, 1);
-  assert.equal(captured[0].cmd, "npx");
-  assert.deepEqual(captured[0].args.slice(0, 3), ["hyperframes", "tts", "hola"]);
+  assert.equal(captured[0].cmd, "hyperframes");
+  assert.deepEqual(captured[0].args.slice(0, 2), ["tts", "hola"]);
   assert.ok(captured[0].args.includes("--lang"));
+});
+
+test("falls back to `hyperframes` on PATH when no entry was handed over", async () => {
+  const captured = [];
+  const fakeExec = (cmd, args) => captured.push({ cmd, args });
+
+  await localTtsGenerate("hi", {}, fakeExec, NO_ENV);
+
+  assert.equal(captured[0].cmd, "hyperframes");
+  assert.equal(captured[0].args[0], "tts");
+});
+
+test("a malformed or empty hand-over is ignored", () => {
+  for (const value of ["not json", "[]", "[1]", '"x"', "null"]) {
+    assert.deepEqual(cliInvocation({ HYPERFRAMES_CLI_INVOCATION: value }), {
+      cmd: "hyperframes",
+      prefix: [],
+    });
+  }
+});
+
+test("a failing CLI falls through to the next provider (null)", async () => {
+  const fakeExec = () => {
+    throw Object.assign(new Error("spawnSync hyperframes ENOENT"), { code: "ENOENT" });
+  };
+
+  assert.equal(await localTtsGenerate("hello", {}, fakeExec, NO_ENV), null);
 });

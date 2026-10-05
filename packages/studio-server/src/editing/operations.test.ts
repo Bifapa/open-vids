@@ -1,14 +1,22 @@
 // @vitest-environment node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import type { RegistryItem } from "@hyperframes/core";
 import type { ApplyEditsRequest, EditOperation, TimelineClip } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { writeAssetRanges } from "./assetRanges.js";
+import { captionsFileFor } from "./captions.js";
 import { isEditFailure } from "./errors.js";
 import { stampFileHfIds } from "../helpers/hfIdPersist.js";
 import { applyEdits } from "./operations.js";
-import { FAKE_MEDIA, createTestProject, MAIN_HTML, type TestProject } from "./testProject.js";
+import { MediaFacts } from "./mediaFacts.js";
+import {
+  FAKE_MEDIA,
+  createTestProject,
+  fakeProber,
+  MAIN_HTML,
+  type TestProject,
+} from "./testProject.js";
 import { readTimeline } from "./service.js";
 
 const SKINS = join(import.meta.dirname, "../../../../skills/hyperframes-creative/frame-presets");
@@ -18,6 +26,37 @@ afterEach(() => {
   project?.cleanup();
   project = undefined;
 });
+
+// Linear work measures ~8x between scale 1 and scale 8, quadratic work ~64x. Only the ratio is
+// asserted: an absolute millisecond bound is a claim about the hardware. CPU time keeps time spent
+// descheduled on a shared runner out of the sample; Windows' CPU clock ticks at ~15 ms, so there
+// wall time is used instead.
+async function cpuTimed<T>(work: () => Promise<T>): Promise<{ value: T; ms: number }> {
+  const wall = performance.now();
+  const cpu = process.cpuUsage();
+  const value = await work();
+  const spent = process.cpuUsage(cpu);
+  const ms =
+    process.platform === "win32" ? performance.now() - wall : (spent.user + spent.system) / 1000;
+  return { value, ms };
+}
+
+async function expectLinearCost<T>(
+  sample: (scale: number) => Promise<{ value: T; ms: number }>,
+): Promise<{ small: { value: T; ms: number }; large: { value: T; ms: number } }> {
+  const best = async (scale: number) => {
+    let fastest = await sample(scale);
+    const again = await sample(scale);
+    if (again.ms < fastest.ms) fastest = again;
+    return fastest;
+  };
+  const small = await best(1);
+  const large = await best(8);
+  // Fixed per-batch work (project read, parse, write) dominates the small sample, so this only
+  // fails when cost grows faster than the clip count.
+  expect(large.ms / Math.max(small.ms, 1)).toBeLessThan(24);
+  return { small, large };
+}
 
 const BLOCK: RegistryItem = {
   type: "hyperframes:block",
@@ -424,28 +463,36 @@ describe("add_sequence", () => {
       delete FAKE_MEDIA["talk.mp4"];
     });
 
-    it("applies a 400-range cut in one pass, well under two seconds, and the timeline reads back", async () => {
-      withProject();
-      FAKE_MEDIA["talk.mp4"] = {
-        kind: "video",
-        durationSeconds: SOURCE_SECONDS,
-        width: 1920,
-        height: 1080,
-        hasAudio: true,
+    it("applies a 400-range cut in one pass, in time linear in the range count, and the timeline reads back", async () => {
+      const cutOnce = async (scale: number) => {
+        project?.cleanup();
+        withProject();
+        FAKE_MEDIA["talk.mp4"] = {
+          kind: "video",
+          durationSeconds: SOURCE_SECONDS,
+          width: 1920,
+          height: 1080,
+          hasAudio: true,
+        };
+        project?.write("assets/talk.mp4", "bytes of talk.mp4");
+        const ranges = Array.from({ length: 50 * scale }, (_, index) => ({
+          from: index * 3.5,
+          to: index * 3.5 + 3,
+        }));
+        const made = project;
+        if (!made) throw new Error("no project");
+        const sampled = await cpuTimed(() =>
+          apply([
+            { op: "add_sequence", asset: "assets/talk.mp4", track: 0, ranges, edgeFade: 0.02 },
+          ]),
+        );
+        // Read back here: the sample kept is the faster of two runs, and the next run replaces the project.
+        const reread = await readTimeline(made.project, "index.html", made.facts);
+        return { ...sampled, value: { ...sampled.value, reread } };
       };
-      project?.write("assets/talk.mp4", "bytes of talk.mp4");
-      const ranges = Array.from({ length: 400 }, (_, index) => ({
-        from: index * 3.5,
-        to: index * 3.5 + 3,
-      }));
+      const { large } = await expectLinearCost(cutOnce);
+      const { results, timeline } = large.value;
 
-      const started = performance.now();
-      const { results, timeline } = await apply([
-        { op: "add_sequence", asset: "assets/talk.mp4", track: 0, ranges, edgeFade: 0.02 },
-      ]);
-      const elapsed = performance.now() - started;
-
-      expect(elapsed).toBeLessThan(2000);
       expect(results[0]?.clipIds).toHaveLength(400);
       const clips = sortedByStart(timeline.clips, 0).filter(
         (clip) => clip.src === "assets/talk.mp4",
@@ -460,11 +507,8 @@ describe("add_sequence", () => {
       }
       expect(new Set(clips.map((clip) => clip.domId)).size).toBe(400);
       expect(timeline.composition.duration).toBeCloseTo(1200, 3);
-      // The written file parses back to the same timeline the response carried.
-      const made = project;
-      if (!made) throw new Error("no project");
-      const reread = await readTimeline(made.project, "index.html", made.facts);
-      expect(reread).toEqual(timeline);
+      // The written file parses back to the same timeline the response carried (read inside the run that made it).
+      expect(large.value.reread).toEqual(timeline);
     });
   });
 });
@@ -624,6 +668,45 @@ describe("add_component", () => {
       code: "unsupported",
     });
   });
+
+  it("leaves a component file the install kept (the user edited it) as the user wrote it", async () => {
+    const COMPONENT: RegistryItem = {
+      type: "hyperframes:component",
+      name: "panel",
+      title: "Panel",
+      description: "A panel",
+      dimensions: { width: 1920, height: 1080 },
+      duration: 4,
+      files: [
+        {
+          path: "panel.html",
+          target: "compositions/panel.html",
+          type: "hyperframes:composition",
+        },
+      ],
+    };
+    const panel = `<div id="panel-root" data-composition-id="panel" data-width="1920" data-height="1080" data-duration="4" style="background: #000;"><div class="clip" data-start="0" data-duration="4" data-track-index="0" style="background: rgb(10, 20, 30);">x</div></div>`;
+    let freshlyWritten = false;
+    const made = withProject({
+      adapter: {
+        listRegistryCatalog: async () => [COMPONENT],
+        installRegistryBlock: async () => ({
+          written: freshlyWritten ? ["compositions/panel.html"] : [],
+          block: COMPONENT,
+          primary: "compositions/panel.html",
+        }),
+      },
+    });
+    made.write("compositions/panel.html", panel);
+
+    await apply([{ op: "add_component", name: "panel", start: 0, track: 5 }]);
+    expect(made.read("compositions/panel.html")).toBe(panel);
+
+    freshlyWritten = true;
+    await apply([{ op: "add_component", name: "panel", start: 0, track: 6 }]);
+    expect(made.read("compositions/panel.html")).toContain("background: transparent;");
+    expect(made.read("compositions/panel.html")).not.toContain("rgb(10, 20, 30)");
+  });
 });
 
 describe("apply_captions", () => {
@@ -753,6 +836,76 @@ describe("apply_captions", () => {
     expect(existsSync(join(project?.project.dir ?? "", "compositions/captions.html"))).toBe(false);
   });
 
+  it("gives each composition its own captions file, so captioning a scene leaves the main captions and their lock alone", async () => {
+    withProject();
+    await apply([
+      { op: "apply_captions", preset: "coral", cues: [{ text: "Main cue", start: 0, end: 1 }] },
+    ]);
+    const lockedHtml = (project?.read("index.html") ?? "").replace(
+      'data-track-kind="captions"',
+      'data-track-kind="captions" data-timeline-locked',
+    );
+    project?.write("index.html", lockedHtml);
+    expect(
+      await refusal([
+        { op: "apply_captions", preset: "coral", cues: [{ text: "Locked out", start: 0, end: 1 }] },
+      ]),
+    ).toMatchObject({ code: "locked" });
+
+    const scene = await apply(
+      [{ op: "apply_captions", preset: "coral", cues: [{ text: "Scene cue", start: 0, end: 1 }] }],
+      { composition: "compositions/lower-third.html" },
+    );
+    const sceneFile = captionsFileFor("compositions/lower-third.html");
+    expect(scene.changedFiles).toEqual(["compositions/lower-third.html", sceneFile]);
+    expect(project?.read(sceneFile)).toContain("Scene cue");
+    expect(project?.read("compositions/captions.html")).toContain("Main cue");
+    expect(project?.read("compositions/captions.html")).not.toContain("Scene cue");
+    expect(project?.read("index.html")).toBe(lockedHtml);
+  });
+
+  it("re-captions a scene whose host still mounts the shared captions file, repointing it instead of adding a layer", async () => {
+    withProject();
+    const scene = { composition: "compositions/lower-third.html" };
+    await apply(
+      [{ op: "apply_captions", preset: "coral", cues: [{ text: "Old cue", start: 0, end: 1 }] }],
+      scene,
+    );
+    const ownFile = captionsFileFor(scene.composition);
+    // The state captions applied before every composition had its own file left behind.
+    const legacy = (project?.read(scene.composition) ?? "").replace(
+      `data-composition-src="${posix.basename(ownFile)}"`,
+      'data-composition-src="captions.html"',
+    );
+    expect(legacy).toContain('data-composition-src="captions.html"');
+    project?.write(scene.composition, legacy);
+    project?.write("compositions/captions.html", "<template>main captions</template>");
+
+    const second = await apply(
+      [{ op: "apply_captions", preset: "coral", cues: [{ text: "New cue", start: 0, end: 1 }] }],
+      scene,
+    );
+    const hosts = second.timeline.clips.filter((clip) => clip.compositionSrc !== null);
+    expect(hosts.map((clip) => clip.compositionSrc)).toEqual([ownFile]);
+    expect(project?.read(ownFile)).toContain("New cue");
+    expect(project?.read("compositions/captions.html")).toBe("<template>main captions</template>");
+
+    // A lock the user put on the old host is still honoured.
+    project?.write(
+      scene.composition,
+      (project?.read(scene.composition) ?? "").replace(
+        'data-track-kind="captions"',
+        'data-track-kind="captions" data-timeline-locked',
+      ),
+    );
+    expect(
+      await refusal(
+        [{ op: "apply_captions", preset: "coral", cues: [{ text: "x", start: 0, end: 1 }] }],
+        scene,
+      ),
+    ).toMatchObject({ code: "locked" });
+  });
+
   it("captions the content, not a stale declared length", async () => {
     withProject();
     const { results, timeline } = await apply([
@@ -838,35 +991,39 @@ describe("remove_clip with clips", () => {
     expect(clipOf(timeline.clips, third ?? "").start).toBe(0);
   });
 
-  it("replaces a 300-clip cut with a new one in one atomic batch, quickly", async () => {
-    withProject();
-    FAKE_MEDIA["talk.mp4"] = {
-      kind: "video",
-      durationSeconds: 1500,
-      width: 1920,
-      height: 1080,
-      hasAudio: true,
-    };
-    try {
+  it("replaces a cut with a new one in one atomic batch, in time linear in the clip count", async () => {
+    const cut = (count: number, step: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        from: index * step,
+        to: index * step + step - 0.5,
+      }));
+    const replaceCut = async (scale: number) => {
+      project?.cleanup();
+      withProject();
+      FAKE_MEDIA["talk.mp4"] = {
+        kind: "video",
+        durationSeconds: 1500,
+        width: 1920,
+        height: 1080,
+        hasAudio: true,
+      };
       project?.write("assets/talk.mp4", "bytes of talk.mp4");
-      const cut = (count: number, step: number) =>
-        Array.from({ length: count }, (_, index) => ({
-          from: index * step,
-          to: index * step + step - 0.5,
-        }));
       const first = await apply([
-        { op: "add_sequence", asset: "assets/talk.mp4", track: 0, ranges: cut(300, 4) },
+        { op: "add_sequence", asset: "assets/talk.mp4", track: 0, ranges: cut(40 * scale, 4) },
       ]);
       const previous = first.results[0]?.clipIds ?? [];
-      expect(previous).toHaveLength(300);
-
-      const started = performance.now();
-      const { results, timeline } = await apply([
-        { op: "remove_clip", clips: previous },
-        { op: "add_sequence", asset: "assets/talk.mp4", track: 0, ranges: cut(200, 5) },
-        { op: "set_composition", duration: 900 },
-      ]);
-      expect(performance.now() - started).toBeLessThan(2000);
+      expect(previous).toHaveLength(40 * scale);
+      return cpuTimed(() =>
+        apply([
+          { op: "remove_clip", clips: previous },
+          { op: "add_sequence", asset: "assets/talk.mp4", track: 0, ranges: cut(25 * scale, 5) },
+          { op: "set_composition", duration: 900 },
+        ]),
+      );
+    };
+    try {
+      const { large } = await expectLinearCost(replaceCut);
+      const { results, timeline } = large.value;
       const rebuilt = timeline.clips.filter((clip) => clip.src === "assets/talk.mp4");
       expect(rebuilt.map((clip) => clip.id)).toEqual(results[1]?.clipIds);
       expect(rebuilt).toHaveLength(200);
@@ -893,6 +1050,23 @@ describe("move_clip", () => {
     const { timeline } = await apply([{ op: "move_clip", clip: "title", start: 12 }]);
     expect(clipOf(timeline.clips, "title").start).toBe(12);
     expect(timeline.composition.duration).toBe(14);
+  });
+
+  it("leaves data-start alone when only the track changes, keeping reference and unresolved starts", async () => {
+    withProject({
+      html: `<div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="10">
+        <div id="first" data-hf-id="hf-first" class="clip" data-start="1" data-duration="2" data-track-index="0">a</div>
+        <div id="second" data-hf-id="hf-second" class="clip" data-start="first + 0.5" data-duration="1" data-track-index="0">b</div>
+        <div id="third" data-hf-id="hf-third" class="clip" data-start="ghost" data-duration="1" data-track-index="0">c</div>
+      </div>`,
+    });
+    await apply([
+      { op: "move_clip", clip: "second", track: 2 },
+      { op: "move_clip", clip: "third", track: 3 },
+    ]);
+    const html = project?.read("index.html") ?? "";
+    expect(html).toMatch(/id="second"[^>]*data-start="first \+ 0\.5"[^>]*data-track-index="2"/);
+    expect(html).toMatch(/id="third"[^>]*data-start="ghost"[^>]*data-track-index="3"/);
   });
 });
 
@@ -1129,6 +1303,21 @@ describe("set_canvas", () => {
   });
 });
 
+describe("composition length without a root data-duration", () => {
+  it("follows the content on the root and leaves a nested composition host at its own length", async () => {
+    const made = withProject({
+      html: `<div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="host" data-hf-id="hf-host" class="clip" data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="3" data-track-index="0"></div>
+      </div>`,
+    });
+    await apply([{ op: "add_clip", asset: "assets/a.mp4", start: 3, track: 1 }]);
+    const html = made.read("index.html");
+    const tagOf = (id: string) => html.match(new RegExp(`<div[^>]*id="${id}"[^>]*>`))?.[0] ?? "";
+    expect(tagOf("root")).toContain('data-duration="11"');
+    expect(tagOf("host")).toContain('data-duration="3"');
+  });
+});
+
 describe("batch validation against the project", () => {
   it("refuses an unknown clip with its index, and names the known clips", async () => {
     withProject();
@@ -1211,6 +1400,55 @@ describe("batch validation against the project", () => {
 });
 
 describe("atomicity", () => {
+  it("removes the registry files an add_component installed when a later operation is refused", async () => {
+    const made = withProject();
+    const dir = made.project.dir;
+    const before = readFileSync(join(dir, "index.html"), "utf-8");
+    const error = await refusal([
+      { op: "add_component", name: "sparkle", start: 0, track: 5 },
+      { op: "split_clip", clip: "intro", at: 99 },
+    ]);
+    expect(error).toMatchObject({ code: "out_of_bounds", opIndex: 1 });
+    expect(existsSync(join(dir, "compositions/sparkle.html"))).toBe(false);
+    expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(before);
+  });
+
+  it("removes an installed snippet the mount refused, and restores the config and install record", async () => {
+    const made = withProject({
+      adapter: {
+        installRegistryBlock: async () => {
+          made.write("hyperframes.json", '{"registryItems":["badge"]}');
+          made.write("hyperframes.lock.json", "{}");
+          made.write("compositions/components/badge.html", `<div class="badge">badge</div>`);
+          return {
+            written: ["compositions/components/badge.html"],
+            block: SNIPPET,
+            primary: "compositions/components/badge.html",
+          };
+        },
+      },
+    });
+    made.write("hyperframes.json", '{"registryItems":[]}');
+
+    const error = await refusal([{ op: "add_component", name: "badge", start: 0, track: 0 }]);
+    expect(error.code).toBe("unsupported");
+    expect(existsSync(join(made.project.dir, "compositions/components/badge.html"))).toBe(false);
+    // The folder the install made goes with its file: a refused batch leaves nothing behind.
+    expect(existsSync(join(made.project.dir, "compositions/components"))).toBe(false);
+    expect(made.read("hyperframes.json")).toBe('{"registryItems":[]}');
+    expect(existsSync(join(made.project.dir, "hyperframes.lock.json"))).toBe(false);
+  });
+
+  it("keeps a file that was already in the project when the install rewrote it and the batch is refused", async () => {
+    const made = withProject();
+    made.write("compositions/sparkle.html", "<p>from an earlier install</p>");
+    await refusal([
+      { op: "add_component", name: "sparkle", start: 0, track: 5 },
+      { op: "split_clip", clip: "intro", at: 99 },
+    ]);
+    expect(existsSync(join(made.project.dir, "compositions/sparkle.html"))).toBe(true);
+  });
+
   it("leaves every file byte-identical when a later operation fails", async () => {
     withProject();
     const dir = project?.project.dir ?? "";
@@ -1223,6 +1461,45 @@ describe("atomicity", () => {
     ]);
     expect(error).toMatchObject({ code: "out_of_bounds", opIndex: 3 });
     expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(before);
+    expect(existsSync(join(dir, "compositions/captions.html"))).toBe(false);
+  });
+
+  it("refuses without writing the captions file when the composition changed under the batch", async () => {
+    // A user save lands while the batch waits on the probe of the added clip.
+    const made = withProject();
+    const dir = made.project.dir;
+    const edited = `${made.read("index.html")}<!-- saved by the user -->\n`;
+    let saved = false;
+    const error = await (async () => {
+      try {
+        await applyEdits(
+          {
+            project: made.project,
+            compositionPath: "index.html",
+            adapter: made.adapter,
+            facts: new MediaFacts(async (path) => {
+              if (!saved) {
+                saved = true;
+                made.write("index.html", edited);
+              }
+              return fakeProber(path);
+            }),
+          },
+          {
+            operations: [
+              { op: "apply_captions", preset: "coral", cues: [{ text: "x", start: 0, end: 1 }] },
+              { op: "add_clip", asset: "assets/b.mp4", start: 10, track: 1 },
+            ],
+          },
+        );
+      } catch (caught) {
+        if (isEditFailure(caught)) return caught.error;
+        throw caught;
+      }
+      throw new Error("expected the batch to be refused");
+    })();
+    expect(error.code).toBe("conflict");
+    expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(edited);
     expect(existsSync(join(dir, "compositions/captions.html"))).toBe(false);
   });
 
@@ -1463,5 +1740,62 @@ describe("asset ranges", () => {
     const past = await refusal([{ op: "trim_clip", clip: "hf-music", end: 23 }]);
     expect(past).toMatchObject({ code: "out_of_bounds" });
     expect(past.message).toContain("The user picked 10–20s of assets/music.mp3 for use");
+  });
+});
+
+describe("add_clip — file names that are not URL-safe", () => {
+  const NAMES = ["a b#1.mp4", "what?.mp4", "100%.mp4", 'say "hi" (1).mp4'];
+
+  afterEach(() => {
+    for (const name of NAMES) delete FAKE_MEDIA[name];
+  });
+
+  it("writes a src that resolves back to the file on disk, for the clip and everything read from it", async () => {
+    for (const name of NAMES) {
+      FAKE_MEDIA[name] = { kind: "video", durationSeconds: 5, hasAudio: false };
+    }
+    withProject();
+    for (const name of NAMES) project?.write(`assets/${name}`, "bytes");
+
+    let track = 10;
+    for (const name of NAMES) {
+      track += 1;
+      const { results, timeline } = await apply([
+        { op: "add_clip", asset: `assets/${name}`, start: 0, track },
+      ]);
+      expect(clipOf(timeline.clips, results[0]?.clipId ?? "").src).toBe(`assets/${name}`);
+    }
+
+    const html = project?.read("index.html") ?? "";
+    const written = html.match(/src="(assets\/[^"]*)"/g)?.map((match) => match.slice(5, -1)) ?? [];
+    for (const name of NAMES) {
+      const encoded = written.find((src) => decodeURIComponent(src) === `assets/${name}`);
+      expect(encoded, name).toBeDefined();
+      expect(encoded).not.toMatch(/[ "#?'()]/);
+    }
+    // Read back from disk, the clips still find their files: the probed length comes from the file the src names.
+    if (!project) throw new Error("no project");
+    const reread = await readTimeline(project.project, "index.html", project.facts);
+    for (const name of NAMES) {
+      const clip = reread.clips.find((candidate) => candidate.src === `assets/${name}`);
+      expect(clip?.sourceDuration, name).toBe(5);
+    }
+  });
+
+  it("does not let a file name add attributes to the clip", async () => {
+    const name = 'x" onerror="alert(1)" y=".mp4';
+    FAKE_MEDIA[name] = { kind: "video", durationSeconds: 5, hasAudio: false };
+    try {
+      withProject();
+      project?.write(`assets/${name}`, "bytes");
+      const { results, timeline } = await apply([
+        { op: "add_clip", asset: `assets/${name}`, start: 0, track: 11 },
+      ]);
+      const html = project?.read("index.html") ?? "";
+      expect(html).not.toContain("onerror=");
+      expect(clipOf(timeline.clips, results[0]?.clipId ?? "").src).toBe(`assets/${name}`);
+    } finally {
+      delete FAKE_MEDIA[name];
+    }
   });
 });

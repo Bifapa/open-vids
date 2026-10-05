@@ -8,19 +8,19 @@ import {
   type ChatState,
   type ChatSummary,
   type EditorContext,
-  type MessageReference,
   type StoryAction,
   type StoryActionOptions,
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import { AgentApiError, isActiveTurn, type AgentClient } from "./agentClient";
 import { i18n, t } from "../i18n";
+import { createDraftSender } from "./agentDraftSend";
 import { createAgentAttachmentSlice, type AgentAttachmentSlice } from "./agentAttachmentSlice";
 import { attachmentReferences, isUploading } from "./composerAttachments";
 import { isChatEvent, isProjectEvent, parseJson, upsertChat } from "./agentStoreParsing";
 import { describeAgentError } from "./agentErrors";
 import { runningTurn } from "./agentSelectors";
-import { draftCreation, mergeDraftChoices } from "./agentDraftChat";
+import { NEW_CHAT_DRAFT, mergeDraftChoices } from "./agentDraftChat";
 import { createAgentComposerSlice, type AgentComposerSlice } from "./agentComposerSlice";
 import { createAgentQaSlice, type AgentQaSlice } from "./agentQaSlice";
 import { createAgentPermissionSlice, type AgentPermissionSlice } from "./agentPermissionSlice";
@@ -38,12 +38,11 @@ import {
   type StreamStatus,
 } from "./agentStream";
 import { storyTurnRequest } from "./storyTurn";
+import { unsentOf, type SentDraft } from "./sentDraft";
 
 export type AgentAvailability = "loading" | "ready" | "unavailable";
 /** `chat` with no `chatId` is the new-chat draft: the chat is created when its first message is sent. */
 export type AgentView = "history" | "chat";
-/** Where the draft's prompt is kept in `drafts` until the draft becomes a chat. */
-export const NEW_CHAT_DRAFT = "draft:new";
 export type PendingAction = "create" | "send" | "steer" | "abort" | null;
 
 /** A plain-language message the UI shows inline; dismissed by the user or the next action. */
@@ -143,10 +142,11 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       }));
     };
 
+    /**
+     * The runtime cannot be reached: the screen says so and offers Retry. The streams stay up on purpose — they
+     * reconnect on their own, and the project stream's reopen refreshes the list and brings the agent back.
+     */
     const markUnavailable = (error: unknown) => {
-      projectStream?.close();
-      projectStream = null;
-      closeChatStream();
       set({ availability: "unavailable", unavailableMessage: describeAgentError(error) });
     };
 
@@ -276,56 +276,16 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       }
     };
 
-    /** The draft's first message: the chat is created now, the turn started, then the chat opened. */
-    const sendFromDraft = async (
-      text: string,
-      references: MessageReference[],
-      options?: { mode?: ChatMode },
-    ) => {
-      set({ pending: "send", notice: null });
-      let created: ChatSummary | null = null;
-      let failure: unknown = null;
-      try {
-        const { create, update } = draftCreation(get().draftChoices);
-        created = await client.createChat(create);
-        // The chips' other choices land before the first turn, so it already runs with them.
-        if (update) created = await client.updateChat(created.id, update);
-        applySummary(created);
-        await client.startTurn(created.id, {
-          prompt: text,
-          ...(references.length > 0 && { references }),
-          editorContext: captureContext(),
-          userLanguage: i18n.language,
-          ...options,
-        });
-      } catch (error) {
-        failure = error;
-      }
-      const chatId = created?.id ?? null;
-      // Unsent text follows the draft into its chat, so it is still in the box there.
-      set((state) => ({
-        pending: null,
-        draftChoices: chatId ? {} : state.draftChoices,
-        drafts: chatId
-          ? { ...state.drafts, [NEW_CHAT_DRAFT]: "", [chatId]: failure === null ? "" : text }
-          : state.drafts,
-        // Unsent attachments follow the text.
-        attachments: chatId
-          ? {
-              ...state.attachments,
-              [NEW_CHAT_DRAFT]: [],
-              [chatId]: failure === null ? [] : (state.attachments[NEW_CHAT_DRAFT] ?? []),
-            }
-          : state.attachments,
-      }));
-      if (chatId && !disposed && get().view === "chat" && get().chatId === null) {
-        await get().openChat(chatId);
-      }
-      if (failure === null) return true;
-      if (chatId) await onActionError(failure, chatId);
-      else fail(failure);
-      return false;
-    };
+    const sendFromDraft = createDraftSender({
+      client,
+      set,
+      get,
+      isDisposed,
+      applySummary,
+      captureContext,
+      onActionError,
+      fail,
+    });
 
     return {
       ...createAgentSettingsSlice({
@@ -494,12 +454,15 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       async send(options) {
         const { chatId, chat, drafts, pending, view, attachments } = get();
         const draftKey = chatId ?? NEW_CHAT_DRAFT;
-        const text = (drafts[draftKey] ?? "").trim();
-        const attached = attachments[draftKey] ?? [];
+        const sent: SentDraft = {
+          text: drafts[draftKey] ?? "",
+          attachments: attachments[draftKey] ?? [],
+        };
+        const text = sent.text.trim();
         // The message waits for its uploads: a reference to a file that is not in the project yet is no reference.
-        if (!text || pending || isUploading(attached)) return false;
-        const references = attachmentReferences(attached);
-        if (!chatId) return view === "chat" ? sendFromDraft(text, references, options) : false;
+        if (!text || pending || isUploading(sent.attachments)) return false;
+        const references = attachmentReferences(sent.attachments);
+        if (!chatId) return view === "chat" ? sendFromDraft(sent, references, options) : false;
         if (!chat) return false;
         const running = runningTurn(chat);
         set({ pending: running ? "steer" : "send", notice: null });
@@ -521,10 +484,14 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
               userLanguage,
               ...options,
             });
-          set((state) => ({
-            drafts: { ...state.drafts, [chatId]: "" },
-            attachments: { ...state.attachments, [chatId]: [] },
-          }));
+          // The box stays editable while the server answers: only what went out is cleared.
+          set((state) => {
+            const left = unsentOf(state, chatId, sent);
+            return {
+              drafts: { ...state.drafts, [chatId]: left.text },
+              attachments: { ...state.attachments, [chatId]: left.attachments },
+            };
+          });
           // Server-authoritative: the turn arrives on the stream. If the stream is down, ask.
           if (get().streamStatus !== "open") await resync(chatId);
           return true;

@@ -62,7 +62,7 @@ import {
   type OmpCredentialKind,
 } from "./provider-status.ts";
 import { hostToolContent } from "./tool-content.ts";
-import { guardToolCallPaths } from "./path-guard.ts";
+import { projectContextFiles } from "./context-files.ts";
 import { projectBoundaryExtension } from "./tool-guard.ts";
 import { generateProjectTitleWithOmp } from "./title.ts";
 
@@ -146,6 +146,19 @@ function defaultEffort(setting: UserThinkingSetting): Exclude<ThinkingEffort, "o
   return effort && effort !== "off" ? effort : "high";
 }
 
+/** Settings of one isolated agent session; nothing is read from or written to the user's OMP config. */
+export function createSessionSettings(defaultThinkingLevel: Effort): Settings {
+  return Settings.isolated({
+    defaultThinkingLevel,
+    // A path-based edit form: `{path, old_string, new_string}`. The default hashline/apply_patch
+    // forms hide their target files inside free text, which the project-boundary guard cannot check.
+    "edit.mode": "replace",
+    // `read` fetches web and loopback URLs when this is on, which would bypass the Websites
+    // permission and the download prompt; research goes through the runtime's own host tools.
+    "fetch.enabled": false,
+  });
+}
+
 function sameOmpModel(left: OmpModel | undefined, right: OmpModel | undefined): boolean {
   return (
     left !== undefined &&
@@ -192,29 +205,6 @@ function catalogSources(models: readonly OmpModel[]): ModelCatalogSource[] {
       : {}),
     supportedEfforts: getSupportedEfforts(model),
   }));
-}
-
-async function projectContextFiles(
-  projectDir: string,
-): Promise<Array<{ path: string; content: string }>> {
-  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
-    const filePath = path.join(projectDir, name);
-    if (await guardToolCallPaths(projectDir, { path: filePath })) continue;
-    try {
-      const content = await readFile(filePath, "utf8");
-      return [{ path: filePath, content }];
-    } catch (error) {
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        error.code === "ENOENT"
-      ) {
-        continue;
-      }
-    }
-  }
-  return [];
 }
 
 function chooseBackendModel(
@@ -963,12 +953,7 @@ class OmpBackend implements AgentBackend {
       // cannot read); the session's own pinned mode must win.
       delete process.env.PI_EDIT_VARIANT;
       delete process.env.PI_STRICT_EDIT_MODE;
-      const sessionSettings = Settings.isolated({
-        defaultThinkingLevel: initialThinking,
-        // A path-based edit form: `{path, old_string, new_string}`. The default hashline/apply_patch
-        // forms hide their target files inside free text, which the project-boundary guard cannot check.
-        "edit.mode": "replace",
-      });
+      const sessionSettings = createSessionSettings(initialThinking);
       const hostToolMap = new Map(input.hostTools.map((tool) => [tool.name, tool]));
       // Host tools are created before the adapter exists; their progress reaches it once it does.
       let progressTarget: OmpBackendSession | null = null;

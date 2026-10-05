@@ -12,7 +12,8 @@ import {
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import type { AgentClient } from "./agentClient";
-import type { DraftChoices } from "./agentDraftChat";
+import { projectAttachment } from "./composerAttachments";
+import { NEW_CHAT_DRAFT, type DraftChoices } from "./agentDraftChat";
 import { i18n, t } from "../i18n";
 import { describeAgentError } from "./agentErrors";
 import { findModel, runningTurn } from "./agentSelectors";
@@ -39,7 +40,16 @@ export interface AgentComposerSlice {
    * A project started from the Projects page chat: a new chat with the intake's model, thinking, agents and
    * intent, opened, and its first turn started with the prompt and the imported files as references.
    */
-  startFromIntake(intake: AgentIntake): Promise<ActionResult>;
+  startFromIntake(intake: AgentIntake, resume?: IntakeResume): Promise<ActionResult>;
+}
+
+/**
+ * A retry of an intake whose first start was cut short: `chatId` is the chat that start already made, reused instead
+ * of making another; `onChatCreated` hands out the id of a chat this start makes, for a retry that might follow.
+ */
+export interface IntakeResume {
+  chatId?: string;
+  onChatCreated?: (chatId: string) => void;
 }
 
 export interface AgentComposerSliceDeps {
@@ -77,6 +87,45 @@ export function intakeTurnRequest(intake: AgentIntake): StartTurnRequest | null 
     intent: intake.intent,
     mode: "normal",
     ...(intake.format === "auto" && { canvas: "auto" }),
+  };
+}
+
+/**
+ * The state that puts an intake back in a composer box: the prompt in front of whatever the box holds by now, the
+ * files (already in the project) as chips, and — in the new-chat draft — the intake's model, thinking, agents and
+ * intent as the chips' choices, with the user's own picks since staying on top.
+ */
+function putBackIntake(
+  state: Pick<AgentState, "drafts" | "attachments" | "draftChoices">,
+  intake: AgentIntake,
+  chatId: string | null,
+): Pick<AgentState, "drafts" | "attachments" | "draftChoices"> {
+  const key = chatId ?? NEW_CHAT_DRAFT;
+  const files = intake.files
+    .slice(0, LIMITS.references)
+    .map((file) => projectAttachment({ path: file.path, sizeBytes: file.size }));
+  return {
+    drafts: {
+      ...state.drafts,
+      [key]: [intake.prompt, state.drafts[key] ?? ""]
+        .filter((text) => text.trim() !== "")
+        .join("\n\n"),
+    },
+    attachments: {
+      ...state.attachments,
+      [key]: [...files, ...(state.attachments[key] ?? [])].slice(0, LIMITS.references),
+    },
+    draftChoices:
+      chatId === null
+        ? {
+            model: intake.model,
+            thinking: intake.thinking,
+            enabledAgents: intake.agents,
+            intent: intake.intent,
+            ...(intake.agentOverrides && { agentOverrides: intake.agentOverrides }),
+            ...state.draftChoices,
+          }
+        : state.draftChoices,
   };
 }
 
@@ -139,34 +188,42 @@ export function createAgentComposerSlice({
       }
     },
 
-    async startFromIntake(intake) {
+    async startFromIntake(intake, resume = {}) {
       set({ pending: "create", notice: null });
-      let chatId: string | null = null;
+      let chatId: string | null = resume.chatId ?? null;
       try {
-        const created = await client.createChat({ model: intake.model, thinking: intake.thinking });
-        chatId = created.id;
-        await client.updateChat(created.id, {
+        if (chatId === null) {
+          const created = await client.createChat({
+            model: intake.model,
+            thinking: intake.thinking,
+          });
+          chatId = created.id;
+          resume.onChatCreated?.(created.id);
+        }
+        await client.updateChat(chatId, {
           enabledAgents: intake.agents,
           intent: intake.intent,
           ...(intake.agentOverrides && { agentOverrides: intake.agentOverrides }),
         });
         if (isDisposed()) return { ok: false, message: t("agent.chat.projectClosed") };
-        await get().openChat(created.id);
+        await get().openChat(chatId);
         const request = intakeTurnRequest(intake);
         if (!request) return { ok: true };
         set({ pending: "send" });
-        await client.startTurn(created.id, { ...request, userLanguage: i18n.language });
+        await client.startTurn(chatId, { ...request, userLanguage: i18n.language });
         // The turn arrives on the stream; a stream that is not up yet catches up from the snapshot.
-        if (!isDisposed() && get().streamStatus !== "open") await get().openChat(created.id);
+        if (!isDisposed() && get().streamStatus !== "open") await get().openChat(chatId);
         return { ok: true };
       } catch (error) {
         const message = describeAgentError(error);
         if (isDisposed()) return { ok: false, message };
-        // Nothing is lost: the prompt waits in the box of the chat that was made, if any.
+        // Nothing is lost: the prompt and files wait in the box of the chat that was made, or else in the new-chat
+        // draft (the intake is already gone from the server, so this is the only copy left).
+        set((state) => putBackIntake(state, intake, chatId));
         if (chatId) {
-          const id = chatId;
-          set((state) => ({ drafts: { ...state.drafts, [id]: intake.prompt } }));
-          if (get().chatId !== id) await get().openChat(id);
+          if (get().chatId !== chatId) await get().openChat(chatId);
+        } else if (get().chatId === null) {
+          set({ view: "chat" });
         }
         set({ notice: { message } });
         return { ok: false, message };

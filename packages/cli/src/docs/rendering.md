@@ -1,6 +1,6 @@
 # Rendering
 
-Render compositions to MP4 with `npx hyperframes render`.
+Render compositions to MP4 with `hyperframes render`.
 
 Renders locally with Puppeteer (bundled Chromium) + system FFmpeg.
 Requires: FFmpeg installed (`brew install ffmpeg` or `apt install ffmpeg`).
@@ -24,5 +24,5 @@ Requires: FFmpeg installed (`brew install ffmpeg` or `apt install ffmpeg`).
 - Local renders auto-detect GPU on first launch; use `--browser-gpu` to force hardware (errors if no GPU) or `--no-browser-gpu` to force SwiftShader
 - Use `--gpu` when a local render also benefits from hardware FFmpeg encoding
 - Use `--video-frame-format png` when source videos contain saturated UI colors that should avoid JPEG extraction
-- Use `npx hyperframes benchmark` to find optimal settings
+- Use `hyperframes benchmark` to find optimal settings
 - 4 workers is usually the sweet spot for most compositions

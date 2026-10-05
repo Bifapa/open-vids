@@ -19,7 +19,8 @@ import {
   extractResolvedMedia,
   clampDurations,
   shouldClampResolvedMediaDuration,
-  CSS_URL_RE,
+  ASSET_PATH_SELECTOR,
+  replaceCssUrls,
   isNonRelativeUrl,
   parseStrictFiniteTimingNumber,
   readMediaStart,
@@ -68,6 +69,7 @@ import {
 } from "@hyperframes/engine";
 import {
   downloadToTemp,
+  fetchPublicHttpsBytes,
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,
@@ -85,6 +87,15 @@ import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { scrubErrorMessage } from "../utils/errorScrub.js";
 import { assertAssetMediaTypeProfile } from "./assetMediaType.js";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
+
+declare global {
+  interface Window {
+    /** Absolute start the preview transport plays a media element at (core runtime). */
+    __hfResolveMediaStartSeconds?: (element: Element) => number;
+    /** Positions the root and every sub-composition timeline at a root time (core runtime). */
+    __hfSeekTimelines?: (timeSeconds: number, options?: { suppressEvents?: boolean }) => void;
+  }
+}
 
 function logRemoteDownloadDiagnostics(event: UrlDownloadDiagnostics): void {
   defaultLogger.info("[Compiler] Remote asset download integrity", { ...event });
@@ -1171,6 +1182,8 @@ function injectTextRenderingRule(html: string): string {
 
 class ScriptIntegrityError extends Error {}
 
+const MAX_EXTERNAL_SCRIPT_BYTES = 10 * 1024 * 1024;
+
 /** Match SRI's strongest supported digest before decoding or rewriting script bytes. */
 function matchesScriptIntegrity(bytes: Uint8Array, metadata: string): boolean {
   const hashes = [
@@ -1212,11 +1225,16 @@ export async function inlineExternalScripts(html: string): Promise<string> {
 
   const downloads = await Promise.allSettled(
     externalScripts.map(async ({ el, src }) => {
-      const response = await fetch(src, {
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      // Same policy as every other remote asset: public HTTPS hosts only, every
+      // redirect hop revalidated, bounded body. A bare fetch would inline a
+      // loopback/private response into the compiled page, where script can read
+      // it and draw it into the video.
+      const bytes = new Uint8Array(
+        await fetchPublicHttpsBytes(src, {
+          maxBytes: MAX_EXTERNAL_SCRIPT_BYTES,
+          timeoutMs: 15_000,
+        }),
+      );
       if (!matchesScriptIntegrity(bytes, el.getAttribute("integrity") || "")) {
         throw new ScriptIntegrityError(`Subresource integrity mismatch for ${src}`);
       }
@@ -1301,11 +1319,7 @@ export function collectExternalAssets(
   for (const styleEl of document.querySelectorAll("style")) {
     const css = styleEl.textContent || "";
     if (!css.includes("url(")) continue;
-    const rewritten = css.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
-      const result = processPath((rawUrl || "").trim());
-      if (!result) return full;
-      return `url(${quote || ""}${result}${quote || ""})`;
-    });
+    const rewritten = replaceCssUrls(css, processPath);
     if (rewritten !== css) styleEl.textContent = rewritten;
   }
 
@@ -1313,11 +1327,7 @@ export function collectExternalAssets(
   for (const el of document.querySelectorAll("[style]")) {
     const style = el.getAttribute("style") || "";
     if (!style.includes("url(")) continue;
-    const rewritten = style.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
-      const result = processPath((rawUrl || "").trim());
-      if (!result) return full;
-      return `url(${quote || ""}${result}${quote || ""})`;
-    });
+    const rewritten = replaceCssUrls(style, processPath);
     if (rewritten !== style) el.setAttribute("style", rewritten);
   }
 
@@ -1612,10 +1622,39 @@ function extractFontFaceBlocks(css: string): string[] {
 }
 
 /**
+ * Rewrite every relative `url(...)` and string `@import` in `css` to an absolute
+ * URL against `baseUrl`. Absolute, `data:` and fragment-only references are left
+ * alone. URLs are re-emitted double-quoted, the form the font localizer matches.
+ */
+function rebaseStylesheetUrls(css: string, baseUrl: string): string {
+  const rebase = (ref: string): string | null => {
+    const trimmed = ref.trim();
+    if (!trimmed || trimmed.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+      return null;
+    }
+    try {
+      return new URL(trimmed, baseUrl).href;
+    } catch {
+      return null;
+    }
+  };
+  return css
+    .replace(/url\(\s*(["']?)([^"')]*?)\1\s*\)/gi, (whole, _quote: string, ref: string) => {
+      const absolute = rebase(ref);
+      return absolute === null ? whole : `url("${absolute}")`;
+    })
+    .replace(/@import\s+(["'])([^"']+)\1/gi, (whole, _quote: string, ref: string) => {
+      const absolute = rebase(ref);
+      return absolute === null ? whole : `@import "${absolute}"`;
+    });
+}
+
+/**
  * Find all external `<link rel="stylesheet">` tags pointing to non-Google
  * CDNs, fetch their CSS, and replace the `<link>` with an inline `<style>`
- * containing only the `@font-face` rules. This allows Phase 2 (the existing
- * inline scan) to pick up and localise the font file URLs.
+ * holding the full sheet (relative URLs rebased onto the stylesheet's URL).
+ * Inlining lets Phase 2 (the existing inline scan) pick up and localise the
+ * font file URLs inside its `@font-face` blocks.
  *
  * Google Fonts links are excluded because the deterministic font injector
  * handles those. If a fetch fails or the CSS has no `@font-face` blocks,
@@ -1658,8 +1697,16 @@ async function inlineExternalFontStylesheets(html: string): Promise<string> {
     const fontFaceBlocks = extractFontFaceBlocks(css);
     if (fontFaceBlocks.length === 0) continue;
     const identity = safeDownloadUrlIdentity(href);
-    const inlineStyle = `<style>/* Inlined external font stylesheet */\n${fontFaceBlocks.join("\n")}\n</style>`;
-    result = result.replace(fullMatch, inlineStyle);
+    // The whole sheet is inlined (the <link> it replaces carried every rule, not
+    // just the fonts), with its relative URLs rebased onto the stylesheet's own
+    // URL — they would otherwise resolve against the render file server and 404.
+    // `</style` is escaped so sheet text can never close the element early.
+    const media = /\bmedia=(["'])([^"']*)\1/i.exec(fullMatch)?.[2];
+    const mediaAttr = media ? ` media="${media}"` : "";
+    const sheet = rebaseStylesheetUrls(css, href).replace(/<\/style/gi, "<\\/style");
+    const inlineStyle = `<style${mediaAttr}>/* Inlined external stylesheet */\n${sheet}\n</style>`;
+    // A function replacer: CSS may contain `$` sequences a string replacement would expand.
+    result = result.replace(fullMatch, () => inlineStyle);
     defaultLogger.info("[Compiler] Inlined external @font-face rule(s)", {
       count: fontFaceBlocks.length,
       urlFingerprint: identity.urlFingerprint,
@@ -1914,7 +1961,7 @@ function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath:
   const { document } = parseHTML(html);
   const assetExists = (path: string) => existsSync(resolve(projectDir, path));
   rewriteAssetPaths(
-    document.querySelectorAll("[src], [href]"),
+    document.querySelectorAll(ASSET_PATH_SELECTOR),
     entryPath,
     (el: Element, attr: string) => el.getAttribute(attr),
     (el: Element, attr: string, value: string) => el.setAttribute(attr, value),
@@ -2326,6 +2373,8 @@ export async function discoverAudioVolumeAutomationFromTimeline(
 
   const sampleStep = 1 / Math.min(60, Math.max(1, sampleFps));
   const rawWindows = await page.evaluate((ids: string[]) => {
+    const finiteOrNull = (value: number | undefined): number | null =>
+      typeof value === "number" && Number.isFinite(value) ? value : null;
     return ids.flatMap((id) => {
       const el =
         window.__hfMediaEl?.(id) ??
@@ -2335,6 +2384,7 @@ export async function discoverAudioVolumeAutomationFromTimeline(
       return [
         {
           id,
+          resolvedStart: finiteOrNull(window.__hfResolveMediaStartSeconds?.(el)),
           startRaw: el.dataset.start ?? null,
           endRaw: el.dataset.end ?? null,
           durationRaw: el.dataset.duration ?? null,
@@ -2342,8 +2392,12 @@ export async function discoverAudioVolumeAutomationFromTimeline(
       ];
     });
   }, audioIds);
-  const clips = rawWindows.map(({ id, startRaw, endRaw, durationRaw }) => {
-    const start = parseStrictFiniteTimingNumber(startRaw) ?? 0;
+  const clips = rawWindows.map(({ id, resolvedStart, startRaw, endRaw, durationRaw }) => {
+    // The absolute start the transport plays the clip at — the samples below are
+    // root-timeline seek times and the mixer rebases the envelope by the
+    // track's absolute start. `data-start` alone is composition-local for
+    // media inside a sub-composition (and a clip reference for relative starts).
+    const start = resolvedStart ?? parseStrictFiniteTimingNumber(startRaw) ?? 0;
     const authoredDuration = parseStrictFiniteTimingNumber(durationRaw);
     const authoredEnd = parseStrictFiniteTimingNumber(endRaw);
     const end =
@@ -2393,29 +2447,40 @@ export async function discoverAudioVolumeAutomationFromTimeline(
           nativeVolumeSet.call(el, Math.max(0, Math.min(1, authored)));
         }
       };
-      const timelines = (window as unknown as { __timelines?: Record<string, unknown> })
-        .__timelines;
-      if (!timelines) return results;
+      // The runtime's own timeline seek positions the root AND every
+      // sub-composition timeline (nested ones included) at their resolved local
+      // time, exactly as a frame seek does — a tween inside a sub-composition's
+      // timeline is invisible to a bare root seek. A page without the runtime
+      // falls back to seeking the root timeline alone.
+      const runtimeSeek = window.__hfSeekTimelines;
+      let seekTl: (t: number) => void;
+      if (typeof runtimeSeek === "function") {
+        seekTl = (t: number) => runtimeSeek(t, { suppressEvents: true });
+      } else {
+        const timelines = (window as unknown as { __timelines?: Record<string, unknown> })
+          .__timelines;
+        if (!timelines) return results;
 
-      const rootEl = document.querySelector("[data-composition-id]");
-      const compId = rootEl?.getAttribute("data-composition-id");
-      if (!compId) return results;
+        const rootEl = document.querySelector("[data-composition-id]");
+        const compId = rootEl?.getAttribute("data-composition-id");
+        if (!compId) return results;
 
-      const tl = timelines[compId] as
-        | {
-            totalTime?: (t: number, suppressEvents?: boolean) => unknown;
-            seek?: (t: number, suppressEvents?: boolean) => unknown;
+        const tl = timelines[compId] as
+          | {
+              totalTime?: (t: number, suppressEvents?: boolean) => unknown;
+              seek?: (t: number, suppressEvents?: boolean) => unknown;
+            }
+          | undefined;
+        if (!tl) return results;
+
+        seekTl = (t: number) => {
+          if (typeof tl.totalTime === "function") {
+            tl.totalTime(t, true);
+          } else if (typeof tl.seek === "function") {
+            tl.seek(t, true);
           }
-        | undefined;
-      if (!tl) return results;
-
-      const seekTl = (t: number) => {
-        if (typeof tl.totalTime === "function") {
-          tl.totalTime(t, true);
-        } else if (typeof tl.seek === "function") {
-          tl.seek(t, true);
-        }
-      };
+        };
+      }
 
       for (const { id, start, end } of clips) {
         const el =

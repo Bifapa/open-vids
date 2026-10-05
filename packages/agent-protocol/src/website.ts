@@ -239,6 +239,12 @@ export interface ReadWebsiteRequest {
   save?: boolean;
   /** Set by the runtime: makes a `save` request cancellable (`POST …/research/requests/:requestId/cancel`). */
   requestId?: string;
+  /**
+   * The registrable domains of the websites the user linked (set by the runtime, never the model). When present, the
+   * server refuses a request whose address, or any redirect hop or final address, is outside them, before anything
+   * is fetched further or written. Absent: no site scope is enforced here (the runtime's own checks still apply).
+   */
+  allowedSites?: string[];
   /** Set by the runtime, never the model. */
   turnId?: string;
   agent?: AgentId | "user";
@@ -290,6 +296,12 @@ export interface WebsiteFileRequest {
   /** The linked page the file was found on (recorded as the provenance page). */
   pageUrl?: string;
   requestId?: string;
+  /**
+   * The registrable domains of the websites the user linked (set by the runtime, never the model). When present, the
+   * server refuses a request whose address, or any redirect hop or final address, is outside them, before anything
+   * is fetched further or written. Absent: no site scope is enforced here (the runtime's own checks still apply).
+   */
+  allowedSites?: string[];
   /** Set by the runtime, never the model. */
   turnId?: string;
   agent?: AgentId | "user";
@@ -323,6 +335,12 @@ export interface RecordWebsiteRequest {
   width?: number;
   height?: number;
   requestId?: string;
+  /**
+   * The registrable domains of the websites the user linked (set by the runtime, never the model). When present, the
+   * server refuses a request whose address, or any redirect hop or final address, is outside them, before anything
+   * is fetched further or written. Absent: no site scope is enforced here (the runtime's own checks still apply).
+   */
+  allowedSites?: string[];
   turnId?: string;
   agent?: AgentId | "user";
   model?: string | null;
@@ -364,6 +382,22 @@ export interface WebsiteGrant {
   access: WebsiteGrantAccess;
   grantedAt: number;
   expiresAt: number;
+}
+
+/** Most sites one request may name. */
+export const MAX_ALLOWED_SITES = 50;
+
+/** Whether an http(s) URL belongs to one of `sites` (registrable domains): the domain itself or any sub-domain. */
+export function urlInAllowedSites(url: string, sites: readonly string[]): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  return sites.some((site) => host === site || host.endsWith(`.${site}`));
 }
 
 export function isWebsiteGrant(value: unknown): value is WebsiteGrant {

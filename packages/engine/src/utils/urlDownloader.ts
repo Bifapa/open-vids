@@ -528,11 +528,14 @@ async function fetchWithValidatedRedirects(
   }
 }
 
-/** Fetch bounded UTF-8 text while applying the downloader's redirect and SSRF policy to every hop. */
-export async function fetchPublicHttpsText(
+/**
+ * Fetch bounded response bytes while applying the downloader's redirect and SSRF policy to every
+ * hop. Callers that must verify the exact bytes (subresource integrity) use this directly.
+ */
+export async function fetchPublicHttpsBytes(
   url: string,
   options: PublicHttpsTextOptions,
-): Promise<string> {
+): Promise<Buffer> {
   const timeoutMs = options.timeoutMs ?? 15_000;
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
     throw new RangeError("maxBytes must be a positive safe integer");
@@ -561,7 +564,7 @@ export async function fetchPublicHttpsText(
       await cancelResponseBody(response);
       throw classifyHttpFailure(response.status);
     }
-    if (!response.body) return "";
+    if (!response.body) return Buffer.alloc(0);
 
     let declaredLength: number | undefined;
     try {
@@ -611,7 +614,7 @@ export async function fetchPublicHttpsText(
         { expectedBytes, receivedBytes },
       );
     }
-    return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
   } catch (error) {
     if (callerAborted) {
       throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
@@ -625,6 +628,14 @@ export async function fetchPublicHttpsText(
     options.signal?.removeEventListener("abort", onCallerAbort);
     controller.abort();
   }
+}
+
+/** Fetch bounded UTF-8 text while applying the downloader's redirect and SSRF policy to every hop. */
+export async function fetchPublicHttpsText(
+  url: string,
+  options: PublicHttpsTextOptions,
+): Promise<string> {
+  return new TextDecoder().decode(await fetchPublicHttpsBytes(url, options));
 }
 
 interface PartialIntegrity {

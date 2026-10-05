@@ -4,14 +4,22 @@
 //! last_opened, thumb, width, height}` entries, most-recent first,
 //! deduplicated by canonical path. The home page renders it; every
 //! successful project open records into it.
+//!
+//! `id` is the Studio project id, i.e. the folder name, so two projects in
+//! different parents can share it. The Projects page therefore addresses a
+//! recent by [`RecentEntry::key`], a stable hash of its full directory path;
+//! the key is derived, never stored, so older `recents.json` files load as-is.
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use sha2::{Digest, Sha256};
+
 /// One project on the home screen.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct RecentEntry {
-    /// Studio project id: the folder name.
+    /// Studio project id: the folder name. Not unique across recents; address
+    /// a recent by [`RecentEntry::key`].
     pub id: String,
     /// Absolute project directory.
     pub dir: PathBuf,
@@ -25,6 +33,15 @@ pub struct RecentEntry {
     pub width: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<u32>,
+}
+
+impl RecentEntry {
+    /// The handle the Projects page uses for this recent: 16 hex chars of the
+    /// SHA-256 of the directory path, unique per folder (on Windows the hash
+    /// ignores case and separator style, matching [`same_dir`]).
+    pub fn key(&self) -> String {
+        dir_key(&self.dir)
+    }
 }
 
 /// The persisted list. All mutations keep it deduped (by canonical path)
@@ -53,8 +70,12 @@ impl RecentsStore {
         &self.entries
     }
 
-    pub fn find_by_id(&self, id: &str) -> Option<&RecentEntry> {
-        self.entries.iter().find(|e| e.id == id)
+    pub fn find_by_key(&self, key: &str) -> Option<&RecentEntry> {
+        self.entries.iter().find(|e| e.key() == key)
+    }
+
+    pub fn find_by_dir(&self, dir: &Path) -> Option<&RecentEntry> {
+        self.entries.iter().find(|e| same_dir(&e.dir, dir))
     }
 
     fn save(&self) {
@@ -125,12 +146,20 @@ impl RecentsStore {
         }
     }
 
-    /// Returns false when `new_id` is already used by another entry.
-    pub fn rename(&mut self, id: &str, new_id: &str, new_dir: &Path) -> bool {
-        if self.entries.iter().any(|e| e.id == new_id) {
+    /// Whether another entry (not `key`) already lives at `new_dir`. A rename
+    /// that would collide must be refused before anything moves on disk.
+    pub fn rename_collides(&self, key: &str, new_dir: &Path) -> bool {
+        self.entries
+            .iter()
+            .any(|e| e.key() != key && same_dir(&e.dir, new_dir))
+    }
+
+    /// Returns false when another entry already lives at `new_dir` or `key` is unknown.
+    pub fn rename(&mut self, key: &str, new_id: &str, new_dir: &Path) -> bool {
+        if self.rename_collides(key, new_dir) {
             return false;
         }
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.key() == key) {
             entry.id = new_id.to_string();
             entry.dir = new_dir.to_path_buf();
             entry.last_opened = now_secs();
@@ -142,10 +171,10 @@ impl RecentsStore {
         false
     }
 
-    /// Drop an entry by id. Returns false when absent.
-    pub fn remove(&mut self, id: &str) -> bool {
+    /// Drop an entry by key. Returns false when absent.
+    pub fn remove(&mut self, key: &str) -> bool {
         let before = self.entries.len();
-        self.entries.retain(|e| e.id != id);
+        self.entries.retain(|e| e.key() != key);
         if self.entries.len() != before {
             self.save();
             return true;
@@ -153,10 +182,10 @@ impl RecentsStore {
         false
     }
 
-    /// Drop an entry by id and hand it back with its position, so the caller
+    /// Drop an entry by key and hand it back with its position, so the caller
     /// can offer Undo (`restore`).
-    pub fn take(&mut self, id: &str) -> Option<(usize, RecentEntry)> {
-        let index = self.entries.iter().position(|e| e.id == id)?;
+    pub fn take(&mut self, key: &str) -> Option<(usize, RecentEntry)> {
+        let index = self.entries.iter().position(|e| e.key() == key)?;
         let entry = self.entries.remove(index);
         self.save();
         Some((index, entry))
@@ -175,16 +204,15 @@ impl RecentsStore {
     }
 
     /// Point a (missing) entry at the folder the user located. Any other entry
-    /// for that folder is merged into it. Returns false when `id` is unknown.
-    pub fn relink(&mut self, id: &str, new_id: &str, new_dir: &Path) -> bool {
-        let key = canonical_key(new_dir);
-        let Some(index) = self.entries.iter().position(|e| e.id == id) else {
+    /// for that folder is merged into it. Returns false when `key` is unknown.
+    pub fn relink(&mut self, key: &str, new_id: &str, new_dir: &Path) -> bool {
+        let Some(index) = self.entries.iter().position(|e| e.key() == key) else {
             return false;
         };
         let mut entry = self.entries.remove(index);
         self.entries.retain(|e| !same_dir(&e.dir, new_dir));
         entry.id = new_id.to_string();
-        entry.dir = key;
+        entry.dir = canonical_key(new_dir);
         let at = index.min(self.entries.len());
         self.entries.insert(at, entry);
         self.save();
@@ -201,6 +229,16 @@ fn now_secs() -> u64 {
 
 fn canonical_key(dir: &Path) -> PathBuf {
     super::platform::canonical_stable(dir)
+}
+
+/// Hash of a directory path for [`RecentEntry::key`]. Windows paths are folded
+/// the way `same_path` compares them so one folder never gets two keys.
+fn dir_key(dir: &Path) -> String {
+    let text = dir.as_os_str().to_string_lossy();
+    #[cfg(windows)]
+    let text = text.replace('/', "\\").to_lowercase();
+    let digest = Sha256::digest(text.as_bytes());
+    digest[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn key_as_path(dir: &Path) -> PathBuf {
@@ -280,11 +318,56 @@ mod tests {
         let b = proj(&base, "b");
         store.record("a", &a, None, None);
         store.record("b", &b, None, None);
-        assert!(!store.rename("a", "b", &b));
+        let key_a = store.find_by_dir(&a).unwrap().key();
+        assert!(!store.rename(&key_a, "b", &b));
         let new_dir = base.join("c");
-        assert!(store.rename("a", "c", &new_dir));
-        assert!(store.find_by_id("c").is_some());
-        assert!(store.find_by_id("a").is_none());
+        assert!(store.rename(&key_a, "c", &new_dir));
+        assert!(store.find_by_dir(&new_dir).is_some_and(|e| e.id == "c"));
+        assert!(store.find_by_key(&key_a).is_none());
+    }
+
+    #[test]
+    fn same_folder_name_in_different_parents_gets_different_keys_and_actions_hit_the_right_one() {
+        let base = tmp("same-name");
+        let store_path = base.join("recents.json");
+        let mut store = RecentsStore::load(&store_path);
+        let older = proj(&base.join("movies"), "demo");
+        let newer = proj(&base.join("desktop"), "demo");
+        store.record("demo", &older, None, None);
+        store.entries[0].last_opened = 10;
+        store.record("demo", &newer, None, None);
+        assert_eq!(store.entries().len(), 2);
+        let key_older = store.find_by_dir(&older).unwrap().key();
+        let key_newer = store.find_by_dir(&newer).unwrap().key();
+        assert_ne!(key_older, key_newer);
+        assert_eq!(store.find_by_key(&key_older).unwrap().dir, older);
+        assert_eq!(store.find_by_key(&key_newer).unwrap().dir, newer);
+
+        // Renaming the older one next to its siblings leaves the other alone.
+        let renamed = older.with_file_name("demo2");
+        assert!(store.rename(&key_older, "demo2", &renamed));
+        assert_eq!(store.find_by_key(&key_newer).unwrap().dir, newer);
+
+        // Taking the newer one never takes the other.
+        let (_, taken) = store.take(&key_newer).unwrap();
+        assert_eq!(taken.dir, newer);
+        assert_eq!(store.entries().len(), 1);
+        assert_eq!(store.entries()[0].dir, renamed);
+    }
+
+    #[test]
+    fn an_entry_saved_by_an_older_build_loads_and_is_addressable() {
+        let base = tmp("legacy");
+        let store_path = base.join("recents.json");
+        let dir = proj(&base, "old");
+        let legacy = format!(
+            r#"[{{"id":"old","dir":{},"last_opened":5}}]"#,
+            serde_json::to_string(&dir).unwrap()
+        );
+        std::fs::write(&store_path, legacy).unwrap();
+        let store = RecentsStore::load(&store_path);
+        let key = store.entries()[0].key();
+        assert_eq!(store.find_by_key(&key).unwrap().id, "old");
     }
 
     #[test]
@@ -294,8 +377,9 @@ mod tests {
         let mut store = RecentsStore::load(&store_path);
         store.record("a", &proj(&base, "a"), None, None);
         store.record("b", &proj(&base, "b"), None, None);
+        let key_a = store.find_by_dir(&base.join("a")).unwrap().key();
         assert!(!store.remove("missing"));
-        assert!(store.remove("a"));
+        assert!(store.remove(&key_a));
         assert_eq!(store.entries().len(), 1);
         assert_eq!(store.entries()[0].id, "b");
     }
@@ -312,9 +396,10 @@ mod tests {
         store.record("c", &proj(&base, "c"), None, None);
         store.entries[0].last_opened = 20;
         store.entries.sort_by_key(|e| std::cmp::Reverse(e.last_opened));
-        let (index, entry) = store.take("c").unwrap();
+        let key_c = store.find_by_dir(&base.join("c")).unwrap().key();
+        let (index, entry) = store.take(&key_c).unwrap();
         assert_eq!(index, 1);
-        assert!(store.find_by_id("c").is_none());
+        assert!(store.find_by_key(&key_c).is_none());
         store.restore(entry.clone());
         let ids: Vec<_> = store.entries().iter().map(|e| e.id.as_str()).collect();
         assert_eq!(ids, ["b", "c", "a"]);
@@ -332,7 +417,8 @@ mod tests {
         store.record("gone", &gone, None, None);
         let found = proj(&base, "found");
         store.record("found", &found, None, None);
-        assert!(store.relink("gone", "found", &found));
+        let key_gone = store.find_by_dir(&gone).unwrap().key();
+        assert!(store.relink(&key_gone, "found", &found));
         assert_eq!(store.entries().len(), 1);
         assert_eq!(store.entries()[0].dir, found);
         assert!(!store.relink("nope", "x", &found));

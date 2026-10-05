@@ -23,7 +23,7 @@ Composition id: `cuboid-carousel`. Duration 6.666666666666667 s at 30 fps, 1920Ã
 
 ## Install
 
-Install with `npx hyperframes add cuboid-carousel`; by default the files above land under `compositions/cuboid-carousel/`. Then mount the block from the host `index.html`:
+Install with `hyperframes add cuboid-carousel`; by default the files above land under `compositions/cuboid-carousel/`. Then mount the block from the host `index.html`:
 
 ```html
 <div
@@ -40,7 +40,7 @@ Install with `npx hyperframes add cuboid-carousel`; by default the files above l
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'compositions/cuboid-carousel/cuboid-carousel.html' --variables '{"cardsJson":"","heroCard":4}'
+hyperframes render 'compositions/cuboid-carousel/cuboid-carousel.html' --variables '{"cardsJson":"","heroCard":4}'
 ```
 
 ## Variables

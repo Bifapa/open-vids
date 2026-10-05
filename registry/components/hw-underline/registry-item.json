@@ -15,6 +15,11 @@
       "path": "assets/fonts/Caveat-700-latin.woff2",
       "target": "assets/fonts/Caveat-700-latin.woff2",
       "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/Caveat-LICENSE.txt",
+      "target": "assets/fonts/Caveat-LICENSE.txt",
+      "type": "hyperframes:asset"
     }
   ]
 }

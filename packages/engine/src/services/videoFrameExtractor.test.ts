@@ -678,6 +678,15 @@ describe("resolveFrameFormat", () => {
 });
 
 describe("parseVideoElements", () => {
+  it("reports no audio for a muted <video data-has-audio>", () => {
+    const [muted, audible] = parseVideoElements(
+      `<video id="m" src="a.mp4" muted data-has-audio="true" data-start="0" data-duration="2"></video>` +
+        `<video id="a" src="a.mp4" data-has-audio="true" data-start="0" data-duration="2"></video>`,
+    );
+    expect(muted?.hasAudio).toBe(false);
+    expect(audible?.hasAudio).toBe(true);
+  });
+
   it.each([
     {
       label: "valueless playback-start",
@@ -1376,6 +1385,28 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       hasAudio: false,
     };
   }
+
+  // A video id is author-controlled and names the per-video frame directory, and the
+  // output directory may sit in a project folder whose name contains '%' (image2
+  // printf-expands the whole output path).
+  it("keeps a traversal-shaped video id inside the output directory of a '%' folder", async () => {
+    const parent = join(FIXTURE_DIR, "Promo 50% off");
+    const outputDir = join(parent, "frames");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractAllVideoFrames(
+      [{ ...fixtureVideo(), id: "../../escaped:id" }],
+      FIXTURE_DIR,
+      { fps: 1, outputDir },
+    );
+
+    expect(result.errors).toEqual([]);
+    const frame = result.extracted[0]!.framePaths.get(0)!;
+    expect(frame.startsWith(outputDir)).toBe(true);
+    expect(existsSync(frame)).toBe(true);
+    expect(readdirSync(parent)).toEqual(["frames"]);
+    expect(readdirSync(FIXTURE_DIR)).not.toContain("escaped:id");
+  }, 30_000);
 
   it("keeps color-sensitive UI reds closer to source when extraction is forced to png", async () => {
     const defaultOut = join(FIXTURE_DIR, "out-default");

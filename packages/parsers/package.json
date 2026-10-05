@@ -68,6 +68,12 @@
       "import": "./src/assets.ts",
       "types": "./src/assets.ts"
     },
+    "./asset-urls": {
+      "bun": "./src/assetUrls.ts",
+      "node": "./dist/assetUrls.js",
+      "import": "./src/assetUrls.ts",
+      "types": "./src/assetUrls.ts"
+    },
     "./composition": {
       "bun": "./src/composition.ts",
       "node": "./dist/composition.js",

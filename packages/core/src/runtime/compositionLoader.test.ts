@@ -1048,6 +1048,39 @@ describe("loadExternalCompositions", () => {
       );
     });
 
+    it("rewrites poster, srcset and parenthesised url(...) values", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", FRAME_URL);
+      host.setAttribute("data-composition-id", "scene");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <video id="hero" src="../../assets/hero.mp4" poster="../../assets/poster.jpg"></video>
+              <img id="pic" src="../../assets/a.png" srcset="../../assets/a.png 1x, ../../assets/a@2x.png 2x" />
+              <div id="card" style="background-image: url('../../assets/bg (2).png');"></div>
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+      await loadExternalCompositions({ ...defaultParams });
+
+      const base = "http://localhost:5190/api/projects/demo/preview/assets";
+      expect(host.querySelector("#hero")?.getAttribute("poster")).toBe(`${base}/poster.jpg`);
+      expect(host.querySelector("#pic")?.getAttribute("srcset")).toBe(
+        `${base}/a.png 1x, ${base}/a@2x.png 2x`,
+      );
+      expect(host.querySelector("#card")?.getAttribute("style")).toContain(
+        `url('${base}/bg%20(2).png')`,
+      );
+    });
+
     it("rewrites `../`-traversing src on non-template (full HTML doc) sub-comps", async () => {
       const host = document.createElement("div");
       host.setAttribute("data-composition-src", FRAME_URL);

@@ -6,6 +6,7 @@ import {
   type AgentId,
   type QaCheckRequest,
   type QaCheckResponse,
+  type QaFramesResponse,
   type QaFinishRequest,
   type QaIssueDraft,
   type QaReport,
@@ -241,9 +242,21 @@ export class TurnQa {
       return refuse(
         `You asked for ${times.length} frames but only ${left} of ${review.maxFrames} remain in this review's budget. Ask for at most ${left}.`,
       );
-    const { frames } = await this.options.host.frames({ render: review.render, times }, signal);
-    review.framesUsed += frames.length;
+    // Parallel calls of one message run concurrently: reserve the budget before awaiting so they cannot all pass the
+    // checks above. A failed call gives its reservation back.
+    review.framesUsed += times.length;
     review.rounds += 1;
+    let response: QaFramesResponse;
+    try {
+      response = await this.options.host.frames({ render: review.render, times }, signal);
+    } catch (error) {
+      review.framesUsed -= times.length;
+      review.rounds -= 1;
+      throw error;
+    }
+    const { frames } = response;
+    // The service may return fewer frames than asked for: only the ones Vision actually got count.
+    review.framesUsed += frames.length - times.length;
     const rows = frames.map((frame, index) => {
       const sample = review.samples.find(
         (candidate) => Math.abs(candidate.time - frame.time) <= SAMPLE_MATCH_SECONDS,

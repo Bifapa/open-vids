@@ -71,11 +71,13 @@ const APPROVES_DOWNLOAD = [
   String.raw`${NOT_LETTER}(?:download|import|fetch|grab|approve|confirm)(?:s|ed|d|ing)?${NOT_LETTER_AFTER}`,
   String.raw`${NOT_LETTER}(?:yes|yep|yeah|sure|ok|okay|go ahead|proceed|do it)${NOT_LETTER_AFTER}`,
   String.raw`${NOT_LETTER}(?:add|use|take|bring in|get)\s+(?:it|them|that|this|those|these|the\s+(?:first|second|third|last|best|top|\d+))${NOT_LETTER_AFTER}`,
-  String.raw`скача`,
-  String.raw`загруз`,
-  String.raw`импорт`,
-  String.raw`подтвержд`,
-  String.raw`одобр`,
+  // Russian imperative and infinitive only, word-anchored: the nouns ("анимация загрузки", "импорт", "подтверждение")
+  // and past tense ("загрузил своё видео": the user says what they already uploaded) are not approvals.
+  String.raw`${NOT_LETTER}(?:скача(?:й|йте|ть|ем|ю)|скачива(?:й|йте|ть|ем|ю)|скачи(?:ть|те)?)${NOT_LETTER_AFTER}`,
+  String.raw`${NOT_LETTER}(?:загрузи(?:ть|те|м)?|загружай(?:те)?|загружать)${NOT_LETTER_AFTER}`,
+  String.raw`${NOT_LETTER}(?:импортируй(?:те)?|импортируем|импортировать|импортни(?:те)?|импортнуть)${NOT_LETTER_AFTER}`,
+  String.raw`${NOT_LETTER}(?:подтвержда(?:ю|ем)|подтверд(?:и|ите|им)|подтвердить)${NOT_LETTER_AFTER}`,
+  String.raw`${NOT_LETTER}(?:одобря(?:ю|ем)|одобри(?:ть|те|м)?|одобрено)${NOT_LETTER_AFTER}`,
   String.raw`${NOT_LETTER}(?:да|давай|ок|окей|хорошо|добавь|добавляй|используй|бери|возьми)${NOT_LETTER_AFTER}`,
 ].map((source) => new RegExp(source, "giu"));
 

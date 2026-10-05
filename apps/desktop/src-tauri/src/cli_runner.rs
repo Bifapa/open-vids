@@ -109,9 +109,14 @@ pub fn command(args: &[&str]) -> Result<Command, CodedError> {
         CodedError::plain("cli_not_installed", "the OpenVids command-line tools are not installed")
     })?;
     let mut command = Command::new(&launch.bun);
-    command.args(&launch.bun_args);
     if let Some(launcher) = &launch.launcher {
+        // The launcher means a real Bun runtime (staged or workspace), which
+        // would otherwise auto-install a module that fails to resolve from npm.
+        command.arg("--no-install");
+        command.args(&launch.bun_args);
         command.arg(launcher);
+    } else {
+        command.args(&launch.bun_args);
     }
     command
         .arg(&launch.entry)

@@ -114,4 +114,47 @@ describe("executeParallelCapture peer abort", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  // `createCaptureSession` takes no signal, so an abort that wins the launch race
+  // leaves the browser still starting. Its session arrives after the worker is
+  // already gone; nothing else holds it, so it must be closed on arrival.
+  it("closes a capture session that finishes launching after the worker was aborted", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-late-launch-"));
+    const lateSession = { workerId: 0, browserConsoleBuffer: [] } as unknown as CaptureSession;
+    const launch = Promise.withResolvers<CaptureSession>();
+    const createCaptureSession = vi.fn(() => launch.promise);
+    const closeCaptureSession = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("./frameCapture.js", () => ({
+      createCaptureSession,
+      initializeSession: vi.fn(async () => {}),
+      captureFrame: vi.fn(),
+      captureFrameToBuffer: vi.fn(),
+      captureFrameToBufferPipelined: vi.fn(),
+      closeCaptureSession,
+      getCapturePerfSummary: vi.fn(() => ({ frames: 0 })),
+    }));
+
+    try {
+      const { executeParallelCapture } = await import("./parallelCoordinator.js");
+      const controller = new AbortController();
+      const result = executeParallelCapture(
+        "http://127.0.0.1",
+        root,
+        [{ workerId: 0, startFrame: 0, endFrame: 3, outputDir: join(root, "worker-0") }],
+        { width: 320, height: 180, fps: { num: 30, den: 1 } },
+        () => null,
+        controller.signal,
+      );
+
+      await vi.waitFor(() => expect(createCaptureSession).toHaveBeenCalledTimes(1));
+      controller.abort();
+      await expect(result).rejects.toMatchObject({ name: "CaptureFailure" });
+      expect(closeCaptureSession).not.toHaveBeenCalled();
+
+      launch.resolve(lateSession);
+      await vi.waitFor(() => expect(closeCaptureSession).toHaveBeenCalledWith(lateSession));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -66,7 +66,7 @@ Rules:
 Install, then draw a custom "signal" mark with an accent underline:
 
 ```bash
-npx hyperframes add whiteboard-ink
+hyperframes add whiteboard-ink
 ```
 
 In `compositions/components/whiteboard-ink.html`, fill the slot group:

@@ -10,7 +10,9 @@ const moduleDir = dirname(fileURLToPath(import.meta.url));
 function makeLaunch(entry: string): AgentRuntimeLaunch {
   return {
     command: process.env.OPENVIDS_AGENT_BUN || (process.versions.bun ? process.execPath : "bun"),
-    args: [entry],
+    // The runtime is shipped or workspace code: a module that fails to resolve
+    // must fail, never be fetched from npm by Bun's auto-install.
+    args: ["--no-install", entry],
     cwd: dirname(entry),
   };
 }

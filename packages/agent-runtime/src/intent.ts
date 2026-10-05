@@ -2,7 +2,7 @@ import type { ChatIntent, PlanApproval, PlanStep } from "@hyperframes/agent-prot
 import { EDITING_TOOL_NAMES } from "./editing/tools.js";
 import { ANALYSIS_TOOL_NAMES } from "./analysis/tools.js";
 import { STORY_TOOL_NAMES } from "./story/tools.js";
-import { RESEARCH_TOOL_NAMES } from "./research/tools.js";
+import { RESEARCH_TOOL_NAMES, websiteFileMode } from "./research/tools.js";
 
 /**
  * Tools that change the project or produce output from it: editing the timeline, rendering, building a rough cut,
@@ -19,7 +19,8 @@ const PROJECT_CHANGING_TOOLS: Readonly<Record<string, true>> = {
   [STORY_TOOL_NAMES.rebuild]: true,
   [RESEARCH_TOOL_NAMES.import]: true,
   [RESEARCH_TOOL_NAMES.resolve]: true,
-  // get_website_file is not listed: its "read" mode changes nothing (the executor refuses "save" outside Edit turns).
+  // read_website and get_website_file are not listed: their read modes change nothing. Their save modes are gated by
+  // {@link savesWebsiteFiles}; the executor itself refuses them outside Edit turns.
   [RESEARCH_TOOL_NAMES.record]: true,
   edit: true,
   write: true,
@@ -30,17 +31,34 @@ export function changesProject(toolName: string): boolean {
 }
 
 /**
+ * Whether a call writes files under assets/web: read_website with `save: true`, get_website_file with
+ * `mode: "save"`. The same tools only read when called without those arguments. The mode is read with the same
+ * {@link websiteFileMode} the research executor uses, so a padded `" save"` saves for both.
+ */
+export function savesWebsiteFiles(toolName: string, args: unknown): boolean {
+  if (typeof args !== "object" || args === null) return false;
+  if (toolName === RESEARCH_TOOL_NAMES.website) return "save" in args && args.save === true;
+  if (toolName === RESEARCH_TOOL_NAMES.file)
+    return "mode" in args && websiteFileMode(args.mode) === "save";
+  return false;
+}
+
+/**
  * Why a project-changing call is refused in this turn; null when the turn may make it. An Ask turn refuses them
  * from the start; an Edit turn refuses them after its Director proposed a plan (`planProposed`) or offered Story
- * Mode (`storyOffered`), because the rest of that turn changes nothing until the user decides.
+ * Mode (`storyOffered`), because the rest of that turn changes nothing until the user decides. `args` are the call's
+ * arguments: they tell a saving website call from a reading one.
  */
 export function intentRefusal(
   intent: ChatIntent,
   toolName: string,
   planProposed = false,
   storyOffered = false,
+  args?: unknown,
 ): string | null {
-  if (!changesProject(toolName)) return null;
+  // An Ask turn's website save is refused by the research executor with its own, more specific message.
+  const websiteSave = intent === "edit" && savesWebsiteFiles(toolName, args);
+  if (!changesProject(toolName) && !websiteSave) return null;
   if (intent === "ask") {
     return `This is an Ask turn: the user wants an answer only, so ${toolName} is not available. Answer from what you can read and inspect.`;
   }

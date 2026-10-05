@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RegistryItem } from "@hyperframes/core";
-import { catalogRow, countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
+import { catalogRow, countUnindexed, pickByName } from "./catalog.js";
 
 /** The whole registry, which is what "in this registry" has to be measured against. */
 const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
@@ -205,10 +205,6 @@ interface Envelope {
   top_score?: number;
   shown: number;
   warnings?: string[];
-  // Not optional: both envelope-shaped emit sites are inside `if (query)`
-  // branches and both set it, so a search envelope without it is a bug rather
-  // than a shape the caller has to handle.
-  report_gap: string;
 }
 
 async function runCatalog(args: Record<string, unknown>): Promise<string> {
@@ -431,27 +427,20 @@ describe("catalog --json meaning search", () => {
     ]);
   });
 
-  it("hands back the gap-report command even when the search found things", async () => {
-    // The reports we actually want come from searches that returned plausible
-    // items where none of them did the job. If the command only appeared on
-    // zero results it would be absent from every case worth reporting.
+  it("carries no gap-report command in the envelope", async () => {
     const envelope = await runEnvelope({ query: "make a number count up" });
 
     expect(envelope.shown).toBeGreaterThan(0);
-    expect(envelope.report_gap).toBe(
-      'npx hyperframes feedback --search-miss "make a number count up" ' +
-        '--wanted "<the move you needed>" --tier on-device',
-    );
+    expect("report_gap" in envelope).toBe(false);
   });
 
-  it("names the tier that actually answered in the gap-report command", async () => {
+  it("still names the tier that actually answered", async () => {
     state.modelStatus = "declined";
     state.ranking = null;
 
     const envelope = await runEnvelope({ query: "count up" });
 
     expect(envelope.tier).toBe("words");
-    expect(envelope.report_gap).toContain("--tier words");
   });
 });
 
@@ -500,17 +489,15 @@ describe("a zero-result search", () => {
   // the better tier is behind a download nobody has consented to yet.
   const missing = "quantum entanglement reactor";
 
-  it("names the better tier, ahead of the gap report", async () => {
+  it("names the better tier and no gap-report command", async () => {
     state.modelStatus = "not-asked";
 
     const { err } = await runForExit({ query: missing });
 
     expect(err).toContain("No items match");
     expect(err).toContain("consent");
-    // An agent that could still find the move must not be sent to file a gap
-    // first. A missing needle indexes at -1 and would satisfy a bare ordering
-    // check on its own, so both lines are pinned present above it.
-    expect(err.indexOf("consent")).toBeLessThan(err.indexOf("--search-miss"));
+    expect(err).not.toContain("feedback");
+    expect(err).not.toContain("--search-miss");
   });
 
   it("carries the same guidance in the --json envelope", async () => {
@@ -536,8 +523,7 @@ describe("a zero-result search", () => {
   });
 
   it("says nothing when the better tier is already on", async () => {
-    // Ranked by meaning and still empty: there is no better tier left to name,
-    // and the gap report is the only honest next step.
+    // Ranked by meaning and still empty: there is no better tier left to name.
     state.modelStatus = "ready";
     state.ranking = [];
 
@@ -580,23 +566,7 @@ describe("a zero-result search", () => {
     // The hit path already named the tier and has to keep doing it: the
     // zero-result path was accidentally the inverse of this one.
     expect(err).toContain("consent");
-    expect(err).toContain("None of these do it?");
-  });
-});
-
-describe("searchMissCommand", () => {
-  it("keeps a non-ASCII query intact", () => {
-    // Half of the gap reports received so far were CJK. A query mangled on the
-    // way into the command is a report nobody can act on.
-    expect(searchMissCommand("実写写真のみ 9:16 生活ハック", "on-device")).toContain(
-      '--search-miss "実写写真のみ 9:16 生活ハック"',
-    );
-  });
-
-  it("escapes shell metacharacters so the printed line is safe to paste", () => {
-    const cmd = searchMissCommand('a "quoted" $VAR `sub` \\ thing', "words");
-
-    expect(cmd).toContain('--search-miss "a \\"quoted\\" \\$VAR \\`sub\\` \\\\ thing"');
+    expect(err).not.toContain("feedback");
   });
 });
 
@@ -616,24 +586,18 @@ describe("catalog meaning search, on a terminal", () => {
     expect(output).not.toContain("missing from the on-device index");
   });
 
-  it("offers the gap report on the word tier, not just on-device", async () => {
-    // The tier that answers almost every real search, because on-device needs
-    // a consented download. Gating the nudge on on-device left it unprinted in
-    // the only case that occurs, which is how the gap channel stayed silent.
+  it("points at no command for reporting a gap, on either tier", async () => {
+    // The OpenVids CLI has no `feedback` command, so a hint naming one is a dead end.
+    const onDevice = await runCatalog({ query: "make a number count up" });
     state.modelStatus = "declined";
     state.ranking = null;
+    const words = await runCatalog({ query: "count up" });
 
-    const output = await runCatalog({ query: "count up" });
-
-    expect(output).toContain("None of these do it?");
-    expect(output).toContain("--tier words");
-  });
-
-  it("offers the gap report on the on-device tier too", async () => {
-    const output = await runCatalog({ query: "make a number count up" });
-
-    expect(output).toContain("None of these do it?");
-    expect(output).toContain("--tier on-device");
+    for (const output of [words, onDevice]) {
+      expect(output).not.toContain("None of these do it?");
+      expect(output).not.toContain("feedback");
+      expect(output).not.toContain("--search-miss");
+    }
   });
 });
 

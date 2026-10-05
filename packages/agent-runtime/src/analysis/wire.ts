@@ -121,7 +121,8 @@ export function isCutPlan(value: unknown): value is CutPlan {
         isRecord(range) && isNumber(range.from) && isNumber(range.to) && isNumber(range.at),
     ) &&
     Array.isArray(value.removed) &&
-    isArrayOf(value.warnings, isString)
+    isArrayOf(value.warnings, isString) &&
+    (value.outOfDate === undefined || isString(value.outOfDate))
   );
 }
 

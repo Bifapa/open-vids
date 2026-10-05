@@ -1,6 +1,6 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -52,11 +52,11 @@ const isAlive = (pid: number) => {
   }
 };
 
-const record = (base: string, browserPid: number, ownerPid: number) => {
+const record = (base: string, browserPid: number, ownerPid: number, profile?: string) => {
   mkdirSync(join(base, "hyperframes-browsers"), { recursive: true });
   writeFileSync(
     join(base, "hyperframes-browsers", `${browserPid}.json`),
-    JSON.stringify({ ownerPid }),
+    JSON.stringify(profile === undefined ? { ownerPid } : { ownerPid, profile }),
   );
 };
 const recordFile = (base: string, pid: number) => join(base, "hyperframes-browsers", `${pid}.json`);
@@ -91,6 +91,86 @@ describe("sweepOrphanBrowsers", { timeout: 60_000 }, () => {
 
     expect(sweepOrphanBrowsers(base)).toEqual([orphan.pid]);
     await once(orphan, "exit");
+  });
+
+  it("removes the dead browser's profile, and only the engine profile", async () => {
+    const base = root();
+    const profiles = root();
+    const orphanProfile = join(profiles, "puppeteer_dev_chrome_profile-orphan");
+    const keptProfile = join(profiles, "puppeteer_dev_chrome_profile-kept");
+    const userProfile = join(profiles, "User Data");
+    for (const dir of [orphanProfile, keptProfile, userProfile]) {
+      mkdirSync(join(dir, "Default"), { recursive: true });
+      writeFileSync(join(dir, "Default", "Preferences"), "{}");
+    }
+    const orphan = await sleeper("chrome-headless-shell", `--user-data-dir=${orphanProfile}`);
+    const kept = await sleeper("chrome-headless-shell", `--user-data-dir=${keptProfile}`);
+    const user = await sleeper("chrome", `--user-data-dir=${userProfile}`);
+    record(base, orphan.pid, deadPid());
+    record(base, kept.pid, process.pid);
+    record(base, user.pid, deadPid());
+
+    expect(sweepOrphanBrowsers(base)).toEqual([orphan.pid]);
+    await once(orphan, "exit");
+    expect(existsSync(orphanProfile), "the dead browser's profile is removed").toBe(false);
+    expect(existsSync(keptProfile), "a live owner's profile stays").toBe(true);
+    expect(existsSync(userProfile), "a profile that is not the engine's stays").toBe(true);
+  });
+
+  it("removes the recorded profile of a browser that died with its owner", () => {
+    const base = root();
+    const profiles = root();
+    const deadProfile = join(profiles, "puppeteer_dev_chrome_profile-dead");
+    const userProfile = join(profiles, "User Data");
+    for (const dir of [deadProfile, userProfile]) {
+      mkdirSync(join(dir, "Default"), { recursive: true });
+      writeFileSync(join(dir, "Default", "Preferences"), "{}");
+    }
+    const deadBrowser = deadPid();
+    record(base, deadBrowser, deadPid(), deadProfile);
+    // A tampered record must not be able to name a directory that is not an engine profile.
+    const tampered = deadPid();
+    record(base, tampered, deadPid(), userProfile);
+
+    expect(sweepOrphanBrowsers(base)).toEqual([]);
+    expect(existsSync(deadProfile), "the dead browser's profile is removed").toBe(false);
+    expect(existsSync(userProfile), "a non-engine path is never removed").toBe(true);
+    expect(existsSync(recordFile(base, deadBrowser))).toBe(false);
+  });
+
+  it("records the profile from the browser's launch arguments", () => {
+    const base = root();
+    const profiles = root();
+    const profile = join(profiles, "puppeteer_dev_chrome_profile-launch");
+    mkdirSync(profile);
+    const owner = deadPid();
+    const browser = deadPid();
+    recordBrowserOwner(browser, base, ["--headless", `--user-data-dir=${profile}`]);
+    writeFileSync(
+      recordFile(base, browser),
+      JSON.stringify({
+        ...JSON.parse(readFileSync(recordFile(base, browser), "utf-8")),
+        ownerPid: owner,
+      }),
+    );
+
+    expect(sweepOrphanBrowsers(base)).toEqual([]);
+    expect(existsSync(profile), "the profile named in the launch arguments is removed").toBe(false);
+  });
+
+  it("leaves a pid that now runs a different engine profile alone and removes only the recorded one", async () => {
+    const base = root();
+    const profiles = root();
+    const recorded = join(profiles, "puppeteer_dev_chrome_profile-recorded");
+    const other = join(profiles, "puppeteer_dev_chrome_profile-other");
+    for (const dir of [recorded, other]) mkdirSync(dir);
+    const reused = await sleeper("chrome-headless-shell", `--user-data-dir=${other}`);
+    record(base, reused.pid, deadPid(), recorded);
+
+    expect(sweepOrphanBrowsers(base)).toEqual([]);
+    expect(isAlive(reused.pid)).toBe(true);
+    expect(existsSync(recorded)).toBe(false);
+    expect(existsSync(other)).toBe(true);
   });
 
   it("never kills a pid that no longer runs a browser (reused by another program)", async () => {

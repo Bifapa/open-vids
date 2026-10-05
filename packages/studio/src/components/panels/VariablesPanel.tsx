@@ -246,7 +246,7 @@ function HandoffFooter({
 }) {
   const { t } = useTranslation();
   const json = JSON.stringify(effectiveValues);
-  const command = `npx hyperframes render ${shellSingleQuote(compPath)} --variables ${shellSingleQuote(json)}`;
+  const command = `hyperframes render ${shellSingleQuote(compPath)} --variables ${shellSingleQuote(json)}`;
   return (
     <div className="space-y-1.5 rounded-md border border-border/70 bg-surface-1/40 p-2">
       <p className="text-2xs font-medium uppercase tracking-wider text-fg-3">

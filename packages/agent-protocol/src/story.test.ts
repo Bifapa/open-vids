@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   STORY_GRAPH_SCHEMA,
+  STORY_LIMITS,
+  boundBuildWarnings,
+  isVideoRange,
   parseStoryEditRequest,
   parseStoryGraph,
   type StoryGraph,
@@ -90,6 +93,24 @@ describe("resolve_missing", () => {
   });
 });
 
+describe("update_node", () => {
+  const update = (set: Record<string, unknown>) =>
+    parseStoryEditRequest({ operations: [{ op: "update_node", id: "music-1", set }] });
+
+  it("lets a music node's asset be cleared with null, while a value no kind holds is still refused", () => {
+    expect(update({ asset: null })).toEqual({
+      ok: true,
+      value: { operations: [{ op: "update_node", id: "music-1", set: { asset: null } }] },
+    });
+    expect(update({ asset: "assets/bed.mp3" })).toMatchObject({ ok: true });
+    expect(update({ asset: 4 })).toMatchObject({
+      ok: false,
+      error: { code: "invalid_request", opIndex: 0 },
+    });
+    expect(update({ asset: "a.mp4", bpm: 120, nonsense: 1 })).toMatchObject({ ok: false });
+  });
+});
+
 describe("resolvedFrom on stored graphs", () => {
   it("round-trips on video, picture and music nodes and stays absent on old graphs", () => {
     const stored = graph([
@@ -156,5 +177,26 @@ describe("resolvedFrom on stored graphs", () => {
       ]),
     );
     expect(onMissing).toMatchObject({ ok: false });
+  });
+});
+
+describe("the write-side rules of stored records", () => {
+  it("accepts a video range only when it is open-ended or ends after it starts", () => {
+    expect(isVideoRange(2, null)).toBe(true);
+    expect(isVideoRange(2, 3)).toBe(true);
+    expect(isVideoRange(2, 2)).toBe(false);
+    expect(isVideoRange(10, 5)).toBe(false);
+  });
+
+  it("bounds build warnings to what the stored record parses, counting the dropped ones", () => {
+    expect(boundBuildWarnings(["a", "b"])).toEqual(["a", "b"]);
+    const long = "x".repeat(STORY_LIMITS.textChars + 50);
+    const many = [long, ...Array.from({ length: 300 }, (_, index) => `w${index}`)];
+    const bounded = boundBuildWarnings(many);
+    expect(bounded).toHaveLength(STORY_LIMITS.buildWarnings);
+    expect(bounded.every((warning) => warning.length <= STORY_LIMITS.textChars)).toBe(true);
+    expect(bounded.at(-1)).toBe(
+      `…and ${many.length - (STORY_LIMITS.buildWarnings - 1)} more warnings.`,
+    );
   });
 });

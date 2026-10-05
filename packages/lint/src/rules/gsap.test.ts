@@ -1968,6 +1968,44 @@ describe("GSAP rules", () => {
     expect(finding?.severity).toBe("error");
   });
 
+  it("does NOT flag a timeline created in one script and registered in another", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <div id="box">Hello</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { opacity: 0.5, duration: 2 });
+  </script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["root"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "gsap_timeline_not_registered")).toBeUndefined();
+  });
+
+  it("does not treat a commented-out registration as a registration", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <div id="box">Hello</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { opacity: 0.5, duration: 2 });
+    // window.__timelines["root"] = tl;
+    /* window.__timelines = { root: tl }; */
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "gsap_timeline_not_registered")).toBeDefined();
+  });
+
   it("does NOT warn when timeline is registered in __timelines", async () => {
     const html = `
 <html><body>

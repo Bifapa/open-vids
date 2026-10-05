@@ -10,6 +10,30 @@ import {
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument.js";
 
+// Linear work measures ~8x between scale 1 and scale 8, quadratic work ~64x. Only the ratio is
+// asserted: an absolute millisecond bound is a claim about the hardware. CPU time (not wall time)
+// keeps time spent descheduled on a shared runner out of the sample; Windows' CPU clock ticks at
+// ~15 ms, so there a wall-clock best-of is used instead.
+function cpuMs(work: () => void): number {
+  let best = Infinity;
+  for (let run = 0; run < 3; run += 1) {
+    const wall = performance.now();
+    const cpu = process.cpuUsage();
+    work();
+    const spent = process.cpuUsage(cpu);
+    const ms =
+      process.platform === "win32" ? performance.now() - wall : (spent.user + spent.system) / 1000;
+    best = Math.min(best, ms);
+  }
+  return best;
+}
+
+function expectLinearCost(prepare: (scale: 1 | 8) => () => void): void {
+  const small = cpuMs(prepare(1));
+  const large = cpuMs(prepare(8));
+  expect(large / Math.max(small, 0.2)).toBeLessThan(24);
+}
+
 describe("htmlDocument helpers", () => {
   it("keeps a document's <html> attributes when a comment comes before the doctype", () => {
     const doc = parseHTMLContent(
@@ -205,12 +229,14 @@ describe("htmlDocument helpers", () => {
   });
 
   it("stays linear over many unclosed raw-text tags and an unfinished quoted attribute", () => {
-    const many = `<body>${"<script/>".repeat(40_000)}</body>`;
-    const unfinished = `<body>${'<p data-if="a>b" '.repeat(20_000)}`;
-    const started = performance.now();
-    expect(insertBeforeCloseTag(many, "body", "X")).toBe(many.replace("</body>", "X</body>"));
-    expect(insertBeforeCloseTag(unfinished, "body", "X")).toBeNull();
-    expect(performance.now() - started).toBeLessThan(500);
+    expectLinearCost((scale) => {
+      const many = `<body>${"<script/>".repeat(5_000 * scale)}</body>`;
+      const unfinished = `<body>${'<p data-if="a>b" '.repeat(2_500 * scale)}`;
+      return () => {
+        expect(insertBeforeCloseTag(many, "body", "X")).toBe(many.replace("</body>", "X</body>"));
+        expect(insertBeforeCloseTag(unfinished, "body", "X")).toBeNull();
+      };
+    });
   });
 
   it("finds no head end past an unclosed script", () => {
@@ -245,22 +271,23 @@ describe("findStartTags", () => {
 describe("injectTagsAtHeadStart on long adversarial input", () => {
   const M = 2_000_000;
   it.each([
-    ["an unclosed double quote", `<html data-x="${"a".repeat(M)}`],
-    ["an unclosed single quote", `<html data-x='${"a".repeat(M)}`],
-    ["many quoted values", `<html ${'"a" '.repeat(M / 4)}`],
-    ["many <", "<".repeat(M)],
-    ["many <html>", "<html>".repeat(M / 6)],
-    ["many comments", `${"<!--x-->".repeat(M / 8)}<head>`],
-    ["an unclosed comment", `<!--${"a".repeat(M)}`],
-    ["an unclosed comment of <", `<!--${"<".repeat(M)}`],
-    ["an unclosed comment of quotes", `<!--${'"'.repeat(M)}`],
-    ["alternating quotes", `<html ${`"'`.repeat(M / 2)}`],
-    ["leading spaces", `${" ".repeat(M)}x`],
-    ["a tag that never closes", `<html ${"a ".repeat(M / 2)}`],
-    ["an unclosed tag name", `<${"a".repeat(M)}`],
-  ])("stays fast on %s", (_, html) => {
-    const started = performance.now();
-    injectTagsAtHeadStart(html, "<meta>");
-    expect(performance.now() - started).toBeLessThan(1500);
+    ["an unclosed double quote", (m: number) => `<html data-x="${"a".repeat(m)}`],
+    ["an unclosed single quote", (m: number) => `<html data-x='${"a".repeat(m)}`],
+    ["many quoted values", (m: number) => `<html ${'"a" '.repeat(m / 4)}`],
+    ["many <", (m: number) => "<".repeat(m)],
+    ["many <html>", (m: number) => "<html>".repeat(m / 6)],
+    ["many comments", (m: number) => `${"<!--x-->".repeat(m / 8)}<head>`],
+    ["an unclosed comment", (m: number) => `<!--${"a".repeat(m)}`],
+    ["an unclosed comment of <", (m: number) => `<!--${"<".repeat(m)}`],
+    ["an unclosed comment of quotes", (m: number) => `<!--${'"'.repeat(m)}`],
+    ["alternating quotes", (m: number) => `<html ${`"'`.repeat(m / 2)}`],
+    ["leading spaces", (m: number) => `${" ".repeat(m)}x`],
+    ["a tag that never closes", (m: number) => `<html ${"a ".repeat(m / 2)}`],
+    ["an unclosed tag name", (m: number) => `<${"a".repeat(m)}`],
+  ])("stays linear on %s", { timeout: 60_000 }, (_, build) => {
+    expectLinearCost((scale) => {
+      const html = build((M / 8) * scale);
+      return () => injectTagsAtHeadStart(html, "<meta>");
+    });
   });
 });

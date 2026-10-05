@@ -1,4 +1,11 @@
 import {
+  ASSET_PATH_SELECTOR,
+  PATH_ATTRS,
+  isNonRelativeUrl,
+  replaceCssUrls,
+  rewriteSrcset,
+} from "@hyperframes/parsers/asset-urls";
+import {
   planCompositionAssembly,
   EXTRACTED_COMPOSITION_ASSET_SELECTOR,
 } from "../compiler/compositionAssembly";
@@ -52,27 +59,6 @@ type PendingScript =
 
 const EXTERNAL_SCRIPT_LOAD_TIMEOUT_MS = 8000;
 const BARE_RELATIVE_PATH_RE = /^(?![a-zA-Z][a-zA-Z\d+\-.]*:)(?!\/\/)(?!\/)(?!\.\.?\/).+/;
-const CSS_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
-const PATH_ATTRS = ["src", "href"] as const;
-
-/**
- * Return true for URLs/prefixes that should never be rewritten — absolute
- * URLs, protocol-relative, data:, hash fragments, root-relative. Mirrors
- * the compiler's `isNonRelativeUrl` so server-side bundling and client-side
- * runtime rewrite use the same rules.
- */
-function isNonRelativeRuntimeUrl(value: string): boolean {
-  return (
-    !value ||
-    value.startsWith("http://") ||
-    value.startsWith("https://") ||
-    value.startsWith("//") ||
-    value.startsWith("data:") ||
-    value.startsWith("#") ||
-    value.startsWith("/")
-  );
-}
-
 /**
  * Resolve a relative asset path from a sub-composition's URL to one that
  * works in the live document.
@@ -95,7 +81,7 @@ function isNonRelativeRuntimeUrl(value: string): boolean {
 function rewriteRuntimeAssetPath(value: string, compositionUrl: URL | null): string {
   if (!compositionUrl) return value;
   const trimmed = value.trim();
-  if (isNonRelativeRuntimeUrl(trimmed)) return value;
+  if (isNonRelativeUrl(trimmed)) return value;
   if (!trimmed.startsWith("../") && trimmed !== "..") return value;
   try {
     return new URL(trimmed, compositionUrl).href;
@@ -106,20 +92,23 @@ function rewriteRuntimeAssetPath(value: string, compositionUrl: URL | null): str
 
 function rewriteRuntimeCssAssetUrls(cssText: string, compositionUrl: URL | null): string {
   if (!compositionUrl || !cssText) return cssText;
-  return cssText.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
-    const rewritten = rewriteRuntimeAssetPath(rawUrl || "", compositionUrl);
-    if (rewritten === rawUrl) return full;
-    return `url(${quote || ""}${rewritten}${quote || ""})`;
-  });
+  return replaceCssUrls(cssText, (rawUrl) => rewriteRuntimeAssetPath(rawUrl, compositionUrl));
 }
 
 function rewritePathAttrsInTree(root: ParentNode, compositionUrl: URL): void {
-  for (const el of Array.from(root.querySelectorAll<Element>("[src], [href]"))) {
+  for (const el of Array.from(root.querySelectorAll<Element>(ASSET_PATH_SELECTOR))) {
     for (const attr of PATH_ATTRS) {
       const value = el.getAttribute(attr);
       if (value == null) continue;
       const rewritten = rewriteRuntimeAssetPath(value, compositionUrl);
       if (rewritten !== value) el.setAttribute(attr, rewritten);
+    }
+    const srcset = el.getAttribute("srcset");
+    if (srcset) {
+      const rewritten = rewriteSrcset(srcset, (url) =>
+        rewriteRuntimeAssetPath(url, compositionUrl),
+      );
+      if (rewritten !== srcset) el.setAttribute("srcset", rewritten);
     }
   }
 }

@@ -960,7 +960,8 @@ export function parseSetAssetRangeRequest(body: unknown): ParsedEdit<SetAssetRan
       `range.start and range.end must be seconds between 0 and ${EDIT_LIMITS.maxTime}`,
     );
   }
-  if (end - start < ASSET_RANGE_MIN_SECONDS) {
+  // The same float slack as isAssetRange: 10.1 - 10 is 0.0999…96, and a minimum-length pick is valid.
+  if (end - start < ASSET_RANGE_MIN_SECONDS - 1e-6) {
     return invalid(`range must be at least ${ASSET_RANGE_MIN_SECONDS}s long (end after start)`);
   }
   return { ok: true, value: { path, range: { start, end } } };

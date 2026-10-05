@@ -344,6 +344,6 @@ export function chromeLaunchRemediation(errorMessage: string): string | undefine
   );
   lines.push("Install the Chrome headless dependencies:");
   lines.push(`  ${chromeDepsInstallCommand(distro.family)}`);
-  lines.push("Then verify with: npx hyperframes doctor");
+  lines.push("Then verify with: hyperframes doctor");
   return lines.join("\n");
 }

@@ -3,7 +3,6 @@ import { existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ffprobeBinary } from "./ff-binaries.mjs";
-import { resolveSpawnCommand } from "../../audio/scripts/lib/tts.mjs";
 
 // Local voiceover via the packaged Kokoro-82M TTS (the `hyperframes tts` CLI),
 // the free/private default now that HeyGen TTS costs wallet credits. Kokoro runs
@@ -28,45 +27,42 @@ function probeDurationSeconds(ffprobe, file) {
   }
 }
 
-// `platform`/`execFn`/`env`/`pathExists` params (defaulting to the real
-// values) exist so tests can exercise the win32 branch without mocking
-// node:child_process (its ESM exports are non-configurable) — same idiom as
-// spawnP in ../../audio/scripts/lib/tts.mjs.
-export async function localTtsGenerate(
-  intent,
-  ctx,
-  platform = process.platform,
-  execFn = execFileSync,
-  env = process.env,
-  pathExists = existsSync,
-) {
+// The CLI that spawned this engine hands over its own invocation (runtime flags, then its entry
+// file) as a JSON array in HYPERFRAMES_CLI_INVOCATION. Neither the packaged app nor a source
+// checkout puts a `hyperframes` binary on PATH, so PATH is only the fallback for an engine run
+// outside the CLI. A bare `hyperframes` resolves to `hyperframes.exe` on Windows; npm-style
+// `.cmd` shims cannot be exec'd without a shell, which the entry hand-over avoids altogether.
+export function cliInvocation(env = process.env) {
+  try {
+    const prefix = JSON.parse(env.HYPERFRAMES_CLI_INVOCATION ?? "null");
+    if (
+      Array.isArray(prefix) &&
+      prefix.length > 0 &&
+      prefix.every((part) => typeof part === "string")
+    ) {
+      return { cmd: process.execPath, prefix };
+    }
+  } catch {
+    // malformed hand-over: use PATH
+  }
+  return { cmd: "hyperframes", prefix: [] };
+}
+
+// `execFn` (defaulting to the real execFileSync) lets tests observe the spawn
+// without mocking node:child_process (its ESM exports are non-configurable).
+export async function localTtsGenerate(intent, ctx, execFn = execFileSync, env = process.env) {
   const ffprobe = ffprobeBinary();
   const outPath = join(tmpdir(), `media-use-kokoro-${process.pid}-${Date.now()}.wav`);
-  const argv = ["hyperframes", "tts", intent, "--output", outPath];
+  const argv = ["tts", intent, "--output", outPath];
   if (ctx?.voice) argv.push("--voice", ctx.voice);
   if (ctx?.lang && ctx.lang !== "en") argv.push("--lang", ctx.lang);
-  // On Windows a bare "npx" is npx.cmd, which execFileSync cannot exec
-  // (spawnSync npx ENOENT) — resolveSpawnCommand reroutes it through
-  // node + npx-cli.js, same as the audio engine's TTS spawns.
-  const resolved = resolveSpawnCommand(
-    "npx",
-    argv,
-    { encoding: "utf8", timeout: 300000, stdio: ["ignore", "pipe", "pipe"] },
-    platform,
-    env,
-    pathExists,
-  );
-  if (!resolved) {
-    // npx-on-win32 with no resolvable npx-cli.js — same terminal condition
-    // spawnP warns about. Fall through to the next provider rather than crash.
-    console.error(
-      "media-use: local voice not enabled (kokoro). Cannot run npx on Windows: " +
-        "npm's npx-cli.js was not found (install npm with Node, or run via npx/npm run so npm_execpath is set).",
-    );
-    return null;
-  }
+  const { cmd, prefix } = cliInvocation(env);
   try {
-    execFn(resolved.cmd, resolved.args, resolved.opts);
+    execFn(cmd, [...prefix, ...argv], {
+      encoding: "utf8",
+      timeout: 300000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
   } catch (err) {
     // `hyperframes tts` prints its "kokoro-onnx not installed" hint to stdout
     // (clack UI), so read both streams and surface the actionable enable-command

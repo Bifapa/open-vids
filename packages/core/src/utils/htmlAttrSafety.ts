@@ -74,8 +74,8 @@ export const URI_BEARING_ATTRS = new Set([
   "xlink:href",
 ]);
 
-export const DANGEROUS_URI_SCHEMES = /^(?:javascript|vbscript):/i;
-export const DANGEROUS_DATA_URI = /^data\s*:\s*text\/html/i;
+const DANGEROUS_URI_SCHEMES = /^(?:javascript|vbscript):/i;
+const DANGEROUS_DATA_URI = /^data\s*:\s*text\/html/i;
 
 export function isAllowedHtmlAttribute(name: string): boolean {
   const lower = name.toLowerCase();
@@ -86,11 +86,25 @@ export function isAllowedHtmlAttribute(name: string): boolean {
   return false;
 }
 
+/**
+ * Reduce a URI attribute value to what a URL parser sees before it reads the
+ * scheme: ASCII tab, LF and CR are removed anywhere, and leading C0 controls
+ * and spaces are stripped. `java\tscript:` and `\x01javascript:` both
+ * resolve to the `javascript:` scheme in a browser, so the scheme check has to
+ * run on this form rather than on the raw value.
+ */
+function normalizeUriForSchemeCheck(value: string): string {
+  const stripped = value.replace(/[\t\n\r]/g, "");
+  let start = 0;
+  while (start < stripped.length && stripped.charCodeAt(start) <= 0x20) start += 1;
+  return stripped.slice(start);
+}
+
 export function isSafeAttributeValue(name: string, value: string): boolean {
   if (URI_BEARING_ATTRS.has(name.toLowerCase())) {
-    const trimmed = value.trim();
-    if (DANGEROUS_URI_SCHEMES.test(trimmed)) return false;
-    if (DANGEROUS_DATA_URI.test(trimmed)) return false;
+    const normalized = normalizeUriForSchemeCheck(value);
+    if (DANGEROUS_URI_SCHEMES.test(normalized)) return false;
+    if (DANGEROUS_DATA_URI.test(normalized)) return false;
   }
   return true;
 }

@@ -66,7 +66,7 @@ Rules:
 Install, then fill the slots with two screenshots:
 
 ```bash
-npx hyperframes add whip-pan-cut
+hyperframes add whip-pan-cut
 ```
 
 In `compositions/components/whip-pan-cut.html`, replace each slot's default

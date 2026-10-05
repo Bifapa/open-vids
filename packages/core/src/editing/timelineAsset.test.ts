@@ -1,3 +1,4 @@
+import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
 import {
   buildTimelineAssetInsertHtml,
@@ -90,6 +91,58 @@ describe("insertTimelineAssetIntoSource", () => {
 
     expect(html).toContain('data-composition-id="main">');
     expect(html).toContain('<img id="photo_asset" data-start="0" data-duration="3" />');
+  });
+
+  const CLIP = '<img id="photo_asset" data-start="0" data-duration="3" />';
+
+  it("does not splice into a root attribute value that contains '>'", () => {
+    const source = `<body><div data-composition-id="main" data-note="x>y" data-duration="5"></div></body>`;
+    const html = insertTimelineAssetIntoSource(source, CLIP);
+    expect(html).toContain(`data-note="x>y" data-duration="5">\n  ${CLIP}</div>`);
+  });
+
+  it("ignores a commented-out composition root", () => {
+    const source = `<body><!-- <div data-composition-id="old"> --><div data-composition-id="main"></div></body>`;
+    const html = insertTimelineAssetIntoSource(source, CLIP);
+    expect(html.indexOf(CLIP)).toBeGreaterThan(html.indexOf("-->"));
+    expect(html).toContain(`<div data-composition-id="main">\n  ${CLIP}`);
+  });
+
+  it("ignores a root-like tag inside a script", () => {
+    const source = `<script>const t = '<div data-composition-id="fake">';</script><div data-composition-id="main"></div>`;
+    const html = insertTimelineAssetIntoSource(source, CLIP);
+    expect(html).toContain(`<div data-composition-id="main">\n  ${CLIP}`);
+  });
+
+  it("accepts single-quoted and unquoted data-composition-id", () => {
+    expect(insertTimelineAssetIntoSource(`<div data-composition-id='main'></div>`, CLIP)).toContain(
+      CLIP,
+    );
+    expect(insertTimelineAssetIntoSource(`<div data-composition-id=main></div>`, CLIP)).toContain(
+      CLIP,
+    );
+  });
+
+  it("throws when no root exists", () => {
+    expect(() => insertTimelineAssetIntoSource(`<div id="x"></div>`, CLIP)).toThrow(
+      "No composition root found",
+    );
+  });
+
+  it("finds the root inside the standard <template> sub-composition layout", () => {
+    const source = `<template id="sub-template">\n  <div data-composition-id="sub" data-duration="2"></div>\n</template>`;
+    const html = insertTimelineAssetIntoSource(source, CLIP);
+    expect(html).toContain(
+      `<div data-composition-id="sub" data-duration="2">\n    ${CLIP}</div>\n</template>`,
+    );
+    expect(html.indexOf(CLIP)).toBeLessThan(html.indexOf("</template>"));
+  });
+
+  it("prefers a root outside templates over one inside a template", () => {
+    const source = `<template id="t"><div data-composition-id="inner"></div></template><div data-composition-id="main"></div>`;
+    const html = insertTimelineAssetIntoSource(source, CLIP);
+    expect(html).toContain(`<div data-composition-id="main">\n  ${CLIP}`);
+    expect(html).toContain(`<div data-composition-id="inner"></div>`);
   });
 });
 
@@ -281,5 +334,67 @@ describe("buildTimelineAssetInsertHtml — extra attributes", () => {
 
   it("writes nothing extra without them", () => {
     expect(buildTimelineAssetInsertHtml({ ...base, kind: "video" })).not.toContain("data-ov-");
+  });
+});
+
+describe("buildTimelineAssetInsertHtml — file names that are not URL-safe", () => {
+  const base = {
+    id: "clip_1",
+    hfId: "hf-name-1",
+    start: 0,
+    duration: 4,
+    track: 0,
+    zIndex: 1,
+  };
+
+  function clipOf(assetPath: string, kind: "image" | "video" | "audio") {
+    const { document } = parseHTML(
+      `<div id="root">${buildTimelineAssetInsertHtml({ ...base, assetPath, kind })}</div>`,
+    );
+    const root = document.getElementById("root");
+    const clip = root?.firstElementChild;
+    if (!root || !clip) throw new Error("clip was not written");
+    return { root, clip };
+  }
+
+  it("keeps a name that closes the attribute from adding attributes to the element", () => {
+    const name = 'assets/clip" onerror="alert(document.domain)" x=".mp4';
+    for (const kind of ["image", "video", "audio"] as const) {
+      const { root, clip } = clipOf(name, kind);
+      expect(root.children.length).toBe(1);
+      expect(clip.hasAttribute("onerror")).toBe(false);
+      expect(clip.hasAttribute("x")).toBe(false);
+      expect(decodeURIComponent(clip.getAttribute("src") ?? "")).toBe(name);
+    }
+  });
+
+  it("keeps a name that closes the tag from injecting markup", () => {
+    const { root, clip } = clipOf('assets/"><script>alert(1)</script>.mp4', "video");
+    expect(root.querySelector("script")).toBeNull();
+    expect(decodeURIComponent(clip.getAttribute("src") ?? "")).toBe(
+      'assets/"><script>alert(1)</script>.mp4',
+    );
+  });
+
+  it("round-trips #, ?, %, spaces and quotes through the src attribute", () => {
+    const names = [
+      "assets/a b#1.mp4",
+      "assets/what?.mp4",
+      "assets/100%.mp4",
+      'assets/it\'s "x" (1).mp4',
+      "assets/测试 &amp;.mp4",
+    ];
+    for (const name of names) {
+      const src = clipOf(name, "video").clip.getAttribute("src") ?? "";
+      expect(src).not.toMatch(/[ "#?'()&<>]/);
+      expect(src.split("/")).toHaveLength(2);
+      expect(decodeURIComponent(src)).toBe(name);
+    }
+  });
+
+  it("leaves a plain path as written", () => {
+    expect(clipOf("../assets/photo-1.png", "image").clip.getAttribute("src")).toBe(
+      "../assets/photo-1.png",
+    );
   });
 });

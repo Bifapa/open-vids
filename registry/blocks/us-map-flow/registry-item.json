@@ -3,7 +3,7 @@
   "name": "us-map-flow",
   "type": "hyperframes:block",
   "title": "US Flow Map",
-  "description": "Animated connection arcs between US cities over a base map — composable origin-destination flow visualization",
+  "description": "Animated connection arcs between US cities over a base map \u2014 composable origin-destination flow visualization",
   "tags": ["data", "map", "geography", "usa", "flow", "connections", "arcs"],
   "dimensions": {
     "width": 1920,
@@ -13,8 +13,18 @@
   "files": [
     {
       "path": "us-map-flow.html",
-      "target": "compositions/us-map-flow.html",
+      "target": "compositions/us-map-flow/us-map-flow.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/us-atlas-states-10m.js",
+      "target": "compositions/us-map-flow/assets/us-atlas-states-10m.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/us-atlas-LICENSE.txt",
+      "target": "compositions/us-map-flow/assets/us-atlas-LICENSE.txt",
+      "type": "hyperframes:asset"
     }
   ],
   "preview": {

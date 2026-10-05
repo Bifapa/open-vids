@@ -645,3 +645,19 @@ describe("variable declarations (Composition API)", () => {
     ]);
   });
 });
+
+// ─── override-set replay of added elements ────────────────────────────────────
+
+describe("override-set replay of added elements", () => {
+  it("restores an element added during the session when reopened with getOverrides()", async () => {
+    const comp = await openComposition(BASE_HTML, { overrides: {} });
+    const newId = comp.addElement("hf-stage", 1, '<p class="added">new</p>');
+    comp.setStyle(newId, { color: "red" });
+
+    const reopened = await openComposition(BASE_HTML, { overrides: comp.getOverrides() });
+    const el = reopened.getElement(newId);
+    expect(el).not.toBeNull();
+    expect(el?.inlineStyles["color"]).toBe("red");
+    expect(reopened.serialize().match(new RegExp(`data-hf-id="${newId}"`, "g"))).toHaveLength(1);
+  });
+});

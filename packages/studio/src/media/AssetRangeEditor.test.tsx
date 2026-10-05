@@ -101,6 +101,23 @@ describe("the fragment editor", () => {
     expect(setRange).toHaveBeenCalledWith("demo", PATH, { start: 10, end: 18 });
   });
 
+  it("saves a pending arrow-key pick when the inspector moves to another asset first", async () => {
+    const setRange = vi.spyOn(mediaClient, "setRange").mockResolvedValue(view(null));
+    const host = mount({ start: 10, end: 20 });
+
+    key(host, "end", "ArrowLeft", true);
+    expect(setRange).not.toHaveBeenCalled();
+    cleanupMounted();
+    expect(setRange).toHaveBeenCalledOnce();
+    expect(setRange).toHaveBeenCalledWith("demo", PATH, { start: 10, end: 19 });
+
+    // The timer died with the editor: nothing is saved a second time.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(setRange).toHaveBeenCalledOnce();
+  });
+
   it("moves a handle 0.1 s with the arrow and keeps the in point before the out point", async () => {
     vi.spyOn(mediaClient, "setRange").mockResolvedValue(view(null));
     const host = mount({ start: 10, end: 10.3 });

@@ -117,8 +117,8 @@
   </head>
   <body>
     <div
-      id="main"
-      data-composition-id="main"
+      id="transitions-grid"
+      data-composition-id="transitions-grid"
       data-start="0"
       data-duration="11"
       data-width="1920"
@@ -178,7 +178,7 @@
       (function () {
         var tl = gsap.timeline({ defaults: { ease: "none" } });
         window.__timelines = window.__timelines || {};
-        window.__timelines["main"] = tl;
+        window.__timelines["transitions-grid"] = tl;
 
         // Generate grid cells
         var gridColors = [

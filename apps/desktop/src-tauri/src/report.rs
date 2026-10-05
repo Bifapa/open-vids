@@ -16,11 +16,12 @@
 //! file per screenshot (png/jpeg/webp, checked by magic bytes, at most 5 of
 //! at most 8 MB). The reporter id (`<app data dir>/reporter-id`) is a random
 //! UUID v4 created on the first send and is separate from telemetry's
-//! installation id: one counts installations, the other rate-limits reports.
+//! installation id; it is sent with every report so one device's reports can
+//! be linked to each other, and is never shared with statistics.
 //!
 //! Uploads run on the caller's thread — a per-connection thread of the home
 //! server, so the accept loop is never held — and may legitimately take up to
-//! ~90 s (challenge + proof of work + upload).
+//! ~90 s (status check + challenge + upload).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -55,7 +56,7 @@ const FFMPEG_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 const AGENT_SETTINGS_TIMEOUT: Duration = Duration::from_secs(2);
 /// A challenge harder than this is refused rather than searched for hours.
 const MAX_DIFFICULTY: u32 = 28;
-/// The proof-of-work search gives up after this (difficulty 20 takes ~2 s).
+/// The challenge search gives up after this.
 const POW_DEADLINE: Duration = Duration::from_secs(25);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -208,6 +209,9 @@ pub fn boot_json() -> Value {
         "theme": theme,
         "language": i18n::active(),
         "languagePreference": prefs::language(&preferences),
+        // Region capture shells out to macOS's `screencapture`; elsewhere
+        // the page does not offer it.
+        "canCapture": cfg!(target_os = "macos"),
     })
 }
 
@@ -609,8 +613,7 @@ fn sanitize_name(raw: &str, extension: &str) -> String {
 
 /// The random UUID v4 in `<app data dir>/reporter-id`, created on first use.
 /// Deliberately a different file (and value) from telemetry's installation
-/// id: reports are rate-limited per reporter, statistics are counted per
-/// installation, and the two must not be joinable by accident.
+/// id: the two must not be joinable by accident.
 fn reporter_id(root: &Path) -> std::io::Result<String> {
     let path = root.join(REPORTER_ID_FILE);
     if let Ok(text) = std::fs::read_to_string(&path) {
@@ -649,11 +652,10 @@ fn is_uuid(text: &str) -> bool {
         })
 }
 
-// ── Proof of work ──────────────────────────────────────────────────────────
+// ── Challenge ──────────────────────────────────────────────────────────
 
 /// `SHA-256(salt + ":" + nonce)` must have at least `difficulty` leading zero
-/// bits; the nonce is decimal ASCII. The search runs on every core so a
-/// difficulty-20 challenge (the server's) takes about a second.
+/// bits; the nonce is decimal ASCII. The search runs on every core.
 pub fn solve_pow(salt: &str, difficulty: u32) -> Option<String> {
     let workers = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -790,15 +792,46 @@ fn redactor() -> &'static Redactor {
     })
 }
 
+/// A pattern for every spelling of the home directory a log line can carry:
+/// either path separator (a JSON- or Debug-escaped backslash is two of them),
+/// any character as its `%XX` form, and any letter case (the filesystems the
+/// app runs on are case-insensitive by default). `None` for an empty or
+/// root-only home, which would match every slash in the log.
+fn home_pattern(home: &str) -> Option<Regex> {
+    let trimmed = home.trim_end_matches(['/', '\\']);
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut pattern = String::from("(?i)");
+    let mut utf8 = [0u8; 4];
+    for ch in trimmed.chars() {
+        if ch == '/' || ch == '\\' {
+            pattern.push_str(r"(?:/|\\{1,2}|%2F|%5C)");
+            continue;
+        }
+        let encoded: String = ch
+            .encode_utf8(&mut utf8)
+            .bytes()
+            .map(|byte| format!("%{byte:02X}"))
+            .collect();
+        pattern.push_str("(?:");
+        pattern.push_str(&regex::escape(&ch.to_string()));
+        pattern.push('|');
+        pattern.push_str(&encoded);
+        pattern.push(')');
+    }
+    Regex::new(&pattern).ok()
+}
+
 /// The log text as it may leave the machine: API keys, bearer tokens, JWTs,
 /// key/token/secret/password values, email addresses and the user's home
-/// directory (as `~`) are all removed. The server redacts again; this pass
-/// exists so no secret ever leaves the machine in the first place.
+/// directory (as `~`, in every escaped, slashed, encoded or re-cased form)
+/// are all removed here, before anything leaves the machine.
 pub fn redact(text: &str, home: &str) -> String {
-    let mut out = text.to_string();
-    if !home.is_empty() {
-        out = out.replace(home, "~");
-    }
+    let mut out = match home_pattern(home) {
+        Some(pattern) => pattern.replace_all(text, "~").into_owned(),
+        None => text.to_string(),
+    };
     for (rule, replacement) in &redactor().rules {
         out = rule.replace_all(&out, *replacement).into_owned();
     }
@@ -888,7 +921,7 @@ fn selection_of(value: &Value) -> Option<(String, String)> {
 
 // ── Upload ─────────────────────────────────────────────────────────────────
 
-/// `POST /api/report/submit`: status → challenge → proof of work → multipart
+/// `POST /api/report/submit`: status → challenge → multipart
 /// upload. Returns the HTTP status and JSON body the page gets; the draft is
 /// cleared on success only.
 pub fn submit(context: Option<&str>) -> (u16, Value) {
@@ -915,7 +948,7 @@ fn submit_to(draft_dir: &Path, root: &Path, base: &str, context: Option<&str>) -
     let context = submit_context(context);
     let short = agent(SHORT_TIMEOUT);
 
-    // The kill switch first: never waste a challenge on a disabled service.
+    // Ask the service whether it takes reports before asking for a challenge.
     let status_url = format!("{base}/status");
     let (code, body) = match send(short.get(&status_url).call()) {
         Ok(pair) => pair,
@@ -973,14 +1006,14 @@ fn submit_to(draft_dir: &Path, root: &Path, base: &str, context: Option<&str>) -
         return failure(502, "server", "The challenge was unreadable.");
     };
     let difficulty = match body["difficulty"].as_u64() {
-        // A malformed challenge gets the server's documented default; an
-        // absurd one is refused rather than searched for hours.
+        // A challenge without a difficulty gets a default; an absurd one is
+        // refused rather than searched for hours.
         None => 20,
         Some(value) if value <= u64::from(MAX_DIFFICULTY) => value as u32,
         Some(_) => return failure(502, "server", "The challenge was too hard to solve."),
     };
     let Some(nonce) = solve_pow(&salt, difficulty) else {
-        return failure(502, "server", "The proof of work could not be solved.");
+        return failure(502, "server", "The challenge could not be solved.");
     };
 
     let meta = report_meta(&draft, &challenge_id, &nonce, &reporter, &context);
@@ -1049,7 +1082,7 @@ fn submit_to(draft_dir: &Path, root: &Path, base: &str, context: Option<&str>) -
         403 => failure(
             502,
             "server",
-            "The proof of work was rejected; please try again.",
+            "The challenge was rejected; please try again.",
         ),
         413 => failure(413, "too_large", "The report is too large to send."),
         429 => failure_retry(
@@ -1257,8 +1290,7 @@ mod tests {
 
     #[test]
     fn the_pow_solver_finds_a_decimal_nonce_meeting_the_difficulty() {
-        // The server's real difficulty (20) is the workload that must stay
-        // around a second on an Apple Silicon machine.
+        // The harder case keeps the solver fast enough on a laptop.
         for (salt, difficulty) in [("test-salt", 14u32), ("another", 20)] {
             let nonce = solve_pow(salt, difficulty).expect("a nonce");
             assert!(
@@ -1449,6 +1481,43 @@ mod tests {
         assert!(redacted.contains("[email]"), "{redacted}");
         // Markdown links and prose keep their shape.
         assert!(redacted.contains("https://openvids.ai"), "{redacted}");
+    }
+
+    #[test]
+    fn redaction_removes_every_spelling_of_the_home_dir() {
+        let windows = r"C:\Users\Alice Smith";
+        for line in [
+            r"opened C:\Users\Alice Smith\Videos\demo",
+            r#"{"projectDir":"C:\\Users\\Alice Smith\\Videos"}"#,
+            r#"Debug "C:\\Users\\Alice Smith\\Videos""#,
+            "opened C:/Users/Alice Smith/Videos",
+            "file:///C:/Users/Alice%20Smith/Videos/demo.mp4",
+            r"lower c:\users\alice smith\videos",
+            "encoded C%3A%5CUsers%5CAlice%20Smith%5CVideos",
+            r"verbatim \\?\C:\Users\Alice Smith\Videos",
+        ] {
+            let redacted = redact(line, windows);
+            assert!(
+                !redacted.to_lowercase().contains("alice"),
+                "the user name survived in {line}: {redacted}"
+            );
+            assert!(redacted.contains('~'), "{redacted}");
+        }
+        let posix = "/Users/alice";
+        for line in [
+            "%2FUsers%2Falice%2Fproject",
+            "file:///Users/al%69ce/x",
+            "/users/ALICE/x",
+            "/Users/alice/x",
+        ] {
+            let redacted = redact(line, posix);
+            assert!(
+                !redacted.to_lowercase().contains("alice") && !redacted.contains("%69"),
+                "the user name survived in {line}: {redacted}"
+            );
+        }
+        assert_eq!(redact("/Users/alice/x", posix), "~/x");
+        assert_eq!(redact("/a/b/c", "/"), "/a/b/c", "a root home must not eat every slash");
     }
 
     #[test]
@@ -1765,7 +1834,7 @@ mod tests {
         assert_eq!(status, 503, "{body}");
         assert_eq!(body["error"], "disabled");
         assert!(disabled.request("upload").is_none());
-        // The kill switch is checked before a challenge is asked for.
+        // The status check comes before a challenge is asked for.
         assert!(disabled.request("/api/reports/challenge").is_none());
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&root);

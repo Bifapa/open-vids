@@ -32,10 +32,17 @@ export const examples: Example[] = [
     "hyperframes preview --lint-verbose",
   ],
 ];
-import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readlinkSync,
+  realpathSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import { resolve, dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
@@ -487,7 +494,7 @@ export default defineCommand({
       foreground: Boolean(args.foreground),
       interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
       devMode: isDevMode(),
-      localStudio: hasLocalStudio(dir),
+      localStudio: findLocalStudio(dir) !== null,
     });
 
     if (launchMode === "background") {
@@ -928,7 +935,7 @@ async function printCurrentSelection(
   if (!server) {
     printSelectionFailure(
       "preview-not-running",
-      "No running Studio preview found for this project. Start one with: npx hyperframes preview",
+      "No running Studio preview found for this project. Start one with: hyperframes preview",
       json,
     );
     return;
@@ -1050,7 +1057,7 @@ async function printCurrentContext(
   if (!server) {
     printSelectionFailure(
       "preview-not-running",
-      "No running Studio preview found for this project. Start one with: npx hyperframes preview",
+      "No running Studio preview found for this project. Start one with: hyperframes preview",
       options.json,
     );
     return;
@@ -1465,23 +1472,33 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
 }
 
 /**
- * Whether the project's local @hyperframes/studio can actually be SERVED.
+ * The project's local @hyperframes/studio checkout, when it can actually be SERVED.
  *
  * Local mode runs `vite` with the studio package as its cwd, so it needs that
  * package's own `vite.config.ts` — which the published tarball does not carry
- * (`files: ["src", "dist"]`). Resolving the package alone therefore is not
+ * (`files: ["src", "dist"]`). Finding the package alone therefore is not
  * enough: an npm-installed studio would send `preview` down a path that can
  * never come up, and since `--background` re-execs this same CLI, it would time
  * out after ten seconds instead of falling back. Fall back to embedded mode,
  * which serves the same studio and does work from a published install.
+ *
+ * The lookup walks `node_modules` on disk and never goes through module
+ * resolution: under Bun a failed resolve auto-installs the package from npm
+ * (hundreds of dependencies, before the server reports its port), and a
+ * resolved project-owned package would run project code. The packaged app sets
+ * `OPENVIDS_EMBEDDED_STUDIO=1` and always serves its own bundled studio.
  */
-function hasLocalStudio(dir: string): boolean {
-  try {
-    const req = createRequire(join(dir, "package.json"));
-    const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
-    return existsSync(join(studioPkgPath, "vite.config.ts"));
-  } catch {
-    return false;
+export function findLocalStudio(dir: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  if (env["OPENVIDS_EMBEDDED_STUDIO"] === "1") return null;
+  let current = resolve(dir);
+  for (;;) {
+    const candidate = join(current, "node_modules", "@hyperframes", "studio");
+    if (existsSync(join(candidate, "package.json"))) {
+      return existsSync(join(candidate, "vite.config.ts")) ? realpathSync(candidate) : null;
+    }
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
   }
 }
 
@@ -1490,8 +1507,8 @@ function hasLocalStudio(dir: string): boolean {
  * Provides full Vite HMR and the complete studio experience.
  */
 async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
-  const req = createRequire(join(dir, "package.json"));
-  const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
+  const studioPkgPath = findLocalStudio(dir);
+  if (studioPkgPath === null) throw new Error("no local @hyperframes/studio to serve");
   const pName = options?.projectName ?? basename(dir);
 
   // Symlink project into studio's data directory

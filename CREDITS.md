@@ -35,7 +35,9 @@ depends on, in particular:
 - **[oh-my-pi](https://github.com/can1357/oh-my-pi)** (OMP SDK) — the agent
   sessions, providers and model catalog behind Agent Chat. MIT.
 - **[Bun](https://bun.sh)** — package manager and the JavaScript runtime shipped
-  inside the app, distributed under its own license terms.
+  inside the app. Bun is MIT-licensed and statically links LGPL-2 JavaScriptCore; its license text, with the
+  relink instructions, is the app's `licenses/bun-LICENSE.md` (the app also carries this file, NOTICE and a list of the
+  third-party packages it ships in `licenses/`).
 - **[Puppeteer](https://pptr.dev)** (Apache-2.0) and **[FFmpeg](https://ffmpeg.org)**
   — frame capture and encoding. OpenVids does not ship Chrome or FFmpeg; it uses
   the ones installed on the machine.
@@ -61,34 +63,34 @@ The complete dependency set is in `bun.lock` and
   from [csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8).
   Licensed under [Creative Commons Attribution 4.0 (CC-BY-4.0)](https://creativecommons.org/licenses/by/4.0/).
   It runs on **[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)**, Apache-2.0.
-- The seven 3D-motion catalog pieces (`canopy-part-title`, `glass-shard-title`,
-  `code-slice-hero`, `frost-sequence-camera-orbit`, `cuboid-carousel`,
+- The five 3D-motion catalog pieces (`canopy-part-title`, `code-slice-hero`, `cuboid-carousel`,
   `orbit-card`, `wireframe-portal-title`) were contributed to HyperFrames with their author's
   permission under the Apache-2.0 license. What they vendor or load, by upstream:
-  - **[three.js](https://threejs.org)**, MIT. Vendored as r185 in `frost-sequence-camera-orbit`,
-    `cuboid-carousel` and `orbit-card` (`Three-LICENSE.txt` beside the copy); bundled as r181 inside
-    `glass-shard-title`'s `glass-main.js`; loaded from the jsDelivr CDN by `canopy-part-title`
+  - **[three.js](https://threejs.org)**, MIT. Vendored as r185 in `cuboid-carousel` and `orbit-card`
+    (`Three-LICENSE.txt` beside the copy); loaded from the jsDelivr CDN by `canopy-part-title`
     (0.170.0) and `wireframe-portal-title` (0.181.2).
   - **[GSAP](https://gsap.com)** 3.14.2, under the [GSAP Standard License](https://gsap.com/standard-license)
-    (not an OSI open-source licence). Vendored in `code-slice-hero`, `cuboid-carousel`,
-    `frost-sequence-camera-orbit` and `orbit-card` with `GSAP-NOTICE.txt`; loaded from the CDN by
-    `glass-shard-title`, `canopy-part-title` and `wireframe-portal-title`.
-  - **[three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh)** 0.9.14 and
-    **[opentype.js](https://github.com/opentypejs/opentype.js)** 2.x (range in the block's
-    `source/package.json`), both MIT, bundled into the frost block's `frost.js`.
+    (not an OSI open-source licence). Vendored in `code-slice-hero`, `cuboid-carousel` and
+    `orbit-card` with `GSAP-NOTICE.txt`; loaded from the CDN by `canopy-part-title` and
+    `wireframe-portal-title`.
   - **[Clipper](https://sourceforge.net/projects/jsclipper/)** 6.4.2 (JavaScript port of Angus
-    Johnson's Clipper), Boost Software License 1.0: build-time source of `frost-sequence-camera-orbit`
-    and loaded from the CDN as `clipper-lib` by `wireframe-portal-title`.
-  - **[d3-delaunay](https://github.com/d3/d3-delaunay)** 6.0.4, ISC, loaded from the CDN by
-    `glass-shard-title`.
-  - **[Geist](https://github.com/vercel/geist-font)**, **[Archivo](https://github.com/Omnibus-Type/Archivo)**
-    and **[Cormorant Garamond](https://github.com/CatharsisFonts/Cormorant)**, SIL Open Font License 1.1,
+    Johnson's Clipper), Boost Software License 1.0: loaded from the CDN as `clipper-lib` by
+    `wireframe-portal-title`.
+  - **[Geist](https://github.com/vercel/geist-font)** and **[Archivo](https://github.com/Omnibus-Type/Archivo)**,
+    SIL Open Font License 1.1,
     vendored with their licence text; `canopy-part-title` (Gelasio) and `cuboid-carousel` (Inter) load
     their fonts from Google Fonts at run time.
-  - **[Ferndale Studio 01](https://polyhaven.com/a/ferndale_studio_01)** HDR from Poly Haven, CC0
-    (`glass-shard-title`); it needs no licence text.
   - Origin to be confirmed with the author: `canopy-part-title/assets/leaf-surface-color.webp` and
-    `leaf-surface-normal.webp`, `glass-shard-title/assets/matcap-1.png`,
-    `frost-sequence-camera-orbit/assets/shards-atlas.png`,
-    `frost-sequence-camera-orbit/assets/textures/ice-inclusions-generated.png` and
-    `frost-sequence-camera-orbit/assets/textures/bluenoise64.png`.
+    `leaf-surface-normal.webp`.
+- Fonts vendored in registry items, each with its licence text beside it: **[Caveat](https://github.com/googlefonts/caveat)**
+  (the `hw-*` handwriting items), **[Barlow Condensed](https://github.com/jpt/barlow)** (`lower-third-bild`) and
+  **[Courier Prime](https://github.com/quoteunquoteapps/CourierPrime)** (`notes-reveal`, `marker-checklist-card`), SIL Open Font
+  License 1.1; **[Permanent Marker](https://github.com/googlefonts/permanent-marker)** (`notes-reveal`,
+  `marker-checklist-card`), Apache-2.0.
+- The map blocks (`us-map`, `us-map-bubble`, `us-map-flow`, `world-map`, `spain-map`) bundle their
+  TopoJSON, each with the package licence text beside it:
+  - **[us-atlas](https://github.com/topojson/us-atlas)** 3.0.1 (`states-10m.json`, derived from the U.S. Census
+    Bureau cartographic boundary files) and **[world-atlas](https://github.com/topojson/world-atlas)** 2.0.2
+    (`countries-110m.json`, derived from Natural Earth), ISC licence.
+  - **[es-atlas](https://github.com/martgnz/es-atlas)** 0.6.0 (`autonomous_regions.json`), MIT licence. Its data is the
+    Instituto Geográfico Nacional de España vector data, [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).

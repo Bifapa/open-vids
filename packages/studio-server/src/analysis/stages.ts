@@ -399,6 +399,8 @@ export async function runAnalysis(run: AnalysisRun, reporter: StageReporter): Pr
   const { store, source } = run;
   const { signal } = reporter;
   const outcomes: Partial<Record<AnalysisStage, StageOutcome>> = {};
+  /** Stages that cannot apply to this source, directly or because what they need cannot. */
+  const inapplicableStages = new Set<AnalysisStage>();
   for (const name of run.plan) {
     signal.throwIfAborted();
     reporter.begin(name);
@@ -420,7 +422,8 @@ export async function runAnalysis(run: AnalysisRun, reporter: StageReporter): Pr
 
     const notApplicable = inapplicable(source, name);
     if (notApplicable) {
-      await conclude("skipped", notApplicable);
+      inapplicableStages.add(name);
+      await conclude("skipped", notApplicable, "unavailable");
       continue;
     }
     const blocker = STAGE_INPUTS[name].requires.find((need) => {
@@ -430,7 +433,15 @@ export async function runAnalysis(run: AnalysisRun, reporter: StageReporter): Pr
     if (blocker) {
       const failed = outcomes[blocker] === "failed";
       const detail = `${blocker} ${failed ? "failed" : "is not available"}`;
-      await conclude(failed ? "failed" : "skipped", detail, failed ? "failed" : undefined);
+      // What only waits on a stage that does not apply to this source never will apply either: record that, so the
+      // stage stops reporting "missing". A blocker that is merely unavailable on this machine may be installed later.
+      const never = !failed && inapplicableStages.has(blocker);
+      if (never) inapplicableStages.add(name);
+      await conclude(
+        failed ? "failed" : "skipped",
+        detail,
+        failed ? "failed" : never ? "unavailable" : undefined,
+      );
       continue;
     }
 
@@ -454,11 +465,8 @@ export async function runAnalysis(run: AnalysisRun, reporter: StageReporter): Pr
       } else if (computed.kind === "kept") {
         await conclude("cached", computed.detail);
       } else {
-        await conclude(
-          computed.kind === "unavailable" ? "unavailable" : "skipped",
-          computed.detail,
-          computed.kind === "unavailable" ? "unavailable" : undefined,
-        );
+        if (computed.kind === "skipped") inapplicableStages.add(name);
+        await conclude(computed.kind, computed.detail, "unavailable");
       }
     } catch (error) {
       if (signal.aborted || (isAnalysisFailure(error) && error.error.code === "cancelled")) {

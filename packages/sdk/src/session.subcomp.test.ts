@@ -656,3 +656,32 @@ describe("serialize({ stripRuntime })", () => {
     expect(RUNTIME_SCRIPT).toContain(RUNTIME_BOOTSTRAP_ATTR);
   });
 });
+
+// ─── 11. Scoped id patch replay ────────────────────────────────────────────────
+
+describe("patch replay — scoped ids", () => {
+  const SCOPED = inlinedHtml(`
+    <div data-hf-id="hf-root" data-hf-root>
+      <div data-hf-id="hf-host" data-composition-file="sub.html">
+        <p data-hf-id="hf-leaf" style="color: blue">text</p>
+      </div>
+    </div>
+  `);
+
+  it("undo/redo of a scoped-target edit restores the document", async () => {
+    const comp = await openComposition(SCOPED);
+    comp.setStyle("hf-host/hf-leaf", { color: "red" });
+    expect(comp.getElement("hf-host/hf-leaf")?.inlineStyles.color).toBe("red");
+    comp.undo();
+    expect(comp.getElement("hf-host/hf-leaf")?.inlineStyles.color).toBe("blue");
+    comp.redo();
+    expect(comp.getElement("hf-host/hf-leaf")?.inlineStyles.color).toBe("red");
+  });
+
+  it("override-set replay applies scoped-target edits", async () => {
+    const edited = await openComposition(SCOPED);
+    edited.setText("hf-host/hf-leaf", "changed");
+    const replayed = await openComposition(SCOPED, { overrides: edited.getOverrides() });
+    expect(replayed.getElement("hf-host/hf-leaf")?.text).toBe("changed");
+  });
+});

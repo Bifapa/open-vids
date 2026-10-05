@@ -7,6 +7,7 @@ export type {
 } from "./agent/gateway.js";
 export { resolveAgentRuntimeLaunch } from "./agent/launch.js";
 export { createStudioApi } from "./createStudioApi.js";
+export { checkStudioRequest, type StudioRequestVerdict } from "./helpers/hostGuard.js";
 export {
   createProjectSignature,
   affectsProjectSignature,

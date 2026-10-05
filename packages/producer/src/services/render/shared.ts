@@ -20,6 +20,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { createHash } from "node:crypto";
 import {
   CANVAS_DIMENSIONS,
   checkOutputResolutionCompatibility,
@@ -565,6 +566,19 @@ function stageExtractedFrameDirOnce(
   linkOrCopyFrameDir(fileSystem, src, dest);
 }
 
+/**
+ * Directory name for a video's staged frames. The video id is author-controlled; an
+ * id such as `../../x` must not place the link outside the compiled frame root. A safe
+ * id is kept as is; anything else is sanitized and suffixed with a hash of the original
+ * so distinct ids stay distinct. Mirrors the engine extractor's per-video directory
+ * naming — keep the two in step.
+ */
+function frameLinkDirName(videoId: string): string {
+  if (/^[A-Za-z0-9_-]+$/.test(videoId)) return videoId;
+  const digest = createHash("sha256").update(videoId).digest("hex").slice(0, 8);
+  return `${videoId.replace(/[^A-Za-z0-9_-]/g, "_") || "item"}-${digest}`;
+}
+
 export function materializeExtractedFramesForCompiledDir(
   extracted: MaterializedExtractedFrames[],
   compiledDir: string,
@@ -579,7 +593,7 @@ export function materializeExtractedFramesForCompiledDir(
     const resolvedOut = pathModule.resolve(ext.outputDir);
     if (isPathInside(resolvedOut, resolvedCompiledDir, { pathModule })) continue;
 
-    const linkPath = pathModule.join(compiledFrameRoot, ext.videoId);
+    const linkPath = pathModule.join(compiledFrameRoot, frameLinkDirName(ext.videoId));
     if (!fileSystem.existsSync(linkPath)) {
       fileSystem.mkdirSync(pathModule.dirname(linkPath), { recursive: true });
       stageExtractedFrameDir(

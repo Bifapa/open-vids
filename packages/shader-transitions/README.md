@@ -30,7 +30,7 @@ const tl = init({
 });
 ```
 
-The `init()` function pre-captures animated scene samples for every transition, composites cached samples with the selected shader during playback, and returns a GSAP timeline. Scene animations keep advancing through shader transitions without running DOM captures in the playback loop. If WebGL is unavailable, it falls back to normal timeline playback without shader compositing.
+The `init()` function pre-captures animated scene samples for every transition, composites cached samples with the selected shader during playback, and returns a GSAP timeline. Scene animations keep advancing through shader transitions without running DOM captures in the playback loop. If WebGL is unavailable (or its context is lost), scenes still play one after another and every transition degrades to a CSS crossfade; shader compositing resumes when the browser restores the context.
 
 When the browser exposes Chrome's experimental CanvasDrawElement API, scene
 capture uses native HTML-in-canvas via `drawElementImage()`. Other browsers keep
@@ -55,6 +55,8 @@ init({
   timeline: tl,
 });
 ```
+
+The timeline keeps its own length: `init()` only extends it to cover the last transition and a longer `data-duration` on the composition root.
 
 ## Available shaders
 

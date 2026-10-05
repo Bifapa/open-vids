@@ -1,16 +1,26 @@
 // @vitest-environment node
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { START, type HistoryWho } from "./historyLog";
+import { readLog, START, type HistoryWho } from "./historyLog";
+import { HistoryBusyError } from "./ownerLock";
 import { HistoryClosedError, openProjectHistory } from "./projectHistory";
 
 // Lets a test swap the folder at an exact point inside the history's own copies.
 const hooks = vi.hoisted(() => ({
   afterWrite: null as null | (() => void),
   beforeWrite: null as null | (() => void),
-  beforePut: null as null | (() => void),
+  beforePut: null as null | (() => void | Promise<void>),
+  beforePrune: null as null | (() => void),
   onReceipt: null as null | ((path: string) => void),
   recreated: null as null | string,
 }));
@@ -45,8 +55,12 @@ vi.mock("./blobStore", async (importOriginal) => {
       return {
         ...store,
         put: async (path: string) => {
-          hooks.beforePut?.();
+          await hooks.beforePut?.();
           return store.put(path);
+        },
+        prune: async (keep: ReadonlySet<string>) => {
+          hooks.beforePrune?.();
+          return store.prune(keep);
         },
         writeTo: async (hash: string, path: string, beforeReplace?: () => void) => {
           hooks.beforeWrite?.();
@@ -66,6 +80,7 @@ afterEach(async () => {
   hooks.afterWrite = null;
   hooks.beforeWrite = null;
   hooks.beforePut = null;
+  hooks.beforePrune = null;
   hooks.onReceipt = null;
   hooks.recreated = null;
   for (const step of cleanup.splice(0).reverse()) await step();
@@ -131,6 +146,8 @@ describe("a project folder swapped while the history is at work", () => {
       ["new project", "new project", "new project"],
       ["edited", "edited", "edited"],
     ]);
+    // The refused write's temp copy must not stay behind holding the old project's bytes.
+    expect(readdirSync(projectDir).sort()).toEqual(files);
   });
 
   it("refuses a restore delete whose folder was swapped after its check, so the new project keeps the file", async () => {
@@ -210,5 +227,56 @@ describe("a project folder swapped while the history is at work", () => {
         if (file.after) filed.push(String(await again.readBlob(file.after)));
     expect(filed).toContain("edited");
     expect(filed).not.toContain("new project");
+  });
+
+  it("keeps the folder's ownership while a close is still settling its writes", async () => {
+    const { history, projectDir, historyRoot } = await swappable();
+    let held!: () => void;
+    const gate = new Promise<void>((open) => (held = open));
+    let reached!: () => void;
+    const inSettle = new Promise<void>((arrived) => (reached = arrived));
+    hooks.beforePut = () => {
+      hooks.beforePut = null;
+      reached();
+      return gate;
+    };
+    writeFileSync(join(projectDir, "a.html"), "edited");
+    let closed = false;
+    const closing = history.close().then(() => (closed = true));
+    await inSettle;
+
+    const owner = readFileSync(join(historyRoot, history.projectId, "owner.pid"), "utf-8");
+    expect(owner.trim().split(/\s+/)[0]).toBe(String(process.pid));
+    await expect(openProjectHistory({ projectDir, historyRoot, ownerWaitMs: 0 })).rejects.toThrow(
+      HistoryBusyError,
+    );
+    expect(closed).toBe(false);
+
+    held();
+    await closing;
+    const again = await openProjectHistory({ projectDir, historyRoot, ownerWaitMs: 0 });
+    cleanup.push(() => again.close());
+  });
+
+  it("files the folded log before the blobs it dropped are deleted, so a crash mid-prune keeps no entry without its bytes", async () => {
+    const folders = unopened();
+    const history = await openProjectHistory({ ...folders, budgetBytes: 50 });
+    cleanup.push(() => history.close());
+    const logFile = join(folders.historyRoot, history.projectId, "log.jsonl");
+    const seen: Array<{ disk: number; memory: number }> = [];
+    hooks.beforePrune = () => {
+      seen.push({
+        disk: readLog(logFile, () => {})?.entries.length ?? -1,
+        memory: history.list().length,
+      });
+    };
+    for (const fill of ["x", "y", "z"]) {
+      const window = await history.beginWindow(you, `Write ${fill}`);
+      writeFileSync(join(folders.projectDir, "a.html"), fill.repeat(40));
+      await window.close();
+    }
+
+    expect(seen.length).toBeGreaterThan(0);
+    for (const { disk, memory } of seen) expect(disk).toBe(memory);
   });
 });

@@ -25,7 +25,7 @@ Composition id: `orbit-card`. Duration 10 s at 30 fps, 1920×1080.
 
 ## Install
 
-Install with `npx hyperframes add orbit-card`; by default the files above land under `compositions/orbit-card/`. Then mount the block from the host `index.html`:
+Install with `hyperframes add orbit-card`; by default the files above land under `compositions/orbit-card/`. Then mount the block from the host `index.html`:
 
 ```html
 <div
@@ -42,7 +42,7 @@ Install with `npx hyperframes add orbit-card`; by default the files above land u
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'compositions/orbit-card/orbit-card.html' --variables '{"feature1Title":"Always in sync","feature1Desc":"Changes reach every screen the moment they happen."}'
+hyperframes render 'compositions/orbit-card/orbit-card.html' --variables '{"feature1Title":"Always in sync","feature1Desc":"Changes reach every screen the moment they happen."}'
 ```
 
 ## Variables

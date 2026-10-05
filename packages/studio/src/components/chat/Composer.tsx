@@ -2,8 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { PaperPlaneRight, Stop, TreeStructure, X } from "@phosphor-icons/react";
 import { useAgentStore } from "../../agent/agentContext";
 import { activeThread, hasNoUsableModel, runningTurn } from "../../agent/agentSelectors";
-import { draftChatSummary } from "../../agent/agentDraftChat";
-import { NEW_CHAT_DRAFT } from "../../agent/agentStore";
+import { NEW_CHAT_DRAFT, draftChatSummary } from "../../agent/agentDraftChat";
 import { useComposerContextStore } from "../../agent/composerContext";
 import { isUploading } from "../../agent/composerAttachments";
 import { useComposerRequestStore } from "../../agent/composerRequest";
@@ -13,6 +12,7 @@ import { useTranslation } from "../../i18n";
 import { Kbd } from "../ui/Kbd";
 import { resolveShortcutKey } from "../../utils/platform";
 import { resolveModifierKey } from "../../utils/keyMatch";
+import { isImeKeyEvent } from "../../utils/imeKey";
 import { AgentsMenu } from "./AgentsMenu";
 import { ConnectModelButton, MANUAL_EDITOR_NOTE, NO_MODEL_SENTENCE } from "./ConnectModel";
 import { chatAgentName } from "./AgentMonogram";
@@ -151,7 +151,7 @@ export function Composer() {
       event.currentTarget.blur();
       return;
     }
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (event.key !== "Enter" || event.shiftKey || isImeKeyEvent(event.nativeEvent)) return;
     event.preventDefault();
     void submit();
   };
@@ -274,7 +274,7 @@ export function Composer() {
                 data-testid="composer-story-chip"
               >
                 <TreeStructure size={12} aria-hidden className={chipIconClass} />
-                <span className={chipLabelClass}>Story</span>
+                <span className={chipLabelClass}>{t("chat.composer.storyChipLabel")}</span>
               </span>
             )}
             <span aria-hidden className="min-w-0 flex-1" />

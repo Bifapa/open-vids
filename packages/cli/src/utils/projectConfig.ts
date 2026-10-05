@@ -67,7 +67,7 @@ export interface ProjectConfig {
    * Owning authoring-workflow skill slug (e.g. "product-launch-video"). Stamped
    * by `hyperframes init --skill` or seeded from the first `hyperframes render
    * --skill`, then read back so every later render of this project — re-render,
-   * `npm run render`, `--batch`, preview — is attributed to it in local usage
+   * `--batch`, preview — is attributed to it in local usage
    * attribution without the caller re-passing the flag.
    */
   authoringSkill?: string;
@@ -239,7 +239,7 @@ function isFileNotFound(error: unknown): boolean {
 
 /**
  * Persist the owning authoring-skill slug into `hyperframes.json` so every
- * later render of this project — re-render, `npm run render`, `--batch`,
+ * later render of this project — re-render, `--batch`,
  * preview — is attributed to the workflow that created it, without the caller
  * re-passing `--skill`.
  *

@@ -1,6 +1,9 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type {
   AgentId,
+  FramesRequest,
   SpecialistId,
   TimelineClip,
   TimelineSnapshot,
@@ -173,6 +176,18 @@ describe("analyze_media", () => {
       isError: true,
       text: "unknown_source: no such file",
     });
+  });
+
+  it("tells the model a refused start (an analysis is running) is a conflict and how to wait for it", async () => {
+    const { host, call } = setup();
+    host.nextError = new AnalysisToolError(
+      "conflict",
+      "assets/a.mp4 is already being analysed without recomputing transcript",
+    );
+    const result = await call("analyze_media", { source: SAMPLE_SOURCE, force: true });
+    expect(result.isError).toBe(true);
+    expect(result.text).toMatch(/^conflict: .*already being analysed.*Nothing was started\./s);
+    expect(result.text).toContain("without force or language");
   });
 });
 
@@ -423,6 +438,68 @@ describe("inspect_frames", () => {
     const result = await call("inspect_frames", { source: SAMPLE_SOURCE, times: [5] });
     expect(result).toEqual({ isError: true, text: "failed: ffmpeg could not decode the frame" });
     expect(result.images).toBeUndefined();
+  });
+
+  describe("frame budget", () => {
+    const PROJECT = join(tmpdir(), "ov-frames-project");
+
+    function capped(framesPerSource: number, host = new FakeAnalysisHost()) {
+      const analysis = new TurnAnalysis({
+        host,
+        editing: null,
+        turnSignal: new AbortController().signal,
+        pollMs: 1,
+        framesPerSource,
+        projectDir: PROJECT,
+      });
+      const call = (args: unknown) =>
+        analysis.execute("inspect_frames", args, new AbortController().signal);
+      return { host, call };
+    }
+
+    it("counts every spelling of one file against the same budget", async () => {
+      const { host, call } = capped(2);
+      expect((await call({ source: SAMPLE_SOURCE, times: [1, 2] })).isError).toBeUndefined();
+      for (const spelling of [
+        `./${SAMPLE_SOURCE}`,
+        ` ${SAMPLE_SOURCE.replaceAll("/", "\\")} `,
+        join(PROJECT, SAMPLE_SOURCE),
+      ]) {
+        const refused = await call({ source: spelling, times: [3] });
+        expect(refused.isError).toBe(true);
+        expect(refused.text).toContain("Frame budget");
+      }
+      expect(host.frameRequests).toHaveLength(1);
+      // frames already inspected stay free whatever the spelling
+      expect((await call({ source: `./${SAMPLE_SOURCE}`, times: [2, 1] })).isError).toBeUndefined();
+    });
+
+    it("reserves the budget before extraction, so parallel calls cannot exceed it", async () => {
+      const gate = Promise.withResolvers<void>();
+      class SlowHost extends FakeAnalysisHost {
+        override async frames(request: FramesRequest, signal: AbortSignal) {
+          await gate.promise;
+          return super.frames(request, signal);
+        }
+      }
+      const { host, call } = capped(2, new SlowHost());
+      const results = Promise.all([
+        call({ source: SAMPLE_SOURCE, times: [1, 2] }),
+        call({ source: `./${SAMPLE_SOURCE}`, times: [3, 4] }),
+      ]);
+      gate.resolve();
+      const [first, second] = await results;
+      expect(first.isError).toBeUndefined();
+      expect(second.isError).toBe(true);
+      expect(host.frameRequests).toHaveLength(1);
+    });
+
+    it("gives the reservation back when extraction fails", async () => {
+      const { host, call } = capped(2);
+      host.nextError = new AnalysisToolError("failed", "ffmpeg could not decode the frame");
+      expect((await call({ source: SAMPLE_SOURCE, times: [1, 2] })).isError).toBe(true);
+      expect((await call({ source: SAMPLE_SOURCE, times: [3, 4] })).isError).toBeUndefined();
+    });
   });
 });
 
@@ -718,6 +795,25 @@ describe("build_rough_cut", () => {
     expect((await call("build_rough_cut", { plan: "cut-2" })).text).toMatch(
       /^invalid_request: Plan cut-2 has 1001 ranges/,
     );
+    expect(editing.applyRequests).toEqual([]);
+  });
+
+  it("refuses a plan the service reports as out of date and builds nothing", async () => {
+    const { host, editing, call } = setup();
+    await call("plan_cut", { source: SAMPLE_SOURCE });
+    const plan = host.cutPlans.get("cut-1");
+    if (!plan) throw new Error("plan_cut stored no plan");
+    host.cutPlans.set("cut-1", {
+      ...plan,
+      warnings: ["This plan is out of date: assets/raw-talk.mp4 changed after the plan was made"],
+      outOfDate: "assets/raw-talk.mp4 changed after the plan was made",
+    });
+    const result = await call("build_rough_cut", { plan: "cut-1" });
+    expect(result.isError).toBe(true);
+    expect(result.text).toMatch(
+      /^stale: Cut plan cut-1 is out of date: assets\/raw-talk\.mp4 changed/,
+    );
+    expect(result.text).toContain("plan_cut");
     expect(editing.applyRequests).toEqual([]);
   });
 

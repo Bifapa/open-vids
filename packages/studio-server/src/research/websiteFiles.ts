@@ -38,7 +38,7 @@ import { RequestRegistry, type RequestGuard } from "./requestRegistry.js";
 import { extensionFor } from "./sources/mediaTypes.js";
 import { PolicyFetcher, chunksOf } from "./sources/policyFetch.js";
 import type { PolicyStore } from "./sources/policyStore.js";
-import type { UrlGuard } from "./sources/urlPolicy.js";
+import { assertInAllowedSites, type UrlGuard } from "./sources/urlPolicy.js";
 import { hostFolder, safeFileName, websiteProvenance } from "./website.js";
 import type { WebsiteGrantStore } from "./websiteGrants.js";
 
@@ -390,6 +390,7 @@ export class WebsiteFiles {
     client?: AbortSignal,
   ): Promise<RecordWebsiteResult> {
     const policy = this.fullAccessPolicy(project, request.turnId);
+    assertInAllowedSites(request.url, request.allowedSites);
     const vetted = await this.options.guard.vetPublic(request.url);
     const record = this.options.record;
     if (!record) {
@@ -421,6 +422,8 @@ export class WebsiteFiles {
       });
       guard.assertLive();
       if ("error" in outcome) throw new ResearchFailure(outcome.error.code, outcome.error.message);
+      // The browser follows redirects itself: a recording that ended off the linked sites is dropped unwritten.
+      assertInAllowedSites(outcome.finalUrl, request.allowedSites);
       if (!existsSync(outFile)) {
         throw new ResearchFailure("network", "The recorder produced no video file");
       }
@@ -477,8 +480,14 @@ export class WebsiteFiles {
     url: string,
     headers: Record<string, string>,
     signal: AbortSignal,
+    sites: readonly string[] | undefined,
   ): Promise<{ response: Response; finalUrl: string }> {
-    const { response, finalUrl } = await this.options.fetcher.openPublic(url, headers, signal);
+    const { response, finalUrl } = await this.options.fetcher.openPublic(
+      url,
+      headers,
+      signal,
+      sites,
+    );
     if (response.status >= 200 && response.status < 300) return { response, finalUrl };
     await response.body?.cancel().catch(() => undefined);
     const host = new URL(finalUrl).host;
@@ -498,7 +507,12 @@ export class WebsiteFiles {
   ): Promise<WebsiteFileResult> {
     const control = controlledSignal(guard.signal);
     try {
-      const { response, finalUrl } = await this.opened(url, READ_HEADERS, control.signal);
+      const { response, finalUrl } = await this.opened(
+        url,
+        READ_HEADERS,
+        control.signal,
+        request.allowedSites,
+      );
       const contentType = response.headers.get("content-type");
       const final = new URL(finalUrl);
       const kind = kindOf(final, contentType);
@@ -583,7 +597,7 @@ export class WebsiteFiles {
       const control = controlledSignal(guard.signal);
       let file: { finalUrl: string; contentType: string | null; bytes: number; sha256: string };
       try {
-        file = await this.download(url, downloaded, control);
+        file = await this.download(url, downloaded, control, request.allowedSites);
       } finally {
         control.done();
       }
@@ -611,8 +625,9 @@ export class WebsiteFiles {
     url: string,
     destination: string,
     control: Control,
+    sites: readonly string[] | undefined,
   ): Promise<{ finalUrl: string; contentType: string | null; bytes: number; sha256: string }> {
-    const { response, finalUrl } = await this.opened(url, FILE_HEADERS, control.signal);
+    const { response, finalUrl } = await this.opened(url, FILE_HEADERS, control.signal, sites);
     const contentType = response.headers.get("content-type");
     const host = new URL(finalUrl).host;
     const declared = Number(response.headers.get("content-length"));

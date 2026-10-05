@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as clack from "@clack/prompts";
@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import {
   default as previewCommand,
+  findLocalStudio,
   foregroundPreviewReadyPayload,
   prebuildPreview,
   handlePreviewKillAll,
@@ -103,6 +104,39 @@ describe("preview --kill-all", () => {
 
     expect(log.mock.calls.flat().join("\n")).toContain("No active preview servers to kill");
     log.mockRestore();
+  });
+});
+
+describe("findLocalStudio", () => {
+  function installStudio(root: string, files: string[]): string {
+    const studio = join(root, "node_modules", "@hyperframes", "studio");
+    mkdirSync(studio, { recursive: true });
+    for (const file of files) writeFileSync(join(studio, file), "");
+    return studio;
+  }
+
+  it("finds a checkout that carries its vite.config.ts, from a nested project", () => {
+    const root = tempProject();
+    const studio = installStudio(root, ["package.json", "vite.config.ts"]);
+    const project = join(root, "videos", "film");
+    mkdirSync(project, { recursive: true });
+    expect(findLocalStudio(project, {})).toBe(realpathSync(studio));
+  });
+
+  it("does not count an npm install without vite.config.ts", () => {
+    const root = tempProject();
+    installStudio(root, ["package.json"]);
+    expect(findLocalStudio(root, {})).toBeNull();
+  });
+
+  it("is null when nothing is installed on disk (never resolves or installs from npm)", () => {
+    expect(findLocalStudio(tempProject(), {})).toBeNull();
+  });
+
+  it("is skipped by the packaged app even when a project ships its own studio", () => {
+    const root = tempProject();
+    installStudio(root, ["package.json", "vite.config.ts"]);
+    expect(findLocalStudio(root, { OPENVIDS_EMBEDDED_STUDIO: "1" })).toBeNull();
   });
 });
 

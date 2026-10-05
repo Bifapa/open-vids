@@ -250,6 +250,43 @@ describe("analyzeAndWait over HTTP", () => {
     );
   });
 
+  it("does not cancel a job it only joined when the call is aborted", async () => {
+    const controller = new AbortController();
+    const { host, seen } = await studio({
+      // The service answers with the job the user's Media panel started a minute ago.
+      [`POST ${PREFIX}/jobs`]: (_request, response) =>
+        json(response, 200, job("running", { joined: true })),
+      [`GET ${PREFIX}/jobs/job%201`]: (_request, response) => {
+        controller.abort();
+        json(response, 200, job("running"));
+      },
+    });
+    await expect(
+      analyzeAndWait(host, { source: "assets/a.mp4" }, controller.signal, 1),
+    ).rejects.toMatchObject({ code: "aborted" });
+    expect(seen.some((request) => request.path.endsWith("/cancel"))).toBe(false);
+  });
+
+  it("passes on the service's refusal of a request the running job would not satisfy, with what to do next", async () => {
+    const refused = await studio({
+      [`POST ${PREFIX}/jobs`]: (_request, response) =>
+        json(response, 409, {
+          error: {
+            code: "conflict",
+            message: "assets/a.mp4 is already being analysed without recomputing transcript",
+          },
+        }),
+    });
+    await expect(
+      analyzeAndWait(refused.host, { source: "assets/a.mp4", force: true }, abortSignal(), 1),
+    ).rejects.toMatchObject({
+      code: "conflict",
+      message: expect.stringMatching(
+        /already being analysed.*Nothing was started.*without force or language/s,
+      ),
+    });
+  });
+
   it("surfaces the error of a job that failed, and of a job someone else cancelled", async () => {
     const failed = await studio({
       [`POST ${PREFIX}/jobs`]: (_request, response) =>

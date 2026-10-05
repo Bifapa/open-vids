@@ -246,7 +246,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
 
   // Attribution resolves the explicit --skill flag first, then falls back to
   // the owning skill persisted in hyperframes.json — so re-renders, batch
-  // renders, and `npm run render` (which never re-pass the flag) stay
+  // renders, and plain `hyperframes render` (which never re-pass the flag) stay
   // attributed to the workflow that created the project.
   const flagSkill = normalizeSkillSlug(args.skill);
   const projectConfigSkill = loadProjectConfig(project.dir).authoringSkill;

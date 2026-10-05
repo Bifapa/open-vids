@@ -365,6 +365,9 @@ function resolveSingleChildTextTarget(el: Element): Element | null {
   const inner = el.children.length === 1 ? el.firstElementChild : null;
   if (!inner || !isHTMLElementTarget(inner)) return null;
   if (VOID_TEXT_TARGET_TAGS.has(inner.tagName)) return null;
+  // Only a text leaf is a text target: assigning textContent on a child that
+  // holds nested elements would destroy them (and their ids, tweens, styles).
+  if (inner.childElementCount > 0) return null;
   return inner;
 }
 

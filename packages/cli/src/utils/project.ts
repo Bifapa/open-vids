@@ -51,7 +51,7 @@ export function resolveProjectOrThrow(
     throw new InvalidProjectError(
       "No composition found in " + dir,
       "No index.html file found.",
-      "Run npx hyperframes init to create a new composition.",
+      "Run hyperframes init to create a new composition.",
     );
   }
 

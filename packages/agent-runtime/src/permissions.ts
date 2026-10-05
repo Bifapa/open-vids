@@ -153,8 +153,12 @@ export class PermissionBroker {
       decision === "once" ? "allowed_once" : decision === "always" ? "enabled" : "denied";
     const updated: PermissionRequest = { ...request, state, answeredAt: this.now() };
     entry.request = updated;
-    await this.options.publish(updated);
-    this.settle(entry, updated);
+    try {
+      await this.options.publish(updated);
+    } finally {
+      // The answer is applied whether or not the chat could show it: the waiting call must not hang on a failed append.
+      this.settle(entry, updated);
+    }
     return updated;
   }
 
@@ -186,12 +190,15 @@ export class PermissionBroker {
   }
 
   /**
-   * Whether the user allowed something in this turn ("Allow once" or "Turn on"). Such an answer is also their
-   * approval for the website tools' downloads in this turn.
+   * Whether the user allowed a card that was about saving something ("Allow once" or "Turn on" on a download or a
+   * recording). That answer is also their approval for the website tools' downloads in this turn. An answer to a card
+   * that only asked to open or read a page is not: it never told the user a file would be saved.
    */
   allowsWebsiteDownload(): boolean {
     return [...this.entries.values()].some(
-      (entry) => entry.request.state === "allowed_once" || entry.request.state === "enabled",
+      (entry) =>
+        (entry.request.state === "allowed_once" || entry.request.state === "enabled") &&
+        (entry.request.action === "download" || entry.request.action === "record"),
     );
   }
 

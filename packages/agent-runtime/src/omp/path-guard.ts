@@ -1,6 +1,6 @@
 import { realpath } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
+import { resolveLikeOmp } from "./path-forms.ts";
 
 const PATH_ARGUMENT_KEYS: Record<string, true> = {
   path: true,
@@ -64,14 +64,6 @@ export function extractPathArguments(input: unknown): string[] {
   return [...new Set(candidates)];
 }
 
-function expandHome(target: string): string {
-  if (target === "~") return homedir();
-  if (target.startsWith(`~${path.sep}`)) {
-    return path.resolve(homedir(), target.slice(2));
-  }
-  return target;
-}
-
 function isWithin(root: string, target: string): boolean {
   const relative = path.relative(root, target);
   return (
@@ -111,12 +103,8 @@ function isHyperframesPath(root: string, target: string): boolean {
   return relative.split(path.sep).some((segment) => segment === ".hyperframes");
 }
 
-function isUri(target: string): boolean {
-  return /^[a-z][a-z\d+.-]*:\/\//i.test(target);
-}
-
-function blockReason(target: string, cause?: unknown): string {
-  if (isUri(target)) {
+function blockReason(target: string, cause?: unknown, url = false): string {
+  if (url) {
     return "Only paths inside this project can be accessed; URLs and external file schemes are blocked.";
   }
   if (cause) {
@@ -216,30 +204,28 @@ export async function guardToolCallPaths(
   }
   for (const target of targets) {
     if (!target) continue;
-    if (isUri(target)) return blockReason(target);
+    const absolutes = resolveLikeOmp(projectDir, target);
+    if (absolutes === null) return blockReason(target, undefined, true);
 
-    const expanded = expandHome(target);
-    const absolute = path.resolve(projectDir, expanded);
-    let canonicalTarget: string;
-    try {
-      canonicalTarget = await realpathWithMissingTail(absolute);
-    } catch (error) {
-      return blockReason(target, error);
-    }
+    for (const absolute of absolutes) {
+      let canonicalTarget: string;
+      try {
+        canonicalTarget = await realpathWithMissingTail(absolute);
+      } catch (error) {
+        return blockReason(target, error);
+      }
 
-    if (!isWithin(canonicalRoot, canonicalTarget)) {
-      return blockReason(target);
-    }
-    if (isHyperframesPath(canonicalRoot, canonicalTarget)) {
-      return "The .hyperframes directory is reserved for OpenVids state and cannot be accessed.";
+      if (!isWithin(canonicalRoot, canonicalTarget)) {
+        return blockReason(target);
+      }
+      if (isHyperframesPath(canonicalRoot, canonicalTarget)) {
+        return "The .hyperframes directory is reserved for OpenVids state and cannot be accessed.";
+      }
     }
   }
 
   return null;
 }
-
-/** Hashline `read` headers (`[path#TAG]`) are accepted by OMP's file tools in place of a plain path. */
-const HASHLINE_HEADER = /^\[(.+)#[0-9A-Za-z]+\]$/;
 
 /**
  * Every existing-or-new file inside the project (outside `.hyperframes`) that one `edit`/`write`
@@ -259,22 +245,20 @@ export async function resolveProjectFileTargets(
   }
   const resolved = new Set<string>();
   for (const original of extractPathArguments(input)) {
-    const raw = original.trim();
-    const header = HASHLINE_HEADER.exec(raw);
-    const variants = new Set(pathVariants(raw));
-    if (header?.[1]) for (const variant of pathVariants(header[1])) variants.add(variant);
-    for (const variant of variants) {
-      if (!variant || isUri(variant)) continue;
-      let canonical: string;
-      try {
-        canonical = await realpathWithMissingTail(path.resolve(projectDir, expandHome(variant)));
-      } catch {
-        continue;
+    for (const variant of pathVariants(original.trim())) {
+      if (!variant) continue;
+      for (const absolute of resolveLikeOmp(projectDir, variant) ?? []) {
+        let canonical: string;
+        try {
+          canonical = await realpathWithMissingTail(absolute);
+        } catch {
+          continue;
+        }
+        if (!isWithin(canonicalRoot, canonical) || isHyperframesPath(canonicalRoot, canonical)) {
+          continue;
+        }
+        resolved.add(canonical);
       }
-      if (!isWithin(canonicalRoot, canonical) || isHyperframesPath(canonicalRoot, canonical)) {
-        continue;
-      }
-      resolved.add(canonical);
     }
   }
   return [...resolved];
@@ -284,10 +268,10 @@ export function projectRelativeTargets(projectDir: string, input: unknown): stri
   const targets: string[] = [];
   const root = path.resolve(projectDir);
   for (const raw of extractPathArguments(input)) {
-    const target = raw.trim();
-    if (!target || isUri(target)) continue;
-    const absolute = path.resolve(root, expandHome(target));
-    if (!isWithin(root, absolute) || isHyperframesPath(root, absolute)) continue;
+    const absolute = resolveLikeOmp(root, raw.trim())?.[0];
+    if (absolute === undefined || !isWithin(root, absolute) || isHyperframesPath(root, absolute)) {
+      continue;
+    }
     const relative = path.relative(root, absolute);
     const display = relative ? relative.split(path.sep).join("/") : ".";
     if (!targets.includes(display)) targets.push(display);

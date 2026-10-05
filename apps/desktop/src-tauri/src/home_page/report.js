@@ -457,7 +457,9 @@
         ),
       );
     $("#rpShots").innerHTML = items.join("");
-    $("#rpShotsEmpty").hidden = items.length > 0;
+    const empty = $("#rpShotsEmpty");
+    empty.textContent = OV.pt("report.shots.empty");
+    empty.hidden = items.length > 0;
     $("#rpShotErrors").innerHTML = S.shotErrors.map((m) => "<li>" + esc(m) + "</li>").join("");
   }
   function renderCounts() {
@@ -513,13 +515,18 @@
     const noAdd = locked() || !!S.busy;
     $("#rpPick").disabled = noAdd;
     $("#rpCapture").disabled = noAdd;
+    // Region capture exists on macOS only (`canCapture` in the boot data):
+    // elsewhere neither the button nor its hide-window option is offered.
+    const canCapture = boot.canCapture !== false;
+    $("#rpCapture").style.display = canCapture ? "" : "none";
+    hide.closest("label").style.display = canCapture ? "" : "none";
     hide.disabled = locked();
     $("#rpPin").setAttribute("aria-checked", String(S.pin));
     const send = $("#rpSend");
     send.disabled = !canSend();
     send.innerHTML = S.sending
       ? '<span class="spinner"></span>' + esc(t("report.sending"))
-      : esc(t("report.send")) + ' <span class="kbd">⌘↵</span>';
+      : esc(t("report.send")) + ' <span class="kbd">' + esc(OV.shortcutKey("⌘↵")) + "</span>";
     renderShots();
     renderCounts();
     renderHints();

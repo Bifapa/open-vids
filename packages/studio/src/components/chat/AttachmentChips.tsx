@@ -8,7 +8,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { useAgentStore } from "../../agent/agentContext";
-import { NEW_CHAT_DRAFT } from "../../agent/agentStore";
+import { NEW_CHAT_DRAFT } from "../../agent/agentDraftChat";
 import type { AttachmentKind, ComposerAttachment } from "../../agent/composerAttachments";
 import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";

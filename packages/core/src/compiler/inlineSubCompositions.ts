@@ -10,6 +10,7 @@ import { parseImportMap, type ImportMap } from "./importMaps";
  * `data-composition-file`).
  */
 
+import { ASSET_PATH_SELECTOR } from "./assetPaths";
 import {
   rewriteAssetPath,
   rewriteAssetPaths,
@@ -158,13 +159,6 @@ export interface InlineSubCompositionsOptions {
   >;
 
   /**
-   * When true, rewrite `url(...)` references in inline `style` attributes
-   * on sub-composition elements. The bundler enables this; the producer
-   * can skip it.
-   */
-  rewriteInlineStyles?: boolean;
-
-  /**
    * Prepare the inner root element before injecting it into the host.
    * The bundler's `prepareFlattenedInnerRoot` clones the element, strips
    * timing attributes, and adds `data-hf-inner-root`. When omitted, the
@@ -284,7 +278,6 @@ export function inlineSubCompositions(
     resolveHtml,
     parseHtml,
     hostIdentityMap,
-    rewriteInlineStyles = false,
     flattenInnerRoot,
     compoundAuthoredRoot,
     readVariableDefaults,
@@ -522,8 +515,8 @@ export function inlineSubCompositions(
     // Rewrite relative asset paths before inlining so ../foo.svg from
     // compositions/ resolves correctly when the content moves to root.
     const assetEls = innerRoot
-      ? innerRoot.querySelectorAll("[src], [href]")
-      : contentDoc.querySelectorAll("[src], [href]");
+      ? innerRoot.querySelectorAll(ASSET_PATH_SELECTOR)
+      : contentDoc.querySelectorAll(ASSET_PATH_SELECTOR);
     rewriteAssetPaths(
       assetEls,
       src,
@@ -534,20 +527,18 @@ export function inlineSubCompositions(
       assetExists,
     );
 
-    if (rewriteInlineStyles) {
-      const styledEls = innerRoot
-        ? innerRoot.querySelectorAll("[style]")
-        : contentDoc.querySelectorAll("[style]");
-      rewriteInlineStyleAssetUrls(
-        styledEls,
-        src,
-        (el: Element) => el.getAttribute("style"),
-        (el: Element, val: string) => {
-          el.setAttribute("style", val);
-        },
-        assetExists,
-      );
-    }
+    const styledEls = innerRoot
+      ? innerRoot.querySelectorAll("[style]")
+      : contentDoc.querySelectorAll("[style]");
+    rewriteInlineStyleAssetUrls(
+      styledEls,
+      src,
+      (el: Element) => el.getAttribute("style"),
+      (el: Element, val: string) => {
+        el.setAttribute("style", val);
+      },
+      assetExists,
+    );
 
     if (innerRoot?.hasAttribute("data-timeline-locked")) {
       hostEl.setAttribute("data-timeline-locked", "");

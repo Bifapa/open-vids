@@ -1,5 +1,5 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -262,6 +262,8 @@ const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac
 const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi"]);
 
 export interface TranscribeOptions {
+  /** Stops the run: the decode child is killed and the promise rejects with the signal's reason. */
+  signal?: AbortSignal;
   model?: string;
   language?: string;
   onProgress?: (message: string) => void;
@@ -475,6 +477,64 @@ export function buildWhisperArgs(params: {
 }
 
 /**
+ * Runs whisper-cli without blocking the event loop, so the command's cancellation scope can act on it: a synchronous
+ * run leaves a recognizer decoding for hours after the process that asked for it is gone. The failure shapes follow
+ * `execFileSync` (`code: "ETIMEDOUT"` after the timeout, the terminating `signal`, `status`) for the callers that
+ * already read them.
+ */
+export function runWhisperCli(
+  executable: string,
+  args: readonly string[],
+  { timeoutMs, signal }: { timeoutMs: number; signal?: AbortSignal },
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    signal?.throwIfAborted();
+    // A GUI-launched transcription has no console; without windowsHide the recognizer flashes one on Windows.
+    const child = spawn(executable, args, { stdio: "ignore", windowsHide: true });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+    const onAbort = () => child.kill();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const settle = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    child.once("error", (err) => {
+      settle();
+      reject(err);
+    });
+    child.once("close", (status, stopSignal) => {
+      settle();
+      if (signal?.aborted) {
+        reject(
+          signal.reason instanceof Error ? signal.reason : new Error("Transcription cancelled"),
+        );
+        return;
+      }
+      if (status === 0) {
+        resolve();
+        return;
+      }
+      const failure = new Error(
+        timedOut
+          ? `Command timed out after ${timeoutMs}ms: ${executable}`
+          : `Command failed: ${executable}`,
+        { cause: { status, signal: stopSignal } },
+      );
+      Object.assign(failure, {
+        status,
+        signal: stopSignal,
+        code: timedOut ? "ETIMEDOUT" : undefined,
+      });
+      reject(failure);
+    });
+  });
+}
+
+/**
  * Transcribe an audio or video file and save transcript.json to the output directory.
  */
 export async function transcribe(
@@ -497,108 +557,102 @@ export async function transcribe(
   // 3. Prepare audio
   const wavPath = prepareWav(inputPath, options?.onProgress);
 
-  // 4. Detect language and ensure correct model
-  let effectiveModel = model;
-  let effectiveModelPath = modelPath;
-  let detectedLanguage = options?.language ?? null;
-
-  // Only auto-detect language when using a multilingual model.
-  // .en models always report "en" regardless of actual language, so detection
-  // would be a no-op. If the user chose .en, they want English.
-  if (!detectedLanguage && !effectiveModel.endsWith(".en")) {
-    options?.onProgress?.("Detecting language...");
-    detectedLanguage = detectLanguage(whisper.executablePath, effectiveModelPath, wavPath);
-  }
-
-  if (detectedLanguage && detectedLanguage !== "en" && effectiveModel.endsWith(".en")) {
-    const multilingualModel = effectiveModel.replace(/\.en$/, "");
-    options?.onProgress?.(
-      `Detected ${detectedLanguage} — switching to ${multilingualModel} model...`,
-    );
-    effectiveModelPath = await ensureModel(multilingualModel, {
-      onProgress: options?.onProgress,
-    });
-    effectiveModel = multilingualModel;
-  }
-
-  // 5. Run whisper
-  options?.onProgress?.("Transcribing...");
-  const outputBase = join(outputDir, "transcript");
-  mkdirSync(outputDir, { recursive: true });
-
-  const whisperArgs = buildWhisperArgs({
-    modelPath: effectiveModelPath,
-    outputBase,
-    dtwPreset: dtwPresetForModel(effectiveModel),
-    language: detectedLanguage,
-    wavPath,
-  });
-
-  const whisperTimeoutMs = resolveWhisperTimeoutMs(getPreparedWavDurationSeconds(wavPath), {
-    model: effectiveModel,
-    overrideMs: options?.timeoutMs,
-  });
+  // Steps 4-7 read the temp WAV; any failure or cancellation must still remove it.
   try {
-    execFileSync(whisper.executablePath, whisperArgs, {
-      stdio: "ignore",
-      timeout: whisperTimeoutMs,
-      // A GUI-launched transcription has no console; without this the
-      // recognizer flashes one on Windows. No-op on POSIX.
-      windowsHide: true,
+    // 4. Detect language and ensure correct model
+    let effectiveModel = model;
+    let effectiveModelPath = modelPath;
+    let detectedLanguage = options?.language ?? null;
+
+    // Only auto-detect language when using a multilingual model.
+    // .en models always report "en" regardless of actual language, so detection
+    // would be a no-op. If the user chose .en, they want English.
+    if (!detectedLanguage && !effectiveModel.endsWith(".en")) {
+      options?.onProgress?.("Detecting language...");
+      detectedLanguage = detectLanguage(whisper.executablePath, effectiveModelPath, wavPath);
+    }
+
+    if (detectedLanguage && detectedLanguage !== "en" && effectiveModel.endsWith(".en")) {
+      const multilingualModel = effectiveModel.replace(/\.en$/, "");
+      options?.onProgress?.(
+        `Detected ${detectedLanguage} — switching to ${multilingualModel} model...`,
+      );
+      effectiveModelPath = await ensureModel(multilingualModel, {
+        onProgress: options?.onProgress,
+      });
+      effectiveModel = multilingualModel;
+    }
+
+    // 5. Run whisper
+    options?.onProgress?.("Transcribing...");
+    const outputBase = join(outputDir, "transcript");
+    mkdirSync(outputDir, { recursive: true });
+
+    const whisperArgs = buildWhisperArgs({
+      modelPath: effectiveModelPath,
+      outputBase,
+      dtwPreset: dtwPresetForModel(effectiveModel),
+      language: detectedLanguage,
+      wavPath,
     });
-  } catch (err) {
-    // Surface the timeout knob when the child was killed by our own timeout —
-    // otherwise the reporter sees a bare ETIMEDOUT / SIGTERM with no hint that
-    // `--timeout` even exists. Non-timeout errors flow through unchanged so the
-    // existing stderr-tail handling in `transcribeAudio` still applies.
-    throw wrapWhisperTimeoutError(err, {
-      effectiveTimeoutMs: whisperTimeoutMs,
+
+    const whisperTimeoutMs = resolveWhisperTimeoutMs(getPreparedWavDurationSeconds(wavPath), {
       model: effectiveModel,
-      wasOverride: options?.timeoutMs != null,
+      overrideMs: options?.timeoutMs,
     });
-  }
-
-  // 6. Read and validate output
-  const transcriptPath = `${outputBase}.json`;
-  if (!existsSync(transcriptPath)) {
-    throw new Error("Whisper did not produce output. Check the input file.");
-  }
-
-  const transcript = JSON.parse(readFileSync(transcriptPath, "utf-8"));
-  const segments = transcript.transcription ?? [];
-
-  let wordCount = 0;
-  let maxEnd = 0;
-  for (const seg of segments) {
-    for (const token of seg.tokens ?? []) {
-      const text = (token.text ?? "").trim();
-      if (text && !text.startsWith("[_") && !text.startsWith("[BLANK")) wordCount++;
-      if (token.offsets?.to > maxEnd) maxEnd = token.offsets.to;
-    }
-  }
-
-  // 7. Detect speech onset before cleaning up the WAV
-  options?.onProgress?.("Detecting speech onset...");
-  const speechOnsetSeconds = detectSpeechOnset(wavPath);
-
-  // Clean up temp WAV if we created one
-  if (wavPath !== inputPath) {
     try {
-      unlinkSync(wavPath);
-    } catch {
-      // ignore
+      await runWhisperCli(whisper.executablePath, whisperArgs, {
+        timeoutMs: whisperTimeoutMs,
+        signal: options?.signal,
+      });
+    } catch (err) {
+      if (options?.signal?.aborted) throw err;
+      // Surface the timeout knob when the child was killed by our own timeout —
+      // otherwise the reporter sees a bare ETIMEDOUT / SIGTERM with no hint that
+      // `--timeout` even exists. Non-timeout errors flow through unchanged so the
+      // existing stderr-tail handling in `transcribeAudio` still applies.
+      throw wrapWhisperTimeoutError(err, {
+        effectiveTimeoutMs: whisperTimeoutMs,
+        model: effectiveModel,
+        wasOverride: options?.timeoutMs != null,
+      });
     }
-  }
 
-  // whisper.cpp's own report of the language it decoded in, before the command overwrites this file.
-  const reported: unknown = transcript.result?.language;
-  return {
-    transcriptPath,
-    wordCount,
-    durationSeconds: maxEnd / 1000,
-    speechOnsetSeconds,
-    language: typeof reported === "string" && reported ? reported : detectedLanguage,
-  };
+    // 6. Read and validate output
+    const transcriptPath = `${outputBase}.json`;
+    if (!existsSync(transcriptPath)) {
+      throw new Error("Whisper did not produce output. Check the input file.");
+    }
+
+    const transcript = JSON.parse(readFileSync(transcriptPath, "utf-8"));
+    const segments = transcript.transcription ?? [];
+
+    let wordCount = 0;
+    let maxEnd = 0;
+    for (const seg of segments) {
+      for (const token of seg.tokens ?? []) {
+        const text = (token.text ?? "").trim();
+        if (text && !text.startsWith("[_") && !text.startsWith("[BLANK")) wordCount++;
+        if (token.offsets?.to > maxEnd) maxEnd = token.offsets.to;
+      }
+    }
+
+    // 7. Detect speech onset
+    options?.onProgress?.("Detecting speech onset...");
+    const speechOnsetSeconds = detectSpeechOnset(wavPath);
+
+    // whisper.cpp's own report of the language it decoded in, before the command overwrites this file.
+    const reported: unknown = transcript.result?.language;
+    return {
+      transcriptPath,
+      wordCount,
+      durationSeconds: maxEnd / 1000,
+      speechOnsetSeconds,
+      language: typeof reported === "string" && reported ? reported : detectedLanguage,
+    };
+  } finally {
+    if (wavPath !== inputPath) rmSync(wavPath, { force: true });
+  }
 }
 
 // ---------------------------------------------------------------------------

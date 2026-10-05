@@ -1,6 +1,12 @@
+import {
+  jobFromServer,
+  mergeServerRenders,
+  readServerRenders,
+  type ServerRender,
+} from "./renderHistory";
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { openRenderFile } from "./openRender";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { CanvasResolution } from "@hyperframes/parsers";
 import { generateId } from "../../utils/generateId";
 import { confirmExportLicenses } from "../../research/exportLicenseGate";
@@ -18,6 +24,11 @@ export interface RenderJob {
   filename: string;
   createdAt: number;
   durationMs?: number;
+  /**
+   * The progress stream dropped and the server could not say what became of the render: shown as failed, but only
+   * as a guess a later history load may replace (see mergeServerRenders).
+   */
+  connectionLost?: boolean;
 }
 
 // The CLI consumes this same source through @hyperframes/core's re-export.
@@ -71,6 +82,16 @@ function writeHiddenIds(projectId: string, ids: Set<string>): void {
   }
 }
 
+/** Waits before each reopening of a progress stream that dropped; once they are spent the server's history decides. */
+const STREAM_RECONNECT_DELAYS_MS = [1000, 2000, 4000];
+
+/** The progress stream of one running render: its open source, the reopening that is waiting, and the drops so far. */
+interface ProgressWatch {
+  source: EventSource | null;
+  timer: ReturnType<typeof setTimeout> | undefined;
+  failures: number;
+}
+
 export function useRenderQueue(
   projectId: string | null,
   // A ref, not the value: the render target has to be read at click time, and
@@ -95,18 +116,21 @@ export function useRenderQueue(
   // A null status means the probe gave no answer (older server, failed
   // request), which is not evidence of a missing encoder. Unknown fails open.
   const ffmpegMissing = ffmpeg !== null && !ffmpeg.ok;
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const activeJobRef = useRef<string | null>(null);
+  // The progress stream of every render this session is following, by job id.
+  const [watches] = useState(() => new Map<string, ProgressWatch>());
   const addSessionJob = useCallback((job: RenderJob) => {
     setJobs((prev) => [...prev, job]);
   }, []);
 
-  const closeActiveEventSource = useCallback((jobId?: string) => {
-    if (jobId && activeJobRef.current !== jobId) return;
-    eventSourceRef.current?.close();
-    eventSourceRef.current = null;
-    activeJobRef.current = null;
-  }, []);
+  const stopWatching = useCallback(
+    (jobId: string) => {
+      const watch = watches.get(jobId);
+      watch?.source?.close();
+      clearTimeout(watch?.timer);
+      watches.delete(jobId);
+    },
+    [watches],
+  );
 
   // Load completed renders from the server
   const loadRenders = useCallback(async () => {
@@ -117,34 +141,10 @@ export function useRenderQueue(
         setLoadError(t("renders.error.loadHistoryStatus", { status: res.status }));
         return;
       }
-      const data = await res.json();
+      const history = readServerRenders(await res.json());
       setLoadError(null);
-      if (Array.isArray(data.renders)) {
-        const hidden = readHiddenIds(projectId);
-        setJobs((prev) => {
-          const existing = new Set(prev.map((j) => j.id));
-          const fromServer: RenderJob[] = data.renders
-            .filter((r: { id: string }) => !existing.has(r.id) && !hidden.has(r.id))
-            .map(
-              (r: {
-                id: string;
-                filename: string;
-                createdAt: number;
-                size: number;
-                status?: string;
-                durationMs?: number;
-              }) => ({
-                id: r.id,
-                status: (r.status === "failed" ? "failed" : "complete") as "complete" | "failed",
-                progress: 100,
-                filename: r.filename,
-                createdAt: r.createdAt,
-                durationMs: r.durationMs,
-              }),
-            );
-          return [...prev, ...fromServer];
-        });
-      }
+      const hidden = readHiddenIds(projectId);
+      setJobs((prev) => mergeServerRenders(prev, history, hidden));
     } catch {
       setLoadError(t("renders.error.loadHistory"));
     }
@@ -153,6 +153,94 @@ export function useRenderQueue(
   useEffect(() => {
     loadRenders();
   }, [loadRenders]);
+
+  // The progress stream of a render stayed down. The server's history is the record of what became of it: a render
+  // it has on disk finished; one it does not list (a restarted server forgets running renders, and so does a
+  // history that cannot be read) is shown as lost — flagged, so the next history load can still correct the guess.
+  const settleLostRender = useCallback(
+    async (jobId: string) => {
+      let record: ServerRender | undefined;
+      if (projectId) {
+        try {
+          const res = await fetch(buildProjectApiPath(projectId, `/renders`));
+          if (res.ok) record = readServerRenders(await res.json()).find((r) => r.id === jobId);
+        } catch {
+          // Still unreachable: the render is shown as lost.
+        }
+      }
+      setJobs((prev) =>
+        prev.map((j) => {
+          if (j.id !== jobId || j.status !== "rendering") return j;
+          if (record && record.status !== "failed") return jobFromServer(record);
+          return {
+            ...j,
+            status: "failed" as const,
+            connectionLost: true,
+            error: t("renders.error.connectionLost"),
+          };
+        }),
+      );
+    },
+    [projectId],
+  );
+
+  // Follows a running render over SSE. A stream that drops is reopened (a fresh connection starts with the job's
+  // current state) before anything is concluded about the render; only a server that stays away is settled from its
+  // history.
+  const watchProgress = useCallback(
+    (jobId: string, startTime: number) => {
+      const watch: ProgressWatch = { source: null, timer: undefined, failures: 0 };
+      watches.set(jobId, watch);
+      const open = () => {
+        const es = new EventSource(`/api/render/${jobId}/progress`);
+        watch.source = es;
+
+        es.addEventListener("progress", (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            watch.failures = 0;
+            const terminal =
+              data.status === "complete" || data.status === "failed" || data.status === "cancelled";
+            setJobs((prev) =>
+              prev.map((j) =>
+                j.id === jobId
+                  ? {
+                      ...j,
+                      progress: data.progress ?? j.progress,
+                      stage: data.stage ?? data.message ?? j.stage,
+                      status: terminal ? (data.status as RenderJob["status"]) : j.status,
+                      durationMs: data.status === "complete" ? Date.now() - startTime : undefined,
+                      error: data.error ?? j.error,
+                    }
+                  : j,
+              ),
+            );
+            if (terminal) stopWatching(jobId);
+          } catch {
+            // ignore parse errors
+          }
+        });
+
+        es.onerror = () => {
+          es.close();
+          watch.source = null;
+          const delay = STREAM_RECONNECT_DELAYS_MS[watch.failures];
+          watch.failures += 1;
+          if (delay === undefined) {
+            stopWatching(jobId);
+            void settleLostRender(jobId);
+            return;
+          }
+          watch.timer = setTimeout(() => {
+            watch.timer = undefined;
+            open();
+          }, delay);
+        };
+      };
+      open();
+    },
+    [watches, stopWatching, settleLostRender],
+  );
 
   // Start a render and track progress via SSE
   // Pre-existing branchy fetch/poll flow — the variables passthrough added one branch.
@@ -259,58 +347,11 @@ export function useRenderQueue(
         createdAt: startTime,
       };
       addSessionJob(job);
-      activeJobRef.current = jobId;
-
-      // Track progress via SSE
-      const es = new EventSource(`/api/render/${jobId}/progress`);
-      eventSourceRef.current = es;
-
-      es.addEventListener("progress", (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          const terminal =
-            data.status === "complete" || data.status === "failed" || data.status === "cancelled";
-          setJobs((prev) =>
-            prev.map((j) =>
-              j.id === jobId
-                ? {
-                    ...j,
-                    progress: data.progress ?? j.progress,
-                    stage: data.stage ?? data.message ?? j.stage,
-                    status: terminal ? (data.status as RenderJob["status"]) : j.status,
-                    durationMs: data.status === "complete" ? Date.now() - startTime : undefined,
-                    error: data.error ?? j.error,
-                  }
-                : j,
-            ),
-          );
-          if (terminal) {
-            closeActiveEventSource(jobId);
-          }
-        } catch {
-          // ignore parse errors
-        }
-      });
-
-      es.onerror = () => {
-        es.close();
-        setJobs((prev) =>
-          prev.map((j) =>
-            j.id === jobId && j.status === "rendering"
-              ? {
-                  ...j,
-                  status: "failed" as const,
-                  error: t("renders.error.connectionLost"),
-                }
-              : j,
-          ),
-        );
-        activeJobRef.current = null;
-      };
+      watchProgress(jobId, startTime);
 
       return jobId;
     },
-    [projectId, activeCompPathRef, closeActiveEventSource, addSessionJob, ffmpeg, ffmpegMissing],
+    [projectId, activeCompPathRef, watchProgress, addSessionJob, ffmpeg, ffmpegMissing],
   );
 
   // Cancel an in-flight render. The job row stays (as "cancelled") so the
@@ -318,7 +359,7 @@ export function useRenderQueue(
   const cancelRender = useCallback(
     async (jobId: string) => {
       setActionError(null);
-      closeActiveEventSource(jobId);
+      stopWatching(jobId);
       setJobs((prev) =>
         prev.map((j) =>
           j.id === jobId && j.status === "rendering" ? { ...j, status: "cancelled" } : j,
@@ -344,13 +385,13 @@ export function useRenderQueue(
         setActionError(t("renders.error.cancelUnreachable"));
       }
     },
-    [closeActiveEventSource, loadRenders],
+    [stopWatching, loadRenders],
   );
 
   const deleteRender = useCallback(
     async (jobId: string) => {
       setActionError(null);
-      closeActiveEventSource(jobId);
+      stopWatching(jobId);
       try {
         const res = await fetch(`/api/render/${jobId}`, { method: "DELETE" });
         if (!res.ok) {
@@ -363,7 +404,7 @@ export function useRenderQueue(
       }
       setJobs((prev) => prev.filter((j) => j.id !== jobId));
     },
-    [closeActiveEventSource],
+    [stopWatching],
   );
 
   // Hide finished rows from the list (view-only — files stay on disk and can
@@ -401,13 +442,12 @@ export function useRenderQueue(
     [projectId],
   );
 
-  // Clean up EventSource on unmount or projectId change
+  // Close the progress streams on unmount or projectId change
   useEffect(() => {
     return () => {
-      eventSourceRef.current?.close();
-      eventSourceRef.current = null;
+      for (const jobId of [...watches.keys()]) stopWatching(jobId);
     };
-  }, [projectId]);
+  }, [projectId, watches, stopWatching]);
 
   const isRendering = jobs.some((j) => j.status === "rendering");
   return useMemo(

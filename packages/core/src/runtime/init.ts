@@ -4071,6 +4071,32 @@ export function initSandboxRuntimeModular(): void {
     opts?: { activateChildren?: boolean; suppressEvents?: boolean },
   ): () => Animation[] {
     const suppressEvents = opts?.suppressEvents === true;
+    seekRootAndChildTimelines(tl, t, opts);
+    const pageAnimations = pageAnimationsForOnePass();
+    for (const adapter of state.deterministicAdapters) {
+      if (adapter.name === "gsap" && tl) continue;
+      try {
+        adapter.seek({ time: t, suppressEvents, pageAnimations });
+      } catch (err) {
+        swallow("runtime.init.transport.adapter", err);
+      }
+    }
+    return pageAnimations;
+  }
+
+  /**
+   * Position the root timeline and every registered sub-composition timeline at
+   * `t`, with no adapter seeks, media sync or transport state change. The one
+   * place that maps root time onto a child's local time, so a caller that only
+   * needs GSAP-driven values (the render volume probe) cannot disagree with
+   * what the frame seek shows.
+   */
+  function seekRootAndChildTimelines(
+    tl: RuntimeTimelineLike | null,
+    t: number,
+    opts?: { suppressEvents?: boolean },
+  ): void {
+    const suppressEvents = opts?.suppressEvents === true;
     if (tl) {
       // #10: when data-duration exceeds the timeline's intrinsic length the
       // engine requests frames past the last tween. Seeking a paused GSAP
@@ -4116,17 +4142,27 @@ export function initSandboxRuntimeModular(): void {
     // the deterministic adapters, syncTimedElementVisibility, the hf-timelines-built
     // handler and __hfReseekGpu. It only ever moved the state the seek left behind.
     seekStandaloneRegisteredTimelines(t, opts);
-    const pageAnimations = pageAnimationsForOnePass();
-    for (const adapter of state.deterministicAdapters) {
-      if (adapter.name === "gsap" && tl) continue;
-      try {
-        adapter.seek({ time: t, suppressEvents, pageAnimations });
-      } catch (err) {
-        swallow("runtime.init.transport.adapter", err);
-      }
-    }
-    return pageAnimations;
   }
+
+  /**
+   * `seekRootAndChildTimelines` with sibling timelines unpaused across the seek
+   * (GSAP does not propagate a root seek into a paused child), exactly as the
+   * render frame seek does. For callers that read GSAP-driven values at a root
+   * time without moving the transport or the media elements.
+   */
+  const seekTimelinesOnly = (t: number, opts?: { suppressEvents?: boolean }): void => {
+    const tl = state.capturedTimeline;
+    const rearmed = tl ? activateSiblingTimelines(tl) : [];
+    try {
+      seekRootAndChildTimelines(tl, t, opts);
+    } finally {
+      for (const sibling of rearmed) pauseTimelineIfPossible(sibling);
+    }
+  };
+  window.__hfSeekTimelines = seekTimelinesOnly;
+  runtimeCleanupCallbacks.push(() => {
+    if (window.__hfSeekTimelines === seekTimelinesOnly) delete window.__hfSeekTimelines;
+  });
 
   // True while the Studio is mid-drag on an element (the gesture marker is
   // stamped on the gestured element for the duration of the drag). During a
@@ -4383,6 +4419,12 @@ export function initSandboxRuntimeModular(): void {
           for (const rawEl of audioEls) {
             if (!isMediaElement(rawEl) || !rawEl.isConnected) continue;
             if (isSilencedByHidden(rawEl)) continue;
+            // A looping element wraps its own currentTime at the end of the
+            // source, which would read as the transport jumping backwards (the
+            // runtime keeps the loop in step by seeking, so `el.currentTime`
+            // is not a monotonic composition clock). Leave the tick to another
+            // audio element or the monotonic tier.
+            if (rawEl.loop) continue;
             const start = resolveAbsoluteMediaStartSeconds(rawEl);
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;

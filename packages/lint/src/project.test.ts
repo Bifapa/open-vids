@@ -69,6 +69,78 @@ describe("external symlink assets", () => {
   });
 });
 
+describe("sub_composition_shadows_root_id", () => {
+  const subComposition = (id: string) => `<template id="${id}-template">
+  <div data-composition-id="${id}" data-width="1920" data-height="1080" data-start="0" data-duration="4"></div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["${id}"] = gsap.timeline({ paused: true });</script>
+</template>`;
+  const rootMounting = `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="4"></div>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+
+  it("errors when a sub-composition reuses the root composition id", async () => {
+    const project = makeProject(rootMounting, { "scene.html": subComposition("main") });
+
+    const { results } = await lintProject(project);
+    const finding = results
+      .flatMap((result) => result.result.findings)
+      .find((item) => item.code === "sub_composition_shadows_root_id");
+
+    expect(finding?.severity).toBe("error");
+    expect(finding?.file).toBe("compositions/scene.html");
+  });
+
+  it("accepts a sub-composition with its own id", async () => {
+    const project = makeProject(rootMounting, { "scene.html": subComposition("scene") });
+
+    const { results } = await lintProject(project);
+
+    expect(
+      results
+        .flatMap((result) => result.result.findings)
+        .some((item) => item.code === "sub_composition_shadows_root_id"),
+    ).toBe(false);
+  });
+
+  it("ignores a composition file that no data-composition-src mounts", async () => {
+    const project = makeProject(rootMounting, {
+      "scene.html": subComposition("scene"),
+      "standalone.html": subComposition("main"),
+    });
+
+    const { results } = await lintProject(project);
+
+    expect(
+      results
+        .flatMap((result) => result.result.findings)
+        .some((item) => item.code === "sub_composition_shadows_root_id"),
+    ).toBe(false);
+  });
+
+  it("still errors when the shadowing file is mounted by another sub-composition", async () => {
+    const nested = `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080" data-start="0" data-duration="4">
+    <div data-composition-id="inner" data-composition-src="compositions/inner.html" data-start="0" data-duration="2"></div>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+</template>`;
+    const project = makeProject(rootMounting, {
+      "scene.html": nested,
+      "inner.html": subComposition("main"),
+    });
+
+    const { results } = await lintProject(project);
+    const finding = results
+      .flatMap((result) => result.result.findings)
+      .find((item) => item.code === "sub_composition_shadows_root_id");
+
+    expect(finding?.file).toBe("compositions/inner.html");
+  });
+});
+
 describe("blank_root_with_standalone_composition", () => {
   it("errors when the default entry is blank but an authored standalone composition lives under compositions", async () => {
     const project = makeProject(validHtml(), {

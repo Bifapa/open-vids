@@ -48,6 +48,9 @@
   font-size: var(--text-sm);
   line-height: 1.45;
 }
+.rp-public {
+  color: var(--fg-2);
+}
 .rp-pin {
   display: inline-flex;
   flex: none;

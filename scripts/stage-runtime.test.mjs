@@ -8,14 +8,18 @@ import {
   dedupeOpenTelemetryVersions,
   foreignPrebuildHints,
   longestStagedRelativePath,
+  lockedPackageIds,
   lookupOnPath,
   OTEL_DEDUP_VERSIONS,
+  packagesOutsideLock,
+  parseBunLock,
   pruneBundlerOnlyBuilds,
   pruneForeignPrebuilds,
   shouldStripRuntimeFile,
   stagedPathLimit,
   STAGED_VERSION_OVERRIDES,
   stripRuntimeFiles,
+  vendoredManifest,
   WINDOWS_PATH_BUDGET,
 } from "../apps/desktop/scripts/stage-runtime.mjs";
 
@@ -234,5 +238,82 @@ describe("longestStagedRelativePath", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("bun.lock pinning", () => {
+  const lockText = `{
+  "lockfileVersion": 1,
+  "workspaces": { "": { "name": "x", "dependencies": { "hono": "^4.0.0", }, }, },
+  "packages": {
+    "@hyperframes/cli": ["@hyperframes/cli@workspace:packages/cli"],
+    "hono": ["hono@4.12.18", "", {}, "sha512-a,}"],
+    "ws": ["ws@8.20.0", "", {}, "sha512-b"],
+    "puppeteer-core/ws": ["ws@8.21.3", "", {}, "sha512-c"],
+  }
+}`;
+
+  it("parses the JSONC lockfile without touching commas inside strings", () => {
+    const lock = parseBunLock(lockText);
+    assert.equal(lock.packages.hono[3], "sha512-a,}");
+    assert.deepEqual(lock.workspaces[""].dependencies, { hono: "^4.0.0" });
+  });
+
+  it("lists registry packages by name@version, nested copies included, workspaces excluded", () => {
+    assert.deepEqual([...lockedPackageIds(parseBunLock(lockText))].sort(), [
+      "hono@4.12.18",
+      "ws@8.20.0",
+      "ws@8.21.3",
+    ]);
+  });
+
+  it("reports staged resolutions the repo lockfile does not pin", () => {
+    const root = parseBunLock(lockText);
+    const staged = parseBunLock(
+      `{ "packages": { "hono": ["hono@4.13.13", ""], "ws": ["ws@8.21.3", ""] } }`,
+    );
+    assert.deepEqual(packagesOutsideLock(staged, root), ["hono@4.13.13"]);
+    assert.deepEqual(packagesOutsideLock(staged, root, ["hono@4.13.13"]), []);
+  });
+});
+
+describe("vendoredManifest", () => {
+  it("keeps what resolves the package and drops dev tooling and scripts", () => {
+    const exportsMap = { ".": { bun: "./src/index.ts" }, "./package.json": "./package.json" };
+    const vendored = vendoredManifest({
+      name: "@hyperframes/agent-protocol",
+      version: "1.2.3",
+      private: true,
+      description: "ignored",
+      type: "module",
+      sideEffects: false,
+      main: "./src/index.ts",
+      types: "./src/index.ts",
+      exports: exportsMap,
+      scripts: { build: "tsup" },
+      dependencies: { zod: "^4.0.0" },
+      devDependencies: { typescript: "^5.0.0", vitest: "^4.1.11" },
+    });
+    assert.deepEqual(vendored, {
+      name: "@hyperframes/agent-protocol",
+      version: "1.2.3",
+      private: true,
+      type: "module",
+      sideEffects: false,
+      main: "./src/index.ts",
+      types: "./src/index.ts",
+      exports: exportsMap,
+      dependencies: { zod: "^4.0.0" },
+    });
+  });
+
+  it("omits dependencies when the package has none", () => {
+    const vendored = vendoredManifest({
+      name: "p",
+      version: "1.0.0",
+      devDependencies: { tsx: "1" },
+    });
+    assert.deepEqual(vendored, { name: "p", version: "1.0.0" });
+    assert.equal("dependencies" in vendored, false);
   });
 });

@@ -26,7 +26,7 @@ import { ResearchFailure } from "./errors.js";
 import { readLedger, writeLedger } from "./provenance.js";
 import { RequestRegistry, type RequestGuard } from "./requestRegistry.js";
 import type { PolicyStore } from "./sources/policyStore.js";
-import type { UrlGuard } from "./sources/urlPolicy.js";
+import { assertInAllowedSites, type UrlGuard } from "./sources/urlPolicy.js";
 import type { WebsiteGrantStore } from "./websiteGrants.js";
 
 type InspectWebsite = NonNullable<StudioApiAdapter["inspectWebsite"]>;
@@ -160,6 +160,7 @@ export class WebsiteReader {
         "Reading linked websites is turned off. The user can allow it in Settings → Asset Search → Websites.",
       );
     }
+    assertInAllowedSites(request.url, request.allowedSites);
     const { url } = await this.options.guard.vetPublic(request.url);
     const inspect = this.options.inspect;
     if (!inspect) {
@@ -180,6 +181,8 @@ export class WebsiteReader {
       );
       guard.assertLive();
       if ("error" in outcome) throw new ResearchFailure(outcome.error.code, outcome.error.message);
+      // The browser follows redirects itself: a page that ended off the linked sites is dropped unread and unsaved.
+      assertInAllowedSites(outcome.site.finalUrl, request.allowedSites);
 
       const screenshots = outcome.screenshots
         .filter((shot) => shot.data.byteLength <= WEBSITE_LIMITS.screenshotBytes)

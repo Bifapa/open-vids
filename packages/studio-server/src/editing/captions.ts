@@ -1,8 +1,51 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { CaptionCue, PresetInfo } from "@hyperframes/agent-protocol";
+import { MAIN_COMPOSITION } from "./inventory.js";
 
 export const CAPTIONS_FILE = "compositions/captions.html";
+
+/**
+ * The captions composition a composition hosts: the main video keeps `compositions/captions.html`, every other
+ * composition gets `compositions/captions-<its name>-<hash of its path>.html`, so captioning one never replaces
+ * another's cues (the hash keeps `compositions/a/b.html`, `compositions/a-b.html` and `a/b.html` apart).
+ */
+export function captionsFileFor(compositionPath: string): string {
+  if (compositionPath === MAIN_COMPOSITION) return CAPTIONS_FILE;
+  const name = compositionPath
+    .replace(/\.html$/i, "")
+    .replace(/^compositions\//, "")
+    .replace(/[^A-Za-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const hash = createHash("sha1").update(compositionPath).digest("hex").slice(0, 8);
+  return `compositions/captions-${name || "scene"}-${hash}.html`;
+}
+
+const CAPTIONS_FILE_RE = /^compositions\/captions-.+-[0-9a-f]{8}\.html$/;
+
+/** Whether a project-relative composition path is a captions composition made by `apply_captions`. */
+export function isCaptionsFile(path: string | null): boolean {
+  return path === CAPTIONS_FILE || (path !== null && CAPTIONS_FILE_RE.test(path));
+}
+
+/**
+ * The clip of a composition that mounts its captions: the one on the composition's own captions file, else (for a
+ * composition other than the main video) a host still mounting the shared `compositions/captions.html`, which
+ * captions applied before each composition had its own file left behind.
+ */
+export function findCaptionsHost<T extends { compositionSrc: string | null }>(
+  clips: readonly T[],
+  compositionPath: string,
+): { host: T; legacy: boolean } | null {
+  const own = captionsFileFor(compositionPath);
+  const exact = clips.find((clip) => clip.compositionSrc === own);
+  if (exact) return { host: exact, legacy: false };
+  if (compositionPath === MAIN_COMPOSITION) return null;
+  const shared = clips.find((clip) => clip.compositionSrc === CAPTIONS_FILE);
+  return shared ? { host: shared, legacy: true } : null;
+}
+
 export const CAPTION_SKIN_FILE = "caption-skin.html";
 const PRESET_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 

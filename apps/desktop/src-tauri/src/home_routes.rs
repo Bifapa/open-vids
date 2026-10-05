@@ -181,6 +181,17 @@ pub fn serve_one(mut stream: TcpStream, state: &Arc<Mutex<HomeInner>>, token: &s
 
 // ── Request reading ─────────────────────────────────────────────────────────
 
+/// Parse a request head with its path percent-decoded exactly once. Routing,
+/// the body limit and the token requirement all read this one path: a check
+/// on the raw path would let `/%61pi/...` or `/api%2F...` reach an `/api`
+/// handler without the token. A `%2F` decodes to `/` here, so it cannot hide
+/// a separator from the checks either; the decoded text is never decoded again.
+fn parse_head(raw: &str) -> Option<Head> {
+    let mut head = Head::parse(raw)?;
+    head.path = percent_decode(&head.path);
+    Some(head)
+}
+
 fn read_request(stream: &mut TcpStream) -> Option<(Head, Vec<u8>)> {
     let mut raw = Vec::new();
     let mut buf = [0u8; 4096];
@@ -192,7 +203,7 @@ fn read_request(stream: &mut TcpStream) -> Option<(Head, Vec<u8>)> {
         raw.extend_from_slice(&buf[..n]);
         if let Some(end) = find_header_end(&raw) {
             let head_text = String::from_utf8_lossy(&raw[..end]).into_owned();
-            let head = Head::parse(&head_text)?;
+            let head = parse_head(&head_text)?;
             let content_len = head
                 .header("content-length")
                 .and_then(|v| v.parse::<usize>().ok())
@@ -223,8 +234,7 @@ fn find_header_end(raw: &[u8]) -> Option<usize> {
 /// How much of the body to buffer for this request. Everything stays at the
 /// 64 KiB default except the one route that uploads a whole image.
 fn body_limit(head: &Head) -> usize {
-    let upload = head.method.eq_ignore_ascii_case("POST")
-        && percent_decode(&head.path) == "/api/report/screenshots";
+    let upload = head.method.eq_ignore_ascii_case("POST") && head.path == "/api/report/screenshots";
     if upload {
         SCREENSHOT_BODY_LIMIT
     } else {
@@ -242,7 +252,8 @@ fn route(
     body: &[u8],
     cors_origin: Option<&str>,
 ) {
-    let path = percent_decode(&head.path);
+    // `head.path` is already decoded (`parse_head`); never decode it again.
+    let path = &head.path;
     let method = head.method.to_ascii_uppercase();
     let s = &mut stream;
     match (method.as_str(), path.as_str()) {
@@ -675,7 +686,7 @@ fn handle_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8
     let found = state.lock().ok().and_then(|inner| {
         inner
             .recents
-            .find_by_id(&id.clone().unwrap_or_default())
+            .find_by_key(&id.clone().unwrap_or_default())
             .cloned()
     });
     match (id, found) {
@@ -768,6 +779,27 @@ pub fn respond(stream: &mut TcpStream, code: u16, content_type: &'static str, bo
     write_response(stream, code, content_type, body, "");
 }
 
+/// Headers that keep a Home document out of a foreign page's frame: the
+/// Projects page frames Settings from the same origin, nothing else frames it.
+fn frame_guard(content_type: &str) -> &'static str {
+    if content_type.starts_with("text/html") {
+        "Content-Security-Policy: frame-ancestors 'self'\r\nX-Frame-Options: SAMEORIGIN\r\n"
+    } else {
+        ""
+    }
+}
+
+fn response_head(code: u16, content_type: &str, body_len: usize, extra_headers: &str) -> String {
+    format!(
+        "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\n{}{}Connection: close\r\n\r\n",
+        status_line(code),
+        content_type,
+        body_len,
+        frame_guard(content_type),
+        extra_headers
+    )
+}
+
 /// The one HTTP serializer. `extra_headers` is zero or more complete `Name: value\r\n` lines.
 fn write_response(
     stream: &mut TcpStream,
@@ -776,13 +808,7 @@ fn write_response(
     body: &[u8],
     extra_headers: &str,
 ) {
-    let head = format!(
-        "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\n{}Connection: close\r\n\r\n",
-        status_line(code),
-        content_type,
-        body.len(),
-        extra_headers
-    );
+    let head = response_head(code, content_type, body.len(), extra_headers);
     let _ = stream.write_all(head.as_bytes());
     let _ = stream.write_all(body);
     let _ = stream.flush();
@@ -822,10 +848,9 @@ mod tests {
 
     #[test]
     fn only_the_screenshot_upload_gets_the_large_body_limit() {
-        let head = |method: &str, path: &str| Head {
-            method: method.to_string(),
-            path: path.to_string(),
-            headers: Default::default(),
+        let head = |method: &str, path: &str| {
+            parse_head(&format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:1\r\n\r\n"))
+                .expect("a parsable request head")
         };
         assert_eq!(
             body_limit(&head("POST", "/api/report/screenshots")),
@@ -849,6 +874,46 @@ mod tests {
                 "{method} {path}"
             );
         }
+    }
+
+    /// The token requirement is decided on the same path the router
+    /// dispatches on, so an encoded spelling of an `/api` route cannot skip it.
+    #[test]
+    fn encoded_spellings_of_api_routes_still_require_the_token() {
+        let target = |method: &str, path: &str| {
+            let head = parse_head(&format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:1\r\n\r\n"))
+                .expect("a parsable request head");
+            (home_auth::requires_token(&head.method, &head.path), head.path)
+        };
+        for (raw, decoded) in [
+            ("/api/recents", "/api/recents"),
+            ("/%61pi/recents", "/api/recents"),
+            ("/%61%70%69/recents", "/api/recents"),
+            ("/api%2Frecents", "/api/recents"),
+            ("/api%2frecents", "/api/recents"),
+            ("/api/agent%2Fmodels?x=1", "/api/agent/models"),
+        ] {
+            let (needs_token, path) = target("GET", raw);
+            assert_eq!(path, decoded, "{raw}");
+            assert!(needs_token, "{raw} must need the token");
+        }
+        // The decoded text is the final word: a double-encoded spelling is
+        // not decoded again, so it never reaches an `/api` handler.
+        let (needs_token, path) = target("GET", "/%2561pi/recents");
+        assert_eq!(path, "/%61pi/recents");
+        assert!(!needs_token);
+        // Pages and assets stay open.
+        assert!(!target("GET", "/").0);
+        assert!(!target("GET", "/%61ssets/home.js").0);
+    }
+
+    #[test]
+    fn html_documents_refuse_foreign_frames_and_other_types_are_untouched() {
+        let html = response_head(200, "text/html; charset=utf-8", 5, "");
+        assert!(html.contains("Content-Security-Policy: frame-ancestors 'self'\r\n"), "{html}");
+        assert!(html.contains("X-Frame-Options: SAMEORIGIN\r\n"), "{html}");
+        let json = response_head(200, "application/json", 5, "");
+        assert!(!json.contains("frame-ancestors") && !json.contains("X-Frame-Options"), "{json}");
     }
 
     #[test]

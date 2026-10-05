@@ -386,7 +386,7 @@ export default defineCommand({
     const cancellation = createRenderCancellationScope();
     try {
       // Teach the project its owning skill from an explicit --skill so every
-      // later flag-less render (re-render, `npm run render`, batch) inherits it.
+      // later flag-less render (re-render, plain `hyperframes render`, batch) inherits it.
       seedProjectAuthoringSkill(plan.project.dir, args.skill);
       await presentRenderPlan(plan);
       await executeRenderPlan(

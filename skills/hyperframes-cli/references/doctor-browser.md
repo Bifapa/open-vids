@@ -5,8 +5,8 @@ Environment diagnosis and bundled-Chrome management. Run these first when a rend
 ## doctor
 
 ```bash
-npx hyperframes doctor
-npx hyperframes doctor --json     # CI / agent output (always exit 0; gate on payload `ok`)
+hyperframes doctor
+hyperframes doctor --json     # CI / agent output (always exit 0; gate on payload `ok`)
 ```
 
 Runs independent checks and reports each as ok/warn/fail:
@@ -29,7 +29,7 @@ Run `doctor` first when:
 Common issues:
 
 - **Missing FFmpeg** — install via `brew install ffmpeg` (macOS) or your package manager.
-- **Missing bundled Chrome** — run `npx hyperframes browser ensure`.
+- **Missing bundled Chrome** — run `hyperframes browser ensure`.
 - **Low memory** — close other Chromes, reduce `--workers`, or use `--quality draft`.
 - **Chrome exits instantly inside an agent sandbox (macOS)** — seatbelt-style sandboxes
   (e.g. codex `workspace-write`) block Chromium's Mach port bootstrap
@@ -47,11 +47,11 @@ Common issues:
 ## browser
 
 ```bash
-npx hyperframes browser ensure    # find or download the pinned Chrome
-npx hyperframes browser path      # print the browser executable path (for scripting)
-npx hyperframes browser clear     # remove the cached Chrome download
+hyperframes browser ensure    # find or download the pinned Chrome
+hyperframes browser path      # print the browser executable path (for scripting)
+hyperframes browser clear     # remove the cached Chrome download
 ```
 
 Manage the Chrome build HyperFrames uses for rendering. The pinned version exists because pixel output drifts across Chrome versions — using the bundled build keeps rendered output reproducible across machines.
 
-Use `path` to embed the binary in scripts: `$(npx hyperframes browser path)`.
+Use `path` to embed the binary in scripts: `$(hyperframes browser path)`.

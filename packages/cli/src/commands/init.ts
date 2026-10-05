@@ -1,7 +1,5 @@
 // The scaffolding command predates the complexity gate: run(), probeVideo,
 // handleVideoFile, and applyResolutionPreset carry its interactive branching.
-// This branch only repointed the scaffolded npm scripts; the refactor is its
-// own task.
 import { failCommand, finishCommand } from "../utils/commandResult.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { defineCommand, runCommand } from "citty";
@@ -17,7 +15,7 @@ export const examples: Example[] = [
   ["Scaffold with Tailwind CSS", "hyperframes init my-video --tailwind"],
   ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
   [
-    "Opt out of the GitHub skills check (CI/tests only)",
+    "Opt out of the bundled skills check (CI/tests only)",
     "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --non-interactive",
   ],
 ];
@@ -41,7 +39,6 @@ import { fetchLocalTemplate } from "../templates/local.js";
 import { DEFAULT_MODEL, hasFFmpeg } from "../whisper/manager.js";
 import { initialModelForLanguage } from "../whisper/transcribe.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
-import { VERSION } from "../version.js";
 import {
   CANVAS_DIMENSIONS,
   normalizeResolutionFlag,
@@ -252,23 +249,6 @@ function toPackageName(projectName: string): string {
   return normalized || "hyperframes-project";
 }
 
-function getHyperframesPackageSpecifier(): string {
-  return VERSION === "0.0.0-dev" ? "hyperframes" : `hyperframes@${VERSION}`;
-}
-
-function hyperframesScript(command: string): string {
-  return `npx --yes ${getHyperframesPackageSpecifier()} ${command}`;
-}
-
-function buildPackageScripts(): Record<string, string> {
-  return {
-    dev: hyperframesScript("preview"),
-    check: hyperframesScript("check"),
-    render: hyperframesScript("render"),
-    publish: hyperframesScript("publish"),
-  };
-}
-
 function writeDefaultPackageJson(destDir: string, projectName: string): void {
   const packageJsonPath = resolve(destDir, "package.json");
   if (existsSync(packageJsonPath)) return;
@@ -280,7 +260,6 @@ function writeDefaultPackageJson(destDir: string, projectName: string): void {
         name: toPackageName(projectName),
         private: true,
         type: "module",
-        scripts: buildPackageScripts(),
       },
       null,
       2,
@@ -722,7 +701,7 @@ export default defineCommand({
     "skip-skills": {
       type: "boolean",
       description:
-        "[temporarily ignored] init always checks AI skills against GitHub while the skills.sh registry catches up; set HYPERFRAMES_SKIP_SKILLS=1 to opt out (CI/tests)",
+        "[temporarily ignored] init always checks AI skills against the bundled set; set HYPERFRAMES_SKIP_SKILLS=1 to opt out (CI/tests)",
     },
     tailwind: {
       type: "boolean",
@@ -747,7 +726,7 @@ export default defineCommand({
       // command copy-pasteable.
       console.error(
         c.error(
-          `The --template flag was renamed to --example. Example:\n  npx hyperframes init ${args.name ?? "my-video"} --example "${args.template}"`,
+          `The --template flag was renamed to --example. Example:\n  hyperframes init ${args.name ?? "my-video"} --example "${args.template}"`,
         ),
       );
       failCommand();
@@ -755,7 +734,7 @@ export default defineCommand({
     if (args["video-legacy"] !== undefined) {
       console.error(
         c.error(
-          `The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init ${args.name ?? "my-video"} --video "${args["video-legacy"]}"`,
+          `The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  hyperframes init ${args.name ?? "my-video"} --video "${args["video-legacy"]}"`,
         ),
       );
       failCommand();
@@ -768,15 +747,11 @@ export default defineCommand({
     const videoFlag = args.video;
     const audioFlag = args.audio;
     const skipTranscribe = args["skip-transcribe"] === true;
-    // Temporary measure while the skills.sh registry sync lags GitHub main: the
-    // `--skip-skills` FLAG is neutered so an agent (or user) that passes it can
-    // NOT dodge the GitHub skills freshness check. The "don't pass --skip-skills"
-    // guidance lives in SKILL.md, which ships through the same laggy skills.sh
-    // channel and can't be relied on to reach the agent — so the guarantee has to
-    // live in the CLI, the one channel that updates promptly (`npx
-    // hyperframes@latest`). CI and unit tests still opt out via the
-    // HYPERFRAMES_SKIP_SKILLS=1 env var, which the agent/user CLI path never sets.
-    // Revert to `args["skip-skills"] === true` once skills.sh catches up.
+    // Temporary measure: the `--skip-skills` FLAG is neutered so an agent (or user) that passes
+    // it can NOT dodge the bundled-skills freshness check. The "don't pass --skip-skills"
+    // guidance lives in SKILL.md and can't be relied on to reach the agent, so the guarantee has
+    // to live in the CLI. CI and unit tests still opt out via the HYPERFRAMES_SKIP_SKILLS=1 env
+    // var, which the agent/user CLI path never sets.
     const skipSkills = process.env.HYPERFRAMES_SKIP_SKILLS === "1";
     const skipSkillsFlagIgnored = args["skip-skills"] === true && !skipSkills;
     const tailwind = args.tailwind === true;
@@ -793,7 +768,7 @@ export default defineCommand({
       console.log(
         c.dim(
           "Note: --skip-skills is temporarily ignored — init always checks AI skills " +
-            "against GitHub while the skills.sh registry catches up.",
+            "against the bundled set.",
         ),
       );
     }
@@ -932,7 +907,7 @@ export default defineCommand({
         console.log(
           `  ${c.accent("1.")} Use your HyperFrames plugin, or install standalone skills:`,
         );
-        console.log(`     ${c.accent("npx hyperframes skills update")}`);
+        console.log(`     ${c.accent("hyperframes skills update")}`);
       } else {
         console.log(
           `  ${c.accent("1.")} Restart your AI agent (new session) so it loads the skills.`,
@@ -950,13 +925,13 @@ export default defineCommand({
       );
       console.log();
       console.log(`  ${c.accent("4.")} Preview in the browser:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run dev")}`);
+      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("hyperframes preview")}`);
       console.log();
       console.log(`  ${c.accent("5.")} Check the composition:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run check")}`);
+      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("hyperframes check")}`);
       console.log();
       console.log(`  ${c.accent("6.")} Render to MP4 when ready:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run render")}`);
+      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("hyperframes render")}`);
       return;
     }
 
@@ -1126,7 +1101,7 @@ export default defineCommand({
     const files = readdirSync(destDir);
     clack.note(files.map((f) => c.accent(f)).join("\n"), c.success(`Created ${name}/`));
 
-    // Check skills against GitHub and refresh only what's stale — the core set
+    // Check skills against the bundled set and refresh only what's stale — the core set
     // plus anything already installed; workflow skills install on demand. The
     // --skip-skills flag is temporarily neutered (see above); CI/tests opt out
     // via HYPERFRAMES_SKIP_SKILLS=1.

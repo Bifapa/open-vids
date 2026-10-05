@@ -968,6 +968,120 @@ describe("core rules", () => {
       const result = await lintHyperframeHtml(comp(`const r = Math.random();`));
       expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeDefined();
     });
+
+    it("flags Math.random() that follows an apostrophe inside a template literal", async () => {
+      const result = await lintHyperframeHtml(
+        comp("document.getElementById('t').textContent = `It's ${Math.round(Math.random()*9)}`;"),
+      );
+      expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeDefined();
+    });
+
+    it("flags Math.random() that follows a quote inside a regex literal", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`const quoted = /"/.test(label); const r = Math.random();`),
+      );
+      expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeDefined();
+    });
+
+    it("does not flag Math.random() quoted inside a template literal", async () => {
+      const result = await lintHyperframeHtml(comp("const SNIPPET = `const x = Math.random();`;"));
+      expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeUndefined();
+    });
+
+    it("flags a render-time fetch of a remote URL", async () => {
+      const result = await lintHyperframeHtml(
+        comp(
+          `fetch("https://api.example.com/x").then((r) => r.text()).then((t) => { document.body.textContent = t; });`,
+        ),
+      );
+      const finding = result.findings.find((f) => f.code === "non_deterministic_code");
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("fetch()");
+    });
+
+    it("flags a remote fetch that comes after a local one", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`fetch("./data.json"); fetch("//cdn.example.com/data.json");`),
+      );
+      expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeDefined();
+    });
+
+    it("flags XMLHttpRequest, WebSocket and dynamic import() of remote URLs", async () => {
+      for (const script of [
+        `const x = new XMLHttpRequest(); x.open("GET", "https://api.example.com/x"); x.send();`,
+        `const s = new WebSocket("wss://live.example.com");`,
+        `import("https://cdn.example.com/lib.js");`,
+      ]) {
+        const result = await lintHyperframeHtml(comp(script));
+        expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeDefined();
+      }
+    });
+
+    it("does not flag loading a local file or quoting a remote fetch", async () => {
+      for (const script of [
+        `fetch("assets/fonts/font.ttf").then((r) => r.arrayBuffer());`,
+        `fetch(assetUrl("data.json"));`,
+        `const SNIPPET = 'fetch("https://api.example.com/x")';`,
+        `const x = new XMLHttpRequest(); x.open("GET", "./vendor/data.json", false);`,
+      ]) {
+        const result = await lintHyperframeHtml(comp(script));
+        expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeUndefined();
+      }
+    });
+  });
+
+  describe("non-JavaScript and module <script> blocks", () => {
+    const page = (scriptTag: string) => `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"></div>
+  <script>window.__timelines = {};</script>
+  ${scriptTag}
+</body></html>`;
+    const codes = async (scriptTag: string) =>
+      (await lintHyperframeHtml(page(scriptTag))).findings.map((f) => f.code);
+
+    it("parses an unquoted type=module script as a module", async () => {
+      expect(
+        await codes(`<script type=module>import { x } from "./a.js"; x();</script>`),
+      ).not.toContain("invalid_inline_script_syntax");
+    });
+
+    it("matches the type attribute case-insensitively", async () => {
+      expect(
+        await codes(`<script type="Module">import { x } from "./a.js"; x();</script>`),
+      ).not.toContain("invalid_inline_script_syntax");
+      expect(await codes(`<script TYPE='APPLICATION/JSON'>{"a": 1,}</script>`)).not.toContain(
+        "invalid_inline_script_syntax",
+      );
+    });
+
+    it("still reports a real syntax error in a module script", async () => {
+      expect(await codes(`<script type="module">const = ;</script>`)).toContain(
+        "invalid_inline_script_syntax",
+      );
+    });
+
+    it("ignores inert text/plain, template and shader blocks", async () => {
+      for (const type of ["text/plain", "text/template", "x-shader/x-fragment"]) {
+        const found = await codes(
+          `<script type="${type}">void main() { const r = Math.random(); <% oops %> }</script>`,
+        );
+        expect(found).not.toContain("invalid_inline_script_syntax");
+        expect(found).not.toContain("non_deterministic_code");
+      }
+    });
+
+    it("still lints classic scripts, with or without a JavaScript MIME type", async () => {
+      for (const tag of [
+        `<script>const r = Math.random(); const = ;</script>`,
+        `<script type="text/javascript">const r = Math.random(); const = ;</script>`,
+        `<script type=TEXT/JAVASCRIPT>const r = Math.random(); const = ;</script>`,
+      ]) {
+        const found = await codes(tag);
+        expect(found).toContain("invalid_inline_script_syntax");
+        expect(found).toContain("non_deterministic_code");
+      }
+    });
   });
 
   describe("timeline_id_mismatch — only top-level registry keys are composition ids", () => {

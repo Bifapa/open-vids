@@ -26,6 +26,17 @@ describe("pruneMutedBrowserMedia", () => {
     expect(composition.videos.find((v) => v.id === "other")?.hasAudio).toBe(true);
   });
 
+  it("drops the soundtrack track of a video muted at runtime", () => {
+    const composition = {
+      videos: [{ id: "clip", hasAudio: true }],
+      audios: [{ id: "clip-audio" }, { id: "bgm" }],
+    };
+    const ids = new Set(["clip-audio", "bgm"]);
+    pruneMutedBrowserMedia(composition, [{ id: "clip", tagName: "video", muted: true }], ids);
+    expect(composition.audios.map((a) => a.id)).toEqual(["bgm"]);
+    expect(ids.has("clip-audio")).toBe(false);
+  });
+
   it("is a no-op when nothing is muted", () => {
     const composition = { videos: [{ id: "v", hasAudio: true }], audios: [{ id: "a" }] };
     pruneMutedBrowserMedia(composition, [

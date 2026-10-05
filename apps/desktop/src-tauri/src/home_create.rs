@@ -40,9 +40,9 @@ pub fn handle_create(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
         .filter(|w| super::prefs::WORKSPACES.contains(&w.as_str()))
         .unwrap_or(defaults.open_in);
     match scaffold_blank(&params) {
-        Ok(dest) => {
+        Ok(scaffolded) => {
             let name = params.name.clone();
-            begin_open(state, name, dest, Some(workspace));
+            begin_open(state, name, scaffolded.dir, Some(workspace));
             respond(stream, 200, "application/json", br#"{"opening":true}"#);
         }
         Err(error) => respond_error(stream, 400, &error),
@@ -50,7 +50,9 @@ pub fn handle_create(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
 }
 
 /// Scaffold a blank project from the template this build resolves.
-pub fn scaffold_blank(params: &super::create::CreateParams) -> Result<PathBuf, CodedError> {
+pub fn scaffold_blank(
+    params: &super::create::CreateParams,
+) -> Result<super::create::Scaffolded, CodedError> {
     let staged = std::env::var("OPENVids_TEST_TEMPLATES")
         .ok()
         .map(PathBuf::from)

@@ -382,7 +382,7 @@ describe("video-frame injection respects ancestor visibility", () => {
       },
     });
 
-    return { window, document, video, host, pipFrame };
+    return { window, document, video, host, pipFrame, styles };
   }
 
   function withGlobals<T extends { window: Window; document: Document; video: HTMLVideoElement }>(
@@ -585,6 +585,46 @@ describe("video-frame injection respects ancestor visibility", () => {
     const sibling = setup.video.nextElementSibling as HTMLElement | null;
     expect(sibling?.classList.contains("__render_frame__")).toBe(true);
     expect(sibling?.style.opacity).toBe("1");
+  });
+
+  it("re-syncs the replacement frame's opacity without replacing its image when dataUri is null", async () => {
+    const { teardown, setup } = withGlobals(setupHostHiddenScenario({}));
+    const dataUri =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=";
+
+    try {
+      await injectVideoFramesBatch(passthroughPage(), [{ videoId: "pip", dataUri }]);
+      const frame = setup.video.nextElementSibling as HTMLImageElement | null;
+      expect(frame?.style.opacity).toBe("1");
+
+      // The held-frame case: GSAP keeps fading the <video> while the frame
+      // index (and so the image) stays the same.
+      const videoStyle = setup.styles.get(setup.video);
+      if (videoStyle) videoStyle.opacity = "0.25";
+      const injected = await injectVideoFramesBatch(passthroughPage(), [
+        { videoId: "pip", dataUri: null },
+      ]);
+
+      expect(injected).toEqual(["pip"]);
+      expect(frame?.style.opacity).toBe("0.25");
+      expect(frame?.getAttribute("src")).toBe(dataUri);
+    } finally {
+      teardown();
+    }
+  });
+
+  it("does not report a style-only update injected when the page has no frame yet", async () => {
+    const { teardown, setup } = withGlobals(setupHostHiddenScenario({}));
+
+    try {
+      const injected = await injectVideoFramesBatch(passthroughPage(), [
+        { videoId: "pip", dataUri: null },
+      ]);
+      expect(injected).toEqual([]);
+      expect(setup.video.nextElementSibling).toBeNull();
+    } finally {
+      teardown();
+    }
   });
 
   it("repairs stale injected-frame opacity while syncing color-graded active videos", async () => {

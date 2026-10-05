@@ -353,7 +353,7 @@ export async function recordSite(options: RecordSiteOptions): Promise<RecordSite
   signal.throwIfAborted();
   mkdirSync(dirname(outFile), { recursive: true });
 
-  const capture: PageCapture = { blocked: [], violation: null, pending: [] };
+  const capture: PageCapture = { blocked: [], pending: [] };
   const profileDir = mkdtempSync(join(tmpdir(), "openvids-site-"));
   const expected = Math.round(options.seconds * FPS);
   const notes: string[] = [];
@@ -371,7 +371,9 @@ export async function recordSite(options: RecordSiteOptions): Promise<RecordSite
 
   try {
     progress("Launching headless Chrome");
-    browser = await (options.launch ? options.launch() : launchChrome(profileDir));
+    browser = await (options.launch
+      ? options.launch()
+      : launchChrome(profileDir, policy, capture.blocked));
     if (signal.aborted || timedOut) await browser.close();
     signal.throwIfAborted();
 
@@ -396,13 +398,11 @@ export async function recordSite(options: RecordSiteOptions): Promise<RecordSite
         throw new SiteInspectError("network", "The page did not finish loading in time");
       throw explainNavigationError(error, url, capture);
     }
-    if (capture.violation) throw new SiteInspectError("blocked_by_policy", capture.violation);
     const status = response?.status() ?? 0;
     if (status >= 400)
       throw new SiteInspectError("unavailable", `The page answered HTTP ${status}`);
 
     await settle(page);
-    if (capture.violation) throw new SiteInspectError("blocked_by_policy", capture.violation);
 
     let crop: CropRect | null = null;
     if (options.selector) {

@@ -67,10 +67,26 @@ export function AssetRangeEditor({
   const busy = useRef(false);
   const editSequence = useRef(0);
   const saveTimer = useRef<number | undefined>(undefined);
+  /** The arrow-key pick that is waiting for its timer: what the unmount saves instead of dropping. */
+  const pendingSave = useRef<{ projectId: string; path: string; value: AssetRange | null } | null>(
+    null,
+  );
   /** "Play fragment" runs: the rAF loop stops the media at the out point. */
   const guard = useRef(false);
 
-  useEffect(() => () => window.clearTimeout(saveTimer.current), []);
+  // The inspector moves on to another asset (the editor is keyed by it) while a nudge waits for its pause: the pick
+  // is the user's, so it is saved now instead of dropped with the timer.
+  useEffect(
+    () => () => {
+      window.clearTimeout(saveTimer.current);
+      const pending = pendingSave.current;
+      if (!pending || sameRange(pending.value, storedRef.current)) return;
+      void saveAssetRange(pending.projectId, pending.path, pending.value).catch(() => {
+        // The editor is gone, so there is nowhere to say so; the store has gone back to what the server holds.
+      });
+    },
+    [],
+  );
 
   // The stored pick changed under us (undo, another window, the server's clamp): show it.
   const storedKey = stored ? `${stored.start}/${stored.end}` : "none";
@@ -80,6 +96,7 @@ export function AssetRangeEditor({
 
   const flush = async (next: AssetRange) => {
     window.clearTimeout(saveTimer.current);
+    pendingSave.current = null;
     const mine = editSequence.current;
     const value = storedRange(next, duration);
     if (sameRange(value, storedRef.current)) {
@@ -114,6 +131,7 @@ export function AssetRangeEditor({
     if (phase === "release") void flush(next);
     else if (phase === "key") {
       window.clearTimeout(saveTimer.current);
+      pendingSave.current = { projectId, path: item.path, value: storedRange(next, duration) };
       saveTimer.current = window.setTimeout(() => void flush(next), KEY_SAVE_DELAY_MS);
     }
   };

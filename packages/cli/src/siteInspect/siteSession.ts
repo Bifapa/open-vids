@@ -4,13 +4,16 @@
  * how the page is settled, and the typed errors both commands report.
  *
  * The page is untrusted and runs its own scripts before ours, so the guard is installed for every document before
- * anything of the page runs; requests are checked one by one (every redirect hop included) and the address the
- * connection really used is re-checked, because Chrome resolves names itself.
+ * anything of the page runs. Requests are checked one by one (every redirect hop included), and Chrome reaches the
+ * network only through the vetting proxy, which connects to the addresses the policy vetted and nothing else: that
+ * covers what request interception never sees (WebSocket handshakes, workers, preconnects) and a name that
+ * resolves differently the second time.
  */
 
 import type { Browser, HTTPResponse, Page } from "puppeteer-core";
 import { installPageFunctionGuard } from "../capture/captureCompositionFrame.js";
 import type { RequestPolicy } from "./requestPolicy.js";
+import { startSiteProxy, type ProxyRefusal } from "./siteProxy.js";
 
 export const SITE_INSPECT_ERROR_CODES = [
   "blocked_by_policy",
@@ -44,10 +47,20 @@ export const CHROME_ARGS = [
   "--block-new-web-contents",
   "--force-color-profile=srgb",
   "--disable-dev-shm-usage",
+  // No QUIC (WebTransport and HTTP/3 are UDP the proxy cannot carry) and no WebRTC UDP outside the proxy.
+  "--disable-quic",
+  "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+  // Loopback is proxied too (and refused there), so no socket opens to a local service behind the proxy's back.
+  "--proxy-bypass-list=<-loopback>",
 ];
 
 // Chrome, puppeteer and sharp load lazily: they are only needed by these commands, not by every CLI start.
-export async function launchChrome(userDataDir: string): Promise<Browser> {
+export async function launchChrome(
+  userDataDir: string,
+  policy: RequestPolicy,
+  refusals: ProxyRefusal[],
+  lookupFor?: Parameters<typeof startSiteProxy>[2],
+): Promise<Browser> {
   const { ensureBrowser } = await import("../browser/manager.js");
   const puppeteer = await import("puppeteer-core");
   let executablePath: string;
@@ -61,17 +74,33 @@ export async function launchChrome(userDataDir: string): Promise<Browser> {
   }
   // The renderer sandbox stays on: this opens pages nobody vetted. Only a root user on Linux cannot have it.
   const root = process.platform === "linux" && process.getuid?.() === 0;
-  return puppeteer.default.launch({
-    headless: true,
-    executablePath,
-    // Chrome exits when this pipe closes, so a killed CLI never leaves a browser behind.
-    pipe: true,
-    userDataDir,
-    args: [...CHROME_ARGS, ...(root ? ["--no-sandbox"] : [])],
-  });
+  const proxy = await startSiteProxy(policy, refusals, lookupFor);
+  try {
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      executablePath,
+      // Chrome exits when this pipe closes, so a killed CLI never leaves a browser behind.
+      pipe: true,
+      userDataDir,
+      args: [
+        ...CHROME_ARGS,
+        `--proxy-server=http://127.0.0.1:${proxy.port}`,
+        ...(root ? ["--no-sandbox"] : []),
+      ],
+    });
+    // The proxy lives exactly as long as the browser it serves.
+    browser.once("disconnected", () => void proxy.close());
+    return browser;
+  } catch (error) {
+    await proxy.close();
+    throw error;
+  }
 }
 
-/** Script run in every document before the page's own: no sockets, no service workers, no popups. */
+/**
+ * Script run in every document before the page's own: no sockets, no service workers, no popups. Workers do not run
+ * it, which is why the network layer (the proxy) holds the same rules for their sockets.
+ */
 export const LOCKDOWN_SCRIPT = String.raw`(() => {
   var deny = function (name) {
     return function () { throw new DOMException(name + " is disabled while a page is being read", "SecurityError"); };
@@ -79,22 +108,20 @@ export const LOCKDOWN_SCRIPT = String.raw`(() => {
   try { window.WebSocket = deny("WebSocket"); } catch (e) {}
   try { window.EventSource = deny("EventSource"); } catch (e) {}
   try { window.RTCPeerConnection = deny("RTCPeerConnection"); } catch (e) {}
+  try { window.WebTransport = deny("WebTransport"); } catch (e) {}
   try { window.open = function () { return null; }; } catch (e) {}
   try { if (navigator.serviceWorker) Object.defineProperty(navigator, "serviceWorker", { value: undefined }); } catch (e) {}
 })()`;
 
 /** What the page was refused and what a collector wants to keep from the responses it was allowed. */
 export interface PageCapture {
-  blocked: Array<{ url: string; reason: string }>;
-  /** Set when a connection went to a private address although its name vetted as public (DNS rebinding). */
-  violation: string | null;
+  blocked: ProxyRefusal[];
   pending: Array<Promise<void>>;
 }
 
 /**
  * Holds one page to the address rules: the lockdown script in every document, request interception through the
- * policy for every request (redirect hops included), the real connection address re-checked, dialogs dismissed.
- * `onResponse` sees every response whose address was clean.
+ * policy for every request (redirect hops included), dialogs dismissed. `onResponse` sees every response.
  */
 export async function guardPage(
   page: Page,
@@ -121,14 +148,7 @@ export async function guardPage(
       }
     })();
   });
-  page.on("response", (response) => {
-    const problem = policy.remoteAddressProblem(response.remoteAddress().ip);
-    if (problem) {
-      capture.violation ??= `${new URL(response.url()).hostname}: ${problem}`;
-      return;
-    }
-    onResponse?.(response);
-  });
+  if (onResponse) page.on("response", onResponse);
   page.on("dialog", (dialog) => void dialog.dismiss().catch(() => {}));
 }
 

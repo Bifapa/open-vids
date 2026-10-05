@@ -2742,6 +2742,50 @@ describe("initSandboxRuntimeModular", () => {
     expect(childTimeline.time()).toBe(6);
   });
 
+  it("seeks root and nested sub-composition timelines through __hfSeekTimelines without moving the transport", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "20");
+    document.body.appendChild(root);
+
+    const outer = document.createElement("div");
+    outer.setAttribute("data-composition-id", "outer");
+    outer.setAttribute("data-start", "3");
+    outer.setAttribute("data-duration", "10");
+    root.appendChild(outer);
+
+    // Starts 2 s into the outer host: 5 s on the root timeline.
+    const inner = document.createElement("div");
+    inner.setAttribute("data-composition-id", "inner");
+    inner.setAttribute("data-start", "2");
+    inner.setAttribute("data-duration", "6");
+    inner.setAttribute("data-playback-start", "1.5");
+    outer.appendChild(inner);
+
+    const rootTimeline = createMockTimeline(20);
+    const outerTimeline = createMockTimeline(10);
+    const innerTimeline = createMockTimeline(6);
+    window.__timelines = { main: rootTimeline, outer: outerTimeline, inner: innerTimeline };
+    initSandboxRuntimeModular();
+    const timeBefore = window.__player?.getTime();
+
+    expect(typeof window.__hfSeekTimelines).toBe("function");
+    window.__hfSeekTimelines?.(7, { suppressEvents: true });
+
+    expect(rootTimeline.time()).toBe(7);
+    expect(outerTimeline.time()).toBeCloseTo(4);
+    // 7 s on the root is 2 s into the inner host, plus its 1.5 s source offset.
+    expect(innerTimeline.time()).toBeCloseTo(3.5);
+    // The seek is a read-only positioning aid: no transport movement, and the
+    // sub-composition timelines are left paused rather than free-running.
+    expect(window.__player?.getTime()).toBe(timeBefore);
+    expect(window.__player?.isPlaying()).toBe(false);
+    expect(outerTimeline.paused?.()).toBe(true);
+    expect(innerTimeline.paused?.()).toBe(true);
+  });
+
   it("keeps the root GSAP render nudge for normal frames but not silent probes", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -3167,6 +3211,55 @@ describe("initSandboxRuntimeModular", () => {
     expect(player?.isPlaying()).toBe(true);
     expect(player?.getTime()).toBeCloseTo(1, 1);
     expect(childTimeline.time()).toBeCloseTo(1, 1);
+  });
+
+  it("keeps the transport monotonic while a looping <audio> wraps its own currentTime", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    // A short source looping under a long slot: the element's own currentTime
+    // jumps back to the start every time the source ends.
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "10");
+    audio.setAttribute("loop", "");
+    Object.defineProperty(audio, "duration", { value: 1, configurable: true });
+    Object.defineProperty(audio, "paused", { value: false, configurable: true });
+    Object.defineProperty(audio, "readyState", {
+      value: HTMLMediaElement.HAVE_ENOUGH_DATA,
+      configurable: true,
+    });
+    Object.defineProperty(audio, "currentTime", { value: 0, writable: true, configurable: true });
+    audio.load = () => {};
+    audio.play = vi.fn(() => Promise.resolve());
+    root.appendChild(audio);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    const player = window.__player;
+    player?.play();
+    const times: number[] = [];
+    for (let steps = 0; steps < 8; steps++) {
+      raf.step(250);
+      // Just wrapped: the element reports the start of the source again.
+      audio.currentTime = 0.05;
+      times.push(player?.getTime() ?? 0);
+    }
+
+    expect(times.slice(1).every((time, index) => time >= (times[index] ?? 0))).toBe(true);
+    expect(player?.getTime()).toBeCloseTo(2, 1);
   });
 
   it.each([24, 30, 60, 30_000 / 1_001])(

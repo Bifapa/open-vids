@@ -2,7 +2,7 @@
 
 ## "No composition found"
 
-Your directory needs an `index.html`. Run `npx hyperframes init` to create one.
+Your directory needs an `index.html`. Run `hyperframes init` to create one.
 
 ## "FFmpeg not found"
 
@@ -14,7 +14,7 @@ Local rendering requires FFmpeg. Install it:
 
 ## Lint errors
 
-Run `npx hyperframes lint` to check for common issues:
+Run `hyperframes lint` to check for common issues:
 
 - Missing `data-composition-id` on root element
 - Missing `class="clip"` on timed elements
@@ -26,4 +26,4 @@ Make sure you're editing the `index.html` in the project directory. The preview 
 
 ## Render looks different from preview
 
-Renders may differ from preview due to font availability and Chrome version. Use `npx hyperframes doctor` to check the local toolchain.
+Renders may differ from preview due to font availability and Chrome version. Use `hyperframes doctor` to check the local toolchain.

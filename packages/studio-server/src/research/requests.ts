@@ -5,6 +5,7 @@ import {
   WEBSITE_FILE_MODES,
   WEBSITE_GRANT_ACCESS,
   WEBSITE_LIMITS,
+  MAX_ALLOWED_SITES,
   isRecord,
   type AddTrustedSourceRequest,
   type AgentId,
@@ -208,6 +209,23 @@ export function parseImportRequest(raw: unknown): ImportAssetRequest {
   };
 }
 
+/** The runtime's `allowedSites`: registrable domains, lower case, at most {@link MAX_ALLOWED_SITES}. */
+function allowedSitesOf(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > MAX_ALLOWED_SITES) {
+    throw new ResearchFailure(
+      "invalid_request",
+      `allowedSites must be a list of at most ${MAX_ALLOWED_SITES} domains`,
+    );
+  }
+  return value.map((entry): string => {
+    const site = text(entry, "allowedSites", 253).toLowerCase();
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(site)) {
+      throw new ResearchFailure("invalid_request", `allowedSites has "${site}", not a domain`);
+    }
+    return site;
+  });
+}
+
 export function parseResolveRequest(raw: unknown): ResolveMissingRequest {
   const value = body(raw, ["missing", "asset", "title", "turnId", "requestId"]);
   return {
@@ -222,7 +240,7 @@ export function parseResolveRequest(raw: unknown): ResolveMissingRequest {
 }
 
 export function parseWebsiteRequest(raw: unknown): ReadWebsiteRequest {
-  const value = body(raw, ["url", "save", "requestId", "turnId", "agent", "model"]);
+  const value = body(raw, ["url", "save", "requestId", "allowedSites", "turnId", "agent", "model"]);
   if (value.save !== undefined && typeof value.save !== "boolean") {
     throw new ResearchFailure("invalid_request", "save must be true or false");
   }
@@ -232,6 +250,7 @@ export function parseWebsiteRequest(raw: unknown): ReadWebsiteRequest {
     ...(value.requestId !== undefined && {
       requestId: text(value.requestId, "requestId", ID_CHARS),
     }),
+    ...(value.allowedSites !== undefined && { allowedSites: allowedSitesOf(value.allowedSites) }),
     ...(value.turnId !== undefined && { turnId: text(value.turnId, "turnId", ID_CHARS * 2) }),
     ...(value.agent !== undefined && { agent: agentOf(value.agent) }),
     ...(value.model !== undefined && {
@@ -265,7 +284,16 @@ export function parseWebsiteGrantRequest(raw: unknown): WebsiteGrantRequest {
 
 /** `POST /api/projects/:id/research/website/file` (full access): save a file, or read its text. */
 export function parseWebsiteFileRequest(raw: unknown): WebsiteFileRequest {
-  const value = body(raw, ["url", "mode", "pageUrl", "requestId", "turnId", "agent", "model"]);
+  const value = body(raw, [
+    "url",
+    "mode",
+    "pageUrl",
+    "requestId",
+    "allowedSites",
+    "turnId",
+    "agent",
+    "model",
+  ]);
   const mode = WEBSITE_FILE_MODES.find((entry) => entry === value.mode);
   if (mode === undefined) {
     throw new ResearchFailure("invalid_request", `mode must be ${WEBSITE_FILE_MODES.join(" or ")}`);
@@ -279,6 +307,7 @@ export function parseWebsiteFileRequest(raw: unknown): WebsiteFileRequest {
     ...(value.requestId !== undefined && {
       requestId: text(value.requestId, "requestId", ID_CHARS),
     }),
+    ...(value.allowedSites !== undefined && { allowedSites: allowedSitesOf(value.allowedSites) }),
     ...(value.turnId !== undefined && { turnId: text(value.turnId, "turnId", ID_CHARS * 2) }),
     ...(value.agent !== undefined && { agent: agentOf(value.agent) }),
     ...(value.model !== undefined && {
@@ -297,6 +326,7 @@ export function parseRecordWebsiteRequest(raw: unknown): RecordWebsiteRequest {
     "width",
     "height",
     "requestId",
+    "allowedSites",
     "turnId",
     "agent",
     "model",
@@ -346,6 +376,7 @@ export function parseRecordWebsiteRequest(raw: unknown): RecordWebsiteRequest {
     ...(value.requestId !== undefined && {
       requestId: text(value.requestId, "requestId", ID_CHARS),
     }),
+    ...(value.allowedSites !== undefined && { allowedSites: allowedSitesOf(value.allowedSites) }),
     ...(value.turnId !== undefined && { turnId: text(value.turnId, "turnId", ID_CHARS * 2) }),
     ...(value.agent !== undefined && { agent: agentOf(value.agent) }),
     ...(value.model !== undefined && {

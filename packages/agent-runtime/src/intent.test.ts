@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { intentRefusal, savesWebsiteFiles } from "./intent.js";
 import type { ScriptedSession } from "./testing/backend.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "./testing/runtimeFixture.js";
 
@@ -231,6 +232,47 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
       });
     } finally {
       await fixture.cleanup();
+    }
+  });
+});
+
+describe("intentRefusal for website saves", () => {
+  const SAVE_CALLS = [
+    ["read_website", { url: "https://linear.app", save: true }],
+    ["get_website_file", { url: "https://linear.app/a.svg", mode: "save" }],
+  ] as const;
+  const READ_CALLS = [
+    ["read_website", { url: "https://linear.app" }],
+    ["get_website_file", { url: "https://linear.app/a.css", mode: "read" }],
+  ] as const;
+
+  it("refuses saving a website's files after a plan proposal or a Story offer, and still lets reads through", () => {
+    for (const [name, args] of SAVE_CALLS) {
+      expect(intentRefusal("edit", name, true, false, args), `${name} after a plan`).toContain(
+        "plan proposal",
+      );
+      expect(intentRefusal("edit", name, false, true, args), `${name} after an offer`).toContain(
+        "offered Story Mode",
+      );
+      expect(intentRefusal("edit", name, false, false, args), `${name} in a plain turn`).toBeNull();
+    }
+    for (const [name, args] of READ_CALLS) {
+      expect(intentRefusal("edit", name, true, true, args), name).toBeNull();
+    }
+  });
+
+  it("reads a whitespace-padded mode the way the executor does, so it cannot slip past the gates", () => {
+    for (const mode of ["save ", " save", "\tsave\n"]) {
+      const args = { url: "https://linear.app/a.svg", mode };
+      expect(savesWebsiteFiles("get_website_file", args), JSON.stringify(mode)).toBe(true);
+      expect(intentRefusal("edit", "get_website_file", true, false, args)).toContain(
+        "plan proposal",
+      );
+    }
+    for (const mode of ["savee", "unsave", 1, null]) {
+      expect(savesWebsiteFiles("get_website_file", { url: "https://linear.app/a", mode })).toBe(
+        false,
+      );
     }
   });
 });

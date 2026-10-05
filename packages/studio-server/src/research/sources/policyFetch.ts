@@ -12,7 +12,7 @@ import {
 } from "./mediaTypes.js";
 import type { FetchedPage, ResearchHttp } from "./types.js";
 import { pinnedTransport, type TransportInit } from "./pinnedTransport.js";
-import { UrlGuard, type VettedUrl } from "./urlPolicy.js";
+import { UrlGuard, assertInAllowedSites, type VettedUrl } from "./urlPolicy.js";
 
 /**
  * Public media hosts ask automated clients to identify themselves with a contact URL (Wikimedia's User-Agent policy
@@ -123,14 +123,19 @@ export class PolicyFetcher {
   /**
    * Opens a response under the address rules alone: full access to linked sites may open any public address, so the
    * trusted-source check does not apply. Redirects are followed by hand and every hop is vetted, exactly like
-   * {@link open}.
+   * {@link open}. With `sites` (the websites the user linked) every hop must also belong to one of them, checked
+   * before it is requested: a redirect off the linked sites is never followed.
    */
   async openPublic(
     rawUrl: string,
     headers: Record<string, string>,
     signal: AbortSignal,
+    sites?: readonly string[],
   ): Promise<{ response: Response; finalUrl: string }> {
-    return this.follow(rawUrl, headers, signal, (url) => this.guard.vetPublic(url));
+    return this.follow(rawUrl, headers, signal, (url) => {
+      assertInAllowedSites(url, sites);
+      return this.guard.vetPublic(url);
+    });
   }
 
   private async follow(

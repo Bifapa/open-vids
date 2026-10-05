@@ -26,7 +26,7 @@ const QUALITIES = [
 
 /**
  * Remove Background… for the selected video or image: the same server job the Design inspector runs, writing a
- * transparent cutout next to the original (and, for video, an optional background plate).
+ * transparent cutout into assets/cutouts/ (and, for video, an optional background plate).
  */
 export function RemoveBackgroundDialog({
   item,

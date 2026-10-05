@@ -62,12 +62,21 @@ describe("the request policy", () => {
     });
   });
 
-  it("flags a connection that really went to a private address (a name that rebound after the check)", () => {
-    const policy = createRequestPolicy(async () => [PUBLIC]);
-    expect(policy.remoteAddressProblem("127.0.0.1")).toContain("127.0.0.1");
-    expect(policy.remoteAddressProblem("[::1]")).toContain("::1");
-    expect(policy.remoteAddressProblem(PUBLIC)).toBeNull();
-    expect(policy.remoteAddressProblem(undefined)).toBeNull();
-    expect(policy.remoteAddressProblem("")).toBeNull();
+  it("hands the proxy the addresses it vetted, one lookup per host however the name is written", async () => {
+    const resolve = vi.fn(async () => [PUBLIC]);
+    const policy = createRequestPolicy(resolve);
+    expect(await policy.check("https://Pinned.example.com/a")).toBeNull();
+    expect(await policy.vet("pinned.example.com")).toEqual({ ok: true, addresses: [PUBLIC] });
+    expect(await policy.vet("pinned.example.com.")).toEqual({ ok: true, addresses: [PUBLIC] });
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a tunnel to a private address or a name that answers one, for the proxy", async () => {
+    const policy = createRequestPolicy(async (host) =>
+      host === "rebind.example.com" ? [PUBLIC, "10.0.0.7"] : [PUBLIC],
+    );
+    expect(await policy.vet("127.0.0.1")).toMatchObject({ ok: false, kind: "blocked" });
+    expect(await policy.vet("[::1]")).toMatchObject({ ok: false, kind: "blocked" });
+    expect(await policy.vet("rebind.example.com")).toMatchObject({ ok: false, kind: "blocked" });
   });
 });

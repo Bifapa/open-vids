@@ -28,7 +28,6 @@ import {
   loadRuntimeSourceSignature,
 } from "./runtimeSource.js";
 import { VERSION as version } from "../version.js";
-import { checkStudioRequest } from "./hostGuard.js";
 import { isDevMode } from "../utils/env.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import type { ProjectLintResult } from "@hyperframes/lint";
@@ -60,6 +59,7 @@ import {
   HistoryBusyError,
   HistoryClosedError,
   historyCache,
+  checkStudioRequest,
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { bundledSkillsRoot } from "../utils/skillsManifest.js";
@@ -449,7 +449,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   });
 
   // A previous server killed mid-render (SIGKILL, crash) left scratch frames, a half-staged output and possibly its
-  // Chrome behind. Nothing of that belongs to this process, which has started no render yet.
+  // Chrome behind. The sweep skips what a live render (this process's or another's) still owns.
   sweepRenderResidue(join(projectDir, "renders"));
   void import("@hyperframes/engine")
     .then((engine) => engine.sweepOrphanBrowsers())

@@ -2,11 +2,9 @@
 
 Browser-based composition editor UI for Hyperframes. Provides a visual timeline, code editor, and live preview for building video compositions.
 
-## Install
+## Use
 
-```bash
-npm install @hyperframes/studio
-```
+This package is private to the OpenVids workspace and is not published to npm. The desktop app and the CLI load it from the workspace (`bun install` at the repository root links it).
 
 ## What it does
 

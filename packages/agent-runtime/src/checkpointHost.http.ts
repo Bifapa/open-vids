@@ -72,13 +72,26 @@ export class HttpCheckpointHost implements CheckpointHost {
     for (let index = entryIds.length - 1; index >= 0; index -= 1) {
       const entryId = entryIds[index];
       if (!entryId) continue;
-      const result = await this.request(scope, "POST", "/undo", {
-        entryId,
-        who: DIRECTOR,
-        ...(mode && { mode }),
-      });
-      if (!isRecord(result) || typeof result.ok !== "boolean") {
-        throw new Error("Studio returned an invalid history undo result");
+      let result: Record<string, unknown>;
+      try {
+        const response = await this.request(scope, "POST", "/undo", {
+          entryId,
+          who: DIRECTOR,
+          ...(mode && { mode }),
+        });
+        if (!isRecord(response) || typeof response.ok !== "boolean") {
+          throw new Error("Studio returned an invalid history undo result");
+        }
+        result = response;
+      } catch (error) {
+        // The newer entries are already undone on disk: hand their undo ids back so the caller can record them.
+        if (undoEntryIds.length === 0) throw error;
+        return {
+          ok: false,
+          failure: error instanceof Error ? error.message : String(error),
+          remainingEntryIds: entryIds.slice(0, index + 1),
+          undoEntryIds,
+        };
       }
       if (result.ok) {
         if (isRecord(result.entry) && typeof result.entry.id === "string")

@@ -1,10 +1,11 @@
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
-import type { LookupFunction } from "node:net";
 import { Readable, pipeline } from "node:stream";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { webBody } from "../../helpers/nodeStream.js";
-import { isPrivateAddress } from "./address.js";
+import { pinnedLookup } from "./pinnedLookup.js";
+
+export { pinnedLookup };
 
 /** What a transport needs for one request: the addresses the URL guard vetted for this very hop. */
 export interface TransportInit {
@@ -20,30 +21,6 @@ export interface TransportInit {
 
 /** Statuses whose responses carry no body (the `Response` constructor refuses one for them). */
 const hasNoBody = (status: number): boolean => status === 204 || status === 205 || status === 304;
-
-/**
- * A `lookup` that never asks DNS: it hands the socket the vetted addresses, re-checking each one so that a pinned
- * private address (a bug upstream, not a rebinding answer) still cannot be connected to.
- */
-export function pinnedLookup(addresses: readonly string[]): LookupFunction {
-  return (_hostname, options, callback) => {
-    const safe = addresses.filter((address) => !isPrivateAddress(address));
-    const first = safe[0];
-    if (first === undefined) {
-      callback(new Error("No vetted public address to connect to"), "", 4);
-      return;
-    }
-    const family = (address: string) => (address.includes(":") ? 6 : 4);
-    if (options.all) {
-      callback(
-        null,
-        safe.map((address) => ({ address, family: family(address) })),
-      );
-      return;
-    }
-    callback(null, first, family(first));
-  };
-}
 
 function responseHeaders(message: IncomingMessage, decoded: boolean): Headers {
   const headers = new Headers();

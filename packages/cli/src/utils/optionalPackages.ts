@@ -151,7 +151,7 @@ export function runNpm(args: string[], signal?: AbortSignal): Promise<void> {
   });
 }
 
-function isProcessAlive(pid: number): boolean {
+export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
@@ -160,7 +160,7 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-const STAGING_PID_TRUSTED_FOR_MS = 6 * 60 * 60 * 1000;
+export const STAGING_PID_TRUSTED_FOR_MS = 6 * 60 * 60 * 1000;
 
 /** Removes staging dirs whose pid is dead (killed install), or too old to trust a live pid (reuse). */
 export function sweepStaleStaging(dir: string): void {

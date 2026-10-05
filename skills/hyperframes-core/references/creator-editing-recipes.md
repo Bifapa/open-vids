@@ -2,7 +2,7 @@
 
 Use these copyable contracts after `tracks-and-clips.md`. Global math: **consumed source = timeline duration × rate**; **natural timeline duration = remaining source / rate**.
 
-Before any edit, run `npx hyperframes timeline` (add `--json` for a machine-readable list) to see the project's tracks and clips instead of reading the HTML.
+Before any edit, run `hyperframes timeline` (add `--json` for a machine-readable list) to see the project's tracks and clips instead of reading the HTML.
 
 These recipes keep sound on a separate `<audio>` element with the `<video>` muted, which is the pattern to reach for when picture and sound are cut independently. An unmuted `<video>` that declares `data-has-audio="true"` is also mixed, so a separate track is a choice, not a requirement.
 

@@ -31,6 +31,7 @@ import {
 import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import { SDR_CAPTURE_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
+import { image2PatternPath } from "../utils/image2Pattern.js";
 import { formatFfmpegError, isExternalFfmpegInterruption, runFfmpeg } from "../utils/runFfmpeg.js";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { type Fps, fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
@@ -522,7 +523,7 @@ export async function encodeFramesFromDir(
     gpuEncoder = await getCachedGpuEncoder();
   }
 
-  const inputPath = join(framesDir, framePattern);
+  const inputPath = image2PatternPath(framesDir, framePattern);
   const inputArgs = ["-framerate", fpsToFfmpegArg(options.fps), "-i", inputPath];
   const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder);
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
@@ -677,7 +678,7 @@ export async function encodeFramesChunkedConcat(
         ? ".mov"
         : ".mp4";
     const chunkPath = join(chunkDir, `chunk_${String(i).padStart(4, "0")}${ext}`);
-    const inputPath = join(framesDir, framePattern);
+    const inputPath = image2PatternPath(framesDir, framePattern);
     const inputArgs = [
       "-framerate",
       fpsToFfmpegArg(options.fps),

@@ -18,7 +18,7 @@ import {
   type StoryUnrelatedClip,
   type TranscriptArtifact,
 } from "@hyperframes/agent-protocol";
-import { CAPTIONS_FILE } from "../editing/captions.js";
+import { findCaptionsHost } from "../editing/captions.js";
 import { aiEditTurn, clipState, clipStateChanges, type ClipState } from "../editing/clipState.js";
 import { isUntouchedTemplatePlaceholder } from "../editing/placeholder.js";
 import { clipLabel, readClipProvenance, type ClipNode } from "../editing/timeline.js";
@@ -290,7 +290,7 @@ export function planSync(input: PlanInput): SyncPlan {
     for (const unit of section.units) for (const clip of presentOf(unit)) owned.add(clip);
   }
   for (const unit of ledger?.music ?? []) for (const clip of presentOf(unit)) owned.add(clip);
-  const captionsHost = timeline.clips.find((clip) => clip.compositionSrc === CAPTIONS_FILE) ?? null;
+  const captionsHost = findCaptionsHost(timeline.clips, input.composition)?.host ?? null;
 
   const editsOf = (unit: LedgerUnit, shift: number, title: string): StoryManualEdit[] => {
     const edits: StoryManualEdit[] = [];

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { locateSystemFont, clearSystemFontCache } from "./systemFontLocator";
+import { tmpdir } from "node:os";
+import { delimiter, resolve } from "node:path";
+import { locateSystemFont, clearSystemFontCache, fontDirectories } from "./systemFontLocator";
 
 describe("systemFontLocator", { timeout: 15_000 }, () => {
   beforeAll(() => {
@@ -72,4 +74,19 @@ describe("systemFontLocator", { timeout: 15_000 }, () => {
       expect(longestStallMs).toBeLessThan(1_000);
     });
   }
+});
+
+describe("HYPERFRAMES_SYSTEM_FONT_DIRS", () => {
+  it("replaces the platform font directories with the absolute entries it lists", () => {
+    const saved = process.env.HYPERFRAMES_SYSTEM_FONT_DIRS;
+    const first = resolve(tmpdir(), "hf-fonts-a");
+    const second = resolve(tmpdir(), "hf-fonts-b");
+    process.env.HYPERFRAMES_SYSTEM_FONT_DIRS = [first, "relative/dir", "", second].join(delimiter);
+    try {
+      expect(fontDirectories()).toEqual([first, second]);
+    } finally {
+      if (saved === undefined) delete process.env.HYPERFRAMES_SYSTEM_FONT_DIRS;
+      else process.env.HYPERFRAMES_SYSTEM_FONT_DIRS = saved;
+    }
+  });
 });

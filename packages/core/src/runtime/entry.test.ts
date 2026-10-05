@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
 import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 import type { RuntimeTimelineLike } from "./types";
@@ -68,25 +68,35 @@ const neverDecodes = (clip: HTMLElement) => {
   return clip;
 };
 
+function resetRuntimeGlobals(): void {
+  vi.useRealTimers();
+  window.__hfRuntimeTeardown?.();
+  document.head.innerHTML = "";
+  document.body.innerHTML = "";
+  window.__timelines = {};
+  delete window.__player;
+  delete window.__playerReady;
+  delete window.__renderReady;
+  delete window.__hfTimelinesBuilding;
+  const win = window as {
+    __hyperframeRuntimeBootstrapped?: boolean;
+    __hfFirstPassHidden?: boolean;
+  };
+  delete win.__hyperframeRuntimeBootstrapped;
+  delete win.__hfFirstPassHidden;
+  delete (document as { readyState?: unknown }).readyState;
+}
+
 describe("runtime entry", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-    window.__hfRuntimeTeardown?.();
-    document.head.innerHTML = "";
-    document.body.innerHTML = "";
-    window.__timelines = {};
-    delete window.__player;
-    delete window.__playerReady;
-    delete window.__renderReady;
-    delete window.__hfTimelinesBuilding;
-    const win = window as {
-      __hyperframeRuntimeBootstrapped?: boolean;
-      __hfFirstPassHidden?: boolean;
-    };
-    delete win.__hyperframeRuntimeBootstrapped;
-    delete win.__hfFirstPassHidden;
-    delete (document as { readyState?: unknown }).readyState;
-  });
+  // The first import of the entry graph transforms it cold, which on a loaded machine can eat most
+  // of a test's 5 s budget. Pay that once here, under a generous hook timeout; each test then
+  // re-evaluates the cached module.
+  beforeAll(async () => {
+    await evaluateRuntime();
+    resetRuntimeGlobals();
+  }, 60_000);
+
+  afterEach(resetRuntimeGlobals);
 
   it("paints no timed clip, from script evaluation until the first visibility pass decides it", async () => {
     servePreview();

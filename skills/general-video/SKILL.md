@@ -13,7 +13,7 @@ description: >
 Before relying on this workflow, run:
 
 ```bash
-npx hyperframes skills update general-video
+hyperframes skills update general-video
 ```
 
 A successful no-op means the skill is current. Surface an update failure instead of continuing from memory.
@@ -39,7 +39,7 @@ Apply the first matching row; do not evaluate lower state rows:
 For a new project, choose a kebab-case directory name from the brief and scaffold before writing the brief:
 
 ```bash
-npx hyperframes init "videos/<project>" --non-interactive --example=blank --skill=general-video
+hyperframes init "videos/<project>" --non-interactive --example=blank --skill=general-video
 ```
 
 Then write `BRIEF.md` at the project root using `../hyperframes/references/brief-format.md`. In an existing project, the root is the directory containing `hyperframes.json`. Record only the confirmed preference-backed fields named by the brief format, using `node <MEDIA_DIR>/scripts/prefs.mjs record --hyperframes <PROJECT_ROOT>`; never record inferred defaults. Here `<MEDIA_DIR>` is the installed `/media-use` skill directory and `<PROJECT_ROOT>` is the directory containing `hyperframes.json`. If the intent layer adopted a recipe, apply it now with `node <MEDIA_DIR>/scripts/recipe.mjs use --hyperframes <PROJECT_ROOT> --name <name>` and do not ask again.
@@ -101,7 +101,7 @@ Do not replace these reads with recollection. Progressive disclosure saves conte
 
 Use this dependency order. Skip a stage only when its input is absent.
 
-1. **Plan.** State the viewer arc, structure, rhythm, and duration driver. Use one file for a short single scene; use sub-compositions for three or more hard scene cuts or any reused scene. Read `/hyperframes-creative` → `references/story-spine.md` for narrated arcs, `references/beat-direction.md` for rhythm, and `/hyperframes-core` → `references/composition-patterns.md` for structure. For an open-ended multi-scene brief, expand the prompt through `/hyperframes-creative` → `references/prompt-expansion.md`. A multi-scene plan cites each scene's shape: a blueprint id from `/hyperframes-animation` → `blueprints-index.md` when one fits, or the named rules it composes from `rules-index.md` when none does — motion names come from those indexes, never invented. Story truth decides which scenes exist; the citation dresses them. **Search the live catalog before you plan to build any named look yourself**: for every look, effect, treatment or transition the brief names — "CRT scanlines", "glitch", "film grain", "shimmer sweep", "confetti burst" — run `npx hyperframes catalog --query "<the look, in plain English>" --json` and read the top results before the plan names how that look gets built. The search needs **nothing installed**: no project, no prior `add`, no account. It ranks the whole hosted registry (~400 blocks and components) from any directory, so it also applies to a look the user asks for mid-build. Blocks the plan names are installed at stage 3; hand-author a look only after a search for it came back with nothing that fits. A multi-scene plan is also recorded as the dispatch artifact: one `## Frame N` block per scene in `STORYBOARD.md` — `status: outline`, a declared `src:`, the blueprint/rules citation, and the beat text — **even when `storyboard: no`**. The block is the dispatch unit; the storyboard sheet is only the review surface.
+1. **Plan.** State the viewer arc, structure, rhythm, and duration driver. Use one file for a short single scene; use sub-compositions for three or more hard scene cuts or any reused scene. Read `/hyperframes-creative` → `references/story-spine.md` for narrated arcs, `references/beat-direction.md` for rhythm, and `/hyperframes-core` → `references/composition-patterns.md` for structure. For an open-ended multi-scene brief, expand the prompt through `/hyperframes-creative` → `references/prompt-expansion.md`. A multi-scene plan cites each scene's shape: a blueprint id from `/hyperframes-animation` → `blueprints-index.md` when one fits, or the named rules it composes from `rules-index.md` when none does — motion names come from those indexes, never invented. Story truth decides which scenes exist; the citation dresses them. **Search the live catalog before you plan to build any named look yourself**: for every look, effect, treatment or transition the brief names — "CRT scanlines", "glitch", "film grain", "shimmer sweep", "confetti burst" — run `hyperframes catalog --query "<the look, in plain English>" --json` and read the top results before the plan names how that look gets built. The search needs **nothing installed**: no project, no prior `add`, no account. It ranks the whole bundled registry (~360 blocks and components) from any directory, so it also applies to a look the user asks for mid-build. Blocks the plan names are installed at stage 3; hand-author a look only after a search for it came back with nothing that fits. A multi-scene plan is also recorded as the dispatch artifact: one `## Frame N` block per scene in `STORYBOARD.md` — `status: outline`, a declared `src:`, the blueprint/rules citation, and the beat text — **even when `storyboard: no`**. The block is the dispatch unit; the storyboard sheet is only the review surface.
 2. **Review the plan when requested.** For `storyboard: yes`, run the shared review loop over those blocks. For `storyboard: no`, continue without a plan pause or sketch sheet. When a plan pause happens anyway, fold the sub-agent delegation grant (needed by codex for step 4's dispatch) into that pause rather than stopping again later.
 3. **Resolve dependencies.** Install registry blocks before parallel work. Stage user assets, adopt existing media, and resolve only what the brief requires. Start audio early when its timings drive duration.
 4. **Build scenes.** For a short single-scene piece, implement the scene at its most visible moment before adding motion (the confirmed wireframe, when present, is that end state and must not be redrawn), then animate from its cited blueprint or rules — read the full recipe body (`/hyperframes-animation` → `blueprints/<id>.md`, `rules/<id>.md`) before writing motion.
@@ -114,7 +114,7 @@ Use this dependency order. Skip a stage only when its input is absent.
 
 5. **Merge motion sidecars.** Collect the workers' `compositions/<frame_id>.motion.json` files and carry their durations and exit/entry vectors into assembly; where the doctrine chain (`/motion-doctrine`) is installed, translate them into the project ledger before stamping seams.
 6. **Assemble.** Mount scenes, media, transitions, captions, and audio using the production loop. Real voice duration overrides estimates. When a music bed plays under any voice track, carve the bed before verifying: `/hyperframes-audio` → `scripts/carve.mjs --comp index.html`. A volume duck alone does not finish the mix.
-7. **Verify.** Use `npx hyperframes lint` for fast feedback after the first HTML pass and structural changes. For the final gate, run `npx hyperframes check`; it reruns lint internally, so do not run a redundant standalone lint immediately before it. For sub-compositions, inspect midpoint snapshots. For multi-scene work, review the animation map.
+7. **Verify.** Use `hyperframes lint` for fast feedback after the first HTML pass and structural changes. For the final gate, run `hyperframes check`; it reruns lint internally, so do not run a redundant standalone lint immediately before it. For sub-compositions, inspect midpoint snapshots. For multi-scene work, review the animation map.
 8. **Final approval.** Open the final Studio preview only after checks pass. Ask whether to render or revise. Render only after approval.
 
 ## 6. Gates that always apply
@@ -144,7 +144,7 @@ Timed elements use `class="clip"`; the root and relevant ancestors are sized; ea
 
 ### Borrow workflows safely
 
-When the piece resembles a shipped workflow, borrow its genre references as examples. First run `npx hyperframes skills update <workflow-name>`. Borrow its story shape and taste, not its private scripts, pipeline state, or directory contract. The generic build remains owned by this skill.
+When the piece resembles a shipped workflow, borrow its genre references as examples. First run `hyperframes skills update <workflow-name>`. Borrow its story shape and taste, not its private scripts, pipeline state, or directory contract. The generic build remains owned by this skill.
 
 ## 7. Done
 
@@ -152,7 +152,7 @@ A run is complete only when:
 
 - requested scope is implemented;
 - for `flow: companion`, the treatment is delivered, not just the scope: every scene's cited blueprint or rules realized, the audio identity present (or the silence chosen and said), the open and close designed rather than defaulted;
-- `npx hyperframes check` passes, including its built-in lint stage;
+- `hyperframes check` passes, including its built-in lint stage;
 - design adherence is reviewed against `/hyperframes-creative` → `references/design-adherence.md` when a design spec exists;
 - contrast findings are resolved;
 - sub-composition snapshots are inspected when applicable;

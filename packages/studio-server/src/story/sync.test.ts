@@ -11,6 +11,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanRanges } from "../analysis/cutPlan.js";
 import { writeAssetRanges } from "../editing/assetRanges.js";
+import { captionsFileFor } from "../editing/captions.js";
 import { clipState, type ClipState } from "../editing/clipState.js";
 import { applyEdits } from "../editing/operations.js";
 import { readComposition } from "../editing/service.js";
@@ -347,6 +348,41 @@ describe("Story ↔ timeline sync ledger", () => {
     expect(report.captions?.edits).toMatchObject([
       { kind: "modified", by: "user", fields: ["text"] },
     ]);
+  });
+
+  it("tracks the captions of a story built into another composition, and rebuilds them in place", async () => {
+    const scene = "compositions/scene.html";
+    const f = createStoryFixture({ html: WITH_TITLE });
+    fixture = f;
+    f.made.write(scene, WITH_TITLE);
+    await referenceStory(f);
+    await f.edit([{ op: "set_story", composition: scene }]);
+    await f.service.build(f.project, { turnId: "turn-build" });
+
+    const file = captionsFileFor(scene);
+    expect(f.made.read(file)).toContain("welcome.");
+    let report = await reportOf(f);
+    expect(report.state).toBe("in_sync");
+    expect(report.captions?.edits).toEqual([]);
+
+    f.made.write(file, f.made.read(file).replace("welcome.", "welcome, friends."));
+    report = await reportOf(f);
+    expect(report.captions?.edits).toMatchObject([
+      { kind: "modified", by: "user", fields: ["text"] },
+    ]);
+
+    // A host the user locked is theirs: a full build keeps it and its file instead of replacing them.
+    f.made.write(
+      scene,
+      f.made
+        .read(scene)
+        .replace('data-track-kind="captions"', 'data-track-kind="captions" data-timeline-locked'),
+    );
+    await f.service.build(f.project, { turnId: "turn-rebuild" });
+    expect(f.made.read(file)).toContain("welcome, friends.");
+    const read = await readComposition(f.project, scene, f.made.facts);
+    const hosts = read.model.clips.filter((clip) => clip.compositionSrc === file);
+    expect(hosts).toHaveLength(1);
   });
 
   it("tells the user's edits of generated clips from a later AI turn's and a removed clip, and keeps them all", async () => {
@@ -792,6 +828,41 @@ describe("Rebuild affected section", () => {
     expect(replaced.replacedEdits.map((edit) => edit.clip)).toEqual([mainClip]);
     expect((await states(f)).has(mainClip)).toBe(false);
     expect((await reportOf(f)).state).toBe("in_sync");
+  });
+
+  it("counts a Studio canvas drag, resize and rotation as a manual edit, so Rebuild keeps it", async () => {
+    const { f, ids } = await built();
+    const [mainClip] = sectionClips(f, ids.main, "a_roll");
+    if (!mainClip) throw new Error("fixture");
+    expect((await reportOf(f)).state).toBe("in_sync");
+    userEditsClip(f, mainClip, (element) => {
+      element.setAttribute("data-hf-studio-path-offset", "true");
+      element.setAttribute("data-hf-studio-rotation", "true");
+      element.setAttribute(
+        "style",
+        `${element.getAttribute("style") ?? ""}; --hf-studio-offset-x: 40px; --hf-studio-offset-y: -12px; --hf-studio-rotation: 8deg; translate: var(--hf-studio-offset-x) var(--hf-studio-offset-y)`,
+      );
+    });
+    await userSaves(f, (graph) => {
+      chapterOf(graph, ids.main).sourceRanges = [
+        { source: TALK, from: 2.6, to: 3.35, segment: null },
+      ];
+    });
+    const impact = await reportOf(f);
+    expect(impact.conflicts).toBe(1);
+    expect(
+      section(impact.sections, ids.main).units.find((unit) => unit.role === "a_roll"),
+    ).toMatchObject({
+      action: "keep_edited",
+      edits: [{ clip: mainClip, kind: "modified", by: "user", fields: ["canvas"] }],
+    });
+
+    const kept = await rebuild(f);
+    expect(kept.keptEdits.map((edit) => edit.clip)).toEqual([mainClip]);
+    expect((await states(f)).get(mainClip)?.studio).toMatchObject({
+      "--hf-studio-offset-x": "40px",
+      "--hf-studio-rotation": "8deg",
+    });
   });
 
   it("refuses to rebuild a story that was never built, and one built before sync tracking", async () => {

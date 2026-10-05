@@ -1,4 +1,5 @@
 import {
+  QA_LIMITS,
   compareQaPass,
   sameQaIssue,
   type ChatMode,
@@ -129,6 +130,40 @@ const minutes = (seconds: number): string => `${Number((seconds / 60).toFixed(1)
 
 function tooLongReason(duration: number): string {
   return `The composition is ${minutes(duration)} long and the user did not ask for a render, so QA did not render it (a render that long takes many minutes). Ask for a render or an export to have it checked.`;
+}
+
+/**
+ * The previous pass's Vision issues a pass could not re-check (its Vision review did not complete, or there was no
+ * render to look at), as drafts: they stay open instead of being recorded as fixed. A draft that already matches one
+ * of them (a finding of a review that failed after reporting) is not repeated.
+ */
+function unverifiedVisionIssues(
+  previous: readonly QaIssue[],
+  drafts: readonly QaIssueDraft[],
+): QaIssueDraft[] {
+  return previous.filter(
+    (issue) => issue.source === "vision" && !drafts.some((draft) => sameQaIssue(issue, draft)),
+  );
+}
+
+const SEVERITY_RANK: Record<QaIssueDraft["severity"], number> = { error: 0, warning: 1, info: 2 };
+
+/**
+ * The service refuses a report with more than `QA_LIMITS.issues` issues. The checks alone may reach that cap and Vision
+ * adds its findings on top, so past the cap the most severe issues are kept (stable within a severity: checks first,
+ * then Vision's findings).
+ */
+function capQaDrafts(drafts: QaIssueDraft[]): QaIssueDraft[] {
+  if (drafts.length <= QA_LIMITS.issues) return drafts;
+  return drafts
+    .map((draft, index) => ({ draft, index }))
+    .sort(
+      (a, b) =>
+        SEVERITY_RANK[a.draft.severity] - SEVERITY_RANK[b.draft.severity] || a.index - b.index,
+    )
+    .slice(0, QA_LIMITS.issues)
+    .sort((a, b) => a.index - b.index)
+    .map(({ draft }) => draft);
 }
 
 /**
@@ -480,6 +515,7 @@ export class QaLoop {
         reason: "The render failed, so there was nothing to review.",
         reasonCode: "vision_render_failed",
       };
+      drafts.push(...unverifiedVisionIssues(history.previous, drafts));
     } else {
       await this.setPhase(pass, "checking");
       try {
@@ -507,6 +543,9 @@ export class QaLoop {
       for (const finding of review.findings) {
         if (!drafts.some((known) => sameQaIssue(known, finding))) drafts.push(finding);
       }
+      // A Vision review that did not complete cannot say a Vision issue of the previous pass is gone: it stays open
+      // (unverified) instead of being recorded as fixed.
+      if (vision.status !== "ran") drafts.push(...unverifiedVisionIssues(history.previous, drafts));
       checks = [
         ...check.checks.filter((entry) => entry.id !== "vision"),
         {
@@ -524,6 +563,7 @@ export class QaLoop {
       ];
     }
     if (signal.aborted) return { kind: "aborted" };
+    drafts = capQaDrafts(drafts);
 
     const { issues, resolved } = compareQaPass({
       pass,

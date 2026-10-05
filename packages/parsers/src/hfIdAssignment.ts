@@ -56,6 +56,15 @@ function contentKey(el: Element): string {
   return `${el.tagName.toLowerCase()}|${attrs}|${ownText(el)}`;
 }
 
+// Past this many collisions on one key the 4-char id space is effectively exhausted for it
+// (~1.6M identical elements), so ids widen with the dup counter instead of rehashing.
+const MAX_REHASH_DUPS = 10000;
+
+// Last dup index handed out per content key, per `assigned` set. Dups 0..N of a key are all in
+// `assigned` once N was minted, so the next identical element resumes at N instead of re-walking
+// every earlier dup (which made minting N identical elements quadratic).
+const lastDupByAssigned = new WeakMap<Set<string>, Map<string, number>>();
+
 /**
  * Collision tiebreak for byte-identical siblings: document-order dup counter
  * (`hash(key#N)`). This IS order-dependent — two identical `<span></span>`
@@ -78,20 +87,27 @@ function contentKey(el: Element): string {
 // drag-to-edit targeting.
 export function mintHfId(el: Element, assigned: Set<string>): string {
   const key = contentKey(el);
-  let id = toHfId(fnv1a(key));
-  let dup = 0;
+  let lastDup = lastDupByAssigned.get(assigned);
+  if (!lastDup) {
+    lastDup = new Map();
+    lastDupByAssigned.set(assigned, lastDup);
+  }
+  const baseHash = fnv1a(key);
+  const idAt = (dup: number): string => {
+    if (dup === 0) return toHfId(baseHash);
+    // Graceful fallback instead of a hard throw: widen the id with the dup counter —
+    // still deterministic and unique (the loop below checks `assigned`), just longer than
+    // the 4-char norm.
+    if (dup > MAX_REHASH_DUPS) return `hf-${(baseHash >>> 0).toString(36)}-${dup}`;
+    return toHfId(fnv1a(`${key}#${dup}`));
+  };
+  let dup = lastDup.get(key) ?? 0;
+  let id = idAt(dup);
   while (assigned.has(id)) {
     dup += 1;
-    // Graceful fallback instead of a hard throw: rehashing only fails to find a
-    // free 4-char slot in a pathological document (~1.6M identical elements).
-    // Rather than crash the whole parse, widen the id with the dup counter —
-    // still deterministic and unique, just longer than the 4-char norm.
-    if (dup > 10000) {
-      id = `hf-${(fnv1a(key) >>> 0).toString(36)}-${dup}`;
-      break;
-    }
-    id = toHfId(fnv1a(`${key}#${dup}`));
+    id = idAt(dup);
   }
+  lastDup.set(key, dup);
   assigned.add(id);
   return id;
 }

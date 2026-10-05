@@ -74,7 +74,8 @@ export function assertAssetMediaTypeProfile(
 
 interface CompositionMediaAssets {
   videos: readonly VideoElement[];
-  audios: readonly AudioElement[];
+  /** Silent video soundtracks are spliced out in place. */
+  audios: AudioElement[];
   images: readonly ImageElement[];
 }
 
@@ -82,6 +83,8 @@ interface MediaReference {
   id: string;
   src: string;
   expected: AssetElementMediaType;
+  /** The audio entry itself, when it was derived from a <video>'s soundtrack. */
+  videoSourcedAudio?: AudioElement;
 }
 
 function isRemoteOrInlineSource(src: string): boolean {
@@ -110,6 +113,7 @@ export async function preflightCompositionAssetMediaTypes(input: {
       id: asset.id,
       src: asset.src,
       expected: "audio" as const,
+      ...(asset.type === "video" ? { videoSourcedAudio: asset } : {}),
     })),
     ...input.composition.images.map((asset) => ({
       id: asset.id,
@@ -117,6 +121,7 @@ export async function preflightCompositionAssetMediaTypes(input: {
       expected: "image" as const,
     })),
   ];
+  const silentVideoAudio = new Set<AudioElement>();
 
   const byPath = new Map<string, MediaReference[]>();
   for (const reference of references) {
@@ -162,6 +167,14 @@ export async function preflightCompositionAssetMediaTypes(input: {
           return;
         }
         for (const reference of pathReferences) {
+          // A video's soundtrack entry exists because the compiler stamps
+          // `data-has-audio` on every unmuted <video> without probing it. A clip
+          // with no audio stream (a screen recording, generated B-roll) is simply
+          // silent, exactly as in preview — not a mismatch.
+          if (reference.videoSourcedAudio && !profile.hasAudioStream) {
+            silentVideoAudio.add(reference.videoSourcedAudio);
+            continue;
+          }
           if (mediaProfileMatchesElementType(reference.expected, profile)) continue;
           mismatches.push({
             expected: reference.expected,
@@ -172,6 +185,22 @@ export async function preflightCompositionAssetMediaTypes(input: {
       }),
     ),
   );
+
+  // Drop the silent soundtracks so the mixer never tries to extract audio that
+  // is not there (that failure would discard the whole mix).
+  if (silentVideoAudio.size > 0) {
+    // In place: `compiled.audios` and `composition.audios` are the same array.
+    const silentIds = new Set<string>();
+    for (let i = input.composition.audios.length - 1; i >= 0; i--) {
+      const audio = input.composition.audios[i]!;
+      if (!silentVideoAudio.has(audio)) continue;
+      silentIds.add(audio.id);
+      input.composition.audios.splice(i, 1);
+    }
+    for (const video of input.composition.videos) {
+      if (silentIds.has(`${video.id}-audio`)) video.hasAudio = false;
+    }
+  }
 
   // Thrown ahead of the mismatch aggregate: "this file is an HTML page" is the
   // actionable diagnosis, while the type mismatch it also produces is a symptom.

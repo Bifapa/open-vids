@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { EDIT_LIMITS, isEditError, parseApplyEditsRequest } from "./index.js";
+import {
+  EDIT_LIMITS,
+  isEditError,
+  parseApplyEditsRequest,
+  parseSetAssetRangeRequest,
+} from "./index.js";
 
 function refused(body: unknown) {
   const parsed = parseApplyEditsRequest(body);
@@ -369,5 +374,20 @@ describe("isEditError", () => {
     expect(isEditError({ code: "made_up", message: "x" })).toBe(false);
     expect(isEditError({ code: "conflict" })).toBe(false);
     expect(isEditError("conflict")).toBe(false);
+  });
+});
+
+describe("parseSetAssetRangeRequest", () => {
+  it("accepts a minimum-length pick that differs from 0.1 s only by float error and refuses shorter ones", () => {
+    for (const range of [
+      { start: 1.1, end: 1.2 },
+      { start: 10, end: 10.1 },
+      { start: 99.9, end: 100 },
+    ]) {
+      expect(parseSetAssetRangeRequest({ path: "assets/a.mp4", range }).ok).toBe(true);
+    }
+    expect(
+      parseSetAssetRangeRequest({ path: "assets/a.mp4", range: { start: 1, end: 1.09 } }).ok,
+    ).toBe(false);
   });
 });

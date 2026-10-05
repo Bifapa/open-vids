@@ -6,18 +6,18 @@ export const LONG_RENDER_SECONDS = 180;
 
 const NOT_LETTER = String.raw`(?<![\p{L}\p{N}])`;
 
-/** English: render(ed/ing), export, a video/mp4 file, encode. Russian: рендер…, экспорт…, выгрузи…, видеофайл, "сохрани видео". */
+/** English: render(ed/ing), export, an mp4 / video file, encode. Russian: рендер…, экспорт…, выгрузи…, видеофайл, "сохрани видео". A file name such as `talk.mp4` only names the footage and is not a request. */
 const ASKS_FOR_RENDER = [
   String.raw`${NOT_LETTER}render(?:s|ed|ing)?(?![\p{L}\p{N}])`,
   String.raw`${NOT_LETTER}export(?:s|ed|ing)?(?![\p{L}\p{N}])`,
-  String.raw`${NOT_LETTER}mp4(?![\p{L}\p{N}])`,
+  String.raw`${NOT_LETTER}(?<![\p{L}\p{N}_-]\.)mp4(?![\p{L}\p{N}])`,
   String.raw`${NOT_LETTER}(?:video|movie|final)\s+file`,
   String.raw`${NOT_LETTER}encode(?![\p{L}\p{N}])`,
   String.raw`рендер`,
   String.raw`экспорт`,
   String.raw`выгруз`,
   String.raw`видеофайл`,
-  String.raw`${NOT_LETTER}(?:сохрани|собери|сделай)\s+(?:мне\s+)?(?:финальн\p{L}*\s+)?(?:видео|файл)`,
+  String.raw`${NOT_LETTER}(?:сохрани\s+(?:мне\s+)?(?:финальн\p{L}*\s+)?|(?:собери|сделай)\s+(?:мне\s+)?финальн\p{L}*\s+)(?:видео|файл)`,
 ].map((source) => new RegExp(source, "giu"));
 
 /** A negation shortly before the keyword ("don't render", "no export", "не рендери", "без экспорта") cancels it. */

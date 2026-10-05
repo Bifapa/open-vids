@@ -13,6 +13,7 @@ export default defineConfig({
     "helpers/finiteMutation": "src/helpers/finiteMutation.ts",
     "helpers/sourceMutation": "src/helpers/sourceMutation.ts",
     "research/sources/address": "src/research/sources/address.ts",
+    "research/sources/pinnedLookup": "src/research/sources/pinnedLookup.ts",
   },
   format: ["esm"],
   outDir: "dist",

@@ -26,4 +26,4 @@ Each command downloads its own model on first run and caches it under `~/.cache/
 - **Transcribe** — Whisper model size depending on choice (75 MB – 3.1 GB) in `whisper/`, downloaded from HuggingFace on first use. `whisper.cpp` itself is NOT bundled: the CLI resolves it from PATH, installs via Homebrew (macOS), or builds it from source with git+cmake on first use (`$HYPERFRAMES_WHISPER_PATH` overrides).
 - **Remove-background** — `u2net_human_seg` (~168 MB ONNX) in `background-removal/models/`. Peak inference RAM ~1.5 GB.
 
-Run `npx hyperframes doctor` if a command fails because of a missing dependency.
+Run `hyperframes doctor` if a command fails because of a missing dependency.

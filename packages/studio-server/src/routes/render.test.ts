@@ -74,6 +74,41 @@ describe("GET /projects/:id/renders — stale sidecar status", () => {
   });
 });
 
+describe("POST /projects/:id/render — job ids", () => {
+  it("gives renders started in the same second distinct ids and output files", async () => {
+    const spy = vi.fn();
+    const { app, rendersDir, cleanup } = buildApp(spy);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T12:00:00"));
+    try {
+      const start = async (format: string) => {
+        const res = await app.request("http://localhost/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ format }),
+        });
+        return (await res.json()) as { jobId: string };
+      };
+      const first = await start("mp4");
+      const second = await start("mp4");
+      const third = await start("webm");
+      expect(new Set([first.jobId, second.jobId, third.jobId]).size).toBe(3);
+      const outputs = spy.mock.calls.map(([opts]) => opts.outputPath);
+      expect(new Set(outputs).size).toBe(3);
+      expect(outputs[1]).toBe(join(rendersDir, `${second.jobId}.mp4`));
+
+      // Files of an earlier session (any container, or only the sidecar) are never reused either.
+      writeFileSync(join(rendersDir, "demo_2026-10-05_12-00-00_4.mov"), "x");
+      writeFileSync(join(rendersDir, "demo_2026-10-05_12-00-00_5.meta.json"), "{}");
+      const afterFiles = await start("mp4");
+      expect(afterFiles.jobId).toBe("demo_2026-10-05_12-00-00_6");
+    } finally {
+      vi.useRealTimers();
+      cleanup();
+    }
+  });
+});
+
 describe("POST /projects/:id/render — outputResolution forwarding", () => {
   it("forwards a valid resolution preset to the adapter", async () => {
     const spy = vi.fn();
@@ -843,6 +878,49 @@ describe("POST /projects/:id/renders/:filename/open — OS default player", () =
       method: "POST",
     });
     expect(missing.status).toBe(404);
+    expect(opened).toEqual([]);
+  });
+
+  it("refuses anything that is not a render container file, without opening it", async () => {
+    const opened: string[] = [];
+    const { app, rendersDir } = buildOpenApp(async (path) => {
+      opened.push(path);
+    });
+    for (const name of ["run.bat", "page.html", "x.terminal", "x.mp4.bat", "notes", ".mp4"]) {
+      writeFileSync(join(rendersDir, name), "payload");
+    }
+
+    for (const name of ["run.bat", "page.html", "x.terminal", "x.mp4.bat", "notes", ".mp4"]) {
+      const res = await app.request(
+        `http://localhost/projects/demo/renders/${encodeURIComponent(name)}/open`,
+        { method: "POST" },
+      );
+      expect(res.status, name).toBe(400);
+    }
+    expect(opened).toEqual([]);
+  });
+
+  it("refuses a render-named folder and a link, which are not files the pipeline wrote", async () => {
+    const opened: string[] = [];
+    const { app, rendersDir } = buildOpenApp(async (path) => {
+      opened.push(path);
+    });
+    mkdirSync(join(rendersDir, "folder.mp4"));
+    writeFileSync(join(rendersDir, "target.bat"), "payload");
+    try {
+      symlinkSync(join(rendersDir, "target.bat"), join(rendersDir, "link.mp4"));
+    } catch (error) {
+      if (process.platform !== "win32") throw error;
+    }
+
+    for (const name of ["folder.mp4", "link.mp4"]) {
+      const res = await app.request(
+        `http://localhost/projects/demo/renders/${encodeURIComponent(name)}/open`,
+        { method: "POST" },
+      );
+      if (name === "link.mp4" && process.platform === "win32") continue;
+      expect(res.status, name).toBe(400);
+    }
     expect(opened).toEqual([]);
   });
 

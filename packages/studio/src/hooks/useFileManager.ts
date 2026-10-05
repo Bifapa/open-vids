@@ -128,7 +128,7 @@ export function useFileManager({
       if (!pid) return;
       revealAbortRef.current?.abort();
       revealAbortRef.current = null;
-      revealRequestIdRef.current++;
+      const requestId = ++revealRequestIdRef.current;
       // Skip fetching binary content for media files — just set the path for preview
       if (isMediaFile(path)) {
         setEditingFile({ path, content: null });
@@ -141,12 +141,15 @@ export function useFileManager({
           return r.json();
         })
         .then((data: { content?: string; version?: string }) => {
+          // A later click (or click-to-source) took over while this file was loading.
+          if (requestId !== revealRequestIdRef.current) return;
           if (data.content != null) {
             fileVersions.set(path, data.version ?? null);
             setEditingFile({ path, content: data.content });
           }
         })
         .catch((err: unknown) => {
+          if (requestId !== revealRequestIdRef.current) return;
           showToast(
             err instanceof Error ? err.message : t("fileManager.toast.loadFailed", { path }),
             "error",

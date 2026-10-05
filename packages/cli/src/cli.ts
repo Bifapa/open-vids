@@ -21,6 +21,7 @@ for (const stream of [process.stdout, process.stderr]) {
     }
   });
 }
+completeConsoleOutputUnderBun();
 
 // ── Worker entry path bootstrap (must run before any producer/engine load) ──
 // The shaderTransitionWorkerPool lives in the producer package and resolves
@@ -46,6 +47,7 @@ import { existsSync } from "node:fs";
 // ── Fast-path exits ─────────────────────────────────────────────────────────
 // Check --version before importing anything heavy. This makes
 // `hyperframes --version` near-instant (~10ms vs ~80ms).
+import { completeConsoleOutputUnderBun, flushStdio } from "./utils/bunStdio.js";
 import { VERSION } from "./version.js";
 
 const argv = process.argv.slice(2);
@@ -227,7 +229,9 @@ registerRootExitRequester((exitCode) => {
     exitCode,
     kind: exitCode === 0 ? "success" : "runtime_error",
     presented: true,
-  }).finally(() => process.exit(exitCode));
+  })
+    .then(flushStdio)
+    .finally(() => process.exit(exitCode));
 });
 
 registerRootExitCodeSanitizer(() => {

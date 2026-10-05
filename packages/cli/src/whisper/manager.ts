@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { downloadFile } from "../utils/download.js";
+import { isProcessAlive, STAGING_PID_TRUSTED_FOR_MS } from "../utils/optionalPackages.js";
 
 const MODELS_DIR = join(homedir(), ".cache", "hyperframes", "whisper", "models");
 const DEFAULT_MODEL = "small.en";
@@ -218,6 +219,32 @@ export async function ensureWhisper(options?: {
   throw new WhisperUnavailableError(`whisper-cpp not found. Install: ${getInstallInstructions()}`);
 }
 
+/** `downloadFile` writes `<model>.<pid>.<uuid>.tmp` and renames it on success. */
+const MODEL_PARTIAL = /^ggml-.+\.bin\.(\d+)\.[0-9a-f-]{36}\.tmp$/;
+
+/**
+ * Removes model download partials left by a download that never finished (cancelled, killed): only the process
+ * that was writing one can clean it up, and a hard kill gives it no chance. A partial is stale when its pid is
+ * dead, or too old to trust a live pid (pid reuse). A live downloader's partial is never touched.
+ */
+export function sweepStaleModelPartials(dir: string = MODELS_DIR): void {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const pid = MODEL_PARTIAL.exec(name)?.[1];
+    if (pid === undefined) continue;
+    const partial = join(dir, name);
+    const age = Date.now() - (statSync(partial, { throwIfNoEntry: false })?.mtimeMs ?? Date.now());
+    if (isProcessAlive(Number(pid)) && age < STAGING_PID_TRUSTED_FOR_MS) continue;
+    // Best effort: a locked partial must not block the download that is about to start.
+    rmSync(partial, { force: true });
+  }
+}
+
 export async function ensureModel(
   model: string = DEFAULT_MODEL,
   options?: { onProgress?: (message: string) => void },
@@ -226,6 +253,7 @@ export async function ensureModel(
   if (existsSync(modelPath)) return modelPath;
 
   mkdirSync(MODELS_DIR, { recursive: true });
+  sweepStaleModelPartials();
 
   options?.onProgress?.(`Downloading model ${model}...`);
   await downloadFile(getModelUrl(model), modelPath);

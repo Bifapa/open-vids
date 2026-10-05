@@ -443,6 +443,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         inlineText.editing ? "pointer-events-none" : "pointer-events-auto"
       }`}
       data-editing-text={inlineText.editing ? "true" : undefined}
+      data-studio-canvas="true"
       tabIndex={-1}
       aria-label={t("editor.canvas.ariaLabel")}
       // Cursor follows marquee rect *state* (re-renders), not the mutable ref.

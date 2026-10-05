@@ -76,9 +76,12 @@ the unit test on the pure function underneath.
 
 ## Gates that will fail your PR
 
-- **600 lines per file.** CI checks only non-test files your PR changed. A file
-  that grows past it has to be split in the same PR that grew it.
 - **oxlint and oxfmt**, not eslint or prettier.
+
+## Conventions no check enforces
+
+- **Keep files under about 600 lines.** No CI step measures it; a file that grows
+  past it is split in the same PR that grew it.
 
 ## Traps worth knowing
 

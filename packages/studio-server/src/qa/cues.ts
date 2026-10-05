@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { CaptionCue, TimelineClip } from "@hyperframes/agent-protocol";
-import { CAPTIONS_FILE } from "../editing/captions.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { isCaptionsHost } from "./timelineModel.js";
 
@@ -29,7 +28,7 @@ function arrayAt(text: string, from: number): string | null {
  */
 export function readCaptionCues(projectDir: string, clips: readonly TimelineClip[]): CaptionCue[] {
   const host = clips.find(isCaptionsHost);
-  const file = host ? resolveWithinProject(projectDir, CAPTIONS_FILE) : null;
+  const file = host?.compositionSrc ? resolveWithinProject(projectDir, host.compositionSrc) : null;
   if (!host || !file || !existsSync(file)) return [];
   const source = readFileSync(file, "utf-8");
   const at = source.indexOf(MARKER);

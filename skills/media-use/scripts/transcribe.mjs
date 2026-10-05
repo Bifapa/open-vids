@@ -14,7 +14,6 @@ import { homedir, tmpdir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
 import { parseArgs, stripVTControlCharacters } from "node:util";
 import { mergeTokensToWords } from "./lib/parakeet-words.mjs";
-import { resolveNpxInvocation } from "./lib/npx-sync.mjs";
 
 // The DEFAULT local transcription path. Prefers NVIDIA Parakeet-TDT via
 // parakeet-mlx, which beats whisper.cpp on the Open ASR Leaderboard (~6.05% vs
@@ -48,7 +47,7 @@ Usage:
 
 Parakeet (default) beats whisper.cpp on accuracy + speed for English/European
 languages; whisper.cpp (99 languages) is the fallback. Install Parakeet once:
-  npx hyperframes models install parakeet   (macOS, Windows, Linux with glibc 2.32+)
+  hyperframes models install parakeet   (macOS, Windows, Linux with glibc 2.32+)
   uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx   (Apple Silicon)`);
   process.exit(0);
 }
@@ -127,19 +126,22 @@ function runParakeet(runner) {
 function runCli(cliEngine) {
   const workDir = mkdtempSync(join(tmpdir(), "media-use-whisper-"));
   try {
-    // On Windows a bare "npx" is npx.cmd, which execFileSync cannot exec
-    // (spawnSync npx ENOENT) — resolveNpxInvocation reroutes it through
-    // node + npx-cli.js (and throws actionably when it can't), same
-    // mechanism as the audio engine's TTS spawns.
     // Under auto or parakeet the CLI may run its own Parakeet; --json says which engine ran.
-    const resolved = resolveNpxInvocation(
-      ["hyperframes", "transcribe", inputPath, "--dir", workDir, "--engine", cliEngine, "--json"],
-      { stdio: ["ignore", "pipe", "pipe"], timeout: 1_800_000 },
-    );
     let stdout;
     try {
-      stdout = String(execFileSync(resolved.cmd, resolved.args, resolved.opts));
+      stdout = String(
+        execFileSync(
+          "hyperframes",
+          ["transcribe", inputPath, "--dir", workDir, "--engine", cliEngine, "--json"],
+          { stdio: ["ignore", "pipe", "pipe"], timeout: 1_800_000 },
+        ),
+      );
     } catch (e) {
+      if (e.code === "ENOENT") {
+        throw new Error(
+          "the OpenVids CLI `hyperframes` was not found on PATH (link it first, e.g. `bun link` in packages/cli)",
+        );
+      }
       // stderr holds spinner redraws and --json prints the reason on stdout, so keep the last lines.
       const tail = stripVTControlCharacters(`${e.stderr ?? ""}\n${e.stdout ?? ""}`)
         .split(/[\r\n]+/)

@@ -177,6 +177,44 @@ describe("the address rules", () => {
   });
 });
 
+describe("the site scope of a request", () => {
+  it("refuses an address outside the linked sites before the browser is started", async () => {
+    const { f, inspect } = setup();
+    const refused = await failure(
+      f.service.website(f.project, {
+        url: "https://www.example.com/",
+        allowedSites: ["linear.app"],
+      }),
+    );
+    expect(refused.code).toBe("blocked_by_policy");
+    expect(inspect).not.toHaveBeenCalled();
+  });
+
+  it("reads a linked site and its sub-domains", async () => {
+    const { f } = setup();
+    const result = await f.service.website(f.project, {
+      url: "https://www.example.com/",
+      allowedSites: ["example.com"],
+    });
+    expect(result.site.host).toBe("example.com");
+  });
+
+  it("drops a page that redirected off the linked sites, unread and unsaved", async () => {
+    const { f } = setup();
+    const refused = await failure(
+      f.service.website(f.project, {
+        url: "https://linear.app/out?to=https://www.example.com/",
+        save: true,
+        allowedSites: ["linear.app"],
+      }),
+    );
+    expect(refused.code).toBe("blocked_by_policy");
+    expect(refused.message).toContain("www.example.com");
+    expect(webFiles(f)).toEqual([]);
+    expect(existsSync(join(f.project.dir, PROVENANCE_PATH))).toBe(false);
+  });
+});
+
 describe("reading", () => {
   it("answers the style with base64 screenshots and writes nothing without save", async () => {
     const { f } = setup();

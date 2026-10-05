@@ -9,7 +9,9 @@
  *
  * Routes (all JSON; errors are `{ error: AnalysisError }`):
  *   GET  …/analysis/sources                         → { sources: SourceAnalysisStatus[] }
- *   POST …/analysis/jobs              AnalyzeRequest → AnalysisJob (joins a running job of the same source)
+ *   POST …/analysis/jobs              AnalyzeRequest → AnalysisJob (an identical request joins the running job of the
+ *                                                       source; one it would not satisfy — force, another language,
+ *                                                       more stages — is refused with a `conflict` error, HTTP 409)
  *   GET  …/analysis/jobs/:jobId                     → AnalysisJob
  *   POST …/analysis/jobs/:jobId/cancel              → AnalysisJob
  *   GET  …/analysis/overview?source=                → AnalysisOverview
@@ -421,6 +423,11 @@ export interface CutPlan extends CutPlanSummary {
   ranges: CutRange[];
   removed: CutRemoval[];
   warnings: string[];
+  /**
+   * Set on read when the plan no longer fits its source (the media, the transcript or the picked fragment changed
+   * since planning): why, in words. Its ranges are source times of the old state, so it must not be built.
+   */
+  outOfDate?: string;
 }
 
 // ── Requests / responses ─────────────────────────────────────────────────────
@@ -456,6 +463,11 @@ export interface AnalysisJob {
   error: AnalysisError | null;
   startedAt: number;
   finishedAt: number | null;
+  /**
+   * Only on the answer to a start request: true when a job of the same source was already running and the request
+   * joined it instead of starting one. The job is then shared, so a joiner must not cancel it.
+   */
+  joined?: boolean;
 }
 
 export interface SegmentInput {

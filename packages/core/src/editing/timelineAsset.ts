@@ -1,7 +1,26 @@
+import { parseStartTagAttributes, scanStartTags } from "../compiler/htmlMarkupScan.js";
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "../mediaTypes.js";
 
-/** Matches the opening tag of a composition root element (e.g. `<div data-composition-id="main">`). */
-export const COMPOSITION_ROOT_OPEN_TAG_RE = /<[^>]*data-composition-id="[^"]+"[^>]*>/i;
+/**
+ * Locate the opening tag of the first composition root element (the first start tag that carries a
+ * non-empty `data-composition-id`), e.g. `<div data-composition-id="main">`. A root outside any
+ * `<template>` wins; otherwise the first one inside a template is used (the standard
+ * `<template><div data-composition-id>` sub-composition layout). Comments, raw-text elements and
+ * quoted attribute values are skipped, and any attribute quoting is accepted. `end` is the offset
+ * just past the tag's `>`.
+ */
+export function findCompositionRootOpenTag(
+  source: string,
+): { start: number; end: number; tag: string } | null {
+  let inTemplateRoot: { start: number; end: number; tag: string } | null = null;
+  for (const range of scanStartTags(source)) {
+    const tag = source.slice(range.start, range.end);
+    if (!parseStartTagAttributes(tag).get("data-composition-id")) continue;
+    if (!range.inTemplate) return { start: range.start, end: range.end, tag };
+    inTemplateRoot ??= { start: range.start, end: range.end, tag };
+  }
+  return inTemplateRoot;
+}
 
 export type TimelineAssetKind = "image" | "video" | "audio";
 
@@ -25,6 +44,31 @@ export function buildTimelineAssetId(assetPath: string, existingIds: Iterable<st
   let suffix = 2;
   while (ids.has(`${baseId}_${suffix}`)) suffix += 1;
   return `${baseId}_${suffix}`;
+}
+
+/**
+ * A project-relative file path as the URL a `src` attribute holds: every segment percent-encoded
+ * (so `#`, `?`, `%`, spaces and quotes stay part of the file name), `/` kept. A browser, the render
+ * compiler and the editing service all decode it back to the name on disk.
+ */
+export function encodeAssetUrlPath(path: string): string {
+  return path
+    .split("/")
+    .map((segment) =>
+      encodeURIComponent(segment).replace(
+        /[!'()*]/g,
+        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+      ),
+    )
+    .join("/");
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 export function resolveTimelineAssetSrc(targetPath: string, assetPath: string): string {
@@ -94,9 +138,9 @@ export function buildTimelineAssetInsertHtml(input: {
   attributes?: Readonly<Record<string, string>>;
 }): string {
   const extraAttributes = Object.entries(input.attributes ?? {})
-    .map(([name, value]) => ` ${name}="${value.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`)
+    .map(([name, value]) => ` ${name}="${escapeHtmlAttribute(value)}"`)
     .join("");
-  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"${extraAttributes}`;
+  const sharedAttrs = `id="${escapeHtmlAttribute(input.id)}" data-hf-id="${escapeHtmlAttribute(input.hfId)}" class="clip" src="${escapeHtmlAttribute(encodeAssetUrlPath(input.assetPath))}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"${extraAttributes}`;
   const geometry = input.geometry ?? { left: 0, top: 0, width: 640, height: 360 };
   const visualStyles = `position: absolute; left: ${geometry.left}px; top: ${geometry.top}px; width: ${geometry.width}px; height: ${geometry.height}px; object-fit: ${input.fit ?? "contain"}; z-index: ${input.zIndex}`;
   const fadeAttrs = [
@@ -128,13 +172,13 @@ export function buildTimelineAssetInsertHtml(input: {
 }
 
 export function insertTimelineAssetIntoSource(source: string, assetHtml: string): string {
-  const match = COMPOSITION_ROOT_OPEN_TAG_RE.exec(source);
-  if (!match || match.index == null) {
+  const root = findCompositionRootOpenTag(source);
+  if (!root) {
     throw new Error("No composition root found in target source");
   }
-  const insertAt = match.index + match[0].length;
-  const lineStart = source.lastIndexOf("\n", match.index);
-  const leadingWhitespace = source.slice(lineStart + 1, match.index).match(/^(\s*)/)?.[1] ?? "";
+  const insertAt = root.end;
+  const lineStart = source.lastIndexOf("\n", root.start);
+  const leadingWhitespace = source.slice(lineStart + 1, root.start).match(/^(\s*)/)?.[1] ?? "";
   const childIndent = leadingWhitespace + "  ";
   const indented = assetHtml
     .split("\n")

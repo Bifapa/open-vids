@@ -59,6 +59,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     projectDir,
     assets,
     element,
+    flatInspector = STUDIO_FLAT_INSPECTOR_ENABLED,
     multiSelectCount = 0,
     multiSelectedElements,
     onGroupSelection,
@@ -184,7 +185,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   if (!element) {
     return (
       <PropertyPanelEmptyState
-        flat={STUDIO_FLAT_INSPECTOR_ENABLED}
+        flat={flatInspector}
         multiSelectCount={multiSelectCount}
         multiSelectedElements={multiSelectedElements}
         onGroupSelection={onGroupSelection}
@@ -265,7 +266,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
       });
   };
 
-  if (STUDIO_FLAT_INSPECTOR_ENABLED) {
+  if (flatInspector) {
     // Forward the raw props (handlers, ids, assets, recording, fonts, etc.) and
     // the values the legacy path already computed above (so they aren't derived
     // twice). PropertyPanelFlat owns the one-open group state.

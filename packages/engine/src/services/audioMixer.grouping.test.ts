@@ -464,6 +464,63 @@ describe.skipIf(!HAS_FFMPEG)("group sub-mix failure contract", () => {
     expect(readdirSync(parent).sort()).toEqual(["project"]);
   });
 
+  // The per-track intermediates (`-trimmed.wav`, `-extracted.wav`, `-fx.wav`) are
+  // named from the element id, which is author-controlled just like a group id.
+  it("keeps a traversal-shaped element id inside the work directory", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "hf-el-parent-"));
+    tempDirs.push(parent);
+    const projectDir = join(parent, "project");
+    const workDir = join(parent, "work");
+    mkdirSync(projectDir);
+    mkdirSync(workDir);
+    writeTone(join(projectDir, "a.wav"), 440, 1, 0.4);
+
+    const result = await processCompositionAudio(
+      [{ ...track("a", 1), id: "../../../escaped" }],
+      projectDir,
+      workDir,
+      join(projectDir, `el-esc-${MIXED_AUDIO_FILENAME}`),
+      1,
+    );
+
+    expect(result.success).toBe(true);
+    expect(readdirSync(parent).sort()).toEqual(["project"]);
+  });
+
+  it("keeps tracks apart when their sanitized element ids collide", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-el-collision-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-el-collision-work-"));
+    tempDirs.push(projectDir, workDir);
+    writeTone(join(projectDir, "a.wav"), 440, 2, 0.4);
+    writeTone(join(projectDir, "b.wav"), 880, 2, 0.4);
+
+    const collidingOut = join(projectDir, `colliding-${MIXED_AUDIO_FILENAME}`);
+    const plainOut = join(projectDir, `plain-${MIXED_AUDIO_FILENAME}`);
+    const colliding = await processCompositionAudio(
+      [
+        { ...track("a", 2), id: "clip/a" },
+        { ...track("b", 2), id: "clip?a" },
+      ],
+      projectDir,
+      workDir,
+      collidingOut,
+      2,
+    );
+    const plain = await processCompositionAudio(
+      [track("a", 2), track("b", 2)],
+      projectDir,
+      workDir,
+      plainOut,
+      2,
+    );
+
+    expect(colliding.success).toBe(true);
+    expect(plain.success).toBe(true);
+    // Sharing one `clip_a-trimmed.wav`, the second track would overwrite the
+    // first and the mix would carry the 880 Hz tone twice (~3 dB hot).
+    expect(Math.abs(meanVolumeDb(collidingOut) - meanVolumeDb(plainOut))).toBeLessThan(0.5);
+  }, 30_000);
+
   it("keeps distinct groups isolated when their sanitized ids collide", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-collision-"));
     const workDir = mkdtempSync(join(tmpdir(), "hf-grp-collision-work-"));

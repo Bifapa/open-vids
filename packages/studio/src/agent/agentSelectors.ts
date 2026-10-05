@@ -23,6 +23,7 @@ import {
   type UserMessage,
   type WorkerAgentId,
 } from "@hyperframes/agent-protocol";
+import type { AgentAvailability } from "./agentStore";
 import { t } from "../i18n";
 
 /** The turn currently running in a chat, if any. */
@@ -39,12 +40,15 @@ export function runningTurn(chat: ChatState | null): TurnSummary | null {
  * A project-modifying turn is running: the project-wide `activeTurn` (set by the server, which is also what keeps
  * it running through the turn's render-QA correction passes), or a running turn in the open chat — the latter also
  * covers the window where a turn was started while the project event stream is down. This is what locks the
- * timeline (see agent/agentTurnLock.ts).
+ * timeline (see agent/agentTurnLock.ts). An agent that cannot be reached runs nothing we can know of, and its
+ * last-seen turn must not keep hand editing locked: the lock returns with the agent, from the fresh list.
  */
 export function agentTurnRunning(state: {
+  availability: AgentAvailability;
   activeTurn: ActiveTurnInfo | null;
   chat: ChatState | null;
 }): boolean {
+  if (state.availability === "unavailable") return false;
   return state.activeTurn !== null || runningTurn(state.chat) !== null;
 }
 

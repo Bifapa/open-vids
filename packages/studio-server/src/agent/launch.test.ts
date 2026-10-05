@@ -39,7 +39,7 @@ describe("resolveAgentRuntimeLaunch", () => {
     process.env.OPENVIDS_AGENT_BUN = "/custom/bun";
 
     const launch = resolveAgentRuntimeLaunch(cliDir);
-    expect(launch?.args).toEqual([configured]);
+    expect(launch?.args).toEqual(["--no-install", configured]);
     expect(launch?.command).toBe("/custom/bun");
     expect(launch?.cwd).toBe(dirname(configured));
   });
@@ -52,7 +52,7 @@ describe("resolveAgentRuntimeLaunch", () => {
     delete process.env.OPENVIDS_AGENT_BUN;
 
     const launch = resolveAgentRuntimeLaunch(cliDir);
-    expect(launch?.args).toEqual([sibling]);
+    expect(launch?.args).toEqual(["--no-install", sibling]);
   });
 
   it("falls back to the workspace source runtime when the package is not linked", () => {
@@ -65,7 +65,7 @@ describe("resolveAgentRuntimeLaunch", () => {
     delete process.env.OPENVIDS_AGENT_BUN;
 
     const launch = resolveAgentRuntimeLaunch(join(dir, "cli"));
-    expect(launch?.args).toEqual([workspaceEntry]);
+    expect(launch?.args).toEqual(["--no-install", workspaceEntry]);
     expect(launch?.command).toBe(process.versions.bun ? process.execPath : "bun");
   });
 });

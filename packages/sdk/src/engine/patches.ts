@@ -42,7 +42,7 @@ function escapeIdForPath(id: string): string {
 }
 
 /** Decode a path segment that may contain RFC 6902-escaped characters back to an hf-id. */
-function decodePathSegment(segment: string): string {
+export function decodePathSegment(segment: string): string {
   // RFC 6902 §3: unescape ~1 → /, then ~0 → ~ (reverse order)
   return segment.replace(/~1/g, "/").replace(/~0/g, "~");
 }

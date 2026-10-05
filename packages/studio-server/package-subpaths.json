@@ -50,6 +50,12 @@
       "types": "./dist/helpers/sourceMutation.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./pinned-lookup": {
+      "source": "./src/research/sources/pinnedLookup.ts",
+      "runtime": "./dist/research/sources/pinnedLookup.js",
+      "types": "./dist/research/sources/pinnedLookup.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./public-address": {
       "source": "./src/research/sources/address.ts",
       "runtime": "./dist/research/sources/address.js",

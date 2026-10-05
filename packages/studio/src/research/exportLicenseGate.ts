@@ -34,10 +34,11 @@ export const useExportLicenseGate = create<ExportLicenseGateState>()((set) => ({
 /** Shows the warnings and resolves with the user's decision; a newer question cancels an unanswered one. */
 export function askExportDecision(check: ExportLicenseCheck): Promise<ExportDecision> {
   resolvePending?.("cancel");
-  const { promise, resolve } = Promise.withResolvers<ExportDecision>();
-  resolvePending = resolve;
-  useExportLicenseGate.setState({ pending: check });
-  return promise;
+  // A plain executor, not Promise.withResolvers: the WebKit of macOS 11, the minimum OS, predates it.
+  return new Promise<ExportDecision>((resolve) => {
+    resolvePending = resolve;
+    useExportLicenseGate.setState({ pending: check });
+  });
 }
 
 /**

@@ -98,17 +98,18 @@ export async function createRuntimeFixture(
   };
 }
 
-/** Polls `predicate`; `timeoutMs` bounds tests that cross real I/O (HTTP, ffprobe) instead of in-memory fakes. */
+/** Default patience of {@link waitUntil}: generous for a slow disk or a loaded CI runner, free when the test passes. */
+const WAIT_TIMEOUT_MS = 10_000;
+
+/** Polls `predicate` until it holds or `timeoutMs` of wall-clock time have passed (not a count of event-loop turns). */
 export async function waitUntil(
   predicate: () => boolean,
   description: string,
-  timeoutMs?: number,
+  timeoutMs: number = WAIT_TIMEOUT_MS,
 ): Promise<void> {
-  const deadline = timeoutMs === undefined ? null : Date.now() + timeoutMs;
-  for (let attempt = 0; deadline !== null || attempt < 200; attempt += 1) {
-    if (predicate()) return;
-    if (deadline !== null && Date.now() > deadline) break;
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${description}`);
     await new Promise((resolve) => setTimeout(resolve, 1));
   }
-  throw new Error(`Timed out waiting for ${description}`);
 }

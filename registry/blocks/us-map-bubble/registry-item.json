@@ -3,7 +3,7 @@
   "name": "us-map-bubble",
   "type": "hyperframes:block",
   "title": "US Bubble Map",
-  "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines — composable with us-map",
+  "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines \u2014 composable with us-map",
   "tags": ["data", "map", "geography", "usa", "bubble", "cities"],
   "dimensions": {
     "width": 1920,
@@ -13,8 +13,18 @@
   "files": [
     {
       "path": "us-map-bubble.html",
-      "target": "compositions/us-map-bubble.html",
+      "target": "compositions/us-map-bubble/us-map-bubble.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/us-atlas-states-10m.js",
+      "target": "compositions/us-map-bubble/assets/us-atlas-states-10m.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/us-atlas-LICENSE.txt",
+      "target": "compositions/us-map-bubble/assets/us-atlas-LICENSE.txt",
+      "type": "hyperframes:asset"
     }
   ],
   "preview": {

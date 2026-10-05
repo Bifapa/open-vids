@@ -57,6 +57,31 @@ describe("locked timeline clips vs edit/write", () => {
     ).toContain('"#title"');
   });
 
+  it("catches the spellings OMP's edit/write resolve to the same file", async () => {
+    for (const target of [
+      "[index.html]",
+      "[index.html#ABCD]",
+      ":./index.html",
+      "@index.html",
+      path.join(projectDir, "index.html"),
+      `:${path.join(projectDir, "index.html")}`,
+      `[${path.join(projectDir, "index.html")}]`,
+    ]) {
+      expect(
+        await guardLockedClips(
+          projectDir,
+          edit("color: white", "color: hotpink", { path: target }),
+          "edit",
+        ),
+        target,
+      ).toContain('"#title"');
+      expect(
+        await guardLockedClips(projectDir, { path: target, content: UNLOCKED_HTML }, "write"),
+        target,
+      ).toContain("unlock");
+    }
+  });
+
   it("blocks an agent unlocking a clip", async () => {
     const reason = await guardLockedClips(projectDir, edit(' data-timeline-locked=""', ""), "edit");
     expect(reason).toContain("unlock");

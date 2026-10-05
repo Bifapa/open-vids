@@ -10,11 +10,13 @@ export function hasCliCommand(helpText, command) {
 }
 
 export function runCliPreflight({ command = "check", spawn = spawnSync } = {}) {
-  const result = spawn("npx", ["hyperframes", "--help"], {
-    encoding: "utf8",
-    shell: process.platform === "win32",
-  });
+  const result = spawn("hyperframes", ["--help"], { encoding: "utf8" });
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  if (result.error?.code === "ENOENT") {
+    throw new Error(
+      "the OpenVids CLI `hyperframes` was not found on PATH. Link it first (for example `bun link` in packages/cli).",
+    );
+  }
   if (result.status !== 0) {
     throw new Error(`unable to inspect HyperFrames CLI capabilities\n${output.trim()}`);
   }

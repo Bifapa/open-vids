@@ -108,7 +108,9 @@ describe("a call whose setting is off asks the user in chat", () => {
     expect(host.grants).toEqual([{ turnId: "turn-1", access: "read" }]);
     expect(host.policyUpdates).toEqual([]);
     // The retry carries the turn id so the grant matches it on the server.
-    expect(host.websiteRequests).toEqual([{ url: "https://linear.app/pricing", turnId: "turn-1" }]);
+    expect(host.websiteRequests).toEqual([
+      { url: "https://linear.app/pricing", allowedSites: ["linear.app"], turnId: "turn-1" },
+    ]);
 
     // A later read of the same turn does not ask again: the grant covers it.
     expect((await call("read_website", { url: "https://linear.app" })).isError).toBeUndefined();
@@ -191,6 +193,7 @@ describe("a call whose setting is off asks the user in chat", () => {
       {
         url: "https://linear.app/app.css",
         mode: "save",
+        allowedSites: ["linear.app"],
         turnId: "turn-1",
         agent: "director",
         model: null,
@@ -208,6 +211,7 @@ describe("a call whose setting is off asks the user in chat", () => {
     expect(host.recordRequests).toEqual([
       {
         url: "https://linear.app",
+        allowedSites: ["linear.app"],
         seconds: 4,
         turnId: "turn-1",
         agent: "director",
@@ -227,7 +231,9 @@ describe("a call whose setting is off asks the user in chat", () => {
     expect(reading.isError).toBeUndefined();
     expect(reading.text).toContain("full access to linked sites once");
     expect(published).toHaveLength(2);
-    expect(host.websiteRequests).toEqual([{ url: "https://linear.app", turnId: "turn-1" }]);
+    expect(host.websiteRequests).toEqual([
+      { url: "https://linear.app", allowedSites: ["linear.app"], turnId: "turn-1" },
+    ]);
   });
 
   it("turns both switches on for full access (reading included)", async () => {
@@ -241,7 +247,24 @@ describe("a call whose setting is off asks the user in chat", () => {
     expect(host.policyUpdates).toEqual([{ websites: { readLinkedPages: true, fullAccess: true } }]);
   });
 
-  it("counts the user's allow answer as the download approval when askBeforeDownloads is on", async () => {
+  it("counts the user's allow answer to a download card as the download approval when askBeforeDownloads is on", async () => {
+    const { host, broker, published, call } = harness({
+      readLinkedPages: false,
+      askBeforeDownloads: true,
+      turnUserTexts: ["look at https://linear.app"],
+    });
+    const saving = call("get_website_file", { url: "https://linear.app/app.css", mode: "save" });
+    await tick();
+    expect(published[0]).toMatchObject({ action: "download" });
+    await broker.answer("perm-1", "once");
+    const result = await saving;
+    expect(result.isError).toBeUndefined();
+    expect(result.text).not.toContain("Not downloaded");
+    expect(host.websiteFileRequests).toHaveLength(1);
+    expect(published).toHaveLength(2);
+  });
+
+  it("does not take an allow answer to an open-page card for a download approval", async () => {
     const { host, broker, published, call } = harness({
       readLinkedPages: false,
       askBeforeDownloads: true,
@@ -249,20 +272,12 @@ describe("a call whose setting is off asks the user in chat", () => {
     });
     const saving = call("read_website", { url: "https://linear.app", save: true });
     await tick();
+    expect(published[0]).toMatchObject({ kind: "read_linked_pages", action: "read" });
     await broker.answer("perm-1", "once");
     const result = await saving;
-    expect(result.isError).toBeUndefined();
-    expect(result.text).not.toContain("Not downloaded");
-    expect(host.websiteRequests).toEqual([
-      {
-        url: "https://linear.app",
-        save: true,
-        turnId: "turn-1",
-        agent: "director",
-        model: null,
-      },
-    ]);
-    expect(published).toHaveLength(2);
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("Not downloaded");
+    expect(host.websiteRequests).toEqual([]);
   });
 
   it("re-reads the policy after a refusal and asks when the switch was turned off mid-turn", async () => {

@@ -589,4 +589,104 @@ describe("external file change coordinator", () => {
       expect(reloadPreview).toHaveBeenCalledOnce();
     });
   });
+
+  describe("opening another file in the editor", () => {
+    async function mountRerenderable(overrides: Partial<CoordinatorOptions>) {
+      const captured: { handle: ExternalFileChangeCoordinatorHandle | null } = { handle: null };
+      const base: CoordinatorOptions = {
+        projectId: "project-a",
+        activeCompPath: "index.html",
+        recoveryFilePath: "index.html",
+        pendingTimelineEditPathRef: { current: new Set() },
+        drainPendingChanges: async () => ({ status: "clean" }),
+        reloadPreview: vi.fn(),
+        reloadSdkSession: vi.fn(),
+        persistConflictSnapshot: async () => undefined,
+        discardPendingChanges: vi.fn(),
+        overwriteConflict: vi.fn(async () => undefined),
+        readProjectFile: async () => "external",
+        onAcceptedPersistedFileChange: vi.fn(),
+        loadConflictSnapshot: async () => null,
+        ...overrides,
+      };
+      const root = createRoot(document.createElement("div"));
+      roots.push(root);
+      function Probe({ options }: { options: CoordinatorOptions }) {
+        captured.handle = useExternalFileChangeCoordinator(options);
+        return null;
+      }
+      await act(async () => root.render(<Probe options={base} />));
+      const openFile = (recoveryFilePath: string) =>
+        act(async () => root.render(<Probe options={{ ...base, recoveryFilePath }} />));
+      return { captured, options: base, openFile };
+    }
+
+    it("keeps a conflict banner actionable", async () => {
+      const conflict = new StudioFileConflictError({
+        filePath: "index.html",
+        currentVersion: "v2",
+        currentContent: "external",
+        attemptedContent: "studio",
+      });
+      const overwriteConflict = vi.fn(async () => undefined);
+      const { captured, openFile } = await mountRerenderable({
+        drainPendingChanges: async () => ({ status: "conflict", error: conflict }),
+        overwriteConflict,
+        deleteConflictSnapshot: async () => undefined,
+      });
+      await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
+      expect(captured.handle?.blocked?.status).toBe("conflict");
+
+      await openFile("compositions/other.html");
+      expect(captured.handle?.blocked?.status).toBe("conflict");
+
+      await act(async () => captured.handle?.keepStudioFile());
+      expect(overwriteConflict).toHaveBeenCalledWith(conflict);
+    });
+
+    it("still reloads for an external change that was draining meanwhile", async () => {
+      const drains: Array<(result: { status: "clean" }) => void> = [];
+      const { options, openFile } = await mountRerenderable({
+        drainPendingChanges: () => new Promise((resolve) => drains.push(resolve)),
+      });
+      act(() => {
+        handler?.({ path: "index.html", content: "agent write", version: "v2" });
+      });
+      expect(drains).toHaveLength(1);
+
+      await openFile("compositions/other.html");
+      await act(async () => drains[0]?.({ status: "clean" }));
+
+      expect(options.reloadPreview).toHaveBeenCalledOnce();
+      expect(options.reloadSdkSession).toHaveBeenCalledOnce();
+    });
+
+    it("does not let a stored record of the newly opened file replace a live banner", async () => {
+      const conflict = new StudioFileConflictError({
+        filePath: "index.html",
+        currentVersion: "v2",
+        currentContent: "external",
+        attemptedContent: "studio",
+      });
+      const { captured, openFile } = await mountRerenderable({
+        drainPendingChanges: async () => ({ status: "conflict", error: conflict }),
+        loadConflictSnapshot: async (_projectId, filePath) =>
+          filePath === "compositions/other.html"
+            ? {
+                kind: "conflict" as const,
+                projectId: "project-a",
+                filePath,
+                externalVersion: "v9",
+                externalContent: "other external",
+                studioContent: "other studio",
+                createdAt: 100,
+              }
+            : null,
+      });
+      await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
+
+      await openFile("compositions/other.html");
+      expect(captured.handle?.blocked).toMatchObject({ status: "conflict", error: conflict });
+    });
+  });
 });

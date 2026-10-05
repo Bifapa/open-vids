@@ -877,6 +877,7 @@ export const STORY_LIMITS = {
   pathChars: 1_024,
   inputs: 24,
   inputChars: 200,
+  buildWarnings: 200,
   maxTime: 24 * 60 * 60,
   maxCoordinate: 1_000_000,
 } as const;
@@ -1138,8 +1139,7 @@ function storedNode(value: unknown, field: string): StoryNode {
     case "video": {
       const sourceIn = seconds(raw.sourceIn, `${field}.sourceIn`);
       const sourceOut = nullable(raw.sourceOut, (v) => seconds(v, `${field}.sourceOut`));
-      if (sourceOut !== null && sourceOut <= sourceIn)
-        fail(`${field}.sourceOut must be after sourceIn`);
+      if (!isVideoRange(sourceIn, sourceOut)) fail(`${field}.sourceOut must be after sourceIn`);
       return {
         ...base,
         kind,
@@ -1252,6 +1252,20 @@ function timestamp(value: unknown, field: string): number {
   return value;
 }
 
+/**
+ * Warnings of a build as the stored record may hold them: at most `STORY_LIMITS.buildWarnings` entries of at most
+ * `STORY_LIMITS.textChars` characters. Overlong entries are cut; surplus entries are replaced by one last entry that
+ * counts them, so the record always reads back.
+ */
+export function boundBuildWarnings(warnings: readonly string[]): string[] {
+  const max = STORY_LIMITS.textChars;
+  const cut = (warning: string) =>
+    warning.length > max ? `${warning.slice(0, max - 1)}…` : warning;
+  if (warnings.length <= STORY_LIMITS.buildWarnings) return warnings.map(cut);
+  const kept = warnings.slice(0, STORY_LIMITS.buildWarnings - 1).map(cut);
+  return [...kept, `…and ${warnings.length - kept.length} more warnings.`];
+}
+
 function buildRecord(value: unknown, field: string): StoryBuildRecord {
   const raw = record(value, field);
   onlyKeys(
@@ -1278,7 +1292,9 @@ function buildRecord(value: unknown, field: string): StoryBuildRecord {
         clips,
       };
     }),
-    warnings: list(raw.warnings, `${field}.warnings`, 200, (entry, where) => text(entry, where)),
+    warnings: list(raw.warnings, `${field}.warnings`, STORY_LIMITS.buildWarnings, (entry, where) =>
+      text(entry, where),
+    ),
   };
 }
 
@@ -1289,6 +1305,11 @@ function settings(value: unknown, field: string): StorySettings {
     composition: nullable(raw.composition, (v) => path(v, `${field}.composition`)),
     captionPreset: nullable(raw.captionPreset, (v) => title(v, `${field}.captionPreset`)),
   };
+}
+
+/** Whether a video node's source range is one the stored graph accepts: open-ended, or ending after it starts. */
+export function isVideoRange(sourceIn: number, sourceOut: number | null): boolean {
+  return sourceOut === null || sourceOut > sourceIn;
 }
 
 /** Structural problems of a graph (dangling references, edges between wrong kinds, branching or cyclic sequence). */
@@ -1664,14 +1685,23 @@ function operation(value: unknown, index: number): StoryOperation {
           (STORY_CONTENT_FIELDS[kind] as readonly string[]).includes(key),
         ),
       );
-      // Validate the values against the first kind that has all the keys; the service re-checks for the real kind.
-      const kind = kinds[0];
-      if (kind === undefined) fail(`${where}.set mixes fields of different node kinds`);
-      return {
-        op,
-        id: nodeRef(raw.id, `${where}.id`),
-        set: fieldsInput(kind, set, `${where}.set`),
-      };
+      if (kinds.length === 0) fail(`${where}.set mixes fields of different node kinds`);
+      const nodeId = nodeRef(raw.id, `${where}.id`);
+      // Several kinds can share the keys, and a value one of them cannot hold (`asset: null` is a music node's, not a
+      // video's) is not an error while another can. The service re-checks the values for the node's real kind.
+      let fields: StoryFieldsInput | undefined;
+      let refusal: Invalid | undefined;
+      for (const kind of kinds) {
+        try {
+          fields = fieldsInput(kind, set, `${where}.set`);
+          break;
+        } catch (error) {
+          if (!(error instanceof Invalid)) throw error;
+          refusal ??= error;
+        }
+      }
+      if (fields === undefined) throw refusal ?? new Invalid(`${where}.set is invalid`);
+      return { op, id: nodeId, set: fields };
     }
     case "remove_node":
       keys(["id"]);

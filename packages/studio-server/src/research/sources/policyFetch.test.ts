@@ -3,8 +3,10 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import dns from "node:dns";
+import { createServer, type Server } from "node:http";
 import type { AssetSearchMode, AssetSearchPolicy } from "@hyperframes/agent-protocol";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isResearchFailure } from "../errors.js";
 import {
   FakeNet,
@@ -16,7 +18,8 @@ import {
   httpStatus,
   type Answer,
 } from "../testSupport.js";
-import { PolicyFetcher, type Transport } from "./policyFetch.js";
+import { PolicyFetcher, globalTransport, type Transport } from "./policyFetch.js";
+import { pinnedTransport } from "./pinnedTransport.js";
 import { PolicyStore } from "./policyStore.js";
 import { isPrivateAddress } from "./address.js";
 import { UrlGuard } from "./urlPolicy.js";
@@ -405,5 +408,65 @@ describe("what an answer may be", () => {
     expect(await codeOf(page(policy, fetcher, "https://example.com/0"))).toContain(
       "Too many redirects",
     );
+  });
+});
+
+describe("the production transport", () => {
+  /** A service on loopback that no research request may ever reach. */
+  let internal: Server | undefined;
+  let hits = 0;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    internal?.closeAllConnections();
+    internal?.close();
+    internal = undefined;
+  });
+  async function startInternal(): Promise<number> {
+    hits = 0;
+    const server = createServer((_req, res) => {
+      hits += 1;
+      res.writeHead(200, { "content-type": "text/plain" }).end("internal");
+    });
+    internal = server;
+    return new Promise((resolve) => {
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address();
+        resolve(typeof address === "object" && address ? address.port : 0);
+      });
+    });
+  }
+
+  it("is the pinned transport, the only one that connects to the vetted addresses", () => {
+    expect(globalTransport).toBe(pinnedTransport);
+  });
+
+  it("refuses a host that resolves to a loopback service without connecting to it", async () => {
+    const port = await startInternal();
+    const fetcher = new PolicyFetcher({ guard: new UrlGuard(async () => ["127.0.0.1"]) });
+
+    const message = await codeOf(
+      fetcher.openPublic(`http://internal.example.test:${port}/`, {}, AbortSignal.timeout(2_000)),
+    );
+
+    expect(message).toContain("blocked_by_policy");
+    expect(hits).toBe(0);
+  });
+
+  it("connects to the address it vetted and never asks DNS again, so a rebinding answer reaches nothing", async () => {
+    const port = await startInternal();
+    // The guard's one lookup answers a public address (TEST-NET-1, never routed); every later one would answer loopback.
+    let answers = 0;
+    const rebinding = async () => (answers++ === 0 ? ["192.0.2.10"] : ["127.0.0.1"]);
+    const systemLookup = vi.spyOn(dns, "lookup");
+    const fetcher = new PolicyFetcher({ guard: new UrlGuard(rebinding) });
+
+    const message = await codeOf(
+      fetcher.openPublic(`http://rebind.example.test:${port}/`, {}, AbortSignal.timeout(600)),
+    );
+
+    expect(message).toContain("network");
+    expect(answers).toBe(1);
+    expect(hits).toBe(0);
+    expect(systemLookup.mock.calls.filter(([host]) => host === "rebind.example.test")).toEqual([]);
   });
 });

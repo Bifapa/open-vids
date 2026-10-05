@@ -61,6 +61,30 @@ describe("analysis inside the turn", () => {
     }
   });
 
+  it("leaves a job it only joined running when the turn is aborted", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, []);
+      fixture.analysis.jobGate = new Promise<void>(() => {});
+      // Someone else (the Media panel) started the job before this call asked for it.
+      fixture.analysis.joinsRunningJob = true;
+      fixture.backend.promptScript = async (input, session) => {
+        void session.callTool("analyze_media", { source: SAMPLE_SOURCE });
+        await untilAborted(input.signal);
+        return "aborted";
+      };
+
+      const turn = await fixture.turns.start(chat.id, { prompt: "Analyze the talk" });
+      await waitUntil(() => fixture.analysis.startRequests.length === 1, "the job to start");
+      fixture.turns.abort(chat.id, turn.id);
+      await settled(fixture, chat.id);
+
+      expect(fixture.analysis.cancelledJobs).toEqual([]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("cancels a job still running when the Director finishes, and refuses every call after the turn", async () => {
     const fixture = await createRuntimeFixture();
     try {

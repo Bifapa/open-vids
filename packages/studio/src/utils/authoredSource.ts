@@ -4,6 +4,7 @@ import {
   STUDIO_PREVIEW_LAZY_ATTR,
   STUDIO_PREVIEW_UPCOMING_ATTR,
 } from "@hyperframes/core/studio-preview-mark";
+import { PATH_ATTRS, replaceCssUrls, rewriteSrcset } from "@hyperframes/parsers/asset-urls";
 
 // Stamped as the preview stamps the files it serves, so a live element's hf-id finds its source.
 export function parseSavedSource(html: string): Document {
@@ -39,9 +40,6 @@ export function findAuthoredElementById(doc: Document, live: Element): Element |
   return live.id ? findByAttribute(doc, "id", live.id) : null;
 }
 
-const PATH_ATTRS = ["src", "href"];
-const CSS_URL = /\burl\(\s*(["']?)([^)"'\s](?:[^)"']*[^)"'\s])?)\1\s*\)/g;
-
 function isRelative(path: string): boolean {
   return !!path && !/^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(path);
 }
@@ -60,7 +58,14 @@ function livePathsOf(live: Element): Set<string> {
   for (const el of [live, ...Array.from(live.querySelectorAll("*"))]) {
     for (const attr of PATH_ATTRS) paths.add(el.getAttribute(attr) ?? "");
     paths.add(el.getAttribute(STUDIO_PREVIEW_DETACHED_SRC_ATTR) ?? "");
-    for (const match of (el.getAttribute("style") ?? "").matchAll(CSS_URL)) paths.add(match[2]);
+    rewriteSrcset(el.getAttribute("srcset") ?? "", (url) => {
+      paths.add(url);
+      return url;
+    });
+    replaceCssUrls(el.getAttribute("style") ?? "", (url) => {
+      paths.add(url);
+      return null;
+    });
   }
   return paths;
 }
@@ -83,16 +88,10 @@ export function authoredMarkup(authored: Element, live: Element, sourceFile: str
       const value = el.getAttribute(attr);
       if (value) el.setAttribute(attr, rebase(value.trim()));
     }
+    const srcset = el.getAttribute("srcset");
+    if (srcset) el.setAttribute("srcset", rewriteSrcset(srcset, rebase));
     const style = el.getAttribute("style");
-    if (style) {
-      el.setAttribute(
-        "style",
-        style.replace(
-          CSS_URL,
-          (_, quote: string, url: string) => `url(${quote}${rebase(url)}${quote})`,
-        ),
-      );
-    }
+    if (style) el.setAttribute("style", replaceCssUrls(style, rebase));
   }
   return copy.outerHTML;
 }

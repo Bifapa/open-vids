@@ -123,6 +123,8 @@ function createGateway(dir: string): AgentGateway {
         FAKE_ABORT_PATH: join(dir, "aborted"),
       },
     }),
+    // The 502-then-restart test waits out one backoff; a short one keeps real time out of it.
+    backoffMinMs: 50,
   });
   gateways.push(gateway);
   return gateway;

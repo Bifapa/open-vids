@@ -8,6 +8,7 @@ import {
   stripJsComments,
   stripJsCode,
   truncateSnippet,
+  TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
 } from "../utils";
 import { COMPOSITION_VARIABLE_TYPES, isSafeMediaUrl } from "@hyperframes/parsers/composition";
@@ -1283,8 +1284,9 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     // fails at render with zero duration despite lint passing.
     const allScriptTexts = scripts.map((s) => stripJsComments(s.content));
     const hasGsapTimeline = allScriptTexts.some((t) => /gsap\.timeline\s*\(/.test(t));
-    const hasRegisteredTimeline = allScriptTexts.some((t) =>
-      WINDOW_TIMELINE_ASSIGN_PATTERN.test(t),
+    const hasRegisteredTimeline = allScriptTexts.some(
+      (t) =>
+        WINDOW_TIMELINE_ASSIGN_PATTERN.test(t) || TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(t),
     );
     // A GSAP timeline drives duration via window.__timelines regardless of
     // data-duration — nothing to flag once one is registered.

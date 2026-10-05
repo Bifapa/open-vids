@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deduplicateIds,
+  insertAsSibling,
   serializeClipboardPayload,
   deserializeClipboardPayload,
   type ClipboardPayload,
@@ -98,5 +99,21 @@ describe("serializeClipboardPayload / deserializeClipboardPayload", () => {
       sourceFile: "index.html",
     });
     expect(deserializeClipboardPayload(json)).toBeNull();
+  });
+});
+
+describe("insertAsSibling root fallback", () => {
+  it("pastes after the real root tag, past a commented-out root and a '>' inside an attribute", () => {
+    const source = `<!-- <div data-composition-id="old"> --><div data-composition-id='main' data-note="a>b"><p>x</p></div>`;
+    expect(insertAsSibling(source, "<i>new</i>", undefined, undefined)).toBe(
+      `<!-- <div data-composition-id="old"> --><div data-composition-id='main' data-note="a>b"><i>new</i><p>x</p></div>`,
+    );
+  });
+
+  it("pastes inside the root of a <template> sub-composition, never after </template>", () => {
+    const source = `<template id="sub-template"><div data-composition-id="sub" data-duration="4"></div></template>`;
+    expect(insertAsSibling(source, '<p id="x"></p>', undefined, undefined)).toBe(
+      `<template id="sub-template"><div data-composition-id="sub" data-duration="4"><p id="x"></p></div></template>`,
+    );
   });
 });

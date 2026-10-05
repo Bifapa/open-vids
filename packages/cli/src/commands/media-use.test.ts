@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   createMediaUseCommand,
   MEDIA_USE_VERBS,
+  mediaUseEngineEnv,
   mediaUsePassthroughArgs,
   mediaUseVerbFlags,
   resolveMediaUseEnginePath,
@@ -78,6 +79,27 @@ describe("media-use command wiring", () => {
     for (const verb of MEDIA_USE_VERBS) {
       expect(mediaUseVerbFlags(verb)).toEqual(verb === "resolve" ? [] : [`--${verb}`]);
     }
+  });
+
+  it("hands the engine this CLI's own invocation, keeping the rest of the environment", () => {
+    const env = mediaUseEngineEnv({ KEEP: "1" }, () => ({
+      prefix: ["--import", "tsx", "/cli.ts"],
+    }));
+
+    expect(env.KEEP).toBe("1");
+    expect(JSON.parse(env.HYPERFRAMES_CLI_INVOCATION ?? "null")).toEqual([
+      "--import",
+      "tsx",
+      "/cli.ts",
+    ]);
+  });
+
+  it("leaves the environment alone when the CLI entry cannot be located", () => {
+    const env = mediaUseEngineEnv({ KEEP: "1" }, () => {
+      throw new Error("no entry");
+    });
+
+    expect(env).toEqual({ KEEP: "1" });
   });
 
   it("wires every subcommand to invoke its matching verb", () => {

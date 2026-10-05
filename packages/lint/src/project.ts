@@ -253,6 +253,8 @@ export async function lintProject(
     ...lintTextureMaskAssetNotFound(projectDir, allHtmlSources),
     ...(!entryFile ? lintMultipleRootCompositions(projectDir) : []),
     ...(!entryFile ? lintBlankRootWithStandaloneComposition(rootHtml, allHtmlSources) : []),
+    // Entry 0 is the root itself (with a path when the entry is explicit).
+    ...lintSubCompositionShadowsRoot(projectDir, rootHtml, allHtmlSources.slice(1)),
     ...lintDuplicateAudioTracks(allHtmlSources),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
     ...(await lintVideoMediaStartPastEof(projectDir, allHtmlSources)),
@@ -277,6 +279,43 @@ export async function lintProject(
   }
 
   return { results, totalErrors, totalWarnings, totalInfos };
+}
+
+/**
+ * Composition ids key `window.__timelines`, so a sub-composition that reuses
+ * the root's id replaces the root timeline once it is mounted and the root
+ * animations stop playing.
+ */
+function lintSubCompositionShadowsRoot(
+  projectDir: string,
+  rootHtml: string,
+  htmlSources: HtmlSource[],
+): HyperframeLintFinding[] {
+  const rootId = parseHTML(rootHtml)
+    .document.querySelector("body [data-composition-id]")
+    ?.getAttribute("data-composition-id");
+  if (!rootId) return [];
+
+  // An unmounted file never registers a timeline, so it cannot shadow the root.
+  const mounted = collectMountedCompositionFiles(projectDir, rootHtml);
+  const findings: HyperframeLintFinding[] = [];
+  for (const source of htmlSources) {
+    if (!source.compSrcPath || isSnippetFragment(source.html)) continue;
+    if (!mounted.has(resolve(projectDir, source.compSrcPath))) continue;
+    const subId = querySelectorAllIncludingTemplates(
+      parseHTML(source.html).document,
+      "[data-composition-id]",
+    )[0]?.getAttribute("data-composition-id");
+    if (subId !== rootId) continue;
+    findings.push({
+      code: "sub_composition_shadows_root_id",
+      severity: "error",
+      file: source.compSrcPath,
+      message: `${source.compSrcPath} declares data-composition-id="${rootId}", the same id as the root composition. Its window.__timelines["${rootId}"] registration replaces the root timeline, so the root animations stop.`,
+      fixHint: `Give the sub-composition a unique id (for example its file name) in data-composition-id, its CSS selectors and its window.__timelines key.`,
+    });
+  }
+  return findings;
 }
 
 function lintBlankRootWithStandaloneComposition(
@@ -615,51 +654,31 @@ function lintMissingOrEmptySubComposition(
 ): HyperframeLintFinding[] {
   // Dedup by src path — the same reference can appear from nested sub-comps.
   const checked = new Map<string, { srcPath: string; problem: string }>();
-  const visited = new Set<string>();
 
-  const walk = (html: string): void => {
-    // Shared scanner — see collectSubCompositionSrcs for why this must be a
-    // text scan rather than a DOM query (template content is inert).
-    for (const srcPath of collectSubCompositionSrcs(html)) {
-      // data-composition-src is always written root-relative (even from a
-      // nested sub-composition) — matches the resolution the renderer uses
-      // in packages/producer/src/services/htmlCompiler.ts (parseSubCompositions
-      // / assertSubCompositionsUsable).
-      const filePath = resolve(projectDir, srcPath);
-
-      // Circular reference guard — same as assertSubCompositionsUsable.
-      // Already-visited files were already checked (or are mid-walk); skip
-      // re-checking/re-recursing but still let a later distinct reference to
-      // the same broken file surface (checked is keyed by srcPath, not filePath).
-      if (visited.has(filePath)) continue;
-      visited.add(filePath);
-
-      if (!existsSync(filePath)) {
-        if (!checked.has(srcPath)) {
-          checked.set(srcPath, { srcPath, problem: "the file does not exist" });
-        }
-        continue;
+  walkMountedSubCompositions(projectDir, rootHtml, ({ srcPath, filePath }) => {
+    if (!existsSync(filePath)) {
+      if (!checked.has(srcPath)) {
+        checked.set(srcPath, { srcPath, problem: "the file does not exist" });
       }
-
-      const fileHtml = readFileSync(filePath, "utf-8");
-      const validity = checkSubCompositionUsability(fileHtml, parseSubCompHtml);
-      if (!validity.ok) {
-        if (!checked.has(srcPath)) {
-          checked.set(srcPath, {
-            srcPath,
-            problem: validity.detail ?? "the file is empty or could not be parsed",
-          });
-        }
-        continue;
-      }
-
-      // Usable — recurse into it so nested references are validated too,
-      // but only because this file is itself reachable from the root.
-      walk(fileHtml);
+      return null;
     }
-  };
 
-  walk(rootHtml);
+    const fileHtml = readFileSync(filePath, "utf-8");
+    const validity = checkSubCompositionUsability(fileHtml, parseSubCompHtml);
+    if (!validity.ok) {
+      if (!checked.has(srcPath)) {
+        checked.set(srcPath, {
+          srcPath,
+          problem: validity.detail ?? "the file is empty or could not be parsed",
+        });
+      }
+      return null;
+    }
+
+    // Usable — recurse into it so nested references are validated too,
+    // but only because this file is itself reachable from the root.
+    return fileHtml;
+  });
 
   const findings: HyperframeLintFinding[] = [];
   for (const { srcPath, problem } of checked.values()) {
@@ -677,6 +696,53 @@ function lintMissingOrEmptySubComposition(
   }
 
   return findings;
+}
+
+/**
+ * Walks the `data-composition-src` references reachable from the root
+ * composition. `visit` receives each distinct mounted file once and returns
+ * the file's HTML to follow its own references, or null to stop there.
+ */
+function walkMountedSubCompositions(
+  projectDir: string,
+  rootHtml: string,
+  visit: (mount: { srcPath: string; filePath: string }) => string | null,
+): void {
+  const visited = new Set<string>();
+
+  const walk = (html: string): void => {
+    // Shared scanner — see collectSubCompositionSrcs for why this must be a
+    // text scan rather than a DOM query (template content is inert).
+    for (const srcPath of collectSubCompositionSrcs(html)) {
+      // data-composition-src is always written root-relative (even from a
+      // nested sub-composition) — matches the resolution the renderer uses
+      // in packages/producer/src/services/htmlCompiler.ts (parseSubCompositions
+      // / assertSubCompositionsUsable).
+      const filePath = resolve(projectDir, srcPath);
+
+      // Circular reference guard — same as assertSubCompositionsUsable.
+      // Already-visited files were already checked (or are mid-walk); skip
+      // re-checking/re-recursing but still let a later distinct reference to
+      // the same broken file surface (callers key findings by srcPath, not filePath).
+      if (visited.has(filePath)) continue;
+      visited.add(filePath);
+
+      const next = visit({ srcPath, filePath });
+      if (next !== null) walk(next);
+    }
+  };
+
+  walk(rootHtml);
+}
+
+/** Resolved paths of the files `data-composition-src` mounts, starting from the root. */
+function collectMountedCompositionFiles(projectDir: string, rootHtml: string): Set<string> {
+  const mounted = new Set<string>();
+  walkMountedSubCompositions(projectDir, rootHtml, ({ filePath }) => {
+    mounted.add(filePath);
+    return existsSync(filePath) ? readFileSync(filePath, "utf-8") : null;
+  });
+  return mounted;
 }
 
 /** True when the file's first element carries data-hf-snippet — i.e. the file

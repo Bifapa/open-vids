@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BackendPromptOutcome } from "./backend.js";
+import { directorScript, qaChat, quality, script, settled } from "./qa/harness.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "./testing/runtimeFixture.js";
 
 function deferred<T>() {
@@ -138,6 +139,56 @@ describe("TurnRunner", () => {
       expect(fixture.chats.get(first.id)?.turns[0]?.id).toBe(running.id);
     } finally {
       gate.resolve("completed");
+      await fixture.cleanup();
+    }
+  });
+
+  it("reserves the project before its first await, so two concurrent starts cannot both run", async () => {
+    const fixture = await createRuntimeFixture();
+    const gate = deferred<BackendPromptOutcome>();
+    try {
+      const first = await fixture.chats.create({});
+      const second = await fixture.chats.create({});
+      fixture.backend.promptScript = () => gate.promise;
+      // `canvas: "auto"` writes to the chat log before anything else: the window the second start used to slip through.
+      const results = await Promise.allSettled([
+        fixture.turns.start(first.id, { prompt: "One", canvas: "auto" }),
+        fixture.turns.start(second.id, { prompt: "Two", canvas: "auto" }),
+      ]);
+      expect(results.map((result) => result.status)).toEqual(["fulfilled", "rejected"]);
+      expect(results[1]).toMatchObject({ reason: { code: "project_busy", status: 409 } });
+      expect(fixture.checkpoints.windows).toHaveLength(1);
+      expect(fixture.turns.activeTurn?.chatId).toBe(first.id);
+      expect(fixture.chats.get(second.id)?.chat.status).not.toBe("working");
+
+      // A refused start never wrote a turn, and the same chat is refused as busy, not as a second turn.
+      await expect(
+        fixture.turns.start(first.id, { prompt: "Again", canvas: "auto" }),
+      ).rejects.toMatchObject({ code: "chat_busy" });
+    } finally {
+      gate.resolve("completed");
+      await fixture.cleanup();
+    }
+  });
+
+  it("releases the reservation when the start fails before the turn begins", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({});
+      const setCanvasAuto = fixture.chats.setCanvasAuto.bind(fixture.chats);
+      fixture.chats.setCanvasAuto = async () => {
+        throw new Error("disk full");
+      };
+      await expect(
+        fixture.turns.start(chat.id, { prompt: "Fails", canvas: "auto" }),
+      ).rejects.toThrow("disk full");
+      expect(fixture.turns.activeTurn).toBeNull();
+
+      fixture.chats.setCanvasAuto = setCanvasAuto;
+      await fixture.turns.start(chat.id, { prompt: "Works now" });
+      await finishTurn(fixture, chat.id);
+      expect(fixture.chats.get(chat.id)?.turns).toHaveLength(1);
+    } finally {
       await fixture.cleanup();
     }
   });
@@ -361,6 +412,101 @@ describe("TurnRunner", () => {
       await fixture.cleanup();
     }
   });
+  it("refuses the harness's own edit and write in a story turn that does not build, and in the QA final prompt", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, []);
+      const seen: Array<{ edit: string | null; write: string | null; read: string | null }> = [];
+      fixture.backend.promptScript = async (_input, session) => {
+        const ask = session.input.fileWriteRefusal;
+        seen.push({
+          edit: ask?.("edit") ?? null,
+          write: ask?.("write") ?? null,
+          read: ask?.("read") ?? null,
+        });
+        return "completed";
+      };
+      for (const storyAction of ["review", "resolve", "rebuild", "build"] as const) {
+        await fixture.turns.start(chat.id, { prompt: `Story ${storyAction}`, storyAction });
+        await finishTurn(fixture, chat.id);
+      }
+      expect(seen.map((entry) => [entry.edit !== null, entry.write !== null, entry.read])).toEqual([
+        [true, true, null],
+        [true, true, null],
+        [true, true, null],
+        [false, false, null],
+      ]);
+      expect(seen[0]?.edit).toContain("Story Mode turn");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("refuses the harness's own edit and write once Render QA is over", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chatId = await qaChat(fixture, quality(1));
+      const refusals: Array<{ edit: string | null; write: string | null }> = [];
+      const websiteSaves: string[] = [];
+      const director = directorScript(fixture, {
+        final: async (session) => {
+          websiteSaves.push(
+            (await session.callTool("read_website", { url: "https://linear.app", save: true }))
+              .text,
+          );
+          refusals.push({
+            edit: session.input.fileWriteRefusal?.("edit") ?? null,
+            write: session.input.fileWriteRefusal?.("write") ?? null,
+          });
+        },
+      });
+      script(fixture, { director: director.run });
+      await fixture.turns.start(chatId, { prompt: "Tighten the intro" });
+      await settled(fixture, chatId);
+      expect(director.seen.finals).toHaveLength(1);
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]?.edit).toContain("Render QA is over");
+      expect(refusals[0]?.write).toContain("Render QA is over");
+      // The call's arguments reach the refusal: a saving website call is closed too.
+      expect(websiteSaves).toHaveLength(1);
+      expect(websiteSaves[0]).toContain("Render QA is over");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("records the entries already undone when a later undo request fails", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({});
+      fixture.checkpoints.nextEntryIds = ["older", "newer"];
+      fixture.backend.promptScript = async () => "completed";
+      const turn = await fixture.turns.start(chat.id, { prompt: "Change two files" });
+      await finishTurn(fixture, chat.id);
+
+      fixture.checkpoints.nextRevertOutcome = {
+        ok: false,
+        failure: "That change is no longer kept in this project's history",
+        remainingEntryIds: ["older"],
+        undoEntryIds: ["undo-newer"],
+      };
+      await expect(fixture.turns.revert(chat.id, turn.id)).rejects.toMatchObject({
+        code: "runtime_unavailable",
+        status: 503,
+        message: "That change is no longer kept in this project's history",
+      });
+      // The newer entry is undone on disk, so the chat must say so and keep the ids "Undo revert" needs.
+      expect(fixture.chats.get(chat.id)?.turns[0]?.checkpoint).toMatchObject({
+        status: "ready",
+        entryIds: ["older"],
+        revertedEntryIds: ["newer"],
+        revertEntryIds: ["undo-newer"],
+      });
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("reuses one session for a chat and disposes it on shutdown", async () => {
     const fixture = await createRuntimeFixture({ sessionIdleMs: 60_000 });
     try {

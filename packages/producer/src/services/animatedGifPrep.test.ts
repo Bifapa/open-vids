@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
@@ -130,6 +130,45 @@ describe("prepareAnimatedGifInputs", () => {
     // because the render pipeline seek-syncs videos and ignores native loop.
     expect(result.preparedGifs[0]?.loopIterations).toBe(20);
     expect(calls[0]?.args.join(" ")).toContain("-stream_loop 19");
+  });
+
+  it("finds the GIF a percent-encoded src names", async () => {
+    const projectDir = makeProject();
+    writeFileSync(join(projectDir, "my sticker#1.gif"), gif([...frame(5), ...frame(15)], 0));
+
+    const result = await prepareAnimatedGifInputs(
+      `<img class="clip" data-start="0" data-duration="2" src="my%20sticker%231.gif" />`,
+      {
+        projectDir,
+        downloadDir: projectDir,
+        transcode: async (request) => {
+          writeFileSync(request.outputPath, "webm");
+        },
+      },
+    );
+
+    expect(result.preparedGifs).toHaveLength(1);
+    expect(parseHTML(result.html).document.querySelector("video")).not.toBeNull();
+  });
+
+  it("finds the GIF a root-relative src names under the project root", async () => {
+    const projectDir = makeProject();
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(join(projectDir, "assets", "sticker.gif"), gif([...frame(5), ...frame(15)], 0));
+
+    const result = await prepareAnimatedGifInputs(
+      `<img class="clip" data-start="0" data-duration="2" src="/assets/sticker.gif" />`,
+      {
+        projectDir,
+        downloadDir: projectDir,
+        transcode: async (request) => {
+          writeFileSync(request.outputPath, "webm");
+        },
+      },
+    );
+
+    expect(result.preparedGifs).toHaveLength(1);
+    expect(parseHTML(result.html).document.querySelector("video")).not.toBeNull();
   });
 
   it("leaves single-frame GIF images unchanged", async () => {

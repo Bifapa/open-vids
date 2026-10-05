@@ -146,7 +146,45 @@ describe.skipIf(!hasFfmpeg)("analysis of a real clip", () => {
     const first = await service.startJob(project, { source: SOURCE });
     const second = await service.startJob(project, { source: `./${SOURCE}` });
     expect(second.id).toBe(first.id);
+    expect(first.joined).toBeUndefined();
+    expect(second.joined).toBe(true);
     await service.cancelJob(project, first.id);
+  });
+
+  it("refuses a request the running job would not carry out, instead of joining it", async () => {
+    const { test, service, project } = setup();
+    test.speech.hang = true;
+    const running = await service.startJob(project, { source: SOURCE, stages: ["transcript"] });
+
+    for (const asked of [
+      { force: true },
+      { language: "ru" },
+      { stages: ["shots"] as AnalyzeRequest["stages"] },
+    ]) {
+      expect(
+        await rejection(service.startJob(project, { source: SOURCE, ...asked })),
+        JSON.stringify(asked),
+      ).toMatchObject({ code: "conflict" });
+    }
+    // The same request is joined.
+    const joined = await service.startJob(project, {
+      source: SOURCE,
+      stages: ["transcript"],
+    });
+    expect(joined).toMatchObject({ id: running.id, joined: true });
+    await service.cancelJob(project, running.id);
+  });
+
+  it("does not hand out the artifact of a stage that a running job is computing", async () => {
+    const { test, service, project } = setup();
+    test.speech.hang = true;
+    const job = await service.startJob(project, { source: SOURCE });
+    await waitFor(() => test.speech.transcribeCalls === 1, "the recognizer to start");
+
+    expect(await rejection(service.transcript(project, SOURCE, {}))).toMatchObject({
+      code: "conflict",
+    });
+    await service.cancelJob(project, job.id);
   });
 
   it("cancels a job: the recognizer is aborted, finished stages stay cached, the next run resumes", async () => {
@@ -569,6 +607,28 @@ describe.skipIf(!hasFfmpeg)("speech that is not there", () => {
       ["takes", "skipped"],
       ["segments", "skipped"],
     ]);
+
+    // A stage that does not apply is recorded as such: it must not keep reporting "missing" (and re-queue the source).
+    const states = async (source: string) =>
+      (await service.listSources(test.project)).find((entry) => entry.source === source)?.stages ??
+      [];
+    expect(
+      (await states("assets/voice.wav")).filter(
+        (s) => s.stage !== "vision" && s.status === "missing",
+      ),
+    ).toEqual([]);
+    expect((await states("assets/voice.wav")).find((s) => s.stage === "shots")).toMatchObject({
+      status: "unavailable",
+      detail: "an audio file has no picture",
+    });
+    expect(
+      (await states("assets/mute.mp4")).filter(
+        (s) => s.stage !== "vision" && s.status === "missing",
+      ),
+    ).toEqual([]);
+    expect((await states("assets/mute.mp4")).find((s) => s.stage === "segments")).toMatchObject({
+      status: "unavailable",
+    });
   });
 });
 
@@ -669,6 +729,7 @@ describe.skipIf(!hasFfmpeg)("cut plans", () => {
     expect((await rejection(service.getCut(project, "cut-7"))).code).toBe("unknown_plan");
 
     expect((await service.getCut(project, "cut-1")).applied).toBeNull();
+    expect((await service.getCut(project, "cut-1")).outOfDate).toBeUndefined();
     const stamped = `<div data-composition-id="main"><video class="clip" data-ov-cut="cut-1"></video><video class="clip" data-ov-cut="cut-1"></video></div>`;
     writeFileSync(test.path("index.html"), stamped);
     expect((await service.getCut(project, "cut-1")).applied).toEqual({
@@ -687,7 +748,10 @@ describe.skipIf(!hasFfmpeg)("cut plans", () => {
     );
 
     appendFileSync(test.path(SOURCE), Buffer.alloc(32, 2));
-    expect((await service.getCut(project, "cut-2")).warnings.join(" ")).toContain("out of date");
+    const stale = await service.getCut(project, "cut-2");
+    expect(stale.warnings.join(" ")).toContain("out of date");
+    expect(stale.outOfDate).toContain("changed after the plan was made");
+    expect((await service.getCut(project, "cut-1")).outOfDate).toBeDefined();
     expect((await rejection(service.planCut(project, { source: SOURCE }))).code).toBe("stale");
   });
 
@@ -709,7 +773,28 @@ describe.skipIf(!hasFfmpeg)("cut plans", () => {
     writeAssetRanges(project.dir, new Map([[SOURCE, { start: 0, end: 4 }]]));
     const stale = await service.getCut(project, plan.id);
     expect(stale.warnings.join(" ")).toContain("out of date");
+    expect(stale.outOfDate).toContain("picked fragment");
     expect(stale.ranges).toEqual(plan.ranges); // the stored plan is reported as it was made
+  });
+
+  it("stores the normalised source of a plan and of segments, whichever way the request wrote the path", async () => {
+    const { service, project } = setup();
+    await analyze(service, project);
+    const written = `./${SOURCE}`;
+    const request = await wholeTranscript(service, project);
+    await service.saveSegments(project, { ...request, source: written });
+
+    const first = await service.planCut(project, { source: written });
+    expect(first.source).toBe(SOURCE);
+    const second = await service.planCut(project, {
+      source: join(project.dir, SOURCE),
+      basedOn: first.id,
+    });
+    expect(second).toMatchObject({ source: SOURCE, basedOn: first.id });
+    expect((await service.listCuts(project, SOURCE)).map((plan) => plan.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
   });
 });
 

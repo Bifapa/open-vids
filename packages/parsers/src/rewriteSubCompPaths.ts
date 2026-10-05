@@ -18,7 +18,8 @@
 import { posix } from "path";
 const { join, resolve, dirname } = posix;
 
-import { CSS_URL_RE, PATH_ATTRS, isNonRelativeUrl } from "./assetPaths.js";
+import { PATH_ATTRS, isNonRelativeUrl, replaceCssUrls, rewriteSrcset } from "./assetUrls.js";
+import { decodeUrlPathVariants } from "./utils/urlPath.js";
 
 const isAbsoluteOrSpecial = isNonRelativeUrl;
 
@@ -81,7 +82,11 @@ export function rewriteAssetPath(
     const [filePart, suffix] = splitPathSuffix(relativePath);
     if (!filePart) return relativePath;
     const sibling = resolve("/", join(compDir, filePart)).slice(1);
-    return assetExists(sibling) ? sibling + suffix : relativePath;
+    // The src is a URL: `my%20clip.mp4` names the file `my clip.mp4` on disk, so probe both forms.
+    const exists = decodeUrlPathVariants(filePart).some((variant) =>
+      assetExists(resolve("/", join(compDir, variant)).slice(1)),
+    );
+    return exists ? sibling + suffix : relativePath;
   }
   const resolved = join(compDir, relativePath);
   const normalized = resolve("/", resolved).slice(1);
@@ -112,6 +117,13 @@ export function rewriteAssetPaths<T>(
       if (rewritten !== val) {
         setAttr(el, attr, rewritten);
       }
+    }
+    const srcset = getAttr(el, "srcset");
+    if (srcset) {
+      const rewritten = rewriteSrcset(srcset, (url) =>
+        rewriteAssetPath(compSrcPath, url, assetExists),
+      );
+      if (rewritten !== srcset) setAttr(el, "srcset", rewritten);
     }
   }
 }
@@ -149,10 +161,7 @@ export function rewriteCssAssetUrls(
   assetExists?: AssetExists,
 ): string {
   if (!cssText) return cssText;
-  return cssText.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
-    const urlValue = (rawUrl || "").trim();
-    const rewritten = rewriteAssetPath(compSrcPath, urlValue, assetExists);
-    if (rewritten === urlValue) return full;
-    return `url(${quote || ""}${rewritten}${quote || ""})`;
-  });
+  return replaceCssUrls(cssText, (urlValue) =>
+    rewriteAssetPath(compSrcPath, urlValue, assetExists),
+  );
 }

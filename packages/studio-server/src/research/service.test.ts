@@ -201,6 +201,73 @@ describe("inspect and import: the policy", () => {
     expect(f.researchFiles()).toEqual([]);
   });
 
+  const SCRAPED_PAGE = (own: string) => `<html><head><title>Mallory's page</title>
+    <link rel="license" href="https://creativecommons.org/licenses/by-sa/4.0/">
+    <meta property="og:video" content="https://videos.evil.example/og.mp4">
+    </head><body>
+    <a href="https://cdn.thirdparty.example/movies/blockbuster-trailer.mp4">trailer</a>
+    <a href="${own}">own file</a></body></html>`;
+
+  it.each([
+    ["a Commons page that is not a file page", "https://commons.wikimedia.org/wiki/User:Mallory"],
+    [
+      "an archive.org URL that is not an item page",
+      "https://archive.org/download/mallory/index.html",
+    ],
+    ["an Openverse page", "https://openverse.org/about"],
+  ])(
+    "does not let %s vouch for third-party hosts it links to or stamp its license on files elsewhere",
+    async (_name, page) => {
+      const f = setup();
+      const own = "https://upload.wikimedia.org/wikipedia/commons/a/ab/Mallory.mp4";
+      f.net.when(page, html(SCRAPED_PAGE(own)));
+      serve(f, own, "H264 mallory");
+      const inspected = await f.service.inspect(f.project, { url: page });
+      // Only the file on a trusted domain is offered; the third-party ones are refused, not granted.
+      expect(inspected.candidates.map((candidate) => candidate.mediaUrl)).toEqual([own]);
+      expect(inspected.notes.join(" ")).toContain("hosted outside the trusted sources");
+      // Hosted on another host than the page: the page's footer license is not the file's license.
+      expect(inspected.candidates[0]?.license).toMatchObject({ confidence: "none" });
+      expect(inspected.candidates[0]?.source).toMatchObject({
+        id: "wikimedia-commons",
+        trusted: true,
+      });
+      // Nothing was fetched from the third-party hosts, and importing the page picks the trusted file only.
+      const done = await importUrl(f, page);
+      expect(done.provenance).toMatchObject({ originalUrl: own, licenseStatus: "unknown" });
+      expect(f.net.calls.some((call) => call.includes("thirdparty") || call.includes("evil"))).toBe(
+        false,
+      );
+    },
+  );
+
+  it("labels what a scraped page links after the file's own host and the page's final URL, not the requested one", async () => {
+    const f = setup({ mode: "any" });
+    const start = "https://commons.wikimedia.org/wiki/User:Mallory";
+    f.net.when(start, redirect("https://attacker.example/landing"));
+    f.net.when(
+      "https://attacker.example/landing",
+      html(SCRAPED_PAGE("https://attacker.example/own.mp4")),
+    );
+    const inspected = await f.service.inspect(f.project, { url: start });
+    expect(inspected.finalUrl).toBe("https://attacker.example/landing");
+    expect(inspected.source).toMatchObject({ id: "web", trusted: false });
+    expect(inspected.candidates.length).toBeGreaterThan(0);
+    for (const candidate of inspected.candidates) {
+      expect(candidate.source).toMatchObject({ id: "web", trusted: false });
+      // A file hosted elsewhere than the page does not inherit the page's footer license, in any mode.
+      if (!candidate.mediaUrl.startsWith("https://attacker.example/")) {
+        expect(candidate.license).toMatchObject({ confidence: "none" });
+      }
+    }
+    const elsewhere = inspected.candidates.filter(
+      (candidate) => !candidate.mediaUrl.startsWith("https://attacker.example/"),
+    );
+    expect(elsewhere.map((candidate) => new URL(candidate.mediaUrl).hostname)).toContain(
+      "cdn.thirdparty.example",
+    );
+  });
+
   it("stops an import whose trusted URL redirects to a host that is not trusted", async () => {
     const f = setup();
     f.net.when(OCEAN, redirect("https://cdn.stock.example/ocean.mp4"));
@@ -519,6 +586,41 @@ describe("sources view and export check", () => {
     );
     const view = await f.service.sources(f.project);
     expect(view.records[0]?.usedIn).toEqual(["index.html", "compositions/lower.html"]);
+  });
+
+  it("counts assets a composition reaches through plain markup, inline CSS and linked stylesheets, not only timeline clips", async () => {
+    const f = setup();
+    const logoUrl = "https://upload.wikimedia.org/wikipedia/commons/a/ab/Brand_logo.jpg";
+    const backdropUrl = "https://upload.wikimedia.org/wikipedia/commons/a/ab/Backdrop.jpg";
+    const unusedUrl = "https://upload.wikimedia.org/wikipedia/commons/a/ab/Unused.jpg";
+    for (const url of [logoUrl, backdropUrl, unusedUrl]) {
+      serve(f, url, `JPEG ${url}`, "image/jpeg");
+    }
+    const logo = await importUrl(f, logoUrl);
+    const backdrop = await importUrl(f, backdropUrl);
+    const unused = await importUrl(f, unusedUrl);
+    // A plain <img> inside a sub-composition (not a timeline clip), and a background that only a stylesheet names.
+    f.story.made.write(
+      "compositions/lower.html",
+      `<div data-composition-id="lower" data-width="1920" data-height="1080" data-duration="3"><img src="../${logo.asset}" alt=""></div>`,
+    );
+    f.story.made.write("styles/brand.css", `.bg { background: url("../${backdrop.asset}"); }`);
+    f.story.made.write(
+      "index.html",
+      BLANK_HTML.replace(
+        `data-duration="0"></div>`,
+        `data-duration="3"><link rel="stylesheet" href="styles/brand.css"><div data-hf-id="hf-host" class="clip" data-composition-id="lower" data-composition-src="compositions/lower.html" data-start="0" data-duration="3" data-track-index="0"></div></div>`,
+      ),
+    );
+    const view = await f.service.sources(f.project);
+    const usedIn = (asset: string) => view.records.find((r) => r.asset === asset)?.usedIn;
+    expect(usedIn(logo.asset)).toEqual(["index.html", "compositions/lower.html"]);
+    expect(usedIn(backdrop.asset)).toEqual(["index.html"]);
+    expect(usedIn(unused.asset)).toEqual([]);
+    const check = await f.service.exportCheck(f.project, "index.html");
+    expect(check.warnings.map((warning) => warning.asset).sort()).toEqual(
+      [backdrop.asset, logo.asset].sort(),
+    );
   });
 
   it("reads a damaged ledger as empty, keeping a backup, and recovers on the next import", async () => {

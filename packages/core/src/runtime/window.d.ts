@@ -124,6 +124,12 @@ declare global {
      * restoration, and arbitrary composition nesting cannot drift.
      */
     __hfResolveMediaStartSeconds?: (element: Element) => number;
+    /**
+     * Position the root timeline and every sub-composition timeline at a root
+     * time, through the same mapping as a render frame seek, without touching
+     * media elements or the transport. For probes that read GSAP-driven values.
+     */
+    __hfSeekTimelines?: (timeSeconds: number, options?: { suppressEvents?: boolean }) => void;
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;

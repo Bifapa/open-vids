@@ -125,94 +125,15 @@ export function ffprobeDuration(absPath) {
   return parseFloat(String(r.stdout).trim());
 }
 
-export function resolveNpxCliFromNpmExecPath(
-  npmExecPath = process.env.npm_execpath,
-  pathExists = existsSync,
-) {
-  if (!npmExecPath) return null;
-  const fileName = npmExecPath.replace(/\\/g, "/").split("/").pop()?.toLowerCase();
-  const npxCliPath =
-    fileName === "npx-cli.js" ? npmExecPath : join(dirname(npmExecPath), "npx-cli.js");
-  return pathExists(npxCliPath) ? npxCliPath : null;
-}
-
-export function resolveNpxCliPath(
-  npmExecPath = process.env.npm_execpath,
-  nodeExecPath = process.env.npm_node_execpath || process.execPath,
-  pathExists = existsSync,
-) {
-  const fromNpm = resolveNpxCliFromNpmExecPath(npmExecPath, pathExists);
-  if (fromNpm) return fromNpm;
-  const besideNode = join(dirname(nodeExecPath), "node_modules", "npm", "bin", "npx-cli.js");
-  return pathExists(besideNode) ? besideNode : null;
-}
-
-export function resolveSpawnCommand(
-  cmd,
-  args,
-  opts = {},
-  platform = process.platform,
-  env = process.env,
-  pathExists = existsSync,
-) {
-  if (cmd !== "npx" || platform !== "win32") {
-    return { cmd, args, opts: { stdio: "ignore", ...opts } };
-  }
-
-  // On Windows, npx resolves to npx.cmd, which Node cannot execute directly.
-  // Avoid `shell:true` and the .cmd shim entirely by invoking npm's JS CLI with
-  // node, preserving request-provided values as argv data instead of shell text.
-  const nodeExecPath = env.npm_node_execpath || process.execPath;
-  const npxCliPath = resolveNpxCliPath(env.npm_execpath, nodeExecPath, pathExists);
-  if (!npxCliPath) return null;
-  return {
-    cmd: nodeExecPath,
-    args: [npxCliPath, ...args.map((arg) => String(arg))],
-    opts: { stdio: "ignore", windowsHide: true, ...opts },
-  };
-}
-
-// `platform`/`spawnFn` params (default process.platform / the real spawn)
-// exist so tests can exercise the win32 branch without mocking node:child_process
-// (its ESM exports are non-configurable, so mock.method can't patch it).
-// One-shot so a whole batch of TTS lines doesn't repeat the same diagnostic.
-let _warnedNpxResolution = false;
-/** Test-only: reset the one-shot npx-resolution warning latch. */
-export function _resetNpxResolutionWarnForTests() {
-  _warnedNpxResolution = false;
-}
-
-export function spawnP(
-  cmd,
-  args,
-  opts = {},
-  platform = process.platform,
-  spawnFn = spawn,
-  env = process.env,
-  pathExists = existsSync,
-) {
-  const resolved = resolveSpawnCommand(cmd, args, opts, platform, env, pathExists);
-  if (!resolved) {
-    // resolveSpawnCommand only returns null for the npx-on-win32 case where
-    // neither npm's configured CLI nor the beside-node fallback exists. Without
-    // this, every call silently returns status:-1 and stdio:"ignore" hides why.
-    if (!_warnedNpxResolution) {
-      _warnedNpxResolution = true;
-      const reason = env.npm_execpath
-        ? `npm_execpath (${env.npm_execpath}) and the beside-node npm fallback could not be found`
-        : "npm_execpath is unset and the beside-node npm fallback could not be found";
-      console.error(
-        `[media-use] Cannot run "${cmd}" on Windows: ${reason}. ` +
-          `Every "${cmd}" call is being skipped. Install npm with Node, or run via ` +
-          `\`npx\`/\`npm run\` with a valid npm_execpath.`,
-      );
-    }
-    return Promise.resolve({ status: -1 });
-  }
+// `spawnFn` (default: the real spawn) lets tests observe the spawn without
+// mocking node:child_process (its ESM exports are non-configurable). Args are
+// passed as argv data, never through a shell. A process that cannot start
+// (e.g. `hyperframes` is not on PATH) resolves with the error attached.
+export function spawnP(cmd, args, opts = {}, spawnFn = spawn) {
   return new Promise((resolve) => {
-    const p = spawnFn(resolved.cmd, resolved.args, resolved.opts);
+    const p = spawnFn(cmd, args, { stdio: "ignore", windowsHide: true, ...opts });
     p.on("exit", (code) => resolve({ status: code ?? -1 }));
-    p.on("error", () => resolve({ status: -1 }));
+    p.on("error", (error) => resolve({ status: -1, error }));
   });
 }
 
@@ -288,18 +209,21 @@ export async function synthesizeOne({
   }
   // kokoro — via the published CLI; --output is relative to the project dir.
   const wavRel = relTo(hyperframesDir, wavAbs);
-  const args = ["hyperframes", "tts", writeTmpText(text), "--voice", voiceId, "--output", wavRel];
+  const args = ["tts", writeTmpText(text), "--voice", voiceId, "--output", wavRel];
   if (lang !== "en") args.push("--lang", lang);
-  const r = await spawnP("npx", args, { cwd: hyperframesDir });
-  return synthResult(r, wavAbs, "kokoro (npx hyperframes tts)");
+  const r = await spawnP("hyperframes", args, { cwd: hyperframesDir });
+  return synthResult(r, wavAbs, "kokoro (hyperframes tts)");
 }
 
 // Shape a spawn result into { ok, words, error }, naming why on failure so the
 // caller surfaces it instead of a bare "TTS failed".
 export function synthResult(r, wavAbs, label) {
   if (r.status === 0 && existsSync(wavAbs)) return { ok: true, words: null };
-  const why =
-    r.status !== 0 ? `${label} exited with status ${r.status}` : `${label} produced no wav file`;
+  const why = r.error
+    ? `${label} could not start: ${r.error.message}`
+    : r.status !== 0
+      ? `${label} exited with status ${r.status}`
+      : `${label} produced no wav file`;
   return { ok: false, words: null, error: why };
 }
 
@@ -361,9 +285,9 @@ export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, d
 export async function transcribeWav({ wavRel, lang = "en", hyperframesDir }) {
   const model = lang === "en" ? "small.en" : "small";
   const td = mkdtempSync(join(tmpdir(), "hf-trans-"));
-  const args = ["hyperframes", "transcribe", wavRel, "--model", model, "--dir", td];
+  const args = ["transcribe", wavRel, "--model", model, "--dir", td];
   if (lang !== "en") args.push("--language", lang);
-  const r = await spawnP("npx", args, { cwd: hyperframesDir });
+  const r = await spawnP("hyperframes", args, { cwd: hyperframesDir });
   let words = null;
   if (r.status === 0) {
     const src = join(td, "transcript.json");

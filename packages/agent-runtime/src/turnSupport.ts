@@ -61,6 +61,11 @@ export function writesTimeline(name: string): boolean {
   );
 }
 
+/** The harness's own file-writing tools: they change project files without going through any host tool. */
+export function writesProjectFiles(name: string): boolean {
+  return name === "edit" || name === "write";
+}
+
 /** The history label of a turn's transaction; recovery rebuilds it from the persisted prompt, so it must be pure. */
 export function checkpointLabel(prompt: string): string {
   return `Director: ${prompt.slice(0, 60)}`;

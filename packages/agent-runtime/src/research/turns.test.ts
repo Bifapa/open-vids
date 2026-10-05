@@ -462,7 +462,7 @@ describe("a website tool asks the user from the chat", () => {
       });
       expect(fixture.research.grants).toEqual([{ turnId: turn.id, access: "read" }]);
       expect(fixture.research.websiteRequests).toEqual([
-        { url: "https://linear.app", turnId: turn.id },
+        { url: "https://linear.app", allowedSites: ["linear.app"], turnId: turn.id },
       ]);
       // The card's final state is in the live chat and in the durable event log (a reload shows it).
       expect(permissionPart(fixture, chat.id)?.permission.state).toBe("allowed_once");

@@ -4,12 +4,45 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildCaptionsComposition,
+  CAPTIONS_FILE,
   captionSkinPath,
+  captionsFileFor,
   cuesToGroups,
+  isCaptionsFile,
   listCaptionPresets,
 } from "./captions.js";
 
 const SKINS = join(import.meta.dirname, "../../../../skills/hyperframes-creative/frame-presets");
+
+describe("captionsFileFor", () => {
+  it("keeps the main video's file and gives every other composition its own", () => {
+    expect(captionsFileFor("index.html")).toBe(CAPTIONS_FILE);
+    expect(captionsFileFor("compositions/lower-third.html")).toMatch(
+      /^compositions\/captions-lower-third-[0-9a-f]{8}\.html$/,
+    );
+  });
+
+  it("never maps two different compositions to one file", () => {
+    const paths = [
+      "compositions/a/b.html",
+      "compositions/a-b.html",
+      "scene.html",
+      "compositions/scene.html",
+      "compositions/клип.html",
+      "compositions/клип 2.html",
+    ];
+    const files = paths.map(captionsFileFor);
+    expect(new Set(files).size).toBe(paths.length);
+    for (const file of files) expect(isCaptionsFile(file)).toBe(true);
+  });
+
+  it("recognises captions files and nothing else", () => {
+    expect(isCaptionsFile(CAPTIONS_FILE)).toBe(true);
+    expect(isCaptionsFile("compositions/captions-intro.html")).toBe(false);
+    expect(isCaptionsFile("compositions/lower-third.html")).toBe(false);
+    expect(isCaptionsFile(null)).toBe(false);
+  });
+});
 
 describe("cuesToGroups", () => {
   it("divides a cue's span evenly among its words and orders cues by start", () => {

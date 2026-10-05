@@ -37,6 +37,11 @@
       "path": "assets/fonts/BarlowCondensed-ExtraBold.woff2",
       "target": "compositions/assets/fonts/BarlowCondensed-ExtraBold.woff2",
       "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/BarlowCondensed-LICENSE.txt",
+      "target": "compositions/assets/fonts/BarlowCondensed-LICENSE.txt",
+      "type": "hyperframes:asset"
     }
   ]
 }

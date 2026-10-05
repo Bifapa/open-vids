@@ -196,6 +196,36 @@ How are you
     ]);
   });
 
+  it.each(["\r\n", "\r"])("parses SRT and VTT files whose lines end in %j", (eol) => {
+    const cues = ["Hello world", "How are you"];
+    const srt = [
+      "1",
+      "00:00:01,000 --> 00:00:03,500",
+      cues[0],
+      "",
+      "2",
+      "00:00:04,000 --> 00:00:06,000",
+      cues[1],
+      "",
+    ];
+    const vtt = [
+      "WEBVTT",
+      "",
+      "00:00:01.000 --> 00:00:03.500",
+      cues[0],
+      "",
+      "00:00:04.000 --> 00:00:06.000",
+      cues[1],
+      "",
+    ];
+    const expected = [
+      { text: "Hello world", start: 1.0, end: 3.5, id: "w0" },
+      { text: "How are you", start: 4.0, end: 6.0, id: "w1" },
+    ];
+    expect(loadTranscript(tmpFile("crlf.srt", srt.join(eol))).words).toEqual(expected);
+    expect(loadTranscript(tmpFile("crlf.vtt", vtt.join(eol))).words).toEqual(expected);
+  });
+
   it("parses VTT with short timestamps (MM:SS.mmm)", () => {
     const vtt = `WEBVTT
 

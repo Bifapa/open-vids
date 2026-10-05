@@ -14,7 +14,7 @@ import { cssVariableName } from "../tokenSlug";
 import { AsyncLocalStorage } from "async_hooks";
 import { readFileSync, existsSync, statSync } from "fs";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
-import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
+import { isNonRelativeUrl, replaceCssUrls } from "./assetPaths.js";
 import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 import {
@@ -133,14 +133,14 @@ function rebaseCssUrls(css: string, cssFileDir: string, projectDir: string): str
   const resolvedRoot = resolve(projectDir);
   const resolvedDir = resolve(cssFileDir);
   if (resolvedDir === resolvedRoot) return css;
-  return css.replace(CSS_URL_RE, (full, quote: string, urlValue: string) => {
-    if (!urlValue || !isRelativeUrl(urlValue)) return full;
-    const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
-    if (!basePath) return full;
+  return replaceCssUrls(css, (urlValue) => {
+    if (!isRelativeUrl(urlValue)) return null;
+    const { basePath, suffix } = splitUrlSuffix(urlValue);
+    if (!basePath) return null;
     const absolutePath = resolve(resolvedDir, basePath);
     const rebased = relative(resolvedRoot, absolutePath).split(sep).join("/");
-    if (rebased === basePath) return full;
-    return `url(${quote || ""}${rebased}${suffix}${quote || ""})`;
+    if (rebased === basePath) return null;
+    return `${rebased}${suffix}`;
   });
 }
 
@@ -1045,7 +1045,6 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     },
     parseHtml: parseHTMLContent,
     hostIdentityMap: hostIdentityByElement,
-    rewriteInlineStyles: true,
     // A sub-composition's SIBLING assets (a stylesheet next to it) must be
     // re-pointed at its own directory when its content moves to the root
     // document; project-root refs with no such sibling stay as authored.

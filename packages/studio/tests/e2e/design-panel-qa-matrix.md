@@ -1,7 +1,7 @@
 # Design Panel QA Matrix
 
 Campaign artifact for `docs/plans/2026-07-02-001-fix-studio-design-panel-inputs-plan.md`.
-Environment: published CLI `hyperframes@0.7.26`, embedded mode (`npx hyperframes preview`
+Environment: published CLI `hyperframes@0.7.26`, embedded mode (`hyperframes preview`
 in a scaffolded `warm-grain` project outside the repo), Chrome via agent-browser.
 
 ## Step 0: demo-failure reproduction (baseline, pre-fix)

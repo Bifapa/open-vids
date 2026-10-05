@@ -221,6 +221,130 @@ describe("dispatchModifierKey — Cmd+C/Cmd+V arbitration", () => {
     expect(cb.handleCopy).toHaveBeenCalled();
   });
 
+  describe("with selected text", () => {
+    afterEach(() => {
+      window.getSelection()?.removeAllRanges();
+      document.body.replaceChildren();
+    });
+
+    function selectTextIn(element: HTMLElement) {
+      document.body.append(element);
+      window.getSelection()?.selectAllChildren(element);
+    }
+
+    it("leaves Cmd+C to the browser so a chat message can be copied", () => {
+      usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
+      const message = document.createElement("p");
+      message.textContent = "an agent reply";
+      selectTextIn(message);
+      const cb = callbacks();
+      const e = chord("c");
+      expect(dispatchModifierKey(e, "c", cb)).toBe(false);
+      expect(cb.handleCopy).not.toHaveBeenCalled();
+      expect(e.defaultPrevented).toBe(false);
+    });
+
+    it("still copies the clip when the key lands in the timeline", () => {
+      usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
+      const stale = document.createElement("p");
+      stale.textContent = "selected earlier elsewhere";
+      selectTextIn(stale);
+      const timeline = document.createElement("div");
+      timeline.setAttribute("data-studio-timeline", "");
+      document.body.append(timeline);
+      const cb = callbacks();
+      const e = chord("c");
+      timeline.dispatchEvent(e);
+      dispatchModifierKey(e, "c", cb);
+      expect(cb.handleCopy).toHaveBeenCalled();
+    });
+
+    it("leaves Cmd+X to the browser so selected text is never traded for a cut clip", () => {
+      usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
+      const message = document.createElement("p");
+      message.textContent = "an agent reply";
+      selectTextIn(message);
+      const cb = callbacks();
+      const e = chord("x");
+      expect(dispatchModifierKey(e, "x", cb)).toBe(false);
+      expect(cb.handleCut).not.toHaveBeenCalled();
+      expect(e.defaultPrevented).toBe(false);
+    });
+
+    it("still cuts the clip when nothing is selected", () => {
+      usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
+      const cb = callbacks();
+      dispatchModifierKey(chord("x"), "x", cb);
+      expect(cb.handleCut).toHaveBeenCalled();
+    });
+
+    it("still cuts the clip when the key lands in the timeline", () => {
+      usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
+      const stale = document.createElement("p");
+      stale.textContent = "selected earlier elsewhere";
+      selectTextIn(stale);
+      const timeline = document.createElement("div");
+      timeline.setAttribute("data-studio-timeline", "");
+      document.body.append(timeline);
+      const cb = callbacks();
+      const e = chord("x");
+      timeline.dispatchEvent(e);
+      dispatchModifierKey(e, "x", cb);
+      expect(cb.handleCut).toHaveBeenCalled();
+    });
+
+    describe("in the canvas overlay", () => {
+      function canvasOverlay() {
+        const overlay = document.createElement("div");
+        overlay.setAttribute("data-studio-canvas", "true");
+        overlay.tabIndex = -1;
+        document.body.append(overlay);
+        return overlay;
+      }
+
+      it.each([
+        ["c", "handleCopy"],
+        ["x", "handleCut"],
+      ] as const)("owns Cmd+%s over a leftover text selection elsewhere", (key, callback) => {
+        usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
+        const stale = document.createElement("p");
+        stale.textContent = "a chat message selected earlier";
+        selectTextIn(stale);
+        const overlay = canvasOverlay();
+        const cb = callbacks();
+        const e = chord(key);
+        overlay.dispatchEvent(e);
+        dispatchModifierKey(e, key, cb);
+        expect(cb[callback]).toHaveBeenCalled();
+      });
+
+      it("leaves Cmd+C to the browser when the selection lies inside the overlay", () => {
+        usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
+        const overlay = canvasOverlay();
+        const label = document.createElement("span");
+        label.textContent = "a label inside the canvas";
+        overlay.append(label);
+        window.getSelection()?.selectAllChildren(label);
+        const cb = callbacks();
+        const e = chord("c");
+        overlay.dispatchEvent(e);
+        expect(dispatchModifierKey(e, "c", cb)).toBe(false);
+        expect(cb.handleCopy).not.toHaveBeenCalled();
+      });
+    });
+
+    it("copies the clip when nothing is selected", () => {
+      usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });
+      const message = document.createElement("p");
+      message.textContent = "an agent reply";
+      document.body.append(message);
+      window.getSelection()?.collapse(message, 0);
+      const cb = callbacks();
+      dispatchModifierKey(chord("c"), "c", cb);
+      expect(cb.handleCopy).toHaveBeenCalled();
+    });
+  });
+
   it("keeps Cmd+C from the clip clipboard when an automation range is active", () => {
     // Both clipboards arming on one press double-wrote and toasted "Copied clip".
     usePlayerStore.setState({ elements: [clip], selectedElementId: "bgm" });

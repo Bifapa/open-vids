@@ -96,7 +96,7 @@ For a character that walks, gestures or reacts (a mascot, a walk cycle, a jointe
 - **A short cycle is fine.** A 1 s walk cycle with `loop: true` cycles for the whole scene. Move the character across the stage with GSAP `x` only if the cycle walks in place, and match the travel speed to the stride or the feet slide.
 - **License the character.** Use a file the user or their designer made, or one whose license allows redistribution, and say where it came from. Never ship a character ripped from a site.
 
-The `lottie-character-walk` registry block is a working example: a jointed flat character walks in on planted feet, stops, and points at a card that GSAP brings in on the point (`npx hyperframes add lottie-character-walk`).
+The `lottie-character-walk` registry block is a working example: a jointed flat character walks in on planted feet, stops, and points at a card that GSAP brings in on the point (`hyperframes add lottie-character-walk`).
 
 ## Good Uses
 
@@ -117,8 +117,8 @@ The `lottie-character-walk` registry block is a working example: a jointed flat 
 After editing a Lottie composition:
 
 ```bash
-npx hyperframes lint
-npx hyperframes check
+hyperframes lint
+hyperframes check
 ```
 
 ## Credits And References

@@ -9,6 +9,9 @@ import {
 } from "@hyperframes/agent-protocol";
 import { t } from "../i18n";
 
+/** Where the new-chat draft's prompt is kept in the store's `drafts` until the draft becomes a chat. */
+export const NEW_CHAT_DRAFT = "draft:new";
+
 /** What the composer's chips chose in the new-chat draft, applied when its first message creates the chat. */
 export type DraftChoices = Omit<UpdateChatRequest, "title" | "activeMode">;
 

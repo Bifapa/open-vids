@@ -25,7 +25,8 @@ function framesInput(input: GifEncodeArgsInput, fpsArg: string): string[] {
     fpsArg,
     ...KEEP_FILTER_GRAPH_WHEN_FRAMES_DROP_ALPHA,
     "-i",
-    join(input.framesDir, input.framePattern),
+    // image2 printf-expands the whole path: a literal `%` in the directory must be `%%`.
+    join(input.framesDir.replaceAll("%", "%%"), input.framePattern),
   ];
 }
 

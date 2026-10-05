@@ -37,26 +37,31 @@ These are documented and do not need a new report, though fixes are welcome:
 
 - **The Studio loopback API is unauthenticated.** While a project is open, the Studio server on
   `127.0.0.1:<port>` serves project file read/write/delete, render spawning and media transcoding
-  without a token. Any local process, and any web page that learns the port, can reach it. The port
-  is chosen per launch. This is inherited from HyperFrames; see
+  without a token, so any local process can reach it. Web pages are refused: both the production host
+  and the dev host check the `Host` header (DNS rebinding) and refuse cross-site or foreign-`Origin`
+  state-changing requests (`packages/studio-server/src/helpers/hostGuard.ts`). A way past that guard
+  from a web page is in scope, please report it. The port is chosen per launch; see
   [apps/desktop/README.md](apps/desktop/README.md#known-limitation-the-studio-loopback-api-is-unauthenticated).
-- **Builds are ad-hoc signed.** They are not signed with an Apple Developer ID and are not notarized.
+- **Builds are not Developer-ID signed.** macOS builds are ad-hoc signed and not notarized; Windows builds are not code-signed.
 
 ## Updates
 
 OpenVids updates itself from GitHub Releases, and an update is authenticated only by a minisign
 signature checked against OpenVids' updater key, which is embedded in the app — not by Apple code
-signing or notarization (builds are ad-hoc signed). The updater private key lives only in this
+signing or notarization (macOS builds are ad-hoc signed, Windows builds are unsigned). The updater private key lives only in this
 repository's GitHub Actions secrets. An attacker who obtains that key, or who can publish releases
 in this repository, could ship a malicious update that the app would accept.
 
 ## Usage statistics
 
 Apart from the update check, the only request the desktop shell sends on its own is anonymous usage
-statistics: app start, a periodic heartbeat and quit, with the app version, OS, architecture, UI
-language and a random installation id — never file or project names, paths, content, chat text, URLs,
-keys or error messages. Off with Settings › General, `DO_NOT_TRACK=1` or `OPENVIDS_TELEMETRY=0`; see
-[README.md](README.md#usage-statistics). Report anything else leaving the machine through it.
+statistics: app start, a periodic heartbeat and quit, each with the app version, OS, architecture, UI
+language, whether the main window is in focus and a random installation id, plus one
+`telemetry_disabled` request (without the id) when the user turns statistics off — never file or
+project names, paths, content, chat text, URLs, keys or error messages. Off with Settings › General,
+`DO_NOT_TRACK=1` or `OPENVIDS_TELEMETRY=0`; see [README.md](README.md#usage-statistics). The other
+thing the shell sends is a bug report, only when the user presses Send in Report a Problem…; see
+[README.md](README.md#bug-reports). Report anything else leaving the machine through it.
 
 ## Dependencies
 

@@ -306,6 +306,20 @@ mod tests {
         assert!(String::from_utf8_lossy(&body).contains("recents"));
     }
 
+    /// The page-facing id of the recent named `name`.
+    fn recent_key(origin: &str, token: &str, name: &str) -> String {
+        let (_, body) = get(origin, "/api/recents", Some(token));
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        value["recents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["name"] == name)
+            .and_then(|r| r["id"].as_str())
+            .unwrap_or_else(|| panic!("no recent named {name}"))
+            .to_string()
+    }
+
     #[test]
     fn create_open_rename_remove_flow() {
         let (server, origin) = spawn("flow");
@@ -370,11 +384,12 @@ mod tests {
         // the open project is refused, then simulate Show All Projects and
         // rename for real.
         server.record_open("my-video", &dest);
+        let my_video = recent_key(&origin, &token, "my-video");
         let (code, refused) = post(
             &origin,
             "/api/rename",
             Some(&token),
-            br#"{"id":"my-video","new_name":"blocked"}"#,
+            serde_json::json!({"id": my_video, "new_name": "blocked"}).to_string().as_bytes(),
         );
         assert_eq!(code, 400);
         let refused: serde_json::Value = serde_json::from_slice(&refused).unwrap();
@@ -382,13 +397,17 @@ mod tests {
         server.clear_current();
 
         // Rename moves the folder and keeps meta.json consistent.
-        let (code, _) = post(
+        let (code, renamed_body) = post(
             &origin,
             "/api/rename",
             Some(&token),
-            br#"{"id":"my-video","new_name":"renamed"}"#,
+            serde_json::json!({"id": my_video, "new_name": "renamed"}).to_string().as_bytes(),
         );
         assert_eq!(code, 200);
+        let renamed_body: serde_json::Value = serde_json::from_slice(&renamed_body).unwrap();
+        assert_eq!(renamed_body["project"]["name"], "renamed");
+        let renamed = recent_key(&origin, &token, "renamed");
+        assert_eq!(renamed_body["project"]["id"], renamed);
         assert!(parent.join("renamed").join("index.html").is_file());
         assert!(!parent.join("my-video").exists());
         let meta: serde_json::Value = serde_json::from_str(
@@ -401,7 +420,7 @@ mod tests {
             &origin,
             "/api/rename",
             Some(&token),
-            br#"{"id":"renamed","new_name":"a/b"}"#,
+            serde_json::json!({"id": renamed, "new_name": "a/b"}).to_string().as_bytes(),
         );
         assert_eq!(code, 400);
         let (code, _) = post(
@@ -414,7 +433,8 @@ mod tests {
 
         // A project whose index.html vanished no longer opens …
         std::fs::remove_file(parent.join("renamed").join("index.html")).unwrap();
-        let (code, body) = post(&origin, "/api/open", Some(&token), br#"{"id":"renamed"}"#);
+        let open_renamed = serde_json::json!({"id": renamed}).to_string();
+        let (code, body) = post(&origin, "/api/open", Some(&token), open_renamed.as_bytes());
         assert_eq!(code, 400);
         assert!(
             String::from_utf8_lossy(&body).contains("index.html"),
@@ -427,15 +447,15 @@ mod tests {
         assert_eq!(code, 200);
         let (_, body) = get(&origin, "/api/recents", Some(&token));
         assert!(String::from_utf8_lossy(&body).contains("\"missing\":true"));
-        let (code, _) = post(&origin, "/api/open", Some(&token), br#"{"id":"renamed"}"#);
+        let (code, _) = post(&origin, "/api/open", Some(&token), open_renamed.as_bytes());
         assert_eq!(code, 410);
 
         // Remove drops the entry; unknown ids and trash targets 404.
-        let (code, _) = post(&origin, "/api/remove", Some(&token), br#"{"id":"renamed"}"#);
+        let (code, _) = post(&origin, "/api/remove", Some(&token), open_renamed.as_bytes());
         assert_eq!(code, 200);
-        let (code, _) = post(&origin, "/api/remove", Some(&token), br#"{"id":"renamed"}"#);
+        let (code, _) = post(&origin, "/api/remove", Some(&token), open_renamed.as_bytes());
         assert_eq!(code, 404);
-        let (code, _) = post(&origin, "/api/trash", Some(&token), br#"{"id":"renamed"}"#);
+        let (code, _) = post(&origin, "/api/trash", Some(&token), open_renamed.as_bytes());
         assert_eq!(code, 404);
     }
 

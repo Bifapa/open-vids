@@ -643,15 +643,19 @@ export async function ensureRenderFrameSiblings(page: Page): Promise<void> {
  * cache entry for a frame that never reached the page, which would otherwise
  * short-circuit the next inject at the same frameIndex and leave the host's
  * first visible frame blank.
+ *
+ * `dataUri: null` re-syncs the style (opacity, transform, box) of the frame
+ * already on the page without replacing the image — the video's visuals keep
+ * animating while its frame index holds still.
  */
 export async function injectVideoFramesBatch(
   page: Page,
-  updates: Array<{ videoId: string; dataUri: string }>,
+  updates: Array<{ videoId: string; dataUri: string | null }>,
 ): Promise<string[]> {
   if (updates.length === 0) return [];
   return await page.evaluate(
     async (
-      items: Array<{ videoId: string; dataUri: string; frameId: string }>,
+      items: Array<{ videoId: string; dataUri: string | null; frameId: string }>,
       visualProperties: string[],
       colorGradingSourceHiddenAttr: string,
     ) => {
@@ -725,6 +729,10 @@ export async function injectVideoFramesBatch(
           if (hasImg && img) img.style.setProperty("visibility", "hidden", "important");
           continue;
         }
+        // A style-only update (null dataUri) needs an image that already shows
+        // a frame. Without one there is nothing to re-sync: skip, and do not
+        // report it injected, so the caller supplies the frame on its next call.
+        if (item.dataUri === null && !(hasImg && img?.getAttribute("src"))) continue;
 
         const isNewImage = !hasImg;
         const computedStyle = window.getComputedStyle(video);
@@ -797,7 +805,9 @@ export async function injectVideoFramesBatch(
         img.style.zIndex = computedStyle.zIndex;
 
         img.decoding = "sync";
-        if (img.getAttribute("src") !== item.dataUri) {
+        // A null dataUri keeps the image already on the page and only re-syncs
+        // the style copied above and the opacity below.
+        if (item.dataUri !== null && img.getAttribute("src") !== item.dataUri) {
           img.src = item.dataUri;
           pendingDecodes.push(
             img

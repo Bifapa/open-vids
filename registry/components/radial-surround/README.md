@@ -65,7 +65,7 @@ Rules:
 Install, then point the center at a product shot:
 
 ```bash
-npx hyperframes add radial-surround
+hyperframes add radial-surround
 ```
 
 In `compositions/components/radial-surround.html`, fill the slot:

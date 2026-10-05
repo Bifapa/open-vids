@@ -205,6 +205,58 @@ describe("extractMediaMetadata nb_frames duration cross-check", () => {
   });
 });
 
+describe("media metadata cache identity", () => {
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  const probeOutcome = (duration: string, channels: number) => ({
+    kind: "exit" as const,
+    code: 0,
+    stdout: JSON.stringify({
+      streams: [
+        {
+          codec_type: "video",
+          codec_name: "h264",
+          width: 640,
+          height: 360,
+          r_frame_rate: "30/1",
+          avg_frame_rate: "30/1",
+        },
+        { codec_type: "audio", codec_name: "pcm_s16le", sample_rate: "48000", channels },
+      ],
+      format: { duration },
+    }),
+  });
+
+  it("re-probes video and audio metadata when a file is replaced under the same path", async () => {
+    const fixtureDir = mkdtempSync(resolve(tmpdir(), "hf-media-metadata-identity-"));
+    const fixturePath = resolve(fixtureDir, "clip.mp4");
+    writeFileSync(fixturePath, "one");
+    // Video and audio metadata share one ffprobe run per file identity.
+    const { spawn, calls } = createSpawnSpy([probeOutcome("1", 1), probeOutcome("2", 2)]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: video, extractAudioMetadata: audio } =
+      await import("./ffprobe.js");
+    try {
+      expect((await video(fixturePath)).durationSeconds).toBe(1);
+      expect((await audio(fixturePath)).channels).toBe(1);
+      expect(calls).toHaveLength(1);
+      // Unchanged file: served from the cache.
+      expect((await video(fixturePath)).durationSeconds).toBe(1);
+      expect((await audio(fixturePath)).channels).toBe(1);
+      expect(calls).toHaveLength(1);
+
+      writeFileSync(fixturePath, "replacement with a different size");
+      expect((await video(fixturePath)).durationSeconds).toBe(2);
+      expect((await audio(fixturePath)).channels).toBe(2);
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("extractPngMetadataFromBuffer", () => {
   it("accepts a valid cICP chunk before IDAT", () => {
     const metadata = extractPngMetadataFromBuffer(buildMinimalPng());

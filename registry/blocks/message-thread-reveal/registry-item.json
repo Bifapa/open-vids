@@ -203,7 +203,7 @@
     },
     {
       "path": "TEMPLATE.md",
-      "target": "TEMPLATE.md",
+      "target": "compositions/message-thread-reveal.TEMPLATE.md",
       "type": "hyperframes:asset"
     }
   ]

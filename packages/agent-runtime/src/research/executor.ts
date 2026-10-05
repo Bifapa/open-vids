@@ -34,7 +34,13 @@ import {
 import { formatRecordWebsite, formatWebsite, formatWebsiteFile } from "./formatWebsite.js";
 import { ResearchToolError, type ResearchHost } from "./host.js";
 import { approvesDownload, downloadApprovalRefusal } from "../autonomy.js";
-import { isLinkedSite, linkedSites, registrableDomain, websiteHostOf } from "./linkedSites.js";
+import {
+  boundedSites,
+  isLinkedSite,
+  linkedSites,
+  registrableDomain,
+  websiteHostOf,
+} from "./linkedSites.js";
 import type { PermissionBroker } from "../permissions.js";
 import {
   DEFAULT_RESEARCH_ACCESS,
@@ -44,6 +50,7 @@ import {
   type KnownCandidate,
   type ResearchAccess,
   type ResearchToolName,
+  websiteFileMode,
 } from "./tools.js";
 import type { WebsiteAccess } from "./websiteResources.js";
 
@@ -440,8 +447,10 @@ export class TurnResearch {
     if (save && !this.downloadsApproved() && !this.permissionAllowsDownload())
       return refuse(downloadApprovalRefusal());
     // The turn id is sent even without save: a grant of this turn ("Allow once") passes the setting's check on the server.
+    const allowedSites = this.allowedSitesFor(url);
     const request: ReadWebsiteRequest = {
       url,
+      allowedSites,
       turnId,
       ...(save && {
         save,
@@ -462,6 +471,10 @@ export class TurnResearch {
       note: asked.note,
     });
     if ("refusal" in outcome) return outcome.refusal;
+    // A redirect may have left the linked sites (an open redirect on a linked page): nothing of the page is shown
+    // or remembered then, or the read would hand the agent, and its later file requests, any public site.
+    const left = this.redirectedAway(url, outcome.value.site.finalUrl, allowedSites);
+    if (left) return left;
     this.options.websites.resources.rememberRead(this.options.websites.chatId, outcome.value);
     const formatted = formatWebsite(outcome.value, {
       fullAccess: (this.options.access ?? DEFAULT_RESEARCH_ACCESS).websiteFiles,
@@ -489,6 +502,41 @@ export class TurnResearch {
     );
   }
 
+  /**
+   * The sites Studio may open for a full-access call, and every redirect hop of it: the linked sites, plus the site of
+   * `url` itself when it is a file an earlier read listed (a CDN host the user never named). Studio takes a bounded
+   * number of sites, so a chat that linked more sends a bounded list that always holds the site of `url`.
+   */
+  private allowedSitesFor(url: string): string[] {
+    const sites = linkedSites(this.options.userTexts());
+    const host = websiteHostOf(url);
+    const own = host === null ? null : registrableDomain(host);
+    const linked = sites.find((site) => isLinkedSite(url, [site]));
+    return boundedSites(sites, linked ?? own);
+  }
+
+  /**
+   * Studio checks every redirect hop against the `allowedSites` of the request, and a file is written before the answer
+   * comes back. The check here uses that same list, so a redirect Studio let through (within the request's own site) is
+   * never reported as blocked after the file is already in the project, and a hop it would refuse is refused here too.
+   * Null when the final URL is in scope.
+   */
+  private redirectedAway(
+    requested: string,
+    finalUrl: string,
+    allowedSites: readonly string[],
+  ): HostToolResult | null {
+    if (isLinkedSite(finalUrl, allowedSites)) return null;
+    const sites = linkedSites(this.options.userTexts());
+    const linked =
+      sites.length > 0
+        ? `The user has linked: ${sites.join(", ")}.`
+        : "The user has not linked any website in this chat.";
+    return refuse(
+      `blocked_by_policy: ${requested} redirected to ${finalUrl}, which is not a website this call may open, so nothing it returned is shown. ${linked} You may read only the linked sites themselves (and the file hosts their pages listed); do not follow redirects off them or try another address. Tell the user if the link they sent no longer leads to their site.`,
+    );
+  }
+
   /** `get_website_file`: downloads one file of a linked site (or a file an earlier read of it listed), or reads its text. */
   private async websiteFile(
     args: unknown,
@@ -498,8 +546,7 @@ export class TurnResearch {
     const { host, turnId } = this.options;
     const record = argsRecord(args);
     const url = requiredText(record, "url", RESEARCH_LIMITS.urlChars);
-    const modeValue = requiredText(record, "mode", 16);
-    const mode = WEBSITE_FILE_MODES.find((entry) => entry === modeValue);
+    const mode = websiteFileMode(requiredText(record, "mode", 16));
     if (!mode) throw invalid(`mode must be one of ${WEBSITE_FILE_MODES.join(", ")}`);
     const pageUrl = optionalText(record, "pageUrl", RESEARCH_LIMITS.urlChars);
     const scope = this.websiteFileScope(url);
@@ -515,9 +562,11 @@ export class TurnResearch {
     if (mode === "save" && !this.downloadsApproved() && !this.permissionAllowsDownload())
       return refuse(downloadApprovalRefusal());
     // The turn id is sent even for a read: a grant of this turn ("Allow once") passes the setting's check on the server.
+    const allowedSites = this.allowedSitesFor(url);
     const request: WebsiteFileRequest = {
       url,
       mode,
+      allowedSites,
       turnId,
       ...(pageUrl !== undefined && { pageUrl }),
       ...(mode === "save" && {
@@ -539,6 +588,8 @@ export class TurnResearch {
       note: asked.note,
     });
     if ("refusal" in outcome) return outcome.refusal;
+    const left = this.redirectedAway(url, outcome.value.finalUrl, allowedSites);
+    if (left) return left;
     const formatted = { text: formatWebsiteFile(outcome.value) };
     return outcome.note === null
       ? formatted
@@ -567,6 +618,7 @@ export class TurnResearch {
       throw invalid("scroll must be true or false");
     const width = optionalSide(record, "width");
     const height = optionalSide(record, "height");
+    const allowedSites = this.allowedSitesFor(url);
     const scope = this.websiteFileScope(url);
     if (scope) return scope;
     if (this.options.intent !== "edit") {
@@ -580,6 +632,7 @@ export class TurnResearch {
       return refuse(downloadApprovalRefusal());
     const request: RecordWebsiteRequest = {
       url,
+      allowedSites,
       seconds,
       ...(selector !== undefined && { selector }),
       ...(scroll === true && { scroll: true }),
@@ -602,6 +655,8 @@ export class TurnResearch {
       note: asked.note,
     });
     if ("refusal" in outcome) return outcome.refusal;
+    const left = this.redirectedAway(url, outcome.value.finalUrl, allowedSites);
+    if (left) return left;
     const formatted = { text: formatRecordWebsite(outcome.value) };
     return outcome.note === null
       ? formatted

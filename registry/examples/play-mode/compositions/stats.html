@@ -7,7 +7,7 @@
   >
     <div id="stats-container">
       <!-- Moment 1: 47% NEED MOTION GRAPHICS -->
-      <div id="moment-1" class="moment" style="opacity: 0; transform: scale(0) rotate(8deg)">
+      <div id="moment-1" class="moment" style="opacity: 0">
         <div class="sticker-stack">
           <div class="sticker-bg blue-bg"></div>
           <div class="sticker-content white-bg blue-border">
@@ -27,7 +27,7 @@
       </div>
 
       <!-- Moment 2: 62% STRUGGLE WITH STATIC CONTENT -->
-      <div id="moment-2" class="moment" style="opacity: 0; transform: scale(0) rotate(-5deg)">
+      <div id="moment-2" class="moment" style="opacity: 0">
         <div class="sticker-stack">
           <div class="sticker-bg white-bg"></div>
           <div class="sticker-content blue-bg white-border">
@@ -53,7 +53,7 @@
       </div>
 
       <!-- Moment 3: 75% LACK EDITING SKILLS -->
-      <div id="moment-3" class="moment" style="opacity: 0; transform: scale(0) rotate(3deg)">
+      <div id="moment-3" class="moment" style="opacity: 0">
         <div class="sticker-stack">
           <div class="sticker-bg pink-bg"></div>
           <div class="sticker-content white-bg pink-border">
@@ -120,7 +120,6 @@
       [data-composition-id="stats"] #moment-3 {
         bottom: 100px; /* Below A-roll when centered */
         left: 50%;
-        transform: translateX(-50%);
         width: 800px;
       }
 
@@ -268,6 +267,11 @@
           { text: "Hyperframes", start: 15.079, end: 15.42 },
         ];
         const tl = gsap.timeline({ paused: true });
+
+        // Initial pose of each stat card (GSAP owns the transform, not CSS)
+        gsap.set("#moment-1", { scale: 0, rotation: 8 });
+        gsap.set("#moment-2", { scale: 0, rotation: -5 });
+        gsap.set("#moment-3", { xPercent: -50, scale: 0, rotation: 3 });
 
         // Helper to find word timing
         function getWordTime(wordText) {

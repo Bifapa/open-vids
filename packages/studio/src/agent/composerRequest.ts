@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
-import { NEW_CHAT_DRAFT, type AgentStore } from "./agentStore";
+import { NEW_CHAT_DRAFT } from "./agentDraftChat";
+import type { AgentStore } from "./agentStore";
 
 /**
  * Something outside the chat panel (the inspector, the canvas menu, the Checks dialog) asks the chat to take some

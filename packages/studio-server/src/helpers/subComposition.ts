@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import {
+  ASSET_PATH_SELECTOR,
   rewriteAssetPaths,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
@@ -23,7 +24,7 @@ import { isFullHtmlDocument } from "@hyperframes/core/compiler/html-document";
 function rewriteRelativePaths(root: ParentNode, compPath: string, projectDir: string): void {
   const assetExists = (path: string) => existsSync(join(projectDir, path));
   rewriteAssetPaths(
-    root.querySelectorAll("[src], [href]"),
+    root.querySelectorAll(ASSET_PATH_SELECTOR),
     compPath,
     (el: Element, attr: string) => el.getAttribute(attr),
     (el: Element, attr: string, value: string) => el.setAttribute(attr, value),

@@ -50,22 +50,31 @@ describe("registry blocks", () => {
       .filter(({ manifest }) => manifest.tags?.includes(promotedTemplateTag));
 
     expect(promotedManifests.length).toBeGreaterThan(0);
+    const contractTargets = new Set<string>();
     for (const { itemDir, manifest } of promotedManifests) {
       const templateId = manifest.name;
       const contractFiles = manifest.files.filter(
-        (file) =>
-          file.path === "TEMPLATE.md" &&
-          file.target === "TEMPLATE.md" &&
-          file.type === "hyperframes:asset",
+        (file) => file.path === "TEMPLATE.md" && file.type === "hyperframes:asset",
       );
       const composition = manifest.files.find((file) => file.type === "hyperframes:composition");
 
       expect(contractFiles, templateId).toHaveLength(1);
       expect(composition, templateId).toBeDefined();
+      // Each contract installs beside its own composition: a shared target would let the second
+      // template silently replace the first one's contract.
+      const contractTarget = contractFiles[0]?.target ?? "";
+      expect(contractTarget, templateId).toBe(`compositions/${templateId}.TEMPLATE.md`);
+      expect(contractTargets.has(contractTarget), `${templateId}: shared contract target`).toBe(
+        false,
+      );
+      contractTargets.add(contractTarget);
       const editingContract = readFileSync(join(itemDir, "TEMPLATE.md"), "utf8");
       expect(editingContract, templateId).toContain("## Safe editing mechanics");
-      expect(editingContract, templateId).toContain("set_template_variable_defaults");
-      expect(editingContract, templateId).toContain("HTML-entity-encoded JSON");
+      expect(editingContract, templateId).toContain(composition?.target ?? "");
+      expect(editingContract, templateId).toContain("`edit`");
+      expect(editingContract, templateId).not.toContain("set_template_variable_defaults");
+      expect(editingContract, templateId).not.toContain("__template_baseline__");
+      expect(editingContract, templateId).not.toContain("`index.html`");
       const html = readFileSync(join(itemDir, composition?.path ?? ""), "utf8");
       const { document } = parseHTML(html);
       const declarations = JSON.parse(

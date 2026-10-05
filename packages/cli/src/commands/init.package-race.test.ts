@@ -43,7 +43,7 @@ describe("init config creation", () => {
       expect(injected).toBe(true);
       expect(fs.readFileSync(packagePath, "utf-8")).toBe('{"name":"preserve-me"}\n');
       expect(fs.existsSync(join(project, "index.html"))).toBe(true);
-      expect(log.mock.calls.flat().join("\n")).toContain("npm run dev");
+      expect(log.mock.calls.flat().join("\n")).toContain("hyperframes preview");
       expect(fs.readdirSync(project).filter((name) => name.startsWith(".hf-create-"))).toEqual([]);
     } finally {
       vi.mocked(fs.existsSync).mockImplementation(original.existsSync);
@@ -82,7 +82,7 @@ describe("init config creation", () => {
         expect(fs.lstatSync(packagePath).isSymbolicLink()).toBe(true);
         expect(fs.existsSync(target)).toBe(false);
         expect(fs.existsSync(join(project, "index.html"))).toBe(true);
-        expect(log.mock.calls.flat().join("\n")).toContain("npm run dev");
+        expect(log.mock.calls.flat().join("\n")).toContain("hyperframes preview");
         expect(fs.readdirSync(project).filter((name) => name.startsWith(".hf-create-"))).toEqual(
           [],
         );

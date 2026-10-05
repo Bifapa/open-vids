@@ -161,8 +161,11 @@ export function runCli(
     child.on("close", (code) => {
       settle();
       if (signal.aborted) {
-        // The CLI is gone; make sure nothing it started outlives it.
-        killTree(child, "SIGKILL");
+        // The CLI is gone; make sure nothing it started outlives it. POSIX only: the group kill is addressed to a
+        // group that outlives its leader. On Windows `taskkill /T` takes a bare pid that Node has stopped pinning
+        // by now and the OS may have handed to an unrelated process; onAbort already killed the tree while the
+        // handle was live.
+        if (process.platform !== "win32") killTree(child, "SIGKILL");
         reject(abortError(signal));
       } else {
         resolve({ code, json: lastJsonObject(stdout), stdout, stderrTail: stderrTail.trim() });

@@ -32,7 +32,7 @@ semver = "1"
 # (report.rs): a small blocking client on its own thread, rustls with ring
 # (already in the tree via the updater) and Mozilla's roots.
 ureq = { version = "3", default-features = false, features = ["rustls"] }
-# Bug reports: the proof-of-work hash (report.rs) and the gzipped log part.
+# Bug reports: the challenge hash (report.rs) and the gzipped log part.
 # flate2's pure-Rust backend keeps the build free of a C zlib dependency.
 sha2 = "0.10"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

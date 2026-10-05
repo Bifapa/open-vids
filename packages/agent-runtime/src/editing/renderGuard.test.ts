@@ -18,6 +18,7 @@ describe("asksForRender", () => {
       "Экспортируй ролик",
       "Выгрузи финальный файл",
       "Собери финальное видео",
+      "Save it as .mp4",
     ]) {
       expect(asksForRender(text), text).toBe(true);
     }
@@ -35,6 +36,10 @@ describe("asksForRender", () => {
       "Не рендери пока",
       "Без экспорта, просто смонтируй",
       "surrender the intro",
+      "Убери паузы и плохие дубли в interview.mp4",
+      "Remove the long pauses from talk.mp4",
+      "trim my_clip-2.MP4 to the best minute",
+      "Сделай видео короче",
     ]) {
       expect(asksForRender(text), text).toBe(false);
     }

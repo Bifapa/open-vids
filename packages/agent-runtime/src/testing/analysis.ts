@@ -197,6 +197,8 @@ export class FakeAnalysisHost implements AnalysisHost {
   runningPolls = 0;
   /** While set (and unresolved), started jobs stay running. */
   jobGate: Promise<void> | null = null;
+  /** Set: start requests join a job someone else had already started (the answer says `joined`). */
+  joinsRunningJob = false;
   /** The next call of any route rejects with this error. */
   nextError: AnalysisToolError | null = null;
 
@@ -257,7 +259,12 @@ export class FakeAnalysisHost implements AnalysisHost {
       this.gateOpen = true;
     });
     const running = this.pollsLeft > 0 || !this.gateOpen;
-    return this.job(`job-${this.jobCount}`, request.source, running ? "running" : "completed");
+    const started = this.job(
+      `job-${this.jobCount}`,
+      request.source,
+      running ? "running" : "completed",
+    );
+    return this.joinsRunningJob ? { ...started, joined: true } : started;
   }
 
   async getJob(jobId: string, signal: AbortSignal): Promise<AnalysisJob> {

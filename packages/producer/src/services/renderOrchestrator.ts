@@ -138,6 +138,11 @@ import {
   commitArtifactTransaction,
 } from "./render/artifactTransaction.js";
 import {
+  SYSTEM_TEMP_RENDER_DIR_PREFIX,
+  claimRenderDirectory,
+  sweepStaleRenderScratch,
+} from "./render/directoryOwner.js";
+import {
   capturePathForPlanKind,
   createCapturePlan,
   replanAfterFailure,
@@ -1038,13 +1043,15 @@ export function getNextRetryWorkerCount(currentWorkers: number): number {
   return Math.max(1, Math.floor(currentWorkers / 2));
 }
 
+let systemTempScratchSwept = false;
+
 export function resolveRenderWorkDirPrefix(
   outputPath: string,
   jobId: string,
   platform: NodeJS.Platform = process.platform,
   systemTempDir: string = tmpdir(),
 ): string {
-  if (platform === "win32") return join(systemTempDir, "hf-render-");
+  if (platform === "win32") return join(systemTempDir, SYSTEM_TEMP_RENDER_DIR_PREFIX);
   return join(dirname(outputPath), `work-${jobId}-`);
 }
 
@@ -2851,6 +2858,12 @@ export async function executeRenderJob(
   const debugDir = join(producerRoot, ".debug");
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
+  // A hard-killed host (every Windows quit) never ran its render's cleanup; reclaim
+  // those scratch dirs once per process, before this render adds its own.
+  if (!systemTempScratchSwept) {
+    systemTempScratchSwept = true;
+    sweepStaleRenderScratch();
+  }
   const workDir = job.config.debug
     ? join(debugDir, job.id)
     : mkdtempSync(resolveRenderWorkDirPrefix(outputPath, job.id));
@@ -2864,7 +2877,10 @@ export async function executeRenderJob(
     signal: abortSignal,
   });
   const log = execution.logger;
+  // Tells a start-up residue sweep in another process that this scratch dir belongs to a live render.
+  const releaseWorkDirClaim = job.config.debug ? () => {} : claimRenderDirectory(workDir);
   execution.defer("remove workDir", () => {
+    releaseWorkDirClaim();
     if (job.config.debug) return;
     if (job.status === "complete" && process.env.KEEP_TEMP === "1") {
       log.info("KEEP_TEMP=1 — leaving workDir on disk for inspection", { workDir });

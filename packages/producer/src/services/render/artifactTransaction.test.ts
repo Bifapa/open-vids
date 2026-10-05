@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   existsSync,
   lstatSync,
@@ -7,6 +7,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync as renamePathSync,
+  statSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -17,6 +18,7 @@ import {
   buildArtifactExpectation,
   type ArtifactDurationProbe,
 } from "./artifactTransaction.js";
+import { RENDER_OWNER_HEARTBEAT_MS, RENDER_OWNER_MARKER } from "./directoryOwner.js";
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "hf-artifact-transaction-"));
@@ -41,6 +43,26 @@ describe("ArtifactTransaction", () => {
 
     transaction.rollback();
     expect(transactionDirectories(dir)).toEqual([]);
+  });
+
+  it("marks its directory as owned by this live process until it is cleaned up", () => {
+    vi.useFakeTimers();
+    try {
+      const dir = tempDir();
+      const transaction = new ArtifactTransaction(join(dir, "render.mp4"), "file");
+      const marker = join(dirname(transaction.stagingPath), RENDER_OWNER_MARKER);
+      expect(JSON.parse(readFileSync(marker, "utf8"))).toMatchObject({ pid: process.pid });
+
+      const before = statSync(marker).mtimeMs;
+      vi.advanceTimersByTime(RENDER_OWNER_HEARTBEAT_MS + 1);
+      expect(statSync(marker).mtimeMs).toBeGreaterThan(before);
+
+      transaction.rollback();
+      expect(vi.getTimerCount(), "the heartbeat stops with the transaction").toBe(0);
+      expect(transactionDirectories(dir)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("atomically replaces a file only after validation", async () => {

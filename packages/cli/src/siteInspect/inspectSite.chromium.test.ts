@@ -91,7 +91,7 @@ describe.runIf(executablePath)("inspectSite in Chromium", () => {
       new URL(url).port === String(secretPort)
         ? { kind: "blocked", reason: "127.0.0.1 is a local or private network address" }
         : null,
-    remoteAddressProblem: () => null,
+    vet: async (host) => ({ ok: true, addresses: [host] }),
   });
   const launch = () => puppeteer.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
 

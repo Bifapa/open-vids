@@ -40,106 +40,6 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "carousel-circle-1",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-circle-2",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-circle-3",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-circle-4",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-circle-5",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-orbit-1",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-orbit-2",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-orbit-3",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-orbit-4",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-orbit-5",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-path-1",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-path-2",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-path-3",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-path-4",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-path-5",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-text-circle-1",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-text-circle-2",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-text-circle-3",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-text-circle-4",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-text-circle-5",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-vision-1",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-vision-2",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-vision-3",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-vision-4",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "carousel-vision-5",
-      "type": "hyperframes:block"
-    },
-    {
       "name": "chatgpt-exchange",
       "type": "hyperframes:block"
     },
@@ -244,15 +144,7 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "frost-sequence-camera-orbit",
-      "type": "hyperframes:block"
-    },
-    {
       "name": "gallery-tunnel",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "glass-shard-title",
       "type": "hyperframes:block"
     },
     {
@@ -265,10 +157,6 @@
     },
     {
       "name": "halftone-field",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "heygen-avatar-promo-card",
       "type": "hyperframes:block"
     },
     {
@@ -1585,6 +1473,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "973eda0eef98aed0e928080d20a64acacd8054e83611df7ed8b30ea96b25bf5b"
+    "revision": "2d6bd4779ef1048390ee9c6f9b46a6112ef530d7c0087ea8b0b5c336c6989457"
   }
 }

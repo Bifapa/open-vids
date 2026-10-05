@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { QA_LIMITS } from "@hyperframes/agent-protocol";
 import { EditingError } from "../editing/host.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "../testing/runtimeFixture.js";
 import { cleanCheck, qaDraft } from "../testing/qa.js";
@@ -672,6 +673,108 @@ describe("render QA in a turn", () => {
           rounds: 1,
         });
         expect(director.seen.finals[0]).toContain("Vision's review did not happen (failed");
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it("keeps a Vision issue open when the re-check could not run, instead of marking it fixed and passing QA", async () => {
+      const fixture = await createRuntimeFixture();
+      try {
+        const chatId = await qaChat(fixture, quality(2));
+        fixture.qa.checkResults = [cleanCheck(), cleanCheck()];
+        const director = directorScript(fixture);
+        const first = visionScript([finding()]);
+        let calls = 0;
+        script(fixture, {
+          director: director.run,
+          vision: async (input, session) => {
+            calls += 1;
+            if (calls === 1) return first(input, session);
+            throw new Error("provider 529 overloaded");
+          },
+        });
+        await fixture.turns.start(chatId, { prompt: "Tighten the intro" });
+        await settled(fixture, chatId);
+
+        expect(fixture.qa.reports).toHaveLength(2);
+        const second = fixture.qa.reports[1];
+        expect(second?.vision.status).toBe("failed");
+        expect(second?.resolved).toEqual([]);
+        expect(
+          second?.issues.map((issue) => `${issue.id}:${issue.status}:${issue.source}`),
+        ).toEqual(["p1-1:persisting:vision"]);
+        expect(second?.counts).toMatchObject({ issues: 1, persisting: 1, fixed: 0 });
+        expect(fixture.chats.get(chatId)?.turns[0]?.qa?.status).not.toBe("passed");
+        const final = director.seen.finals[0] ?? "";
+        expect(final).toContain("Still open (1):");
+        expect(final).not.toContain("Fixed during QA");
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it("still records a Vision issue as fixed when the re-check ran and no longer reports it", async () => {
+      const fixture = await createRuntimeFixture();
+      try {
+        const chatId = await qaChat(fixture, quality(2));
+        fixture.qa.checkResults = [cleanCheck(), cleanCheck()];
+        const director = directorScript(fixture);
+        const first = visionScript([finding()]);
+        const second = visionScript([]);
+        let calls = 0;
+        script(fixture, {
+          director: director.run,
+          vision: (input, session) => {
+            calls += 1;
+            return calls === 1 ? first(input, session) : second(input, session);
+          },
+        });
+        await fixture.turns.start(chatId, { prompt: "Tighten the intro" });
+        await settled(fixture, chatId);
+
+        expect(fixture.qa.reports[1]?.resolved.map((issue) => issue.id)).toEqual(["p1-1"]);
+        expect(fixture.chats.get(chatId)?.turns[0]?.qa?.status).toBe("passed");
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it("caps the merged issues at the report limit so the report can be stored, keeping the most severe", async () => {
+      const fixture = await createRuntimeFixture();
+      try {
+        const chatId = await qaChat(fixture, quality(1));
+        const flashes = Array.from({ length: QA_LIMITS.issues }, (_, index) =>
+          qaDraft({
+            kind: "awkward_cut",
+            severity: "warning",
+            check: "timeline.flash_clip",
+            source: "timeline",
+            start: index * 3,
+            end: index * 3 + 0.2,
+            clipIds: [`f${index}`],
+            subject: `f${index}`,
+            message: `A flash clip ${index}.`,
+          }),
+        );
+        fixture.qa.checkResults = [cleanCheck({ issues: flashes })];
+        const director = directorScript(fixture);
+        script(fixture, {
+          director: director.run,
+          vision: visionScript([
+            finding({ severity: "error" }),
+            finding({ kind: "visual_mismatch", subject: "c3", severity: "warning" }),
+          ]),
+        });
+        await fixture.turns.start(chatId, { prompt: "Tighten the intro" });
+        await settled(fixture, chatId);
+
+        const issues = fixture.qa.reports[0]?.issues ?? [];
+        expect(issues).toHaveLength(QA_LIMITS.issues);
+        expect(
+          issues.some((issue) => issue.source === "vision" && issue.severity === "error"),
+        ).toBe(true);
+        expect(fixture.chats.get(chatId)?.turns[0]?.qa?.passes[0]?.phase).not.toBe("failed");
       } finally {
         await fixture.cleanup();
       }

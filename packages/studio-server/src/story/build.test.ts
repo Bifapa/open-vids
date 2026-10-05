@@ -1,5 +1,12 @@
 // @vitest-environment node
-import type { TimelineClip } from "@hyperframes/agent-protocol";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  STORY_GRAPH_PATH,
+  STORY_LIMITS,
+  type StoryOperation,
+  type TimelineClip,
+} from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanRanges } from "../analysis/cutPlan.js";
 import { writeAssetRanges } from "../editing/assetRanges.js";
@@ -497,11 +504,93 @@ describe("Build Story", () => {
     expect(f.made.read("index.html")).toBe(composition);
   });
 
+  it("refuses a build when the graph file changed while it was being planned, leaving both files alone", async () => {
+    const f = story();
+    await referenceStory(f);
+    const composition = f.made.read("index.html");
+    const path = join(f.project.dir, STORY_GRAPH_PATH);
+    const outside = { ...f.graphFile(), title: "Restored elsewhere" };
+    const sourceData = f.analysis.sourceData.bind(f.analysis);
+    // The user undoes their last story edit while the build looks the source up.
+    f.analysis.sourceData = async (project, source) => {
+      writeFileSync(path, `${JSON.stringify(outside, null, 2)}\n`);
+      return sourceData(project, source);
+    };
+    await expect(build(f)).rejects.toSatisfy(
+      (error: unknown) => isStoryFailure(error) && error.error.code === "conflict",
+    );
+    expect(f.graphFile().title).toBe("Restored elsewhere");
+    expect(f.made.read("index.html")).toBe(composition);
+  });
+
+  it("records the build on the newest graph when the graph file moved while the edits were being applied", async () => {
+    const f = story();
+    await referenceStory(f);
+    const path = join(f.project.dir, STORY_GRAPH_PATH);
+    const outside = { ...f.graphFile(), title: "Restored elsewhere" };
+    const install = f.made.adapter.installRegistryBlock;
+    // The user undoes their last story edit once the build has started writing the timeline.
+    f.made.adapter.installRegistryBlock = async (request) => {
+      writeFileSync(path, `${JSON.stringify(outside, null, 2)}\n`);
+      if (!install) throw new Error("no registry");
+      return install(request);
+    };
+    const result = await build(f);
+    expect(f.graphFile().title).toBe("Restored elsewhere");
+    expect(f.graphFile().build).toMatchObject({
+      composition: "index.html",
+      version: result.timelineVersion,
+    });
+    expect(f.graphFile().build?.warnings.join(" ")).toContain("changed while it was building");
+    expect(f.made.read("index.html")).toContain("data-ov-story-node");
+  });
+
   it("refuses a story with no chapters", async () => {
     const f = story();
     await f.edit([{ op: "set_story", title: "Empty" }]);
     await expect(build(f)).rejects.toSatisfy(
       (error: unknown) => isStoryFailure(error) && error.error.code === "invalid_request",
     );
+  });
+});
+
+describe("the build record", () => {
+  it("keeps the graph readable when a build has more warnings than the stored record allows", async () => {
+    const f = story();
+    const first = await f.edit([
+      { op: "add_node", node: { kind: "chapter", title: "Wide", estimatedDuration: 5 } },
+    ]);
+    const chapter = created(first, 0);
+    // One warning per attached Missing Asset node; the first one is longer than a stored warning may be.
+    const perBatch = 41;
+    const batches = Math.ceil((STORY_LIMITS.buildWarnings + 1) / perBatch);
+    for (let batch = 0; batch < batches; batch += 1) {
+      const operations: StoryOperation[] = [];
+      for (let index = 0; index < perBatch; index += 1) {
+        const number = batch * perBatch + index;
+        operations.push({
+          op: "add_node",
+          ref: `m${index}`,
+          node: {
+            kind: "missing",
+            title: `Shot ${number}`,
+            mediaKind: "video",
+            need: number === 0 ? "x".repeat(STORY_LIMITS.textChars - 1) : `Shot number ${number}`,
+          },
+        });
+        operations.push({ op: "attach", node: `@m${index}`, chapter });
+      }
+      await f.edit(operations);
+    }
+
+    const result = await build(f);
+    expect(result.warnings.length).toBeGreaterThan(STORY_LIMITS.buildWarnings);
+    const stored = f.graphFile().build?.warnings ?? [];
+    expect(stored).toHaveLength(STORY_LIMITS.buildWarnings);
+    expect(stored.every((warning) => warning.length <= STORY_LIMITS.textChars)).toBe(true);
+    expect(stored.at(-1)).toMatch(/^…and \d+ more warnings\.$/);
+    // The graph still reads back: the next agent edit does not answer "damaged".
+    await f.edit([{ op: "set_story", brief: "Still readable" }]);
+    expect((await f.view()).graph?.build).not.toBeNull();
   });
 });

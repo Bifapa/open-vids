@@ -21,14 +21,14 @@
   <body>
     <div
       id="root"
-      data-composition-id="main"
+      data-composition-id="ripple-waves"
       data-start="0"
       data-duration="4"
       data-width="1920"
       data-height="1080"
     >
       <style>
-        [data-composition-id="main"] {
+        [data-composition-id="ripple-waves"] {
           width: 1920px;
           height: 1080px;
           overflow: hidden;
@@ -204,7 +204,7 @@
       var gl = glCanvas.getContext("webgl", { preserveDrawingBuffer: true });
       if (!gl) {
         console.warn("WebGL not available");
-        window.__timelines["main"] = gsap.timeline({ paused: true });
+        window.__timelines["ripple-waves"] = gsap.timeline({ paused: true });
       } else {
         gl.viewport(0, 0, 1200, 1080);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -359,7 +359,7 @@
           },
         });
         tl.to({ v: 0 }, { v: 1, duration: 4, ease: "none" }, 0);
-        window.__timelines["main"] = tl;
+        window.__timelines["ripple-waves"] = tl;
       } // end if (gl)
     </script>
   </body>

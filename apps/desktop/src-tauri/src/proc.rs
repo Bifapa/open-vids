@@ -43,7 +43,7 @@ use std::sync::{LazyLock, Mutex};
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 #[cfg(windows)]
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JobObjectExtendedLimitInformation, SetInformationJobObject,
     TerminateJobObject,
 };
@@ -231,15 +231,27 @@ fn track_in_job(child: &Child) {
     // handles on every path; the job handle itself moves into the registry,
     // which closes it exactly once on removal or process exit.
     unsafe {
-        if JOBS
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .contains_key(&pid)
-        {
+        let process = OpenProcess(
+            PROCESS_SET_QUOTA | PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION,
+            0,
+            pid,
+        );
+        if process.is_null() {
             return;
         }
-        let process = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
-        if process.is_null() {
+        // An entry under this pid is either this very process (a repeated
+        // `track`: keep its job, a replacement would kill it on close) or a
+        // leftover of an earlier owner of a reused pid whose child exited
+        // without `terminate`. The leftover must not block the assignment:
+        // it is replaced below, and closing its handle kills whatever the old
+        // tree still has running.
+        let already_ours = JOBS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&pid)
+            .is_some_and(|job| process_in_job(process, job.handle));
+        if already_ours {
+            CloseHandle(process);
             return;
         }
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
@@ -276,6 +288,27 @@ fn track_in_job(child: &Child) {
             .unwrap_or_else(|e| e.into_inner())
             .insert(pid, OwnedJob { handle: job });
     }
+}
+
+/// Whether `process` is, or must be assumed to be, a member of `job`.
+/// `process` needs `PROCESS_QUERY_LIMITED_INFORMATION` for `IsProcessInJob`.
+///
+/// # Safety
+/// Both handles must be live.
+#[cfg(windows)]
+unsafe fn process_in_job(process: HANDLE, job: HANDLE) -> bool {
+    let mut member: windows_sys::core::BOOL = 0;
+    // SAFETY: the caller guarantees both handles; `member` outlives the call.
+    let ok = unsafe { IsProcessInJob(process, job, &mut member) };
+    in_job_verdict(ok != 0, member != 0)
+}
+
+/// A failed membership query reads as "ours": keeping the existing job is
+/// safe, whereas replacing it would close a KILL_ON_JOB_CLOSE handle that may
+/// still hold the live child.
+#[cfg(any(windows, test))]
+fn in_job_verdict(call_succeeded: bool, member: bool) -> bool {
+    !call_succeeded || member
 }
 
 /// Best-effort whole-tree stop for a tracked pid. Unknown pids are a no-op.
@@ -354,6 +387,46 @@ mod tests {
         assert!(is_alive(std::process::id()));
         assert!(!is_alive(dead_pid()));
         assert!(!is_alive(0));
+    }
+
+    #[test]
+    fn a_failed_job_membership_query_reads_as_ours() {
+        assert!(in_job_verdict(false, false), "unknown: keep the existing job");
+        assert!(in_job_verdict(true, true));
+        assert!(!in_job_verdict(true, false), "a stale entry is replaced");
+    }
+
+    /// A leftover registry entry under a reused pid must not keep the new
+    /// owner of that pid out of a kill-on-close job.
+    #[cfg(windows)]
+    #[test]
+    fn a_stale_job_entry_is_replaced_for_a_reused_pid() {
+        let mut child = Command::new("cmd")
+            .args(["/C", "ping -n 30 127.0.0.1 >nul"])
+            .spawn()
+            .expect("cmd spawns");
+        let pid = child.id();
+        // SAFETY: a fresh, empty job handed to the registry, which owns it.
+        let stale = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        assert!(!stale.is_null());
+        JOBS.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(pid, OwnedJob { handle: stale });
+
+        track_in_job(&child);
+        terminate_job_of(pid);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut exited = false;
+        while Instant::now() < deadline {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                exited = true;
+                break;
+            }
+            std::thread::sleep(POLL_INTERVAL);
+        }
+        terminate(&mut child, Duration::from_millis(200));
+        assert!(exited, "the child must sit in the job that terminate_job_of stops");
     }
 
     #[cfg(windows)]

@@ -11,6 +11,8 @@ import {
   buildEncoderArgs,
   getEncoderPreset,
   lockedGopCodecParams,
+  encodeFramesChunkedConcat,
+  encodeFramesFromDir,
   resolveLockedGopSize,
 } from "./chunkEncoder.js";
 import { renderProvenanceArgs } from "../utils/renderProvenance.js";
@@ -428,6 +430,53 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
     expect(result.framesEncoded).toBe(2);
     expect(result.fileSize).toBe(0);
   });
+});
+
+// ffmpeg's image2 demuxer printf-expands the whole input path, so a project in a
+// folder like `Promo 50% off` used to fail every render at the encode step.
+describe.skipIf(!HAS_FFMPEG)("image2 frame patterns in folders containing '%'", () => {
+  function percentFrameFixture(): { root: string; framesDir: string } {
+    const root = mkdtempSync(join(tmpdir(), "hf-chunk-pct-"));
+    tempDirs.push(root);
+    const framesDir = join(root, "Promo 50% off", "renders", "frames");
+    mkdirSync(framesDir, { recursive: true });
+    for (let i = 1; i <= 2; i++) {
+      writeFileSync(join(framesDir, `frame_${String(i).padStart(6, "0")}.png`), TINY_PNG);
+    }
+    return { root, framesDir };
+  }
+
+  it("encodes frames from a directory whose path contains '%'", async () => {
+    const { root, framesDir } = percentFrameFixture();
+
+    const result = await encodeFramesFromDir(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "out.mp4"),
+      tinyEncodeOptions,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.success).toBe(true);
+    expect(result.framesEncoded).toBe(2);
+    expect(result.fileSize).toBeGreaterThan(0);
+  }, 30_000);
+
+  it("encodes chunked frames from a directory whose path contains '%'", async () => {
+    const { root, framesDir } = percentFrameFixture();
+
+    const result = await encodeFramesChunkedConcat(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "chunked.mp4"),
+      tinyEncodeOptions,
+      30,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.success).toBe(true);
+    expect(result.fileSize).toBeGreaterThan(0);
+  }, 30_000);
 });
 
 describe("muxVideoWithAudio audio codec handling", () => {

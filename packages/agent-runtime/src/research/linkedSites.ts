@@ -1,4 +1,6 @@
+import { MAX_ALLOWED_SITES } from "@hyperframes/agent-protocol";
 import { isIP } from "node:net";
+import { getDomain } from "tldts";
 
 /**
  * The websites a user has linked in a chat, and whether a URL the agent wants to read belongs to one of them.
@@ -10,38 +12,20 @@ import { isIP } from "node:net";
  * replies, search results, page contents) never count: this module is fed user text only.
  */
 
-/** Multi-label public suffixes: the registrable domain of `a.example.co.uk` is `example.co.uk`, of `x.github.io` is `x.github.io`. */
-const SHARED_SUFFIXES: Readonly<Record<string, true>> = {
-  "co.uk": true,
-  "org.uk": true,
-  "ac.uk": true,
-  "gov.uk": true,
-  "com.au": true,
-  "net.au": true,
-  "org.au": true,
-  "co.nz": true,
-  "co.jp": true,
-  "ne.jp": true,
-  "or.jp": true,
-  "com.br": true,
-  "com.cn": true,
-  "com.mx": true,
-  "com.ar": true,
-  "com.tr": true,
-  "co.in": true,
-  "co.za": true,
-  "co.kr": true,
-  "github.io": true,
-  "gitlab.io": true,
-  "pages.dev": true,
-  "vercel.app": true,
-  "netlify.app": true,
-  "blogspot.com": true,
-  "herokuapp.com": true,
-  "wordpress.com": true,
-  "web.app": true,
-  "firebaseapp.com": true,
-};
+/**
+ * Hosting platforms that give every customer a sub-domain but are missing from the Public Suffix List (the list
+ * itself comes from `tldts`): linking `mine.tilda.ws` must not allow every other `*.tilda.ws` site.
+ */
+const EXTRA_SHARED_SUFFIXES = [
+  "wordpress.com",
+  "tilda.ws",
+  "amazonaws.com",
+  "ghost.io",
+  "glitch.me",
+  "github.dev",
+  "weebly.com",
+  "wpengine.com",
+];
 
 const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"'`\])}]+/gi;
 /** `www.example.com/path` without a scheme: people write links that way, and `www.` is unmistakable. */
@@ -123,8 +107,9 @@ export function websiteHostOf(url: string): string | null {
 }
 
 /**
- * The site a host belongs to: its registrable domain. Null for IP addresses, `localhost`-style names and single labels,
- * which can never be a linked site.
+ * The site a host belongs to: its registrable domain under the Public Suffix List (ICANN and private sections, plus
+ * {@link EXTRA_SHARED_SUFFIXES}). Null for IP addresses, `localhost`-style names, single labels and bare public
+ * suffixes, which can never be a linked site.
  */
 export function registrableDomain(host: string): string | null {
   const name = host.toLowerCase().replace(/^\[|\]$/g, "");
@@ -132,10 +117,18 @@ export function registrableDomain(host: string): string | null {
   if (name === "localhost" || name.endsWith(".localhost") || name.endsWith(".local")) return null;
   const labels = name.split(".");
   if (labels.length < 2 || labels.some((label) => label === "")) return null;
-  const lastTwo = labels.slice(-2).join(".");
-  if (Object.hasOwn(SHARED_SUFFIXES, lastTwo))
-    return labels.length >= 3 ? labels.slice(-3).join(".") : null;
-  return lastTwo;
+  // ICANN and private (platform) suffixes both count: `a.github.io` and `a.myshopify.com` are separate sites.
+  const listed = getDomain(name, { allowPrivateDomains: true });
+  const extra = EXTRA_SHARED_SUFFIXES.find(
+    (suffix) => name === suffix || name.endsWith(`.${suffix}`),
+  );
+  if (extra === undefined) return listed;
+  const depth = extra.split(".").length + 1;
+  const supplemented = labels.length >= depth ? labels.slice(-depth).join(".") : null;
+  // The list may know a longer suffix than the supplement does (`s3.amazonaws.com`): the narrower site wins.
+  return listed !== null && supplemented !== null && listed.split(".").length > depth
+    ? listed
+    : supplemented;
 }
 
 /** The http(s) URLs written in `text` (`www.`-prefixed words and bare domains count as https). */
@@ -171,4 +164,20 @@ export function isLinkedSite(url: string, sites: readonly string[]): boolean {
   const host = websiteHostOf(url);
   const site = host ? registrableDomain(host) : null;
   return site !== null && sites.includes(site);
+}
+
+/**
+ * `sites` cut to the most one Studio request may name. Under the cap the list is kept in order, with `required` (the
+ * site of the URL being requested, which Studio must be able to open) added when missing. Over it, `required` leads
+ * and the earliest linked sites fill the rest, so the request's own site is never the one that is dropped.
+ */
+export function boundedSites(
+  sites: readonly string[],
+  required: string | null,
+  max: number = MAX_ALLOWED_SITES,
+): string[] {
+  if (required === null) return sites.slice(0, max);
+  const ordered = sites.includes(required) ? [...sites] : [...sites, required];
+  if (ordered.length <= max) return ordered;
+  return [required, ...sites.filter((site) => site !== required).slice(0, max - 1)];
 }

@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { basename, posix } from "node:path";
 import {
+  normalizeLicense,
   RESEARCH_ASSET_DIR,
   RESEARCH_LIMITS,
   RESEARCH_MEDIA_KINDS,
@@ -479,9 +480,6 @@ export class ResearchService {
     const scope = { policy, ...(signal && { signal }) };
     const url = await this.fetcher.check(rawUrl, scope);
     const vouching = sourceForHost(policy, url.hostname.toLowerCase());
-    const source: AssetSourceRef = vouching
-      ? { id: vouching.id, name: vouching.name, trusted: true }
-      : WEB_REF;
     const http = this.fetcher.http(scope);
     const connector = vouching ? connectorFor(vouching.connector) : null;
     const described = connector?.describeUrl
@@ -497,17 +495,50 @@ export class ResearchService {
           notes: described.notes,
         }
       : await inspectPage(url.toString(), kind, http);
+    const refOf = (trusted: TrustedSource | null): AssetSourceRef =>
+      trusted ? { id: trusted.id, name: trusted.name, trusted: true } : WEB_REF;
+    // A connector answers from its own API, so what it lists carries its source's grants. A scraped page is plain
+    // HTML anyone may have written (a wiki user page, an uploaded file, a redirect target): it vouches for nothing,
+    // so each file is judged and labelled by its own host, and the page's license is not copied onto files that live
+    // elsewhere than the page.
+    const pageHost = hostOf(page.finalUrl);
+    const pageSource = described
+      ? vouching
+      : pageHost === null
+        ? null
+        : sourceForHost(policy, pageHost);
+    const source = refOf(pageSource);
     const notes = [...page.notes];
     const found: Found[] = [];
     let outside = 0;
     for (const candidate of page.candidates) {
       const host = hostOf(candidate.mediaUrl);
-      const grants = vouching && vouching.connector !== "site" && host !== null ? [host] : [];
+      const grants =
+        described && vouching && vouching.connector !== "site" && host !== null ? [host] : [];
       if (!hostAllowed(policy, host, grants)) {
         outside += 1;
         continue;
       }
-      found.push({ candidate, source, grants });
+      if (described) {
+        found.push({ candidate, source, grants });
+        continue;
+      }
+      const own = refOf(host === null ? null : sourceForHost(policy, host));
+      found.push({
+        candidate:
+          host !== pageHost
+            ? {
+                ...candidate,
+                license: normalizeLicense({
+                  confidence: "none",
+                  basis:
+                    "Hosted elsewhere than the page that links it: the page's license is not this file's",
+                }),
+              }
+            : candidate,
+        source: own,
+        grants,
+      });
     }
     if (outside > 0) {
       notes.push(

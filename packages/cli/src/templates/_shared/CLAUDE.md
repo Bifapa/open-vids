@@ -1,6 +1,10 @@
 # HyperFrames Composition Project
 
-## Skills — USE THESE FIRST
+This file serves two kinds of agents. The OpenVids app's own agent (no shell, no skills; it changes the project with `read`, `grep`, `find`, `edit`, `write` and the app's tools such as `inspect_project`, `inspect_timeline`, `edit_timeline`, `browse_presets` and `render_video`) is given only the parts that apply without a shell: Project Structure and Key Rules. External coding agents working in this folder with a shell follow every section.
+
+<!-- openvids:external-agents:start -->
+
+## Skills — external agents: USE THESE FIRST
 
 **Always invoke the relevant skill before writing or modifying compositions.** Skills encode framework-specific patterns (e.g., `window.__timelines` registration, `data-*` attribute semantics, shader-compatible CSS rules) that are NOT in generic web docs. Skipping them produces broken compositions.
 
@@ -24,46 +28,47 @@ The domain skills (`/hyperframes-core`, `/hyperframes-animation`, `/hyperframes-
 
 > **Tailwind v4 projects** (`hyperframes init --tailwind`): see `/hyperframes-core` → `references/tailwind.md`.
 
-> **Skill missing or stale?** Run `npx hyperframes skills update <name>` to install/refresh
+> **Skill missing or stale?** Run `hyperframes skills update <name>` to install/refresh
 > the specific skill you need (the `/hyperframes` router does this automatically before
-> entering a workflow), or bare `npx hyperframes skills update` to refresh the core set plus
+> entering a workflow), or bare `hyperframes skills update` to refresh the core set plus
 > everything already installed — neither pulls the full set. Restart the agent session so
 > newly installed skills load.
 
-## Commands
+## Commands — external agents
+
+`hyperframes` is the OpenVids CLI (`packages/cli` in the OpenVids source tree). It is not published to npm: never fetch a package of the same name through npx, that is a different program. Put the CLI on PATH once (for example `bun link` inside `packages/cli`), or run it as `bun <openvids>/packages/cli/src/cli.ts <command>`.
 
 ```bash
-npm run dev          # human-operated foreground preview (blocks until stopped)
-npx hyperframes preview --background  # agent-safe persistent Studio preview
-npx hyperframes preview --status      # verify the persistent preview is listening
-npx hyperframes preview --stop        # stop it when review is finished
-npm run check        # lint + runtime + layout + motion + contrast (one command)
-npm run render       # render to MP4
-npm run publish      # publish and get a shareable link
-npx hyperframes lint --verbose  # include info-level findings
-npx hyperframes lint --json     # machine-readable output for CI
-npx hyperframes docs <topic> # reference docs in terminal
+hyperframes preview                # human-operated foreground preview (blocks until stopped)
+hyperframes preview --background   # agent-safe persistent Studio preview
+hyperframes preview --status       # verify the persistent preview is listening
+hyperframes preview --stop         # stop it when review is finished
+hyperframes check                  # lint + runtime + layout + motion + contrast (one command)
+hyperframes render                 # render to MP4
+hyperframes lint --verbose         # include info-level findings
+hyperframes lint --json            # machine-readable output for CI
+hyperframes docs <topic>           # reference docs in terminal
 ```
 
-> **Agents must use `npx hyperframes preview --background` for Studio handoff.** Do not rely
-> on a shell/tool `run_in_background` wrapper around `npm run dev`: that foreground process
-> remains owned by the invoking session and can disappear while the browser stays open,
+> **Agents must use `hyperframes preview --background` for Studio handoff.** Do not rely
+> on a shell/tool `run_in_background` wrapper around a foreground `hyperframes preview`: that
+> process remains owned by the invoking session and can disappear while the browser stays open,
 > leaving refreshes at `ERR_CONNECTION_TIMED_OUT`. Verify with `preview --status`, keep it
 > alive through review, and stop it explicitly with `preview --stop` afterward.
 
-> **Pinned CLI version.** These scripts pin an exact `hyperframes@X.Y.Z` so this project re-renders identically over time. Weeks later that pin lags fixes shipped since. To move up, update the pinned version in the script header. Always unpinned — the pinned script re-runs the old version against itself.
-
-## Documentation
+## Documentation — external agents
 
 **For quick reference**, use the local CLI docs command (no network required):
 
 ```bash
-npx hyperframes docs <topic>
+hyperframes docs <topic>
 ```
 
 Topics: `data-attributes`, `gsap`, `compositions`, `rendering`, `examples`, `troubleshooting`
 
 **For full documentation**, use the local CLI docs command above — do NOT guess URLs.
+
+<!-- openvids:external-agents:end -->
 
 ## Project Structure
 
@@ -72,15 +77,19 @@ Topics: `data-attributes`, `gsap`, `compositions`, `rendering`, `examples`, `tro
 - `meta.json` — project metadata (id, name)
 - `transcript.json` — whisper word-level transcript (if generated)
 
-## Linting — ALWAYS RUN AFTER CHANGES
+<!-- openvids:external-agents:start -->
+
+## Linting — external agents: ALWAYS RUN AFTER CHANGES
 
 After creating or editing any `.html` composition, **always** run the full check before considering the task complete:
 
 ```bash
-npm run check
+hyperframes check
 ```
 
 Fix all errors before presenting the result. Warnings should be reviewed before rendering.
+
+<!-- openvids:external-agents:end -->
 
 ## Key Rules
 

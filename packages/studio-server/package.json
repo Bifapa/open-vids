@@ -61,6 +61,12 @@
       "import": "./src/helpers/proxyTranscoder.ts",
       "types": "./src/helpers/proxyTranscoder.ts"
     },
+    "./pinned-lookup": {
+      "bun": "./src/research/sources/pinnedLookup.ts",
+      "node": "./dist/research/sources/pinnedLookup.js",
+      "import": "./src/research/sources/pinnedLookup.ts",
+      "types": "./src/research/sources/pinnedLookup.ts"
+    },
     "./public-address": {
       "bun": "./src/research/sources/address.ts",
       "node": "./dist/research/sources/address.js",

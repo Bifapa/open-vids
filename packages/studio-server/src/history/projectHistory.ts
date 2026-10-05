@@ -26,7 +26,7 @@ import {
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
 import { affectsProjectHistory, listProjectFiles } from "../helpers/projectSignature.js";
-import { openBlobStore, type BlobStore } from "./blobStore.js";
+import { hashFile, openBlobStore, type BlobStore } from "./blobStore.js";
 import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
   ID_PATH,
@@ -655,7 +655,9 @@ class Engine {
       if (replaced === undefined) break;
       bytes = replaced;
       hash = hashOfVersion(fileContentVersion(replaced))!;
-      if (hash === change.before || hash === told) return hash;
+      if (hash === change.before) return hash;
+      // The claimer's own version is cut at too: its bytes are in hand, so keep them even if no sweep stored them.
+      if (hash === told) break;
     }
     if (bytes === undefined) return undefined;
     const staged = join(this.home, `overwrote-${randomUUID()}`);
@@ -754,24 +756,27 @@ class Engine {
     return entry;
   }
 
-  /** Stored bytes beyond what the current files need: a project larger than the budget still keeps its history. */
-  historyBytes(): number {
+  /** Bytes of the blobs the current files are: the part of the store that is not history. */
+  currentBytes(): number {
     let current = 0;
     for (const hash of new Set([...this.tracked.values()].map((file) => file.hash)))
       current += this.blobs.size(hash);
-    return this.blobs.bytes() - current;
+    return current;
   }
 
   async keepWithinBudget(): Promise<void> {
     const budget = this.options.budgetBytes ?? 2 * 1024 ** 3;
+    const keep = () =>
+      new Set([...referencedHashes(this.log, this.manifest()), ...this.pendingHashes()]);
     let folded = false;
-    while (this.historyBytes() > budget && foldOldest(this.log)) {
+    // Folded in memory until what a prune would leave fits the budget, then logged and pruned once each.
+    while (this.blobs.bytesWithin(keep()) - this.currentBytes() > budget && foldOldest(this.log))
       folded = true;
-      await this.blobs.prune(
-        new Set([...referencedHashes(this.log, this.manifest()), ...this.pendingHashes()]),
-      );
-    }
-    if (folded) this.persistLog();
+    if (!folded) return;
+    // The folded log goes to disk first: a crash during the prune then leaves orphaned blobs,
+    // never entries whose blobs are gone.
+    this.persistLog();
+    await this.blobs.prune(keep());
   }
 
   /** Hashes only pending changes point at yet, such as a claim's stored cut. */
@@ -915,6 +920,11 @@ class Engine {
       .map(([path]) => this.inTheWay(path, deleted))
       .find(Boolean);
     if (blocked) throw new Error(`${blocked} is in the way; move or delete it, then try again.`);
+    // Everything that can refuse is checked before the first file is written, so a restore never stops half-applied.
+    for (const [path, hash] of changes) {
+      await this.confirmUnmoved(path);
+      if (hash !== null) await this.blobs.ensure(hash);
+    }
     const group = this.newGroup(who, label);
     this.windows.push(group);
     try {
@@ -926,10 +936,63 @@ class Engine {
     return this.commit(group, extra);
   }
 
+  /**
+   * Checks that `path` is still as the last sweep left it, or throws: a save that landed since (writers outside the
+   * history queue: Studio's saves, the editing service) is newer than anything this operation worked from, and must
+   * not be replaced unseen. Returns a check to run right before the replacing rename, which closes what the awaits
+   * in between opened.
+   */
+  async confirmUnmoved(path: string): Promise<() => void> {
+    const absPath = join(this.dir, path);
+    const moved = () =>
+      new Error(
+        `${path} changed while it was being written back; nothing newer was overwritten. Try again.`,
+      );
+    // A folder in the way is not a file; removeEmptyFolders deals with it. A file where a parent folder should be
+    // (the restore is about to remove it) means the path is not there either.
+    const look = () => {
+      try {
+        const found = lstatSync(absPath, { throwIfNoEntry: false });
+        return found?.isDirectory() ? undefined : found;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOTDIR") return undefined;
+        throw error;
+      }
+    };
+    const known = this.tracked.get(path);
+    const first = look();
+    if (!first || !known) {
+      if (first || known) throw moved();
+      return () => {
+        if (look()) throw moved();
+      };
+    }
+    const sameStat = known.stat !== "" && statKey(first, Date.now()) === known.stat;
+    if (!sameStat) {
+      const hash = await hashFile(absPath).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") throw moved();
+        throw error;
+      });
+      if (hash !== known.hash) throw moved();
+    }
+    return () => {
+      const now = look();
+      if (
+        !now ||
+        now.ino !== first.ino ||
+        now.size !== first.size ||
+        now.mtimeMs !== first.mtimeMs ||
+        now.ctimeMs !== first.ctimeMs
+      )
+        throw moved();
+    };
+  }
+
   /** Writes one project file (null deletes it), first leaving the running operation's receipt for its echo. */
   async writeProjectFile(path: string, hash: string | null): Promise<void> {
     this.assertWritable();
     const absPath = join(this.dir, path);
+    const stillUnmoved = await this.confirmUnmoved(path);
     const { writeToken } = this;
     if (writeToken) {
       const version = hash === null ? DELETED_VERSION : hashVersion(hash);
@@ -937,10 +1000,14 @@ class Engine {
     }
     if (hash === null) {
       this.assertWritable();
+      stillUnmoved();
       rmSync(absPath, { force: true });
     } else {
       await removeEmptyFolders(absPath);
-      await this.blobs.writeTo(hash, absPath, () => this.assertWritable());
+      await this.blobs.writeTo(hash, absPath, () => {
+        this.assertWritable();
+        stillUnmoved();
+      });
     }
   }
 

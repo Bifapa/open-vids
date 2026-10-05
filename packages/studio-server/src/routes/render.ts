@@ -1,6 +1,14 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  mkdirSync,
+  unlinkSync,
+  readdirSync,
+  statSync,
+  lstatSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import type { RenderActivity } from "./activity.js";
@@ -69,6 +77,13 @@ export function registerRenderRoutes(
 
   ensureCleanupTimer();
 
+  function isRenderIdTaken(id: string, rendersDir: string): boolean {
+    if (renderJobs.has(id)) return true;
+    return [".mp4", ".webm", ".mov", ".meta.json"].some((suffix) =>
+      existsSync(join(rendersDir, `${id}${suffix}`)),
+    );
+  }
+
   // Start a render
   api.post("/projects/:id/render", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
@@ -126,11 +141,17 @@ export function registerRenderRoutes(
       variables = body.variables;
     }
 
-    const now = new Date();
-    const jobId = `${project.id}_${formatRenderOutputTimestamp(now)}`;
     const rendersDir = adapter.rendersDir(project);
     if (!existsSync(rendersDir)) mkdirSync(rendersDir, { recursive: true });
     const ext = FORMAT_EXT[format] ?? ".mp4";
+    // The id doubles as the output file stem (the list view derives ids from file names), so it is unique against
+    // the jobs of this session AND the files already on disk, not just the clock's second. No await below, so
+    // two requests cannot both claim the same candidate.
+    const baseId = `${project.id}_${formatRenderOutputTimestamp(new Date())}`;
+    let jobId = baseId;
+    for (let attempt = 2; isRenderIdTaken(jobId, rendersDir); attempt++) {
+      jobId = `${baseId}_${attempt}`;
+    }
     const outputPath = join(rendersDir, `${jobId}${ext}`);
 
     const jobState = adapter.startRender({
@@ -196,6 +217,14 @@ export function registerRenderRoutes(
     ".mov": "video/quicktime",
   };
   const RENDER_EXTENSIONS = Object.keys(RENDER_MIME);
+
+  function isRenderLeafName(name: string): boolean {
+    return (
+      name.length > 0 &&
+      !/[\\/]/.test(name) &&
+      RENDER_EXTENSIONS.some((ext) => name.endsWith(ext) && name.length > ext.length)
+    );
+  }
 
   function renderBasename(filePath: string): string {
     // `outputPath` is built with `join()` on this machine, so it carries this
@@ -293,7 +322,21 @@ export function registerRenderRoutes(
     const rendersDir = adapter.rendersDir(project);
     const fp = resolveWithinProject(rendersDir, filename);
     if (!fp) return c.json({ error: "forbidden" }, 403);
-    if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
+    // Only what the render queue produces: a leaf name with a render container
+    // extension. Anything else under renders/ (a script, a shortcut, a document
+    // a project script wrote there) would run or open arbitrary content in the
+    // OS handler for its type.
+    if (!isRenderLeafName(filename)) {
+      return c.json({ error: "not a render file" }, 400);
+    }
+    let stats;
+    try {
+      stats = lstatSync(fp);
+    } catch {
+      return c.json({ error: "not found" }, 404);
+    }
+    // A link could point at any file on disk; the pipeline writes plain files.
+    if (!stats.isFile()) return c.json({ error: "not a render file" }, 400);
     try {
       await openPath(fp);
     } catch (error) {

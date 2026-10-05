@@ -71,7 +71,7 @@ Rules:
 Install, then fill the slots with two screenshots:
 
 ```bash
-npx hyperframes add split-tilt-cards
+hyperframes add split-tilt-cards
 ```
 
 In `compositions/components/split-tilt-cards.html`, replace each slot's

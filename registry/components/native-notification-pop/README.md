@@ -70,7 +70,7 @@ Rules:
 Install, then fill the slot with a product screenshot:
 
 ```bash
-npx hyperframes add native-notification-pop
+hyperframes add native-notification-pop
 ```
 
 In `compositions/components/native-notification-pop.html`, replace the

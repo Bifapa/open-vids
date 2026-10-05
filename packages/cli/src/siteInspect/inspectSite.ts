@@ -7,6 +7,7 @@ import type { Browser, HTTPResponse, Page } from "puppeteer-core";
 import { CAPTURE_USER_AGENT } from "../capture/userAgent.js";
 import { assembleStyle, fontMime, type CapturedFontFile } from "./assemble.js";
 import { analyzeCss, type CssSheet } from "./cssAnalysis.js";
+import { faceName, fontFileName } from "./fontFiles.js";
 import { PAGE_SCRIPT, RESOURCE_SCRIPT, type RawPage } from "./pageScript.js";
 import { parseRawPage, parseRawResources, parseTokenPairs } from "./rawPage.js";
 import {
@@ -246,14 +247,6 @@ const EXTENSION_OF: Record<string, string> = {
   "image/vnd.microsoft.icon": "ico",
 };
 
-function fileNameOf(url: string, mimeType: string, fallback: string): string {
-  const last = decodeURIComponent(new URL(url).pathname.split("/").at(-1) ?? "");
-  const cleaned = last.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^[.-]+/, "");
-  const hasExtension = /\.(woff2|woff|ttf|otf)$/i.test(cleaned);
-  const extension = mimeType.replace("font/", "");
-  return cleaned !== "" && hasExtension ? cleaned : `${fallback}.${extension}`;
-}
-
 /** The logo to save: an inline SVG first, then the first image that can be fetched (header logo, og image, icon). */
 async function captureLogo(
   raw: RawPage,
@@ -393,7 +386,6 @@ export async function inspectSite(options: InspectSiteOptions): Promise<InspectS
     resources: new Map(),
     lottieChecks: 0,
     blocked: [],
-    violation: null,
     pending: [],
   };
 
@@ -419,7 +411,9 @@ export async function inspectSite(options: InspectSiteOptions): Promise<InspectS
 
   try {
     progress("Launching headless Chrome");
-    browser = await (options.launch ? options.launch() : launchChrome(profileDir));
+    browser = await (options.launch
+      ? options.launch()
+      : launchChrome(profileDir, policy, capture.blocked));
     if (signal.aborted || timedOut) await browser.close();
     signal.throwIfAborted();
 
@@ -441,7 +435,6 @@ export async function inspectSite(options: InspectSiteOptions): Promise<InspectS
         throw new SiteInspectError("network", "The page did not finish loading in time");
       throw explainNavigationError(error, url, capture);
     }
-    if (capture.violation) throw new SiteInspectError("blocked_by_policy", capture.violation);
     const status = response?.status() ?? 0;
     if (status >= 400) {
       throw new SiteInspectError("unavailable", `The page answered HTTP ${status}`);
@@ -462,7 +455,6 @@ export async function inspectSite(options: InspectSiteOptions): Promise<InspectS
     progress("Listing the page's files");
     const domResources = parseRawResources(await page.evaluate(RESOURCE_SCRIPT));
     await Promise.allSettled(capture.pending);
-    if (capture.violation) throw new SiteInspectError("blocked_by_policy", capture.violation);
     const resources = mergeResources(
       domResources,
       [...capture.resources.values()],
@@ -488,7 +480,6 @@ export async function inspectSite(options: InspectSiteOptions): Promise<InspectS
     const full = await shrinkToFit(await jpeg(page, { fullPage: true, quality: 75 }));
     writeFileSync(join(outDir, "viewport.jpg"), viewportShot);
     writeFileSync(join(outDir, "fullpage.jpg"), full.data);
-    if (capture.violation) throw new SiteInspectError("blocked_by_policy", capture.violation);
 
     const { site, fontPicks } = assembleStyle({
       requestedUrl: url,
@@ -503,8 +494,15 @@ export async function inspectSite(options: InspectSiteOptions): Promise<InspectS
     });
 
     mkdirSync(join(outDir, "fonts"), { recursive: true });
+    const takenFontNames = new Set<string>();
     const fonts: InspectSiteResult["fonts"] = fontPicks.map((pick) => {
-      const file = `fonts/${fileNameOf(pick.url, pick.mimeType, `${pick.family}-${pick.weight}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))}`;
+      const name = fontFileName(
+        pick.url,
+        pick.mimeType,
+        faceName(pick.family, pick.weight, pick.style),
+        takenFontNames,
+      );
+      const file = `fonts/${name}`;
       writeFileSync(join(outDir, file), pick.data);
       return {
         file,

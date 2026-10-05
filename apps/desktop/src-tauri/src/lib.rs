@@ -82,6 +82,7 @@ mod project_meta;
 mod recents;
 mod report;
 mod research_policy;
+mod shell_links;
 mod sidecar;
 mod structure;
 mod telemetry;
@@ -115,6 +116,57 @@ enum Mode {
     Prod,
 }
 
+/// Bookkeeping for opening projects without holding `AppState` across the
+/// slow part. A sidecar start waits on a port handshake and a readiness poll
+/// (up to about 105 s) and a teardown waits out a SIGTERM grace; neither may
+/// run under the lock the main-thread hooks (navigation, menus, quit) take.
+/// An open therefore takes the previous server out, releases the lock, starts
+/// the replacement, and commits only if no newer open began meanwhile.
+#[derive(Debug, Default)]
+struct OpenGate {
+    generation: u64,
+    /// The window has navigated to the committed Studio origin, so a
+    /// navigation back to the home origin really leaves a project. Before
+    /// that (the committed server is not on screen yet) a home navigation
+    /// is a reload of the Projects page, not a close.
+    studio_shown: bool,
+}
+
+impl OpenGate {
+    /// A new open supersedes every open still in flight.
+    fn begin(&mut self) -> u64 {
+        self.generation += 1;
+        self.generation
+    }
+
+    fn is_current(&self, generation: u64) -> bool {
+        self.generation == generation
+    }
+
+    /// Drop every open still in flight: none of them is current any more.
+    fn cancel_in_flight(&mut self) {
+        self.generation += 1;
+    }
+
+    /// The window navigated to the committed Studio server.
+    fn studio_navigated(&mut self) {
+        self.studio_shown = true;
+    }
+
+    /// The window navigated to the home origin: whether that closes the
+    /// project on screen (and so the server must go). A home navigation that
+    /// is only a reload, or lands before the window ever showed the new
+    /// server, closes nothing.
+    fn home_navigated(&mut self) -> bool {
+        std::mem::take(&mut self.studio_shown)
+    }
+
+    /// The server was taken out of the state for teardown.
+    fn released(&mut self) {
+        self.studio_shown = false;
+    }
+}
+
 /// Everything the app owns for the lifetime of the process.
 /// The sidecar is a `Child`, so it has to be reachable from the menu handler and
 /// from shutdown. Dropping this state — on every exit path, including Cmd+Q —
@@ -133,6 +185,50 @@ struct AppState {
     studio_origin: Option<String>,
     dev_origin: Option<String>,
     dev_projects_dir: Option<PathBuf>,
+    gate: OpenGate,
+}
+
+impl AppState {
+    /// Forget the open project and take its server out for teardown. The
+    /// caller drops the server after releasing the lock: the teardown waits
+    /// out the SIGTERM grace.
+    fn release_studio(&mut self) -> Option<StudioServer> {
+        self.project = None;
+        self.studio_origin = None;
+        self.home.clear_current();
+        self.home.set_studio_origin(None);
+        self.gate.released();
+        self.studio.take()
+    }
+
+    /// Quit and update teardown: every open still starting its server is
+    /// dropped (its server is terminated, the window is not navigated) and the
+    /// Projects page stops showing "opening" for it.
+    fn cancel_opens(&mut self) {
+        self.gate.cancel_in_flight();
+        self.home.set_open_phase(OpenPhase::Idle);
+    }
+
+    /// A navigation of the main window to the home origin: closes the open
+    /// project only when the window was really showing it (see `OpenGate`).
+    fn close_after_home_navigation(&mut self) -> Option<StudioServer> {
+        if self.gate.home_navigated() {
+            self.release_studio()
+        } else {
+            None
+        }
+    }
+
+    /// A navigation of the main window to `origin` (`normalize_origin`).
+    fn navigated(&mut self, origin: &str) -> Option<StudioServer> {
+        if origin == self.home_origin {
+            return self.close_after_home_navigation();
+        }
+        if self.studio_origin.as_deref() == Some(origin) {
+            self.gate.studio_navigated();
+        }
+        None
+    }
 }
 
 fn log_line(message: &str) {
@@ -197,92 +293,132 @@ fn register_dev_project(_projects_dir: &Path, _dir: &Path, _id: &str) -> std::io
 /// than a new request. Restarting is also what stops the previous process
 /// group's Chrome instances from lingering. The home server is untouched: it
 /// keeps serving the Projects page underneath for the way back.
+///
+/// `AppState` is locked only for short reads and the final commit, never
+/// across the teardown of the previous server or the start of the new one
+/// (see `OpenGate`). `Ok(None)` means a newer open took over while this one
+/// started: its server was dropped and the window was left to the newer open.
 fn open_project(
     app: &tauri::AppHandle,
     dir: PathBuf,
     workspace: Option<String>,
-) -> Result<String, CodedError> {
+) -> Result<Option<String>, CodedError> {
     let project = structure::validate_structure(&dir).map_err(|e| e.coded())?;
     // Resolved before locking the state: the window lookup may need the
     // main thread. The raw `language` preference goes along so Studio can
     // pick the language before preferences load (it resolves `system` itself).
     let theme = resolved_theme(app);
     let language = prefs::language(&prefs::load(&prefs::prefs_path())).to_string();
+    let poisoned = || CodedError::plain("app_state_poisoned", "app state is poisoned");
+    let app_state = app.state::<Mutex<AppState>>();
 
-    let target = {
-        let app_state = app.state::<Mutex<AppState>>();
-        let mut state = app_state
-            .lock()
-            .map_err(|_| CodedError::plain("app_state_poisoned", "app state is poisoned"))?;
-        state.project = Some(project.clone());
+    let (mode, home_origin) = {
+        let state = app_state.lock().map_err(|_| poisoned())?;
+        (state.mode, state.home_origin.clone())
+    };
+    // Everything that can fail before the old server goes away is resolved
+    // first, so such a failure leaves the window on a working project.
+    let production = match mode {
+        Mode::Dev => None,
+        Mode::Prod => {
+            let root = resource_root(app)?;
+            Some((
+                root.join("serve.mjs"),
+                root.join(platform::BUN_BIN),
+                root.join("hyperframes").join("cli.js"),
+            ))
+        }
+    };
 
-        let url = match state.mode {
-            Mode::Dev => {
-                let origin = state
-                    .dev_origin
-                    .clone()
-                    .ok_or_else(|| CodedError::plain("dev_origin_unknown", "the dev server origin is unknown"))?;
-                let projects_dir = state
-                    .dev_projects_dir
-                    .clone()
-                    .ok_or_else(|| {
-                        CodedError::plain("dev_projects_unknown", "the dev projects directory is unknown")
-                    })?;
-                register_dev_project(&projects_dir, &project.dir, &project.id).map_err(|e| {
-                    CodedError::new(
-                        "project_register_failed",
-                        format!("could not register the project: {e}"),
-                        serde_json::json!({ "detail": e.to_string() }),
-                    )
-                })?;
-                state.studio_origin = Some(origin.clone());
-                sidecar::studio_url(
-                    &origin,
-                    &project.id,
-                    &state.home_origin,
-                    theme,
-                    &language,
-                    workspace.as_deref(),
-                    window_frame(),
-                )
-            }
-            Mode::Prod => {
-                let resource_root = resource_root(app)?;
-                let bun = resource_root.join(platform::BUN_BIN);
-                let launcher = resource_root.join("serve.mjs");
-                let cli = resource_root.join("hyperframes").join("cli.js");
-                // Drop the previous server first: the new one must be able to
-                // bind, and the old Chrome instances must go with it.
-                // The home server stays up — only the Studio sidecar restarts.
-                state.studio = None;
-                let logger: std::sync::Arc<dyn Fn(&str) + Send + Sync> =
-                    std::sync::Arc::new(|line| {
-                        eprintln!("{line}");
-                        logfile::sidecar(line);
-                    });
-                let started = sidecar::start(&launcher, &bun, &cli, &project.dir, logger)
-                    .map_err(|e| e.coded())?;
-                let url = sidecar::studio_url(
-                    &started.origin(),
-                    &project.id,
-                    &state.home_origin,
-                    theme,
-                    &language,
-                    workspace.as_deref(),
-                    window_frame(),
-                );
-                state.studio_origin = Some(started.origin());
-                state.studio = Some(started);
-                url
-            }
+    let (generation, previous) = {
+        let mut state = app_state.lock().map_err(|_| poisoned())?;
+        let generation = state.gate.begin();
+        // Drop the previous server first: the new one must be able to
+        // bind, and the old Chrome instances must go with it.
+        // The home server stays up — only the Studio sidecar restarts.
+        let previous = match mode {
+            Mode::Dev => None,
+            Mode::Prod => state.release_studio(),
         };
+        (generation, previous)
+    };
+    // The teardown waits out the SIGTERM grace: not under the lock.
+    drop(previous);
+
+    let (studio_origin, studio) = match (mode, production) {
+        (Mode::Prod, Some((launcher, bun, cli))) => {
+            let logger: std::sync::Arc<dyn Fn(&str) + Send + Sync> =
+                std::sync::Arc::new(|line| {
+                    eprintln!("{line}");
+                    logfile::sidecar(line);
+                });
+            match sidecar::start(&launcher, &bun, &cli, &project.dir, logger) {
+                Ok(started) => (started.origin(), Some(started)),
+                Err(error) => {
+                    // The previous project is already gone, so the window
+                    // would stay on a dead backend; show the failure on the
+                    // Projects page instead.
+                    let error = error.coded();
+                    let current = app_state
+                        .lock()
+                        .map(|state| state.gate.is_current(generation))
+                        .unwrap_or(true);
+                    if !current {
+                        // A newer open owns the window and the phase now.
+                        return Ok(None);
+                    }
+                    abandon_open(app, &dir, &error);
+                    return Err(error);
+                }
+            }
+        }
+        _ => {
+            let state = app_state.lock().map_err(|_| poisoned())?;
+            let origin = state
+                .dev_origin
+                .clone()
+                .ok_or_else(|| CodedError::plain("dev_origin_unknown", "the dev server origin is unknown"))?;
+            let projects_dir = state.dev_projects_dir.clone().ok_or_else(|| {
+                CodedError::plain("dev_projects_unknown", "the dev projects directory is unknown")
+            })?;
+            drop(state);
+            register_dev_project(&projects_dir, &project.dir, &project.id).map_err(|e| {
+                CodedError::new(
+                    "project_register_failed",
+                    format!("could not register the project: {e}"),
+                    serde_json::json!({ "detail": e.to_string() }),
+                )
+            })?;
+            (origin, None)
+        }
+    };
+
+    let target = sidecar::studio_url(
+        &studio_origin,
+        &project.id,
+        &home_origin,
+        theme,
+        &language,
+        workspace.as_deref(),
+        window_frame(),
+    );
+    let replaced = {
+        let mut state = app_state.lock().map_err(|_| poisoned())?;
+        if !state.gate.is_current(generation) {
+            // A newer open owns the window and the phase now.
+            drop(state);
+            drop(studio);
+            return Ok(None);
+        }
+        state.project = Some(project.clone());
+        state.studio_origin = Some(studio_origin.clone());
+        let replaced = std::mem::replace(&mut state.studio, studio);
         state.home.record_open(&project.id, &project.dir);
         state.home.set_open_phase(OpenPhase::Idle);
-        if let Some(origin) = state.studio_origin.clone() {
-            state.home.set_studio_origin(Some(origin));
-        }
-        url
+        state.home.set_studio_origin(Some(studio_origin));
+        replaced
     };
+    drop(replaced);
 
     app.get_webview_window("main")
         .ok_or_else(|| CodedError::plain("main_window_gone", "the main window is gone"))?
@@ -304,7 +440,55 @@ fn open_project(
     // background once the Studio server answers, then cache the bytes the
     // home page serves. Best-effort: failures just keep the placeholder.
     thumbnails::refresh_thumbnail_async(app, project.dir.clone(), project.id.clone());
-    Ok(target)
+    Ok(Some(target))
+}
+
+/// An open failed after the previous project's server was already stopped:
+/// publish the failure for the Projects page and take the window there, so it
+/// does not stay on a Studio page with no backend behind it. The failure is
+/// published first, so the page it loads already shows it.
+fn abandon_open(app: &tauri::AppHandle, dir: &Path, error: &CodedError) {
+    if let Some(state) = app.try_state::<Mutex<AppState>>() {
+        if let Ok(state) = state.lock() {
+            state.home.set_open_phase(OpenPhase::Failed {
+                label: open_label(dir),
+                error: error.clone(),
+            });
+        }
+    }
+    if !window_is_on_home(app) {
+        show_home(app);
+    }
+}
+
+/// The Studio server origin the window shows, if a project is open.
+fn studio_origin(app: &tauri::AppHandle) -> Option<String> {
+    app.try_state::<Mutex<AppState>>()?
+        .lock()
+        .ok()?
+        .studio_origin
+        .clone()
+}
+
+/// The origins whose pages may start a download: the Projects page and the
+/// Studio server the window shows.
+fn trusted_origins(app: &tauri::AppHandle) -> Vec<String> {
+    let Some(state) = app.try_state::<Mutex<AppState>>() else {
+        return Vec::new();
+    };
+    let Ok(state) = state.lock() else {
+        return Vec::new();
+    };
+    let mut origins = vec![state.home_origin.clone()];
+    origins.extend(state.studio_origin.clone());
+    origins
+}
+
+/// The name an open shows while it runs and when it fails.
+fn open_label(dir: &Path) -> String {
+    dir.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| dir.display().to_string())
 }
 
 /// The directory holding the bundled runtime payload.
@@ -809,6 +993,7 @@ pub fn run() {
                     home_origin: String::new(),
                     studio_origin: None,
                     dev_projects_dir: Some(studio_projects_dir()),
+                    gate: OpenGate::default(),
                     dev_origin: Some(origin),
                 }
             } else {
@@ -821,6 +1006,7 @@ pub fn run() {
                     studio_origin: None,
                     dev_origin: None,
                     dev_projects_dir: None,
+                    gate: OpenGate::default(),
                 }
             };
             state.home_origin = state.home.origin();
@@ -834,7 +1020,6 @@ pub fn run() {
             let url: tauri::Url = initial_url
                 .parse()
                 .map_err(|e| format!("invalid window URL {initial_url:?}: {e}"))?;
-            let home_origin = initial_url.clone();
             let mut window = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url))
                 .title("OpenVids")
                 .inner_size(1600.0, 1000.0)
@@ -922,14 +1107,22 @@ pub fn run() {
             #[cfg(windows)]
             {
                 window = window.visible(false);
-                let reveal_handle = handle.clone();
-                window = window.on_page_load(move |window, payload| {
-                    use tauri::webview::PageLoadEvent;
-                    if payload.event() == PageLoadEvent::Finished && window.label() == "main" {
-                        show_main_window(&reveal_handle);
-                    }
-                });
             }
+            let page_handle = handle.clone();
+            window = window.on_page_load(move |_webview, payload| {
+                use tauri::webview::PageLoadEvent;
+                match payload.event() {
+                    PageLoadEvent::Started => {
+                        keep_main_window_on_app_pages(&page_handle, payload.url());
+                    }
+                    // Start-up flash (Windows): reveal the hidden window once
+                    // the first page has loaded.
+                    PageLoadEvent::Finished => {
+                        #[cfg(windows)]
+                        show_main_window(&page_handle);
+                    }
+                }
+            });
             window
                 // Tauri otherwise swallows OS file drops and re-emits them as
                 // its own drag-drop event. Studio imports assets through the
@@ -945,27 +1138,49 @@ pub fn run() {
                 // The closure only parses the URL, locks the mutex briefly and
                 // spawns a worker: the sidecar teardown (up to a 3 s SIGTERM
                 // grace in `sidecar::terminate`) happens on that thread, never
-                // on the navigation callback.
+                // on the navigation callback. Only a navigation away from the
+                // Studio the window showed closes it: a reload of the Projects
+                // page, or one that lands while an open is still running, does
+                // not (`OpenGate`).
                 // `target="_blank"` links and `window.open` from Studio or
                 // the home page (source homepages, license links, provider
-                // sign-in pages): never a second app window. A plain https
-                // address goes to the default browser, anything else is dropped.
+                // sign-in pages, chat Markdown, the render-QA row): never a
+                // second app window and never a navigation of this one.
+                // `shell_links` decides: web and mail addresses go to the
+                // default apps, a render's own link to the Studio server's
+                // open-in-player route, anything else is dropped.
                 .on_new_window(|url, _features| {
-                    if let Ok(url) = home_api::parse_external_url(url.as_str()) {
-                        std::thread::spawn(move || {
-                            if let Err(err) = home_api::open_external(&url) {
-                                log_line(&format!("could not open the browser: {err}"));
-                            }
-                        });
-                    }
+                    let studio = app_handle_for_home_cleanup().and_then(|app| studio_origin(&app));
+                    shell_links::run_link_action(shell_links::classify_link(url.as_str(), studio.as_deref()));
                     tauri::webview::NewWindowResponse::Deny
                 })
-                .on_navigation(move |url| {
-                    if normalize_origin(url) != home_origin {
-                        return true;
+                // Without a download handler the webview cancels every
+                // `<a download>` (render Download, frame capture, a conflict
+                // version): they save to Downloads and show the file.
+                .on_download(|webview, event| match event {
+                    tauri::webview::DownloadEvent::Requested { url, destination } => {
+                        let origins = trusted_origins(webview.app_handle());
+                        shell_links::download_requested(&url, destination, &origins)
                     }
-                    let server =
-                        app_handle_for_home_cleanup().and_then(|app| take_closed_studio(&app));
+                    tauri::webview::DownloadEvent::Finished { url, path, success } => {
+                        shell_links::download_finished(&url, path, success);
+                        true
+                    }
+                    _ => true,
+                })
+                // No top-level allow-list here, deliberately: wry 0.57's
+                // navigation handler receives only the URL string, and on
+                // macOS (WKNavigationDelegate) it fires for subframe loads as
+                // well as the main frame, with no way to tell them apart. A
+                // policy that denies unknown origins would also cancel every
+                // external iframe a composition embeds. The top-level check
+                // lives in the `on_page_load` hook above, which fires for the
+                // main frame only. The webview holds no
+                // IPC capability beyond window dragging, so a navigated-away
+                // window cannot reach the shell.
+                .on_navigation(move |url| {
+                    let server = app_handle_for_home_cleanup()
+                        .and_then(|app| note_main_navigation(&app, url));
                     if let Some(server) = server {
                         std::thread::spawn(move || drop(server));
                     }
@@ -1062,9 +1277,14 @@ pub fn run() {
 /// is taken out of the state first and reaped without the lock held (its
 /// teardown waits out the SIGTERM grace in `sidecar::terminate`).
 fn stop_owned_processes(app: &tauri::AppHandle) {
-    let studio = app
-        .try_state::<Mutex<AppState>>()
-        .and_then(|state| state.lock().ok().and_then(|mut state| state.studio.take()));
+    // Under one lock: an open still starting its sidecar can no longer
+    // commit (it terminates what it started), and no server is left behind.
+    let studio = app.try_state::<Mutex<AppState>>().and_then(|state| {
+        state.lock().ok().and_then(|mut state| {
+            state.cancel_opens();
+            state.studio.take()
+        })
+    });
     drop(studio);
     agent_proxy::shutdown();
     chrome_install::shutdown();
@@ -1118,28 +1338,21 @@ fn open_project_async(app: &tauri::AppHandle, dir: PathBuf, workspace: Option<St
     // which the window still shows — can report "opening" immediately.
     if let Some(state) = handle.try_state::<Mutex<AppState>>() {
         if let Ok(state) = state.lock() {
-            let label = dir
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| dir.display().to_string());
-            state.home.set_open_phase(OpenPhase::Opening { label });
+            state.home.set_open_phase(OpenPhase::Opening {
+                label: open_label(&dir),
+            });
         }
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let id = dir
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        let label = open_label(&dir);
         match open_project(&handle, dir, workspace) {
-            Ok(url) => log_line(&format!("opened {url}")),
+            Ok(Some(url)) => log_line(&format!("opened {url}")),
+            Ok(None) => log_line(&format!("opening {label} was superseded by a newer open")),
             Err(err) => {
                 log_line(&format!("could not open the project: {err}"));
                 if let Some(state) = handle.try_state::<Mutex<AppState>>() {
                     if let Ok(state) = state.lock() {
-                        state.home.set_open_phase(OpenPhase::Failed {
-                            label: id,
-                            error: err,
-                        });
+                        state.home.set_open_phase(OpenPhase::Failed { label, error: err });
                     }
                 }
             }
@@ -1395,20 +1608,51 @@ fn normalize_origin(url: &tauri::Url) -> String {
     )
 }
 
-/// The shared half of "back to projects": forget the open project, idle the
-/// open phase, and hand the old sidecar to the caller for teardown.
-/// Called from the navigation hook on both the menu path and the in-Studio
-/// back-button path, so the two cannot drift apart.
+/// Whether a top-level page of the main window may stay on screen: the blank
+/// document, or a page of one of the app's own servers (Projects, the open
+/// project's Studio).
+fn top_level_allowed(url: &tauri::Url, trusted_origins: &[String]) -> bool {
+    url.as_str() == "about:blank"
+        || (url.scheme() == "http" && trusted_origins.contains(&normalize_origin(url)))
+}
+
+/// The main window committed a top-level document. A page that took the
+/// window over (a composition setting `top.location`) would fill it with no
+/// address bar, so anything outside the app's servers sends the window back to
+/// the Projects page. Page-load events fire for the top-level document only
+/// (WKNavigationDelegate `didCommitNavigation`, WebView2 `ContentLoading`), so
+/// the external iframes a composition embeds are not affected, unlike
+/// `on_navigation`.
+fn keep_main_window_on_app_pages(app: &tauri::AppHandle, url: &tauri::Url) {
+    let trusted = trusted_origins(app);
+    // No state yet (start-up) says nothing about what is trusted.
+    if trusted.is_empty() || top_level_allowed(url, &trusted) {
+        return;
+    }
+    log_line("a page outside the app took over the window, showing the Projects page");
+    let app = app.clone();
+    std::thread::spawn(move || show_home(&app));
+}
+
+/// "Back to projects" for callers that close the project themselves (the
+/// update path): forget the open project and hand the old sidecar to the
+/// caller for teardown. The window's own navigations go through
+/// `AppState::navigated`, which closes only a project the window showed.
 fn take_closed_studio(app: &tauri::AppHandle) -> Option<StudioServer> {
     let app_state = app.state::<Mutex<AppState>>();
     let Ok(mut state) = app_state.lock() else {
         return None;
     };
-    state.project = None;
-    state.studio_origin = None;
-    state.home.clear_current();
-    state.home.set_studio_origin(None);
-    state.studio.take()
+    state.cancel_opens();
+    state.release_studio()
+}
+
+/// The main window is navigating to `url`: keep the open-project state in
+/// step, and return the server a navigation back to the Projects page closes.
+fn note_main_navigation(app: &tauri::AppHandle, url: &tauri::Url) -> Option<StudioServer> {
+    let state = app.try_state::<Mutex<AppState>>()?;
+    let mut state = state.lock().ok()?;
+    state.navigated(&normalize_origin(url))
 }
 
 fn app_dirs(app: &tauri::AppHandle) -> (PathBuf, PathBuf, PathBuf) {
@@ -1531,5 +1775,79 @@ mod back_navigation_tests {
                 "quit",
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod open_gate_tests {
+    use super::OpenGate;
+
+    #[test]
+    fn a_newer_open_supersedes_the_one_in_flight() {
+        let mut gate = OpenGate::default();
+        let first = gate.begin();
+        assert!(gate.is_current(first));
+        let second = gate.begin();
+        assert!(!gate.is_current(first), "the first open must not commit over the second");
+        assert!(gate.is_current(second));
+    }
+
+    #[test]
+    fn a_home_navigation_closes_only_a_studio_the_window_showed() {
+        let mut gate = OpenGate::default();
+        gate.begin();
+        // The server is committed but the window has not reached it yet: a
+        // reload of the Projects page landing now must not take it.
+        assert!(!gate.home_navigated());
+        gate.studio_navigated();
+        // Back to the Projects page from the shown Studio closes it, once.
+        assert!(gate.home_navigated());
+        assert!(!gate.home_navigated(), "a second home load (a reload) closes nothing");
+    }
+
+    #[test]
+    fn a_released_server_is_no_longer_shown() {
+        let mut gate = OpenGate::default();
+        gate.begin();
+        gate.studio_navigated();
+        gate.released();
+        assert!(!gate.home_navigated());
+    }
+
+    #[test]
+    fn cancelling_drops_the_open_in_flight_but_not_the_next_one() {
+        let mut gate = OpenGate::default();
+        let in_flight = gate.begin();
+        gate.cancel_in_flight();
+        assert!(!gate.is_current(in_flight), "a cancelled open must not commit");
+        let next = gate.begin();
+        assert!(gate.is_current(next));
+    }
+}
+
+#[cfg(test)]
+mod top_level_tests {
+    use super::top_level_allowed;
+
+    fn allowed(raw: &str) -> bool {
+        let trusted = vec!["http://127.0.0.1:5210".to_string(), "http://127.0.0.1:5211".to_string()];
+        top_level_allowed(&raw.parse().expect("url"), &trusted)
+    }
+
+    #[test]
+    fn only_the_apps_own_pages_may_fill_the_window() {
+        assert!(allowed("http://127.0.0.1:5210/"));
+        assert!(allowed("http://127.0.0.1:5211/#/project/p?theme=dark"));
+        assert!(allowed("about:blank"));
+        for raw in [
+            "https://example.com/",
+            "http://127.0.0.1:9999/",
+            "http://localhost:5210/",
+            "https://127.0.0.1:5210/",
+            "file:///etc/passwd",
+            "data:text/html,hi",
+        ] {
+            assert!(!allowed(raw), "{raw}");
+        }
     }
 }

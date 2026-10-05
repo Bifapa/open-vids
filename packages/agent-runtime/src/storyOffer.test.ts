@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ChatService } from "./chats.js";
 import type { StoryOffer, StoryOfferPart } from "@hyperframes/agent-protocol";
 import type { ScriptedSession } from "./testing/backend.js";
 import { chapterNode, storyGraph, storyView } from "./testing/story.js";
@@ -52,6 +53,23 @@ async function runOfferTurn(fixture: RuntimeFixture, chatId: string): Promise<vo
 }
 
 describe("Story Mode offers in chat", () => {
+  it("reloads a chat whose log holds a Story Mode offer, with the offer card intact", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, []);
+      await runOfferTurn(fixture, chat.id);
+      const before = offerOf(fixture, chat.id);
+      const loaded = await fixture.store.load(chat.id);
+      expect(loaded.events.some((event) => event.type === "storyOffer.updated")).toBe(true);
+
+      const reopened = await ChatService.open(fixture.scope, fixture.store, { now: fixture.now });
+      expect(reopened.get(chat.id)).toEqual(fixture.chats.get(chat.id));
+      expect(offerOf({ ...fixture, chats: reopened }, chat.id)).toEqual(before);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("offers Story Mode from a normal Edit turn and refuses every project-changing call after the offer", async () => {
     const fixture = await createRuntimeFixture();
     try {

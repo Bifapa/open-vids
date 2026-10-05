@@ -58,6 +58,38 @@ describe("GIF encode of RGB frames among RGBA frames", () => {
   }, 60_000);
 });
 
+describe("GIF encode in a folder whose name contains '%'", () => {
+  it("escapes the directory so image2 reads the frames", () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-gif-pct-"));
+    try {
+      const dir = join(root, "Promo 50% off", "frames");
+      mkdirSync(dir, { recursive: true });
+      for (let i = 1; i <= 3; i++) {
+        const frame = join(dir, `frame_${String(i).padStart(6, "0")}.png`);
+        expect(
+          ffmpeg(["-f", "lavfi", "-i", "color=c=red:s=32x32", "-frames:v", "1", frame]).status,
+        ).toBe(0);
+      }
+      const args = {
+        framesDir: dir,
+        framePattern: "frame_%06d.png",
+        palettePath: join(root, "palette.png"),
+        outputPath: join(root, "out.gif"),
+        fps: { num: 10, den: 1 },
+        loop: 0,
+        preserveAlpha: false,
+      };
+      expect(buildGifPalettegenArgs(args)).toContain(
+        join(root, "Promo 50%% off", "frames", "frame_%06d.png"),
+      );
+      expect(ffmpeg(buildGifPalettegenArgs(args)).status).toBe(0);
+      expect(ffmpeg(buildGifPaletteuseArgs(args)).status).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
 function encodeInput(dir: string, framesDir: string): EncodeStageInput {
   return {
     job: { config: { fps: { num: 10, den: 1 }, gifLoop: 0 } },

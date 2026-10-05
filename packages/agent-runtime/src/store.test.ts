@@ -38,6 +38,53 @@ describe("runtime persistence and prompt rendering", () => {
     }
   });
 
+  it("skips damaged and unknown records with a log line instead of failing every chat", async () => {
+    const fixture = await createRuntimeFixture();
+    const logged: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      logged.push(args.join(" "));
+    };
+    try {
+      const chat = await fixture.chats.create({ title: "Survivor" });
+      const eventFile = join(
+        fixture.scope.projectDir,
+        ".hyperframes",
+        "agent",
+        "chats",
+        chat.id,
+        "events.jsonl",
+      );
+      await appendFile(
+        eventFile,
+        [
+          "this is not json",
+          JSON.stringify({ seq: 2, chatId: chat.id, ts: 1, type: "from.the.future" }),
+          JSON.stringify({
+            seq: 3,
+            chatId: chat.id,
+            ts: 1,
+            type: "storyOffer.updated",
+            messageId: "m1",
+            offer: { id: "o1", state: "mystery", chapters: [], requestedAt: 1 },
+          }),
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const loaded = await fixture.store.load(chat.id);
+      expect(loaded.events).toHaveLength(1);
+      expect(loaded.state?.chat.title).toBe("Survivor");
+      expect(logged.filter((line) => line.includes("skipping invalid chat event"))).toHaveLength(3);
+      const reopened = await ChatService.open(fixture.scope, fixture.store, { now: fixture.now });
+      expect(reopened.get(chat.id)?.chat.title).toBe("Survivor");
+    } finally {
+      console.error = original;
+      await fixture.cleanup();
+    }
+  });
+
   it("drain waits for fire-and-forget emits so teardown can remove the directory", async () => {
     const fixture = await createRuntimeFixture();
     try {

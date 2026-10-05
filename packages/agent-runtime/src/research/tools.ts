@@ -1,10 +1,12 @@
 import {
   RESEARCH_LIMITS,
   RESEARCH_MEDIA_KINDS,
+  WEBSITE_FILE_MODES,
   WEBSITE_LIMITS,
   isRecord,
   type AgentId,
   type SpecialistId,
+  type WebsiteFileMode,
 } from "@hyperframes/agent-protocol";
 import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
 import type { StoryTurnMode } from "../story/tools.js";
@@ -24,6 +26,17 @@ export type ResearchToolName = (typeof RESEARCH_TOOL_NAMES)[keyof typeof RESEARC
 
 export function isResearchToolName(name: string): name is ResearchToolName {
   return Object.values<string>(RESEARCH_TOOL_NAMES).includes(name);
+}
+
+/**
+ * The mode of a `get_website_file` call as the tool reads it: surrounding whitespace is ignored, anything but an
+ * exact `save` or `read` is undefined. The one reading the executor and the save gates (`savesWebsiteFiles`) share,
+ * so a padded `" save"` is a save for both.
+ */
+export function websiteFileMode(value: unknown): WebsiteFileMode | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return WEBSITE_FILE_MODES.find((mode) => mode === trimmed);
 }
 
 type Executor = (name: string, args: unknown, signal: AbortSignal) => Promise<HostToolResult>;

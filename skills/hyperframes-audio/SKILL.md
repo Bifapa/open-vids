@@ -367,7 +367,7 @@ under any voice track (narration, avatar speech, interview, voiceover) gets a
 carve as part of finishing the mix, not as a polish step to get to if there is
 time. Place both tracks, run the command below (default strength `0.8`; add
 `--bed` / `--voice` when detection picks wrong), confirm the written
-`data-fx-carve`, `data-fx-chain` and `data-automation` with `npx hyperframes check`,
+`data-fx-carve`, `data-fx-chain` and `data-automation` with `hyperframes check`,
 and only then render. A volume duck on its own is not a finished mix: it leaves
 the voice and the bed fighting in the 1–3 kHz band and costs the bed all of its
 presence for the whole voiceover. Skip the carve only when there is no voice for

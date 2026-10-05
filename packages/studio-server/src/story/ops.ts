@@ -1,6 +1,7 @@
 import {
   STORY_LIMITS,
   isChapter,
+  isVideoRange,
   isMaterial,
   parseStoryFields,
   validateStoryGraph,
@@ -252,6 +253,7 @@ async function buildNode(env: OpsEnv, input: StoryNodeInput, id: string): Promis
     case "video": {
       const asset = await mediaAsset(env, input.asset ?? "", ["video"], "asset");
       const sourceIn = input.sourceIn ?? 0;
+      assertVideoRange(input.title ?? asset, sourceIn, input.sourceOut ?? null);
       return {
         ...base,
         kind: "video",
@@ -360,8 +362,28 @@ async function updateNode(
       changes.previewFrame = middleFrame(ranges.filter(isRangeOf));
     }
   }
+  if (node.kind === "video" && ("sourceIn" in changes || "sourceOut" in changes)) {
+    const sourceIn = typeof changes.sourceIn === "number" ? changes.sourceIn : node.sourceIn;
+    const sourceOut =
+      "sourceOut" in changes
+        ? typeof changes.sourceOut === "number"
+          ? changes.sourceOut
+          : null
+        : node.sourceOut;
+    assertVideoRange(node.title, sourceIn, sourceOut);
+  }
   Object.assign(node, changes);
   return { op: op.op, id: node.id };
+}
+
+/** A video node's source range must be one the stored graph reads back (the same rule as the protocol's parser). */
+function assertVideoRange(title: string, sourceIn: number, sourceOut: number | null): void {
+  if (!isVideoRange(sourceIn, sourceOut)) {
+    throw new StoryFailure(
+      "invalid_request",
+      `Video "${title}": sourceOut (${sourceOut}) must be after sourceIn (${sourceIn}).`,
+    );
+  }
 }
 
 function isRangeOf(value: unknown): value is StorySourceRange {
@@ -386,6 +408,11 @@ function removeNode(
   if (node.locked) throw locked(node);
   if (node.createdBy === "user") {
     throw decision(`${describe(node)} was added by the user.`);
+  }
+  if (node.userEdited.length > 0) {
+    throw decision(
+      `The user set ${node.userEdited.join(", ")} of ${describe(node)} by hand, which removing it would drop.`,
+    );
   }
   const edges = graph.edges.filter((edge) => edge.from === node.id || edge.to === node.id);
   const userEdge = edges.find((edge) => edge.createdBy === "user");

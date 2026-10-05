@@ -77,7 +77,7 @@ same colored string for the same time.
 Install, then author your own run:
 
 ```bash
-npx hyperframes add code-terminal-run
+hyperframes add code-terminal-run
 ```
 
 In `compositions/components/code-terminal-run.html`, replace the slot

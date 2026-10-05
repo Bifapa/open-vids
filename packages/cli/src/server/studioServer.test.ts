@@ -581,7 +581,7 @@ describe("Studio project lint endpoint", () => {
 
 describe("host guarding", () => {
   // The /api/telemetry-identity endpoint is gone (telemetry removed). The
-  // DNS-rebinding Host guard lives on in server/hostGuard.ts (identityAllowed)
+  // DNS-rebinding Host guard lives on in studio-server hostGuard.ts (identityAllowed)
   // with its own unit coverage; the index route keeps a guard call so a
   // rebound origin cannot use `/` as a probe.
   it("has no telemetry-identity endpoint", async () => {

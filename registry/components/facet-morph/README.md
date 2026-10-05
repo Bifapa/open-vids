@@ -53,7 +53,7 @@ silhouette, 3.95s at the 3-form default.
 ## Worked example
 
 ```bash
-npx hyperframes add facet-morph
+hyperframes add facet-morph
 ```
 
 Mount it from a host composition like any sub-composition:

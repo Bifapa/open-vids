@@ -141,13 +141,22 @@ function parseProbeJson(stdout: string): FFProbeOutput {
   }
 }
 
-const videoMetadataCache = new Map<string, Promise<VideoMetadata>>();
+interface IdentifiedProbe<T> {
+  identity: string | null;
+  promise: Promise<T>;
+}
+
+// Keyed by path, validated by file identity (dev/ino/size/mtime/ctime): a
+// file replaced under the same name must be re-probed, otherwise a long-lived
+// process (Studio server) renders with the old duration/fps/channels. One
+// entry per path, so replaced files do not accumulate.
+const videoMetadataCache = new Map<string, IdentifiedProbe<VideoMetadata>>();
 const finalVideoFrameTimestampCache = new Map<string, Promise<number>>();
 const finalVideoFrameTimestampSignalCaches = new WeakMap<
   AbortSignal,
   Map<string, Promise<number>>
 >();
-const audioMetadataCache = new Map<string, Promise<AudioMetadata>>();
+const audioMetadataCache = new Map<string, IdentifiedProbe<AudioMetadata>>();
 interface MediaProbeCacheEntry {
   identity: string;
   promise: Promise<FFProbeOutput>;
@@ -326,6 +335,27 @@ function mediaFileIdentity(filePath: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Memoize `create()` per path while the file identity is unchanged. Identity
+ * is captured synchronously before the probe starts, so a replacement that
+ * lands mid-probe is detected on the next call. Failed probes are evicted.
+ */
+function memoizeByFileIdentity<T>(
+  cache: Map<string, IdentifiedProbe<T>>,
+  filePath: string,
+  create: () => Promise<T>,
+): Promise<T> {
+  const identity = mediaFileIdentity(filePath);
+  const cached = cache.get(filePath);
+  if (cached && cached.identity === identity) return cached.promise;
+  const promise = create();
+  cache.set(filePath, { identity, promise });
+  promise.catch(() => {
+    if (cache.get(filePath)?.promise === promise) cache.delete(filePath);
+  });
+  return promise;
 }
 
 async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise<FFProbeOutput> {
@@ -665,11 +695,14 @@ export function parseFrameRate(frameRateStr: string | undefined): number {
  * deprecated alias below), this also handles still images such as PNG so it
  * can be used uniformly for any visual asset the HDR pipeline encounters.
  */
-export async function extractMediaMetadata(filePath: string): Promise<VideoMetadata> {
-  const cached = videoMetadataCache.get(filePath);
-  if (cached) return cached;
+export function extractMediaMetadata(filePath: string): Promise<VideoMetadata> {
+  return memoizeByFileIdentity(videoMetadataCache, filePath, () =>
+    probeMediaMetadataUncached(filePath),
+  );
+}
 
-  const probePromise = (async (): Promise<VideoMetadata> => {
+function probeMediaMetadataUncached(filePath: string): Promise<VideoMetadata> {
+  return (async (): Promise<VideoMetadata> => {
     // Lazily memoized. This is a pure fallback, but it used to run eagerly
     // and synchronously BEFORE the first await: readFileSync plus a CRC walk
     // per file, so a caller fanning out over composition.images with
@@ -795,14 +828,6 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       frames,
     };
   })();
-
-  videoMetadataCache.set(filePath, probePromise);
-  probePromise.catch(() => {
-    if (videoMetadataCache.get(filePath) === probePromise) {
-      videoMetadataCache.delete(filePath);
-    }
-  });
-  return probePromise;
 }
 
 /**
@@ -816,7 +841,7 @@ function resolveStreamWindow(
   const videoStreamDurationSeconds = metadata.videoStreamDurationSeconds;
   const candidateStart = metadata.videoStreamStartSeconds ?? 0;
   const videoStreamStartSeconds = Number.isFinite(candidateStart) ? candidateStart : 0;
-  const cacheKey = `${filePath}\0${String(videoStreamStartSeconds)}\0${String(videoStreamDurationSeconds)}`;
+  const cacheKey = `${filePath}\0${mediaFileIdentity(filePath) ?? ""}\0${String(videoStreamStartSeconds)}\0${String(videoStreamDurationSeconds)}`;
   return { videoStreamStartSeconds, videoStreamDurationSeconds, cacheKey };
 }
 
@@ -916,18 +941,26 @@ export async function extractFinalVideoFrameTimestamp(
  */
 export const extractVideoMetadata = extractMediaMetadata;
 
-export async function extractAudioMetadata(
+export function extractAudioMetadata(
   filePath: string,
   options?: { signal?: AbortSignal },
 ): Promise<AudioMetadata> {
   // A caller-owned abort signal cannot safely share a cached in-flight probe:
   // cancelling one consumer would also cancel unrelated consumers. Signal-bound
   // probes therefore bypass the process-promise cache.
-  const cached = options?.signal ? undefined : audioMetadataCache.get(filePath);
-  if (cached) return cached;
+  const signal = options?.signal;
+  if (signal) return probeAudioMetadataUncached(filePath, signal);
+  return memoizeByFileIdentity(audioMetadataCache, filePath, () =>
+    probeAudioMetadataUncached(filePath),
+  );
+}
 
-  const probePromise = (async (): Promise<AudioMetadata> => {
-    const output = await probeMediaOutput(filePath, options?.signal);
+function probeAudioMetadataUncached(
+  filePath: string,
+  signal?: AbortSignal,
+): Promise<AudioMetadata> {
+  return (async (): Promise<AudioMetadata> => {
+    const output = await probeMediaOutput(filePath, signal);
     const audioStream = output.streams.find((s) => s.codec_type === "audio");
     if (!audioStream) throw new Error("[FFmpeg] No audio stream found");
 
@@ -977,7 +1010,7 @@ export async function extractAudioMetadata(
             "-print_format",
             "json",
           ],
-          options?.signal,
+          signal,
         );
         const packetOutput = parseProbeJson(packetStdout);
         const packetCount = Number(packetOutput.streams[0]?.nb_read_packets);
@@ -987,7 +1020,7 @@ export async function extractAudioMetadata(
       } catch (error) {
         // An abort is the caller's intent, not a refinement failure — let it
         // through. Anything else keeps the container duration we already have.
-        if (options?.signal?.aborted) throw error;
+        if (signal?.aborted) throw error;
       }
     }
 
@@ -1000,15 +1033,6 @@ export async function extractAudioMetadata(
       bitrate: output.format.bit_rate ? parseInt(output.format.bit_rate) : undefined,
     };
   })();
-
-  if (options?.signal) return probePromise;
-  audioMetadataCache.set(filePath, probePromise);
-  probePromise.catch(() => {
-    if (audioMetadataCache.get(filePath) === probePromise) {
-      audioMetadataCache.delete(filePath);
-    }
-  });
-  return probePromise;
 }
 
 export interface KeyframeAnalysis {

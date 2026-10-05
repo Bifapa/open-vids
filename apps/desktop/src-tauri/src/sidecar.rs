@@ -106,6 +106,13 @@ impl StudioServer {
     pub fn origin(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
     }
+
+    /// The exit status, once the process has ended.
+    fn exited(&mut self) -> Option<std::process::ExitStatus> {
+        self.child
+            .as_mut()
+            .and_then(|child| child.try_wait().ok().flatten())
+    }
 }
 
 /// The Studio deep link for a project (dev server or this sidecar).
@@ -249,6 +256,9 @@ pub fn start(
 
     let mut command = Command::new(bun);
     command
+        // The runtime is the shipped tree; a module that fails to resolve must
+        // fail, not be fetched from npm (Bun auto-installs without this flag).
+        .arg("--no-install")
         .arg(launcher)
         .arg(cli)
         .arg("preview")
@@ -269,6 +279,9 @@ pub fn start(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Project folders are untrusted input: the sidecar serves its bundled
+    // Studio and never a `@hyperframes/studio` found next to a project.
+    command.env("OPENVIDS_EMBEDDED_STUDIO", "1");
     for (key, value) in super::ffmpeg_install::managed_env() {
         command.env(key, value);
     }
@@ -277,12 +290,37 @@ pub fn start(
     // it spawned in one shot (process group on unix, Job Object on Windows).
     crate::proc::configure(&mut command);
 
-    let mut child = command.spawn().map_err(SidecarError::Spawn)?;
-    crate::proc::track(&child);
+    launch(command, log, PORT_REPORT_TIMEOUT, READY_TIMEOUT)
+}
 
-    if let Some(stderr) = child.stderr.take() {
+/// Spawn `command` (already configured for supervision) and wait until it
+/// reports a port and serves. The child belongs to the returned
+/// `StudioServer` from the moment it exists, so every failure return drops it
+/// and `StudioServer::drop` terminates its whole tree: a runtime that never
+/// became ready must not keep running (holding a port and any browser it
+/// started) after the caller has reported the failure.
+fn launch(
+    mut command: Command,
+    log: Arc<dyn Fn(&str) + Send + Sync>,
+    report_timeout: Duration,
+    ready_timeout: Duration,
+) -> Result<StudioServer, SidecarError> {
+    let child = command.spawn().map_err(SidecarError::Spawn)?;
+    crate::proc::track(&child);
+    let mut server = StudioServer {
+        child: Some(child),
+        port: 0,
+        host: "127.0.0.1".to_string(),
+    };
+    let (stdout, stderr) = match server.child.as_mut() {
+        Some(child) => (child.stdout.take(), child.stderr.take()),
+        None => (None, None),
+    };
+
+    if let Some(stderr) = stderr {
         // Surface runtime diagnostics in the app's own log instead of dropping
         // them on a pipe nobody reads.
+        let log = Arc::clone(&log);
         thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 log(&format!("[studio] {line}"));
@@ -291,18 +329,26 @@ pub fn start(
     }
 
     let (tx, rx) = mpsc::channel::<String>();
-    if let Some(stdout) = child.stdout.take() {
+    if let Some(stdout) = stdout {
+        // The reader owns the pipe for the child's whole life: every line is
+        // logged, and only the startup wait gets a copy. Once `launch` stops
+        // listening, lines still drain (a closed read end would break the
+        // child's later writes) and keep reaching the log.
         thread::spawn(move || {
+            let mut waiter = Some(tx);
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                if tx.send(line).is_err() {
-                    break;
+                log(&format!("[studio] {line}"));
+                if let Some(sender) = &waiter {
+                    if sender.send(line).is_err() {
+                        waiter = None;
+                    }
                 }
             }
         });
     }
 
     let mut last_line = String::new();
-    let report_deadline = Instant::now() + PORT_REPORT_TIMEOUT;
+    let report_deadline = Instant::now() + report_timeout;
     let bound_port = loop {
         if Instant::now() >= report_deadline {
             return Err(SidecarError::NoPortReport(last_line));
@@ -320,7 +366,7 @@ pub fn start(
                 // failure: keep waiting for the real report.
             }
             Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => {
-                if let Ok(Some(status)) = child.try_wait() {
+                if let Some(status) = server.exited() {
                     return Err(SidecarError::Spawned(format!(
                         "exit {status} before reporting a port; last output: {last_line}"
                     )));
@@ -328,28 +374,145 @@ pub fn start(
             }
         }
     };
+    server.port = bound_port;
 
     // A bound socket is not a ready server. Poll the API itself.
-    let deadline = Instant::now() + READY_TIMEOUT;
+    let deadline = Instant::now() + ready_timeout;
     let mut last_error = String::new();
     while Instant::now() < deadline {
-        if let Ok(Some(status)) = child.try_wait() {
+        if let Some(status) = server.exited() {
             return Err(SidecarError::Spawned(format!(
                 "exit {status} before serving; last output: {last_line}"
             )));
         }
         match probe_ready(bound_port) {
-            Ok(true) => {
-                return Ok(StudioServer {
-                    child: Some(child),
-                    port: bound_port,
-                    host: "127.0.0.1".to_string(),
-                })
-            }
+            Ok(true) => return Ok(server),
             Ok(false) => last_error = format!("port {bound_port} answered with a non-200 status"),
             Err(err) => last_error = format!("port {bound_port}: {err}"),
         }
         thread::sleep(READY_POLL_INTERVAL);
     }
     Err(SidecarError::NotReady(last_error))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// A stand-in runtime: records its pid, runs `body`, then stays alive.
+    fn fake_runtime(dir: &Path, body: &str) -> (Command, PathBuf) {
+        let pid_file = dir.join("pid");
+        let mut command = Command::new("/bin/sh");
+        command
+            .arg("-c")
+            .arg(format!("echo $$ > '{}'; {body}; exec sleep 30", pid_file.display()))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        crate::proc::configure(&mut command);
+        (command, pid_file)
+    }
+
+    fn quiet() -> Arc<dyn Fn(&str) + Send + Sync> {
+        Arc::new(|_| {})
+    }
+
+    fn alive(pid_file: &Path) -> bool {
+        let pid: libc::pid_t = std::fs::read_to_string(pid_file)
+            .expect("the fake runtime wrote its pid")
+            .trim()
+            .parse()
+            .expect("a pid");
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("openvids-sidecar-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    #[test]
+    fn a_runtime_that_never_reports_a_port_is_terminated() {
+        let dir = temp_dir("no-port");
+        let (command, pid_file) = fake_runtime(&dir, "true");
+        let result = launch(command, quiet(), Duration::from_millis(700), Duration::from_secs(5));
+        assert!(matches!(result, Err(SidecarError::NoPortReport(_))));
+        assert!(!alive(&pid_file), "the runtime must not outlive the failed start");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_runtime_that_binds_but_never_serves_is_terminated() {
+        let dir = temp_dir("not-ready");
+        let closed_port = reserve_loopback_port().expect("a free port");
+        let report = format!("echo '{{\"ok\":true,\"result\":{{\"port\":{closed_port}}}}}'");
+        let (command, pid_file) = fake_runtime(&dir, &report);
+        let result = launch(command, quiet(), Duration::from_secs(5), Duration::from_millis(700));
+        assert!(matches!(result, Err(SidecarError::NotReady(_))));
+        assert!(!alive(&pid_file), "the runtime must not outlive the failed start");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_runtime_that_exits_early_reports_its_last_output() {
+        let mut command = Command::new("/bin/sh");
+        command
+            .arg("-c")
+            .arg("echo boom; exit 3")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        crate::proc::configure(&mut command);
+        match launch(command, quiet(), Duration::from_secs(5), Duration::from_secs(5)) {
+            Err(SidecarError::Spawned(detail)) => assert!(detail.contains("boom"), "{detail}"),
+            Err(other) => panic!("expected an early-exit error, got {other}"),
+            Ok(_) => panic!("expected an early-exit error"),
+        }
+    }
+
+    #[test]
+    fn stdout_written_after_startup_still_reaches_the_log() {
+        let dir = temp_dir("late-stdout");
+        // A stand-in Studio API: answers every request with 200.
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        thread::spawn(move || {
+            for mut stream in listener.incoming().flatten() {
+                let mut buf = [0u8; 512];
+                let _ = std::io::Read::read(&mut stream, &mut buf);
+                let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            }
+        });
+        let body = format!(
+            "echo '{{\"ok\":true,\"result\":{{\"port\":{port}}}}}'; sleep 1; echo late-render-diagnostic"
+        );
+        let (command, pid_file) = fake_runtime(&dir, &body);
+        let lines = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = Arc::clone(&lines);
+        let log: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(move |line| {
+            if let Ok(mut lines) = sink.lock() {
+                lines.push(line.to_string());
+            }
+        });
+        let server = launch(command, log, Duration::from_secs(5), Duration::from_secs(5))
+            .unwrap_or_else(|err| panic!("the stand-in runtime should start: {err}"));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let seen = loop {
+            let found = lines
+                .lock()
+                .map(|l| l.iter().any(|line| line.contains("late-render-diagnostic")))
+                .unwrap_or(false);
+            if found || Instant::now() >= deadline {
+                break found;
+            }
+            thread::sleep(Duration::from_millis(50));
+        };
+        drop(server);
+        assert!(seen, "stdout after the lifecycle line must be logged");
+        assert!(!alive(&pid_file));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

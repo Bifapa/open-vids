@@ -180,14 +180,26 @@ describe("the permission broker", () => {
     expect(instance.allowsWebsiteDownload()).toBe(false);
   });
 
-  it("counts an allowed answer as the turn's website download approval", async () => {
+  it("counts an allowed download or recording card as the turn's website download approval", async () => {
     const once = broker();
-    const waiting = once.ask("read_linked_pages");
+    const waiting = once.ask("website_full_access");
     await Promise.resolve();
     expect(once.instance.allowsWebsiteDownload()).toBe(false);
     await once.instance.answer("perm-1", "once");
     await waiting;
     expect(once.instance.allowsWebsiteDownload()).toBe(true);
+
+    const recording = broker();
+    const recorded = recording.instance.ask({
+      kind: "website_full_access",
+      action: "record",
+      site: null,
+      agent: "director",
+    });
+    await Promise.resolve();
+    await recording.instance.answer("perm-1", "always");
+    await recorded;
+    expect(recording.instance.allowsWebsiteDownload()).toBe(true);
 
     const denied = broker();
     const refused = denied.ask("website_full_access");
@@ -195,6 +207,24 @@ describe("the permission broker", () => {
     await denied.instance.answer("perm-1", "deny");
     await refused;
     expect(denied.instance.allowsWebsiteDownload()).toBe(false);
+  });
+
+  it("does not count an answer to an open-page or read-code card as a download approval", async () => {
+    for (const action of ["read", "read_code"] as const) {
+      for (const decision of ["once", "always"] as const) {
+        const { instance } = broker();
+        const waiting = instance.ask({
+          kind: action === "read" ? "read_linked_pages" : "website_full_access",
+          action,
+          site: "linear.app",
+          agent: "director",
+        });
+        await Promise.resolve();
+        await instance.answer("perm-1", decision);
+        await waiting;
+        expect(instance.allowsWebsiteDownload(), `${action} ${decision}`).toBe(false);
+      }
+    }
   });
 
   it("revokes the turn's grant only when one was posted", async () => {
@@ -240,5 +270,26 @@ describe("the permission broker", () => {
     expect(published[0]?.state).toBe("pending");
     await instance.answer(published[0]?.id ?? "", "deny");
     await expect(retry).resolves.toMatchObject({ state: "denied" });
+  });
+
+  it("resumes the waiting call even when the answer cannot be shown in the chat", async () => {
+    const published: PermissionRequest[] = [];
+    const { instance } = broker({
+      publish: async (permission) => {
+        published.push(permission);
+        if (permission.state !== "pending") throw new Error("chat store is read-only");
+      },
+    });
+    const waiting = instance.ask({
+      kind: "read_linked_pages",
+      action: "read",
+      site: null,
+      agent: "director",
+    });
+    await Promise.resolve();
+    await expect(instance.answer(published[0]?.id ?? "", "deny")).rejects.toThrow(
+      "chat store is read-only",
+    );
+    await expect(waiting).resolves.toMatchObject({ state: "denied" });
   });
 });

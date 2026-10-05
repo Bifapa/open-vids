@@ -46,7 +46,11 @@ const owner = process.ppid;
 // `\\server\share\…` entries resolve on Windows.
 const cli = isAbsolute(cliPath) ? cliPath : join(dirname(fileURLToPath(import.meta.url)), cliPath);
 
-const child = spawn(process.execPath, [cli, ...args], {
+// `--no-install`: the runtime is the shipped tree. Without it Bun fetches any
+// module that fails to resolve from npm, and a project folder has no
+// node_modules ancestor to stop that. Node (the tests) rejects the flag.
+const runtimeFlags = process.versions.bun ? ["--no-install"] : [];
+const child = spawn(process.execPath, [...runtimeFlags, cli, ...args], {
   stdio: ["ignore", "inherit", "inherit"],
   // A GUI-launched app has no console; without this every server child
   // flashes one on Windows. No-op on POSIX.

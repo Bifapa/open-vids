@@ -1,43 +1,12 @@
 #!/usr/bin/env node
-// Run from the user's project; locate the release from this installed file.
+// Launcher for the OpenVids CLI: runs the bare `hyperframes` command resolved
+// from PATH (no package-manager download), or a Node script with the same
+// skill-friendly environment via `--script`.
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { join, win32 } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 
-const root = fileURLToPath(new URL("../../../", import.meta.url));
-// Release version source: the CLI package manifest. The published `hyperframes`
-// npm package versions with it, so the launcher pins the same release the
-// deleted plugin manifests used to carry.
-const manifestFile = "packages/cli/package.json";
-
-export function pluginVersion(pluginRoot = root) {
-  const file = join(pluginRoot, manifestFile);
-  if (!existsSync(file)) {
-    throw new Error(
-      "No HyperFrames release manifest found. Use the standalone skills installation instructions.",
-    );
-  }
-  const manifest = JSON.parse(readFileSync(file, "utf8"));
-  if (
-    manifest.name !== "@hyperframes/cli" ||
-    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(manifest.version ?? "")
-  ) {
-    throw new Error(`Invalid HyperFrames CLI release: ${file}`);
-  }
-  return manifest.version;
-}
-
-export function invocation(
-  args,
-  {
-    version = pluginVersion(),
-    env = process.env,
-    platform = process.platform,
-    node = process.execPath,
-    pathExists = existsSync,
-  } = {},
-) {
+export function invocation(args, { env = process.env, node = process.execPath } = {}) {
   if (args[0] === "skills")
     throw new Error(
       "Update HyperFrames through your agent's plugin manager; bundled skills are release-managed.",
@@ -45,26 +14,13 @@ export function invocation(
   const childEnv = {
     ...env,
     HYPERFRAMES_SKIP_SKILLS: "1",
-    HYPERFRAMES_SKILL_PKG_VERSION: version,
-    HYPERFRAMES_PLUGIN_VERSION: version,
     HYPERFRAMES_NO_UPDATE_CHECK: "1",
   };
   if (args[0] === "--script") {
     if (!args[1]) throw new Error("--script requires a Node script path.");
     return { command: node, args: args.slice(1), env: childEnv };
   }
-  const cliArgs = ["--yes", `hyperframes@${version}`, ...args];
-  if (platform !== "win32") return { command: "npx", args: cliArgs, env: childEnv };
-  const candidates = [
-    env.npm_execpath && win32.join(win32.dirname(env.npm_execpath), "npx-cli.js"),
-    win32.join(win32.dirname(node), "node_modules", "npm", "bin", "npx-cli.js"),
-  ].filter(Boolean);
-  const npx = candidates.find(pathExists);
-  if (!npx)
-    throw new Error(
-      "Cannot find npx-cli.js. Install Node.js with npm or run from an npm environment.",
-    );
-  return { command: node, args: [npx, ...cliArgs], env: childEnv };
+  return { command: "hyperframes", args, env: childEnv };
 }
 
 if (process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url) {
@@ -75,6 +31,11 @@ if (process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === imp
       stdio: "inherit",
       windowsHide: true,
     });
+    if (result.error?.code === "ENOENT" && command.command === "hyperframes") {
+      throw new Error(
+        "The OpenVids CLI `hyperframes` was not found on PATH. Link it first (for example `bun link` in packages/cli).",
+      );
+    }
     if (result.error) throw result.error;
     process.exitCode = result.status ?? 1;
   } catch (error) {

@@ -3,7 +3,7 @@
   "name": "world-map",
   "type": "hyperframes:block",
   "title": "World Map",
-  "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection",
+  "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset \u2014 D3 Natural Earth projection",
   "tags": ["data", "map", "geography", "world", "choropleth"],
   "dimensions": {
     "width": 1920,
@@ -13,8 +13,18 @@
   "files": [
     {
       "path": "world-map.html",
-      "target": "compositions/world-map.html",
+      "target": "compositions/world-map/world-map.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/world-atlas-countries-110m.js",
+      "target": "compositions/world-map/assets/world-atlas-countries-110m.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/world-atlas-LICENSE.txt",
+      "target": "compositions/world-map/assets/world-atlas-LICENSE.txt",
+      "type": "hyperframes:asset"
     }
   ],
   "preview": {

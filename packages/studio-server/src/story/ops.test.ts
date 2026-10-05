@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   STORY_GRAPH_PATH,
@@ -171,6 +171,41 @@ describe("resolving what an agent names", () => {
   });
 });
 
+describe("a video node's source range", () => {
+  const video = (extra: Record<string, number>) =>
+    ({
+      op: "add_node",
+      ref: "v",
+      node: { kind: "video", title: "Cut", asset: "assets/b.mp4", ...extra },
+    }) satisfies StoryOperation;
+
+  it("is refused when it ends before it starts, on add and on update, leaving the stored graph readable", async () => {
+    const f = story();
+    expect(await f.refusal([video({ sourceIn: 10, sourceOut: 5 })])).toMatchObject({
+      code: "invalid_request",
+      opIndex: 0,
+    });
+    expect(await f.refusal([video({ sourceIn: 4, sourceOut: 4 })])).toMatchObject({
+      code: "invalid_request",
+    });
+    expect(existsSync(join(f.project.dir, STORY_GRAPH_PATH))).toBe(false);
+
+    const made = await f.edit([video({ sourceIn: 1, sourceOut: 3 })]);
+    const id = created(made, 0);
+    // Either bound alone can break the range the node already has.
+    expect(await f.refusal([{ op: "update_node", id, set: { sourceOut: 0.5 } }])).toMatchObject({
+      code: "invalid_request",
+    });
+    expect(await f.refusal([{ op: "update_node", id, set: { sourceIn: 3 } }])).toMatchObject({
+      code: "invalid_request",
+    });
+    await f.edit([{ op: "update_node", id, set: { sourceIn: 2, sourceOut: 6 } }]);
+    expect(node(f.graphFile(), id)).toMatchObject({ sourceIn: 2, sourceOut: 6 });
+    await f.edit([{ op: "update_node", id, set: { sourceOut: null } }]);
+    expect(node(await f.graph(), id)).toMatchObject({ sourceIn: 2, sourceOut: null });
+  });
+});
+
 describe("an agent batch", () => {
   it("is atomic: a refused operation leaves the stored graph exactly as it was", async () => {
     const f = story();
@@ -338,6 +373,39 @@ describe("what the user decided", () => {
     });
     if (isChapter(chapter))
       expect(chapter.userEdited.sort()).toEqual(["estimatedDuration", "title"]);
+  });
+
+  it("refuses to remove an agent's node whose fields the user set by hand, so remove-and-re-add cannot bypass it", async () => {
+    const f = story();
+    const { a } = await threeNodes(f);
+    await userEdit(f, (graph) => {
+      const chapter = node(graph, a);
+      if (isChapter(chapter)) chapter.title = "Cold open";
+    });
+    const refusal = await f.refusal([{ op: "remove_node", id: a }]);
+    expect(refusal.code).toBe("user_decision");
+    expect(refusal.message).toContain("title");
+    expect(node(await f.graph(), a)).toMatchObject({ title: "Cold open" });
+  });
+
+  it("refuses an agent batch when the graph file changed while the batch was being worked out", async () => {
+    const f = story();
+    const { a } = await threeNodes(f);
+    const sourceData = f.analysis.sourceData.bind(f.analysis);
+    // The user undoes their last story edit (or restores a history point) while the ranges are resolved.
+    const outside = { ...f.graphFile(), title: "Restored elsewhere" };
+    f.analysis.sourceData = async (project, source) => {
+      writeFileSync(join(f.project.dir, STORY_GRAPH_PATH), `${JSON.stringify(outside, null, 2)}\n`);
+      return sourceData(project, source);
+    };
+    const refusal = await f.refusal([
+      { op: "update_node", id: a, set: { sourceRanges: [{ source: TALK, segments: ["g3"] }] } },
+    ]);
+    expect(refusal.code).toBe("conflict");
+    expect(f.graphFile().title).toBe("Restored elsewhere");
+    expect(f.graphFile().nodes.find((entry) => entry.id === a)).toMatchObject({
+      sourceRanges: [expect.objectContaining({ segment: "g1" })],
+    });
   });
 
   it("keeps what the user added: nodes, links and attachments", async () => {

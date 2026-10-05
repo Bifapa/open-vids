@@ -11,17 +11,17 @@ description: >
 
 # HyperFrames CLI
 
-Run commands as `npx hyperframes ...` unless project instructions provide a wrapper. Obey the wrapper when present. The CLI requires Node.js 22 or newer and FFmpeg.
+Run commands as `hyperframes ...` unless project instructions provide a wrapper. Obey the wrapper when present. The CLI requires Node.js 22 or newer and FFmpeg. `hyperframes` is the OpenVids CLI (`packages/cli` of the OpenVids source tree). It is not published to npm, so never fetch a package of that name through npx: it would run a different program. Put the CLI on PATH once (`bun link` inside `packages/cli`) or run `bun <openvids>/packages/cli/src/cli.ts ...`.
 
 ## Development loop
 
-1. **Scaffold:** `npx hyperframes init <project>` (centered blank). Or capture a site. Pass `--example=<name>` only to start from a named example.
-2. **Find the move:** if the request names an asset, sound, image, voice or fast visual edit, resolve it through `/media-use` before proposing a plan. Otherwise, before authoring motion by hand, search for a primitive that already does it: `npx hyperframes catalog --query "reveal a headline one line at a time"`. Ask for the effect you want rather than the mechanism you have in mind. Install with `npx hyperframes add <name>` (see `/hyperframes-registry`). Author by hand only once nothing fits.
-3. **Author:** write the composition using `/hyperframes-core`. To know what is on a project's timeline (tracks, clips, starts, ends, what plays), run `npx hyperframes timeline --json` instead of reading `index.html` and every sub-composition file: nested rows carry absolute main-timeline `absStart`/`absEnd` and their owning `file`, not just their local, per-sub-composition time. Prefer `--json` over the text form; it costs fewer tokens for the same or better correctness. See `references/upgrade-info-misc.md` for one-liners that answer common questions without reading the whole output.
-4. **Get fast feedback while editing:** run `npx hyperframes lint` after the first HTML pass and after structural changes.
-5. **Run the final gate:** run `npx hyperframes check`; it reruns lint before opening the browser. Do not prepend a redundant standalone lint invocation. Add `--snapshots` for annotated overview frames and finding crops.
+1. **Scaffold:** `hyperframes init <project>` (centered blank). Or capture a site. Pass `--example=<name>` only to start from a named example.
+2. **Find the move:** if the request names an asset, sound, image, voice or fast visual edit, resolve it through `/media-use` before proposing a plan. Otherwise, before authoring motion by hand, search for a primitive that already does it: `hyperframes catalog --query "reveal a headline one line at a time"`. Ask for the effect you want rather than the mechanism you have in mind. Install with `hyperframes add <name>` (see `/hyperframes-registry`). Author by hand only once nothing fits.
+3. **Author:** write the composition using `/hyperframes-core`. To know what is on a project's timeline (tracks, clips, starts, ends, what plays), run `hyperframes timeline --json` instead of reading `index.html` and every sub-composition file: nested rows carry absolute main-timeline `absStart`/`absEnd` and their owning `file`, not just their local, per-sub-composition time. Prefer `--json` over the text form; it costs fewer tokens for the same or better correctness. See `references/upgrade-info-misc.md` for one-liners that answer common questions without reading the whole output.
+4. **Get fast feedback while editing:** run `hyperframes lint` after the first HTML pass and after structural changes.
+5. **Run the final gate:** run `hyperframes check`; it reruns lint before opening the browser. Do not prepend a redundant standalone lint invocation. Add `--snapshots` for annotated overview frames and finding crops.
 6. **Inspect sub-compositions:** when `index.html` mounts `data-composition-src`, capture midpoint snapshots and inspect each mounted scene.
-7. **Open the final Studio preview:** run `npx hyperframes preview --background`, verify the URL returns HTTP 200, hand the timeline project URL to the user, and ask whether to revise or render. Keep it alive until review ends.
+7. **Open the final Studio preview:** run `hyperframes preview --background`, verify the URL returns HTTP 200, hand the timeline project URL to the user, and ask whether to revise or render. Keep it alive until review ends.
 8. **Render only after approval:** use `--quality draft` while iterating, `--quality looks` for the first real encode (the CLI default), and `--quality delivery` for final delivery.
 9. **Verify the output:** confirm the file exists and is non-empty. Read the render summary's second line (`beginframe` vs `screenshot`, GPU, stage timings). `screenshot` + `software gpu` on Linux is the slow path. `ffprobe -v error -show_format -show_streams` and compare duration (and fps if the brief set it) to the root `data-duration`.
 
@@ -31,10 +31,10 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 
 Every write to the project is kept as an entry that can be undone. Use it at two moments only, never on every step:
 
-- **Start of a turn:** `npx hyperframes history begin --who <your-name> --label "<what you are about to do>"`, then `npx hyperframes history --since mine --who <your-name>` to see what the person changed since your last turn. Build on their edits; never overwrite them.
-- **A check failed, or the person says it got worse:** `npx hyperframes history undo --who <your-name>` undoes your newest turn and leaves the person's edits alone. Do not hand-edit back. On a conflict it exits 2 and prints both choices.
+- **Start of a turn:** `hyperframes history begin --who <your-name> --label "<what you are about to do>"`, then `hyperframes history --since mine --who <your-name>` to see what the person changed since your last turn. Build on their edits; never overwrite them.
+- **A check failed, or the person says it got worse:** `hyperframes history undo --who <your-name>` undoes your newest turn and leaves the person's edits alone. Do not hand-edit back. On a conflict it exits 2 and prints both choices.
 
-End each turn with `npx hyperframes history end`, so your writes read as yours, not as "Changed outside the app". While a turn is open, every write to the project counts as yours until 10 minutes pass without one; after that the turn has ended by itself.
+End each turn with `hyperframes history end`, so your writes read as yours, not as "Changed outside the app". While a turn is open, every write to the project counts as yours until 10 minutes pass without one; after that the turn has ended by itself.
 
 <!-- /history (trial) -->
 
@@ -54,12 +54,12 @@ End each turn with `npx hyperframes history end`, so your writes read as yours, 
 
 ```bash
 # Fast iteration check; repeat while authoring as needed.
-npx hyperframes lint
+hyperframes lint
 
 # Required final gate; includes lint.
-npx hyperframes check
-npx hyperframes preview --background
-npx hyperframes render --quality looks --output out.mp4
+hyperframes check
+hyperframes preview --background
+hyperframes render --quality looks --output out.mp4
 test -s out.mp4
 ffprobe -v error -show_format -show_streams out.mp4
 ```
@@ -75,25 +75,25 @@ Open the final composition preview (`#project/<name>`) only after `check` passes
 Static audits cannot catch every mount failure. When the project uses sub-compositions, capture at least one visible midpoint for each host slot:
 
 ```bash
-npx hyperframes snapshot --at <t1>,<t2>,<t3>
+hyperframes snapshot --at <t1>,<t2>,<t3>
 ```
 
 Treat tiny unstyled content, canvas-sized icons, missing hero elements, or timeline-registration timeouts as render-blocking mount defects. See `hyperframes-core/references/sub-compositions.md` for the corresponding fixes.
 
 ## Agent conventions
 
-- **Search the catalog before writing motion by hand.** `npx hyperframes catalog --query "<the beat, in plain English>"`. Search is entirely local: there is no hosted tier, no account, and the query text is never sent anywhere. By default it ranks on vocabulary shared with the item's name, title, description and tags, which misses any phrasing that does not reuse the catalog's own wording. Add `--on-device` to rank by meaning instead (see the offline tier below).
+- **Search the catalog before writing motion by hand.** `hyperframes catalog --query "<the beat, in plain English>"`. Search is entirely local: there is no hosted tier, no account, and the query text is never sent anywhere. By default it ranks on vocabulary shared with the item's name, title, description and tags, which misses any phrasing that does not reuse the catalog's own wording. Add `--on-device` to rank by meaning instead (see the offline tier below).
 - **Query in English even when the video is not.** Both tiers index an English catalog, so a query in another script produces no searchable terms and returns nothing. Describe the move in English; the on-screen copy stays in whatever language the video needs. `No searchable words in query` means exactly this and is not a missing component, so do not report it as a catalog gap.
 - **Read which tier answered; never infer it from results appearing.** With `--json` the envelope carries `query`, `tier` (`on-device` or `words`), `tier_detail`, `dropped`, `unindexed`, `shown`, `total` and `results`, plus `top_score` when the answering tier produces one and `warnings` when a tier was asked for and could not run, or when a search returned nothing and a better tier is still waiting on someone's consent. A weak result on `words` is expected; the same result on `on-device` is a bug. `top_score` is on-device only and has no threshold behind it: the ranker returns the whole catalog in some order for every query, so read it as evidence rather than as a pass or fail.
-- **`dropped` and `unindexed` are opposite skews between the registry and the on-device index, and rewording the query fixes neither.** `dropped` counts ranked names this registry cannot install, so the strongest matches are the ones being lost. `unindexed` counts registry moves the index cannot see at all, which no query can ever return. Refreshing the registry is not the answer to either: its manifest carries a 24h TTL and heals itself, while the vectors are a separately published artifact fetched into `~/.hyperframes/catalog/`. Re-running with `--on-device` refetches that index when `unindexed` is above zero, so that is the remedy to hand the user. A pure over-coverage skew (`dropped` above zero while `unindexed` is zero) does not trigger the refetch; clearing `~/.hyperframes/catalog/` is the only way out of that one. Both counts are of names rather than of results, so either can exceed `total`.
+- **`dropped` and `unindexed` are opposite skews between the registry and the on-device index, and rewording the query fixes neither.** `dropped` counts ranked names this registry cannot install, so the strongest matches are the ones being lost. `unindexed` counts registry moves the index cannot see at all, which no query can ever return. Refreshing the registry is not the answer to either: the registry is bundled with the app and read locally, while the vectors are a separate artifact copied from it into `~/.hyperframes/catalog/`. Re-running with `--on-device` recopies that index when `unindexed` is above zero, so that is the remedy to hand the user. A pure over-coverage skew (`dropped` above zero while `unindexed` is zero) does not trigger the recopy; clearing `~/.hyperframes/catalog/` is the only way out of that one. Both counts are of names rather than of results, so either can exceed `total`.
 - **When a search comes back with nothing worth installing, say so in chat.** Describe the query you ran, the move you needed, and which tier answered. Do not hold out for the on-device tier, which needs a consented 33 MB download and is therefore off in most agent runs.
-- **Offer the offline tier; never enable it silently.** A one-time ~33 MB download (a quantized ONNX build of `bge-small-en-v1.5` plus its tokenizer, pinned to a fixed revision) and the catalog vectors from the registry, both cached under `~/.hyperframes/`, neither added to the project or any package. Once cached it ranks by meaning with nothing sent. Say the size out loud and let the person decide, then pass `--on-device` (with `-y` to skip the prompt) once they agree. The interactive offer only fires on a TTY. Under `--json` there is no prompt, but a search that found nothing puts the same ask in `warnings`, so read that array and put the decision to the user yourself. When the person asks what the download is, why this model, or what leaves the machine, explain the local tiers above (no hosted docs site).
+- **Offer the offline tier; never enable it silently.** A one-time ~33 MB download (a quantized ONNX build of `bge-small-en-v1.5` plus its tokenizer, pinned to a fixed revision) and the catalog vectors copied from the bundled registry, both cached under `~/.hyperframes/`, neither added to the project or any package. Once cached it ranks by meaning with nothing sent. Say the size out loud and let the person decide, then pass `--on-device` (with `-y` to skip the prompt) once they agree. The interactive offer only fires on a TTY. Under `--json` there is no prompt, but a search that found nothing puts the same ask in `warnings`, so read that array and put the decision to the user yourself. When the person asks what the download is, why this model, or what leaves the machine, explain the local tiers above (no hosted docs site).
 
 - Prefer `--json` for agent and CI calls. Server-mode `render`, `preview`, and `play` do not provide ordinary JSON output; `preview --selection --json` and `preview --context --json` are query-mode exceptions.
 - `doctor --json` always exits zero. Gate on its payload:
 
   ```bash
-  npx hyperframes doctor --json | jq -e '.ok' >/dev/null
+  hyperframes doctor --json | jq -e '.ok' >/dev/null
   ```
 
 - Non-TTY mode is automatic and scaffolds the centered blank. Pass `--example` only to start from a named example. Use `--non-interactive` to force flag-only mode on a TTY.
@@ -107,21 +107,21 @@ Treat tiny unstyled content, canvas-sized icons, missing hero elements, or timel
 When the user refers to “this element” or the current selection, query Studio instead of guessing:
 
 ```bash
-npx hyperframes preview --context --json --context-fields selection
+hyperframes preview --context --json --context-fields selection
 ```
 
 Use `selection.target.hfId` when available, otherwise its selector and source file. If the result reports `no-selection`, ask the user to click the element and rerun. Request only the context slices you need; use `--context-detail full` only for computed styles or editable text metadata. Full behavior and failure codes live in `references/preview-render.md`.
 
 ## Render choices
 
-| Need                               | Command                                                                  |
-| ---------------------------------- | ------------------------------------------------------------------------ |
-| Fast local iteration               | `npx hyperframes render --quality draft`                                 |
-| First real encode                  | `npx hyperframes render --quality looks --output out.mp4`                |
-| Final local delivery               | `npx hyperframes render --quality delivery --output out.mp4`             |
-| Local variable-driven batch render | `npx hyperframes render --batch rows.json --output "renders/{name}.mp4"` |
+| Need                               | Command                                                              |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| Fast local iteration               | `hyperframes render --quality draft`                                 |
+| First real encode                  | `hyperframes render --quality looks --output out.mp4`                |
+| Final local delivery               | `hyperframes render --quality delivery --output out.mp4`             |
+| Local variable-driven batch render | `hyperframes render --batch rows.json --output "renders/{name}.mp4"` |
 
-Skill attribution is automatic — the examples above need no `--skill`. A project scaffolded by a workflow (`hyperframes init --skill=<workflow>`) records its owning skill in `hyperframes.json`, and every later render inherits it for local attribution: re-renders, `npm run render`, and `--batch` alike. Pass `--skill=<slug>` explicitly only to stamp a project that was not created through a workflow (its first render then persists it).
+Skill attribution is automatic — the examples above need no `--skill`. A project scaffolded by a workflow (`hyperframes init --skill=<workflow>`) records its owning skill in `hyperframes.json`, and every later render inherits it for local attribution: re-renders, plain `hyperframes render`, and `--batch` alike. Pass `--skill=<slug>` explicitly only to stamp a project that was not created through a workflow (its first render then persists it).
 
 After verifying a successful render, report the result in chat with the exact command, expected vs actual behavior, and the verbatim error for any bug or friction. Do not send only a symptom summary. Include the rerunnable command (relative to the project directory — do **not** paste absolute paths, home-directory prefixes, or user/machine identifiers), expected versus actual behavior, exact error (also strip absolute paths from stack traces — keep basename + line, drop the leading directory), whether output completed/fell back/failed, workaround, and repro-project status. For a visual defect (black frame, flicker, corrupt output, wrong frame, blank output, other visual anomaly), also include a `COMPOSITION_STRUCTURE:` block — a privacy-preserving structural anatomy (element census + attribute presence + timeline shape) so maintainers can pattern-match against known bug families without the composition ZIP. Agents auto-fill this via the composition-census helper; the human user does not fill it by hand. If the issue did not reproduce again, say so and still include the last failing command and logs. Use `--file-issue` only with consent: it publishes a minimal reproduction to a public URL. Keep paths relative and identifiers out, as above.
 
@@ -144,11 +144,11 @@ For composition variables, also read `/hyperframes-core` → `references/variabl
 The specialized commands are deliberately documented by their owning workflows:
 
 ```bash
-npx hyperframes present <project-dir> --port 3004 --no-open
-npx hyperframes beats <project-dir> --json
-npx hyperframes keyframes <project-dir> --json
-npx hyperframes media-treatment --capabilities
-npx hyperframes figma asset KEY:10-20
+hyperframes present <project-dir> --port 3004 --no-open
+hyperframes beats <project-dir> --json
+hyperframes keyframes <project-dir> --json
+hyperframes media-treatment --capabilities
+hyperframes figma asset KEY:10-20
 ```
 
 `present` serves a navigable deck with presenter and audience synchronization. `beats` is the standalone Studio beat-grid utility defined in `references/beats.md`. `keyframes` surfaces seek-safe animation and motion-path diagnostics. `media-treatment` discovers, applies, and clears deterministic looks on local footage — start with `--capabilities` for the overview and `--capability <name>` for one family; `/media-use` owns which treatment a brief is asking for. `figma` imports over the REST API with the `asset`, `tokens`, and `component` subcommands and needs `FIGMA_TOKEN`; motion and shader import have no REST endpoint and are agent-only, so `/figma` owns those.

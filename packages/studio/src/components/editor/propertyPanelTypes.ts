@@ -38,6 +38,8 @@ export interface PropertyPanelProps {
   projectDir: string | null;
   assets: string[];
   element: DomEditSelection | null;
+  /** Overrides the build-time flat-inspector flag; set by tests so one module instance serves both variants. */
+  flatInspector?: boolean;
   multiSelectCount?: number;
   multiSelectedElements?: DomEditSelection[];
   onGroupSelection?: () => void;

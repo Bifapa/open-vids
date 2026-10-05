@@ -16,6 +16,7 @@ interface Entry {
   controller: AbortController;
   done: Promise<void>;
   weights: Partial<Record<ComputedStage, number>>;
+  want: JobWant;
   total: number;
   finishedWeight: number;
   current: ComputedStage | null;
@@ -31,8 +32,35 @@ export interface StartJob {
   source: string;
   /** The stages the job will report on, and the share of the progress bar each takes. */
   weights: Partial<Record<ComputedStage, number>>;
+  /** What the request asks of those stages, for deciding whether a later request may join this job. */
+  want: JobWant;
   /** The work. Resolves when every stage concluded (whatever the outcomes); rejects with `cancelled` when aborted. */
   run: (reporter: StageReporter) => Promise<void>;
+}
+
+export interface JobWant {
+  /** Spoken-language hint of the transcript; undefined = detected. */
+  language: string | undefined;
+  /** Stages recomputed even when fresh. */
+  force: readonly ComputedStage[];
+}
+
+/** What a running job leaves undone of a request, phrased to follow "is already being analysed"; "" when nothing. */
+function unmetBy(running: Entry, request: StartJob): string {
+  const planned = Object.keys(running.weights);
+  const missing = Object.keys(request.weights).filter((stage) => !planned.includes(stage));
+  if (missing.length > 0) return ` without ${missing.join(", ")}`;
+  const unforced = request.want.force.filter((stage) => !running.want.force.includes(stage));
+  if (unforced.length > 0) return ` without recomputing ${unforced.join(", ")}`;
+  const transcribes = request.weights.transcript !== undefined;
+  const language = request.want.language;
+  const hinted = language !== undefined || request.want.force.length > 0;
+  if (transcribes && hinted && language !== running.want.language) {
+    return running.want.language
+      ? ` in language "${running.want.language}"`
+      : " with the language detected";
+  }
+  return "";
 }
 
 /**
@@ -45,12 +73,25 @@ export class JobRegistry {
 
   constructor(private readonly now: () => number = Date.now) {}
 
-  /** Starts a job, or returns the running job of the same source. */
+  /**
+   * Starts a job, or returns the running job of the same source when it will do what the request asks. A request
+   * the running job would not satisfy (a forced recompute, another language, stages it does not run) is refused:
+   * joining it would report success for work that never happens.
+   */
   start(options: StartJob): AnalysisJob {
     this.prune();
     const key = `${options.projectDir}\0${options.source}`;
     const joined = this.running.get(key);
-    if (joined) return snapshot(joined.job);
+    if (joined) {
+      const unmet = unmetBy(joined, options);
+      if (unmet) {
+        throw new AnalysisFailure(
+          "conflict",
+          `${options.source} is already being analysed${unmet}; wait for that analysis to finish, then ask again`,
+        );
+      }
+      return { ...snapshot(joined.job), joined: true };
+    }
 
     const controller = new AbortController();
     const total = Object.values(options.weights).reduce((sum, weight) => sum + weight, 0);
@@ -72,6 +113,7 @@ export class JobRegistry {
       controller,
       done: Promise.resolve(),
       weights: options.weights,
+      want: options.want,
       total: Math.max(total, 1),
       finishedWeight: 0,
       current: null,

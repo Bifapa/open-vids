@@ -6,8 +6,8 @@ Turn `shot-plan.json` into one renderable HyperFrames composition (`compositions
 
 Default = **compose existing catalog capabilities, not hand-author**:
 
-- **Search first, for every named effect** — `npx hyperframes catalog --query "<the move, in plain English>" --json`, including an effect the user names after the plan is written. It needs nothing installed and no project. Author by hand only after a search came back with nothing that does the job, and report that miss in chat with the query and the move you needed.
-- `npx hyperframes add <block>` (registry) → customize in place. Most blocks bake content/data into their own script (only a few expose CSS-var params), so reuse = **add + edit**.
+- **Search first, for every named effect** — `hyperframes catalog --query "<the move, in plain English>" --json`, including an effect the user names after the plan is written. It needs nothing installed and no project. Author by hand only after a search came back with nothing that does the job, and report that miss in chat with the query and the move you needed.
+- `hyperframes add <block>` (registry) → customize in place. Most blocks bake content/data into their own script (only a few expose CSS-var params), so reuse = **add + edit**.
 - `hyperframes-animation` rules / blueprints / transitions for motion; runtime adapters (GSAP default).
 
 Hand-author only (a) gaps no block/rule covers, (b) the `asset-fusion` affordance binding. The Director named the block(s) + customizations in `shot-plan.json` (`content.block` + `content.customize`); see `catalog-map.md`.

@@ -3,6 +3,15 @@ import { vertSrc } from "./shaders/common.js";
 export const DEFAULT_WIDTH = 1920;
 export const DEFAULT_HEIGHT = 1080;
 
+export function configureContext(
+  gl: WebGLRenderingContext,
+  width: number = DEFAULT_WIDTH,
+  height: number = DEFAULT_HEIGHT,
+): void {
+  gl.viewport(0, 0, width, height);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+}
+
 export function createContext(
   canvas: HTMLCanvasElement,
   width: number = DEFAULT_WIDTH,
@@ -10,9 +19,25 @@ export function createContext(
 ): WebGLRenderingContext | null {
   const gl = canvas.getContext("webgl", { preserveDrawingBuffer: true });
   if (!gl) return null;
-  gl.viewport(0, 0, width, height);
-  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-  return gl as WebGLRenderingContext;
+  configureContext(gl, width, height);
+  return gl;
+}
+
+/**
+ * Reports a context the browser dropped (per-process context cap, GPU reset) and its
+ * restoration. `preventDefault` on the loss event is what allows the browser to restore
+ * the context at all; every GL object created before the loss is invalid afterwards, so
+ * `onRestored` must rebuild buffers, programs, framebuffers and textures.
+ */
+export function watchContextLoss(
+  canvas: HTMLCanvasElement,
+  handlers: { onLost: () => void; onRestored: () => void },
+): void {
+  canvas.addEventListener("webglcontextlost", (event) => {
+    event.preventDefault();
+    handlers.onLost();
+  });
+  canvas.addEventListener("webglcontextrestored", () => handlers.onRestored());
 }
 
 export function setupQuad(gl: WebGLRenderingContext): WebGLBuffer {
