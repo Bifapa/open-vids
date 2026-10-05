@@ -1,0 +1,34 @@
+{
+  "count": 665,
+  "next": "https://svs.gsfc.nasa.gov/api/search/?limit=3&offset=3&search=hurricane",
+  "previous": null,
+  "results": [
+    {
+      "id": 5681,
+      "url": "https://svs.gsfc.nasa.gov/5681/",
+      "result_type": "Visualization",
+      "release_date": "2026-10-01T14:00:00-04:00",
+      "title": "Hurricane Polo Makes Landfall in Baja California",
+      "description": "Hurricane Polo became a Tropical Storm on September 20, 2026. On September 27, 2026 GPM flew over the hurricane and captured a 3D image of it. This version has the dates burned into the video. || Polo_v07_stutter_with_dates.01500_print.jpg (1024x576) [128.3 KB] || Polo_v07_stutter_with_dates.mp4 (1920x1080) [185.1 MB] || ",
+      "hits": 2564
+    },
+    {
+      "id": 5669,
+      "url": "https://svs.gsfc.nasa.gov/5669/",
+      "result_type": "Visualization",
+      "release_date": "2026-08-10T15:15:00-04:00",
+      "title": "GEOS Aerosols (2025)",
+      "description": "Aerosols are tiny solid or liquid particles that float in the atmosphere and can travel long distances, affecting air quality and visibility far from their sources. This visualization still, captured for August 19, 2025 (20:00 UTC), is based on NASA's Goddard Earth Observing System (GEOS) model. The GEOS model delivers realistic, high-resolution weather and aerosol data that enable customized envi",
+      "hits": 195
+    },
+    {
+      "id": 15035,
+      "url": "https://svs.gsfc.nasa.gov/15035/",
+      "result_type": "Visualization",
+      "release_date": "2026-05-06T12:00:00-04:00",
+      "title": "Forty Years of Change in Louisiana’s Wetlands",
+      "description": "Louisiana's coastline is on the move. Utilizing infrared-color imagery to contrast water and vegetation, this Landsat time series tracks 40 years of dynamic shifts across Louisiana’s fragile coast. From abrupt hurricane-induced flooding to the gradual, permanent drowning of vital marshes, these visualizations capture an ecosystem in perpetual motion.",
+      "hits": 117
+    }
+  ]
+}

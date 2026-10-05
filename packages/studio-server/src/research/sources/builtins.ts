@@ -2,11 +2,13 @@ import type { TrustedSource } from "@hyperframes/agent-protocol";
 
 /**
  * The built-in trusted sources, in display order. Each one has a connector that speaks its public API; the domains
- * are what trusted mode allows to be read (the API, the pages and the media files of the source).
+ * are what trusted mode allows to be read (the API and the pages of the source; a candidate's media host is granted
+ * on its own). A source with `apiKey` searches only once the user saved their own key for it (`apiKey.configured`
+ * is filled in by the policy store).
  *
  * DUPLICATED in `apps/desktop/src-tauri/src/research_policy.rs` (`BUILT_INS`): the Projects page edits the same
  * policy file without a Studio server. Change both lists together (a Rust test compares ids, names, connectors,
- * homepages and domains).
+ * homepages, domains and key sign-up pages).
  */
 export const BUILT_IN_SOURCES: readonly TrustedSource[] = [
   {
@@ -21,6 +23,7 @@ export const BUILT_IN_SOURCES: readonly TrustedSource[] = [
     licenseNote:
       "Each file carries its own license (public domain, CC0, CC BY, CC BY-SA…); the author and license come from the file's page.",
     homepage: "https://commons.wikimedia.org",
+    apiKey: null,
   },
   {
     id: "openverse",
@@ -35,6 +38,7 @@ export const BUILT_IN_SOURCES: readonly TrustedSource[] = [
     licenseNote:
       "Every result states its Creative Commons license and creator; the files are hosted by the original collection.",
     homepage: "https://openverse.org",
+    apiKey: null,
   },
   {
     id: "nasa-images",
@@ -48,6 +52,7 @@ export const BUILT_IN_SOURCES: readonly TrustedSource[] = [
     licenseNote:
       "NASA media is generally not copyrighted (public domain), except where the page says otherwise; logos and people's likenesses have their own rules.",
     homepage: "https://images.nasa.gov",
+    apiKey: null,
   },
   {
     id: "internet-archive",
@@ -61,6 +66,185 @@ export const BUILT_IN_SOURCES: readonly TrustedSource[] = [
     licenseNote:
       "Only items with a license field are treated as licensed; everything else is marked unknown.",
     homepage: "https://archive.org",
+    apiKey: null,
+  },
+  {
+    id: "nasa-svs",
+    name: "NASA Scientific Visualization Studio",
+    builtIn: true,
+    enabled: true,
+    connector: "nasa_svs",
+    domains: ["svs.gsfc.nasa.gov"],
+    kinds: ["video", "picture"],
+    description:
+      "Visualizations, animations and imagery of Earth and space made from NASA mission data.",
+    licenseNote:
+      "NASA visualizations are generally not copyrighted (public domain); the credits name the visualizers, and music in some videos is licensed separately.",
+    homepage: "https://svs.gsfc.nasa.gov",
+    apiKey: null,
+  },
+  {
+    id: "met-museum",
+    name: "The Metropolitan Museum of Art",
+    builtIn: true,
+    enabled: true,
+    connector: "met_museum",
+    domains: ["metmuseum.org"],
+    kinds: ["picture"],
+    description: "Artworks and objects from The Met's collection.",
+    licenseNote: "Only Open Access images of public-domain works are offered; they are CC0.",
+    homepage: "https://www.metmuseum.org",
+    apiKey: null,
+  },
+  {
+    id: "art-institute-chicago",
+    name: "Art Institute of Chicago",
+    builtIn: true,
+    enabled: true,
+    connector: "art_institute_chicago",
+    domains: ["artic.edu"],
+    kinds: ["picture"],
+    description: "Paintings, prints, photographs and objects from the Art Institute of Chicago.",
+    licenseNote:
+      "Only artworks the museum marks as public domain are offered; their images are CC0.",
+    homepage: "https://www.artic.edu",
+    apiKey: null,
+  },
+  {
+    id: "cleveland-museum",
+    name: "Cleveland Museum of Art",
+    builtIn: true,
+    enabled: true,
+    connector: "cleveland_museum",
+    domains: ["clevelandart.org"],
+    kinds: ["picture"],
+    description: "Artworks from the Cleveland Museum of Art's Open Access collection.",
+    licenseNote: "Only Open Access images are offered; they are CC0.",
+    homepage: "https://www.clevelandart.org/open-access",
+    apiKey: null,
+  },
+  {
+    id: "smk",
+    name: "SMK – National Gallery of Denmark",
+    builtIn: true,
+    enabled: true,
+    connector: "smk",
+    domains: ["smk.dk"],
+    kinds: ["picture"],
+    description: "Paintings, drawings and prints from the National Gallery of Denmark.",
+    licenseNote: "Only public-domain works are offered; they carry the Public Domain Mark.",
+    homepage: "https://open.smk.dk",
+    apiKey: null,
+  },
+  {
+    id: "wellcome-collection",
+    name: "Wellcome Collection",
+    builtIn: true,
+    enabled: true,
+    connector: "wellcome_collection",
+    domains: ["wellcomecollection.org"],
+    kinds: ["picture"],
+    description: "Medical and scientific images, illustrations and photographs.",
+    licenseNote: "Each image states its license (CC0, Public Domain Mark, CC BY, CC BY-NC…).",
+    homepage: "https://wellcomecollection.org",
+    apiKey: null,
+  },
+  {
+    id: "ccmixter",
+    name: "ccMixter",
+    builtIn: true,
+    enabled: true,
+    connector: "ccmixter",
+    domains: ["ccmixter.org"],
+    kinds: ["audio"],
+    description: "Creative Commons music: tracks, remixes, instrumentals and a cappellas.",
+    licenseNote:
+      "Each track states its Creative Commons license; many are non-commercial, which is flagged as restricted.",
+    homepage: "https://ccmixter.org",
+    apiKey: null,
+  },
+  {
+    id: "iconify",
+    name: "Iconify",
+    builtIn: true,
+    enabled: true,
+    connector: "iconify",
+    domains: ["iconify.design"],
+    kinds: ["picture"],
+    description: "Over 200,000 open-source icons and emoji from more than 150 icon sets.",
+    licenseNote:
+      "Each icon set states its license (MIT, Apache, CC0, CC BY…); brand logos remain their owners' trademarks.",
+    homepage: "https://icon-sets.iconify.design",
+    apiKey: null,
+  },
+  {
+    id: "pexels",
+    name: "Pexels",
+    builtIn: true,
+    enabled: true,
+    connector: "pexels",
+    domains: ["pexels.com"],
+    kinds: ["picture", "video"],
+    description: "Free stock photos and videos.",
+    licenseNote:
+      "Pexels License: free to use, commercially too, no credit required; the files may not be sold as they are.",
+    homepage: "https://www.pexels.com",
+    apiKey: { signupUrl: "https://www.pexels.com/api/new/", configured: false },
+  },
+  {
+    id: "pixabay",
+    name: "Pixabay",
+    builtIn: true,
+    enabled: true,
+    connector: "pixabay",
+    domains: ["pixabay.com"],
+    kinds: ["picture", "video"],
+    description: "Free stock photos, illustrations and videos.",
+    licenseNote:
+      "Pixabay Content License: free to use, commercially too, no credit required; the files may not be sold as they are.",
+    homepage: "https://pixabay.com",
+    apiKey: { signupUrl: "https://pixabay.com/api/docs/", configured: false },
+  },
+  {
+    id: "flickr",
+    name: "Flickr",
+    builtIn: true,
+    enabled: true,
+    connector: "flickr",
+    domains: ["flickr.com", "staticflickr.com", "flic.kr"],
+    kinds: ["picture", "video"],
+    description: "Openly licensed photos and videos shared on Flickr, including Flickr Commons.",
+    licenseNote:
+      "Only openly licensed items are offered (CC licenses, CC0, Public Domain Mark, U.S. Government works); each states its license.",
+    homepage: "https://www.flickr.com",
+    apiKey: { signupUrl: "https://www.flickr.com/services/apps/create/apply/", configured: false },
+  },
+  {
+    id: "freesound",
+    name: "Freesound",
+    builtIn: true,
+    enabled: true,
+    connector: "freesound",
+    domains: ["freesound.org"],
+    kinds: ["audio"],
+    description: "Sound effects, field recordings and loops shared by the Freesound community.",
+    licenseNote:
+      "Each sound is CC0, CC BY or CC BY-NC; the high-quality MP3 preview is downloaded, not the original file.",
+    homepage: "https://freesound.org",
+    apiKey: { signupUrl: "https://freesound.org/apiv2/apply/", configured: false },
+  },
+  {
+    id: "smithsonian",
+    name: "Smithsonian Open Access",
+    builtIn: true,
+    enabled: true,
+    connector: "smithsonian",
+    domains: ["si.edu"],
+    kinds: ["picture"],
+    description: "Images from the Smithsonian's museums, archives and zoo.",
+    licenseNote: "Only media the Smithsonian released as CC0 is offered.",
+    homepage: "https://www.si.edu/openaccess",
+    apiKey: { signupUrl: "https://api.data.gov/signup/", configured: false },
   },
 ];
 

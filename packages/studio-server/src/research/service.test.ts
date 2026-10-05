@@ -17,6 +17,7 @@ import {
   createResearchFixture,
   fixtureText,
   html,
+  httpStatus,
   json,
   media,
   redirect,
@@ -77,7 +78,12 @@ describe("search", () => {
       (url) => url.hostname === "api.openverse.org",
       json(JSON.parse(fixtureText("openverse-images.json"))),
     );
-    f.store.updateSource("internet-archive", { enabled: false });
+    // Only the first three built-ins stay on: the others would each call their own API.
+    for (const source of f.store.get().sources) {
+      if (!["wikimedia-commons", "openverse", "nasa-images"].includes(source.id)) {
+        f.store.updateSource(source.id, { enabled: false });
+      }
+    }
 
     const result = await f.service.search(f.project, {
       query: "volcano",
@@ -282,6 +288,8 @@ describe("inspect and import: the policy", () => {
 
   it("downloads a candidate from the exact host its source granted (Openverse → Flickr) and nowhere else", async () => {
     const f = setup();
+    // Flickr's own hosts belong to the Flickr source; with it off they are trusted only through the grant.
+    f.store.updateSource("flickr", { enabled: false });
     f.net.when(
       (url) => url.hostname === "api.openverse.org",
       json(JSON.parse(fixtureText("openverse-images.json"))),
@@ -313,6 +321,66 @@ describe("inspect and import: the policy", () => {
     expect((await failure(f.service.import(f.project, { candidate: other.id }))).code).toBe(
       "blocked_by_policy",
     );
+  });
+
+  it("searches a source that needs a key only with the user's key, and never shows the key", async () => {
+    const f = setup();
+    const keysSent: Array<string | null> = [];
+    f.net.when(
+      (url) => url.hostname === "api.pexels.com",
+      (_url, init) => {
+        keysSent.push(new Headers(init.headers).get("authorization"));
+        return new Response(fixtureText("pexels-photos.json"), {
+          headers: { "content-type": "application/json" },
+        });
+      },
+    );
+
+    const unkeyed = await f.service.search(f.project, { query: "rocks", mediaKind: "picture" });
+    expect(unkeyed.searched.map((report) => report.source.id)).not.toContain("pexels");
+    expect(unkeyed.notes.join("\n")).toContain("Pexels");
+    const asked = await f.service.search(f.project, {
+      query: "rocks",
+      mediaKind: "picture",
+      sources: ["pexels"],
+    });
+    expect(asked.blocked).toEqual([
+      { source: "pexels", reason: expect.stringContaining("API key") },
+    ]);
+    expect(keysSent).toEqual([]);
+
+    f.store.setApiKey("pexels", "secret-key-123");
+    const keyed = await f.service.search(f.project, {
+      query: "rocks",
+      mediaKind: "picture",
+      sources: ["pexels"],
+    });
+    expect(keysSent).toEqual(["secret-key-123"]);
+    expect(keyed.candidates.length).toBeGreaterThan(0);
+    expect(keyed.candidates[0]?.license).toMatchObject({ id: "free_stock", status: "clear" });
+    expect(JSON.stringify(keyed)).not.toContain("secret-key-123");
+
+    // A key the source refuses is reported as such, so the user knows what to fix.
+    f.net.when((url) => url.hostname === "api.pexels.com", httpStatus(401));
+    const refused = await f.service.search(f.project, {
+      query: "rocks",
+      mediaKind: "picture",
+      sources: ["pexels"],
+    });
+    expect(refused.searched[0]?.error).toContain("did not accept the saved API key");
+
+    // Pixabay refuses a bad key with 400; elsewhere a 400 is just a failed request.
+    f.store.setApiKey("pixabay", "bad-key");
+    f.net.when((url) => url.hostname === "pixabay.com", httpStatus(400));
+    f.net.when((url) => url.hostname === "api.pexels.com", httpStatus(400));
+    const both = await f.service.search(f.project, {
+      query: "rocks",
+      mediaKind: "picture",
+      sources: ["pixabay", "pexels"],
+    });
+    const errorOf = (id: string) => both.searched.find((report) => report.source.id === id)?.error;
+    expect(errorOf("pixabay")).toContain("did not accept the saved API key");
+    expect(errorOf("pexels")).toBe("api.pexels.com answered 400");
   });
 
   it("refuses a restricted-license candidate until the user allowed this asset, before any download", async () => {

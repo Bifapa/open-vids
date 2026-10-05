@@ -121,27 +121,65 @@ describe("trusted mode", () => {
 
   it("lets a candidate's grant open its exact host only, on every hop", async () => {
     const { net, fetcher, policy } = setup("trusted");
-    net.when("https://live.staticflickr.com/1/a.jpg", media("JPEG", "image/jpeg"));
-    net.when("https://farm.staticflickr.com/1/a.jpg", media("JPEG", "image/jpeg"));
+    net.when("https://live.photos-cdn.example/1/a.jpg", media("JPEG", "image/jpeg"));
+    net.when("https://farm.photos-cdn.example/1/a.jpg", media("JPEG", "image/jpeg"));
     net.when(
-      "https://live.staticflickr.com/moved.jpg",
-      redirect("https://farm.staticflickr.com/1/a.jpg"),
+      "https://live.photos-cdn.example/moved.jpg",
+      redirect("https://farm.photos-cdn.example/1/a.jpg"),
     );
-    const grants = ["live.staticflickr.com"];
+    const grants = ["live.photos-cdn.example"];
     expect(
-      await page(policy, fetcher, "https://live.staticflickr.com/1/a.jpg", grants),
+      await page(policy, fetcher, "https://live.photos-cdn.example/1/a.jpg", grants),
     ).toMatchObject({
       kind: "media",
     });
     expect(
-      await codeOf(page(policy, fetcher, "https://farm.staticflickr.com/1/a.jpg", grants)),
+      await codeOf(page(policy, fetcher, "https://farm.photos-cdn.example/1/a.jpg", grants)),
     ).toContain("blocked_by_policy");
-    expect(await codeOf(page(policy, fetcher, "https://live.staticflickr.com/1/a.jpg"))).toContain(
-      "blocked_by_policy",
-    );
     expect(
-      await codeOf(page(policy, fetcher, "https://live.staticflickr.com/moved.jpg", grants)),
-    ).toContain("farm.staticflickr.com");
+      await codeOf(page(policy, fetcher, "https://live.photos-cdn.example/1/a.jpg")),
+    ).toContain("blocked_by_policy");
+    expect(
+      await codeOf(page(policy, fetcher, "https://live.photos-cdn.example/moved.jpg", grants)),
+    ).toContain("farm.photos-cdn.example");
+  });
+
+  it("sends the headers a site requires with every request to it, and only to it", async () => {
+    const { net, fetcher, policy } = setup("trusted");
+    const seen = new Map<string, Headers>();
+    for (const url of [
+      "https://www.artic.edu/iiif/2/x/full/!843,843/0/default.jpg",
+      "https://ccmixter.org/content/a/a.mp3",
+      "https://commons.wikimedia.org/x.jpg",
+    ]) {
+      net.when(url, (_url, init) => {
+        seen.set(new URL(url).hostname, new Headers(init.headers));
+        return new Response("JPEG", { headers: { "content-type": "image/jpeg" } });
+      });
+      await page(policy, fetcher, url);
+    }
+    expect(seen.get("www.artic.edu")?.get("aic-user-agent")).toBe("OpenVids (https://openvids.ai)");
+    expect(seen.get("ccmixter.org")?.get("referer")).toBe("https://ccmixter.org/");
+    const other = seen.get("commons.wikimedia.org");
+    expect(other?.get("aic-user-agent")).toBeNull();
+    expect(other?.get("referer")).toBeNull();
+  });
+
+  it("sends a source's API key to its own host only, not to where the API redirects", async () => {
+    const { net, fetcher, policy } = setup("any");
+    const seen = new Map<string, Headers>();
+    net.when("https://api.pexels.com/v1/search?query=x", redirect("https://elsewhere.example/v1"));
+    net.when("https://elsewhere.example/v1", (_url, init) => {
+      seen.set("elsewhere", new Headers(init.headers));
+      return new Response("{}", { headers: { "content-type": "application/json" } });
+    });
+    await fetcher.http({ policy }).getJson("https://api.pexels.com/v1/search?query=x", {
+      headers: { Authorization: "secret", "X-Api-Key": "secret", accept: "application/json" },
+    });
+    const forwarded = seen.get("elsewhere");
+    expect(forwarded?.get("authorization")).toBeNull();
+    expect(forwarded?.get("x-api-key")).toBeNull();
+    expect(forwarded?.get("accept")).toBe("application/json");
   });
 
   it("refuses non-standard ports even on a trusted host", async () => {

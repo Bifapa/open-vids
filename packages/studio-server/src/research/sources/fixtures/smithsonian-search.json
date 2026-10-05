@@ -1,0 +1,323 @@
+{
+  "status": 200,
+  "responseCode": 1,
+  "response": {
+    "rows": [
+      {
+        "id": "ld1-1643399887910-1643399899124-0",
+        "title": "Le Blessé",
+        "unitCode": "CHNDM",
+        "url": "edanmdm:chndm_1921-6-402-2",
+        "content": {
+          "freetext": {
+            "name": [
+              {
+                "label": "Designer",
+                "content": "Charles-Germain de Saint-Aubin, French, 1721–1786"
+              },
+              {
+                "label": "Print Maker",
+                "content": "Charles-Germain de Saint-Aubin, French, 1721–1786"
+              },
+              {
+                "label": "Publisher",
+                "content": "Étienne Fessard, French, 1714–1777"
+              }
+            ],
+            "notes": [
+              {
+                "label": "Catalogue Status",
+                "content": "Research in Progress"
+              },
+              {
+                "label": "Description",
+                "content": "An injured butterfly is shown lying in the middle of a stretcher carried by two butterflies (one on the left and one right). Another butterfly walks beside the butterfly carrying the stretcher on the right. A small butterfly with a parasol or umbrella flies above the injured butterfly. The area underneath the ground they walk on is shown at the bottom of the composition, and the words \"LE BLESSÉ\" are printed in black at the bottom center. The plate is not signed or numbered."
+              }
+            ],
+            "creditLine": [
+              {
+                "label": "Credit Line",
+                "content": "Purchased for the Museum by the Advisory Council"
+              }
+            ],
+            "objectRights": [
+              {
+                "label": "Restrictions & Rights",
+                "content": "CC0"
+              }
+            ]
+          },
+          "descriptiveNonRepeating": {
+            "title": {
+              "label": "Title",
+              "content": "Le Blessé"
+            },
+            "record_ID": "chndm_1921-6-402-2",
+            "unit_code": "CHNDM",
+            "record_link": "https://collection.cooperhewitt.org/view/objects/asitem/id/34063",
+            "online_media": {
+              "mediaCount": 2,
+              "media": [
+                {
+                  "id": "media:CHSDM-34063_02-000001",
+                  "type": "Images",
+                  "idsId": "CHSDM-34063_02-000001",
+                  "usage": {
+                    "access": "CC0"
+                  },
+                  "content": "https://ids.si.edu/ids/deliveryService?id=CHSDM-34063_02-000001",
+                  "thumbnail": "https://ids.si.edu/ids/deliveryService?id=CHSDM-34063_02-000001",
+                  "resources": [
+                    {
+                      "label": "High-resolution TIFF",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-34063_02-000001.tif",
+                      "width": 7037,
+                      "height": 4344,
+                      "dimensions": "7037x4344"
+                    },
+                    {
+                      "label": "High-resolution JPEG",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-34063_02-000001.jpg",
+                      "width": 7037,
+                      "height": 4344,
+                      "dimensions": "7037x4344"
+                    }
+                  ]
+                },
+                {
+                  "id": "media:CHSDM-chd2898",
+                  "type": "Images",
+                  "idsId": "CHSDM-chd2898",
+                  "usage": {
+                    "access": "CC0"
+                  },
+                  "content": "https://ids.si.edu/ids/deliveryService?id=CHSDM-chd2898",
+                  "thumbnail": "https://ids.si.edu/ids/deliveryService?id=CHSDM-chd2898",
+                  "resources": [
+                    {
+                      "label": "High-resolution JPEG",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-chd2898.jpg",
+                      "width": 1974,
+                      "height": 1292,
+                      "dimensions": "1974x1292"
+                    },
+                    {
+                      "label": "Screen Image",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-chd2898_screen"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "ld1-1643399887910-1643399947760-1",
+        "title": "Female Mask and Butterflies",
+        "unitCode": "CHNDM",
+        "url": "edanmdm:chndm_1978-146-1304",
+        "content": {
+          "freetext": {
+            "name": [
+              {
+                "label": "Manufacturer",
+                "content": "Gorham Manufacturing Company, Providence, Rhode Island, USA, founded 1818"
+              }
+            ],
+            "notes": [
+              {
+                "label": "Catalogue Status",
+                "content": "Research in Progress"
+              },
+              {
+                "label": "Description",
+                "content": "Rectangular, with curved corners, top, bottom, and sides, featuring female mask with pendant earrings, long hair tendrils, and butterfly wings framing her face, smaller butterflies above, on lid, and below. Reverse features open reserve with monogram HB, framed by stylized curves and butterflies. Lid hinged on side. Striker in recessed groove on bottom."
+              }
+            ],
+            "creditLine": [
+              {
+                "label": "Credit Line",
+                "content": "Gift of Stephen W. Brener and Carol B. Brener"
+              }
+            ],
+            "objectRights": [
+              {
+                "label": "Restrictions & Rights",
+                "content": "CC0"
+              }
+            ]
+          },
+          "descriptiveNonRepeating": {
+            "title": {
+              "label": "Title",
+              "content": "Female Mask and Butterflies"
+            },
+            "record_ID": "chndm_1978-146-1304",
+            "unit_code": "CHNDM",
+            "record_link": "https://collection.cooperhewitt.org/view/objects/asitem/id/158079",
+            "online_media": {
+              "mediaCount": 2,
+              "media": [
+                {
+                  "id": "media:CHSDM-9A2624B2A9402-000001",
+                  "type": "Images",
+                  "idsId": "CHSDM-9A2624B2A9402-000001",
+                  "usage": {
+                    "access": "CC0"
+                  },
+                  "content": "https://ids.si.edu/ids/deliveryService?id=CHSDM-9A2624B2A9402-000001",
+                  "thumbnail": "https://ids.si.edu/ids/deliveryService?id=CHSDM-9A2624B2A9402-000001",
+                  "resources": [
+                    {
+                      "label": "High-resolution JPEG",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-9A2624B2A9402-000001.jpg",
+                      "width": 5120,
+                      "height": 4096,
+                      "dimensions": "5120x4096"
+                    },
+                    {
+                      "label": "Screen Image",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-9A2624B2A9402-000001_screen"
+                    }
+                  ]
+                },
+                {
+                  "id": "media:CHSDM-CHP2280c",
+                  "type": "Images",
+                  "idsId": "CHSDM-CHP2280c",
+                  "usage": {
+                    "access": "CC0"
+                  },
+                  "content": "https://ids.si.edu/ids/deliveryService?id=CHSDM-CHP2280c",
+                  "thumbnail": "https://ids.si.edu/ids/deliveryService?id=CHSDM-CHP2280c",
+                  "resources": [
+                    {
+                      "label": "High-resolution JPEG",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-CHP2280c.jpg",
+                      "width": 1067,
+                      "height": 1500,
+                      "dimensions": "1067x1500"
+                    },
+                    {
+                      "label": "Screen Image",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-CHP2280c_screen"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "ld1-1643399887910-1643399899126-0",
+        "title": "LE BAIN",
+        "unitCode": "CHNDM",
+        "url": "edanmdm:chndm_1921-6-402-4",
+        "content": {
+          "freetext": {
+            "name": [
+              {
+                "label": "Designer",
+                "content": "Charles-Germain de Saint-Aubin, French, 1721–1786"
+              },
+              {
+                "label": "Print Maker",
+                "content": "Charles-Germain de Saint-Aubin, French, 1721–1786"
+              },
+              {
+                "label": "Publisher",
+                "content": "Étienne Fessard, French, 1714–1777"
+              }
+            ],
+            "notes": [
+              {
+                "label": "Catalogue Status",
+                "content": "Research in Progress"
+              },
+              {
+                "label": "Description",
+                "content": "Vignette depicting three butterflies on a watery platform, framed at the bottom by dripping shells, scrolls, netting, cattails, and a cartouche with the words \"Le Bain\" on it. One butterfly, at the left, pulls a net out of the water; another butterfly, underneath a canopy, holds up a lobster; the third butterfly, at the right, sits on the bow of a boat. The plate is not signed or numbered."
+              }
+            ],
+            "creditLine": [
+              {
+                "label": "Credit Line",
+                "content": "Purchased for the Museum by the Advisory Council"
+              }
+            ],
+            "objectRights": [
+              {
+                "label": "Restrictions & Rights",
+                "content": "CC0"
+              }
+            ]
+          },
+          "descriptiveNonRepeating": {
+            "title": {
+              "label": "Title",
+              "content": "LE BAIN"
+            },
+            "record_ID": "chndm_1921-6-402-4",
+            "unit_code": "CHNDM",
+            "record_link": "https://collection.cooperhewitt.org/view/objects/asitem/id/34069",
+            "online_media": {
+              "mediaCount": 2,
+              "media": [
+                {
+                  "id": "media:CHSDM-34069_02-000001",
+                  "type": "Images",
+                  "idsId": "CHSDM-34069_02-000001",
+                  "usage": {
+                    "access": "CC0"
+                  },
+                  "content": "https://ids.si.edu/ids/deliveryService?id=CHSDM-34069_02-000001",
+                  "thumbnail": "https://ids.si.edu/ids/deliveryService?id=CHSDM-34069_02-000001",
+                  "resources": [
+                    {
+                      "label": "High-resolution JPEG",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-34069_02-000001.jpg",
+                      "width": 7067,
+                      "height": 4393,
+                      "dimensions": "7067x4393"
+                    },
+                    {
+                      "label": "Screen Image",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-34069_02-000001_screen"
+                    }
+                  ]
+                },
+                {
+                  "id": "media:CHSDM-chd2903",
+                  "type": "Images",
+                  "idsId": "CHSDM-chd2903",
+                  "usage": {
+                    "access": "CC0"
+                  },
+                  "content": "https://ids.si.edu/ids/deliveryService?id=CHSDM-chd2903",
+                  "thumbnail": "https://ids.si.edu/ids/deliveryService?id=CHSDM-chd2903",
+                  "resources": [
+                    {
+                      "label": "High-resolution JPEG",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-chd2903.jpg",
+                      "width": 1984,
+                      "height": 1320,
+                      "dimensions": "1984x1320"
+                    },
+                    {
+                      "label": "Screen Image",
+                      "url": "https://ids.si.edu/ids/download?id=CHSDM-chd2903_screen"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "rowCount": 667,
+    "message": "content found"
+  }
+}

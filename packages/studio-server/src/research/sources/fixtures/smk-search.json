@@ -1,0 +1,78 @@
+{
+  "offset": 0,
+  "rows": 4,
+  "found": 754,
+  "items": [
+    {
+      "titles": [
+        {
+          "title": "Flower Piece",
+          "language": "engelsk"
+        }
+      ],
+      "object_number": "KMS1029",
+      "public_domain": true,
+      "rights": "https://creativecommons.org/publicdomain/mark/1.0/",
+      "image_iiif_id": "https://iip.smk.dk/iiif/jp2/pr76f7348_KMS1029_crop.tif.jp2",
+      "image_width": 1692,
+      "image_height": 2353,
+      "image_thumbnail": "https://iip-thumb.smk.dk/iiif/jp2/pr76f7348_KMS1029_crop.tif.jp2/full/!1024,/0/default.jpg",
+      "image_native": "https://api.smk.dk/api/v1/download/W3siaW1nX3VybCI6Imh0dHBzOi8vaWlwLnNtay5kay9paWlmL2pwMi9wcjc2ZjczNDhfS01TMTAyOV9jcm9wLnRpZi5qcDIvZnVsbC9mdWxsLzAvbmF0aXZlLmpwZyIsInB1YmxpY19kb21haW4iOnRydWUsIm9iamVjdF9udW1iZXIiOiJLTVMxMDI5IiwibnVtIjoiIn1d/KMS1029.jpg",
+      "has_image": true,
+      "artist": ["Franz Werner Tamm"]
+    },
+    {
+      "titles": [
+        {
+          "title": "Flower Piece with Rabit",
+          "language": "engelsk"
+        }
+      ],
+      "object_number": "KMS626",
+      "public_domain": true,
+      "rights": "https://creativecommons.org/publicdomain/mark/1.0/",
+      "has_image": true,
+      "image_width": 1213,
+      "image_height": 1600,
+      "image_thumbnail": "https://api.smk.dk/api/v1/thumbnail/0af32a42-f986-487d-b659-02b241e79af2.jpg",
+      "image_native": "https://api.smk.dk/api/v1/thumbnail/0af32a42-f986-487d-b659-02b241e79af2.jpg",
+      "artist": ["Franz Werner Tamm"]
+    },
+    {
+      "titles": [
+        {
+          "title": "Flowers",
+          "language": "engelsk"
+        }
+      ],
+      "object_number": "KMS250",
+      "public_domain": true,
+      "rights": "https://creativecommons.org/publicdomain/mark/1.0/",
+      "image_iiif_id": "https://iip.smk.dk/iiif/jp2/v979v595b_KMS250.TIF.reconstructed.tif.jp2",
+      "image_width": 3370,
+      "image_height": 4220,
+      "image_thumbnail": "https://iip-thumb.smk.dk/iiif/jp2/v979v595b_KMS250.TIF.reconstructed.tif.jp2/full/!1024,/0/default.jpg",
+      "image_native": "https://api.smk.dk/api/v1/download/W3siaW1nX3VybCI6Imh0dHBzOi8vaWlwLnNtay5kay9paWlmL2pwMi92OTc5djU5NWJfS01TMjUwLlRJRi5yZWNvbnN0cnVjdGVkLnRpZi5qcDIvZnVsbC9mdWxsLzAvbmF0aXZlLmpwZyIsInB1YmxpY19kb21haW4iOnRydWUsIm9iamVjdF9udW1iZXIiOiJLTVMyNTAiLCJudW0iOiIifV0=/KMS250.jpg",
+      "has_image": true,
+      "artist": ["Hendrik Schoock"]
+    },
+    {
+      "object_number": "KKS411",
+      "public_domain": true,
+      "rights": "https://creativecommons.org/publicdomain/mark/1.0/",
+      "image_iiif_id": "https://iip.smk.dk/iiif/jp2/zw12z957z_KKS411_crop.tif.jp2",
+      "image_width": 5838,
+      "image_height": 3042,
+      "image_thumbnail": "https://iip-thumb.smk.dk/iiif/jp2/zw12z957z_KKS411_crop.tif.jp2/full/!1024,/0/default.jpg",
+      "image_native": "https://api.smk.dk/api/v1/download/W3siaW1nX3VybCI6Imh0dHBzOi8vaWlwLnNtay5kay9paWlmL2pwMi96dzEyejk1N3pfS0tTNDExX2Nyb3AudGlmLmpwMi9mdWxsL2Z1bGwvMC9uYXRpdmUuanBnIiwicHVibGljX2RvbWFpbiI6dHJ1ZSwib2JqZWN0X251bWJlciI6IktLUzQxMSIsIm51bSI6IiJ9XQ==/KKS411.jpg",
+      "has_image": true,
+      "titles": [
+        {
+          "title": "Tre Russiske linieskibe.",
+          "language": "dansk"
+        }
+      ],
+      "artist": ["C.W. Eckersberg"]
+    }
+  ]
+}

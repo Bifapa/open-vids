@@ -198,6 +198,11 @@ function fromStory(failure: StoryFailure): ResearchFailure {
   }
 }
 
+/** An API key never reaches a message an agent or the user reads. */
+function redactKey(message: string, apiKey: string | null): string {
+  return apiKey ? message.replaceAll(apiKey, "[API key]") : message;
+}
+
 /** Whether trusted mode lets `host` be read: an enabled source's domain, or a host the candidate's source granted. */
 function hostAllowed(
   policy: AssetSearchPolicy,
@@ -296,6 +301,14 @@ export class ResearchService {
     return this.store.restoreBuiltIns();
   }
 
+  setSourceApiKey(id: string, key: string): AssetSearchPolicy {
+    return this.store.setApiKey(id, key);
+  }
+
+  removeSourceApiKey(id: string): AssetSearchPolicy {
+    return this.store.removeApiKey(id);
+  }
+
   private lock<T>(project: ResolvedProject, task: () => Promise<T>): Promise<T> {
     return serialized(`research\0${project.dir}`, task);
   }
@@ -304,8 +317,15 @@ export class ResearchService {
     domains: string[],
     scopeHttp: ConnectorContext["http"],
     signal?: AbortSignal,
+    apiKey: string | null = null,
   ): ConnectorContext {
-    return { http: scopeHttp, webSearch: this.webSearch, domains, ...(signal && { signal }) };
+    return {
+      http: scopeHttp,
+      webSearch: this.webSearch,
+      domains,
+      apiKey,
+      ...(signal && { signal }),
+    };
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -334,7 +354,9 @@ export class ResearchService {
       connector: AssetConnector;
       domains: string[];
       source: TrustedSource | null;
+      apiKey: string | null;
     }
+    const missingKeys: string[] = [];
     const plans: Plan[] = [];
     for (const id of wanted) {
       if (id === WEB_SOURCE_ID) {
@@ -344,7 +366,14 @@ export class ResearchService {
             reason:
               'Asset Search is in trusted mode: only the enabled trusted sources are searched, not the open web. Switch to "any" mode in the Asset Search settings to search the web.',
           });
-        } else plans.push({ ref: WEB_REF, connector: webConnector, domains: [], source: null });
+        } else
+          plans.push({
+            ref: WEB_REF,
+            connector: webConnector,
+            domains: [],
+            source: null,
+            apiKey: null,
+          });
         continue;
       }
       const source = policy.sources.find((entry) => entry.id === id);
@@ -371,12 +400,28 @@ export class ResearchService {
         blocked.push({ source: id, reason: `${source.name} has no connector` });
         continue;
       }
+      const apiKey = source.apiKey ? this.store.apiKeyFor(source.id) : null;
+      if (source.apiKey && apiKey === null) {
+        if (request.sources) {
+          blocked.push({
+            source: id,
+            reason: `${source.name} needs the user's API key; the user can add it in the Asset Search settings`,
+          });
+        } else missingKeys.push(source.name);
+        continue;
+      }
       plans.push({
         ref: { id: source.id, name: source.name, trusted: true },
         connector,
         domains: source.domains,
         source,
+        apiKey,
       });
+    }
+    if (missingKeys.length > 0) {
+      notes.push(
+        `Not searched: ${missingKeys.join(", ")} (no API key yet; the user can add one in the Asset Search settings).`,
+      );
     }
 
     const http = this.fetcher.http({ policy, ...(signal && { signal }) });
@@ -387,12 +432,26 @@ export class ResearchService {
             request.query,
             kind,
             limit,
-            this.context(plan.domains, http, signal),
+            this.context(plan.domains, http, signal, plan.apiKey),
           );
           return { plan, raw: raw.slice(0, limit), error: null };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          return { plan, raw: [], error: isResearchFailure(error) ? error.error.message : message };
+          const reported = isResearchFailure(error) ? error.error.message : message;
+          // Most APIs refuse a bad key with 401/403; Pixabay answers 400 ("[ERROR 400] "key" is invalid").
+          const status = / answered (\d{3})$/.exec(reported)?.[1];
+          const rejectedKey =
+            plan.apiKey !== null &&
+            (status === "401" ||
+              status === "403" ||
+              (status === "400" && plan.source?.connector === "pixabay"));
+          return {
+            plan,
+            raw: [],
+            error: rejectedKey
+              ? `${plan.ref.name} did not accept the saved API key; the user can check or replace it in the Asset Search settings`
+              : redactKey(reported, plan.apiKey),
+          };
         }
       }),
     );
@@ -405,6 +464,15 @@ export class ResearchService {
       for (const candidate of raw) {
         const host = hostOf(candidate.mediaUrl);
         if (host === null || seen.has(candidate.mediaUrl)) continue;
+        // A URL carrying the user's key would be stored and shown: such a candidate is dropped, never kept.
+        if (
+          plan.apiKey &&
+          [candidate.mediaUrl, candidate.pageUrl, candidate.previewUrl].some((url) =>
+            url?.includes(plan.apiKey ?? ""),
+          )
+        ) {
+          continue;
+        }
         const grants =
           plan.source && plan.source.connector !== "site" && host !== null ? [host] : [];
         if (!hostAllowed(policy, host, grants)) continue;
@@ -496,7 +564,16 @@ export class ResearchService {
     const http = this.fetcher.http(scope);
     const connector = vouching ? connectorFor(vouching.connector) : null;
     const described = connector?.describeUrl
-      ? await connector.describeUrl(url, kind, this.context(vouching?.domains ?? [], http, signal))
+      ? await connector.describeUrl(
+          url,
+          kind,
+          this.context(
+            vouching?.domains ?? [],
+            http,
+            signal,
+            vouching?.apiKey ? this.store.apiKeyFor(vouching.id) : null,
+          ),
+        )
       : null;
     const page = described
       ? {

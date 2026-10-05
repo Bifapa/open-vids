@@ -41,6 +41,7 @@ export function trustedSource(id: string, overrides: Partial<TrustedSource> = {}
     licenseNote: "Each file has its own free license",
     homepage: null,
     ...overrides,
+    apiKey: overrides.apiKey ?? null,
   };
 }
 

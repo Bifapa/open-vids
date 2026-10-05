@@ -21,6 +21,19 @@ import { UrlGuard, assertInAllowedSites, type VettedUrl } from "./urlPolicy.js";
 export const RESEARCH_USER_AGENT =
   "OpenVids/0.8 (https://github.com/bazodev/open-vids; desktop video editor, asset research)";
 
+/**
+ * Hosts that ask for their own header on every request, media files included: the Art Institute of Chicago's
+ * Cloudflare answers 403 to anything without `AIC-User-Agent`, and ccMixter refuses file downloads without a Referer
+ * from its own site (hotlink protection).
+ */
+const SITE_HEADERS: ReadonlyArray<{ domain: string; headers: Record<string, string> }> = [
+  { domain: "artic.edu", headers: { "AIC-User-Agent": "OpenVids (https://openvids.ai)" } },
+  { domain: "ccmixter.org", headers: { referer: "https://ccmixter.org/" } },
+];
+
+/** Request headers that carry a source's credentials (connectors send API keys in them). */
+const CREDENTIAL_HEADERS = new Set(["authorization", "x-api-key"]);
+
 const MAX_REDIRECTS = 5;
 const JSON_LIMIT_BYTES = 8 * 1024 * 1024;
 const PAGE_LIMIT_BYTES = 3 * 1024 * 1024;
@@ -167,7 +180,13 @@ export class PolicyFetcher {
   ): Promise<Response> {
     for (let attempt = 0; ; attempt += 1) {
       const response = await this.transport(url.toString(), {
-        headers: { "user-agent": this.userAgent, ...headers },
+        headers: {
+          "user-agent": this.userAgent,
+          ...SITE_HEADERS.find(
+            (site) => url.hostname === site.domain || url.hostname.endsWith(`.${site.domain}`),
+          )?.headers,
+          ...headers,
+        },
         redirect: "manual",
         signal,
         addresses,
@@ -237,11 +256,21 @@ export class PolicyFetcher {
     vet: (url: string) => Promise<VettedUrl>,
   ): Promise<{ response: Response; finalUrl: string }> {
     let current = rawUrl;
+    const firstHost = new URL(rawUrl).host;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
       const { url, addresses } = await vet(current);
+      // A source's API key goes to the host it was meant for, never to where a redirect points.
+      const sent =
+        url.host === firstHost
+          ? headers
+          : Object.fromEntries(
+              Object.entries(headers).filter(
+                ([name]) => !CREDENTIAL_HEADERS.has(name.toLowerCase()),
+              ),
+            );
       let response: Response;
       try {
-        response = await this.requestWithBackoff(url, headers, signal, addresses);
+        response = await this.requestWithBackoff(url, sent, signal, addresses);
       } catch (error) {
         if (isResearchFailure(error)) throw error;
         throw networkFailure(url, error, signal);

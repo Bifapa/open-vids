@@ -18,6 +18,7 @@ import {
   type ResolveMissingRequest,
   type ReadWebsiteRequest,
   type UpdateAssetSearchPolicyRequest,
+  type SetSourceApiKeyRequest,
   type UpdateTrustedSourceRequest,
   type WebsiteFileRequest,
   type WebsiteGrantRequest,
@@ -143,6 +144,11 @@ export function parseUpdateSource(raw: unknown): UpdateTrustedSourceRequest {
       licenseNote: text(value.licenseNote, "licenseNote", RESEARCH_LIMITS.noteChars, true),
     }),
   };
+}
+
+export function parseSetApiKey(raw: unknown): SetSourceApiKeyRequest {
+  const value = body(raw, ["key"]);
+  return { key: text(value.key, "key", RESEARCH_LIMITS.apiKeyChars) };
 }
 
 export function parseSearchRequest(raw: unknown): AssetSearchRequest {

@@ -8,6 +8,8 @@
 //! - `POST   /api/research/sources {name, domains, kinds?, homepage?, licenseNote?}` → the policy
 //! - `PATCH  /api/research/sources/<id> {enabled?, name?, domains?, kinds?, licenseNote?}` → the policy
 //! - `DELETE /api/research/sources/<id>` → the policy
+//! - `PUT    /api/research/sources/<id>/api-key {key}` → the policy (`apiKey.configured` of that source is now true)
+//! - `DELETE /api/research/sources/<id>/api-key` → the policy (`configured` false again)
 //! - `POST   /api/research/sources/restore` → the policy
 //!
 //! Errors are `{ "error": { "code", "message" } }` with the status Studio uses
@@ -19,7 +21,8 @@ use serde_json::{json, Value};
 
 use super::home_api::respond_json;
 use super::research_policy::{
-    parse_add_source, parse_policy_update, parse_update_source, PolicyError, PolicyStore, PolicyView,
+    parse_add_source, parse_policy_update, parse_set_api_key, parse_update_source, PolicyError, PolicyStore,
+    PolicyView,
 };
 
 const SOURCES_PREFIX: &str = "/api/research/sources/";
@@ -63,6 +66,13 @@ fn source_id(path: &str) -> Option<&str> {
         .filter(|id| !id.is_empty() && !id.contains('/'))
 }
 
+/// The id of `/api/research/sources/<id>/api-key`, under the same rules.
+fn api_key_source_id(path: &str) -> Option<&str> {
+    path.strip_prefix(SOURCES_PREFIX)?
+        .strip_suffix("/api-key")
+        .filter(|id| !id.is_empty() && !id.contains('/'))
+}
+
 /// Handle one request for which `owns(path)` holds.
 pub fn handle(stream: &mut TcpStream, method: &str, path: &str, body: &[u8]) {
     let store = PolicyStore::open();
@@ -77,6 +87,16 @@ pub fn handle(stream: &mut TcpStream, method: &str, path: &str, body: &[u8]) {
             parse_add_source(&body_json(body)).and_then(|request| store.add_source(&request)),
         ),
         ("POST", "/api/research/sources/restore") => answer(stream, store.restore_built_ins()),
+        ("PUT", p) if api_key_source_id(p).is_some() => {
+            let id = api_key_source_id(p).unwrap_or_default();
+            answer(
+                stream,
+                parse_set_api_key(&body_json(body)).and_then(|request| store.set_api_key(id, &request.key)),
+            )
+        }
+        ("DELETE", p) if api_key_source_id(p).is_some() => {
+            answer(stream, store.remove_api_key(api_key_source_id(p).unwrap_or_default()))
+        }
         ("PATCH", p) if source_id(p).is_some() => {
             let id = source_id(p).unwrap_or_default();
             answer(
@@ -112,5 +132,18 @@ mod tests {
         assert_eq!(source_id("/api/research/sources/"), None);
         assert_eq!(source_id("/api/research/sources/a/b"), None);
         assert_eq!(source_id("/api/research/sources"), None);
+        // The key route is not a source id (PATCH/DELETE on it must not hit a source).
+        assert_eq!(source_id("/api/research/sources/pexels/api-key"), None);
+    }
+
+    #[test]
+    fn api_key_paths_name_exactly_one_source() {
+        assert!(owns("/api/research/sources/pexels/api-key"));
+        assert_eq!(api_key_source_id("/api/research/sources/pexels/api-key"), Some("pexels"));
+        assert_eq!(api_key_source_id("/api/research/sources//api-key"), None);
+        assert_eq!(api_key_source_id("/api/research/sources/a/b/api-key"), None);
+        assert_eq!(api_key_source_id("/api/research/sources/pexels"), None);
+        assert_eq!(api_key_source_id("/api/research/sources/pexels/api-keys"), None);
+        assert_eq!(api_key_source_id("/api/research/sources/api-key"), None);
     }
 }

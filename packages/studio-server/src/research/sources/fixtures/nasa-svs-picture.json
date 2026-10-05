@@ -1,0 +1,149 @@
+{
+  "id": 5669,
+  "url": "https://svs.gsfc.nasa.gov/5669/",
+  "page_type": "Visualization",
+  "title": "GEOS Aerosols (2025)",
+  "description": "Aerosols are tiny solid or liquid particles that float in the atmosphere and can travel long distances, affecting air quality and visibility far from their sources. This visualization still, captured for August 19, 2025 (20:00 UTC), is based on NASA's Goddard Earth Observing System (GEOS) model. The GEOS model delivers realistic, high-resolution weather and aerosol data that enable customized environmental prediction and advances in AI research.",
+  "main_image": {
+    "id": 1205026,
+    "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005669/Aerosols_2025-08-19T20_00_00_1920x1080.png",
+    "filename": "Aerosols_2025-08-19T20_00_00_1920x1080.png",
+    "media_type": "Image",
+    "alt_text": "",
+    "width": 1920,
+    "height": 1080,
+    "pixels": 2073600
+  },
+  "main_video": null,
+  "main_credits": {
+    "Visualizations by": [
+      {
+        "name": "Joseph V. Ardizzone",
+        "employer": "NASA/GSFC"
+      },
+      {
+        "name": "Helen-Nicole Kostis",
+        "employer": "Science and Technology Corporation"
+      }
+    ],
+    "Scientific consulting by": [
+      {
+        "name": "Lesley Ott",
+        "employer": "NASA/GSFC"
+      }
+    ]
+  },
+  "media_groups": [
+    {
+      "id": 380698,
+      "widget": "Single image",
+      "title": "",
+      "caption": "Visualization still image showing aerosols as modeled by NASA's Goddard Earth Observing System (GEOS) on August 19, 2025 (20:00 UTC).\r\n\r\nAerosols are tiny solid or liquid particles suspended in the atmosphere that can travel vast distances, affecting air quality and visibility far from their original sources. This visualization is based on the GEOS model, which provides realistic, high-resolution weather and aerosol data that enables customized environmental prediction and advances in AI research.",
+      "description": "",
+      "items": [
+        {
+          "id": 523423,
+          "type": "media",
+          "instance": {
+            "id": 1205026,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005669/Aerosols_2025-08-19T20_00_00_1920x1080.png",
+            "filename": "Aerosols_2025-08-19T20_00_00_1920x1080.png",
+            "media_type": "Image",
+            "width": 1920,
+            "height": 1080
+          }
+        },
+        {
+          "id": 523424,
+          "type": "media",
+          "instance": {
+            "id": 1205027,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005669/Aerosols_2025-08-19T20_00_00_3840x2160.png",
+            "filename": "Aerosols_2025-08-19T20_00_00_3840x2160.png",
+            "media_type": "Image",
+            "width": 3840,
+            "height": 2160
+          }
+        },
+        {
+          "id": 523425,
+          "type": "media",
+          "instance": {
+            "id": 1205028,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005669/Aerosols_2025-08-19T20_00_00_5760x3240.png",
+            "filename": "Aerosols_2025-08-19T20_00_00_5760x3240.png",
+            "media_type": "Image",
+            "width": 5760,
+            "height": 3240
+          }
+        },
+        {
+          "id": 523426,
+          "type": "media",
+          "instance": {
+            "id": 1205029,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005669/Aerosols_2025-08-19T20_00_00_7680x4320.png",
+            "filename": "Aerosols_2025-08-19T20_00_00_7680x4320.png",
+            "media_type": "Image",
+            "width": 7680,
+            "height": 4320
+          }
+        }
+      ]
+    },
+    {
+      "id": 380699,
+      "widget": "Single image",
+      "title": "Print-Quality Version (14:11 Aspect Ratio)",
+      "caption": "Visualization still image (14:11 aspect ratio) showing aerosols as modeled by NASA's Goddard Earth Observing System (GEOS) on August 19, 2025 (20:00 UTC).\r\n\r\nAerosols are tiny solid or liquid particles suspended in the atmosphere that can travel vast distances, affecting air quality and visibility far from their original sources. This visualization is based on the GEOS model, which provides realistic, high-resolution weather and aerosol data that enables customized environmental prediction and advances in AI research.\r\n\r\n*Note: A print-quality version (300 dpi) is available in this content block under \"Download\"*",
+      "description": "",
+      "items": [
+        {
+          "id": 523428,
+          "type": "media",
+          "instance": {
+            "id": 1205031,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005669/Aerosols_2025-08-19T20_00_00_1500x1179_72dpi.png",
+            "filename": "Aerosols_2025-08-19T20_00_00_1500x1179_72dpi.png",
+            "media_type": "Image",
+            "width": 1500,
+            "height": 1179
+          }
+        },
+        {
+          "id": 523429,
+          "type": "media",
+          "instance": {
+            "id": 1205032,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005669/Aerosols_2025-08-19T20_00_00_4200x3300_300dpi.png",
+            "filename": "Aerosols_2025-08-19T20_00_00_4200x3300_300dpi.png",
+            "media_type": "Image",
+            "width": 4200,
+            "height": 3300
+          }
+        }
+      ]
+    },
+    {
+      "id": 380701,
+      "widget": "Single image",
+      "title": "",
+      "caption": "Colorbar for the aerosols visualization.",
+      "description": "",
+      "items": [
+        {
+          "id": 523427,
+          "type": "media",
+          "instance": {
+            "id": 1205030,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005669/Aerosols_cbar.png",
+            "filename": "Aerosols_cbar.png",
+            "media_type": "Image",
+            "width": 1500,
+            "height": 300
+          }
+        }
+      ]
+    }
+  ]
+}

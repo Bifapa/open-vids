@@ -52,6 +52,12 @@ export interface ConnectorContext {
   webSearch: WebSearchBackend;
   /** The source's domains (suffix match); empty for the `web` connector (unrestricted). */
   domains: string[];
+  /**
+   * The user's key for a source that needs one (`TrustedSource.apiKey`); null otherwise. Send it in a header where the
+   * API accepts one. It must never appear in a candidate's URLs (they are stored and shown); the service removes it
+   * from error messages.
+   */
+  apiKey: string | null;
   signal?: AbortSignal;
 }
 

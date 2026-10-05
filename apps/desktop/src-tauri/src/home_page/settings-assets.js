@@ -2,6 +2,8 @@
    GET/PUT /api/research/policy {mode?, websites?: {readLinkedPages?, fullAccess?}}, POST /api/research/sources {name, domains},
    PATCH/DELETE /api/research/sources/:id {enabled}, POST /api/research/sources/restore. Every success answers the
    whole policy; the server validates (a refused source comes back as {error:{message}}, shown at the field).
+   PUT/DELETE /api/research/sources/:id/api-key {key} saves or forgets the user's own key of a source that has an
+   `apiKey` (the policy only ever says whether one is `configured`; a key is never drawn into the markup).
    Source names, domains and license notes are user- or server-supplied text: always escaped. */
 (function () {
   "use strict";
@@ -94,24 +96,85 @@
   }
 
   /* ---------- markup ---------- */
+  /* The key line of a source that needs the user's own API key: the note and the field while there is none,
+     "Key saved" with Replace / Remove once there is. Drafts, errors and busy flags live under `srckey:<id>`. */
+  function keyBlock(s) {
+    const id = esc(s.id),
+      k = `srckey:${s.id}`,
+      busy = !!ui.busy[k],
+      err = ui.err[k],
+      configured = s.apiKey.configured,
+      replacing = configured && !!ui.flags[`replace:${s.id}`];
+    const link = (act, label, aria) =>
+      `<button type="button" class="link" data-act="${act}" data-v="${id}" data-fk="${act}:${id}"${
+        aria ? ` aria-label="${esc(aria)}"` : ""
+      }${busy ? " disabled" : ""}>${label}</button>`;
+    const line = configured
+      ? `<span class="status success">${ic("check")}${te("settings.assets.key.saved")}</span>${
+          replacing
+            ? ""
+            : link(
+                "srckey-replace",
+                te("settings.assets.key.replace"),
+                tr("settings.assets.key.replaceAria", { name: s.name }),
+              ) +
+              link(
+                "srckey-remove",
+                te("common.remove"),
+                tr("settings.assets.key.removeAria", { name: s.name }),
+              )
+        }`
+      : `${ic("key")}<span>${te("settings.assets.key.needs")}</span>${link(
+          "srckey-get",
+          te("settings.assets.key.get"),
+        )}`;
+    const form =
+      !configured || replacing
+        ? `<div class="st-inline"><input class="input mono${err ? " is-invalid" : ""}" type="password" autocomplete="off" spellcheck="false" placeholder="${te(
+            "settings.assets.key.placeholder",
+          )}" aria-label="${te("settings.assets.key.aria", {
+            name: s.name,
+          })}" data-act="srckey-input" data-v="${id}" data-draft="${esc(k)}" data-fk="srckey-input:${id}"${
+            busy ? " readonly" : ""
+          }${
+            err ? ` aria-invalid="true" aria-describedby="err-${esc(k)}"` : ""
+          } /><button type="button" class="btn" data-act="srckey-save" data-v="${id}" data-fk="srckey-save:${id}"${
+            busy ? ' disabled aria-busy="true"' : ""
+          }>${busy ? '<i class="spinner" aria-hidden="true"></i>' : ""}${te("common.save")}</button>${
+            replacing
+              ? `<button type="button" class="btn btn-ghost" data-act="srckey-cancel" data-v="${id}" data-fk="srckey-cancel:${id}"${
+                  busy ? " disabled" : ""
+                }>${te("common.cancel")}</button>`
+              : ""
+          }</div>`
+        : "";
+    return `<div class="st-src-key" data-key-for="${id}"><p class="st-src-key-line">${line}</p>${form}${
+      err ? `<p class="st-field-err" id="err-${esc(k)}" role="alert">${esc(text(err))}</p>` : ""
+    }</div>`;
+  }
   function sourceRow(s) {
     const kinds = s.kinds.map((k) => (KIND_KEYS[k] ? tr(KIND_KEYS[k]) : k)).join(" · ");
     const domains = s.domains.join(", ");
-    return `<div class="st-row st-src${s.enabled ? "" : " is-off"}" data-source="${esc(s.id)}">${sw(
+    /* An enabled source with no key searches nothing yet: shown as off, with the reason beside its name. */
+    const needsKey = !!s.apiKey && !s.apiKey.configured;
+    const badge = !s.builtIn
+      ? `<span class="badge sm">${te("settings.assets.custom")}</span>`
+      : s.enabled && needsKey
+        ? `<span class="badge sm is-quiet">${te("settings.assets.key.badge")}</span>`
+        : "";
+    return `<div class="st-row st-src${s.enabled && !needsKey ? "" : " is-off"}" data-source="${esc(s.id)}">${sw(
       s.enabled,
       "source-on",
       tr("settings.assets.useSource", { name: s.name }),
       s.id,
-    )}<div class="st-label"><b>${esc(s.name)}${
-      s.builtIn ? "" : `<span class="badge sm">${te("settings.assets.custom")}</span>`
-    }</b><span><span class="mono" title="${esc(domains)}">${esc(domains)}</span></span>${
+    )}<div class="st-label"><b>${esc(s.name)}${badge}</b><span><span class="mono" title="${esc(domains)}">${esc(domains)}</span></span>${
       s.licenseNote ? `<span>${esc(s.licenseNote)}</span>` : ""
     }</div><span class="lic">${esc(kinds)}</span><button type="button" class="icon-btn" aria-label="${te(
       "settings.assets.removeSource",
       { name: s.name },
     )}" data-tip="${te("common.remove")}" data-tip-align="end" data-act="source-remove" data-key="${esc(s.id)}" data-fk="remove:${esc(
       s.id,
-    )}">${ic("trash")}</button></div>`;
+    )}">${ic("trash")}</button>${s.apiKey ? keyBlock(s) : ""}</div>`;
   }
 
   PAGES.assets = function () {
@@ -163,6 +226,9 @@
       p.mode === "trusted" && !onCount
         ? `<p class="st-foot"><span class="status warning">${ic("alert")}${te("settings.assets.allOff")}</span></p>`
         : "";
+    const keysFoot = p.sources.some((s) => s.apiKey)
+      ? `<p class="st-foot">${te("settings.assets.keysFoot")}</p>`
+      : "";
     const readLinked = p.websites.readLinkedPages;
     const fullAccess = readLinked && p.websites.fullAccess;
     return (
@@ -170,7 +236,7 @@
       intro +
       OVS.noteHtml(S.policyNote) +
       group(te("settings.assets.group.mode"), modes) +
-      `<section class="st-group"><div class="sect-label"><span>${te("settings.assets.group.sources")}</span>${meta}</div><div class="st-box">${list}${add}</div>${empty}</section>` +
+      `<section class="st-group"><div class="sect-label"><span>${te("settings.assets.group.sources")}</span>${meta}</div><div class="st-box">${list}${add}</div>${keysFoot}${empty}</section>` +
       group(
         te("settings.assets.group.websites"),
         row(
@@ -210,6 +276,61 @@
   CLICK["source-restore"] = () =>
     policyOp(() => api("/api/research/sources/restore", undefined, "POST"));
   CLICK["source-add"] = () => addSource();
+  /* ---- the user's own API key of a source that needs one ---- */
+  /* Saves the pasted key; on success the field gives way to "Key saved", on a refusal it stays with the reason. */
+  function saveKey(id) {
+    const k = `srckey:${id}`,
+      key = (ui.draft[k] || "").trim();
+    if (ui.busy[k]) return;
+    if (!key) {
+      ui.err[k] = msg("settings.key.error.empty");
+      return;
+    }
+    delete ui.err[k];
+    ui.busy[k] = true;
+    policyOp(() => api(sourcesUrl(id) + "/api-key", { key }, "PUT"), true).then((refusal) => {
+      delete ui.busy[k];
+      if (refusal) ui.err[k] = refusal;
+      else {
+        delete ui.draft[k];
+        delete ui.flags[`replace:${id}`];
+      }
+      ui.pendingFk = refusal ? `srckey-input:${id}` : `srckey-replace:${id}`;
+      OVS.render(true);
+      ui.pendingFk = null;
+    });
+  }
+  CLICK["srckey-save"] = (t) => saveKey(t.dataset.v);
+  CLICK["srckey-replace"] = (t) => {
+    ui.flags[`replace:${t.dataset.v}`] = true;
+    ui.pendingFk = `srckey-input:${t.dataset.v}`;
+  };
+  CLICK["srckey-cancel"] = (t) => {
+    const id = t.dataset.v;
+    delete ui.flags[`replace:${id}`];
+    delete ui.draft[`srckey:${id}`];
+    delete ui.err[`srckey:${id}`];
+    ui.pendingFk = `srckey-replace:${id}`;
+  };
+  CLICK["srckey-remove"] = (t) => {
+    const id = t.dataset.v,
+      k = `srckey:${id}`;
+    if (ui.busy[k]) return;
+    delete ui.err[k];
+    ui.busy[k] = true;
+    policyOp(() => api(sourcesUrl(id) + "/api-key", undefined, "DELETE"), true).then((refusal) => {
+      delete ui.busy[k];
+      if (refusal) ui.err[k] = refusal;
+      ui.pendingFk = refusal ? `srckey-remove:${id}` : `srckey-input:${id}`;
+      OVS.render(true);
+      ui.pendingFk = null;
+    });
+  };
+  /* The sign-up page opens in the default browser through the shell, which only opens https addresses. */
+  CLICK["srckey-get"] = (t) => {
+    const s = S.policy && S.policy.sources.find((x) => x.id === t.dataset.v);
+    if (s && s.apiKey) api("/api/open-external", { url: s.apiKey.signupUrl }).catch(() => {});
+  };
   CLICK["read-linked"] = () => {
     if (S.policy)
       policyOp(() =>
@@ -239,6 +360,18 @@
   };
   ENTER["source-input"] = () => {
     addSource();
+    OVS.render(true);
+  };
+  INPUT["srckey-input"] = (t) => {
+    const k = `srckey:${t.dataset.v}`;
+    ui.draft[k] = t.value;
+    if (ui.err[k]) {
+      delete ui.err[k];
+      OVS.render(true);
+    }
+  };
+  ENTER["srckey-input"] = (t) => {
+    saveKey(t.dataset.v);
     OVS.render(true);
   };
 

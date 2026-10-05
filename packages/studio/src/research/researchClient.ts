@@ -10,6 +10,7 @@ import {
   type CodedMessageParams,
   type ExportLicenseCheck,
   type ProjectSourcesView,
+  type SetSourceApiKeyRequest,
   type UpdateTrustedSourceRequest,
 } from "@hyperframes/agent-protocol";
 import { describeServerError } from "../agent/agentErrors";
@@ -54,6 +55,10 @@ export interface ResearchClient {
   updateSource(id: string, patch: UpdateTrustedSourceRequest): Promise<AssetSearchPolicy>;
   removeSource(id: string): Promise<AssetSearchPolicy>;
   restoreSources(): Promise<AssetSearchPolicy>;
+  /** Saves the user's own API key for a built-in source that needs one; the key never comes back, only `configured`. */
+  setSourceApiKey(id: string, key: string): Promise<AssetSearchPolicy>;
+  /** Forgets the saved API key of a source. */
+  removeSourceApiKey(id: string): Promise<AssetSearchPolicy>;
 }
 
 /** The server's `{ error: { code, message, params } }`, translated when Studio has `errors.<code>`. */
@@ -142,5 +147,11 @@ export function createResearchClient(fetchImpl?: typeof fetch): ResearchClient {
       policyRequest(`${SOURCES_URL}/${encodeURIComponent(id)}`, json("PATCH", patch)),
     removeSource: (id) => policyRequest(`${SOURCES_URL}/${encodeURIComponent(id)}`, json("DELETE")),
     restoreSources: () => policyRequest(`${SOURCES_URL}/restore`, json("POST")),
+    setSourceApiKey: (id, key) => {
+      const body: SetSourceApiKeyRequest = { key };
+      return policyRequest(`${SOURCES_URL}/${encodeURIComponent(id)}/api-key`, json("PUT", body));
+    },
+    removeSourceApiKey: (id) =>
+      policyRequest(`${SOURCES_URL}/${encodeURIComponent(id)}/api-key`, json("DELETE")),
   };
 }

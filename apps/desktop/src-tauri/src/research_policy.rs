@@ -20,14 +20,19 @@
 //!   access keeps its `readLinkedPages` with `fullAccess` off;
 //! - writes replace the file atomically (temp file + rename), mode 0600, in a
 //!   directory of mode 0700;
-//! - the response of every route is the full policy view.
+//! - the response of every route is the full policy view;
+//! - the API keys of the built-in sources that need one live in `api-keys.json`
+//!   beside it (schema `openvids.research-keys/1`, `keys` by source id, same
+//!   atomic 0600 writes, a file that cannot be read as such holds no keys); the
+//!   policy view only says whether a source has one (`apiKey.configured`) and
+//!   never carries a key.
 //!
 //! The built-in source list below is duplicated from
 //! `packages/studio-server/src/research/sources/builtins.ts`: change both
 //! together. The limits mirror `RESEARCH_LIMITS` in
 //! `packages/agent-protocol/src/research.ts`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -36,6 +41,9 @@ use serde_json::{Map, Number, Value};
 
 const POLICY_SCHEMA: &str = "openvids.research-policy/1";
 const POLICY_FILE: &str = "policy.json";
+/// Beside `policy.json`; `ApiKeyStore` (studio-server `sources/apiKeys.ts`) reads and writes the same file.
+const KEYS_SCHEMA: &str = "openvids.research-keys/1";
+const API_KEYS_FILE: &str = "api-keys.json";
 
 pub const MODES: [&str; 2] = ["trusted", "any"];
 pub const MEDIA_KINDS: [&str; 3] = ["video", "picture", "audio"];
@@ -46,6 +54,7 @@ const MAX_DOMAINS_PER_SOURCE: usize = 16;
 const NAME_CHARS: usize = 80;
 const NOTE_CHARS: usize = 500;
 const URL_CHARS: usize = 2_048;
+const API_KEY_CHARS: usize = 256;
 
 /// Serializes read-modify-write cycles within this process (the home server
 /// answers each connection on its own thread). Studio's server is another
@@ -94,13 +103,15 @@ struct BuiltInDef {
     description: &'static str,
     license_note: &'static str,
     homepage: &'static str,
+    /// Where the user gets a key; `None` for a source that needs none.
+    signup_url: Option<&'static str>,
 }
 
 /// The built-in trusted sources, in display order. DUPLICATE of
 /// `BUILT_IN_SOURCES` in `packages/studio-server/src/research/sources/builtins.ts`
 /// (the Studio server cannot run here and this crate cannot import it): when a
 /// source is added, removed or edited, change both lists.
-const BUILT_INS: [BuiltInDef; 4] = [
+const BUILT_INS: [BuiltInDef; 17] = [
     BuiltInDef {
         id: "wikimedia-commons",
         name: "Wikimedia Commons",
@@ -110,6 +121,7 @@ const BUILT_INS: [BuiltInDef; 4] = [
         description: "Free media files of Wikipedia and its sister projects.",
         license_note: "Each file carries its own license (public domain, CC0, CC BY, CC BY-SA…); the author and license come from the file's page.",
         homepage: "https://commons.wikimedia.org",
+        signup_url: None,
     },
     BuiltInDef {
         id: "openverse",
@@ -120,6 +132,7 @@ const BUILT_INS: [BuiltInDef; 4] = [
         description: "Openly licensed images and audio gathered from Flickr, Freesound, Wikimedia and other collections.",
         license_note: "Every result states its Creative Commons license and creator; the files are hosted by the original collection.",
         homepage: "https://openverse.org",
+        signup_url: None,
     },
     BuiltInDef {
         id: "nasa-images",
@@ -130,6 +143,7 @@ const BUILT_INS: [BuiltInDef; 4] = [
         description: "Images, video and audio from NASA missions.",
         license_note: "NASA media is generally not copyrighted (public domain), except where the page says otherwise; logos and people's likenesses have their own rules.",
         homepage: "https://images.nasa.gov",
+        signup_url: None,
     },
     BuiltInDef {
         id: "internet-archive",
@@ -140,6 +154,150 @@ const BUILT_INS: [BuiltInDef; 4] = [
         description: "Public-domain and openly licensed films, recordings and images.",
         license_note: "Only items with a license field are treated as licensed; everything else is marked unknown.",
         homepage: "https://archive.org",
+        signup_url: None,
+    },
+    BuiltInDef {
+        id: "nasa-svs",
+        name: "NASA Scientific Visualization Studio",
+        connector: "nasa_svs",
+        domains: &["svs.gsfc.nasa.gov"],
+        kinds: &["video", "picture"],
+        description: "Visualizations, animations and imagery of Earth and space made from NASA mission data.",
+        license_note: "NASA visualizations are generally not copyrighted (public domain); the credits name the visualizers, and music in some videos is licensed separately.",
+        homepage: "https://svs.gsfc.nasa.gov",
+        signup_url: None,
+    },
+    BuiltInDef {
+        id: "met-museum",
+        name: "The Metropolitan Museum of Art",
+        connector: "met_museum",
+        domains: &["metmuseum.org"],
+        kinds: &["picture"],
+        description: "Artworks and objects from The Met's collection.",
+        license_note: "Only Open Access images of public-domain works are offered; they are CC0.",
+        homepage: "https://www.metmuseum.org",
+        signup_url: None,
+    },
+    BuiltInDef {
+        id: "art-institute-chicago",
+        name: "Art Institute of Chicago",
+        connector: "art_institute_chicago",
+        domains: &["artic.edu"],
+        kinds: &["picture"],
+        description: "Paintings, prints, photographs and objects from the Art Institute of Chicago.",
+        license_note: "Only artworks the museum marks as public domain are offered; their images are CC0.",
+        homepage: "https://www.artic.edu",
+        signup_url: None,
+    },
+    BuiltInDef {
+        id: "cleveland-museum",
+        name: "Cleveland Museum of Art",
+        connector: "cleveland_museum",
+        domains: &["clevelandart.org"],
+        kinds: &["picture"],
+        description: "Artworks from the Cleveland Museum of Art's Open Access collection.",
+        license_note: "Only Open Access images are offered; they are CC0.",
+        homepage: "https://www.clevelandart.org/open-access",
+        signup_url: None,
+    },
+    BuiltInDef {
+        id: "smk",
+        name: "SMK – National Gallery of Denmark",
+        connector: "smk",
+        domains: &["smk.dk"],
+        kinds: &["picture"],
+        description: "Paintings, drawings and prints from the National Gallery of Denmark.",
+        license_note: "Only public-domain works are offered; they carry the Public Domain Mark.",
+        homepage: "https://open.smk.dk",
+        signup_url: None,
+    },
+    BuiltInDef {
+        id: "wellcome-collection",
+        name: "Wellcome Collection",
+        connector: "wellcome_collection",
+        domains: &["wellcomecollection.org"],
+        kinds: &["picture"],
+        description: "Medical and scientific images, illustrations and photographs.",
+        license_note: "Each image states its license (CC0, Public Domain Mark, CC BY, CC BY-NC…).",
+        homepage: "https://wellcomecollection.org",
+        signup_url: None,
+    },
+    BuiltInDef {
+        id: "ccmixter",
+        name: "ccMixter",
+        connector: "ccmixter",
+        domains: &["ccmixter.org"],
+        kinds: &["audio"],
+        description: "Creative Commons music: tracks, remixes, instrumentals and a cappellas.",
+        license_note: "Each track states its Creative Commons license; many are non-commercial, which is flagged as restricted.",
+        homepage: "https://ccmixter.org",
+        signup_url: None,
+    },
+    BuiltInDef {
+        id: "iconify",
+        name: "Iconify",
+        connector: "iconify",
+        domains: &["iconify.design"],
+        kinds: &["picture"],
+        description: "Over 200,000 open-source icons and emoji from more than 150 icon sets.",
+        license_note: "Each icon set states its license (MIT, Apache, CC0, CC BY…); brand logos remain their owners' trademarks.",
+        homepage: "https://icon-sets.iconify.design",
+        signup_url: None,
+    },
+    BuiltInDef {
+        id: "pexels",
+        name: "Pexels",
+        connector: "pexels",
+        domains: &["pexels.com"],
+        kinds: &["picture", "video"],
+        description: "Free stock photos and videos.",
+        license_note: "Pexels License: free to use, commercially too, no credit required; the files may not be sold as they are.",
+        homepage: "https://www.pexels.com",
+        signup_url: Some("https://www.pexels.com/api/new/"),
+    },
+    BuiltInDef {
+        id: "pixabay",
+        name: "Pixabay",
+        connector: "pixabay",
+        domains: &["pixabay.com"],
+        kinds: &["picture", "video"],
+        description: "Free stock photos, illustrations and videos.",
+        license_note: "Pixabay Content License: free to use, commercially too, no credit required; the files may not be sold as they are.",
+        homepage: "https://pixabay.com",
+        signup_url: Some("https://pixabay.com/api/docs/"),
+    },
+    BuiltInDef {
+        id: "flickr",
+        name: "Flickr",
+        connector: "flickr",
+        domains: &["flickr.com", "staticflickr.com", "flic.kr"],
+        kinds: &["picture", "video"],
+        description: "Openly licensed photos and videos shared on Flickr, including Flickr Commons.",
+        license_note: "Only openly licensed items are offered (CC licenses, CC0, Public Domain Mark, U.S. Government works); each states its license.",
+        homepage: "https://www.flickr.com",
+        signup_url: Some("https://www.flickr.com/services/apps/create/apply/"),
+    },
+    BuiltInDef {
+        id: "freesound",
+        name: "Freesound",
+        connector: "freesound",
+        domains: &["freesound.org"],
+        kinds: &["audio"],
+        description: "Sound effects, field recordings and loops shared by the Freesound community.",
+        license_note: "Each sound is CC0, CC BY or CC BY-NC; the high-quality MP3 preview is downloaded, not the original file.",
+        homepage: "https://freesound.org",
+        signup_url: Some("https://freesound.org/apiv2/apply/"),
+    },
+    BuiltInDef {
+        id: "smithsonian",
+        name: "Smithsonian Open Access",
+        connector: "smithsonian",
+        domains: &["si.edu"],
+        kinds: &["picture"],
+        description: "Images from the Smithsonian's museums, archives and zoo.",
+        license_note: "Only media the Smithsonian released as CC0 is offered.",
+        homepage: "https://www.si.edu/openaccess",
+        signup_url: Some("https://api.data.gov/signup/"),
     },
 ];
 
@@ -160,6 +318,10 @@ impl BuiltInDef {
             description: self.description.to_string(),
             license_note: self.license_note.to_string(),
             homepage: Some(self.homepage.to_string()),
+            api_key: self.signup_url.map(|signup_url| ApiKeyInfo {
+                signup_url: signup_url.to_string(),
+                configured: false,
+            }),
         }
     }
 }
@@ -181,6 +343,18 @@ pub struct TrustedSource {
     #[serde(rename = "licenseNote")]
     pub license_note: String,
     pub homepage: Option<String>,
+    /// `None` (JSON null) for a source that needs no key.
+    #[serde(rename = "apiKey")]
+    pub api_key: Option<ApiKeyInfo>,
+}
+
+/// The key a built-in source asks for: where to get one, and whether the user saved one. The key itself is
+/// never part of any answer.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ApiKeyInfo {
+    #[serde(rename = "signupUrl")]
+    pub signup_url: String,
+    pub configured: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -242,12 +416,16 @@ impl Stored {
         }
     }
 
-    fn view(&self) -> PolicyView {
+    /// `configured`: ids of the sources that have a saved key.
+    fn view(&self, configured: &BTreeSet<String>) -> PolicyView {
         let mut sources: Vec<TrustedSource> = BUILT_INS
             .iter()
             .filter(|def| !self.removed_built_ins.iter().any(|id| id == def.id))
             .map(|def| {
                 let mut source = def.source();
+                if let Some(info) = &mut source.api_key {
+                    info.configured = configured.contains(def.id);
+                }
                 if let Some(over) = self.built_ins.get(def.id) {
                     source.enabled = over.enabled;
                     if let Some(name) = &over.name {
@@ -307,6 +485,7 @@ fn user_source_of(value: &Value) -> Option<TrustedSource> {
         description: description.to_string(),
         license_note: license_note.to_string(),
         homepage: map.get("homepage").and_then(Value::as_str).map(str::to_string),
+        api_key: None,
     })
 }
 
@@ -530,6 +709,12 @@ pub struct UpdateSource {
     pub license_note: Option<String>,
 }
 
+/// `PUT /api/research/sources/:id/api-key`
+#[derive(Debug, PartialEq, Eq)]
+pub struct SetApiKey {
+    pub key: String,
+}
+
 /// JS string length (UTF-16 code units), the unit the TS limits count in.
 fn js_len(text: &str) -> usize {
     text.encode_utf16().count()
@@ -647,6 +832,13 @@ pub fn parse_add_source(raw: &Value) -> Result<AddSource, PolicyError> {
     })
 }
 
+pub fn parse_set_api_key(raw: &Value) -> Result<SetApiKey, PolicyError> {
+    let map = body_object(raw, &["key"])?;
+    Ok(SetApiKey {
+        key: text(map.get("key"), "key", API_KEY_CHARS, false)?,
+    })
+}
+
 pub fn parse_update_source(raw: &Value) -> Result<UpdateSource, PolicyError> {
     let map = body_object(raw, &["enabled", "name", "domains", "kinds", "licenseNote"])?;
     let enabled = match map.get("enabled") {
@@ -731,6 +923,7 @@ fn now_ms() -> u64 {
 
 pub struct PolicyStore {
     file: PathBuf,
+    keys_file: PathBuf,
     now: fn() -> u64,
 }
 
@@ -738,6 +931,7 @@ impl PolicyStore {
     pub fn new(dir: &Path) -> Self {
         Self {
             file: dir.join(POLICY_FILE),
+            keys_file: dir.join(API_KEYS_FILE),
             now: now_ms,
         }
     }
@@ -774,11 +968,48 @@ impl PolicyStore {
             .map_err(|err| PolicyError::new("io_error", err.to_string()))?;
         bytes.push(b'\n');
         write_private_atomic(&self.file, &bytes).map_err(io)?;
-        Ok(stored.view())
+        Ok(self.view_of(&stored))
+    }
+
+    /// `api-keys.json` as a map; a file that cannot be read as such holds no keys.
+    fn load_keys(&self) -> BTreeMap<String, String> {
+        let Some(raw) = std::fs::read(&self.keys_file)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        else {
+            return BTreeMap::new();
+        };
+        let keys = raw
+            .as_object()
+            .filter(|map| map.get("schema").and_then(Value::as_str) == Some(KEYS_SCHEMA))
+            .and_then(|map| map.get("keys"))
+            .and_then(Value::as_object);
+        keys.into_iter()
+            .flatten()
+            .filter_map(|(id, key)| {
+                key.as_str()
+                    .filter(|key| !key.is_empty())
+                    .map(|key| (id.clone(), key.to_string()))
+            })
+            .collect()
+    }
+
+    fn save_keys(&self, keys: &BTreeMap<String, String>) -> Result<(), PolicyError> {
+        let mut bytes = serde_json::to_vec_pretty(&serde_json::json!({ "schema": KEYS_SCHEMA, "keys": keys }))
+            .map_err(|err| PolicyError::new("io_error", err.to_string()))?;
+        bytes.push(b'\n');
+        write_private_atomic(&self.keys_file, &bytes).map_err(|err| {
+            PolicyError::new("io_error", format!("could not save the API key: {err}"))
+        })
+    }
+
+    fn view_of(&self, stored: &Stored) -> PolicyView {
+        let configured: BTreeSet<String> = self.load_keys().into_keys().collect();
+        stored.view(&configured)
     }
 
     pub fn get(&self) -> PolicyView {
-        self.load().view()
+        self.view_of(&self.load())
     }
 
     pub fn update_policy(&self, update: &PolicyUpdate) -> Result<PolicyView, PolicyError> {
@@ -786,7 +1017,7 @@ impl PolicyStore {
         let mut stored = self.load();
         if update.mode.is_none() && update.read_linked_pages.is_none() && update.full_access.is_none()
         {
-            return Ok(stored.view());
+            return Ok(self.view_of(&stored));
         }
         if let Some(mode) = &update.mode {
             if !MODES.contains(&mode.as_str()) {
@@ -809,7 +1040,7 @@ impl PolicyStore {
     pub fn add_source(&self, request: &AddSource) -> Result<PolicyView, PolicyError> {
         let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut stored = self.load();
-        let current = stored.view();
+        let current = self.view_of(&stored);
         if current.sources.len() >= MAX_SOURCES {
             return Err(PolicyError::invalid(format!(
                 "There can be at most {MAX_SOURCES} trusted sources"
@@ -845,6 +1076,7 @@ impl PolicyStore {
             kinds,
             license_note,
             homepage,
+            api_key: None,
         });
         self.save(stored)
     }
@@ -852,7 +1084,7 @@ impl PolicyStore {
     pub fn update_source(&self, id: &str, request: &UpdateSource) -> Result<PolicyView, PolicyError> {
         let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut stored = self.load();
-        let current = stored.view();
+        let current = self.view_of(&stored);
         let Some(source) = current.sources.iter().find(|s| s.id == id) else {
             return Err(unknown_source(id));
         };
@@ -929,10 +1161,58 @@ impl PolicyStore {
         }
         self.save(stored)
     }
+
+    /// Saves the API key of a built-in source that needs one: trimmed of what JavaScript's `trim()` removes, then
+    /// printable ASCII only (API keys are; anything else is a paste accident), exactly as the TS store checks it.
+    pub fn set_api_key(&self, id: &str, key: &str) -> Result<PolicyView, PolicyError> {
+        let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        self.keyed_source(id)?;
+        let key = key.trim_matches(is_js_whitespace);
+        if key.is_empty() || key.len() > API_KEY_CHARS || !key.bytes().all(|b| (0x21..=0x7e).contains(&b)) {
+            return Err(PolicyError::invalid(format!(
+                "key must be one word of at most {API_KEY_CHARS} printable ASCII characters"
+            )));
+        }
+        let mut keys = self.load_keys();
+        keys.insert(id.to_string(), key.to_string());
+        self.save_keys(&keys)?;
+        Ok(self.get())
+    }
+
+    pub fn remove_api_key(&self, id: &str) -> Result<PolicyView, PolicyError> {
+        let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        self.keyed_source(id)?;
+        let mut keys = self.load_keys();
+        keys.remove(id);
+        self.save_keys(&keys)?;
+        Ok(self.get())
+    }
+
+    /// Refuses an id that is not a listed source or whose source needs no key.
+    fn keyed_source(&self, id: &str) -> Result<(), PolicyError> {
+        let policy = self.get();
+        let Some(source) = policy.sources.iter().find(|s| s.id == id) else {
+            return Err(unknown_source(id));
+        };
+        if source.api_key.is_none() {
+            return Err(PolicyError::invalid(format!("{} needs no API key", source.name)));
+        }
+        Ok(())
+    }
 }
 
 fn unknown_source(id: &str) -> PolicyError {
     PolicyError::new("unknown_source", format!("No trusted source \"{id}\""))
+}
+
+/// The characters JavaScript's `String.prototype.trim` removes (WhiteSpace and LineTerminator of ECMA-262), which
+/// differ from Rust's `char::is_whitespace` (U+FEFF is one, U+0085 is not).
+fn is_js_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n' | '\u{000B}' | '\u{000C}' | '\r' | ' ' | '\u{00A0}' | '\u{1680}' | '\u{2000}'..='\u{200A}'
+            | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}' | '\u{FEFF}'
+    )
 }
 
 /// A domain belongs to one source at a time.
@@ -1042,7 +1322,7 @@ mod tests {
     }
 
     #[test]
-    fn starts_in_trusted_mode_with_the_four_built_ins_and_keeps_changes_across_instances() {
+    fn starts_in_trusted_mode_with_every_built_in_and_keeps_changes_across_instances() {
         let dir = dir("start");
         let store = PolicyStore::new(&dir);
         let first = store.get();
@@ -1054,12 +1334,27 @@ mod tests {
             .collect();
         assert_eq!(
             ids,
-            vec![
-                ("wikimedia-commons", true, true),
-                ("openverse", true, true),
-                ("nasa-images", true, true),
-                ("internet-archive", true, true),
+            [
+                "wikimedia-commons",
+                "openverse",
+                "nasa-images",
+                "internet-archive",
+                "nasa-svs",
+                "met-museum",
+                "art-institute-chicago",
+                "cleveland-museum",
+                "smk",
+                "wellcome-collection",
+                "ccmixter",
+                "iconify",
+                "pexels",
+                "pixabay",
+                "flickr",
+                "freesound",
+                "smithsonian",
             ]
+            .map(|id| (id, true, true))
+            .to_vec()
         );
         // Reading never creates the file.
         assert!(!dir.join("policy.json").exists());
@@ -1104,18 +1399,18 @@ mod tests {
     fn adds_a_user_website_with_normalized_domains_and_lets_everything_but_a_built_ins_domains_change() {
         let store = PolicyStore::new(&dir("add"));
         let mut request = add(
-            "Pexels",
-            &["https://www.Pexels.com/search/ocean/", "images.pexels.com", "pexels.com"],
+            "Stockclips",
+            &["https://www.Stockclips.org/search/ocean/", "images.stockclips.org", "stockclips.org"],
         );
         request.kinds = Some(strings(&["video", "picture"]));
         let added = store.add_source(&request).unwrap();
         let source = added.sources.iter().find(|s| !s.built_in).unwrap().clone();
-        assert_eq!(source.name, "Pexels");
+        assert_eq!(source.name, "Stockclips");
         assert_eq!(source.connector, "site");
         assert!(source.enabled);
-        assert_eq!(source.domains, strings(&["pexels.com", "images.pexels.com"]));
+        assert_eq!(source.domains, strings(&["stockclips.org", "images.stockclips.org"]));
         assert_eq!(source.kinds, strings(&["video", "picture"]));
-        assert_eq!(source.homepage.as_deref(), Some("https://pexels.com"));
+        assert_eq!(source.homepage.as_deref(), Some("https://stockclips.org"));
         assert!(source.id.starts_with("src-") && source.id.len() == 12);
         assert!(source.id[4..].chars().all(|c| c.is_ascii_hexdigit()));
 
@@ -1123,7 +1418,7 @@ mod tests {
             .update_source(
                 &source.id,
                 &UpdateSource {
-                    domains: Some(strings(&["pexels.com", "videos.pexels.com"])),
+                    domains: Some(strings(&["stockclips.org", "videos.stockclips.org"])),
                     enabled: Some(false),
                     kinds: Some(strings(&["video"])),
                     ..Default::default()
@@ -1132,7 +1427,7 @@ mod tests {
             .unwrap();
         let changed = updated.sources.iter().find(|s| s.id == source.id).unwrap();
         assert!(!changed.enabled);
-        assert_eq!(changed.domains, strings(&["pexels.com", "videos.pexels.com"]));
+        assert_eq!(changed.domains, strings(&["stockclips.org", "videos.stockclips.org"]));
         assert_eq!(changed.kinds, strings(&["video"]));
 
         // A built-in source's domains are fixed.
@@ -1271,7 +1566,7 @@ mod tests {
     #[test]
     fn a_source_limit_applies_to_built_ins_and_user_sources_together() {
         let store = PolicyStore::new(&dir("limit"));
-        for i in 0..(MAX_SOURCES - 4) {
+        for i in 0..(MAX_SOURCES - BUILT_INS.len()) {
             store.add_source(&add(&format!("s{i}"), &[&format!("s{i}.example")])).unwrap();
         }
         assert_eq!(code(store.add_source(&add("over", &["over.example"]))), "invalid_request");
@@ -1295,7 +1590,7 @@ mod tests {
         .unwrap();
         let policy = store.get();
         assert_eq!(policy.mode, "trusted");
-        assert_eq!(policy.sources.len(), 4);
+        assert_eq!(policy.sources.len(), BUILT_INS.len());
         let backup = std::fs::read_to_string(dir.join("policy.json.bak")).unwrap();
         assert!(backup.contains("evil.example"));
 
@@ -1388,7 +1683,7 @@ mod tests {
         assert_eq!(again.mode, "any");
         assert!(!again.websites.read_linked_pages);
         assert!(again.websites.full_access);
-        assert_eq!(again.sources.len(), 4);
+        assert_eq!(again.sources.len(), BUILT_INS.len());
         // An update that names nothing changes nothing.
         let same = PolicyStore::new(&dir).update_policy(&PolicyUpdate::default()).unwrap();
         assert!(!same.websites.read_linked_pages);
@@ -1459,9 +1754,9 @@ mod tests {
                     "not-a-built-in": {"enabled": true, "name": null}
                 },
                 "userSources": [{
-                    "id": "src-0a1b2c3d", "name": "Pexels", "builtIn": false, "enabled": true,
-                    "connector": "site", "domains": ["pexels.com"], "kinds": ["video", "video", "picture"],
-                    "description": "d", "licenseNote": "", "homepage": "https://pexels.com"
+                    "id": "src-0a1b2c3d", "name": "Stockclips", "builtIn": false, "enabled": true,
+                    "connector": "site", "domains": ["stockclips.org"], "kinds": ["video", "video", "picture"],
+                    "description": "d", "licenseNote": "", "homepage": "https://stockclips.org", "apiKey": null
                 }],
                 "removedBuiltIns": ["nasa-images", "gone", 5],
                 "websites": {"readLinkedPages": false},
@@ -1480,10 +1775,14 @@ mod tests {
         assert!(!view.websites.full_access);
         assert_eq!(view.updated_at, Number::from(1_700_000_000_000u64));
         let ids: Vec<&str> = view.sources.iter().map(|s| s.id.as_str()).collect();
-        assert_eq!(ids, vec!["wikimedia-commons", "openverse", "internet-archive", "src-0a1b2c3d"]);
+        assert_eq!(view.sources.len(), BUILT_INS.len());
+        assert_eq!(ids[..3], ["wikimedia-commons", "openverse", "internet-archive"]);
+        assert_eq!(ids.last(), Some(&"src-0a1b2c3d"));
+        assert!(!ids.contains(&"nasa-images"));
         assert_eq!(view.sources[1].name, "Mine");
         assert!(!view.sources[1].enabled);
-        assert_eq!(view.sources[3].kinds, strings(&["video", "picture"]));
+        assert_eq!(view.sources.last().unwrap().kinds, strings(&["video", "picture"]));
+        assert_eq!(view.sources.last().unwrap().api_key, None);
 
         let saved = store
             .update_source(
@@ -1505,25 +1804,253 @@ mod tests {
         assert!(std::fs::read_to_string(&file).unwrap().ends_with("}\n"));
     }
 
+    /// `text` without all whitespace and trailing commas, so a reformatted TS list still matches.
+    fn squash(text: &str) -> String {
+        text.chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .replace(",]", "]")
+            .replace(",}", "}")
+    }
+
     #[test]
     fn the_built_in_list_is_the_one_the_ts_store_serves() {
-        // Guards the duplicated list against drift in the fields the UI shows.
+        // Guards the duplicated list against drift, field by field.
         let ts = std::fs::read_to_string(
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../../packages/studio-server/src/research/sources/builtins.ts"),
         );
         // The file only exists in a full checkout; a packaged build skips the check.
         let Ok(ts) = ts else { return };
-        for def in &BUILT_INS {
-            assert!(ts.contains(&format!("id: \"{}\"", def.id)), "{}", def.id);
-            assert!(ts.contains(&format!("name: \"{}\"", def.name)), "{}", def.id);
-            assert!(ts.contains(&format!("connector: \"{}\"", def.connector)), "{}", def.id);
-            assert!(ts.contains(&format!("homepage: \"{}\"", def.homepage)), "{}", def.id);
-            for domain in def.domains {
-                assert!(ts.contains(&format!("\"{domain}\"")), "{domain}");
+        let starts: Vec<usize> = ts.match_indices("id: \"").map(|(at, _)| at).collect();
+        let blocks: Vec<String> = starts
+            .iter()
+            .enumerate()
+            .map(|(i, start)| squash(&ts[*start..starts.get(i + 1).copied().unwrap_or(ts.len())]))
+            .collect();
+        assert_eq!(blocks.len(), BUILT_INS.len());
+        let list = |items: &[&str]| items.iter().map(|i| format!("\"{i}\"")).collect::<Vec<_>>().join(",");
+        for (def, block) in BUILT_INS.iter().zip(&blocks) {
+            let mut expected = vec![
+                format!("id:\"{}\"", def.id),
+                format!("name:\"{}\"", def.name),
+                format!("connector:\"{}\"", def.connector),
+                format!("domains:[{}]", list(def.domains)),
+                format!("kinds:[{}]", list(def.kinds)),
+                format!("description:\"{}\"", def.description),
+                format!("licenseNote:\"{}\"", def.license_note),
+                format!("homepage:\"{}\"", def.homepage),
+            ];
+            expected.push(match def.signup_url {
+                Some(url) => format!("apiKey:{{signupUrl:\"{url}\",configured:false}}"),
+                None => "apiKey:null".to_string(),
+            });
+            for fragment in expected {
+                assert!(block.contains(&squash(&fragment)), "{}: {fragment}", def.id);
             }
         }
         assert_eq!(ts.matches("builtIn: true").count(), BUILT_INS.len());
+    }
+
+    fn keys_file_of(dir: &Path) -> Value {
+        serde_json::from_slice(&std::fs::read(dir.join("api-keys.json")).unwrap()).unwrap()
+    }
+
+    fn key_info(view: &PolicyView, id: &str) -> Option<(String, bool)> {
+        view.sources
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap()
+            .api_key
+            .as_ref()
+            .map(|k| (k.signup_url.clone(), k.configured))
+    }
+
+    #[test]
+    fn keyed_sources_show_their_sign_up_page_and_whether_a_key_is_saved_never_the_key() {
+        let dir = dir("keys");
+        let store = PolicyStore::new(&dir);
+        let first = store.get();
+        let keyed: Vec<&str> = first
+            .sources
+            .iter()
+            .filter(|s| s.api_key.is_some())
+            .map(|s| s.id.as_str())
+            .collect();
+        assert_eq!(keyed, ["pexels", "pixabay", "flickr", "freesound", "smithsonian"]);
+        assert_eq!(
+            key_info(&first, "pexels"),
+            Some(("https://www.pexels.com/api/new/".to_string(), false))
+        );
+        assert_eq!(key_info(&first, "openverse"), None);
+        let json_view = serde_json::to_value(&first).unwrap();
+        assert_eq!(json_view["sources"][0]["apiKey"], Value::Null);
+        assert_eq!(
+            json_view["sources"].as_array().unwrap().iter().find(|s| s["id"] == "smithsonian").unwrap()["apiKey"],
+            json!({"signupUrl": "https://api.data.gov/signup/", "configured": false})
+        );
+
+        let saved = store.set_api_key("pexels", "  abc-123_XYZ  ").unwrap();
+        assert_eq!(key_info(&saved, "pexels").map(|k| k.1), Some(true));
+        assert_eq!(key_info(&saved, "pixabay").map(|k| k.1), Some(false));
+        assert!(!serde_json::to_string(&saved).unwrap().contains("abc-123_XYZ"));
+        // Keys are their own file; the policy file is not created by saving one.
+        assert!(!dir.join("policy.json").exists());
+        assert_eq!(
+            keys_file_of(&dir),
+            json!({"schema": "openvids.research-keys/1", "keys": {"pexels": "abc-123_XYZ"}})
+        );
+        assert!(std::fs::read_to_string(dir.join("api-keys.json")).unwrap().ends_with("}\n"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(dir.join("api-keys.json")).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+
+        // Another instance (another process, Studio's server aside) sees it; a second key joins it.
+        let other = PolicyStore::new(&dir);
+        assert_eq!(key_info(&other.get(), "pexels").map(|k| k.1), Some(true));
+        other.set_api_key("freesound", "fs-key").unwrap();
+        assert_eq!(
+            keys_file_of(&dir)["keys"],
+            json!({"freesound": "fs-key", "pexels": "abc-123_XYZ"})
+        );
+        // A policy change keeps the flag, and a replaced key replaces the value.
+        store
+            .update_source(
+                "pexels",
+                &UpdateSource {
+                    enabled: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let replaced = store.set_api_key("pexels", "new-key").unwrap();
+        assert_eq!(key_info(&replaced, "pexels").map(|k| k.1), Some(true));
+        assert!(!replaced.sources.iter().find(|s| s.id == "pexels").unwrap().enabled);
+        assert_eq!(keys_file_of(&dir)["keys"]["pexels"], "new-key");
+
+        let removed = store.remove_api_key("pexels").unwrap();
+        assert_eq!(key_info(&removed, "pexels").map(|k| k.1), Some(false));
+        assert_eq!(key_info(&removed, "freesound").map(|k| k.1), Some(true));
+        assert_eq!(keys_file_of(&dir)["keys"], json!({"freesound": "fs-key"}));
+        // Removing a key that is not there is fine.
+        assert!(store.remove_api_key("pexels").is_ok());
+        let leftovers = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().ends_with(".tmp"))
+            .count();
+        assert_eq!(leftovers, 0);
+    }
+
+    #[test]
+    fn refuses_keys_that_are_not_one_word_and_sources_that_take_none() {
+        let clean_dir = dir("key-refusals-clean");
+        let dir = dir("key-refusals");
+        let store = PolicyStore::new(&dir);
+        let long = "k".repeat(257);
+        let wide = "😀".repeat(2);
+        for bad in ["", "   ", "a b", "a\tb", "a\nb", "key\u{0085}", "kéy", "a\u{200B}b", long.as_str(), wide.as_str()] {
+            assert_eq!(code(store.set_api_key("pexels", bad)), "invalid_request", "{bad:?}");
+        }
+        // What JavaScript's trim() removes around a pasted key (a byte-order mark too) is not part of it.
+        store.set_api_key("pexels", "\u{FEFF} pre-trim \n").unwrap();
+        assert_eq!(keys_file_of(&dir)["keys"]["pexels"], "pre-trim");
+        assert!(store.set_api_key("pexels", &"k".repeat(256)).is_ok());
+        assert_eq!(code(store.set_api_key("nope", "k")), "unknown_source");
+        assert_eq!(code(store.remove_api_key("nope")), "unknown_source");
+        // A built-in without a key requirement, and a user's website.
+        assert_eq!(code(store.set_api_key("openverse", "k")), "invalid_request");
+        assert_eq!(code(store.remove_api_key("openverse")), "invalid_request");
+        let added = store.add_source(&add("Mine", &["mine.example"])).unwrap();
+        let mine = added.sources.last().unwrap().id.clone();
+        assert_eq!(code(store.set_api_key(&mine, "k")), "invalid_request");
+        // A removed built-in is not a listed source.
+        store.remove_source("flickr").unwrap();
+        assert_eq!(code(store.set_api_key("flickr", "k")), "unknown_source");
+        // Only the accepted keys were saved.
+        assert_eq!(keys_file_of(&dir)["keys"], json!({"pexels": "k".repeat(256)}));
+
+        let clean = PolicyStore::new(&clean_dir);
+        assert_eq!(code(clean.set_api_key("pexels", "")), "invalid_request");
+        assert_eq!(code(clean.set_api_key("openverse", "k")), "invalid_request");
+        assert!(!clean.keys_file.exists());
+    }
+
+    #[test]
+    fn reads_the_key_file_the_ts_store_writes_and_writes_what_it_reads() {
+        let dir = dir("keys-interop");
+        let file = dir.join("api-keys.json");
+        std::fs::write(
+            &file,
+            serde_json::to_string_pretty(&json!({
+                "schema": "openvids.research-keys/1",
+                "keys": {"pixabay": "px", "flickr": "", "smithsonian": 5, "ghost": "g"}
+            }))
+            .unwrap()
+                + "\n",
+        )
+        .unwrap();
+        let store = PolicyStore::new(&dir);
+        let view = store.get();
+        let configured: Vec<&str> = view
+            .sources
+            .iter()
+            .filter(|s| s.api_key.as_ref().is_some_and(|k| k.configured))
+            .map(|s| s.id.as_str())
+            .collect();
+        assert_eq!(configured, ["pixabay"]);
+        store.set_api_key("freesound", "fs").unwrap();
+        // Unknown ids are kept, empty and non-text entries are dropped, the format is the TS one.
+        assert_eq!(
+            keys_file_of(&dir),
+            json!({
+                "schema": "openvids.research-keys/1",
+                "keys": {"freesound": "fs", "ghost": "g", "pixabay": "px"}
+            })
+        );
+
+        // A file that is not ours reads as no keys, and saving replaces it.
+        for foreign in [
+            r#"{"schema":"openvids.research-keys/2","keys":{"pexels":"k"}}"#,
+            r#"{"keys":{"pexels":"k"}}"#,
+            r#"{"schema":"openvids.research-keys/1","keys":["pexels"]}"#,
+            "not json",
+            "",
+        ] {
+            std::fs::write(&file, foreign).unwrap();
+            let view = store.get();
+            assert!(
+                view.sources.iter().all(|s| !s.api_key.as_ref().is_some_and(|k| k.configured)),
+                "{foreign}"
+            );
+        }
+        std::fs::write(&file, r#"{"schema":"other/1","keys":{"pexels":"k"}}"#).unwrap();
+        store.set_api_key("pixabay", "px2").unwrap();
+        assert_eq!(
+            keys_file_of(&dir),
+            json!({"schema": "openvids.research-keys/1", "keys": {"pixabay": "px2"}})
+        );
+    }
+
+    #[test]
+    fn the_api_key_request_is_one_trimmed_key() {
+        assert_eq!(parse_set_api_key(&json!({"key": "  abc "})).unwrap(), SetApiKey { key: "abc".into() });
+        assert!(parse_set_api_key(&json!({"key": "k".repeat(256)})).is_ok());
+        for bad in [
+            json!({}),
+            json!({"key": ""}),
+            json!({"key": "   "}),
+            json!({"key": 5}),
+            json!({"key": null}),
+            json!({"key": "k".repeat(257)}),
+            json!({"key": "k", "extra": 1}),
+            json!("k"),
+            Value::Null,
+        ] {
+            assert_eq!(code(parse_set_api_key(&bad)), "invalid_request", "{bad}");
+        }
     }
 
     #[test]
@@ -1624,11 +2151,11 @@ mod tests {
         assert_eq!(code(homepage_of("not a url")), "invalid_request");
         let store = PolicyStore::new(&dir("homepage"));
         let request = AddSource {
-            homepage: Some(Some("https://pexels.com".into())),
-            ..add("Pexels", &["pexels.com"])
+            homepage: Some(Some("https://stockclips.org".into())),
+            ..add("Stockclips", &["stockclips.org"])
         };
         let view = store.add_source(&request).unwrap();
-        assert_eq!(view.sources.last().unwrap().homepage.as_deref(), Some("https://pexels.com/"));
+        assert_eq!(view.sources.last().unwrap().homepage.as_deref(), Some("https://stockclips.org/"));
         let view = store
             .add_source(&AddSource {
                 homepage: Some(None),

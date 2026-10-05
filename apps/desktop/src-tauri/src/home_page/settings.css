@@ -654,6 +654,40 @@ html.custom-frame .st-titlebar button.tl.close::after {
 .st-src.is-off .lic {
   color: var(--fg-3);
 }
+/* A source that needs the user's own API key: a quiet badge beside its name, then a line (and the field) under
+   it, in the name column and out to the remove button. */
+.badge.sm.is-quiet {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--fg-3);
+}
+.st-src-key {
+  grid-column: 2 / -1;
+  display: grid;
+  gap: 6px;
+  margin-top: -4px;
+}
+.st-src-key-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  margin: 0;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 15px;
+}
+.st-src-key-line .ic {
+  --s: var(--ic-sm);
+}
+.st-src-key .input {
+  flex: 1;
+  min-width: 0;
+}
+.st-src-key .link[disabled] {
+  color: var(--fg-disabled);
+  pointer-events: none;
+}
 .st-add {
   display: grid;
   gap: var(--sp-1);

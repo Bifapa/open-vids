@@ -19,6 +19,7 @@ import { AddTrustedSourceForm } from "./AddTrustedSourceForm";
 import { MEDIA_KIND_LABELS } from "./licenseLabels";
 import { useResearchServices } from "./researchContext";
 import { ExternalLink, InlineError, NoteBox, SectionHeading } from "./researchUi";
+import { SourceApiKeyControl } from "./SourceApiKeyControl";
 import { useAssetSearchPolicy, type AssetSearchPolicyState } from "./useAssetSearchPolicy";
 
 const MODE_KEYS = {
@@ -97,6 +98,9 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
   const [confirming, setConfirming] = useState(false);
   const busy = state.pending !== null;
   const notes = [source.description, source.licenseNote].filter(Boolean).join(" ");
+  // A keyed source the user switched on still searches nothing until their key is saved.
+  const needsKey = source.apiKey !== null && !source.apiKey.configured;
+  const searched = source.enabled && !needsKey;
   return (
     <li
       data-source-id={source.id}
@@ -115,11 +119,16 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
           <span
             className={cn(
               "flex min-w-0 items-center gap-1.5 text-base leading-4 font-medium",
-              source.enabled ? "text-fg" : "text-fg-3",
+              searched ? "text-fg" : "text-fg-3",
             )}
           >
             <span className="truncate">{source.name}</span>
             {source.builtIn && <Badge size="sm">{t("research.policy.builtIn")}</Badge>}
+            {source.enabled && needsKey && (
+              <Badge size="sm" className="border border-border bg-transparent text-fg-3">
+                {t("research.policy.key.badge")}
+              </Badge>
+            )}
           </span>
           <span className="truncate text-xs leading-[14px] text-fg-3">
             {source.domains.length > 0 && (
@@ -147,6 +156,9 @@ function SourceRow({ source, state }: { source: TrustedSource; state: AssetSearc
             </ExternalLink>
           )}
         </p>
+      )}
+      {source.apiKey && (
+        <SourceApiKeyControl source={source} apiKey={source.apiKey} state={state} />
       )}
       {confirming && (
         <div
@@ -378,6 +390,11 @@ export function AssetSearchPolicyView({
                 )}
               </div>
             </div>
+            {policy.sources.some((source) => source.apiKey !== null) && (
+              <p className="px-0.5 text-xs leading-[15px] text-fg-3 [text-wrap:pretty]">
+                {t("research.policy.keysFoot")}
+              </p>
+            )}
             {policy.mode === "trusted" && onCount === 0 && (
               <p className="flex items-center gap-1 px-0.5 text-xs font-medium text-warning">
                 <WarningCircle size={12} weight="fill" aria-hidden />

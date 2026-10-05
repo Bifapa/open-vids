@@ -1,0 +1,34 @@
+{
+  "sizes": {
+    "canblog": 0,
+    "canprint": 0,
+    "candownload": 1,
+    "size": [
+      {
+        "label": "Square",
+        "width": 75,
+        "height": 75,
+        "source": "https://live.staticflickr.com/65535/33440004_eeff001122_s.jpg",
+        "url": "https://www.flickr.com/photos/88888888@N08/33440004/sizes/sq/",
+        "media": "photo"
+      },
+      {
+        "label": "Large",
+        "width": 1024,
+        "height": 576,
+        "source": "https://live.staticflickr.com/65535/33440004_eeff001122_b.jpg",
+        "url": "https://www.flickr.com/photos/88888888@N08/33440004/sizes/l/",
+        "media": "photo"
+      },
+      {
+        "label": "Video Player",
+        "width": 640,
+        "height": 360,
+        "source": "https://www.flickr.com/apps/video/stewart.swf?v=33440004&photo_id=33440004&photo_secret=eeff001122",
+        "url": "https://www.flickr.com/photos/88888888@N08/33440004/",
+        "media": "video"
+      }
+    ]
+  },
+  "stat": "ok"
+}

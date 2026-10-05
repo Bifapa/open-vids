@@ -1,0 +1,199 @@
+{
+  "id": 5681,
+  "url": "https://svs.gsfc.nasa.gov/5681/",
+  "page_type": "Visualization",
+  "title": "Hurricane Polo Makes Landfall in Baja California",
+  "description": "Hurricane Polo became a Tropical Storm on September 20, 2026. On September 27, 2026 GPM flew over the hurricane and captured a 3D image of it. This version has the dates burned into the video. || Polo_v07_stutter_with_dates.01500_print.jpg (1024x576) [128.3 KB] || Polo_v07_stutter_with_dates.mp4 (1920x1080) [185.1 MB] || ",
+  "main_image": {
+    "id": 1205878,
+    "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/Polo_v07_dates.02000_print.jpg",
+    "filename": "Polo_v07_dates.02000_print.jpg",
+    "media_type": "Image",
+    "alt_text": "The date overlay for the Hurricane Polo GPM visualization.",
+    "width": 1024,
+    "height": 576,
+    "pixels": 589824
+  },
+  "main_video": null,
+  "main_credits": {
+    "Visualizations by": [
+      {
+        "name": "Alex Kekesi",
+        "employer": "Global Science and Technology, Inc."
+      }
+    ],
+    "Scientific consulting by": [
+      {
+        "name": "George Huffman",
+        "employer": "NASA/GSFC"
+      }
+    ],
+    "Written by": [
+      {
+        "name": "Stephen Lang",
+        "employer": "SSAI"
+      }
+    ],
+    "Produced by": [
+      {
+        "name": "Peter H. Jacobs",
+        "employer": "NASA/GSFC"
+      }
+    ],
+    "Technical support": [
+      {
+        "name": "Laurence Schuler",
+        "employer": "ADNET Systems, Inc."
+      }
+    ]
+  },
+  "media_groups": [
+    {
+      "id": 380985,
+      "widget": "Video player",
+      "title": "",
+      "caption": "",
+      "description": "Hurricane Polo became a Tropical Storm on September 20, 2026. On September 27, 2026 GPM flew over the hurricane and captured a 3D image of it. This version has the dates burned into the video.",
+      "items": [
+        {
+          "id": 525434,
+          "type": "media",
+          "instance": {
+            "id": 1205882,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/Polo_v07_stutter_with_dates.01500_print.jpg",
+            "filename": "Polo_v07_stutter_with_dates.01500_print.jpg",
+            "media_type": "Image",
+            "width": 1024,
+            "height": 576
+          }
+        },
+        {
+          "id": 525421,
+          "type": "media",
+          "instance": {
+            "id": 1205869,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/Polo_v07_stutter_with_dates.mp4",
+            "filename": "Polo_v07_stutter_with_dates.mp4",
+            "media_type": "Movie",
+            "width": 1920,
+            "height": 1080
+          }
+        }
+      ]
+    },
+    {
+      "id": 380986,
+      "widget": "Video player",
+      "title": "",
+      "caption": "",
+      "description": "Hurricane Polo via GPM without dates.",
+      "items": [
+        {
+          "id": 525433,
+          "type": "media",
+          "instance": {
+            "id": 1205881,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/Polo_v07.02000_print.jpg",
+            "filename": "Polo_v07.02000_print.jpg",
+            "media_type": "Image",
+            "width": 1024,
+            "height": 576
+          }
+        },
+        {
+          "id": 525422,
+          "type": "media",
+          "instance": {
+            "id": 1205870,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/Polo_v07_stutter.mp4",
+            "filename": "Polo_v07_stutter.mp4",
+            "media_type": "Movie",
+            "width": 1920,
+            "height": 1080
+          }
+        },
+        {
+          "id": 525423,
+          "type": "media",
+          "instance": {
+            "id": 1205871,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/frames/1920x1080_16x9_30p/Hurricane_Polo/",
+            "filename": "Hurricane_Polo",
+            "media_type": "Frames",
+            "width": 1920,
+            "height": 1080
+          }
+        }
+      ]
+    },
+    {
+      "id": 380987,
+      "widget": "Video player",
+      "title": "",
+      "caption": "",
+      "description": "The date overlay for the Hurricane Polo GPM visualization.",
+      "items": [
+        {
+          "id": 525430,
+          "type": "media",
+          "instance": {
+            "id": 1205878,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/Polo_v07_dates.02000_print.jpg",
+            "filename": "Polo_v07_dates.02000_print.jpg",
+            "media_type": "Image",
+            "width": 1024,
+            "height": 576
+          }
+        },
+        {
+          "id": 525431,
+          "type": "media",
+          "instance": {
+            "id": 1205879,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/Polo_v07_dates.02000_searchweb.png",
+            "filename": "Polo_v07_dates.02000_searchweb.png",
+            "media_type": "Image",
+            "width": 320,
+            "height": 180
+          }
+        },
+        {
+          "id": 525432,
+          "type": "media",
+          "instance": {
+            "id": 1205880,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/Polo_v07_dates.02000_thm.png",
+            "filename": "Polo_v07_dates.02000_thm.png",
+            "media_type": "Image",
+            "width": 80,
+            "height": 40
+          }
+        },
+        {
+          "id": 525424,
+          "type": "media",
+          "instance": {
+            "id": 1205872,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/Polo_v07_date_overlay.mp4",
+            "filename": "Polo_v07_date_overlay.mp4",
+            "media_type": "Movie",
+            "width": 1920,
+            "height": 1080
+          }
+        },
+        {
+          "id": 525425,
+          "type": "media",
+          "instance": {
+            "id": 1205873,
+            "url": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005681/frames/1920x1080_16x9_30p/date_overlay/",
+            "filename": "date_overlay",
+            "media_type": "Frames",
+            "width": 1920,
+            "height": 1080
+          }
+        }
+      ]
+    }
+  ]
+}

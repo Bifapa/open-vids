@@ -65,15 +65,15 @@ describe("the research routes", () => {
     });
 
     const added = await call("POST", "/research/sources", {
-      name: "Pexels",
-      domains: ["https://www.pexels.com"],
+      name: "Unsplash",
+      domains: ["https://unsplash.com"],
     });
     expect(added.status).toBe(200);
     if (!isAssetSearchPolicy(added.body)) throw new Error("not a policy");
     const policy = added.body;
     const id = policy.sources.find((source) => !source.builtIn)?.id ?? "";
     expect(
-      (await call("PATCH", `/research/sources/${id}`, { enabled: false, name: "Pexels stock" }))
+      (await call("PATCH", `/research/sources/${id}`, { enabled: false, name: "Unsplash photos" }))
         .body,
     ).toMatchObject({
       sources: expect.arrayContaining([expect.objectContaining({ id, enabled: false })]),
@@ -83,6 +83,30 @@ describe("the research routes", () => {
     expect(removed.body).toMatchObject({ removedBuiltIns: ["openverse"] });
     const restored = await call("POST", "/research/sources/restore");
     expect(restored.body).toMatchObject({ removedBuiltIns: [] });
+
+    const keyed = await call("PUT", "/research/sources/pixabay/api-key", { key: "k-123" });
+    expect(keyed.status).toBe(200);
+    expect(JSON.stringify(keyed.body)).not.toContain("k-123");
+    expect(keyed.body).toMatchObject({
+      sources: expect.arrayContaining([
+        expect.objectContaining({
+          id: "pixabay",
+          apiKey: expect.objectContaining({ configured: true }),
+        }),
+      ]),
+    });
+    expect(await call("PUT", "/research/sources/openverse/api-key", { key: "k" })).toMatchObject({
+      status: 400,
+      body: { error: { code: "invalid_request" } },
+    });
+    expect((await call("DELETE", "/research/sources/pixabay/api-key")).body).toMatchObject({
+      sources: expect.arrayContaining([
+        expect.objectContaining({
+          id: "pixabay",
+          apiKey: expect.objectContaining({ configured: false }),
+        }),
+      ]),
+    });
   });
 
   it("answer a refused request with its research error and the matching status", async () => {

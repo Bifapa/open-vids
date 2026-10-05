@@ -18,6 +18,7 @@ import {
 } from "@hyperframes/agent-protocol";
 import { replaceFileAtomically } from "../../helpers/atomicFile.js";
 import { ResearchFailure } from "../errors.js";
+import { ApiKeyStore } from "./apiKeys.js";
 import { BUILT_IN_IDS, BUILT_IN_SOURCES } from "./builtins.js";
 import { hostMatchesDomains, normalizeDomain } from "./domains.js";
 
@@ -89,6 +90,7 @@ function userSourceOf(value: unknown): TrustedSource | null {
     description: value.description,
     licenseNote: value.licenseNote,
     homepage: typeof value.homepage === "string" ? value.homepage : null,
+    apiKey: null,
   };
 }
 
@@ -192,11 +194,13 @@ export class PolicyStore {
   /** The directory of the policy file; other global research state (the candidate record) lives beside it. */
   readonly dir: string;
   private readonly now: () => number;
+  private readonly keys: ApiKeyStore;
 
   constructor(options: PolicyStoreOptions = {}) {
     this.dir = options.dir ?? defaultResearchDir();
     this.file = join(this.dir, POLICY_FILE);
     this.now = options.now ?? Date.now;
+    this.keys = new ApiKeyStore(this.dir);
   }
 
   private defaults(): StoredPolicy {
@@ -236,6 +240,7 @@ export class PolicyStore {
   }
 
   private view(stored: StoredPolicy): AssetSearchPolicy {
+    const configured = this.keys.configured();
     const builtIns = BUILT_IN_SOURCES.filter(
       (source) => !stored.removedBuiltIns.includes(source.id),
     ).map((source): TrustedSource => {
@@ -246,6 +251,10 @@ export class PolicyStore {
         kinds: [...source.kinds],
         enabled: override?.enabled ?? source.enabled,
         name: override?.name ?? source.name,
+        apiKey: source.apiKey && {
+          signupUrl: source.apiKey.signupUrl,
+          configured: configured.has(source.id),
+        },
       };
     });
     return {
@@ -319,6 +328,7 @@ export class PolicyStore {
         request.homepage === undefined
           ? `https://${domains[0] ?? ""}`
           : homepageOf(request.homepage),
+      apiKey: null,
     };
     return this.save({ ...stored, userSources: [...stored.userSources, source] });
   }
@@ -401,6 +411,46 @@ export class PolicyStore {
     const builtIns = { ...stored.builtIns };
     for (const id of stored.removedBuiltIns) delete builtIns[id];
     return this.save({ ...stored, builtIns, removedBuiltIns: [] });
+  }
+
+  /** The saved key of a source, for its connector; null when it has none. */
+  apiKeyFor(id: string): string | null {
+    return this.keys.get(id);
+  }
+
+  /**
+   * Saves the API key of a built-in source that needs one: trimmed, then printable ASCII only (API keys are; anything
+   * else is a paste accident that would break the request header). `research_policy.rs` checks it the same way.
+   */
+  setApiKey(id: string, key: string): AssetSearchPolicy {
+    this.keyedSource(id);
+    const trimmed = key.trim();
+    if (
+      trimmed.length === 0 ||
+      trimmed.length > RESEARCH_LIMITS.apiKeyChars ||
+      !/^[\x21-\x7e]+$/.test(trimmed)
+    ) {
+      throw new ResearchFailure(
+        "invalid_request",
+        `key must be one word of at most ${RESEARCH_LIMITS.apiKeyChars} printable ASCII characters`,
+      );
+    }
+    this.keys.set(id, trimmed);
+    return this.get();
+  }
+
+  removeApiKey(id: string): AssetSearchPolicy {
+    this.keyedSource(id);
+    this.keys.remove(id);
+    return this.get();
+  }
+
+  private keyedSource(id: string): void {
+    const source = this.get().sources.find((entry) => entry.id === id);
+    if (!source) throw new ResearchFailure("unknown_source", `No trusted source "${id}"`);
+    if (!source.apiKey) {
+      throw new ResearchFailure("invalid_request", `${source.name} needs no API key`);
+    }
   }
 
   /** A domain belongs to one source at a time (otherwise the list says nothing about who vouches for a host). */

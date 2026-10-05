@@ -1,0 +1,247 @@
+[
+  {
+    "upload_id": 26756,
+    "upload_name": "Almost Given Up",
+    "upload_extra": {
+      "usertags": "ambient,chill,electronic,female_vocals,guitar,loops,love,sexy,synthesizer",
+      "ccud": "media,remix,editorial_pick,trackback,in_video,in_podcast,in_web,bpm_095_100",
+      "systags": "editorial_pick,non_commercial,audio,mp3,44k,stereo,VBR",
+      "featuring": "Snowflake, airtone",
+      "nsfw": false,
+      "bpm": 99,
+      "relative_dir": "content/Loveshadow",
+      "edpicks": {
+        "spinmeister": {
+          "reviewer": "spinmeister",
+          "review": "Loveshadow invites snowflake and airtone into his magical musical universe to deliver a gentle, yet forceful ode to persistence. A little dancy, a little dreamy - a fitting soundtrack for springtime in the northern hemisphere. A Saturday well spent!",
+          "edited": "2010-05-15 18:09:57"
+        }
+      },
+      "num_reviews": 23,
+      "ccplus": true
+    },
+    "user_name": "Loveshadow",
+    "upload_num_scores": 75,
+    "file_page_url": "https://ccmixter.org/files/Loveshadow/26756",
+    "user_real_name": "loveshadow",
+    "artist_page_url": "https://ccmixter.org/people/Loveshadow",
+    "license_url": "http://creativecommons.org/licenses/by-nc/3.0/",
+    "license_name": "Attribution Noncommercial  (3.0)",
+    "qrank": 350,
+    "files": [
+      {
+        "file_id": 32140,
+        "file_upload": 26756,
+        "file_name": "Loveshadow_-_Almost_Given_Up.mp3",
+        "file_nicname": "mp3",
+        "file_format_info": {
+          "media-type": "audio",
+          "format-name": "audio-mp3-mp3",
+          "default-ext": "mp3",
+          "mime_type": "audio/mpeg",
+          "sr": "44k",
+          "ch": "stereo",
+          "ps": "5:27",
+          "br": "VBR"
+        },
+        "file_extra": {
+          "sha1": "3E52D2UDARSS6T2CU5N7ZSRQFKZNLKQL"
+        },
+        "file_filesize": " (10.50MB)",
+        "file_order": 0,
+        "file_is_remote": 0,
+        "file_num_download": 0,
+        "download_url": "https://ccmixter.org/content/Loveshadow/Loveshadow_-_Almost_Given_Up.mp3",
+        "file_rawsize": 11010431
+      }
+    ],
+    "upload_description_plain": "There goes my Saturday x\r\n\r\n`NEVER GIVE UP, NEVER SURRENDER'"
+  },
+  {
+    "upload_id": 19513,
+    "upload_name": "Black Rainbow",
+    "upload_extra": {
+      "usertags": "ambient,guitar,instrumental",
+      "ccud": "media,remix,trackback,in_video,in_remix",
+      "systags": "sampling_plus,audio,mp3,44k,stereo,CBR,audio,mp3,44k,mono,CBR,audio,mp3,44k,mono,CBR",
+      "featuring": "ERH, acclivity",
+      "bpm": "",
+      "nsfw": false,
+      "relative_dir": "content/Pitx",
+      "num_reviews": 8,
+      "last_op": "add"
+    },
+    "user_name": "Pitx",
+    "upload_num_scores": 41,
+    "file_page_url": "https://ccmixter.org/files/Pitx/19513",
+    "user_real_name": "Pitx",
+    "artist_page_url": "https://ccmixter.org/people/Pitx",
+    "license_url": "http://creativecommons.org/licenses/sampling+/1.0/",
+    "license_name": "Sampling Plus",
+    "qrank": 214,
+    "files": [
+      {
+        "file_id": 21500,
+        "file_upload": 19513,
+        "file_name": "Pitx_-_Black_Rainbow.mp3",
+        "file_nicname": "mp3",
+        "file_format_info": {
+          "media-type": "audio",
+          "format-name": "audio-mp3-mp3",
+          "default-ext": "mp3",
+          "mime_type": "audio/mpeg",
+          "sr": "44k",
+          "ch": "stereo",
+          "ps": "3:07",
+          "br": "CBR"
+        },
+        "file_extra": {
+          "sha1": "FRXBW6U5VVDTV6W7BHII6DHSU2FNI6UT"
+        },
+        "file_filesize": " (5.01MB)",
+        "file_order": 0,
+        "file_is_remote": 0,
+        "file_num_download": 0,
+        "download_url": "https://ccmixter.org/content/Pitx/Pitx_-_Black_Rainbow.mp3",
+        "file_rawsize": 5252224
+      }
+    ],
+    "upload_description_plain": "Mixing freesounds samples with the guitar and some \"skilled\" touches with the violin.\r\nI can't attribute ERH's sound (freesound) 31077_ERH_nu_groove_1.\r\nEnjoy\r\n\r\n[UPDATE] Uploaded the guitars. I don't know the bpm so I added a beep in the start of the major guitar that synchs with the ERH's sample; this one is the tempo reference of the mix."
+  },
+  {
+    "upload_id": 22364,
+    "upload_name": "Persephone",
+    "upload_extra": {
+      "usertags": "ambient,bass,downtempo,female_vocals,loops,love,valentine,mythology,piano,romance,romantic,sexy,synthesizer,tarot,violin",
+      "ccud": "media,secret_mixter,remix,secret_summer_09,featured,trackback,in_video,in_remix,in_web,in_podcast,bpm_100_105,ccplus",
+      "systags": "attribution,audio,mp3,48k,stereo,CBR,audio,mp3,48k,stereo,CBR,audio,mp3,48k,stereo,CBR,audio,mp3,48k,stereo,CBR,audio,mp3,48k,stereo,CBR,audio,mp3,48k,stereo,CBR",
+      "featuring": "Vidian, Dimitri Artemenko",
+      "bpm": 100,
+      "relative_dir": "content/snowflake",
+      "nsfw": false,
+      "num_reviews": 26,
+      "last_op": "add",
+      "ccplus": true
+    },
+    "user_name": "snowflake",
+    "upload_num_scores": 131,
+    "file_page_url": "https://ccmixter.org/files/snowflake/22364",
+    "user_real_name": "Madam Snowflake",
+    "artist_page_url": "https://ccmixter.org/people/snowflake",
+    "license_url": "http://creativecommons.org/licenses/by/2.5/",
+    "license_name": "Attribution",
+    "qrank": 596,
+    "files": [
+      {
+        "file_id": 25361,
+        "file_upload": 22364,
+        "file_name": "snowflake_-_Persephone.mp3",
+        "file_nicname": "Secret Mixer Remix",
+        "file_format_info": {
+          "media-type": "audio",
+          "format-name": "audio-mp3-mp3",
+          "default-ext": "mp3",
+          "mime_type": "audio/mpeg",
+          "sr": "48k",
+          "ch": "stereo",
+          "ps": "3:58",
+          "br": "CBR"
+        },
+        "file_extra": {
+          "sha1": "3NJTJSKTUCIIGZKIZDTQFXZ72PBJSTBY"
+        },
+        "file_filesize": " (9.13MB)",
+        "file_order": 0,
+        "file_is_remote": 0,
+        "file_num_download": 0,
+        "download_url": "https://ccmixter.org/content/snowflake/snowflake_-_Persephone.mp3",
+        "file_rawsize": 9569034
+      },
+      {
+        "file_id": 25396,
+        "file_upload": 22364,
+        "file_name": "snowflake_-_Persephone_3.mp3",
+        "file_nicname": "Lead Vox",
+        "file_format_info": {
+          "media-type": "audio",
+          "format-name": "audio-mp3-mp3",
+          "default-ext": "mp3",
+          "mime_type": "audio/mpeg",
+          "sr": "48k",
+          "ch": "stereo",
+          "ps": "3:58",
+          "br": "CBR"
+        },
+        "file_extra": {
+          "ccud": "acappella,media",
+          "type": "pella",
+          "sha1": "ZWJNQB37CNG2GBYZXGUWL2VCE6QQX7VB"
+        },
+        "file_filesize": " (9.09MB)",
+        "file_order": 1,
+        "file_is_remote": 0,
+        "file_num_download": 0,
+        "download_url": "https://ccmixter.org/content/snowflake/snowflake_-_Persephone_3.mp3",
+        "file_rawsize": 9536064
+      }
+    ],
+    "upload_description_plain": "Vidian is one of my favorite Mixters and I was thrilled by my assignment (although scared). I listened through nearly every remix, and Dark Realm Winter Harvest and its violin track by Dimitri Artemenko said \"pick me\"!\r\n\r\nI totally revamped an old song sketch of mine \"The Hermit\" written about this character in the Tarot Deck - for he is Persephone's guide through the Dark Realm of Winter and it s"
+  },
+  {
+    "upload_id": 19367,
+    "upload_name": "Parametaphoriquement",
+    "upload_extra": {
+      "usertags": "ambient,electro,electronic,experimental,half,hip_hop,house,instrumental,male_vocals,uptempo",
+      "ccud": "media,secret_mixter,remix,how_i_did_it,trackback,in_video,in_podcast,in_web,bpm_105_110,in_remix",
+      "systags": "attribution,audio,mp3,44k,stereo,VBR",
+      "featuring": "Morusque",
+      "bpm": 109,
+      "relative_dir": "content/gmz",
+      "nsfw": false,
+      "num_reviews": 13,
+      "howididit": {
+        "tools": "Macbook 2.4ghz, with Ableton Live Suite and some PSP audiounits (mixpack, vintage warmer, neon).",
+        "samples": "Quite everything is here on ccmixter. Morusque/Nurykabe have wonderful sounds here. They are 80-85% of the whole track.\r\n\r\nThe bassline is borrowed from Ableton Live bundled samples, drums and synths are Ableton Suite virtual instruments.",
+        "origial": "The whole drum track, my first one with Session Drums, which I really love (now that I understand what I can do with it...)",
+        "process": "The rhodes sample had me at the first listening. I've built everything else against it, playing with my favourite pingpong echo (full feedback, small send time). The housy section was originally intended to be an extension at the end of the track, maybe I'll publish an alternate mix sooner or later..",
+        "other": "Many thanks to Morusque. It's a pleasure to work with sounds like his."
+      }
+    },
+    "user_name": "gmz",
+    "upload_num_scores": 67,
+    "file_page_url": "https://ccmixter.org/files/gmz/19367",
+    "user_real_name": "gmz",
+    "artist_page_url": "https://ccmixter.org/people/gmz",
+    "license_url": "http://creativecommons.org/licenses/by/3.0/",
+    "license_name": "Attribution (3.0)",
+    "qrank": 326,
+    "files": [
+      {
+        "file_id": 21308,
+        "file_upload": 19367,
+        "file_name": "gmz_-_Parametaphoriquement.mp3",
+        "file_nicname": "mp3",
+        "file_format_info": {
+          "media-type": "audio",
+          "format-name": "audio-mp3-mp3",
+          "default-ext": "mp3",
+          "mime_type": "audio/mpeg",
+          "sr": "44k",
+          "ch": "stereo",
+          "ps": "4:49",
+          "br": "VBR"
+        },
+        "file_extra": {
+          "sha1": "IGNUFOX3F2QIEY3ZLHVHEMHPGYC7KHP2"
+        },
+        "file_filesize": " (7.18MB)",
+        "file_order": 0,
+        "file_is_remote": 0,
+        "file_num_download": 0,
+        "download_url": "https://ccmixter.org/content/gmz/gmz_-_Parametaphoriquement.mp3",
+        "file_rawsize": 7526722
+      }
+    ],
+    "upload_description_plain": "My first secret mixter, and my first year ccMixing, double celebration!\r\nI'm really proud to introduce you to this nice blend of Morusque's samples and my personal confused mind. Hope you'll like it. Long live ccMixter."
+  }
+]

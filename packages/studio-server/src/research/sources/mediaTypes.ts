@@ -113,7 +113,9 @@ export function extensionFor(url: string, contentType: string | null): string | 
 
 /** Content-Type for a media file extension (no dot), when the server's own is missing or generic. */
 export function contentTypeFor(extension: string): string | null {
-  const ext = extension.toLowerCase();
+  const lowered = extension.toLowerCase();
+  // EXT_BY_TYPE names each type by one extension; the common spellings of the same type map onto it.
+  const ext = lowered === "jpeg" || lowered === "jpe" ? "jpg" : lowered;
   for (const [type, known] of Object.entries(EXT_BY_TYPE)) if (known === ext) return type;
   return null;
 }

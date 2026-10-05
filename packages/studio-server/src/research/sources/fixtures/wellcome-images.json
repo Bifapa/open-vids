@@ -1,0 +1,209 @@
+{
+  "type": "ResultList",
+  "pageSize": 10,
+  "totalPages": 1,
+  "totalResults": 4,
+  "results": [
+    {
+      "locations": [
+        {
+          "url": "https://iiif.wellcomecollection.org/image/V0024365/info.json",
+          "credit": "Wellcome Collection",
+          "license": {
+            "id": "pdm",
+            "type": "License",
+            "label": "Public Domain Mark",
+            "url": "https://creativecommons.org/share-your-work/public-domain/pdm/"
+          },
+          "locationType": {
+            "id": "iiif-image",
+            "type": "LocationType",
+            "label": "IIIF Image API"
+          },
+          "type": "DigitalLocation"
+        }
+      ],
+      "source": {
+        "id": "cjdm6zdq",
+        "title": "Ship-building: six kinds of ship (top), the hull of a ship of the line (centre and below). Engraving, 1806.",
+        "type": "Work",
+        "contributors": []
+      },
+      "aspectRatio": 0.7775,
+      "id": "d94ytuev",
+      "type": "Image"
+    },
+    {
+      "locations": [
+        {
+          "url": "https://iiif.wellcomecollection.org/image/L0001893/info.json",
+          "credit": "Wellcome Collection",
+          "license": {
+            "id": "cc-by",
+            "type": "License",
+            "label": "Attribution 4.0 International (CC BY 4.0)",
+            "url": "http://creativecommons.org/licenses/by/4.0/"
+          },
+          "locationType": {
+            "id": "iiif-image",
+            "type": "LocationType",
+            "label": "IIIF Image API"
+          },
+          "type": "DigitalLocation"
+        }
+      ],
+      "source": {
+        "id": "seeuzmsh",
+        "title": "Hospital-ship 'The Dreadnought'.",
+        "type": "Work",
+        "contributors": [
+          {
+            "agent": {
+              "id": "jf76hg7q",
+              "label": "W. Parrott",
+              "identifiers": [
+                {
+                  "value": "w. parrott",
+                  "type": "Identifier",
+                  "identifierType": {
+                    "id": "label-derived",
+                    "type": "IdentifierType",
+                    "label": "Identifier derived from the label of the referent"
+                  }
+                }
+              ],
+              "type": "Agent"
+            },
+            "roles": [],
+            "primary": true,
+            "type": "Contributor"
+          }
+        ]
+      },
+      "aspectRatio": 1.8181818181818181,
+      "id": "fcnnuryc",
+      "type": "Image"
+    },
+    {
+      "locations": [
+        {
+          "url": "https://iiif.wellcomecollection.org/image/B28636089.JP2/info.json",
+          "license": {
+            "id": "pdm",
+            "type": "License",
+            "label": "Public Domain Mark",
+            "url": "https://creativecommons.org/share-your-work/public-domain/pdm/"
+          },
+          "locationType": {
+            "id": "iiif-image",
+            "type": "LocationType",
+            "label": "IIIF Image API"
+          },
+          "type": "DigitalLocation"
+        },
+        {
+          "url": "https://iiif.wellcomecollection.org/presentation/v2/b28636089",
+          "license": {
+            "id": "pdm",
+            "type": "License",
+            "label": "Public Domain Mark",
+            "url": "https://creativecommons.org/share-your-work/public-domain/pdm/"
+          },
+          "locationType": {
+            "id": "iiif-presentation",
+            "type": "LocationType",
+            "label": "IIIF Presentation API"
+          },
+          "type": "DigitalLocation"
+        }
+      ],
+      "source": {
+        "id": "rbwnhhug",
+        "title": "Hospital ship Maine : the \"Executive\" of the American hospital ship \"Maine\" / R. Quiller Lane.",
+        "type": "Work",
+        "contributors": [
+          {
+            "agent": {
+              "id": "gme7jhjs",
+              "label": "Quiller Lane, R.",
+              "identifiers": [
+                {
+                  "value": "quiller lane, r",
+                  "type": "Identifier",
+                  "identifierType": {
+                    "id": "label-derived",
+                    "type": "IdentifierType",
+                    "label": "Identifier derived from the label of the referent"
+                  }
+                }
+              ],
+              "type": "Person"
+            },
+            "roles": [
+              {
+                "label": "illustrator",
+                "type": "ContributionRole"
+              }
+            ],
+            "primary": true,
+            "type": "Contributor"
+          }
+        ]
+      },
+      "aspectRatio": 0.7225,
+      "id": "tbz8r9kp",
+      "type": "Image"
+    },
+    {
+      "locations": [
+        {
+          "url": "https://iiif.wellcomecollection.org/image/A0000412/info.json",
+          "credit": "Royal Veterinary College",
+          "license": {
+            "id": "cc-by-nc",
+            "type": "License",
+            "label": "Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)",
+            "url": "https://creativecommons.org/licenses/by-nc/4.0/"
+          },
+          "locationType": {
+            "id": "iiif-image",
+            "type": "LocationType",
+            "label": "IIIF Image API"
+          },
+          "type": "DigitalLocation"
+        }
+      ],
+      "source": {
+        "id": "zaqes3gr",
+        "title": "Drawing: detailed anatomy horse's forelimb",
+        "type": "Work",
+        "contributors": [
+          {
+            "agent": {
+              "id": "rwt7whcb",
+              "label": "ROYAL VETERINARY COLLEGE",
+              "identifiers": [
+                {
+                  "value": "royal veterinary college",
+                  "type": "Identifier",
+                  "identifierType": {
+                    "id": "label-derived",
+                    "type": "IdentifierType",
+                    "label": "Identifier derived from the label of the referent"
+                  }
+                }
+              ],
+              "type": "Agent"
+            },
+            "roles": [],
+            "primary": true,
+            "type": "Contributor"
+          }
+        ]
+      },
+      "aspectRatio": 1.509433962264151,
+      "id": "cbdf9m75",
+      "type": "Image"
+    }
+  ]
+}

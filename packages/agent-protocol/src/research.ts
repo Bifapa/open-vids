@@ -39,9 +39,34 @@ export const SOURCE_CONNECTORS = [
   "openverse",
   "nasa_images",
   "internet_archive",
+  "nasa_svs",
+  "met_museum",
+  "art_institute_chicago",
+  "cleveland_museum",
+  "smk",
+  "wellcome_collection",
+  "ccmixter",
+  "iconify",
+  "pexels",
+  "pixabay",
+  "flickr",
+  "freesound",
+  "smithsonian",
   "site",
 ] as const;
 export type SourceConnector = (typeof SOURCE_CONNECTORS)[number];
+
+/**
+ * A built-in source whose API needs a key. Each user gets their own (free) key from the source and enters it in the
+ * Asset Search settings: OpenVids ships no shared key. The key itself never leaves the machine's Studio server and is
+ * never served back (`~/.openvids/research/api-keys.json`, owner-only); a source without its key is skipped by search.
+ */
+export interface SourceApiKey {
+  /** Where the user gets a key. */
+  signupUrl: string;
+  /** A key is saved for this source. */
+  configured: boolean;
+}
 
 export interface TrustedSource {
   /** Built-ins: a fixed slug (`wikimedia-commons`); user sources: `src-<random>`. */
@@ -60,6 +85,8 @@ export interface TrustedSource {
   /** What the source says about licensing, shown to the user. */
   licenseNote: string;
   homepage: string | null;
+  /** Null when the source needs no key (every user source). */
+  apiKey: SourceApiKey | null;
 }
 
 /** The Websites group of the policy: what agents may do with the sites the user names in chat (see `website.ts`). */
@@ -117,6 +144,14 @@ export interface UpdateTrustedSourceRequest {
 // `DELETE /api/research/sources/:id` removes a source (a built-in one is remembered in `removedBuiltIns`);
 // `POST /api/research/sources/restore` brings back every removed built-in source (enabled).
 
+/**
+ * `PUT /api/research/sources/:id/api-key` — save the key of a built-in source that needs one (the answer is the
+ * policy, where the source's `apiKey.configured` turns true); `DELETE` on the same path forgets it.
+ */
+export interface SetSourceApiKeyRequest {
+  key: string;
+}
+
 export const RESEARCH_LIMITS = {
   sources: 64,
   domainsPerSource: 16,
@@ -124,6 +159,7 @@ export const RESEARCH_LIMITS = {
   noteChars: 500,
   queryChars: 300,
   urlChars: 2_048,
+  apiKeyChars: 256,
   searchResults: 20,
   fileNameChars: 80,
   /** Most `import_asset` calls (each downloading or reusing one file) one agent turn may make. */
@@ -144,6 +180,13 @@ export const LICENSE_IDS = [
   "cc_by_nc",
   "cc_by_nc_sa",
   "cc_by_nc_nd",
+  /**
+   * A stock site's own free license (Pexels, Pixabay, Unsplash): use, modify and publish for free, commercially too,
+   * no credit required; the file itself may not be resold or redistributed as is.
+   */
+  "free_stock",
+  /** A permissive open-source license (MIT, Apache-2.0, ISC, BSD, OFL, Unlicense): free to use, keep the notice. */
+  "permissive",
   /** A named license whose terms OpenVids does not classify. */
   "other",
   "unknown",
@@ -159,10 +202,10 @@ export const LICENSE_CONFIDENCES = ["high", "medium", "low", "none"] as const;
 export type LicenseConfidence = (typeof LICENSE_CONFIDENCES)[number];
 
 /**
- * What the user has to look at: `clear` — public domain / CC0 found with at least medium confidence; `attribution` —
- * CC BY / BY-SA: usable with a credit; `restricted` — non-commercial or no-derivatives terms, or an unclassified named
- * license; `unknown` — no license, or only a low-confidence one. `restricted` and `unknown` are warned about on
- * export (never blocked).
+ * What the user has to look at: `clear` — public domain / CC0 / a stock site's free license found with at least
+ * medium confidence; `attribution` — CC BY / BY-SA / a permissive open-source license: usable with a credit;
+ * `restricted` — non-commercial or no-derivatives terms, or an unclassified named license; `unknown` — no license,
+ * or only a low-confidence one. `restricted` and `unknown` are warned about on export (never blocked).
  */
 export const LICENSE_STATUSES = ["clear", "attribution", "restricted", "unknown"] as const;
 export type LicenseStatus = (typeof LICENSE_STATUSES)[number];
@@ -187,7 +230,35 @@ const CC_LICENSES: Array<{ id: LicenseId; path: string; label: string }> = [
   { id: "cc_by", path: "by", label: "CC BY" },
 ];
 
-function ccFromUrl(url: string): { id: LicenseId; name: string } | null {
+/** Stock sites whose whole library is under their own free license, by the license page's URL. */
+const FREE_STOCK_LICENSES: Array<{ pattern: RegExp; name: string }> = [
+  {
+    pattern: /^https?:\/\/(www\.)?pexels\.com\/(\w{2}-\w{2}\/)?(license|photo-license)\b/i,
+    name: "Pexels License",
+  },
+  {
+    pattern: /^https?:\/\/(www\.)?pixabay\.com\/service\/(license|license-summary|terms)\b/i,
+    name: "Pixabay Content License",
+  },
+  { pattern: /^https?:\/\/(www\.)?unsplash\.com\/license\b/i, name: "Unsplash License" },
+];
+
+function licenseFromUrl(url: string): { id: LicenseId; name: string } | null {
+  const stock = FREE_STOCK_LICENSES.find((entry) => entry.pattern.test(url));
+  if (stock) return { id: "free_stock", name: stock.name };
+  // rightsstatements.org: "No Copyright – United States" and "No Known Copyright" are what GLAM APIs say about
+  // out-of-copyright works. "No Copyright – Other Known Legal Restrictions" (NoC-OKLR) says something else still
+  // limits reuse, so it stays unclassified like the in-copyright and undetermined statements.
+  const statement = /rightsstatements\.org\/(?:vocab|page)\/(NoC-US|NKC)\b/i.exec(url);
+  if (statement) {
+    return {
+      id: "public_domain",
+      name:
+        statement[1]?.toUpperCase() === "NOC-US"
+          ? "No Copyright – United States"
+          : "No known copyright",
+    };
+  }
   const match =
     /creativecommons\.org\/(licenses|publicdomain)\/([a-z-]+)(?:\/(\d+(?:\.\d+)?))?/i.exec(url);
   if (!match) return null;
@@ -202,12 +273,17 @@ function ccFromUrl(url: string): { id: LicenseId; name: string } | null {
   return found ? { id: found.id, name: `${found.label}${suffix}` } : null;
 }
 
-function ccFromName(name: string): { id: LicenseId; name: string } | null {
+/** SPDX ids and names of the permissive open-source licenses icon and font sets use. */
+const PERMISSIVE_LICENSE =
+  /^(mit( license)?|isc( license)?|apache[ -]?(license[ ,]*)?(version )?2(\.0)?( license)?|apache-2\.0|bsd[ -]?[0-4][ -]?clause( license)?|0bsd|unlicense|the unlicense|ofl-1\.1(-rfn|-no-rfn)?|sil open font license( 1\.1)?|open font license)$/;
+
+function licenseFromName(name: string): { id: LicenseId; name: string } | null {
   const text = name.trim().toLowerCase().replaceAll("_", "-");
   if (/\bcc0\b|cc-zero|creative commons zero/.test(text)) return { id: "cc0", name: "CC0" };
   if (/public domain mark|\bpdm\b/.test(text)) return { id: "pdm", name: "Public Domain Mark" };
   if (/^(pd|public[ -]domain)\b|\bpublic domain\b|^pd-/.test(text))
     return { id: "public_domain", name: "Public domain" };
+  if (PERMISSIVE_LICENSE.test(text)) return { id: "permissive", name: name.trim() };
   const cc = /\bcc[ -]?(by(?:[ -](?:nc|nd|sa))*)(?:[ -](\d+(?:\.\d+)?))?/.exec(text);
   if (!cc) return null;
   const parts = (cc[1] ?? "by").split(/[ -]/);
@@ -226,9 +302,11 @@ export function licenseStatusOf(id: LicenseId, confidence: LicenseConfidence): L
     case "cc0":
     case "pdm":
     case "public_domain":
+    case "free_stock":
       return "clear";
     case "cc_by":
     case "cc_by_sa":
+    case "permissive":
       return "attribution";
     default:
       return "restricted";
@@ -236,9 +314,9 @@ export function licenseStatusOf(id: LicenseId, confidence: LicenseConfidence): L
 }
 
 /**
- * Normalizes what a source says about a license (a name, a URL, or both) into a {@link LicenseInfo}. A URL on
- * creativecommons.org wins over the name; a name that is not recognized becomes `other` (restricted: the user has to
- * read it); nothing at all is `unknown`.
+ * Normalizes what a source says about a license (a name, a URL, or both) into a {@link LicenseInfo}. A recognized URL
+ * (creativecommons.org, rightsstatements.org, a stock site's license page) wins over the name; a name that is not
+ * recognized becomes `other` (restricted: the user has to read it); nothing at all is `unknown`.
  */
 export function normalizeLicense(input: {
   name?: string | null;
@@ -248,7 +326,7 @@ export function normalizeLicense(input: {
 }): LicenseInfo {
   const url = input.url?.trim() || null;
   const name = input.name?.trim() || null;
-  const found = (url ? ccFromUrl(url) : null) ?? (name ? ccFromName(name) : null);
+  const found = (url ? licenseFromUrl(url) : null) ?? (name ? licenseFromName(name) : null);
   if (!found && !name && !url) {
     return {
       id: "unknown",

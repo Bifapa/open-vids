@@ -1,0 +1,131 @@
+{
+  "photos": {
+    "page": 1,
+    "pages": 4,
+    "perpage": 4,
+    "total": 15,
+    "photo": [
+      {
+        "id": "33440001",
+        "owner": "55555555@N05",
+        "secret": "61a9486355",
+        "server": "65535",
+        "farm": 66,
+        "title": "Waves at the pier",
+        "ispublic": 1,
+        "isfriend": 0,
+        "isfamily": 0,
+        "license": "4",
+        "description": {
+          "_content": "A short clip."
+        },
+        "ownername": "Dora",
+        "media": "video",
+        "media_status": "ready",
+        "url_m": "https://live.staticflickr.com/65535/33440001_61a9486355.jpg",
+        "height_m": 281,
+        "width_m": 500,
+        "url_l": "https://live.staticflickr.com/65535/33440001_61a9486355_b.jpg",
+        "height_l": 576,
+        "width_l": 1024
+      },
+      {
+        "id": "33440002",
+        "owner": "66666666@N06",
+        "secret": "7b8c9d0e1f",
+        "server": "65535",
+        "farm": 66,
+        "title": "Old reel, 1950",
+        "ispublic": 1,
+        "isfriend": 0,
+        "isfamily": 0,
+        "license": "10",
+        "description": {
+          "_content": "A short clip."
+        },
+        "ownername": "Film Archive",
+        "media": "video",
+        "media_status": "ready",
+        "url_m": "https://live.staticflickr.com/65535/33440002_7b8c9d0e1f.jpg",
+        "height_m": 281,
+        "width_m": 500,
+        "url_l": "https://live.staticflickr.com/65535/33440002_7b8c9d0e1f_b.jpg",
+        "height_l": 576,
+        "width_l": 1024
+      },
+      {
+        "id": "33440003",
+        "owner": "77777777@N07",
+        "secret": "aabbccdd11",
+        "server": "65535",
+        "farm": 66,
+        "title": "Gone before sizing",
+        "ispublic": 1,
+        "isfriend": 0,
+        "isfamily": 0,
+        "license": "9",
+        "description": {
+          "_content": "A short clip."
+        },
+        "ownername": "Eli",
+        "media": "video",
+        "media_status": "ready",
+        "url_m": "https://live.staticflickr.com/65535/33440003_aabbccdd11.jpg",
+        "height_m": 281,
+        "width_m": 500,
+        "url_l": "https://live.staticflickr.com/65535/33440003_aabbccdd11_b.jpg",
+        "height_l": 576,
+        "width_l": 1024
+      },
+      {
+        "id": "33440004",
+        "owner": "88888888@N08",
+        "secret": "eeff001122",
+        "server": "65535",
+        "farm": 66,
+        "title": "Flash only",
+        "ispublic": 1,
+        "isfriend": 0,
+        "isfamily": 0,
+        "license": "5",
+        "description": {
+          "_content": "A short clip."
+        },
+        "ownername": "Fay",
+        "media": "video",
+        "media_status": "ready",
+        "url_m": "https://live.staticflickr.com/65535/33440004_eeff001122.jpg",
+        "height_m": 281,
+        "width_m": 500,
+        "url_l": "https://live.staticflickr.com/65535/33440004_eeff001122_b.jpg",
+        "height_l": 576,
+        "width_l": 1024
+      },
+      {
+        "id": "33440005",
+        "owner": "99999999@N09",
+        "secret": "1122334455",
+        "server": "65535",
+        "farm": 66,
+        "title": "No-commercial clip",
+        "ispublic": 1,
+        "isfriend": 0,
+        "isfamily": 0,
+        "license": "3",
+        "description": {
+          "_content": "A short clip."
+        },
+        "ownername": "Gus",
+        "media": "video",
+        "media_status": "ready",
+        "url_m": "https://live.staticflickr.com/65535/33440005_1122334455.jpg",
+        "height_m": 281,
+        "width_m": 500,
+        "url_l": "https://live.staticflickr.com/65535/33440005_1122334455_b.jpg",
+        "height_l": 576,
+        "width_l": 1024
+      }
+    ]
+  },
+  "stat": "ok"
+}

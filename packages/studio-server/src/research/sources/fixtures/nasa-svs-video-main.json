@@ -1,0 +1,111 @@
+{
+  "id": 15035,
+  "url": "https://svs.gsfc.nasa.gov/15035/",
+  "page_type": "Visualization",
+  "title": "Forty Years of Change in Louisiana’s Wetlands",
+  "description": "Louisiana's coastline is on the move. Utilizing infrared-color imagery to contrast water and vegetation, this Landsat time series tracks 40 years of dynamic shifts across Louisiana’s fragile coast. From abrupt hurricane-induced flooding to the gradual, permanent drowning of vital marshes, these visualizations capture an ecosystem in perpetual motion.",
+  "main_image": {
+    "id": 1203790,
+    "url": "https://svs.gsfc.nasa.gov/vis/a010000/a015000/a015035/15035---Louisiana-Wetlands_print.jpg",
+    "filename": "15035---Louisiana-Wetlands_print.jpg",
+    "media_type": "Image",
+    "alt_text": "A infrared-color Landsat time series of Louisiana’s Bay Dosgris from 1985 to 2024, showing wetlands converting to open water as sea level rise and storms reshape the Gulf Coast.",
+    "width": 1280,
+    "height": 720,
+    "pixels": 921600
+  },
+  "main_video": {
+    "id": 1203795,
+    "url": "https://svs.gsfc.nasa.gov/vis/a010000/a015000/a015035/Louisiana_Wetlands_-_Web_-_1.mp4",
+    "filename": "Louisiana_Wetlands_-_Web_-_1.mp4",
+    "media_type": "Movie",
+    "alt_text": "A infrared-color Landsat time series of Louisiana’s Bay Dosgris from 1985 to 2024, showing wetlands converting to open water as sea level rise and storms reshape the Gulf Coast.",
+    "width": 1920,
+    "height": 1080,
+    "pixels": 2073600
+  },
+  "main_credits": {},
+  "media_groups": [
+    {
+      "id": 380276,
+      "widget": "Video player",
+      "title": "",
+      "caption": "",
+      "description": "A infrared-color Landsat time series of Louisiana’s Bay Dosgris from 1985 to 2024, showing wetlands converting to open water as sea level rise and storms reshape the Gulf Coast.",
+      "items": [
+        {
+          "id": 521281,
+          "type": "media",
+          "instance": {
+            "id": 1203794,
+            "url": "https://svs.gsfc.nasa.gov/vis/a010000/a015000/a015035/Louisiana_Wetlands_-_Hyperwall.mp4",
+            "filename": "Louisiana_Wetlands_-_Hyperwall.mp4",
+            "media_type": "Movie",
+            "width": 5760,
+            "height": 3240
+          }
+        },
+        {
+          "id": 521282,
+          "type": "media",
+          "instance": {
+            "id": 1203795,
+            "url": "https://svs.gsfc.nasa.gov/vis/a010000/a015000/a015035/Louisiana_Wetlands_-_Web_-_1.mp4",
+            "filename": "Louisiana_Wetlands_-_Web_-_1.mp4",
+            "media_type": "Movie",
+            "width": 1920,
+            "height": 1080
+          }
+        },
+        {
+          "id": 521280,
+          "type": "media",
+          "instance": {
+            "id": 1203793,
+            "url": "https://svs.gsfc.nasa.gov/vis/a010000/a015000/a015035/Louisiana_Coastline-Vertical_Reel-4.mp4",
+            "filename": "Louisiana_Coastline-Vertical_Reel-4.mp4",
+            "media_type": "Movie",
+            "width": 1080,
+            "height": 1920
+          }
+        },
+        {
+          "id": 521279,
+          "type": "media",
+          "instance": {
+            "id": 1203792,
+            "url": "https://svs.gsfc.nasa.gov/vis/a010000/a015000/a015035/15035---Louisiana-Wetlands_thumb.png",
+            "filename": "15035---Louisiana-Wetlands_thumb.png",
+            "media_type": "Image",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        {
+          "id": 521277,
+          "type": "media",
+          "instance": {
+            "id": 1203790,
+            "url": "https://svs.gsfc.nasa.gov/vis/a010000/a015000/a015035/15035---Louisiana-Wetlands_print.jpg",
+            "filename": "15035---Louisiana-Wetlands_print.jpg",
+            "media_type": "Image",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        {
+          "id": 521278,
+          "type": "media",
+          "instance": {
+            "id": 1203791,
+            "url": "https://svs.gsfc.nasa.gov/vis/a010000/a015000/a015035/15035---Louisiana-Wetlands_searchweb.jpg",
+            "filename": "15035---Louisiana-Wetlands_searchweb.jpg",
+            "media_type": "Image",
+            "width": 1280,
+            "height": 720
+          }
+        }
+      ]
+    }
+  ]
+}

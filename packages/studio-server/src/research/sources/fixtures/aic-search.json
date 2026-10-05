@@ -1,0 +1,80 @@
+{
+  "preference": null,
+  "pagination": {
+    "total": 62072,
+    "limit": 4,
+    "offset": 0,
+    "total_pages": 15518,
+    "current_page": 1
+  },
+  "data": [
+    {
+      "_score": 53.108707,
+      "id": 20029,
+      "title": "Sunflowers, Marché St Germain, Paris",
+      "thumbnail": {
+        "lqip": "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+        "width": 2784,
+        "height": 2250,
+        "alt_text": "A work made of etching with foul biting in black ink on ivory japanese paper."
+      },
+      "date_display": "1888/93",
+      "artist_display": "James McNeill Whistler\nAmerican, 1834-1903",
+      "medium_display": "Etching with foul biting in black ink on ivory Japanese paper",
+      "is_public_domain": true,
+      "image_id": "2e9476db-2d28-c197-25d8-9b525d63d5a0"
+    },
+    {
+      "_score": 52.70401,
+      "id": 112885,
+      "title": "Decorative Study: Woman with Sunflowers",
+      "thumbnail": {
+        "lqip": "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+        "width": 1499,
+        "height": 2250,
+        "alt_text": "A work made of pen and black ink, with brush and black wash, over traces of graphite, on ivory wove paper."
+      },
+      "date_display": "1892/98",
+      "artist_display": "Attributed to Aubrey Vincent Beardsley\nEnglish, 1872-1898",
+      "medium_display": "Pen and black ink, with brush and black wash, over traces of graphite, on ivory wove paper",
+      "is_public_domain": true,
+      "image_id": "0baef26e-7f4c-e4b2-ec72-04ac85448af7"
+    },
+    {
+      "_score": 52.699535,
+      "id": 35720,
+      "title": "Sunflowers",
+      "thumbnail": {
+        "lqip": "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+        "width": 2314,
+        "height": 3000,
+        "alt_text": "A work made of watercolor, with pen and ink, on paper."
+      },
+      "date_display": "August 20, 1895",
+      "artist_display": "Georges Lemmen\nBelgian, 1865-1916",
+      "medium_display": "Watercolor, with pen and ink, on paper",
+      "is_public_domain": true,
+      "image_id": "461c0069-45a9-c67e-7210-bfb512c3ea58"
+    },
+    {
+      "_score": 48.438576,
+      "id": 186048,
+      "title": "Clytie",
+      "thumbnail": {
+        "lqip": "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+        "width": 1489,
+        "height": 2250,
+        "alt_text": "A work made of plaster."
+      },
+      "date_display": "1868",
+      "artist_display": "George Frederick Watts (English, 1817–1904)",
+      "medium_display": "Plaster",
+      "is_public_domain": true,
+      "image_id": "49fe111f-39ed-1ff1-525b-91c6bc0e67d1"
+    }
+  ],
+  "config": {
+    "iiif_url": "https://www.artic.edu/iiif/2",
+    "website_url": "http://www.artic.edu"
+  }
+}

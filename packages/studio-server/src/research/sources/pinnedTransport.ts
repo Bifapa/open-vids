@@ -74,6 +74,8 @@ export function pinnedTransport(url: string, init: TransportInit): Promise<Respo
         path: `${target.pathname}${target.search}`,
         headers: { "accept-encoding": "gzip, deflate, br", ...init.headers },
         lookup: pinnedLookup(init.addresses),
+        // ccMixter's API repeats its whole JSON answer in an `X-JSON` header (~5 KB per result), past Node's 16 KB.
+        maxHeaderSize: 256 * 1024,
         // SNI for a name; an IP literal must not be sent as SNI.
         ...(secure && { servername: /^[\d.]+$|:/.test(hostname) ? "" : hostname }),
       },

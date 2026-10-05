@@ -12,6 +12,7 @@ import {
   parseRequestId,
   parseResolveRequest,
   parseSearchRequest,
+  parseSetApiKey,
   parseTurnId,
   parseUpdateSource,
   parseWebsiteFileRequest,
@@ -124,6 +125,16 @@ export function registerResearchRoutes(
     answer(c, async () =>
       service.updateSource(c.req.param("id") ?? "", parseUpdateSource(await body(c))),
     ),
+  );
+
+  api.put("/research/sources/:id/api-key", tooLarge, async (c) =>
+    answer(c, async () =>
+      service.setSourceApiKey(c.req.param("id") ?? "", parseSetApiKey(await body(c)).key),
+    ),
+  );
+
+  api.delete("/research/sources/:id/api-key", (c) =>
+    answer(c, () => service.removeSourceApiKey(c.req.param("id") ?? "")),
   );
 
   api.delete("/research/sources/:id", (c) =>

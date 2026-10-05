@@ -589,6 +589,8 @@ mod tests {
             ("PATCH", "/api/research/sources/openverse"),
             ("DELETE", "/api/research/sources/openverse"),
             ("POST", "/api/research/sources/restore"),
+            ("PUT", "/api/research/sources/pexels/api-key"),
+            ("DELETE", "/api/research/sources/pexels/api-key"),
             ("GET", "/api/agent/providers"),
             ("POST", "/api/agent/providers/refresh"),
             ("GET", "/api/agent/providers/anthropic/models"),
@@ -620,7 +622,7 @@ mod tests {
         assert_eq!(code, 200);
         let policy = json(&body);
         assert_eq!(policy["mode"], "trusted");
-        assert_eq!(policy["sources"].as_array().unwrap().len(), 4);
+        assert_eq!(policy["sources"].as_array().unwrap().len(), 17);
         assert_eq!(policy["websites"]["readLinkedPages"], true);
         assert_eq!(policy["websites"]["fullAccess"], false);
 
@@ -634,11 +636,12 @@ mod tests {
         assert_eq!(code, 400);
         assert_eq!(json(&body)["error"]["code"], "invalid_request");
 
-        let (code, body) = send(&origin, "POST", "/api/research/sources", Some(&token), br#"{"name":"Pexels","domains":["https://www.pexels.com/x"]}"#);
+        let (code, body) = send(&origin, "POST", "/api/research/sources", Some(&token), br#"{"name":"Stockclips","domains":["https://www.stockclips.org/x"]}"#);
         assert_eq!(code, 200);
         let policy = json(&body);
         let added = policy["sources"].as_array().unwrap().last().unwrap().clone();
-        assert_eq!(added["domains"], serde_json::json!(["pexels.com"]));
+        assert_eq!(added["domains"], serde_json::json!(["stockclips.org"]));
+        assert_eq!(added["apiKey"], serde_json::Value::Null);
         let id = added["id"].as_str().unwrap().to_string();
         let (code, body) = send(&origin, "POST", "/api/research/sources", Some(&token), br#"{"name":"Dup","domains":["pexels.com"]}"#);
         assert_eq!(code, 409);
@@ -659,6 +662,54 @@ mod tests {
         assert_eq!(json(&body)["removedBuiltIns"], serde_json::json!([]));
         let (code, _) = send(&origin, "DELETE", &format!("/api/research/sources/{id}"), Some(&token), b"");
         assert_eq!(code, 200);
+
+        // API keys: the answer is the policy with `configured` flipped, never the key.
+        let pexels = |policy: &serde_json::Value| {
+            policy["sources"].as_array().unwrap().iter().find(|s| s["id"] == "pexels").unwrap().clone()
+        };
+        let (code, body) = send(&origin, "PUT", "/api/research/sources/pexels/api-key", Some(&token), br#"{"key":" k-123_secret "}"#);
+        assert_eq!(code, 200);
+        assert!(!String::from_utf8_lossy(&body).contains("k-123_secret"));
+        let policy = json(&body);
+        assert_eq!(pexels(&policy)["apiKey"], serde_json::json!({"signupUrl": "https://www.pexels.com/api/new/", "configured": true}));
+        let openverse = policy["sources"].as_array().unwrap().iter().find(|s| s["id"] == "openverse").unwrap().clone();
+        assert_eq!(openverse["apiKey"], serde_json::Value::Null);
+        let (code, body) = send(&origin, "GET", "/api/research/policy", Some(&token), b"");
+        assert_eq!(code, 200);
+        assert_eq!(pexels(&json(&body))["apiKey"]["configured"], true);
+        let keys: serde_json::Value = serde_json::from_slice(&std::fs::read(research_dir.join("api-keys.json")).unwrap()).unwrap();
+        assert_eq!(keys, serde_json::json!({"schema": "openvids.research-keys/1", "keys": {"pexels": "k-123_secret"}}));
+        for (path, body, status, error) in [
+            ("/api/research/sources/pexels/api-key", &br#"{"key":""}"#[..], 400, "invalid_request"),
+            ("/api/research/sources/pexels/api-key", br#"{"key":"a b"}"#, 400, "invalid_request"),
+            ("/api/research/sources/pexels/api-key", br#"{"key":"a","other":1}"#, 400, "invalid_request"),
+            ("/api/research/sources/pexels/api-key", b"not json", 400, "invalid_request"),
+            ("/api/research/sources/openverse/api-key", br#"{"key":"a"}"#, 400, "invalid_request"),
+            ("/api/research/sources/src-nope/api-key", br#"{"key":"a"}"#, 400, "unknown_source"),
+        ] {
+            let (code, answer) = send(&origin, "PUT", path, Some(&token), body);
+            assert_eq!((code, json(&answer)["error"]["code"].as_str().unwrap().to_string()), (status, error.to_string()), "{path} {}", String::from_utf8_lossy(body));
+        }
+        let (code, body) = send(&origin, "DELETE", "/api/research/sources/openverse/api-key", Some(&token), b"");
+        assert_eq!((code, json(&body)["error"]["code"].clone()), (400, serde_json::json!("invalid_request")));
+        let (code, body) = send(&origin, "DELETE", "/api/research/sources/src-nope/api-key", Some(&token), b"");
+        assert_eq!((code, json(&body)["error"]["code"].clone()), (400, serde_json::json!("unknown_source")));
+        // The key path is not a source: PATCH and GET on it find nothing, and no source is touched.
+        for method in ["PATCH", "GET", "POST"] {
+            let (code, _) = send(&origin, method, "/api/research/sources/pexels/api-key", Some(&token), b"{}");
+            assert_eq!(code, 404, "{method}");
+        }
+        let (code, body) = send(&origin, "DELETE", "/api/research/sources/pexels/api-key", Some(&token), b"");
+        assert_eq!(code, 200);
+        assert_eq!(pexels(&json(&body))["apiKey"]["configured"], false);
+        let keys: serde_json::Value = serde_json::from_slice(&std::fs::read(research_dir.join("api-keys.json")).unwrap()).unwrap();
+        assert_eq!(keys["keys"], serde_json::json!({}));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(research_dir.join("api-keys.json")).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
         // The file on disk is what Studio's server reads.
         let file: serde_json::Value = serde_json::from_slice(&std::fs::read(research_dir.join("policy.json")).unwrap()).unwrap();
         assert_eq!(file["schema"], "openvids.research-policy/1");

@@ -81,6 +81,7 @@ export function trustedSource(overrides: Partial<TrustedSource> = {}): TrustedSo
     licenseNote: "Every file states its license.",
     homepage: "https://commons.wikimedia.org",
     ...overrides,
+    apiKey: overrides.apiKey ?? null,
   };
 }
 

@@ -1,0 +1,82 @@
+{
+  "sizes": {
+    "canblog": 0,
+    "canprint": 0,
+    "candownload": 1,
+    "size": [
+      {
+        "label": "Square",
+        "width": 75,
+        "height": 75,
+        "source": "https://live.staticflickr.com/65535/33440001_61a9486355_s.jpg",
+        "url": "https://www.flickr.com/photos/55555555@N05/33440001/sizes/sq/",
+        "media": "photo"
+      },
+      {
+        "label": "Large",
+        "width": 1024,
+        "height": 576,
+        "source": "https://live.staticflickr.com/65535/33440001_61a9486355_b.jpg",
+        "url": "https://www.flickr.com/photos/55555555@N05/33440001/sizes/l/",
+        "media": "photo"
+      },
+      {
+        "label": "Video Player",
+        "width": 640,
+        "height": 360,
+        "source": "https://www.flickr.com/apps/video/stewart.swf?v=33440001&photo_id=33440001&photo_secret=61a9486355",
+        "url": "https://www.flickr.com/photos/55555555@N05/33440001/",
+        "media": "video"
+      },
+      {
+        "label": "720p",
+        "width": 1280,
+        "height": 720,
+        "source": "https://www.flickr.com/photos/55555555@N05/33440001/play/720p/61a9486355/",
+        "url": "https://www.flickr.com/photos/55555555@N05/33440001/",
+        "media": "video"
+      },
+      {
+        "label": "appletv",
+        "width": "",
+        "height": "",
+        "source": "https://www.flickr.com/photos/55555555@N05/33440001/play/appletv/61a9486355/",
+        "url": "https://www.flickr.com/photos/55555555@N05/33440001/",
+        "media": "video"
+      },
+      {
+        "label": "700",
+        "width": "",
+        "height": "",
+        "source": "https://www.flickr.com/photos/55555555@N05/33440001/play/700/61a9486355/",
+        "url": "https://www.flickr.com/photos/55555555@N05/33440001/",
+        "media": "video"
+      },
+      {
+        "label": "360p",
+        "width": 640,
+        "height": 360,
+        "source": "https://www.flickr.com/photos/55555555@N05/33440001/play/360p/61a9486355/",
+        "url": "https://www.flickr.com/photos/55555555@N05/33440001/",
+        "media": "video"
+      },
+      {
+        "label": "iphone_wifi",
+        "width": "",
+        "height": "",
+        "source": "https://www.flickr.com/photos/55555555@N05/33440001/play/iphone_wifi/61a9486355/",
+        "url": "https://www.flickr.com/photos/55555555@N05/33440001/",
+        "media": "video"
+      },
+      {
+        "label": "288p",
+        "width": 512,
+        "height": 288,
+        "source": "https://www.flickr.com/photos/55555555@N05/33440001/play/288p/61a9486355/",
+        "url": "https://www.flickr.com/photos/55555555@N05/33440001/",
+        "media": "video"
+      }
+    ]
+  },
+  "stat": "ok"
+}

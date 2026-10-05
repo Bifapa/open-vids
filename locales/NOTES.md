@@ -184,6 +184,12 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `settings.jev.test.button` — Button (verb) that runs a live test.
 - `settings.jev.group.check` — Group heading (noun): a live test of Jev’s settings.
 - `settings.assets.custom` — Badge on a source the user added.
+- `settings.assets.key.badge` — Quiet badge beside a built-in source that is switched on but has no API key yet, so it is not searched.
+- `settings.assets.key.needs` — Note under a source that works only with the user's own free API key; a link "Get a key" follows it.
+- `settings.assets.key.get` — Link to the page where the user signs up for a free API key.
+- `settings.assets.key.replace` — Button next to "Key saved": swap the saved API key for a new one.
+- `settings.assets.key.replaceAria` — Accessible name of the Replace button; {name} is the source.
+- `settings.assets.key.removeAria` — Accessible name of the button that forgets the saved key; {name} is the source.
 - `settings.execution.field.qaFramesPerMinute.hint` — {min}–{max} is the allowed range of the number.
 - `settings.execution.passes.many` — {passes} is 2 or more; {corrections} is one less.
 - `settings.execution.summary.vision` — Fragment of a summary line; keep the <b> tags.
@@ -999,6 +1005,12 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `research.policy.confirmRemoveBuiltIn` — Restore built-in sources is the button research.policy.restore.
 - `research.policy.keep` — Button in the confirmation: do not remove the source.
 - `research.policy.groupWebsites` — Group of settings about reading pages the user links in chat.
+- `research.policy.key.badge` — Quiet badge beside a built-in source that is switched on but has no API key yet, so it is not searched.
+- `research.policy.key.needs` — Note under a source that works only with the user's own free API key; a link "Get a key" follows it.
+- `research.policy.key.get` — Link to the page where the user signs up for a free API key.
+- `research.policy.key.replace` — Button next to "Key saved": swap the saved API key for a new one.
+- `research.policy.key.replaceAria` — Accessible name of the Replace button; {name} is the source.
+- `research.policy.key.removeAria` — Accessible name of the button that forgets the saved key; {name} is the source.
 - `story.research.title` — Inspector section of a Missing Asset node; Research is the agent that finds material.
 - `story.research.intro` — {kind} is the needed media kind and {mode} the Asset Search mode; 'the turn' is the agent's last turn in the chat.
 - `story.research.openSources` — Sources & Licenses is the dock panel (shell.dock.panel.sources).

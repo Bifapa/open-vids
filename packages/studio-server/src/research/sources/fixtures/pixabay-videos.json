@@ -1,0 +1,130 @@
+{
+  "total": 42,
+  "totalHits": 42,
+  "hits": [
+    {
+      "id": 125,
+      "pageURL": "https://pixabay.com/videos/id-125/",
+      "type": "film",
+      "tags": "flowers, yellow, blossom",
+      "duration": 12,
+      "videos": {
+        "large": {
+          "url": "https://cdn.pixabay.com/video/2015/08/08/125-135736646_large.mp4",
+          "width": 1920,
+          "height": 1080,
+          "size": 6615235,
+          "thumbnail": "https://cdn.pixabay.com/video/2015/08/08/125-135736646_large.jpg"
+        },
+        "medium": {
+          "url": "https://cdn.pixabay.com/video/2015/08/08/125-135736646_medium.mp4",
+          "width": 1280,
+          "height": 720,
+          "size": 3562083,
+          "thumbnail": "https://cdn.pixabay.com/video/2015/08/08/125-135736646_medium.jpg"
+        },
+        "small": {
+          "url": "https://cdn.pixabay.com/video/2015/08/08/125-135736646_small.mp4",
+          "width": 640,
+          "height": 360,
+          "size": 1030736,
+          "thumbnail": "https://cdn.pixabay.com/video/2015/08/08/125-135736646_small.jpg"
+        },
+        "tiny": {
+          "url": "https://cdn.pixabay.com/video/2015/08/08/125-135736646_tiny.mp4",
+          "width": 480,
+          "height": 270,
+          "size": 426799,
+          "thumbnail": "https://cdn.pixabay.com/video/2015/08/08/125-135736646_tiny.jpg"
+        }
+      },
+      "views": 4462,
+      "downloads": 1464,
+      "likes": 18,
+      "comments": 0,
+      "user_id": 1281706,
+      "user": "Coverr-Free-Footage",
+      "userImageURL": "https://cdn.pixabay.com/user/2015/10/16/09-28-45-303_250x250.png"
+    },
+    {
+      "id": 2001,
+      "pageURL": "https://pixabay.com/videos/city-skyline-night-2001/",
+      "type": "film",
+      "tags": "city, skyline, night",
+      "duration": 20,
+      "videos": {
+        "large": {
+          "url": "https://cdn.pixabay.com/video/2023/01/02/2001-800000000_large.mp4",
+          "width": 3840,
+          "height": 2160,
+          "size": 52000000,
+          "thumbnail": "https://cdn.pixabay.com/video/2023/01/02/2001-800000000_large.jpg"
+        },
+        "medium": {
+          "url": "https://cdn.pixabay.com/video/2023/01/02/2001-800000000_medium.mp4",
+          "width": 1920,
+          "height": 1080,
+          "size": 18000000,
+          "thumbnail": "https://cdn.pixabay.com/video/2023/01/02/2001-800000000_medium.jpg"
+        },
+        "small": {
+          "url": "https://cdn.pixabay.com/video/2023/01/02/2001-800000000_small.mp4",
+          "width": 1280,
+          "height": 720,
+          "size": 9000000,
+          "thumbnail": "https://cdn.pixabay.com/video/2023/01/02/2001-800000000_small.jpg"
+        },
+        "tiny": {
+          "url": "https://cdn.pixabay.com/video/2023/01/02/2001-800000000_tiny.mp4",
+          "width": 960,
+          "height": 540,
+          "size": 4000000,
+          "thumbnail": "https://cdn.pixabay.com/video/2023/01/02/2001-800000000_tiny.jpg"
+        }
+      },
+      "views": 10,
+      "downloads": 5,
+      "likes": 1,
+      "comments": 0,
+      "user_id": 777,
+      "user": "night owl",
+      "userImageURL": ""
+    },
+    {
+      "id": 3002,
+      "pageURL": "https://pixabay.com/videos/old-clip-3002/",
+      "type": "animation",
+      "tags": "old, clip",
+      "duration": 6,
+      "videos": {
+        "large": { "url": "", "width": 0, "height": 0, "size": 0, "thumbnail": "" },
+        "medium": {
+          "url": "https://cdn.pixabay.com/video/2016/01/01/3002-1_medium.mp4",
+          "width": 2880,
+          "height": 1620,
+          "size": 30000000,
+          "thumbnail": "https://cdn.pixabay.com/video/2016/01/01/3002-1_medium.jpg"
+        },
+        "small": {
+          "url": "https://cdn.pixabay.com/video/2016/01/01/3002-1_small.mp4",
+          "width": 640,
+          "height": 360,
+          "size": 1000000,
+          "thumbnail": "https://cdn.pixabay.com/video/2016/01/01/3002-1_small.jpg"
+        }
+      },
+      "user_id": 5,
+      "user": "oldie"
+    },
+    {
+      "id": 4003,
+      "pageURL": "https://pixabay.com/videos/empty-4003/",
+      "type": "film",
+      "tags": "empty",
+      "duration": 3,
+      "videos": {},
+      "user_id": 6,
+      "user": "empty"
+    }
+  ]
+}

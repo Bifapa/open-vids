@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isResearchFailure } from "../errors.js";
+import { API_KEYS_FILE } from "./apiKeys.js";
+import { BUILT_IN_IDS } from "./builtins.js";
 import { normalizeDomain } from "./domains.js";
 import { PolicyStore } from "./policyStore.js";
 
@@ -24,16 +26,12 @@ function refused(action: () => unknown): string {
 }
 
 describe("the Asset Search policy", () => {
-  it("starts in trusted mode with the four built-in sources enabled, and keeps changes across instances", () => {
+  it("starts in trusted mode with every built-in source enabled, and keeps changes across instances", () => {
     const store = new PolicyStore({ dir });
     const first = store.get();
     expect(first.mode).toBe("trusted");
-    expect(first.sources.map((source) => [source.id, source.enabled, source.builtIn])).toEqual([
-      ["wikimedia-commons", true, true],
-      ["openverse", true, true],
-      ["nasa-images", true, true],
-      ["internet-archive", true, true],
-    ]);
+    expect(first.sources.map((source) => source.id)).toEqual(BUILT_IN_IDS);
+    expect(first.sources.every((source) => source.enabled && source.builtIn)).toBe(true);
 
     store.setMode("any");
     store.updateSource("openverse", { enabled: false, name: "Openverse (mine)" });
@@ -54,28 +52,29 @@ describe("the Asset Search policy", () => {
   it("adds a user website with normalized domains and lets every field but the built-ins' domains change", () => {
     const store = new PolicyStore({ dir });
     const added = store.addSource({
-      name: "Pexels",
-      domains: ["https://www.Pexels.com/search/ocean/", "images.pexels.com", "pexels.com"],
+      name: "Unsplash",
+      domains: ["https://www.Unsplash.com/s/photos/ocean", "images.unsplash.com", "unsplash.com"],
       kinds: ["video", "picture"],
     });
     const source = added.sources.find((entry) => !entry.builtIn);
     expect(source).toMatchObject({
-      name: "Pexels",
+      name: "Unsplash",
       connector: "site",
       enabled: true,
-      domains: ["pexels.com", "images.pexels.com"],
+      domains: ["unsplash.com", "images.unsplash.com"],
       kinds: ["video", "picture"],
+      apiKey: null,
     });
     expect(source?.id).toMatch(/^src-[0-9a-f]{8}$/);
 
     const updated = store.updateSource(source?.id ?? "", {
-      domains: ["pexels.com", "videos.pexels.com"],
+      domains: ["unsplash.com", "plus.unsplash.com"],
       enabled: false,
       kinds: ["video"],
     });
     expect(updated.sources.find((entry) => entry.id === source?.id)).toMatchObject({
       enabled: false,
-      domains: ["pexels.com", "videos.pexels.com"],
+      domains: ["unsplash.com", "plus.unsplash.com"],
       kinds: ["video"],
     });
     // A built-in source's domains are fixed.
@@ -153,6 +152,51 @@ describe("the Asset Search policy", () => {
     );
   });
 
+  it("keeps a source's API key out of the policy and says only whether one is saved", () => {
+    const store = new PolicyStore({ dir });
+    const pexels = () => store.get().sources.find((source) => source.id === "pexels");
+    expect(pexels()?.apiKey).toEqual({
+      signupUrl: "https://www.pexels.com/api/new/",
+      configured: false,
+    });
+    expect(store.apiKeyFor("pexels")).toBeNull();
+
+    store.setMode("any");
+    const saved = store.setApiKey("pexels", "  abc123XYZ  ");
+    expect(saved.sources.find((source) => source.id === "pexels")?.apiKey?.configured).toBe(true);
+    expect(JSON.stringify(saved)).not.toContain("abc123XYZ");
+    expect(readFileSync(join(dir, "policy.json"), "utf-8")).not.toContain("abc123XYZ");
+    expect(new PolicyStore({ dir }).apiKeyFor("pexels")).toBe("abc123XYZ");
+    if (process.platform !== "win32") {
+      expect(statSync(join(dir, API_KEYS_FILE)).mode & 0o777).toBe(0o600);
+    }
+
+    expect(store.removeApiKey("pexels").sources.find((s) => s.id === "pexels")?.apiKey).toEqual({
+      signupUrl: "https://www.pexels.com/api/new/",
+      configured: false,
+    });
+    expect(store.apiKeyFor("pexels")).toBeNull();
+  });
+
+  it("refuses a key for a source that needs none, an unknown source, and a key that is not one word", () => {
+    const store = new PolicyStore({ dir });
+    expect(store.get().sources.find((source) => source.id === "openverse")?.apiKey).toBeNull();
+    expect(refused(() => store.setApiKey("openverse", "abc"))).toBe("invalid_request");
+    expect(refused(() => store.setApiKey("src-nope", "abc"))).toBe("unknown_source");
+    for (const bad of ["", "   ", "two words", "x".repeat(257), "key\u0085", "kéy", "a\u200bb"]) {
+      expect(
+        refused(() => store.setApiKey("pixabay", bad)),
+        bad,
+      ).toBe("invalid_request");
+    }
+    // What `trim()` removes around a pasted key (a byte-order mark too) is not part of it.
+    store.setApiKey("pixabay", "\ufeff abc-123 \n");
+    expect(store.apiKeyFor("pixabay")).toBe("abc-123");
+    // A key file that is not ours reads as no keys at all.
+    writeFileSync(join(dir, API_KEYS_FILE), '{"keys":{"pixabay":"from-elsewhere"}}');
+    expect(store.apiKeyFor("pixabay")).toBeNull();
+  });
+
   it("falls back to the defaults, keeping the damaged file as a backup, instead of trusting a file it cannot read", () => {
     const store = new PolicyStore({ dir });
     store.setMode("any");
@@ -162,7 +206,7 @@ describe("the Asset Search policy", () => {
     );
     const policy = store.get();
     expect(policy.mode).toBe("trusted");
-    expect(policy.sources).toHaveLength(4);
+    expect(policy.sources).toHaveLength(BUILT_IN_IDS.length);
     expect(existsSync(join(dir, "policy.json.bak"))).toBe(true);
     expect(readFileSync(join(dir, "policy.json.bak"), "utf-8")).toContain("evil.example");
 
@@ -240,7 +284,7 @@ describe("the Websites group of the policy", () => {
       mode: "any",
       websites: { readLinkedPages: false, fullAccess: true },
     });
-    expect(again.sources).toHaveLength(4);
+    expect(again.sources).toHaveLength(BUILT_IN_IDS.length);
     expect(new PolicyStore({ dir }).setWebsites({}).websites).toEqual({
       readLinkedPages: false,
       fullAccess: true,
