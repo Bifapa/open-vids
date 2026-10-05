@@ -1,6 +1,6 @@
 [package]
 name = "openvids-desktop"
-version = "0.4.2"
+version = "0.4.3"
 description = "OpenVids — agent-native desktop video editor"
 homepage = "https://openvids.ai"
 authors = ["OpenVids"]
