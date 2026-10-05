@@ -863,19 +863,33 @@ describe("openProjectHistory", () => {
       "c.html": "c1",
     });
     await history.close();
-    // A file's change time is its ctime, which only the clock sets: the writes are spaced in real time,
-    // with margins wide enough for a slow CI clock (Windows runners drifted past 100 ms).
+    // A file's change time is its ctime, which only the clock sets, so the writes are spaced in real time. A
+    // loaded runner stretches the pauses (Windows CI did, by more than a second), so the idle limit is set from
+    // the change times the files really got: above the a/b gaps, below the b→c gap.
     const lastWriteAt = Date.now();
-    await pause(500);
+    await pause(300);
     write("a.html", "2");
-    await pause(500);
-    write("b.html", "2"); // 1 s after the window's last write, but 500 ms after a.html: still the window's
-    await pause(1_400);
-    write("c.html", "2"); // 1.4 s without a write: the window had ended
+    await pause(300);
+    write("b.html", "2"); // shortly after a.html: still the window's
+    await pause(1_500);
+    write("c.html", "2"); // a long gap without a write: the window had ended
+    const changedAt = (path: string) => {
+      const stat = statSync(join(projectDir, path));
+      return Math.max(stat.mtimeMs, stat.ctimeMs);
+    };
+    const a = changedAt("a.html");
+    const b = changedAt("b.html");
+    const c = changedAt("c.html");
+    const withinWindow = Math.max(a - lastWriteAt, b - a);
+    expect(
+      withinWindow,
+      "the b→c gap must stay the longest for the test to mean anything",
+    ).toBeLessThan(c - b - 200);
+    const idleMs = Math.round((withinWindow + (c - b)) / 2);
     const closedWindow = { id: "turn-1", who: agent, label: "Turn", startedAt: 1, lastWriteAt };
 
     const reopened = await open(projectDir, historyRoot, {
-      closedWindow: { ...closedWindow, idleMs: 800 },
+      closedWindow: { ...closedWindow, idleMs },
     });
     const [turn, outside] = reopened.list();
     expect([turn, outside].map((entry) => entry?.files.map((file) => file.path))).toEqual([
