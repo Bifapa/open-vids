@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ClockCounterClockwise, DotsThree, PencilSimple, Plus } from "@phosphor-icons/react";
+import {
+  ClockCounterClockwise,
+  DotsThree,
+  Globe,
+  PencilSimple,
+  Plus,
+  Trash,
+} from "@phosphor-icons/react";
 import type { AgentRunStatus, ChatState, ChatSummary } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { activeThread, runningTurn, type ThreadId } from "../../agent/agentSelectors";
@@ -10,7 +17,11 @@ import { Menu, MenuItem, MenuSeparator } from "../ui/Menu";
 import { StatusDot, type StatusDotTone } from "../ui/Status";
 import { useTranslation, type TranslationKey } from "../../i18n";
 import { AgentCrumbs } from "./AgentCrumbs";
+import { ChatUsage } from "./ChatUsage";
 import { chatFocus } from "./chatStyles";
+import { DeleteChatDialog } from "./DeleteChatDialog";
+import { LinkedSitesDialog } from "./LinkedSitesDialog";
+import { phaseLine } from "./phaseLine";
 import { formatElapsed } from "./relativeTime";
 import { useNow } from "./useNow";
 
@@ -82,23 +93,27 @@ function summaryStatus(summary: ChatSummary, since: number | null): HeaderStatus
   }
 }
 
-function StatusReadout({ status }: { status: HeaderStatus }) {
+function StatusReadout({ status, phase }: { status: HeaderStatus; phase: string | null }) {
   const { t } = useTranslation();
   const timing = status.since !== null;
   const now = useNow(timing);
+  const label = phase !== null && status.kind === "working" ? phase : t(STATUS_LABELS[status.kind]);
   return (
     <span
       aria-live="polite"
       data-testid="chat-status"
       data-status={status.kind}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap tabular-nums",
+        "inline-flex min-w-0 shrink items-center gap-1.5 text-xs whitespace-nowrap tabular-nums",
         timing ? "text-fg-2" : "text-fg-3",
       )}
     >
       <StatusDot tone={status.tone} />
-      <span className={cn(timing && "@max-[299px]/chat:sr-only")}>
-        {t(STATUS_LABELS[status.kind])}
+      <span
+        data-testid="chat-phase"
+        className={cn("min-w-0 truncate", timing && "@max-[299px]/chat:sr-only")}
+      >
+        {label}
       </span>
       {status.since !== null && (
         <>
@@ -156,6 +171,7 @@ export function ChatHeader({ contextChat }: { contextChat: ChatSummary | null })
   const renameChat = useAgentStore((state) => state.renameChat);
   const selectThread = useAgentStore((state) => state.selectThread);
   const [renaming, setRenaming] = useState(false);
+  const [dialog, setDialog] = useState<"sites" | "delete" | null>(null);
 
   const inChat = view === "chat" && chat !== null;
   const locked = inChat && runningTurn(chat) !== null;
@@ -166,6 +182,8 @@ export function ChatHeader({ contextChat }: { contextChat: ChatSummary | null })
   else if (shown) {
     status = summaryStatus(shown, activeTurn?.chatId === shown.id ? activeTurn.startedAt : null);
   }
+  // The phase of a long turn (Render QA pass, a render's progress, the plan step) replaces the plain "Working".
+  const phase = inChat && thread === "main" ? phaseLine(chat) : null;
   const showHistory = () => {
     if (view !== "history") closeChat();
     else if (shown) void openChat(shown.id);
@@ -229,7 +247,8 @@ export function ChatHeader({ contextChat }: { contextChat: ChatSummary | null })
     >
       {lead}
       <span className="ml-auto" />
-      <StatusReadout status={status} />
+      <StatusReadout status={status} phase={phase} />
+      {inChat && <ChatUsage chat={chat} />}
       <div className="flex shrink-0 items-center">
         <IconButton
           size="sm"
@@ -269,8 +288,31 @@ export function ChatHeader({ contextChat }: { contextChat: ChatSummary | null })
           <MenuItem onClick={() => openSettings("execution")}>
             {t("chat.header.executionQuality")}
           </MenuItem>
+          {inChat && <MenuSeparator />}
+          {inChat && (
+            <MenuItem icon={<Globe aria-hidden />} onClick={() => setDialog("sites")}>
+              {t("chat.header.linkedSites")}
+            </MenuItem>
+          )}
+          {inChat && (
+            <MenuItem
+              icon={<Trash aria-hidden />}
+              tone="danger"
+              disabled={locked}
+              title={locked ? t("chat.delete.busyHint") : undefined}
+              onClick={() => setDialog("delete")}
+            >
+              {t("chat.header.deleteChat")}
+            </MenuItem>
+          )}
         </Menu>
       </div>
+      {inChat && dialog === "sites" && (
+        <LinkedSitesDialog chat={chat.chat} onClose={() => setDialog(null)} />
+      )}
+      {inChat && dialog === "delete" && (
+        <DeleteChatDialog chat={chat.chat} onClose={() => setDialog(null)} />
+      )}
     </header>
   );
 }

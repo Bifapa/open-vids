@@ -353,6 +353,64 @@ describe("Build Story", () => {
     expect(clips.map((clip) => [clip.mediaStart, clip.duration])).toEqual([[1, 2]]);
   });
 
+  describe("a chapter the user gave a length", () => {
+    // A 30 s file that was not analysed: two 10 s ranges are 20 s of A-roll.
+    const LONG = "assets/music.mp3";
+    const longStory = async (f: StoryFixture, userLength: number | null) => {
+      await f.edit([
+        {
+          op: "add_node",
+          node: {
+            kind: "chapter",
+            title: "Long talk",
+            estimatedDuration: 15,
+            sourceRanges: [
+              { source: LONG, from: 0, to: 10 },
+              { source: LONG, from: 20, to: 30 },
+            ],
+          },
+        },
+      ]);
+      if (userLength === null) return;
+      const before = await f.view();
+      if (!before.graph) throw new Error("no story");
+      const graph = structuredClone(before.graph);
+      for (const node of graph.nodes)
+        if (node.kind === "chapter") node.estimatedDuration = userLength;
+      await f.service.save(f.project, { baseVersion: before.version, graph });
+    };
+
+    it("keeps whole pieces in order and trims only the last to that length, and says the real total", async () => {
+      const f = story(BLANK_HTML);
+      await longStory(f, 4);
+      const result = await build(f);
+      expect(result.duration).toBeCloseTo(4, 2);
+      const { clips } = await timelineOf(f);
+      expect(clips.map((clip) => [clip.mediaStart, Number(clip.duration.toFixed(2))])).toEqual([
+        [0, 4],
+      ]);
+      const warnings = result.warnings.join(" ");
+      expect(warnings).toContain("cleaned A-roll is 20 s but the user set 4 s for this chapter");
+      expect(warnings).toContain("kept the first 1 of 2 pieces");
+      expect(warnings).toContain("the A-roll is now 4 s");
+    });
+
+    it("leaves a length the AI estimated, and material within the margin of the user's length, alone", async () => {
+      const ai = story(BLANK_HTML);
+      await longStory(ai, null);
+      const aiBuilt = await build(ai);
+      expect(aiBuilt.duration).toBeCloseTo(20, 2);
+      expect(aiBuilt.warnings.join(" ")).not.toContain("trimmed");
+      ai.cleanup();
+
+      const close = story(BLANK_HTML);
+      await longStory(close, 12);
+      const closeBuilt = await build(close);
+      expect(closeBuilt.duration).toBeCloseTo(20, 2);
+      expect(closeBuilt.warnings.join(" ")).not.toContain("trimmed");
+    });
+  });
+
   it("uses only the picked fragments of the A-roll, B-roll, sound effects and the music bed", async () => {
     const f = story();
     const ids = await referenceStory(f);

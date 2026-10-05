@@ -14,8 +14,11 @@ export function isChatEvent(value: unknown): value is ChatEvent {
   );
 }
 
+/** A project event the store folds; one of an unknown type (a newer runtime) is ignored. */
 export function isProjectEvent(value: unknown): value is ProjectEvent {
-  return isRecord(value) && (value.type === "chat.upserted" || value.type === "project.activeTurn");
+  if (!isRecord(value)) return false;
+  if (value.type === "chat.deleted") return typeof value.chatId === "string";
+  return value.type === "chat.upserted" || value.type === "project.activeTurn";
 }
 
 export function parseJson(data: string): unknown {

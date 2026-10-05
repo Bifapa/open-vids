@@ -2,10 +2,13 @@ import {
   AGENT_DISPLAY_NAMES,
   type ExecutionBudget,
   type ExecutionQualityPreset,
+  type QaAcceptedIssue,
   type QaIssue,
   type QaIssueDraft,
   type QaOwner,
   type QaSample,
+  type QaScope,
+  type QaScopeNote,
   type QaVisionRun,
   type SpecialistId,
   type TurnQaStatus,
@@ -18,7 +21,7 @@ const PRESET_NAMES: Record<ExecutionQualityPreset, string> = {
   custom: "Custom",
 };
 
-const range = (issue: QaIssueDraft): string =>
+const range = (issue: Pick<QaIssueDraft, "start" | "end">): string =>
   issue.end - issue.start < 0.05
     ? `${issue.start.toFixed(1)} s`
     : `${issue.start.toFixed(1)}–${issue.end.toFixed(1)} s`;
@@ -44,9 +47,9 @@ export function executionTeamLine(
   } else {
     const review = options.visionEnabled
       ? `plus Vision's review of up to ${budget.qaMaxFrames} frames`
-      : "without a visual review, because Vision is not enabled";
+      : `plus your own review of up to ${budget.qaMaxFrames} frames (Vision is not enabled, so when the runtime asks you look at the render yourself)`;
     const corrections = budget.qaPasses - 1;
-    qa = `Render QA: after your work the runtime renders a preview and checks the render (black and frozen picture, audio gaps, flash clips, layout, ${review}); while fixable issues remain it asks you to delegate corrections — at most ${budget.qaPasses} ${budget.qaPasses === 1 ? "pass" : "passes"} (${corrections} ${corrections === 1 ? "correction" : "corrections"}). Do not render only to verify your own work — the runtime does that; render yourself only when the user asks for a render or an export. Do not tell the user the job is finished before QA: your final report comes after it.`;
+    qa = `Render QA: after your work the runtime renders a preview and checks the render (black and frozen picture, audio gaps, flash clips, layout, ${review}); while fixable issues remain it asks you to delegate corrections — at most ${budget.qaPasses} ${budget.qaPasses === 1 ? "pass" : "passes"} (${corrections} ${corrections === 1 ? "correction" : "corrections"}). It checks less when less is needed: a composition over 3 minutes the user did not ask to render gets timeline checks only (no render), and a re-check after audio-only changes or a few retimed clips skips the visual review. Issues the user marked intentional are left out. Do not render only to verify your own work — the runtime does that; render yourself only when the user asks for a render or an export. Do not tell the user the job is finished before QA: your final report comes after it.`;
   }
   return `Execution quality: ${name}. ${qa} ${thinking}; Research compares up to ${budget.researchCandidates} candidates per search; long-form analysis may inspect up to ${budget.analysisFramesPerSource} frames per source.`;
 }
@@ -65,6 +68,10 @@ export interface VisionTaskInput {
   /** Issues Vision itself reported on the previous pass and that were open after it. */
   previousVision: readonly QaIssue[];
   budget: Pick<ExecutionBudget, "qaMaxFrames" | "critiqueRounds">;
+  /** Who runs the review: Vision, or the Director when Vision is off in the chat. */
+  reviewer: "vision" | "director";
+  /** Issues the user marked intentional: not to be reported. */
+  accepted: readonly QaAcceptedIssue[];
 }
 
 /** The task of the runtime-started Vision run that reviews one pass's render. */
@@ -80,7 +87,7 @@ export function renderVisionTask(input: VisionTaskInput): string {
     (issue) =>
       `- ${issue.id} ${issue.kind} ${range(issue)}${issue.subject ? ` (${issue.subject})` : ""} — ${issue.message}`,
   );
-  return [
+  const body = [
     `Render QA review, pass ${input.pass} of ${input.limit}. You review the RENDERED video ${input.render} (${input.duration.toFixed(1)} s, composition ${input.composition}) as a viewer would — not the timeline and not the source files.`,
     `Budget: ${budget.qaMaxFrames} frames in total, at most ${budget.critiqueRounds} inspect_render ${budget.critiqueRounds === 1 ? "call" : "calls"} (rounds), at most 12 frames per call. A call beyond the budget is refused.`,
     `Workflow: 1) call inspect_render with the most telling sample times below (the first round should cover the list as far as the budget allows, prioritising suspects, B-roll and captions); 2) use a later round only to look closer at something suspicious; 3) call report_render_findings ONCE with everything you found (an empty list when nothing is wrong), then finish with one sentence.`,
@@ -91,9 +98,26 @@ export function renderVisionTask(input: VisionTaskInput): string {
     previous.length > 0
       ? `Issues you reported on the previous pass that were open after it — look at those times again and report an issue again only if it is still there:\n${previous.join("\n")}`
       : "",
+    input.accepted.length > 0
+      ? `The user marked these as intentional — do not report them:\n${input.accepted.map((issue) => `- ${issue.kind} ${range(issue)}${issue.subject ? ` (${issue.subject})` : ""} — ${issue.message}`).join("\n")}`
+      : "",
   ]
     .filter(Boolean)
     .join("\n\n");
+  return input.reviewer === "director" ? directorReviewPrompt(input, body) : body;
+}
+
+/**
+ * The same review as a Director prompt, for a chat without Vision: the Director does Vision's job with the QA tools the
+ * runtime opened for it, and changes nothing while it does.
+ */
+function directorReviewPrompt(input: VisionTaskInput, body: string): string {
+  return [
+    `<render-qa-review pass="${input.pass}" limit="${input.limit}">`,
+    `Vision is off in this chat, so you do its work yourself: review the render as a viewer. Use ONLY inspect_render and report_render_findings now; every tool that changes the project, delegates or renders is refused during the review. Do not answer the user's request again and do not fix anything yet — the corrections come after the review.`,
+    body,
+    `</render-qa-review>`,
+  ].join("\n\n");
 }
 
 // ── Director prompts ─────────────────────────────────────────────────────────
@@ -106,6 +130,31 @@ const issueLine = (issue: QaIssue, marker: string): string => {
     issue.source === "vision" ? "seen by Vision" : `found by ${issue.check}`,
   ].filter(Boolean);
   return `- [${issue.id}]${marker} ${parts.join(" · ")}\n  ${issue.message}${issue.suggestion ? `\n  Suggestion: ${issue.suggestion}` : ""}`;
+};
+
+/**
+ * The moments of the composition to look at for a picture problem (start, middle, end of the issue), when it is one
+ * you judge by looking: what Vision saw, what the layout audit measured, black or frozen picture. Sound, timeline
+ * facts and render failures have nothing to look at.
+ */
+function lookAtTimes(issue: QaIssue): number[] {
+  if (issue.source === "timeline" || issue.kind === "audio_gap" || issue.kind === "render_failed")
+    return [];
+  const round = (value: number) => Math.round(value * 10) / 10;
+  const span = issue.end - issue.start;
+  const times = [
+    issue.start,
+    ...(span >= 1 ? [issue.start + span / 2] : []),
+    ...(span >= 0.5 ? [issue.end] : []),
+  ];
+  return [...new Set(times.map(round))].slice(0, 3);
+}
+
+const lookAtLine = (issue: QaIssue): string => {
+  const times = lookAtTimes(issue);
+  return times.length > 0
+    ? `\n  Look at: inspect_composition {"times": [${times.join(", ")}]} (the composition's frames there, no render needed)`
+    : "";
 };
 
 function marker(issue: QaIssue, pass: number): string {
@@ -123,6 +172,11 @@ export interface CorrectionInput {
   render: { path: string; duration: number } | null;
   renderError: string | null;
   vision: QaVisionRun;
+  /** What this pass checked; `timeline` means nothing was rendered or looked at. */
+  scope: QaScope;
+  scopeNote: QaScopeNote | null;
+  /** Issues left out because the user marked them intentional. */
+  suppressed: number;
   /** Open issues after this pass. */
   issues: readonly QaIssue[];
   /** Issues of the previous pass that are gone. */
@@ -132,10 +186,43 @@ export interface CorrectionInput {
 }
 
 function visionLine(vision: QaVisionRun): string {
+  const who = vision.reviewer === "director" ? "You (Vision is off)" : "Vision";
   if (vision.status === "ran")
-    return `Vision reviewed ${vision.frames} ${vision.frames === 1 ? "frame" : "frames"} in ${vision.rounds} ${vision.rounds === 1 ? "round" : "rounds"}.`;
-  return `Vision's review did not happen (${vision.status}${vision.reason ? `: ${vision.reason}` : ""}); only the deterministic checks stand, so picture problems they cannot see are unchecked.`;
+    return `${who} reviewed ${vision.frames} ${vision.frames === 1 ? "frame" : "frames"} in ${vision.rounds} ${vision.rounds === 1 ? "round" : "rounds"}.`;
+  return `The visual review did not happen (${vision.status}${vision.reason ? `: ${vision.reason}` : ""}); only the deterministic checks stand, so picture problems they cannot see are unchecked.`;
 }
+
+function scopeLine(scope: QaScope, note: QaScopeNote | null): string {
+  if (scope === "timeline" && note?.code === "check_timeout")
+    return `This pass checked the TIMELINE only (${note.message}): the composition was rendered, but its picture and sound were not measured, so problems there were not looked for.`;
+  if (scope === "timeline")
+    return `This pass checked the TIMELINE only${note ? ` (${note.message})` : ""}: nothing was rendered, so picture and sound problems were not looked for.`;
+  if (scope === "deterministic")
+    return `The visual review was skipped${note ? ` (${note.message})` : ""}; the deterministic checks ran on the render.`;
+  return "";
+}
+
+/**
+ * Where the render stands in the final report: the last render when the last pass made one; a failed last render is
+ * named, and an older render is then marked as made before the last change, not as the current state.
+ */
+function lastRenderLine(input: FinalInput): string {
+  const { lastRender, renderError } = input;
+  const describe = (render: { path: string; duration: number; quality: string }): string =>
+    `${render.path} (${render.duration.toFixed(1)} s, ${render.quality} quality${render.quality === "draft" ? ", a preview; the user can ask for a final export" : ""})`;
+  if (renderError)
+    return lastRender
+      ? `The last render failed: ${renderError}. There is no render of the current project; ${describe(lastRender)} was made before the last change and does not show the project as it is now.`
+      : `The last render failed: ${renderError}. There is no render of the current project.`;
+  return lastRender
+    ? `The last render is ${describe(lastRender)}. It is the current state of the project unless the user changed it since.`
+    : "";
+}
+
+const suppressedLine = (count: number): string =>
+  count > 0
+    ? `${count} ${count === 1 ? "issue" : "issues"} the user marked intentional ${count === 1 ? "was" : "were"} left out; do not try to fix ${count === 1 ? "it" : "them"}.`
+    : "";
 
 const steeringBlocks = (steering: readonly string[]): string =>
   steering.map((text) => `<user-steering>\n${text}\n</user-steering>`).join("\n\n");
@@ -143,8 +230,10 @@ const steeringBlocks = (steering: readonly string[]): string =>
 /** The prompt that asks the Director to delegate the corrections of one QA pass. */
 export function renderCorrectionPrompt(input: CorrectionInput): string {
   const { pass, limit } = input;
-  const fixable = input.issues.filter((issue) => issue.fixable);
-  const informational = input.issues.filter((issue) => !issue.fixable);
+  const checked = input.issues.filter((issue) => issue.notRechecked !== true);
+  const unchecked = input.issues.filter((issue) => issue.notRechecked === true);
+  const fixable = checked.filter((issue) => issue.fixable);
+  const informational = checked.filter((issue) => !issue.fixable);
   const owners = new Map<QaOwner | null, QaIssue[]>();
   for (const issue of fixable) {
     const group = owners.get(issue.owner) ?? [];
@@ -156,13 +245,13 @@ export function renderCorrectionPrompt(input: CorrectionInput): string {
       owner !== null && !input.enabled.includes(owner)
         ? ` — ${AGENT_DISPLAY_NAMES[owner]} is not enabled in this chat: fix these yourself where you can, otherwise tell the user`
         : "";
-    return `${ownerLabel(owner)}${unavailable}:\n${issues.map((issue) => issueLine(issue, marker(issue, pass))).join("\n")}`;
+    return `${ownerLabel(owner)}${unavailable}:\n${issues.map((issue) => `${issueLine(issue, marker(issue, pass))}${lookAtLine(issue)}`).join("\n")}`;
   });
   const changes: string[] = [];
   if (pass > 1) {
-    const regressions = input.issues.filter((issue) => issue.status === "new");
-    const persisting = input.issues.filter((issue) => issue.status === "persisting");
-    const back = input.issues.filter((issue) => issue.status === "reappeared");
+    const regressions = checked.filter((issue) => issue.status === "new");
+    const persisting = checked.filter((issue) => issue.status === "persisting");
+    const back = checked.filter((issue) => issue.status === "reappeared");
     changes.push(
       `Since the previous pass — fixed: ${input.resolved.length > 0 ? input.resolved.map((issue) => issue.id).join(", ") : "nothing"}; still present: ${persisting.length > 0 ? persisting.map((issue) => issue.id).join(", ") : "none"}; reappeared: ${back.length > 0 ? back.map((issue) => issue.id).join(", ") : "none"}; new after your last correction: ${regressions.length > 0 ? `${regressions.map((issue) => issue.id).join(", ")} — a regression your correction caused, fix it too and do not undo what was fixed` : "none"}.`,
     );
@@ -172,15 +261,24 @@ export function renderCorrectionPrompt(input: CorrectionInput): string {
     `<render-qa pass="${pass}" limit="${limit}">`,
     input.render
       ? `Render QA checked the render ${input.render.path} (${input.render.duration.toFixed(1)} s), pass ${pass} of ${limit}. ${visionLine(input.vision)}`
-      : `Render QA could not render the composition in pass ${pass} of ${limit}: ${input.renderError ?? "the render failed"}. Nothing could be checked. Find what makes the render fail (inspect the timeline: missing or unreadable files, invalid clips, a broken composition) and fix it.`,
+      : input.renderError
+        ? `Render QA could not render the composition in pass ${pass} of ${limit}: ${input.renderError}. Nothing could be checked. Find what makes the render fail (inspect the timeline: missing or unreadable files, invalid clips, a broken composition) and fix it.`
+        : `Render QA checked the timeline in pass ${pass} of ${limit} without rendering.`,
     ...changes,
+    scopeLine(input.scope, input.scopeNote),
     groups.length > 0
       ? `Open issues to correct (${fixable.length}), by owner:\n${groups.join("\n")}`
       : "",
     informational.length > 0
       ? `Open issues that cannot be fixed by an edit (for information, leave them):\n${informational.map((issue) => issueLine(issue, marker(issue, pass))).join("\n")}`
       : "",
+    unchecked.length > 0
+      ? `Issues from earlier passes that this pass could NOT re-check (report only — do not act on them, and do not call them fixed or still present):\n${unchecked.map((issue) => issueLine(issue, "")).join("\n")}`
+      : "",
+    suppressedLine(input.suppressed),
     `Delegate each group to its owner (Editor: cuts, B-roll choice, timing, gaps; Motion: titles, captions, graphics, layout; Audio: music and sound; Research: missing or wrong outside material, only if it is enabled and the policy allows) with a SELF-CONTAINED task: the issue ids, the times in seconds of the render (they are timeline times), the clip ids, what is wrong and the suggestion. Do the work yourself only when no specialist is enabled for it. Then wait_for_agents and check the result with inspect_timeline. Change only what the issues are about; keep everything that was fine. Do NOT render: the runtime re-renders and re-checks after your correction (${left} ${left === 1 ? "pass" : "passes"} left after this one). Do not report the job as finished yet: the final report comes after QA.`,
+    `Frames: where an issue has a "Look at" line, put those times into the delegated task — the specialist sees the composition at that moment with inspect_composition (you can too) and should look at the same times again after fixing. These are composition previews, not the render QA looked at, and carry no sound.`,
+    `A deterministic finding can be intentional (a fade from black, a deliberate pause, a freeze on a still): if a finding is plainly meant that way, you may leave it alone — but say so in your final report, naming it, so the user can mark it intentional in the QA card. Never leave an error that is a real defect.`,
     steeringBlocks(input.steering),
     `</render-qa>`,
   ]
@@ -210,6 +308,11 @@ export interface FinalInput {
   /** Issues QA saw and that are gone now. */
   fixed: readonly QaIssue[];
   steering: readonly string[];
+  /** What the last pass checked; null when no pass ran. */
+  scope: QaScope | null;
+  scopeNote: QaScopeNote | null;
+  /** Issues left out because the user marked them intentional. */
+  suppressed: number;
 }
 
 /**
@@ -220,7 +323,7 @@ export function renderInterimInstruction(): string {
   return [
     `<render-qa-pending>`,
     `The runtime renders and checks the result after your reply whenever this turn changed the project (by you or by your team) or rendered it, and sends you the outcome afterwards; the final report to the user comes after that check.`,
-    `So your reply now is an interim progress note, not the answer: say briefly what you did and that the result is about to be checked. Do NOT say or imply that the video or the work is done, ready, finished, complete or good to go — it is not until the check is over. (If this turn neither changed nor rendered the project, just answer the user normally.)`,
+    `So your reply now is an interim progress note, not the answer: say briefly what you did and that the result is about to be checked. Do NOT say or imply that the video or the work is done, ready, finished, complete or good to go — it is not until the check is over. (If this turn ends up changing nothing, the runtime asks you once more for the final answer.)`,
     `</render-qa-pending>`,
   ].join("\n");
 }
@@ -241,25 +344,52 @@ export function renderSkippedPrompt(reason: string, steering: readonly string[])
     .join("\n\n");
 }
 
+/**
+ * The Director was told a check would follow its reply, but the turn changed nothing and rendered nothing, so no check
+ * is coming either: its reply (which may have promised one, or reported an edit that did not land) is interim and it
+ * answers once more, honestly.
+ */
+export function renderUnchangedPrompt(
+  steering: readonly string[],
+  unchecked: { composition: string; path: string } | null = null,
+): string {
+  const opening = unchecked
+    ? `Nothing in the project's main composition changed during this turn, and Render QA checks only the main composition, so the render you made of ${unchecked.composition} (${unchecked.path}) was NOT checked and no Render QA check followed.`
+    : `Nothing in the project changed during this turn and nothing was rendered, so no Render QA check followed.`;
+  const correction = unchecked
+    ? `If your earlier reply said or implied that something was checked, or that a check was about to follow, correct it now: the render exists, but nobody checked it.`
+    : `If your earlier reply said or implied that something was changed, fixed, rendered or about to be checked, correct it now — it did not happen (an edit may have been refused, or a teammate's work did not land). If nothing was needed, say that.`;
+  return [
+    `<render-qa-skipped>`,
+    opening,
+    `This is your final answer to the user: say plainly what you did and what the result is. ${correction} Do not edit, delegate, render, import or build anything: those tools are refused now.`,
+    steeringBlocks(steering),
+    `</render-qa-skipped>`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 /** The prompt that asks the Director for the final report once QA is over. */
 export function renderFinalPrompt(input: FinalInput): string {
   const line = (issue: QaIssue) =>
     `- [${issue.id}] ${issue.kind} ${range(issue)} — ${issue.message}`;
+  const unchecked = input.open.filter((issue) => issue.notRechecked === true);
+  const open = input.open.filter((issue) => issue.notRechecked !== true);
   return [
     `<render-qa-final outcome="${input.status}">`,
     `Render QA is over: ${OUTCOME_TEXT[input.status]} after ${input.passes} of ${input.limit} ${input.limit === 1 ? "pass" : "passes"} (${input.corrections} ${input.corrections === 1 ? "correction" : "corrections"}).${input.reason ? ` ${input.reason}` : ""}`,
-    input.lastRender
-      ? `The last render is ${input.lastRender.path} (${input.lastRender.duration.toFixed(1)} s, ${input.lastRender.quality} quality${input.lastRender.quality === "draft" ? ", a preview; the user can ask for a final export" : ""}). It is the current state of the project unless the user changed it since.`
-      : input.renderError
-        ? `The last render failed: ${input.renderError}. There is no render of the current project.`
-        : "",
+    lastRenderLine(input),
     input.vision ? visionLine(input.vision) : "",
+    input.scope ? scopeLine(input.scope, input.scopeNote) : "",
     input.fixed.length > 0
       ? `Fixed during QA (${input.fixed.length}):\n${input.fixed.map(line).join("\n")}`
       : "",
-    input.open.length > 0
-      ? `Still open (${input.open.length}):\n${input.open.map(line).join("\n")}`
+    open.length > 0 ? `Still open (${open.length}):\n${open.map(line).join("\n")}` : "",
+    unchecked.length > 0
+      ? `Reported earlier and NOT re-checked in the last pass (${unchecked.length}) — say they were not re-checked, do not call them fixed:\n${unchecked.map(line).join("\n")}`
       : "",
+    suppressedLine(input.suppressed),
     `This is your final answer to the user: write the final report for them now — what was done, where the render is, what QA fixed and what remains — specific and honest. Do not claim the result is flawless while issues are open, and do not claim a visual check that did not happen. Do not edit, delegate, render, import or build anything: those tools are refused now.`,
     steeringBlocks(input.steering),
     `</render-qa-final>`,

@@ -27,6 +27,7 @@ import {
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { BundleOptions } from "@hyperframes/core/compiler";
 import type { inspectWebsiteViaCli, recordWebsiteViaCli } from "../cli/src/server/siteAdapter";
+import type { captureFramesViaCli } from "../cli/src/server/framesAdapter";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { generateThumbnail, findSystemChrome } from "./vite.browser";
@@ -330,6 +331,20 @@ export function createViteAdapter(
       );
       const record: typeof recordWebsiteViaCli = mod.recordWebsiteViaCli;
       return record(opts, {
+        invocation: () => ({
+          command: process.execPath,
+          prefix: [resolve(__dirname, "../cli/src/cli.ts")],
+        }),
+      });
+    },
+
+    // Composition frames, as in the CLI host: `cli frames` in a child process, same source-mode invocation.
+    async captureFrames(opts) {
+      const mod = await server.ssrLoadModule(
+        resolve(__dirname, "../cli/src/server/framesAdapter.ts"),
+      );
+      const capture: typeof captureFramesViaCli = mod.captureFramesViaCli;
+      return capture(opts, {
         invocation: () => ({
           command: process.execPath,
           prefix: [resolve(__dirname, "../cli/src/cli.ts")],

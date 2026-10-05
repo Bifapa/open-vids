@@ -1,47 +1,39 @@
 import {
   AGENT_DISPLAY_NAMES,
   applyThinkingPolicy,
-  isAgentRunTerminal,
   type AgentId,
   type AgentModelCatalog,
   type AgentRun,
   type AgentRunStatus,
-  type AssistantMessage,
-  type AssistantMessageStatus,
   type EditorContext,
   type ExecutionBudget,
-  type ExecutionPlan,
   type ExecutionQualityPreset,
   type ModelSelection,
-  type PlanStepStatus,
   type SpecialistConfig,
   type SpecialistId,
-  type TaskMessage,
   type ThinkingEffort,
   type TurnSummary,
-  type WorkerAgentId,
 } from "@hyperframes/agent-protocol";
 import type { BackendSession, HostToolResult } from "../backend.js";
-import { renderAutonomyBlock, type TurnAutonomy } from "../autonomy.js";
+import type { TurnAutonomy } from "../autonomy.js";
 import type { ChatService } from "../chats.js";
-import { errorMessage } from "../errors.js";
-import { renderPromptContext } from "../promptContext.js";
-import {
-  renderResearchBlock,
-  websiteAccessLine,
-  type ResearchTurnState,
-} from "../research/prompt.js";
-import { TurnEventWriter, type StreamTimerApi, type StreamTimerHandle } from "../turnStream.js";
+import { RuntimeError, errorMessage } from "../errors.js";
+import type { ResearchTurnState } from "../research/prompt.js";
+import type { StreamTimerApi } from "../turnStream.js";
+import type { LeaseWriter, WriteLeases } from "../writeLeases.js";
+import { currentRunId } from "./callerRun.js";
+import { PlanKeeper } from "./planKeeper.js";
 import { parseModelArgument, routeDelegation } from "./routing.js";
-import {
-  TOOL_NAMES,
-  parseDelegateArgs,
-  parseJevArgs,
-  parsePlanArgs,
-  parseProposalArgs,
-  parseRunArgs,
-  parseWaitArgs,
-} from "./tools.js";
+import { createRun, type RunInput } from "./runFactory.js";
+import { executeRun, type RunHooks } from "./runExecutor.js";
+import { clipReport, describeRun, done, refuse, type RunRecord } from "./runRecord.js";
+import { settleRun } from "./runSettle.js";
+import { RunWaiter } from "./runWaiter.js";
+import { messageRun } from "./runMessage.js";
+import { SpecialistQueue, type QueueTicket } from "./specialistQueue.js";
+import { DEFAULT_STALL_MS } from "./stallWatchdog.js";
+import { parseDelegateArgs, parseJevArgs, parseRunArgs, parseWaitArgs } from "./toolArgs.js";
+import { LIMITS, TOOL_NAMES } from "./tools.js";
 
 /** Jev as a turn may use it: resolved model plus, in API-key mode, its private credentials. */
 export interface JevRuntime {
@@ -56,6 +48,8 @@ export interface TurnAgentSetup {
   specialists: Record<SpecialistId, SpecialistConfig>;
   jev: JevRuntime | null;
   catalog: AgentModelCatalog;
+  /** False when the model list could not be loaded: the catalog is then empty, which says nothing about credentials. */
+  catalogKnown: boolean;
   editorContext?: EditorContext;
   /** The user's UI language (BCP-47): every specialist task carries the reply-language block. */
   userLanguage?: string;
@@ -76,19 +70,34 @@ export interface OrchestratorDeps {
   turn: TurnSummary;
   directorMessageId: string;
   setup: TurnAgentSetup;
+  /** The tools the turn gives the Director for the work of a specialist that is off (see `inheritedToolsOf`). */
+  inheritedTools: (specialist: SpecialistId) => readonly string[];
   /** The turn's abort signal: aborting the turn aborts every run. */
   signal: AbortSignal;
   now: () => number;
   ids: () => string;
   timers: StreamTimerApi;
-  /** The chat's resumable session for a specialist. */
-  specialistSession: (agent: SpecialistId) => Promise<BackendSession>;
-  /** A fresh, ephemeral Jev session; disposed by the orchestrator after the run. */
-  jevSession: () => Promise<BackendSession>;
-  /** Force-closes a specialist session that ignored an abort. */
+  /**
+   * The chat's session for a specialist, serving the run `runId`. `parallel` asks for an additional, ephemeral session
+   * of the same role (a specialist running two tasks at once); the orchestrator disposes it when the run ends.
+   */
+  specialistSession: (
+    agent: SpecialistId,
+    parallel: boolean,
+    runId: string,
+  ) => Promise<BackendSession>;
+  /** A fresh, ephemeral Jev session serving the run `runId`; disposed by the orchestrator after the run. */
+  jevSession: (runId: string) => Promise<BackendSession>;
+  /** Force-closes a specialist's resumable session that ignored an abort. */
   closeSpecialist: (agent: SpecialistId) => Promise<void>;
   /** How long an aborted run may take to stop before its session is force-closed. */
   stopGraceMs?: number;
+  /** How long a run may show no sign of life before it is stopped (default {@link DEFAULT_STALL_MS}). */
+  stallMs?: number;
+  /** The turn's per-file write leases; a run's leases end with it. */
+  leases: WriteLeases;
+  /** The project's fingerprint, stamped on a proposed plan so a later "carry out" can tell the project moved. */
+  projectFingerprint?: (signal: AbortSignal) => Promise<string | null>;
 }
 
 /** How a run the runtime started itself ended: its status, the failure message and the model it ran on. */
@@ -99,72 +108,68 @@ export interface RuntimeRunResult {
   model: string | null;
 }
 
-interface RunRecord {
-  run: AgentRun;
-  controller: AbortController;
-  session: BackendSession | null;
-  done: Promise<void>;
-  report: string | null;
-  /** The Director has received this run's result (through wait_for_agents or a synchronous Jev call). */
-  reported: boolean;
-  cancelled: boolean;
-  finished: boolean;
-}
-
-const REPORT_CHARS = 8_000;
-const SUMMARY_CHARS = 280;
 const DEFAULT_STOP_GRACE_MS = 10_000;
+const ORCHESTRATION_TOOLS = new Set<string>(Object.values(TOOL_NAMES));
 
-const done = (text: string): HostToolResult => ({ text });
-const refuse = (text: string): HostToolResult => ({ text, isError: true });
-
-/**
- * A one-line outcome for the main chat, from the run's final text segment (the report; earlier segments are
- * narration between tool calls). Markdown markers and label-only lines ("Report:") are dropped.
- */
-export function summarizeReport(finalText: string | null): string | null {
-  const lines = (finalText ?? "")
-    .split("\n")
-    .map((line) =>
-      line
-        .replace(/\*\*|__|`/g, "")
-        .replace(/^\s*(?:[#>]+|[-*•]|\d+[.)])\s+/, "")
-        .replace(/\s+/g, " ")
-        .trim(),
-    )
-    .filter((line) => line && !/^[\p{L}\p{N} ]{1,30}:$/u.test(line));
-  const summary = lines.slice(0, 2).join(" ");
-  if (!summary) return null;
-  return summary.length > SUMMARY_CHARS
-    ? `${summary.slice(0, SUMMARY_CHARS - 1).trimEnd()}…`
-    : summary;
+function formatDuration(ms: number): string {
+  return ms >= 120_000 ? `${Math.round(ms / 60_000)} minutes` : `${Math.round(ms / 1000)} seconds`;
 }
 
 /**
- * Runs the delegated work of one Director turn: specialist runs (async, one at a time per specialist, parallel across
- * specialists) and Jev calls (synchronous for the caller). Every run shares the turn's abort signal and checkpoint;
- * {@link shutdown} guarantees none is still running when the turn closes its checkpoint.
+ * Runs the delegated work of one Director turn: specialist runs (async; one task at a time per specialist, two for
+ * Research and Vision; parallel across specialists) and Jev calls (synchronous for the caller). Every run shares the
+ * turn's abort signal and checkpoint; {@link shutdown} guarantees none is still running when the turn closes its
+ * checkpoint.
  */
 export class Orchestrator {
   private readonly records = new Map<string, RunRecord>();
-  private readonly specialistTails = new Map<SpecialistId, Promise<void>>();
-  private readonly currentRun = new Map<SpecialistId, RunRecord>();
-  private readonly wakers = new Set<() => void>();
-  private steerCount = 0;
+  private readonly queue = new SpecialistQueue();
+  private readonly waiter: RunWaiter;
+  private readonly plan: PlanKeeper;
   private closed = false;
-  /** The Director published its own plan; the automatic run-based plan stops. */
-  private directorPlanned = false;
-  /** The plan is a proposal awaiting the user's approval ("Carry out the plan"); project-changing tools refuse. */
-  private directorProposal = false;
-  /** The automatic plan's final step once the turn has ended. */
-  private assembled: PlanStepStatus | null = null;
 
-  constructor(private readonly deps: OrchestratorDeps) {}
+  private readonly hooks: RunHooks;
 
-  /** The model a specialist's current run actually uses (`provider/modelId`), or null when it is not running. */
+  constructor(private readonly deps: OrchestratorDeps) {
+    this.waiter = new RunWaiter(deps.timers);
+    this.plan = new PlanKeeper(deps);
+    this.hooks = {
+      deps,
+      finish: (record, status, error) => this.finish(record, status, error),
+      syncPlan: () => this.syncPlan(),
+      stalled: (record) => this.stall(record),
+    };
+  }
+
+  /**
+   * The model the run behind the current host tool call uses (`provider/modelId`), or null when the call carries no
+   * running run of that agent.
+   */
   modelOf(agent: SpecialistId): string | null {
-    const model = this.currentRun.get(agent)?.run.model;
+    const model = this.callerRecord(agent)?.run.model;
     return model ? `${model.provider}/${model.modelId}` : null;
+  }
+
+  /**
+   * The run whose write leases the current host tool call works under, for the write leases; null when the call
+   * carries no running run of that agent. A Jev run works under the lease of the run that called it.
+   */
+  runIdOf(agent: AgentId): string | null {
+    const record = this.callerRecord(agent);
+    return record ? (this.leaseWriterOf(record.run.id)?.runId ?? null) : null;
+  }
+
+  /**
+   * Who writes for the run `runId`: the run itself, or — for a Jev run a specialist started — that specialist's run, so
+   * Jev never blocks the run that asked for its help. Null when the run is not running (it takes no lease then).
+   */
+  leaseWriterOf(runId: string): LeaseWriter | null {
+    const record = this.records.get(runId);
+    if (!record || record.finished) return null;
+    const parent =
+      record.run.parentRunId === null ? undefined : this.records.get(record.run.parentRunId);
+    const owner = parent && !parent.finished ? parent : record;
+    return { agent: owner.run.agent, runId: owner.run.id };
   }
 
   /** Dispatches a host tool call made by `caller` (the Director or a specialist). */
@@ -176,13 +181,14 @@ export class Orchestrator {
   ): Promise<HostToolResult> {
     if (this.closed) return refuse("This turn has ended; no new work can start.");
     try {
+      if (!ORCHESTRATION_TOOLS.has(name)) return refuse(`Unknown tool ${name}.`);
       if (name === TOOL_NAMES.jev) return await this.runJev(caller, args, signal);
       if (caller !== "director") return refuse(`${name} is only available to the Director.`);
       switch (name) {
         case TOOL_NAMES.propose:
-          return await this.proposePlan(args);
+          return await this.plan.propose(args);
         case TOOL_NAMES.plan:
-          return await this.updatePlan(args);
+          return await this.plan.update(args);
         case TOOL_NAMES.delegate:
           return await this.delegate(args);
         case TOOL_NAMES.wait:
@@ -190,7 +196,7 @@ export class Orchestrator {
         case TOOL_NAMES.cancel:
           return this.cancel(args);
         case TOOL_NAMES.message:
-          return await this.message(args);
+          return await messageRun(this.deps, this.records, args);
         default:
           return refuse(`Unknown tool ${name}.`);
       }
@@ -199,17 +205,28 @@ export class Orchestrator {
     }
   }
 
+  /**
+   * Runs a tool call of `caller` and keeps its run's watchdog quiet while it executes: renders, analyses and questions
+   * to the user can be silent for long and carry their own deadlines. A finished call counts as a sign of life.
+   */
+  async trackToolCall<T>(caller: AgentId, call: () => Promise<T>): Promise<T> {
+    const watchdog = this.callerRecord(caller)?.watchdog;
+    watchdog?.toolStarted();
+    try {
+      return await call();
+    } finally {
+      watchdog?.toolFinished();
+    }
+  }
+
   /** The user steered the Director: a pending wait returns so the Director can react. */
   notifySteer(): void {
-    this.steerCount += 1;
-    this.wake();
+    this.waiter.steered();
   }
 
   /** Director-started runs whose results the Director has not received yet. */
   hasUnreported(): boolean {
-    return [...this.records.values()].some(
-      (record) => record.run.parentRunId === null && !record.reported,
-    );
+    return this.unreported().length > 0;
   }
 
   /**
@@ -217,16 +234,32 @@ export class Orchestrator {
    * and returns their status/reports. Only finished runs count as reported.
    */
   async collectUnreported(signal: AbortSignal): Promise<string> {
-    const pending = [...this.records.values()].filter(
-      (record) => record.run.parentRunId === null && !record.reported,
-    );
-    await this.until(() => pending.every((record) => record.finished), signal, true);
-    return pending
-      .map((record) => {
-        if (record.finished) record.reported = true;
-        return this.describe(record);
-      })
-      .join("\n\n");
+    const pending = this.unreported();
+    await this.waiter.until(() => pending.every((record) => record.finished), signal, {
+      stopOnSteer: true,
+    });
+    return this.report(pending);
+  }
+
+  /**
+   * Stops one run on the user's request (the Stop button of its row). A run waiting in line leaves the line at once; a
+   * running one is aborted like at the end of a turn. The Director learns of it from the run's result and is told not
+   * to start it again unless the user asks.
+   */
+  async cancelRun(runId: string, reason?: string): Promise<AgentRun> {
+    const record = this.records.get(runId);
+    if (!record || record.finished || this.closed) {
+      throw new RuntimeError(
+        "turn_not_active",
+        record ? `Run ${runId} has already ended (${record.run.status}).` : `Unknown run ${runId}.`,
+        409,
+      );
+    }
+    record.cancelled = true;
+    record.cancelledBy = "user";
+    record.cancelReason = reason?.trim() || null;
+    await this.stopRuns([record]);
+    return { ...record.run };
   }
 
   /**
@@ -244,7 +277,13 @@ export class Orchestrator {
   }): Promise<RuntimeRunResult> {
     if (this.closed) throw new Error("This turn has ended; no new work can start.");
     const { setup } = this.deps;
-    const routing = routeDelegation(input.agent, setup.specialists[input.agent], {}, setup.catalog);
+    const routing = routeDelegation(
+      input.agent,
+      setup.specialists[input.agent],
+      {},
+      setup.catalog,
+      setup.catalogKnown,
+    );
     if (!routing.ok) throw new Error(routing.message);
     const record = await this.startRun({
       agent: input.agent,
@@ -258,7 +297,7 @@ export class Orchestrator {
       model: routing.model,
       thinking: applyThinkingPolicy(routing.thinking, setup.execution.budget.specialistThinking),
       routed: false,
-      reported: true,
+      internal: true,
     });
     await record.done;
     const { run } = record;
@@ -278,70 +317,27 @@ export class Orchestrator {
     this.closed = true;
     const open = [...this.records.values()].filter((record) => !record.finished);
     if (open.length > 0) await this.stopRuns(open);
-    this.assembled = completed ? "done" : "skipped";
-    await this.syncAutoPlan().catch(() => undefined);
+    this.plan.close(completed);
+    await this.syncPlan().catch(() => undefined);
   }
 
   private async stopRuns(open: RunRecord[]): Promise<void> {
     for (const record of open) record.controller.abort();
     const grace = this.deps.stopGraceMs ?? DEFAULT_STOP_GRACE_MS;
-    if (await this.settleWithin(open, grace)) return;
+    if (await this.waiter.settleWithin(open, grace)) return;
     for (const record of open) {
       if (record.finished) continue;
-      if (record.run.agent === "jev") await record.session?.dispose().catch(() => undefined);
+      if (record.run.agent === "jev" || (record.slot ?? 0) > 0)
+        await record.session?.dispose().catch(() => undefined);
       else await this.deps.closeSpecialist(record.run.agent);
     }
-    if (await this.settleWithin(open, grace)) return;
+    if (await this.waiter.settleWithin(open, grace)) return;
     for (const record of open) {
       if (!record.finished) await this.finish(record, "aborted", null);
     }
   }
 
   // ── Tools ──────────────────────────────────────────────────────────────────
-
-  private async proposePlan(args: unknown): Promise<HostToolResult> {
-    const parsed = parseProposalArgs(args);
-    if (!parsed.ok) return refuse(parsed.message);
-    const plan: ExecutionPlan = {
-      steps: parsed.value.steps.map((step, index) => ({
-        id: `step-${index + 1}`,
-        ...step,
-        status: "pending",
-      })),
-      updatedAt: this.deps.now(),
-      proposal: true,
-    };
-    this.directorPlanned = true;
-    this.directorProposal = true;
-    this.deps.turn.plan = plan;
-    await this.deps.chats.emit(this.deps.chatId, {
-      type: "plan.updated",
-      turnId: this.deps.turn.id,
-      plan,
-    });
-    return done(
-      "Plan proposed: the user decides. The project-changing tools are unavailable for the rest of this turn — end it with a short summary of the plan and stop.",
-    );
-  }
-
-  private async updatePlan(args: unknown): Promise<HostToolResult> {
-    const parsed = parsePlanArgs(args);
-    if (!parsed.ok) return refuse(parsed.message);
-    const plan: ExecutionPlan = {
-      steps: parsed.value.steps.map((step, index) => ({ id: `step-${index + 1}`, ...step })),
-      updatedAt: this.deps.now(),
-      // A plan published after the proposal is still the proposal: the user's buttons stay until a new turn runs.
-      ...(this.directorProposal && { proposal: true }),
-    };
-    this.directorPlanned = true;
-    this.deps.turn.plan = plan;
-    await this.deps.chats.emit(this.deps.chatId, {
-      type: "plan.updated",
-      turnId: this.deps.turn.id,
-      plan,
-    });
-    return done("Plan updated.");
-  }
 
   private async delegate(args: unknown): Promise<HostToolResult> {
     const parsed = parseDelegateArgs(args);
@@ -350,8 +346,15 @@ export class Orchestrator {
     const { setup } = this.deps;
     if (!setup.enabled.includes(agent)) {
       const enabled = setup.enabled.map((id) => AGENT_DISPLAY_NAMES[id]).join(", ") || "none";
+      const tools = this.deps.inheritedTools(agent);
+      const how = tools.length > 0 ? ` with ${tools.join(", ")}` : " with the tools you have";
       return refuse(
-        `${AGENT_DISPLAY_NAMES[agent]} is not enabled in this chat, so it cannot be used. Enabled specialists: ${enabled}.`,
+        `${AGENT_DISPLAY_NAMES[agent]} is off in this chat; do it yourself${how}. Enabled specialists: ${enabled}.`,
+      );
+    }
+    if (agent === "research" && this.deps.turn.storyAction === "rebuild") {
+      return refuse(
+        'Research cannot search or import in a Rebuild turn: the only write there is rebuild_story. Material comes from a normal message, "Find missing material" or a full Build.',
       );
     }
     let requestedModel: ModelSelection | undefined;
@@ -368,6 +371,7 @@ export class Orchestrator {
         ...(parsed.value.thinking && { thinking: parsed.value.thinking }),
       },
       setup.catalog,
+      setup.catalogKnown,
     );
     if (!routing.ok) return refuse(routing.message);
     const record = await this.startRun({
@@ -400,23 +404,27 @@ export class Orchestrator {
         targets.push(record);
       }
     } else {
-      targets = [...this.records.values()].filter(
-        (record) => record.run.parentRunId === null && !record.reported,
-      );
+      targets = this.unreported();
     }
     if (targets.length === 0) return done("There are no delegated runs to wait for.");
-    const steered = await this.until(
-      () => targets.every((record) => record.finished),
+    const timeoutMs = (parsed.value.timeoutSeconds ?? LIMITS.waitDefaultSeconds) * 1000;
+    const outcome = await this.waiter.until(
+      () =>
+        parsed.value.any
+          ? targets.some((record) => record.finished)
+          : targets.every((record) => record.finished),
       signal,
-      true,
+      { stopOnSteer: true, timeoutMs },
     );
-    const lines = targets.map((record) => {
-      if (record.finished) record.reported = true;
-      return this.describe(record);
-    });
-    if (steered) {
+    const lines = [this.report(targets)];
+    if (outcome === "steered") {
       lines.push(
         "The user just sent a new instruction; it follows this result. Adjust the plan and the delegated work (message_agent, cancel_agent, delegate) accordingly.",
+      );
+    } else if (outcome === "timeout") {
+      const going = targets.filter((record) => !record.finished).length;
+      lines.push(
+        `Waited ${formatDuration(timeoutMs)}; ${going} of these runs ${going === 1 ? "is" : "are"} still going. Call wait_for_agents again, or use the time for other work.`,
       );
     }
     return done(lines.join("\n\n"));
@@ -430,36 +438,10 @@ export class Orchestrator {
       return refuse(`Unknown run ${parsed.value.runId}.`);
     if (record.finished) return done(`Run ${record.run.id} already ended (${record.run.status}).`);
     record.cancelled = true;
+    record.cancelledBy ??= "director";
+    record.cancelReason ??= parsed.value.reason;
     record.controller.abort();
     return done(`Stopping run ${record.run.id}.`);
-  }
-
-  private async message(args: unknown): Promise<HostToolResult> {
-    const parsed = parseRunArgs(args, true);
-    if (!parsed.ok || parsed.value.text === null)
-      return refuse(parsed.ok ? "text is required" : parsed.message);
-    const record = this.records.get(parsed.value.runId);
-    if (!record || record.run.parentRunId !== null)
-      return refuse(`Unknown run ${parsed.value.runId}.`);
-    if (record.finished || record.run.status !== "running" || !record.session)
-      return refuse(
-        `Run ${record.run.id} is not running (${record.run.status}); delegate a new task instead.`,
-      );
-    const message: TaskMessage = {
-      id: this.deps.ids(),
-      chatId: this.deps.chatId,
-      turnId: this.deps.turn.id,
-      createdAt: this.deps.now(),
-      role: "task",
-      runId: record.run.id,
-      agent: record.run.agent,
-      from: "director",
-      parts: [{ type: "text", id: this.deps.ids(), text: parsed.value.text }],
-      steering: true,
-    };
-    await this.deps.chats.emit(this.deps.chatId, { type: "message.appended", message });
-    await record.session.steer(parsed.value.text);
-    return done(`Sent to ${AGENT_DISPLAY_NAMES[record.run.agent]}.`);
   }
 
   private async runJev(
@@ -472,7 +454,7 @@ export class Orchestrator {
     if (caller === "jev") return refuse("Jev cannot call itself.");
     const parsed = parseJevArgs(args);
     if (!parsed.ok) return refuse(parsed.message);
-    const parent = caller === "director" ? null : this.currentRun.get(caller);
+    const parent = caller === "director" ? null : this.callerRecord(caller);
     if (caller !== "director" && !parent) return refuse("Jev can only be used during a task.");
     const record = await this.startRun({
       agent: "jev",
@@ -497,123 +479,66 @@ export class Orchestrator {
       return refuse(
         `Jev did not finish (${record.run.status})${record.run.error ? `: ${record.run.error.message}` : ""}.`,
       );
-    return done(record.report?.slice(0, REPORT_CHARS) || "Jev finished without a reply.");
+    return done(clipReport(record.report));
   }
 
   // ── Runs ───────────────────────────────────────────────────────────────────
 
-  private async startRun(input: {
-    agent: WorkerAgentId;
-    title: string;
-    titleCode?: string;
-    titleParams?: Record<string, string | number>;
-    task: string;
-    from: AgentId;
-    parentRunId: string | null;
-    parentMessageId: string;
-    model: ModelSelection | null;
-    thinking: ThinkingEffort | null;
-    routed: boolean;
-    /** The Director never has to collect this run (a run the runtime started itself). */
-    reported?: boolean;
-  }): Promise<RunRecord> {
-    const { chats, chatId, turn, now, ids } = this.deps;
-    const startedAt = now();
-    const busy = input.agent !== "jev" && this.specialistTails.has(input.agent);
-    const run: AgentRun = {
-      id: ids(),
-      turnId: turn.id,
-      agent: input.agent,
-      parentRunId: input.parentRunId,
-      title: input.title,
-      ...(input.titleCode !== undefined && { titleCode: input.titleCode }),
-      ...(input.titleParams !== undefined && { titleParams: input.titleParams }),
-      status: busy ? "queued" : "running",
-      model: input.model,
-      thinking: input.thinking,
-      routedByDirector: input.routed,
-      taskMessageId: ids(),
-      assistantMessageId: ids(),
-      startedAt,
-      summary: null,
-    };
-    const taskMessage: TaskMessage = {
-      id: run.taskMessageId,
-      chatId,
-      turnId: turn.id,
-      createdAt: startedAt,
-      role: "task",
-      runId: run.id,
-      agent: input.agent,
-      from: input.from,
-      parts: [{ type: "text", id: ids(), text: input.task }],
-      steering: false,
-    };
-    const assistantMessage: AssistantMessage = {
-      id: run.assistantMessageId,
-      chatId,
-      turnId: turn.id,
-      createdAt: startedAt,
-      role: "assistant",
-      parts: [],
-      status: "streaming",
-      model: input.model,
-      runId: run.id,
-      agent: input.agent,
-    };
-    const controller = new AbortController();
-    const record: RunRecord = {
-      run,
-      controller,
-      session: null,
-      done: Promise.resolve(),
-      report: null,
-      reported: input.reported ?? false,
-      cancelled: false,
-      finished: false,
-    };
+  /**
+   * The run behind the host tool call being executed: the one the call carries (see `withCallerRun`), else the agent's
+   * only running run. Null when the agent has none or — without a carried run — several, which cannot be told apart.
+   */
+  private callerRecord(agent: AgentId): RunRecord | null {
+    const carried = currentRunId();
+    const record = carried === undefined ? undefined : this.records.get(carried);
+    if (record && record.run.agent === agent && !record.finished) return record;
+    const running = [...this.records.values()].filter(
+      (candidate) =>
+        candidate.run.agent === agent && !candidate.finished && candidate.run.status === "running",
+    );
+    return running.length === 1 ? (running[0] ?? null) : null;
+  }
+
+  /** Director-started runs whose result the Director has not received. */
+  private unreported(): RunRecord[] {
+    return [...this.records.values()].filter(
+      (record) => record.run.parentRunId === null && !record.reported,
+    );
+  }
+
+  /** The runs as the Director reads them; a finished run counts as reported. */
+  private report(records: readonly RunRecord[]): string {
+    return records
+      .map((record) => {
+        if (record.finished) record.reported = true;
+        return describeRun(record, this.deps.now());
+      })
+      .join("\n\n");
+  }
+
+  private async startRun(input: RunInput): Promise<RunRecord> {
+    const { chats, chatId } = this.deps;
+    const busy = input.agent !== "jev" && this.queue.isBusy(input.agent);
+    const ticket: QueueTicket | null =
+      input.agent === "jev" ? null : this.queue.enqueue(input.agent);
+    const { record, taskMessage, assistantMessage } = createRun(this.deps, input, busy);
+    const { run, controller } = record;
     this.records.set(run.id, record);
     const onTurnAbort = () => controller.abort();
     if (this.deps.signal.aborted) controller.abort();
     else this.deps.signal.addEventListener("abort", onTurnAbort, { once: true });
-    const taskText = renderPromptContext(
-      `<task title=${JSON.stringify(input.title)} from=${JSON.stringify(AGENT_DISPLAY_NAMES[input.from])}>\n${input.task}\n</task>`,
-      this.deps.setup.editorContext,
-      [],
-      this.deps.setup.userLanguage,
-    );
-    // Research works under the user's Asset Search policy; it is stated with every task it gets. Every specialist is
-    // told what the user's Autonomy settings mean for locked material (and Research for downloads).
-    const autonomy =
-      input.agent === "jev" ? null : renderAutonomyBlock(this.deps.setup.autonomy, input.agent);
-    const research =
-      input.agent === "research"
-        ? renderResearchBlock(
-            this.deps.setup.research,
-            this.deps.setup.execution.budget.researchCandidates,
-          )
-        : null;
-    // Motion may read a linked site itself; it is told when full access is off so it asks the user instead of failing.
-    const website = input.agent === "motion" ? websiteAccessLine(this.deps.setup.research) : null;
-    const text = [taskText, research, website, autonomy].filter(Boolean).join("\n\n");
-
-    // Queue the run before the first await, so concurrent delegations to one specialist line up in call order.
-    const announced = Promise.withResolvers<boolean>();
-    const execute = () =>
-      announced.promise.then((ok) => (ok ? this.runAgent(record, text) : undefined));
-    const cleanup = () => this.deps.signal.removeEventListener("abort", onTurnAbort);
-    if (input.agent === "jev") {
-      record.done = execute().finally(cleanup);
-    } else {
-      const agent = input.agent;
-      const previous = this.specialistTails.get(agent) ?? Promise.resolve();
-      const tail = previous.then(execute).finally(() => {
-        cleanup();
-        if (this.specialistTails.get(agent) === tail) this.specialistTails.delete(agent);
-      });
-      this.specialistTails.set(agent, tail);
-      record.done = tail;
+    // A run that is stopped while it waits for its turn leaves the line at once, so the ones behind it do not wait.
+    if (ticket) {
+      const leaveLine = () => this.queue.drop(ticket);
+      if (controller.signal.aborted) leaveLine();
+      else controller.signal.addEventListener("abort", leaveLine, { once: true });
     }
+
+    // The run is queued before the first await, so concurrent delegations to one specialist line up in call order.
+    const announced = Promise.withResolvers<boolean>();
+    record.done = this.lifecycle(record, ticket, announced.promise).finally(() =>
+      this.deps.signal.removeEventListener("abort", onTurnAbort),
+    );
 
     try {
       await chats.emit(chatId, {
@@ -630,196 +555,55 @@ export class Orchestrator {
       throw error;
     }
     announced.resolve(true);
-    await this.syncAutoPlan();
+    await this.syncPlan();
     return record;
   }
 
-  private async runAgent(record: RunRecord, text: string): Promise<void> {
-    const { run, controller } = record;
-    const agent = run.agent;
-    let writer: TurnEventWriter | null = null;
-    try {
-      if (controller.signal.aborted) {
-        await this.finish(record, record.cancelled ? "cancelled" : "aborted", null);
-        return;
+  /** Waits for the run's place, runs it and gives the place back. */
+  private async lifecycle(
+    record: RunRecord,
+    ticket: QueueTicket | null,
+    announced: Promise<boolean>,
+  ): Promise<void> {
+    if (!(await announced)) {
+      if (ticket) {
+        this.queue.drop(ticket);
+        const granted = await ticket.granted;
+        if (granted !== null) this.queue.release(ticket.agent, granted);
       }
-      if (run.status === "queued") {
-        run.status = "running";
-        await this.deps.chats.emit(this.deps.chatId, { type: "agent.updated", run: { ...run } });
-        await this.syncAutoPlan();
-      }
-      if (agent !== "jev") this.currentRun.set(agent, record);
-      record.session =
-        agent === "jev" ? await this.deps.jevSession() : await this.deps.specialistSession(agent);
-      writer = new TurnEventWriter({
-        chats: this.deps.chats,
-        chatId: this.deps.chatId,
-        messageId: run.assistantMessageId,
-        turn: this.deps.turn,
-        now: this.deps.now,
-        ids: this.deps.ids,
-        timers: this.deps.timers,
-        onModel: (event) => {
-          run.model = event.model;
-          run.thinking = event.thinking;
-          void this.deps.chats
-            .emit(this.deps.chatId, { type: "agent.updated", run: { ...run } })
-            .catch(() => undefined);
-        },
-      });
-      const activeWriter = writer;
-      const outcome = await record.session.prompt({
-        text,
-        model: run.model,
-        thinking: run.thinking,
-        signal: controller.signal,
-        onEvent: (event) => activeWriter.accept(event),
-      });
-      const stopped = outcome === "aborted" || controller.signal.aborted;
-      await writer.finish(stopped ? "aborted" : "complete");
-      const status: AgentRunStatus = stopped
-        ? record.cancelled
-          ? "cancelled"
-          : "aborted"
-        : "completed";
-      await this.finish(record, status, null);
-    } catch (error) {
-      await writer?.finish("failed").catch(() => undefined);
-      if (controller.signal.aborted)
-        await this.finish(record, record.cancelled ? "cancelled" : "aborted", null);
-      else await this.finish(record, "failed", error);
-    } finally {
-      if (agent !== "jev" && this.currentRun.get(agent) === record) this.currentRun.delete(agent);
-      if (agent === "jev") await record.session?.dispose().catch(() => undefined);
+      return;
     }
+    const slot = ticket ? await ticket.granted : 0;
+    if (slot === null) {
+      await this.finish(record, "aborted", null);
+      return;
+    }
+    try {
+      await executeRun(this.hooks, record, slot);
+    } finally {
+      if (ticket) this.queue.release(ticket.agent, slot);
+    }
+  }
+
+  /** The watchdog fired: the run showed no sign of life for too long. */
+  private stall(record: RunRecord): void {
+    if (record.finished) return;
+    const limit = this.deps.stallMs ?? DEFAULT_STALL_MS;
+    record.stalled = `No progress for ${formatDuration(limit)}: the model provider or a tool stopped answering, so the run was stopped.`;
+    void this.stopRuns([record]).catch(() => undefined);
   }
 
   private async finish(record: RunRecord, status: AgentRunStatus, error: unknown): Promise<void> {
-    if (record.finished) return;
-    record.finished = true;
-    const { run } = record;
-    const reply = this.replyText(run.assistantMessageId);
-    record.report = reply.all;
-    run.status = status;
-    run.endedAt = this.deps.now();
-    run.summary = summarizeReport(reply.last);
-    if (status === "failed") {
-      run.error = { code: "agent_failed", message: errorMessage(error, "The agent failed") };
-    }
-    const messageStatus: AssistantMessageStatus =
-      status === "completed" ? "complete" : status === "failed" ? "failed" : "aborted";
-    try {
-      await this.deps.chats.emit(this.deps.chatId, {
-        type: "message.completed",
-        messageId: run.assistantMessageId,
-        status: messageStatus,
-      });
-      await this.deps.chats.emit(this.deps.chatId, { type: "agent.completed", run: { ...run } });
-      await this.syncAutoPlan();
-    } catch {
-      // Persistence failed (disk gone); the in-memory record is still final and the turn will close.
-    }
-    this.wake();
+    if (!(await settleRun(this.deps, record, status, error))) return;
+    await this.syncPlan().catch(() => undefined);
+    this.waiter.wake();
   }
 
-  /**
-   * Normal mode always shows a compact plan once work is delegated. Until the Director publishes its own, the plan
-   * is derived from the runs it started (one step per run) plus the final assembly step.
-   */
-  private async syncAutoPlan(): Promise<void> {
-    if (this.directorPlanned) return;
-    const runs = [...this.records.values()]
-      .map((record) => record.run)
-      .filter((run) => run.parentRunId === null);
-    if (runs.length === 0) return;
-    const stepStatus = (status: AgentRunStatus): PlanStepStatus => {
-      if (status === "queued") return "pending";
-      if (status === "running") return "running";
-      if (status === "completed") return "done";
-      return status === "failed" ? "failed" : "skipped";
-    };
-    const plan: ExecutionPlan = {
-      steps: [
-        ...runs.map((run) => ({
-          id: `run-${run.id}`,
-          title: run.title,
-          status: stepStatus(run.status),
-          agent: run.agent,
-        })),
-        {
-          id: "assemble",
-          title: "Review and assemble the result",
-          status:
-            this.assembled ??
-            (runs.every((run) => isAgentRunTerminal(run.status)) ? "running" : "pending"),
-          agent: "director",
-        },
-      ],
-      updatedAt: this.deps.now(),
-    };
-    this.deps.turn.plan = plan;
-    await this.deps.chats.emit(this.deps.chatId, {
-      type: "plan.updated",
-      turnId: this.deps.turn.id,
-      plan,
-    });
-  }
-
-  private replyText(messageId: string): { all: string | null; last: string | null } {
-    const message = this.deps.chats
-      .get(this.deps.chatId)
-      ?.messages.find((candidate) => candidate.id === messageId);
-    if (!message || message.role !== "assistant") return { all: null, last: null };
-    const texts = message.parts.flatMap((part) =>
-      part.type === "text" && part.text.trim() ? [part.text.trim()] : [],
+  private syncPlan(): Promise<void> {
+    return this.plan.sync(
+      [...this.records.values()]
+        .filter((record) => record.run.parentRunId === null && !record.internal)
+        .map((record) => record.run),
     );
-    return { all: texts.join("\n\n") || null, last: texts.at(-1) ?? null };
-  }
-
-  private describe(record: RunRecord): string {
-    const { run } = record;
-    const header = `${AGENT_DISPLAY_NAMES[run.agent]} — "${run.title}" (run ${run.id}): ${run.status}`;
-    if (!isAgentRunTerminal(run.status)) return `${header}, still working.`;
-    const detail = run.error
-      ? `Error: ${run.error.message}`
-      : `Report:\n${record.report?.slice(0, REPORT_CHARS) ?? "(no reply)"}`;
-    return `${header}\n${detail}`;
-  }
-
-  // ── Waiting ────────────────────────────────────────────────────────────────
-
-  private wake(): void {
-    for (const waker of [...this.wakers]) waker();
-  }
-
-  /**
-   * Resolves when `ready()` holds, the signal aborts, or (with `stopOnSteer`) the user steers. Returns true when it
-   * returned because of steering.
-   */
-  private until(ready: () => boolean, signal: AbortSignal, stopOnSteer: boolean): Promise<boolean> {
-    const steerMark = this.steerCount;
-    const { promise, resolve } = Promise.withResolvers<boolean>();
-    const check = () => {
-      const steered = stopOnSteer && this.steerCount !== steerMark;
-      if (!ready() && !steered && !signal.aborted) return;
-      this.wakers.delete(check);
-      signal.removeEventListener("abort", check);
-      resolve(steered);
-    };
-    this.wakers.add(check);
-    signal.addEventListener("abort", check, { once: true });
-    check();
-    return promise;
-  }
-
-  private async settleWithin(records: RunRecord[], ms: number): Promise<boolean> {
-    const timeout = Promise.withResolvers<boolean>();
-    const timer: StreamTimerHandle = this.deps.timers.setTimeout(() => timeout.resolve(false), ms);
-    const settled = Promise.all(records.map((record) => record.done.catch(() => undefined))).then(
-      () => true,
-    );
-    const result = await Promise.race([settled, timeout.promise]);
-    this.deps.timers.clearTimeout(timer);
-    return result;
   }
 }

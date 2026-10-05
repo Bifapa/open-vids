@@ -3,7 +3,6 @@ import {
   isRecord,
   type ApplyEditsRequest,
   type ApplyEditsResponse,
-  type PresetInfo,
   type PresetKind,
   type ProjectAsset,
   type ProjectInventory,
@@ -15,6 +14,7 @@ import {
   type EditingHost,
   type RenderOutput,
   type RenderProgress,
+  type PresetPage,
   type RenderRequest,
 } from "./host.js";
 import {
@@ -25,8 +25,12 @@ import {
   isTimelineSnapshot,
 } from "./wire.js";
 
-/** An `apply` that reached the service is awaited (it is atomic there); this only bounds a service that hangs. */
-const APPLY_TIMEOUT_MS = 120_000;
+/**
+ * Ceilings only: they bound a Studio that hangs, not honest work. A batch (registry installs, hundreds of clips) may run
+ * for minutes; a read that takes two is wedged. Every call also follows the caller's signal.
+ */
+const APPLY_CEILING_MS = 10 * 60_000;
+const READ_CEILING_MS = 2 * 60_000;
 const CANCEL_TIMEOUT_MS = 10_000;
 
 interface RequestOptions {
@@ -61,26 +65,53 @@ export class HttpEditingHost implements EditingHost {
 
   async apply(request: ApplyEditsRequest, signal: AbortSignal): Promise<ApplyEditsResponse> {
     if (signal.aborted) throw aborted();
-    const payload = await this.request("POST", `${this.project}/editing/apply`, {
-      body: { ...request },
-      signal: AbortSignal.timeout(APPLY_TIMEOUT_MS),
-    });
-    if (!isApplyEditsResponse(payload)) throw invalidResponse("edit result");
-    return payload;
+    const { requestId } = request;
+    // The turn's signal does not cut the call off: it asks Studio to stop before it writes, and the answer says
+    // whether the batch landed. A call torn off mid-flight could leave the turn unsure and tempt a duplicate retry.
+    const stop = () => void this.cancelApply(requestId);
+    signal.addEventListener("abort", stop, { once: true });
+    try {
+      const payload = await this.request("POST", `${this.project}/editing/apply`, {
+        body: { ...request },
+        signal: AbortSignal.timeout(APPLY_CEILING_MS),
+      });
+      if (!isApplyEditsResponse(payload)) throw invalidResponse("edit result");
+      return payload;
+    } finally {
+      signal.removeEventListener("abort", stop);
+    }
+  }
+
+  private async cancelApply(requestId: string | undefined): Promise<void> {
+    if (requestId === undefined) return;
+    try {
+      await this.request("POST", `${this.project}/editing/cancel`, {
+        body: { requestId },
+        signal: AbortSignal.timeout(CANCEL_TIMEOUT_MS),
+      });
+    } catch {
+      // Studio may be gone or the batch already over; the apply call itself reports the outcome.
+    }
   }
 
   async presets(
     kind: PresetKind,
     query: string | undefined,
     signal: AbortSignal,
-  ): Promise<PresetInfo[]> {
+    page?: { offset: number; limit: number },
+  ): Promise<PresetPage> {
     const params = new URLSearchParams({ kind });
     if (query) params.set("query", query);
+    if (page) {
+      params.set("offset", String(page.offset));
+      params.set("limit", String(page.limit));
+    }
     const payload = await this.request("GET", `${this.project}/editing/presets?${params}`, {
       signal,
     });
     if (!isRecord(payload) || !isPresetList(payload.presets)) throw invalidResponse("preset list");
-    return payload.presets;
+    const total = typeof payload.total === "number" ? payload.total : payload.presets.length;
+    return { presets: payload.presets, total };
   }
 
   async probe(path: string, signal: AbortSignal): Promise<ProjectAsset> {
@@ -247,18 +278,23 @@ export class HttpEditingHost implements EditingHost {
     path: string,
     { body, signal }: RequestOptions = {},
   ): Promise<unknown> {
+    // A read follows the caller's signal and a ceiling; the POSTs bring their own (apply, cancel).
+    const bounded =
+      method === "GET" && signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(READ_CEILING_MS)])
+        : signal;
     let response: Response;
     try {
       response = await fetch(`${this.api}${path}`, {
         method,
-        ...(signal && { signal }),
+        ...(bounded && { signal: bounded }),
         ...(body && {
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         }),
       });
     } catch (error) {
-      throw transportError(error, signal);
+      throw transportError(error, bounded, path);
     }
     const payload: unknown = await response.json().catch(() => null);
     if (response.ok) return payload;
@@ -307,12 +343,15 @@ function invalidResponse(what: string): EditingError {
   return new EditingError("unavailable", `Studio returned an invalid ${what}.`);
 }
 
-function transportError(error: unknown, signal: AbortSignal | undefined): EditingError {
+function transportError(error: unknown, signal: AbortSignal | undefined, path = ""): EditingError {
   if (signal?.aborted) {
     if (signal.reason instanceof Error && signal.reason.name === "TimeoutError") {
+      const apply = path.endsWith("/editing/apply");
       return new EditingError(
         "unavailable",
-        "Studio's editing service did not answer in time; inspect the timeline to see whether the request took effect.",
+        apply
+          ? "Studio's editing service did not answer in time. The batch may have been applied: call edit_timeline again with the SAME operations (a batch Studio already applied is answered, not applied twice) or inspect the timeline."
+          : "Studio's editing service did not answer in time; try again.",
       );
     }
     return aborted();

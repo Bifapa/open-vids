@@ -9,6 +9,7 @@ import {
   type WebsiteFileMode,
 } from "@hyperframes/agent-protocol";
 import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
+import { withInheritedTools } from "../agents/inherit.js";
 import type { StoryTurnMode } from "../story/tools.js";
 
 export const RESEARCH_TOOL_NAMES = {
@@ -63,25 +64,11 @@ export const DEFAULT_RESEARCH_ACCESS: ResearchAccess = {
 const WEBSITE_READERS: readonly AgentId[] = ["director", "motion", "research"];
 
 /**
- * Which research tools an agent gets. Research is the only specialist that can look outside the project for material:
- * it gets the search, page-reading, import and resolution tools. The Director can read the project's sources and
- * licenses (to answer and to brief Research) but never searches or imports itself; no other specialist and not Jev get
- * any. Without Research enabled in the chat nobody gets those tools, and a Story build or rebuild turn offers none.
- *
- * `read_website` (reading one site the user linked, for its style) is separate: the Director, Motion and Research get
- * it whether or not Research is enabled, because it does not search or import. The same agents also get
- * `get_website_file` and `record_website` whenever a research host exists: when the user's full access to linked
- * sites is off, calling one asks them in chat to allow it. `access` says which groups the turn offers: the asset
- * tools need the user's Asset Search policy to have been read, the website tools a research host. A specialist only
- * gets them when it is in the chat's team.
+ * What one agent gets as if every specialist were on: Research has the search, page-reading, import and resolution
+ * tools; the Director only the project's Sources view; the website readers (Director, Motion, Research) the website
+ * tools. {@link researchToolsFor} adds the team and turn rules.
  */
-export function researchToolsFor(
-  agent: AgentId,
-  enabled: readonly SpecialistId[],
-  turn: StoryTurnMode,
-  access: ResearchAccess = DEFAULT_RESEARCH_ACCESS,
-): ResearchToolName[] {
-  if (turn.action === "build" || turn.action === "rebuild") return [];
+function researchBaseTools(agent: AgentId, access: ResearchAccess): ResearchToolName[] {
   const {
     search,
     inspect,
@@ -93,16 +80,38 @@ export function researchToolsFor(
     record,
   } = RESEARCH_TOOL_NAMES;
   const tools: ResearchToolName[] = [];
-  if (access.assets && enabled.includes("research")) {
+  if (access.assets) {
     if (agent === "research") tools.push(search, inspect, importAsset, resolve, sources);
     else if (agent === "director") tools.push(sources);
   }
-  const reads =
-    access.websites &&
-    WEBSITE_READERS.includes(agent) &&
-    (agent === "director" || enabled.some((specialist) => specialist === agent));
-  if (reads) tools.push(website, file, record);
+  if (access.websites && WEBSITE_READERS.includes(agent)) tools.push(website, file, record);
   return tools;
+}
+
+/**
+ * Which research tools an agent gets. Research is the specialist that looks outside the project for material: it gets
+ * the search, page-reading, import and resolution tools. The Director reads the project's sources and licenses; when
+ * Research is off in the chat the Director also gets everything Research would have had (the work moves to it, under
+ * the same policy and approvals), see `withInheritedTools`. Motion gets the website tools when it is on the team; Jev
+ * and the other specialists never get any. A Story build turn offers the tools like a normal turn (a build produces
+ * the complete video, so the material is fetched first; the executor freezes graph resolution once the build ran);
+ * only a rebuild turn offers none, because there the single write is `rebuild_story`.
+ *
+ * `read_website` (reading one site the user linked, for its style) does not search or import. The same agents also
+ * get `get_website_file` and `record_website` whenever a research host exists: when the user's full access to linked
+ * sites is off, calling one asks them in chat to allow it. `access` says which groups the turn offers: the asset
+ * tools need a research host, the website tools too. A specialist only gets them when it is in the chat's team.
+ */
+export function researchToolsFor(
+  agent: AgentId,
+  enabled: readonly SpecialistId[],
+  turn: StoryTurnMode,
+  access: ResearchAccess = DEFAULT_RESEARCH_ACCESS,
+): ResearchToolName[] {
+  if (turn.action === "rebuild") return [];
+  const onTeam = agent === "director" || enabled.some((specialist) => specialist === agent);
+  if (!onTeam) return [];
+  return withInheritedTools(agent, enabled, (who) => researchBaseTools(who, access));
 }
 
 // ── Descriptions ─────────────────────────────────────────────────────────────
@@ -112,8 +121,8 @@ const POLICY_NOTE = `The user's Asset Search policy decides where you may look: 
 const DESCRIPTIONS: Record<ResearchToolName, string> = {
   search_assets: `Search for video, picture or audio material outside the project. Returns candidates with an id, title, source, license (name, status clear/attribution/restricted/unknown and how confidently it was found), author, size and page URL, plus what each searched source answered, and what the policy blocked. The license facts come from the source itself — report them as given and never guess one. ${POLICY_NOTE} Search with short concrete words (the subject, in English too); use "sources" to narrow to source ids from your task context ("web" = the web search backend, available only in "any" mode).`,
   inspect_url: `Read one public web page or media URL and list the media it offers as importable candidates, with the page's own author and license information. Use it on a page a search pointed to, or a URL the user gave. Stream manifests (HLS/DASH) and protected media are not importable. ${POLICY_NOTE}`,
-  import_asset: `Download a candidate (by the id from search_assets/inspect_url) — or a direct media URL — into the project under assets/research/ and record where it came from: URL, source, author and license are stored by the server from the source's own data, not from you. Converts the file for the editor when needed, and detects duplicates (an asset already in the project is reused, not downloaded again). Pass exactly one of "candidate" or "url". Pass "resolveMissing" (a Missing Asset node id from read_story) to resolve that node with the imported asset in the same step. Import only material that will actually be used. The import is part of this turn's checkpoint, so the user can revert it. ${POLICY_NOTE}`,
-  resolve_missing_asset: `Resolve a Missing Asset node of the Story Graph with a media file that is already in the project (for example one imported earlier). The node becomes a video, picture or music node for that file and keeps its attachments. Refused for a locked node.`,
+  import_asset: `Download a candidate (by the id from search_assets/inspect_url) — or a direct media URL — into the project under assets/research/ and record where it came from: URL, source, author and license are stored by the server from the source's own data, not from you. Converts the file for the editor when needed, and detects duplicates (an asset already in the project is reused, not downloaded again). Pass exactly one of "candidate" or "url". Pass "resolveMissing" (a Missing Asset node id from read_story) to resolve that node with the imported asset in the same step; in a Story build turn that works only until build_story has run (the graph is frozen after it), later imports go without resolveMissing. Import only material that will actually be used. If downloads need the user's approval, the call asks them in the chat and waits for the answer — just call it. A candidate whose license status is restricted (non-commercial or no-derivatives) always asks the user for that asset first; if they decline, take another. At most ${RESEARCH_LIMITS.importsPerTurn} imports per turn: choose what you need before importing. The import is part of this turn's checkpoint, so the user can revert it. ${POLICY_NOTE}`,
+  resolve_missing_asset: `Resolve a Missing Asset node of the Story Graph with a media file that is already in the project (for example one imported earlier). The node becomes a video, picture or music node for that file and keeps its attachments. Refused for a locked node, and in a Story build turn once build_story has run (the graph is frozen after it).`,
   read_website: `Open one website the user linked in this chat and extract its visual identity: palette with roles (background, surface, text, accent), fonts and how to load them, type scale, corner radii, shadows, button styles, design tokens, motion character (durations, easing), logo, headings and navigation labels — plus a 1440×900 and a full-page screenshot you can look at, and the list of files the page uses (resources: videos, images, SVG, Lottie/Rive animations, fonts, styles, scripts). Use it when the user links a site and asks for its style, brand or look. Only sites the user linked are allowed (the same site, including www. and subdomains, and any of its pages); for any other address the call is refused — ask the user for the link, never guess one. If reading linked pages is off, the call asks the user in chat to allow it and continues with their answer. With save: true the screenshots, the logo and the self-hosted fonts the page actually uses are saved under assets/web/<host>/ and recorded as website references with an unknown license; pass it when the result will be used in the video (not in a Plan or Ask turn).`,
   get_website_file: `Fetch one file of a website the user linked in this chat. If full access to linked sites is off, the call asks the user in chat to allow it and continues with their answer — just call it when the user wants a file from the site. mode "save" downloads the file into assets/web/<host>/files/ and records it as a website reference with an unknown license; mode "read" returns its raw text (page HTML, CSS, JS, JSON, SVG) and saves nothing. Allowed URLs: a file the linked site itself serves, or an exact URL an earlier read_website of it listed in its resources (its own CDN included) — anything else is refused, so read the site first and take the URL from its list. Use "read" to study how an animation really works (its CSS keyframes, JS easing, SVG/SMIL) before recreating it in GSAP; use "save" for material you will actually use: a video/audio/picture as a clip, a Lottie JSON with lottie-web (register the player as window.__hfLottie), a Rive file with its runtime, a font with @font-face. Website files are license unknown — never claim one, tell the user where it came from.`,
   record_website: `Record a page of a website the user linked in this chat as an MP4 video. If full access to linked sites is off, the call asks the user in chat to allow it and continues with their answer — just call it when the user wants a recording of the site. Real time, 1–30 seconds, optionally only one element (selector) and optionally scrolling the page; the file lands in assets/web/<host>/recordings/ as a video asset for edit_timeline. Use it to capture an animation that has no file to download (canvas, WebGL, CSS-only) so it can be cut into the video as footage; prefer get_website_file when the animation is a real Lottie/Rive/SVG/video file. The recording is a website reference with an unknown license — never claim one, tell the user it belongs to the site's owner.`,
@@ -176,7 +185,7 @@ const PARAMETERS: Record<ResearchToolName, Record<string, unknown>> = {
         RESEARCH_LIMITS.fileNameChars,
       ),
       resolveMissing: str(
-        "Missing Asset node id (from read_story) to resolve with this asset.",
+        "Missing Asset node id (from read_story) to resolve with this asset. Refused in a Story build turn once build_story has run.",
         66,
       ),
     },

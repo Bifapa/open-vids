@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QaReportInput } from "@hyperframes/agent-protocol";
 import type { ProjectScope } from "../checkpointHost.js";
 import { FAKE_JPEG } from "../testing/analysis.js";
@@ -19,6 +19,7 @@ type Route = (request: Seen, response: ServerResponse) => void;
 const servers: Server[] = [];
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await Promise.all(
     servers.splice(0).map(
       (server) =>
@@ -210,5 +211,51 @@ describe("HttpQaHost", () => {
       code: "studio_unavailable",
       message: expect.stringContaining("not reachable"),
     });
+  });
+
+  it("runs a timeline-only check and reads the accepted issues through their own routes", async () => {
+    const timeline = cleanCheck({ samples: [] });
+    const item = {
+      id: "acc-0a1b2c3d",
+      composition: "index.html",
+      kind: "black_frames",
+      check: "blackdetect",
+      subject: null,
+      start: 0,
+      end: 1,
+      message: "Black picture for 1 s.",
+      acceptedAt: 1,
+    };
+    const { host, seen } = await studio({
+      [`POST ${PREFIX}/check-timeline`]: (_request, response) => json(response, 200, timeline),
+      [`GET ${PREFIX}/accepted`]: (_request, response) => json(response, 200, { items: [item] }),
+    });
+    expect(await host.checkTimeline({ composition: "index.html" }, signal())).toEqual(timeline);
+    expect(await host.accepted(signal())).toEqual({ items: [item] });
+    expect(seen.map((entry) => `${entry.method} ${entry.path}`)).toEqual([
+      `POST ${PREFIX}/check-timeline`,
+      `GET ${PREFIX}/accepted`,
+    ]);
+    expect(seen[0]?.body).toEqual({ composition: "index.html" });
+  });
+
+  it("tells a call that ran out of time from an unreachable Studio, whichever deadline fired", async () => {
+    // The runtime's own fetch default can fire long before the host's deadline.
+    vi.stubGlobal("fetch", () =>
+      Promise.reject(new DOMException("The operation timed out.", "TimeoutError")),
+    );
+    const host = new HttpQaHost({
+      projectId: "p",
+      projectDir: "/tmp/p",
+      studioOrigin: "http://127.0.0.1:1",
+    });
+    await expect(
+      host.check({ render: "renders/final.mp4", framesPerMinute: 12, maxFrames: 24 }, signal()),
+    ).rejects.toMatchObject({
+      code: "timeout",
+      message: "The render checks did not finish in time.",
+    });
+    vi.stubGlobal("fetch", () => Promise.reject(new TypeError("fetch failed")));
+    await expect(host.state(signal())).rejects.toMatchObject({ code: "studio_unavailable" });
   });
 });

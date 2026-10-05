@@ -97,3 +97,16 @@ the unit test on the pure function underneath.
   forgets it makes the preview flash on every edit.
 - **Preserving a selection set that does not contain the id empties it.** Check
   `preserveSet` semantics before reusing it.
+- **Hand edits stop while an agent turn runs.** The timeline refuses edits
+  (`timelineEditLockReason`, the "AI is editing" badge), and the same mirror
+  (`agent/agentTurnLock.ts`) locks files: `fileEditLockReason` makes the code
+  editor read-only (a CodeMirror compartment, so the view and its undo history
+  survive), disables the file tree's create / rename / move / duplicate / delete,
+  and `useFileManager` refuses the same calls with a toast for every other caller
+  (Assets, Media). Importing files stays open — it only adds files, and the chat
+  attaches files mid-turn through it. A new surface that rewrites an existing
+  project file by hand must check the lock too.
+- **Render QA reports are immutable; the user's "mark intentional" is not.** The
+  card reads `acceptedIssueIds` (derived when the report is read) and the report
+  view re-reads after every mark or undo. A pass's render link shows only for
+  renders that survive the session (`isPassRenderLinked`).

@@ -20,7 +20,10 @@ function broker(overrides: Partial<PermissionBrokerOptions> = {}) {
     ...overrides,
   };
   const instance = new PermissionBroker(options);
-  const ask = (kind: "read_linked_pages" | "website_full_access", site: string | null = null) =>
+  const ask = (
+    kind: "read_linked_pages" | "website_full_access",
+    site: string | null = "linear.app",
+  ) =>
     instance.ask({
       kind,
       action: kind === "read_linked_pages" ? "read" : "download",
@@ -49,7 +52,7 @@ describe("the permission broker", () => {
     const answered = await instance.answer("perm-1", "once");
     expect(answered.state).toBe("allowed_once");
     expect(answered.answeredAt).toBeGreaterThan(0);
-    expect(host.grants).toEqual([{ turnId: "turn-1", access: "read" }]);
+    expect(host.grants).toEqual([{ turnId: "turn-1", access: "read", site: "linear.app" }]);
     expect(host.policyUpdates).toEqual([]);
     await expect(waiting).resolves.toMatchObject({ id: "perm-1", state: "allowed_once" });
     // The answer updates the same part, not a new one.
@@ -177,17 +180,59 @@ describe("the permission broker", () => {
     const late = await ask("read_linked_pages");
     expect(late.state).toBe("expired");
     expect(published).toHaveLength(2);
-    expect(instance.allowsWebsiteDownload()).toBe(false);
+    expect(instance.allowsDownload()).toBe(false);
+  });
+
+  it("expires one request when the asking call is cancelled, and shows a new card on the next ask", async () => {
+    const { published, instance, ask } = broker();
+    const cancel = new AbortController();
+    const waiting = instance.ask(
+      { kind: "read_linked_pages", action: "read", site: "linear.app", agent: "research" },
+      cancel.signal,
+    );
+    await Promise.resolve();
+    expect(published.map((permission) => permission.state)).toEqual(["pending"]);
+
+    cancel.abort();
+    await expect(waiting).resolves.toMatchObject({ id: "perm-1", state: "expired" });
+    await Promise.resolve();
+    expect(published.map((permission) => permission.state)).toEqual(["pending", "expired"]);
+    // The turn goes on: the expired card cannot be answered, and a later ask is a new card.
+    await expect(instance.answer("perm-1", "once")).rejects.toMatchObject({ status: 409 });
+    const again = ask("read_linked_pages", "linear.app");
+    await Promise.resolve();
+    expect(published.at(-1)).toMatchObject({ id: "perm-2", state: "pending" });
+    await instance.answer("perm-2", "deny");
+    await expect(again).resolves.toMatchObject({ state: "denied" });
+  });
+
+  it("leaves a request other calls still wait for pending when one of them is cancelled", async () => {
+    const { published, instance } = broker();
+    const cancel = new AbortController();
+    const ask = (signal?: AbortSignal) =>
+      instance.ask(
+        { kind: "read_linked_pages", action: "read", site: "linear.app", agent: "director" },
+        signal,
+      );
+    const cancelled = ask(cancel.signal);
+    const staying = ask();
+    await Promise.resolve();
+
+    cancel.abort();
+    await expect(cancelled).resolves.toMatchObject({ state: "expired" });
+    expect(published.map((permission) => permission.state)).toEqual(["pending"]);
+    await instance.answer("perm-1", "deny");
+    await expect(staying).resolves.toMatchObject({ state: "denied" });
   });
 
   it("counts an allowed download or recording card as the turn's website download approval", async () => {
     const once = broker();
     const waiting = once.ask("website_full_access");
     await Promise.resolve();
-    expect(once.instance.allowsWebsiteDownload()).toBe(false);
+    expect(once.instance.allowsDownload()).toBe(false);
     await once.instance.answer("perm-1", "once");
     await waiting;
-    expect(once.instance.allowsWebsiteDownload()).toBe(true);
+    expect(once.instance.allowsDownload()).toBe(true);
 
     const recording = broker();
     const recorded = recording.instance.ask({
@@ -199,14 +244,14 @@ describe("the permission broker", () => {
     await Promise.resolve();
     await recording.instance.answer("perm-1", "always");
     await recorded;
-    expect(recording.instance.allowsWebsiteDownload()).toBe(true);
+    expect(recording.instance.allowsDownload()).toBe(true);
 
     const denied = broker();
     const refused = denied.ask("website_full_access");
     await Promise.resolve();
     await denied.instance.answer("perm-1", "deny");
     await refused;
-    expect(denied.instance.allowsWebsiteDownload()).toBe(false);
+    expect(denied.instance.allowsDownload()).toBe(false);
   });
 
   it("does not count an answer to an open-page or read-code card as a download approval", async () => {
@@ -222,7 +267,7 @@ describe("the permission broker", () => {
         await Promise.resolve();
         await instance.answer("perm-1", decision);
         await waiting;
-        expect(instance.allowsWebsiteDownload(), `${action} ${decision}`).toBe(false);
+        expect(instance.allowsDownload(), `${action} ${decision}`).toBe(false);
       }
     }
   });
@@ -291,5 +336,246 @@ describe("the permission broker", () => {
       "chat store is read-only",
     );
     await expect(waiting).resolves.toMatchObject({ state: "denied" });
+  });
+
+  describe("asset_download cards", () => {
+    const asset = { title: "Ocean waves", source: "Openverse", license: "CC BY 4.0" };
+    const askDownload = (instance: PermissionBroker) =>
+      instance.ask({
+        kind: "asset_download",
+        action: "download",
+        site: "openverse.org",
+        agent: "research",
+        asset,
+      });
+
+    it("publishes the asset on the card and approves downloads for the turn on once, with no Studio grant", async () => {
+      const { host, published, instance } = broker();
+      const waiting = askDownload(instance);
+      await Promise.resolve();
+      expect(published[0]).toMatchObject({ kind: "asset_download", state: "pending", asset });
+      expect(instance.allowsDownload()).toBe(false);
+
+      await instance.answer("perm-1", "once");
+      await expect(waiting).resolves.toMatchObject({ state: "allowed_once", asset });
+      expect(host.grants).toEqual([]);
+      expect(host.policyUpdates).toEqual([]);
+      expect(instance.allowsDownload()).toBe(true);
+      // Nothing was granted, so there is nothing to revoke at the turn's end.
+      await instance.revokeGrant();
+      expect(host.revokedGrants).toEqual([]);
+    });
+
+    it("switches the agent setting off on always, and keeps the request pending when that fails", async () => {
+      const calls: AbortSignal[] = [];
+      let failures = 1;
+      const { host, instance } = broker({
+        disableDownloadAsk: async (signal) => {
+          calls.push(signal);
+          if (failures-- > 0) throw new Error("settings are read-only");
+        },
+      });
+      const waiting = askDownload(instance);
+      await Promise.resolve();
+      await expect(instance.answer("perm-1", "always")).rejects.toMatchObject({
+        code: "runtime_unavailable",
+        status: 503,
+        message: "settings are read-only",
+      });
+      expect(instance.allowsDownload()).toBe(false);
+
+      await expect(instance.answer("perm-1", "always")).resolves.toMatchObject({
+        state: "enabled",
+      });
+      await expect(waiting).resolves.toMatchObject({ state: "enabled" });
+      expect(calls).toHaveLength(2);
+      expect(host.policyUpdates).toEqual([]);
+      expect(instance.allowsDownload()).toBe(true);
+    });
+
+    it("denies without touching anything, and shares the denial with later asks", async () => {
+      const disabled: AbortSignal[] = [];
+      const { host, instance } = broker({
+        disableDownloadAsk: async (signal) => void disabled.push(signal),
+      });
+      const waiting = askDownload(instance);
+      await Promise.resolve();
+      await instance.answer("perm-1", "deny");
+      await expect(waiting).resolves.toMatchObject({ state: "denied" });
+      await expect(askDownload(instance)).resolves.toMatchObject({ id: "perm-1", state: "denied" });
+      expect(disabled).toEqual([]);
+      expect(host.grants).toEqual([]);
+      expect(instance.allowsDownload()).toBe(false);
+    });
+
+    it("does not copy an asset onto a website card", async () => {
+      const { published, instance } = broker();
+      void instance.ask({
+        kind: "read_linked_pages",
+        action: "read",
+        site: "linear.app",
+        agent: "director",
+        asset,
+      });
+      await Promise.resolve();
+      expect(published[0]).not.toHaveProperty("asset");
+    });
+  });
+
+  describe("per site", () => {
+    it("answers Allow once for the card's site only: another site shows its own card", async () => {
+      const { host, published, instance, ask } = broker();
+      const first = ask("read_linked_pages", "linear.app");
+      await Promise.resolve();
+      await instance.answer("perm-1", "once");
+      await first;
+
+      const sameSite = await ask("read_linked_pages", "linear.app");
+      expect(sameSite).toMatchObject({ id: "perm-1", state: "allowed_once" });
+
+      const other = ask("read_linked_pages", "stripe.com");
+      await Promise.resolve();
+      expect(published.at(-1)).toMatchObject({
+        id: "perm-2",
+        site: "stripe.com",
+        state: "pending",
+      });
+      await instance.answer("perm-2", "deny");
+      await expect(other).resolves.toMatchObject({ state: "denied", site: "stripe.com" });
+      // The denial is for stripe.com only.
+      expect(await ask("read_linked_pages", "linear.app")).toMatchObject({ state: "allowed_once" });
+      expect(host.grants).toEqual([{ turnId: "turn-1", access: "read", site: "linear.app" }]);
+      expect(instance.grantedSites("read_linked_pages")).toEqual(["linear.app"]);
+    });
+
+    it("lets Turn on cover every site, and a full-access answer cover reading of its own site only", async () => {
+      const { published, instance, ask } = broker();
+      const first = ask("read_linked_pages", "linear.app");
+      await Promise.resolve();
+      await instance.answer("perm-1", "always");
+      await first;
+      expect(await ask("read_linked_pages", "stripe.com")).toMatchObject({
+        id: "perm-1",
+        state: "enabled",
+      });
+      expect(published).toHaveLength(2);
+      expect(instance.grantedSites("read_linked_pages")).toBeNull();
+
+      const files = broker();
+      const full = files.ask("website_full_access", "linear.app");
+      await Promise.resolve();
+      await files.instance.answer("perm-1", "once");
+      await full;
+      expect(await files.ask("read_linked_pages", "linear.app")).toMatchObject({ id: "perm-1" });
+      const elsewhere = files.ask("read_linked_pages", "stripe.com");
+      await Promise.resolve();
+      expect(files.published.at(-1)).toMatchObject({ id: "perm-2", site: "stripe.com" });
+      await files.instance.expireAll();
+      await elsewhere;
+    });
+
+    it("forgets an allowed answer the server did not honour, so the next ask shows a new card", async () => {
+      const { published, instance, ask } = broker();
+      const first = ask("website_full_access", "linear.app");
+      await Promise.resolve();
+      await instance.answer("perm-1", "once");
+      await first;
+      expect(instance.peek("website_full_access", "linear.app")).toMatchObject({ id: "perm-1" });
+
+      expect(instance.reset("website_full_access", "linear.app")).toBe(true);
+      expect(instance.peek("website_full_access", "linear.app")).toBeNull();
+      const again = ask("website_full_access", "linear.app");
+      await Promise.resolve();
+      expect(published.at(-1)).toMatchObject({ id: "perm-2", state: "pending" });
+      await instance.answer("perm-2", "deny");
+      await again;
+      // A denial is not an allowed answer: it stays.
+      expect(instance.reset("website_full_access", "linear.app")).toBe(false);
+    });
+  });
+
+  describe("restricted_asset and long_render cards", () => {
+    const asset = { title: "Waves", source: "Openverse", license: "CC BY-NC 4.0" };
+    const askRestricted = (instance: PermissionBroker, key: string) =>
+      instance.ask({
+        kind: "restricted_asset",
+        action: "download",
+        site: "openverse.org",
+        agent: "research",
+        asset,
+        key,
+      });
+
+    it("asks each asset on its own, copies the asset, and never counts as a download approval", async () => {
+      const { host, published, instance } = broker();
+      const first = askRestricted(instance, "cand-1");
+      await Promise.resolve();
+      expect(published[0]).toMatchObject({ kind: "restricted_asset", asset, state: "pending" });
+      await instance.answer("perm-1", "once");
+      await first;
+      expect(await askRestricted(instance, "cand-1")).toMatchObject({ id: "perm-1" });
+      expect(instance.allowsDownload()).toBe(false);
+      expect(instance.allowsKind("restricted_asset")).toBe(true);
+
+      const second = askRestricted(instance, "cand-2");
+      await Promise.resolve();
+      expect(published.at(-1)).toMatchObject({ id: "perm-2", state: "pending" });
+      await instance.answer("perm-2", "deny");
+      await expect(second).resolves.toMatchObject({ state: "denied" });
+      expect(host.grants).toEqual([]);
+    });
+
+    it("accepts only once or deny: always is an invalid request and leaves the card pending", async () => {
+      const { instance } = broker();
+      const waiting = askRestricted(instance, "cand-1");
+      await Promise.resolve();
+      await expect(instance.answer("perm-1", "always")).rejects.toMatchObject({
+        code: "invalid_request",
+        status: 400,
+      });
+      await instance.answer("perm-1", "once");
+      await expect(waiting).resolves.toMatchObject({ state: "allowed_once" });
+    });
+
+    it("shows a long render once per turn with its composition and length, and needs no Studio grant", async () => {
+      const { host, published, instance } = broker();
+      const render = { composition: "index.html", seconds: 412 };
+      const waiting = instance.ask({
+        kind: "long_render",
+        action: "render",
+        site: null,
+        agent: "director",
+        render,
+      });
+      await Promise.resolve();
+      expect(published[0]).toMatchObject({ kind: "long_render", render });
+      await expect(instance.answer("perm-1", "always")).rejects.toMatchObject({ status: 400 });
+      await instance.answer("perm-1", "once");
+      await waiting;
+      expect(
+        await instance.ask({
+          kind: "long_render",
+          action: "render",
+          site: null,
+          agent: "director",
+          render,
+        }),
+      ).toMatchObject({ id: "perm-1", state: "allowed_once" });
+      expect(instance.allowsKind("long_render")).toBe(true);
+      expect(instance.allowsDownload()).toBe(false);
+      expect(host.grants).toEqual([]);
+    });
+  });
+
+  it("never turns an answer to a request that names no site into a grant for every site", async () => {
+    const { host, instance, ask } = broker();
+    void ask("read_linked_pages", null);
+    await Promise.resolve();
+    await expect(instance.answer("perm-1", "once")).rejects.toMatchObject({
+      code: "invalid_request",
+    });
+    expect(host.grants).toEqual([]);
+    // The request is still pending: the user can turn the setting on or deny it.
+    await expect(instance.answer("perm-1", "deny")).resolves.toMatchObject({ state: "denied" });
   });
 });

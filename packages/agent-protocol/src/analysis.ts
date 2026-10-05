@@ -78,6 +78,12 @@ export interface SourceFingerprint {
   mtimeMs: number;
   /** `sha256:<hex>` over the size and sampled chunks (head, middle, tail) of the file. */
   hash: string;
+  /**
+   * `sha256:<hex>` over many more evenly spaced chunks of a file larger than the head/middle/tail samples cover, so
+   * an edit anywhere in a big file changes the fingerprint. Absent for small files (hashed whole) and for
+   * fingerprints taken before it existed; it is added the next time the file's stat changes.
+   */
+  denseHash?: string;
   /** Media duration in seconds, when probed. */
   duration: number | null;
 }
@@ -462,6 +468,12 @@ export interface AnalysisJob {
   results: StageResult[];
   error: AnalysisError | null;
   startedAt: number;
+  /**
+   * When the job last showed a sign of life (ms since the epoch): it started, changed stage, moved its progress,
+   * finished a stage, or a recognizer child it waits for is still running. A client that waits for the job treats a
+   * job whose stage, progress and this value stand still as stuck.
+   */
+  updatedAt: number;
   finishedAt: number | null;
   /**
    * Only on the answer to a start request: true when a job of the same source was already running and the request

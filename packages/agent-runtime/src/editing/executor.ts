@@ -1,24 +1,40 @@
 import {
+  EDIT_LIMITS,
   PRESET_KINDS,
-  isRecord,
-  parseApplyEditsRequest,
+  type AgentId,
   type EditorContext,
 } from "@hyperframes/agent-protocol";
-import type { HostToolResult } from "../backend.js";
+import type { HostToolResult, ToolProgress } from "../backend.js";
 import { errorMessage } from "../errors.js";
+import type { WriteLeases } from "../writeLeases.js";
+import { SeenVersions, runEditTimeline } from "./apply.js";
 import {
-  formatEditResult,
+  argsRecord,
+  invalid,
+  optionalAssetKind,
+  optionalInteger,
+  optionalSeconds,
+  optionalString,
+} from "./args.js";
+import {
   formatError,
   formatInventory,
   formatPresets,
   formatRender,
   formatTimeline,
+  type InventoryFilter,
+  type TimelineFilter,
 } from "./format.js";
 import { EditingError, RENDER_QUALITIES, type EditingHost, type RenderQuality } from "./host.js";
 import { EDITING_TOOL_NAMES, isEditingToolName, type EditingToolName } from "./tools.js";
 import { formatExportCheck } from "../research/format.js";
 import type { ResearchHost } from "../research/host.js";
-import { LONG_RENDER_SECONDS, asksForRender, longRenderRefusal } from "./renderGuard.js";
+import {
+  LONG_RENDER_SECONDS,
+  asksForRender,
+  longRenderDeclinedRefusal,
+  longRenderRefusal,
+} from "./renderGuard.js";
 
 export interface TurnEditingOptions {
   host: EditingHost;
@@ -42,6 +58,20 @@ export interface TurnEditingOptions {
    * the Director's own render still shows the current project. Null when it cannot be read; absent without QA.
    */
   fingerprint?: ((signal: AbortSignal) => Promise<string | null>) | undefined;
+  /**
+   * Asks the user to allow a render longer than {@link LONG_RENDER_SECONDS} they did not ask for (a `long_render`
+   * card in the chat); resolves true when allowed. Absent: such a render is refused with an offer instead.
+   */
+  askLongRender?:
+    | ((
+        request: { composition: string; seconds: number; caller: AgentId },
+        signal: AbortSignal,
+      ) => Promise<boolean>)
+    | undefined;
+  /** The turn's per-file write leases: an `edit_timeline` batch claims its composition for the calling run. */
+  leases?: WriteLeases | undefined;
+  /** The delegated run an agent is currently executing (null for the Director), for the leases. */
+  runIdOf?: ((caller: AgentId) => string | null) | undefined;
 }
 
 /** The last render the turn made with `render_video`, and the state of the project it was made from. */
@@ -56,28 +86,6 @@ export interface LastRender {
 
 const refuse = (text: string): HostToolResult => ({ text, isError: true });
 
-const invalid = (message: string) => new EditingError("invalid_request", message);
-
-/** Reads an optional string argument; anything else is a refusal the model can correct. */
-function optionalString(
-  args: Record<string, unknown>,
-  key: string,
-  max: number,
-): string | undefined {
-  const value = args[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || value.length === 0 || value.length > max) {
-    throw invalid(`${key} must be a non-empty string of at most ${max} characters`);
-  }
-  return value;
-}
-
-function argsRecord(args: unknown): Record<string, unknown> {
-  if (args === undefined || args === null) return {};
-  if (!isRecord(args)) throw invalid("arguments must be a JSON object");
-  return args;
-}
-
 /**
  * The editing tools of one running turn, bound to that turn's project, editor context and abort signal. It tracks its
  * in-flight calls so {@link shutdown} can stop the turn's editing before the checkpoint transaction closes: after it
@@ -90,6 +98,8 @@ export class TurnEditing {
 
   private readonly requests: string[];
   private lastRenderOutput: LastRender | null = null;
+
+  private readonly seen = new SeenVersions();
 
   constructor(private readonly options: TurnEditingOptions) {
     this.requests = [...(options.userRequests ?? [])];
@@ -114,16 +124,19 @@ export class TurnEditing {
     name: string,
     args: unknown,
     callSignal: AbortSignal,
-    progress?: (percent: number) => void,
+    progress?: ToolProgress,
+    caller?: AgentId,
   ): Promise<HostToolResult> {
     if (!this.accepting)
       return Promise.resolve(refuse("The turn is finishing; editing is closed."));
     if (!isEditingToolName(name)) return Promise.resolve(refuse(`Unknown editing tool ${name}.`));
     const signal = AbortSignal.any([callSignal, this.options.turnSignal, this.stop.signal]);
-    const call = this.run(name, args, signal, progress).catch((error: unknown): HostToolResult => {
-      if (error instanceof EditingError) return refuse(formatError(error));
-      return refuse(`internal: ${errorMessage(error, "The editing call failed")}`);
-    });
+    const call = this.run(name, args, signal, progress, caller).catch(
+      (error: unknown): HostToolResult => {
+        if (error instanceof EditingError) return refuse(formatError(error));
+        return refuse(`internal: ${errorMessage(error, "The editing call failed")}`);
+      },
+    );
     this.inflight.add(call);
     void call.finally(() => this.inflight.delete(call));
     return call;
@@ -159,35 +172,53 @@ export class TurnEditing {
     name: EditingToolName,
     args: unknown,
     signal: AbortSignal,
-    progress?: (percent: number) => void,
+    progress?: ToolProgress,
+    caller: AgentId = "director",
   ): Promise<HostToolResult> {
     const { host, editorContext } = this.options;
     switch (name) {
-      case EDITING_TOOL_NAMES.project:
-        return { text: formatInventory(await host.inventory(signal)) };
+      case EDITING_TOOL_NAMES.project: {
+        const record = argsRecord(args);
+        const filter: InventoryFilter = {
+          query: optionalString(record, "query", 200),
+          kind: optionalAssetKind(record, "kind"),
+          offset: optionalInteger(record, "offset", 0, 100_000),
+          limit: optionalInteger(record, "limit", 1, 500),
+        };
+        return { text: formatInventory(await host.inventory(signal), filter) };
+      }
       case EDITING_TOOL_NAMES.timeline: {
-        const composition = optionalString(argsRecord(args), "composition", 1_024);
-        return { text: formatTimeline(await host.timeline(composition, signal), editorContext) };
+        const record = argsRecord(args);
+        const composition = optionalString(record, "composition", 1_024);
+        const filter: TimelineFilter = {
+          track: optionalInteger(record, "track", 0, EDIT_LIMITS.maxTrack),
+          from: optionalSeconds(record, "from"),
+          to: optionalSeconds(record, "to"),
+          offset: optionalInteger(record, "offset", 0, 100_000),
+          limit: optionalInteger(record, "limit", 1, 500),
+        };
+        const snapshot = await host.timeline(composition, signal);
+        this.seen.note(composition, snapshot);
+        return { text: formatTimeline(snapshot, editorContext, filter) };
       }
-      case EDITING_TOOL_NAMES.edit: {
-        const request = parseApplyEditsRequest(args);
-        if (!request.ok)
-          throw new EditingError(request.error.code, request.error.message, request.error.opIndex);
-        // The turn is the runtime's to name: whatever id the model sent is replaced.
-        const { turnId } = this.options;
-        const batch = turnId === undefined ? request.value : { ...request.value, turnId };
-        const applied = await host.apply(batch, signal);
-        // Only a batch the service accepted: the format is decided now.
-        if (batch.operations.some((operation) => operation.op === "set_canvas"))
-          this.options.onCanvasSet?.();
-        return { text: formatEditResult(applied) };
-      }
+      case EDITING_TOOL_NAMES.edit:
+        return runEditTimeline(args, signal, caller, {
+          host,
+          seen: this.seen,
+          turnId: this.options.turnId,
+          leases: this.options.leases,
+          runIdOf: this.options.runIdOf,
+          onCanvasSet: this.options.onCanvasSet,
+        });
       case EDITING_TOOL_NAMES.presets: {
         const record = argsRecord(args);
         const kind = PRESET_KINDS.find((candidate) => candidate === record.kind);
         if (!kind) throw invalid(`kind must be one of ${PRESET_KINDS.join(", ")}`);
         const query = optionalString(record, "query", 200);
-        return { text: formatPresets(kind, await host.presets(kind, query, signal)) };
+        const offset = optionalInteger(record, "offset", 0, 100_000) ?? 0;
+        const limit = optionalInteger(record, "limit", 1, 100) ?? 40;
+        const page = await host.presets(kind, query, signal, { offset, limit });
+        return { text: formatPresets(kind, page, offset) };
       }
       case EDITING_TOOL_NAMES.render: {
         const record = argsRecord(args);
@@ -197,13 +228,19 @@ export class TurnEditing {
             ? "standard"
             : RENDER_QUALITIES.find((candidate) => candidate === record.quality);
         if (!quality) throw invalid(`quality must be one of ${RENDER_QUALITIES.join(", ")}`);
-        // A long render is offered, never started unasked (it would tie the machine up for many minutes).
+        // A long render is never started unasked (it would tie the machine up for many minutes): the user is asked
+        // on a card when the chat can show one, else the call is refused with an offer.
         let target: string | undefined;
         if (!this.userAskedForRender()) {
           const snapshot = await host.timeline(composition, signal);
           target = snapshot.composition.path;
-          if (snapshot.composition.duration > LONG_RENDER_SECONDS)
-            return refuse(longRenderRefusal(snapshot.composition.duration));
+          const seconds = snapshot.composition.duration;
+          if (seconds > LONG_RENDER_SECONDS) {
+            const ask = this.options.askLongRender;
+            if (!ask) return refuse(longRenderRefusal(seconds));
+            const allowed = await ask({ composition: target, seconds, caller }, signal);
+            if (!allowed) return refuse(longRenderDeclinedRefusal(seconds));
+          }
         }
         const fingerprint = await this.options.fingerprint?.(signal).catch(() => null);
         const output = await host.render(

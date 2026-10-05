@@ -1,9 +1,11 @@
 import { useMemo, useRef } from "react";
 import { ArrowDown, ClosedCaptioning, FilmStrip, Scissors, type Icon } from "@phosphor-icons/react";
 import type { ChatState, TurnSummary } from "@hyperframes/agent-protocol";
-import { useAgentStore } from "../../agent/agentContext";
+import { useAgentStore, useAgentStoreApi } from "../../agent/agentContext";
 import { useComposerRequestStore } from "../../agent/composerRequest";
+import { NEW_CHAT_DRAFT } from "../../agent/agentDraftChat";
 import { hasNoUsableModel, mainThreadMessages, type ThreadId } from "../../agent/agentSelectors";
+import { carriedOutProposalIds } from "../../agent/retryTurn";
 import { useChapterCount } from "../../story/useStoryActions";
 import { useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
@@ -15,7 +17,7 @@ import { chatMeasureWide, chatPadX, selItem } from "./chatStyles";
 import { AssistantBlock, UserMessageView } from "./Messages";
 import { PlanView } from "./PlanView";
 import { RenderQaCard } from "./RenderQaCard";
-import { TurnFooter } from "./TurnFooter";
+import { TurnFooter, type RetryTurn } from "./TurnFooter";
 import { useAutoScroll } from "./useAutoScroll";
 
 const SUGGESTIONS: { text: TranslationKey; icon: Icon }[] = [
@@ -79,6 +81,8 @@ function MainThread({ chat }: { chat: ChatState }) {
   const revert = useAgentStore((state) => state.revert);
   const unrevert = useAgentStore((state) => state.unrevert);
   const dismissRevert = useAgentStore((state) => state.dismissRevert);
+  const retryTurn = useAgentStore((state) => state.retryTurn);
+  const store = useAgentStoreApi();
   const blockedReason = activeTurn ? t("chat.revert.waitForAgent") : null;
 
   const rows = useMemo(() => {
@@ -94,19 +98,35 @@ function MainThread({ chat }: { chat: ChatState }) {
     }));
   }, [chat]);
 
-  // The last turn's plan proposal is the user's to run or change; once another turn runs it is stale.
+  // A plan proposal is the user's to run or change. The last turn's is current; once another turn ran after it,
+  // it is out of date — still offered ("Carry out anyway") unless a later turn already carried it out.
   const lastTurn = chat.turns.at(-1);
   const chapterCount = useChapterCount();
+  const carriedOut = useMemo(() => carriedOutProposalIds(chat), [chat]);
   const approvalFor = (turn: TurnSummary | undefined) =>
-    turn &&
-    turn.plan?.proposal === true &&
-    turn.id === lastTurn?.id &&
-    turn.status === "completed" &&
-    activeTurn === null
+    turn && turn.plan?.proposal === true && turn.status === "completed" && !carriedOut.has(turn.id)
       ? {
           busy: pending !== null,
+          stale: turn.id !== lastTurn?.id,
+          reason: activeTurn ? t("chat.plan.waitForAgent") : null,
           onExecute: () => void executePlan(turn.id),
-          onRevise: () => useComposerRequestStore.getState().focus(),
+          onRevise: () => {
+            // Nothing to type on its own: start the message the way a change request reads, never over a draft.
+            // The draft is read now, not subscribed to: typing must not re-render the whole conversation.
+            const { chatId, drafts, setDraft } = store.getState();
+            if ((drafts[chatId ?? NEW_CHAT_DRAFT] ?? "").trim() === "")
+              setDraft(t("chat.plan.revisePrefix"));
+            useComposerRequestStore.getState().focus();
+          },
+        }
+      : undefined;
+  // Only the newest turn can be retried: older failures were moved on from.
+  const retryFor = (turn: TurnSummary): RetryTurn | undefined =>
+    turn.status === "failed" && turn.id === lastTurn?.id
+      ? {
+          busy: pending !== null,
+          blockedReason: activeTurn ? t("chat.turn.retryBlocked") : null,
+          onRetry: () => void retryTurn(turn.id),
         }
       : undefined;
 
@@ -147,6 +167,7 @@ function MainThread({ chat }: { chat: ChatState }) {
                 onRevert={(mode) => void revert(turn.id, mode)}
                 onUnrevert={(mode) => void unrevert(turn.id, mode)}
                 onDismissRevert={() => dismissRevert(turn.id)}
+                retry={retryFor(turn)}
               />
             )}
           </div>

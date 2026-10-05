@@ -7,12 +7,15 @@ import type {
   AssistantMessageStatus,
   ChatMessage,
   ChatSummary,
+  ContextFill,
   ExecutionPlan,
   PermissionRequest,
+  QuestionRequest,
   StoryOffer,
   TaskMessage,
   TurnCheckpoint,
   TurnSummary,
+  UsageTotals,
 } from "./types.js";
 import type { TurnQaState } from "./qa.js";
 
@@ -55,6 +58,12 @@ export type ChatEventPayload =
    */
   | { type: "permission.updated"; messageId: string; permission: PermissionRequest }
   /**
+   * A question the agent asked the user mid-turn was created or answered: its part appears in the main
+   * conversation's assistant message (whichever agent asked) and is updated in place as the user answers or the
+   * turn expires it.
+   */
+  | { type: "question.updated"; messageId: string; question: QuestionRequest }
+  /**
    * A Story Mode offer of this turn appeared or changed state (accepted, declined, expired): its card lives in the
    * main conversation's assistant message and is updated in place, wherever the answer came from.
    */
@@ -65,6 +74,17 @@ export type ChatEventPayload =
   | { type: "plan.updated"; turnId: string; plan: ExecutionPlan }
   /** The turn's autonomous render QA progressed (a pass started a phase, finished, or the session ended). */
   | { type: "qa.updated"; turnId: string; qa: TurnQaState }
+  /**
+   * Cumulative usage of the Director (`runId` null) or of one run of the turn so far. Replaces the previous report
+   * of the same agent; the turn's and the chat's totals are folded from these.
+   */
+  | {
+      type: "usage.updated";
+      turnId: string;
+      runId: string | null;
+      usage: UsageTotals;
+      context?: ContextFill;
+    }
   /**
    * A delegated run began: its task message and empty reply open the agent's thread, and a delegation part is added
    * to `parentMessageId` (the Director's reply, or the specialist reply that called Jev).
@@ -96,7 +116,9 @@ export type ChatEvent = ChatEventPayload & {
 /** Project-level notifications: not sequenced, not replayed; clients refetch the chat list on (re)connect. */
 export type ProjectEvent =
   | { type: "chat.upserted"; chat: ChatSummary }
-  | { type: "project.activeTurn"; activeTurn: ActiveTurnInfo | null };
+  | { type: "project.activeTurn"; activeTurn: ActiveTurnInfo | null }
+  /** The chat was deleted; clients drop it from their list. */
+  | { type: "chat.deleted"; chatId: string };
 
 export const TURN_TERMINAL_EVENTS = ["turn.completed", "turn.failed", "turn.aborted"] as const;
 

@@ -11,7 +11,10 @@ import {
   type QaIssueStatus,
   type QaOwner,
   type QaPassPhase,
+  type QaPassState,
   type QaSeverity,
+  type QaScope,
+  type QaScopeNote,
   type QaVisionStatus,
   type SpecialistThinkingPolicy,
   type TurnQaStatus,
@@ -158,6 +161,53 @@ export const QA_VISION_STATUS_LABELS: Record<QaVisionStatus, TranslationKey> = {
   failed: "chat.qa.vision.failed",
   skipped: "chat.qa.vision.skipped",
 };
+
+/**
+ * What a pass checked when it was less than everything: the picture without a visual review, or the timeline alone.
+ * A full pass has no label.
+ */
+const QA_SCOPE_LABELS: Record<Exclude<QaScope, "full">, TranslationKey> = {
+  deterministic: "chat.qa.scope.deterministic",
+  timeline: "chat.qa.scope.timeline",
+};
+
+export function qaScopeLabel(scope: QaScope | undefined): TranslationKey | null {
+  return scope === undefined || scope === "full" ? null : QA_SCOPE_LABELS[scope];
+}
+
+/** Why a pass checked less, in Studio's wording when the catalog has `qa.scope.<code>`, else the runtime's text. */
+export function qaScopeNoteText(note: QaScopeNote): string {
+  const key = `qa.scope.${note.code}`;
+  return isTranslationKey(key) ? t(key, note.params) : note.message;
+}
+
+/** "Timeline checks only — why", or the label alone when no reason is known; null for a full check. */
+export function qaScopeText(
+  scope: QaScope | undefined,
+  note: QaScopeNote | undefined,
+): string | null {
+  const key = qaScopeLabel(scope);
+  if (key === null) return null;
+  return note ? t("chat.qa.scopeLine", { label: t(key), detail: qaScopeNoteText(note) }) : t(key);
+}
+
+/**
+ * Whether a pass's render can still be opened. QA deletes its intermediate previews when the session ends and
+ * records that in `renderKept`; until then every render of the session exists. A turn stored before the field existed
+ * kept only its last rendered pass.
+ */
+export function isPassRenderLinked(
+  pass: QaPassState,
+  passes: readonly QaPassState[],
+  sessionRunning: boolean,
+): boolean {
+  if (pass.renderPath === null) return false;
+  if (pass.renderKept !== undefined) return pass.renderKept;
+  if (sessionRunning) return true;
+  let last: QaPassState | undefined;
+  for (const entry of passes) if (entry.renderPath !== null) last = entry;
+  return last === pass;
+}
 
 export const QA_ISSUE_KIND_LABELS: Record<QaIssueKind, TranslationKey> = {
   black_frames: "chat.qa.kind.blackFrames",

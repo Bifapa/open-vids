@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { activeMention, applyMention, matchMentionAssets } from "./composerMentions";
+import {
+  activeMention,
+  applyMention,
+  containsMention,
+  matchMentionAssets,
+  withoutMention,
+} from "./composerMentions";
 
 describe("activeMention", () => {
   it("finds a token at the start of the text, with and without a query", () => {
@@ -90,5 +96,46 @@ describe("applyMention", () => {
       text: "see @my intro.mp4  and cut",
       caret: 18,
     });
+  });
+});
+
+describe("containsMention", () => {
+  const token = "@clip.mp4";
+
+  it("finds a mention that stands alone, closed by space, punctuation or the end", () => {
+    for (const text of [
+      "@clip.mp4",
+      "Use @clip.mp4 now",
+      "(@clip.mp4)",
+      "Use @clip.mp4, then cut",
+      "Is it @clip.mp4?",
+    ])
+      expect(containsMention(text, token), text).toBe(true);
+  });
+
+  it("keeps a mention that ends a sentence or sits in quotes", () => {
+    for (const text of [
+      "Use @clip.mp4.",
+      "Use @clip.mp4. Then cut.",
+      "Use @clip.mp4...",
+      "«@clip.mp4»",
+      '"@clip.mp4"',
+      "'@clip.mp4'",
+      "“@clip.mp4”",
+      "[@clip.mp4]",
+    ])
+      expect(containsMention(text, token), text).toBe(true);
+  });
+
+  it("does not take other words for the mention", () => {
+    for (const text of ["@clip.mp4x", "@clip.mp4.bak", "mail@clip.mp4", "Use @clip.mp4.x cut"])
+      expect(containsMention(text, token), text).toBe(false);
+  });
+});
+
+describe("withoutMention", () => {
+  it("removes a mention that ends a sentence and keeps the full stop", () => {
+    expect(withoutMention("Use @clip.mp4.", "@clip.mp4")).toBe("Use .");
+    expect(withoutMention('Use "@clip.mp4" now', "@clip.mp4")).toBe('Use "" now');
   });
 });

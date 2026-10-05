@@ -23,8 +23,11 @@ writeFileSync(countPath, String(count));
 writeFileSync(pidPath, String(process.pid));
 
 let finishSse = null;
+let wedged = false;
 const server = createServer(async (request, response) => {
   const path = request.url ?? "";
+  // A wedged runtime accepts connections and never answers anything again.
+  if (wedged) return;
   if (path === "/v1/health") {
     if (request.headers.authorization !== "Bearer " + token) {
       response.writeHead(401).end();
@@ -82,6 +85,11 @@ const server = createServer(async (request, response) => {
   if (path === "/v1/crash") {
     process.exit(17);
   }
+  if (path === "/v1/hang") return;
+  if (path === "/v1/wedge") {
+    wedged = true;
+    return;
+  }
   response.writeHead(404).end();
 });
 
@@ -90,7 +98,7 @@ server.listen(Number(process.env.OPENVIDS_AGENT_PORT), "127.0.0.1", () => {
   if (!address || typeof address === "string") process.exit(2);
   process.stdout.write(JSON.stringify({ "openvids-agent": "listening", port: address.port }) + newline);
 });
-process.once("SIGTERM", () => server.close(() => process.exit(0)));
+process.once("SIGTERM", () => process.exit(0));
 `;
 
 const project: ResolvedProject = { id: "project-one", dir: "/projects/one" };
@@ -125,6 +133,8 @@ function createGateway(dir: string): AgentGateway {
     }),
     // The 502-then-restart test waits out one backoff; a short one keeps real time out of it.
     backoffMinMs: 50,
+    requestTimeoutMs: 300,
+    healthProbeTimeoutMs: 300,
   });
   gateways.push(gateway);
   return gateway;
@@ -277,7 +287,7 @@ describe("createAgentGateway", () => {
     expect(existsSync(join(dir, "pid"))).toBe(false);
   });
 
-  it("returns 502 after a runtime crash and restarts with backoff on the next request", async () => {
+  it("returns 502 after a runtime crash, answers `runtime_restarting` at once during the back-off and then serves again", async () => {
     const dir = createTempDir();
     const gateway = createGateway(dir);
     const crash = await gateway.handle(new Request("http://studio.test/agent/crash"), {
@@ -290,23 +300,87 @@ describe("createAgentGateway", () => {
       interval: 20,
     });
 
-    const restarted = await gateway.handle(new Request("http://studio.test/agent/echo"), {
-      ...context,
-      subPath: "echo",
+    const echo = () =>
+      gateway.handle(new Request("http://studio.test/agent/echo"), { ...context, subPath: "echo" });
+    const during = await echo();
+    expect(during.status).toBe(503);
+    expect(during.headers.get("retry-after")).toBe("1");
+    expect(await during.json()).toEqual({
+      error: {
+        code: "runtime_restarting",
+        message: "The agent runtime is restarting. Try again in 1 s.",
+        details: { retryAfterSeconds: 1 },
+      },
     });
-    expect(restarted.status).toBe(200);
+
+    // The refused request still started the replacement: once the back-off is over the next one is served.
+    await vi.waitFor(async () => expect((await echo()).status).toBe(200), {
+      timeout: 4_000,
+      interval: 50,
+    });
     expect(gateway.status()).toBe("running");
     expect(readFileSync(join(dir, "starts"), "utf8")).toBe("2");
   });
 
+  it("times out a request the runtime never answers but keeps a runtime that still answers its health check", async () => {
+    const dir = createTempDir();
+    const gateway = createGateway(dir);
+    const hung = await gateway.handle(new Request("http://studio.test/agent/hang"), {
+      ...context,
+      subPath: "hang",
+    });
+    expect(hung.status).toBe(504);
+    expect(await hung.json()).toMatchObject({ error: { code: "runtime_unavailable" } });
+    expect(gateway.status()).toBe("running");
+    const next = await gateway.handle(new Request("http://studio.test/agent/echo"), context);
+    expect(next.status).toBe(200);
+    expect(readFileSync(join(dir, "starts"), "utf8")).toBe("1");
+  });
+
+  it("stops a wedged runtime that fails its health probe and starts a fresh one for the next request", async () => {
+    const dir = createTempDir();
+    const gateway = createGateway(dir);
+    const first = await gateway.handle(new Request("http://studio.test/agent/echo"), context);
+    expect(first.status).toBe(200);
+    const wedgedPid = Number(readFileSync(join(dir, "pid"), "utf8"));
+
+    const wedged = await gateway.handle(new Request("http://studio.test/agent/wedge"), {
+      ...context,
+      subPath: "wedge",
+    });
+    expect(wedged.status).toBe(503);
+    expect(await wedged.json()).toMatchObject({ error: { code: "runtime_restarting" } });
+    await vi.waitFor(() => expect(() => process.kill(wedgedPid, 0)).toThrow(), {
+      timeout: 4_000,
+      interval: 50,
+    });
+
+    await vi.waitFor(
+      async () =>
+        expect(
+          (await gateway.handle(new Request("http://studio.test/agent/echo"), context)).status,
+        ).toBe(200),
+      { timeout: 6_000, interval: 100 },
+    );
+    expect(readFileSync(join(dir, "starts"), "utf8")).toBe("2");
+  });
+
   it("returns 503 when the runtime is not installed and kills the child on dispose", async () => {
-    const missing = createAgentGateway({ launch: () => null });
+    const launch = vi.fn(() => null);
+    const missing = createAgentGateway({ backoffMinMs: 60_000, launch });
     gateways.push(missing);
     const unavailable = await missing.handle(new Request("http://studio.test/agent/echo"), context);
     expect(unavailable.status).toBe(503);
     expect(await unavailable.json()).toMatchObject({
       error: { code: "runtime_unavailable", message: expect.stringContaining("not installed") },
     });
+    // Inside the back-off the same diagnosis is given at once; it is not reported as a restart, and nothing is launched.
+    const again = await missing.handle(new Request("http://studio.test/agent/echo"), context);
+    expect(again.status).toBe(503);
+    expect(await again.json()).toMatchObject({
+      error: { code: "runtime_unavailable", message: expect.stringContaining("not installed") },
+    });
+    expect(launch).toHaveBeenCalledTimes(1);
 
     const dir = createTempDir();
     const gateway = createGateway(dir);

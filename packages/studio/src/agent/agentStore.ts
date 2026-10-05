@@ -16,13 +16,21 @@ import { AgentApiError, isActiveTurn, type AgentClient } from "./agentClient";
 import { i18n, t } from "../i18n";
 import { createDraftSender } from "./agentDraftSend";
 import { createAgentAttachmentSlice, type AgentAttachmentSlice } from "./agentAttachmentSlice";
-import { attachmentReferences, isUploading } from "./composerAttachments";
+import {
+  attachmentReferences,
+  attachmentsMentionedIn,
+  isUploading,
+  skippedFilesNotice,
+  type ComposerAttachment,
+} from "./composerAttachments";
 import { isChatEvent, isProjectEvent, parseJson, upsertChat } from "./agentStoreParsing";
 import { describeAgentError } from "./agentErrors";
 import { runningTurn } from "./agentSelectors";
 import { NEW_CHAT_DRAFT, mergeDraftChoices } from "./agentDraftChat";
 import { createAgentComposerSlice, type AgentComposerSlice } from "./agentComposerSlice";
 import { createAgentQaSlice, type AgentQaSlice } from "./agentQaSlice";
+import { createAgentChatListSlice, type AgentChatListSlice } from "./agentChatListSlice";
+import { createAgentRunSlice, type AgentRunSlice } from "./agentRunSlice";
 import { createAgentPermissionSlice, type AgentPermissionSlice } from "./agentPermissionSlice";
 import { createAgentStoryOfferSlice, type AgentStoryOfferSlice } from "./agentStoryOfferSlice";
 import { createAgentRevertSlice, type AgentRevertSlice } from "./agentRevertSlice";
@@ -58,6 +66,8 @@ export interface AgentState
     AgentComposerSlice,
     AgentPermissionSlice,
     AgentStoryOfferSlice,
+    AgentChatListSlice,
+    AgentRunSlice,
     AgentAttachmentSlice {
   availability: AgentAvailability;
   unavailableMessage: string | null;
@@ -217,6 +227,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
           const event = parseJson(data);
           if (!isProjectEvent(event)) return;
           if (event.type === "chat.upserted") applySummary(event.chat);
+          else if (event.type === "chat.deleted") get().forgetChat(event.chatId);
           else set({ activeTurn: event.activeTurn });
         },
         // Project events are not replayed: after a reconnect the list is the truth.
@@ -228,6 +239,12 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
 
     const fail = (error: unknown, message?: string) => {
       set({ notice: { message: message ?? describeAgentError(error) } });
+    };
+
+    /** Files that failed to import are not sent: say so, so a missing reference is never a surprise. */
+    const noteSkippedFiles = (attachments: readonly ComposerAttachment[]) => {
+      const notice = skippedFilesNotice(attachments);
+      if (notice && !disposed) set({ notice });
     };
 
     /** Shows the failure, first repairing whatever stale view of the world caused it. */
@@ -300,6 +317,8 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       ...createAgentStoryOfferSlice({ client, set, get, isDisposed, projectHasMedia }),
       ...createAgentAttachmentSlice({ set, get }),
       ...createAgentRevertSlice({ client, set, get, onTurnReverted: deps.onTurnReverted }),
+      ...createAgentChatListSlice({ client, set, get, isDisposed, updateOpenChat }),
+      ...createAgentRunSlice({ client, set, get, isDisposed, captureContext, onActionError }),
       ...createAgentComposerSlice({
         client,
         set,
@@ -448,7 +467,14 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
 
       setDraft(text) {
         const key = get().chatId ?? NEW_CHAT_DRAFT;
-        set((state) => ({ drafts: { ...state.drafts, [key]: text } }));
+        set((state) => {
+          const current = state.attachments[key] ?? [];
+          const kept = attachmentsMentionedIn(current, text);
+          return {
+            drafts: { ...state.drafts, [key]: text },
+            ...(kept !== current && { attachments: { ...state.attachments, [key]: [...kept] } }),
+          };
+        });
       },
 
       async send(options) {
@@ -462,7 +488,12 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
         // The message waits for its uploads: a reference to a file that is not in the project yet is no reference.
         if (!text || pending || isUploading(sent.attachments)) return false;
         const references = attachmentReferences(sent.attachments);
-        if (!chatId) return view === "chat" ? sendFromDraft(sent, references, options) : false;
+        if (!chatId) {
+          if (view !== "chat") return false;
+          const created = await sendFromDraft(sent, references, options);
+          if (created) noteSkippedFiles(sent.attachments);
+          return created;
+        }
         if (!chat) return false;
         const running = runningTurn(chat);
         set({ pending: running ? "steer" : "send", notice: null });
@@ -494,6 +525,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
           });
           // Server-authoritative: the turn arrives on the stream. If the stream is down, ask.
           if (get().streamStatus !== "open") await resync(chatId);
+          noteSkippedFiles(sent.attachments);
           return true;
         } catch (error) {
           const finishedFirst = error instanceof AgentApiError && error.code === "turn_not_active";

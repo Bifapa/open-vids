@@ -7,6 +7,7 @@
 
 import { Hono, type Context } from "hono";
 import { diarizeMediaViaCli, transcribeMediaViaCli } from "./speechAdapter.js";
+import { captureFramesViaCli } from "./framesAdapter.js";
 import { checkLayoutViaCli } from "./layoutAdapter.js";
 import { inspectWebsiteViaCli, recordWebsiteViaCli } from "./siteAdapter.js";
 import { streamSSE } from "hono/streaming";
@@ -807,6 +808,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     diarizeMedia: (opts) => diarizeMediaViaCli(opts),
     // The layout audit is `cli check` in a child: headless Chrome must not run inside this server either.
     checkLayout: (opts) => checkLayoutViaCli(opts),
+    // Composition frames are `cli frames` in a child: the same seek + screenshot path as `snapshot`, own headless Chrome.
+    captureFrames: (opts) => captureFramesViaCli(opts),
     // The website style reader is `cli inspect-site` in a child: the page runs in its own headless Chrome.
     inspectWebsite: (opts) => inspectWebsiteViaCli(opts),
     // The page recorder is `cli record-site` in a child: same browser rules, real-time MP4.

@@ -145,3 +145,6 @@ chrome/
 # Python bytecode (test runs generate these alongside skill scripts)
 __pycache__/
 *.pyc
+
+# bun build --compile scratch binaries
+*.bun-build

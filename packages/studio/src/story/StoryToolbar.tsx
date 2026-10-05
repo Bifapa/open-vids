@@ -34,7 +34,7 @@ import { useStoryStore } from "./storyContext";
 import { formatAge, formatDuration } from "./storyFormat";
 import type { StorySaveState } from "./storyStore";
 import { rebuildTargets, syncBlocker } from "./storySync";
-import { actionBlocker, agentBlocker, researchBlocker, type StoryAgent } from "./useStoryAgent";
+import { actionBlocker, agentBlocker, type StoryAgent } from "./useStoryAgent";
 import { unlockedMissing } from "./storyResearch";
 import type { StoryLibrary } from "./useStoryLibrary";
 
@@ -110,7 +110,7 @@ export function StoryToolbar({
   const rebuildBlocker = syncBlocker(sync) ?? agentBlocker(agent);
   const missingCount = unlockedMissing(graph).length;
   const findBlocker =
-    researchBlocker(agent) ?? (missingCount === 0 ? t("story.toolbar.needMissing") : null);
+    agentBlocker(agent) ?? (missingCount === 0 ? t("story.toolbar.needMissing") : null);
   const now = Date.now();
   const save = SAVE_STATES[saveState];
   const reviewed = graph?.review

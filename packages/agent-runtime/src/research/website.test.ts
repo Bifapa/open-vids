@@ -64,7 +64,10 @@ describe("read_website scope: only a site the user linked", () => {
   });
 
   it("refuses everything when the user linked nothing, and says so", async () => {
-    const { host, call } = executor({ userTexts: () => ["make me an intro"] });
+    const { host, call } = executor({
+      userTexts: () => ["make me an intro"],
+      turnUserTexts: () => ["make me an intro"],
+    });
     const refused = await call({ url: "https://linear.app" });
     expect(refused.isError).toBe(true);
     expect(refused.text).toContain("has not linked any website");
@@ -413,7 +416,7 @@ describe("read_website results", () => {
         save: true,
         turnId: "turn-1",
         agent: "director",
-        model: null,
+        model: "anthropic/claude-haiku",
       },
     ]);
   });
@@ -474,7 +477,7 @@ describe("read_website in a running turn", () => {
       const gate = Promise.withResolvers<BackendPromptOutcome>();
       const results: Record<string, { isError?: boolean; text: string }> = {};
       fixture.backend.promptScript = async (input, session) => {
-        if (session.input.agent !== "director") return "completed";
+        if (session.input.agent !== "director" || results.fromPrompt) return "completed";
         // A link the assistant writes itself (a reply, a search result) never widens the scope.
         input.onEvent({
           type: "text.delta",
@@ -676,7 +679,7 @@ describe("full access in a running turn", () => {
       let motionTask = "";
       fixture.backend.promptScript = async (input, session) => {
         if (session.input.agent === "director") {
-          directorPrompt = input.text;
+          directorPrompt ||= input.text;
           await session.callTool("delegate", {
             agent: "motion",
             title: "Intro",

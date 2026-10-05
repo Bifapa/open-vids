@@ -17,6 +17,9 @@ export type {
 } from "./checkpointHost.js";
 export { HttpCheckpointHost, createHttpCheckpointHost } from "./checkpointHost.http.js";
 export { HttpEditingHost } from "./editing/host.http.js";
+export { HttpFramesHost } from "./editing/frames.http.js";
+export { FramesError } from "./editing/frames.js";
+export type { FramesHost } from "./editing/frames.js";
 export { EditingError } from "./editing/host.js";
 export type {
   EditingHost,

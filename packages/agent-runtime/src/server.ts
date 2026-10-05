@@ -1,27 +1,19 @@
-import type { Context } from "hono";
-import { createHash, timingSafeEqual } from "node:crypto";
-import { mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import { Hono } from "hono";
-import type {
-  AgentErrorCode,
-  AgentModelCatalog,
-  ChatEvent,
-  ProjectEvent,
-} from "@hyperframes/agent-protocol";
+import type { AgentModelCatalog } from "@hyperframes/agent-protocol";
 import {
   AGENT_HEADERS,
   AGENT_PROTOCOL_VERSION,
   AGENT_RUNTIME_PREFIX,
-  decodeScopeHeader,
-  SSE_EVENTS,
-  encodeSseMessage,
-  isOAuthLoginId,
   isProviderId,
   parseAnswerPermission,
+  parseAnswerQuestion,
   parseAnswerStoryOffer,
+  parseCancelRun,
   parseCreateChat,
+  parseDeleteChat,
   parseProjectTitleRequest,
   parseRevertTurn,
   parseSetJevApiKey,
@@ -39,12 +31,26 @@ import type { CheckpointHost, ProjectScope } from "./checkpointHost.js";
 import { ChatService } from "./chats.js";
 import type { AnalysisHost } from "./analysis/host.js";
 import type { EditingHost } from "./editing/host.js";
+import type { FramesHost } from "./editing/frames.js";
 import type { StoryHost } from "./story/host.js";
 import type { ResearchHost } from "./research/host.js";
 import type { QaHost } from "./qa/host.js";
-import { RuntimeError, errorMessage } from "./errors.js";
+import { RuntimeError } from "./errors.js";
+import {
+  authorized,
+  chatFrame,
+  isGlobalRoute,
+  loginParam,
+  parseSequence,
+  projectFrame,
+  providerParam,
+  readBody,
+  resolveScope,
+  sendError,
+  sseHeaders,
+} from "./serverHttp.js";
 import { defaultEnabledAgents, type AgentSettingsStore } from "./settings.js";
-import { FileChatStore } from "./store/index.js";
+import { FileChatStore, takeProjectOwnership } from "./store/index.js";
 import { TurnRunner, type TurnRunnerOptions } from "./turns.js";
 
 export interface RuntimeAppOptions {
@@ -60,12 +66,16 @@ export interface RuntimeAppOptions {
   research: (scope: ProjectScope) => ResearchHost;
   /** Opens the QA host (render checks, frames of a render, stored reports) of a request's project. */
   qa: (scope: ProjectScope) => QaHost;
+  /** Opens the frames host (composition frames without a render) of a request's project. */
+  frames?: (scope: ProjectScope) => FramesHost;
   /** Global (per-user) agent settings shared by every project. */
   settings: AgentSettingsStore;
   token: string;
   now?: () => number;
   ids?: () => string;
   sessionIdleMs?: number;
+  /** How long the Director's model may stay silent before its turn is stopped (default 10 minutes). */
+  promptStallMs?: number;
 }
 
 interface ProjectRuntime {
@@ -73,6 +83,8 @@ interface ProjectRuntime {
   store: FileChatStore;
   chats: ChatService;
   turns: TurnRunner;
+  /** Gives up this process's ownership of the project's chats. */
+  release: () => void;
 }
 
 interface RuntimeEnvironment {
@@ -80,8 +92,6 @@ interface RuntimeEnvironment {
 }
 
 export type RuntimeApp = Hono<RuntimeEnvironment> & { dispose: () => Promise<void> };
-
-const LOOPBACK_HOSTS: Record<string, true> = { localhost: true, "::1": true, "[::1]": true };
 
 /** Creates the private, bearer-authenticated HTTP surface served by the Bun sidecar. */
 export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
@@ -96,9 +106,11 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
     story: options.story,
     research: options.research,
     qa: options.qa,
+    ...(options.frames && { frames: options.frames }),
     now,
     ...(ids && { ids }),
     ...(options.sessionIdleMs !== undefined && { sessionIdleMs: options.sessionIdleMs }),
+    ...(options.promptStallMs !== undefined && { promptStallMs: options.promptStallMs }),
   };
 
   app.use("*", async (context, next) => {
@@ -268,6 +280,13 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
     return context.json(chat);
   });
 
+  // Removes the chat and its stored events; refused (409 chat_busy) while it runs a turn or is being reverted.
+  app.delete(`${AGENT_RUNTIME_PREFIX}/chats/:chatId`, async (context) => {
+    const parsed = parseDeleteChat(await readBody(context));
+    if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+    return context.json(await context.get("project").turns.deleteChat(context.req.param("chatId")));
+  });
+
   app.get(`${AGENT_RUNTIME_PREFIX}/chats/:chatId/events`, (context) => {
     const project = context.get("project");
     const chatId = context.req.param("chatId");
@@ -392,6 +411,42 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
     },
   );
 
+  // The user's answer to a question an agent asked mid-turn (`request_input`): the waiting call resumes with it.
+  app.post(
+    `${AGENT_RUNTIME_PREFIX}/chats/:chatId/turns/:turnId/questions/:questionId`,
+    async (context) => {
+      const parsed = parseAnswerQuestion(await readBody(context));
+      if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+      const response = await context
+        .get("project")
+        .turns.answerQuestion(
+          context.req.param("chatId"),
+          context.req.param("turnId"),
+          context.req.param("questionId"),
+          parsed.value.answer,
+        );
+      return context.json(response);
+    },
+  );
+
+  // The user stops one delegated run; the turn and the other runs go on.
+  app.post(
+    `${AGENT_RUNTIME_PREFIX}/chats/:chatId/turns/:turnId/runs/:runId/cancel`,
+    async (context) => {
+      const parsed = parseCancelRun(await readBody(context));
+      if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+      const response = await context
+        .get("project")
+        .turns.cancelRun(
+          context.req.param("chatId"),
+          context.req.param("turnId"),
+          context.req.param("runId"),
+          parsed.value.reason,
+        );
+      return context.json(response);
+    },
+  );
+
   // The user's answer to a Story Mode offer card ("Open in Story" / "No, edit right away"): the offer stays
   // answerable after its own turn ended, so unlike a permission it is read from the chat. An `accept` writes the
   // chapters into the Story Graph through the story service before it answers (no model runs).
@@ -434,11 +489,11 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
   return Object.assign(app, {
     dispose: async () => {
       const runtimes = await Promise.allSettled([...projects.values()]);
-      await Promise.all(
-        runtimes.flatMap((result) =>
-          result.status === "fulfilled" ? [result.value.turns.dispose()] : [],
-        ),
-      );
+      for (const result of runtimes) {
+        if (result.status !== "fulfilled") continue;
+        await result.value.turns.dispose();
+        result.value.release();
+      }
       await options.backend.dispose();
       projects.clear();
     },
@@ -456,18 +511,25 @@ async function getProjectRuntime(
   let project = projects.get(scope.projectDir);
   if (!project) {
     project = (async () => {
-      const store = new FileChatStore(scope.projectDir);
-      const chats = await ChatService.open(scope, store, { now, ...(ids && { ids }) });
-      const turns = new TurnRunner(
-        chats,
-        options.backend,
-        options.checkpoints,
-        store,
-        options.settings,
-        turnOptions,
-      );
-      await turns.recoverCheckpoints();
-      return { scope, store, chats, turns };
+      // One runtime process owns a project's chats; a second one is refused (409 project_served_elsewhere).
+      const release = await takeProjectOwnership(scope.projectDir);
+      try {
+        const store = new FileChatStore(scope.projectDir);
+        const chats = await ChatService.open(scope, store, { now, ...(ids && { ids }) });
+        const turns = new TurnRunner(
+          chats,
+          options.backend,
+          options.checkpoints,
+          store,
+          options.settings,
+          turnOptions,
+        );
+        await turns.recoverCheckpoints();
+        return { scope, store, chats, turns, release };
+      } catch (error) {
+        release();
+        throw error;
+      }
     })();
     projects.set(scope.projectDir, project);
   }
@@ -486,171 +548,4 @@ async function getProjectRuntime(
     );
   }
   return runtime;
-}
-
-/** Routes that never touch a project: Home calls them before any project is open (token only). */
-function isGlobalRoute(path: string): boolean {
-  if (!path.startsWith(`${AGENT_RUNTIME_PREFIX}/`)) return false;
-  const rest = path.slice(AGENT_RUNTIME_PREFIX.length + 1);
-  return (
-    rest === "health" ||
-    rest === "models" ||
-    rest === "project-title" ||
-    rest === "providers" ||
-    rest === "providers/refresh" ||
-    /^providers\/[^/]+\/models$/.test(rest) ||
-    /^providers\/[^/]+\/api-key$/.test(rest) ||
-    /^providers\/[^/]+\/oauth\/(?:login|logout)$/.test(rest) ||
-    /^oauth\/logins\/[^/]+(?:\/(?:input|cancel))?$/.test(rest) ||
-    rest === "settings" ||
-    rest === "settings/jev/api-key" ||
-    rest === "settings/jev/test"
-  );
-}
-
-function providerParam(context: Context<RuntimeEnvironment>): string {
-  const provider = context.req.param("provider");
-  if (!isProviderId(provider))
-    throw new RuntimeError("invalid_request", "Provider id is not valid", 400);
-  return provider;
-}
-
-function loginParam(context: Context<RuntimeEnvironment>): string {
-  const loginId = context.req.param("loginId");
-  if (!isOAuthLoginId(loginId))
-    throw new RuntimeError("login_not_found", "This sign-in was not found", 404);
-  return loginId;
-}
-
-async function resolveScope(headers: Headers): Promise<ProjectScope> {
-  const projectId = decodeScopeHeader(headers.get(AGENT_HEADERS.projectId))?.trim();
-  const projectDir = decodeScopeHeader(headers.get(AGENT_HEADERS.projectDir));
-  const studioOrigin = headers.get(AGENT_HEADERS.studioOrigin);
-  if (!projectId || !projectDir || !studioOrigin)
-    throw new RuntimeError("invalid_request", "Project scope headers are required", 400);
-  if (!isAbsolute(projectDir))
-    throw new RuntimeError("invalid_request", "Project directory must be absolute", 400);
-  let canonicalDir: string;
-  try {
-    canonicalDir = await realpath(projectDir);
-    const info = await stat(canonicalDir);
-    if (!info.isDirectory()) throw new Error("not a directory");
-  } catch {
-    throw new RuntimeError(
-      "invalid_request",
-      "Project directory must exist and be a directory",
-      400,
-    );
-  }
-  let parsedOrigin: URL;
-  try {
-    parsedOrigin = new URL(studioOrigin);
-  } catch {
-    throw new RuntimeError(
-      "invalid_request",
-      "Studio origin must be an http(s) loopback origin",
-      400,
-    );
-  }
-  const hostname = parsedOrigin.hostname.toLowerCase();
-  if (
-    (parsedOrigin.protocol !== "http:" && parsedOrigin.protocol !== "https:") ||
-    (!Object.hasOwn(LOOPBACK_HOSTS, hostname) && !isIpv4Loopback(hostname)) ||
-    parsedOrigin.username ||
-    parsedOrigin.password ||
-    parsedOrigin.pathname !== "/" ||
-    parsedOrigin.search ||
-    parsedOrigin.hash ||
-    (studioOrigin !== parsedOrigin.origin && studioOrigin !== `${parsedOrigin.origin}/`)
-  ) {
-    throw new RuntimeError(
-      "invalid_request",
-      "Studio origin must be an http(s) loopback origin",
-      400,
-    );
-  }
-  return { projectId, projectDir: canonicalDir, studioOrigin: parsedOrigin.origin };
-}
-
-function isIpv4Loopback(hostname: string): boolean {
-  const parts = hostname.split(".");
-  if (parts.length !== 4 || parts[0] !== "127") return false;
-  return parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
-}
-
-function authorized(header: string | undefined, token: string): boolean {
-  const candidate = header?.startsWith("Bearer ") ? header.slice(7) : "";
-  const expectedHash = createHash("sha256").update(token).digest();
-  const candidateHash = createHash("sha256").update(candidate).digest();
-  return (
-    timingSafeEqual(expectedHash, candidateHash) &&
-    candidate.length > 0 &&
-    header?.startsWith("Bearer ") === true
-  );
-}
-
-function parseSequence(value: string): number {
-  if (!/^(0|[1-9]\d*)$/.test(value))
-    throw new RuntimeError("invalid_request", "Event sequence must be a non-negative integer", 400);
-  const result = Number(value);
-  if (!Number.isSafeInteger(result))
-    throw new RuntimeError("invalid_request", "Event sequence is out of range", 400);
-  return result;
-}
-
-async function readBody(context: Context<RuntimeEnvironment>): Promise<unknown> {
-  let body: string;
-  try {
-    body = await context.req.raw.text();
-  } catch {
-    throw new RuntimeError("invalid_request", "Request body must be valid JSON", 400);
-  }
-  if (!body.trim()) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(body);
-    return parsed;
-  } catch {
-    throw new RuntimeError("invalid_request", "Request body must be valid JSON", 400);
-  }
-}
-
-function chatFrame(event: ChatEvent): string {
-  return encodeSseMessage({
-    id: String(event.seq),
-    event: SSE_EVENTS.chat,
-    data: JSON.stringify(event),
-  });
-}
-
-function projectFrame(event: ProjectEvent): string {
-  return encodeSseMessage({ event: SSE_EVENTS.project, data: JSON.stringify(event) });
-}
-
-function sseHeaders(): HeadersInit {
-  return {
-    "content-type": "text/event-stream; charset=utf-8",
-    "cache-control": "no-cache, no-transform",
-    connection: "keep-alive",
-  };
-}
-
-function sendError(context: Context<RuntimeEnvironment>, error: unknown): Response {
-  const runtimeError =
-    error instanceof RuntimeError
-      ? error
-      : new RuntimeError("internal", errorMessage(error, "Internal runtime error"), 500);
-  const errorBody = {
-    error: {
-      code: runtimeError.code satisfies AgentErrorCode,
-      message: runtimeError.message,
-      ...(runtimeError.details && { details: runtimeError.details }),
-    },
-  };
-  if (runtimeError.status === 400) return context.json(errorBody, 400);
-  if (runtimeError.status === 401) return context.json(errorBody, 401);
-  if (runtimeError.status === 404) return context.json(errorBody, 404);
-  if (runtimeError.status === 409) return context.json(errorBody, 409);
-  if (runtimeError.status === 502) return context.json(errorBody, 502);
-  if (runtimeError.status === 503) return context.json(errorBody, 503);
-  return context.json(errorBody, 500);
 }

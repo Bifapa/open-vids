@@ -13,6 +13,7 @@ import {
   readPlaybackRate,
   resolveNaturalDurationSeconds,
 } from "@hyperframes/parsers/media-duration";
+import { clipLooks } from "./looks.js";
 import { isUntouchedTemplatePlaceholder } from "./placeholder.js";
 import { fileContentVersion } from "../helpers/fileVersion.js";
 import { parseSourceDocument } from "../helpers/sourceMutation.js";
@@ -325,6 +326,7 @@ function toWireClip(clip: ClipNode, lookup: SourceLookup): TimelineClip {
     compositionSrc: clip.compositionSrc,
     locked: clip.locked,
     ...(isUntouchedTemplatePlaceholder(element) && { placeholder: true }),
+    ...clipLooks(element, clip.playbackRate),
     provenance: readClipProvenance(element),
   };
 }

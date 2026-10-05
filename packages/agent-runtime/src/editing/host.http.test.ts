@@ -308,4 +308,65 @@ describe("HttpEditingHost", () => {
     ).rejects.toMatchObject({ code: "aborted" });
     expect(seen).toHaveLength(0);
   });
+
+  it("sends the request id and dry run flag with the batch", async () => {
+    const { host, seen } = await studio({
+      "POST /api/projects/p%201/editing/apply": (_request, response) =>
+        json(response, 200, { timeline, results: [], changedFiles: [] }),
+    });
+    await host.apply(
+      { requestId: "ov-abc", dryRun: true, operations: [{ op: "set_composition", duration: 3 }] },
+      abortSignal(),
+    );
+    expect(seen[0]?.body).toMatchObject({ requestId: "ov-abc", dryRun: true });
+  });
+
+  it("asks Studio to stop a batch when the turn aborts, and still reports what Studio answers", async () => {
+    const reached = Promise.withResolvers<void>();
+    const { host, seen } = await studio({
+      "POST /api/projects/p%201/editing/apply": (_request, response) => {
+        reached.resolve();
+        // Studio answers once it was told to stop: nothing was written.
+        const wait = setInterval(() => {
+          if (seen.some((request) => request.path.endsWith("/editing/cancel"))) {
+            clearInterval(wait);
+            json(response, 400, {
+              error: { code: "aborted", message: "cancelled before writing" },
+            });
+          }
+        }, 5);
+      },
+      "POST /api/projects/p%201/editing/cancel": (_request, response) =>
+        json(response, 200, { cancelled: true }),
+    });
+    const controller = new AbortController();
+    const applying = host.apply(
+      { requestId: "ov-1", operations: [{ op: "set_composition", duration: 3 }] },
+      controller.signal,
+    );
+    await reached.promise;
+    controller.abort();
+    await expect(applying).rejects.toMatchObject({ code: "aborted" });
+    expect(seen.find((request) => request.path.endsWith("/editing/cancel"))?.body).toEqual({
+      requestId: "ov-1",
+    });
+  });
+
+  it("reads a page of presets with the total", async () => {
+    const { host, seen } = await studio({
+      "GET /api/projects/p%201/editing/presets": (_request, response) =>
+        json(response, 200, {
+          presets: [
+            { name: "a", kind: "audio_fx", title: "A", description: "", tags: [], duration: null },
+          ],
+          total: 9,
+        }),
+    });
+    const page = await host.presets("audio_fx", "voice", abortSignal(), { offset: 2, limit: 1 });
+    expect(page.total).toBe(9);
+    expect(page.presets).toHaveLength(1);
+    expect(seen[0]?.path).toContain("kind=audio_fx");
+    expect(seen[0]?.path).toContain("offset=2");
+    expect(seen[0]?.path).toContain("limit=1");
+  });
 });

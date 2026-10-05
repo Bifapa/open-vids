@@ -1,3 +1,4 @@
+import { WEB_SOURCE_ID } from "@hyperframes/agent-protocol";
 import type {
   AssetCandidate,
   AssetProvenance,
@@ -89,6 +90,14 @@ export function formatSearch(result: AssetSearchResult): string {
       report.error
         ? `- ${report.source.name}: FAILED — ${clip(report.error, 200)}`
         : `- ${report.source.name}: ${report.results} ${report.results === 1 ? "result" : "results"}`,
+    );
+  }
+  const webDown = result.searched.find(
+    (report) => report.source.id === WEB_SOURCE_ID && report.error,
+  );
+  if (webDown) {
+    lines.push(
+      `The web search backend is temporarily unavailable (${clip(webDown.error ?? "", 160)}), so this result holds trusted sources only — it says nothing about the open web. Use trusted sources or inspect_url on a page you already know, try the web again later in this turn, and say in your report that the open web could not be searched.`,
     );
   }
   for (const blocked of result.blocked) {
@@ -223,6 +232,8 @@ export function formatResearchError(error: ResearchToolError): string {
       ? " The user's Asset Search policy does not allow this and agents cannot change it; use an allowed source or report that the user has to widen the policy."
       : error.code === "unknown_candidate"
         ? " Search again to get fresh candidate ids."
-        : "";
+        : error.code === "rate_limited"
+          ? " The source is rate-limiting this machine: do not retry it in a loop; choose another source or candidate, or report it."
+          : "";
   return `${error.code}: ${error.message}${hint}`;
 }

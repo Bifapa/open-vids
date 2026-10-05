@@ -906,15 +906,15 @@ describe("apply_captions", () => {
     ).toMatchObject({ code: "locked" });
   });
 
-  it("captions the content, not a stale declared length", async () => {
+  it("captions span the composition's length, which a removal does not shrink", async () => {
     withProject();
     const { results, timeline } = await apply([
       { op: "remove_clip", clip: "music" },
       { op: "remove_clip", clip: "host" },
       { op: "apply_captions", preset: "coral", cues: [{ text: "hi", start: 0, end: 3 }] },
     ]);
-    expect(clipOf(timeline.clips, results[2]?.clipId ?? "").duration).toBe(4);
-    expect(timeline.composition.duration).toBe(4);
+    expect(clipOf(timeline.clips, results[2]?.clipId ?? "").duration).toBe(10);
+    expect(timeline.composition.duration).toBe(10);
   });
 });
 
@@ -1218,15 +1218,18 @@ describe("arrange_track", () => {
 });
 
 describe("set_composition and the length rule", () => {
-  it("follows the furthest clip end, growing and shrinking", async () => {
+  it("grows with the furthest clip end but never shrinks by itself", async () => {
     withProject();
     const grown = await apply([{ op: "move_clip", clip: "music", start: 5 }]);
     expect(grown.timeline.composition.duration).toBe(15);
-    const shrunk = await apply([
+    const trimmed = await apply([
       { op: "remove_clip", clip: "music" },
       { op: "remove_clip", clip: "host" },
     ]);
-    expect(shrunk.timeline.composition.duration).toBe(4);
+    // The tail the batch left behind is the user's to cut: only set_composition shortens.
+    expect(trimmed.timeline.composition.duration).toBe(15);
+    const shortened = await apply([{ op: "set_composition", duration: 4 }]);
+    expect(shortened.timeline.composition.duration).toBe(4);
   });
 
   it("keeps an explicit length, and leaves the length alone with no clips", async () => {

@@ -10,6 +10,26 @@ import {
 import { AgentSettingsStore } from "./settings.js";
 
 describe("AgentSettingsStore", () => {
+  it("never loses a change when two runtimes write their own keys at once", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "openvids-agent-settings-"));
+    try {
+      const desktop = new AgentSettingsStore(dir);
+      const devShell = new AgentSettingsStore(dir);
+      const names = Array.from({ length: 12 }, (_, index) => `prov-${index}`);
+      await Promise.all(
+        names.map((name, index) =>
+          (index % 2 === 0 ? desktop : devShell).setProviderApiKey(name, `key-${name}`),
+        ),
+      );
+      expect([...(await desktop.providerApiKeys()).keys()].sort()).toEqual([...names].sort());
+      // The lock file is only held while a change is written.
+      await devShell.setProviderApiKey("prov-0", null);
+      expect((await desktop.providerApiKeys()).has("prov-0")).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps changes made by another runtime on the same machine", async () => {
     const dir = await mkdtemp(join(tmpdir(), "openvids-agent-settings-"));
     try {

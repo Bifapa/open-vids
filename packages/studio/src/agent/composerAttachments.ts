@@ -1,5 +1,7 @@
 import type { MessageReference } from "@hyperframes/agent-protocol";
+import { t } from "../i18n";
 import { TIMELINE_ASSET_MIME } from "../utils/timelineAssetDrop";
+import { containsMention } from "./composerMentions";
 
 export type AttachmentKind = "image" | "video" | "audio" | "file";
 export type AttachmentStatus = "uploading" | "ready" | "failed";
@@ -15,6 +17,11 @@ export interface ComposerAttachment {
   path: string | null;
   sizeBytes?: number;
   durationSeconds?: number;
+  /**
+   * The `@name` token in the prompt that picked this file (an `@` mention): the chip and the token go together —
+   * removing the chip removes the token, and deleting the token from the text drops the chip.
+   */
+  mentionToken?: string;
 }
 
 /** A project file named by an internal drag (Media tile, file tree row). */
@@ -92,6 +99,35 @@ export function attachmentReferences(
 
 export function isUploading(attachments: readonly ComposerAttachment[]): boolean {
   return attachments.some((attachment) => attachment.status === "uploading");
+}
+
+/**
+ * The chips that still belong to the prompt: one picked by an `@` mention goes when its token is no longer in the
+ * text. Returns the same list when nothing went.
+ */
+export function attachmentsMentionedIn(
+  attachments: readonly ComposerAttachment[],
+  text: string,
+): readonly ComposerAttachment[] {
+  const kept = attachments.filter(
+    (attachment) =>
+      attachment.mentionToken === undefined || containsMention(text, attachment.mentionToken),
+  );
+  return kept.length === attachments.length ? attachments : kept;
+}
+
+/**
+ * The notice a send leaves when some chips never made it into the project: those files travel with nothing, so
+ * the message says which ones were left out. Null when every chip was imported.
+ */
+export function skippedFilesNotice(
+  attachments: readonly ComposerAttachment[],
+): { message: string } | null {
+  const names = attachments
+    .filter((attachment) => attachment.status === "failed")
+    .map((attachment) => attachment.name);
+  if (names.length === 0) return null;
+  return { message: t("chat.attach.notSent", { count: names.length, names: names.join(", ") }) };
 }
 
 /** True when the drag carries OS files. */

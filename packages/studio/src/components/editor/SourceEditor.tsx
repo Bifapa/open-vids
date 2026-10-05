@@ -6,7 +6,7 @@ import {
   highlightActiveLine,
   highlightActiveLineGutter,
 } from "@codemirror/view";
-import { EditorState, Annotation } from "@codemirror/state";
+import { EditorState, Annotation, Compartment } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
@@ -22,6 +22,10 @@ import { markdown } from "@codemirror/lang-markdown";
 // commit writing the source) so the update listener doesn't mistake it for a
 // user keystroke and trigger a re-save + preview reload.
 const ExternalSync = Annotation.define<boolean>();
+
+// The editor's read-only state lives in a compartment so it flips without rebuilding the view (which would drop the
+// undo history, the cursor and the scroll position): the agent's turn locks the editor and unlocks it again.
+const ReadOnlyMode = new Compartment();
 
 const LANGUAGE_EXTENSIONS: Record<string, () => Extension> = {
   html: () => html(),
@@ -81,6 +85,9 @@ export const SourceEditor = memo(function SourceEditor({
   const contentRef = useRef(content);
   contentRef.current = content;
 
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
+
   const mountEditor = useCallback(
     (node: HTMLDivElement | null) => {
       if (editorRef.current) {
@@ -115,13 +122,13 @@ export const SourceEditor = memo(function SourceEditor({
           getLanguageExtension(lang),
           sourceEditorTheme,
           updateListener,
-          EditorState.readOnly.of(readOnly),
+          ReadOnlyMode.of(EditorState.readOnly.of(readOnlyRef.current)),
         ],
       });
 
       editorRef.current = new EditorView({ state, parent: node });
     },
-    [filePath, language, readOnly],
+    [filePath, language],
   );
 
   // Sync external content changes into the editor without recreating it.
@@ -136,13 +143,20 @@ export const SourceEditor = memo(function SourceEditor({
     // would clobber their in-flight keystrokes — the ExternalSync annotation
     // suppresses onChange, so those edits would be silently lost. Skip the
     // external sync while focused; it re-runs on the next `content` change after
-    // they blur (or when a later commit lands with the editor unfocused).
-    if (view.hasFocus) return;
+    // they blur (or when a later commit lands with the editor unfocused). A
+    // read-only editor has no keystrokes to protect, so it always follows.
+    if (view.hasFocus && !readOnly) return;
     view.dispatch({
       changes: { from: 0, to: current.length, insert: content },
       annotations: [ExternalSync.of(true)],
     });
-  }, [content]);
+  }, [content, readOnly]);
+
+  useEffect(() => {
+    editorRef.current?.dispatch({
+      effects: ReadOnlyMode.reconfigure(EditorState.readOnly.of(readOnly)),
+    });
+  }, [readOnly]);
 
   useEffect(() => {
     const view = editorRef.current;

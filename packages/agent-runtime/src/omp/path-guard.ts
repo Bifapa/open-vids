@@ -173,10 +173,18 @@ export function pathVariants(raw: string): string[] {
 /** Tools that change files: a call whose target cannot be read from its arguments must not run. */
 const MUTATING_TOOLS: Record<string, true> = { edit: true, write: true };
 
+/** Tools that only read: the one kind of call allowed into a read-only root outside the project. */
+const READING_TOOLS: Record<string, true> = { read: true, grep: true, glob: true, find: true };
+
+/**
+ * `readOnlyRoots`: directories outside the project (the bundled skills) that `read`/`grep`/`glob`/`find` may look into;
+ * `edit`/`write` never may, and neither may any other tool.
+ */
 export async function guardToolCallPaths(
   projectDir: string,
   input: unknown,
   toolName?: string,
+  readOnlyRoots: readonly string[] = [],
 ): Promise<string | null> {
   const candidates = extractPathArguments(input);
   if (toolName !== undefined && Object.hasOwn(MUTATING_TOOLS, toolName)) {
@@ -202,6 +210,16 @@ export async function guardToolCallPaths(
   } catch {
     return "That path pattern is too broad to check against the project boundary, so it was blocked. Use one explicit path per call.";
   }
+  const readableRoots: string[] = [];
+  if (toolName !== undefined && Object.hasOwn(READING_TOOLS, toolName)) {
+    for (const root of readOnlyRoots) {
+      try {
+        readableRoots.push(await realpath(root));
+      } catch {
+        // A root that is not there grants nothing.
+      }
+    }
+  }
   for (const target of targets) {
     if (!target) continue;
     const absolutes = resolveLikeOmp(projectDir, target);
@@ -215,6 +233,7 @@ export async function guardToolCallPaths(
         return blockReason(target, error);
       }
 
+      if (readableRoots.some((root) => isWithin(root, canonicalTarget))) continue;
       if (!isWithin(canonicalRoot, canonicalTarget)) {
         return blockReason(target);
       }

@@ -202,6 +202,29 @@ describe("GET /editing/presets", () => {
     expect(body.presets).toHaveLength(100);
   });
 
+  it("pages the matches and reports how many there are", async () => {
+    const { get } = setup();
+    const all: { presets: PresetInfo[]; total: number } = await (await get("presets")).json();
+    const page: { presets: PresetInfo[]; total: number } = await (
+      await get("presets?offset=2&limit=3")
+    ).json();
+    expect(page.total).toBe(all.total);
+    expect(page.presets.map((p) => p.name)).toEqual(all.presets.slice(2, 5).map((p) => p.name));
+  });
+
+  it("lists the colour grade and audio FX presets only when asked for", async () => {
+    const { get } = setup();
+    const all: { presets: PresetInfo[] } = await (await get("presets")).json();
+    expect(all.presets.some((p) => p.kind === "color_grade" || p.kind === "audio_fx")).toBe(false);
+    const grades: { presets: PresetInfo[] } = await (await get("presets?kind=color_grade")).json();
+    expect(grades.presets.map((p) => p.name)).toContain("warm-daylight");
+    const fx: { presets: PresetInfo[] } = await (
+      await get("presets?kind=audio_fx&query=voice")
+    ).json();
+    expect(fx.presets.length).toBeGreaterThan(0);
+    expect(fx.presets.every((p) => p.kind === "audio_fx")).toBe(true);
+  });
+
   it("rejects an unknown kind", async () => {
     const { get } = setup();
     const response = await get("presets?kind=sticker");
@@ -283,12 +306,52 @@ describe("POST /editing/apply boundary", () => {
     expect(error.opIndex).toBe(opIndex);
   });
 
-  it("400s more than 50 operations", async () => {
+  it("answers a repeated requestId with the stored result instead of applying twice", async () => {
     const { post } = setup();
-    const operations = Array.from({ length: 51 }, () => ({ op: "set_composition", duration: 5 }));
+    const body = {
+      requestId: "turn-1:abc",
+      operations: [{ op: "add_clip", asset: "assets/b.mp4", start: 10, track: 1 }],
+    };
+    const first: ApplyEditsResponse = await (await post(body)).json();
+    const again = await post({ ...body, baseVersion: "sha256:stale" });
+    expect(again.status).toBe(200);
+    const replay: ApplyEditsResponse = await again.json();
+    expect(replay.replayed).toBe(true);
+    expect(replay.results).toEqual(first.results);
+    expect(replay.timeline.clips.filter((c) => c.src === "assets/b.mp4")).toHaveLength(1);
+  });
+
+  it("dryRun over HTTP changes nothing on disk", async () => {
+    const { post, get, made } = setup();
+    const before = made.read("index.html");
+    const dry: ApplyEditsResponse = await (
+      await post({
+        dryRun: true,
+        operations: [{ op: "add_clip", asset: "assets/b.mp4", start: 10, track: 1 }],
+      })
+    ).json();
+    expect(dry.dryRun).toBe(true);
+    expect(made.read("index.html")).toBe(before);
+    const timeline: TimelineSnapshot = await (await get("timeline")).json();
+    expect(timeline.clips.some((c) => c.src === "assets/b.mp4")).toBe(false);
+  });
+
+  it("POST /editing/cancel reports whether a request was running", async () => {
+    const { api } = setup();
+    const response = await api.request("/projects/demo/editing/cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ requestId: "nothing-runs" }),
+    });
+    expect(await response.json()).toEqual({ cancelled: false });
+  });
+
+  it("400s more than 200 operations", async () => {
+    const { post } = setup();
+    const operations = Array.from({ length: 201 }, () => ({ op: "set_composition", duration: 5 }));
     const response = await post({ operations });
     expect(response.status).toBe(400);
-    expect((await errorOf(response)).message).toContain("50");
+    expect((await errorOf(response)).message).toContain("200");
   });
 
   it("404s an unknown project", async () => {

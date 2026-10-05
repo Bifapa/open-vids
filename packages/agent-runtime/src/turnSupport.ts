@@ -6,6 +6,7 @@ import { EDITING_TOOL_NAMES } from "./editing/tools.js";
 import { ANALYSIS_TOOL_NAMES } from "./analysis/tools.js";
 import type { StoryHost } from "./story/host.js";
 import type { ResearchHost } from "./research/host.js";
+import type { FramesHost } from "./editing/frames.js";
 import type { QaHost } from "./qa/host.js";
 import type { StreamTimerApi } from "./turnStream.js";
 
@@ -46,6 +47,16 @@ export interface TurnRunnerOptions {
    * editing host, which renders — no turn runs autonomous render QA; the production runtime always provides both.
    */
   qa?: (scope: ProjectScope) => QaHost;
+  /**
+   * Opens the frames host (composition frames without a render) of a project. Without it the agents get no
+   * inspect_composition tool; the production runtime always provides it.
+   */
+  frames?: (scope: ProjectScope) => FramesHost;
+  /**
+   * How long the Director's model may stay silent (no event at all, no tool of its own running) before the turn is
+   * stopped with a clear error (default 10 minutes). Delegated runs have their own watchdog.
+   */
+  promptStallMs?: number;
 }
 
 /** What a story-mode turn (plan/review) says when an agent tries to write the timeline anyway. */
@@ -84,12 +95,4 @@ export function cloneTurn(turn: TurnSummary): TurnSummary {
 
 export function sameIds(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((id, index) => id === right[index]);
-}
-
-export function createDeferredVoid(): { promise: Promise<void>; resolve: () => void } {
-  let settle!: () => void;
-  const promise = new Promise<void>((resolve) => {
-    settle = resolve;
-  });
-  return { promise, resolve: settle };
 }

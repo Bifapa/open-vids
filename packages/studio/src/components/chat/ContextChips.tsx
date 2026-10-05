@@ -14,6 +14,7 @@ import {
   type ContextChip,
   type ContextChipKind,
 } from "../../agent/composerContext";
+import { contextCap, type ContextCap } from "../../agent/contextCap";
 import { useEditorContextSource } from "../../agent/editorContext";
 import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
@@ -34,7 +35,7 @@ const KIND_ICONS: Record<ContextChipKind, typeof FilmStrip> = {
  * The editor context the next message carries (what `capture()` sends), live: the component re-renders whenever
  * a selection the context reports changes and then reads `capture()` fresh, minus what the user removed.
  */
-function useContextChips(): ContextChip[] {
+function useContextChips(): { chips: ContextChip[]; cap: ContextCap | null } {
   const projectId = useStudioShellContextOptional()?.projectId;
   const source = useEditorContextSource(projectId);
   // Subscriptions only: they re-render this component when an input of `capture()` changes.
@@ -54,10 +55,14 @@ function useContextChips(): ContextChip[] {
   const storyGraph = useStore(studioStoryStore, (state) => state.graph);
   const excluded = useComposerContextStore((state) => state.excluded);
 
-  return contextChips(
-    source.capture(),
-    (id) => storyGraph?.nodes.find((node) => node.id === id)?.title ?? null,
-  ).filter((chip) => !excluded.has(chip.key));
+  const context = source.capture();
+  return {
+    chips: contextChips(
+      context,
+      (id) => storyGraph?.nodes.find((node) => node.id === id)?.title ?? null,
+    ).filter((chip) => !excluded.has(chip.key)),
+    cap: contextCap(context),
+  };
 }
 
 /**
@@ -66,41 +71,53 @@ function useContextChips(): ContextChip[] {
  */
 export function ContextChips({ onRemoved }: { onRemoved: () => void }) {
   const { t } = useTranslation();
-  const chips = useContextChips();
+  const { chips, cap } = useContextChips();
   const exclude = useComposerContextStore((state) => state.exclude);
-  if (chips.length === 0) return null;
+  if (chips.length === 0 && cap === null) return null;
   return (
-    <div
-      role="list"
-      aria-label={t("chat.context.label")}
-      data-testid="composer-context"
-      className="flex min-w-0 flex-wrap gap-1 px-1.5 pt-1.5"
-    >
-      {chips.map((chip) => {
-        const Icon = KIND_ICONS[chip.kind];
-        return (
-          <span
-            key={chip.key}
-            role="listitem"
-            title={t("chat.context.chipTitle", { label: chip.label, detail: chip.detail })}
-            className="inline-flex h-ctl-sm max-w-full min-w-0 items-center gap-[5px] rounded-sm border border-border bg-surface-1 pr-px pl-1.5 text-xs leading-none font-medium text-fg-2 hover:border-border-strong hover:text-fg"
-          >
-            <Icon size={12} aria-hidden className="shrink-0 text-fg-3" />
-            <span className="max-w-[22ch] min-w-0 truncate">{chip.label}</span>
-            <button
-              type="button"
-              aria-label={t("chat.context.remove", { label: chip.label })}
-              onClick={() => {
-                exclude(chip.key);
-                onRemoved();
-              }}
-              className="inline-flex size-5 shrink-0 items-center justify-center rounded-xs text-fg-3 outline-hidden hover:bg-surface-2 hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-            >
-              <X size={10} weight="bold" aria-hidden />
-            </button>
-          </span>
-        );
-      })}
-    </div>
+    <>
+      {chips.length > 0 && (
+        <div
+          role="list"
+          aria-label={t("chat.context.label")}
+          data-testid="composer-context"
+          className="flex min-w-0 flex-wrap gap-1 px-1.5 pt-1.5"
+        >
+          {chips.map((chip) => {
+            const Icon = KIND_ICONS[chip.kind];
+            return (
+              <span
+                key={chip.key}
+                role="listitem"
+                title={t("chat.context.chipTitle", { label: chip.label, detail: chip.detail })}
+                className="inline-flex h-ctl-sm max-w-full min-w-0 items-center gap-[5px] rounded-sm border border-border bg-surface-1 pr-px pl-1.5 text-xs leading-none font-medium text-fg-2 hover:border-border-strong hover:text-fg"
+              >
+                <Icon size={12} aria-hidden className="shrink-0 text-fg-3" />
+                <span className="max-w-[22ch] min-w-0 truncate">{chip.label}</span>
+                <button
+                  type="button"
+                  aria-label={t("chat.context.remove", { label: chip.label })}
+                  onClick={() => {
+                    exclude(chip.key);
+                    onRemoved();
+                  }}
+                  className="inline-flex size-5 shrink-0 items-center justify-center rounded-xs text-fg-3 outline-hidden hover:bg-surface-2 hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                >
+                  <X size={10} weight="bold" aria-hidden />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {cap && (
+        <p
+          data-testid="composer-context-cap"
+          className="px-2.5 pt-1.5 text-xs leading-[15px] text-fg-3"
+        >
+          {t("chat.context.capped", { sent: cap.sent, total: cap.total })}
+        </p>
+      )}
+    </>
   );
 }

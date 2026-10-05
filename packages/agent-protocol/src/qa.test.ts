@@ -4,18 +4,26 @@ import {
   EXECUTION_BUDGETS,
   applyThinkingPolicy,
   compareQaPass,
+  findAcceptedQaIssue,
   foldChatEvents,
+  isQaAcceptResponse,
+  isQaAcceptedList,
   parseExecutionQuality,
+  parseQaAcceptRequest,
+  parseQaAcceptedIssue,
   parseQaCheckRequest,
   parseQaFinishRequest,
   parseQaFramesRequest,
   parseQaIssueDraft,
   parseQaReportInput,
+  parseQaTimelineCheckRequest,
   parseUpdateAgentSettings,
   parseUpdateChat,
   qaCounts,
   resolveExecutionBudget,
+  sameQaIssue,
   type ChatEvent,
+  type QaAcceptedIssue,
   type QaIssue,
   type QaIssueDraft,
   type QaReportInput,
@@ -132,7 +140,8 @@ describe("compareQaPass", () => {
       previous: [],
       fixedEarlier: [],
     });
-    // Pass 2: the black gap moved a little (still the same problem), the frozen clip was fixed, a new gap appeared.
+    // Pass 2: the black gap moved a little (still the same problem), the frozen clip was fixed, the caption problem
+    // is now somewhere else on the timeline (another problem: subject alone does not match), a new gap appeared.
     const second = compareQaPass({
       pass: 2,
       drafts: [
@@ -145,10 +154,13 @@ describe("compareQaPass", () => {
     });
     expect(second.issues.map((issue) => [issue.id, issue.status])).toEqual([
       ["p1-1", "persisting"],
-      ["p1-3", "persisting"],
       ["p2-1", "new"],
+      ["p2-2", "new"],
     ]);
-    expect(second.resolved.map((issue) => [issue.id, issue.status])).toEqual([["p1-2", "fixed"]]);
+    expect(second.resolved.map((issue) => [issue.id, issue.status])).toEqual([
+      ["p1-2", "fixed"],
+      ["p1-3", "fixed"],
+    ]);
     // Pass 3: the frozen clip is back.
     const third = compareQaPass({
       pass: 3,
@@ -159,7 +171,7 @@ describe("compareQaPass", () => {
     expect(third.issues.map((issue) => [issue.id, issue.status, issue.firstSeenPass])).toEqual([
       ["p1-2", "reappeared", 1],
     ]);
-    expect(third.resolved.map((issue) => issue.id)).toEqual(["p1-1", "p1-3", "p2-1"]);
+    expect(third.resolved.map((issue) => issue.id)).toEqual(["p1-1", "p2-1", "p2-2"]);
     const counts = qaCounts(third.issues, third.resolved);
     expect(counts).toMatchObject({ issues: 1, reappeared: 1, fixed: 3, new: 0, fixable: 1 });
   });
@@ -192,6 +204,31 @@ describe("compareQaPass", () => {
     });
     expect(subjects.issues[0]?.status).toBe("new");
     expect(subjects.resolved).toHaveLength(1);
+  });
+
+  it("does not merge two problems of one kind on one subject at different times", () => {
+    const early = draft({ kind: "frozen_frames", subject: "hf-talk", start: 2, end: 5 });
+    const late = draft({ kind: "frozen_frames", subject: "hf-talk", start: 40, end: 45 });
+    expect(sameQaIssue(early, late)).toBe(false);
+    expect(
+      sameQaIssue(early, draft({ kind: "frozen_frames", subject: "hf-talk", start: 4, end: 6 })),
+    ).toBe(true);
+    // A named subject on one side only is matched by time; different subjects never match.
+    expect(
+      sameQaIssue(early, draft({ kind: "frozen_frames", subject: null, start: 3, end: 4 })),
+    ).toBe(true);
+    expect(
+      sameQaIssue(early, draft({ kind: "frozen_frames", subject: "hf-b", start: 3, end: 4 })),
+    ).toBe(false);
+    const first = compareQaPass({ pass: 1, drafts: [early], previous: [], fixedEarlier: [] });
+    const second = compareQaPass({
+      pass: 2,
+      drafts: [late],
+      previous: first.issues,
+      fixedEarlier: [],
+    });
+    expect(second.issues.map((issue) => issue.status)).toEqual(["new"]);
+    expect(second.resolved.map((issue) => issue.id)).toEqual(["p1-1"]);
   });
 });
 
@@ -284,6 +321,112 @@ describe("QA wire parsers", () => {
     expect(
       parseQaReportInput({ ...input, render: { ...legacyRender, origin: "nonsense" } }),
     ).toMatchObject({ ok: true, value: { render: { origin: "turn" } } });
+  });
+
+  it("round-trips the scope, its note, the suppressed count and the reviewer, and drops nonsense", () => {
+    const base: QaReportInput = {
+      sessionId: "turn-1",
+      turnId: "turn-1",
+      chatId: "chat-1",
+      pass: 1,
+      passLimit: 2,
+      preset: "balanced",
+      composition: "index.html",
+      fingerprint: "abc",
+      timelineVersion: null,
+      render: null,
+      renderError: null,
+      checks: [],
+      vision: {
+        status: "ran",
+        reason: null,
+        frames: 2,
+        rounds: 1,
+        model: null,
+        reviewer: "director",
+      },
+      issues: [],
+      resolved: [],
+      previousReportId: null,
+      scope: "timeline",
+      scopeNote: { code: "too_long", message: "Too long.", params: { minutes: 6.7 } },
+      suppressed: 2,
+    };
+    expect(parseQaReportInput(JSON.parse(JSON.stringify(base)))).toEqual({ ok: true, value: base });
+    const parsed = parseQaReportInput({
+      ...base,
+      scope: "everything",
+      scopeNote: { code: "nope", message: "x" },
+      suppressed: -4,
+      vision: { ...base.vision, reviewer: "model" },
+    });
+    expect(parsed).toMatchObject({ ok: true, value: { suppressed: 0 } });
+    if (parsed.ok) {
+      expect(parsed.value.scope).toBeUndefined();
+      expect(parsed.value.scopeNote).toBeUndefined();
+      expect(parsed.value.vision.reviewer).toBeUndefined();
+    }
+  });
+
+  it("keeps the not-rechecked mark of an issue and nothing else of a draft's extras", () => {
+    const parsed = parseQaIssueDraft({ ...draft(), notRechecked: true });
+    expect(parsed).toMatchObject({ ok: true, value: { notRechecked: true } });
+    const plain = parseQaIssueDraft({ ...draft(), notRechecked: "yes" });
+    expect(plain.ok && plain.value.notRechecked).toBeUndefined();
+  });
+
+  it("reads a timeline check request with or without a composition", () => {
+    expect(parseQaTimelineCheckRequest(undefined)).toEqual({ ok: true, value: {} });
+    expect(parseQaTimelineCheckRequest({})).toEqual({ ok: true, value: {} });
+    expect(parseQaTimelineCheckRequest({ composition: "scenes/a.html" })).toEqual({
+      ok: true,
+      value: { composition: "scenes/a.html" },
+    });
+    expect(parseQaTimelineCheckRequest({ composition: 4 }).ok).toBe(false);
+    expect(parseQaTimelineCheckRequest("x").ok).toBe(false);
+  });
+
+  it("validates the mark-intentional contract", () => {
+    const accepted: QaAcceptedIssue = {
+      id: "acc-0a1b2c3d",
+      composition: "index.html",
+      kind: "black_frames",
+      check: "blackdetect",
+      subject: null,
+      start: 0,
+      end: 1.2,
+      message: "Black picture for 1.2 s",
+      acceptedAt: 1_790_000_000_000,
+    };
+    expect(parseQaAcceptedIssue(accepted)).toEqual({ ok: true, value: accepted });
+    expect(parseQaAcceptedIssue({ ...accepted, id: "acc-xyz" }).ok).toBe(false);
+    expect(parseQaAcceptedIssue({ ...accepted, kind: "nope" }).ok).toBe(false);
+    expect(parseQaAcceptedIssue({ ...accepted, end: -1 }).ok).toBe(false);
+    expect(isQaAcceptedList({ items: [accepted] })).toBe(true);
+    expect(isQaAcceptedList({ items: [{ ...accepted, id: "x" }] })).toBe(false);
+    expect(parseQaAcceptRequest({ reportId: "qa-20250101000000-abcdef", issueId: "p1-2" })).toEqual(
+      {
+        ok: true,
+        value: { reportId: "qa-20250101000000-abcdef", issueId: "p1-2" },
+      },
+    );
+    expect(parseQaAcceptRequest({ reportId: "../x", issueId: "p1-2" }).ok).toBe(false);
+    expect(parseQaAcceptRequest({ reportId: "a" }).ok).toBe(false);
+    expect(isQaAcceptResponse({ accepted, report: {} })).toBe(false);
+
+    // An accepted entry hides the same problem (kind, time, subject) in its own composition only.
+    expect(findAcceptedQaIssue(draft({ start: 0.2, end: 1 }), "index.html", [accepted])).toEqual(
+      accepted,
+    );
+    expect(findAcceptedQaIssue(draft({ start: 30, end: 31 }), "index.html", [accepted])).toBeNull();
+    expect(
+      findAcceptedQaIssue(draft({ start: 0.2, end: 1 }), "scenes/a.html", [accepted]),
+    ).toBeNull();
+    expect(
+      findAcceptedQaIssue(draft({ kind: "frozen_frames", start: 0.2, end: 1 }), "index.html", [
+        accepted,
+      ]),
+    ).toBeNull();
   });
 
   it("accepts a finish request naming render files only", () => {

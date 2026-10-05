@@ -39,6 +39,12 @@ export class ScriptedAgentBackend implements AgentBackend {
   /** Runs inside `refreshProviders` (a test changes `providers` as the real backend would after a key change). */
   onRefresh: (options: RefreshProvidersOptions) => void | Promise<void> = () => {};
   providerModels: AgentModelInfo[] = [];
+  /** What `contextHash` answers: a test changes it the way editing the project's AGENTS.md would. */
+  contextHashValue = "context-1";
+
+  async contextHash(): Promise<string> {
+    return this.contextHashValue;
+  }
   /** Providers that offer an in-app sign-in; any other is refused the way the real backend refuses it. */
   oauthProviders = new Set<string>();
   /** Runs inside each sign-in the way the SDK's login would (calls `onAuth`, awaits a prompt, resolves or throws). */
@@ -157,11 +163,18 @@ export class ScriptedSession implements BackendSession {
         kind: activity.category,
         targets: [],
         label: activity.label,
+        ...(activity.labelCode !== undefined && { labelCode: activity.labelCode }),
+        ...(activity.labelParams !== undefined && { labelParams: activity.labelParams }),
       });
     }
     let ok = false;
     try {
-      const result = await tool.execute(args, signal ?? new AbortController().signal);
+      const result = await tool.execute(
+        args,
+        signal ?? new AbortController().signal,
+        (progress, label) =>
+          onEvent?.({ type: "tool.progress", toolCallId, progress, ...(label && { label }) }),
+      );
       ok = !result.isError;
       return result;
     } finally {

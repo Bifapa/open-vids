@@ -1,30 +1,40 @@
 import {
   RESEARCH_LIMITS,
-  RESEARCH_MEDIA_KINDS,
   WEBSITE_FILE_MODES,
   WEBSITE_LIMITS,
-  isRecord,
   type AgentId,
   type AssetCandidate,
-  type AssetSearchRequest,
   type ChatIntent,
-  type ImportAssetRequest,
   type InspectUrlRequest,
   type PermissionAction,
   type PermissionKind,
-  type PermissionRequest,
   type ReadWebsiteRequest,
   type RecordWebsiteRequest,
-  type ResearchMediaKind,
   type SpecialistId,
   type StoryActionOptions,
   type WebsiteFileRequest,
 } from "@hyperframes/agent-protocol";
 import type { HostToolResult } from "../backend.js";
 import { errorMessage } from "../errors.js";
+import type { PermissionBroker } from "../permissions.js";
 import type { StoryTurnMode } from "../story/tools.js";
 import {
-  formatImport,
+  argsRecord,
+  invalid,
+  optionalKind,
+  optionalSide,
+  optionalText,
+  parseSearch,
+  refuse,
+  requiredText,
+} from "./args.js";
+import {
+  DownloadGate,
+  NO_DOWNLOAD,
+  PERMISSION_WHAT,
+  permissionRefusalText,
+} from "./downloadGate.js";
+import {
   formatInspect,
   formatResearchError,
   formatResolve,
@@ -33,15 +43,9 @@ import {
 } from "./format.js";
 import { formatRecordWebsite, formatWebsite, formatWebsiteFile } from "./formatWebsite.js";
 import { ResearchToolError, type ResearchHost } from "./host.js";
-import { approvesDownload, downloadApprovalRefusal } from "../autonomy.js";
-import {
-  boundedSites,
-  isLinkedSite,
-  linkedSites,
-  registrableDomain,
-  websiteHostOf,
-} from "./linkedSites.js";
-import type { PermissionBroker } from "../permissions.js";
+import { ImportFlow } from "./importFlow.js";
+import { registrableDomain, websiteHostOf } from "./linkedSites.js";
+import { SiteScope } from "./siteScope.js";
 import {
   DEFAULT_RESEARCH_ACCESS,
   RESEARCH_TOOL_NAMES,
@@ -60,18 +64,14 @@ export interface WebsiteSettings {
   fullAccess: boolean;
 }
 
-/** What each permission kind covers, in the words of the model-facing notes and refusals. */
-const PERMISSION_WHAT: Record<PermissionKind, string> = {
-  read_linked_pages: "reading linked pages",
-  website_full_access: "full access to linked sites",
-};
-
 /** What {@link TurnResearch.askPermission} settled as: a refusal, or the note that the user allowed the call. */
 interface AskOutcome {
   refusal: HostToolResult | null;
   note: string | null;
   /** Whether a request was shown to the user at all (false: no broker, or the setting is on). */
   asked: boolean;
+  /** The answer came from an earlier request of this turn (no new card was shown for this call). */
+  reused: boolean;
 }
 
 /** One website call guarded by {@link TurnResearch.guardedWebsiteCall}. */
@@ -88,17 +88,6 @@ interface WebsiteCall<T> {
   retryWithAsk: boolean;
   /** The note from an earlier ask of this call ("the user allowed it once"). */
   note: string | null;
-}
-
-/** What the model reads when the user refused, or the turn ended before they answered. */
-function permissionRefusalText(request: PermissionRequest, site: string | null): string {
-  const what = PERMISSION_WHAT[request.kind];
-  const where = site === null ? "" : ` on ${site}`;
-  if (request.state === "denied")
-    return `The user chose “Don't allow”: ${what}${where} is not allowed in this turn. Continue without it, and do not ask again in this turn.`;
-  if (request.state === "expired")
-    return `The turn ended before the user answered whether to allow ${what}${where}; the call was refused. Continue without it, and do not retry this turn.`;
-  return `blocked_by_policy: ${what}${where} is not allowed. Continue without it.`;
 }
 
 export interface TurnResearchOptions {
@@ -129,104 +118,46 @@ export interface TurnResearchOptions {
   permissions?: PermissionBroker | null;
   /**
    * The chat this turn belongs to and the runtime's memory of the files its `read_website` results listed: full
-   * access may fetch only pages of a linked site or an exact URL from that memory. It lives as long as the runtime, so
-   * it survives turns; after a restart the agent reads the site again.
+   * access may fetch only pages of a linked site or an exact URL from that memory. It is kept per chat next to the
+   * chat's data, so it survives turns and restarts (entries expire after a week).
    */
   websites: WebsiteAccess;
   /**
    * What the user wrote in this chat so far: the first prompt, later messages and steering — never assistant text,
-   * search results or page contents. The websites linked in it are the only ones `read_website` may open.
+   * search results or page contents. The websites linked in it (see `chatLinkedSites`) are the only ones
+   * `read_website` may open.
    */
   userTexts: () => readonly string[];
   /** What the user wrote in this turn only (its prompt and steering): the only place a download approval can come from. */
   turnUserTexts: () => readonly string[];
+  /** Sites the user removed from the chat's linked list; the runtime refuses them however often they are mentioned. */
+  excludedSites?: () => readonly string[];
   /**
-   * The user's "ask before downloading assets" setting. When true, `import_asset` and `read_website` with `save` are
-   * refused until the user approved in this turn: a Story "Find missing material" action, or a message of the turn that
-   * tells the agents to download/import or says yes (`approvesDownload`). Never the model's own text.
+   * The user's "ask before downloading assets" setting. When true, every download (`import_asset`, `read_website` with
+   * `save`, `get_website_file` in save mode, `record_website`) needs the user's approval in this turn: a Story "Find
+   * missing material" action, or a message of the turn that tells the agents to download/import
+   * (`approvesDownload`; a bare yes does not count, a negation cancels it), or an answer to the `asset_download` card
+   * the call publishes and waits on. Never the model's
+   * own text. Without a permission broker such a call is refused instead.
    */
   askBeforeDownloads: boolean;
-  /** The model the Research run uses (`provider/modelId`), recorded in the provenance. */
-  model: () => string | null;
+  /**
+   * Whether `build_story` already ran in this turn (the Story executor's `hasBuilt`). In a build turn the graph is
+   * frozen from then on: `import_asset` with `resolveMissing` and `resolve_missing_asset` are refused.
+   */
+  storyBuilt?: () => boolean;
+  /** The model the calling agent runs (`provider/modelId`), recorded in the provenance of what it imports. */
+  model: (agent: AgentId) => string | null;
 }
 
-const refuse = (text: string): HostToolResult => ({ text, isError: true });
-
-const invalid = (message: string) => new ResearchToolError("invalid_request", message);
-
-function argsRecord(args: unknown): Record<string, unknown> {
-  if (args === undefined || args === null) return {};
-  if (!isRecord(args)) throw invalid("arguments must be a JSON object");
-  return args;
+/** Joins the notes the model reads before a tool's result (a permission answer, a download answer). */
+function joinNotes(...notes: Array<string | null>): string | null {
+  const present = notes.filter((note) => note !== null);
+  return present.length === 0 ? null : present.join(" ");
 }
 
-/** Models send `null` for "not given". */
-function optionalText(
-  record: Record<string, unknown>,
-  key: string,
-  max: number,
-): string | undefined {
-  const value = record[key];
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== "string") throw invalid(`${key} must be a string`);
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  if (trimmed.length > max) throw invalid(`${key} must be at most ${max} characters`);
-  return trimmed;
-}
-
-function requiredText(record: Record<string, unknown>, key: string, max: number): string {
-  const value = optionalText(record, key, max);
-  if (value === undefined) throw invalid(`${key} is required`);
-  return value;
-}
-
-function optionalKind(record: Record<string, unknown>): ResearchMediaKind | undefined {
-  const value = record.mediaKind;
-  if (value === undefined || value === null) return undefined;
-  const kind = RESEARCH_MEDIA_KINDS.find((candidate) => candidate === value);
-  if (!kind) throw invalid(`mediaKind must be one of ${RESEARCH_MEDIA_KINDS.join(", ")}`);
-  return kind;
-}
-
-function parseSearch(args: unknown): AssetSearchRequest {
-  const record = argsRecord(args);
-  const query = requiredText(record, "query", RESEARCH_LIMITS.queryChars);
-  const mediaKind = optionalKind(record);
-  if (!mediaKind) throw invalid("mediaKind is required");
-  const request: AssetSearchRequest = { query, mediaKind };
-  const { sources, limit } = record;
-  if (sources !== undefined && sources !== null) {
-    if (!Array.isArray(sources) || !sources.every((id) => typeof id === "string"))
-      throw invalid("sources must be an array of source ids");
-    const ids = [...new Set(sources.map((id: string) => id.trim()).filter(Boolean))];
-    if (ids.length > RESEARCH_LIMITS.sources) throw invalid("too many sources");
-    if (ids.length > 0) request.sources = ids;
-  }
-  if (limit !== undefined && limit !== null) {
-    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1)
-      throw invalid("limit must be a positive integer");
-    request.limit = Math.min(limit, RESEARCH_LIMITS.searchResults);
-  }
-  return request;
-}
-
-/** A recording viewport side: an even integer within the limits, or nothing when not given. */
-function optionalSide(
-  record: Record<string, unknown>,
-  key: "width" | "height",
-): number | undefined {
-  const value = record[key];
-  if (value === undefined || value === null) return undefined;
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value < 2 ||
-    value > WEBSITE_LIMITS.recordMaxSide ||
-    value % 2 !== 0
-  )
-    throw invalid(`${key} must be an even integer between 2 and ${WEBSITE_LIMITS.recordMaxSide}`);
-  return value;
+function withNote(result: HostToolResult, note: string | null): HostToolResult {
+  return note === null ? result : { ...result, text: `${note}\n\n${result.text}` };
 }
 
 /**
@@ -236,8 +167,10 @@ function optionalSide(
  * end (the host cancels it on abort and keeps waiting for the server's answer, see {@link ResearchHost}), and no new
  * call is accepted afterwards. A write the host could not settle is reported by {@link shutdown} as unsettled.
  *
- * Who may call what is re-checked here with {@link researchToolsFor}, so a Director cannot reach the search or import
- * tools however it names them. The fields of a request that describe the caller (turn, agent, model) are set here and
+ * Who may call what is re-checked here with {@link researchToolsFor}: the Director reaches the search and import tools
+ * only while Research is off in the chat (its work moves to the Director, with the same policy and approvals), and
+ * no agent reaches a tool it was not given however it names it. The fields of a request that describe the caller
+ * (turn, agent, model) are set here and
  * whatever the model sends for them is dropped; requests never carry an Asset Search policy mode — the Studio server
  * enforces the user's policy on every call.
  */
@@ -247,11 +180,33 @@ export class TurnResearch {
   private readonly inflight = new Set<Promise<unknown>>();
   private readonly unsettled: string[] = [];
   private readonly candidates = new Map<string, KnownCandidate>();
+  private readonly gate: DownloadGate;
+  private readonly sites: SiteScope;
+  private readonly imports: ImportFlow;
   /** The Websites settings last read; refreshed after a refusal so a change in Settings mid-turn is honoured. */
   private websiteSettings: WebsiteSettings | null;
 
   constructor(private readonly options: TurnResearchOptions) {
     this.websiteSettings = options.websiteSettings ?? null;
+    this.gate = new DownloadGate({
+      askBeforeDownloads: options.askBeforeDownloads,
+      turn: options.turn,
+      turnUserTexts: options.turnUserTexts,
+      permissions: options.permissions ?? null,
+    });
+    this.sites = new SiteScope({
+      userTexts: options.userTexts,
+      turnUserTexts: options.turnUserTexts,
+      ...(options.excludedSites && { excludedSites: options.excludedSites }),
+      websites: options.websites,
+      permissions: options.permissions ?? null,
+    });
+    this.imports = new ImportFlow({
+      host: options.host,
+      turnId: options.turnId,
+      model: options.model,
+      gate: this.gate,
+    });
   }
 
   execute(
@@ -304,14 +259,16 @@ export class TurnResearch {
         license: candidate.license.name,
       });
     }
+    this.gate.remember(candidates);
   }
 
-  /** Whether the user has approved downloading in this turn (always true when they do not want to be asked). */
-  private downloadsApproved(): boolean {
-    if (!this.options.askBeforeDownloads) return true;
-    // The Story workspace's "Find missing material" is the user's own request to fill those nodes with downloads.
-    if (this.options.turn.action === "resolve") return true;
-    return this.options.turnUserTexts().some(approvesDownload);
+  /** In a build turn, once the story is built the graph is frozen: a node resolved later would not reach the timeline. */
+  private storyFrozenRefusal(): HostToolResult | null {
+    if (this.options.turn.action !== "build" || !(this.options.storyBuilt?.() ?? false))
+      return null;
+    return refuse(
+      "The story was already built in this turn, so the graph is frozen: a Missing Asset node resolved now would not reach the timeline. Import the file without resolveMissing (just the candidate or url) and report its project path, so it can be placed on the timeline with edit_timeline.",
+    );
   }
 
   /** Whether the switch a call of `kind` needs is on in the settings last read (unknown settings let Studio decide). */
@@ -340,43 +297,57 @@ export class TurnResearch {
   }
 
   /**
+   * The site a URL belongs to: its registrable domain, or the exact host when it has none (an address with no domain
+   * name), so a website card always names a site and a grant never means "every site".
+   */
+  private siteOf(url: string): string | null {
+    const host = websiteHostOf(url);
+    return host === null ? null : (registrableDomain(host) ?? host);
+  }
+
+  /**
    * Asks the user in chat when the setting a call needs is off, and waits for their answer. Nothing is asked when the
-   * setting is on, or when there is no broker to show the request (the call then fails like before).
+   * setting is on, or when there is no broker to show the request (the call then fails like before). The answer
+   * covers the site of `url` only ("Turn on" covers every site).
    */
   private async askPermission(
     kind: PermissionKind,
     action: PermissionAction,
     url: string,
     caller: AgentId,
+    signal: AbortSignal,
   ): Promise<AskOutcome> {
     const broker = this.options.permissions ?? null;
-    if (!broker || this.websiteSettingOn(kind)) return { refusal: null, note: null, asked: false };
-    const host = websiteHostOf(url);
-    const site = host === null ? null : registrableDomain(host);
-    const request = await broker.ask({ kind, action, site, agent: caller });
+    if (!broker || this.websiteSettingOn(kind))
+      return { refusal: null, note: null, asked: false, reused: false };
+    const site = this.siteOf(url);
+    const reused = broker.peek(kind, site)?.state !== undefined;
+    const request = await broker.ask({ kind, action, site, agent: caller }, signal);
     if (request.state === "allowed_once" || request.state === "enabled") {
       const what = PERMISSION_WHAT[request.kind];
       return {
         refusal: null,
         note:
           request.state === "allowed_once"
-            ? `The user allowed ${what} once from the chat for this turn.`
+            ? `The user allowed ${what}${site === null ? "" : ` on ${site}`} once from the chat for this turn.`
             : `The user turned ${what} on.`,
         asked: true,
+        reused,
       };
     }
-    return { refusal: refuse(permissionRefusalText(request, site)), note: null, asked: true };
-  }
-
-  /** Whether the user's permission answer in this turn also approves the website tools' downloads. */
-  private permissionAllowsDownload(): boolean {
-    return this.options.permissions?.allowsWebsiteDownload() ?? false;
+    return {
+      refusal: refuse(permissionRefusalText(request, site)),
+      note: null,
+      asked: true,
+      reused,
+    };
   }
 
   /**
-   * Runs a website call; a `blocked_by_policy` refusal re-reads the policy and, when the switch is off after all,
-   * asks the user and retries once (the setting changed in Settings mid-turn). `retryWithAsk` is false when this call
-   * already asked: the answer did not make Studio pass, so the refusal is final.
+   * Runs a website call. A `blocked_by_policy` refusal means Studio does not honour what the turn believes it has —
+   * the setting was switched off in Settings mid-turn, or Studio restarted and forgot the turn's "Allow once" — so
+   * the policy is re-read, the broker drops its stale "allowed" answer and the user is asked again, once. The refusal
+   * is final (`retryWithAsk` false) only when this very call just showed a new card and Studio still refused.
    */
   private async guardedWebsiteCall<T>(
     call: WebsiteCall<T>,
@@ -388,7 +359,14 @@ export class TurnResearch {
       if (!call.retryWithAsk) return { refusal: refuse(call.refusalText(error)) };
       await this.refreshWebsiteSettings(call.signal);
       if (this.websiteSettingOn(call.kind)) return { refusal: refuse(call.refusalText(error)) };
-      const asked = await this.askPermission(call.kind, call.action, call.url, call.caller);
+      this.options.permissions?.reset(call.kind, this.siteOf(call.url));
+      const asked = await this.askPermission(
+        call.kind,
+        call.action,
+        call.url,
+        call.caller,
+        call.signal,
+      );
       if (asked.refusal) return { refusal: asked.refusal };
       if (!asked.asked) return { refusal: refuse(call.refusalText(error)) };
       try {
@@ -427,14 +405,9 @@ export class TurnResearch {
     const save = record.save === true;
     if (record.save !== undefined && record.save !== null && typeof record.save !== "boolean")
       throw invalid("save must be true or false");
-    const sites = linkedSites(this.options.userTexts());
-    if (!isLinkedSite(url, sites)) {
-      const linked =
-        sites.length > 0
-          ? `The user has linked: ${sites.join(", ")}.`
-          : "The user has not linked any website in this chat.";
+    if (!this.sites.isLinked(url)) {
       return refuse(
-        `blocked_by_policy: ${url} is not a page of a website the user linked in this chat. ${linked} You may read only a site the user sent a link to (the same site, including www. and subdomains); ask the user for the link — do not guess, search for or try another address.`,
+        `blocked_by_policy: ${url} is not a page of a website the user linked in this chat. ${this.sites.linkedNote()} You may read only a site the user sent a link to (the same site, including www. and subdomains); ask the user for the link — do not guess, search for or try another address.`,
       );
     }
     if (save && intent !== "edit") {
@@ -442,12 +415,24 @@ export class TurnResearch {
         "This is an Ask turn: the user wants an answer only, so read_website cannot save files. Call it without save to read the style, and answer from what you read.",
       );
     }
-    const asked = await this.askPermission("read_linked_pages", "read", url, caller);
+    const asked = await this.askPermission("read_linked_pages", "read", url, caller, signal);
     if (asked.refusal) return asked.refusal;
-    if (save && !this.downloadsApproved() && !this.permissionAllowsDownload())
-      return refuse(downloadApprovalRefusal());
+    const gate = save
+      ? await this.gate.check({
+          action: "download",
+          url,
+          caller,
+          asset: this.gate.assetOfUrl(url),
+          signal,
+        })
+      : NO_DOWNLOAD;
+    if (gate.refusal) return gate.refusal;
     // The turn id is sent even without save: a grant of this turn ("Allow once") passes the setting's check on the server.
-    const allowedSites = this.allowedSitesFor(url);
+    const allowedSites = this.sites.allowedSitesFor(
+      url,
+      "read_linked_pages",
+      this.websiteSettingOn("read_linked_pages"),
+    );
     const request: ReadWebsiteRequest = {
       url,
       allowedSites,
@@ -455,7 +440,7 @@ export class TurnResearch {
       ...(save && {
         save,
         agent: caller,
-        model: caller === "research" ? this.options.model() : null,
+        model: this.options.model(caller),
       }),
     };
     const outcome = await this.guardedWebsiteCall({
@@ -467,74 +452,19 @@ export class TurnResearch {
       run: () => host.website(request, signal),
       refusalText: (error) =>
         `blocked_by_policy: ${error.message} Reading linked websites is off and the chat could not ask the user to allow it. Tell the user, and continue without reading the site — do not retry this turn.`,
-      retryWithAsk: !asked.asked,
+      retryWithAsk: !asked.asked || asked.reused,
       note: asked.note,
     });
     if ("refusal" in outcome) return outcome.refusal;
     // A redirect may have left the linked sites (an open redirect on a linked page): nothing of the page is shown
     // or remembered then, or the read would hand the agent, and its later file requests, any public site.
-    const left = this.redirectedAway(url, outcome.value.site.finalUrl, allowedSites);
+    const left = this.sites.redirectedAway(url, outcome.value.site.finalUrl, allowedSites);
     if (left) return left;
-    this.options.websites.resources.rememberRead(this.options.websites.chatId, outcome.value);
+    await this.options.websites.resources.rememberRead(this.options.websites.chatId, outcome.value);
     const formatted = formatWebsite(outcome.value, {
       fullAccess: (this.options.access ?? DEFAULT_RESEARCH_ACCESS).websiteFiles,
     });
-    return outcome.note === null
-      ? formatted
-      : { ...formatted, text: `${outcome.note}\n\n${formatted.text}` };
-  }
-
-  /**
-   * Full access may fetch only a page of a site the user linked in this chat, or an exact file a `read_website` of
-   * such a site listed earlier (its resources, logo, favicon, og image or fonts — CDN hosts included). The check runs
-   * here, before Studio is asked; null when the URL is allowed.
-   */
-  private websiteFileScope(url: string): HostToolResult | null {
-    const sites = linkedSites(this.options.userTexts());
-    if (isLinkedSite(url, sites)) return null;
-    if (this.options.websites.resources.has(this.options.websites.chatId, url)) return null;
-    const linked =
-      sites.length > 0
-        ? `The user has linked: ${sites.join(", ")}.`
-        : "The user has not linked any website in this chat.";
-    return refuse(
-      `blocked_by_policy: ${url} is not a file of a website the user linked in this chat. ${linked} Full access covers the linked site itself and the exact files an earlier read_website of it listed (its resources, logo, favicon, og image or fonts, CDN hosts included). Call read_website on the site first and take the URL from its resource list; do not guess, search for or try another address.`,
-    );
-  }
-
-  /**
-   * The sites Studio may open for a full-access call, and every redirect hop of it: the linked sites, plus the site of
-   * `url` itself when it is a file an earlier read listed (a CDN host the user never named). Studio takes a bounded
-   * number of sites, so a chat that linked more sends a bounded list that always holds the site of `url`.
-   */
-  private allowedSitesFor(url: string): string[] {
-    const sites = linkedSites(this.options.userTexts());
-    const host = websiteHostOf(url);
-    const own = host === null ? null : registrableDomain(host);
-    const linked = sites.find((site) => isLinkedSite(url, [site]));
-    return boundedSites(sites, linked ?? own);
-  }
-
-  /**
-   * Studio checks every redirect hop against the `allowedSites` of the request, and a file is written before the answer
-   * comes back. The check here uses that same list, so a redirect Studio let through (within the request's own site) is
-   * never reported as blocked after the file is already in the project, and a hop it would refuse is refused here too.
-   * Null when the final URL is in scope.
-   */
-  private redirectedAway(
-    requested: string,
-    finalUrl: string,
-    allowedSites: readonly string[],
-  ): HostToolResult | null {
-    if (isLinkedSite(finalUrl, allowedSites)) return null;
-    const sites = linkedSites(this.options.userTexts());
-    const linked =
-      sites.length > 0
-        ? `The user has linked: ${sites.join(", ")}.`
-        : "The user has not linked any website in this chat.";
-    return refuse(
-      `blocked_by_policy: ${requested} redirected to ${finalUrl}, which is not a website this call may open, so nothing it returned is shown. ${linked} You may read only the linked sites themselves (and the file hosts their pages listed); do not follow redirects off them or try another address. Tell the user if the link they sent no longer leads to their site.`,
-    );
+    return withNote(formatted, joinNotes(outcome.note, gate.note));
   }
 
   /** `get_website_file`: downloads one file of a linked site (or a file an earlier read of it listed), or reads its text. */
@@ -549,7 +479,7 @@ export class TurnResearch {
     const mode = websiteFileMode(requiredText(record, "mode", 16));
     if (!mode) throw invalid(`mode must be one of ${WEBSITE_FILE_MODES.join(", ")}`);
     const pageUrl = optionalText(record, "pageUrl", RESEARCH_LIMITS.urlChars);
-    const scope = this.websiteFileScope(url);
+    const scope = await this.sites.fileScope(url);
     if (scope) return scope;
     if (mode === "save" && this.options.intent !== "edit") {
       return refuse(
@@ -557,12 +487,25 @@ export class TurnResearch {
       );
     }
     const action: PermissionAction = mode === "save" ? "download" : "read_code";
-    const asked = await this.askPermission("website_full_access", action, url, caller);
+    const asked = await this.askPermission("website_full_access", action, url, caller, signal);
     if (asked.refusal) return asked.refusal;
-    if (mode === "save" && !this.downloadsApproved() && !this.permissionAllowsDownload())
-      return refuse(downloadApprovalRefusal());
+    const gate =
+      mode === "save"
+        ? await this.gate.check({
+            action: "download",
+            url,
+            caller,
+            asset: this.gate.assetOfUrl(url),
+            signal,
+          })
+        : NO_DOWNLOAD;
+    if (gate.refusal) return gate.refusal;
     // The turn id is sent even for a read: a grant of this turn ("Allow once") passes the setting's check on the server.
-    const allowedSites = this.allowedSitesFor(url);
+    const allowedSites = this.sites.allowedSitesFor(
+      url,
+      "website_full_access",
+      this.websiteSettingOn("website_full_access"),
+    );
     const request: WebsiteFileRequest = {
       url,
       mode,
@@ -571,7 +514,7 @@ export class TurnResearch {
       ...(pageUrl !== undefined && { pageUrl }),
       ...(mode === "save" && {
         agent: caller,
-        model: caller === "research" ? this.options.model() : null,
+        model: this.options.model(caller),
       }),
     };
     const what = mode === "save" ? "Downloading a file from a linked site" : "Reading a site file";
@@ -584,16 +527,14 @@ export class TurnResearch {
       run: () => host.websiteFile(request, signal),
       refusalText: (error) =>
         `blocked_by_policy: ${error.message} ${what} needs full access to linked sites and the chat could not ask the user to allow it. Tell the user, and continue without it — do not retry this turn.`,
-      retryWithAsk: !asked.asked,
+      retryWithAsk: !asked.asked || asked.reused,
       note: asked.note,
     });
     if ("refusal" in outcome) return outcome.refusal;
-    const left = this.redirectedAway(url, outcome.value.finalUrl, allowedSites);
+    const left = this.sites.redirectedAway(url, outcome.value.finalUrl, allowedSites);
     if (left) return left;
     const formatted = { text: formatWebsiteFile(outcome.value) };
-    return outcome.note === null
-      ? formatted
-      : { ...formatted, text: `${outcome.note}\n\n${formatted.text}` };
+    return withNote(formatted, joinNotes(outcome.note, gate.note));
   }
 
   /** `record_website`: records a page of a linked site as an MP4 (always a write). */
@@ -618,18 +559,28 @@ export class TurnResearch {
       throw invalid("scroll must be true or false");
     const width = optionalSide(record, "width");
     const height = optionalSide(record, "height");
-    const allowedSites = this.allowedSitesFor(url);
-    const scope = this.websiteFileScope(url);
+    const scope = await this.sites.fileScope(url);
     if (scope) return scope;
     if (this.options.intent !== "edit") {
       return refuse(
         "This is an Ask turn: the user wants an answer only, so record_website is not available.",
       );
     }
-    const asked = await this.askPermission("website_full_access", "record", url, caller);
+    const asked = await this.askPermission("website_full_access", "record", url, caller, signal);
     if (asked.refusal) return asked.refusal;
-    if (!this.downloadsApproved() && !this.permissionAllowsDownload())
-      return refuse(downloadApprovalRefusal());
+    const gate = await this.gate.check({
+      action: "record",
+      url,
+      caller,
+      asset: this.gate.assetOfUrl(url),
+      signal,
+    });
+    if (gate.refusal) return gate.refusal;
+    const allowedSites = this.sites.allowedSitesFor(
+      url,
+      "website_full_access",
+      this.websiteSettingOn("website_full_access"),
+    );
     const request: RecordWebsiteRequest = {
       url,
       allowedSites,
@@ -640,7 +591,7 @@ export class TurnResearch {
       ...(height !== undefined && { height }),
       turnId,
       agent: caller,
-      model: caller === "research" ? this.options.model() : null,
+      model: this.options.model(caller),
     };
     const outcome = await this.guardedWebsiteCall({
       kind: "website_full_access",
@@ -651,16 +602,14 @@ export class TurnResearch {
       run: () => host.recordWebsite(request, signal),
       refusalText: (error) =>
         `blocked_by_policy: ${error.message} Recording a page of a linked site needs full access to linked sites and the chat could not ask the user to allow it. Tell the user, and continue without it — do not retry this turn.`,
-      retryWithAsk: !asked.asked,
+      retryWithAsk: !asked.asked || asked.reused,
       note: asked.note,
     });
     if ("refusal" in outcome) return outcome.refusal;
-    const left = this.redirectedAway(url, outcome.value.finalUrl, allowedSites);
+    const left = this.sites.redirectedAway(url, outcome.value.finalUrl, allowedSites);
     if (left) return left;
     const formatted = { text: formatRecordWebsite(outcome.value) };
-    return outcome.note === null
-      ? formatted
-      : { ...formatted, text: `${outcome.note}\n\n${formatted.text}` };
+    return withNote(formatted, joinNotes(outcome.note, gate.note));
   }
 
   private async run(
@@ -670,6 +619,8 @@ export class TurnResearch {
     caller: AgentId,
   ): Promise<HostToolResult> {
     const { host, turnId } = this.options;
+    // The policy could not be read when the turn started: the first research call tries again.
+    if (this.websiteSettings === null) await this.refreshWebsiteSettings(signal);
     switch (name) {
       case RESEARCH_TOOL_NAMES.search: {
         const result = await host.search(parseSearch(args), signal);
@@ -687,35 +638,18 @@ export class TurnResearch {
         this.remember(result.candidates);
         return { text: formatInspect(result) };
       }
-      case RESEARCH_TOOL_NAMES.import: {
-        const record = argsRecord(args);
-        if (!this.downloadsApproved()) return refuse(downloadApprovalRefusal());
-        const candidate = optionalText(record, "candidate", 120);
-        const url = optionalText(record, "url", RESEARCH_LIMITS.urlChars);
-        if ((candidate === undefined) === (url === undefined))
-          throw invalid("pass exactly one of candidate and url");
-        const request: ImportAssetRequest = {
-          ...(candidate !== undefined && { candidate }),
-          ...(url !== undefined && { url }),
-          turnId,
-          agent: "research",
-          model: this.options.model(),
-        };
-        const fileName = optionalText(record, "name", RESEARCH_LIMITS.fileNameChars);
-        if (fileName) request.name = fileName;
-        const resolveMissing = optionalText(record, "resolveMissing", 66);
-        if (resolveMissing) {
-          this.checkScope(resolveMissing);
-          request.resolveMissing = resolveMissing;
-        }
-        const result = await host.importAsset(request, signal);
-        return { text: formatImport(result) };
-      }
+      case RESEARCH_TOOL_NAMES.import:
+        return this.imports.run(argsRecord(args), signal, caller, (missing) => {
+          this.checkScope(missing);
+          return this.storyFrozenRefusal();
+        });
       case RESEARCH_TOOL_NAMES.resolve: {
         const record = argsRecord(args);
         const missing = requiredText(record, "missing", 66);
         const asset = requiredText(record, "asset", 1_024);
         this.checkScope(missing);
+        const frozen = this.storyFrozenRefusal();
+        if (frozen) return frozen;
         return { text: formatResolve(await host.resolve({ missing, asset, turnId }, signal)) };
       }
       case RESEARCH_TOOL_NAMES.sources:

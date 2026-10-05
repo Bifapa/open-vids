@@ -580,3 +580,85 @@ describe("which providers offer an in-app sign-in", () => {
     }
   });
 });
+
+describe("OMP usage and tool failures", () => {
+  const projectDir = path.resolve("/project");
+
+  it("reports what each model call used as a usage event", () => {
+    const message = {
+      role: "assistant",
+      usage: {
+        input: 1200,
+        output: 300,
+        cacheRead: 5000,
+        cacheWrite: 100,
+        totalTokens: 6600,
+        cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0.002, total: 0.033 },
+      },
+    };
+    expect(translateOmpEvent({ type: "message_end", message }, projectDir)).toEqual({
+      type: "usage",
+      usage: {
+        input: 1200,
+        output: 300,
+        cacheRead: 5000,
+        cacheWrite: 100,
+        totalTokens: 6600,
+        cost: 0.033,
+      },
+    });
+  });
+
+  it("derives the total, reports an unknown cost as null and ignores other messages", () => {
+    const usage = { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } };
+    expect(
+      translateOmpEvent({ type: "message_end", message: { role: "assistant", usage } }, projectDir),
+    ).toEqual({
+      type: "usage",
+      usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: null },
+    });
+    expect(
+      translateOmpEvent({ type: "message_end", message: { role: "user", usage } }, projectDir),
+    ).toBeNull();
+    expect(
+      translateOmpEvent(
+        { type: "message_end", message: { role: "assistant", usage: { input: 0, output: 0 } } },
+        projectDir,
+      ),
+    ).toBeNull();
+  });
+
+  it("gives a failed tool's own text as the reason, trimmed and masked", () => {
+    const end = translateOmpEvent(
+      {
+        type: "tool_execution_end",
+        toolCallId: "call-9",
+        isError: true,
+        result: {
+          content: [
+            { type: "text", text: 'Project boundary violation: "../x"' },
+            { type: "text", text: "Bearer abcdefghijklmnopqrstuvwxyz" },
+          ],
+        },
+      },
+      projectDir,
+    );
+    expect(end).toEqual({
+      type: "tool.end",
+      toolCallId: "call-9",
+      ok: false,
+      error: 'Project boundary violation: "../x" [hidden]',
+    });
+    expect(
+      translateOmpEvent(
+        {
+          type: "tool_execution_end",
+          toolCallId: "call-10",
+          isError: false,
+          result: { content: [{ type: "text", text: "fine" }] },
+        },
+        projectDir,
+      ),
+    ).toEqual({ type: "tool.end", toolCallId: "call-10", ok: true });
+  });
+});

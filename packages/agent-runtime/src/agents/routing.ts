@@ -30,13 +30,16 @@ const describe = (model: ModelSelection | null): string =>
  * Applies the user's limits to the model/effort the Director asked for one delegated task:
  * - the model must be the specialist's configured model or one of its `allowedModels`, and usable (authenticated);
  * - thinking may be lowered for the task but never raised above the configured (or, when unset, default) effort.
- * Violations are reported back to the Director instead of being silently corrected.
+ * Violations are reported back to the Director instead of being silently corrected. When the model list could not be
+ * loaded (`catalogKnown` false) credentials cannot be judged: an allowed model is accepted and a missing sign-in shows
+ * up when the run starts, instead of a misleading "no credentials".
  */
 export function routeDelegation(
   specialist: SpecialistId,
   config: SpecialistConfig,
   request: RoutingRequest,
   catalog: AgentModelCatalog,
+  catalogKnown = true,
 ): RoutingResult {
   const name = AGENT_DISPLAY_NAMES[specialist];
   let model = config.model;
@@ -53,7 +56,7 @@ export function routeDelegation(
             : `${name} must run on ${describe(config.model)}; the user has not allowed other models for it.`,
       };
     }
-    if (!catalog.models.some((available) => sameSelection(available, requested))) {
+    if (catalogKnown && !catalog.models.some((available) => sameSelection(available, requested))) {
       return {
         ok: false,
         message: `${describe(requested)} is allowed for ${name} but is not available (no credentials).`,

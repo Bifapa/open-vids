@@ -18,6 +18,22 @@ interface Probe {
   escapeFileExists: boolean;
   allowedWrite: Outcome;
   allowedFileExists: boolean;
+  visionWrite: Outcome;
+  visionFileExists: boolean;
+  visionRead: Outcome;
+  skillsRead: Outcome;
+  skillsWrite: Outcome;
+  skillsWriteExists: boolean;
+  skillsEdit: Outcome;
+  skillsAfterEdit: string;
+  outsideRead: Outcome;
+  hasSkillsNote: boolean;
+  intentArgument: boolean;
+  leasedWrite: Outcome;
+  leasedExists: boolean;
+  freeWrite: Outcome;
+  textWrite: Outcome;
+  claims: string[][];
 }
 
 function runProbe(): Probe {
@@ -48,5 +64,36 @@ describe("the tool_call guard of a real OMP session (run under Bun, no model)", 
   it("lets an in-project write run once the turn allows changes", () => {
     expect(probe.allowedWrite.ok).toBe(true);
     expect(probe.allowedFileExists).toBe(true);
+  });
+
+  it("keeps Vision read-only even when the turn allows changes", () => {
+    expect(probe.visionWrite.ok).toBe(false);
+    expect(JSON.stringify(probe.visionWrite)).toContain("Vision is read-only");
+    expect(probe.visionFileExists).toBe(false);
+    expect(probe.visionRead).toMatchObject({ ok: true, text: "hello" });
+  });
+
+  it("lets agents read the bundled skills but never change them or anything else outside the project", () => {
+    expect(probe.skillsRead).toMatchObject({ ok: true });
+    expect(JSON.stringify(probe.skillsRead)).toContain("the skill");
+    expect(probe.skillsWrite.ok).toBe(false);
+    expect(probe.skillsWriteExists).toBe(false);
+    expect(probe.skillsEdit.ok).toBe(false);
+    expect(probe.skillsAfterEdit).toBe("# the skill\n");
+    expect(probe.outsideRead.ok).toBe(false);
+    expect(probe.hasSkillsNote).toBe(true);
+  });
+
+  it("does not add the SDK's `i` intent argument to tools, which models glued onto tool names", () => {
+    expect(probe.intentArgument).toBe(false);
+  });
+
+  it("asks the write lease before a composition file is written, and only for those", () => {
+    expect(probe.leasedWrite.ok).toBe(false);
+    expect(JSON.stringify(probe.leasedWrite)).toContain("held by the Motion Designer run");
+    expect(probe.leasedExists).toBe(false);
+    expect(probe.freeWrite.ok).toBe(true);
+    expect(probe.textWrite.ok).toBe(true);
+    expect(probe.claims).toEqual([["index.html"], ["free.html"]]);
   });
 });

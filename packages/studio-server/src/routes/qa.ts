@@ -1,10 +1,12 @@
 import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
+  parseQaAcceptRequest,
   parseQaCheckRequest,
   parseQaFinishRequest,
   parseQaFramesRequest,
   parseQaReportInput,
+  parseQaTimelineCheckRequest,
   type Parsed,
 } from "@hyperframes/agent-protocol";
 import type { MediaProber } from "../editing/mediaFacts.js";
@@ -26,8 +28,9 @@ function parsed<T>(result: Parsed<T>): T {
 }
 
 /**
- * Render QA: deterministic checks on a rendered file and its timeline, the frames Vision reviews, and the durable
- * reports of QA passes under the project's `.hyperframes/qa/`. Speaks the `@hyperframes/agent-protocol` QA contract;
+ * Render QA: deterministic checks on a rendered file and its timeline (or on the timeline alone, without a render),
+ * the frames Vision reviews, the durable reports of QA passes under the project's `.hyperframes/qa/`, and the issues
+ * the user marked intentional (`accepted.json`). Speaks the `@hyperframes/agent-protocol` QA contract;
  * errors are `{ error: QaError }`.
  *
  * Work that spawns processes (ffmpeg, the layout checker) gets the request's abort signal: the node server aborts
@@ -76,6 +79,18 @@ export function registerQaRoutes(
   );
 
   api.post(
+    "/projects/:id/qa/check-timeline",
+    tooLarge,
+    route(async (project, c) =>
+      service.checkTimeline(
+        project,
+        parsed(parseQaTimelineCheckRequest(await body(c))),
+        c.req.raw.signal,
+      ),
+    ),
+  );
+
+  api.post(
     "/projects/:id/qa/frames",
     tooLarge,
     route(async (project, c) =>
@@ -111,6 +126,24 @@ export function registerQaRoutes(
   api.get(
     "/projects/:id/qa/reports/:reportId",
     route((project, c) => service.getReport(project, c.req.param("reportId") ?? "")),
+  );
+
+  api.get(
+    "/projects/:id/qa/accepted",
+    route((project) => service.listAccepted(project)),
+  );
+
+  api.post(
+    "/projects/:id/qa/accepted",
+    tooLarge,
+    route(async (project, c) =>
+      service.accept(project, parsed(parseQaAcceptRequest(await body(c)))),
+    ),
+  );
+
+  api.delete(
+    "/projects/:id/qa/accepted/:acceptedId",
+    route((project, c) => service.unaccept(project, c.req.param("acceptedId") ?? "")),
   );
 
   return service;

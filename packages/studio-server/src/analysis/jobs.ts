@@ -104,6 +104,7 @@ export class JobRegistry {
       results: [],
       error: null,
       startedAt: this.now(),
+      updatedAt: this.now(),
       finishedAt: null,
     };
     const entry: Entry = {
@@ -169,11 +170,15 @@ export class JobRegistry {
         if (!live()) return;
         entry.current = stage;
         job.stage = stage;
+        job.updatedAt = this.now();
       },
       advance: (fraction) => {
         if (!live() || !entry.current) return;
         const share = (entry.weights[entry.current] ?? 0) * Math.min(1, Math.max(0, fraction));
         this.setProgress(entry, entry.finishedWeight + share);
+      },
+      pulse: () => {
+        if (live()) job.updatedAt = this.now();
       },
       finish: (result: StageResult) => {
         if (!live()) return;
@@ -216,6 +221,7 @@ export class JobRegistry {
   private setProgress(entry: Entry, weight: number): void {
     const progress = Math.round(Math.min(100, (weight / entry.total) * 100) * 10) / 10;
     entry.job.progress = Math.max(entry.job.progress, progress);
+    entry.job.updatedAt = this.now();
   }
 
   private finish(

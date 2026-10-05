@@ -80,9 +80,12 @@ function modelInfo(model: ModelSelection): AgentModelInfo {
   return { ...model, name: model.modelId, reasoning: true, efforts: ["low", "medium", "high"] };
 }
 
+/** These tests are about delegation, not Render QA: the fixture's QA host stays out of the turn. */
+const NO_QA = { qa: undefined } as const;
+
 describe("multi-agent orchestration", () => {
   it("runs specialists in parallel inside the Director turn and returns their reports", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const chat = await fixture.chats.create({}, ["editor", "vision"]);
       const editorGate = Promise.withResolvers<void>();
@@ -170,18 +173,24 @@ describe("multi-agent orchestration", () => {
       // Each specialist keeps its own resumable session beside the Director's, without delegation tools.
       const editorSession = fixture.backend.sessionsOf("editor")[0];
       expect(editorSession?.input.stateDir).toMatch(/agents[/\\]editor$/);
-      expect(editorSession?.input.hostTools.map((tool) => tool.name)).toEqual([
-        ...EDITOR_TOOLS,
-        ...ANALYSIS_TOOLS_EDITOR,
-        "read_story",
-      ]);
+      // The session carries the tools of every kind of turn (the runtime enforces the actual turn at dispatch).
+      expect(editorSession?.input.hostTools.map((tool) => tool.name).sort()).toEqual(
+        [
+          ...EDITOR_TOOLS,
+          "inspect_composition",
+          ...ANALYSIS_TOOLS_EDITOR,
+          "read_story",
+          "build_story",
+          "request_input",
+        ].sort(),
+      );
     } finally {
       await fixture.cleanup();
     }
   });
 
   it("refuses disabled specialists and keeps delegation one level deep", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const chat = await fixture.chats.create({}, ["editor"]);
       let refusal = "";
@@ -214,7 +223,7 @@ describe("multi-agent orchestration", () => {
       await fixture.turns.start(chat.id, { prompt: "Add music and cut" });
       await settled(fixture, chat.id);
 
-      expect(refusal).toContain("Audio is not enabled in this chat");
+      expect(refusal).toContain("Audio is off in this chat; do it yourself with edit_timeline");
       expect(nestedDelegation).toBeInstanceOf(Error);
       expect(fixture.backend.sessionsOf("audio")).toHaveLength(0);
       expect(fixture.chats.get(chat.id)?.runs.map((run) => run.agent)).toEqual(["editor"]);
@@ -225,24 +234,29 @@ describe("multi-agent orchestration", () => {
       await fixture.turns.start(solo.id, { prompt: "Just do it" });
       await settled(fixture, solo.id);
       const soloDirector = fixture.backend.sessionsOf("director").at(-1);
-      expect(soloDirector?.input.hostTools.map((tool) => tool.name)).toEqual([
-        "propose_plan",
-        "offer_story_mode",
-        "update_plan",
-        ...EDITOR_TOOLS,
-        ...ANALYSIS_TOOLS_SOLO,
-        "read_story",
-        "read_website",
-        "get_website_file",
-        "record_website",
-      ]);
+      const soloTools = soloDirector?.input.hostTools.map((tool) => tool.name) ?? [];
+      // Alone, the Director has no one to delegate to, and every specialist's tools are its own.
+      for (const name of ["delegate", "wait_for_agents", "message_agent", "cancel_agent"]) {
+        expect(soloTools).not.toContain(name);
+      }
+      expect(soloTools).toEqual(
+        expect.arrayContaining([
+          "propose_plan",
+          "update_plan",
+          ...EDITOR_TOOLS,
+          ...ANALYSIS_TOOLS_SOLO,
+          "read_story",
+          "search_assets",
+          "import_asset",
+        ]),
+      );
     } finally {
       await fixture.cleanup();
     }
   });
 
   it("runs each agent on its configured model and lets the Director route only within limits", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const director: ModelSelection = { provider: "p", modelId: "director" };
       const editorModel: ModelSelection = { provider: "p", modelId: "editor" };
@@ -310,7 +324,7 @@ describe("multi-agent orchestration", () => {
   });
 
   it("queues a second task for a busy specialist instead of running it concurrently", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const chat = await fixture.chats.create({}, ["editor"]);
       let running = 0;
@@ -359,7 +373,7 @@ describe("multi-agent orchestration", () => {
   });
 
   it("aborting the turn stops running specialists before the checkpoint closes", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const chat = await fixture.chats.create({}, ["editor"]);
       let checkpointOpenWhenStopped = false;
@@ -397,7 +411,7 @@ describe("multi-agent orchestration", () => {
   });
 
   it("force-closes a specialist that ignores the abort, so no run outlives the turn", async () => {
-    const fixture = await createRuntimeFixture({ stopGraceMs: 10 });
+    const fixture = await createRuntimeFixture({ ...NO_QA, stopGraceMs: 10 });
     try {
       const chat = await fixture.chats.create({}, ["editor"]);
       script(fixture, {
@@ -424,7 +438,7 @@ describe("multi-agent orchestration", () => {
   });
 
   it("re-prompts a Director that ended without collecting its runs", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const chat = await fixture.chats.create({}, ["editor"]);
       script(fixture, {
@@ -462,7 +476,7 @@ describe("multi-agent orchestration", () => {
   });
 
   it("steering reaches the Director while it waits, and it can cancel a run", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const chat = await fixture.chats.create({}, ["editor"]);
       let waitResult = "";
@@ -503,7 +517,7 @@ describe("multi-agent orchestration", () => {
   });
 
   it("persists specialist threads across a restart and closes runs a crash left open", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const chat = await fixture.chats.create({}, ["editor"]);
       script(fixture, {
@@ -636,7 +650,7 @@ const activityRows = (messages: ChatMessage[], match: (message: ChatMessage) => 
 
 describe("long-form pipeline orchestration", () => {
   it("routes analysis tools to the Director, Vision and Editor runs and keeps the rough cut in one edit", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const chat = await fixture.chats.create({}, ["editor", "vision"]);
       const source = "assets/raw-talk.mp4";
@@ -781,7 +795,7 @@ describe("long-form pipeline orchestration", () => {
 
 describe("auto canvas turns", () => {
   it("tells the Director to choose the frame format when the start request says canvas auto", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const chat = await fixture.chats.create({}, []);
       script(fixture, {
@@ -814,7 +828,7 @@ describe("auto canvas turns", () => {
   });
 
   it("keeps the format open through a plan proposal and clears the flag when the execute turn sets the canvas", async () => {
-    const fixture = await createRuntimeFixture();
+    const fixture = await createRuntimeFixture(NO_QA);
     try {
       const chat = await fixture.chats.create({}, []);
       script(fixture, {

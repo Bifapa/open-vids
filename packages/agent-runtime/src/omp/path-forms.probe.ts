@@ -9,7 +9,7 @@ import { parseReadUrlTarget } from "@oh-my-pi/pi-coding-agent/tools/fetch";
 import { normalizePathLikeInput, resolveToCwd } from "@oh-my-pi/pi-coding-agent/tools/path-utils";
 import { unwrapHashlineHeaderPath } from "@oh-my-pi/pi-coding-agent/tools/plan-mode-guard";
 import { cfgFetchEnabled } from "@oh-my-pi/pi-coding-agent/tools/settings";
-import { createSessionSettings } from "./backend.ts";
+import { createSessionSettings } from "./catalog.ts";
 
 const [cwd, spellingsJson] = process.argv.slice(2);
 if (cwd === undefined || spellingsJson === undefined) throw new Error("usage: <cwd> <spellings>");

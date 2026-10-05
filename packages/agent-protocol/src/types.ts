@@ -135,9 +135,10 @@ export type PlanApproval = (typeof PLAN_APPROVALS)[number];
  *   user's decisions) is NEVER changed by an agent, whatever this says (the editing and story services refuse it).
  *   `true`: an agent that needs such a change stops work on that item and asks the user first. `false`: it leaves the
  *   item as it is, carries on with the rest and reports what it left untouched afterwards.
- * - `askBeforeDownloads`: `true`: Research may search and inspect, but `import_asset` and `read_website` with `save`
- *   are refused until the user has approved in the turn (an explicit download/import instruction or a yes, or the
- *   Story workspace's "Find missing material" action). `false`: agents import what fits without asking.
+ * - `askBeforeDownloads`: `true`: before any download (`import_asset`, a saved website read or file, a page recording)
+ *   the user must approve it in the turn: a download/import instruction or a yes in their message, the Story
+ *   workspace's "Find missing material" action, or the in-chat `asset_download` card, which the download waits on
+ *   ("Don't ask again" switches this to `false`). `false`: agents import what fits without asking.
  */
 export interface AutonomySettings {
   planApproval: PlanApproval;
@@ -357,6 +358,22 @@ export interface StoryActionOptions {
   missing?: string[];
 }
 
+/** Token and cost totals of a model's calls. `cost` is null when the provider reported none. */
+export interface UsageTotals {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  cost: number | null;
+}
+
+/** How much of the model's context window is in use; `window` is null when the model's window is unknown. */
+export interface ContextFill {
+  tokens: number;
+  window: number | null;
+}
+
 export interface ChatSummary {
   id: string;
   projectId: string;
@@ -389,6 +406,12 @@ export interface ChatSummary {
    * across turns and restarts; cleared when a successful `edit_timeline` batch sets the canvas.
    */
   canvasAuto?: boolean;
+  /** Total usage of every turn of the chat; absent until a turn reported usage. */
+  usage?: UsageTotals;
+  /** Registrable domains the runtime counts as linked sites for this chat (from the user's messages). */
+  linkedSites?: string[];
+  /** Linked sites the user removed: the runtime refuses them. */
+  excludedSites?: string[];
 }
 
 /** The specialist configuration a chat actually uses: its own override, else the global default. */
@@ -457,11 +480,21 @@ export interface TurnSummary {
   storyAction?: StoryAction;
   /** The user's choices for that action (build/rebuild). */
   storyOptions?: StoryActionOptions;
+  /** The plan proposal turn this turn carried out ("Carry out"); absent on every other turn. */
+  executedPlanTurnId?: string;
   /** The Execution Quality the turn ran with (preset and the budget it resolved to). */
   execution?: { preset: ExecutionQualityPreset; budget: ExecutionBudget };
   /** Autonomous render QA of the turn; absent when QA never started (nothing changed, or turns before QA existed). */
   qa?: TurnQaState;
   error?: AgentError;
+  /** Sum of the Director's and every run's usage of this turn; absent until the first usage report. */
+  usage?: UsageTotals;
+  /** The Director's own share of `usage` (the rest belongs to the turn's runs). */
+  directorUsage?: UsageTotals;
+  /** How full the Director's model context is; absent when unknown. */
+  directorContext?: ContextFill;
+  /** What the turn changed in the project, by kind (`add_clip`, `captions`, `story_build`, `import`, `file_edit`…). */
+  changes?: { kind: string; count: number }[];
 }
 
 /** The single project-modifying turn allowed at a time, across every chat of a project. */
@@ -493,6 +526,8 @@ export interface ExecutionPlan {
    * changed nothing after it. An ordinary progress plan (update_plan) has no flag.
    */
   proposal?: boolean;
+  /** Fingerprint of the project when a proposal was made; a proposal carried out later on a changed project is stale. */
+  projectFingerprint?: string;
 }
 
 // ── Agent runs ───────────────────────────────────────────────────────────────
@@ -541,6 +576,10 @@ export interface AgentRun {
   /** Short outcome shown in the main chat once the run ends. */
   summary: string | null;
   error?: AgentError;
+  /** Tokens and cost this run has used so far (cumulative); absent until the first usage report. */
+  usage?: UsageTotals;
+  /** How full the run's model context is; absent when unknown. */
+  context?: ContextFill;
 }
 
 // ── References (attachment-ready; no attachment UI in Milestone 1) ───────────
@@ -703,7 +742,11 @@ export interface Activity {
   status: "running" | "done" | "failed";
   /** Human-readable, present tense while running ("Reading 3 files"). */
   label: string;
-  /** `activity.<labelCode>` locale key for `label`; the UI prefers it when present, `label` is the fallback. */
+  /**
+   * `activity.<labelCode>` locale key for `label`; the UI prefers it when present, `label` is the fallback. Besides
+   * the tool codes, the runtime reports `provider_retry` (params `attempt`, `maxAttempts`, `delaySeconds`) while it
+   * waits to retry a failed model call and `context_compaction` while the conversation is being summarised.
+   */
   labelCode?: string;
   /** Placeholder values for `activity.<labelCode>`. */
   labelParams?: CodedMessageParams;
@@ -715,6 +758,8 @@ export interface Activity {
   progress?: number;
   startedAt: number;
   endedAt?: number;
+  /** Why a `failed` activity failed (the tool's own message, trimmed); absent otherwise. */
+  error?: { code: string; message: string };
 }
 
 export interface ActivityPart {
@@ -766,18 +811,29 @@ export interface StoryOfferPart {
 }
 
 /**
- * Settings an agent can ask the user to allow from the chat: `read_linked_pages` is Asset Search → Websites → "Read
- * linked pages" (`websites.readLinkedPages`), `website_full_access` is "Full access to linked sites"
- * (`websites.fullAccess`, which needs reading too).
+ * What an agent can ask the user to allow from the chat. Two are settings: `read_linked_pages` is Asset Search →
+ * Websites → "Read linked pages" (`websites.readLinkedPages`), `website_full_access` is "Full access to linked sites"
+ * (`websites.fullAccess`, which needs reading too). `asset_download` is the agents' Autonomy rule "Ask before
+ * downloading" (`autonomy.askBeforeDownloads`): Research wants to bring outside material into the project and the
+ * user has not approved downloads in this turn yet.
  */
-export const PERMISSION_KINDS = ["read_linked_pages", "website_full_access"] as const;
+export const PERMISSION_KINDS = [
+  "read_linked_pages",
+  "website_full_access",
+  "asset_download",
+  "long_render",
+  "restricted_asset",
+] as const;
 export type PermissionKind = (typeof PERMISSION_KINDS)[number];
 
 /** What the agent was about to do when it asked (set by the runtime from the tool, never by the model). */
-export const PERMISSION_ACTIONS = ["read", "download", "read_code", "record"] as const;
+export const PERMISSION_ACTIONS = ["read", "download", "read_code", "record", "render"] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
-/** `once`: allowed for the rest of this turn only; `always`: the setting is switched on; `deny`: not allowed. */
+/**
+ * `once`: allowed for the rest of this turn only; `always`: the setting is switched on (for `asset_download`: the
+ * agents stop asking before downloads); `deny`: not allowed.
+ */
 export const PERMISSION_DECISIONS = ["once", "always", "deny"] as const;
 export type PermissionDecision = (typeof PERMISSION_DECISIONS)[number];
 
@@ -792,8 +848,27 @@ export const PERMISSION_STATES = [
 export type PermissionState = (typeof PERMISSION_STATES)[number];
 
 /**
- * A setting an agent needs that is off: the tool call waits while the chat shows the setting with "Allow once",
- * "Turn on" and "Don't allow"; the answer (`POST …/turns/:turnId/permissions/:id`) resumes it.
+ * The outside material an `asset_download` request is about, as the source described it in Research's results (set
+ * by the runtime, never by the model). Later downloads of the same turn share the answer, so it names the first one.
+ */
+export interface PermissionAsset {
+  title: string;
+  /** Where it comes from: the source's name (e.g. "Openverse") or the file's host. */
+  source: string | null;
+  /** The license as the source states it, when known. */
+  license: string | null;
+}
+
+/** The long render a `long_render` request is about (set by the runtime from the tool). */
+export interface PermissionRender {
+  composition: string;
+  seconds: number;
+}
+
+/**
+ * Something an agent needs that is off or not yet approved: the tool call waits while the chat shows the request with
+ * "Allow once", "Turn on" (or "Don't ask again") and "Don't allow"; the answer
+ * (`POST …/turns/:turnId/permissions/:id`) resumes it.
  */
 export interface PermissionRequest {
   id: string;
@@ -806,6 +881,10 @@ export interface PermissionRequest {
   state: PermissionState;
   requestedAt: number;
   answeredAt?: number;
+  /** `asset_download` and `restricted_asset`: the material the request is about, when known. */
+  asset?: PermissionAsset;
+  /** `long_render` only: the composition and its length in seconds. */
+  render?: PermissionRender;
 }
 
 /** Shown in the main conversation's message of the turn, whichever agent asked. */
@@ -815,6 +894,38 @@ export interface PermissionPart {
   permission: PermissionRequest;
 }
 
+/**
+ * Something the agent asked the user mid-turn (`request_input`): the tool call waits while the chat shows the
+ * question with its answer buttons and a free-text field; the answer
+ * (`POST …/turns/:turnId/questions/:id`) resumes it. `expired`: the turn ended before the user answered.
+ */
+export const QUESTION_STATES = ["pending", "answered", "expired"] as const;
+export type QuestionState = (typeof QUESTION_STATES)[number];
+
+/** At most this many suggested answers, each at most {@link QUESTION_OPTION_MAX_CHARS} characters. */
+export const QUESTION_MAX_OPTIONS = 6;
+export const QUESTION_OPTION_MAX_CHARS = 80;
+
+export interface QuestionRequest {
+  id: string;
+  /** Who asked (a specialist inside its run, or the Director). */
+  agent: AgentId;
+  text: string;
+  /** Suggested answers (0–6, each ≤ 80 chars); the user may always type their own. */
+  options: string[];
+  state: QuestionState;
+  answer?: string;
+  requestedAt: number;
+  answeredAt?: number;
+}
+
+/** Shown in the main conversation's message of the turn, whichever agent asked. */
+export interface QuestionPart {
+  type: "question";
+  id: string;
+  question: QuestionRequest;
+}
+
 export type UserPart = TextPart | ReferencePart;
 export type AssistantPart =
   | TextPart
@@ -822,6 +933,7 @@ export type AssistantPart =
   | ActivityPart
   | DelegationPart
   | PermissionPart
+  | QuestionPart
   | StoryOfferPart;
 
 interface MessageBase {
@@ -868,24 +980,39 @@ export type ChatMessage = UserMessage | AssistantMessage | TaskMessage;
 
 // ── Errors ───────────────────────────────────────────────────────────────────
 
+/**
+ * Failure classes of the model provider the runtime can tell apart from the message (the UI shows copy per code):
+ * `provider_auth` (rejected or missing credentials), `rate_limited`, `provider_overloaded`, `context_overflow`
+ * (the conversation no longer fits the model's window). `agent_failed` stays for every other failure.
+ * `project_served_elsewhere`: another runtime process owns this project's chats (409).
+ * `runtime_restarting`: the Studio server is restarting the agent runtime (it crashed or stopped answering); the
+ * answer is 503 with a `Retry-After` header and `details.retryAfterSeconds`, and nothing was started by the request.
+ */
 export const AGENT_ERROR_CODES = [
   "invalid_request",
   "unauthorized",
   "runtime_unavailable",
+  "runtime_restarting",
   "chat_not_found",
   "turn_not_found",
   "turn_not_active",
   "chat_busy",
   "project_busy",
+  "project_served_elsewhere",
   "model_unavailable",
   "login_not_found",
   "checkpoint_unavailable",
   "revert_conflict",
   "revert_unavailable",
   "story_offer_conflict",
+  "provider_auth",
+  "rate_limited",
+  "provider_overloaded",
+  "context_overflow",
   "agent_failed",
   "internal",
 ] as const;
+
 export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[number];
 
 /** Values a translated message may interpolate; keys are the locale placeholders (`{count}`, `{path}`). */

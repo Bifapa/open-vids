@@ -22,6 +22,7 @@ import {
 } from "@hyperframes/agent-protocol";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { AnalysisFailure } from "./errors.js";
+import { sameContent } from "./fingerprint.js";
 import { artifactVersion } from "./version.js";
 
 /** Where a project keeps its analysis; outside project history (the watcher and history skip `.hyperframes/`). */
@@ -503,8 +504,7 @@ export class AnalysisStore {
     for (const name of names) {
       const manifest = await readJson(join(dir, name, "manifest.json"));
       if (!isManifest(manifest) || manifest.path === path) continue;
-      if (manifest.fingerprint.hash !== fingerprint.hash) continue;
-      if (manifest.fingerprint.bytes !== fingerprint.bytes) continue;
+      if (!sameContent(manifest.fingerprint, fingerprint)) continue;
       if (Object.keys(manifest.stages).length === 0 && !manifest.asr) continue;
       if (!best || newest(manifest) > newest(best)) best = manifest;
     }

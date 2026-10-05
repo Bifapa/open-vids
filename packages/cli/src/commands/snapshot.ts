@@ -1,5 +1,6 @@
 import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
+import { injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
@@ -277,7 +278,7 @@ export function computeSnapshotTimes(
  * Render key frames from a composition as PNG screenshots.
  * The agent can Read these to verify its output visually.
  */
-async function captureSnapshots(
+export async function captureSnapshots(
   projectDir: string,
   opts: {
     frames?: number;
@@ -292,6 +293,32 @@ async function captureSnapshots(
     browserGpuMode?: BrowserGpuMode;
     /** Reference video: save its frame at each captured time plus a render|reference pair. */
     against?: string;
+    /** Project-relative composition to capture instead of `index.html`. */
+    entryFile?: string;
+    /** Capture downscaled JPEGs of this width instead of full-size PNGs. */
+    image?: { width: number; quality: number };
+    /** Move times at or past the composition's end to its last readable frame. */
+    clampToDuration?: boolean;
+    /**
+     * Delete the PNG/JPEG files already in the output directory before capturing (default true). Callers whose output
+     * directory is user-chosen pass false: only the frame files they write are replaced.
+     */
+    cleanOutput?: boolean;
+    /**
+     * Scripts to append to the bundled page, chosen from its HTML (the render does the same for Studio edits: dragged
+     * positions and manual edits would otherwise be lost to GSAP's seeks).
+     */
+    bodyScripts?: (html: string) => readonly string[];
+    /** Called for every JPEG written under `image`; `index` is the position in the planned times. */
+    onFrame?: (frame: {
+      index: number;
+      time: number;
+      /** The composition's length. */
+      duration: number;
+      path: string;
+      width: number;
+      height: number;
+    }) => void;
   },
 ): Promise<string[]> {
   const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
@@ -300,7 +327,14 @@ async function captureSnapshots(
 
   // Localize fonts (embed remote @font-face as data URIs, matching the render
   // path) so snapshots render the real font instead of a fallback sans.
-  const html = await bundleWithLocalizedFonts(projectDir);
+  const bundled = await bundleWithLocalizedFonts(
+    projectDir,
+    undefined,
+    opts.entryFile ? { entryFile: opts.entryFile } : undefined,
+  );
+  const bodyScripts = opts.bodyScripts?.(bundled) ?? [];
+  const html =
+    bodyScripts.length > 0 ? injectScriptsIntoHtml(bundled, [], bodyScripts, false) : bundled;
   const server = await serveStaticProjectHtml(projectDir, html, undefined, [], opts.autoProxy);
 
   const savedPaths: string[] = [];
@@ -364,11 +398,15 @@ async function captureSnapshots(
 
       // Calculate seek positions — explicit timestamps or evenly spaced, always
       // including a readable end-of-timeline frame (FINDING [7]).
-      const { times: positions, appendedTail } = computeSnapshotTimes(duration, {
+      const { times: planned, appendedTail } = computeSnapshotTimes(duration, {
         frames: numFrames,
         at: opts.at,
         includeEnd: opts.includeEnd,
       });
+      // A time at or past the end shows the last readable frame instead of a blank one.
+      const positions = opts.clampToDuration
+        ? planned.map((t) => (duration > 0 && t >= duration ? tailFrameTime(duration) : t))
+        : planned;
       if (appendedTail) {
         console.log(
           `   ${c.dim(`Note: added an end-of-timeline frame at ${positions[positions.length - 1]!.toFixed(2)}s. Short beats between your --at times may still be skipped — pass them explicitly.`)}`,
@@ -384,15 +422,17 @@ async function captureSnapshots(
 
       const snapshotDir = opts.outputDir ?? join(projectDir, "snapshots");
       mkdirSync(snapshotDir, { recursive: true });
-      try {
-        const { readdirSync } = await import("node:fs");
-        for (const file of readdirSync(snapshotDir)) {
-          if (/\.(png|jpg|jpeg)$/i.test(file)) {
-            rmSync(join(snapshotDir, file), { force: true });
+      if (opts.cleanOutput !== false) {
+        try {
+          const { readdirSync } = await import("node:fs");
+          for (const file of readdirSync(snapshotDir)) {
+            if (/\.(png|jpg|jpeg)$/i.test(file)) {
+              rmSync(join(snapshotDir, file), { force: true });
+            }
           }
+        } catch {
+          /* best-effort — proceed even if cleanup fails */
         }
-      } catch {
-        /* best-effort — proceed even if cleanup fails */
       }
 
       // Chrome-headless ignores programmatic <video>.currentTime writes, so
@@ -596,7 +636,7 @@ async function captureSnapshots(
 
         const timeLabel = formatSnapshotTimestamp(time);
         const index = String(i).padStart(2, "0");
-        const filename = `frame-${index}-at-${timeLabel}.png`;
+        const filename = `frame-${index}-at-${timeLabel}.${opts.image ? "jpg" : "png"}`;
         const framePath = join(snapshotDir, filename);
 
         if (opts.zoom) {
@@ -619,6 +659,24 @@ async function captureSnapshots(
             opts.zoomScale ?? DEFAULT_ZOOM_SCALE,
           );
           writeFileSync(framePath, buffer);
+        } else if (opts.image) {
+          // Downscaled JPEG straight from Chrome (clip.scale), for callers that only look at the picture.
+          const viewport = page.viewport() ?? { width: 1920, height: 1080 };
+          const scale = Math.min(1, opts.image.width / viewport.width);
+          const shot = await page.screenshot({
+            type: "jpeg",
+            quality: opts.image.quality,
+            clip: { x: 0, y: 0, width: viewport.width, height: viewport.height, scale },
+          });
+          writeFileSync(framePath, shot);
+          opts.onFrame?.({
+            index: i,
+            time,
+            duration,
+            path: framePath,
+            width: Math.round(viewport.width * scale),
+            height: Math.round(viewport.height * scale),
+          });
         } else {
           await page.screenshot({ path: framePath, type: "png", omitBackground: true });
         }

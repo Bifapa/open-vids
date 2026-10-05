@@ -83,6 +83,8 @@ export interface StageReporter {
   begin(stage: ComputedStage): void;
   /** 0–1 within the stage that began last. */
   advance(fraction: number): void;
+  /** The job is alive without having moved: a child process it waits for is still running. */
+  pulse(): void;
   finish(result: StageResult): void;
 }
 
@@ -95,6 +97,8 @@ export interface AnalysisRun {
   /** Stages to recompute even when fresh (the requested ones; what they merely need is not forced). */
   force: readonly ComputedStage[];
   plan: readonly ComputedStage[];
+  /** How often a running recognizer child is reported alive, ms (default {@link RECOGNIZER_HEARTBEAT_MS}; tests). */
+  heartbeatMs?: number;
 }
 
 type Computed =
@@ -107,6 +111,7 @@ type Computed =
 interface Stage extends AnalysisRun {
   signal: AbortSignal;
   advance(fraction: number): void;
+  pulse(): void;
 }
 
 function versionOf(manifest: SourceManifest | null, stage: AnalysisStage): string | null {
@@ -142,6 +147,23 @@ async function requireFresh<T>(
 
 function progressOf(stage: Stage): (seconds: number) => void {
   return (seconds) => stage.advance(Math.min(1, seconds / Math.max(stage.source.duration, 0.001)));
+}
+
+/** How often a running speech child is reported alive while it prints nothing. */
+export const RECOGNIZER_HEARTBEAT_MS = 10_000;
+
+/**
+ * Runs a speech child (the recognizer, the diarizer). Neither reports how far it is, so the job would stand still for
+ * as long as the decode takes and look stuck to whoever waits for it; instead the job is reported alive on a timer and
+ * on every line the child prints. A wedged child ends with the engine's own timeout, not with the waiter's guess.
+ */
+async function whileAlive<T>(stage: Stage, run: (alive: () => void) => Promise<T>): Promise<T> {
+  const timer = setInterval(stage.pulse, stage.heartbeatMs ?? RECOGNIZER_HEARTBEAT_MS);
+  try {
+    return await run(stage.pulse);
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 function round3(value: number): number {
@@ -184,10 +206,13 @@ async function computeSilence(stage: Stage): Promise<Computed> {
 async function computeSpeakers(stage: Stage): Promise<Computed> {
   const { adapter, source, signal } = stage;
   let note: string;
-  if (!adapter.diarizeMedia) {
+  const diarize = adapter.diarizeMedia?.bind(adapter);
+  if (!diarize) {
     note = "No speaker diarizer is available on this machine; one speaker is assumed.";
   } else {
-    const result = await adapter.diarizeMedia({ inputPath: source.abs, signal });
+    const result = await whileAlive(stage, (alive) =>
+      diarize({ inputPath: source.abs, signal, onProgress: alive }),
+    );
     if (!("unavailable" in result)) {
       const artifact = buildSpeakerMap(source.path, result, null, source.duration);
       return { kind: "artifact", artifact, meta: { producer: result.producer, detail: null } };
@@ -210,17 +235,21 @@ async function computeTranscript(stage: Stage): Promise<Computed> {
     (hint === null || manifest?.asr?.params.language === hint);
   let detail: string | null = null;
   if (!usable) {
-    if (!adapter.transcribeMedia) {
+    const transcribe = adapter.transcribeMedia?.bind(adapter);
+    if (!transcribe) {
       return {
         kind: "unavailable",
         detail: "No speech recognizer is available on this machine, so there is no transcript.",
       };
     }
-    const result = await adapter.transcribeMedia({
-      inputPath: source.abs,
-      language: stage.language,
-      signal,
-    });
+    const result = await whileAlive(stage, (alive) =>
+      transcribe({
+        inputPath: source.abs,
+        language: stage.language,
+        signal,
+        onProgress: alive,
+      }),
+    );
     if ("unavailable" in result) return { kind: "unavailable", detail: result.unavailable };
     signal.throwIfAborted();
     const fresh: AsrArtifact = {
@@ -457,6 +486,7 @@ export async function runAnalysis(run: AnalysisRun, reporter: StageReporter): Pr
         ...run,
         signal,
         advance: (fraction) => reporter.advance(fraction),
+        pulse: () => reporter.pulse(),
       });
       signal.throwIfAborted();
       if (computed.kind === "artifact") {

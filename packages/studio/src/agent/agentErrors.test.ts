@@ -49,4 +49,22 @@ describe("describeServerError", () => {
     );
     expect(t("qa.reason.pass_limit")).toBe("Достигнут предел проходов.");
   });
+
+  it("uses all four Russian plural forms for change and clip counts", async () => {
+    await i18n.changeLanguage("ru");
+    for (const key of [
+      "activity.editing_story_changes",
+      "activity.editing_timeline",
+      "activity.checking_timeline_edit",
+    ] as const) {
+      const forms = [1, 2, 5, 21].map((count) => t(key, { count }));
+      expect(forms[0], key).toMatch(/ 1 изменение$/);
+      expect(forms[1], key).toMatch(/ 2 изменения$/);
+      expect(forms[2], key).toMatch(/ 5 изменений$/);
+      expect(forms[3], key).toMatch(/ 21 изменение$/);
+    }
+    expect(t("qa.scope.small_change", { count: 1 })).toContain("сдвинут 1 клип,");
+    expect(t("qa.scope.small_change", { count: 3 })).toContain("сдвинуто 3 клипа,");
+    expect(t("qa.scope.small_change", { count: 7 })).toContain("сдвинуто 7 клипов,");
+  });
 });

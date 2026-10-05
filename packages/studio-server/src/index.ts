@@ -45,6 +45,8 @@ export type {
   SpeechTranscription,
   LayoutCheckFinding,
   LayoutCheckResult,
+  CapturedFrame,
+  CompositionCapture,
   WebsiteFile,
   WebsiteInspection,
   WebsiteInspectionResult,

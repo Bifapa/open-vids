@@ -147,6 +147,16 @@ export interface TimelineClip {
    * and Build Story / build_rough_cut remove it. Present only when true.
    */
   placeholder?: boolean;
+  /** Playback rate when it is not 1 (`data-playback-rate`). */
+  playbackRate?: number;
+  /** Opacity when below 1 (inline style). */
+  opacity?: number;
+  /** Colour grade: the preset name, or "custom" for hand-set values; absent without one. */
+  colorGrade?: string;
+  /** Number of effects in the clip's audio FX chain, when it has one. */
+  audioFx?: number;
+  /** Targets of the clip's automation lanes (`volume`, `rate`, `fx.<node>.<param>`). */
+  automation?: string[];
   provenance: ClipProvenance | null;
 }
 
@@ -254,8 +264,17 @@ export type EditOperation =
     }
   /** Write the project's captions from cues in a caption preset's style, spanning the whole composition. */
   | { op: "apply_captions"; preset: string; cues: CaptionCue[]; track?: number }
-  /** Remove one clip (`clip`) or many at once (`clips`); exactly one of the two. */
-  | { op: "remove_clip"; clip?: string; clips?: string[]; ripple?: boolean }
+  /**
+   * Remove one clip (`clip`) or many at once (`clips`); exactly one of the two. `ripple` closes the gap: later clips
+   * on the clip's own track move back (`rippleScope` "track", the default) or later clips on every track do ("all").
+   */
+  | {
+      op: "remove_clip";
+      clip?: string;
+      clips?: string[];
+      ripple?: boolean;
+      rippleScope?: RippleScope;
+    }
   | { op: "move_clip"; clip: string; start?: number; track?: number }
   /** New timeline in/out points; trimming the head of a video/audio clip advances its media in-point. */
   | { op: "trim_clip"; clip: string; start?: number; end?: number }
@@ -271,6 +290,8 @@ export type EditOperation =
       frame?: ClipFrame;
       fadeIn?: number;
       fadeOut?: number;
+      /** Visual clips: 0 (invisible) to 1 (opaque). */
+      opacity?: number;
     }
   /** Lay the clips end to end on `track` in the given order, starting at `start` (default 0). */
   | { op: "arrange_track"; track: number; clips: string[]; start?: number; gap?: number }
@@ -278,10 +299,107 @@ export type EditOperation =
   | { op: "set_composition"; duration: number }
   /**
    * Resize the composition's canvas (frame): the root's `data-width`/`data-height`, the inline stage CSS and the
-   * viewport meta. Even pixels, up to {@link EDIT_LIMITS.maxCanvasPixels} — the render encodes H.264. Clip frames
-   * are left where they are; a project whose format the agent picked before building has nothing placed yet.
+   * viewport meta. Even pixels, up to {@link EDIT_LIMITS.maxCanvasPixels} — the render encodes H.264. `fit` decides
+   * what happens to the clips already placed: "keep" (default) leaves their frames, "contain" scales and centres
+   * the old picture inside the new canvas (everything stays visible), "cover" scales it to fill the new canvas.
    */
-  | { op: "set_canvas"; width: number; height: number };
+  | { op: "set_canvas"; width: number; height: number; fit?: CanvasFit }
+  /**
+   * Change a video/audio clip's playback rate (`data-playback-rate`, 0.1–10). By default the clip keeps the same
+   * stretch of source, so its timeline length shrinks or grows (2 → half as long); `keepDuration` keeps the length
+   * instead, as Studio's speed slider does (the clip then plays more or less of the source). `ripple` moves later
+   * clips by the length difference.
+   */
+  | {
+      op: "set_speed";
+      clip: string;
+      rate: number;
+      keepDuration?: boolean;
+      ripple?: boolean;
+      rippleScope?: RippleScope;
+    }
+  /**
+   * Shift and/or stretch the cues of the composition's existing captions: a cue starting inside [from, to) moves to
+   * `from + (t − from) × scale + shift`. Without from/to every cue changes.
+   */
+  | { op: "retime_captions"; shift?: number; scale?: number; from?: number; to?: number }
+  /**
+   * Write the composition's captions from the cached transcripts of the clips on the timeline: the words each clip
+   * plays (its in-point, length and speed taken into account) become cues in a caption preset's style.
+   */
+  | {
+      op: "captions_from_transcript";
+      preset: string;
+      track?: number;
+      /** Only these clips; default: every video/audio clip with a cached transcript. */
+      clips?: string[];
+      /** Longest cue in words (default 6). */
+      maxWords?: number;
+    }
+  /** Mount an existing composition file of the project as a clip, the way a Studio drop does. */
+  | {
+      op: "mount_composition";
+      composition: string;
+      start: number;
+      track: number;
+      duration?: number;
+      provenance?: Partial<ClipProvenance>;
+    }
+  /** Colour-grade a video/image clip (`data-color-grading`): a preset and/or tonal adjustments, or clear it. */
+  | {
+      op: "set_color_grade";
+      clip: string;
+      preset?: string;
+      intensity?: number;
+      adjust?: ColorAdjust;
+      clear?: boolean;
+    }
+  /** Audio effects of a video/audio clip (`data-fx-chain`): apply a named preset, or clear the chain. */
+  | { op: "set_audio_fx"; clip: string; preset?: string; replace?: boolean; clear?: boolean }
+  /** The volume envelope of a video/audio clip (`data-automation`): breakpoints in clip-local seconds. */
+  | {
+      op: "set_volume_automation";
+      clip: string;
+      points?: Array<{ t: number; v: number }>;
+      clear?: boolean;
+    }
+  /**
+   * Duck a (music) clip under speech: its volume drops by `reduceDb` while any of the `under` clips (or the clips on
+   * `underTrack`) play, with `attack` seconds of ramp down before and `release` seconds of ramp up after.
+   */
+  | {
+      op: "duck_audio";
+      clip: string;
+      under?: string[];
+      underTrack?: number;
+      reduceDb?: number;
+      attack?: number;
+      release?: number;
+    }
+  /** Lock or unlock clips (`data-timeline-locked`): a locked clip refuses every other edit. */
+  | { op: "set_locked"; clips: string[]; locked: boolean };
+
+export const RIPPLE_SCOPES = ["track", "all"] as const;
+export type RippleScope = (typeof RIPPLE_SCOPES)[number];
+
+export const CANVAS_FITS = ["keep", "contain", "cover"] as const;
+export type CanvasFit = (typeof CANVAS_FITS)[number];
+
+export const COLOR_ADJUST_KEYS = [
+  "exposure",
+  "contrast",
+  "highlights",
+  "shadows",
+  "whites",
+  "blacks",
+  "temperature",
+  "tint",
+  "vibrance",
+  "saturation",
+] as const;
+export type ColorAdjustKey = (typeof COLOR_ADJUST_KEYS)[number];
+/** Tonal adjustments: -1…1 each (exposure -2…2), 0 = unchanged. */
+export type ColorAdjust = Partial<Record<ColorAdjustKey, number>>;
 
 export type EditOperationName = EditOperation["op"];
 
@@ -299,6 +417,15 @@ export const EDIT_OPERATION_NAMES = [
   "arrange_track",
   "set_composition",
   "set_canvas",
+  "set_speed",
+  "retime_captions",
+  "captions_from_transcript",
+  "mount_composition",
+  "set_color_grade",
+  "set_audio_fx",
+  "set_volume_automation",
+  "duck_audio",
+  "set_locked",
 ] as const satisfies readonly EditOperationName[];
 
 export interface ApplyEditsRequest {
@@ -311,6 +438,13 @@ export interface ApplyEditsRequest {
    * edit of generated material from a manual one.
    */
   turnId?: string;
+  /**
+   * Idempotency key (set by the runtime): a batch repeated with an id the service has already applied answers with
+   * the stored result instead of applying twice, before any version check.
+   */
+  requestId?: string;
+  /** Run the whole batch in memory and answer what it would do; nothing is written. */
+  dryRun?: boolean;
   operations: EditOperation[];
 }
 
@@ -322,15 +456,22 @@ export interface EditOperationResult {
   newClipId: string | null;
   /** add_sequence: every created clip, in timeline order; remove_clip with `clips`: every removed clip. */
   clipIds?: string[];
+  /** Operation-specific note (what a reframe skipped, how many cues a transcript produced, …). */
+  note?: string;
 }
 
 export interface ApplyEditsResponse {
   timeline: TimelineSnapshot;
   results: EditOperationResult[];
-  /** Project-relative files written by the batch. */
+  /** Project-relative files written by the batch (for a dry run: the files it would write). */
   changedFiles: string[];
+  /** Things worth a look in the result, such as clips that now overlap on track 0. */
+  warnings?: string[];
+  /** The batch was only simulated (`dryRun`): `timeline` is how it would look. */
+  dryRun?: true;
+  /** The request id was applied before: this is the stored answer of that application. */
+  replayed?: true;
 }
-
 export const EDIT_ERROR_CODES = [
   "invalid_request",
   "unknown_composition",
@@ -341,7 +482,9 @@ export const EDIT_ERROR_CODES = [
   "locked",
   "conflict",
   "unsupported",
+  "aborted",
 ] as const;
+
 export type EditErrorCode = (typeof EDIT_ERROR_CODES)[number];
 
 export interface EditError {
@@ -355,7 +498,7 @@ export interface EditError {
 
 // ── Presets ──────────────────────────────────────────────────────────────────
 
-export const PRESET_KINDS = ["caption", "block", "component"] as const;
+export const PRESET_KINDS = ["caption", "block", "component", "color_grade", "audio_fx"] as const;
 export type PresetKind = (typeof PRESET_KINDS)[number];
 
 export interface PresetInfo {
@@ -371,14 +514,22 @@ export interface PresetInfo {
 // ── Limits and validation ────────────────────────────────────────────────────
 
 export const EDIT_LIMITS = {
-  operations: 50,
+  operations: 200,
   captionCues: 500,
+  /** Cues `captions_from_transcript` may derive for one composition. */
+  transcriptCaptionCues: 3_000,
   textChars: 500,
   pathChars: 1_024,
   idChars: 200,
   arrangeClips: 100,
   /** Clips removed by one `remove_clip` with `clips`. */
   removeClips: 1_000,
+  /** Clips locked/unlocked by one `set_locked`. */
+  lockClips: 1_000,
+  /** Clips a `duck_audio` may duck under. */
+  duckClips: 500,
+  /** Breakpoints in one `set_volume_automation`. */
+  automationPoints: 256,
   /** Ranges in one `add_sequence`. */
   sequenceRanges: 1_000,
   /** Longest `edgeFade` of `add_sequence`, in seconds. */
@@ -387,6 +538,11 @@ export const EDIT_LIMITS = {
   maxTrack: 999,
   /** `data-volume` ceiling: +12 dB. */
   maxVolume: 3.98,
+  /** Playback rate bounds (`data-playback-rate`). */
+  minRate: 0.1,
+  maxRate: 10,
+  /** Deepest `duck_audio` reduction, in dB. */
+  maxDuckDb: 40,
   /** Largest |coordinate| or size of a clip frame, in composition pixels. */
   maxFramePixels: 20_000,
   /** Largest canvas side `set_canvas` accepts, in pixels (even numbers only). */
@@ -395,574 +551,10 @@ export const EDIT_LIMITS = {
 
 export type ParsedEdit<T> = { ok: true; value: T } | { ok: false; error: EditError };
 
-type Field = { ok: true } | { ok: false; message: string };
-
-const invalid = (message: string, opIndex?: number): { ok: false; error: EditError } => ({
-  ok: false,
-  error: { code: "invalid_request", message, ...(opIndex !== undefined && { opIndex }) },
-});
-
-function readString(value: unknown, field: string, max: number): string | Field {
-  if (typeof value !== "string" || value.trim().length === 0)
-    return { ok: false, message: `${field} must be a non-empty string` };
-  if (value.length > max) return { ok: false, message: `${field} exceeds ${max} characters` };
-  return value;
-}
-
-function readTime(value: unknown, field: string, positive = false): number | Field {
-  if (typeof value !== "number" || !Number.isFinite(value))
-    return { ok: false, message: `${field} must be a finite number of seconds` };
-  if (value < 0 || (positive && value === 0))
-    return { ok: false, message: `${field} must be ${positive ? "greater than" : "at least"} 0` };
-  if (value > EDIT_LIMITS.maxTime)
-    return { ok: false, message: `${field} exceeds ${EDIT_LIMITS.maxTime} seconds` };
-  return value;
-}
-
-function readTrack(value: unknown, field: string): number | Field {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0)
-    return { ok: false, message: `${field} must be a non-negative integer` };
-  if (value > EDIT_LIMITS.maxTrack)
-    return { ok: false, message: `${field} exceeds ${EDIT_LIMITS.maxTrack}` };
-  return value;
-}
-
-function readVolume(value: unknown): number | Field {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
-    return { ok: false, message: "volume must be a number ≥ 0" };
-  if (value > EDIT_LIMITS.maxVolume)
-    return { ok: false, message: `volume exceeds ${EDIT_LIMITS.maxVolume}` };
-  return value;
-}
-
-/** Canvas sides are even (H.264 encodes whole chroma blocks), positive and within the render's limit. */
-function readCanvasPixels(value: unknown, field: string): number | Field {
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0)
-    return { ok: false, message: `${field} must be a positive whole number of pixels` };
-  if (value % 2 !== 0) return { ok: false, message: `${field} must be even` };
-  if (value > EDIT_LIMITS.maxCanvasPixels)
-    return { ok: false, message: `${field} exceeds ${EDIT_LIMITS.maxCanvasPixels} pixels` };
-  return value;
-}
-
-function readFrame(value: unknown): ClipFrame | Field {
-  if (!isRecord(value)) return { ok: false, message: "frame must be {x, y, width, height}" };
-  const extra = Object.keys(value).find((key) => !["x", "y", "width", "height"].includes(key));
-  if (extra) return { ok: false, message: `frame: unknown field "${extra}"` };
-  const { x, y, width, height } = value;
-  const limit = EDIT_LIMITS.maxFramePixels;
-  const finite = (n: unknown): n is number =>
-    typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= limit;
-  if (!finite(x) || !finite(y))
-    return { ok: false, message: `frame x/y must be numbers within ±${limit}` };
-  if (!finite(width) || !finite(height) || width <= 0 || height <= 0)
-    return { ok: false, message: `frame width/height must be positive numbers up to ${limit}` };
-  return { x, y, width, height };
-}
-
-function oneOf<T extends string>(value: unknown, allowed: readonly T[], field: string): T | Field {
-  const match = allowed.find((candidate) => candidate === value);
-  return match ?? { ok: false, message: `${field} must be one of ${allowed.join(", ")}` };
-}
-
-function isField(value: unknown): value is Field {
-  return isRecord(value) && "ok" in value;
-}
-
-const PROVENANCE_KEYS = ["storyNode", "cut", "turn"] as const;
-const PROVENANCE_ID = /^[A-Za-z0-9_.:-]{1,200}$/;
-
-/** `provenance` of an add operation: any of the three ids, each a plain token that is safe to write as an attribute. */
-function readProvenance(value: unknown): Partial<ClipProvenance> | Field {
-  if (!isRecord(value)) return { ok: false, message: "provenance must be an object" };
-  const extra = Object.keys(value).find((key) => !PROVENANCE_KEYS.some((known) => known === key));
-  if (extra) return { ok: false, message: `provenance: unknown field "${extra}"` };
-  const read: Partial<ClipProvenance> = {};
-  for (const key of PROVENANCE_KEYS) {
-    const entry = value[key];
-    if (entry === undefined) continue;
-    if (typeof entry !== "string" || !PROVENANCE_ID.test(entry)) {
-      return { ok: false, message: `provenance.${key} must be an id (letters, digits, _ . : -)` };
-    }
-    read[key] = entry;
-  }
-  if (Object.keys(read).length === 0) {
-    return { ok: false, message: "provenance must set storyNode, cut or turn" };
-  }
-  return read;
-}
-
-/**
- * Reads the allowed keys of one operation. Every value goes through its reader; the first failure is reported with
- * the field name. Unknown keys are refused so a misspelled option never silently does nothing.
- */
-function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
-  const at = `operations[${index}]`;
-  if (!isRecord(raw)) return invalid(`${at} must be an object`, index);
-  const name = oneOf(raw.op, EDIT_OPERATION_NAMES, `${at}.op`);
-  if (isField(name)) return invalid(name.ok ? `${at}.op is invalid` : name.message, index);
-
-  const allowedKeys: Record<EditOperationName, readonly string[]> = {
-    add_clip: [
-      "asset",
-      "start",
-      "track",
-      "duration",
-      "mediaStart",
-      "volume",
-      "muted",
-      "fit",
-      "frame",
-      "fadeIn",
-      "fadeOut",
-      "provenance",
-    ],
-    add_sequence: [
-      "asset",
-      "track",
-      "start",
-      "ranges",
-      "volume",
-      "muted",
-      "fit",
-      "frame",
-      "edgeFade",
-      "provenance",
-    ],
-    add_text: ["text", "start", "duration", "track", "placement", "size", "color", "provenance"],
-    add_component: ["name", "start", "track", "duration", "provenance"],
-    apply_captions: ["preset", "cues", "track"],
-    remove_clip: ["clip", "clips", "ripple"],
-    move_clip: ["clip", "start", "track"],
-    trim_clip: ["clip", "start", "end"],
-    split_clip: ["clip", "at"],
-    set_clip: ["clip", "volume", "muted", "fit", "zIndex", "frame", "fadeIn", "fadeOut"],
-    arrange_track: ["track", "clips", "start", "gap"],
-    set_composition: ["duration"],
-    set_canvas: ["width", "height"],
-  };
-  const unknownKey = Object.keys(raw).find(
-    (key) => key !== "op" && !allowedKeys[name].includes(key),
-  );
-  if (unknownKey) return invalid(`${at}: unknown field "${unknownKey}" for ${name}`, index);
-
-  const failures: string[] = [];
-  const need = <T>(value: T | Field): T | undefined => {
-    if (isField(value)) {
-      if (!value.ok) failures.push(value.message);
-      return undefined;
-    }
-    return value;
-  };
-  const maybe = <T>(key: string, read: (value: unknown) => T | Field): T | undefined =>
-    raw[key] === undefined ? undefined : need(read(raw[key]));
-  const bool = (key: string): boolean | undefined => {
-    const value = raw[key];
-    if (value === undefined) return undefined;
-    if (typeof value !== "boolean") {
-      failures.push(`${key} must be true or false`);
-      return undefined;
-    }
-    return value;
-  };
-  const clipRef = () => need(readString(raw.clip, "clip", EDIT_LIMITS.idChars));
-  const time = (key: string, positive = false) => need(readTime(raw[key], key, positive));
-  const optTime = (key: string, positive = false) =>
-    maybe(key, (value) => readTime(value, key, positive));
-  const track = () => need(readTrack(raw.track, "track"));
-  const optTrack = () => maybe("track", (value) => readTrack(value, "track"));
-  const volume = () => maybe("volume", readVolume);
-  const fit = () => maybe("fit", (value) => oneOf(value, CLIP_FITS, "fit"));
-  const provenance = () => maybe("provenance", readProvenance);
-
-  let op: EditOperation | null = null;
-  switch (name) {
-    case "add_clip": {
-      const asset = need(readString(raw.asset, "asset", EDIT_LIMITS.pathChars));
-      const start = time("start");
-      const onTrack = track();
-      const duration = optTime("duration", true);
-      const mediaStart = optTime("mediaStart");
-      const vol = volume();
-      const muted = bool("muted");
-      const fitting = fit();
-      const frame = maybe("frame", readFrame);
-      const fadeIn = optTime("fadeIn");
-      const fadeOut = optTime("fadeOut");
-      const stamp = provenance();
-      if (asset !== undefined && start !== undefined && onTrack !== undefined)
-        op = {
-          op: name,
-          asset,
-          start,
-          track: onTrack,
-          ...(duration !== undefined && { duration }),
-          ...(mediaStart !== undefined && { mediaStart }),
-          ...(vol !== undefined && { volume: vol }),
-          ...(muted !== undefined && { muted }),
-          ...(fitting !== undefined && { fit: fitting }),
-          ...(frame !== undefined && { frame }),
-          ...(fadeIn !== undefined && { fadeIn }),
-          ...(fadeOut !== undefined && { fadeOut }),
-          ...(stamp !== undefined && { provenance: stamp }),
-        };
-      break;
-    }
-    case "add_sequence": {
-      const asset = need(readString(raw.asset, "asset", EDIT_LIMITS.pathChars));
-      const onTrack = track();
-      const start = optTime("start");
-      const vol = volume();
-      const muted = bool("muted");
-      const fitting = fit();
-      const frame = maybe("frame", readFrame);
-      const stamp = provenance();
-      const edgeFade = maybe("edgeFade", (value) =>
-        typeof value === "number" &&
-        Number.isFinite(value) &&
-        value >= 0 &&
-        value <= EDIT_LIMITS.maxEdgeFade
-          ? value
-          : { ok: false, message: `edgeFade must be between 0 and ${EDIT_LIMITS.maxEdgeFade}` },
-      );
-      const ranges: Array<{ from: number; to: number }> = [];
-      if (!Array.isArray(raw.ranges) || raw.ranges.length === 0) {
-        failures.push("ranges must be a non-empty array of {from, to}");
-      } else if (raw.ranges.length > EDIT_LIMITS.sequenceRanges) {
-        failures.push(`ranges exceeds ${EDIT_LIMITS.sequenceRanges} entries`);
-      } else {
-        for (const [rangeIndex, range] of raw.ranges.entries()) {
-          const label = `ranges[${rangeIndex}]`;
-          if (!isRecord(range)) {
-            failures.push(`${label} must be an object {from, to}`);
-            break;
-          }
-          const extra = Object.keys(range).find((key) => key !== "from" && key !== "to");
-          if (extra) {
-            failures.push(`${label}: unknown field "${extra}"`);
-            break;
-          }
-          const from = need(readTime(range.from, `${label}.from`));
-          const to = need(readTime(range.to, `${label}.to`, true));
-          if (from === undefined || to === undefined) break;
-          if (to <= from) {
-            failures.push(`${label}.to must be after its from`);
-            break;
-          }
-          ranges.push({ from, to });
-        }
-      }
-      if (asset !== undefined && onTrack !== undefined && failures.length === 0)
-        op = {
-          op: name,
-          asset,
-          track: onTrack,
-          ranges,
-          ...(start !== undefined && { start }),
-          ...(vol !== undefined && { volume: vol }),
-          ...(muted !== undefined && { muted }),
-          ...(fitting !== undefined && { fit: fitting }),
-          ...(frame !== undefined && { frame }),
-          ...(edgeFade !== undefined && { edgeFade }),
-          ...(stamp !== undefined && { provenance: stamp }),
-        };
-      break;
-    }
-    case "add_text": {
-      const text = need(readString(raw.text, "text", EDIT_LIMITS.textChars));
-      const start = time("start");
-      const duration = time("duration", true);
-      const onTrack = track();
-      const placement = maybe("placement", (value) => oneOf(value, TEXT_PLACEMENTS, "placement"));
-      const size = maybe("size", (value) => oneOf(value, TEXT_SIZES, "size"));
-      const stamp = provenance();
-      const color = maybe("color", (value) => {
-        const read = readString(value, "color", 40);
-        if (isField(read)) return read;
-        return /^#[0-9a-fA-F]{3,8}$|^[a-zA-Z]{3,20}$/.test(read)
-          ? read
-          : { ok: false, message: "color must be a hex color or a CSS color name" };
-      });
-      if (
-        text !== undefined &&
-        start !== undefined &&
-        duration !== undefined &&
-        onTrack !== undefined
-      )
-        op = {
-          op: name,
-          text,
-          start,
-          duration,
-          track: onTrack,
-          ...(placement !== undefined && { placement }),
-          ...(size !== undefined && { size }),
-          ...(color !== undefined && { color }),
-          ...(stamp !== undefined && { provenance: stamp }),
-        };
-      break;
-    }
-    case "add_component": {
-      const component = need(readString(raw.name, "name", EDIT_LIMITS.idChars));
-      const start = time("start");
-      const onTrack = track();
-      const duration = optTime("duration", true);
-      const stamp = provenance();
-      if (component !== undefined && start !== undefined && onTrack !== undefined)
-        op = {
-          op: name,
-          name: component,
-          start,
-          track: onTrack,
-          ...(duration !== undefined && { duration }),
-          ...(stamp !== undefined && { provenance: stamp }),
-        };
-      break;
-    }
-    case "apply_captions": {
-      const preset = need(readString(raw.preset, "preset", EDIT_LIMITS.idChars));
-      const onTrack = optTrack();
-      const cues: CaptionCue[] = [];
-      if (!Array.isArray(raw.cues) || raw.cues.length === 0) {
-        failures.push("cues must be a non-empty array");
-      } else if (raw.cues.length > EDIT_LIMITS.captionCues) {
-        failures.push(`cues exceeds ${EDIT_LIMITS.captionCues} entries`);
-      } else {
-        raw.cues.forEach((cue, cueIndex) => {
-          const label = `cues[${cueIndex}]`;
-          if (!isRecord(cue)) {
-            failures.push(`${label} must be an object`);
-            return;
-          }
-          const text = need(readString(cue.text, `${label}.text`, EDIT_LIMITS.textChars));
-          const start = need(readTime(cue.start, `${label}.start`));
-          const end = need(readTime(cue.end, `${label}.end`, true));
-          if (text === undefined || start === undefined || end === undefined) return;
-          if (end <= start) failures.push(`${label}.end must be after its start`);
-          else cues.push({ text, start, end });
-        });
-      }
-      if (preset !== undefined && failures.length === 0)
-        op = { op: name, preset, cues, ...(onTrack !== undefined && { track: onTrack }) };
-      break;
-    }
-    case "remove_clip": {
-      const ripple = bool("ripple");
-      const clips: string[] = [];
-      if ((raw.clip === undefined) === (raw.clips === undefined)) {
-        failures.push("remove_clip needs exactly one of clip or clips");
-      } else if (raw.clips !== undefined) {
-        if (!Array.isArray(raw.clips) || raw.clips.length === 0) {
-          failures.push("clips must be a non-empty array of clip ids");
-        } else if (raw.clips.length > EDIT_LIMITS.removeClips) {
-          failures.push(`clips exceeds ${EDIT_LIMITS.removeClips} entries`);
-        } else {
-          for (const [clipIndex, clip] of raw.clips.entries()) {
-            const id = need(readString(clip, `clips[${clipIndex}]`, EDIT_LIMITS.idChars));
-            if (id !== undefined) clips.push(id);
-          }
-          if (new Set(clips).size !== clips.length) failures.push("clips must not repeat a clip");
-        }
-      }
-      const clip = raw.clip === undefined ? undefined : clipRef();
-      if (failures.length === 0 && (clip !== undefined || raw.clips !== undefined))
-        op = {
-          op: name,
-          ...(clip !== undefined && { clip }),
-          ...(raw.clips !== undefined && { clips }),
-          ...(ripple !== undefined && { ripple }),
-        };
-      break;
-    }
-    case "move_clip": {
-      const clip = clipRef();
-      const start = optTime("start");
-      const onTrack = optTrack();
-      if (raw.start === undefined && raw.track === undefined)
-        failures.push("move_clip needs start and/or track");
-      if (clip !== undefined)
-        op = {
-          op: name,
-          clip,
-          ...(start !== undefined && { start }),
-          ...(onTrack !== undefined && { track: onTrack }),
-        };
-      break;
-    }
-    case "trim_clip": {
-      const clip = clipRef();
-      const start = optTime("start");
-      const end = optTime("end", true);
-      if (raw.start === undefined && raw.end === undefined)
-        failures.push("trim_clip needs start and/or end");
-      if (start !== undefined && end !== undefined && end <= start)
-        failures.push("end must be after start");
-      if (clip !== undefined)
-        op = {
-          op: name,
-          clip,
-          ...(start !== undefined && { start }),
-          ...(end !== undefined && { end }),
-        };
-      break;
-    }
-    case "split_clip": {
-      const clip = clipRef();
-      const at = time("at", true);
-      if (clip !== undefined && at !== undefined) op = { op: name, clip, at };
-      break;
-    }
-    case "set_clip": {
-      const clip = clipRef();
-      const vol = volume();
-      const muted = bool("muted");
-      const fitting = fit();
-      const frame = maybe("frame", readFrame);
-      const fadeIn = optTime("fadeIn");
-      const fadeOut = optTime("fadeOut");
-      const zIndex = maybe("zIndex", (value) =>
-        typeof value === "number" && Number.isInteger(value) && Math.abs(value) <= 100_000
-          ? value
-          : { ok: false, message: "zIndex must be an integer" },
-      );
-      if (Object.keys(raw).length <= 2) failures.push("set_clip needs at least one property");
-      if (clip !== undefined)
-        op = {
-          op: name,
-          clip,
-          ...(vol !== undefined && { volume: vol }),
-          ...(muted !== undefined && { muted }),
-          ...(fitting !== undefined && { fit: fitting }),
-          ...(zIndex !== undefined && { zIndex }),
-          ...(frame !== undefined && { frame }),
-          ...(fadeIn !== undefined && { fadeIn }),
-          ...(fadeOut !== undefined && { fadeOut }),
-        };
-      break;
-    }
-    case "arrange_track": {
-      const onTrack = track();
-      const start = optTime("start");
-      const gap = optTime("gap");
-      const clips: string[] = [];
-      if (!Array.isArray(raw.clips) || raw.clips.length === 0) {
-        failures.push("clips must be a non-empty array of clip ids");
-      } else if (raw.clips.length > EDIT_LIMITS.arrangeClips) {
-        failures.push(`clips exceeds ${EDIT_LIMITS.arrangeClips} entries`);
-      } else {
-        for (const [clipIndex, clip] of raw.clips.entries()) {
-          const id = need(readString(clip, `clips[${clipIndex}]`, EDIT_LIMITS.idChars));
-          if (id !== undefined) clips.push(id);
-        }
-        if (new Set(clips).size !== clips.length) failures.push("clips must not repeat a clip");
-      }
-      if (onTrack !== undefined && failures.length === 0)
-        op = {
-          op: name,
-          track: onTrack,
-          clips,
-          ...(start !== undefined && { start }),
-          ...(gap !== undefined && { gap }),
-        };
-      break;
-    }
-    case "set_composition": {
-      const duration = time("duration", true);
-      if (duration !== undefined) op = { op: name, duration };
-      break;
-    }
-    case "set_canvas": {
-      const width = need(readCanvasPixels(raw.width, "width"));
-      const height = need(readCanvasPixels(raw.height, "height"));
-      if (width !== undefined && height !== undefined) op = { op: name, width, height };
-      break;
-    }
-  }
-  if (failures.length > 0) return invalid(`${at} (${name}): ${failures.join("; ")}`, index);
-  if (!op) return invalid(`${at} (${name}) is invalid`, index);
-  return { ok: true, value: op };
-}
-
-/** Validates an editing batch at the boundary; the service still checks clips, assets and presets against the project. */
-export function parseApplyEditsRequest(body: unknown): ParsedEdit<ApplyEditsRequest> {
-  if (!isRecord(body)) return invalid("body must be a JSON object");
-  const unknownKey = Object.keys(body).find(
-    (key) =>
-      key !== "composition" && key !== "baseVersion" && key !== "operations" && key !== "turnId",
-  );
-  if (unknownKey) return invalid(`unknown field "${unknownKey}"`);
-  let composition: string | undefined;
-  if (body.composition !== undefined) {
-    const read = readString(body.composition, "composition", EDIT_LIMITS.pathChars);
-    if (isField(read)) return invalid(read.ok ? "composition is invalid" : read.message);
-    composition = read;
-  }
-  let baseVersion: string | undefined;
-  if (body.baseVersion !== undefined) {
-    const read = readString(body.baseVersion, "baseVersion", 200);
-    if (isField(read)) return invalid(read.ok ? "baseVersion is invalid" : read.message);
-    baseVersion = read;
-  }
-  let turnId: string | undefined;
-  if (body.turnId !== undefined) {
-    if (typeof body.turnId !== "string" || !PROVENANCE_ID.test(body.turnId))
-      return invalid("turnId must be an id (letters, digits, _ . : -)");
-    turnId = body.turnId;
-  }
-  if (!Array.isArray(body.operations) || body.operations.length === 0)
-    return invalid("operations must be a non-empty array");
-  if (body.operations.length > EDIT_LIMITS.operations)
-    return invalid(`operations exceeds ${EDIT_LIMITS.operations} entries`);
-  const operations: EditOperation[] = [];
-  for (const [index, raw] of body.operations.entries()) {
-    const parsed = readOperation(raw, index);
-    if (!parsed.ok) return parsed;
-    operations.push(parsed.value);
-  }
-  return {
-    ok: true,
-    value: {
-      ...(composition !== undefined && { composition }),
-      ...(baseVersion !== undefined && { baseVersion }),
-      ...(turnId !== undefined && { turnId }),
-      operations,
-    },
-  };
-}
-
 export function isEditError(value: unknown): value is EditError {
   return (
     isRecord(value) &&
     typeof value.message === "string" &&
     EDIT_ERROR_CODES.some((code) => code === value.code)
   );
-}
-
-/** Validates `PUT /editing/ranges`; the service still checks the asset's kind and length against the project. */
-export function parseSetAssetRangeRequest(body: unknown): ParsedEdit<SetAssetRangeRequest> {
-  if (!isRecord(body)) return invalid("body must be a JSON object");
-  const unknownKey = Object.keys(body).find((key) => key !== "path" && key !== "range");
-  if (unknownKey) return invalid(`unknown field "${unknownKey}"`);
-  const path = readString(body.path, "path", EDIT_LIMITS.pathChars);
-  if (isField(path)) return invalid(path.ok ? "path is invalid" : path.message);
-  if (body.range === null) return { ok: true, value: { path, range: null } };
-  if (!isRecord(body.range)) return invalid("range must be {start, end} or null");
-  const { start, end } = body.range;
-  if (
-    typeof start !== "number" ||
-    typeof end !== "number" ||
-    !Number.isFinite(start) ||
-    !Number.isFinite(end) ||
-    start < 0 ||
-    end > EDIT_LIMITS.maxTime
-  ) {
-    return invalid(
-      `range.start and range.end must be seconds between 0 and ${EDIT_LIMITS.maxTime}`,
-    );
-  }
-  // The same float slack as isAssetRange: 10.1 - 10 is 0.0999…96, and a minimum-length pick is valid.
-  if (end - start < ASSET_RANGE_MIN_SECONDS - 1e-6) {
-    return invalid(`range must be at least ${ASSET_RANGE_MIN_SECONDS}s long (end after start)`);
-  }
-  return { ok: true, value: { path, range: { start, end } } };
 }

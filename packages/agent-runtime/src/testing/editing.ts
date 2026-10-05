@@ -13,6 +13,7 @@ import {
   type EditingHost,
   type RenderOutput,
   type RenderProgress,
+  type PresetPage,
   type RenderRequest,
 } from "../editing/host.js";
 
@@ -54,7 +55,13 @@ export class FakeEditingHost implements EditingHost {
   readonly applySignals: AbortSignal[] = [];
   readonly applyFinished: ApplyEditsRequest[] = [];
   readonly timelineRequests: Array<string | undefined> = [];
-  readonly presetRequests: Array<{ kind: PresetKind; query: string | undefined }> = [];
+  readonly presetRequests: Array<{
+    kind: PresetKind;
+    query: string | undefined;
+    page: { offset: number; limit: number } | undefined;
+  }> = [];
+  /** Warnings the next `apply` answers with. */
+  applyWarnings: string[] = [];
   readonly renderRequests: RenderRequest[] = [];
   inventoryCalls = 0;
   renderCancelled = false;
@@ -106,6 +113,8 @@ export class FakeEditingHost implements EditingHost {
         };
       }),
       changedFiles: [request.composition ?? "index.html"],
+      ...(this.applyWarnings.length > 0 && { warnings: this.applyWarnings }),
+      ...(request.dryRun && { dryRun: true as const }),
     };
   }
 
@@ -113,10 +122,16 @@ export class FakeEditingHost implements EditingHost {
     kind: PresetKind,
     query: string | undefined,
     signal: AbortSignal,
-  ): Promise<PresetInfo[]> {
+    page?: { offset: number; limit: number },
+  ): Promise<PresetPage> {
     signal.throwIfAborted();
-    this.presetRequests.push({ kind, query });
-    return this.presetResults.filter((preset) => preset.kind === kind);
+    this.presetRequests.push({ kind, query, page });
+    const all = this.presetResults.filter((preset) => preset.kind === kind);
+    const offset = page?.offset ?? 0;
+    return {
+      presets: all.slice(offset, page ? offset + page.limit : undefined),
+      total: all.length,
+    };
   }
 
   async probe(path: string, signal: AbortSignal): Promise<ProjectAsset> {

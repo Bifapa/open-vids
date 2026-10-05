@@ -16,7 +16,7 @@ import { pickedFragment } from "../helpers/pickedRange.js";
 import { listPresets } from "../editing/presets.js";
 import type { MediaFacts } from "../editing/mediaFacts.js";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
-import { cleanChapterAroll, type AnalysisLookup } from "./aroll.js";
+import { cleanChapterAroll, fitToEstimate, type AnalysisLookup } from "./aroll.js";
 import { StoryFailure } from "./errors.js";
 
 /**
@@ -152,7 +152,7 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
   const sections: IntentSection[] = [];
   for (const chapter of chapters) {
     for (const range of chapter.sourceRanges) sources.add(range.source);
-    const cleaned = await cleanChapterAroll(chapter, env.lookup, ranges);
+    const cleaned = fitToEstimate(chapter, await cleanChapterAroll(chapter, env.lookup, ranges));
     warnings.push(...cleaned.warnings);
     const speech = cleaned.pieces.length > 0 && cleaned.total > 0;
     const length = round3(speech ? cleaned.total : chapter.estimatedDuration);

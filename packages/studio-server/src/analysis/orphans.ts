@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { isInHiddenOrVendorDir, resolveWithinProject, walkDir } from "../helpers/safePath.js";
 import { assetKindOf } from "../editing/mediaFacts.js";
-import { sampledHash } from "./fingerprint.js";
+import { denseHash, sameContent, sampledHash } from "./fingerprint.js";
 import type { AnalysisStore, SourceManifest } from "./store.js";
 
 export interface OrphanReport {
@@ -49,22 +49,26 @@ export async function removeOrphans(store: AnalysisStore): Promise<OrphanReport>
       const info = abs ? await stat(abs).catch(() => null) : null;
       if (info?.isFile()) sizes.set(file, info.size);
     }
-    const hashes = new Map<string, string>();
-    const hashOf = async (file: string): Promise<string | null> => {
-      const cached = hashes.get(file);
+    const contents = new Map<string, { bytes: number; hash: string; denseHash?: string }>();
+    const contentOf = async (file: string) => {
+      const cached = contents.get(file);
       if (cached !== undefined) return cached;
       const abs = resolveWithinProject(projectDir, file);
       const size = sizes.get(file);
       if (!abs || size === undefined) return null;
       const hash = await sampledHash(abs, size).catch(() => null);
-      if (hash !== null) hashes.set(file, hash);
-      return hash;
+      if (hash === null) return null;
+      const dense = await denseHash(abs, size).catch(() => undefined);
+      const content = { bytes: size, hash, ...(dense !== undefined && { denseHash: dense }) };
+      contents.set(file, content);
+      return content;
     };
     for (const manifest of gone) {
       let successor: string | null = null;
       for (const file of media) {
         if (sizes.get(file) !== manifest.fingerprint.bytes) continue;
-        if ((await hashOf(file)) === manifest.fingerprint.hash) {
+        const content = await contentOf(file);
+        if (content && sameContent(manifest.fingerprint, content)) {
           successor = file;
           break;
         }

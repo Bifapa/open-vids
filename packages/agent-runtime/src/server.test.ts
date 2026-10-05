@@ -1036,7 +1036,7 @@ describe("runtime HTTP server", () => {
         if (research.websiteRequests.length > 0) break;
         await delay(20);
       }
-      expect(research.grants).toEqual([{ turnId, access: "read" }]);
+      expect(research.grants).toEqual([{ turnId, access: "read", site: "linear.app" }]);
       expect(research.websiteRequests).toEqual([
         { url: "https://linear.app", allowedSites: ["linear.app"], turnId },
       ]);

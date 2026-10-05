@@ -37,17 +37,28 @@ export interface RenderOutput {
   hasAudio: boolean | null;
 }
 
+/** One page of presets and how many match in all. */
+export interface PresetPage {
+  presets: PresetInfo[];
+  total: number;
+}
+
 /**
  * The project's editing capabilities as the runtime sees them: the OpenVids-owned editing service of the Studio
  * server (`/api/projects/:id/editing/*`) plus rendering. A host is bound to one project. Every call is cancellable
- * through its signal except an `apply` that already reached the service: a batch is atomic there, so it is awaited to
- * its end instead of being cut off half-way.
+ * through its signal. An `apply` follows the signal by asking the service to stop before it writes, and still waits for
+ * the answer: a batch is atomic there, so it is never cut off half-way, and the caller learns whether it landed.
  */
 export interface EditingHost {
   inventory(signal: AbortSignal): Promise<ProjectInventory>;
   timeline(composition: string | undefined, signal: AbortSignal): Promise<TimelineSnapshot>;
   apply(request: ApplyEditsRequest, signal: AbortSignal): Promise<ApplyEditsResponse>;
-  presets(kind: PresetKind, query: string | undefined, signal: AbortSignal): Promise<PresetInfo[]>;
+  presets(
+    kind: PresetKind,
+    query: string | undefined,
+    signal: AbortSignal,
+    page?: { offset: number; limit: number },
+  ): Promise<PresetPage>;
   /** Renders to mp4 and resolves once the file exists and was probed. Aborting cancels the render and rejects. */
   render(
     request: RenderRequest,

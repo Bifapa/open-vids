@@ -49,8 +49,8 @@ export interface AnalysisHost {
   getCut(planId: string, signal: AbortSignal): Promise<CutPlan>;
 }
 
-/** Failures that do not come from the service's validation: transport and cancellation. */
-export type AnalysisToolErrorCode = AnalysisErrorCode | "aborted";
+/** Failures that do not come from the service's validation: transport, cancellation and a job that stopped moving. */
+export type AnalysisToolErrorCode = AnalysisErrorCode | "aborted" | "stalled";
 
 /** An analysis failure the model can act on: a stable code and a message. */
 export class AnalysisToolError extends Error {

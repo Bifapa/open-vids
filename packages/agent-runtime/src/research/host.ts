@@ -13,6 +13,7 @@ import type {
   RecordWebsiteRequest,
   RecordWebsiteResult,
   ResearchErrorCode,
+  CodedMessageParams,
   ResolveMissingRequest,
   ResolveMissingResult,
   UpdateAssetSearchPolicyRequest,
@@ -96,10 +97,13 @@ export type ResearchToolErrorCode =
 /** A research failure the model can act on: a stable code and a message. */
 export class ResearchToolError extends Error {
   readonly code: ResearchToolErrorCode;
+  /** Structured facts of the refusal (a `restricted_license` names the asset), when the service sent any. */
+  readonly params: CodedMessageParams | undefined;
 
-  constructor(code: ResearchToolErrorCode, message: string) {
+  constructor(code: ResearchToolErrorCode, message: string, params?: CodedMessageParams) {
     super(message);
     this.name = "ResearchToolError";
     this.code = code;
+    this.params = params;
   }
 }

@@ -53,17 +53,37 @@ const span = (range: TimeRange) => `${clock(range.start)}–${clock(range.end)}`
 
 const cell = (value: string) => value.replace(/\s+/g, " ").trim();
 
-/** Joins lines while they fit in the budget; the count of dropped lines is reported so the model can narrow down. */
-function fitLines(lines: string[], budget: number, noun: string): string {
+/** Where a list section continues: the section's name and the index of its first shown item. */
+interface Page {
+  section: string;
+  offset: number;
+}
+
+/**
+ * Joins lines while they fit in the budget. Without a page the count of dropped lines is reported so the model can
+ * narrow down; with one the list starts at the page's offset and the result names the offset of the next page.
+ */
+function fitLines(lines: string[], budget: number, noun: string, page?: Page): string {
+  const start = page?.offset ?? 0;
+  if (page && start > 0 && start >= lines.length)
+    return `No ${noun} at offset ${start}: the list has ${lines.length}.`;
   const kept: string[] = [];
   let used = 0;
-  for (const line of lines) {
-    if (used + line.length + 1 > budget) break;
-    kept.push(line);
+  for (const line of lines.slice(start)) {
+    // A page always shows at least one item, so following the offsets always reaches the end.
+    if (kept.length > 0 && used + line.length + 1 > budget) break;
+    kept.push(kept.length === 0 && line.length > budget ? `${line.slice(0, budget - 1)}…` : line);
     used += line.length + 1;
   }
-  if (kept.length < lines.length)
-    kept.push(`… ${lines.length - kept.length} more ${noun} not shown`);
+  const next = start + kept.length;
+  const rest = lines.length - next;
+  if (rest > 0)
+    kept.push(
+      page
+        ? `… ${rest} more ${noun}; continue with read_analysis section=${page.section} offset=${next}`
+        : `… ${rest} more ${noun} not shown`,
+    );
+  if (page && start > 0) kept.unshift(`${noun} ${start + 1}–${next} of ${lines.length}:`);
   return kept.join("\n");
 }
 
@@ -137,7 +157,7 @@ function issueLine(issue: TakeIssue): string {
   return `${issue.id} ${issue.kind} ${span(issue)} ${issue.sentences.join("+")} [${issue.action}] ${cell(issue.note)}${keep}`;
 }
 
-function takesBlock(overview: AnalysisOverview, budget: number): string {
+function takesBlock(overview: AnalysisOverview, budget: number, page?: Page): string {
   const { takes } = overview;
   if (!takes) return "Take issues: not analyzed.";
   const counts = Object.entries(takes.counts)
@@ -145,10 +165,15 @@ function takesBlock(overview: AnalysisOverview, budget: number): string {
     .join(", ");
   const head = `Take issues (${counts || "none"}; fillers and stutters are only counted — plan_cut removes fillers by default). "cut" = removed automatically, "review" = needs your decision:`;
   if (takes.issues.length === 0) return `${head}\nnone to list.`;
-  return `${head}\n${fitLines(takes.issues.map(issueLine), budget, "issues")}`;
+  return `${head}\n${fitLines(takes.issues.map(issueLine), budget, "issues", page)}`;
 }
 
-function segmentsBlock(segments: SegmentMap | null, budget: number, summaries: boolean): string {
+function segmentsBlock(
+  segments: SegmentMap | null,
+  budget: number,
+  summaries: boolean,
+  page?: Page,
+): string {
   if (!segments) return "Segments: none yet.";
   const origin =
     segments.origin === "semantic"
@@ -158,7 +183,7 @@ function segmentsBlock(segments: SegmentMap | null, budget: number, summaries: b
     const summary = summaries ? `: ${cell(segment.summary).slice(0, 140)}` : "";
     return `${segment.id} ${span(segment)} ${segment.firstSentence}–${segment.lastSentence} · ${segment.role} · ${segment.priority} · "${cell(segment.title)}"${summary}`;
   });
-  return `Segments (${segments.segments.length}, ${origin}):\n${fitLines(lines, budget, "segments")}`;
+  return `Segments (${segments.segments.length}, ${origin}):\n${fitLines(lines, budget, "segments", page)}`;
 }
 
 function visionTargetLine(target: VisionTarget): string {
@@ -166,26 +191,29 @@ function visionTargetLine(target: VisionTarget): string {
   return `${target.reason}${ref} ${span(target)} frames at ${target.times.map(num).join(", ")} s${target.inspected ? " (inspected)" : ""}`;
 }
 
-function visionBlock(overview: AnalysisOverview, budget: number, listNotes: boolean): string {
+function visionBlock(
+  overview: AnalysisOverview,
+  budget: number,
+  listNotes: boolean,
+  page?: Page,
+): string {
   const { vision, visionTargets } = overview;
   const open = visionTargets.filter((target) => !target.inspected);
   const head = vision
     ? `Vision: ${vision.notes.length} notes · ${vision.inspectedFrames} frames inspected`
     : "Vision: no notes yet";
-  const lines = [head];
-  if (listNotes && vision) {
-    lines.push(
-      ...vision.notes.map(
-        (note) =>
-          `${note.id} ${span(note)} ${note.quality} [${note.tags.join(", ")}] ${cell(note.finding).slice(0, 200)}`,
-      ),
-    );
-  }
-  lines.push(
-    `Vision targets: ${visionTargets.length} suggested, ${open.length} not yet inspected${open.length > 0 ? " (inspect these with inspect_frames, at most 12 times per call):" : "."}`,
-  );
-  lines.push(...open.map(visionTargetLine));
-  return fitLines(lines, budget, "lines");
+  const targets = `Vision targets: ${visionTargets.length} suggested, ${open.length} not yet inspected${open.length > 0 ? " (inspect these with inspect_frames, at most 12 times per call):" : "."}`;
+  const items = [
+    ...(listNotes && vision
+      ? vision.notes.map(
+          (note) =>
+            `${note.id} ${span(note)} ${note.quality} [${note.tags.join(", ")}] ${cell(note.finding).slice(0, 200)}`,
+        )
+      : []),
+    ...open.map(visionTargetLine),
+  ];
+  const list = items.length > 0 ? fitLines(items, budget, "lines", page) : "";
+  return [head, targets, list].filter(Boolean).join("\n");
 }
 
 function cutSummaryLine(plan: CutPlanSummary): string {
@@ -196,9 +224,9 @@ function cutSummaryLine(plan: CutPlanSummary): string {
   return `${plan.id} "${cell(plan.label)}" · ${clock(plan.stats.cutDuration)} from ${clock(plan.stats.sourceDuration)} · ${plan.stats.ranges} ranges${based}${applied}`;
 }
 
-function cutsBlock(cuts: CutPlanSummary[]): string {
+function cutsBlock(cuts: CutPlanSummary[], budget = 4_000, page?: Page): string {
   if (cuts.length === 0) return "Cut plans: none yet.";
-  return `Cut plans (${cuts.length}):\n${cuts.map(cutSummaryLine).join("\n")}`;
+  return `Cut plans (${cuts.length}):\n${fitLines(cuts.map(cutSummaryLine), budget, "cut plans", page)}`;
 }
 
 /** The analysis of one source, compact. `job` (when an analysis just ran) adds what each stage did. */
@@ -221,10 +249,11 @@ export function formatOverview(overview: AnalysisOverview, job: AnalysisJob | nu
   );
 }
 
-/** One section of the analysis in full; `silences` and `shots` come from the complete artifact. */
+/** One section of the analysis in full, from item `offset` on; `silences` and `shots` come from the complete artifact. */
 export function formatSection(
   section: Exclude<AnalysisSection, "overview" | "silence" | "shots">,
   overview: AnalysisOverview,
+  offset = 0,
 ): string {
   switch (section) {
     case "speakers": {
@@ -233,40 +262,46 @@ export function formatSection(
       return cap(
         [
           speakersBlock(overview),
-          turns.length > 0 ? `Turns:\n${fitLines(turns, 6_000, "turns")}` : "",
+          turns.length > 0 ? `Turns:\n${fitLines(turns, 6_000, "turns", { section, offset })}` : "",
         ]
           .filter(Boolean)
           .join("\n"),
       );
     }
     case "takes":
-      return cap(takesBlock(overview, 8_000));
+      return cap(takesBlock(overview, 8_000, { section, offset }));
     case "segments":
-      return cap(segmentsBlock(overview.segments, 8_000, true));
+      return cap(segmentsBlock(overview.segments, 8_000, true, { section, offset }));
     case "vision":
-      return cap(visionBlock(overview, 8_000, true));
+      return cap(visionBlock(overview, 8_000, true, { section, offset }));
     case "cuts":
-      return cap(cutsBlock(overview.cuts));
+      return cap(cutsBlock(overview.cuts, 8_000, { section, offset }));
   }
 }
 
-export function formatSilence(silence: SilenceMap): string {
+export function formatSilence(silence: SilenceMap, offset = 0): string {
   const lines = silence.silences.map(
     (range) => `${span(range)} (${num(range.end - range.start)} s)`,
   );
   const head = `Pauses of ${silence.source}: ${silence.silences.length} silences of at least ${num(silence.minSilence)} s below ${num(silence.thresholdDb)} dB · ${num(silence.silenceSeconds)} s in total`;
-  return cap(`${head}\n${fitLines(lines, 7_500, "silences")}`);
+  return cap(`${head}\n${fitLines(lines, 7_500, "silences", { section: "silence", offset })}`);
 }
 
-export function formatShots(shots: ShotMap): string {
+/** What the problem list may take of a shots answer; the rest of the budget belongs to the paged shot list. */
+const SHOT_PROBLEM_CHARS = 3_000;
+/** Room kept for the paging lines the list adds around its items (the page header and the "continue with" notice). */
+const SHOT_PAGING_CHARS = 250;
+
+export function formatShots(shots: ShotMap, offset = 0): string {
   const lines = shots.shots.map((shot) => `${shot.id} ${span(shot)}`);
   const problems =
     shots.problems.length === 0
       ? "No black or frozen picture found."
-      : `Problems:\n${shots.problems.map(problemText).join("\n")}`;
-  return cap(
-    `Shots of ${shots.source}: ${shots.shots.length}\n${problems}\n${fitLines(lines, 6_000, "shots")}`,
-  );
+      : `Problems:\n${fitLines(shots.problems.map(problemText), SHOT_PROBLEM_CHARS, "problems")}`;
+  const head = `Shots of ${shots.source}: ${shots.shots.length}\n${problems}\n`;
+  // The list is sized from what the head left, so cap never cuts the notice that tells the model where to continue.
+  const budget = Math.max(1, Math.min(6_000, RESULT_CHARS - head.length - SHOT_PAGING_CHARS));
+  return cap(`${head}${fitLines(lines, budget, "shots", { section: "shots", offset })}`);
 }
 
 // ── Transcript ───────────────────────────────────────────────────────────────

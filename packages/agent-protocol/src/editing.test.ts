@@ -391,3 +391,133 @@ describe("parseSetAssetRangeRequest", () => {
     ).toBe(false);
   });
 });
+
+describe("parseApplyEditsRequest: the newer operations and options", () => {
+  const ok = (operation: unknown) => {
+    const parsed = parseApplyEditsRequest({ operations: [operation] });
+    if (!parsed.ok) throw new Error(parsed.error.message);
+    return parsed.value.operations[0];
+  };
+  const bad = (operation: unknown) => refused({ operations: [operation] }).message;
+
+  it("keeps exactly what was sent for each new operation", () => {
+    expect(ok({ op: "set_speed", clip: "c", rate: 2, ripple: true, rippleScope: "all" })).toEqual({
+      op: "set_speed",
+      clip: "c",
+      rate: 2,
+      ripple: true,
+      rippleScope: "all",
+    });
+    expect(ok({ op: "retime_captions", shift: -1.5, from: 10 })).toEqual({
+      op: "retime_captions",
+      shift: -1.5,
+      from: 10,
+    });
+    expect(ok({ op: "captions_from_transcript", preset: "coral", maxWords: 4 })).toEqual({
+      op: "captions_from_transcript",
+      preset: "coral",
+      maxWords: 4,
+    });
+    expect(
+      ok({ op: "mount_composition", composition: "compositions/x.html", start: 1, track: 2 }),
+    ).toEqual({ op: "mount_composition", composition: "compositions/x.html", start: 1, track: 2 });
+    expect(
+      ok({ op: "set_color_grade", clip: "c", preset: "warm-daylight", adjust: { exposure: 1.5 } }),
+    ).toEqual({
+      op: "set_color_grade",
+      clip: "c",
+      preset: "warm-daylight",
+      adjust: { exposure: 1.5 },
+    });
+    expect(ok({ op: "set_audio_fx", clip: "c", clear: true })).toEqual({
+      op: "set_audio_fx",
+      clip: "c",
+      clear: true,
+    });
+    expect(ok({ op: "set_volume_automation", clip: "c", points: [{ t: 0, v: 1 }] })).toEqual({
+      op: "set_volume_automation",
+      clip: "c",
+      points: [{ t: 0, v: 1 }],
+    });
+    expect(ok({ op: "duck_audio", clip: "m", underTrack: 0, reduceDb: 12 })).toEqual({
+      op: "duck_audio",
+      clip: "m",
+      underTrack: 0,
+      reduceDb: 12,
+    });
+    expect(ok({ op: "set_locked", clips: ["a", "b"], locked: true })).toEqual({
+      op: "set_locked",
+      clips: ["a", "b"],
+      locked: true,
+    });
+    expect(ok({ op: "set_canvas", width: 1080, height: 1920, fit: "contain" })).toEqual({
+      op: "set_canvas",
+      width: 1080,
+      height: 1920,
+      fit: "contain",
+    });
+    expect(ok({ op: "set_clip", clip: "c", opacity: 0.5 })).toEqual({
+      op: "set_clip",
+      clip: "c",
+      opacity: 0.5,
+    });
+  });
+
+  it.each([
+    ["a rate below the engine minimum", { op: "set_speed", clip: "c", rate: 0.05 }],
+    ["a rate above the engine maximum", { op: "set_speed", clip: "c", rate: 11 }],
+    ["a rippleScope without ripple", { op: "remove_clip", clip: "c", rippleScope: "all" }],
+    ["a retime without shift or scale", { op: "retime_captions", from: 1 }],
+    ["an unknown adjust key", { op: "set_color_grade", clip: "c", adjust: { glow: 1 } }],
+    ["an adjust value out of range", { op: "set_color_grade", clip: "c", adjust: { tint: 2 } }],
+    ["an empty colour grade", { op: "set_color_grade", clip: "c" }],
+    [
+      "clear together with a preset",
+      { op: "set_color_grade", clip: "c", preset: "a", clear: true },
+    ],
+    ["fx with neither preset nor clear", { op: "set_audio_fx", clip: "c" }],
+    [
+      "automation with both points and clear",
+      { op: "set_volume_automation", clip: "c", clear: true, points: [{ t: 0, v: 1 }] },
+    ],
+    [
+      "automation volume above the ceiling",
+      { op: "set_volume_automation", clip: "c", points: [{ t: 0, v: 9 }] },
+    ],
+    ["ducking under nothing", { op: "duck_audio", clip: "m" }],
+    [
+      "ducking under both a list and a track",
+      { op: "duck_audio", clip: "m", under: ["a"], underTrack: 0 },
+    ],
+    ["locking without a boolean", { op: "set_locked", clips: ["a"], locked: "yes" }],
+    ["an unknown canvas fit", { op: "set_canvas", width: 2, height: 2, fit: "stretch" }],
+  ])("refuses %s", (_name, operation) => {
+    expect(refused({ operations: [operation] }).opIndex).toBe(0);
+    expect(bad(operation).length).toBeGreaterThan(0);
+  });
+
+  it("reads requestId and dryRun and refuses a malformed one", () => {
+    const parsed = parseApplyEditsRequest({
+      requestId: "r-1:abc",
+      dryRun: true,
+      operations: [{ op: "set_composition", duration: 1 }],
+    });
+    expect(parsed.ok && parsed.value.requestId).toBe("r-1:abc");
+    expect(parsed.ok && parsed.value.dryRun).toBe(true);
+    expect(
+      refused({ requestId: "bad id", operations: [{ op: "set_composition", duration: 1 }] })
+        .message,
+    ).toContain("requestId");
+    expect(
+      refused({ dryRun: "yes", operations: [{ op: "set_composition", duration: 1 }] }).message,
+    ).toContain("dryRun");
+  });
+
+  it("allows the larger batch", () => {
+    const operations = Array.from({ length: EDIT_LIMITS.operations }, () => ({
+      op: "set_composition",
+      duration: 1,
+    }));
+    expect(parseApplyEditsRequest({ operations }).ok).toBe(true);
+  });
+});

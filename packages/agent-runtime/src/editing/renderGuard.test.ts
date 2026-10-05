@@ -19,6 +19,10 @@ describe("asksForRender", () => {
       "Выгрузи финальный файл",
       "Собери финальное видео",
       "Save it as .mp4",
+      "Send me the final video when it is ready",
+      "Give me the finished clip",
+      "Пришли готовый ролик",
+      "Сделай мне финальное видео",
     ]) {
       expect(asksForRender(text), text).toBe(true);
     }
@@ -40,8 +44,58 @@ describe("asksForRender", () => {
       "Remove the long pauses from talk.mp4",
       "trim my_clip-2.MP4 to the best minute",
       "Сделай видео короче",
+      "render it later, not now",
+      "No export for now, just trim the intro",
+      "Не нужно экспортировать, только смонтируй",
     ]) {
       expect(asksForRender(text), text).toBe(false);
+    }
+  });
+
+  it("does not take a remark about a render that already happened, or a question that only wonders, for a request", () => {
+    for (const text of [
+      "the last render took forever",
+      "The export was slow yesterday",
+      "I rendered it yesterday and it was fine",
+      "we haven't exported it yet",
+      "Export took ages",
+      "how long does the export take?",
+      "should I render it?",
+      "did the render finish?",
+      "how long will the render take",
+      "Is the video file ready?",
+      "почему рендер такой медленный?",
+      "Рендер был слишком долгим",
+      "прошлый экспорт получился тёмным",
+      "в прошлый раз экспорт занял час",
+      "Я уже экспортировал видео вчера",
+    ]) {
+      expect(asksForRender(text), text).toBe(false);
+    }
+  });
+
+  it("still takes an imperative, a polite request or a wish, also later in the message", () => {
+    for (const text of [
+      "Render",
+      "render it",
+      "Fix the intro, then render it",
+      "Trim the intro and export",
+      "can you render it?",
+      "Could you export the video please?",
+      "let's export it now",
+      "I want a render in 4K",
+      "we need to export this today",
+      "start the render",
+      "ok, now render it",
+      "Сделай рендер",
+      "давай экспорт в mp4",
+      "Теперь рендер, пожалуйста",
+      "Нужен экспорт в 4K",
+      "Можешь отрендерить?",
+      "Смонтируй и экспортируй",
+      "The last render took forever. Export it again.",
+    ]) {
+      expect(asksForRender(text), text).toBe(true);
     }
   });
 });
@@ -108,26 +162,56 @@ describe("render_video guard", () => {
     expect(host.renderRequests).toHaveLength(1);
   });
 
-  it("applies in a real Director turn: the long render is refused and the agent is told to offer it", async () => {
+  it("asks on a card in a real Director turn: denied is refused, allowed once renders, and a stated request needs no card", async () => {
     const fixture: RuntimeFixture = await createRuntimeFixture();
     try {
       const chat = await fixture.chats.create({}, []);
       compositionOf(fixture.editing, 1_200);
       const results: HostToolResult[] = [];
-      fixture.backend.promptScript = async (_input, session) => {
+      fixture.backend.promptScript = async (input, session) => {
+        if (!input.text.includes("raw talk")) return "completed";
         results.push(await session.callTool("render_video", {}));
         return "completed";
       };
-      await fixture.turns.start(chat.id, { prompt: "Tighten the raw talk" });
-      await waitUntil(() => results.length === 1, "the render attempt");
-      expect(results[0]?.isError).toBe(true);
-      expect(fixture.editing.renderRequests).toEqual([]);
+      const pending = () => {
+        const parts = (fixture.chats.get(chat.id)?.messages ?? []).flatMap((message) =>
+          message.role === "assistant" ? message.parts : [],
+        );
+        const part = parts.find(
+          (entry) => entry.type === "permission" && entry.permission.state === "pending",
+        );
+        return part?.type === "permission" ? part.permission : null;
+      };
 
+      // The user did not ask for a render: the call shows a long_render card and waits for the answer.
+      const first = await fixture.turns.start(chat.id, { prompt: "Tighten the raw talk" });
+      await waitUntil(() => pending() !== null, "the long render card");
+      expect(pending()).toMatchObject({
+        kind: "long_render",
+        action: "render",
+        render: { composition: "index.html", seconds: 1_200 },
+      });
+      await fixture.turns.answerPermission(chat.id, first.id, pending()?.id ?? "", "deny");
+      await waitUntil(() => results.length === 1, "the declined render");
+      expect(results[0]?.isError).toBe(true);
+      expect(results[0]?.text).toContain("declined");
+      expect(fixture.editing.renderRequests).toEqual([]);
       await waitUntil(() => fixture.turns.activeTurn === null, "the turn to end");
-      await fixture.turns.start(chat.id, { prompt: "Tighten the raw talk and render it" });
-      await waitUntil(() => results.length === 2, "the second render attempt");
+
+      // Allowed once: the render goes ahead, and a second render of the same turn does not ask again.
+      const second = await fixture.turns.start(chat.id, { prompt: "Tighten the raw talk again" });
+      await waitUntil(() => pending() !== null, "the second card");
+      await fixture.turns.answerPermission(chat.id, second.id, pending()?.id ?? "", "once");
+      await waitUntil(() => results.length === 2, "the allowed render");
       expect(results[1]?.isError).toBeUndefined();
       expect(fixture.editing.renderRequests).toHaveLength(1);
+      await waitUntil(() => fixture.turns.activeTurn === null, "the turn to end");
+
+      // A request in words skips the card.
+      await fixture.turns.start(chat.id, { prompt: "Tighten the raw talk and render it" });
+      await waitUntil(() => results.length === 3, "the asked-for render");
+      expect(results[2]?.isError).toBeUndefined();
+      expect(fixture.editing.renderRequests).toHaveLength(2);
     } finally {
       await fixture.cleanup();
     }

@@ -11,13 +11,14 @@ import {
 import type {
   QaPassPhase,
   QaPassState,
+  QaScopeNote,
   TurnQaStatus,
   TurnSummary,
 } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
-import { useTranslation } from "../../i18n";
+import { formatPercent, useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
-import { Badge, Spinner, type StatusTone } from "../ui/Status";
+import { Badge, Meter, Spinner, type StatusTone } from "../ui/Status";
 import { chatFocus, chatMeasureWide } from "./chatStyles";
 import { QaReportView } from "./QaReportView";
 import {
@@ -28,7 +29,11 @@ import {
   describeQaCounts,
   isLivePassPhase,
   qaReasonText,
+  isPassRenderLinked,
+  qaScopeText,
 } from "./qaLabels";
+import { formatElapsed } from "./relativeTime";
+import { useNow } from "./useNow";
 
 function StatusGlyph({ status }: { status: TurnQaStatus }) {
   switch (status) {
@@ -65,7 +70,15 @@ const STATUS_TONES: Record<TurnQaStatus, string> = {
   aborted: "text-fg-3",
 };
 
-function PassRow({ pass, refreshKey }: { pass: QaPassState; refreshKey: string }) {
+interface PassRowProps {
+  pass: QaPassState;
+  /** Every pass of the session: whether a pass's render survived depends on the others. */
+  passes: readonly QaPassState[];
+  sessionRunning: boolean;
+  refreshKey: string;
+}
+
+function PassRow({ pass, passes, sessionRunning, refreshKey }: PassRowProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const qaRenderUrl = useAgentStore((state) => state.qaRenderUrl);
@@ -73,7 +86,14 @@ function PassRow({ pass, refreshKey }: { pass: QaPassState; refreshKey: string }
   const expandable = pass.reportId !== null;
   const counts = pass.counts ? describeQaCounts(pass.counts) : [];
   const live = isLivePassPhase(pass.phase);
-
+  // A live pass counts up; a finished one shows how long it took.
+  const now = useNow(live && pass.endedAt === undefined);
+  const percent =
+    pass.phase === "rendering" && pass.progress
+      ? Math.round(Math.min(100, Math.max(0, pass.progress.percent)))
+      : null;
+  const scopeText = qaScopeText(pass.scope, pass.scopeNote);
+  const renderLinked = isPassRenderLinked(pass, passes, sessionRunning);
   return (
     <li
       data-qa-pass={pass.pass}
@@ -119,14 +139,39 @@ function PassRow({ pass, refreshKey }: { pass: QaPassState; refreshKey: string }
             </Badge>
           );
         })}
-        {pass.vision && pass.vision !== "ran" && (
+        {pass.vision && pass.vision !== "ran" && !scopeText && (
           <span data-testid="qa-pass-vision" className="text-2xs text-fg-3">
             {t(QA_VISION_STATUS_LABELS[pass.vision])}
           </span>
         )}
+        {pass.suppressed !== undefined && pass.suppressed > 0 && (
+          <Badge size="sm" tone="neutral" data-qa-suppressed className="tabular-nums">
+            {t("chat.qa.count.suppressed", { count: pass.suppressed })}
+          </Badge>
+        )}
+        <span
+          data-testid="qa-pass-elapsed"
+          className="ml-auto font-mono text-num leading-[14px] text-fg-3 tabular-nums"
+        >
+          {formatElapsed((pass.endedAt ?? now) - pass.startedAt)}
+        </span>
       </button>
+      {percent !== null && (
+        <Meter
+          value={percent / 100}
+          label={t("chat.qa.renderProgress", { percent: formatPercent(percent / 100) })}
+          title={pass.progress?.stage ?? undefined}
+          data-testid="qa-pass-progress"
+          className="mr-1 ml-[22px]"
+        />
+      )}
+      {scopeText && (
+        <p data-testid="qa-pass-scope" className="pl-[22px] text-xs leading-[15px] text-fg-3">
+          {scopeText}
+        </p>
+      )}
       {pass.error && <p className="pl-[22px] text-xs leading-[15px] text-error">{pass.error}</p>}
-      {pass.renderPath && (
+      {renderLinked && pass.renderPath && (
         <a
           href={qaRenderUrl(pass.renderPath)}
           target="_blank"
@@ -141,6 +186,11 @@ function PassRow({ pass, refreshKey }: { pass: QaPassState; refreshKey: string }
           <FilmStrip aria-hidden className="size-icon-sm shrink-0" />
           <span className="truncate font-mono text-num">{pass.renderPath}</span>
         </a>
+      )}
+      {pass.renderPath && pass.renderKept === false && (
+        <p data-testid="qa-pass-render-removed" className="pl-[22px] text-xs text-fg-3">
+          {t("chat.qa.renderRemoved")}
+        </p>
       )}
       {expandable && open && pass.reportId && (
         <div id={reportDomId} className="pl-4">
@@ -163,6 +213,10 @@ export function RenderQaCard({ turn }: { turn: TurnSummary }) {
     qa.passLimit === 0 ? t("chat.qa.limitOff") : t("chat.qa.limit", { count: qa.passLimit });
   // A revert changes the project; open reports read again and say they are outdated.
   const refreshKey = turn.checkpoint?.status ?? "none";
+  // What the last pass checked when that was less than everything ("Timeline checks only"), with why.
+  let scopeNote: QaScopeNote | undefined;
+  for (const pass of qa.passes) if (pass.scopeNote) scopeNote = pass.scopeNote;
+  const scopeText = qaScopeText(qa.scope, scopeNote);
 
   return (
     <section
@@ -193,10 +247,21 @@ export function RenderQaCard({ turn }: { turn: TurnSummary }) {
           {qaReasonText(qa.reason, qa.reasonCode, qa.reasonParams)}
         </p>
       )}
+      {scopeText && (
+        <p data-testid="render-qa-scope" className="px-2 pb-1.5 text-xs leading-[15px] text-fg-3">
+          {scopeText}
+        </p>
+      )}
       {qa.passes.length > 0 && (
         <ol className="grid border-t border-border-subtle">
           {qa.passes.map((pass) => (
-            <PassRow key={pass.pass} pass={pass} refreshKey={refreshKey} />
+            <PassRow
+              key={pass.pass}
+              pass={pass}
+              passes={qa.passes}
+              sessionRunning={qa.status === "running"}
+              refreshKey={refreshKey}
+            />
           ))}
         </ol>
       )}

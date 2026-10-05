@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   boundedSites,
+  chatLinkedSites,
   isLinkedSite,
-  linkedSites,
   linksIn,
   registrableDomain,
 } from "./linkedSites.js";
+
+/** Every text counted as the current turn's: bare domains count too. */
+const linkedSites = (texts: readonly string[]): string[] =>
+  chatLinkedSites({ chatTexts: [], turnTexts: texts, excluded: [] });
 
 describe("registrableDomain", () => {
   it("is the site a host belongs to", () => {
@@ -83,6 +87,33 @@ describe("linkedSites", () => {
     expect(linkedSites(["http://127.0.0.1:8080/x http://localhost:3000 http://10.0.0.5/"])).toEqual(
       [],
     );
+  });
+});
+
+describe("chatLinkedSites", () => {
+  it("keeps deliberate links of the whole chat, but a bare domain only in the current turn", () => {
+    const chatTexts = [
+      "смотри как на youtube.com",
+      "стиль https://linear.app/features",
+      "и www.apple.com",
+    ];
+    expect(chatLinkedSites({ chatTexts, turnTexts: [], excluded: [] })).toEqual([
+      "linear.app",
+      "apple.com",
+    ]);
+    expect(
+      chatLinkedSites({ chatTexts, turnTexts: ["сделай в стиле openvids.ai"], excluded: [] }),
+    ).toEqual(["linear.app", "apple.com", "openvids.ai"]);
+  });
+
+  it("leaves out the sites the user removed, however they are mentioned", () => {
+    expect(
+      chatLinkedSites({
+        chatTexts: ["https://linear.app and https://stripe.com"],
+        turnTexts: ["like openvids.ai"],
+        excluded: ["Linear.app", "openvids.ai"],
+      }),
+    ).toEqual(["stripe.com"]);
   });
 });
 

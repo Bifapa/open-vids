@@ -32,6 +32,9 @@ import {
   isVisionAnalysis,
 } from "./wire.js";
 
+/** Ceiling only: it bounds a Studio that hangs, not honest work (a read that takes two minutes is wedged). */
+const READ_CEILING_MS = 2 * 60_000;
+
 interface RequestOptions {
   body?: unknown;
   signal?: AbortSignal;
@@ -41,7 +44,10 @@ interface RequestOptions {
 export class HttpAnalysisHost implements AnalysisHost {
   private readonly base: string;
 
-  constructor(scope: ProjectScope) {
+  constructor(
+    scope: ProjectScope,
+    private readonly readCeilingMs = READ_CEILING_MS,
+  ) {
     this.base = `${scope.studioOrigin}/api/projects/${encodeURIComponent(scope.projectId)}/analysis`;
   }
 
@@ -156,18 +162,24 @@ export class HttpAnalysisHost implements AnalysisHost {
     path: string,
     { body, signal }: RequestOptions = {},
   ): Promise<unknown> {
+    // A read follows the caller's signal and a ceiling; a wedged Studio must not park a poll forever. The POSTs start
+    // and cancel work: they follow the caller's signal only.
+    const bounded =
+      method === "GET" && signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(this.readCeilingMs)])
+        : signal;
     let response: Response;
     try {
       response = await fetch(`${this.base}${path}`, {
         method,
-        ...(signal && { signal }),
+        ...(bounded && { signal: bounded }),
         ...(body !== undefined && {
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         }),
       });
     } catch (error) {
-      throw transportError(error, signal);
+      throw transportError(error, signal, bounded);
     }
     const payload: unknown = await response.json().catch(() => null);
     if (response.ok) return payload;
@@ -186,8 +198,18 @@ function invalidResponse(what: string): AnalysisToolError {
   return new AnalysisToolError("unavailable", `Studio returned an invalid ${what}.`);
 }
 
-function transportError(error: unknown, signal: AbortSignal | undefined): AnalysisToolError {
+function transportError(
+  error: unknown,
+  signal: AbortSignal | undefined,
+  bounded: AbortSignal | undefined,
+): AnalysisToolError {
   if (signal?.aborted) return new AnalysisToolError("aborted", "The operation was cancelled.");
+  if (bounded?.aborted) {
+    return new AnalysisToolError(
+      "unavailable",
+      "Studio's analysis service did not answer in time; try again.",
+    );
+  }
   const reason = error instanceof Error ? error.message : String(error);
   return new AnalysisToolError(
     "unavailable",

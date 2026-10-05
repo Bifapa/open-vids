@@ -38,7 +38,7 @@ async function mount({
   chatOpen = true,
   graph = sampleGraph(),
   sync = null,
-}: { chatOpen?: boolean; graph?: StoryGraph; sync?: StorySyncReport | null } = {}) {
+}: { chatOpen?: boolean; graph?: StoryGraph | null; sync?: StorySyncReport | null } = {}) {
   server = createFakeStoryServer(graph);
   server.state.sync = sync;
   story = createStoryStore({ client: server.client, saveDelayMs: 400 });
@@ -169,6 +169,37 @@ describe("while an agent turn runs", () => {
     });
     expect(host.textContent).not.toContain("AI is working on the story");
     expect(story.getState().graph?.nodes.some((node) => node.id === "c")).toBe(false);
+  });
+});
+
+describe("the empty story", () => {
+  const blocker = () => host.querySelector('[data-testid="story-empty-blocker"]');
+
+  it("offers Plan with AI, and says why it is off while an agent turn runs", async () => {
+    await mount({ graph: null });
+    expect(button("Plan with AI")?.disabled).toBe(false);
+    expect(blocker()).toBeNull();
+
+    await act(async () => {
+      agent.setState({ activeTurn: ACTIVE });
+    });
+    expect(button("Plan with AI")?.disabled).toBe(true);
+    expect(blocker()?.textContent).toBe("The agent is working");
+
+    await act(async () => {
+      agent.setState({ activeTurn: null });
+    });
+    expect(button("Plan with AI")?.disabled).toBe(false);
+    expect(blocker()).toBeNull();
+  });
+
+  it("says so when the agent cannot be reached", async () => {
+    await mount({ graph: null });
+    await act(async () => {
+      agent.setState({ availability: "unavailable" });
+    });
+    expect(button("Plan with AI")?.disabled).toBe(true);
+    expect(blocker()?.textContent).toBe("The agent is unavailable");
   });
 });
 

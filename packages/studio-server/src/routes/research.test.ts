@@ -482,6 +482,7 @@ describe("the one-time website grants", () => {
     const granted = await call("POST", "/projects/demo/research/website/grants", {
       turnId: "turn-a",
       access: "read",
+      allSites: true,
     });
     expect(granted.status).toBe(200);
     if (!isWebsiteGrant(granted.body)) throw new Error("not a website grant");
@@ -544,6 +545,7 @@ describe("the one-time website grants", () => {
     await call("POST", "/projects/demo/research/website/grants", {
       turnId: "turn-a",
       access: "full",
+      allSites: true,
     });
 
     f.net.when("https://example.com/app.js", media("console.log(1)", "application/javascript"));
@@ -605,6 +607,13 @@ describe("the one-time website grants", () => {
       { turnId: "turn-a", access: "download" },
       { turnId: "turn-a", access: "read", extra: 1 },
       { turnId: "x".repeat(257), access: "read" },
+      { turnId: "turn-a", access: "read", site: "not a domain" },
+      { turnId: "turn-a", access: "read", site: 4 },
+      // A card that could not name its site must not become a grant for every site.
+      { turnId: "turn-a", access: "read", site: null },
+      { turnId: "turn-a", access: "read" },
+      { turnId: "turn-a", access: "read", allSites: false },
+      { turnId: "turn-a", access: "read", allSites: true, site: "example.com" },
     ]) {
       expect(await call("POST", "/projects/demo/research/website/grants", bad)).toMatchObject({
         status: 400,
@@ -621,5 +630,30 @@ describe("the one-time website grants", () => {
         access: "read",
       }),
     ).toMatchObject({ status: 404 });
+  });
+
+  it("answers the site a grant covers, lower-cased", async () => {
+    const { call } = app();
+    const granted = await call("POST", "/projects/demo/research/website/grants", {
+      turnId: "turn-site",
+      access: "read",
+      site: "Example.com",
+    });
+    expect(granted.status).toBe(200);
+    expect(granted.body).toMatchObject({
+      turnId: "turn-site",
+      access: "read",
+      site: "example.com",
+    });
+  });
+
+  it("accepts an exact host with no registrable domain (an address) as the site", async () => {
+    const { call } = app();
+    const granted = await call("POST", "/projects/demo/research/website/grants", {
+      turnId: "turn-ip",
+      access: "read",
+      site: "203.0.113.7",
+    });
+    expect(granted).toMatchObject({ status: 200, body: { site: "203.0.113.7" } });
   });
 });

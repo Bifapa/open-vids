@@ -76,6 +76,7 @@ describe("TurnQa", () => {
     });
 
     qa.openReview({
+      reviewer: "vision",
       pass: 1,
       render: "renders/final.mp4",
       duration: 10,
@@ -108,6 +109,7 @@ describe("TurnQa", () => {
   it("records findings with the source the runtime gives them, dedupes repeats, and counts an empty report as reported", async () => {
     const { qa } = open();
     qa.openReview({
+      reviewer: "vision",
       pass: 2,
       render: "renders/final.mp4",
       duration: 10,
@@ -155,6 +157,7 @@ describe("TurnQa", () => {
     ]);
 
     qa.openReview({
+      reviewer: "vision",
       pass: 3,
       render: "renders/final.mp4",
       duration: 10,
@@ -171,6 +174,7 @@ describe("TurnQa", () => {
     const { host, qa } = open();
     host.framesError = new QaToolError("failed", "ffmpeg could not seek");
     qa.openReview({
+      reviewer: "vision",
       pass: 1,
       render: "renders/final.mp4",
       duration: 10,
@@ -195,6 +199,7 @@ describe("TurnQa", () => {
       release = resolve;
     });
     qa.openReview({
+      reviewer: "vision",
       pass: 1,
       render: "renders/final.mp4",
       duration: 30,
@@ -223,6 +228,7 @@ describe("TurnQa", () => {
       release = resolve;
     });
     qa.openReview({
+      reviewer: "vision",
       pass: 1,
       render: "renders/final.mp4",
       duration: 30,
@@ -237,6 +243,29 @@ describe("TurnQa", () => {
     expect(one.isError).toBeUndefined();
     expect(two).toMatchObject({ isError: true, text: expect.stringContaining("only 2 of 5") });
     expect(qa.closeReview()).toMatchObject({ frames: 3, rounds: 1 });
+  });
+
+  it("opens the review tools to the Director instead of Vision when the Director is the reviewer", async () => {
+    const { host, qa } = open();
+    qa.openReview({
+      reviewer: "director",
+      pass: 1,
+      render: "renders/final.mp4",
+      duration: 10,
+      samples: SAMPLES,
+      maxFrames: 4,
+      critiqueRounds: 1,
+    });
+    const inspect = (caller: "vision" | "director" | "editor") =>
+      qa.execute(caller, "inspect_render", { times: [1] }, signal());
+    expect(await inspect("vision")).toMatchObject({
+      isError: true,
+      text: expect.stringContaining("not available to you"),
+    });
+    expect(await inspect("editor")).toMatchObject({ isError: true });
+    expect(host.frameRequests).toEqual([]);
+    expect((await inspect("director")).images).toHaveLength(1);
+    expect(qa.closeReview()).toMatchObject({ frames: 1, rounds: 1 });
   });
 });
 

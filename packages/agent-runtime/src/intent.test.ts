@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { TOOL_NAMES } from "./agents/tools.js";
 import { intentRefusal, savesWebsiteFiles } from "./intent.js";
 import type { ScriptedSession } from "./testing/backend.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "./testing/runtimeFixture.js";
@@ -13,6 +14,14 @@ async function finishTurn(fixture: RuntimeFixture, chatId: string): Promise<void
 const toolNames = (session: ScriptedSession | undefined) =>
   session?.input.hostTools.map((tool) => tool.name) ?? [];
 
+/** The Director's first prompt of the turn that carried `userText` (later prompts of a turn only follow up). */
+const promptWith = (session: ScriptedSession | undefined, userText: string): string =>
+  [...(session?.prompts ?? [])].reverse().find((prompt) => prompt.text.includes(userText))?.text ??
+  "";
+
+/** A follow-up prompt of a turn (the QA closing prompt, delegated results): it does not repeat the user's message. */
+const isFollowUp = (promptText: string, userText: string): boolean =>
+  !promptText.includes(userText);
 describe("turn intent (Edit / Ask) and plan approval", () => {
   it("lets an Edit turn act and an Ask turn only answer", async () => {
     const fixture = await createRuntimeFixture();
@@ -46,9 +55,10 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
       await fixture.turns.start(chat.id, { prompt: "What is at 00:00:12?", intent: "ask" });
       await finishTurn(fixture, chat.id);
       const askSession = fixture.backend.sessionsOf("director").at(-1);
+      // One stable tool list for every kind of turn: the Ask turn reuses the Edit turn's session and its tools; the
+      // runtime refuses the project-changing calls at dispatch (below).
+      expect(askSession).toBe(editSession);
       expect(toolNames(askSession)).toContain("inspect_timeline");
-      expect(toolNames(askSession)).not.toEqual(expect.arrayContaining(["edit_timeline"]));
-      expect(toolNames(askSession)).not.toContain("render_video");
       expect(askSession?.prompts.at(-1)?.text).toContain("<turn-intent>\nAsk:");
       expect(refusals).toMatchObject({ read: null });
       expect(refusals!.write).toContain("Ask turn");
@@ -71,7 +81,8 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
         write: string | null;
         read: string | null;
       } | null = null;
-      fixture.backend.promptScript = async (_input, session) => {
+      fixture.backend.promptScript = async (input, session) => {
+        if (isFollowUp(input.text, "Make a 30 second teaser from the talk")) return "completed";
         const proposed = await session.callTool("propose_plan", {
           steps: [
             { title: "Build the intro with the logo", agent: "motion" },
@@ -97,8 +108,12 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
       await finishTurn(fixture, chat.id);
       const session = fixture.backend.sessionsOf("director").at(-1);
       expect(toolNames(session)).toContain("propose_plan");
-      expect(session?.prompts.at(-1)?.text).toContain("<plan-approval>");
-      expect(session?.prompts.at(-1)?.text).toContain("more than two steps");
+      expect(promptWith(session, "Make a 30 second teaser from the talk")).toContain(
+        "<plan-approval>",
+      );
+      expect(promptWith(session, "Make a 30 second teaser from the talk")).toContain(
+        "more than two steps",
+      );
       expect(calls).not.toBeNull();
       expect(calls!.proposed).toContain("Plan proposed");
       expect(calls!.edit).toContain("plan proposal");
@@ -132,12 +147,15 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
       await finishTurn(fixture, chat.id);
       const always = fixture.backend.sessionsOf("director").at(-1);
       expect(toolNames(always)).toContain("propose_plan");
-      expect(always?.prompts.at(-1)?.text).toContain("before every request that changes");
+      expect(promptWith(always, "Make the title red")).toContain(
+        "before every request that changes",
+      );
       expect(toolNames(always)).toContain("edit_timeline");
 
       await fixture.settings.update({ autonomy: { planApproval: "never" } });
       let stalePropose: string | null = null;
-      fixture.backend.promptScript = async () => {
+      fixture.backend.promptScript = async (input) => {
+        if (isFollowUp(input.text, "Make the title red")) return "completed";
         // A reused session keeps the propose tool it was opened with; the runtime refuses the call.
         stalePropose = (await always!.callTool("propose_plan", { steps: [{ title: "One" }] })).text;
         return "completed";
@@ -145,8 +163,7 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
       await fixture.turns.start(chat.id, { prompt: "Make the title red" });
       await finishTurn(fixture, chat.id);
       const never = fixture.backend.sessionsOf("director").at(-1);
-      expect(toolNames(never)).not.toContain("propose_plan");
-      expect(never?.prompts.at(-1)?.text).not.toContain("<plan-approval>");
+      expect(promptWith(never, "Make the title red")).not.toContain("<plan-approval>");
       expect(stalePropose).toContain("not available in this turn");
     } finally {
       await fixture.cleanup();
@@ -158,7 +175,8 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
     try {
       const chat = await fixture.chats.create({}, []);
       // First turn: a proposal (never mind that no project-changing call follows).
-      fixture.backend.promptScript = async (_input, session) => {
+      fixture.backend.promptScript = async (input, session) => {
+        if (isFollowUp(input.text, "Make a teaser")) return "completed";
         await session.callTool("propose_plan", {
           steps: [
             { title: "Set the format", agent: "editor" },
@@ -175,7 +193,8 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
 
       // The user pressed «Выполнить»: the runtime resolves the proposal and hands the steps over.
       let calls: { edit: string; stalePropose: string; write: string | null } | null = null;
-      fixture.backend.promptScript = async (_input, session) => {
+      fixture.backend.promptScript = async (input, session) => {
+        if (isFollowUp(input.text, "Carry out the plan")) return "completed";
         const edit = await session.callTool("edit_timeline", {
           operations: [{ op: "remove_clip", clip: "a" }],
         });
@@ -195,8 +214,9 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
       });
       await finishTurn(fixture, chat.id);
       const execute = fixture.backend.sessionsOf("director").at(-1);
-      expect(toolNames(execute)).not.toContain("propose_plan");
-      const prompt = execute?.prompts.at(-1)?.text ?? "";
+      expect(calls).not.toBeNull();
+      expect(calls!.stalePropose).toContain("not available in this turn");
+      const prompt = promptWith(execute, "Carry out the plan");
       expect(prompt).toContain("<approved-plan>");
       expect(prompt).toContain("1. Set the format (editor)");
       expect(prompt).toContain("2. Cut the intro (editor)");
@@ -206,6 +226,9 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
       expect(calls!.write).toBeNull();
       expect(fixture.editing.applyRequests).toHaveLength(1);
       expect(fixture.chats.get(chat.id)?.turns.at(-1)?.intent).toBe("edit");
+      // The summary names the proposal the turn carried out; the proposal turn itself has none.
+      expect(fixture.chats.get(chat.id)?.turns.at(-1)?.executedPlanTurnId).toBe(proposalTurn?.id);
+      expect(proposalTurn?.executedPlanTurnId).toBeUndefined();
 
       // An execute request for a turn without a proposal is refused.
       await expect(
@@ -220,12 +243,18 @@ describe("turn intent (Edit / Ask) and plan approval", () => {
     const fixture = await createRuntimeFixture();
     try {
       const chat = await fixture.chats.create({}, []);
-      fixture.backend.promptScript = async () => "completed";
+      let proposeText = "";
+      fixture.backend.promptScript = async (input, session) => {
+        if (isFollowUp(input.text, "Review the story")) return "completed";
+        proposeText = (await session.callTool("propose_plan", { steps: [{ title: "One" }] })).text;
+        return "completed";
+      };
       await fixture.turns.start(chat.id, { prompt: "Review the story", storyAction: "review" });
       await finishTurn(fixture, chat.id);
       const session = fixture.backend.sessionsOf("director").at(-1);
-      expect(toolNames(session)).not.toContain("propose_plan");
-      expect(session?.prompts.at(-1)?.text).not.toContain("<plan-approval>");
+      // The session offers the same tools in every turn; the story turn refuses the proposal at dispatch.
+      expect(proposeText).toContain("not available in this turn");
+      expect(promptWith(session, "Review the story")).not.toContain("<plan-approval>");
       expect(fixture.chats.get(chat.id)?.turns.at(-1)).toMatchObject({
         intent: "edit",
         storyAction: "review",
@@ -273,6 +302,26 @@ describe("intentRefusal for website saves", () => {
       expect(savesWebsiteFiles("get_website_file", { url: "https://linear.app/a", mode })).toBe(
         false,
       );
+    }
+  });
+});
+
+describe("intentRefusal for runs a decided turn must not start", () => {
+  const WORK = [TOOL_NAMES.delegate, TOOL_NAMES.message, TOOL_NAMES.jev];
+
+  it("refuses delegate, message_agent and jev after a plan proposal or a Story offer, and only then", () => {
+    for (const name of WORK) {
+      expect(intentRefusal("edit", name, true, false), `${name} after a plan`).toContain(
+        "plan proposal",
+      );
+      expect(intentRefusal("edit", name, false, true), `${name} after an offer`).toContain(
+        "offered Story Mode",
+      );
+      expect(intentRefusal("edit", name), `${name} in a plain turn`).toBeNull();
+    }
+    // Reading the plan and cancelling work stay possible.
+    for (const name of [TOOL_NAMES.wait, TOOL_NAMES.cancel, TOOL_NAMES.plan]) {
+      expect(intentRefusal("edit", name, true, true), name).toBeNull();
     }
   });
 });

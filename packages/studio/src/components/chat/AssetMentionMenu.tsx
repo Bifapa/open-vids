@@ -20,6 +20,7 @@ import {
   matchMentionAssets,
   mentionBasename,
   mentionDirectory,
+  mentionToken,
 } from "../../agent/composerMentions";
 import { isImeKeyEvent } from "../../utils/imeKey";
 import { useFileManagerContextOptional } from "../../contexts/FileManagerContext";
@@ -220,7 +221,9 @@ export function useAssetMentions({
     caretAfterPick.current = next.caret;
     setCaret(next.caret);
     setDraft(next.text);
-    addAttachments(draftKey, [projectAttachment({ path })]);
+    addAttachments(draftKey, [
+      { ...projectAttachment({ path }), mentionToken: mentionToken(path) },
+    ]);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {

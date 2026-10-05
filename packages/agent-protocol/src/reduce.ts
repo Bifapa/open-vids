@@ -10,6 +10,7 @@ import {
   type PlanStep,
   type TurnSummary,
 } from "./types.js";
+import { sumUsage } from "./usage.js";
 import type { TurnQaState } from "./qa.js";
 
 /** A chat before its first event: the state `chat.created` is folded into. */
@@ -73,8 +74,21 @@ function upsertTurn(turns: TurnSummary[], turn: TurnSummary): TurnSummary[] {
       : known;
   const knownQa = turn.qa ?? turns[index]?.qa;
   const qa = knownQa && turn.status !== "running" ? settleQa(knownQa) : knownQa;
+  const previous = turns[index];
+  const usage = turn.usage ?? previous?.usage;
+  const directorUsage = turn.directorUsage ?? previous?.directorUsage;
+  const directorContext = turn.directorContext ?? previous?.directorContext;
+  const changes = turn.changes ?? previous?.changes;
   const next = turns.slice();
-  next[index] = { ...turn, ...(plan && { plan }), ...(qa && { qa }) };
+  next[index] = {
+    ...turn,
+    ...(plan && { plan }),
+    ...(qa && { qa }),
+    ...(usage && { usage }),
+    ...(directorUsage && { directorUsage }),
+    ...(changes && { changes }),
+    ...(directorContext && { directorContext }),
+  };
   return next;
 }
 
@@ -94,8 +108,12 @@ function settleQa(qa: TurnQaState): TurnQaState {
 function upsertRun(runs: AgentRun[], run: AgentRun): AgentRun[] {
   const index = runs.findIndex((existing) => existing.id === run.id);
   if (index < 0) return [...runs, run];
+  const previous = runs[index];
   const next = runs.slice();
-  next[index] = run;
+  // Run lifecycle events do not repeat the usage reports, so what is known is kept.
+  const usage = run.usage ?? previous?.usage;
+  const context = run.context ?? previous?.context;
+  next[index] = { ...run, ...(usage && { usage }), ...(context && { context }) };
   return next;
 }
 
@@ -107,6 +125,27 @@ function settleTurnRuns(runs: AgentRun[], turn: TurnSummary): AgentRun[] {
       ? { ...run, status, endedAt: turn.endedAt ?? run.startedAt }
       : run,
   );
+}
+
+/**
+ * Recomputes the usage totals after a change: each turn's `usage` is its Director bucket plus every run of the turn,
+ * the chat's `usage` is the sum over its turns. Totals nothing reported stay as the event carried them (a chat
+ * summary may bring a total for turns this state has not folded).
+ */
+function refreshUsage(
+  turns: TurnSummary[],
+  runs: AgentRun[],
+  chat: ChatSummary,
+): { turns: TurnSummary[]; chat: ChatSummary } {
+  const nextTurns = turns.map((turn): TurnSummary => {
+    const usage = sumUsage([
+      turn.directorUsage,
+      ...runs.filter((run) => run.turnId === turn.id).map((run) => run.usage),
+    ]);
+    return usage ? { ...turn, usage } : turn;
+  });
+  const total = sumUsage(nextTurns.map((turn) => turn.usage));
+  return { turns: nextTurns, chat: total ? { ...chat, usage: total } : chat };
 }
 
 /** Marks every still-streaming assistant message of a turn as ended. */
@@ -130,6 +169,9 @@ function settleOpenPart(part: AssistantPart): AssistantPart {
   if (part.type === "permission" && part.permission.state === "pending") {
     return { ...part, permission: { ...part.permission, state: "expired" } };
   }
+  if (part.type === "question" && part.question.state === "pending") {
+    return { ...part, question: { ...part.question, state: "expired" } };
+  }
   return part;
 }
 
@@ -146,7 +188,7 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
   switch (event.type) {
     case "chat.created":
     case "chat.updated":
-      return { ...base, chat: event.chat };
+      return { ...base, ...refreshUsage(state.turns, state.runs, event.chat) };
 
     case "turn.started":
       return {
@@ -218,6 +260,19 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
             type: "activity",
             id: event.activity.id,
             activity: event.activity,
+          }),
+        })),
+      };
+
+    case "question.updated":
+      return {
+        ...base,
+        messages: mapAssistant(state.messages, event.messageId, (message) => ({
+          ...message,
+          parts: upsertPart(message.parts, {
+            type: "question",
+            id: event.question.id,
+            question: event.question,
           }),
         })),
       };
@@ -316,28 +371,50 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
     }
 
     case "turn.completed":
-      return {
-        ...base,
-        turns: upsertTurn(state.turns, event.turn),
-        runs: settleTurnRuns(state.runs, event.turn),
-        messages: settleTurnMessages(state.messages, event.turn, "complete"),
-      };
-
     case "turn.failed":
+    case "turn.aborted": {
+      const turns = upsertTurn(state.turns, event.turn);
+      const runs = settleTurnRuns(state.runs, event.turn);
+      const status =
+        event.type === "turn.completed"
+          ? "complete"
+          : event.type === "turn.failed"
+            ? "failed"
+            : "aborted";
       return {
         ...base,
-        turns: upsertTurn(state.turns, event.turn),
-        runs: settleTurnRuns(state.runs, event.turn),
-        messages: settleTurnMessages(state.messages, event.turn, "failed"),
+        runs,
+        messages: settleTurnMessages(state.messages, event.turn, status),
+        ...refreshUsage(turns, runs, state.chat),
       };
+    }
 
-    case "turn.aborted":
-      return {
-        ...base,
-        turns: upsertTurn(state.turns, event.turn),
-        runs: settleTurnRuns(state.runs, event.turn),
-        messages: settleTurnMessages(state.messages, event.turn, "aborted"),
-      };
+    case "usage.updated": {
+      const turn = state.turns.find((existing) => existing.id === event.turnId);
+      if (!turn) return base;
+      let runs = state.runs;
+      let turns = state.turns;
+      if (event.runId === null) {
+        turns = turns.map((existing) =>
+          existing.id === turn.id
+            ? {
+                ...existing,
+                directorUsage: event.usage,
+                ...(event.context && { directorContext: event.context }),
+              }
+            : existing,
+        );
+      } else {
+        const run = state.runs.find((existing) => existing.id === event.runId);
+        if (!run || run.turnId !== turn.id) return base;
+        runs = upsertRun(runs, {
+          ...run,
+          usage: event.usage,
+          ...(event.context && { context: event.context }),
+        });
+      }
+      return { ...base, runs, ...refreshUsage(turns, runs, state.chat) };
+    }
   }
 }
 

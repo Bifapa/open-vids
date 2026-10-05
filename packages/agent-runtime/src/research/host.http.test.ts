@@ -703,6 +703,7 @@ describe("HttpResearchHost permission routes", () => {
         json(response, 200, {
           turnId: (request.body as { turnId: string }).turnId,
           access: "full",
+          site: null,
           grantedAt: 1,
           expiresAt: 2,
         }),

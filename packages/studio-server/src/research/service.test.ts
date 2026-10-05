@@ -12,6 +12,7 @@ import { openProjectHistory, type ProjectHistory } from "../history/projectHisto
 import { BLANK_HTML, created } from "../story/testSupport.js";
 import { isResearchFailure } from "./errors.js";
 import { readLedger } from "./provenance.js";
+import { ResearchService } from "./service.js";
 import {
   createResearchFixture,
   fixtureText,
@@ -312,6 +313,111 @@ describe("inspect and import: the policy", () => {
     expect((await failure(f.service.import(f.project, { candidate: other.id }))).code).toBe(
       "blocked_by_policy",
     );
+  });
+
+  it("refuses a restricted-license candidate until the user allowed this asset, before any download", async () => {
+    const f = setup();
+    f.net.when(
+      (url) => url.hostname === "api.openverse.org",
+      json(JSON.parse(fixtureText("openverse-images.json"))),
+    );
+    const found = await f.service.search(f.project, {
+      query: "volcano",
+      mediaKind: "picture",
+      sources: ["openverse"],
+    });
+    const restricted = found.candidates.find(
+      (candidate) => candidate.license.status === "restricted",
+    );
+    if (!restricted) throw new Error("no restricted candidate");
+    serve(f, restricted.mediaUrl, "JPEG restricted", "image/jpeg");
+
+    const callsBefore = f.net.calls.length;
+    const refused = await failure(f.service.import(f.project, { candidate: restricted.id }));
+    expect(refused.code).toBe("restricted_license");
+    expect(refused.params).toEqual({
+      title: restricted.title,
+      license: restricted.license.name,
+      source: restricted.source.name,
+    });
+    expect(f.net.calls).toHaveLength(callsBefore);
+    expect(f.researchFiles()).toEqual([]);
+
+    const allowed = await f.service.import(f.project, {
+      candidate: restricted.id,
+      allowRestricted: true,
+    });
+    expect(allowed.provenance).toMatchObject({ licenseStatus: "restricted" });
+    expect(f.researchFiles()).toHaveLength(1);
+  });
+
+  it("remembers candidates across a Studio restart, and forgets them after a week", async () => {
+    const f = setup();
+    f.net.when(
+      (url) => url.hostname === "api.openverse.org",
+      json(JSON.parse(fixtureText("openverse-images.json"))),
+    );
+    const found = await f.service.search(f.project, {
+      query: "volcano",
+      mediaKind: "picture",
+      sources: ["openverse"],
+    });
+    const flickr = found.candidates.find((candidate) =>
+      candidate.mediaUrl.startsWith("https://live.staticflickr.com/"),
+    );
+    if (!flickr) throw new Error("no flickr candidate");
+    serve(f, flickr.mediaUrl, "JPEG flickr", "image/jpeg");
+
+    let now = Date.now();
+    const restarted = new ResearchService({
+      story: f.story.service,
+      store: f.store,
+      fetcher: f.fetcher,
+      toolkit: f.toolkit,
+      now: () => now,
+    });
+    const done = await restarted.import(f.project, { candidate: flickr.id });
+    // The trusted-mode host grant the source issued survives with the candidate.
+    expect(done.provenance).toMatchObject({ source: { id: "openverse" }, licenseId: "cc_by" });
+
+    now += 8 * 24 * 60 * 60 * 1000;
+    const later = new ResearchService({
+      story: f.story.service,
+      store: f.store,
+      fetcher: f.fetcher,
+      toolkit: f.toolkit,
+      now: () => now,
+    });
+    expect((await failure(later.import(f.project, { candidate: flickr.id }))).code).toBe(
+      "unknown_candidate",
+    );
+  });
+
+  it("keeps candidates in their own project, outside history, and not in another project", async () => {
+    const f = setup();
+    f.net.when(
+      (url) => url.hostname === "api.openverse.org",
+      json(JSON.parse(fixtureText("openverse-images.json"))),
+    );
+    const found = await f.service.search(f.project, {
+      query: "volcano",
+      mediaKind: "picture",
+      sources: ["openverse"],
+    });
+    const [first] = found.candidates;
+    if (!first) throw new Error("no candidate");
+
+    await Promise.resolve();
+    expect(f.read(".hyperframes/research/candidates.json")).toContain(first.id);
+
+    const other = createResearchFixture();
+    try {
+      expect(
+        (await failure(other.service.import(other.project, { candidate: first.id }))).code,
+      ).toBe("unknown_candidate");
+    } finally {
+      other.cleanup();
+    }
   });
 
   it("lets any mode import from any public host, recording the web as an untrusted source", async () => {

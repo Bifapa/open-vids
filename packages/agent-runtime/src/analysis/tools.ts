@@ -7,7 +7,8 @@ import {
   type AgentId,
   type SpecialistId,
 } from "@hyperframes/agent-protocol";
-import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
+import type { HostTool, HostToolResult, ToolActivity, ToolProgress } from "../backend.js";
+import { withInheritedTools } from "../agents/inherit.js";
 import { ANALYSIS_SECTIONS, basename } from "./format.js";
 
 export const ANALYSIS_TOOL_NAMES = {
@@ -27,27 +28,19 @@ export function isAnalysisToolName(name: string): name is AnalysisToolName {
   return Object.values<string>(ANALYSIS_TOOL_NAMES).includes(name);
 }
 
-type Executor = (name: string, args: unknown, signal: AbortSignal) => Promise<HostToolResult>;
+type Executor = (
+  name: string,
+  args: unknown,
+  signal: AbortSignal,
+  progress?: ToolProgress,
+) => Promise<HostToolResult>;
 
-/**
- * Which analysis tools an agent gets. Everyone who edits or plans can read the analysis; the Director looks at frames
- * and plans/builds cuts itself only when there is no Vision/Editor to delegate to. Jev gets none.
- */
-export function analysisToolsFor(
-  agent: AgentId,
-  enabled: readonly SpecialistId[],
-): AnalysisToolName[] {
+/** What each agent gets when every specialist is on. Jev only reads the analysis. */
+function baseAnalysisTools(agent: AgentId): AnalysisToolName[] {
   const { analyze, read, transcript, segments, frames, vision, plan, build } = ANALYSIS_TOOL_NAMES;
   switch (agent) {
     case "director":
-      return [
-        analyze,
-        read,
-        transcript,
-        segments,
-        ...(enabled.includes("vision") ? [] : [frames, vision]),
-        ...(enabled.includes("editor") ? [] : [plan, build]),
-      ];
+      return [analyze, read, transcript, segments];
     case "editor":
       return [analyze, read, transcript, segments, plan, build];
     case "vision":
@@ -56,9 +49,23 @@ export function analysisToolsFor(
     case "audio":
     case "research":
       return [read, transcript];
+    case "jev":
+      return [read];
     default:
       return [];
   }
+}
+
+/**
+ * Which analysis tools an agent gets. Everyone who edits or plans can read the analysis; the Editor plans and builds
+ * cuts, Vision looks at frames. The Director also gets the tools of every specialist that is off in this chat (its
+ * frames and notes without Vision, its cut planning and building without the Editor). Jev only gets read_analysis.
+ */
+export function analysisToolsFor(
+  agent: AgentId,
+  enabled: readonly SpecialistId[],
+): AnalysisToolName[] {
+  return withInheritedTools(agent, enabled, baseAnalysisTools);
 }
 
 // ── Descriptions ─────────────────────────────────────────────────────────────
@@ -67,7 +74,7 @@ const SOURCE_TIMES = `Times are seconds of the SOURCE file (not the timeline); t
 
 const DESCRIPTIONS: Record<AnalysisToolName, string> = {
   analyze_media: `Analyze a long video or audio file once and keep the result: speech transcript with word timestamps, speakers, pauses, shots with black/frozen-picture detection, take issues (retakes, false starts, restart cues, stutters, fillers), a draft segmentation, and the frames worth looking at. The analysis is cached per file (it survives across turns; only a changed file is recomputed), so calling it again is instant and never repeats work unless you pass force. It waits until the analysis has finished (a 30-minute talk takes a few minutes) and returns a compact overview: what each stage did, speakers, pause statistics, shots, take issues, segments, vision targets and existing cut plans. If an analysis of the same file is already running (started by the user or another agent), a plain call waits for that one; a call with force or a different language is refused with a conflict instead of silently joining it, so wait for the running analysis (plain call), then repeat. A stage this machine cannot run (for example no speech recognizer) is reported as unavailable with the reason. Pass the project-relative path of the media (from inspect_project). ${SOURCE_TIMES}`,
-  read_analysis: `Read the cached analysis of a source (run analyze_media first). Without a section you get the overview; with a section you get that part in full: speakers (with turns), silence (every pause), shots (every shot and the black/frozen problems), takes (every take issue with its evidence), segments (with summaries), vision (notes and the targets still to inspect) or cuts (the existing cut plans). ${SOURCE_TIMES}`,
+  read_analysis: `Read the cached analysis of a source (run analyze_media first). Without a section you get the overview; with a section you get that part in full: speakers (with turns), silence (every pause), shots (every shot and the black/frozen problems), takes (every take issue with its evidence), segments (with summaries), vision (notes and the targets still to inspect) or cuts (the existing cut plans). A long list is returned in pages: the result says which items it shows and which offset to pass to read the next page. ${SOURCE_TIMES}`,
   read_transcript: `Read the transcript of a source as lines "s12 [01:02.3–01:05.8] S1: text". Sentence ids (s12) are what save_segments and plan_cut refer to. Sentences that a take issue touches end with ⟨t3 retake⟩. The result starts with the transcript version, which save_segments requires. A long transcript is returned in pages: pass from (and optionally to), in seconds of the source, to read the next page; the result tells you where to continue.`,
   save_segments: `Save the semantic segmentation of a source: the topic structure of the video, written by you after reading the whole transcript (read_transcript, every page). Segments are in time order, contiguous, and together cover every sentence exactly once (firstSentence/lastSentence are sentence ids such as s1 and s40). Give each a short title, a one-sentence summary, a role and a priority that preserve the MEANING of the video: "must" = the story depends on it, "should" = valuable, "optional" = can go when the cut must be shorter, "drop" = leave out (tangents, off-topic chatter, filler, repeated explanations). Pass the transcriptVersion you read; it is refused if the transcript changed since. Replaces the previous segmentation of the source.`,
   inspect_frames: `Look at video frames: returns JPEG images of the source at the given times, so you can judge what is on screen (speaker on camera, slide, black or frozen picture, slate, bad framing). Use the times of the vision targets from analyze_media/read_analysis — at most ${ANALYSIS_LIMITS.framesPerRequest} per call, within the per-source frame budget of this turn's Execution Quality (a call beyond it is refused), never the whole video. Frames that were extracted before are served from the cache. Record what you saw with save_vision_notes. ${SOURCE_TIMES}`,
@@ -127,6 +134,12 @@ const PARAMETERS: Record<AnalysisToolName, Record<string, unknown>> = {
         type: "string",
         enum: [...ANALYSIS_SECTIONS],
         description: "Which part in full; default overview.",
+      },
+      offset: {
+        type: "integer",
+        minimum: 0,
+        description:
+          "Index of the first item to show (0-based) in a section's list; the result tells you the next offset. Default 0.",
       },
     },
     required: ["source"],
@@ -334,7 +347,7 @@ const count = (value: unknown, noun: string): string => {
 };
 
 /** "raw-talk.mp4", trimmed for a chat row; never throws on malformed arguments. */
-function sourceName(args: unknown): string | null {
+export function sourceName(args: unknown): string | null {
   if (!isRecord(args) || typeof args.source !== "string" || args.source.length === 0) return null;
   const name = basename(args.source);
   return name.length > 48 ? `${name.slice(0, 47)}…` : name;
@@ -363,9 +376,16 @@ const ACTIVITIES: Record<AnalysisToolName, ActivityLabel> = {
   read_analysis: (args) => {
     const section =
       isRecord(args) && typeof args.section === "string" && args.section !== "overview"
-        ? ` · ${args.section}`
-        : "";
-    return { category: "inspect", label: `Reading the analysis${section}` };
+        ? args.section
+        : null;
+    return section
+      ? {
+          category: "inspect",
+          label: `Reading the analysis · ${section}`,
+          labelCode: "reading_analysis_section",
+          labelParams: { section },
+        }
+      : { category: "inspect", label: "Reading the analysis", labelCode: "reading_analysis" };
   },
   read_transcript: () => ({
     category: "inspect",
@@ -401,10 +421,15 @@ const ACTIVITIES: Record<AnalysisToolName, ActivityLabel> = {
   },
   plan_cut: (args) => {
     const label =
-      isRecord(args) && typeof args.label === "string" && args.label.trim().length > 0
-        ? ` · ${args.label.trim().slice(0, 40)}`
-        : "";
-    return { category: "other", label: `Planning the cut${label}` };
+      isRecord(args) && typeof args.label === "string" ? args.label.trim().slice(0, 40) : "";
+    return label.length > 0
+      ? {
+          category: "other",
+          label: `Planning the cut · ${label}`,
+          labelCode: "planning_cut_labeled",
+          labelParams: { label },
+        }
+      : { category: "other", label: "Planning the cut", labelCode: "planning_cut" };
   },
   build_rough_cut: (args, planClips) => {
     const clips =
@@ -441,7 +466,7 @@ export function buildAnalysisTools(
       name,
       description: DESCRIPTIONS[name],
       parameters: PARAMETERS[name],
-      execute: (args, signal) => execute(name, args, signal),
+      execute: (args, signal, progress) => execute(name, args, signal, progress),
       activity: (args) => ACTIVITIES[name](args, context.planClips ?? (() => undefined)),
     }));
 }

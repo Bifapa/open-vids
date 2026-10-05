@@ -16,6 +16,7 @@ import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
 import { registerAgentRoutes } from "./routes/agent.js";
 import { registerEditingRoutes } from "./routes/editing.js";
+import { registerCompositionFrameRoutes } from "./routes/editingFrames.js";
 import { registerAnalysisRoutes } from "./routes/analysis.js";
 import { registerStoryRoutes } from "./routes/story.js";
 import { registerResearchRoutes } from "./routes/research.js";
@@ -55,8 +56,9 @@ export function createStudioApi(
   registerGlobalAssetRoutes(api);
   registerHistoryRoutes(api, adapter);
   registerAgentRoutes(api, adapter);
-  registerEditingRoutes(api, adapter);
+  registerCompositionFrameRoutes(api, adapter);
   const analysis = registerAnalysisRoutes(api, adapter);
+  registerEditingRoutes(api, adapter, { analysis });
   const story = registerStoryRoutes(api, adapter, analysis);
   registerResearchRoutes(api, adapter, story);
   const qa = registerQaRoutes(api, adapter, analysis);

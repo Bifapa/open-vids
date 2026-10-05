@@ -1,6 +1,7 @@
 import type { StoreApi } from "zustand/vanilla";
 import { LIMITS } from "@hyperframes/agent-protocol";
 import { t } from "../i18n";
+import { withoutMention } from "./composerMentions";
 import type { ComposerAttachment } from "./composerAttachments";
 import type { AgentState } from "./agentStore";
 
@@ -67,14 +68,25 @@ export function createAgentAttachmentSlice({
     },
 
     removeAttachment(draftKey, id) {
-      set((state) => ({
-        attachments: {
-          ...state.attachments,
-          [draftKey]: (state.attachments[draftKey] ?? []).filter(
-            (attachment) => attachment.id !== id,
-          ),
-        },
-      }));
+      set((state) => {
+        const removed = (state.attachments[draftKey] ?? []).find(
+          (attachment) => attachment.id === id,
+        );
+        const text = state.drafts[draftKey];
+        return {
+          attachments: {
+            ...state.attachments,
+            [draftKey]: (state.attachments[draftKey] ?? []).filter(
+              (attachment) => attachment.id !== id,
+            ),
+          },
+          // A chip picked by an `@` mention takes its token out of the prompt with it.
+          ...(removed?.mentionToken !== undefined &&
+            text !== undefined && {
+              drafts: { ...state.drafts, [draftKey]: withoutMention(text, removed.mentionToken) },
+            }),
+        };
+      });
     },
   };
 }

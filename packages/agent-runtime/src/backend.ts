@@ -2,12 +2,14 @@ import type {
   AgentId,
   AgentModelCatalog,
   AgentModelInfo,
+  ContextFill,
   ListProvidersResponse,
   ModelSelection,
   OAuthFlow,
   OAuthLoginState,
   ProjectTitleRequest,
   ThinkingEffort,
+  UsageTotals,
 } from "@hyperframes/agent-protocol";
 
 /**
@@ -55,9 +57,25 @@ export type BackendEvent =
       /** Placeholder values for `activity.<labelCode>`. */
       labelParams?: Record<string, string | number>;
     }
-  | { type: "tool.end"; toolCallId: string; ok: boolean }
-  /** A running host tool's determinate progress, 0–100 (a render). */
-  | { type: "tool.progress"; toolCallId: string; progress: number };
+  /** `error` is the tool's own failure text (trimmed, credentials masked) when `ok` is false. */
+  | { type: "tool.end"; toolCallId: string; ok: boolean; error?: string }
+  /** A running host tool's determinate progress, 0–100 (a render), with the row's updated label when it has one. */
+  | { type: "tool.progress"; toolCallId: string; progress: number; label?: ProgressLabel }
+  /**
+   * What one model call used (a delta, not a total) and how full the context is after it. The runtime sums the deltas
+   * of a prompt into the cumulative figure it reports per agent.
+   */
+  | { type: "usage"; usage: UsageTotals; context?: ContextFill };
+
+/** The row label a running call shows from now on (the stage an analysis is in); same fields as a labelled start. */
+export interface ProgressLabel {
+  label: string;
+  labelCode: string;
+  labelParams?: Record<string, string | number>;
+}
+
+/** What a host tool calls to report how far along it is. */
+export type ToolProgress = (percent: number, label?: ProgressLabel) => void;
 
 /** An image a tool shows to the model (base64, without a data-URL prefix). */
 export interface HostToolImage {
@@ -84,12 +102,11 @@ export interface HostTool {
   description: string;
   /** JSON Schema of the arguments object. */
   parameters: Record<string, unknown>;
-  /** `progress` reports determinate progress (0–100) of a long call, such as a render; optional for the backend. */
-  execute(
-    args: unknown,
-    signal: AbortSignal,
-    progress?: (percent: number) => void,
-  ): Promise<HostToolResult>;
+  /**
+   * `progress` reports determinate progress (0–100) of a long call, such as a render or an analysis, and may restate
+   * the row's label as the work moves on; optional for the backend.
+   */
+  execute(args: unknown, signal: AbortSignal, progress?: ToolProgress): Promise<HostToolResult>;
   /** The activity row this call shows, from its (untrusted) arguments; null or absent keeps the call hidden. */
   activity?(args: unknown): ToolActivity | null;
 }
@@ -112,11 +129,12 @@ export interface BackendSession {
   /**
    * Runs one user turn to its end. Resolves `"completed"` or `"aborted"`;
    * rejects with an Error for any failure (the runner turns that into turn.failed).
-   * Steering text delivered through {@link steer} while this is pending is
-   * handled inside the same promise.
    */
   prompt(input: BackendPromptInput): Promise<BackendPromptOutcome>;
-  /** Redirects the running turn. Only called while `prompt` is pending. */
+  /**
+   * Redirects the prompt in flight. Rejects when the session cannot take it now (no prompt is running, or it is
+   * still starting): the caller then keeps the text for the next prompt. A rejection never fails the prompt.
+   */
   steer(text: string): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -147,6 +165,17 @@ export interface OpenBackendSessionInput {
    * ask the user, `false` to leave the clip alone and carry on. The lock itself is enforced either way.
    */
   askBeforeLockedEdits?: () => boolean;
+  /**
+   * Asked before the harness's own `edit`/`write` changes composition files (`.html`), with their project-relative
+   * paths; a string refuses the call with that reason. The runtime's per-file write leases answer it, so two runs never
+   * rewrite one composition at the same time.
+   */
+  claimWriteFiles?: (files: string[]) => string | null;
+  /**
+   * Told after the harness's own `edit`/`write` passed every check above (turn rules, role, project boundary, locks,
+   * write leases) and is about to run, with the tool name. The runtime counts it for the turn's change summary.
+   */
+  noteFileWrite?: (toolName: string) => void;
 }
 
 /** What {@link AgentBackend.refreshProviders} does. */
@@ -194,6 +223,12 @@ export interface AgentBackend {
   cancelOAuthLogin(id: string): Promise<OAuthLoginState>;
   /** Removes the sign-in OpenVids stored for a provider (OMP's cannot be removed) and answers with the fresh list. */
   signOutOAuth(provider: string): Promise<ListProvidersResponse>;
+  /**
+   * A hash of the project context files (AGENTS.md / CLAUDE.md as the harness would load them) a session opened now
+   * would use; the runtime keys its sessions on it so an edited file reopens them. Optional: a backend without
+   * project context files omits it.
+   */
+  contextHash?(projectDir: string): Promise<string>;
   openSession(input: OpenBackendSessionInput): Promise<BackendSession>;
   dispose(): Promise<void>;
 }

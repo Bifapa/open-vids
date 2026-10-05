@@ -1,18 +1,36 @@
 import {
-  CLIP_FITS,
+  ASSET_KINDS,
+  CANVAS_FITS,
   EDIT_LIMITS,
   EDIT_OPERATION_NAMES,
   PRESET_KINDS,
+  RIPPLE_SCOPES,
   TEXT_PLACEMENTS,
   TEXT_SIZES,
   isRecord,
   type AgentId,
   type EditOperationName,
+  type PresetKind,
   type SpecialistId,
 } from "@hyperframes/agent-protocol";
-import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
+import type { HostTool, HostToolResult, ToolActivity, ToolProgress } from "../backend.js";
+import { withInheritedTools } from "../agents/inherit.js";
 import { RENDER_QUALITIES } from "./host.js";
 import { LONG_RENDER_SECONDS } from "./renderGuard.js";
+import { MORE_OPERATION_SCHEMAS } from "./schemaMore.js";
+import {
+  canvasSide,
+  clipId,
+  fade,
+  fit,
+  frame,
+  operationSchema,
+  str,
+  time,
+  track,
+  volume,
+  type OperationSchema,
+} from "./schemaParts.js";
 
 export const EDITING_TOOL_NAMES = {
   project: "inspect_project",
@@ -32,13 +50,14 @@ type Executor = (
   name: string,
   args: unknown,
   signal: AbortSignal,
-  progress?: (percent: number) => void,
+  progress?: ToolProgress,
 ) => Promise<HostToolResult>;
 
 /**
- * Which editing tools an agent gets. The Director edits the timeline itself only when there is no Editor to delegate
- * to; specialists get what their domain needs. Jev gets none. A story-mode turn that does not build the story never
- * writes the timeline (`timelineWrites` false): nobody gets `edit_timeline` or `render_video`.
+ * Which editing tools an agent gets. A specialist gets what its domain needs; the Director gets its own and, through
+ * {@link withInheritedTools}, those of every specialist that is off in this chat (the Editor's `edit_timeline` when no
+ * Editor is on). Jev only reads: it sees the project and the timeline, never edits. A story-mode turn that does not
+ * build the story never writes the timeline (`timelineWrites` false): nobody gets `edit_timeline` or `render_video`.
  */
 export function editingToolsFor(
   agent: AgentId,
@@ -46,12 +65,10 @@ export function editingToolsFor(
   { timelineWrites = true }: { timelineWrites?: boolean } = {},
 ): EditingToolName[] {
   const { project, timeline, edit, presets, render } = EDITING_TOOL_NAMES;
-  const tools = ((): EditingToolName[] => {
-    switch (agent) {
+  const base = (id: AgentId): EditingToolName[] => {
+    switch (id) {
       case "director":
-        return enabled.includes("editor")
-          ? [project, timeline, presets, render]
-          : [project, timeline, presets, render, edit];
+        return [project, timeline, presets, render];
       case "editor":
         return [project, timeline, presets, render, edit];
       case "motion":
@@ -61,10 +78,13 @@ export function editingToolsFor(
       case "vision":
       case "research":
         return [project, timeline, presets];
+      case "jev":
+        return [project, timeline];
       default:
         return [];
     }
-  })();
+  };
+  const tools = withInheritedTools(agent, enabled, base);
   return timelineWrites ? tools : tools.filter((tool) => tool !== edit && tool !== render);
 }
 
@@ -78,106 +98,38 @@ const EDIT_OPERATIONS_GUIDE = `Operations (each has "op" plus):
 - add_text: text, start, duration, track; optional placement ("top"|"center"|"bottom"), size ("small"|"medium"|"large"), color.
 - add_component: name (a block/component from browse_presets), start, track; optional duration.
 - apply_captions: preset (a caption preset from browse_presets), cues [{text, start, end}] spanning the composition; optional track.
-- remove_clip: clip, or clips (many ids at once, up to ${EDIT_LIMITS.removeClips}); optional ripple (close the gap by moving later clips on the track).
+- remove_clip: clip, or clips (many ids at once, up to ${EDIT_LIMITS.removeClips}); optional ripple (close the gap by moving later clips on the track) with rippleScope "track" (default) or "all" (later clips on EVERY track move back, so B-roll, music and titles stay in sync with the cut; clips that start before the removed clip ends do not move).
 - move_clip: clip; start and/or track.
 - trim_clip: clip; new timeline start and/or end (trimming the head of a video/audio clip advances its media in-point; a clip of an asset the user picked a fragment of can be trimmed only inside that fragment).
 - split_clip: clip, at (timeline time inside the clip). The result reports the new second half's clip id.
-- set_clip: clip; any of volume, muted, fit, zIndex, frame, fadeIn, fadeOut.
+- set_clip: clip; any of volume, muted, fit, zIndex, frame, fadeIn, fadeOut, opacity (0–1, visual clips).
 - arrange_track: track, clips (ids in order), optional start (default 0) and gap; lays them end to end.
-- set_composition: duration (explicit length; otherwise the length follows the content).
-- set_canvas: width, height (even pixels, up to ${EDIT_LIMITS.maxCanvasPixels}). Sets the composition's frame format. Placed clips keep their frames, so when the format is still to be decided, set the canvas BEFORE adding clips.
+- set_composition: duration. The length follows the content only upwards: adding or moving clips past the end grows it, trimming or removing clips never shrinks it (a silent outro or music tail stays). To shorten the composition, set it explicitly.
+- set_canvas: width, height (even pixels, up to ${EDIT_LIMITS.maxCanvasPixels}); optional fit "keep" (default: placed clips keep their frames — set the canvas BEFORE adding clips when the format is still to be decided), "contain" (re-frame everything already placed so the whole old picture fits inside the new canvas, centred, with bars where the shapes differ) or "cover" (fill the new canvas, cropping). Use contain/cover to turn a finished 16:9 video into 9:16; clips without a pixel frame are reported and left as they are.
+- set_speed: clip (video/audio), rate (${EDIT_LIMITS.minRate}–${EDIT_LIMITS.maxRate}); by default the clip keeps the same stretch of source, so 2 → half as long on the timeline; keepDuration keeps the length (plays more or less of the source); ripple/rippleScope move later clips by the difference.
+- retime_captions: shift (seconds, may be negative) and/or scale; optional from/to (cues starting inside [from, to) move; the rest stay). Moves the cues of existing captions, e.g. after a cut: { shift: -2.5, from: 40 }. Refused if cues would overlap or leave the captions' length.
+- captions_from_transcript: preset (caption preset), optional track, clips (only these), maxWords (default 6). Writes the captions from the cached transcripts of the clips on the timeline (words follow each clip's in-point, length and speed; the lower track speaks where clips overlap). Needs analyze_media on the sources first; the answer names sources without a transcript.
+- mount_composition: composition (a project .html file, e.g. compositions/intro.html), start, track; optional duration. Mounts an existing composition as a clip, like dropping it in Studio.
+- set_color_grade: clip (video/image); preset (see browse_presets kind color_grade) and/or intensity (0–1) and/or adjust { exposure (±2), contrast, highlights, shadows, whites, blacks, temperature, tint, vibrance, saturation (±1 each) }; or clear: true. A preset replaces the look; adjust layers over what the clip has.
+- set_audio_fx: clip (video/audio), preset (see browse_presets kind audio_fx; re-applying a preset replaces its own effects), optional replace (drop the other effects first); or clear: true.
+- set_volume_automation: clip (video/audio), points [{t, v}] (t in seconds from the CLIP's start, v the volume 0–${EDIT_LIMITS.maxVolume}; replaces the volume envelope), or clear: true.
+- duck_audio: clip (the music), under [clip ids] or underTrack (the speech); optional reduceDb (default 12), attack (0.3 s), release (0.6 s). Writes a volume envelope that dips under the speech and returns after it (replaces the clip's volume envelope).
+- set_locked: clips, locked (true/false). A locked clip refuses every other edit; only locks you set can be lifted (a lock the user set cannot).
+Transitions: there is no cut-to-cut transition operation. Use fadeIn/fadeOut on overlapping clips for a dissolve of audio, or add a transition block with add_component (browse_presets kind block, query "transition").
 User-picked fragments: inspect_project marks a video/audio asset the user picked a fragment of as "USER-PICKED FRAGMENT start–end s" — the AI may use only that part of the file. add_clip starts mediaStart at the fragment and defaults the duration to its end; add_sequence ranges and trim_clip stay inside it; a placement reaching outside it is refused (out_of_bounds) with the picked range in the message. Plan with the fragment's length — a 33.5 s music bed lasts 33.5 s: place it again or fade it out instead of running past its end.`;
 
 const DESCRIPTIONS: Record<EditingToolName, string> = {
-  inspect_project: `List the project's compositions (size, length, clip count), media assets (kind, size, duration, whether video has audio; an asset the user picked a fragment of is marked "USER-PICKED FRAGMENT" — only that part of the file may be used) and existing renders. Call it first to learn what material exists before planning an edit.`,
-  inspect_timeline: `Show a composition's timeline as a table: clip id, kind, label, start–end, track, source, notes (media in-point, volume, muted, locked; "(template placeholder — not user content)" marks the new project's untouched placeholder title, which you may remove or replace in a normal edit), plus the composition's size, length and content version. Also reports the user's playhead, selected clips/asset/time range and active composition as they were when the user sent the message (they may have changed since). Read it before editing and again after a batch to verify the result. Defaults to the main composition. ${CONVENTIONS}`,
-  edit_timeline: `Change the timeline of a composition with a batch of operations. The batch is atomic: if any operation is refused, nothing is applied and the error names the failing operation (operations[N]) so you can fix it and retry. Operations run in order; clips they create get ids that are returned in the result (use them in a later call). After edits the Studio timeline and preview update by themselves, and every edit belongs to this turn's checkpoint, so the user can revert it. Pass baseVersion (the version from inspect_timeline) to refuse the batch if the composition changed since you looked. ${CONVENTIONS}\n${EDIT_OPERATIONS_GUIDE}`,
-  browse_presets: `Search the built-in presets: caption styles ("caption", used by apply_captions), motion-graphics "block"s and reusable "component"s (both used by add_component). Returns names with a short description and natural length. Optional query filters by text.`,
-  render_video: `Render a composition to an mp4 file in the project's renders folder and wait until it finishes. Returns the project-relative path, length, resolution and size; report the path to the user. Use "draft" quality for a quick check, "standard" (default) or "high" for the final video. Fails if the render fails or is cancelled. A render takes minutes per minute of video: render only when the user asked for a video file, an export or a render (or for a short draft check), not after every edit of a long timeline — offer it instead. A composition longer than ${LONG_RENDER_SECONDS / 60} minutes is refused unless the user asked for a render or an export in this turn.`,
+  inspect_project: `List the project's compositions (size, length, clip count), media assets (kind, size, duration, whether video has audio; an asset the user picked a fragment of is marked "USER-PICKED FRAGMENT" — only that part of the file may be used) and existing renders. Call it first to learn what material exists before planning an edit. A long asset list is paged: pass query (text in the path), kind, offset and limit to narrow or page through it.`,
+  inspect_timeline: `Show a composition's timeline as a table: clip id, kind, label, start–end, track, source, notes (media in-point, speed, volume, muted, opacity, colour grade, audio FX, automation, locked; "(template placeholder — not user content)" marks the new project's untouched placeholder title, which you may remove or replace in a normal edit), plus the composition's size, length and content version. Also reports the user's playhead, selected clips/asset/time range and active composition as they were when the user sent the message (they may have changed since). Read it before editing and again after a batch to verify the result. Defaults to the main composition. A long timeline is paged: pass track, from/to (seconds; clips that overlap the window), offset and limit to see exactly the part you need. ${CONVENTIONS}`,
+  edit_timeline: `Change the timeline of a composition with a batch of operations (up to ${EDIT_LIMITS.operations}). The batch is atomic: if any operation is refused, nothing is applied and the error names the failing operation (operations[N]) so you can fix it and retry. Operations run in order; clips they create get ids that are returned in the result (use them in a later call). After edits the Studio timeline and preview update by themselves, and every edit belongs to this turn's checkpoint, so the user can revert it. The batch is checked against the timeline you last read in this turn (or the baseVersion you pass): if the composition changed since, it is refused with a conflict and you inspect_timeline again. Set dryRun: true to validate a risky batch and see what it WOULD change (clips added, removed, moved) without writing anything. Sending the same batch twice does not apply it twice: Studio answers the second with the stored result. The result can carry warnings (for example clips that now overlap on track 0): act on them. ${CONVENTIONS}\n${EDIT_OPERATIONS_GUIDE}`,
+  browse_presets: `Search the built-in presets: caption styles ("caption", used by apply_captions and captions_from_transcript), motion-graphics "block"s (graphics, lower thirds and scene transitions: search "transition") and reusable "component"s (both used by add_component), colour looks ("color_grade", used by set_color_grade) and audio effect chains ("audio_fx", used by set_audio_fx). Returns names with a short description and natural length. Optional query filters by text; long lists are paged with offset and limit.`,
+  render_video: `Render a composition to an mp4 file in the project's renders folder and wait until it finishes. Returns the project-relative path, length, resolution and size; report the path to the user. Use "draft" quality for a quick check, "standard" (default) or "high" for the final video. Fails if the render fails or is cancelled. A render takes minutes per minute of video: render only when the user asked for a video file, an export or a render (or for a short draft check), not after every edit of a long timeline — offer it instead. For a composition longer than ${LONG_RENDER_SECONDS / 60} minutes the call asks the user on a card in the chat (once or deny) unless they already asked for a render or an export in this turn; if they decline, the call is refused.`,
 };
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
-const str = (description: string, maxLength?: number) => ({
-  type: "string",
-  description,
-  ...(maxLength !== undefined && { maxLength }),
-});
-const time = (description: string) => ({
-  type: "number",
-  minimum: 0,
-  maximum: EDIT_LIMITS.maxTime,
-  description,
-});
-const track = (description: string) => ({
-  type: "integer",
-  minimum: 0,
-  maximum: EDIT_LIMITS.maxTrack,
-  description,
-});
-const clipId = str("Clip id from inspect_timeline or an earlier edit result.", EDIT_LIMITS.idChars);
-const volume = {
-  type: "number",
-  minimum: 0,
-  maximum: EDIT_LIMITS.maxVolume,
-  description: "Volume: 1 = the source level; music under speech about 0.2–0.4.",
-};
-const fade = (edge: string) => ({
-  type: "number",
-  minimum: 0,
-  maximum: EDIT_LIMITS.maxTime,
-  description: `Seconds of linear audio/video gain ramp at the clip's ${edge}; 1–2 s suits a music bed.`,
-});
-const fit = {
-  type: "string",
-  enum: [...CLIP_FITS],
-  description: "contain shows all of the frame; cover fills it.",
-};
-const frame = {
-  type: "object",
-  description:
-    "Position and size in composition pixels (left/top corner, width, height), e.g. a logo in a corner.",
-  properties: {
-    x: { type: "number" },
-    y: { type: "number" },
-    width: { type: "number", exclusiveMinimum: 0 },
-    height: { type: "number", exclusiveMinimum: 0 },
-  },
-  required: ["x", "y", "width", "height"],
-  additionalProperties: false,
-};
-const canvasSide = {
-  type: "integer",
-  minimum: 2,
-  maximum: EDIT_LIMITS.maxCanvasPixels,
-  multipleOf: 2,
-  description: `Even pixels, up to ${EDIT_LIMITS.maxCanvasPixels} (the render encodes H.264).`,
-};
-
-interface OperationSchema {
-  type: "object";
-  description: string;
-  properties: Record<string, unknown>;
-  required: string[];
-  additionalProperties: false;
-}
-
-function operationSchema(
-  op: EditOperationName,
-  description: string,
-  properties: Record<string, unknown>,
-  required: string[],
-): OperationSchema {
-  return {
-    type: "object",
-    description,
-    properties: { op: { type: "string", enum: [op] }, ...properties },
-    required: ["op", ...required],
-    additionalProperties: false,
-  };
-}
-
 const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
+  ...MORE_OPERATION_SCHEMAS,
   add_clip: operationSchema(
     "add_clip",
     "Place a project asset (video, image or audio) on the timeline.",
@@ -314,7 +266,13 @@ const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
       },
       ripple: {
         type: "boolean",
-        description: "Close the gaps by moving later clips on the track.",
+        description: "Close the gaps by moving later clips back.",
+      },
+      rippleScope: {
+        type: "string",
+        enum: [...RIPPLE_SCOPES],
+        description:
+          "With ripple: track (default) moves later clips of the clip's track, all moves later clips of every track.",
       },
     },
     [],
@@ -356,6 +314,7 @@ const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
       frame,
       fadeIn: fade("start"),
       fadeOut: fade("end"),
+      opacity: { type: "number", minimum: 0, maximum: 1, description: "0 invisible, 1 opaque." },
     },
     ["clip"],
   ),
@@ -384,8 +343,17 @@ const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
   ),
   set_canvas: operationSchema(
     "set_canvas",
-    "Set the composition's canvas (frame) size — pick the format before building the timeline.",
-    { width: canvasSide, height: canvasSide },
+    "Set the composition's canvas (frame) size, optionally re-framing the clips already placed (fit).",
+    {
+      width: canvasSide,
+      height: canvasSide,
+      fit: {
+        type: "string",
+        enum: [...CANVAS_FITS],
+        description:
+          "keep (default): clips keep their frames; contain: scale and centre the old picture inside the new canvas; cover: fill the new canvas, cropping.",
+      },
+    },
     ["width", "height"],
   ),
 };
@@ -396,10 +364,34 @@ const compositionProperty = str(
 );
 
 const PARAMETERS: Record<EditingToolName, Record<string, unknown>> = {
-  inspect_project: { type: "object", properties: {}, additionalProperties: false },
+  inspect_project: {
+    type: "object",
+    properties: {
+      query: str("Only assets whose path contains this text.", 200),
+      kind: { type: "string", enum: [...ASSET_KINDS], description: "Only assets of this kind." },
+      offset: {
+        type: "integer",
+        minimum: 0,
+        description: "Skip this many matching assets (paging).",
+      },
+      limit: { type: "integer", minimum: 1, maximum: 500, description: "Assets per page." },
+    },
+    additionalProperties: false,
+  },
   inspect_timeline: {
     type: "object",
-    properties: { composition: compositionProperty },
+    properties: {
+      composition: compositionProperty,
+      track: track("Only the clips of this track."),
+      from: time("Only clips that end after this time (seconds)."),
+      to: time("Only clips that start before this time (seconds)."),
+      offset: {
+        type: "integer",
+        minimum: 0,
+        description: "Skip this many matching clips (paging).",
+      },
+      limit: { type: "integer", minimum: 1, maximum: 500, description: "Clips per page." },
+    },
     additionalProperties: false,
   },
   edit_timeline: {
@@ -407,9 +399,13 @@ const PARAMETERS: Record<EditingToolName, Record<string, unknown>> = {
     properties: {
       composition: compositionProperty,
       baseVersion: str(
-        "The `version` from inspect_timeline; the batch is refused with a conflict if the composition changed since.",
+        "Optional: a `version` from inspect_timeline to check against. By default the version you last read this turn is used; the batch is refused with a conflict if the composition changed since.",
         200,
       ),
+      dryRun: {
+        type: "boolean",
+        description: "Validate the batch and report what it would change; nothing is written.",
+      },
       operations: {
         type: "array",
         minItems: 1,
@@ -427,9 +423,16 @@ const PARAMETERS: Record<EditingToolName, Record<string, unknown>> = {
       kind: {
         type: "string",
         enum: [...PRESET_KINDS],
-        description: "caption, block or component.",
+        description: "caption, block (graphics/transitions), component, color_grade or audio_fx.",
       },
       query: str("Optional text to filter by name, title or tags.", 200),
+      offset: { type: "integer", minimum: 0, description: "Skip this many matches (paging)." },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 100,
+        description: "Matches per page (default 40).",
+      },
     },
     required: ["kind"],
     additionalProperties: false,
@@ -460,6 +463,15 @@ const OP_SUMMARY: Record<EditOperationName, string> = {
   arrange_track: "arrange",
   set_composition: "set length",
   set_canvas: "set format",
+  set_speed: "speed",
+  retime_captions: "retime captions",
+  captions_from_transcript: "captions from transcript",
+  mount_composition: "mount composition",
+  set_color_grade: "colour grade",
+  set_audio_fx: "audio effects",
+  set_volume_automation: "volume envelope",
+  duck_audio: "duck",
+  set_locked: "lock",
 };
 
 const isOperationName = (value: unknown): value is EditOperationName =>
@@ -481,6 +493,34 @@ function editLabel(args: unknown): string {
   return `Editing the timeline · ${operations.length} ${noun} (${shown.join(", ")})`;
 }
 
+const PRESET_ACTIVITY: Record<PresetKind, ToolActivity> = {
+  caption: {
+    category: "search",
+    label: "Browsing caption presets",
+    labelCode: "browsing_presets_caption",
+  },
+  block: {
+    category: "search",
+    label: "Browsing block presets",
+    labelCode: "browsing_presets_block",
+  },
+  component: {
+    category: "search",
+    label: "Browsing component presets",
+    labelCode: "browsing_presets_component",
+  },
+  color_grade: {
+    category: "search",
+    label: "Browsing colour grade presets",
+    labelCode: "browsing_presets_color_grade",
+  },
+  audio_fx: {
+    category: "search",
+    label: "Browsing audio effect presets",
+    labelCode: "browsing_presets_audio_fx",
+  },
+};
+
 const ACTIVITIES: Record<EditingToolName, (args: unknown) => ToolActivity> = {
   inspect_project: () => ({
     category: "inspect",
@@ -492,16 +532,29 @@ const ACTIVITIES: Record<EditingToolName, (args: unknown) => ToolActivity> = {
     label: "Inspecting the timeline",
     labelCode: "inspecting_timeline",
   }),
-  edit_timeline: (args) => ({ category: "edit", label: editLabel(args) }),
+  edit_timeline: (args) => {
+    const count = isRecord(args) && Array.isArray(args.operations) ? args.operations.length : 0;
+    return isRecord(args) && args.dryRun === true
+      ? {
+          category: "inspect",
+          label: `Checking a timeline edit · ${count} ${count === 1 ? "change" : "changes"}`,
+          labelCode: "checking_timeline_edit",
+          labelParams: { count },
+        }
+      : {
+          category: "edit",
+          label: editLabel(args),
+          labelCode: "editing_timeline",
+          labelParams: { count },
+        };
+  },
   browse_presets: (args) => {
     const kind = isRecord(args)
       ? PRESET_KINDS.find((candidate) => candidate === args.kind)
       : undefined;
-    return {
-      category: "search",
-      label: kind ? `Browsing ${kind} presets` : "Browsing presets",
-      ...(kind === undefined && { labelCode: "browsing_presets" }),
-    };
+    return kind === undefined
+      ? { category: "search", label: "Browsing presets", labelCode: "browsing_presets" }
+      : PRESET_ACTIVITY[kind];
   },
   render_video: () => ({
     category: "other",

@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { projectContextFiles, stripExternalAgentSections } from "./context-files.ts";
+import {
+  contextFilesHash,
+  projectContextFiles,
+  stripExternalAgentSections,
+} from "./context-files.ts";
 
 const sharedTemplates = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -81,5 +85,35 @@ describe("projectContextFiles", () => {
       { path: join(dir, "CLAUDE.md"), content: "# Claude\n" },
     ]);
     expect(await projectContextFiles(project("Empty One", {}))).toEqual([]);
+  });
+});
+
+describe("contextFilesHash", () => {
+  it("changes with the context file the agent would be told, and not with what it never sees", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ov-context-hash-"));
+    try {
+      const empty = await contextFilesHash(dir);
+      writeFileSync(join(dir, "AGENTS.md"), "# Rules\nBe brief.\n");
+      const first = await contextFilesHash(dir);
+      expect(first).not.toBe(empty);
+      expect(await contextFilesHash(dir)).toBe(first);
+
+      writeFileSync(join(dir, "AGENTS.md"), "# Rules\nBe thorough.\n");
+      expect(await contextFilesHash(dir)).not.toBe(first);
+
+      // Shell instructions for external agents are stripped before the agent sees the file.
+      writeFileSync(
+        join(dir, "AGENTS.md"),
+        "# Rules\n<!-- openvids:external-agents:start -->\nrun a shell\n<!-- openvids:external-agents:end -->\n",
+      );
+      const stripped = await contextFilesHash(dir);
+      writeFileSync(
+        join(dir, "AGENTS.md"),
+        "# Rules\n<!-- openvids:external-agents:start -->\nrun another shell\n<!-- openvids:external-agents:end -->\n",
+      );
+      expect(await contextFilesHash(dir)).toBe(stripped);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

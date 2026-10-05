@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import {
+  QA_LIMITS,
+  isAcceptedId,
+  isQaCheckResponse,
   isQaReport,
   qaCounts,
   type QaError,
@@ -11,6 +14,9 @@ import {
   type QaReport,
   type QaReportInput,
   type QaReportList,
+  type QaAcceptResponse,
+  type QaAcceptedList,
+  type QaCheckResponse,
 } from "@hyperframes/agent-protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { registerQaRoutes } from "../routes/qa.js";
@@ -51,6 +57,8 @@ const HTML = composition(6, [
     attrs: 'src="assets/a.mp4" data-start="0" data-duration="6" data-track-index="0" playsinline',
   },
 ]);
+
+type Send = (method: string, path: string, body?: unknown, init?: RequestInit) => Promise<Response>;
 
 function setup(options: { ffmpegPath?: string } = {}) {
   let clock = 1_790_000_000_000;
@@ -458,4 +466,183 @@ run("QA frames and check requests", () => {
       }
     }
   }, 30_000);
+});
+
+describe("QA timeline-only check", () => {
+  it("checks the timeline without rendering: render-measured checks are skipped and nothing is read from renders/", async () => {
+    const { send, project } = setup();
+    const done = await send("POST", "check-timeline");
+    expect(done.status).toBe(200);
+    const answer: QaCheckResponse = await done.json();
+    expect(isQaCheckResponse(answer)).toBe(true);
+    expect(answer).toMatchObject({ composition: "index.html", duration: 6, samples: [] });
+    const NOTE = "Timeline checks only: the composition was not rendered";
+    expect(answer.checks.map((check) => [check.id, check.status])).toEqual([
+      ["render", "skipped"],
+      ["black_frames", "skipped"],
+      ["frozen_frames", "skipped"],
+      ["audio", "skipped"],
+      ["timeline", "ran"],
+      ["layout", "skipped"],
+    ]);
+    for (const check of answer.checks) {
+      if (check.status === "skipped") expect(check.detail).toBe(NOTE);
+    }
+    expect(existsSync(project.path("renders"))).toBe(false);
+
+    const explicit = await send("POST", "check-timeline", { composition: "index.html" });
+    expect(explicit.status).toBe(200);
+  });
+
+  it("refuses a body that is not an object and a composition that is not there", async () => {
+    const { send } = setup();
+    const bad = await send("POST", "check-timeline", "[]");
+    expect(bad.status).toBe(400);
+    expect((await errorOf(bad)).code).toBe("invalid_request");
+    const missing = await send("POST", "check-timeline", { composition: "compositions/none.html" });
+    expect(missing.status).toBe(404);
+    expect((await errorOf(missing)).code).toBe("not_found");
+  });
+});
+
+describe("QA issues marked intentional", () => {
+  async function saved(send: Send): Promise<QaReport> {
+    const state: { fingerprint: string } = await (await send("GET", "state")).json();
+    return (await send("POST", "reports", reportInput(state.fingerprint))).json();
+  }
+
+  it("marks an open issue, is idempotent, derives acceptedIssueIds and renderAvailable, and stores neither", async () => {
+    const { send, project } = setup();
+    const report = await saved(send);
+    expect(report).toMatchObject({ acceptedIssueIds: [], renderAvailable: false });
+    expect(await (await send("GET", "accepted")).json()).toEqual({ items: [] });
+
+    const marked = await send("POST", "accepted", { reportId: report.id, issueId: "p1-1" });
+    expect(marked.status).toBe(200);
+    const first: QaAcceptResponse = await marked.json();
+    expect(first.accepted).toMatchObject({
+      composition: "index.html",
+      kind: "frozen_frames",
+      check: "freezedetect",
+      subject: "clip-1",
+      start: 1,
+      end: 2,
+      message: "stuck",
+    });
+    expect(isAcceptedId(first.accepted.id)).toBe(true);
+    expect(first.report.acceptedIssueIds).toEqual(["p1-1"]);
+
+    const again: QaAcceptResponse = await (
+      await send("POST", "accepted", { reportId: report.id, issueId: "p1-1" })
+    ).json();
+    expect(again.accepted).toEqual(first.accepted);
+    expect(((await (await send("GET", "accepted")).json()) as QaAcceptedList).items).toEqual([
+      first.accepted,
+    ]);
+
+    const onDisk: unknown = JSON.parse(
+      readFileSync(project.path(".hyperframes/qa/accepted.json"), "utf-8"),
+    );
+    expect(onDisk).toEqual({ schemaVersion: 1, items: [first.accepted] });
+    const reportFile: unknown = JSON.parse(
+      readFileSync(project.path(`.hyperframes/qa/reports/${report.id}.json`), "utf-8"),
+    );
+    expect(reportFile).not.toHaveProperty("acceptedIssueIds");
+    expect(reportFile).not.toHaveProperty("renderAvailable");
+    expect(reportFile).not.toHaveProperty("current");
+
+    const fetched: QaReport = await (await send("GET", `reports/${report.id}`)).json();
+    expect(fetched.acceptedIssueIds).toEqual(["p1-1"]);
+    expect(fetched.renderAvailable).toBe(false);
+
+    project.write("renders/out.mp4", "video");
+    const withRender: QaReport = await (await send("GET", `reports/${report.id}`)).json();
+    expect(withRender.renderAvailable).toBe(true);
+    const list: QaReportList = await (await send("GET", "reports")).json();
+    expect(list.reports.map((entry) => entry.renderAvailable)).toEqual([true]);
+  });
+
+  it("refuses unknown reports and issues, issues that are already resolved, and malformed requests", async () => {
+    const { send } = setup();
+    const report = await saved(send);
+    const refusal = async (response: Response, status: number, code: QaError["code"]) => {
+      expect(response.status).toBe(status);
+      expect((await errorOf(response)).code).toBe(code);
+    };
+    await refusal(
+      await send("POST", "accepted", { reportId: report.id, issueId: "p1-3" }),
+      404,
+      "not_found",
+    );
+    await refusal(
+      await send("POST", "accepted", { reportId: report.id, issueId: "p9-9" }),
+      404,
+      "not_found",
+    );
+    await refusal(
+      await send("POST", "accepted", { reportId: "qa-20240101000000-abcdef", issueId: "p1-1" }),
+      404,
+      "not_found",
+    );
+    await refusal(await send("POST", "accepted", { reportId: report.id }), 400, "invalid_request");
+    await refusal(await send("POST", "accepted", "[]"), 400, "invalid_request");
+    expect(await (await send("GET", "accepted")).json()).toEqual({ items: [] });
+  });
+
+  it("takes a mark back, and answers 404 for an id that is unknown or malformed", async () => {
+    const { send } = setup();
+    const report = await saved(send);
+    const marked: QaAcceptResponse = await (
+      await send("POST", "accepted", { reportId: report.id, issueId: "p1-2" })
+    ).json();
+    expect(
+      ((await (await send("GET", `reports/${report.id}`)).json()) as QaReport).acceptedIssueIds,
+    ).toEqual(["p1-2"]);
+
+    const gone = await send("DELETE", `accepted/${marked.accepted.id}`);
+    expect(gone.status).toBe(200);
+    expect(await gone.json()).toEqual({ items: [] });
+    expect(
+      ((await (await send("GET", `reports/${report.id}`)).json()) as QaReport).acceptedIssueIds,
+    ).toEqual([]);
+    expect((await send("DELETE", `accepted/${marked.accepted.id}`)).status).toBe(404);
+    expect((await send("DELETE", "accepted/not-an-id")).status).toBe(404);
+  });
+
+  it("reads a damaged or foreign accepted.json as empty, keeps only the newest entries past the limit, and survives retention", async () => {
+    const { send, project } = setup();
+    const report = await saved(send);
+    const file = ".hyperframes/qa/accepted.json";
+
+    project.write(file, "{ not json");
+    expect(await (await send("GET", "accepted")).json()).toEqual({ items: [] });
+    project.write(file, JSON.stringify({ schemaVersion: 2, items: [{ id: "acc-00000000" }] }));
+    expect(await (await send("GET", "accepted")).json()).toEqual({ items: [] });
+    project.write(file, JSON.stringify([1, 2]));
+    expect(await (await send("GET", "accepted")).json()).toEqual({ items: [] });
+
+    const items = Array.from({ length: QA_LIMITS.accepted }, (_, i) => ({
+      id: `acc-${i.toString(16).padStart(8, "0")}`,
+      composition: "other.html",
+      kind: "frozen_frames",
+      check: "freezedetect",
+      subject: `s${i}`,
+      start: i * 10,
+      end: i * 10 + 1,
+      message: "old",
+      acceptedAt: i,
+    }));
+    project.write(file, JSON.stringify({ schemaVersion: 1, items }));
+    const marked: QaAcceptResponse = await (
+      await send("POST", "accepted", { reportId: report.id, issueId: "p1-1" })
+    ).json();
+    const list: QaAcceptedList = await (await send("GET", "accepted")).json();
+    expect(list.items).toHaveLength(QA_LIMITS.accepted);
+    expect(list.items[0]?.id).toBe("acc-00000001");
+    expect(list.items[list.items.length - 1]).toEqual(marked.accepted);
+
+    const done = await send("POST", "sessions/turn-1/finish", { keep: null });
+    expect(done.status).toBe(200);
+    expect(existsSync(project.path(file))).toBe(true);
+  });
 });

@@ -1,5 +1,12 @@
-import type { Activity, AssistantMessageStatus, TurnSummary } from "@hyperframes/agent-protocol";
-import type { BackendEvent } from "./backend.js";
+import type {
+  Activity,
+  AssistantMessageStatus,
+  ContextFill,
+  TurnSummary,
+  UsageTotals,
+} from "@hyperframes/agent-protocol";
+import { addUsage, emptyUsage } from "@hyperframes/agent-protocol";
+import type { BackendEvent, ProgressLabel } from "./backend.js";
 import type { ChatService } from "./chats.js";
 
 export type StreamTimerHandle = NodeJS.Timeout;
@@ -14,6 +21,8 @@ interface StreamOptions {
   chatId: string;
   messageId: string;
   turn: TurnSummary;
+  /** Whose usage this writer reports: the delegated run it streams, or null for the Director. */
+  runId: string | null;
   now: () => number;
   ids: () => string;
   timers: StreamTimerApi;
@@ -33,6 +42,8 @@ interface ActivityGroup {
   activity: Activity;
   pending: Set<string>;
   failed: boolean;
+  /** Why the first failed call of the group failed (the tool's own text), when it said. */
+  failure?: string;
   closed: boolean;
 }
 
@@ -47,12 +58,18 @@ export class TurnEventWriter {
   private currentGroup: ActivityGroup | null = null;
   private readonly activityGroups = new Map<string, ActivityGroup>();
   private readonly toolGroups = new Map<string, ActivityGroup>();
+  /** What every model call of this writer's agent used so far in the turn (cumulative). */
+  private usage: UsageTotals = emptyUsage();
 
   constructor(private readonly options: StreamOptions) {}
 
   accept(event: BackendEvent): void {
     if (event.type === "tool.progress") {
-      this.progressTool(event.toolCallId, event.progress);
+      this.progressTool(event.toolCallId, event.progress, event.label);
+      return;
+    }
+    if (event.type === "usage") {
+      this.reportUsage(event.usage, event.context);
       return;
     }
     if (event.type === "text.delta" || event.type === "thinking.delta") {
@@ -78,7 +95,7 @@ export class TurnEventWriter {
             event.labelParams,
           );
         else this.startTool(event.toolCallId, event.kind, event.targets);
-      } else this.endTool(event.toolCallId, event.ok);
+      } else this.endTool(event.toolCallId, event.ok, event.error);
       return;
     }
     this.closeCurrentActivity();
@@ -260,20 +277,34 @@ export class TurnEventWriter {
     this.publishActivity(group.activity);
   }
 
-  /** A labelled tool's own determinate progress (a render): published when the whole percent changes. */
-  private progressTool(toolCallId: string, progress: number): void {
+  /**
+   * A labelled tool's own determinate progress (a render, an analysis): published when the whole percent changes or the
+   * call restates its label (the stage an analysis moved to).
+   */
+  private progressTool(toolCallId: string, progress: number, label?: ProgressLabel): void {
     const group = this.toolGroups.get(toolCallId);
     if (!group || !group.closed || group.activity.status !== "running") return;
     const percent = Math.max(0, Math.min(100, Math.round(progress)));
-    if (group.activity.progress === percent) return;
-    this.publishActivity({ ...group.activity, progress: percent });
+    const current = group.activity;
+    const relabelled = label !== undefined && label.labelCode !== current.labelCode;
+    if (current.progress === percent && !relabelled) return;
+    this.publishActivity({
+      ...current,
+      progress: percent,
+      ...(relabelled && {
+        label: label.label,
+        labelCode: label.labelCode,
+        ...(label.labelParams ? { labelParams: label.labelParams } : {}),
+      }),
+    });
   }
 
-  private endTool(toolCallId: string, ok: boolean): void {
+  private endTool(toolCallId: string, ok: boolean, error?: string): void {
     const group = this.toolGroups.get(toolCallId);
     if (!group) return;
     this.toolGroups.delete(toolCallId);
     group.pending.delete(toolCallId);
+    if (!ok && !group.failed && error) group.failure = error;
     group.failed ||= !ok;
     if (group.pending.size === 0 && group.closed) {
       this.finishActivity(group, group.failed ? "failed" : "done");
@@ -292,7 +323,36 @@ export class TurnEventWriter {
 
   private finishActivity(group: ActivityGroup, status: "done" | "failed"): void {
     const { progress: _progress, ...rest } = group.activity;
-    this.publishActivity({ ...rest, status, endedAt: this.options.now() });
+    this.publishActivity({
+      ...rest,
+      status,
+      endedAt: this.options.now(),
+      ...(status === "failed" && {
+        error: {
+          code: "tool_failed",
+          message:
+            group.failure ??
+            (group.failed ? "The call failed." : "The turn ended before this call finished."),
+        },
+      }),
+    });
+  }
+
+  /** One model call's usage joins the total; the agent's cumulative figure and context fill go out as one event. */
+  private reportUsage(delta: UsageTotals, context: ContextFill | undefined): void {
+    this.usage = addUsage(this.usage, delta);
+    const usage = this.usage;
+    this.enqueue(() =>
+      this.options.chats
+        .emit(this.options.chatId, {
+          type: "usage.updated",
+          turnId: this.options.turn.id,
+          runId: this.options.runId,
+          usage,
+          ...(context && { context }),
+        })
+        .then(() => undefined),
+    );
   }
 
   private publishActivity(activity: Activity): void {

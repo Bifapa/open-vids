@@ -1,9 +1,11 @@
 import {
+  isQaAcceptedList,
   isQaCheckResponse,
   isQaError,
   isQaFinishResponse,
   isQaReport,
   isRecord,
+  type QaAcceptedList,
   type QaCheckRequest,
   type QaCheckResponse,
   type QaFinishRequest,
@@ -13,6 +15,7 @@ import {
   type QaReport,
   type QaReportInput,
   type QaStateResponse,
+  type QaTimelineCheckRequest,
 } from "@hyperframes/agent-protocol";
 import type { ProjectScope } from "../checkpointHost.js";
 import { isFramesResponse } from "../analysis/wire.js";
@@ -25,6 +28,9 @@ import { QaToolError, type QaHost } from "./host.js";
 export const QA_TIMEOUTS_MS = {
   state: 30_000,
   check: 10 * 60_000,
+  /** The timeline checks read the composition and cached analysis only. */
+  checkTimeline: 2 * 60_000,
+  accepted: 30_000,
   frames: 2 * 60_000,
   report: 30_000,
   /** Deleting a few files and pruning the report folder. */
@@ -66,6 +72,30 @@ export class HttpQaHost implements QaHost {
       onTimeout: "The render checks did not finish in time.",
     });
     if (!isQaCheckResponse(payload)) throw invalidResponse("check result");
+    return payload;
+  }
+
+  async checkTimeline(
+    request: QaTimelineCheckRequest,
+    signal: AbortSignal,
+  ): Promise<QaCheckResponse> {
+    const payload = await this.request("POST", "/check-timeline", {
+      body: request,
+      signal,
+      timeoutMs: QA_TIMEOUTS_MS.checkTimeline,
+      onTimeout: "The timeline checks did not finish in time.",
+    });
+    if (!isQaCheckResponse(payload)) throw invalidResponse("check result");
+    return payload;
+  }
+
+  async accepted(signal: AbortSignal): Promise<QaAcceptedList> {
+    const payload = await this.request("GET", "/accepted", {
+      signal,
+      timeoutMs: QA_TIMEOUTS_MS.accepted,
+      onTimeout: "Studio did not answer in time.",
+    });
+    if (!isQaAcceptedList(payload)) throw invalidResponse("accepted issues list");
     return payload;
   }
 
@@ -164,6 +194,16 @@ function invalidResponse(what: string): QaToolError {
   return new QaToolError("studio_unavailable", `Studio returned an invalid ${what}.`);
 }
 
+/**
+ * A call that ran out of time is `timeout`, whether our own deadline or the runtime's fetch default fired first (the
+ * latter surfaces as a `TimeoutError` after about five minutes, long before a render check's own limit).
+ */
+function isTimeout(error: unknown): boolean {
+  return (
+    error instanceof Error && (error.name === "TimeoutError" || /timed? ?out/i.test(error.message))
+  );
+}
+
 function transportError(
   error: unknown,
   signal: AbortSignal,
@@ -171,7 +211,8 @@ function transportError(
   onTimeout: string,
 ): QaToolError {
   if (signal.aborted) return aborted();
-  if (timeout.aborted) return new QaToolError("studio_unavailable", onTimeout);
+  if (timeout.aborted) return new QaToolError("timeout", onTimeout);
+  if (isTimeout(error)) return new QaToolError("timeout", onTimeout);
   const reason = error instanceof Error ? error.message : String(error);
   return new QaToolError("studio_unavailable", `Studio's QA service is not reachable: ${reason}`);
 }

@@ -12,10 +12,14 @@ import {
   type SpecialistId,
   type UpdateAgentSettingsRequest,
 } from "@hyperframes/agent-protocol";
+import { withLock } from "./processLock.js";
 
 const SETTINGS_FILE = "settings.json";
 const CREDENTIALS_FILE = "jev-credentials.json";
 const PROVIDER_CREDENTIALS_FILE = "provider-credentials.json";
+/** Held while a settings or credentials file is read, changed and written back. */
+const WRITE_LOCK_FILE = "write.lock";
+const WRITE_LOCK_WAIT_MS = 10_000;
 
 export function defaultAgentSettings(): AgentSettings {
   const specialist = (): SpecialistDefaults => ({
@@ -76,9 +80,9 @@ function applyUpdate(current: AgentSettings, update: UpdateAgentSettingsRequest)
  * Global agent settings (defaults for new chats and the Jev worker) plus Jev's API key and the per-provider API keys
  * the user entered in OpenVids. All files are private to the user (mode 0600 on POSIX; Windows has no mode bits, so
  * access there follows the profile directory's ACL); the keys are kept in their own files and
- * never returned through {@link get}. The files are tiny and are read from disk on every access, so several runtimes
- * on one machine (desktop app, dev shell) never overwrite each other's changes with a stale copy and pick up each
- * other's keys.
+ * never returned through {@link get}. The files are tiny and are read from disk on every access, and every change is a
+ * read-modify-write under a cross-process lock, so several runtimes on one machine (desktop app, dev shell) never
+ * overwrite each other's changes with a stale copy and pick up each other's keys.
  */
 export class AgentSettingsStore {
   private tail: Promise<unknown> = Promise.resolve();
@@ -161,8 +165,16 @@ export class AgentSettingsStore {
     return defaultAgentSettings();
   }
 
+  /**
+   * Read-modify-write steps run one at a time in this process (the tail) and across processes (a lock file in the
+   * settings directory): two runtimes changing different fields of one file never drop one of the changes.
+   */
   private serialize(operation: () => Promise<void>): Promise<void> {
-    const next = this.tail.catch(() => undefined).then(operation);
+    const locked = async (): Promise<void> => {
+      await mkdir(this.dir, { recursive: true, mode: 0o700 });
+      await withLock(join(this.dir, WRITE_LOCK_FILE), WRITE_LOCK_WAIT_MS, operation);
+    };
+    const next = this.tail.catch(() => undefined).then(locked);
     this.tail = next;
     return next;
   }

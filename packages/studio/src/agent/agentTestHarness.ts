@@ -1,5 +1,9 @@
 import { vi, type Mock } from "vitest";
-import { DEFAULT_EXECUTION_QUALITY, qaCounts } from "@hyperframes/agent-protocol";
+import {
+  DEFAULT_EXECUTION_QUALITY,
+  findAcceptedQaIssue,
+  qaCounts,
+} from "@hyperframes/agent-protocol";
 import type {
   ActiveTurnInfo,
   AgentIntake,
@@ -16,6 +20,7 @@ import type {
   OAuthLoginState,
   ProviderInfo,
   RevertTurnResponse,
+  QaAcceptedIssue,
   QaIssue,
   QaPassState,
   QaReport,
@@ -26,6 +31,8 @@ import type {
   PermissionDecision,
   PermissionPart,
   PermissionRequest,
+  QuestionPart,
+  QuestionRequest,
   PermissionState,
   StoryOffer,
   StoryOfferPart,
@@ -171,6 +178,34 @@ export function permissionRequest(overrides: Partial<PermissionRequest> = {}): P
 export function permissionPart(overrides: Partial<PermissionRequest> = {}): PermissionPart {
   const permission = permissionRequest(overrides);
   return { type: "permission", id: permission.id, permission };
+}
+
+export function questionRequest(overrides: Partial<QuestionRequest> = {}): QuestionRequest {
+  return {
+    id: "q1",
+    agent: "director",
+    text: "Which aspect ratio should the video have?",
+    options: ["16:9", "9:16", "1:1"],
+    state: "pending",
+    requestedAt: 4000,
+    ...overrides,
+  };
+}
+
+export function questionPart(overrides: Partial<QuestionRequest> = {}): QuestionPart {
+  const question = questionRequest(overrides);
+  return { type: "question", id: question.id, question };
+}
+
+/** The request an answer applies to: the one in the chat the fake serves (the runtime answers that same request). */
+function requestInChat(state: ChatState, id: string): PermissionRequest {
+  for (const message of state.messages) {
+    if (message.role !== "assistant") continue;
+    for (const part of message.parts) {
+      if (part.type === "permission" && part.permission.id === id) return part.permission;
+    }
+  }
+  return permissionRequest({ id });
 }
 
 export function storyOffer(overrides: Partial<StoryOffer> = {}): StoryOffer {
@@ -348,6 +383,8 @@ export interface FakeClientData {
   settings?: AgentSettings;
   /** Stored QA reports by id; an unknown id answers 404. */
   qaReports?: Record<string, QaReport>;
+  /** Issues already marked intentional (`acc-…` entries); the fake server derives each report's `acceptedIssueIds`. */
+  qaAccepted?: QaAcceptedIssue[];
   /** What the intake claim hands out (once); none when absent. */
   intake?: AgentIntake;
 }
@@ -431,6 +468,14 @@ export function oauthLogin(overrides: Partial<OAuthLoginState> = {}): OAuthLogin
 
 export function createFakeClient(data: FakeClientData = {}): FakeClient {
   const state = data.chat ?? chatState();
+  const accepted = [...(data.qaAccepted ?? [])];
+  /** A stored report as the server reads it: `acceptedIssueIds` follows the intentional list. */
+  const readReport = (report: QaReport): QaReport => {
+    const acceptedIssueIds = report.issues
+      .filter((issue) => findAcceptedQaIssue(issue, report.composition, accepted) !== null)
+      .map((issue) => issue.id);
+    return acceptedIssueIds.length > 0 ? { ...report, acceptedIssueIds } : report;
+  };
   const client: FakeClient = {
     listChats: vi.fn(async () => data.list ?? EMPTY_LIST),
     listModels: vi.fn(async () => data.models ?? CATALOG),
@@ -448,6 +493,7 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
       ...(request.executionQuality !== undefined
         ? { executionQuality: request.executionQuality }
         : {}),
+      ...(request.excludedSites !== undefined ? { excludedSites: request.excludedSites } : {}),
     })),
     startTurn: vi.fn(async () => ({ turn: turn() })),
     steerTurn: vi.fn(async () => ({ messageId: "m9" })),
@@ -455,11 +501,11 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
     revertTurn: vi.fn(async () => data.revert ?? { ok: true, turn: turn({ status: "completed" }) }),
     unrevertTurn: vi.fn(async () => ({ ok: true, turn: turn({ status: "completed" }) })),
     answerPermission: vi.fn(async (_chatId, _turnId, permissionId, decision) => ({
-      permission: permissionRequest({
-        id: permissionId,
+      permission: {
+        ...requestInChat(state, permissionId),
         state: ANSWER_STATES[decision],
         answeredAt: 7000,
-      }),
+      },
     })),
     answerStoryOffer: vi.fn(async (_chatId, _turnId, offerId, decision) => ({
       offer: storyOffer({
@@ -468,6 +514,13 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
         answeredAt: 7000,
       }),
     })),
+    answerQuestion: vi.fn(async (_chatId, _turnId, questionId, answer) => ({
+      question: questionRequest({ id: questionId, state: "answered", answer, answeredAt: 7000 }),
+    })),
+    cancelRun: vi.fn(async (_chatId, turnId, runId) => ({
+      run: agentRun({ id: runId, turnId, status: "cancelled", endedAt: 7000 }),
+    })),
+    deleteChat: vi.fn(async (chatId) => ({ chatId })),
     chatEventsUrl: vi.fn((chatId, after) => `/agent/chats/${chatId}/events?after=${after}`),
     projectEventsUrl: vi.fn(() => "/agent/events"),
     getSettings: vi.fn(async () => data.settings ?? SETTINGS),
@@ -494,7 +547,32 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
     getQaReport: vi.fn(async (reportId) => {
       const report = data.qaReports?.[reportId];
       if (!report) throw new AgentApiError("internal", "report not found", 404);
-      return report;
+      return readReport(report);
+    }),
+    acceptQaIssue: vi.fn(async (reportId, issueId) => {
+      const report = data.qaReports?.[reportId];
+      const issue = report?.issues.find((entry) => entry.id === issueId);
+      if (!report || !issue) throw new AgentApiError("internal", "report not found", 404);
+      const entry: QaAcceptedIssue = {
+        id: `acc-${String(accepted.length + 1).padStart(8, "0")}`,
+        composition: report.composition,
+        kind: issue.kind,
+        check: issue.check,
+        subject: issue.subject,
+        start: issue.start,
+        end: issue.end,
+        message: issue.message,
+        acceptedAt: 8000,
+      };
+      accepted.push(entry);
+      return { accepted: entry, report: readReport(report) };
+    }),
+    listQaAccepted: vi.fn(async () => ({ items: [...accepted] })),
+    removeQaAccepted: vi.fn(async (acceptedId) => {
+      const index = accepted.findIndex((entry) => entry.id === acceptedId);
+      if (index === -1) throw new AgentApiError("internal", "nothing marked", 404);
+      accepted.splice(index, 1);
+      return { items: [...accepted] };
     }),
     renderFileUrl: vi.fn(
       (renderPath) => `/api/projects/p1/renders/file/${renderPath.replace(/^renders\//, "")}`,

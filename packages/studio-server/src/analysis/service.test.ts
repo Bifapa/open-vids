@@ -216,6 +216,29 @@ describe.skipIf(!hasFfmpeg)("analysis of a real clip", () => {
     ]);
   });
 
+  it("keeps showing signs of life while a silent recognizer decodes, so a waiting client does not see a stuck job", async () => {
+    const test = createAnalysisProject();
+    projects.push(test);
+    addClip(test, clip, SOURCE);
+    const service = new AnalysisService(test.adapter, { heartbeatMs: 20 });
+    const decode = Promise.withResolvers<void>();
+    test.speech.hold = decode.promise;
+    const started = await service.startJob(test.project, { source: SOURCE });
+    await waitFor(() => test.speech.transcribeCalls === 1, "the recognizer to start");
+
+    const at = () => service.getJob(test.project, started.id);
+    const first = at();
+    expect(first).toMatchObject({ status: "running", stage: "transcript" });
+    await waitFor(() => (at()?.updatedAt ?? 0) > (first?.updatedAt ?? Infinity), "a heartbeat");
+    const later = at();
+    expect(later).toMatchObject({ stage: "transcript", progress: first?.progress });
+
+    decode.resolve();
+    const done = await settle(service, test.project, started);
+    expect(done.status).toBe("completed");
+    expect(done.progress).toBe(100);
+  });
+
   // The Windows stand-in is a ~86 MB compiled exe whose first spawn takes
   // ~1 s cold, so this gets a longer budget than the 5 s default.
   it("kills the ffmpeg child when a job is cancelled", async () => {

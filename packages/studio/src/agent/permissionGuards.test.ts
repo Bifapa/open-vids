@@ -28,6 +28,32 @@ describe("isPermissionRequest", () => {
     }
     expect(isPermissionRequest(null)).toBe(false);
   });
+
+  it("accepts a download request with or without the material it is about", () => {
+    const download = { kind: "asset_download", action: "download", site: null } as const;
+    expect(isPermissionRequest(permissionRequest(download))).toBe(true);
+    for (const asset of [
+      { title: "Epic loop", source: "Openverse", license: "CC0" },
+      { title: "Epic loop", source: null, license: null },
+    ]) {
+      expect(isPermissionRequest(permissionRequest({ ...download, asset }))).toBe(true);
+    }
+  });
+
+  it("rejects a request whose material is not whole, instead of letting the card read it", () => {
+    const download = permissionRequest({ kind: "asset_download", action: "download" });
+    for (const asset of [
+      null,
+      "Epic loop",
+      {},
+      { title: 7, source: null, license: null },
+      { title: "Epic loop", license: null },
+      { title: "Epic loop", source: 3, license: null },
+      { title: "Epic loop", source: null, license: false },
+    ]) {
+      expect(isPermissionRequest({ ...download, asset })).toBe(false);
+    }
+  });
 });
 
 describe("isPermissionPart", () => {

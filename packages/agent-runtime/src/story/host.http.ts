@@ -20,10 +20,12 @@ import {
 
 /**
  * An edit or build that reached the service is atomic there and is awaited to its end (the turn's checkpoint must not
- * close under it); this only bounds a service that hangs. A build renders nothing but probes media, so it gets longer.
+ * close under it, so a write ignores the turn's abort signal); these only bound a service that hangs. A build renders
+ * nothing but probes media and writes the whole timeline, and one on a long story has taken over six minutes, so the
+ * ceilings are generous.
  */
-const EDIT_TIMEOUT_MS = 60_000;
-const BUILD_TIMEOUT_MS = 180_000;
+const EDIT_TIMEOUT_MS = 180_000;
+const BUILD_TIMEOUT_MS = 900_000;
 
 interface RequestOptions {
   body?: unknown;

@@ -57,6 +57,12 @@ function kind(value: unknown, field: string): ResearchMediaKind {
   return found;
 }
 
+function flag(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean")
+    throw new ResearchFailure("invalid_request", `${field} must be true or false`);
+  return value;
+}
+
 export function parsePolicyUpdate(raw: unknown): UpdateAssetSearchPolicyRequest {
   const value = body(raw, ["mode", "websites"]);
   if (value.mode === undefined && value.websites === undefined) {
@@ -183,6 +189,7 @@ export function parseImportRequest(raw: unknown): ImportAssetRequest {
     "agent",
     "model",
     "requestId",
+    "allowRestricted",
   ]);
   if ((value.candidate === undefined) === (value.url === undefined)) {
     throw new ResearchFailure("invalid_request", "Give exactly one of candidate or url");
@@ -205,6 +212,9 @@ export function parseImportRequest(raw: unknown): ImportAssetRequest {
     }),
     ...(value.requestId !== undefined && {
       requestId: text(value.requestId, "requestId", ID_CHARS),
+    }),
+    ...(value.allowRestricted !== undefined && {
+      allowRestricted: flag(value.allowRestricted, "allowRestricted"),
     }),
   };
 }
@@ -269,9 +279,13 @@ export function parseTurnId(raw: unknown): string {
   return text(raw, "turnId", ID_CHARS * 2);
 }
 
-/** `POST /api/projects/:id/research/website/grants`: the user allowed a Websites setting once for this turn. */
+/**
+ * `POST /api/projects/:id/research/website/grants`: the user allowed a Websites setting once for this turn. The grant
+ * names the one site it covers, or says `allSites: true`; a missing or null site is refused so a card that could not
+ * name its site can never widen into a grant for every site.
+ */
 export function parseWebsiteGrantRequest(raw: unknown): WebsiteGrantRequest {
-  const value = body(raw, ["turnId", "access"]);
+  const value = body(raw, ["turnId", "access", "site", "allSites"]);
   const access = WEBSITE_GRANT_ACCESS.find((entry) => entry === value.access);
   if (access === undefined) {
     throw new ResearchFailure(
@@ -279,7 +293,26 @@ export function parseWebsiteGrantRequest(raw: unknown): WebsiteGrantRequest {
       `access must be ${WEBSITE_GRANT_ACCESS.join(" or ")}`,
     );
   }
-  return { turnId: parseTurnId(value.turnId), access };
+  const turnId = parseTurnId(value.turnId);
+  if (value.allSites !== undefined) {
+    if (value.allSites !== true || value.site !== undefined) {
+      throw new ResearchFailure(
+        "invalid_request",
+        "a grant is for allSites: true or for one site, not both",
+      );
+    }
+    return { turnId, access, allSites: true };
+  }
+  if (value.site === undefined || value.site === null) {
+    throw new ResearchFailure(
+      "invalid_request",
+      "a grant needs the site it covers (or allSites: true)",
+    );
+  }
+  const site = text(value.site, "site", 253).toLowerCase();
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(site))
+    throw new ResearchFailure("invalid_request", `site "${site}" is not a domain`);
+  return { turnId, access, site };
 }
 
 /** `POST /api/projects/:id/research/website/file` (full access): save a file, or read its text. */

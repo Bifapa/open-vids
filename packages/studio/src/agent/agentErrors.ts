@@ -31,10 +31,17 @@ const PLAIN_LANGUAGE_KEYS = {
   turn_not_found: "agent.error.turn_not_found",
   revert_conflict: "agent.error.revert_conflict",
   revert_unavailable: "agent.error.revert_unavailable",
+  login_not_found: "agent.error.login_not_found",
+  project_served_elsewhere: "agent.error.project_served_elsewhere",
+  provider_auth: "agent.error.provider_auth",
+  rate_limited: "agent.error.rate_limited",
+  provider_overloaded: "agent.error.provider_overloaded",
+  context_overflow: "agent.error.context_overflow",
   agent_failed: "agent.error.agent_failed",
   invalid_request: "agent.error.invalid_request",
   internal: "agent.error.internal",
   bad_response: "agent.error.bad_response",
+  runtime_restarting: "agent.error.runtime_restarting",
 } as const satisfies Partial<Record<AgentFailureCode, TranslationKey>>;
 
 function isPlainLanguageCode(code: AgentFailureCode): code is keyof typeof PLAIN_LANGUAGE_KEYS {
@@ -47,13 +54,17 @@ export function describeAgentFailure(
   fallback?: string,
   params?: CodedMessageParams,
 ): string {
-  if (isPlainLanguageCode(code)) return t(PLAIN_LANGUAGE_KEYS[code]);
+  if (isPlainLanguageCode(code)) return t(PLAIN_LANGUAGE_KEYS[code], params);
   return describeServerError(code, fallback ?? t("agent.error.generic"), params);
 }
 
 export function describeAgentError(error: unknown): string {
-  if (error instanceof AgentApiError)
-    return describeAgentFailure(error.code, error.message, error.params);
+  if (error instanceof AgentApiError) {
+    // A restarting runtime says how long to wait in `details`, not in the message params.
+    const seconds = error.details?.retryAfterSeconds;
+    const params = error.params ?? (typeof seconds === "number" ? { seconds } : undefined);
+    return describeAgentFailure(error.code, error.message, params);
+  }
   return describeAgentFailure("internal");
 }
 

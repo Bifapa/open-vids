@@ -14,6 +14,8 @@ import {
   type StoryOperationName,
 } from "@hyperframes/agent-protocol";
 import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
+import { withInheritedTools } from "../agents/inherit.js";
+import { STORY_SECTIONS } from "./format.js";
 
 export const STORY_TOOL_NAMES = {
   read: "read_story",
@@ -43,36 +45,40 @@ export function timelineWritesAllowed({ mode, action }: StoryTurnMode): boolean 
 }
 
 /**
- * Which story tools an agent gets. Everyone on the team can read the story, in any mode. The Director edits it in
- * story-mode turns that plan or review it; the turn that builds it gives `build_story` to the Editor, or to the
- * Director when there is no Editor, and freezes the graph while it compiles. A rebuild turn gives `rebuild_story` to the
- * Director alone (the user's scope and policy are fixed by the turn) and freezes the graph too. A resolve turn is
- * Research's (see research/tools.ts): everyone may read the story but nobody edits it, builds it or rebuilds it there.
- * Jev gets none.
+ * What each agent gets in this turn when every specialist is on. Everyone on the team can read the story, in any mode.
+ * The Director edits it in story-mode turns that plan, review or build it: in a build turn it prepares the graph
+ * (missing-asset nodes for the material the video still needs) before the build compiles it, and the executor
+ * refuses `edit_story` once `build_story` ran (the graph is frozen for the rest of the turn). The build turn gives
+ * `build_story` to the Editor. A rebuild turn gives `rebuild_story` to the Director alone (the user's scope and
+ * policy are fixed by the turn) and freezes the graph. A resolve turn is Research's (see research/tools.ts):
+ * everyone may read the story but nobody edits it, builds it or rebuilds it there. Jev only reads it.
+ */
+function baseStoryTools(agent: AgentId, turn: StoryTurnMode): StoryToolName[] {
+  const { read, edit, build, rebuild } = STORY_TOOL_NAMES;
+  const tools: StoryToolName[] = [read];
+  if (agent === "jev") return tools;
+  if (
+    agent === "director" &&
+    turn.mode === "story" &&
+    turn.action !== "rebuild" &&
+    turn.action !== "resolve"
+  )
+    tools.push(edit);
+  if (agent === "director" && turn.action === "rebuild") tools.push(rebuild);
+  if (agent === "editor" && turn.action === "build") tools.push(build);
+  return tools;
+}
+
+/**
+ * Which story tools an agent gets: its own (see {@link baseStoryTools}), and for the Director also those of every
+ * specialist that is off in this chat — with no Editor it builds the story itself.
  */
 export function storyToolsFor(
   agent: AgentId,
   enabled: readonly SpecialistId[],
   turn: StoryTurnMode,
 ): StoryToolName[] {
-  const { read, edit, build, rebuild } = STORY_TOOL_NAMES;
-  if (agent === "jev") return [];
-  const tools: StoryToolName[] = [read];
-  if (
-    agent === "director" &&
-    turn.mode === "story" &&
-    turn.action !== "build" &&
-    turn.action !== "rebuild" &&
-    turn.action !== "resolve"
-  )
-    tools.push(edit);
-  if (agent === "director" && turn.action === "rebuild") tools.push(rebuild);
-  if (
-    turn.action === "build" &&
-    (agent === "editor" || (agent === "director" && !enabled.includes("editor")))
-  )
-    tools.push(build);
-  return tools;
+  return withInheritedTools(agent, enabled, (who) => baseStoryTools(who, turn));
 }
 
 // ── Descriptions ─────────────────────────────────────────────────────────────
@@ -82,8 +88,8 @@ const STORY_MODEL = `The Story Graph is the project's plan of the video, an edit
 const USER_PRECEDENCE = `What the user did by hand outranks your earlier plan: fields in "User decisions" (marked "(set by user)") keep their values, nodes/links/attachments the user created stay, and links/attachments the user removed stay removed. Locked nodes (and their attachments) are never changed. A change that would override any of this is refused with user_decision or locked — accept it and plan around it.`;
 
 const DESCRIPTIONS: Record<StoryToolName, string> = {
-  read_story: `Read the project's Story Graph as text: title, brief and version, the play order, every chapter (role, estimated length — marked "(set by user)" when the user chose it —, the length of its cleaned A-roll material, source ranges, captions, attachments, where it sits on the timeline if the story was built), the materials, the sequence links and who made them, a "User decisions" section (everything the user set by hand, created or removed) and the locked nodes. Read it before planning, reviewing or building, and again after edits to verify. ${STORY_MODEL} ${USER_PRECEDENCE}`,
-  edit_story: `Change the Story Graph with a batch of operations. The batch is atomic: if any operation is refused nothing is written and the error names the failing operation (operations[N]) and its code. Creates the story when none exists. Operations run in order; a node added with "ref" can be named as "@ref" later in the same batch (ids of new nodes are returned). Pass baseVersion (from read_story) to refuse the batch when the graph changed since. You never set canvas positions: new nodes are laid out for you and existing ones never move. The change appears on the Story canvas by itself and belongs to this turn's checkpoint, so the user can revert it. ${STORY_MODEL} ${USER_PRECEDENCE}
+  read_story: `Read the project's Story Graph as text: title, brief and version, the play order, every chapter (role, estimated length — marked "(set by user)" when the user chose it —, the length of its cleaned A-roll material, source ranges, captions, attachments, where it sits on the timeline if the story was built), the materials, the sequence links and who made them, a "User decisions" section (everything the user set by hand, created or removed), the locked nodes and the timeline sync. Read it before planning, reviewing or building, and again after edits to verify. A long story is returned in pages: the result ends with the offset to continue from, and you can read one chapter in full with chapter=<id> or one part with section=<name> (overview, chapters, materials, links, decisions, attention, locks, sync). ${STORY_MODEL} ${USER_PRECEDENCE}`,
+  edit_story: `Change the Story Graph with a batch of operations. The batch is atomic: if any operation is refused nothing is written and the error names the failing operation (operations[N]) and its code. Creates the story when none exists. Operations run in order; a node added with "ref" can be named as "@ref" later in the same batch (ids of new nodes are returned). Pass baseVersion (from read_story) to refuse the batch when the graph changed since. You never set canvas positions: new nodes are laid out for you and existing ones never move. The change appears on the Story canvas by itself and belongs to this turn's checkpoint, so the user can revert it. In a Story build turn you may edit the graph before build_story runs (to add the material the video still needs); after the build it is frozen and this tool is refused. ${STORY_MODEL} ${USER_PRECEDENCE}
 Operations (each has "op" plus):
 - add_node: node {kind, ...fields}, optional ref. chapter fields: title (required), purpose, description, narrativeRole, estimatedDuration (s), status, sourceRanges, aRoll/bRoll/graphics/audio (intent text), captions (true = word-synced captions on build). video: title, asset (an existing project path), sourceIn, sourceOut, usageIntent. picture: title, asset, usageIntent. music: title, asset (or null = only an intent), bpm, volume (0–1 under speech, about 0.2–0.4), usageIntent. motion: title, preset (a name from browse_presets), skill, inputs, duration, usageIntent. missing: title, mediaKind (${MISSING_MEDIA_KINDS.join("/")}), need (what is wanted), neededDuration.
 - sourceRanges (A-roll of a chapter, in play order) are given as {source, segments:["g3","g4"]} (whole analysis segments — the normal way for long footage), {source, firstSentence:"s12", lastSentence:"s19"} or {source, from, to} in source seconds. The service resolves them to times; the source must be analyzed for segments/sentences (analyze_media; it is cached).
@@ -92,9 +98,9 @@ Operations (each has "op" plus):
 - connect: from, to (chapters), optional transition — adds a sequence link, or changes the transition text of an existing one. disconnect: from, to.
 - set_order: chapters [every chapter id, once, in play order] — rewires the whole sequence.
 - attach: node, chapter, optional placement, offset (seconds from the chapter start; overrides placement), duration. detach: node, chapter.
-- resolve_missing: id (a Missing Asset node), asset (an existing project media file), optional title, usageIntent, sourceIn, sourceOut — replaces the Missing Asset node with a video/picture/music node for that file, keeping its attachments and remembering what it resolved. To find material outside the project delegate Research instead (import_asset resolves the node itself).
+- resolve_missing: id (a Missing Asset node), asset (an existing project media file), optional title, usageIntent, sourceIn, sourceOut — replaces the Missing Asset node with a video/picture/music node for that file, keeping its attachments and remembering what it resolved. Material from outside the project comes through import_asset with resolveMissing set to the node id (Research's tool; when Research is off you have it yourself).
 - set_story: title, brief, captionPreset, composition, reviewSummary (records the result of a review).`,
-  build_story: `Build the Story Graph into the real timeline as ONE atomic edit — the FULL build: every chapter's section is regenerated. Chapters are laid back to back in play order; each chapter's A-roll is its source ranges cleaned like a rough cut (bad takes, fillers and long pauses removed), B-roll/pictures/graphics/music attached to it are placed on their own tracks, captions are written for chapters that want them, and every created clip remembers the story node it was built for. Earlier story clips and the raw A-roll of the story's sources are replaced, and so are the user's manual edits to clips the story generated (trims, moves, volume, ...) — they are listed in the result as replaced edits. The built sections of locked chapters are kept as they are unless the user allowed them for this turn (you cannot allow them yourself); every other clip (manual additions, cutaways) is kept and reported. Returns the span of each chapter, what was replaced/kept, the replaced edits, the locked chapters that were kept, and warnings (missing material, unanalyzed sources). Pass baseVersion (from read_story) to refuse the build when the graph changed since you read it. The change belongs to this turn's checkpoint, so the user can revert it. Placed media respects the user's picked fragments (inspect_project: "USER-PICKED FRAGMENT"): only the picked part of a file is ever used. Verify afterwards with inspect_timeline. Pass dryRun true to see the result without writing anything.`,
+  build_story: `Build the Story Graph into the real timeline as ONE atomic edit — the FULL build: every chapter's section is regenerated. Chapters are laid back to back in play order; each chapter's A-roll is its source ranges cleaned like a rough cut (bad takes, fillers and long pauses removed), B-roll/pictures/graphics/music attached to it are placed on their own tracks, captions are written for chapters that want them, and every created clip remembers the story node it was built for. Earlier story clips and the raw A-roll of the story's sources are replaced, and so are the user's manual edits to clips the story generated (trims, moves, volume, ...) — they are listed in the result as replaced edits. The built sections of locked chapters are kept as they are unless the user allowed them for this turn (you cannot allow them yourself); every other clip (manual additions, cutaways) is kept and reported. Returns the span of each chapter, what was replaced/kept, the replaced edits, the locked chapters that were kept, and warnings (missing material, unanalyzed sources). Pass baseVersion (from read_story) to refuse the build when the graph changed since you read it. The change belongs to this turn's checkpoint, so the user can revert it. Placed media respects the user's picked fragments (inspect_project: "USER-PICKED FRAGMENT"): only the picked part of a file is ever used. Verify afterwards with inspect_timeline. Pass dryRun true to see the result without writing anything. A turn builds once: after a successful build_story the graph is frozen for the rest of the turn (edit_story and resolving Missing Asset nodes are refused); material that arrives later is placed with edit_timeline. Music attached to several chapters becomes one bed across them, a resolved sound effect plays inside its chapter, and a Missing Asset node still without a file is skipped with a warning.`,
   rebuild_story: `Rebuild affected sections: bring the timeline in line with the Story Graph after the graph changed since it was built, touching only what changed. It regenerates only the units (a chapter's A-roll, one attached B-roll/picture/motion, a music bed, captions) whose intent the graph changed, adds the sections of new chapters and removes the sections of deleted ones, moves sections that only moved (new order, or an earlier section changed length) with their content untouched, and keeps everything else byte-identical. Manual edits the user or an AI made to generated clips are kept in a unit that has to change unless the user chose to replace them for this turn; clips no chapter owns (manual additions, cutaways) are never removed and move with the section they sit in. Locked chapters are never regenerated unless the user allowed them from the Story workspace (you cannot allow them yourself); they may still move in time as a whole and are reported as pending. The scope (chapters), the manual-edit policy and the locked permissions come from the user's choices for this turn and cannot be widened. If the timeline already matches the graph nothing is written. Returns what was rebuilt, removed and moved by chapter, the kept and replaced manual edits, the locked chapters left pending and warnings. Pass baseVersion (from read_story) to refuse the rebuild when the graph changed since you read it. The change belongs to this turn's checkpoint, so the user can revert it. Placed media respects the user's picked fragments (inspect_project: "USER-PICKED FRAGMENT"): only the picked part of a file is ever used. Pass dryRun true to see the result without writing anything.`,
 };
 
@@ -382,7 +388,28 @@ const OPERATION_SCHEMAS: Record<StoryOperationName, Record<string, unknown>> = {
 };
 
 const PARAMETERS: Record<StoryToolName, Record<string, unknown>> = {
-  read_story: { type: "object", properties: {}, additionalProperties: false },
+  read_story: {
+    type: "object",
+    properties: {
+      chapter: str(
+        "A chapter id from the play order (ch1, ...): that chapter in full with its attached material, links and open items.",
+        66,
+      ),
+      section: {
+        type: "string",
+        enum: [...STORY_SECTIONS],
+        description:
+          "One part of the story instead of everything: overview (title, brief, play order), chapters, materials, links, decisions, attention, locks (locked nodes, last review and build) or sync (timeline sync). Not together with chapter.",
+      },
+      offset: {
+        type: "integer",
+        minimum: 0,
+        description:
+          "Character offset to continue a long reading from; the result names the offset of its next page. Default 0.",
+      },
+    },
+    additionalProperties: false,
+  },
   edit_story: {
     type: "object",
     properties: {
@@ -460,12 +487,27 @@ function editLabel(args: unknown): string {
 }
 
 const ACTIVITIES: Record<StoryToolName, (args: unknown) => ToolActivity> = {
-  read_story: () => ({
-    category: "inspect",
-    label: "Reading the story",
-    labelCode: "reading_story",
-  }),
-  edit_story: (args) => ({ category: "edit", label: editLabel(args) }),
+  read_story: (args) =>
+    isRecord(args) && typeof args.chapter === "string" && args.chapter.length > 0
+      ? {
+          category: "inspect",
+          label: `Reading the story · ${args.chapter.slice(0, 66)}`,
+          labelCode: "reading_story_chapter",
+          labelParams: { chapter: args.chapter.slice(0, 66) },
+        }
+      : { category: "inspect", label: "Reading the story", labelCode: "reading_story" },
+  edit_story: (args) => {
+    const operations =
+      isRecord(args) && Array.isArray(args.operations) ? args.operations.length : 0;
+    return operations === 0
+      ? { category: "edit", label: "Editing the story", labelCode: "editing_story" }
+      : {
+          category: "edit",
+          label: editLabel(args),
+          labelCode: "editing_story_changes",
+          labelParams: { count: operations },
+        };
+  },
   build_story: (args) =>
     isRecord(args) && args.dryRun === true
       ? { category: "edit", label: "Checking the story build", labelCode: "checking_story_build" }

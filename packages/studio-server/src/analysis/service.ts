@@ -70,6 +70,8 @@ export interface AnalysisServiceOptions {
   ffmpegPath?: string;
   /** Minimum time between orphan sweeps of one project, ms (default one minute; tests use 0). */
   orphanIntervalMs?: number;
+  /** How often a running recognizer child is reported alive, ms (default ten seconds; tests). */
+  heartbeatMs?: number;
 }
 
 /** A project file that is a valid analysis source (video or audio, inside the project, not in `.hyperframes/`). */
@@ -395,6 +397,7 @@ export class AnalysisService {
             language: request.language,
             force,
             plan,
+            heartbeatMs: this.options.heartbeatMs,
           },
           reporter,
         );

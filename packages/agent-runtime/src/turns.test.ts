@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BackendPromptOutcome } from "./backend.js";
-import { directorScript, qaChat, quality, script, settled } from "./qa/harness.js";
+import { directorScript, isQaClosing, qaChat, quality, script, settled } from "./qa/harness.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "./testing/runtimeFixture.js";
 
 function deferred<T>() {
@@ -189,6 +189,50 @@ describe("TurnRunner", () => {
       await finishTurn(fixture, chat.id);
       expect(fixture.chats.get(chat.id)?.turns).toHaveLength(1);
     } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("refuses a turn or a second delete on a chat while it is being deleted", async () => {
+    const fixture = await createRuntimeFixture();
+    const disposing = deferred<void>();
+    try {
+      const chat = await fixture.chats.create({});
+      const other = await fixture.chats.create({});
+      fixture.backend.promptScript = async () => "completed";
+      await fixture.turns.start(chat.id, { prompt: "Update the title" });
+      await finishTurn(fixture, chat.id);
+      // The chat's idle session takes a while to close: the window the deletion used to leave open.
+      const session = fixture.backend.sessionsOf("director")[0];
+      if (!session) throw new Error("no director session");
+      session.dispose = async () => {
+        await disposing.promise;
+      };
+
+      const deleting = fixture.turns.deleteChat(chat.id);
+      await expect(fixture.turns.start(chat.id, { prompt: "Too late" })).rejects.toMatchObject({
+        code: "chat_busy",
+        status: 409,
+      });
+      await expect(fixture.turns.revert(chat.id, "any-turn")).rejects.toMatchObject({
+        code: "chat_busy",
+      });
+      await expect(fixture.turns.deleteChat(chat.id)).rejects.toMatchObject({
+        code: "chat_busy",
+      });
+      expect(fixture.turns.activeTurn).toBeNull();
+      // Another chat is not held up by it.
+      await fixture.turns.start(other.id, { prompt: "Other chat" });
+      await finishTurn(fixture, other.id);
+
+      disposing.resolve();
+      await expect(deleting).resolves.toEqual({ chatId: chat.id });
+      expect(fixture.chats.get(chat.id)).toBeNull();
+      await expect(fixture.turns.start(chat.id, { prompt: "Gone" })).rejects.toMatchObject({
+        code: "chat_not_found",
+      });
+    } finally {
+      disposing.resolve();
       await fixture.cleanup();
     }
   });
@@ -417,7 +461,9 @@ describe("TurnRunner", () => {
     try {
       const chat = await fixture.chats.create({}, []);
       const seen: Array<{ edit: string | null; write: string | null; read: string | null }> = [];
-      fixture.backend.promptScript = async (_input, session) => {
+      fixture.backend.promptScript = async (input, session) => {
+        // A build or rebuild turn that changed nothing gets Render QA's closing prompt: only the first prompt is the subject.
+        if (isQaClosing(input)) return "completed";
         const ask = session.input.fileWriteRefusal;
         seen.push({
           edit: ask?.("edit") ?? null,

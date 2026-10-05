@@ -475,7 +475,9 @@ describe("render QA in a turn", () => {
       const fixture = await createRuntimeFixture();
       try {
         const chatId = await qaChat(fixture, quality(2));
-        fixture.editing.renderQueue = [new EditingError("render_failed", "ffmpeg exploded")];
+        fixture.editing.renderQueue = [
+          new EditingError("render_failed", "clip hf-9 has no readable media"),
+        ];
         const director = directorScript(fixture);
         script(fixture, { director: director.run, vision: visionScript([]) });
         await fixture.turns.start(chatId, { prompt: "Add B-roll" });
@@ -485,8 +487,8 @@ describe("render QA in a turn", () => {
         expect(failed).toMatchObject({
           pass: 1,
           render: null,
-          renderError: "ffmpeg exploded",
-          checks: [{ id: "render", status: "failed", detail: "ffmpeg exploded" }],
+          renderError: "clip hf-9 has no readable media",
+          checks: [{ id: "render", status: "failed", detail: "clip hf-9 has no readable media" }],
           vision: { status: "skipped" },
           issues: [{ kind: "render_failed", severity: "error", fixable: true, owner: "editor" }],
         });
@@ -500,12 +502,17 @@ describe("render QA in a turn", () => {
         expect(fixture.qa.checkRequests).toHaveLength(1);
         expect(fixture.backend.sessionsOf("vision")[0]?.prompts).toHaveLength(1);
         expect(director.seen.corrections[0]).toContain(
-          "Render QA could not render the composition in pass 1 of 2: ffmpeg exploded",
+          "Render QA could not render the composition in pass 1 of 2: clip hf-9 has no readable media",
         );
         expect(fixture.chats.get(chatId)?.turns[0]?.qa).toMatchObject({
           status: "passed",
           passes: [
-            { pass: 1, phase: "corrected", error: "ffmpeg exploded", renderPath: null },
+            {
+              pass: 1,
+              phase: "corrected",
+              error: "clip hf-9 has no readable media",
+              renderPath: null,
+            },
             { pass: 2, phase: "done" },
           ],
         });
@@ -593,36 +600,86 @@ describe("render QA in a turn", () => {
   });
 
   describe("when Vision cannot review", () => {
-    it("is not enabled: the deterministic result stands and the Director is told", async () => {
+    it("is not enabled: the Director reviews the render itself and the correction follows from its findings", async () => {
       const fixture = await createRuntimeFixture();
       try {
         const chatId = await qaChat(fixture, quality(2), ["editor"]);
-        fixture.qa.checkResults = [cleanCheck({ issues: [BLACK_SUBJECT] }), cleanCheck()];
-        const director = directorScript(fixture);
+        fixture.qa.checkResults = [cleanCheck(), cleanCheck()];
+        const director = directorScript(fixture, {
+          review: async (number, session) => {
+            await session.callTool("inspect_render", { times: [1, 5] });
+            await session.callTool("report_render_findings", {
+              findings: number === 1 ? [finding({ subject: "c2" })] : [],
+            });
+          },
+        });
         script(fixture, { director: director.run });
         await fixture.turns.start(chatId, { prompt: "Tighten the intro" });
         await settled(fixture, chatId);
 
+        // No Vision run: the review prompt went to the Director, with the tools opened for it.
         expect(fixture.backend.sessionsOf("vision")).toEqual([]);
-        expect(fixture.qa.reports[0]?.vision).toEqual({
-          status: "unavailable",
-          reason: "Vision is not enabled in this chat.",
-          reasonCode: "vision_disabled",
-          frames: 0,
-          rounds: 0,
+        expect(director.seen.reviews).toHaveLength(2);
+        expect(director.seen.reviews[0]).toContain(
+          "Vision is off in this chat, so you do its work yourself",
+        );
+        expect(director.seen.reviews[0]).toContain("inspect_render");
+        expect(fixture.qa.frameRequests.map((request) => request.times)).toEqual([
+          [1, 5],
+          [1, 5],
+        ]);
+        expect(fixture.qa.reports[0]?.vision).toMatchObject({
+          status: "ran",
+          reviewer: "director",
+          frames: 2,
+          rounds: 1,
           model: null,
         });
-        expect(fixture.qa.reports[0]?.checks.at(-1)).toEqual({
-          id: "vision",
-          status: "unavailable",
-          detail: "Vision is not enabled in this chat.",
+        expect(fixture.qa.reports[0]?.issues).toMatchObject([
+          { source: "vision", kind: "incorrect_broll", fixable: true },
+        ]);
+        expect(fixture.qa.reports[0]?.checks.at(-1)).toMatchObject({ id: "vision", status: "ran" });
+        // The Director's own findings drive the correction, and the second review finds it fixed.
+        expect(director.seen.corrections).toHaveLength(1);
+        expect(director.seen.corrections[0]).toContain("You (Vision is off) reviewed 2 frames");
+        expect(fixture.qa.reports[1]?.resolved.map((issue) => issue.id)).toEqual(["p1-1"]);
+        expect(fixture.chats.get(chatId)?.turns[0]?.qa).toMatchObject({
+          status: "passed",
+          passes: [{ vision: "ran" }, { vision: "ran" }],
         });
-        expect(fixture.qa.reports[0]?.issues).toHaveLength(1);
-        expect(director.seen.corrections[0]).toContain(
-          "Vision's review did not happen (unavailable: Vision is not enabled in this chat.)",
-        );
-        expect(director.seen.finals[0]).toContain("Vision's review did not happen");
-        expect(fixture.chats.get(chatId)?.turns[0]?.qa?.passes[0]?.vision).toBe("unavailable");
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it("refuses everything but the review tools while the Director reviews, and the tools outside the review", async () => {
+      const fixture = await createRuntimeFixture();
+      try {
+        const chatId = await qaChat(fixture, quality(1), ["editor"]);
+        fixture.qa.checkResults = [cleanCheck()];
+        const refused: Array<{ isError?: boolean; text: string }> = [];
+        const director = directorScript(fixture, {
+          first: async (session) => {
+            fixture.qa.bump();
+            refused.push(await session.callTool("inspect_render", { times: [1] }));
+          },
+          review: async (_number, session) => {
+            refused.push(
+              await session.callTool("delegate", { agent: "editor", title: "Fix", task: "Fix it" }),
+            );
+            refused.push(await session.callTool("render_video", {}));
+            await session.callTool("inspect_render", { times: [1] });
+            await session.callTool("report_render_findings", { findings: [] });
+          },
+        });
+        script(fixture, { director: director.run });
+        await fixture.turns.start(chatId, { prompt: "Tighten the intro" });
+        await settled(fixture, chatId);
+
+        expect(refused[0]?.text).toContain("works only during a Render QA review");
+        expect(refused[1]?.text).toContain("refused during a Render QA review");
+        expect(refused[2]?.text).toContain("refused during a Render QA review");
+        expect(fixture.editing.applyRequests).toEqual([]);
       } finally {
         await fixture.cleanup();
       }
@@ -672,7 +729,7 @@ describe("render QA in a turn", () => {
           frames: 2,
           rounds: 1,
         });
-        expect(director.seen.finals[0]).toContain("Vision's review did not happen (failed");
+        expect(director.seen.finals[0]).toContain("The visual review did not happen (failed");
       } finally {
         await fixture.cleanup();
       }
@@ -704,10 +761,17 @@ describe("render QA in a turn", () => {
         expect(
           second?.issues.map((issue) => `${issue.id}:${issue.status}:${issue.source}`),
         ).toEqual(["p1-1:persisting:vision"]);
-        expect(second?.counts).toMatchObject({ issues: 1, persisting: 1, fixed: 0 });
-        expect(fixture.chats.get(chatId)?.turns[0]?.qa?.status).not.toBe("passed");
+        // Carried over as report-only: not fixable, so it never goes back to a correction.
+        expect(second?.issues[0]).toMatchObject({ notRechecked: true, fixable: false });
+        expect(second?.counts).toMatchObject({ issues: 1, persisting: 1, fixable: 0, fixed: 0 });
+        expect(director.seen.corrections).toHaveLength(1);
+        expect(fixture.chats.get(chatId)?.turns[0]?.qa).toMatchObject({
+          status: "issues_remain",
+          reasonCode: "not_rechecked",
+        });
         const final = director.seen.finals[0] ?? "";
-        expect(final).toContain("Still open (1):");
+        expect(final).toContain("NOT re-checked in the last pass (1)");
+        expect(final).not.toContain("Still open");
         expect(final).not.toContain("Fixed during QA");
       } finally {
         await fixture.cleanup();
@@ -1014,7 +1078,7 @@ describe("render QA in a turn", () => {
   });
 
   describe("which turns are checked", () => {
-    it("does not render a composition over three minutes unless the user asked for a render", async () => {
+    it("checks a composition over three minutes on the timeline alone, unless the user asked for a render", async () => {
       const fixture = await createRuntimeFixture();
       try {
         fixture.editing.timelineResult = {
@@ -1027,12 +1091,32 @@ describe("render QA in a turn", () => {
         await fixture.turns.start(chatId, { prompt: "Tighten the talk" });
         await settled(fixture, chatId);
         expect(fixture.editing.renderRequests).toEqual([]);
+        expect(fixture.qa.checkRequests).toEqual([]);
+        expect(fixture.qa.timelineCheckRequests).toEqual([{ composition: "index.html" }]);
         expect(fixture.chats.get(chatId)?.turns[0]?.qa).toMatchObject({
-          status: "skipped",
-          reason: expect.stringContaining("6.7 minutes long and the user did not ask for a render"),
+          status: "passed",
+          scope: "timeline",
+          passes: [
+            {
+              scope: "timeline",
+              scopeNote: {
+                code: "too_long",
+                message: expect.stringContaining(
+                  "6.7 minutes long and the user did not ask for a render",
+                ),
+              },
+              renderPath: null,
+              vision: "skipped",
+            },
+          ],
         });
-        expect(director.seen.finals).toEqual([]);
-
+        expect(fixture.qa.reports[0]).toMatchObject({
+          scope: "timeline",
+          render: null,
+          renderError: null,
+          vision: { status: "skipped", reasonCode: "vision_timeline_only" },
+        });
+        expect(director.seen.finals).toHaveLength(1);
         // Asked for a render: QA runs, and its render is the deliverable (standard quality, not a draft).
         fixture.qa.fingerprint = "fp-before-second-turn";
         const asked = await qaChat(fixture, quality(1));

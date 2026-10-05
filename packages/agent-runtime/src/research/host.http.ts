@@ -396,7 +396,8 @@ export class HttpResearchHost implements ResearchHost {
 function payloadOf({ ok, status, payload }: Exchange): unknown {
   if (ok) return payload;
   const failure = isRecord(payload) ? payload.error : undefined;
-  if (isResearchError(failure)) throw new ResearchToolError(failure.code, failure.message);
+  if (isResearchError(failure))
+    throw new ResearchToolError(failure.code, failure.message, failure.params);
   throw new ResearchToolError(
     "studio_unavailable",
     typeof failure === "string"

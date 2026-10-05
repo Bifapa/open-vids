@@ -5,7 +5,9 @@ import {
   QA_SEVERITIES,
   isRecord,
   type AgentId,
+  type SpecialistId,
 } from "@hyperframes/agent-protocol";
+import { withInheritedTools } from "../agents/inherit.js";
 import type { HostTool, HostToolResult, ToolActivity } from "../backend.js";
 
 export const QA_TOOL_NAMES = {
@@ -22,12 +24,15 @@ export function isQaToolName(name: string): name is QaToolName {
 type Executor = (name: string, args: unknown, signal: AbortSignal) => Promise<HostToolResult>;
 
 /**
- * Which QA tools an agent gets. Only Vision reviews a render, and only inside the runtime-started "Render QA" run:
- * the tools refuse outside an active review, so the Director never gets them (it reads the stored findings in its
- * correction prompt) and nobody can start a review of their own.
+ * Which QA tools an agent gets. Only Vision reviews a render, and only inside the runtime-started "Render QA" run;
+ * when Vision is off in the chat the Director inherits the tools and the runtime runs the review prompt on it. The
+ * tools refuse outside an open review and for anyone but its reviewer, so nobody can start a review of their own and
+ * the Director never has them otherwise.
  */
-export function qaToolsFor(agent: AgentId): QaToolName[] {
-  return agent === "vision" ? [QA_TOOL_NAMES.inspect, QA_TOOL_NAMES.report] : [];
+export function qaToolsFor(agent: AgentId, enabled: readonly SpecialistId[]): QaToolName[] {
+  return withInheritedTools(agent, enabled, (who) =>
+    who === "vision" ? [QA_TOOL_NAMES.inspect, QA_TOOL_NAMES.report] : [],
+  );
 }
 
 const DESCRIPTIONS: Record<QaToolName, string> = {
@@ -140,8 +145,12 @@ function activity(name: QaToolName, args: unknown): ToolActivity | null {
 }
 
 /** The QA tools of one agent; every call goes to `execute` (the running turn's QA executor). */
-export function buildQaTools(agent: AgentId, execute: Executor): HostTool[] {
-  return qaToolsFor(agent).map((name) => ({
+export function buildQaTools(
+  agent: AgentId,
+  enabled: readonly SpecialistId[],
+  execute: Executor,
+): HostTool[] {
+  return qaToolsFor(agent, enabled).map((name) => ({
     name,
     description: DESCRIPTIONS[name],
     parameters: PARAMETERS[name],

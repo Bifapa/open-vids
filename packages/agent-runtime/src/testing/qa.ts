@@ -1,4 +1,6 @@
 import type {
+  QaAcceptedIssue,
+  QaAcceptedList,
   QaCheckRequest,
   QaCheckResponse,
   QaFramesRequest,
@@ -9,6 +11,7 @@ import type {
   QaReport,
   QaReportInput,
   QaStateResponse,
+  QaTimelineCheckRequest,
 } from "@hyperframes/agent-protocol";
 import { qaCounts } from "@hyperframes/agent-protocol";
 import { QaToolError, type QaHost } from "../qa/host.js";
@@ -35,6 +38,28 @@ export function cleanCheck(overrides: Partial<QaCheckResponse> = {}): QaCheckRes
       { time: 5, reason: "broll", context: "track 1 video assets/city.mp4 (clip c2)" },
       { time: 9, reason: "coverage", context: "track 0 video assets/talk.mp4 (clip c3)" },
     ],
+    ...overrides,
+  };
+}
+
+/** A timeline-only check response: the render-measured checks skipped, no frames to review. */
+export function timelineCheck(overrides: Partial<QaCheckResponse> = {}): QaCheckResponse {
+  const detail = "Timeline checks only: the composition was not rendered";
+  return {
+    fingerprint: "fp-check",
+    composition: "index.html",
+    timelineVersion: "v1",
+    duration: 12,
+    checks: [
+      { id: "render", status: "skipped", detail },
+      { id: "black_frames", status: "skipped", detail },
+      { id: "frozen_frames", status: "skipped", detail },
+      { id: "audio", status: "skipped", detail },
+      { id: "timeline", status: "ran", detail: null },
+      { id: "layout", status: "skipped", detail },
+    ],
+    issues: [],
+    samples: [],
     ...overrides,
   };
 }
@@ -85,6 +110,18 @@ export class FakeQaHost implements QaHost {
   readonly finishAbortedAtCall: boolean[] = [];
   /** While set, a held `check`/`frames` call that is aborted waits for it before it rejects (a slow cancellation). */
   cancelDelay: Promise<void> | null = null;
+  /** `removedRenders` the next `finishSession` answers with (what the service deleted). */
+  finishRemoved: string[] = [];
+  /** What the project's accepted-issues list holds. */
+  acceptedItems: QaAcceptedIssue[] = [];
+  acceptedError: QaToolError | null = null;
+  /** Timeline-only checks are served like `checkResults`; the default is a clean timeline-only response. */
+  timelineCheckResults: Array<
+    | QaCheckResponse
+    | QaToolError
+    | ((request: QaTimelineCheckRequest, call: number) => QaCheckResponse | QaToolError)
+  > = [];
+  readonly timelineCheckRequests: QaTimelineCheckRequest[] = [];
 
   private changes = 0;
   stateCalls = 0;
@@ -124,6 +161,27 @@ export class FakeQaHost implements QaHost {
     const result = typeof queued === "function" ? queued(request, call) : queued;
     if (result instanceof QaToolError) throw result;
     return structuredClone(result);
+  }
+
+  async checkTimeline(
+    request: QaTimelineCheckRequest,
+    signal: AbortSignal,
+  ): Promise<QaCheckResponse> {
+    if (signal.aborted) throw new QaToolError("aborted", "The check was cancelled.");
+    this.timelineCheckRequests.push(request);
+    const call = this.timelineCheckRequests.length;
+    const queued =
+      this.timelineCheckResults[Math.min(call, this.timelineCheckResults.length) - 1] ??
+      timelineCheck({ composition: request.composition ?? "index.html" });
+    const result = typeof queued === "function" ? queued(request, call) : queued;
+    if (result instanceof QaToolError) throw result;
+    return structuredClone(result);
+  }
+
+  async accepted(signal: AbortSignal): Promise<QaAcceptedList> {
+    signal.throwIfAborted();
+    if (this.acceptedError) throw this.acceptedError;
+    return { items: structuredClone(this.acceptedItems) };
   }
 
   async frames(request: QaFramesRequest, signal: AbortSignal): Promise<QaFramesResponse> {
@@ -166,7 +224,7 @@ export class FakeQaHost implements QaHost {
     this.finishRequests.push({ sessionId, request: structuredClone(request) });
     this.finishAbortedAtCall.push(signal.aborted);
     if (this.finishError) throw this.finishError;
-    return { removedRenders: [], removedReports: 0 };
+    return { removedRenders: [...this.finishRemoved], removedReports: 0 };
   }
 
   private held(gate: Promise<void>, signal: AbortSignal, onCancel: () => void): Promise<void> {

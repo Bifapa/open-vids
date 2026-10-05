@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentModelCatalog, SpecialistConfig } from "@hyperframes/agent-protocol";
-import { summarizeReport } from "./orchestrator.js";
+import { summarizeReport } from "./runRecord.js";
 import { routeDelegation } from "./routing.js";
 
 const sonnet = { provider: "anthropic", modelId: "sonnet" };
@@ -67,6 +67,33 @@ describe("routeDelegation", () => {
       model: null,
       thinking: "minimal",
       routed: true,
+    });
+  });
+
+  it("does not call an unloaded model list 'no credentials': an allowed model is accepted", () => {
+    const empty: AgentModelCatalog = { models: [], defaultModel: null, defaultThinking: null };
+    expect(routeDelegation("editor", config, { model: opus }, empty, true)).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("no credentials"),
+    });
+    expect(routeDelegation("editor", config, { model: opus }, empty, false)).toEqual({
+      ok: true,
+      model: opus,
+      thinking: "high",
+      routed: true,
+    });
+    // The user's allow-list still binds.
+    expect(
+      routeDelegation(
+        "vision",
+        { model: sonnet, thinking: null, allowedModels: [] },
+        { model: opus },
+        empty,
+        false,
+      ),
+    ).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("has not allowed other models"),
     });
   });
 });

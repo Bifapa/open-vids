@@ -1,4 +1,5 @@
 import type {
+  QaAcceptedList,
   QaCheckRequest,
   QaCheckResponse,
   QaErrorCode,
@@ -9,6 +10,7 @@ import type {
   QaReport,
   QaReportInput,
   QaStateResponse,
+  QaTimelineCheckRequest,
 } from "@hyperframes/agent-protocol";
 
 /**
@@ -22,6 +24,10 @@ export interface QaHost {
   state(signal: AbortSignal): Promise<QaStateResponse>;
   /** Runs the deterministic checks on a finished render and plans the frames Vision should look at. */
   check(request: QaCheckRequest, signal: AbortSignal): Promise<QaCheckResponse>;
+  /** The timeline-derived checks alone: nothing is rendered or read from a render, so it is cheap on any length. */
+  checkTimeline(request: QaTimelineCheckRequest, signal: AbortSignal): Promise<QaCheckResponse>;
+  /** The issues the user marked intentional in this project (QA leaves matching ones out of every pass). */
+  accepted(signal: AbortSignal): Promise<QaAcceptedList>;
   /** Extracts frames of a finished render (at most `QA_LIMITS.framesPerRequest` per call). */
   frames(request: QaFramesRequest, signal: AbortSignal): Promise<QaFramesResponse>;
   /** Stores one pass as a durable report; the service assigns its id. */
@@ -37,8 +43,8 @@ export interface QaHost {
   ): Promise<QaFinishResponse>;
 }
 
-/** Failures that do not come from the QA service's validation: transport and cancellation. */
-export type QaToolErrorCode = QaErrorCode | "studio_unavailable" | "aborted";
+/** Failures that do not come from the QA service's validation: transport, cancellation and running out of time. */
+export type QaToolErrorCode = QaErrorCode | "studio_unavailable" | "aborted" | "timeout";
 
 /** A QA failure the loop (or Vision) can act on: a stable code and a message. */
 export class QaToolError extends Error {

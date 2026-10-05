@@ -167,6 +167,7 @@ const commandLoaders = {
   diarize: () => import("./commands/diarize.js").then((m) => m.default),
   "inspect-site": () => import("./commands/inspect-site.js").then((m) => m.default),
   "record-site": () => import("./commands/record-site.js").then((m) => m.default),
+  frames: () => import("./commands/frames.js").then((m) => m.default),
   models: () => import("./commands/models.js").then((m) => m.default),
   tts: () => import("./commands/tts.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),

@@ -118,3 +118,44 @@ describe("user language block", () => {
     expect(russian.startsWith("Trim the intro\n\n<user-language>ru</user-language>")).toBe(true);
   });
 });
+
+describe("editor context JSON", () => {
+  const withClips: EditorContext = {
+    ...context({
+      clips: [
+        { id: "c1", hfId: "hf-1", label: "Intro", tag: "video", start: 1, duration: 3, track: 0 },
+      ],
+    }),
+    timeline: {
+      duration: 10,
+      elementCount: 2,
+      elements: [
+        { id: "c1", hfId: "hf-1", label: "Intro", tag: "video", start: 1, duration: 3, track: 0 },
+        { id: "c2", hfId: "hf-2", label: "Outro", tag: "video", start: 4, duration: 3, track: 0 },
+      ],
+    },
+  };
+
+  it("carries the whole clip list by default (the Director's first prompt)", () => {
+    const rendered = renderPromptContext("Cut", withClips);
+    expect(rendered).toContain('"label": "Outro"');
+  });
+
+  it("leaves the clip list out for specialists and steering but keeps selection and counts", () => {
+    const rendered = renderPromptContext("Cut", withClips, [], undefined, {
+      editorJson: "relevant",
+    });
+    expect(rendered).not.toContain('"label": "Outro"');
+    expect(rendered).toContain('"elementCount": 2');
+    expect(rendered).toContain('"label": "Intro"');
+    expect(rendered).toContain("inspect_timeline reads it");
+    expect(rendered).toContain("<user-selection>");
+  });
+
+  it("adds no note when the context never had a clip list", () => {
+    const rendered = renderPromptContext("Cut", context(), [], undefined, {
+      editorJson: "relevant",
+    });
+    expect(rendered).not.toContain("inspect_timeline reads it");
+  });
+});

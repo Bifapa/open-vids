@@ -20,6 +20,11 @@ The wire model (chats, turns, messages, events, editor context, references) is o
 - Spawned lazily by the gateway on the first agent request; restarted lazily (with back-off) if it
   dies. Editing never depends on it: an unavailable runtime yields `503 runtime_unavailable` and the
   Studio chat panel shows "Agent unavailable".
+- While the gateway waits out the back-off after a crash it answers at once, `503 runtime_restarting` with `Retry-After` and
+  `details.retryAfterSeconds`, and starts the replacement in the background (the request is not forwarded). A request gets
+  60 s to receive its response headers; past that the gateway probes the runtime's health (3 s): a runtime that still
+  answers keeps running (`504 runtime_unavailable`, the request is not repeated), one that does not is stopped, so the next
+  request starts a fresh one (`503 runtime_restarting`).
 - Binds `127.0.0.1` only. Every request needs `Authorization: Bearer <OPENVIDS_AGENT_TOKEN>`; the
   token is generated per launch and known only to the gateway and this process. The browser never
   sees the token or the port.
@@ -32,8 +37,8 @@ The wire model (chats, turns, messages, events, editor context, references) is o
 
 ## Persistence
 
-`<projectDir>/.hyperframes/agent/chats/<chatId>/events.jsonl` is an append-only log of protocol
-events; chat state is `foldChatEvents(log)`. It holds the main conversation and every delegated
+`<projectDir>/.hyperframes/agent/chats/<chatId>/events.jsonl` is a log of protocol
+events (append-only while a turn runs); chat state is `foldChatEvents(log)`. It holds the main conversation and every delegated
 run's thread (task message + reply, keyed by `runId`), so specialist views reopen after a restart.
 `backend/` beside it is the Director's OMP session directory and `agents/<specialist>/` each
 specialist's (resume keeps model context per agent); Jev sessions are ephemeral. `.hyperframes/` is
@@ -42,10 +47,27 @@ never part of a checkpoint; the path guard also forbids it. A crash leaves a run
 runs) in the log; on load the runs and the turn are closed as `interrupted` and the checkpoint is
 recovered from project history.
 
+- **Compaction.** When a turn ends (`turn.completed/failed/aborted`) the chat's log is rewritten without its streaming
+  chatter: the text and thinking deltas of a part become one delta, and the updates of one activity, permission, question,
+  offer, usage report, QA or plan state become the last one (`src/store/compact.ts`). The result is written beside the log,
+  flushed and renamed over it, and only used when it folds to exactly the state in memory (any difference keeps the old log).
+  Sequence numbers are kept, so a client that reconnects from the middle of the old range sees a gap and resyncs from the
+  snapshot.
+- **Lazy loading.** Each chat keeps `summary.json` next to its log: the chat summary, the log size it describes and a
+  `recoverable` flag (a running turn or an unclosed checkpoint). At start the runtime lists chats from those summaries
+  only; a summary that is missing, stale (the log has a different size) or `recoverable` makes that log be read in full.
+  A chat first asked for (`get`, `emit`, `subscribeChat`) is read and folded then. `ChatService.recoverableChatIds()` names
+  the chats crash recovery has to look at without loading any other.
+- **One owner per project.** A runtime process takes `<project>/.hyperframes/agent/owner.pid` (pid plus the process start, a
+  dead owner's file is taken over) before it serves the project's chats; another live process gets `409
+project_served_elsewhere` instead of writing events with the same sequence numbers. `src/processLock.ts` is the lock.
+- `DELETE /chats/:chatId` goes through `FileChatStore.deleteChat` (log, summary and every agent's session directory).
+
 Global (per-user) agent settings — Director defaults, per-specialist defaults, Jev, Autonomy — live in
 `OPENVIDS_AGENT_SETTINGS_DIR` (default `~/.openvids/agent`): `settings.json`, `jev-credentials.json` and
 `provider-credentials.json`, all mode 0600 (the directory 0700), re-read from disk on every access so several runtime
-processes share them. The Jev API key is never returned by the API
+processes share them; every change is a read-modify-write under a lock file (`write.lock`) so two processes changing
+different fields never drop one of the changes. The Jev API key is never returned by the API
 (`apiKeyConfigured` only) and is handed to one ephemeral backend session at a time, in a private
 in-memory credential store, so it never replaces the credentials other agents use. The global Execution Quality default
 (see Render QA and Execution Quality) and the Autonomy group (see Autonomy) are part of `settings.json`; a file
@@ -158,15 +180,21 @@ state carries.
   it to stop work on that item, say what it wanted to change and why, and wait for the user. Off: the same places tell it to
   leave the item alone, carry on and list what it left untouched in the final reply. It is an instruction to the model (the
   refusal itself is enforced); it is read at the start of the turn.
-- `askBeforeDownloads`: **enforced** in the research executor. On: `import_asset`, `read_website` with `save`,
-  `get_website_file` with mode `save` and `record_website` are refused
-  (before Studio is asked) until the user approved in the turn — the Story workspace's "Find missing material"
+- `askBeforeDownloads`: **enforced** in the research executor, in every kind of turn (a Story build included). On:
+  `import_asset`, `read_website` with `save`, `get_website_file` with mode `save` and `record_website` need the user's
+  approval in the turn before Studio is asked: the Story workspace's "Find missing material"
   (`storyAction: "resolve"`), or a message of that turn (prompt or steering; never assistant text or tool results) that
-  tells the agents to download/import/fetch/grab, says yes/ok/go ahead, or says add/use/take it (English and Russian, a
-  negation such as "don't download" cancels it: `approvesDownload` in `src/autonomy.ts`, a deterministic text rule like the
-  long-render guard). Approval does not carry over to later turns. Searching, inspecting pages and reading a site's style
-  stay free. Research's task and the Director's brief state the rule and ask Research to report what it found and wait. Off:
-  downloads run as before.
+  tells the agents to download/import/fetch/grab it (an action word aimed at the material, in English or Russian; a bare
+  yes/ok/go ahead does not count, and a negation such as "don't download", "I haven't decided" or "no, wait" anywhere
+  in the same sentence cancels it: `approvesDownload` in `src/autonomy.ts`, a deterministic text rule like the
+  long-render guard) counts as approval. Without one, the call **asks in the chat**: the runtime publishes an
+  `asset_download` permission card (see **Permission requests** under Research) and the call WAITS for the answer —
+  Allow once (downloads approved for the rest of the turn), Don't ask again (this setting is switched off) or Don't allow
+  (every later download of the turn is refused and the model continues without outside material). Approval does not
+  carry over to later turns. Without a permission broker the old text flow stays (the call is refused and Research lists
+  what it found for the user's next message). Searching, inspecting pages and reading a site's style stay free.
+  Research's task and the Director's brief state the rule: import what the job needs, never stop the turn just to ask in
+  text. Off: downloads run without asking (the Asset Search policy and license rules still apply).
 
 ## Multi-agent orchestration
 
@@ -175,19 +203,51 @@ state carries.
   global model/thinking/allowed-models of one specialist.
 - The Director gets runtime-implemented host tools (`src/agents/tools.ts`): `update_plan`
   (`plan.updated`), `delegate` / `wait_for_agents` / `message_agent` / `cancel_agent` (only when at
-  least one specialist is enabled; `agent` is an enum of the enabled ones and is re-checked), and
-  `jev` when Jev is usable. Specialists get only the tools below plus `jev`; Jev gets none — the
-  hierarchy is one level and OMP's own task/subagent tools are never enabled.
+  least one specialist is enabled; `agent` is an enum of the enabled ones and is re-checked; a
+  mangled name such as `_editor` or `Editor` is accepted), and `jev` when Jev is usable.
+  Specialists get only the tools below plus `jev`; Jev gets the read-only readers
+  (`inspect_project`, `inspect_timeline`, `read_story`, `read_analysis`) and edits project files
+  with its file tools — the hierarchy is one level and OMP's own task/subagent tools are never
+  enabled. Argument parsers live in `src/agents/toolArgs.ts`.
+- **A specialist that is off hands its work to the Director.** Its tools are added to the Director's
+  (every tool family applies `withInheritedTools`, `src/agents/inherit.ts`, inside its own
+  `...ToolsFor`; the same turn/phase gating, policy and approvals apply), its compact working rules are
+  appended to the Director's instructions (`directorInstructions(enabled)`, so the Director session
+  signature follows the chat's team), and the team block names what is off. `delegate` to it is
+  refused with the tools to use instead. Tool names are exact (the Director's prompt says so; a call
+  to an unknown name is rejected by the SDK before it reaches the runtime). Only the `agent` argument of
+  `delegate` / `message_agent` is read leniently (`parseSpecialistName`, `src/agents/aliases.ts`: `_editor`,
+  `Editor`, `delegate_to_editor`, "Motion Designer").
 - Routing (`src/agents/routing.ts`): a delegated task runs on the specialist's model unless the
   Director names one of its `allowedModels` (and it is authenticated); thinking may be lowered for a
-  task, never raised. Violations are returned to the Director as tool errors.
-- `src/agents/orchestrator.ts` runs one turn's delegated work: specialist runs are async (parallel
-  across specialists, queued per specialist), Jev calls are synchronous for the caller. Every run
-  shares the turn's abort signal and checkpoint. Steering goes to the Director; a pending
-  `wait_for_agents` returns early so it can react. If the Director stops without collecting its
-  runs it is re-prompted with their reports (at most 3 times). Before the checkpoint closes,
-  `shutdown()` aborts unfinished runs and force-closes a session that does not stop within the grace
-  period, so no run outlives its turn.
+  task, never raised. Violations are returned to the Director as tool errors. When the model list
+  could not be loaded (`catalogKnown` false) credentials cannot be judged: an allowed model is
+  accepted, Jev with provider sign-in stays on offer, and the team block says the list is missing.
+- `src/agents/orchestrator.ts` runs one turn's delegated work (helpers beside it: `runFactory`,
+  `runExecutor`, `runSettle`, `runWaiter`, `runMessage`, `planKeeper`, `specialistQueue`,
+  `stallWatchdog`, `taskText`). Specialist runs are async and parallel across specialists; one task
+  at a time per specialist, two for Research and Vision (the second on its own ephemeral session of
+  the same role), the rest queue. Jev calls are synchronous for the caller. Every run shares the
+  turn's abort signal and checkpoint and releases its write leases when it ends.
+  - A delegated task carries the Director's text, the user's own words of the turn (prompt and
+    steering, shortened with a stated count of omitted characters) and their attachments, the
+    selection and the light editor context, and the reply language. A report reaches the Director
+    up to 20 000 characters; a cut is announced in the text.
+  - `wait_for_agents` blocks until the awaited runs have finished (`until: "any"`: until the first
+    has), the user steers, or `timeoutSeconds` (default 120) pass, and then says what is still
+    going. `message_agent` also reaches a run that is queued or opening its session: the message
+    is placed in front of its task. Cancelling a queued run frees its place at once.
+  - A run that shows no sign of life (no backend event) for the stall limit is stopped and fails
+    with a clear reason; while one of its tool calls is in flight (`trackToolCall`, wrapped around
+    every dispatch) the clock is held.
+  - `cancelRun(runId, reason)` stops one run on the user's request (status `cancelled`); the
+    Director reads "stopped by the user — do not start it again unless the user asks" in its result.
+  - The automatic plan lists the runs the Director started plus the closing assembly step; runs the
+    runtime starts itself (the Render QA review) are not steps of the user's plan.
+  - Steering goes to the Director; a pending `wait_for_agents` returns early so it can react. If the
+    Director stops without collecting its runs it is re-prompted with their reports (at most 3
+    times). Before the checkpoint closes, `shutdown()` aborts unfinished runs and force-closes a
+    session that does not stop within the grace period, so no run outlives its turn.
 
 ## Editing tools
 
@@ -200,13 +260,13 @@ probe). The wire contract is `packages/agent-protocol/src/editing.ts`. The servi
 files; Studio's watcher reloads the timeline/preview live, and because the write happens while the
 Director's transaction is open the history engine attributes it to the turn.
 
-| Tool               | Director                     | Editor | Motion | Audio | Vision / Research | Jev |
-| ------------------ | ---------------------------- | ------ | ------ | ----- | ----------------- | --- |
-| `inspect_project`  | yes                          | yes    | yes    | yes   | yes               | no  |
-| `inspect_timeline` | yes                          | yes    | yes    | yes   | yes               | no  |
-| `browse_presets`   | yes                          | yes    | yes    | no    | yes               | no  |
-| `edit_timeline`    | only if no Editor is enabled | yes    | yes    | yes   | no                | no  |
-| `render_video`     | yes                          | yes    | no     | no    | no                | no  |
+| Tool               | Director                                | Editor | Motion | Audio | Vision / Research | Jev |
+| ------------------ | --------------------------------------- | ------ | ------ | ----- | ----------------- | --- |
+| `inspect_project`  | yes                                     | yes    | yes    | yes   | yes               | yes |
+| `inspect_timeline` | yes                                     | yes    | yes    | yes   | yes               | yes |
+| `browse_presets`   | yes                                     | yes    | yes    | no    | yes               | no  |
+| `edit_timeline`    | when the Editor, Motion or Audio is off | yes    | yes    | yes   | no                | no  |
+| `render_video`     | yes                                     | yes    | no     | no    | no                | no  |
 
 - `inspect_timeline` also reports the playhead, selection and active composition from the turn's
   `EditorContext` (captured when the user sent the message). A service refusal (`EditError`) or a
@@ -220,10 +280,61 @@ Director's transaction is open the history engine attributes it to the turn.
 - Lifecycle guarantee (`src/editing/executor.ts`, `TurnRunner.finalize`): editing calls go to a
   per-turn executor bound to the turn's scope, editor context and abort signal. They are refused when
   no turn is running or it is finalizing. Before the checkpoint closes, the turn stops accepting
-  calls, cancels running renders (`POST /render/:jobId/cancel`) and awaits every started call — an
-  `apply` already sent is atomic on the service and is awaited, not cut off — so no editing write can
-  land after the checkpoint transaction ends. Aborting the turn aborts in-flight edits and renders.
+  calls, cancels running renders (`POST /render/:jobId/cancel`) and awaits every started call. An
+  `apply` follows the turn signal by `POST editing/cancel {requestId}`: the service stops the batch
+  before its commit point (nothing written) or finishes it, and the call returns what the service
+  answered — so no editing write can land after the checkpoint transaction ends, and a stopped turn
+  never leaves a half-applied batch. Reads and applies also carry generous ceilings (2 min / 10 min).
+- **`edit_timeline` runtime behaviour** (`src/editing/apply.ts`): the runtime, not the model, owns the
+  turn id, the base version and the request id. `baseVersion` defaults to the version of the
+  composition last read or applied this turn (`SeenVersions`), so a change made behind the agent's
+  back is a crisp `conflict`; a version the model names wins. The `requestId` is a hash of the turn,
+  the composition and the operations: the service replays the stored answer for a repeated id while
+  the composition is exactly as that batch left it, so a retry after a timeout never doubles clips.
+  `dryRun: true` validates the batch in memory and reports the difference to the current timeline
+  (`+`/`-`/`~` lines, length and canvas) without writing. The batch claims its composition in the
+  turn's `WriteLeases` for the calling run (a dry run only checks). Results carry per-operation notes
+  and warnings (a new overlap on track 0, clips without a transcript).
+- `inspect_timeline {track, from, to, offset, limit}`, `inspect_project {query, kind, offset, limit}`
+  and `browse_presets {kind, query, offset, limit}` page and filter, and say which offset continues.
+  `browse_presets` also lists `color_grade` and `audio_fx` presets (for `set_color_grade` /
+  `set_audio_fx`).
+- The Director inherits the editing tools of every disabled specialist (`withInheritedTools`): without
+  an Editor (or Motion/Audio) it gets `edit_timeline`; Jev only ever gets `inspect_project` and
+  `inspect_timeline`.
+- Operations beyond the first set (all in `studio-server/src/editing/ops*.ts`, written exactly as
+  Studio's own panels write them): `set_speed` (`data-playback-rate`), `retime_captions`,
+  `captions_from_transcript` (cached transcripts mapped through each clip's in-point and speed),
+  `mount_composition` (Studio's drop helper), `set_color_grade` (`data-color-grading`),
+  `set_audio_fx` (`data-fx-chain`), `set_volume_automation` and `duck_audio` (`data-automation`),
+  `set_locked` (an agent cannot lift a user's lock), `set_clip.opacity`, `remove_clip`/`set_speed`
+  `rippleScope: "all"` and `set_canvas.fit` (contain/cover re-frame placed clips). There is no
+  cut-to-cut transition operation: the engine only has transition blocks (`add_component`).
+  The composition length follows content only upwards; `set_composition` shortens it (the blank
+  template's own 10 s goes once its placeholder is replaced).
 - `FakeEditingHost` (`src/testing`) is the in-memory host for tests; the runtime fixture wires it.
+
+### Composition frames (`inspect_composition`)
+
+Agents see their result without a full render: `inspect_composition { times (≤ 12), composition? }` returns JPEGs of the
+composition as the preview shows it (video, text, captions, graphics; no audio) as `HostToolResult.images`, plus a text
+naming each second (a time past the end shows the last readable frame). Director, Editor, Motion and Vision have it
+(`framesToolsFor`, with the D1 inheritance); the roles tell them to check their own work with it instead of rendering
+(`FRAMES_ROLE_PROMPT`). Activity row: label code `inspecting_composition` (`count`).
+
+- Path: runtime `TurnFrames` (`src/editing/frames.executor.ts`, budget per turn = Execution Quality
+  `analysisFramesPerSource`, a call is checked by its size and its cached frames are given back) → `HttpFramesHost` →
+  Studio `POST /api/projects/:id/editing/frames` (`studio-server/src/routes/editingFrames.ts`; contract in
+  `agent-protocol/src/frames.ts`) → adapter `captureFrames` → `hyperframes frames` in a CLI child (own headless Chrome,
+  never the server process; the same seek + screenshot + video-frame injection path as `snapshot`; implemented in the CLI
+  host `cli/src/server/framesAdapter.ts` and in the vite dev host). Aborting the request (the tool call, the turn, a
+  closed connection) kills the child and its browser; captures queue one browser at a time.
+- Studio caches frames in memory per (project content, composition, time, width): an unchanged project answers from the
+  cache (`cached: true`), any file change misses.
+- Render QA's correction tasks use the tool itself: the correction prompt gives every picture issue a "Look at:
+  inspect_composition {times}" line and the Director puts those times into the delegated task (a prompt carries text
+  only, so the frames are not attached to it). `FakeFramesHost` (`src/testing`) is the test host, and the runtime
+  fixture wires it.
 
 ## Long-form analysis tools
 
@@ -234,13 +345,16 @@ poll, cancel), `overview`, `transcript`, `artifact`, `segments`, `vision`, `fram
 (plan/list/get). The wire contract is `packages/agent-protocol/src/analysis.ts`; artifacts live
 in `<project>/.hyperframes/analysis` outside project history, so Revert never touches the cache.
 
-| tool                                                                                    | Director                          | Editor | Vision | Motion/Audio/Research |
-| --------------------------------------------------------------------------------------- | --------------------------------- | ------ | ------ | --------------------- |
-| `analyze_media` (starts/joins the job, waits, returns the compact overview)             | yes                               | yes    | yes    | no                    |
-| `read_analysis` (overview or one section), `read_transcript` (paged; marks take issues) | yes                               | yes    | yes    | yes                   |
-| `save_segments`                                                                         | yes                               | yes    | no     | no                    |
-| `inspect_frames` (JPEGs to the model), `save_vision_notes`                              | only if Vision is not enabled     | no     | yes    | no                    |
-| `plan_cut`, `build_rough_cut`                                                           | only if the Editor is not enabled | yes    | no     | no                    |
+| tool                                                                                    | Director                         | Editor | Vision | Motion/Audio/Research |
+| --------------------------------------------------------------------------------------- | -------------------------------- | ------ | ------ | --------------------- |
+| `analyze_media` (starts/joins the job, waits, returns the compact overview)             | yes                              | yes    | yes    | no                    |
+| `read_analysis` (overview or one section), `read_transcript` (paged; marks take issues) | yes                              | yes    | yes    | yes                   |
+| `save_segments`                                                                         | yes                              | yes    | no     | no                    |
+| `inspect_frames` (JPEGs to the model), `save_vision_notes`                              | inherited when Vision is off     | no     | yes    | no                    |
+| `plan_cut`, `build_rough_cut`                                                           | inherited when the Editor is off | yes    | no     | no                    |
+
+Jev only gets `read_analysis`. "Inherited" is the general rule (`src/agents/inherit.ts`): a tool family's Director set is
+its own tools plus those of every specialist that is off in the chat.
 
 - `build_rough_cut` reads the plan and the timeline, then sends ONE atomic `editing/apply` batch with
   `baseVersion`: `remove_clip {clips}` for the clips **of the target track** that play the plan's source (the previous
@@ -254,9 +368,16 @@ in `<project>/.hyperframes/analysis` outside project history, so Revert never to
   applied. Because it goes through the editing service inside the turn's transaction, Revert undoes it.
 - `inspect_frames` returns `HostToolResult.images` (base64 JPEG). The OMP adapter maps them to OMP image
   content after the text part (`src/omp/tool-content.ts`); nothing outside `src/omp/` knows OMP.
-- A job is awaited by polling `GET jobs/:id` (750 ms); aborting the call cancels the job on the service so
-  ffmpeg and the recognizer never outlive the turn. Analysis is cached per file, so a follow-up turn's
-  `analyze_media` returns immediately.
+- A job is awaited by polling `GET jobs/:id` (750 ms); its overall progress and stage go out on the tool's progress channel
+  (the same `tool.progress` a render uses, so the activity row shows a percent and the stage). A job whose stage, progress,
+  finished stages and sign of life (`AnalysisJob.updatedAt`) do not move for 15 minutes (`TurnAnalysisOptions.stallMs`) is
+  cancelled when this call started it and the call fails with `stalled` naming the stage; one that was only joined keeps
+  running. The recognizer and the diarizer print no progress while they decode, so the service reports the job alive on a
+  timer for as long as that child process runs (a wedged child ends with the engine's own timeout). Every analysis read has
+  a two-minute ceiling (a wedged Studio answers `unavailable`, it does not park the poll). Aborting the call cancels the
+  job on the service so ffmpeg and the recognizer never outlive the turn. Analysis is cached per file, so a follow-up
+  turn's `analyze_media` returns immediately. `read_analysis` pages every list section (takes, segments, silence, shots,
+  speakers' turns, vision, cuts) with `offset`: the result says which items it shows and the offset of the next page.
 - Lifecycle guarantee (`src/analysis/executor.ts`, `TurnRunner.finalize`): like editing, analysis calls go
   to a per-turn executor bound to the turn's abort signal. They are refused when no turn is running or it
   is finalizing. Before the checkpoint closes, the turn stops accepting calls, cancels running jobs and
@@ -270,7 +391,10 @@ in `<project>/.hyperframes/analysis` outside project history, so Revert never to
   cached segments, vision notes and cut plans.
 - Each analysis tool declares an `activity` label ("Analyzing raw-talk.mp4", "Reading the transcript",
   "Saving 14 segments", "Looking at 8 frames", "Saving 3 visual notes", "Planning the cut · rough cut",
-  "Building the rough cut · 143 clips").
+  "Building the rough cut · 143 clips"). While `analyze_media` waits, its row also names the stage the job is in next to
+  the percent ("Analyzing raw-talk.mp4 · mapping speakers", label codes `analyzing_stage_<stage>`): a host tool's
+  progress callback is `(percent, label?)` and `TurnEventWriter` re-publishes the row when the percent or the label
+  changes (`src/analysis/stageLabel.ts`).
 - `FakeAnalysisHost` (`src/testing`) is the in-memory host for tests (jobs that stay running until a gate
   opens, recorded requests); the runtime fixture wires it.
 
@@ -302,13 +426,45 @@ sync ledger).
   `<story-mode action="plan|review|build|rebuild|resolve">` block with the rules of the action and the user's options
   (`src/story/prompt.ts`). The Director's role text holds the standing rules (user decisions outrank the AI's earlier
   plan, locked nodes never change, never restore the previous variant on review).
-- **Tools** (`src/story/tools.ts`): `read_story` (Director and every specialist, any mode), `edit_story` (Director, story
-  plan/review turns only), `build_story` (build turns only: the Editor when enabled, else the Director),
-  `rebuild_story` (rebuild turns only, the Director). Service refusals (`locked`, `user_decision`, `conflict`,
-  `unknown_node`, `unsupported`, …) come back as tool errors `code (operations[N]): message`.
+- **Tools** (`src/story/tools.ts`): `read_story` (everyone, any mode; Jev too; `chapter` reads one chapter in full with
+  its material, links and open items, `section` one named part — overview, chapters, materials, links, decisions,
+  attention, locks, sync — and `offset` continues a long reading, the result names the next offset), `edit_story`
+  (Director, in story plan/review turns and, before the build, in build turns), `build_story` (build turns: the
+  Editor's; the Director gets it when the Editor is off), `rebuild_story` (rebuild turns only, the Director).
+  Specialists that are off in the chat hand their tools to the Director (`src/agents/inherit.ts`
+  `withInheritedTools`), which is how the Director gets `build_story`, the cut tools and the frame tools. Service
+  refusals (`locked`, `user_decision`, `conflict`, `unknown_node`, `unsupported`, …) come back as tool errors
+  `code (operations[N]): message`. A rebuild
+  refused because the story has no sync ledger (never built, or built before sync tracking) says nothing was written and
+  tells the model to propose a full Build Story, naming what it replaces.
 - **No timeline writes outside a build.** In a story-mode turn without `build`, nobody gets `edit_timeline`,
   `render_video` or `build_rough_cut` (analysis tools stay); a rebuild turn's only write is `rebuild_story`. A build turn
-  keeps the normal editing tools plus `build_story`; the graph is frozen while it compiles (no `edit_story`).
+  keeps the normal editing tools plus `build_story`.
+- **A length the user set is kept by the build.** When the user set a chapter's `estimatedDuration` and its cleaned A-roll
+  runs longer than that by more than max(10 s, 15 %), `build_story` trims every piece proportionally (each keeps its
+  start) and warns; an AI estimate never trims, and the review/needs-attention text tells the Director to choose the
+  ranges itself for a clean cut (`fitToEstimate` in `studio-server/src/story/aroll.ts`).
+- **Story offer material.** When an offer is accepted, the music, sound effects and footage a chapter's `material` text
+  clearly names (English/Russian wording, at most 3 per chapter) become Missing Asset nodes attached to that chapter
+  (music throughout, effect at the start, footage in the middle; the full text stays as the chapter's B-roll intent)
+  — `storyOfferOperations` in `src/storyOffer.ts`, within the 100-operation batch cap.
+- **Build turns produce the complete video** (`storyAction: "build"`; the rules are `buildRules` in `src/story/prompt.ts`):
+  the user expects a finished, watchable video with sound, not a silent draft, from this one turn. The Director (1)
+  prepares the graph with `edit_story` — Missing Asset nodes (`video` / `picture` / `music` / `sfx`) for the music bed
+  (unless the user said no music), the sound effects and the footage/pictures the chapters name, attached to the chapters
+  that use them (one music node attached to several chapters is one bed across them; a resolved `sfx` plays inside its
+  chapter at the attachment's offset, see `studio-server/src/story/compile.ts`); (2) when the Asset Search policy is
+  readable, fetches what is missing — Research delegated in tasks of up to 4 nodes, or the Director itself with the
+  research tools it inherits when Research is off — importing with `resolveMissing` (downloads that need approval ask
+  the user in the chat and the import call waits, see Autonomy); when Studio could not read the policy it says outside
+  material cannot be fetched and builds with what exists;
+  (3) runs `build_story` exactly once (the Editor, or the Director without one) and verifies with `inspect_timeline`;
+  (4) delegates Motion for the scenes and titles the build cannot generate and (5) Audio for the final mix (music level
+  under speech and effects, fades at the ends, effects on the beats); (6) reports per chapter including its sound and what
+  is still missing. `TurnStory.hasBuilt()` becomes true after a successful, non-`dryRun` `build_story`; from then on the
+  graph is frozen for the rest of the turn (`edit_story` is refused by `TurnStory`, `resolveMissing` /
+  `resolve_missing_asset` by the research executor through `TurnResearchOptions.storyBuilt`). A **rebuild** turn keeps
+  its narrow rules: only `rebuild_story` writes, Research gets nothing, and the prompts say so.
 - **Edit attribution.** `edit_timeline` requests carry the turn id (set by the executor, never the model), so the
   editing service stamps the clips an agent changes (`data-ov-ai-edit`) and Story sync can tell a later AI edit of
   generated material from the user's.
@@ -348,11 +504,12 @@ never from model-supplied text.
   the server). The runtime owns the **scope**: a URL is allowed only when its registrable domain (`www.` and subdomains
   included, `linkedSites`/`isLinkedSite`) was linked by the user — a URL, a `www.` address or a bare domain
   (`openvids.ai`; file names such as `index.html` or `Chrome Bounce.wav` are not links) in the chat's first prompt, a
-  later message or a steering message (`TurnRunner.userTexts` reads user-role messages only; assistant text, search
+  later message or a steering message (the turn's executors read user-role messages only; assistant text, search
   results and page contents never count). Anything else is refused before Studio is asked, with the instruction to ask
   the user for the link. Full access (`get_website_file`, `record_website`) adds an exact URL an earlier `read_website`
-  of a linked site listed in the same chat (its resources, logo, favicon, og image or fonts, CDN hosts included) — a
-  per-chat memory in the runtime (`WebsiteResourceLog`), lost on a runtime restart; the agent then reads the site again.
+  of a linked site listed in the same chat (its resources, logo, favicon, og image or fonts, CDN hosts included; never an address without a domain name — such a file is refused up front, with no card) — a
+  per-chat memory in the runtime (`WebsiteResourceLog`), kept as derived data in the chat's own directory
+  (`website-resources.json`, a week, a damaged file reads as empty), so it survives a restart.
   The server enforces the user's switches (Settings → Asset Search → Websites, `policy.websites.readLinkedPages` and
   `websites.fullAccess`, refusal `blocked_by_policy`), http(s) only and public addresses only. When a switch a call
   needs is off the call does not fail: it asks the user from the chat (see **Permission requests** below) and continues
@@ -365,15 +522,24 @@ never from model-supplied text.
   `<asset-search-policy>` block carry one line (`websiteAccessLine`) saying the tools are still there and that a call
   asks the user in chat. Unlike the asset tools, `read_website`, `get_website_file` and `record_website` do not need
   Research to be enabled or the policy to be readable: the Director, and Motion/Research when they are in the chat's
-  team, get all three whenever a research host exists (`ToolAvailability.websites`); a Story build/rebuild turn offers
+  team, get all three whenever a research host exists (`ToolAvailability.websites`); a Story rebuild turn offers
   none.
-- **Availability** (`researchToolsFor`, `src/research/tools.ts`): nobody gets the other research tools when Research is not
-  enabled in the chat or when the policy could not be read at the start of the turn (the runtime then fails closed and
-  the Director says so); a Story build or rebuild turn offers none; Jev and the other specialists never do; the Director
-  only has `read_sources`. `TurnResearch.execute` re-checks the caller against the same function, so the Director
-  cannot reach the search/import tools under any name.
+- **Availability** (`researchToolsFor`, `src/research/tools.ts`): Research gets the search/inspect/import/resolve/sources
+  tools; the Director has `read_sources` and, when Research is NOT enabled in the chat, inherits every tool Research would
+  have had (`withInheritedTools`: same policy, same download approvals, imports stamped with the Director as agent). A
+  Story rebuild turn offers none; Jev and the other specialists never get them. The tools are offered whenever a research
+  host exists; an unreadable policy at turn start is re-read by the first research call. `TurnResearch.execute`
+  re-checks the caller against the same function.
+- **Site scope**: Allow once on a website card covers that card's site only (per-site grants in the Studio server,
+  `WebsiteGrantStore`); Turn on covers every site. Linked sites = deliberate links (scheme or `www.`) of the whole chat
+  plus bare domains of the current turn, minus the user's `excludedSites` (`chatLinkedSites`, `src/research/linkedSites.ts`).
+  A refusal from Studio for something the broker thought granted resets the answer and asks again once. The files a
+  `read_website` listed are persisted per chat (`website-resources.json`, one week). Restricted-license imports ask a
+  `restricted_asset` card per asset (the server refuses with `restricted_license` otherwise); at most 12 imports per
+  turn; 429 answers are retried with backoff and fail as `rate_limited`; candidates survive a Studio restart for a week.
 - **Permission requests** (`src/permissions.ts`, `PermissionBroker`; contract `PermissionRequest`/`PermissionPart` in
-  `agent-protocol/src/types.ts`): when a website tool needs a setting that is off, the call does not fail — the runtime
+  `agent-protocol/src/types.ts`; kinds `read_linked_pages`, `website_full_access`, `asset_download`): when a website tool
+  needs a setting that is off, or a download needs the user's approval, the call does not fail — the runtime
   publishes a pending `PermissionPart` in the **main conversation's** assistant message of the running turn (whichever
   agent asked, a specialist inside its run included) as a `permission.updated` chat event (SSE `event: chat`, folded by
   `applyChatEvent`, persisted in the chat's event log), so the chat shows the setting with "Allow once" / "Turn on" /
@@ -383,29 +549,49 @@ never from model-supplied text.
   switches the setting on (`PUT /api/research/policy {websites:{…}}`; full access also sets `readLinkedPages`), `deny`
   refuses every later call of that kind in the turn. Concurrent asks of the same kind share one request, and an answered
   kind is not asked again; an answered `website_full_access` request also covers reading, because full access includes
-  it. The waiting call resumes on the answer (its result tells the model the user allowed it once /
-  turned it on; when the card was about a download or a recording, the answer also counts as the turn's
-  `askBeforeDownloads` approval for the website tools, an answer to an open/read card never does) or returns
-  a refusal on deny/expiry ("continue without it, do not retry this turn"). The request never times out by itself:
-  Stop, turn end or failure expires it (part updated) and revokes the turn's grant (best effort). When Studio cannot
-  apply an `always`/`once` answer the request stays pending and the route fails, so the user can retry. The policy
-  snapshot read at turn start decides up front, and a `blocked_by_policy` refusal re-reads the policy so a change made
-  in Settings mid-turn is honoured. `FakeResearchHost` records `policyUpdates`/`grants`/`revokedGrants` for tests.
+  it. `asset_download` is the third kind (the agents' Autonomy rule `askBeforeDownloads`, not an Asset Search setting): the
+  request carries `asset` (`PermissionAsset`: title, source name or host, license as stated; taken from Research's
+  remembered candidate or the URL host, never from model text), needs **no Studio grant** — `once` only approves
+  downloads for the rest of this turn (runtime-only), `always` ("Don't ask again") switches the global setting
+  `autonomy.askBeforeDownloads` off through `PermissionBrokerOptions.disableDownloadAsk` (wired to the settings store;
+  when it fails the request stays pending) and approves, `deny` refuses every later download of the turn with a text
+  telling the model the user declined (continue without outside material, do not retry, say what is missing). The
+  same states are used (`allowed_once` / `enabled` / `denied` / `expired`). The waiting call resumes on the answer (its
+  result tells the model the user allowed it once / turned it on; when the card was about a download or a recording
+  (`asset_download` included), the answer also counts as the turn's `askBeforeDownloads` approval, an answer to an
+  open/read card never does) or returns a refusal on deny/expiry ("continue without it, do not retry this turn"). The
+  request never times out by itself: Stop, turn end or failure expires it (part updated) and revokes the turn's grant
+  (best effort). When Studio cannot apply an `always`/`once` answer the request stays pending and the route fails, so
+  the user can retry. The policy snapshot read at turn start decides up front, and a `blocked_by_policy` refusal
+  re-reads the policy so a change made in Settings mid-turn is honoured. `FakeResearchHost` records
+  `policyUpdates`/`grants`/`revokedGrants` for tests.
 - **What the runtime owns.** `turnId`, `agent: "research"` and `model` (the model of the Research run, `provider/modelId`)
   are set by `src/research/executor.ts` on every import; whatever the model sends for them, or for a policy mode, is
   dropped. In a `resolve` turn with `storyOptions.missing`, `resolveMissing` / `resolve_missing_asset.missing` outside
   that list are refused by the executor.
 - **Prompt.** At the start of a turn (whenever a research host exists) the runtime reads the policy: the Director's `<team>` block
-  states the mode and the number of enabled trusted sources (or that Research is disabled/unavailable and the user has to
-  enable it), and every task delegated to Research carries an `<asset-search-policy>` block with the mode, the enabled
+  states the mode and the number of enabled trusted sources (or that the policy could not be read; with Research off it
+  carries the policy, the enabled sources and the rules for the Director's own search work), and every task delegated to Research carries an `<asset-search-policy>` block with the mode, the enabled
   sources (id, name, kinds, license note) and the rules (stay within the policy, prefer clear > attribution > unknown
   licenses, match the node's need/kind/`neededDuration`, import only what will be used, resolve with `resolveMissing`,
-  report source + license per asset, never invent license information) (`src/research/prompt.ts`).
+  report source + license per asset, never invent license information) (`src/research/prompt.ts`). With Research off in the chat
+  the same policy text, the source list and the working rules go into the Director's `<team>` block instead
+  (`researchTeamLine`).
 - **Resolve turns** (`storyAction: "resolve"`, Studio's "Find missing material"; `storyOptions.missing` limits the nodes):
   a checkpointed story-mode turn whose `<story-mode action="resolve">` block lists the unlocked Missing Asset nodes in
   scope. The Director delegates Research (batches of up to 4 nodes), nobody edits the story, builds or writes the
-  timeline; Research has `read_story` plus the research tools. Without Research the Director does nothing and says why.
+  timeline; Research has `read_story` plus the research tools. With Research off in the chat the Director does that work
+  itself with the research tools it inherits (the prompt says so: `RESOLVE_SELF`); it does nothing only when Studio could
+  not read the Asset Search policy, and says why.
   Afterwards the Director tells the user to Build Story / Rebuild affected sections.
+- **Build and rebuild turns.** A build turn ("Build the video") offers the same research tools as a normal turn (Research:
+  search/inspect/import/resolve/sources; Director: `read_sources`; the website tools as usual): the build produces the
+  complete video, so Research fetches the music bed, sound effects and footage the graph's Missing Asset nodes ask for
+  _before_ `build_story` and resolves them with `import_asset … resolveMissing`; the build then places them. Once
+  `build_story` has succeeded in the turn the graph is frozen for Research too (the executor refuses `resolveMissing` and
+  `resolve_missing_asset`); later material is imported without `resolveMissing` and placed with `edit_timeline`. A
+  rebuild turn offers no research tool at all: `delegate` to Research is refused with a tool error, no `<asset-search-policy>`
+  block is added, and the `<team>` roster says Research cannot search or import there (`researchTeamLine(…, action)`).
 - **Export licenses.** After a successful `render_video`, `TurnEditing` calls `export-check` for the composition and appends
   the license warnings and credits to the tool result; the check never blocks, and a failed check is only noted.
 - **Lifecycle.** Like the other executors, research calls go to a per-turn `TurnResearch` (refused when no turn is running
@@ -430,7 +616,7 @@ preview, checks the **rendered file**, has Vision review frames of it, stores a 
 delegate corrections — within a bounded number of passes. The Studio server (contract in
 `packages/agent-protocol/src/qa.ts`) owns everything that needs the project or the render (the project fingerprint, the
 deterministic checks, frame extraction, the reports in `<project>/.hyperframes/qa/`); the runtime reaches it over loopback
-HTTP (`src/qa/host.http.ts`: `${studioOrigin}/api/projects/:id/qa/{state,check,frames,reports}`) and owns the loop and
+HTTP (`src/qa/host.http.ts`: `${studioOrigin}/api/projects/:id/qa/{state,check,check-timeline,frames,reports,accepted}`) and owns the loop and
 Vision's review.
 
 **Execution Quality** is the orchestration budget of a turn: `fast` | `balanced` (default) | `best` | `custom`
@@ -448,38 +634,75 @@ not suggested:
   `<asset-search-policy>` block tells Research.
 - `analysisFramesPerSource` → `TurnAnalysis` refuses `inspect_frames` calls that would extract more distinct frames per
   source in the turn (the refusal names the budget and what is left; a time already inspected is free).
-- `qaMaxFrames`, `critiqueRounds`, 12 frames per call → `TurnQa` (`src/qa/executor.ts`) on Vision's `inspect_render`;
+  The same number is the per-turn budget of `inspect_composition` (composition frames; frames Studio serves from its
+  cache are given back, so only changed or new moments cost).
+- `qaMaxFrames`, `critiqueRounds`, 12 frames per call → `TurnQa` (`src/qa/executor.ts`) on the reviewer's `inspect_render`;
   `qaFramesPerMinute` / `qaMaxFrames` also go to the service to plan the frames Vision gets.
 
-**The loop** (`src/qa/loop.ts`, run by `TurnRunner` after the Director and its follow-ups finished). QA runs only when the
-Director's work completed, the turn may write the timeline (normal turns and story `build` turns; a story `rebuild` turn
-is checked but report-only — no correction: only `rebuild_story` may write there; story review/resolve turns are never
-checked) and either the project fingerprint differs from the one at turn start (`QaHost.state`) or the turn rendered the
-main composition (an export request on an unchanged project still gets its render checked). With `qaPasses` 0 the turn
-records `skipped` ("Render QA is off") when the project changed. A composition over 180 s is not rendered unless the user
-asked for a render in this turn (→ `skipped` with the reason). Pass _k_ of _N_:
+**The loop** (`src/qa/loop.ts`; the pass itself in `pass.ts`, the visual review in `review.ts`, the live state in
+`state.ts`; run by the turn runner after the Director and its follow-ups finished). QA runs only when the Director's work
+completed, the turn may write the timeline (normal turns and story `build` turns; a story `rebuild` turn is checked but
+report-only — no correction: only `rebuild_story` may write there; story review/resolve turns are never checked) and
+either the project fingerprint differs from the one at turn start (`QaHost.state`) or the turn rendered the main
+composition (an export request on an unchanged project still gets its render checked). With `qaPasses` 0 the turn
+records `skipped` ("Render QA is off") when the project changed. Each pass checks only as much as it needs
+(`QaScope`, recorded on the pass, the report and the turn's QA with a `scopeNote`):
+
+- `full`: render + deterministic checks + visual review.
+- `timeline`: no render; `QaHost.checkTimeline` (flash clips, gaps, missing files, past-media, cuts inside words, story
+  Missing Assets). Used for a composition over 180 s that the user did not ask to render in this turn, in words or by allowing the `long_render` card (`too_long`; the
+  correction loop still runs on its findings), and as the fallback when the render checks time out (`check_timeout`:
+  the render exists, its measured checks did not finish within the host's deadline, or the runtime's own fetch default
+  fired first — `QaToolError` code `timeout`). The final report says the render was not looked at.
+- `deterministic`: render + deterministic checks, the visual review skipped by the cheap-path rule. The rule compares
+  the timeline with the timeline of the previous pass (pass 1: the timeline when the turn started, `startTimeline`),
+  clip by clip (`src/qa/changeScope.ts`): only audio clips changed (`audio_only`: Vision cannot hear), or at most 2
+  existing clips were only retimed / re-leveled with no new picture, source or text (`small_change`: the deterministic
+  checks cover what a retiming breaks). A change nobody can size (captions or styles changed, no clip did; a different
+  canvas), and a visual issue still waiting for its re-check (a fixable Vision issue open after the previous pass), get
+  the full review.
+
+Issues the pass did not look at stay open as **not re-checked** instead of being recorded fixed: the previous pass's
+issues whose source this pass skipped (a visual review that did not run or failed, a timeline-only pass, a failed render,
+a render-measured or layout check that did not run) are carried as `notRechecked` drafts — report-only (`fixable:
+false`, never sent to a correction, listed apart in the correction and final prompts). When only such issues remain the
+loop ends `issues_remain` / `not_rechecked`. Issues the user **marked intentional** (`QaHost.accepted`, the project's
+`.hyperframes/qa/accepted.json`; a match is `findAcceptedQaIssue`: same composition, kind, overlapping time, same
+subject) are left out of every pass — deterministic findings and Vision's alike — counted in `QaReport.suppressed` /
+`QaPassState.suppressed`, told to Vision, the Director's correction and final prompts, and never asked for again.
+
+Pass _k_ of _N_:
 
 1. **Render** a preview (`draft`; when the user asked for a render, the quality of the Director's last `render_video`, else
    `standard`, so the last QA render is the deliverable; a re-render after a correction keeps the quality of the render it
    replaces). Pass 1 reuses the Director's own render of the same composition when the project had the same fingerprint
-   before that render started as when QA starts (`TurnEditing.lastRender`). A failed render is stored as a report
-   (`renderError` + a fixable `render_failed` issue owned by the Editor) and counts as a pass.
+   before that render started as when QA starts (`TurnEditing.lastRender`). The render's progress goes to
+   `QaPassState.progress` (published on a 3 % step or a second). A render failure is classified
+   (`src/qa/renderFailure.ts`): one that names the machine or Studio (missing ffmpeg, full disk, dead browser, lost
+   sidecar, Studio plumbing) ends QA at once as `failed` (`render_environment`, the real reason, no correction, no
+   report); any other is stored as a report (`renderError` + a fixable `render_failed` issue owned by the Editor) and
+   counts as a pass.
 2. **Check** the render (`QaHost.check`: black/frozen frames, audio gaps, flash clips, missing files, layout) and get the
-   frames to review.
-3. **Vision review**: a runtime-started Vision run "Render QA · pass _k_" (`Orchestrator.runInternal`; an ordinary run in
+   frames to review. A check that times out falls back to the timeline checks (above).
+3. **Visual review**: a runtime-started Vision run "Render QA · pass _k_" (`Orchestrator.runInternal`; an ordinary run in
    the chat, counted as reported so it never re-prompts the Director) with `inspect_render {times}` and
-   `report_render_findings {findings}` — tools only Vision has, refused outside an open review. Findings are forced to
-   source `vision` and deduplicated against the deterministic issues with `sameQaIssue`. Vision not enabled, the run
-   failed, or no findings reported → `vision.status` `unavailable` / `failed` with a reason; the deterministic result
-   stands and the Director is told.
+   `report_render_findings {findings}` — tools refused outside an open review and for anyone but its reviewer. When
+   Vision is **off in the chat** the Director does the review (`qaToolsFor` applies the inherited-tools rule): the same
+   task goes to the Director as a `<render-qa-review>` prompt in phase `review`, where every project-changing tool is
+   refused; its text around the review is marked interim; `QaVisionRun.reviewer` is `director`. Findings are forced to
+   source `vision` and deduplicated against the deterministic issues with `sameQaIssue` (kind + overlapping time +
+   subject when both name one). The run failed or no findings reported → `vision.status` `failed` with a reason; the
+   deterministic result stands and the Director is told.
 4. **Compare** with the previous pass (`compareQaPass`: new / persisting / reappeared / fixed), **store** the report
    (`QaHost.saveReport`), emit `qa.updated` on every phase change and keep `turn.qa` current.
 5. If fixable issues remain and _k_ < _N_: the Director gets a `<render-qa pass=… limit=…>` prompt (open issues by owner
    with ids, times, clips and suggestions; what was fixed, persists, reappeared, and what is new after its last correction
-   — a regression; instruction to delegate to Editor/Motion/Audio/Research with self-contained tasks) and its delegated runs
-   are collected like after its first reply. `render_video` is refused during a correction (the runtime re-renders). A
-   correction that leaves the project fingerprint unchanged ends the loop (`issues_remain`); the loop never exceeds _N_
-   renders (at most *N*−1 corrections).
+   — a regression; the not-re-checked and intentional ones apart; a "Look at" line per picture issue naming the moments
+   to open with `inspect_composition`, to be put into the delegated task — a prompt carries text only; instruction to
+   delegate to Editor/Motion/Audio/Research with self-contained tasks; a deterministic finding that is plainly
+   intentional may be left, said so in the report) and its delegated runs are collected like after its first reply.
+   `render_video` is refused during a correction (the runtime re-renders). A correction that leaves the project
+   fingerprint unchanged ends the loop (`issues_remain`); the loop never exceeds _N_ renders (at most *N*−1 corrections).
 
 **The Director does not announce "done" before QA.** When QA can apply to a turn (QA host available, `qaPasses` > 0,
 `qaApplies(mode, action)`), the Director's first prompt and its follow-up prompts before QA end with a
@@ -488,8 +711,11 @@ model obeying: when QA really starts, and again before the final prompt (so corr
 `TurnEventWriter.markTextInterim()`, which emits `assistant.parts.interim {messageId, partIds}` for the Director's text
 parts written so far (folded to `interim: true` on the text part; Studio labels them "Before render QA"). The
 `<render-qa-final>` prompt's reply is the final answer. When QA is skipped after the Director was told a check follows
-(the project did not change, or the composition is too long to render unasked), its reply is marked interim and a
-`<render-qa-skipped>` prompt asks for the real answer with the reason.
+(Studio's QA service cannot say whether the project changed, or cannot be read), its reply is marked interim and a
+`<render-qa-skipped>` prompt asks for the real answer with the reason. The same closing prompt follows when the
+project ended **unchanged** but the Director (or its team) called a project-changing tool this turn
+(`QaLoopDeps.workAttempted`): an edit that was refused or a teammate's work that did not land must not stay behind a
+"checking now" reply; a turn that only answered gets nothing extra.
 
 **Reverted turns.** The Director's session keeps the messages of a turn the user reverted; the next turn's first prompt
 carries a `<reverted-turns>` block (`src/revertedTurns.ts`) listing the turns reverted since the previous turn started,
@@ -511,9 +737,13 @@ then applies its report retention (`studio-server/src/qa/retention.ts`: the repo
 anything younger than 3 days and of a running session stay; older reports and orphaned frame caches go). The call uses
 its own signal (not the turn's, so it runs after an abort), is bounded by the host's timeout, and its failure is
 swallowed (`TurnQa.finishSession`): cleanup never fails a turn.
+What the service deleted comes back in the finish answer, and the loop sets `QaPassState.renderKept` on every pass that
+has a render: the card links only the renders that are still there (a report read later carries the derived
+`renderAvailable`).
 
-`FakeQaHost` (`src/testing`) is the in-memory host for tests (the project's `fingerprint` and `bump()`, queued check
-results, `checkGate` / `framesGate` / `cancelDelay`, stored `reports`); the runtime fixture wires it.
+`FakeQaHost` (`src/testing`) is the in-memory host for tests (the project's `fingerprint` and `bump()`, queued check and
+timeline-check results, `acceptedItems`, `finishRemoved`, `checkGate` / `framesGate` / `cancelDelay`, stored `reports`);
+the runtime fixture wires it.
 
 ## Turns, checkpoints, concurrency
 
@@ -561,6 +791,31 @@ HTML file that contains `data-timeline-locked` elements it computes the content 
 any locked element (matched by `data-hf-id`, else `id`) would be removed, changed or unlocked, or if
 the call cannot be interpreted (`src/omp/lock-guard.ts`).
 
+The guard also knows who it guards. **Vision and Research may not `edit`/`write`** at all (a role refusal that names the
+agent and says what to do instead), whatever the turn allows. **Write leases** (`src/writeLeases.ts`, one `WriteLeases` per
+turn): before an `edit`/`write` of a composition file (`.html`) the guard asks `OpenBackendSessionInput.claimWriteFiles`;
+a delegated run holds the files it writes until its run ends, another run's (and the Director's) write to a held file is
+refused with the holder's name, and the Director itself never takes a lease. A session knows the run it serves (a
+specialist's resumable session is rebound to each new run, an extra parallel session and a Jev session are opened for
+one), so two runs of one specialist never share a lease, and a Jev run called by a specialist writes under that run's
+lease instead of being refused by it (`Orchestrator.leaseWriterOf`). The editing service calls the same store
+before `edit_timeline` applies to a composition. **Bundled skills** are readable: `read`/`grep`/`glob`/`find` may look
+into the skills tree (`OPENVIDS_SKILLS_DIR`, else `<repo>/skills` in a source checkout, else
+`<resources>/runtime/hyperframes/skills` in the packaged app; `src/omp/skills-root.ts`), never write or edit there, and the
+session's system prompt names the folder. `tools.intentTracing` is off in the session settings: it adds an `i` argument to
+every tool, which models were seen gluing onto tool names (`i_inspect_timeline`); the wire-only `_` prefix pi-ai puts on
+tool names for Anthropic OAuth is the SDK's and cannot be changed here.
+
+What the SDK does around a model call is visible. `auto_retry_start/end` and `auto_compaction_start/end` become labelled
+activity rows (`provider_retry` with `attempt`, `maxAttempts`, `delaySeconds`; `context_compaction`) from start to end
+(`src/omp/maintenance.ts`). A failed tool row carries `Activity.error` (`tool_failed` + the tool's own text, trimmed to 300
+characters with anything credential-shaped masked). A provider failure rejects the prompt with a `RuntimeError` classified
+from the message (`provider_auth`, `rate_limited`, `provider_overloaded`, `context_overflow`, else `agent_failed`; says so
+when the SDK retried first; `src/omp/provider-errors.ts`) and `failureCode(error)` (errors.ts) gives the turn's error code.
+Each finished model call becomes a `usage` backend event (tokens and cost of that call, plus the context fill after it);
+`TurnEventWriter` sums them per agent into the cumulative `usage.updated` events. `AgentBackend.contextHash(projectDir)`
+hashes the project context file as the agent sees it, so an edited `AGENTS.md` reopens the sessions.
+
 ## Develop
 
 ```bash
@@ -571,3 +826,20 @@ OPENVIDS_AGENT_TOKEN=dev bun packages/agent-runtime/src/main.ts
 
 Vitest resolves `@hyperframes/agent-protocol` through its `node` export condition, so build it first
 (`bun run --cwd packages/agent-protocol build`; the root `bun run build` does).
+
+## Turn runner internals
+
+`turns.ts` is the public `TurnRunner`; the work lives in `src/turn/`: `run.ts` (the Director's prompt loop), `executors.ts` (the turn's tool services and brokers), `dispatch.ts` (every host-tool call: intent/phase refusals, family routing), `gates.ts` (phase and file-write rules), `sessions.ts`, `prompt.ts`, `finalize.ts`, `reverts.ts`, `storyOffers.ts`, `changes.ts`, `watchdog.ts`.
+
+- **Stable sessions.** A Director/specialist session is opened with the union of the tools any kind of turn would give it (Ask/Edit, story actions, plan and Story offers) and keeps them; the turn's real rules are enforced at dispatch with a refusal that says why. The session signature also holds the project's context-file hash (`AgentBackend.contextHash`), so an edited `AGENTS.md` reopens it.
+- **Director watchdog.** No backend event for `promptStallMs` (default 10 min) fails the turn with a clear error; the clock is held while one of the Director's own tools runs (render, analysis, a question to the user).
+- **Long renders.** A composition over 3 minutes that the user did not ask to render shows a `long_render` card (once/deny); a request in words (tolerant EN/RU rule, negations cancel; a bare "render"/"export" counts only as an imperative or after a request opener, so a question or a remark like "the last render took forever" asks for nothing) skips it.
+- **Phase gates.** `propose_plan`/`offer_story_mode` exclude each other and are refused in every Render QA phase; `request_input` is refused in QA; the final report starts no analysis job.
+- **Plan staleness.** A proposal records `projectFingerprint`; an execute turn on a changed project gets a note to adapt the steps.
+- **Steering** received during setup, while the Director is idle, still starting its prompt, or refused by the model is queued and opens the next Director prompt (never a 409 or a failed turn); `BackendSession.steer` rejects whatever it cannot take now and the backend never queues text itself. A completed turn that left delegated runs open says they were stopped.
+- **`request_input`** asks the user one question (up to 6 options) and waits like a permission; the turn's end expires it, and so does cancelling the run that asked (only that question; the same holds for a `long_render` or download card a cancelled run is waiting on). Answer: `POST …/turns/:turnId/questions/:questionId`.
+- **Routes.** `DELETE /chats/:chatId` (409 `chat_busy` while the chat runs a turn, is being reverted or is already being deleted; the chat is reserved before the first await), `POST …/runs/:runId/cancel`, `PATCH /chats/:id {excludedSites}`; `ChatSummary.linkedSites` is recomputed from the user's messages.
+- **Change summary.** `TurnSummary.changes` counts what tools applied (`add_clip`, `remove_clip`, `move_clip`, `trim_clip`, `update_clip`, `captions`, `audio`, `canvas`, `story_edit`, `story_build`, `rough_cut`, `import`, `web_save`, `file_edit`, `render`).
+- **Editor context** goes in full once, in the Director's first prompt of a turn; specialist tasks and steering carry it without the clip list.
+- **Carried-out plans.** A turn started from a proposal ("Carry out the plan") records the proposal's turn as `TurnSummary.executedPlanTurnId`.
+- **Wiring facts the tests rely on.** `openTurnTools` (`src/turn/executors.ts`) opens, from the options the app passes (`editing`, `frames`, `analysis`, `story`, `research`, `qa`), one executor per family and the brokers; a family's tools are offered when its host exists (`ToolAvailability`), and the Director's own set grows with every specialist that is off. A run's write leases end with the run (`runSettle`) and the turn's with `finalizeTurn`; `claimWriteFiles` (`sessions.ts`) asks the same store for the `edit`/`write` guard, with the running run of the calling specialist. `failureCode(error)` gives a failed turn its error code. In tests a session's tool list says nothing about the turn: `usableTools` (`src/testing/usable.ts`) calls the tools from inside a prompt script and reports the ones dispatch does not refuse, and `isQaClosing` (`src/qa/harness.ts`) lets a script skip Render QA's closing prompt (`<render-qa-skipped>`), which would otherwise run it a second time.

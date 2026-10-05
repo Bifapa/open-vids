@@ -869,8 +869,10 @@ describe("Rebuild affected section", () => {
     const f = createStoryFixture({ html: WITH_TITLE });
     fixture = f;
     await referenceStory(f);
-    await expect(rebuild(f)).rejects.toSatisfy(
-      (error: unknown) => isStoryFailure(error) && error.error.code === "unsupported",
+    const never = await rebuild(f).catch((error: unknown) => error);
+    expect(isStoryFailure(never) && never.error.code === "unsupported").toBe(true);
+    expect(isStoryFailure(never) && never.error.message).toContain(
+      "A full Build Story creates the whole timeline from the graph",
     );
     await f.service.build(f.project, { turnId: "turn-1" });
     // A timeline built before synchronization: story clips, no ledger.
@@ -878,8 +880,13 @@ describe("Rebuild affected section", () => {
     const { rmSync } = await import("node:fs");
     rmSync(ledgerPath);
     expect((await reportOf(f)).state).toBe("untracked");
-    await expect(rebuild(f)).rejects.toSatisfy(
-      (error: unknown) => isStoryFailure(error) && error.error.code === "unsupported",
+    const untracked = await rebuild(f).catch((error: unknown) => error);
+    expect(isStoryFailure(untracked) && untracked.error.code === "unsupported").toBe(true);
+    expect(isStoryFailure(untracked) && untracked.error.message).toContain(
+      "Propose it to the user",
+    );
+    expect(isStoryFailure(untracked) && untracked.error.message).toContain(
+      "replaces the manual edits to clips the story generated",
     );
     // A full build takes the timeline over.
     await f.service.build(f.project, { turnId: "turn-2" });

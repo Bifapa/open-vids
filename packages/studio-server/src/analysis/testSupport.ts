@@ -91,6 +91,8 @@ export interface FakeSpeech {
   /** When set, recognition waits until the signal aborts (a stuck recognizer). */
   hang: boolean;
   abortedCalls: number;
+  /** When set, the recognizer prints nothing and answers only after this resolves (a long, silent decode). */
+  hold: Promise<void> | null;
 }
 
 export interface TestProject {
@@ -121,6 +123,7 @@ export function createAnalysisProject(options: TestProjectOptions = {}): TestPro
     unavailable: null,
     hang: false,
     abortedCalls: 0,
+    hold: null,
   };
   const adapter: StudioApiAdapter = {
     listProjects: () => [project],
@@ -149,6 +152,7 @@ export function createAnalysisProject(options: TestProjectOptions = {}): TestPro
           );
         });
       }
+      await speech.hold;
       return { words: speech.words, language: "en", producer: "fake recognizer" };
     };
     adapter.diarizeMedia = async (): Promise<SpeakerDiarization | { unavailable: string }> => {

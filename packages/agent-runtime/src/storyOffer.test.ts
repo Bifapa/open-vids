@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ChatService } from "./chats.js";
-import type { StoryOffer, StoryOfferPart } from "@hyperframes/agent-protocol";
+import type { StartTurnRequest, StoryOffer, StoryOfferPart } from "@hyperframes/agent-protocol";
 import type { ScriptedSession } from "./testing/backend.js";
+import type { HostToolResult } from "./backend.js";
+import { isQaClosing } from "./qa/harness.js";
 import { chapterNode, storyGraph, storyView } from "./testing/story.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "./testing/runtimeFixture.js";
 
@@ -81,7 +83,8 @@ describe("Story Mode offers in chat", () => {
         write: string | null;
         propose: string;
       } | null = null;
-      fixture.backend.promptScript = async (_input, session) => {
+      fixture.backend.promptScript = async (input, session) => {
+        if (!input.text.includes("Сделай ролик")) return "completed";
         const offered = await session.callTool("offer_story_mode", { chapters: CHAPTER_SCRIPT });
         // After the offer nothing in the project changes for the rest of the turn.
         const edit = await session.callTool("edit_timeline", {
@@ -106,13 +109,15 @@ describe("Story Mode offers in chat", () => {
       await finishTurn(fixture, chat.id);
       const session = fixture.backend.sessionsOf("director").at(-1);
       expect(toolNames(session)).toContain("offer_story_mode");
-      expect(session?.prompts.at(-1)?.text).toContain("<story-offer>");
+      expect(session?.prompts.find((p) => p.text.includes("Сделай ролик"))?.text).toContain(
+        "<story-offer>",
+      );
       expect(calls).not.toBeNull();
       expect(calls!.offered).toContain("Story Mode offer with 3 chapters");
       expect(calls!.edit).toContain("already offered Story Mode");
       expect(calls!.render).toContain("already offered Story Mode");
       expect(calls!.write).toContain("already offered Story Mode");
-      expect(calls!.propose).toContain("not available in this turn");
+      expect(calls!.propose).toContain("Story Mode is already offered in this turn");
       expect(fixture.editing.applyRequests).toHaveLength(0);
       expect(fixture.editing.renderRequests).toHaveLength(0);
       // The card is pending, with the chapters in the user's own words and order…
@@ -156,8 +161,9 @@ describe("Story Mode offers in chat", () => {
       });
       await finishTurn(fixture, declinedChat.id);
       const declined = fixture.backend.sessionsOf("director").at(-1);
-      expect(toolNames(declined)).not.toContain("offer_story_mode");
-      expect(declined?.prompts.at(-1)?.text).toContain("<story-declined>");
+      expect(declined?.prompts.find((p) => p.text.includes("Без Story"))?.text).toContain(
+        "<story-declined>",
+      );
 
       // A story that already has chapters is no longer offered at all.
       const storyChat = await fixture.chats.create({ title: "Has a story" }, []);
@@ -165,27 +171,42 @@ describe("Story Mode offers in chat", () => {
       await fixture.turns.start(storyChat.id, { prompt: "Add a chapter about the engine" });
       await finishTurn(fixture, storyChat.id);
       const withChapters = fixture.backend.sessionsOf("director").at(-1);
-      expect(toolNames(withChapters)).not.toContain("offer_story_mode");
-      expect(withChapters?.prompts.at(-1)?.text).not.toContain("<story-offer>");
+      expect(
+        withChapters?.prompts.find((p) => p.text.includes("Add a chapter"))?.text,
+      ).not.toContain("<story-offer>");
 
-      // Story-mode and Ask turns never get the offer either.
+      // Story-mode and Ask turns never get the offer either: the prompt does not carry the block, and a call to
+      // offer_story_mode (the Director's session keeps the tool in its stable list) is refused without a card.
       fixture.story.viewResult = storyView(null);
+      const attempt = async (chatId: string, request: StartTurnRequest) => {
+        const seen: { prompt?: string; refusal?: HostToolResult } = {};
+        fixture.backend.promptScript = async (input, session) => {
+          if (isQaClosing(input)) return "completed";
+          seen.prompt ??= input.text;
+          seen.refusal ??= await session.callTool("offer_story_mode", { chapters: CHAPTER_SCRIPT });
+          return "completed";
+        };
+        await fixture.turns.start(chatId, request);
+        await finishTurn(fixture, chatId);
+        return seen;
+      };
       const storyModeChat = await fixture.chats.create({ title: "Story mode" }, []);
-      await fixture.turns.start(storyModeChat.id, {
+      const reviewed = await attempt(storyModeChat.id, {
         prompt: "Review the story",
         storyAction: "review",
       });
-      await finishTurn(fixture, storyModeChat.id);
-      expect(toolNames(fixture.backend.sessionsOf("director").at(-1))).not.toContain(
-        "offer_story_mode",
-      );
+      expect(reviewed.prompt).not.toContain("<story-offer>");
+      expect(reviewed.refusal).toMatchObject({
+        isError: true,
+        text: expect.stringContaining("Offering Story Mode is not available in this turn"),
+      });
+      expect(() => offerOf(fixture, storyModeChat.id)).toThrow("no Story Mode offer");
 
       const askChat = await fixture.chats.create({ title: "Ask" }, []);
-      await fixture.turns.start(askChat.id, { prompt: "What is in the story?", intent: "ask" });
-      await finishTurn(fixture, askChat.id);
-      expect(toolNames(fixture.backend.sessionsOf("director").at(-1))).not.toContain(
-        "offer_story_mode",
-      );
+      const asked = await attempt(askChat.id, { prompt: "What is in the story?", intent: "ask" });
+      expect(asked.prompt).not.toContain("<story-offer>");
+      expect(asked.refusal).toMatchObject({ isError: true });
+      expect(() => offerOf(fixture, askChat.id)).toThrow("no Story Mode offer");
     } finally {
       await fixture.cleanup();
     }
@@ -209,8 +230,10 @@ describe("Story Mode offers in chat", () => {
       });
       await finishTurn(fixture, chat.id);
       const execute = fixture.backend.sessionsOf("director").at(-1);
-      expect(toolNames(execute)).not.toContain("offer_story_mode");
-      expect(execute?.prompts.at(-1)?.text).not.toContain("<story-offer>");
+      // The tool list is the same in every turn; this turn's prompt carries no offer block.
+      expect(
+        execute?.prompts.find((p) => p.text.includes("Carry out the plan"))?.text,
+      ).not.toContain("<story-offer>");
     } finally {
       await fixture.cleanup();
     }
@@ -251,6 +274,18 @@ describe("Story Mode offers in chat", () => {
         },
         { op: "connect", from: "@chapter-1", to: "@chapter-2" },
         { op: "connect", from: "@chapter-2", to: "@chapter-3" },
+        {
+          op: "add_node",
+          ref: "need-1",
+          node: {
+            kind: "missing",
+            title: "Музыка · Финал с титрами",
+            mediaKind: "music",
+            need: "музыка (Финал с титрами)",
+            neededDuration: 12,
+          },
+        },
+        { op: "attach", node: "@need-1", chapter: "@chapter-3", placement: "throughout" },
       ]);
       expect(offerOf(fixture, chat.id).offer).toMatchObject({
         id: offer.id,

@@ -5,6 +5,7 @@ import { createOmpBackend } from "./omp/index.ts";
 import { HttpCheckpointHost } from "./checkpointHost.http.js";
 import { HttpAnalysisHost } from "./analysis/host.http.js";
 import { HttpEditingHost } from "./editing/host.http.js";
+import { HttpFramesHost } from "./editing/frames.http.js";
 import { HttpStoryHost } from "./story/host.http.js";
 import { HttpResearchHost } from "./research/host.http.js";
 import { HttpQaHost } from "./qa/host.http.js";
@@ -27,6 +28,7 @@ const app = createRuntimeApp({
   checkpoints: new HttpCheckpointHost(),
   editing: (scope) => new HttpEditingHost(scope),
   analysis: (scope) => new HttpAnalysisHost(scope),
+  frames: (scope) => new HttpFramesHost(scope),
   story: (scope) => new HttpStoryHost(scope),
   research: (scope) => new HttpResearchHost(scope),
   qa: (scope) => new HttpQaHost(scope),

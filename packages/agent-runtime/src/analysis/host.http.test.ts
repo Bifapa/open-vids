@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AnalysisJob, CutPlan } from "@hyperframes/agent-protocol";
 import type { ProjectScope } from "../checkpointHost.js";
 import { AnalysisToolError } from "./host.js";
@@ -37,7 +37,7 @@ const json = (response: ServerResponse, status: number, body: unknown) => {
 const PREFIX = "/api/projects/p%201/analysis";
 
 /** A loopback stand-in for Studio's routes: `routes` is keyed by "METHOD /path-without-query". */
-async function studio(routes: Record<string, Route>) {
+async function studio(routes: Record<string, Route>, readCeilingMs?: number) {
   const seen: Seen[] = [];
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     let text = "";
@@ -65,7 +65,7 @@ async function studio(routes: Record<string, Route>) {
     projectDir: "/tmp/p",
     studioOrigin: `http://127.0.0.1:${address.port}`,
   };
-  return { host: new HttpAnalysisHost(scope), seen };
+  return { host: new HttpAnalysisHost(scope, readCeilingMs), seen };
 }
 
 const abortSignal = () => new AbortController().signal;
@@ -79,6 +79,7 @@ const job = (status: AnalysisJob["status"], extra: Partial<AnalysisJob> = {}): A
   results: [],
   error: null,
   startedAt: 1,
+  updatedAt: 1,
   finishedAt: status === "running" ? null : 2,
   ...extra,
 });
@@ -149,6 +150,20 @@ describe("HttpAnalysisHost", () => {
     const controller = new AbortController();
     controller.abort();
     await expect(host.getJob("j", controller.signal)).rejects.toMatchObject({ code: "aborted" });
+  });
+
+  it("gives up on a read a wedged Studio never answers, and still reports the caller's abort as aborted", async () => {
+    const { host, seen } = await studio({ [`GET ${PREFIX}/jobs/job%201`]: () => {} }, 200);
+    await expect(host.getJob("job 1", abortSignal())).rejects.toMatchObject({
+      code: "unavailable",
+      message: "Studio's analysis service did not answer in time; try again.",
+    });
+
+    const controller = new AbortController();
+    const pending = host.getJob("job 1", controller.signal);
+    await vi.waitFor(() => expect(seen).toHaveLength(2), { interval: 2 });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: "aborted" });
   });
 
   it("uses the documented routes, methods, query strings and bodies", async () => {
@@ -226,7 +241,9 @@ describe("analyzeAndWait over HTTP", () => {
         json(response, 200, job(polls < 3 ? "running" : "completed"));
       },
     });
-    const done = await analyzeAndWait(host, { source: "assets/a.mp4" }, abortSignal(), 1);
+    const done = await analyzeAndWait(host, { source: "assets/a.mp4" }, abortSignal(), {
+      pollMs: 1,
+    });
     expect(done.status).toBe("completed");
     expect(seen.filter((request) => request.method === "GET")).toHaveLength(3);
   });
@@ -243,7 +260,7 @@ describe("analyzeAndWait over HTTP", () => {
         json(response, 200, job("cancelled")),
     });
     await expect(
-      analyzeAndWait(host, { source: "assets/a.mp4" }, controller.signal, 1),
+      analyzeAndWait(host, { source: "assets/a.mp4" }, controller.signal, { pollMs: 1 }),
     ).rejects.toMatchObject({ code: "aborted" });
     expect(seen.map((request) => `${request.method} ${request.path}`)).toContain(
       `POST ${PREFIX}/jobs/job%201/cancel`,
@@ -262,7 +279,7 @@ describe("analyzeAndWait over HTTP", () => {
       },
     });
     await expect(
-      analyzeAndWait(host, { source: "assets/a.mp4" }, controller.signal, 1),
+      analyzeAndWait(host, { source: "assets/a.mp4" }, controller.signal, { pollMs: 1 }),
     ).rejects.toMatchObject({ code: "aborted" });
     expect(seen.some((request) => request.path.endsWith("/cancel"))).toBe(false);
   });
@@ -278,7 +295,9 @@ describe("analyzeAndWait over HTTP", () => {
         }),
     });
     await expect(
-      analyzeAndWait(refused.host, { source: "assets/a.mp4", force: true }, abortSignal(), 1),
+      analyzeAndWait(refused.host, { source: "assets/a.mp4", force: true }, abortSignal(), {
+        pollMs: 1,
+      }),
     ).rejects.toMatchObject({
       code: "conflict",
       message: expect.stringMatching(
@@ -297,14 +316,14 @@ describe("analyzeAndWait over HTTP", () => {
         ),
     });
     await expect(
-      analyzeAndWait(failed.host, { source: "assets/a.mp4" }, abortSignal(), 1),
+      analyzeAndWait(failed.host, { source: "assets/a.mp4" }, abortSignal(), { pollMs: 1 }),
     ).rejects.toMatchObject({ code: "failed", message: "ffmpeg is missing" });
 
     const cancelled = await studio({
       [`POST ${PREFIX}/jobs`]: (_request, response) => json(response, 200, job("cancelled")),
     });
     await expect(
-      analyzeAndWait(cancelled.host, { source: "assets/a.mp4" }, abortSignal(), 1),
+      analyzeAndWait(cancelled.host, { source: "assets/a.mp4" }, abortSignal(), { pollMs: 1 }),
     ).rejects.toMatchObject({ code: "cancelled" });
   });
 
@@ -323,7 +342,9 @@ describe("analyzeAndWait over HTTP", () => {
           }),
         ),
     });
-    const done = await analyzeAndWait(partial.host, { source: "assets/a.mp4" }, abortSignal(), 1);
+    const done = await analyzeAndWait(partial.host, { source: "assets/a.mp4" }, abortSignal(), {
+      pollMs: 1,
+    });
     expect(done.results.map((result) => result.outcome)).toEqual(["failed", "computed"]);
   });
 });

@@ -7,6 +7,7 @@ import { t, useTranslation } from "../../i18n";
 import { activeThread, runningTurn } from "../../agent/agentSelectors";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
+import { activityText } from "./ActivityRow";
 import { chatPadX } from "./chatStyles";
 import { Composer } from "./Composer";
 import { EmptyChat, MessageList } from "./MessageList";
@@ -14,7 +15,7 @@ import { EmptyChat, MessageList } from "./MessageList";
 const ANNOUNCE_EVERY_MS = 2000;
 
 /** One sentence for assistive tech about where the run is; changes only on real progress. */
-function statusSentence(chat: ChatState | null): string {
+export function statusSentence(chat: ChatState | null): string {
   if (!chat) return "";
   const running = runningTurn(chat);
   if (running) {
@@ -23,7 +24,8 @@ function statusSentence(chat: ChatState | null): string {
       for (let index = message.parts.length - 1; index >= 0; index -= 1) {
         const part = message.parts[index];
         if (part?.type === "activity" && part.activity.status === "running") {
-          return part.activity.label;
+          const { label, labelCode, labelParams } = part.activity;
+          return activityText(label, labelCode, labelParams);
         }
       }
     }

@@ -8,6 +8,7 @@ import { FileChatStore } from "../store/index.js";
 import { TurnRunner, type TurnRunnerOptions } from "../turns.js";
 import { FakeCheckpointHost } from "./index.js";
 import { FakeAnalysisHost } from "./analysis.js";
+import { FakeFramesHost } from "./frames.js";
 import { FakeEditingHost } from "./editing.js";
 import { FakeStoryHost } from "./story.js";
 import { FakeResearchHost } from "./research.js";
@@ -25,6 +26,7 @@ export interface RuntimeFixture {
   checkpoints: FakeCheckpointHost;
   editing: FakeEditingHost;
   analysis: FakeAnalysisHost;
+  frames: FakeFramesHost;
   story: FakeStoryHost;
   research: FakeResearchHost;
   qa: FakeQaHost;
@@ -54,6 +56,7 @@ export async function createRuntimeFixture(
   const checkpoints = new FakeCheckpointHost(now);
   const editing = new FakeEditingHost();
   const analysis = new FakeAnalysisHost();
+  const frames = new FakeFramesHost();
   const story = new FakeStoryHost();
   const research = new FakeResearchHost();
   const qa = new FakeQaHost();
@@ -61,6 +64,7 @@ export async function createRuntimeFixture(
   const turns = new TurnRunner(chats, backend, checkpoints, store, settings, {
     editing: () => editing,
     analysis: () => analysis,
+    frames: () => frames,
     story: () => story,
     research: () => research,
     qa: () => qa,
@@ -80,6 +84,7 @@ export async function createRuntimeFixture(
     checkpoints,
     editing,
     analysis,
+    frames,
     story,
     research,
     qa,

@@ -1,6 +1,7 @@
 import type {
   ActiveTurnInfo,
   AgentErrorCode,
+  AgentRun,
   AgentModelInfo,
   AgentSettings,
   AutonomySettings,
@@ -16,6 +17,7 @@ import type {
   ModelSelection,
   OAuthFlow,
   ProviderInfo,
+  QuestionRequest,
   SpecialistConfig,
   SpecialistDefaults,
   PermissionDecision,
@@ -119,6 +121,8 @@ export interface UpdateChatRequest {
   intent?: ChatIntent;
   /** The chat's own Execution Quality; null returns the chat to the global default. */
   executionQuality?: ExecutionQuality | null;
+  /** Linked sites the user removed from this chat (replaces the list); the runtime then refuses them. */
+  excludedSites?: string[];
 }
 
 export interface StartTurnRequest {
@@ -220,6 +224,40 @@ export interface AnswerStoryOfferRequest {
 
 export interface AnswerStoryOfferResponse {
   offer: StoryOffer;
+}
+
+/**
+ * `POST /v1/chats/:chatId/turns/:turnId/questions/:questionId` — the user's answer to a {@link QuestionRequest}:
+ * one of its suggested options or free text. Answers the question once; an expired or answered question is refused
+ * (409 `turn_not_active`).
+ */
+export interface AnswerQuestionRequest {
+  answer: string;
+}
+
+export interface AnswerQuestionResponse {
+  question: QuestionRequest;
+}
+
+/**
+ * `POST /v1/chats/:chatId/turns/:turnId/runs/:runId/cancel` — the user stops one delegated run; the turn and the
+ * other runs go on. The run ends `cancelled`.
+ */
+export interface CancelRunRequest {
+  /** A short note for the Director's report ("the user stopped this task"); optional. */
+  reason?: string;
+}
+
+export interface CancelRunResponse {
+  run: AgentRun;
+}
+
+/**
+ * `DELETE /v1/chats/:chatId` — removes the chat and its stored events. Refused with 409 `chat_busy` while the chat
+ * runs a turn. Takes no body; the project then publishes a `chat.deleted` event.
+ */
+export interface DeleteChatResponse {
+  chatId: string;
 }
 
 export type GetChatResponse = ChatState;

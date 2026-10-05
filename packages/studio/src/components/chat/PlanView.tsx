@@ -32,10 +32,21 @@ const STEP_TEXT: Record<PlanStepStatus, string> = {
   pending: "text-fg-2",
 };
 
+/** What the plan proposal's buttons need: busy, whether the proposal is out of date, why they are disabled. */
+export interface PlanApproval {
+  busy: boolean;
+  /** Another turn ran after the proposal: the project and the conversation may have moved on. */
+  stale: boolean;
+  /** Why Carry out and Change are disabled right now (another run is active), or null. */
+  reason: string | null;
+  onExecute: () => void;
+  onRevise: () => void;
+}
+
 /**
  * The Director's compact plan for a turn, "n of m" in its head: open while the turn runs, folded once it ends
- * (the user can still open it). A plan proposal (`plan.proposal`) is the user's to run or change; while it is the
- * last turn's and no turn runs, it carries the "Carry out the plan" / "Change" buttons.
+ * (the user can still open it). A plan proposal (`plan.proposal`) is the user's to run or change: it carries the
+ * "Carry out" / "Change" buttons once finished, and says when it is out of date ("Carry out anyway").
  */
 export function PlanView({
   plan,
@@ -44,7 +55,7 @@ export function PlanView({
 }: {
   plan: ExecutionPlan;
   live: boolean;
-  approval?: { busy: boolean; onExecute: () => void; onRevise: () => void } | undefined;
+  approval?: PlanApproval | undefined;
 }) {
   const { t } = useTranslation();
   const [choice, setChoice] = useState<boolean | null>(null);
@@ -114,13 +125,34 @@ export function PlanView({
         </ol>
       )}
       {approval && plan.proposal && (
-        <div className="flex items-center gap-1.5 border-t border-border-subtle px-2 py-1.5">
-          <Button size="sm" disabled={approval.busy} onClick={approval.onExecute}>
-            {t("chat.plan.execute")}
-          </Button>
-          <Button size="sm" variant="ghost" disabled={approval.busy} onClick={approval.onRevise}>
-            {t("chat.plan.revise")}
-          </Button>
+        <div className="grid gap-1 border-t border-border-subtle px-2 py-1.5">
+          {approval.stale && (
+            <p data-testid="plan-stale" className="text-xs leading-[15px] text-warning">
+              {t("chat.plan.stale")}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              size="sm"
+              disabled={approval.busy || approval.reason !== null}
+              onClick={approval.onExecute}
+            >
+              {approval.stale ? t("chat.plan.executeAnyway") : t("chat.plan.execute")}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={approval.busy || approval.reason !== null}
+              onClick={approval.onRevise}
+            >
+              {t("chat.plan.revise")}
+            </Button>
+            {approval.reason !== null && (
+              <span data-testid="plan-blocked" className="text-xs leading-4 text-fg-3">
+                {approval.reason}
+              </span>
+            )}
+          </div>
         </div>
       )}
     </section>

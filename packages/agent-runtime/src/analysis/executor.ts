@@ -8,10 +8,11 @@ import {
   parseSaveSegmentsRequest,
   parseSaveVisionNotesRequest,
   isRecord,
+  type ComputedStage,
   type CutPlan,
   type ParsedAnalysis,
 } from "@hyperframes/agent-protocol";
-import type { HostToolResult } from "../backend.js";
+import type { HostToolResult, ToolProgress } from "../backend.js";
 import { EditingError, type EditingHost } from "../editing/host.js";
 import { formatError } from "../editing/format.js";
 import { errorMessage } from "../errors.js";
@@ -38,7 +39,13 @@ import {
   roughCutBatch,
   type RoughCutCaptions,
 } from "./roughCut.js";
-import { ANALYSIS_TOOL_NAMES, isAnalysisToolName, type AnalysisToolName } from "./tools.js";
+import { stageProgressLabel } from "./stageLabel.js";
+import {
+  ANALYSIS_TOOL_NAMES,
+  isAnalysisToolName,
+  sourceName,
+  type AnalysisToolName,
+} from "./tools.js";
 
 export interface TurnAnalysisOptions {
   host: AnalysisHost;
@@ -48,6 +55,8 @@ export interface TurnAnalysisOptions {
   turnSignal: AbortSignal;
   /** How often a running job is polled (default 750 ms). */
   pollMs?: number;
+  /** A running analysis that shows no progress for this long is cancelled with an error (default 15 minutes). */
+  stallMs?: number;
   /**
    * Most distinct frames `inspect_frames` may extract per source in this turn (the turn's Execution Quality
    * `analysisFramesPerSource`); absent = no cap.
@@ -152,12 +161,17 @@ export class TurnAnalysis {
     return this.planRanges.get(plan);
   }
 
-  execute(name: string, args: unknown, callSignal: AbortSignal): Promise<HostToolResult> {
+  execute(
+    name: string,
+    args: unknown,
+    callSignal: AbortSignal,
+    progress?: ToolProgress,
+  ): Promise<HostToolResult> {
     if (!this.accepting)
       return Promise.resolve(refuse("The turn is finishing; analysis is closed."));
     if (!isAnalysisToolName(name)) return Promise.resolve(refuse(`Unknown analysis tool ${name}.`));
     const signal = AbortSignal.any([callSignal, this.options.turnSignal, this.stop.signal]);
-    const call = this.run(name, args, signal).catch((error: unknown): HostToolResult => {
+    const call = this.run(name, args, signal, progress).catch((error: unknown): HostToolResult => {
       if (error instanceof AnalysisToolError) return refuse(formatAnalysisError(error));
       if (error instanceof EditingError) return refuse(formatError(error));
       return refuse(`internal: ${errorMessage(error, "The analysis call failed")}`);
@@ -178,12 +192,20 @@ export class TurnAnalysis {
     name: AnalysisToolName,
     args: unknown,
     signal: AbortSignal,
+    progress?: ToolProgress,
   ): Promise<HostToolResult> {
     const { host } = this.options;
     switch (name) {
       case ANALYSIS_TOOL_NAMES.analyze: {
         const request = checked(parseAnalyzeRequest(withoutNulls(args)));
-        const job = await analyzeAndWait(host, request, signal, this.options.pollMs ?? JOB_POLL_MS);
+        const job = await analyzeAndWait(host, request, signal, {
+          pollMs: this.options.pollMs ?? JOB_POLL_MS,
+          ...(this.options.stallMs !== undefined && { stallMs: this.options.stallMs }),
+          ...(progress && {
+            onProgress: (percent: number, stage: ComputedStage | null) =>
+              progress(percent, stageProgressLabel(sourceName(args), stage)),
+          }),
+        });
         return { text: formatOverview(await host.overview(request.source, signal), job) };
       }
       case ANALYSIS_TOOL_NAMES.read: {
@@ -194,14 +216,19 @@ export class TurnAnalysis {
             ? "overview"
             : ANALYSIS_SECTIONS.find((candidate) => candidate === record.section);
         if (!section) throw invalid(`section must be one of ${ANALYSIS_SECTIONS.join(", ")}`);
+        const offset = record.offset ?? 0;
+        if (typeof offset !== "number" || !Number.isInteger(offset) || offset < 0)
+          throw invalid("offset must be a whole number from 0");
         if (section === "silence")
-          return { text: formatSilence(await host.artifact(source, "silence", signal)) };
+          return { text: formatSilence(await host.artifact(source, "silence", signal), offset) };
         if (section === "shots")
-          return { text: formatShots(await host.artifact(source, "shots", signal)) };
+          return { text: formatShots(await host.artifact(source, "shots", signal), offset) };
         const overview = await host.overview(source, signal);
         return {
           text:
-            section === "overview" ? formatOverview(overview) : formatSection(section, overview),
+            section === "overview"
+              ? formatOverview(overview)
+              : formatSection(section, overview, offset),
         };
       }
       case ANALYSIS_TOOL_NAMES.transcript: {

@@ -32,7 +32,7 @@ import { StorySectionStrip } from "./StorySectionStrip";
 import { StoryToolbar, type StoryTool } from "./StoryToolbar";
 import type { NewNodeRequest } from "./AddNodePopover";
 import { useStoryActions } from "./useStoryActions";
-import { researchBlocker, useStoryAgentSync } from "./useStoryAgent";
+import { agentBlocker, useStoryAgentSync } from "./useStoryAgent";
 import { StoryResearchProvider, type StoryResearch } from "./storyResearch";
 import { useStoryLibrary } from "./useStoryLibrary";
 import { useStoryDrop } from "./useStoryDrop";
@@ -59,11 +59,12 @@ function freeSpot(start: StoryPoint, taken: readonly StoryPoint[]): StoryPoint {
 function EmptyStory({
   onStart,
   onPlan,
-  planDisabled,
+  planBlocker,
 }: {
   onStart: () => void;
   onPlan: () => void;
-  planDisabled: boolean;
+  /** Why "Plan with AI" is unavailable right now, in words, or null. */
+  planBlocker: string | null;
 }) {
   const { t } = useTranslation();
   return (
@@ -78,13 +79,28 @@ function EmptyStory({
         </p>
       </div>
       <div className="flex gap-1.5">
-        <Button variant="primary" size="sm" disabled={planDisabled} onClick={onPlan}>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={planBlocker !== null}
+          title={planBlocker ?? undefined}
+          onClick={onPlan}
+        >
           {t("story.empty.plan")}
         </Button>
         <Button variant="secondary" size="sm" onClick={onStart}>
           {t("story.empty.addChapter")}
         </Button>
       </div>
+      {planBlocker !== null && (
+        <p
+          data-testid="story-empty-blocker"
+          role="status"
+          className="max-w-sm text-xs leading-[15px] text-fg-3"
+        >
+          {planBlocker}
+        </p>
+      )}
     </div>
   );
 }
@@ -148,7 +164,7 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
   runActionRef.current = actions.run;
   const sources = useResearchServices().store;
   const sourcesView = useSourcesStore((state) => state.view);
-  const findBlocker = researchBlocker(agent);
+  const findBlocker = agentBlocker(agent);
   const research = useMemo<StoryResearch>(() => {
     const byAsset = new Map((sourcesView?.records ?? []).map((record) => [record.asset, record]));
     return {
@@ -286,7 +302,7 @@ function StoryWorkspace({ agentStore }: { agentStore: AgentStore | null }) {
       <EmptyStory
         onStart={() => add({ kind: "chapter" })}
         onPlan={() => void planWithAi()}
-        planDisabled={!agent.available || agent.busy}
+        planBlocker={agentBlocker(agent)}
       />
     );
   } else {

@@ -1,9 +1,11 @@
 import { existsSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import {
-  QA_LIMITS,
-  parseQaIssueDraft,
+  isAcceptedId,
   type FrameImage,
+  type QaAcceptRequest,
+  type QaAcceptResponse,
+  type QaAcceptedList,
   type QaCheckId,
   type QaCheckRequest,
   type QaCheckResponse,
@@ -16,8 +18,8 @@ import {
   type QaReport,
   type QaReportInput,
   type QaReportList,
-  type QaSeverity,
   type QaStateResponse,
+  type QaTimelineCheckRequest,
   type StoryGraph,
   type TranscriptArtifact,
 } from "@hyperframes/agent-protocol";
@@ -37,6 +39,13 @@ import { resolveProjectSignature } from "../helpers/projectSignature.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { readStoredStory } from "../story/graphIo.js";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
+import {
+  addAccepted,
+  readAccepted,
+  removeAccepted,
+  withDerivedFields,
+  type ReadContext,
+} from "./accepted.js";
 import { readCaptionCues } from "./cues.js";
 import { QaFailure, asQaFailure } from "./errors.js";
 import { layoutIssues, layoutSampleTimes } from "./layoutChecks.js";
@@ -50,6 +59,7 @@ import {
   withoutSilentSources,
   withoutStaticSources,
 } from "./renderChecks.js";
+import { finalizeIssues } from "./issues.js";
 import { enforceRetention, finishSession, type RetentionContext } from "./retention.js";
 import { planSamples } from "./samples.js";
 import { framesDirFor, listReports, readReport, writeReport } from "./store.js";
@@ -72,65 +82,7 @@ export interface QaServiceOptions {
 
 export type QaAnalysis = Pick<AnalysisService, "sourceData">;
 
-const SEVERITY_RANK: Record<QaSeverity, number> = { error: 0, warning: 1, info: 2 };
-
-/** One issue per (kind, subject): the same thing found by several checks or at several times is reported once. */
-function mergeSameSubject(drafts: readonly QaIssueDraft[]): QaIssueDraft[] {
-  const merged: QaIssueDraft[] = [];
-  const bySubject = new Map<string, QaIssueDraft[]>();
-  for (const draft of drafts) {
-    if (draft.subject === null) {
-      merged.push(draft);
-      continue;
-    }
-    const key = `${draft.kind}\0${draft.subject}`;
-    bySubject.set(key, [...(bySubject.get(key) ?? []), draft]);
-  }
-  for (const group of bySubject.values()) {
-    const ranked = [...group].sort(
-      (a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || a.start - b.start,
-    );
-    const base = ranked[0];
-    if (!base) continue;
-    merged.push({
-      ...base,
-      start: Math.min(...group.map((entry) => entry.start)),
-      end: Math.max(...group.map((entry) => entry.end)),
-      clipIds: [...new Set(group.flatMap((entry) => entry.clipIds))].slice(0, QA_LIMITS.clipIds),
-      fixable: group.some((entry) => entry.fixable),
-      owner: base.owner ?? group.find((entry) => entry.owner !== null)?.owner ?? null,
-      message:
-        group.length > 1 ? `${base.message} (and ${group.length - 1} more like it)` : base.message,
-    });
-  }
-  return merged;
-}
-
-/** A timeline hole the render's own black-frame detection found too is one issue, reported with the render's numbers. */
-function withoutConfirmedGaps(drafts: readonly QaIssueDraft[]): QaIssueDraft[] {
-  const black = drafts.filter((draft) => draft.check === "blackdetect");
-  return drafts.filter((draft) => {
-    if (draft.check !== "timeline.gap") return true;
-    const length = draft.end - draft.start;
-    return !black.some(
-      (found) => Math.min(found.end, draft.end) - Math.max(found.start, draft.start) >= length / 2,
-    );
-  });
-}
-
-function finalizeIssues(drafts: readonly QaIssueDraft[]): QaIssueDraft[] {
-  const checked: QaIssueDraft[] = [];
-  for (const draft of mergeSameSubject(withoutConfirmedGaps(drafts))) {
-    const parsed = parseQaIssueDraft(draft);
-    if (parsed.ok) checked.push(parsed.value);
-  }
-  const kept = checked
-    .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || a.start - b.start)
-    .slice(0, QA_LIMITS.issues);
-  return kept.sort(
-    (a, b) => a.start - b.start || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity],
-  );
-}
+const TIMELINE_ONLY = "Timeline checks only: the composition was not rendered";
 
 function failedRun(id: QaCheckId, reason: unknown): QaCheckRun {
   const { error } = asQaFailure(reason);
@@ -203,7 +155,7 @@ export class QaService {
       this.checkLayout(project, timeline, duration, signal),
     ]);
     if (signal.aborted) throw new QaFailure("cancelled", "The QA check was cancelled");
-    const fromTimeline = this.checkTimeline(timeline);
+    const fromTimeline = this.timelineRun(timeline);
 
     const renderRun: QaCheckRun = info.error
       ? { id: "render", status: "failed", detail: info.error }
@@ -218,10 +170,7 @@ export class QaService {
       ...fromTimeline.issues,
       ...layout.issues,
     ]);
-    return {
-      fingerprint: resolveProjectSignature(this.adapter, project.dir),
-      composition: compositionPath,
-      timelineVersion: timeline.snapshot.version,
+    return this.checkResponse(project, compositionPath, timeline, {
       duration,
       checks: [renderRun, ...picture.runs, ...audio.runs, ...fromTimeline.runs, ...layout.runs],
       issues,
@@ -232,6 +181,54 @@ export class QaService {
         framesPerMinute: request.framesPerMinute,
         maxFrames: request.maxFrames,
       }),
+    });
+  }
+
+  /**
+   * A check of the composition's timeline alone: nothing is rendered and no render file is read, so the checks that
+   * measure a render are reported as skipped and there are no samples for Vision.
+   */
+  async checkTimeline(
+    project: ResolvedProject,
+    request: QaTimelineCheckRequest,
+    requestSignal: AbortSignal = new AbortController().signal,
+  ): Promise<QaCheckResponse> {
+    const signal = AbortSignal.any([requestSignal, this.shutdownController.signal]);
+    const compositionPath = this.compositionPath(request.composition);
+    const timeline = await this.loadTimeline(project, compositionPath, signal);
+    if (signal.aborted) throw new QaFailure("cancelled", "The QA check was cancelled");
+    const fromTimeline = this.timelineRun(timeline);
+    const skipped = (id: QaCheckId): QaCheckRun => ({
+      id,
+      status: "skipped",
+      detail: TIMELINE_ONLY,
+    });
+    return this.checkResponse(project, compositionPath, timeline, {
+      duration: timeline.snapshot.composition.duration,
+      checks: [
+        skipped("render"),
+        skipped("black_frames"),
+        skipped("frozen_frames"),
+        skipped("audio"),
+        ...fromTimeline.runs,
+        skipped("layout"),
+      ],
+      issues: finalizeIssues(fromTimeline.issues),
+      samples: [],
+    });
+  }
+
+  private checkResponse(
+    project: ResolvedProject,
+    composition: string,
+    timeline: QaTimeline,
+    result: Pick<QaCheckResponse, "duration" | "checks" | "issues" | "samples">,
+  ): QaCheckResponse {
+    return {
+      fingerprint: resolveProjectSignature(this.adapter, project.dir),
+      composition,
+      timelineVersion: timeline.snapshot.version,
+      ...result,
     };
   }
 
@@ -404,7 +401,7 @@ export class QaService {
     }
   }
 
-  private checkTimeline(timeline: QaTimeline): CheckPart {
+  private timelineRun(timeline: QaTimeline): CheckPart {
     try {
       const issues = timelineIssues(timeline);
       const cached = timeline.transcripts.size;
@@ -510,7 +507,7 @@ export class QaService {
     );
     this.running.add(input.sessionId);
     enforceRetention(this.retention(project, now));
-    return report;
+    return withDerivedFields(report, this.readContext(project));
   }
 
   /**
@@ -542,12 +539,54 @@ export class QaService {
 
   listReports(project: ResolvedProject): QaReportList {
     const fingerprint = resolveProjectSignature(this.adapter, project.dir);
-    return { fingerprint, reports: listReports(project.dir, fingerprint) };
+    const context = this.readContext(project);
+    return {
+      fingerprint,
+      reports: listReports(project.dir, fingerprint, (report) =>
+        withDerivedFields(report, context),
+      ),
+    };
   }
 
   getReport(project: ResolvedProject, id: string): QaReport {
     const report = readReport(project.dir, id, resolveProjectSignature(this.adapter, project.dir));
     if (!report) throw new QaFailure("not_found", `There is no QA report "${id}"`);
-    return report;
+    return withDerivedFields(report, this.readContext(project));
+  }
+
+  // ── Issues the user marked intentional ────────────────────────────────────
+
+  listAccepted(project: ResolvedProject): QaAcceptedList {
+    return { items: readAccepted(project.dir) };
+  }
+
+  /** Marks one open issue of a stored report intentional; QA leaves it out of every later pass. */
+  accept(project: ResolvedProject, request: QaAcceptRequest): QaAcceptResponse {
+    const report = readReport(
+      project.dir,
+      request.reportId,
+      resolveProjectSignature(this.adapter, project.dir),
+    );
+    if (!report) throw new QaFailure("not_found", `There is no QA report "${request.reportId}"`);
+    const issue = report.issues.find((entry) => entry.id === request.issueId);
+    if (!issue) {
+      throw new QaFailure(
+        "not_found",
+        `Report "${request.reportId}" has no open issue "${request.issueId}"`,
+      );
+    }
+    const accepted = addAccepted(project.dir, report.composition, issue, this.now());
+    return { accepted, report: withDerivedFields(report, this.readContext(project)) };
+  }
+
+  unaccept(project: ResolvedProject, acceptedId: string): QaAcceptedList {
+    const items = isAcceptedId(acceptedId) ? removeAccepted(project.dir, acceptedId) : null;
+    if (!items)
+      throw new QaFailure("not_found", `Nothing was marked intentional as "${acceptedId}"`);
+    return { items };
+  }
+
+  private readContext(project: ResolvedProject): ReadContext {
+    return { accepted: readAccepted(project.dir), rendersDir: this.adapter.rendersDir(project) };
   }
 }

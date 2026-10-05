@@ -1,4 +1,5 @@
 import { useCallback, type ReactNode } from "react";
+import { LockSimple } from "@phosphor-icons/react";
 import { SourceEditor } from "./editor/SourceEditor";
 import { FileTree } from "./editor/FileTree";
 import { MediaPreview } from "./MediaPreview";
@@ -12,6 +13,7 @@ import { isMediaFile } from "@hyperframes/core/media-types";
 import { useTranslation } from "../i18n";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
+import { useAgentTurnRunning } from "../agent/agentTurnLock";
 import { getPersistedRenderSettings } from "./renders/renderSettings";
 
 interface StudioLeftPanelsProps {
@@ -49,6 +51,8 @@ export function StudioLeftPanels({
   onAddCompositionToTimeline,
 }: StudioLeftPanelsProps) {
   const { projectId, renderQueue, waitForPendingDomEditSaves } = useStudioShellContext();
+  // An agent turn rewrites files on its own: the file tree stops changing existing files and the code is read-only.
+  const agentEditing = useAgentTurnRunning();
   const {
     compositions,
     assets,
@@ -138,6 +142,7 @@ export function StudioLeftPanels({
                   onMoveFile={handleMoveFile}
                   onImportFiles={importFiles}
                   lintFindingsByFile={lintFindingsByFile}
+                  locked={agentEditing}
                 />
               </div>
             )}
@@ -173,6 +178,7 @@ function CodeBody({
   onChange: (content: string) => void;
 }) {
   const { t } = useTranslation();
+  const locked = useAgentTurnRunning();
   if (!editingFile) {
     return (
       <div className="flex h-full items-center justify-center bg-bg-0 text-sm text-fg-3">
@@ -193,11 +199,26 @@ function CodeBody({
     );
   }
   return (
-    <SourceEditor
-      content={editingFile.content}
-      filePath={editingFile.path}
-      onChange={onChange}
-      revealOffset={revealOffset}
-    />
+    <div className="flex h-full min-h-0 flex-col">
+      {locked && (
+        <p
+          role="status"
+          data-testid="source-editor-lock"
+          className="flex shrink-0 items-center gap-1.5 border-b border-border-subtle bg-bg-1 px-3 py-1 text-xs text-fg-3"
+        >
+          <LockSimple aria-hidden size={12} weight="bold" className="shrink-0" />
+          {t("files.lock.editorNotice")}
+        </p>
+      )}
+      <div className="min-h-0 flex-1">
+        <SourceEditor
+          content={editingFile.content}
+          filePath={editingFile.path}
+          onChange={onChange}
+          readOnly={locked}
+          revealOffset={revealOffset}
+        />
+      </div>
+    </div>
   );
 }

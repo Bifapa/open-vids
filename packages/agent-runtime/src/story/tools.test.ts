@@ -21,7 +21,7 @@ import {
 import { TurnStory } from "./executor.js";
 import { formatStory } from "./format.js";
 import { StoryToolError } from "./host.js";
-import { STORY_TOOL_NAMES, timelineWritesAllowed } from "./tools.js";
+import { STORY_TOOL_NAMES, storyToolsFor, timelineWritesAllowed } from "./tools.js";
 
 const TIMELINE_WRITERS = ["edit_timeline", "render_video", "build_rough_cut"];
 const STORY_TOOLS = Object.values<string>(STORY_TOOL_NAMES);
@@ -54,7 +54,7 @@ describe("story tool availability", () => {
           expect(names.includes("build_story")).toBe(false);
           expect(names.includes("rebuild_story")).toBe(false);
           expect(names.includes("edit_story")).toBe(agent === "director");
-          expect(names.includes("read_story")).toBe(agent !== "jev");
+          if (agent !== "jev") expect(names.includes("read_story")).toBe(true);
         }
       }
       // Analysis and read-only editing tools stay: planning needs the cached analysis.
@@ -71,28 +71,34 @@ describe("story tool availability", () => {
     });
   }
 
-  it("gives build_story to the Editor in a build turn, or to the Director when no Editor is enabled", () => {
+  it("gives build_story to the Editor in a build turn, or to the Director when no Editor is enabled, and edit_story to the Director", () => {
     const build: Turn = { mode: "story", storyAction: "build" };
-    expect(storyToolsOf("director", TEAM, build)).toEqual(["read_story"]);
+    expect(storyToolsOf("director", TEAM, build)).toEqual(["read_story", "edit_story"]);
     expect(storyToolsOf("editor", TEAM, build)).toEqual(["read_story", "build_story"]);
     for (const agent of ["vision", "motion", "audio", "research"] as const) {
       expect(storyToolsOf(agent, TEAM, build)).toEqual(["read_story"]);
     }
-    expect(storyToolsOf("jev", TEAM, build)).toEqual([]);
+    expect(storyToolsFor("jev", TEAM, { mode: "story", action: "build" })).toEqual(["read_story"]);
 
     const solo = ["vision", "motion"] satisfies SpecialistId[];
-    expect(storyToolsOf("director", solo, build)).toEqual(["read_story", "build_story"]);
+    expect(storyToolsOf("director", solo, build)).toEqual([
+      "read_story",
+      "edit_story",
+      "build_story",
+    ]);
     expect(storyToolsOf("editor", solo, build)).toEqual(["read_story", "build_story"]);
   });
 
-  it("keeps the normal editing tools in a build turn, and never lets the graph change while it compiles", () => {
+  it("keeps the normal editing tools in a build turn, next to edit_story before the build", () => {
     const build: Turn = { mode: "story", storyAction: "build" };
     const editor = toolsOf("editor", TEAM, build);
     expect(editor).toEqual(
       expect.arrayContaining(["edit_timeline", "render_video", "build_rough_cut"]),
     );
-    expect(toolsOf("director", [], build)).toEqual(expect.arrayContaining(["edit_timeline"]));
-    expect(toolsOf("director", [], build)).not.toContain("edit_story");
+    expect(editor).not.toContain("edit_story");
+    expect(toolsOf("director", [], build)).toEqual(
+      expect.arrayContaining(["edit_timeline", "edit_story"]),
+    );
   });
 
   it("gives rebuild_story to the Director alone in a rebuild turn: no graph edit, no build, no timeline writer for anyone", () => {
@@ -102,7 +108,9 @@ describe("story tool availability", () => {
       for (const agent of ["editor", "vision", "motion", "audio", "research"] as const) {
         expect(storyToolsOf(agent, enabled, rebuild)).toEqual(["read_story"]);
       }
-      expect(storyToolsOf("jev", enabled, rebuild)).toEqual([]);
+      expect(storyToolsFor("jev", enabled, { mode: "story", action: "rebuild" })).toEqual([
+        "read_story",
+      ]);
       for (const agent of AGENTS) {
         expect(
           toolsOf(agent, enabled, rebuild).filter((name) => TIMELINE_WRITERS.includes(name)),
@@ -353,6 +361,30 @@ describe("build_story", () => {
       isError: true,
       text: "conflict: The story changed since version sha256:old",
     });
+  });
+
+  it("allows edit_story before the build, and freezes the graph once a real build succeeded", async () => {
+    const { host, story, call } = turnStory();
+    const batch = { operations: [{ op: "set_story", title: "Room tour" }] };
+    expect(story.hasBuilt()).toBe(false);
+    expect((await call("edit_story", batch)).isError).toBeUndefined();
+
+    await call("build_story", { dryRun: true });
+    expect(story.hasBuilt()).toBe(false);
+    expect((await call("edit_story", batch)).isError).toBeUndefined();
+
+    host.nextError = new StoryToolError("conflict", "The story changed since version sha256:old");
+    expect((await call("build_story", {})).isError).toBe(true);
+    expect(story.hasBuilt()).toBe(false);
+
+    expect((await call("build_story", {})).isError).toBeUndefined();
+    expect(story.hasBuilt()).toBe(true);
+    const edits = host.editRequests.length;
+    const refused = await call("edit_story", batch);
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toContain("frozen");
+    expect(host.editRequests).toHaveLength(edits);
+    expect((await call("read_story", {})).isError).toBeUndefined();
   });
 });
 
@@ -612,5 +644,108 @@ describe("Timeline sync in read_story", () => {
     expect(text).toContain("the story is longer than this view");
     expect(text.indexOf("Timeline sync")).toBeGreaterThan(text.indexOf("the story is longer"));
     expect(text).toMatch(/… \d+ more sections/);
+  });
+});
+
+describe("read_story paging", () => {
+  const longStory = (count = 40) =>
+    storyView(
+      storyGraph({
+        nodes: Array.from({ length: count }, (_, index) =>
+          chapterNode(`ch${index + 1}`, {
+            title: `Part ${index + 1}`,
+            description: `Scene ${index + 1}: ${"the host explains the next idea in detail ".repeat(16)}`,
+            position: { x: index * 400, y: 0 },
+          }),
+        ),
+      }),
+    );
+  const chapterHeads = (text: string) => [...text.matchAll(/^\d+\. (ch\d+) /gm)].map((m) => m[1]);
+
+  it("returns a long story in pages that together hold every chapter once", async () => {
+    const { host, call } = turnStory();
+    host.viewResult = longStory();
+    const seen: Array<string | undefined> = [];
+    let offset = 0;
+    let pages = 0;
+    for (; pages < 40; pages += 1) {
+      const { text, isError } = await call("read_story", offset === 0 ? {} : { offset });
+      expect(isError).toBeUndefined();
+      expect(text.length).toBeLessThanOrEqual(14_000);
+      seen.push(...chapterHeads(text));
+      const next = /continue with read_story offset=(\d+)$/.exec(text);
+      if (!next) break;
+      expect(Number(next[1])).toBeGreaterThan(offset);
+      offset = Number(next[1]);
+    }
+    expect(pages).toBeGreaterThan(0);
+    expect(seen).toEqual(Array.from({ length: 40 }, (_, index) => `ch${index + 1}`));
+  });
+
+  it("reads one chapter in full, with the story version, and says which chapters exist for an unknown id", async () => {
+    const { host, call } = turnStory();
+    host.viewResult = longStory();
+    const one = await call("read_story", { chapter: "ch7" });
+    expect(one.isError).toBeUndefined();
+    expect(one.text).toContain("version sha256:story-v1");
+    expect(chapterHeads(one.text)).toEqual(["ch7"]);
+    expect(one.text).toContain("Scene 7:");
+    expect(one.text).not.toContain("Scene 8:");
+
+    const unknown = await call("read_story", { chapter: "ch99" });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.text).toMatch(
+      /^invalid_request: "ch99" is not a chapter of this story\. Chapters in play order: ch1/,
+    );
+  });
+
+  it("reads one named part, and refuses a chapter together with a section or a bad section/offset", async () => {
+    const { host, call } = turnStory();
+    host.viewResult = { ...userEditedStory(), sync: sampleSyncReport() };
+    const links = await call("read_story", { section: "decisions" });
+    expect(links.text).toContain("User decisions");
+    expect(links.text).not.toContain("Play order");
+    expect((await call("read_story", { section: "sync" })).text).toContain(
+      "Timeline sync: OUT OF SYNC",
+    );
+    expect((await call("read_story", { section: "locks" })).text).toContain("Locked (never change");
+    expect((await call("read_story", { section: "overview" })).text).toContain(
+      "Play order (3 chapters)",
+    );
+
+    expect((await call("read_story", { chapter: "ch1", section: "links" })).text).toBe(
+      "invalid_request: pass either chapter or section, not both",
+    );
+    expect((await call("read_story", { section: "bogus" })).text).toMatch(
+      /^invalid_request: section must be one of overview, chapters/,
+    );
+    expect((await call("read_story", { offset: -2 })).text).toBe(
+      "invalid_request: offset must be a whole number from 0",
+    );
+    expect((await call("read_story", { offset: 1_000_000 })).text).toMatch(
+      /^Nothing at offset 1000000: this view is \d+ characters long\.$/,
+    );
+  });
+
+  it("labels a chapter read and an edit by code", () => {
+    const tools = buildHostTools(
+      "director",
+      { enabled: [], jev: false, editing: true, analysis: true, story: true, mode: "story" },
+      async () => ({ text: "" }),
+    );
+    const label = (name: string, args: unknown) =>
+      tools.find((tool) => tool.name === name)?.activity?.(args);
+    expect(label("read_story", { chapter: "ch2" })).toMatchObject({
+      labelCode: "reading_story_chapter",
+      labelParams: { chapter: "ch2" },
+    });
+    expect(label("read_story", {})).toMatchObject({ labelCode: "reading_story" });
+    expect(
+      label("edit_story", { operations: [{ op: "connect" }, { op: "set_story" }] }),
+    ).toMatchObject({
+      labelCode: "editing_story_changes",
+      labelParams: { count: 2 },
+    });
+    expect(label("edit_story", {})).toMatchObject({ labelCode: "editing_story" });
   });
 });

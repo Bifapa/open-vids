@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentId, SpecialistId, StoryAction } from "@hyperframes/agent-protocol";
 import { buildHostTools } from "../agents/tools.js";
 import { TurnEditing } from "../editing/executor.js";
@@ -64,6 +64,7 @@ describe("research tool availability", () => {
       { mode: "story", storyAction: null },
       { mode: "story", storyAction: "review" },
       { mode: "story", storyAction: "resolve" },
+      { mode: "story", storyAction: "build" },
     ] satisfies Turn[]) {
       expect(researchToolsOf("research", TEAM, turn)).toEqual(RESEARCH_TOOLS);
       expect(researchToolsOf("director", TEAM, turn)).toEqual(["read_sources"]);
@@ -73,33 +74,53 @@ describe("research tool availability", () => {
     }
   });
 
-  it("gives nobody a research tool when Research is disabled in the chat", () => {
-    for (const agent of AGENTS) {
-      expect(researchToolsOf(agent, NO_RESEARCH, { mode: "normal" })).toEqual([]);
-      expect(researchToolsOf(agent, [], { mode: "story", storyAction: "resolve" })).toEqual([]);
+  it("moves the whole research toolset to the Director when Research is disabled in the chat; nobody else gets any", () => {
+    for (const turn of [
+      { mode: "normal" },
+      { mode: "story", storyAction: "resolve" },
+      { mode: "story", storyAction: "build" },
+    ] satisfies Turn[]) {
+      expect(researchToolsOf("director", NO_RESEARCH, turn)).toEqual(
+        expect.arrayContaining(RESEARCH_TOOLS),
+      );
+      expect(researchToolsOf("director", NO_RESEARCH, turn)).toHaveLength(RESEARCH_TOOLS.length);
+      for (const agent of ["editor", "vision", "motion", "audio", "research", "jev"] as const) {
+        expect(researchToolsOf(agent, NO_RESEARCH, turn), agent).toEqual([]);
+      }
     }
+    // Even with nobody on the team the Director does the work.
+    expect(researchToolsOf("director", [], { mode: "normal" })).toEqual(
+      expect.arrayContaining(["search_assets", "inspect_url", "import_asset", "read_sources"]),
+    );
   });
 
-  it("gives nobody a research tool when the Asset Search policy could not be read", () => {
+  it("gives nobody a research tool when the chat has no research host", () => {
     for (const agent of AGENTS) {
       expect(researchToolsOf(agent, TEAM, { mode: "normal" }, false)).toEqual([]);
+      expect(researchToolsOf(agent, NO_RESEARCH, { mode: "normal" }, false)).toEqual([]);
     }
   });
 
-  it("offers none in a story build or rebuild turn", () => {
-    for (const storyAction of ["build", "rebuild"] as const) {
+  it("offers a story build turn the same research tools as a normal turn, and a rebuild turn none", () => {
+    const build = { mode: "story", storyAction: "build" } satisfies Turn;
+    expect(researchToolsOf("research", TEAM, build)).toEqual(RESEARCH_TOOLS);
+    expect(researchToolsOf("research", TEAM, build)).toEqual(
+      expect.arrayContaining(["search_assets", "import_asset", "resolve_missing_asset"]),
+    );
+    expect(researchToolsOf("director", TEAM, build)).toEqual(["read_sources"]);
+    for (const enabled of [TEAM, NO_RESEARCH]) {
       for (const agent of AGENTS) {
-        expect(researchToolsOf(agent, TEAM, { mode: "story", storyAction })).toEqual([]);
+        expect(researchToolsOf(agent, enabled, { mode: "story", storyAction: "rebuild" })).toEqual(
+          [],
+        );
       }
     }
   });
 
-  it("never gives the Director a way to search, read pages, import or resolve", () => {
-    for (const enabled of [TEAM, NO_RESEARCH, []]) {
-      for (const storyAction of [null, "review", "build", "rebuild", "resolve"] as const) {
-        const names = researchToolsOf("director", enabled, { mode: "story", storyAction });
-        expect(names.filter((name) => EXTERNAL_TOOLS.includes(name))).toEqual([]);
-      }
+  it("keeps the Director off the search and import tools while Research is on", () => {
+    for (const storyAction of [null, "review", "build", "rebuild", "resolve"] as const) {
+      const names = researchToolsOf("director", TEAM, { mode: "story", storyAction });
+      expect(names.filter((name) => EXTERNAL_TOOLS.includes(name))).toEqual([]);
     }
   });
 });
@@ -133,7 +154,7 @@ describe("read_website availability", () => {
     ]);
   });
 
-  it("is offered in Ask turns (reading is harmless) but not in a story build or rebuild turn", () => {
+  it("is offered in Ask turns (reading is harmless) and in a story build turn, but not in a rebuild turn", () => {
     const names = buildHostTools(
       "director",
       {
@@ -148,11 +169,12 @@ describe("read_website availability", () => {
       async () => ({ text: "" }),
     ).map((tool) => tool.name);
     expect(names).toContain("read_website");
-    for (const storyAction of ["build", "rebuild"] as const) {
-      expect(researchToolsOf("director", TEAM, { mode: "story", storyAction }, true, true)).toEqual(
-        [],
-      );
-    }
+    expect(
+      researchToolsOf("director", TEAM, { mode: "story", storyAction: "build" }, true, true),
+    ).toEqual(["read_sources", ...WEBSITE_TOOLS]);
+    expect(
+      researchToolsOf("director", TEAM, { mode: "story", storyAction: "rebuild" }, true, true),
+    ).toEqual([]);
   });
 });
 
@@ -180,13 +202,21 @@ describe("full-access website tools availability", () => {
     expect(researchToolsOf("motion", [], { mode: "normal" }, false, true, true)).toEqual([]);
   });
 
-  it("offers none in a story build or rebuild turn, and keeps record_website out of Ask turns", () => {
-    for (const storyAction of ["build", "rebuild"] as const) {
-      for (const agent of AGENTS) {
-        expect(
-          researchToolsOf(agent, TEAM, { mode: "story", storyAction }, true, true, true),
-        ).toEqual([]);
-      }
+  it("offers the website tools in a story build turn but none in a rebuild turn, and keeps record_website out of Ask turns", () => {
+    for (const agent of AGENTS) {
+      expect(
+        researchToolsOf(agent, TEAM, { mode: "story", storyAction: "rebuild" }, true, true, true),
+      ).toEqual([]);
+      const readers = ["director", "motion", "research"].includes(agent);
+      const names = researchToolsOf(
+        agent,
+        TEAM,
+        { mode: "story", storyAction: "build" },
+        true,
+        true,
+        true,
+      );
+      for (const name of WEBSITE_TOOLS) expect(names.includes(name)).toBe(readers);
     }
     const names = buildHostTools(
       "director",
@@ -258,14 +288,27 @@ describe("the research executor", () => {
     expect(host.sourcesCalls).toBe(1);
   });
 
-  it("refuses everything when Research is not enabled in the chat, even to Research", async () => {
+  it("moves the work to the Director when Research is not enabled: it searches and imports, stamped as itself", async () => {
     const { host, call } = research({ enabled: NO_RESEARCH });
-    for (const caller of ["research", "director"] as const) {
-      expect((await call("read_sources", {}, caller)).isError).toBe(true);
+    // Research is off, so the specialist itself gets nothing.
+    for (const name of ["read_sources", "search_assets", "import_asset"]) {
+      expect(
+        (await call(name, { query: "x", mediaKind: "video", candidate: "c" }, "research")).isError,
+      ).toBe(true);
     }
-    expect((await call("search_assets", { query: "x", mediaKind: "video" })).isError).toBe(true);
     expect(host.searchRequests).toEqual([]);
-    expect(host.sourcesCalls).toBe(0);
+
+    expect(
+      (await call("search_assets", { query: "waves", mediaKind: "video" }, "director")).isError,
+    ).toBeUndefined();
+    expect(host.searchRequests).toHaveLength(1);
+    expect((await call("import_asset", { candidate: "c" }, "director")).isError).toBeUndefined();
+    expect(host.importRequests[0]).toMatchObject({ agent: "director", turnId: "turn-1" });
+    expect((await call("read_sources", {}, "director")).isError).toBeUndefined();
+    // Other specialists still get nothing.
+    expect(
+      (await call("search_assets", { query: "x", mediaKind: "video" }, "editor")).isError,
+    ).toBe(true);
   });
 
   it("sends no policy mode, and sets turn, agent and model itself whatever the model says", async () => {
@@ -389,7 +432,7 @@ describe("the research executor", () => {
     const gate = Promise.withResolvers<void>();
     host.importGate = gate.promise;
     const pending = call("import_asset", { candidate: "c" });
-    await Promise.resolve();
+    await vi.waitFor(() => expect(host.importSignals).toHaveLength(1));
     const closing = turn.shutdown();
     expect(host.importSignals[0]?.aborted).toBe(true);
     expect((await call("read_sources", {})).text).toContain("research is closed");
@@ -455,7 +498,23 @@ describe("full-access website tools in the executor", () => {
     expect(other.text).toContain("read_website");
     expect(host.websiteFileRequests).toHaveLength(3);
 
-    const bare = fullAccess({ userTexts: () => ["сделай сайт openvids.ai"] });
+    // A bare domain counts in the turn it is written in, not from an older message.
+    const older = fullAccess({ userTexts: () => ["сделай сайт openvids.ai"] });
+    expect(
+      (
+        await older.call(
+          "get_website_file",
+          { url: "https://openvids.ai/logo.svg", mode: "save" },
+          "director",
+        )
+      ).isError,
+    ).toBe(true);
+    expect(older.host.websiteFileRequests).toEqual([]);
+
+    const bare = fullAccess({
+      userTexts: () => ["сделай сайт openvids.ai"],
+      turnUserTexts: () => ["сделай сайт openvids.ai"],
+    });
     expect(
       (
         await bare.call(
@@ -549,7 +608,7 @@ describe("full-access website tools in the executor", () => {
         allowedSites: ["linear.app"],
         turnId: "turn-1",
         agent: "motion",
-        model: null,
+        model: "anthropic/claude-haiku",
       },
     ]);
     expect(saved.text).toContain("assets/web/linear.app/files/loader.json");
@@ -590,7 +649,7 @@ describe("full-access website tools in the executor", () => {
         height: 720,
         turnId: "turn-1",
         agent: "motion",
-        model: null,
+        model: "anthropic/claude-haiku",
       },
     ]);
     expect(recorded.text).toContain("assets/web/linear.app/recordings/page.mp4");

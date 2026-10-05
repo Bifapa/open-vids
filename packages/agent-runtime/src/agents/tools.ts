@@ -1,25 +1,22 @@
 import {
   PLAN_STEP_STATUSES,
+  QUESTION_MAX_OPTIONS,
+  QUESTION_OPTION_MAX_CHARS,
   SPECIALIST_IDS,
   THINKING_EFFORTS,
-  isRecord,
-  isSpecialistId,
-  isThinkingEffort,
   type AgentId,
   type ChatIntent,
   type ChatMode,
-  type PlanStepStatus,
   type SpecialistId,
   type StoryAction,
-  type StoryOfferChapter,
-  type ThinkingEffort,
 } from "@hyperframes/agent-protocol";
-import type { HostTool, HostToolResult } from "../backend.js";
+import type { HostTool, HostToolResult, ToolProgress } from "../backend.js";
 import { buildAnalysisTools } from "../analysis/tools.js";
 import { buildEditingTools } from "../editing/tools.js";
 import { buildStoryTools, timelineWritesAllowed, type StoryTurnMode } from "../story/tools.js";
 import { buildResearchTools, type KnownCandidate } from "../research/tools.js";
 import { changesProject } from "../intent.js";
+import { buildFrameTools } from "../editing/frames.tools.js";
 import { buildQaTools } from "../qa/tools.js";
 
 export const TOOL_NAMES = {
@@ -31,6 +28,7 @@ export const TOOL_NAMES = {
   cancel: "cancel_agent",
   message: "message_agent",
   jev: "jev",
+  input: "request_input",
 } as const;
 
 export const LIMITS = {
@@ -42,13 +40,19 @@ export const LIMITS = {
   chapterTitleChars: 120,
   chapterSummaryChars: 400,
   chapterMaterialChars: 200,
+  /** request_input: the question's length, and how many suggested answers (each at most QUESTION_OPTION_MAX_CHARS). */
+  questionChars: 600,
+  /** wait_for_agents: the bounds of one call's timeout hint, and its default, in seconds. */
+  waitMinSeconds: 5,
+  waitMaxSeconds: 600,
+  waitDefaultSeconds: 120,
 } as const;
 
 export type ToolExecutor = (
   name: string,
   args: unknown,
   signal: AbortSignal,
-  progress?: (percent: number) => void,
+  progress?: ToolProgress,
 ) => Promise<HostToolResult>;
 
 /** What a turn makes available; decides which tools an agent gets and what their schemas allow. */
@@ -82,7 +86,8 @@ export interface ToolAvailability {
   storyOffer?: boolean;
   /**
    * The runtime has a research host and the user's Asset Search policy could be read: Research gets the search and
-   * import tools and the Director the read-only sources tool (whichever the chat's team and the turn allow).
+   * import tools, the Director the read-only sources tool and, while Research is off in the chat, the search and
+   * import tools too (whichever the turn allows).
    */
   research?: boolean;
   /**
@@ -104,6 +109,8 @@ export interface ToolAvailability {
   researchCandidates?: number;
   /** The runtime runs Render QA this turn: Vision gets the render-review tools (they work only inside a review). */
   qa?: boolean;
+  /** The runtime has a frames host: the agents that judge the picture get `inspect_composition`. */
+  frames?: boolean;
 }
 
 const stringProperty = (description: string, maxLength?: number) => ({
@@ -133,13 +140,45 @@ function jevTool(execute: ToolExecutor): HostTool {
   };
 }
 
-/** The runtime-implemented tools of one agent. Specialists and Jev never get delegation tools (one level only). */
+function inputTool(execute: ToolExecutor): HostTool {
+  return {
+    name: TOOL_NAMES.input,
+    description:
+      "Ask the user one question and wait for the answer, without ending the turn. Use it only when a missing decision would materially change the result and you cannot settle it from the project, the brief or sensible defaults (which of two different cuts to keep, a format the brief does not imply, an irreversible choice). Do not use it to ask for permission to do what the user already asked, to confirm the obvious or to report progress. Offer up to six short options when the answer is a choice; the user can always type their own. The call returns the user's answer; if the turn ends before they answer, it returns that no answer came. Ask once, with everything you need, not a series of questions.",
+    parameters: {
+      type: "object",
+      properties: {
+        question: stringProperty(
+          "The question, in the user's language, self-contained and short.",
+          LIMITS.questionChars,
+        ),
+        options: {
+          type: "array",
+          maxItems: QUESTION_MAX_OPTIONS,
+          items: {
+            type: "string",
+            maxLength: QUESTION_OPTION_MAX_CHARS,
+          },
+          description: "Suggested answers shown as buttons (optional).",
+        },
+      },
+      required: ["question"],
+      additionalProperties: false,
+    },
+    execute: (args, signal) => execute(TOOL_NAMES.input, args, signal),
+  };
+}
+
+/**
+ * The runtime-implemented tools of one agent. Specialists and Jev never get delegation tools (one level only). Jev gets
+ * the read-only project, timeline, story and analysis readers and nothing that changes the project. A disabled
+ * specialist's tools are the Director's: every family applies the inheritance rule inside its own `...ToolsFor`.
+ */
 export function buildHostTools(
   agent: AgentId,
   availability: ToolAvailability,
   execute: ToolExecutor,
 ): HostTool[] {
-  if (agent === "jev") return [];
   const turn: StoryTurnMode = {
     mode: availability.mode ?? "normal",
     action: availability.storyAction ?? null,
@@ -164,36 +203,60 @@ export function buildHostTools(
   const story = availability.story
     ? buildStoryTools(agent, availability.enabled, turn, execute)
     : [];
-  const research =
-    availability.research || availability.websites
-      ? buildResearchTools(agent, availability.enabled, turn, execute, {
-          access: {
-            assets: availability.research === true,
-            websites: availability.websites === true,
-            websiteFiles: availability.websiteFiles === true,
-          },
-          ...(availability.researchCandidate && { candidate: availability.researchCandidate }),
-          ...(availability.researchSourceName && { sourceName: availability.researchSourceName }),
-          ...(availability.researchCandidates !== undefined && {
-            candidateLimit: availability.researchCandidates,
-          }),
-        })
+  const researchFamily = agent !== "jev" && (availability.research || availability.websites);
+  const research = researchFamily
+    ? buildResearchTools(agent, availability.enabled, turn, execute, {
+        access: {
+          assets: availability.research === true,
+          websites: availability.websites === true,
+          websiteFiles: availability.websiteFiles === true,
+        },
+        ...(availability.researchCandidate && { candidate: availability.researchCandidate }),
+        ...(availability.researchSourceName && { sourceName: availability.researchSourceName }),
+        ...(availability.researchCandidates !== undefined && {
+          candidateLimit: availability.researchCandidates,
+        }),
+      })
+    : [];
+  const qa =
+    availability.qa && agent !== "jev" ? buildQaTools(agent, availability.enabled, execute) : [];
+  const frames =
+    availability.frames && agent !== "jev"
+      ? buildFrameTools(agent, availability.enabled, execute)
       : [];
-  const qa = availability.qa ? buildQaTools(agent, execute) : [];
+  const projectTools = [...editing, ...analysis, ...story, ...research, ...frames, ...qa];
   const allTools =
     agent === "director"
-      ? directorTools(availability, execute, [...editing, ...analysis, ...story, ...research])
-      : [
-          ...editing,
-          ...analysis,
-          ...story,
-          ...research,
-          ...qa,
-          ...(availability.jev ? [jevTool(execute)] : []),
-        ];
+      ? directorTools(availability, execute, projectTools)
+      : [...projectTools, ...(availability.jev && agent !== "jev" ? [jevTool(execute)] : [])];
+  const withInput = agent === "jev" ? allTools : [...allTools, inputTool(execute)];
   // A Plan or Ask turn never changes the project: its project-changing tools are not offered at all.
-  if ((availability.intent ?? "edit") === "edit") return allTools;
-  return allTools.filter((tool) => !changesProject(tool.name));
+  if ((availability.intent ?? "edit") === "edit") return withInput;
+  return withInput.filter((tool) => !changesProject(tool.name));
+}
+
+/**
+ * What a specialist's work comes with in this turn, for the Director that does it when the specialist is off: the
+ * specialist's own project tools that the Director has now and would not have with the whole team enabled. Derived
+ * from the tool families for the turn that runs, so a tool the turn refuses (the story build outside a build turn)
+ * is never named. Names only; nothing is executed.
+ */
+export function inheritedToolsOf(
+  availability: ToolAvailability,
+): (specialist: SpecialistId) => string[] {
+  const names = (agent: AgentId, enabled: SpecialistId[]) =>
+    buildHostTools(agent, { ...availability, enabled }, async () => ({
+      text: "",
+      isError: true,
+    })).map((tool) => tool.name);
+  const everyone = [...SPECIALIST_IDS];
+  const directorNow = new Set(names("director", availability.enabled));
+  const directorAlways = new Set(names("director", everyone));
+  // A specialist's tools are asked for as if it were on: a family offers a specialist nothing in a chat that disabled it.
+  return (specialist) =>
+    names(specialist, everyone).filter(
+      (name) => directorNow.has(name) && !directorAlways.has(name),
+    );
 }
 
 function directorTools(
@@ -318,7 +381,7 @@ function directorTools(
       {
         name: TOOL_NAMES.delegate,
         description:
-          "Start an enabled specialist on one self-contained task. Returns immediately with a run id; collect the result with wait_for_agents. The specialist cannot see the conversation, so include everything it needs.",
+          "Start an enabled specialist on one self-contained task (a specialist that is off is not offered here: do its work yourself). Returns immediately with a run id; collect the result with wait_for_agents. The specialist cannot see the conversation beyond the user's own words of this turn, so include everything it needs.",
         parameters: {
           type: "object",
           properties: {
@@ -345,11 +408,24 @@ function directorTools(
       },
       {
         name: TOOL_NAMES.wait,
-        description:
-          "Wait until delegated runs finish and return their reports. Without runIds it waits for every run you started that has not been reported yet. Returns early when the user sends a new instruction.",
+        description: `Wait for delegated runs and return their reports. Without runIds it waits for every run you started that has not been reported yet. It returns when they have finished (until "any": when the first has), when the user sends a new instruction, or after timeoutSeconds (default ${LIMITS.waitDefaultSeconds}) with a progress note, so a long wait costs one call, not many.`,
         parameters: {
           type: "object",
-          properties: { runIds: { type: "array", items: { type: "string" } } },
+          properties: {
+            runIds: { type: "array", items: { type: "string" } },
+            until: {
+              type: "string",
+              enum: ["all", "any"],
+              description:
+                "Return when all of the runs have finished (default) or as soon as one has.",
+            },
+            timeoutSeconds: {
+              type: "number",
+              minimum: LIMITS.waitMinSeconds,
+              maximum: LIMITS.waitMaxSeconds,
+              description: "Longest this call may block before it reports what is still going.",
+            },
+          },
           additionalProperties: false,
         },
         execute: (args, signal) => execute(TOOL_NAMES.wait, args, signal),
@@ -357,7 +433,7 @@ function directorTools(
       {
         name: TOOL_NAMES.message,
         description:
-          "Send a correction or extra instruction to a specialist run that is still running.",
+          "Send a correction or extra instruction to a specialist run that is running or still queued (a queued run sees it in front of its task).",
         parameters: {
           type: "object",
           properties: {
@@ -388,174 +464,4 @@ function directorTools(
   tools.push(...projectTools);
   if (availability.jev) tools.push(jevTool(execute));
   return tools;
-}
-
-// ── Argument parsing (models send loosely typed JSON) ────────────────────────
-
-export type ParsedArgs<T> = { ok: true; value: T } | { ok: false; message: string };
-
-function text(value: unknown, field: string, max: number): ParsedArgs<string> {
-  if (typeof value !== "string" || !value.trim())
-    return { ok: false, message: `${field} is required` };
-  const trimmed = value.trim();
-  return trimmed.length > max
-    ? { ok: false, message: `${field} is longer than ${max} characters` }
-    : { ok: true, value: trimmed };
-}
-
-export interface PlanArgs {
-  steps: Array<{ title: string; status: PlanStepStatus; agent: AgentId | null }>;
-}
-
-export function parsePlanArgs(args: unknown): ParsedArgs<PlanArgs> {
-  if (!isRecord(args) || !Array.isArray(args.steps) || args.steps.length === 0)
-    return { ok: false, message: "steps must be a non-empty array" };
-  if (args.steps.length > LIMITS.planSteps)
-    return { ok: false, message: `at most ${LIMITS.planSteps} steps` };
-  const steps: PlanArgs["steps"] = [];
-  for (const raw of args.steps) {
-    if (!isRecord(raw)) return { ok: false, message: "each step must be an object" };
-    const title = text(raw.title, "step title", LIMITS.stepTitleChars);
-    if (!title.ok) return title;
-    const status = PLAN_STEP_STATUSES.find((known) => known === raw.status);
-    if (!status)
-      return { ok: false, message: `step status must be one of ${PLAN_STEP_STATUSES.join(", ")}` };
-    const agent =
-      raw.agent === "director" || raw.agent === "jev" || isSpecialistId(raw.agent)
-        ? raw.agent
-        : null;
-    steps.push({ title: title.value, status, agent });
-  }
-  return { ok: true, value: { steps } };
-}
-
-export interface ProposalArgs {
-  steps: Array<{ title: string; agent: AgentId | null }>;
-}
-
-export interface StoryOfferArgs {
-  chapters: StoryOfferChapter[];
-}
-
-/**
- * `offer_story_mode`'s chapters: three or more parts of the video, in the user's order. Titles are required; the
- * rest is kept only when the model sent something usable (a whitespace-only summary is no summary).
- */
-export function parseStoryOfferArgs(args: unknown): ParsedArgs<StoryOfferArgs> {
-  if (!isRecord(args) || !Array.isArray(args.chapters))
-    return { ok: false, message: "chapters must be an array of the video's parts" };
-  if (args.chapters.length < 3)
-    return {
-      ok: false,
-      message:
-        "a Story Mode offer needs at least 3 chapters; offer only when the user described the video as an ordered structure of parts",
-    };
-  if (args.chapters.length > LIMITS.storyChapters)
-    return { ok: false, message: `at most ${LIMITS.storyChapters} chapters` };
-  const chapters: StoryOfferChapter[] = [];
-  for (const raw of args.chapters) {
-    if (!isRecord(raw)) return { ok: false, message: "each chapter must be an object" };
-    const title = text(raw.title, "chapter title", LIMITS.chapterTitleChars);
-    if (!title.ok) return title;
-    if (raw.summary !== undefined && typeof raw.summary !== "string")
-      return { ok: false, message: "chapter summary must be a string" };
-    if (raw.material !== undefined && typeof raw.material !== "string")
-      return { ok: false, message: "chapter material must be a string" };
-    if (
-      raw.durationSeconds !== undefined &&
-      (typeof raw.durationSeconds !== "number" ||
-        !Number.isFinite(raw.durationSeconds) ||
-        raw.durationSeconds <= 0)
-    )
-      return { ok: false, message: "chapter durationSeconds must be a number of seconds > 0" };
-    const summary = raw.summary?.trim();
-    const material = raw.material?.trim();
-    chapters.push({
-      title: title.value,
-      ...(summary ? { summary: summary.slice(0, LIMITS.chapterSummaryChars) } : {}),
-      ...(typeof raw.durationSeconds === "number" ? { durationSeconds: raw.durationSeconds } : {}),
-      ...(material ? { material: material.slice(0, LIMITS.chapterMaterialChars) } : {}),
-    });
-  }
-  return { ok: true, value: { chapters } };
-}
-
-/** `propose_plan`'s steps become pending `PlanStep`s: the user approves titles, statuses arrive later. */
-export function parseProposalArgs(args: unknown): ParsedArgs<ProposalArgs> {
-  if (!isRecord(args) || !Array.isArray(args.steps) || args.steps.length === 0)
-    return { ok: false, message: "steps must be a non-empty array" };
-  if (args.steps.length > LIMITS.planSteps)
-    return { ok: false, message: `at most ${LIMITS.planSteps} steps` };
-  const steps: ProposalArgs["steps"] = [];
-  for (const raw of args.steps) {
-    if (!isRecord(raw)) return { ok: false, message: "each step must be an object" };
-    const title = text(raw.title, "step title", LIMITS.stepTitleChars);
-    if (!title.ok) return title;
-    const agent =
-      raw.agent === "director" || raw.agent === "jev" || isSpecialistId(raw.agent)
-        ? raw.agent
-        : null;
-    steps.push({ title: title.value, agent });
-  }
-  return { ok: true, value: { steps } };
-}
-
-export interface DelegateArgs {
-  agent: SpecialistId;
-  title: string;
-  task: string;
-  model?: string;
-  thinking?: ThinkingEffort;
-}
-
-export function parseDelegateArgs(args: unknown): ParsedArgs<DelegateArgs> {
-  if (!isRecord(args)) return { ok: false, message: "arguments must be an object" };
-  if (!isSpecialistId(args.agent))
-    return { ok: false, message: `agent must be one of ${SPECIALIST_IDS.join(", ")}` };
-  const title = text(args.title, "title", LIMITS.runTitleChars);
-  if (!title.ok) return title;
-  const task = text(args.task, "task", LIMITS.taskChars);
-  if (!task.ok) return task;
-  if (args.model !== undefined && typeof args.model !== "string")
-    return { ok: false, message: "model must be 'provider/modelId'" };
-  if (args.thinking !== undefined && !isThinkingEffort(args.thinking))
-    return { ok: false, message: `thinking must be one of ${THINKING_EFFORTS.join(", ")}` };
-  return {
-    ok: true,
-    value: {
-      agent: args.agent,
-      title: title.value,
-      task: task.value,
-      ...(typeof args.model === "string" && args.model.trim() && { model: args.model.trim() }),
-      ...(isThinkingEffort(args.thinking) && { thinking: args.thinking }),
-    },
-  };
-}
-
-export function parseWaitArgs(args: unknown): ParsedArgs<{ runIds: string[] | null }> {
-  if (args === undefined || args === null) return { ok: true, value: { runIds: null } };
-  if (!isRecord(args)) return { ok: false, message: "arguments must be an object" };
-  if (args.runIds === undefined) return { ok: true, value: { runIds: null } };
-  if (!Array.isArray(args.runIds) || !args.runIds.every((id) => typeof id === "string"))
-    return { ok: false, message: "runIds must be an array of run ids" };
-  return { ok: true, value: { runIds: args.runIds.length > 0 ? args.runIds : null } };
-}
-
-export function parseRunArgs(
-  args: unknown,
-  withText: boolean,
-): ParsedArgs<{ runId: string; text: string | null }> {
-  if (!isRecord(args) || typeof args.runId !== "string" || !args.runId)
-    return { ok: false, message: "runId is required" };
-  if (!withText) return { ok: true, value: { runId: args.runId, text: null } };
-  const message = text(args.text, "text", LIMITS.taskChars);
-  return message.ok ? { ok: true, value: { runId: args.runId, text: message.value } } : message;
-}
-
-export function parseJevArgs(args: unknown): ParsedArgs<{ title: string; task: string }> {
-  if (!isRecord(args)) return { ok: false, message: "arguments must be an object" };
-  const title = text(args.title, "title", LIMITS.runTitleChars);
-  if (!title.ok) return title;
-  const task = text(args.task, "task", LIMITS.taskChars);
-  return task.ok ? { ok: true, value: { title: title.value, task: task.value } } : task;
 }

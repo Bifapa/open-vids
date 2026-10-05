@@ -369,17 +369,25 @@ export type WebsiteGrantAccess = (typeof WEBSITE_GRANT_ACCESS)[number];
 /**
  * `POST /api/projects/:id/research/website/grants` — the user allowed a Websites setting ONCE from the chat (the
  * runtime relays the click): until it is revoked (`DELETE …/website/grants/:turnId`, at the end of the turn) or
- * expires, website requests of that project carrying this `turnId` pass the setting's check as if it were on. The
- * address rules still apply.
+ * expires, website requests of that project carrying this `turnId` pass the setting's check as if it were on — for
+ * `site` only (a host or registrable domain: the site and its sub-domains), or for every site when the grant says
+ * `allSites` explicitly. Exactly one of the two is required: a missing or null `site` is never read as "every site".
+ * The address rules still apply.
  */
 export interface WebsiteGrantRequest {
   turnId: string;
   access: WebsiteGrantAccess;
+  /** The one site the user allowed. */
+  site?: string;
+  /** The user explicitly allowed every site of the turn; excludes `site`. */
+  allSites?: true;
 }
 
 export interface WebsiteGrant {
   turnId: string;
   access: WebsiteGrantAccess;
+  /** The site the grant covers; null: every site of the turn. */
+  site: string | null;
   grantedAt: number;
   expiresAt: number;
 }
@@ -405,6 +413,7 @@ export function isWebsiteGrant(value: unknown): value is WebsiteGrant {
     isRecord(value) &&
     typeof value.turnId === "string" &&
     WEBSITE_GRANT_ACCESS.some((access) => access === value.access) &&
+    (value.site === null || typeof value.site === "string") &&
     typeof value.grantedAt === "number" &&
     typeof value.expiresAt === "number"
   );

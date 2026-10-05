@@ -20,9 +20,11 @@ export async function bundleWithLocalizedFonts(
   // Injectable for tests. Production callers omit it and get the producer
   // font-localization pass (see localizeWithProducer).
   localizeFonts: (html: string) => Promise<string> = localizeWithProducer,
+  // A project-relative composition to bundle instead of `index.html`.
+  options: { entryFile?: string } = {},
 ): Promise<string> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-  const html = await bundleToSingleHtml(projectDir);
+  const html = await bundleToSingleHtml(projectDir, options);
   return localizeFonts(html);
 }
 

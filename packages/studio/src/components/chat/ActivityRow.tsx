@@ -10,6 +10,7 @@ import {
 } from "../../i18n";
 import { cn } from "../ui/cn";
 import { Meter, Spinner, StatusDot } from "../ui/Status";
+import { describeServerError } from "../../agent/agentErrors";
 import { AgentMonogram, chatAgentName } from "./AgentMonogram";
 import { chatFocus } from "./chatStyles";
 import { formatElapsed } from "./relativeTime";
@@ -185,6 +186,16 @@ export function ActivityRow({ activity, agent }: { activity: Activity; agent: Ag
         </button>
       ) : (
         <div className={cn(workRowGrid, WORK_ROW_TONE[state])}>{body}</div>
+      )}
+      {state === "failed" && activity.error && (
+        <p
+          data-testid="activity-error"
+          title={activity.error.message}
+          className="mb-1 ml-[30px] line-clamp-3 text-xs leading-[15px] text-fg-3 [overflow-wrap:anywhere]"
+        >
+          <span className="sr-only">{t("chat.activity.reason")} </span>
+          {describeServerError(activity.error.code, activity.error.message)}
+        </p>
       )}
       {open && expandable && (
         <ul id={listId} className="mb-1 ml-[30px] grid gap-px">

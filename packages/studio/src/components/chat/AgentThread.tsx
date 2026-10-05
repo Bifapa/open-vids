@@ -8,12 +8,14 @@ import {
 import { useAgentStore } from "../../agent/agentContext";
 import { describeTurnError } from "../../agent/agentErrors";
 import { agentThread, displayModelName, findModel } from "../../agent/agentSelectors";
+import { contextLine, hasUsage, usageLine } from "../../agent/usageFormat";
 import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { EFFORT_LABELS, RUN_STATUS_LABELS } from "./agentLabels";
 import { chatAgentName } from "./AgentMonogram";
 import { chatMeasure } from "./chatStyles";
 import { AssistantBlock, TaskBrief } from "./Messages";
+import { CancelRunButton } from "./CancelRunButton";
 import { formatDuration } from "./relativeTime";
 
 /** "Done · Sonnet · High thinking · 42s": how the run went, beside its brief's label. */
@@ -37,6 +39,8 @@ function RunMeta({
   if (run.thinking)
     details.push(t("chat.run.thinking", { effort: t(EFFORT_LABELS[run.thinking]) }));
   if (run.endedAt !== undefined) details.push(formatDuration(run.endedAt - run.startedAt));
+  if (hasUsage(run.usage)) details.push(usageLine(run.usage));
+  if (run.context) details.push(contextLine(run.context));
   return (
     <>
       <span data-run-status={run.status} className="font-normal tabular-nums">
@@ -48,6 +52,7 @@ function RunMeta({
         </span>
       )}
       {caller && <span className="font-normal">· {t("chat.run.via", { name: caller })}</span>}
+      <CancelRunButton run={run} labelled className="font-normal" />
     </>
   );
 }

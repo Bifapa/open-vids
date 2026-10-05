@@ -189,10 +189,13 @@ function homepageOf(value: unknown): string | null {
  */
 export class PolicyStore {
   private readonly file: string;
+  /** The directory of the policy file; other global research state (the candidate record) lives beside it. */
+  readonly dir: string;
   private readonly now: () => number;
 
   constructor(options: PolicyStoreOptions = {}) {
-    this.file = join(options.dir ?? defaultResearchDir(), POLICY_FILE);
+    this.dir = options.dir ?? defaultResearchDir();
+    this.file = join(this.dir, POLICY_FILE);
     this.now = options.now ?? Date.now;
   }
 

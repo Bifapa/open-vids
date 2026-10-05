@@ -1,88 +1,120 @@
 import { useId, useState } from "react";
-import {
-  CheckCircle,
-  Clock,
-  Globe,
-  ShieldWarning,
-  WarningCircle,
-  XCircle,
-  type Icon,
-} from "@phosphor-icons/react";
-import type {
-  PermissionAction,
-  PermissionDecision,
-  PermissionKind,
-  PermissionRequest,
-  PermissionState,
-} from "@hyperframes/agent-protocol";
+import { WarningCircle } from "@phosphor-icons/react";
+import type { PermissionDecision, PermissionRequest } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
-import { Trans, useTranslation, type TranslationKey } from "../../i18n";
+import { Trans, formatDuration, useTranslation } from "../../i18n";
 import { Button, Tooltip, cn } from "../ui";
 import { chatAgentName } from "./AgentMonogram";
 import { chatMeasureWide, noteBox, noteBoxWarn } from "./chatStyles";
+import { KIND_VIEWS, SENTENCE_KEYS, STATE_ICONS, STATE_TONES } from "./permissionKinds";
 
-const KIND_ICONS: Record<PermissionKind, Icon> = {
-  read_linked_pages: Globe,
-  website_full_access: ShieldWarning,
-};
-
-const TITLE_KEYS: Record<PermissionKind, TranslationKey> = {
-  read_linked_pages: "chat.permission.title.read_linked_pages",
-  website_full_access: "chat.permission.title.website_full_access",
-};
-
-/** The setting as Settings → Asset Search → Websites words it: the same name and hint, never a second copy. */
-const SETTING_KEYS: Record<PermissionKind, { name: TranslationKey; hint: TranslationKey }> = {
-  read_linked_pages: {
-    name: "research.policy.readLinked",
-    hint: "research.policy.readLinked.hint",
-  },
-  website_full_access: {
-    name: "research.policy.fullAccess",
-    hint: "research.policy.fullAccess.hint",
-  },
-};
-
-/** What the agent was about to do; the sentence names the site when the request has one. */
-const SENTENCE_KEYS = {
-  read: "chat.permission.read",
-  download: "chat.permission.download",
-  read_code: "chat.permission.read_code",
-  record: "chat.permission.record",
-} as const satisfies Record<PermissionAction, TranslationKey>;
-
-type AnsweredState = Exclude<PermissionState, "pending">;
-
-const STATE_KEYS: Record<AnsweredState, TranslationKey> = {
-  allowed_once: "chat.permission.state.allowed_once",
-  enabled: "chat.permission.state.enabled",
-  denied: "chat.permission.state.denied",
-  expired: "chat.permission.state.expired",
-};
-
-const STATE_ICONS: Record<AnsweredState, Icon> = {
-  allowed_once: CheckCircle,
-  enabled: CheckCircle,
-  denied: XCircle,
-  expired: Clock,
-};
-
-const STATE_TONES: Record<AnsweredState, string> = {
-  allowed_once: "text-success",
-  enabled: "text-success",
-  denied: "text-fg-2",
-  expired: "text-fg-3",
-};
+const NAMED = "font-medium text-fg [overflow-wrap:anywhere]";
 
 interface FailedAnswer {
   decision: PermissionDecision;
   message: string;
 }
 
+/** Which parts of "download <title> from <source>" the request can fill in; the message words each case itself. */
+function sentenceShape(title: string, source: string): "titleSource" | "title" | "source" | "none" {
+  if (title && source) return "titleSource";
+  if (title) return "title";
+  return source ? "source" : "none";
+}
+
+/** What a request about outside material says about it, trimmed; an empty string counts as not known. */
+function assetFacts(request: PermissionRequest) {
+  const title = request.asset?.title.trim() ?? "";
+  const source = request.asset?.source?.trim() || request.site || "";
+  const license = request.asset?.license?.trim() ?? "";
+  return {
+    title,
+    source,
+    license,
+    shape: sentenceShape(title, source),
+    known: request.asset !== undefined,
+  };
+}
+
+/** "<agent> wants to download/import <title> from <source>", with what is not known left out instead of guessed. */
+function AssetSentence({
+  request,
+  i18nKey,
+}: {
+  request: PermissionRequest;
+  i18nKey: "chat.permission.assetDownload" | "chat.permission.assetImport";
+}) {
+  const { title, source, shape } = assetFacts(request);
+  return (
+    <Trans
+      i18nKey={i18nKey}
+      values={{ agent: chatAgentName(request.agent), shape }}
+      // The title and the source come from outside web pages: they are children of the placeholders, never
+      // part of the message, so nothing in them is read as markup.
+      components={{
+        b: <b className="font-medium text-fg" />,
+        asset: <b className={NAMED}>{title}</b>,
+        source: <b className={NAMED}>{source}</b>,
+      }}
+    />
+  );
+}
+
+/** "<agent> wants to render <composition> (4 min 12 s)": the composition and its length when the request has them. */
+function LongRenderSentence({ request }: { request: PermissionRequest }) {
+  const render = request.render;
+  return (
+    <Trans
+      i18nKey="chat.permission.longRender"
+      values={{
+        agent: chatAgentName(request.agent),
+        shape: render ? "named" : "none",
+        duration: render ? formatDuration(render.seconds) : "",
+      }}
+      components={{
+        b: <b className="font-medium text-fg" />,
+        composition: <b className={NAMED}>{render?.composition ?? ""}</b>,
+      }}
+    />
+  );
+}
+
+function WebsiteSentence({ request }: { request: PermissionRequest }) {
+  return (
+    <Trans
+      // A render is never about a website; reading is the quietest wording if a request ever says otherwise.
+      i18nKey={SENTENCE_KEYS[request.action === "render" ? "read" : request.action]}
+      values={{
+        agent: chatAgentName(request.agent),
+        known: request.site === null ? "no" : "yes",
+        site: request.site ?? "",
+      }}
+      components={{ b: <b className="font-medium text-fg" /> }}
+    />
+  );
+}
+
+function RequestSentence({ request }: { request: PermissionRequest }) {
+  switch (request.kind) {
+    case "asset_download":
+      return <AssetSentence request={request} i18nKey="chat.permission.assetDownload" />;
+    case "restricted_asset":
+      return <AssetSentence request={request} i18nKey="chat.permission.assetImport" />;
+    case "long_render":
+      return <LongRenderSentence request={request} />;
+    case "read_linked_pages":
+    case "website_full_access":
+      return <WebsiteSentence request={request} />;
+  }
+}
+
 /**
- * An agent needs a website setting that is off: the card names who asked, what for and which setting, and offers
- * Allow once / Turn on / Don't allow while the tool call waits. Once answered (or expired) it is a one-line record.
- * The chat stream carries the new state; the answer only keeps the card busy until the runtime has taken it.
+ * An agent needs something the user has not allowed: a website setting that is off, downloading outside material
+ * while the agents ask first, importing restricted material, or a render that would run for minutes. The card names
+ * who asked, what for and (when a setting is involved) which one, and offers the answers — allow for the turn /
+ * change the setting / don't allow, or just allow / don't allow for a one-off consent — while the tool call waits.
+ * Once answered (or expired) it is a one-line record. The chat stream carries the new state; the answer only keeps
+ * the card busy until the runtime has taken it.
  */
 export function PermissionCard({
   turnId,
@@ -101,8 +133,9 @@ export function PermissionCard({
 
   const current =
     permission.state === "pending" && answered?.id === permission.id ? answered : permission;
-  const KindIcon = KIND_ICONS[current.kind];
-  const setting = SETTING_KEYS[current.kind];
+  const view = KIND_VIEWS[current.kind];
+  const KindIcon = view.icon;
+  const facts = view.showsAsset ? assetFacts(current) : null;
 
   const answer = async (decision: PermissionDecision) => {
     if (busy) return;
@@ -117,6 +150,10 @@ export function PermissionCard({
   const settled = current.state === "pending" ? null : current.state;
   const open = settled === null;
   const StateIcon = settled === null ? null : STATE_ICONS[settled];
+  const onceHint =
+    current.site && view.once.siteHint
+      ? t(view.once.siteHint, { site: current.site })
+      : t(view.once.hint);
 
   return (
     <section
@@ -133,63 +170,72 @@ export function PermissionCard({
           className={cn("size-icon-sm shrink-0", open ? "text-warning" : "text-fg-3")}
         />
         <span id={titleId} className="min-w-0 font-semibold text-fg">
-          {/* "… is off" only while it asks; once answered the status line says what happened to the setting. */}
-          {t(open ? TITLE_KEYS[current.kind] : setting.name)}
+          {/* "… is off" only while it asks; once answered the status line says what happened. */}
+          {t(open ? view.title : view.settledTitle)}
         </span>
       </div>
       <p data-testid="permission-sentence" className="text-sm leading-[17px] text-fg-2">
-        <Trans
-          i18nKey={SENTENCE_KEYS[current.action]}
-          values={{
-            agent: chatAgentName(current.agent),
-            known: current.site === null ? "no" : "yes",
-            site: current.site ?? "",
-          }}
-          components={{ b: <b className="font-medium text-fg" /> }}
-        />
+        <RequestSentence request={current} />
       </p>
-      {open && (
+      {open && facts?.known && (
+        <p data-testid="permission-license" className="text-xs leading-[15px] text-fg-3">
+          {facts.license
+            ? t("chat.permission.license", { license: facts.license })
+            : t("chat.permission.licenseUnknown")}
+        </p>
+      )}
+      {open && view.detail.type === "setting" && (
         <div
           data-testid="permission-setting"
           className="grid gap-px rounded-sm bg-surface-1 px-2 py-1.5"
         >
-          <span className="text-xs font-medium text-fg">{t(setting.name)}</span>
+          <span className="text-xs font-medium text-fg">{t(view.detail.setting.name)}</span>
           <span className="text-xs leading-[15px] text-fg-3 [text-wrap:pretty]">
-            {t(setting.hint)}
+            {t(view.detail.setting.hint)}
           </span>
           <span className="text-2xs leading-[14px] text-fg-3">
             {t("chat.permission.where", {
-              section: t("settings.section.assets"),
-              group: t("research.policy.groupWebsites"),
+              section: t(view.detail.setting.section),
+              group: t(view.detail.setting.group),
             })}
           </span>
         </div>
       )}
+      {open && view.detail.type === "note" && (
+        <p
+          data-testid="permission-note"
+          className="text-xs leading-[15px] text-fg-3 [text-wrap:pretty]"
+        >
+          {t(view.detail.text)}
+        </p>
+      )}
       {open ? (
         <div className="grid gap-1.5">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Tooltip label={t("chat.permission.onceHint")}>
+            <Tooltip label={onceHint}>
               <Button
                 size="sm"
-                variant="secondary"
+                variant={view.once.variant}
                 loading={busy === "once"}
                 disabled={busy !== null}
                 onClick={() => void answer("once")}
               >
-                {t("chat.permission.once")}
+                {t(view.once.label)}
               </Button>
             </Tooltip>
-            <Tooltip label={t("chat.permission.alwaysHint")}>
-              <Button
-                size="sm"
-                variant="primary"
-                loading={busy === "always"}
-                disabled={busy !== null}
-                onClick={() => void answer("always")}
-              >
-                {t("chat.permission.always")}
-              </Button>
-            </Tooltip>
+            {view.always && (
+              <Tooltip label={t(view.always.hint)}>
+                <Button
+                  size="sm"
+                  variant={view.always.variant}
+                  loading={busy === "always"}
+                  disabled={busy !== null}
+                  onClick={() => void answer("always")}
+                >
+                  {t(view.always.label)}
+                </Button>
+              </Tooltip>
+            )}
             <Button
               size="sm"
               variant="ghost"
@@ -197,7 +243,7 @@ export function PermissionCard({
               disabled={busy !== null}
               onClick={() => void answer("deny")}
             >
-              {t("chat.permission.deny")}
+              {t(view.deny)}
             </Button>
           </div>
           {failed && (
@@ -229,7 +275,7 @@ export function PermissionCard({
             className={cn("flex items-center gap-1 text-xs", STATE_TONES[settled])}
           >
             <StateIcon aria-hidden weight="fill" className="size-icon-sm shrink-0" />
-            {t(STATE_KEYS[settled])}
+            {t(view.states[settled])}
           </p>
         )
       )}

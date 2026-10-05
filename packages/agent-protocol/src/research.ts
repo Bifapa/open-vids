@@ -126,6 +126,8 @@ export const RESEARCH_LIMITS = {
   urlChars: 2_048,
   searchResults: 20,
   fileNameChars: 80,
+  /** Most `import_asset` calls (each downloading or reusing one file) one agent turn may make. */
+  importsPerTurn: 12,
 } as const;
 
 // ── Licenses ─────────────────────────────────────────────────────────────────
@@ -300,7 +302,7 @@ export function researchKindOf(kind: MissingMediaKind): ResearchMediaKind {
 /**
  * A search result. `id` is issued by the Studio server and names the server's own record of the result (its URLs,
  * author and license as the source reported them): importing by candidate id is how a found asset is downloaded
- * with the source's metadata. Candidate ids live as long as the Studio server process.
+ * with the source's metadata. The server keeps the record per project for about a week, across restarts.
  */
 export interface AssetCandidate {
   id: string;
@@ -397,6 +399,11 @@ export interface ImportAssetRequest {
    * tells the caller whether the request can still write.
    */
   requestId?: string;
+  /**
+   * Set by the runtime after the user allowed this one asset in the chat: a candidate whose license status is
+   * `restricted` is otherwise refused with `restricted_license`.
+   */
+  allowRestricted?: boolean;
 }
 
 /** How the bytes were obtained: from the network, from the project's download cache, or not at all (duplicate). */
@@ -560,7 +567,7 @@ export const RESEARCH_ERROR_CODES = [
   /** The Asset Search policy does not allow this source or URL. */
   "blocked_by_policy",
   "unknown_source",
-  /** The candidate id is not known (expired with a server restart): search again. */
+  /** The candidate id is not known in this project (never found here, or forgotten after about a week): search again. */
   "unknown_candidate",
   /** The URL answered 404/410 or the asset was removed. */
   "unavailable",
@@ -572,6 +579,10 @@ export const RESEARCH_ERROR_CODES = [
   "network",
   /** The source's API answered with an error. */
   "provider_error",
+  /** A source or host answered 429 (too many requests) and kept doing so after the server's own waits. */
+  "rate_limited",
+  /** The candidate's license status is `restricted` (non-commercial / no-derivatives): the user must allow it per asset. */
+  "restricted_license",
   "unknown_node",
   "unknown_asset",
   "locked",
@@ -598,6 +609,47 @@ export function isResearchError(value: unknown): value is ResearchError {
 }
 
 // ── Guards (shallow: the Studio server is the producer) ──────────────────────
+
+const isTextOrNull = (value: unknown): boolean => value === null || typeof value === "string";
+const isNumberOrNull = (value: unknown): boolean => value === null || typeof value === "number";
+function isLicenseInfo(value: unknown): value is LicenseInfo {
+  return (
+    isRecord(value) &&
+    LICENSE_IDS.some((id) => id === value.id) &&
+    typeof value.name === "string" &&
+    isTextOrNull(value.url) &&
+    LICENSE_CONFIDENCES.some((confidence) => confidence === value.confidence) &&
+    LICENSE_STATUSES.some((status) => status === value.status) &&
+    typeof value.basis === "string"
+  );
+}
+
+/** A stored candidate read back from disk: every field the importer and the formatters use has its type. */
+export function isAssetCandidate(value: unknown): value is AssetCandidate {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    RESEARCH_MEDIA_KINDS.some((kind) => kind === value.mediaKind) &&
+    typeof value.title === "string" &&
+    typeof value.description === "string" &&
+    isRecord(value.source) &&
+    typeof value.source.id === "string" &&
+    typeof value.source.name === "string" &&
+    typeof value.source.trusted === "boolean" &&
+    isTextOrNull(value.pageUrl) &&
+    typeof value.mediaUrl === "string" &&
+    isTextOrNull(value.previewUrl) &&
+    isTextOrNull(value.author) &&
+    isTextOrNull(value.authorUrl) &&
+    isLicenseInfo(value.license) &&
+    isNumberOrNull(value.width) &&
+    isNumberOrNull(value.height) &&
+    isNumberOrNull(value.duration) &&
+    isNumberOrNull(value.bytes) &&
+    isTextOrNull(value.contentType) &&
+    isTextOrNull(value.inProject)
+  );
+}
 
 export function isAssetSearchPolicy(value: unknown): value is AssetSearchPolicy {
   return (

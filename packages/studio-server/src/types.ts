@@ -281,6 +281,22 @@ export interface StudioApiAdapter {
   }): Promise<LayoutCheckResult | { unavailable: string }>;
 
   /**
+   * Optional: JPEG frames of a composition at the given seconds, the way the preview shows them (seek + screenshot
+   * in headless Chrome, video frames included), without rendering a video. Captures the composition as it is on
+   * disk. Resolves `{ unavailable }` when this machine cannot run it. Aborting the signal stops the browser.
+   */
+  captureFrames?(opts: {
+    project: ResolvedProject;
+    /** Project-relative composition file. */
+    composition: string;
+    /** Seconds on the composition timeline. */
+    times: number[];
+    /** Output width in pixels. */
+    width: number;
+    signal: AbortSignal;
+  }): Promise<CompositionCapture | { unavailable: string }>;
+
+  /**
    * Optional: renders a public web page in headless Chrome and extracts its visual identity (the website style
    * reader). The adapter runs the browser outside this process; every request the page makes is held to the public
    * address rules, and aborting the signal stops the browser. Resolves `{ error }` for a page that cannot be read.
@@ -391,4 +407,23 @@ export interface SpeakerDiarization {
   /** Speaker indexes are arbitrary but consistent within one result. */
   turns: Array<{ speaker: number; start: number; end: number }>;
   producer: string;
+}
+
+/** One captured frame of a composition. */
+export interface CapturedFrame {
+  /** The requested second. */
+  time: number;
+  /** The second that was captured (a request past the end is taken just before it). */
+  capturedAt: number;
+  /** JPEG bytes. */
+  data: Uint8Array;
+  width: number;
+  height: number;
+}
+
+export interface CompositionCapture {
+  /** The composition's length in seconds. */
+  duration: number;
+  /** In the order of the requested times. */
+  frames: CapturedFrame[];
 }

@@ -57,6 +57,10 @@ export interface SeenPrompts {
   first: string;
   corrections: string[];
   finals: string[];
+  /** `<render-qa-review>` prompts: the Director standing in for a disabled Vision. */
+  reviews: string[];
+  /** `<render-qa-skipped>` prompts: the closing answer when no check ran. */
+  closings: string[];
 }
 
 export interface DirectorHooks {
@@ -65,6 +69,8 @@ export interface DirectorHooks {
   /** A correction prompt (1-based); the default changes the project again. */
   correction?: (number: number, session: ScriptedSession, text: string) => Promise<void>;
   final?: (session: ScriptedSession, text: string) => Promise<void>;
+  /** A review prompt (1-based); the default looks at two frames and reports no finding. */
+  review?: (number: number, session: ScriptedSession, text: string) => Promise<void>;
 }
 
 /** A Director that does its work (changes the project), corrects when asked and reports, recording each prompt. */
@@ -72,7 +78,7 @@ export function directorScript(
   fixture: RuntimeFixture,
   hooks: DirectorHooks = {},
 ): { seen: SeenPrompts; run: Script } {
-  const seen: SeenPrompts = { first: "", corrections: [], finals: [] };
+  const seen: SeenPrompts = { first: "", corrections: [], finals: [], reviews: [], closings: [] };
   const change = () => {
     fixture.qa.bump();
   };
@@ -80,6 +86,15 @@ export function directorScript(
     if (input.text.includes("<render-qa-final")) {
       seen.finals.push(input.text);
       await hooks.final?.(session, input.text);
+    } else if (input.text.includes("<render-qa-review")) {
+      seen.reviews.push(input.text);
+      if (hooks.review) await hooks.review(seen.reviews.length, session, input.text);
+      else {
+        await session.callTool("inspect_render", { times: [1, 5] });
+        await session.callTool("report_render_findings", { findings: [] });
+      }
+    } else if (input.text.includes("<render-qa-skipped")) {
+      seen.closings.push(input.text);
     } else if (input.text.includes("<render-qa pass=")) {
       seen.corrections.push(input.text);
       if (hooks.correction) await hooks.correction(seen.corrections.length, session, input.text);
@@ -130,6 +145,15 @@ export function visionScript(findings: FindingInput[] | null): Script {
     if (findings !== null) await session.callTool("report_render_findings", { findings });
     return "completed";
   };
+}
+
+/**
+ * Whether a Director prompt is Render QA's closing prompt (`<render-qa-skipped>`): the turn attempted work, nothing
+ * changed, and the Director is asked once more for its final answer. A fixture script that makes tool calls on every
+ * prompt skips them here, so the closing prompt does not re-run them.
+ */
+export function isQaClosing(input: BackendPromptInput): boolean {
+  return input.text.includes("<render-qa-skipped");
 }
 
 export function untilAborted(signal: AbortSignal): Promise<void> {

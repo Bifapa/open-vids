@@ -136,12 +136,29 @@ export function renderAttachmentsBlock(references: readonly MessageReference[]):
   return `<attachments>\nThe user attached these project files to the message. When the message says "this", "these", "the picture", "the video" (or the same in another language) without naming something else, it means these files:\n${lines.join("\n")}\n</attachments>`;
 }
 
+/** How much of the editor-context JSON a prompt carries: all of it, or everything but the bulky clip list. */
+export interface PromptContextOptions {
+  /**
+   * `full` (default): the whole captured context — the Director's first prompt of a turn carries it once.
+   * `relevant`: without `timeline.elements` (the clip list: up to 200 entries a specialist can read with
+   * inspect_timeline); the selection, playhead, composition and counts stay. Specialist tasks and steering use it,
+   * so a turn with several specialists does not repeat the same JSON in every prompt.
+   */
+  editorJson?: "full" | "relevant";
+}
+
+/** The editor context without its clip list; the counts say how many clips there are. */
+function withoutClipList(context: EditorContext): EditorContext {
+  return { ...context, timeline: { ...context.timeline, elements: [] } };
+}
+
 /** Adds Studio-captured editor context, typed references and the user's language to the text received by a backend. */
 export function renderPromptContext(
   prompt: string,
   editorContext?: EditorContext,
   references: readonly MessageReference[] = [],
   userLanguage?: string,
+  options: PromptContextOptions = {},
 ): string {
   const blocks = [prompt];
   const selection = editorContext ? renderUserSelectionBlock(editorContext) : null;
@@ -149,7 +166,11 @@ export function renderPromptContext(
   const attachments = renderAttachmentsBlock(references);
   if (attachments) blocks.push(attachments);
   if (editorContext) {
-    blocks.push(`<editor-context>\n${JSON.stringify(editorContext, null, 2)}\n</editor-context>`);
+    const relevant =
+      options.editorJson === "relevant" && editorContext.timeline.elements.length > 0;
+    const shown = relevant ? withoutClipList(editorContext) : editorContext;
+    const note = relevant ? "\n(The clip list is left out here; inspect_timeline reads it.)" : "";
+    blocks.push(`<editor-context>\n${JSON.stringify(shown, null, 2)}${note}\n</editor-context>`);
   }
   if (references.length > 0) {
     const rendered = references.map((reference) => JSON.stringify(reference)).join("\n");

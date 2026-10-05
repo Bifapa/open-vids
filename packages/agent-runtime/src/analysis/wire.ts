@@ -38,6 +38,7 @@ export function isAnalysisJob(value: unknown): value is AnalysisJob {
     isString(value.source) &&
     JOB_STATUSES.some((status) => status === value.status) &&
     isNumber(value.progress) &&
+    isNumber(value.updatedAt) &&
     Array.isArray(value.results) &&
     value.results.every(
       (result) =>

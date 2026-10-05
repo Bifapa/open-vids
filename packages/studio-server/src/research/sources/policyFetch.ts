@@ -27,6 +27,11 @@ const PAGE_LIMIT_BYTES = 3 * 1024 * 1024;
 /** Commons answers video-derivative queries in up to ~20 s. */
 const REQUEST_TIMEOUT_MS = 45_000;
 const DOWNLOAD_IDLE_MS = 30_000;
+/** How often a 429 answer is retried (after the first attempt) before the call fails `rate_limited`. */
+const RATE_LIMIT_RETRIES = 2;
+/** The longest one wait for a rate-limited host may last; a `Retry-After` beyond it fails the call at once. */
+const MAX_RETRY_WAIT_MS = 15_000;
+const BASE_RETRY_WAIT_MS = 1_000;
 const STREAM_MESSAGE =
   "Streamed or protected media (HLS/DASH manifests) is not downloaded; look for a plain video file instead.";
 
@@ -66,6 +71,54 @@ export interface PolicyFetcherOptions {
   userAgent?: string;
   timeoutMs?: number;
   downloadIdleMs?: number;
+  /** Waits between rate-limited attempts (tests inject a recording sleep). */
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** Jitter source in [0, 1) (tests inject a fixed value). */
+  random?: () => number;
+  now?: () => number;
+}
+
+/** The wait a response asks for with `Retry-After` (seconds or an HTTP date), in ms; null when it asks for none. */
+function retryAfterMs(response: Response, now: number): number | null {
+  const header = response.headers.get("retry-after")?.trim();
+  if (!header) return null;
+  if (/^\d+$/.test(header)) return Number(header) * 1000;
+  const at = Date.parse(header);
+  return Number.isNaN(at) ? null : Math.max(0, at - now);
+}
+
+function sleepFor(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * The failure for a host that kept answering 429: what to tell the model, and when to try again when the host said
+ * (`Retry-After`).
+ */
+export function rateLimitedFailure(host: string, response: Response, now: number): ResearchFailure {
+  const wait = retryAfterMs(response, now);
+  const when =
+    wait === null
+      ? ""
+      : ` The host asks to wait ${Math.ceil(wait / 1000)} s before the next request.`;
+  return new ResearchFailure(
+    "rate_limited",
+    `${host} answered 429 (too many requests) and kept doing so.${when} Do not retry this source right away: use another source, or other material, or wait.`,
+  );
 }
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
@@ -81,6 +134,9 @@ export class PolicyFetcher {
   private readonly userAgent: string;
   private readonly timeoutMs: number;
   private readonly idleMs: number;
+  private readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
+  private readonly random: () => number;
+  private readonly now: () => number;
 
   constructor(options: PolicyFetcherOptions = {}) {
     this.transport = options.transport ?? globalTransport;
@@ -88,6 +144,42 @@ export class PolicyFetcher {
     this.userAgent = options.userAgent ?? RESEARCH_USER_AGENT;
     this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
     this.idleMs = options.downloadIdleMs ?? DOWNLOAD_IDLE_MS;
+    this.sleep = options.sleep ?? sleepFor;
+    this.random = options.random ?? Math.random;
+    this.now = options.now ?? Date.now;
+  }
+
+  /** The failure for a host that kept answering 429 (see {@link rateLimitedFailure}). */
+  rateLimited(host: string, response: Response): ResearchFailure {
+    return rateLimitedFailure(host, response, this.now());
+  }
+
+  /**
+   * One request. A 429 answer is retried twice with a pause that follows `Retry-After` (or doubles from one second,
+   * with jitter); a host that asks for longer than the cap, or keeps answering 429, is returned as is for the caller
+   * to fail with {@link rateLimitedFailure}. The body of an answer that is retried is discarded.
+   */
+  private async requestWithBackoff(
+    url: URL,
+    headers: Record<string, string>,
+    signal: AbortSignal,
+    addresses: string[],
+  ): Promise<Response> {
+    for (let attempt = 0; ; attempt += 1) {
+      const response = await this.transport(url.toString(), {
+        headers: { "user-agent": this.userAgent, ...headers },
+        redirect: "manual",
+        signal,
+        addresses,
+      });
+      if (response.status !== 429 || attempt >= RATE_LIMIT_RETRIES || signal.aborted)
+        return response;
+      const asked = retryAfterMs(response, this.now());
+      const wait = asked ?? BASE_RETRY_WAIT_MS * 2 ** attempt * (1 + this.random() * 0.5);
+      if (wait > MAX_RETRY_WAIT_MS) return response;
+      await response.body?.cancel().catch(() => undefined);
+      await this.sleep(wait, signal);
+    }
   }
 
   /** The URL check alone (used before anything is fetched, e.g. to report a blocked page without a request). */
@@ -149,12 +241,7 @@ export class PolicyFetcher {
       const { url, addresses } = await vet(current);
       let response: Response;
       try {
-        response = await this.transport(url.toString(), {
-          headers: { "user-agent": this.userAgent, ...headers },
-          redirect: "manual",
-          signal,
-          addresses,
-        });
+        response = await this.requestWithBackoff(url, headers, signal, addresses);
       } catch (error) {
         if (isResearchFailure(error)) throw error;
         throw networkFailure(url, error, signal);
@@ -194,6 +281,7 @@ export class PolicyFetcher {
         `${host} answered ${status}: the file or page is gone`,
       );
     }
+    if (status === 429) throw this.rateLimited(host, result.response);
     throw new ResearchFailure(failure, `${host} answered ${status}`);
   }
 

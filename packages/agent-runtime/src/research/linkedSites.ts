@@ -131,13 +131,19 @@ export function registrableDomain(host: string): string | null {
     : supplemented;
 }
 
-/** The http(s) URLs written in `text` (`www.`-prefixed words and bare domains count as https). */
-export function linksIn(text: string): string[] {
+/** The URLs written with a scheme or `www.` in `text`: a link the user sent on purpose. */
+export function deliberateLinksIn(text: string): string[] {
   const links: string[] = [];
   for (const match of text.matchAll(URL_IN_TEXT))
     links.push(match[0].replace(TRAILING_PUNCTUATION, ""));
   for (const match of text.matchAll(WWW_IN_TEXT))
     links.push(`https://${match[0].replace(TRAILING_PUNCTUATION, "")}`);
+  return links;
+}
+
+/** The http(s) URLs written in `text`: deliberate links, plus bare domains (`linear.app/pricing`) which count as https. */
+export function linksIn(text: string): string[] {
+  const links = deliberateLinksIn(text);
   for (const match of text.matchAll(BARE_DOMAIN_IN_TEXT)) {
     const word = match[0].replace(TRAILING_PUNCTUATION, "");
     if (/^www\./i.test(word) || FILE_EXTENSIONS.has(match[1]?.toLowerCase() ?? "")) continue;
@@ -146,17 +152,35 @@ export function linksIn(text: string): string[] {
   return links;
 }
 
-/** The registrable domains the user linked in `userTexts`, in order of first appearance. */
-export function linkedSites(userTexts: readonly string[]): string[] {
-  const sites = new Set<string>();
-  for (const text of userTexts) {
-    for (const link of linksIn(text)) {
-      const host = websiteHostOf(link);
-      const site = host ? registrableDomain(host) : null;
-      if (site) sites.add(site);
-    }
+function addSites(sites: Set<string>, links: readonly string[]): void {
+  for (const link of links) {
+    const host = websiteHostOf(link);
+    const site = host ? registrableDomain(host) : null;
+    if (site) sites.add(site);
   }
-  return [...sites];
+}
+
+/** What decides the sites a chat has linked right now. */
+export interface LinkedSitesInput {
+  /** Every message the user wrote in this chat: only the links they sent on purpose (scheme or `www.`) count. */
+  chatTexts: readonly string[];
+  /** The messages of the current turn: a bare domain ("like linear.app") counts here and only here. */
+  turnTexts: readonly string[];
+  /** Sites the user removed from the chat's list; they stay out however often they are mentioned. */
+  excluded: readonly string[];
+}
+
+/**
+ * The registrable domains the user has linked in this chat, in order of first appearance: links with a scheme or
+ * `www.` from any message, bare domains from the current turn's messages only (a passing mention in an old message
+ * does not keep a site readable for the chat's lifetime), minus the sites the user removed from the list.
+ */
+export function chatLinkedSites({ chatTexts, turnTexts, excluded }: LinkedSitesInput): string[] {
+  const sites = new Set<string>();
+  for (const text of chatTexts) addSites(sites, deliberateLinksIn(text));
+  for (const text of turnTexts) addSites(sites, linksIn(text));
+  const removed = new Set(excluded.map((site) => site.toLowerCase()));
+  return [...sites].filter((site) => !removed.has(site));
 }
 
 /** Whether `url` is an http(s) page of a site the user linked. */

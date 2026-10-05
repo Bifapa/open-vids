@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
-import { basename, posix } from "node:path";
+import { basename, join, posix } from "node:path";
 import {
   normalizeLicense,
   RESEARCH_ASSET_DIR,
@@ -50,7 +50,7 @@ import { isStoryFailure, type StoryFailure } from "../story/errors.js";
 import { readStoredStory } from "../story/graphIo.js";
 import type { StoryService } from "../story/service.js";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
-import { CandidateRegistry } from "./candidates.js";
+import { CANDIDATES_PATH, CandidateRegistry } from "./candidates.js";
 import { ResearchCache, type CacheEntry } from "./cache.js";
 import { RequestRegistry, type RequestGuard } from "./requestRegistry.js";
 import { ResearchFailure, isResearchFailure } from "./errors.js";
@@ -220,7 +220,7 @@ export class ResearchService {
   private readonly webSearch: WebSearchBackend;
   private readonly toolkit: MediaToolkit;
   private readonly now: () => number;
-  private readonly registry = new CandidateRegistry();
+  private readonly registries = new Map<string, CandidateRegistry>();
   private readonly requests: RequestRegistry;
   private readonly websites: WebsiteReader;
   private readonly websiteFiles: WebsiteFiles;
@@ -253,6 +253,19 @@ export class ResearchService {
       lock: (project, task) => this.lock(project, task),
       now: this.now,
     });
+  }
+
+  /** The candidates found for one project: its own record, kept in the project outside history like the download cache. */
+  private registry(project: ResolvedProject): CandidateRegistry {
+    let registry = this.registries.get(project.dir);
+    if (!registry) {
+      registry = new CandidateRegistry({
+        file: join(project.dir, CANDIDATES_PATH),
+        now: this.now,
+      });
+      this.registries.set(project.dir, registry);
+    }
+    return registry;
   }
 
   // ── Policy ────────────────────────────────────────────────────────────────
@@ -404,7 +417,7 @@ export class ResearchService {
 
     const annotate = this.inProjectLookup(project);
     const candidates = found.map(({ candidate, source, grants }) => {
-      const registered = this.registry.register(candidate, source, grants);
+      const registered = this.registry(project).register(candidate, source, grants);
       return { ...registered, inProject: annotate(registered) };
     });
     if (
@@ -464,7 +477,7 @@ export class ResearchService {
       author: inspected.author,
       license: inspected.license,
       candidates: inspected.found.map(({ candidate, source, grants }) => {
-        const registered = this.registry.register(candidate, source, grants);
+        const registered = this.registry(project).register(candidate, source, grants);
         return { ...registered, inProject: annotate(registered) };
       }),
       notes: inspected.notes,
@@ -614,7 +627,7 @@ export class ResearchService {
    * `WebsiteGrantStore`).
    */
   websiteGrant(project: ResolvedProject, request: WebsiteGrantRequest): WebsiteGrant {
-    return this.grants.grant(project.dir, request.turnId, request.access);
+    return this.grants.grant(project.dir, request.turnId, request.access, request.site ?? null);
   }
 
   /** Revokes the turn's one-time grant; `true` when there was one. Idempotent (the runtime calls it at turn end). */
@@ -684,6 +697,18 @@ export class ResearchService {
       return finish(sameUrl.asset, sameUrl, "none", { asset: sameUrl.asset, reason: "same_url" });
     }
 
+    // A restricted license (non-commercial, no-derivatives) is only imported after the user allowed this asset.
+    if (candidate.license.status === "restricted" && request.allowRestricted !== true) {
+      throw new ResearchFailure(
+        "restricted_license",
+        `“${candidate.title}” is licensed ${candidate.license.name}, a restricted license (non-commercial or no-derivatives terms). It is not imported unless the user allows this asset.`,
+        {
+          title: candidate.title,
+          license: candidate.license.name,
+          source: target.found.source.name,
+        },
+      );
+    }
     // Policy first (also for cached bytes: a cache hit must not smuggle in what the policy now forbids).
     await this.fetcher.check(originalUrl, scope);
     const cache = new ResearchCache(project.dir);
@@ -822,11 +847,11 @@ export class ResearchService {
     signal: AbortSignal | undefined,
   ): Promise<{ found: Found }> {
     if (request.candidate !== undefined) {
-      const stored = this.registry.get(request.candidate);
+      const stored = this.registry(project).get(request.candidate);
       if (!stored) {
         throw new ResearchFailure(
           "unknown_candidate",
-          `Candidate "${request.candidate}" is not known (candidates last until the Studio server restarts); search again`,
+          `Candidate "${request.candidate}" is not known (candidates are remembered for a week); search again`,
         );
       }
       const { candidate, grants } = stored;

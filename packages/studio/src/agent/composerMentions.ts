@@ -81,3 +81,27 @@ export function applyMention(
     caret: mention.start + inserted.length,
   };
 }
+
+/** The text a mention of `path` writes into the prompt (`@clip.mp4`). */
+export function mentionToken(path: string): string {
+  return `@${mentionBasename(path)}`;
+}
+
+function tokenPattern(token: string): RegExp {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // A token stands alone: at the text start, after whitespace, an opening bracket or quote, and before whitespace,
+  // closing punctuation or the end. A sentence's full stop may follow it, but only as a stop (`@clip.mp4.` ends
+  // the sentence; `@clip.mp4.bak` and `@clip.mp4x` are other words, `mail@clip.mp4` another one).
+  const closing = `[\\s,;:!?)\\]"'»”]`;
+  return new RegExp(`(?<=^|[\\s("'«“\\[])${escaped}(?=$|${closing}|\\.+(?=$|${closing}))`, "g");
+}
+
+/** True when the prompt still names the mention. */
+export function containsMention(text: string, token: string): boolean {
+  return tokenPattern(token).test(text);
+}
+
+/** The prompt without the mention (and the space it left behind), for a chip the user removed. */
+export function withoutMention(text: string, token: string): string {
+  return text.replace(new RegExp(`${tokenPattern(token).source}[ \\t]?`, "g"), "");
+}

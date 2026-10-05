@@ -88,6 +88,16 @@ export class SessionManager {
     await record.session.dispose().catch(() => undefined);
   }
 
+  /** Closes every session of a chat (the chat is being deleted). */
+  async disposeChat(chatId: string): Promise<void> {
+    for (const [key, record] of [...this.sessions]) {
+      if (record.chatId !== chatId) continue;
+      this.sessions.delete(key);
+      if (record.timer) this.timers.clearTimeout(record.timer);
+      await record.session.dispose().catch(() => undefined);
+    }
+  }
+
   async dispose(): Promise<void> {
     const records = [...this.sessions.values()];
     this.sessions.clear();

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { HostToolResult } from "../backend.js";
 import { SAMPLE_SOURCE } from "../testing/analysis.js";
+import { isQaClosing } from "../qa/harness.js";
 import type { ScriptedSession } from "../testing/backend.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "../testing/runtimeFixture.js";
 
@@ -130,7 +131,8 @@ describe("analysis inside the turn", () => {
       const gate = Promise.withResolvers<void>();
       let build: Promise<HostToolResult> | null = null;
       const director: { session?: ScriptedSession } = {};
-      fixture.backend.promptScript = async (_input, session) => {
+      fixture.backend.promptScript = async (input, session) => {
+        if (isQaClosing(input)) return "completed";
         director.session = session;
         await session.callTool("plan_cut", { source: SAMPLE_SOURCE });
         fixture.editing.applyGate = gate.promise;

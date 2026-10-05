@@ -12,7 +12,7 @@ import { FakeEditingHost } from "../testing/editing.js";
 import { TurnEditing } from "./executor.js";
 import { RESULT_CHARS } from "./format.js";
 import { EditingError } from "./host.js";
-import { EDITING_TOOL_NAMES, isEditingToolName } from "./tools.js";
+import { EDITING_TOOL_NAMES, editingToolsFor, isEditingToolName } from "./tools.js";
 
 const EDITING = Object.values<string>(EDITING_TOOL_NAMES);
 
@@ -25,41 +25,59 @@ function editingToolsOf(agent: AgentId, enabled: SpecialistId[], editing = true)
 }
 
 describe("editing tool availability", () => {
-  it("gives the Director edit_timeline only when it has no Editor to delegate to", () => {
-    const withEditor = editingToolsOf("director", ["editor", "motion"]);
-    expect(withEditor).toEqual([
-      "inspect_project",
-      "inspect_timeline",
-      "browse_presets",
-      "render_video",
-    ]);
-    for (const enabled of [[], ["motion"], ["audio", "vision"]] satisfies SpecialistId[][]) {
-      expect(editingToolsOf("director", enabled)).toContain("edit_timeline");
-    }
+  const ALL: SpecialistId[] = ["editor", "motion", "audio", "vision", "research"];
+  const DIRECTOR_OWN = ["inspect_project", "inspect_timeline", "browse_presets", "render_video"];
+
+  it("gives the Director only its own tools while every specialist is on", () => {
+    expect(editingToolsOf("director", ALL)).toEqual(DIRECTOR_OWN);
   });
 
-  it("gives each specialist the tools its domain needs, and Jev none", () => {
-    const enabled: SpecialistId[] = ["editor", "motion", "audio", "vision", "research"];
-    expect(editingToolsOf("editor", enabled).sort()).toEqual([...EDITING].sort());
-    expect(editingToolsOf("motion", enabled)).toEqual([
+  it("moves what a disabled specialist would have had to the Director", () => {
+    // No Editor: the Editor's edit_timeline moves to the Director.
+    expect(editingToolsOf("director", ["motion", "audio", "vision", "research"])).toEqual([
+      ...DIRECTOR_OWN,
+      "edit_timeline",
+    ]);
+    // Motion or Audio off: their edit_timeline falls to the Director too, while the Editor still exists.
+    for (const off of ["motion", "audio"] as const) {
+      const enabled = ALL.filter((id) => id !== off);
+      expect(editingToolsOf("director", enabled)).toContain("edit_timeline");
+    }
+    // Vision and Research only read: nothing new for the Director.
+    for (const off of ["vision", "research"] as const) {
+      expect(
+        editingToolsOf(
+          "director",
+          ALL.filter((id) => id !== off),
+        ),
+      ).toEqual(DIRECTOR_OWN);
+    }
+    expect(editingToolsOf("director", [])).toContain("edit_timeline");
+  });
+
+  it("gives each specialist the tools its domain needs, and Jev only the two inspect tools", () => {
+    expect(editingToolsOf("editor", ALL).sort()).toEqual([...EDITING].sort());
+    expect(editingToolsOf("motion", ALL)).toEqual([
       "inspect_project",
       "inspect_timeline",
       "browse_presets",
       "edit_timeline",
     ]);
-    expect(editingToolsOf("audio", enabled)).toEqual([
+    expect(editingToolsOf("audio", ALL)).toEqual([
       "inspect_project",
       "inspect_timeline",
       "edit_timeline",
     ]);
     for (const readOnly of ["vision", "research"] as const) {
-      expect(editingToolsOf(readOnly, enabled)).toEqual([
+      expect(editingToolsOf(readOnly, ALL)).toEqual([
         "inspect_project",
         "inspect_timeline",
         "browse_presets",
       ]);
     }
-    expect(editingToolsOf("jev", enabled)).toEqual([]);
+    // Jev never inherits, whatever is off.
+    expect(editingToolsOf("jev", ALL)).toEqual(["inspect_project", "inspect_timeline"]);
+    expect(editingToolsOf("jev", [])).toEqual(["inspect_project", "inspect_timeline"]);
   });
 
   it("offers no editing tools when the runtime has no editing host", () => {
@@ -68,24 +86,12 @@ describe("editing tool availability", () => {
     }
   });
 
-  it("keeps the orchestration tools of the Director unchanged", () => {
-    const names = buildHostTools(
-      "director",
-      { enabled: ["editor"], jev: true, editing: true, analysis: false },
-      async () => ({ text: "" }),
-    ).map((tool) => tool.name);
-    expect(names).toEqual([
-      "update_plan",
-      "delegate",
-      "wait_for_agents",
-      "message_agent",
-      "cancel_agent",
-      "inspect_project",
-      "inspect_timeline",
-      "browse_presets",
-      "render_video",
-      "jev",
-    ]);
+  it("drops edit_timeline and render_video for everyone in a turn that does not write the timeline", () => {
+    for (const agent of ["director", "editor", "motion", "audio"] as const) {
+      const tools = editingToolsFor(agent, [], { timelineWrites: false });
+      expect(tools).not.toContain("edit_timeline");
+      expect(tools).not.toContain("render_video");
+    }
   });
 });
 
@@ -118,7 +124,20 @@ describe("editing tool activity rows", () => {
           { op: "split_clip" },
         ],
       }),
-    ).toEqual({ category: "edit", label: "Editing the timeline · 4 changes (add clip ×3, split)" });
+    ).toEqual({
+      category: "edit",
+      label: "Editing the timeline · 4 changes (add clip ×3, split)",
+      labelCode: "editing_timeline",
+      labelParams: { count: 4 },
+    });
+    expect(
+      tool("edit_timeline").activity?.({ dryRun: true, operations: [{ op: "trim_clip" }] }),
+    ).toEqual({
+      category: "inspect",
+      label: "Checking a timeline edit · 1 change",
+      labelCode: "checking_timeline_edit",
+      labelParams: { count: 1 },
+    });
     expect(tool("edit_timeline").activity?.({ operations: [{ op: "trim_clip" }] })?.label).toBe(
       "Editing the timeline · 1 change (trim)",
     );
@@ -127,8 +146,12 @@ describe("editing tool activity rows", () => {
         operations: [{ op: "remove_clip" }, { op: "add_sequence" }, { op: "set_composition" }],
       })?.label,
     ).toBe("Editing the timeline · 3 changes (remove, add sequence, set length)");
-    expect(tool("browse_presets").activity?.({ kind: "caption" })?.label).toBe(
-      "Browsing caption presets",
+    expect(tool("browse_presets").activity?.({ kind: "caption" })).toMatchObject({
+      label: "Browsing caption presets",
+      labelCode: "browsing_presets_caption",
+    });
+    expect(tool("browse_presets").activity?.({ kind: "audio_fx" })?.labelCode).toBe(
+      "browsing_presets_audio_fx",
     );
     expect(tool("render_video").activity?.({})?.label).toBe("Rendering video");
   });
@@ -204,6 +227,30 @@ describe("editing tool results", () => {
     await call("edit_timeline", { operations, turnId: "turn-of-someone-else" });
     expect(host.applyRequests.map((request) => request.turnId)).toEqual(["turn-9", "turn-9"]);
     expect(host.applyRequests[0]?.operations).toEqual(operations);
+  });
+
+  it("checks an edit against the version of the main composition however the read named it, but not against another file", async () => {
+    for (const named of ["index.html", "./index.html", "/index.html"]) {
+      const { host, call } = editing();
+      host.timelineResult = snapshot([clip("c1")]);
+      await call("inspect_timeline", { composition: named });
+      await call("edit_timeline", { operations: [{ op: "set_composition", duration: 5 }] });
+      expect(host.applyRequests[0]?.baseVersion, named).toBe("v9");
+    }
+
+    const { host, call } = editing();
+    host.timelineResult = {
+      ...snapshot([clip("c1")]),
+      composition: { path: "compositions/intro.html", width: 1920, height: 1080, duration: 4 },
+    };
+    await call("inspect_timeline", { composition: "compositions/intro.html" });
+    await call("edit_timeline", { operations: [{ op: "set_composition", duration: 5 }] });
+    expect(host.applyRequests[0]?.baseVersion).toBeUndefined();
+    await call("edit_timeline", {
+      composition: "compositions/intro.html",
+      operations: [{ op: "set_composition", duration: 5 }],
+    });
+    expect(host.applyRequests[1]?.baseVersion).toBe("v9");
   });
 
   it("reports a service refusal with its code and the failing operation so the model can retry", async () => {
@@ -329,7 +376,7 @@ describe("editing tool results", () => {
     );
     const result = await call("inspect_timeline", {});
     expect(result.text.length).toBeLessThanOrEqual(RESULT_CHARS);
-    expect(result.text).toMatch(/… \d+ more clips not shown/);
+    expect(result.text).toMatch(/… \d+ more clips; call inspect_timeline again with offset=\d+/);
     expect(result.text).toContain("400 clips");
   });
 
@@ -390,7 +437,9 @@ describe("editing tool results", () => {
     const presets = await call("browse_presets", { kind: "caption", query: "word" });
     expect(presets.text).toContain("karaoke");
     expect(presets.text).toContain("apply_captions");
-    expect(host.presetRequests).toEqual([{ kind: "caption", query: "word" }]);
+    expect(host.presetRequests).toEqual([
+      { kind: "caption", query: "word", page: { offset: 0, limit: 40 } },
+    ]);
     const render = await call("render_video", { quality: "draft" });
     expect(render.text).toContain("renders/final.mp4");
     expect(render.text).toContain("12 s");

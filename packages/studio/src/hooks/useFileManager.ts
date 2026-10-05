@@ -8,6 +8,7 @@ import { serializeStudioFileMutation } from "../utils/studioFileMutationCoordina
 import { useFileTree } from "./useFileTree";
 import { useEditorSave } from "./useEditorSave";
 import { useProjectFileWriter } from "./useProjectFileWriter";
+import { fileEditLockReason } from "./fileEditLock";
 import { t } from "../i18n";
 
 // ── Types ──
@@ -247,11 +248,20 @@ export function useFileManager({
   );
 
   // ── File CRUD ──
+  // Tree mutations (create / rename / move / duplicate / delete) are refused while an agent turn runs: it may be
+  // rewriting the file the user would touch. The file tree disables the same affordances; this stops every other
+  // caller (Assets and Media panels) and says why.
+  const refuseWhileAgentEdits = useCallback((): boolean => {
+    const reason = fileEditLockReason();
+    if (reason === null) return false;
+    showToast(reason, "error");
+    return true;
+  }, [showToast]);
 
   const handleCreateFile = useCallback(
     async (path: string) => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid || refuseWhileAgentEdits()) return;
       let content = "";
       if (path.endsWith(".html")) {
         content =
@@ -274,13 +284,13 @@ export function useFileManager({
         showToast(t("fileManager.toast.createFailed", { path, reason: err.error }), "error");
       }
     },
-    [refreshFileTree, handleFileSelect, showToast],
+    [refreshFileTree, handleFileSelect, refuseWhileAgentEdits, showToast],
   );
 
   const handleCreateFolder = useCallback(
     async (path: string) => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid || refuseWhileAgentEdits()) return;
       const res = await fetch(
         `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path + "/.gitkeep")}`,
         {
@@ -297,13 +307,13 @@ export function useFileManager({
         showToast(t("fileManager.toast.createFolderFailed", { path, reason: err.error }), "error");
       }
     },
-    [refreshFileTree, showToast],
+    [refreshFileTree, refuseWhileAgentEdits, showToast],
   );
 
   const handleDeleteFile = useCallback(
     async (path: string) => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid || refuseWhileAgentEdits()) return;
       const res = await fetch(
         `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path)}`,
         {
@@ -319,13 +329,13 @@ export function useFileManager({
         showToast(t("fileManager.toast.deleteFailed", { path, reason: err.error }), "error");
       }
     },
-    [refreshFileTree, showToast],
+    [refreshFileTree, refuseWhileAgentEdits, showToast],
   );
 
   const handleRenameFile = useCallback(
     async (oldPath: string, newPath: string) => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid || refuseWhileAgentEdits()) return;
       const res = await fetch(
         `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(oldPath)}`,
         {
@@ -349,13 +359,13 @@ export function useFileManager({
         );
       }
     },
-    [refreshFileTree, handleFileSelect, setRefreshKey, showToast],
+    [refreshFileTree, handleFileSelect, setRefreshKey, refuseWhileAgentEdits, showToast],
   );
 
   const handleDuplicateFile = useCallback(
     async (path: string) => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid || refuseWhileAgentEdits()) return;
       const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/duplicate-file`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -371,7 +381,7 @@ export function useFileManager({
         showToast(t("fileManager.toast.duplicateFailed", { path, reason: err.error }), "error");
       }
     },
-    [refreshFileTree, handleFileSelect, showToast],
+    [refreshFileTree, handleFileSelect, refuseWhileAgentEdits, showToast],
   );
 
   const handleMoveFile = handleRenameFile;

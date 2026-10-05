@@ -4,19 +4,22 @@ import {
   parseQaIssueDraft,
   sameQaIssue,
   type AgentId,
+  type QaAcceptedList,
   type QaCheckRequest,
   type QaCheckResponse,
   type QaFramesResponse,
   type QaFinishRequest,
+  type QaFinishResponse,
   type QaIssueDraft,
   type QaReport,
   type QaReportInput,
   type QaSample,
+  type QaTimelineCheckRequest,
 } from "@hyperframes/agent-protocol";
 import type { HostToolResult } from "../backend.js";
 import { errorMessage } from "../errors.js";
 import { QaToolError, type QaHost } from "./host.js";
-import { QA_TOOL_NAMES, isQaToolName, qaToolsFor, type QaToolName } from "./tools.js";
+import { QA_TOOL_NAMES, isQaToolName, type QaToolName } from "./tools.js";
 
 /** The most findings one review may report. */
 const MAX_FINDINGS = 30;
@@ -31,6 +34,8 @@ export interface TurnQaOptions {
 
 /** What Vision's review of one pass may use. */
 export interface QaReviewInput {
+  /** Who runs the review: Vision, or the Director when Vision is off in the chat. Only they may use its tools. */
+  reviewer: "vision" | "director";
   pass: number;
   /** Project-relative path of the render under review. */
   render: string;
@@ -97,6 +102,16 @@ export class TurnQa {
     return this.track(signal, (combined) => this.options.host.check(request, combined));
   }
 
+  /** The timeline-derived checks alone (no render involved). */
+  checkTimeline(request: QaTimelineCheckRequest, signal?: AbortSignal): Promise<QaCheckResponse> {
+    return this.track(signal, (combined) => this.options.host.checkTimeline(request, combined));
+  }
+
+  /** The issues the user marked intentional in this project. */
+  accepted(signal?: AbortSignal): Promise<QaAcceptedList> {
+    return this.track(signal, (combined) => this.options.host.accepted(combined));
+  }
+
   saveReport(input: QaReportInput, signal?: AbortSignal): Promise<QaReport> {
     return this.track(signal, (combined) => this.options.host.saveReport(input, combined));
   }
@@ -106,14 +121,18 @@ export class TurnQa {
    * it runs even when the turn was stopped (the turn's signal is deliberately not part of it; only {@link shutdown}
    * and the host's own timeout stop it), and a failure is swallowed: cleanup never fails a turn.
    */
-  async finishSession(sessionId: string, request: QaFinishRequest): Promise<void> {
-    if (!this.accepting) return;
+  async finishSession(
+    sessionId: string,
+    request: QaFinishRequest,
+  ): Promise<QaFinishResponse | null> {
+    if (!this.accepting) return null;
     const call = this.options.host.finishSession(sessionId, request, this.stop.signal);
     this.inflight.add(call);
     try {
-      await call;
+      return await call;
     } catch {
       // the service's retention deletes what this left behind sooner or later
+      return null;
     } finally {
       this.inflight.delete(call);
     }
@@ -168,7 +187,7 @@ export class TurnQa {
   ): Promise<HostToolResult> {
     if (!this.accepting) return Promise.resolve(refuse("The turn is finishing; QA is closed."));
     if (!isQaToolName(name)) return Promise.resolve(refuse(`Unknown QA tool ${name}.`));
-    if (!qaToolsFor(caller).some((tool) => tool === name))
+    if (caller !== "vision" && caller !== "director")
       return Promise.resolve(refuse(`${name} is not available to you in this turn.`));
     const review = this.review;
     if (!review)
@@ -177,6 +196,8 @@ export class TurnQa {
           `${name} works only during a Render QA review; there is none in progress, so there is nothing to ${name === QA_TOOL_NAMES.inspect ? "look at" : "report"}.`,
         ),
       );
+    if (caller !== review.reviewer)
+      return Promise.resolve(refuse(`${name} is not available to you in this turn.`));
     const call = this.track(callSignal, (signal) => this.run(name, args, review, signal)).catch(
       (error: unknown): HostToolResult => {
         if (error instanceof QaToolError) return refuse(`${error.code}: ${error.message}`);

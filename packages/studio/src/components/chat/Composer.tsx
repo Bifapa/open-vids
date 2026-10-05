@@ -46,6 +46,8 @@ export function Composer() {
   const draftChoices = useAgentStore((state) => state.draftChoices);
   const settings = useAgentStore((state) => state.settings);
   const models = useAgentStore((state) => state.models);
+  const modelsFailed = useAgentStore((state) => state.modelsFailed);
+  const reloadModels = useAgentStore((state) => state.reloadModels);
   const draft = useAgentStore((state) => state.drafts[state.chatId ?? NEW_CHAT_DRAFT] ?? "");
   const pending = useAgentStore((state) => state.pending);
   const notice = useAgentStore((state) => state.notice);
@@ -202,6 +204,22 @@ export function Composer() {
             </span>
             <ConnectModelButton />
           </div>
+        )}
+        {modelsFailed && !noModel && (
+          <p
+            className="mx-3 mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-3"
+            data-testid="composer-models-failed"
+            role="status"
+          >
+            <span>{t("chat.composer.modelsFailed")}</span>
+            <button
+              type="button"
+              onClick={() => void reloadModels()}
+              className="rounded-xs text-fg-2 underline decoration-border-strong underline-offset-2 outline-hidden hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              {t("common.retry")}
+            </button>
+          </p>
         )}
         {blockedBy && (
           <p className="mx-3 mb-1.5 text-xs text-fg-3" data-testid="composer-blocked">

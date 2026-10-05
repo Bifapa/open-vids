@@ -32,7 +32,8 @@ const LIST_LIMIT = 200;
 const ID_PATTERN = /^qa-\d{14}-[0-9a-f]{6}$/;
 const FRAMES_STAMP = ".render";
 
-type StoredReport = Omit<QaReport, "current">;
+/** What a report file holds: `current`, `acceptedIssueIds` and `renderAvailable` are derived when read. */
+type StoredReport = Omit<QaReport, "current" | "acceptedIssueIds" | "renderAvailable">;
 
 function timestamp(at: number): string {
   return new Date(at).toISOString().replace(/\D/g, "").slice(0, 14);
@@ -100,6 +101,8 @@ function summaryOf(report: QaReport): QaReportSummary {
     renderError: report.renderError,
     counts: report.counts,
     current: report.current,
+    ...(report.scope !== undefined && { scope: report.scope }),
+    ...(report.renderAvailable !== undefined && { renderAvailable: report.renderAvailable }),
   };
 }
 
@@ -139,13 +142,20 @@ export function reportIdTime(id: string): number {
   return Number.isNaN(at) ? 0 : at;
 }
 
-/** The newest reports first; a damaged or foreign file in the folder is skipped, never an error. */
-export function listReports(projectDir: string, fingerprint: string): QaReportSummary[] {
+/**
+ * The newest reports first; a damaged or foreign file in the folder is skipped, never an error. `derive` adds the
+ * fields that are computed when a report is read.
+ */
+export function listReports(
+  projectDir: string,
+  fingerprint: string,
+  derive: (report: QaReport) => QaReport,
+): QaReportSummary[] {
   const reports: QaReportSummary[] = [];
   for (const id of reportIds(projectDir)) {
     if (reports.length >= LIST_LIMIT) break;
     const report = readReport(projectDir, id, fingerprint);
-    if (report) reports.push(summaryOf(report));
+    if (report) reports.push(summaryOf(derive(report)));
   }
   return reports.sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1));
 }

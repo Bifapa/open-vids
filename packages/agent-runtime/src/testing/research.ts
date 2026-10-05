@@ -391,6 +391,7 @@ export class FakeResearchHost implements ResearchHost {
     return {
       turnId: request.turnId,
       access: request.access,
+      site: request.site ?? null,
       grantedAt: 1_700_000_000_000,
       expiresAt: 1_700_000_000_000 + 6 * 60 * 60_000,
     };

@@ -10,6 +10,8 @@ import {
   type PermissionPart,
   type PermissionRequest,
   type PermissionAction,
+  type PermissionAsset,
+  type PermissionRender,
   type PermissionState,
   type AgentId,
 } from "@hyperframes/agent-protocol";
@@ -24,9 +26,28 @@ function isOneOf<T extends string>(known: readonly T[], value: unknown): value i
   return typeof value === "string" && known.some((item) => item === value);
 }
 
+function isPermissionAsset(value: unknown): value is PermissionAsset {
+  return (
+    isRecord(value) &&
+    typeof value.title === "string" &&
+    (value.source === null || typeof value.source === "string") &&
+    (value.license === null || typeof value.license === "string")
+  );
+}
+
+function isPermissionRender(value: unknown): value is PermissionRender {
+  return (
+    isRecord(value) &&
+    typeof value.composition === "string" &&
+    typeof value.seconds === "number" &&
+    Number.isFinite(value.seconds)
+  );
+}
+
 /**
- * A permission request as the card reads it. The card dereferences `kind`, `action` and `state` as lookup keys, so
- * a request the runtime worded differently (a newer runtime, a damaged log) is dropped instead of crashing the chat.
+ * A permission request as the card reads it. The card dereferences `kind`, `action` and `state` as lookup keys and
+ * reads the strings of `asset`, so a request the runtime worded differently (a newer runtime, a damaged log) is
+ * dropped instead of crashing the chat. `asset` and `render` may be absent; a present one must be whole.
  */
 export function isPermissionRequest(value: unknown): value is PermissionRequest {
   return (
@@ -37,7 +58,9 @@ export function isPermissionRequest(value: unknown): value is PermissionRequest 
     (value.site === null || typeof value.site === "string") &&
     isAgentId(value.agent) &&
     isOneOf<PermissionState>(PERMISSION_STATES, value.state) &&
-    typeof value.requestedAt === "number"
+    typeof value.requestedAt === "number" &&
+    (value.asset === undefined || isPermissionAsset(value.asset)) &&
+    (value.render === undefined || isPermissionRender(value.render))
   );
 }
 

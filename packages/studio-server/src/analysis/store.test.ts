@@ -17,7 +17,7 @@ import type {
   TranscriptArtifact,
 } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkFingerprint, SAMPLE_BYTES } from "./fingerprint.js";
+import { checkFingerprint, SAMPLE_BYTES, sampledHash } from "./fingerprint.js";
 import {
   AnalysisStore,
   STAGE_RECIPES,
@@ -420,5 +420,56 @@ describe("fingerprints", () => {
     const after = await checkFingerprint(file, "big.bin", before.fingerprint);
     expect(after.change).toBe("changed");
     expect(after.fingerprint.hash).not.toBe(before.fingerprint.hash);
+  });
+
+  it("notices an edit in a big file that the head, middle and tail samples miss", async () => {
+    const dir = tempDir();
+    const file = join(dir, "big.bin");
+    const size = SAMPLE_BYTES * 4;
+    const bytes = Buffer.alloc(size, 7);
+    writeFileSync(file, bytes);
+    const before = await checkFingerprint(file, "big.bin", null);
+    expect(before.fingerprint.denseHash).toMatch(/^sha256:/);
+    // Just past the head sample, before the middle one: only the dense sample covers it.
+    bytes[SAMPLE_BYTES + 1_000] = 9;
+    writeFileSync(file, bytes);
+    const later = new Date(statSync(file).mtimeMs + 1000);
+    utimesSync(file, later, later);
+    expect(await sampledHash(file, size)).toBe(before.fingerprint.hash);
+    const after = await checkFingerprint(file, "big.bin", before.fingerprint);
+    expect(after.change).toBe("changed");
+    expect(after.fingerprint.hash).toBe(before.fingerprint.hash);
+    expect(after.fingerprint.denseHash).not.toBe(before.fingerprint.denseHash);
+  });
+
+  it("takes over a fingerprint that has no dense hash when the file is merely touched, and gives a small file none", async () => {
+    const dir = tempDir();
+    const file = join(dir, "big.bin");
+    writeFileSync(file, Buffer.alloc(SAMPLE_BYTES * 4, 3));
+    const first = await checkFingerprint(file, "big.bin", null);
+    const { denseHash: _dropped, ...legacy } = first.fingerprint;
+    const later = new Date(statSync(file).mtimeMs + 60_000);
+    utimesSync(file, later, later);
+    const touched = await checkFingerprint(file, "big.bin", legacy);
+    expect(touched.change).toBe("touched");
+    expect(touched.fingerprint.denseHash).toBe(first.fingerprint.denseHash);
+
+    const small = join(dir, "small.bin");
+    writeFileSync(small, Buffer.alloc(5000, 1));
+    expect(
+      (await checkFingerprint(small, "small.bin", null)).fingerprint.denseHash,
+    ).toBeUndefined();
+  });
+
+  it("finds a renamed copy as a twin only when the dense hash agrees too", async () => {
+    const store = new AnalysisStore(tempDir());
+    await analysed(store, "old.mp4");
+    const base = { ...fingerprint("new.mp4"), denseHash: "sha256:dd" };
+    expect(await store.findTwin("new.mp4", base)).not.toBeNull();
+    await store.updateManifest("old.mp4", (current) => {
+      current.fingerprint = { ...current.fingerprint, denseHash: "sha256:dd" };
+    });
+    expect((await store.findTwin("new.mp4", base))?.path).toBe("old.mp4");
+    expect(await store.findTwin("new.mp4", { ...base, denseHash: "sha256:ee" })).toBeNull();
   });
 });

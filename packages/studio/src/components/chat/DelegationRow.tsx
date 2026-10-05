@@ -5,6 +5,7 @@ import { runCurrentStep } from "../../agent/agentSelectors";
 import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 import { AgentMonogram, chatAgentName } from "./AgentMonogram";
+import { CancelRunButton } from "./CancelRunButton";
 import {
   WORK_ROW_TONE,
   WORK_STATE_TEXT,
@@ -51,14 +52,20 @@ export function DelegationRow({ runId }: { runId: string }) {
     step = activityText(currentStep.label, currentStep.labelCode, currentStep.labelParams);
 
   return (
-    <li>
+    <li className="flex items-start gap-0.5">
       <button
         type="button"
         data-testid="delegation-row"
         data-run-id={run.id}
         aria-label={t("chat.delegation.open", { name, step, state: t(WORK_STATE_TEXT[state]) })}
         onClick={() => selectThread(run.agent)}
-        className={cn(workRowGrid, WORK_ROW_TONE[state], selItem, "hover:text-fg", chatFocus)}
+        className={cn(
+          workRowGrid,
+          WORK_ROW_TONE[state],
+          selItem,
+          "w-auto min-w-0 flex-1 hover:text-fg",
+          chatFocus,
+        )}
       >
         <AgentMonogram agent={run.agent} />
         <WorkText agent={run.agent} state={state}>
@@ -83,6 +90,7 @@ export function DelegationRow({ runId }: { runId: string }) {
           </span>
         )}
       </button>
+      <CancelRunButton run={run} className="mt-[3px] mr-1 shrink-0" />
     </li>
   );
 }

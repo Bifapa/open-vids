@@ -184,16 +184,16 @@ describe("Find with Research", () => {
     expect(request).not.toHaveProperty("storyOptions");
   });
 
-  it("is disabled when the open chat has Research turned off", async () => {
+  it("still resolves when the open chat has Research turned off (the Director does its work)", async () => {
     await mount({ enabledAgents: ["editor", "vision"] });
 
-    expect(toolbarFind()?.disabled).toBe(true);
-    expect(findButton("m1")?.disabled).toBe(true);
-    expect(findButton("m1")?.parentElement?.getAttribute("title")).toContain(
-      "Research is turned off in this chat",
-    );
+    expect(toolbarFind()?.disabled).toBe(false);
+    expect(findButton("m1")?.disabled).toBe(false);
     await click(toolbarFind());
-    expect(agentClient.startTurn).not.toHaveBeenCalled();
+
+    expect(agentClient.startTurn).toHaveBeenCalledTimes(1);
+    const [, request] = agentClient.startTurn.mock.calls[0] ?? [];
+    expect(request).toMatchObject({ mode: "story", storyAction: "resolve" });
   });
 
   it("is disabled when nothing is missing", async () => {

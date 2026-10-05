@@ -2,11 +2,6 @@ import { chmod, mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { authPolicyFor } from "@oh-my-pi/pi-catalog/compat/auth";
-import { Effort } from "@oh-my-pi/pi-catalog/effort";
-import {
-  clampThinkingLevelForModel,
-  getSupportedEfforts,
-} from "@oh-my-pi/pi-catalog/model-thinking";
 import {
   AgentRegistry,
   AuthStorage,
@@ -15,475 +10,64 @@ import {
   SessionManager,
   createAgentSession,
   discoverAuthStorage,
-  type AgentSession,
-  type CreateAgentSessionOptions,
-  type CustomTool,
 } from "@oh-my-pi/pi-coding-agent";
 import { SqliteAuthCredentialStore } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { cfgDefaultThinkingLevel } from "@oh-my-pi/pi-coding-agent/session/settings";
 import type {
   AgentBackend,
-  BackendEvent,
-  BackendPromptInput,
-  BackendPromptOutcome,
   BackendSession,
-  HostTool,
   OpenBackendSessionInput,
   RefreshProvidersOptions,
 } from "../backend.ts";
-import { AGENT_DISPLAY_NAMES, isRecord } from "@hyperframes/agent-protocol";
+import { AGENT_DISPLAY_NAMES } from "@hyperframes/agent-protocol";
 import type {
   AgentModelCatalog,
   AgentModelInfo,
   ListProvidersResponse,
-  ModelSelection,
   OAuthFlow,
   OAuthLoginState,
   ProjectTitleRequest,
-  ThinkingEffort,
 } from "@hyperframes/agent-protocol";
 import { RuntimeError } from "../errors.ts";
 import { OAuthLogins, type LoginController } from "../oauthLogins.ts";
 import { LayeredAuthCredentialStore, isOpenVidsCredentialId } from "./layered-auth-store.ts";
 import { oauthLoginOptions, providerOAuthInfo } from "./oauth-support.ts";
-import { humanReadableError, terminalEventResult, translateOmpEvent } from "./events.ts";
+import { humanReadableError } from "./events.ts";
+import { mapModelInfo } from "./model-mapping.ts";
 import {
-  createModelCatalog,
-  isThinkingEffort,
-  mapModelInfo,
-  parseModelRole,
-  sameModel,
-  type ModelCatalogSource,
-} from "./model-mapping.ts";
+  OmpCatalogUnavailableError,
+  catalogSources,
+  chooseBackendModel,
+  createCatalog,
+  createSessionSettings,
+  defaultEffort,
+  isAvailableModel,
+  resolveRoleDefault,
+  sameOmpModel,
+  toOmpEffort,
+  type CatalogServices,
+  type RefreshStrategy,
+} from "./catalog.ts";
 import {
   isLostSignInCause,
   toProviderInfo,
   type DiscoveryFacts,
   type OmpCredentialKind,
 } from "./provider-status.ts";
-import { hostToolContent } from "./tool-content.ts";
-import { projectContextFiles } from "./context-files.ts";
+import { contextFilesHash, projectContextFiles } from "./context-files.ts";
+import { OmpBackendSession, toOmpTool } from "./session.ts";
+import { bundledSkillsRoot, skillsInstruction } from "./skills-root.ts";
 import { projectBoundaryExtension } from "./tool-guard.ts";
 import { generateProjectTitleWithOmp } from "./title.ts";
 
 const MODEL_CATALOG_TTL_MS = 60_000;
 const PROJECT_FILE_TOOLS = ["read", "grep", "glob", "find", "edit", "write"];
-const EMPTY_CATALOG: AgentModelCatalog = {
-  models: [],
-  defaultModel: null,
-  defaultThinking: null,
-};
 
 /**
  * The API keys the user entered in OpenVids, by provider id; read on every use so a key saved by another runtime process
  * is picked up. Applied on top of the user's OMP credentials, in memory only.
  */
 export type ProviderKeySource = () => Promise<ReadonlyMap<string, string>>;
-
-type RefreshStrategy = NonNullable<Parameters<ModelRegistry["refresh"]>[0]>;
-
-type OmpModel = NonNullable<CreateAgentSessionOptions["model"]>;
-type UserThinkingSetting = "auto" | Effort;
-type OmpThinking = Effort | "off";
-
-type CatalogServices = {
-  authStorage: AuthStorage;
-  registry: ModelRegistry;
-  settings: Settings;
-  defaultRole: string | undefined;
-  defaultThinking: Exclude<ThinkingEffort, "off">;
-  catalog: AgentModelCatalog;
-  /** When the last refresh (successful or not) started; paces the background refresh. */
-  lastRefreshAt: number;
-  lastRefreshError: string | null;
-  /** When a live refresh last succeeded; null before the first one. */
-  syncedAt: number | null;
-  /** The OpenVids-stored keys currently applied to `authStorage` as runtime overrides, by provider. */
-  appliedKeys: Map<string, string>;
-  /**
-   * `authStorage` reads OMP's credentials and OpenVids' own sign-ins through a {@link LayeredAuthCredentialStore}.
-   * False when it could not be set up (OMP uses an auth broker, an XDG layout, or no OpenVids auth path was given):
-   * then OMP's credentials are used exactly as before and in-app sign-in is unavailable.
-   */
-  layered: boolean;
-  /** The refresh in flight (they run one after another); null when idle. */
-  refreshing: Promise<void> | null;
-};
-
-class OmpCatalogUnavailableError extends Error {
-  readonly catalog = EMPTY_CATALOG;
-
-  constructor(message: string, cause?: unknown) {
-    super(message, { cause });
-    this.name = "OmpCatalogUnavailableError";
-  }
-}
-
-function toOmpEffort(effort: Exclude<ThinkingEffort, "off">): Effort {
-  switch (effort) {
-    case "minimal":
-      return Effort.Minimal;
-    case "low":
-      return Effort.Low;
-    case "medium":
-      return Effort.Medium;
-    case "high":
-      return Effort.High;
-    case "xhigh":
-      return Effort.XHigh;
-    case "max":
-      return Effort.Max;
-  }
-}
-
-function toProtocolEffort(effort: unknown): ThinkingEffort | null {
-  return isThinkingEffort(effort) ? effort : null;
-}
-
-function defaultEffort(setting: UserThinkingSetting): Exclude<ThinkingEffort, "off"> {
-  if (setting === "auto") return "high";
-  const effort = toProtocolEffort(setting);
-  return effort && effort !== "off" ? effort : "high";
-}
-
-/** Settings of one isolated agent session; nothing is read from or written to the user's OMP config. */
-export function createSessionSettings(defaultThinkingLevel: Effort): Settings {
-  return Settings.isolated({
-    defaultThinkingLevel,
-    // A path-based edit form: `{path, old_string, new_string}`. The default hashline/apply_patch
-    // forms hide their target files inside free text, which the project-boundary guard cannot check.
-    "edit.mode": "replace",
-    // `read` fetches web and loopback URLs when this is on, which would bypass the Websites
-    // permission and the download prompt; research goes through the runtime's own host tools.
-    "fetch.enabled": false,
-  });
-}
-
-function sameOmpModel(left: OmpModel | undefined, right: OmpModel | undefined): boolean {
-  return (
-    left !== undefined &&
-    right !== undefined &&
-    left.provider === right.provider &&
-    left.id === right.id
-  );
-}
-
-function isAvailableModel(registry: ModelRegistry, model: OmpModel | undefined): model is OmpModel {
-  return (
-    model !== undefined &&
-    registry.hasConfiguredAuth(model) &&
-    registry.getAvailable().some((available) => sameOmpModel(available, model))
-  );
-}
-
-function availableModels(registry: ModelRegistry): OmpModel[] {
-  return registry.getAvailable().filter((model) => registry.hasConfiguredAuth(model));
-}
-
-function resolveRoleDefault(
-  registry: ModelRegistry,
-  role: string | undefined,
-): { model: OmpModel | undefined; thinking: ThinkingEffort | null } {
-  const parsed = parseModelRole(role);
-  const model = parsed ? registry.find(parsed.model.provider, parsed.model.modelId) : undefined;
-  if (!isAvailableModel(registry, model)) return { model: undefined, thinking: null };
-  if (!parsed || parsed.thinking === null) return { model, thinking: null };
-  if (parsed.thinking === "off") return { model, thinking: "off" };
-
-  const clamped = clampThinkingLevelForModel(model, toOmpEffort(parsed.thinking));
-  return { model, thinking: toProtocolEffort(clamped) };
-}
-
-function catalogSources(models: readonly OmpModel[]): ModelCatalogSource[] {
-  return models.map((model) => ({
-    provider: model.provider,
-    modelId: model.id,
-    name: model.name,
-    reasoning: model.reasoning,
-    ...(typeof model.contextWindow === "number" && Number.isFinite(model.contextWindow)
-      ? { contextWindow: model.contextWindow }
-      : {}),
-    supportedEfforts: getSupportedEfforts(model),
-  }));
-}
-
-function chooseBackendModel(
-  registry: ModelRegistry,
-  catalog: CatalogServices["catalog"],
-): OmpModel | undefined {
-  if (catalog.defaultModel) {
-    const configured = registry.find(catalog.defaultModel.provider, catalog.defaultModel.modelId);
-    if (isAvailableModel(registry, configured)) return configured;
-  }
-  return availableModels(registry)[0];
-}
-
-function toModelSelection(model: OmpModel): ModelSelection {
-  return { provider: model.provider, modelId: model.id };
-}
-
-function createCatalog(registry: ModelRegistry, settings: Settings): CatalogServices["catalog"] {
-  const models = availableModels(registry);
-  const defaultRole = settings.getModelRole("default");
-  const roleDefault = resolveRoleDefault(registry, defaultRole);
-  return createModelCatalog(catalogSources(models), defaultRole, roleDefault.thinking);
-}
-
-/**
- * Exposes a runtime host tool to OMP. It is essential (always loaded), and the runtime reports its effects; progress the
- * tool reports (a render) goes out as `tool.progress` of its call.
- */
-function toOmpTool(tool: HostTool, report: (event: BackendEvent) => void): CustomTool {
-  return {
-    name: tool.name,
-    label: tool.name,
-    description: tool.description,
-    parameters: tool.parameters,
-    loadMode: "essential",
-    async execute(toolCallId, params, _onUpdate, _context, signal) {
-      const result = await tool.execute(
-        params,
-        signal ?? new AbortController().signal,
-        (progress) => report({ type: "tool.progress", toolCallId, progress }),
-      );
-      return {
-        content: hostToolContent(result),
-        ...(result.isError && { isError: true }),
-      };
-    },
-  };
-}
-
-class OmpBackendSession implements BackendSession {
-  private activeTurn: {
-    onEvent: BackendPromptInput["onEvent"];
-    settle: (outcome: BackendPromptOutcome) => void;
-    fail: (error: Error) => void;
-    settled: boolean;
-    aborted: boolean;
-    abort: () => void;
-  } | null = null;
-  private disposed = false;
-  private promptInProgress = false;
-  private readonly pendingSteering: string[] = [];
-  private disposePromise: Promise<void> | null = null;
-  private readonly unsubscribe: () => void;
-
-  constructor(
-    private readonly session: AgentSession,
-    private readonly projectDir: string,
-    private readonly services: CatalogServices,
-    /** The shared registry, or a session-private one when the session has its own credentials. */
-    private readonly registry: ModelRegistry,
-    private readonly hostTools: ReadonlyMap<string, HostTool>,
-    private readonly onDispose: () => void,
-  ) {
-    this.unsubscribe = session.subscribe((event) => this.handleEvent(event));
-  }
-
-  /** An event the runtime side produced (host tool progress) for the prompt in flight. */
-  report(event: BackendEvent): void {
-    const active = this.activeTurn;
-    if (!active || active.settled) return;
-    try {
-      active.onEvent(event);
-    } catch {
-      // The runtime owns event persistence; a consumer callback must not break the tool.
-    }
-  }
-
-  private handleEvent(event: unknown): void {
-    const active = this.activeTurn;
-    if (!active || active.settled) return;
-
-    const translated = translateOmpEvent(event, this.projectDir, this.hostTools);
-    if (translated) {
-      try {
-        active.onEvent(translated);
-      } catch {
-        // The runtime owns event persistence; a consumer callback must not break OMP's stream.
-      }
-    }
-    if (isRecord(event) && event.type === "agent_start" && this.pendingSteering.length > 0) {
-      const pending = this.pendingSteering.splice(0);
-      for (const text of pending) {
-        void this.session.steer(text).catch((error: unknown) => {
-          if (!active.settled) {
-            active.fail(new Error(humanReadableError(error), { cause: error }));
-          }
-        });
-      }
-    }
-
-    const terminal = terminalEventResult(event);
-    if (!terminal) return;
-    if (active.aborted || terminal.aborted) {
-      active.settle("aborted");
-    } else if (terminal.error) {
-      active.fail(new Error(terminal.error));
-    } else {
-      active.settle("completed");
-    }
-  }
-
-  private resolveModel(selection: BackendPromptInput["model"]): OmpModel {
-    const model = selection
-      ? this.registry.find(selection.provider, selection.modelId)
-      : chooseBackendModel(this.registry, this.services.catalog);
-    if (!model || !this.registry.hasConfiguredAuth(model)) {
-      if (selection) {
-        throw new Error(
-          `The selected model ${selection.provider}/${selection.modelId} is not available or has no configured credentials.`,
-        );
-      }
-      throw new Error(
-        "No authenticated OMP model is available. Sign in with OMP or configure a provider API key.",
-      );
-    }
-    return model;
-  }
-
-  private resolveThinking(input: BackendPromptInput, model: OmpModel): OmpThinking | undefined {
-    const requested =
-      input.thinking ??
-      (sameModel(toModelSelection(model), this.services.catalog.defaultModel)
-        ? this.services.catalog.defaultThinking
-        : null) ??
-      this.services.defaultThinking;
-    if (requested === "off") return "off";
-    return clampThinkingLevelForModel(model, toOmpEffort(requested));
-  }
-
-  async prompt(input: BackendPromptInput): Promise<BackendPromptOutcome> {
-    if (this.disposed) throw new Error("The OMP session has been disposed.");
-    if (this.promptInProgress) throw new Error("Only one OMP prompt may run per chat at a time.");
-    if (input.signal.aborted) return "aborted";
-    this.promptInProgress = true;
-
-    let model: OmpModel;
-    let thinking: OmpThinking | undefined;
-    try {
-      model = this.resolveModel(input.model);
-      thinking = this.resolveThinking(input, model);
-      await this.session.setModel(model, "default", {
-        thinkingLevel: thinking === "off" ? undefined : thinking,
-        persist: false,
-      });
-      if (thinking === "off") {
-        this.session.agent.setDisableReasoning(true);
-      } else {
-        this.session.setThinkingLevel(thinking, false);
-      }
-    } catch (error) {
-      this.promptInProgress = false;
-      this.pendingSteering.length = 0;
-      if (this.disposed) return "aborted";
-      throw new Error(humanReadableError(error), { cause: error });
-    }
-
-    if (this.disposed || input.signal.aborted) {
-      this.promptInProgress = false;
-      this.pendingSteering.length = 0;
-      return "aborted";
-    }
-    const resolvedThinking =
-      thinking === "off" ? "off" : toProtocolEffort(this.session.thinkingLevel);
-    try {
-      input.onEvent({
-        type: "model.resolved",
-        model: toModelSelection(model),
-        thinking: resolvedThinking,
-      });
-    } catch (error) {
-      this.promptInProgress = false;
-      this.pendingSteering.length = 0;
-      throw error;
-    }
-    return new Promise<BackendPromptOutcome>((resolve, reject) => {
-      const cleanup = (): void => {
-        input.signal.removeEventListener("abort", onSignalAbort);
-        if (this.activeTurn === active) this.activeTurn = null;
-        this.promptInProgress = false;
-        this.pendingSteering.length = 0;
-      };
-      const active = {
-        onEvent: input.onEvent,
-        settled: false,
-        aborted: false,
-        settle: (outcome: BackendPromptOutcome): void => {
-          if (active.settled) return;
-          active.settled = true;
-          cleanup();
-          resolve(outcome);
-        },
-        fail: (error: Error): void => {
-          if (active.settled) return;
-          active.settled = true;
-          cleanup();
-          reject(error);
-        },
-        abort: (): void => {
-          if (active.settled || active.aborted) return;
-          active.aborted = true;
-          void this.session
-            .abort()
-            .catch(() => undefined)
-            .finally(() => active.settle("aborted"));
-        },
-      };
-      const onSignalAbort = (): void => active.abort();
-      this.activeTurn = active;
-      input.signal.addEventListener("abort", onSignalAbort, { once: true });
-
-      if (input.signal.aborted) {
-        active.abort();
-        return;
-      }
-
-      this.session
-        .prompt(input.text, { runCommands: false, expandPromptTemplates: false })
-        .then((dispatched) => {
-          if (!dispatched && !active.settled && !active.aborted && !this.disposed) {
-            active.fail(new Error("The OMP session did not dispatch the prompt."));
-          }
-        })
-        .catch((error: unknown) => {
-          if (active.settled || active.aborted || this.disposed) return;
-          active.fail(new Error(humanReadableError(error), { cause: error }));
-        });
-    });
-  }
-
-  async steer(text: string): Promise<void> {
-    if (this.disposed) throw new Error("The OMP session has been disposed.");
-    if (!this.activeTurn && this.promptInProgress) {
-      this.pendingSteering.push(text);
-      return;
-    }
-    if (!this.activeTurn) throw new Error("There is no active OMP turn to steer.");
-    try {
-      await this.session.steer(text);
-    } catch (error) {
-      throw new Error(humanReadableError(error), { cause: error });
-    }
-  }
-
-  dispose(): Promise<void> {
-    if (this.disposePromise) return this.disposePromise;
-    this.disposed = true;
-    this.session.beginDispose();
-    const active = this.activeTurn;
-    if (active) active.aborted = true;
-    this.disposePromise = this.session.dispose().finally(() => {
-      if (active) active.settle("aborted");
-      this.pendingSteering.length = 0;
-      this.promptInProgress = false;
-      this.unsubscribe();
-      this.onDispose();
-    });
-    return this.disposePromise;
-  }
-}
 
 /**
  * Makes the runtime overrides of `authStorage` equal `keys`. Runtime overrides live in the SDK's memory only: they are
@@ -919,6 +503,10 @@ class OmpBackend implements AgentBackend {
     });
   }
 
+  contextHash(projectDir: string): Promise<string> {
+    return contextFilesHash(projectDir);
+  }
+
   async openSession(input: OpenBackendSessionInput): Promise<BackendSession> {
     const services = await this.ensureServices();
     if (this.disposed) throw new Error("The OMP backend has been disposed.");
@@ -954,6 +542,7 @@ class OmpBackend implements AgentBackend {
       delete process.env.PI_EDIT_VARIANT;
       delete process.env.PI_STRICT_EDIT_MODE;
       const sessionSettings = createSessionSettings(initialThinking);
+      const skillsRoot = bundledSkillsRoot();
       const hostToolMap = new Map(input.hostTools.map((tool) => [tool.name, tool]));
       // Host tools are created before the adapter exists; their progress reaches it once it does.
       let progressTarget: OmpBackendSession | null = null;
@@ -993,6 +582,12 @@ class OmpBackend implements AgentBackend {
               input.projectDir,
               input.fileWriteRefusal,
               input.askBeforeLockedEdits,
+              {
+                agent: input.agent,
+                readOnlyRoots: skillsRoot ? [skillsRoot] : [],
+                ...(input.claimWriteFiles && { claimWriteFiles: input.claimWriteFiles }),
+                ...(input.noteFileWrite && { noteFileWrite: input.noteFileWrite }),
+              },
             ),
             error: null,
           },
@@ -1002,7 +597,9 @@ class OmpBackend implements AgentBackend {
         contextFiles: await projectContextFiles(input.projectDir),
         promptTemplates: [],
         slashCommands: [],
-        customSystemPrompt: input.instructions,
+        customSystemPrompt: skillsRoot
+          ? `${input.instructions}${skillsInstruction(skillsRoot)}`
+          : input.instructions,
         hasUI: false,
         settingsApproval: false,
         bindProcessState: false,

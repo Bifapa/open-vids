@@ -3,9 +3,11 @@ import type { StoryActionOptions } from "@hyperframes/agent-protocol";
 import type { BackendPromptInput, BackendPromptOutcome, HostToolResult } from "../backend.js";
 import { ChatService } from "../chats.js";
 import { RuntimeError } from "../errors.js";
+import { isQaClosing } from "../qa/harness.js";
 import type { ScriptedSession } from "../testing/backend.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "../testing/runtimeFixture.js";
 import { userEditedStory } from "../testing/story.js";
+import { toolNames, usableTools } from "../testing/usable.js";
 
 async function settled(fixture: RuntimeFixture, chatId: string): Promise<void> {
   await waitUntil(
@@ -16,9 +18,6 @@ async function settled(fixture: RuntimeFixture, chatId: string): Promise<void> {
   );
 }
 
-const toolNames = (session: ScriptedSession | undefined) =>
-  session?.input.hostTools.map((tool) => tool.name) ?? [];
-
 describe("story-mode turns", () => {
   it("records a story action as a story turn, and gives the Director the graph with the user's decisions and locks", async () => {
     const fixture = await createRuntimeFixture();
@@ -26,8 +25,17 @@ describe("story-mode turns", () => {
       const chat = await fixture.chats.create({}, []);
       fixture.story.viewResult = userEditedStory();
       let promptText = "";
-      fixture.backend.promptScript = async (input) => {
+      let open: string[] = [];
+      fixture.backend.promptScript = async (input, session) => {
+        if (isQaClosing(input)) return "completed";
         promptText = input.text;
+        open = await usableTools(session, [
+          "edit_story",
+          "edit_timeline",
+          "build_rough_cut",
+          "render_video",
+          "build_story",
+        ]);
         return "completed";
       };
 
@@ -55,13 +63,12 @@ describe("story-mode turns", () => {
       expect(promptText).toContain("Never restore the previous AI variant");
       expect(promptText).toContain("Never change a locked node");
 
-      // A review changes the story, never the timeline.
-      const director = toolNames(fixture.backend.sessionsOf("director")[0]);
-      expect(director).toEqual(expect.arrayContaining(["read_story", "edit_story"]));
-      expect(director).not.toContain("edit_timeline");
-      expect(director).not.toContain("build_rough_cut");
-      expect(director).not.toContain("render_video");
-      expect(director).not.toContain("build_story");
+      // A review changes the story, never the timeline: the Director's session keeps its stable tool list and
+      // dispatch refuses the timeline writers and the build in this turn.
+      expect(toolNames(fixture.backend.sessionsOf("director")[0])).toEqual(
+        expect.arrayContaining(["read_story", "edit_story", "edit_timeline", "build_story"]),
+      );
+      expect(open).toEqual(["edit_story"]);
     } finally {
       await fixture.cleanup();
     }
@@ -72,8 +79,11 @@ describe("story-mode turns", () => {
     try {
       const chat = await fixture.chats.create({}, []);
       let promptText = "";
-      fixture.backend.promptScript = async (input) => {
+      let open: string[] = [];
+      fixture.backend.promptScript = async (input, session) => {
+        if (isQaClosing(input)) return "completed";
         promptText = input.text;
+        open = await usableTools(session, ["edit_timeline", "edit_story"]);
         return "completed";
       };
 
@@ -82,8 +92,7 @@ describe("story-mode turns", () => {
       expect(fixture.chats.get(chat.id)?.turns[0]).toMatchObject({ mode: "normal" });
       expect(fixture.chats.get(chat.id)?.turns[0]?.storyAction).toBeUndefined();
       expect(promptText).not.toContain("<story-mode");
-      expect(toolNames(fixture.backend.sessionsOf("director")[0])).toContain("edit_timeline");
-      expect(toolNames(fixture.backend.sessionsOf("director")[0])).not.toContain("edit_story");
+      expect(open).toEqual(["edit_timeline"]);
 
       await fixture.chats.update(chat.id, { activeMode: "story" });
       await fixture.turns.start(chat.id, { prompt: "Plan the launch video" });
@@ -91,19 +100,21 @@ describe("story-mode turns", () => {
       expect(fixture.chats.get(chat.id)?.turns[1]).toMatchObject({ mode: "story" });
       expect(promptText).toContain('<story-mode action="plan">');
       expect(promptText).toContain("There is no story yet");
+      expect(open).toEqual(["edit_story"]);
 
       await fixture.turns.start(chat.id, { prompt: "Just trim the intro", mode: "normal" });
       await settled(fixture, chat.id);
       expect(fixture.chats.get(chat.id)?.turns[2]).toMatchObject({ mode: "normal" });
       expect(promptText).not.toContain("<story-mode");
+      expect(open).toEqual(["edit_timeline"]);
 
-      // The mode change reopens the Director's resumable session with the matching tools.
+      // A mode change does not reopen the Director's resumable session: it keeps one stable tool list, and the
+      // turn's mode is enforced at dispatch.
       const sessions = fixture.backend.sessionsOf("director");
-      expect(sessions.map((session) => toolNames(session).includes("edit_story"))).toEqual([
-        false,
-        true,
-        false,
-      ]);
+      expect(sessions).toHaveLength(1);
+      expect(toolNames(sessions[0])).toEqual(
+        expect.arrayContaining(["edit_timeline", "edit_story"]),
+      );
     } finally {
       await fixture.cleanup();
     }
@@ -143,7 +154,9 @@ type Script = (
 
 function script(fixture: RuntimeFixture, byAgent: Partial<Record<string, Script>>): void {
   fixture.backend.promptScript = (input, session) =>
-    (byAgent[session.input.agent] ?? (async () => "completed"))(input, session);
+    isQaClosing(input)
+      ? Promise.resolve("completed")
+      : (byAgent[session.input.agent] ?? (async () => "completed"))(input, session);
 }
 
 describe("build turns", () => {
@@ -179,15 +192,54 @@ describe("build turns", () => {
     }
   });
 
+  it("lets the Director edit the graph before the build and freezes it after, and says outside material is unavailable when the runtime cannot search", async () => {
+    const fixture = await createRuntimeFixture({ research: undefined });
+    try {
+      const chat = await fixture.chats.create({}, []);
+      fixture.story.viewResult = userEditedStory();
+      const batch = {
+        operations: [
+          {
+            op: "add_node",
+            node: { kind: "missing", title: "Music bed", mediaKind: "music", need: "calm" },
+          },
+        ],
+      };
+      let before: HostToolResult | null = null;
+      let after: HostToolResult | null = null;
+      let directorPrompt = "";
+      script(fixture, {
+        director: async (input, session) => {
+          directorPrompt = input.text;
+          before = await session.callTool("edit_story", batch);
+          await session.callTool("build_story", {});
+          after = await session.callTool("edit_story", batch);
+          return "completed";
+        },
+      });
+      await fixture.turns.start(chat.id, { prompt: "Build the video", storyAction: "build" });
+      await settled(fixture, chat.id);
+
+      expect(before).not.toMatchObject({ isError: true });
+      expect(after).toMatchObject({ isError: true, text: expect.stringContaining("frozen") });
+      expect(fixture.story.editRequests).toHaveLength(1);
+      expect(fixture.story.buildRequests).toHaveLength(1);
+      expect(directorPrompt).toContain("Outside material cannot be fetched in this turn");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("gives build_story to the delegated Editor, not to the Director, and tells the Director to delegate", async () => {
     const fixture = await createRuntimeFixture();
     try {
       const chat = await fixture.chats.create({}, ["editor"]);
       fixture.story.viewResult = userEditedStory();
-      let directorPrompt = "";
+      const director: { prompt: string; open: string[] } = { prompt: "", open: [] };
       script(fixture, {
         director: async (input, session) => {
-          directorPrompt = input.text;
+          director.prompt = input.text;
+          director.open = await usableTools(session, ["build_story"]);
           await session.callTool("delegate", {
             agent: "editor",
             title: "Build the story",
@@ -207,13 +259,14 @@ describe("build turns", () => {
       });
       await settled(fixture, chat.id);
 
-      expect(toolNames(fixture.backend.sessionsOf("director")[0])).not.toContain("build_story");
+      // The Director's session lists build_story too (the list is stable); in this turn dispatch refuses it.
+      expect(director.open).toEqual([]);
       expect(toolNames(fixture.backend.sessionsOf("editor")[0])).toEqual(
         expect.arrayContaining(["build_story", "read_story", "edit_timeline"]),
       );
       expect(toolNames(fixture.backend.sessionsOf("editor")[0])).not.toContain("edit_story");
       expect(fixture.story.buildRequests).toEqual([{ turnId: turn.id }]);
-      expect(directorPrompt).toContain("Delegate the Editor: build_story");
+      expect(director.prompt).toContain("Delegate the Editor: build_story");
     } finally {
       await fixture.cleanup();
     }
@@ -234,6 +287,7 @@ describe("rebuild turns", () => {
       fixture.story.viewResult = userEditedStory();
       let promptText = "";
       let result: HostToolResult | null = null;
+      let notAvailable: string[] = [];
       script(fixture, {
         director: async (input, session) => {
           promptText = input.text;
@@ -243,6 +297,15 @@ describe("rebuild turns", () => {
             allowLocked: ["ch1", "ch2", "ch3"],
             manualEdits: "keep",
           });
+          const closed = [
+            "edit_story",
+            "build_story",
+            "edit_timeline",
+            "build_rough_cut",
+            "render_video",
+          ];
+          const open = await usableTools(session, closed);
+          notAvailable = closed.filter((name) => !open.includes(name));
           return "completed";
         },
       });
@@ -270,16 +333,16 @@ describe("rebuild turns", () => {
         text: expect.stringContaining("Rebuilt the affected sections"),
       });
 
+      // The Director's session lists every story tool; a rebuild turn refuses all but rebuild_story at dispatch.
       const director = toolNames(fixture.backend.sessionsOf("director")[0]);
       expect(director).toEqual(expect.arrayContaining(["read_story", "rebuild_story"]));
-      for (const absent of [
+      expect(notAvailable).toEqual([
         "edit_story",
         "build_story",
         "edit_timeline",
         "build_rough_cut",
         "render_video",
-      ])
-        expect(director).not.toContain(absent);
+      ]);
 
       expect(promptText).toContain('<story-mode action="rebuild">');
       expect(promptText).toContain("Call rebuild_story exactly once");

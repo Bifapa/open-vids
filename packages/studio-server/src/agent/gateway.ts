@@ -30,6 +30,10 @@ export interface AgentGatewayOptions {
   launch: () => AgentRuntimeLaunch | null;
   /** The wait after a first failed start before the next may begin; it doubles per failure (default 1 s). */
   backoffMinMs?: number;
+  /** How long a request may wait for the runtime's response headers before the runtime is probed (default 60 s). */
+  requestTimeoutMs?: number;
+  /** How long the health probe after a timed-out request may take (default 3 s). */
+  healthProbeTimeoutMs?: number;
 }
 
 interface RuntimeInstance {
@@ -51,6 +55,8 @@ const SHUTDOWN_TIMEOUT_MS = 3_000;
 const HEALTHY_RESET_MS = 30_000;
 const BACKOFF_MIN_MS = 1_000;
 const BACKOFF_MAX_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 60_000;
+const HEALTH_PROBE_TIMEOUT_MS = 3_000;
 const FORWARDED_REQUEST_HEADERS = ["accept", "content-type", "last-event-id"];
 
 class RuntimeUnavailableError extends Error {}
@@ -93,6 +99,28 @@ function jsonError(
   message: string,
 ): Response {
   return Response.json({ error: { code, message } }, { status });
+}
+
+const NOT_INSTALLED_MESSAGE =
+  "The local agent runtime is not installed. Rebuild or reinstall OpenVids to include it.";
+
+/**
+ * The answer while the runtime is being replaced: at once, never after waiting out the back-off inside the request.
+ * 503, code `runtime_restarting`, `Retry-After` and `details.retryAfterSeconds` in whole seconds; the request was not
+ * forwarded, so repeating it is safe.
+ */
+function restartingResponse(retryAfterMs: number): Response {
+  const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+  return Response.json(
+    {
+      error: {
+        code: "runtime_restarting",
+        message: `The agent runtime is restarting. Try again in ${seconds} s.`,
+        details: { retryAfterSeconds: seconds },
+      },
+    },
+    { status: 503, headers: { "retry-after": String(seconds) } },
+  );
 }
 
 function hasJsonBody(request: Request): boolean {
@@ -185,8 +213,12 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
   let disposed = false;
   let disposePromise: Promise<void> | null = null;
   const backoffMinMs = options.backoffMinMs ?? BACKOFF_MIN_MS;
+  const requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
+  const healthProbeTimeoutMs = options.healthProbeTimeoutMs ?? HEALTH_PROBE_TIMEOUT_MS;
   let restartDelayMs = backoffMinMs;
   let retryAfter = 0;
+  /** Set while the last launch found no runtime to start: that is not a crash, so it is answered as what it is. */
+  let notInstalled = false;
   let backoffTimer: ReturnType<typeof setTimeout> | null = null;
   let cancelBackoff: (() => void) | null = null;
 
@@ -289,16 +321,16 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
     try {
       launch = options.launch();
     } catch (error) {
+      notInstalled = false;
       recordFailure();
       state = disposed ? "stopped" : "failed";
       throw error;
     }
+    notInstalled = launch === null;
     if (!launch) {
       recordFailure();
       state = "failed";
-      throw new RuntimeUnavailableError(
-        "The local agent runtime is not installed. Rebuild or reinstall OpenVids to include it.",
-      );
+      throw new RuntimeUnavailableError(NOT_INSTALLED_MESSAGE);
     }
 
     const token = randomBytes(32).toString("hex");
@@ -475,6 +507,15 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
       );
     }
 
+    // A runtime that just failed is replaced after a back-off; the request is answered now instead of waiting for it.
+    const backoffLeft = retryAfter - Date.now();
+    if (!disposed && backoffLeft > 0 && !(current?.ready && !current.exited)) {
+      // A runtime that is not installed is not restarting: say so, and do not launch what cannot start.
+      if (notInstalled) return jsonError(503, "runtime_unavailable", NOT_INSTALLED_MESSAGE);
+      void getRuntime().catch(() => undefined);
+      return restartingResponse(backoffLeft);
+    }
+
     let instance: RuntimeInstance;
     try {
       instance = await getRuntime();
@@ -499,6 +540,12 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
       instance.requests.delete(upstreamController);
     };
 
+    // The runtime must start answering (response headers) in time; a long call still answers its headers at once.
+    let timedOut = false;
+    const answerTimer = setTimeout(() => {
+      timedOut = true;
+      upstreamController.abort();
+    }, requestTimeoutMs);
     try {
       const headers = new Headers();
       for (const name of FORWARDED_REQUEST_HEADERS) {
@@ -522,6 +569,7 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
       }
 
       const upstream = await fetch(makeRuntimeUrl(instance.port, ctx.subPath, request.url), init);
+      clearTimeout(answerTimer);
       if (instance.exited || upstreamController.signal.aborted) {
         await upstream.body?.cancel();
         releaseRequest();
@@ -543,7 +591,9 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
         headers: responseHeaders,
       });
     } catch {
+      clearTimeout(answerTimer);
       releaseRequest();
+      if (timedOut && !disposed) return answerTimedOut(instance);
       return jsonError(
         502,
         "runtime_unavailable",
@@ -551,6 +601,41 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
       );
     }
   };
+
+  /**
+   * A request got no answer in time. The runtime may only be busy with a long call (it still answers its health
+   * check), or its event loop may be wedged, in which case every later request would wait the same way. The request is
+   * not repeated either way; a runtime that fails a short health probe is stopped, and the next request starts a fresh one.
+   */
+  const answerTimedOut = async (instance: RuntimeInstance): Promise<Response> => {
+    if (await answersHealthCheck(instance)) {
+      return jsonError(
+        504,
+        "runtime_unavailable",
+        `The local agent runtime did not answer within ${Math.round(requestTimeoutMs / 1000)} seconds.`,
+      );
+    }
+    console.error("[agent-runtime] the runtime stopped answering; restarting it");
+    await stopChild(instance);
+    return restartingResponse(Math.max(retryAfter - Date.now(), 1_000));
+  };
+
+  async function answersHealthCheck(instance: RuntimeInstance): Promise<boolean> {
+    if (instance.exited || instance.port === null) return false;
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${instance.port}${AGENT_RUNTIME_PREFIX}/health`,
+        {
+          headers: { [AGENT_HEADERS.token]: `Bearer ${instance.token}` },
+          signal: AbortSignal.timeout(healthProbeTimeoutMs),
+        },
+      );
+      await response.body?.cancel();
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
 
   const dispose = (): Promise<void> => {
     if (disposePromise) return disposePromise;

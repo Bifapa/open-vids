@@ -1,114 +1,34 @@
-import {
-  QA_LIMITS,
-  compareQaPass,
-  sameQaIssue,
-  type ChatMode,
-  type QaCheckResponse,
-  type QaCheckRun,
-  type QaIssue,
-  type QaIssueDraft,
-  type QaPassPhase,
-  type QaPassState,
-  type QaRenderOrigin,
-  type QaReport,
-  type QaReportInput,
-  type QaVisionRun,
-  type StoryAction,
-  type TurnQaState,
-  type TurnQaStatus,
-  type TurnSummary,
+import type {
+  QaIssue,
+  QaScope,
+  QaScopeNote,
+  QaVisionRun,
+  TimelineSnapshot,
+  TurnQaStatus,
 } from "@hyperframes/agent-protocol";
 import type { BackendPromptOutcome } from "../backend.js";
-import type { Orchestrator, RuntimeRunResult, TurnAgentSetup } from "../agents/orchestrator.js";
-import type { ChatService } from "../chats.js";
-import type { LastRender } from "../editing/executor.js";
-import type { EditingHost, RenderQuality } from "../editing/host.js";
 import { LONG_RENDER_SECONDS } from "../editing/renderGuard.js";
 import { errorMessage } from "../errors.js";
-import type { TurnQa } from "./executor.js";
+import { summarizeChange, visionSkipReason } from "./changeScope.js";
+import { qaApplies, type QaLoopDeps } from "./deps.js";
+import {
+  QaPassRunner,
+  tooLongNote,
+  type PassHistory,
+  type PassPlan,
+  type QaRunSession,
+  type RenderedPass,
+} from "./pass.js";
 import {
   renderCorrectionPrompt,
   renderFinalPrompt,
   renderSkippedPrompt,
-  renderVisionTask,
+  renderUnchangedPrompt,
 } from "./prompt.js";
+import { QaStateTracker } from "./state.js";
 
-/** Where the turn is in QA; the runner refuses tools accordingly (see `qaToolRefusal`). */
-export type QaPhase = "correction" | "final" | null;
-
-/** What the loop needs from the turn runner to talk to the Director. */
-export interface QaDirector {
-  /** Runs one Director prompt and resolves how it ended. */
-  prompt(text: string): Promise<BackendPromptOutcome>;
-  /** Re-prompts the Director with delegated runs it finished without collecting and with steering, as after its first reply. */
-  settle(outcome: BackendPromptOutcome): Promise<BackendPromptOutcome>;
-  /** Marks the Director's text written so far in the turn's reply as an interim progress note. */
-  markInterim(): Promise<void>;
-  /** Steering received while the Director was idle; it opens the next prompt. */
-  takeSteering(): string[];
-  setPhase(phase: QaPhase): void;
-}
-
-export interface QaLoopDeps {
-  chats: ChatService;
-  chatId: string;
-  /** The live turn record; `qa` is kept on it so terminal turn events carry it. */
-  turn: TurnSummary;
-  qa: TurnQa;
-  editing: EditingHost;
-  /** What the Director's own `render_video` calls did: whether the user asked for a render, and the last render. */
-  renders: { asked(): boolean; last(): LastRender | null };
-  orchestrator: Orchestrator;
-  setup: TurnAgentSetup;
-  mode: ChatMode;
-  action: StoryAction | null;
-  /** The project's fingerprint when the turn started; null when the QA service could not say. */
-  startFingerprint: string | null;
-  director: QaDirector;
-  /**
-   * The Director was told (`<render-qa-pending>`) that a check follows its reply. When QA then does not run although
-   * the project changed, its reply was interim and it is asked for the final answer.
-   */
-  instructed?: boolean;
-  /** The turn's abort signal. */
-  signal: AbortSignal;
-  now: () => number;
-}
-
-/** Whether the turn is one QA may run in: normal turns, story builds and rebuilds (report-only); never plan/review/resolve. */
-export function qaApplies(mode: ChatMode, action: StoryAction | null): boolean {
-  return mode !== "story" || action === "build" || action === "rebuild";
-}
-
-interface RenderedPass {
-  path: string;
-  duration: number;
-  width: number;
-  height: number;
-  hasAudio: boolean | null;
-  quality: RenderQuality;
-  /** The project fingerprint the render was made from. */
-  fingerprint: string;
-  /** `turn`: the Director's own render, reused; `qa`: rendered by QA for this pass. */
-  origin: QaRenderOrigin;
-}
-
-type PassResult =
-  | { kind: "aborted" }
-  | { kind: "failed"; reason: string }
-  | {
-      kind: "reported";
-      report: QaReport;
-      issues: QaIssue[];
-      resolved: QaIssue[];
-      vision: QaVisionRun;
-      render: RenderedPass | null;
-      renderError: string | null;
-    };
-
-const isAbort = (signal: AbortSignal, error: unknown): boolean =>
-  signal.aborted ||
-  (typeof error === "object" && error !== null && "code" in error && error.code === "aborted");
+export { qaApplies } from "./deps.js";
+export type { QaDirector, QaLoopDeps, QaPhase } from "./deps.js";
 
 /** How a QA loop ended: the English `reason` plus the `qa.reason.<reasonCode>` key the chat translates it by. */
 interface QaEnd {
@@ -118,69 +38,33 @@ interface QaEnd {
   reasonParams?: Record<string, string | number>;
 }
 
-const SKIPPED_VISION: QaVisionRun = {
-  status: "skipped",
-  reason: null,
-  frames: 0,
-  rounds: 0,
-  model: null,
-};
+const isAbort = (signal: AbortSignal, error: unknown): boolean =>
+  signal.aborted ||
+  (typeof error === "object" && error !== null && "code" in error && error.code === "aborted");
 
-const minutes = (seconds: number): string => `${Number((seconds / 60).toFixed(1))} minutes`;
-
-function tooLongReason(duration: number): string {
-  return `The composition is ${minutes(duration)} long and the user did not ask for a render, so QA did not render it (a render that long takes many minutes). Ask for a render or an export to have it checked.`;
-}
+type Planned =
+  | { kind: "plan"; plan: PassPlan }
+  | { kind: "aborted" }
+  | { kind: "unreadable"; reason: string };
 
 /**
- * The previous pass's Vision issues a pass could not re-check (its Vision review did not complete, or there was no
- * render to look at), as drafts: they stay open instead of being recorded as fixed. A draft that already matches one
- * of them (a finding of a review that failed after reporting) is not repeated.
- */
-function unverifiedVisionIssues(
-  previous: readonly QaIssue[],
-  drafts: readonly QaIssueDraft[],
-): QaIssueDraft[] {
-  return previous.filter(
-    (issue) => issue.source === "vision" && !drafts.some((draft) => sameQaIssue(issue, draft)),
-  );
-}
-
-const SEVERITY_RANK: Record<QaIssueDraft["severity"], number> = { error: 0, warning: 1, info: 2 };
-
-/**
- * The service refuses a report with more than `QA_LIMITS.issues` issues. The checks alone may reach that cap and Vision
- * adds its findings on top, so past the cap the most severe issues are kept (stable within a severity: checks first,
- * then Vision's findings).
- */
-function capQaDrafts(drafts: QaIssueDraft[]): QaIssueDraft[] {
-  if (drafts.length <= QA_LIMITS.issues) return drafts;
-  return drafts
-    .map((draft, index) => ({ draft, index }))
-    .sort(
-      (a, b) =>
-        SEVERITY_RANK[a.draft.severity] - SEVERITY_RANK[b.draft.severity] || a.index - b.index,
-    )
-    .slice(0, QA_LIMITS.issues)
-    .sort((a, b) => a.index - b.index)
-    .map(({ draft }) => draft);
-}
-
-/**
- * Autonomous render QA of one turn: render → deterministic checks + Vision's review → compare with the previous pass →
+ * Autonomous render QA of one turn: render → deterministic checks + the visual review → compare with the previous pass →
  * store the report → (if fixable issues remain and passes are left) a Director correction → the next pass. At most
  * `qaPasses` renders, so at most `qaPasses − 1` corrections; a correction that changes nothing ends the loop.
- * Afterwards the Director gets one final prompt to report, during which the runner refuses every change.
+ * A pass checks only as much as it needs: a composition too long to render unasked gets the timeline checks, and a
+ * re-check after a small or audio-only change skips the visual review. Afterwards the Director gets one final prompt to
+ * report, during which the runner refuses every change.
  */
 export class QaLoop {
-  private state: TurnQaState | null = null;
-  /** Previews this session rendered itself (never the Director's own render pass 1 reuses), in order. */
-  private readonly produced: string[] = [];
-  /** The latest render of the session that succeeded: what the final report names and cleanup keeps. */
-  private latestRender: string | null = null;
+  private readonly tracker: QaStateTracker;
+  private readonly session: QaRunSession = { produced: [], latestRender: null };
+  /** The timeline of the last pass that was planned: what the next pass's change is measured against. */
+  private checkedTimeline: TimelineSnapshot | null = null;
   private finished = false;
 
-  constructor(private readonly deps: QaLoopDeps) {}
+  constructor(private readonly deps: QaLoopDeps) {
+    this.tracker = new QaStateTracker(deps);
+  }
 
   /**
    * Runs QA after the Director's work (and its follow-ups) completed with `outcome`; resolves the outcome the turn
@@ -192,10 +76,10 @@ export class QaLoop {
       return await this.execute(outcome);
     } catch (error) {
       // The Director's prompt failed or the chat could not be written: the turn fails, QA did not finish.
-      if (this.state?.status === "running") {
-        await this.settleState("aborted", errorMessage(error, "The turn ended during QA.")).catch(
-          () => undefined,
-        );
+      if (this.tracker.state?.status === "running") {
+        await this.tracker
+          .settle("aborted", errorMessage(error, "The turn ended during QA."))
+          .catch(() => undefined);
       }
       await this.finishSession();
       throw error;
@@ -205,7 +89,7 @@ export class QaLoop {
   // ── The loop ───────────────────────────────────────────────────────────────
 
   private async execute(outcome: BackendPromptOutcome): Promise<BackendPromptOutcome> {
-    const { deps } = this;
+    const { deps, tracker } = this;
     const { signal } = deps;
     if (!qaApplies(deps.mode, deps.action)) return outcome;
     const { budget, preset } = deps.setup.execution;
@@ -232,91 +116,77 @@ export class QaLoop {
       // Nothing changed — but a render this turn made of the project as it is (the user asked for a video file) is a
       // deliverable, and a deliverable is checked like any edit.
       const last = deps.renders.last();
-      if (last === null || last.fingerprint !== current) return outcome;
+      if (last === null || last.fingerprint !== current) return this.closeUnchanged(outcome);
       if (last.composition !== undefined) {
         // `composition: "index.html"` names the main composition explicitly; any other composition is not checked.
         const main = await deps.editing
           .timeline(undefined, signal)
           .then((snapshot) => snapshot.composition.path)
           .catch(() => null);
-        if (last.composition !== main) return outcome;
+        if (last.composition !== main)
+          return this.closeUnchanged(outcome, { composition: last.composition, path: last.path });
       }
     }
     if (budget.qaPasses === 0) return this.skip(outcome, "Render QA is off");
 
-    let duration: number;
-    let composition: string;
-    try {
-      const snapshot = await deps.editing.timeline(undefined, signal);
-      duration = snapshot.composition.duration;
-      composition = snapshot.composition.path;
-    } catch (error) {
-      if (isAbort(signal, error)) return outcome;
-      return this.skip(
-        outcome,
-        `Render QA could not read the timeline (${errorMessage(error, "the editing service did not answer")}).`,
-      );
-    }
-    if (!deps.renders.asked() && duration > LONG_RENDER_SECONDS)
-      return this.skip(outcome, tooLongReason(duration));
+    const history: PassHistory = { previous: [], fixed: new Map(), reportId: null };
+    const first = await this.plan(1, budget.qaPasses, current, history);
+    if (first.kind === "aborted") return outcome;
+    if (first.kind === "unreadable") return this.skip(outcome, first.reason);
 
-    this.state = {
-      status: "running",
-      preset,
-      passLimit: budget.qaPasses,
-      passes: [],
-      reason: null,
-    };
-    await this.publish();
+    await tracker.begin(preset, budget.qaPasses);
     // QA really runs: what the Director said so far is an interim note, the final report follows the check.
     await deps.director.markInterim();
 
-    const history = {
-      previous: [] as QaIssue[],
-      fixed: new Map<string, QaIssue>(),
-      reportId: null as string | null,
-    };
+    const runner = new QaPassRunner(deps, tracker, this.session);
     let lastRender: RenderedPass | null = null;
     let lastIssues: QaIssue[] = [];
     let lastVision: QaVisionRun | null = null;
     let lastRenderError: string | null = null;
+    let lastScope: QaScope | null = null;
+    let lastScopeNote: QaScopeNote | null = null;
+    let lastSuppressed = 0;
     let corrections = 0;
-    let end: QaEnd = {
-      status: "issues_remain",
-      reason: null,
-    };
+    let end: QaEnd = { status: "issues_remain", reason: null };
     let startFingerprint = current;
     const limit = budget.qaPasses;
+    let planned: Planned = first;
 
     for (let pass = 1; pass <= limit; pass += 1) {
       if (pass > 1) {
-        const blocked = await this.guard();
-        if (blocked?.kind === "aborted") return this.abort();
-        if (blocked) {
-          end = {
-            status: blocked.kind === "failed" ? "failed" : "issues_remain",
-            reason: blocked.reason,
-          };
+        planned = await this.plan(pass, limit, startFingerprint, history);
+        if (planned.kind === "aborted") return this.abort();
+        if (planned.kind === "unreadable") {
+          end = { status: "failed", reason: planned.reason };
           break;
         }
       }
-      await this.startPass(pass);
-      const result = await this.runPass({
-        pass,
-        limit,
-        composition,
-        history,
-        startFingerprint,
-        mayReuse: pass === 1,
-      });
+      if (planned.kind !== "plan") return this.abort();
+      await tracker.startPass(pass);
+      const result = await runner.run(planned.plan, history);
       if (result.kind === "aborted") return this.abort();
       if (result.kind === "failed") {
-        end = { status: "failed", reason: result.reason };
-        await this.endPass(pass, "failed", { error: result.reason });
+        end = {
+          status: "failed",
+          reason: result.reason,
+          ...(result.reasonCode !== undefined && { reasonCode: result.reasonCode }),
+          ...(result.reasonParams !== undefined && { reasonParams: result.reasonParams }),
+        };
+        await tracker.endPass(pass, "failed", { error: result.reason });
         break;
       }
 
-      const { report, issues, resolved, vision, render, renderError } = result;
+      const {
+        report,
+        issues,
+        resolved,
+        vision,
+        render,
+        renderError,
+        scope,
+        scopeNote,
+        suppressed,
+      } = result;
       history.previous = issues;
       history.reportId = report.id;
       for (const fixed of resolved) history.fixed.set(fixed.id, fixed);
@@ -325,41 +195,20 @@ export class QaLoop {
       lastVision = vision;
       lastRender = render ?? lastRender;
       lastRenderError = renderError;
+      lastScope = scope;
+      lastScopeNote = scopeNote;
+      lastSuppressed = suppressed;
 
-      let decision: QaEnd | null = null;
-      if (issues.length === 0) decision = { status: "passed", reason: null };
-      else if (renderError && (pass === limit || deps.action === "rebuild"))
-        decision = {
-          status: "failed",
-          reason: `The render failed: ${renderError}`,
-          reasonCode: "render_failed",
-          reasonParams: { reason: renderError },
-        };
-      else if (!issues.some((issue) => issue.fixable))
-        decision = {
-          status: "issues_remain",
-          reason: "No open issue can be fixed by an edit.",
-          reasonCode: "no_fixable_issues",
-        };
-      else if (pass === limit)
-        decision = {
-          status: "issues_remain",
-          reason: "The pass limit was reached.",
-          reasonCode: "pass_limit",
-        };
-      else if (deps.action === "rebuild")
-        decision = {
-          status: "issues_remain",
-          reason:
-            "A rebuild turn is report-only: only rebuild_story may change the timeline, so nothing was corrected.",
-          reasonCode: "rebuild_report_only",
-        };
-      await this.endPass(pass, decision?.status === "failed" ? "failed" : "done", {
+      const decision = this.decide({ pass, limit, issues, renderError });
+      await tracker.endPass(pass, decision?.status === "failed" ? "failed" : "done", {
         reportId: report.id,
         renderPath: render?.path ?? null,
         counts: report.counts,
         vision: vision.status,
         error: renderError,
+        scope,
+        ...(scopeNote && { scopeNote }),
+        suppressed,
       });
       if (decision) {
         end = decision;
@@ -367,7 +216,7 @@ export class QaLoop {
       }
 
       // Correction: the Director delegates the fixes; the next pass verifies them with a new render.
-      await this.setPhase(pass, "correcting");
+      await tracker.setPhase(pass, "correcting");
       corrections += 1;
       const correction = await this.correct({
         pass,
@@ -377,9 +226,12 @@ export class QaLoop {
         render,
         renderError,
         vision,
+        scope,
+        scopeNote,
+        suppressed,
       });
       if (correction === "aborted") return this.abort();
-      await this.setPhase(pass, "corrected");
+      await tracker.setPhase(pass, "corrected");
 
       let after: string;
       try {
@@ -405,7 +257,7 @@ export class QaLoop {
     }
 
     try {
-      await this.settleState(end.status, end.reason, end.reasonCode, end.reasonParams);
+      await tracker.settle(end.status, end.reason, end.reasonCode, end.reasonParams);
     } finally {
       await this.finishSession();
     }
@@ -418,7 +270,7 @@ export class QaLoop {
         renderFinalPrompt({
           status: end.status,
           reason: end.reason,
-          passes: this.state?.passes.length ?? 0,
+          passes: tracker.passCount,
           limit: budget.qaPasses,
           corrections,
           lastRender: lastRender
@@ -426,6 +278,9 @@ export class QaLoop {
             : null,
           renderError: lastRenderError,
           vision: lastVision,
+          scope: lastScope,
+          scopeNote: lastScopeNote,
+          suppressed: lastSuppressed,
           open: lastIssues,
           fixed: [...history.fixed.values()],
           steering: deps.director.takeSteering(),
@@ -438,336 +293,115 @@ export class QaLoop {
   }
 
   /**
-   * Before a pass after a correction: the correction may have grown the composition past what QA renders unasked.
-   * Null = go on.
+   * What the pass after `history` is to check: the composition's length decides whether it is rendered (a composition
+   * over the long-render limit is checked on the timeline alone unless the user asked for a render), and how much the
+   * project changed since the last check decides whether the visual review is needed.
    */
-  private async guard(): Promise<
-    { kind: "aborted" } | { kind: "failed" | "stopped"; reason: string } | null
-  > {
+  private async plan(
+    pass: number,
+    limit: number,
+    startFingerprint: string,
+    history: PassHistory,
+  ): Promise<Planned> {
     const { deps } = this;
+    let snapshot: TimelineSnapshot;
     try {
-      const snapshot = await deps.editing.timeline(undefined, deps.signal);
-      if (!deps.renders.asked() && snapshot.composition.duration > LONG_RENDER_SECONDS)
-        return { kind: "stopped", reason: tooLongReason(snapshot.composition.duration) };
-      return null;
+      snapshot = await deps.editing.timeline(undefined, deps.signal);
     } catch (error) {
       if (isAbort(deps.signal, error)) return { kind: "aborted" };
       return {
-        kind: "failed",
-        reason: `QA could not read the timeline (${errorMessage(error, "the editing service did not answer")}).`,
+        kind: "unreadable",
+        reason:
+          pass === 1
+            ? `Render QA could not read the timeline (${errorMessage(error, "the editing service did not answer")}).`
+            : `QA could not read the timeline (${errorMessage(error, "the editing service did not answer")}).`,
       };
     }
-  }
+    const { duration, path } = snapshot.composition;
+    const timelineOnly =
+      !deps.renders.asked() && duration > LONG_RENDER_SECONDS ? tooLongNote(duration) : null;
+    const base = pass === 1 ? deps.startTimeline : this.checkedTimeline;
+    this.checkedTimeline = snapshot;
 
-  /** One render + check + review + report. */
-  private async runPass(input: {
-    pass: number;
-    limit: number;
-    composition: string;
-    history: { previous: QaIssue[]; fixed: Map<string, QaIssue>; reportId: string | null };
-    startFingerprint: string;
-    /** The Director's own render may stand in for this pass's (only the first pass has one). */
-    mayReuse: boolean;
-  }): Promise<PassResult> {
-    const { deps } = this;
-    const { signal } = deps;
-    const { budget, preset } = deps.setup.execution;
-    const { pass, history } = input;
-
-    // ── Render (or reuse the Director's own, when it shows the project as it is now) ──
-    await this.setPhase(pass, "rendering");
-    let rendered: RenderedPass | null = null;
-    let renderError: string | null = null;
-    try {
-      rendered = await this.obtainRender(input.startFingerprint, input.mayReuse, input.composition);
-    } catch (error) {
-      if (isAbort(signal, error)) return { kind: "aborted" };
-      renderError = errorMessage(error, "The render failed");
-    }
-    if (signal.aborted) return { kind: "aborted" };
-
-    let check: QaCheckResponse | null = null;
-    let vision: QaVisionRun = SKIPPED_VISION;
-    let drafts: QaIssueDraft[];
-    let checks: QaCheckRun[];
-    if (!rendered) {
-      const reason = renderError ?? "The render failed";
-      drafts = [
-        {
-          kind: "render_failed",
-          severity: "error",
-          source: "render",
-          check: "render",
-          start: 0,
-          end: 0,
-          clipIds: [],
-          subject: "render",
-          message: `The composition could not be rendered: ${reason}`,
-          fixable: true,
-          owner: "editor",
-          suggestion:
-            "Inspect the timeline for what breaks the render (missing or unreadable files, invalid clips or a broken composition) and fix it.",
-        },
-      ];
-      checks = [{ id: "render", status: "failed", detail: reason }];
-      vision = {
-        ...SKIPPED_VISION,
-        reason: "The render failed, so there was nothing to review.",
-        reasonCode: "vision_render_failed",
-      };
-      drafts.push(...unverifiedVisionIssues(history.previous, drafts));
-    } else {
-      await this.setPhase(pass, "checking");
-      try {
-        check = await deps.qa.check(
-          {
-            render: rendered.path,
-            composition: input.composition,
-            framesPerMinute: budget.qaFramesPerMinute,
-            maxFrames: budget.qaMaxFrames,
-          },
-          signal,
-        );
-      } catch (error) {
-        if (isAbort(signal, error)) return { kind: "aborted" };
-        return {
-          kind: "failed",
-          reason: `The render checks failed (${errorMessage(error, "Studio's QA service did not answer")}).`,
+    // A visual issue still waiting for its re-check needs the review, whatever the change was.
+    const waiting = history.previous.some(
+      (issue) => issue.source === "vision" && issue.fixable && issue.notRechecked !== true,
+    );
+    let visionSkip: QaScopeNote | null = null;
+    if (!timelineOnly && !waiting && base) {
+      const change = summarizeChange(base, snapshot);
+      const reason = visionSkipReason(change);
+      if (reason === "audio_only") {
+        visionSkip = {
+          code: "audio_only",
+          message:
+            "Only audio changed since the last check, so the visual review was skipped (the picture is the same); the render's deterministic checks still ran.",
+        };
+      } else if (reason === "small_change" && change) {
+        visionSkip = {
+          code: "small_change",
+          message: `Only ${change.retimed} existing ${change.retimed === 1 ? "clip was" : "clips were"} retimed since the last check, so the visual review was skipped; the render's deterministic checks still ran.`,
+          params: { count: change.retimed },
         };
       }
-      await this.setPhase(pass, "reviewing");
-      const review = await this.review(pass, input.limit, rendered, check, history.previous);
-      if (review === "aborted") return { kind: "aborted" };
-      vision = review.vision;
-      drafts = [...check.issues];
-      for (const finding of review.findings) {
-        if (!drafts.some((known) => sameQaIssue(known, finding))) drafts.push(finding);
-      }
-      // A Vision review that did not complete cannot say a Vision issue of the previous pass is gone: it stays open
-      // (unverified) instead of being recorded as fixed.
-      if (vision.status !== "ran") drafts.push(...unverifiedVisionIssues(history.previous, drafts));
-      checks = [
-        ...check.checks.filter((entry) => entry.id !== "vision"),
-        {
-          id: "vision",
-          status:
-            vision.status === "ran"
-              ? "ran"
-              : vision.status === "failed"
-                ? "failed"
-                : vision.status === "unavailable"
-                  ? "unavailable"
-                  : "skipped",
-          detail: vision.reason,
-        },
-      ];
-    }
-    if (signal.aborted) return { kind: "aborted" };
-    drafts = capQaDrafts(drafts);
-
-    const { issues, resolved } = compareQaPass({
-      pass,
-      drafts,
-      previous: history.previous,
-      fixedEarlier: [...history.fixed.values()],
-    });
-    const fingerprint = rendered?.fingerprint ?? input.startFingerprint;
-    const report: QaReportInput = {
-      sessionId: deps.turn.id,
-      turnId: deps.turn.id,
-      chatId: deps.chatId,
-      pass,
-      passLimit: input.limit,
-      preset,
-      composition: check?.composition ?? input.composition,
-      fingerprint,
-      timelineVersion: check?.timelineVersion ?? null,
-      render: rendered && {
-        path: rendered.path,
-        duration: rendered.duration,
-        width: rendered.width,
-        height: rendered.height,
-        hasAudio: rendered.hasAudio,
-        quality: rendered.quality,
-        origin: rendered.origin,
-      },
-      renderError,
-      checks,
-      vision,
-      issues,
-      resolved,
-      previousReportId: history.reportId,
-    };
-    let saved: QaReport;
-    try {
-      saved = await deps.qa.saveReport(report, signal);
-    } catch (error) {
-      if (isAbort(signal, error)) return { kind: "aborted" };
-      return {
-        kind: "failed",
-        reason: `The QA report could not be stored (${errorMessage(error, "Studio's QA service did not answer")}).`,
-      };
     }
     return {
-      kind: "reported",
-      report: saved,
-      issues,
-      resolved,
-      vision,
-      render: rendered,
-      renderError,
+      kind: "plan",
+      plan: {
+        pass,
+        limit,
+        composition: path,
+        startFingerprint,
+        mayReuse: pass === 1,
+        timelineOnly,
+        visionSkip,
+      },
     };
   }
 
-  /**
-   * The render of a pass. Pass 1 reuses the Director's own render when it was made from the project as it is now
-   * (nothing changed since it started); otherwise the composition is rendered in draft quality — or, when the user
-   * asked for a render or the Director itself rendered a deliverable in this turn, in the quality of the Director's
-   * last render (else standard), so a correction never downgrades the file the user gets.
-   */
-  private async obtainRender(
-    startFingerprint: string,
-    mayReuse: boolean,
-    composition: string,
-  ): Promise<RenderedPass> {
-    const { deps } = this;
-    const { signal } = deps;
-    const last = deps.renders.last();
-    if (
-      mayReuse &&
-      last &&
-      (last.composition === undefined || last.composition === composition) &&
-      last.fingerprint === startFingerprint
-    ) {
-      try {
-        const media = await deps.editing.probe(last.path, signal);
-        if (media.duration && media.width && media.height) {
-          this.latestRender = last.path;
-          return {
-            path: last.path,
-            duration: media.duration,
-            width: media.width,
-            height: media.height,
-            hasAudio: media.hasAudio ?? null,
-            quality: last.quality,
-            fingerprint: startFingerprint,
-            origin: "turn",
+  /** Whether the pass ends QA, and how. Null: a correction follows. */
+  private decide(input: {
+    pass: number;
+    limit: number;
+    issues: readonly QaIssue[];
+    renderError: string | null;
+  }): QaEnd | null {
+    const { pass, limit, issues, renderError } = input;
+    if (issues.length === 0) return { status: "passed", reason: null };
+    if (renderError && (pass === limit || this.deps.action === "rebuild"))
+      return {
+        status: "failed",
+        reason: `The render failed: ${renderError}`,
+        reasonCode: "render_failed",
+        reasonParams: { reason: renderError },
+      };
+    if (!issues.some((issue) => issue.fixable))
+      return issues.every((issue) => issue.notRechecked === true)
+        ? {
+            status: "issues_remain",
+            reason:
+              "Issues reported earlier could not be re-checked in this pass, so nothing was corrected.",
+            reasonCode: "not_rechecked",
+          }
+        : {
+            status: "issues_remain",
+            reason: "No open issue can be fixed by an edit.",
+            reasonCode: "no_fixable_issues",
           };
-        }
-      } catch (error) {
-        if (isAbort(signal, error)) throw error;
-        // The file cannot be read any more: render again.
-      }
-    }
-    const quality: RenderQuality = last
-      ? last.quality
-      : deps.renders.asked()
-        ? "standard"
-        : "draft";
-    const fingerprint = startFingerprint;
-    const output = await deps.editing.render({ quality }, signal, () => undefined);
-    this.produced.push(output.path);
-    this.latestRender = output.path;
-    return {
-      path: output.path,
-      duration: output.duration,
-      width: output.width,
-      height: output.height,
-      hasAudio: output.hasAudio,
-      quality,
-      fingerprint,
-      origin: "qa",
-    };
-  }
-
-  /** Vision's review of the render; `"aborted"` when the turn was stopped during it. */
-  private async review(
-    pass: number,
-    limit: number,
-    rendered: RenderedPass,
-    check: QaCheckResponse,
-    previous: readonly QaIssue[],
-  ): Promise<{ vision: QaVisionRun; findings: QaIssueDraft[] } | "aborted"> {
-    const { deps } = this;
-    const { budget } = deps.setup.execution;
-    const none = (status: QaVisionRun["status"], reason: string, reasonCode?: string) => ({
-      vision: {
-        status,
-        reason,
-        ...(reasonCode !== undefined && { reasonCode }),
-        frames: 0,
-        rounds: 0,
-        model: null,
-      },
-      findings: [] as QaIssueDraft[],
-    });
-    if (!deps.setup.enabled.includes("vision"))
-      return none("unavailable", "Vision is not enabled in this chat.", "vision_disabled");
-    const samples = check.samples.slice(0, budget.qaMaxFrames);
-    if (samples.length === 0)
-      return none("skipped", "The checks planned no frame to look at.", "vision_no_frames");
-
-    deps.qa.openReview({
-      pass,
-      render: rendered.path,
-      duration: rendered.duration,
-      samples,
-      maxFrames: budget.qaMaxFrames,
-      critiqueRounds: budget.critiqueRounds,
-    });
-    let run: RuntimeRunResult | null = null;
-    let failure: string | null = null;
-    try {
-      run = await deps.orchestrator.runInternal({
-        agent: "vision",
-        title: `Render QA · pass ${pass}`,
-        titleCode: "render_qa_pass",
-        titleParams: { pass },
-        task: renderVisionTask({
-          pass,
-          limit,
-          render: rendered.path,
-          composition: check.composition,
-          duration: rendered.duration,
-          samples,
-          deterministic: check.issues,
-          previousVision: previous.filter((issue) => issue.source === "vision"),
-          budget,
-        }),
-      });
-    } catch (error) {
-      failure = errorMessage(error, "Vision could not start");
-    }
-    const closed = deps.qa.closeReview();
-    if (deps.signal.aborted) return "aborted";
-    const base = { frames: closed.frames, rounds: closed.rounds, model: run?.model ?? null };
-    if (failure !== null)
-      return { vision: { status: "failed", reason: failure, ...base }, findings: [] };
-    if (run && run.status !== "completed") {
-      const why = run.error ?? `The run ${run.status}.`;
+    if (pass === limit)
       return {
-        vision: {
-          status: "failed",
-          reason: closed.reported
-            ? `Vision's run failed after reporting its findings (${why}).`
-            : `Vision's run failed (${why}).`,
-          ...base,
-        },
-        findings: closed.findings,
+        status: "issues_remain",
+        reason: "The pass limit was reached.",
+        reasonCode: "pass_limit",
       };
-    }
-    if (!closed.reported) {
+    if (this.deps.action === "rebuild")
       return {
-        vision: {
-          status: "failed",
-          reason: "Vision finished without reporting any findings, so its review did not count.",
-          reasonCode: "vision_no_findings",
-          ...base,
-        },
-        findings: [],
+        status: "issues_remain",
+        reason:
+          "A rebuild turn is report-only: only rebuild_story may change the timeline, so nothing was corrected.",
+        reasonCode: "rebuild_report_only",
       };
-    }
-    return { vision: { status: "ran", reason: null, ...base }, findings: closed.findings };
+    return null;
   }
 
   /** The Director's correction turn: prompt, then collect the delegated runs like after its first reply. */
@@ -779,6 +413,9 @@ export class QaLoop {
     render: RenderedPass | null;
     renderError: string | null;
     vision: QaVisionRun;
+    scope: QaScope;
+    scopeNote: QaScopeNote | null;
+    suppressed: number;
   }): Promise<"done" | "aborted"> {
     const { deps } = this;
     deps.director.setPhase("correction");
@@ -789,6 +426,9 @@ export class QaLoop {
         render: input.render && { path: input.render.path, duration: input.render.duration },
         renderError: input.renderError,
         vision: input.vision,
+        scope: input.scope,
+        scopeNote: input.scopeNote,
+        suppressed: input.suppressed,
         issues: input.issues,
         resolved: input.resolved,
         enabled: deps.setup.enabled,
@@ -805,41 +445,49 @@ export class QaLoop {
 
   private async skip(outcome: BackendPromptOutcome, reason: string): Promise<BackendPromptOutcome> {
     const { budget, preset } = this.deps.setup.execution;
-    this.state = {
-      status: "skipped",
-      preset,
-      passLimit: budget.qaPasses,
-      passes: [],
-      reason,
-    };
-    await this.publish();
+    await this.tracker.skipped(preset, budget.qaPasses, reason);
+    return this.closeInterim(outcome, (steering) => renderSkippedPrompt(reason, steering));
+  }
+
+  /**
+   * The turn changed nothing that QA checks, so no check follows. A Director that tried to change the project (an edit
+   * that did not land, a teammate whose work did not land) or rendered something may have promised one or reported
+   * success: it owes a closing answer. A turn that only talked or read gets nothing extra. `unchecked` names a render
+   * the Director made of a composition QA does not check.
+   */
+  private async closeUnchanged(
+    outcome: BackendPromptOutcome,
+    unchecked: { composition: string; path: string } | null = null,
+  ): Promise<BackendPromptOutcome> {
+    if (!this.deps.workAttempted()) return outcome;
+    return this.closeInterim(outcome, (steering) => renderUnchangedPrompt(steering, unchecked));
+  }
+
+  /**
+   * The Director promised a check that is not coming: its reply so far is interim, the final answer follows now. Only
+   * a Director that was told a check would follow (and finished normally) is asked; the user's steering is taken only
+   * once the prompt is going out, so it is never lost with a prompt that is not sent.
+   */
+  private async closeInterim(
+    outcome: BackendPromptOutcome,
+    buildPrompt: (steering: readonly string[]) => string,
+  ): Promise<BackendPromptOutcome> {
     if (!this.deps.instructed || outcome !== "completed" || this.deps.signal.aborted)
       return outcome;
-    // The Director promised a check that is not coming: its reply so far is interim, the final answer follows now.
     const { director } = this.deps;
     await director.markInterim();
     director.setPhase("final");
     try {
-      const final = await director.prompt(renderSkippedPrompt(reason, director.takeSteering()));
-      return await director.settle(final);
+      return await director.settle(await director.prompt(buildPrompt(director.takeSteering())));
     } finally {
       director.setPhase(null);
     }
   }
 
   private async abort(): Promise<BackendPromptOutcome> {
-    const state = this.state;
-    if (state) {
-      const now = this.deps.now();
-      for (const pass of state.passes) {
-        if (pass.phase === "done" || pass.phase === "corrected" || pass.phase === "failed")
-          continue;
-        pass.phase = "aborted";
-        pass.endedAt = now;
-      }
-    }
+    this.tracker.abortOpenPasses();
     try {
-      await this.settleState("aborted", "The turn was stopped while Render QA was running.");
+      await this.tracker.settle("aborted", "The turn was stopped while Render QA was running.");
     } finally {
       await this.finishSession();
     }
@@ -849,77 +497,17 @@ export class QaLoop {
   /**
    * Ends the QA session on the service once: its intermediate QA previews go, the latest successful render stays (the
    * deliverable the final report names) and so does any render of the Director's own. Best-effort: the turn's
-   * outcome never depends on it (see `TurnQa.finishSession`), and it runs even after the turn was stopped.
+   * outcome never depends on it (see `TurnQa.finishSession`), and it runs even after the turn was stopped. What the
+   * service deleted tells the card which passes' renders are still there.
    */
   private async finishSession(): Promise<void> {
-    if (this.finished || !this.state || this.state.passes.length === 0) return;
+    if (this.finished || this.tracker.state === null || this.tracker.passCount === 0) return;
     this.finished = true;
-    await this.deps.qa.finishSession(this.deps.turn.id, {
-      keep: this.latestRender,
-      ...(this.produced.length > 0 && { produced: [...this.produced] }),
+    const { produced, latestRender } = this.session;
+    const response = await this.deps.qa.finishSession(this.deps.turn.id, {
+      keep: latestRender,
+      ...(produced.length > 0 && { produced: [...produced] }),
     });
-  }
-
-  private async settleState(
-    status: TurnQaStatus,
-    reason: string | null,
-    reasonCode?: string,
-    reasonParams?: Record<string, string | number>,
-  ): Promise<void> {
-    if (!this.state) return;
-    this.state.status = status;
-    this.state.reason = reason;
-    if (reasonCode !== undefined) this.state.reasonCode = reasonCode;
-    if (reasonParams !== undefined) this.state.reasonParams = reasonParams;
-    await this.publish();
-  }
-
-  private pass(number: number): QaPassState | undefined {
-    return this.state?.passes.find((entry) => entry.pass === number);
-  }
-
-  private async startPass(number: number): Promise<void> {
-    this.state?.passes.push({
-      pass: number,
-      phase: "rendering",
-      reportId: null,
-      renderPath: null,
-      counts: null,
-      vision: null,
-      error: null,
-      startedAt: this.deps.now(),
-    });
-    await this.publish();
-  }
-
-  private async setPhase(number: number, phase: QaPassPhase): Promise<void> {
-    const pass = this.pass(number);
-    if (!pass) return;
-    pass.phase = phase;
-    await this.publish();
-  }
-
-  private async endPass(
-    number: number,
-    phase: QaPassPhase,
-    details: Partial<Pick<QaPassState, "reportId" | "renderPath" | "counts" | "vision" | "error">>,
-  ): Promise<void> {
-    const pass = this.pass(number);
-    if (!pass) return;
-    Object.assign(pass, details, { phase, endedAt: this.deps.now() });
-    await this.publish();
-  }
-
-  /** Keeps the live turn's QA current and tells the chat. */
-  private async publish(): Promise<void> {
-    const { state } = this;
-    if (!state) return;
-    const qa = structuredClone(state);
-    this.deps.turn.qa = qa;
-    await this.deps.chats.emit(this.deps.chatId, {
-      type: "qa.updated",
-      turnId: this.deps.turn.id,
-      qa,
-    });
+    if (response) await this.tracker.markKept(response.removedRenders).catch(() => undefined);
   }
 }

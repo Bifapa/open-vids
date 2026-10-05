@@ -116,8 +116,12 @@ describe("QA session cleanup", () => {
     // A render QA never made is not QA's to delete.
     expect(exists("renders/mine.mp4")).toBe(true);
     expect(exists(".hyperframes/qa/frames/mine/500-640.jpg")).toBe(true);
-    // The report of a deleted render still reads, unchanged.
-    expect(service.getReport(project.project, first.id)).toEqual(before);
+    // The report of a deleted render still reads, unchanged apart from the derived "the render is still there".
+    expect(before.renderAvailable).toBe(true);
+    expect(service.getReport(project.project, first.id)).toEqual({
+      ...before,
+      renderAvailable: false,
+    });
     expect(service.listReports(project.project).reports).toHaveLength(3);
   });
 

@@ -30,7 +30,8 @@ describe("Execution Quality of a turn", () => {
         let roster = "";
         script(fixture, {
           director: async (input) => {
-            roster = input.text;
+            // The turn changes nothing, so a closing prompt follows; the roster is in the first one.
+            roster ||= input.text;
             return "completed";
           },
         });
@@ -208,6 +209,8 @@ describe("Execution Quality of a turn", () => {
         const results: HostToolResult[] = [];
         script(fixture, {
           director: async (_input, session) => {
+            // The turn changes nothing, so a closing prompt follows: only the first prompt looks.
+            if (results.length > 0) return "completed";
             const look = async (source: string, times: number[]) =>
               results.push(await session.callTool("inspect_frames", { source, times }));
             await look(SAMPLE_SOURCE, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);

@@ -14,8 +14,9 @@ export type PermissionAnswer =
 export interface AgentPermissionSlice {
   /**
    * Answers a pending permission request of a turn. The chat stream carries the updated part (the source of truth);
-   * the answer returned here only ends the card's busy state. A turned-on setting is announced to the Asset Search
-   * views. Never rejects.
+   * the answer returned here only ends the card's busy state. A turned-on website setting is announced to the Asset
+   * Search views; "Don't ask again" on a download switched an agent setting off, so the settings are read again for
+   * Settings. Never rejects.
    */
   answerPermission(
     turnId: string,
@@ -44,7 +45,10 @@ export function createAgentPermissionSlice({
           permissionId,
           decision,
         );
-        if (permission.state === "enabled") announceAssetSearchPolicyChanged();
+        if (permission.state === "enabled") {
+          if (permission.kind === "asset_download") await get().loadSettings();
+          else announceAssetSearchPolicyChanged();
+        }
         return { ok: true, permission };
       } catch (error) {
         return { ok: false, message: describeAgentError(error) };

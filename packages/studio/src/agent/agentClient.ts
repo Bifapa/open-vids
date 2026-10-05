@@ -6,6 +6,8 @@ import {
   PROVIDER_CREDENTIAL_SOURCES,
   PROVIDER_STATUSES,
   SPECIALIST_IDS,
+  isQaAcceptResponse,
+  isQaAcceptedList,
   isQaReport,
   isRecord,
   readErrorParams,
@@ -15,6 +17,9 @@ import {
   type AgentErrorBody,
   type AgentErrorCode,
   type PermissionDecision,
+  type AnswerQuestionResponse,
+  type CancelRunResponse,
+  type DeleteChatResponse,
   type StoryOfferDecision,
   type AgentIntake,
   type AgentModelCatalog,
@@ -30,6 +35,8 @@ import {
   type ModelConfig,
   type OAuthLoginState,
   type ProviderInfo,
+  type QaAcceptedList,
+  type QaAcceptResponse,
   type QaReport,
   type RevertTurnRequest,
   type AnswerPermissionResponse,
@@ -49,6 +56,7 @@ import {
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import { isAnswerPermissionResponse } from "./permissionGuards";
+import { isAnswerQuestionResponse } from "./questionGuards";
 import { isAnswerStoryOfferResponse } from "./storyOfferGuards";
 import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
@@ -131,6 +139,25 @@ export interface AgentClient {
     offerId: string,
     decision: StoryOfferDecision,
   ): Promise<AnswerStoryOfferResponse>;
+  /**
+   * The user's answer to a question the agent asked mid-turn (an option or free text). The runtime resumes the
+   * waiting tool call and answers the question in its new state.
+   */
+  answerQuestion(
+    chatId: string,
+    turnId: string,
+    questionId: string,
+    answer: string,
+  ): Promise<AnswerQuestionResponse>;
+  /** Stops one delegated run; the turn and its other runs go on. Answers the run as it now stands. */
+  cancelRun(
+    chatId: string,
+    turnId: string,
+    runId: string,
+    reason?: string,
+  ): Promise<CancelRunResponse>;
+  /** Removes a chat and its stored events; refused (`chat_busy`) while it runs a turn. */
+  deleteChat(chatId: string): Promise<DeleteChatResponse>;
   /** Same-origin URL for the chat event stream, resuming after `afterSeq`. */
   chatEventsUrl(chatId: string, afterSeq: number): string;
   projectEventsUrl(): string;
@@ -170,6 +197,12 @@ export interface AgentClient {
   listProviderModels(provider: string): Promise<ListProviderModelsResponse>;
   /** One stored Render QA pass (Studio server, not the agent gateway); `current` is derived when read. */
   getQaReport(reportId: string): Promise<QaReport>;
+  /** Marks one open issue of a stored QA pass intentional (Studio server): QA never asks for it to be fixed again. */
+  acceptQaIssue(reportId: string, issueId: string): Promise<QaAcceptResponse>;
+  /** Every issue the user marked intentional in this project. */
+  listQaAccepted(): Promise<QaAcceptedList>;
+  /** Takes one issue back out of the intentional list; the list that remains. */
+  removeQaAccepted(acceptedId: string): Promise<QaAcceptedList>;
   /** Same-origin URL of a project-relative render (`renders/<file>`). */
   renderFileUrl(renderPath: string): string;
   /** The project's start-from-chat intake, handed out once (Studio server); null when there is none. */
@@ -227,6 +260,14 @@ function isTurnSummary(value: unknown): value is TurnSummary {
 
 function isStartTurnResponse(value: unknown): value is StartTurnResponse {
   return isRecord(value) && isTurnSummary(value.turn);
+}
+
+function isCancelRunResponse(value: unknown): value is CancelRunResponse {
+  return isRecord(value) && isRecord(value.run) && isString(value.run.id);
+}
+
+function isDeleteChatResponse(value: unknown): value is DeleteChatResponse {
+  return isRecord(value) && isString(value.chatId);
 }
 
 function isSteerTurnResponse(value: unknown): value is SteerTurnResponse {
@@ -474,6 +515,21 @@ export function createAgentClient(
         isAnswerStoryOfferResponse,
         { decision },
       ),
+    answerQuestion: (chatId, turnId, questionId, answer) =>
+      call(
+        "POST",
+        `/chats/${enc(chatId)}/turns/${enc(turnId)}/questions/${enc(questionId)}`,
+        isAnswerQuestionResponse,
+        { answer },
+      ),
+    cancelRun: (chatId, turnId, runId, reason) =>
+      call(
+        "POST",
+        `/chats/${enc(chatId)}/turns/${enc(turnId)}/runs/${enc(runId)}/cancel`,
+        isCancelRunResponse,
+        reason === undefined ? {} : { reason },
+      ),
+    deleteChat: (chatId) => call("DELETE", `/chats/${enc(chatId)}`, isDeleteChatResponse),
     chatEventsUrl: (chatId, afterSeq) =>
       `${base(`/chats/${enc(chatId)}/events`)}?after=${afterSeq}`,
     projectEventsUrl: () => base("/events"),
@@ -498,6 +554,19 @@ export function createAgentClient(
       call("GET", `/providers/${enc(provider)}/models`, isProviderModelsResponse),
     getQaReport: (reportId) =>
       request("GET", buildProjectApiPath(projectId, `/qa/reports/${enc(reportId)}`), isQaReport),
+    acceptQaIssue: (reportId, issueId) =>
+      request("POST", buildProjectApiPath(projectId, "/qa/accepted"), isQaAcceptResponse, {
+        reportId,
+        issueId,
+      }),
+    listQaAccepted: () =>
+      request("GET", buildProjectApiPath(projectId, "/qa/accepted"), isQaAcceptedList),
+    removeQaAccepted: (acceptedId) =>
+      request(
+        "DELETE",
+        buildProjectApiPath(projectId, `/qa/accepted/${enc(acceptedId)}`),
+        isQaAcceptedList,
+      ),
     renderFileUrl: (renderPath) =>
       buildProjectApiPath(projectId, `/renders/file/${enc(renderPath.replace(/^renders\//, ""))}`),
     claimIntake: async () => {

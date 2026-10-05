@@ -1,103 +1,41 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClockCounterClockwise } from "@phosphor-icons/react";
-import {
-  isDeterministicSource,
-  type QaIssue,
-  type QaIssueStatus,
-  type QaReport,
-  type QaSeverity,
-} from "@hyperframes/agent-protocol";
+import type { QaIssue, QaIssueStatus, QaReport } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import type { Loadable } from "../../agent/agentSettingsSlice";
-import { usePlayerStore } from "../../player/store/playerStore";
 import { useTranslation } from "../../i18n";
-import { cn } from "../ui/cn";
+import { QaAcceptedList } from "./QaAcceptedList";
+import { QaIssueRow } from "./QaIssueRow";
 import {
   QA_CHECK_LABELS,
   QA_CHECK_STATUS_LABELS,
-  QA_ISSUE_KIND_LABELS,
   QA_ISSUE_STATUS_LABELS,
-  QA_OWNER_LABELS,
-  QA_SEVERITY_LABELS,
-  QA_SOURCE_LABELS,
   QA_VISION_STATUS_LABELS,
-  formatQaRange,
   qaReasonText,
+  qaScopeText,
 } from "./qaLabels";
 
 /** Open issues in the order they matter to the reader: back again, new, still there. */
 const OPEN_STATUS_ORDER: readonly QaIssueStatus[] = ["reappeared", "new", "persisting"];
 
-const SEVERITY_TONES: Record<QaSeverity, string> = {
-  error: "bg-error-soft text-error",
-  warning: "bg-warning-soft text-warning",
-  info: "bg-surface-2 text-fg-3",
-};
-
-function IssueRow({ issue, composition }: { issue: QaIssue; composition: string }) {
-  const { t } = useTranslation();
-  const fixed = issue.status === "fixed";
-  const sourceName = t(QA_SOURCE_LABELS[issue.source]);
-  const source = isDeterministicSource(issue.source)
-    ? t("chat.qa.sourceDeterministic", { source: sourceName })
-    : sourceName;
-  const range = formatQaRange(issue.start, issue.end);
-  return (
-    <li
-      data-issue-id={issue.id}
-      data-issue-status={issue.status}
-      className="flex flex-col gap-0.5 rounded-sm px-1.5 py-1 hover:bg-surface-1"
-    >
-      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-2xs">
-        <span className={cn("text-xs font-medium", fixed ? "text-fg-3" : "text-fg")}>
-          {t(QA_ISSUE_KIND_LABELS[issue.kind])}
-        </span>
-        {!fixed && (
-          <span className={cn("rounded-xs px-1", SEVERITY_TONES[issue.severity])}>
-            {t(QA_SEVERITY_LABELS[issue.severity])}
-          </span>
-        )}
-        <button
-          type="button"
-          data-testid="qa-issue-time"
-          title={t("chat.qa.showRange", { range, composition })}
-          onClick={() => usePlayerStore.getState().requestSeek(issue.start)}
-          className="rounded-xs px-0.5 font-mono text-num text-fg tabular-nums underline decoration-border-strong underline-offset-2 hover:bg-surface-2 hover:decoration-fg-2 outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent"
-        >
-          {range}
-        </button>
-        <span className="text-fg-3">{source}</span>
-        {issue.owner && (
-          <span className="text-fg-3">
-            {t("chat.qa.owner", { owner: t(QA_OWNER_LABELS[issue.owner]) })}
-          </span>
-        )}
-      </span>
-      <span
-        className={cn(
-          "text-xs leading-[15px]",
-          fixed ? "text-fg-3 line-through decoration-fg-3" : "text-fg-2",
-        )}
-      >
-        {issue.message}
-      </span>
-      {issue.suggestion && !fixed && (
-        <span className="text-xs leading-[15px] text-fg-3">
-          {t("chat.qa.suggestion", { suggestion: issue.suggestion })}
-        </span>
-      )}
-    </li>
-  );
+interface IssueActions {
+  /** Ids of the issues the user marked intentional. */
+  accepted: ReadonlySet<string>;
+  busyId: string | null;
+  onAccept: (issue: QaIssue) => void;
+  onUnaccept: (issue: QaIssue) => void;
 }
 
 function IssueGroup({
   status,
   issues,
   composition,
+  actions,
 }: {
   status: QaIssueStatus;
   issues: readonly QaIssue[];
   composition: string;
+  actions: IssueActions;
 }) {
   const { t } = useTranslation();
   if (issues.length === 0) return null;
@@ -111,17 +49,59 @@ function IssueGroup({
       </h4>
       <ul className="flex flex-col">
         {issues.map((issue) => (
-          <IssueRow key={issue.id} issue={issue} composition={composition} />
+          <QaIssueRow
+            key={issue.id}
+            issue={issue}
+            composition={composition}
+            accepted={actions.accepted.has(issue.id)}
+            busy={actions.busyId === issue.id}
+            onAccept={() => actions.onAccept(issue)}
+            onUnaccept={() => actions.onUnaccept(issue)}
+          />
         ))}
       </ul>
     </section>
   );
 }
 
-function ReportBody({ report }: { report: QaReport }) {
+function ReportBody({
+  report,
+  onReport,
+}: {
+  report: QaReport;
+  onReport: (report: QaReport) => void;
+}) {
   const { t } = useTranslation();
+  const acceptQaIssue = useAgentStore((state) => state.acceptQaIssue);
+  const unacceptQaIssue = useAgentStore((state) => state.unacceptQaIssue);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const accepted = useMemo(() => new Set(report.acceptedIssueIds ?? []), [report.acceptedIssueIds]);
+
+  const change = async (issue: QaIssue, mark: boolean) => {
+    if (busyId !== null) return;
+    setBusyId(issue.id);
+    setFailure(null);
+    const result = await (mark
+      ? acceptQaIssue(report.id, issue.id)
+      : unacceptQaIssue(report, issue));
+    setBusyId(null);
+    if (result.status === "ready") onReport(result.value);
+    else if (result.status === "failed") setFailure(result.message);
+  };
+  const actions: IssueActions = {
+    accepted,
+    busyId,
+    onAccept: (issue) => void change(issue, true),
+    onUnaccept: (issue) => void change(issue, false),
+  };
+
   const notRun = report.checks.filter((check) => check.status !== "ran" && check.id !== "vision");
   const openCount = report.issues.length;
+  const scopeText = qaScopeText(report.scope, report.scopeNote);
+  // A reduced pass already says why Vision did not look; its own "skipped" line would only repeat it.
+  const showVision =
+    report.vision.status !== "ran" && !(scopeText && report.vision.status === "skipped");
   return (
     <div className="flex flex-col gap-1.5">
       {!report.current && (
@@ -138,7 +118,12 @@ function ReportBody({ report }: { report: QaReport }) {
           {t("chat.qa.renderFailed", { error: report.renderError })}
         </p>
       )}
-      {report.vision.status !== "ran" && (
+      {scopeText && (
+        <p data-testid="qa-report-scope" className="px-1.5 text-xs text-fg-3">
+          {scopeText}
+        </p>
+      )}
+      {showVision && (
         <p className="px-1.5 text-xs text-fg-3">
           {report.vision.reason
             ? t("chat.qa.lineWithDetail", {
@@ -152,6 +137,11 @@ function ReportBody({ report }: { report: QaReport }) {
             : t("chat.qa.lineNoDetail", {
                 label: t(QA_VISION_STATUS_LABELS[report.vision.status]),
               })}
+        </p>
+      )}
+      {report.vision.status === "ran" && report.vision.reviewer === "director" && (
+        <p data-testid="qa-report-reviewer" className="px-1.5 text-xs text-fg-3">
+          {t("chat.qa.reviewedByDirector")}
         </p>
       )}
       {notRun.map((check) => (
@@ -168,6 +158,14 @@ function ReportBody({ report }: { report: QaReport }) {
               })}
         </p>
       ))}
+      {(report.suppressed ?? 0) > 0 && (
+        <QaAcceptedList composition={report.composition} suppressed={report.suppressed ?? 0} />
+      )}
+      {failure && (
+        <p role="alert" className="px-1.5 text-xs text-error">
+          {failure}
+        </p>
+      )}
       {openCount === 0 && report.resolved.length === 0 && !report.renderError && (
         <p className="px-1.5 text-xs text-fg-3">{t("chat.qa.noIssues")}</p>
       )}
@@ -177,16 +175,23 @@ function ReportBody({ report }: { report: QaReport }) {
           status={status}
           issues={report.issues.filter((issue) => issue.status === status)}
           composition={report.composition}
+          actions={actions}
         />
       ))}
-      <IssueGroup status="fixed" issues={report.resolved} composition={report.composition} />
+      <IssueGroup
+        status="fixed"
+        issues={report.resolved}
+        composition={report.composition}
+        actions={actions}
+      />
     </div>
   );
 }
 
 /**
  * One pass's stored report, fetched when opened and again when `refreshKey` changes (a revert makes it
- * outdated). Issues are grouped by how they compare with the previous pass; fixed ones close the list.
+ * outdated). Issues are grouped by how they compare with the previous pass; fixed ones close the list. An open issue
+ * can be marked intentional, which stores the choice for the project and re-reads the report.
  */
 export function QaReportView({ reportId, refreshKey }: { reportId: string; refreshKey: string }) {
   const { t } = useTranslation();
@@ -221,7 +226,12 @@ export function QaReportView({ reportId, refreshKey }: { reportId: string; refre
           </button>
         </p>
       )}
-      {report.status === "ready" && <ReportBody report={report.value} />}
+      {report.status === "ready" && (
+        <ReportBody
+          report={report.value}
+          onReport={(next) => setReport({ status: "ready", value: next })}
+        />
+      )}
     </div>
   );
 }

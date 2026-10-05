@@ -65,8 +65,24 @@ describe("plan approval", () => {
     expect(mounted.client.startTurn).toHaveBeenCalledTimes(1);
   });
 
-  it("hides the buttons unless the proposal is the last turn, finished, with no turn running", async () => {
-    // A newer turn ran: the old proposal is stale.
+  it("pre-fills the box when Change is clicked, and never over a draft", async () => {
+    mounted = mountChat({ view: "chat", chatId: "c1", chat: state([proposalTurn()]) });
+    await click(buttonWithText(mounted.host, "Change"));
+    expect(mounted.store.getState().drafts.c1).toBe("Change the plan: ");
+    expect(document.activeElement).toBe(mounted.host.querySelector("textarea"));
+    unmountChat(mounted);
+
+    mounted = mountChat({
+      view: "chat",
+      chatId: "c1",
+      drafts: { c1: "Make it shorter" },
+      chat: state([proposalTurn()]),
+    });
+    await click(buttonWithText(mounted.host, "Change"));
+    expect(mounted.store.getState().drafts.c1).toBe("Make it shorter");
+  });
+
+  it("marks a proposal out of date once another turn ran, and still offers to carry it out", async () => {
     mounted = mountChat({
       view: "chat",
       chatId: "c1",
@@ -75,26 +91,126 @@ describe("plan approval", () => {
         turn({ id: "t2", promptMessageId: "m3", assistantMessageId: "m4", status: "completed" }),
       ]),
     });
-    expect(buttonWithText(mounted.host, "Carry out")).toBeNull();
-    unmountChat(mounted);
+    expect(mounted.host.querySelector('[data-testid="plan-stale"]')?.textContent).toContain(
+      "out of date",
+    );
+    expect(buttonWithText(mounted.host, "Carry out")?.textContent).toBe("Carry out anyway");
 
-    // The proposal turn is still running: nothing to approve yet.
+    await click(buttonWithText(mounted.host, "Carry out anyway"));
+    expect(mounted.client.startTurn).toHaveBeenCalledWith(
+      "c1",
+      expect.objectContaining({ executePlan: { turnId: "t1" } }),
+    );
+  });
+
+  it("does not call a carried-out proposal out of date", async () => {
+    mounted = mountChat({
+      view: "chat",
+      chatId: "c1",
+      chat: chatState({
+        chat: summary({ status: "completed" }),
+        turns: [
+          proposalTurn(),
+          turn({
+            id: "t2",
+            promptMessageId: "m3",
+            assistantMessageId: "m4",
+            status: "completed",
+            executedPlanTurnId: "t1",
+          }),
+        ],
+        messages: [
+          userMessage("m1", "Make a teaser", "t1"),
+          assistantMessage({ id: "m2", turnId: "t1", status: "complete" }),
+          userMessage("m3", "Carry out the plan", "t2"),
+          assistantMessage({ id: "m4", turnId: "t2", status: "complete" }),
+        ],
+      }),
+    });
+    expect(mounted.host.querySelector('[data-testid="plan-stale"]')).toBeNull();
+    expect(buttonWithText(mounted.host, "Carry out")).toBeNull();
+  });
+
+  it("attributes an execution to the plan it names, not to the proposal just before it", async () => {
+    // t1 proposes A, t2 proposes B (the user changed their mind), t3 carries out A.
+    mounted = mountChat({
+      view: "chat",
+      chatId: "c1",
+      chat: chatState({
+        chat: summary({ status: "completed" }),
+        turns: [
+          proposalTurn(),
+          proposalTurn({ id: "t2", promptMessageId: "m3", assistantMessageId: "m4" }),
+          turn({
+            id: "t3",
+            promptMessageId: "m5",
+            assistantMessageId: "m6",
+            status: "completed",
+            executedPlanTurnId: "t1",
+          }),
+        ],
+        messages: [
+          userMessage("m1", "Make a teaser", "t1"),
+          assistantMessage({ id: "m2", turnId: "t1", status: "complete" }),
+          userMessage("m3", "Make it shorter", "t2"),
+          assistantMessage({ id: "m4", turnId: "t2", status: "complete" }),
+          userMessage("m5", "Carry out the plan", "t3"),
+          assistantMessage({ id: "m6", turnId: "t3", status: "complete" }),
+        ],
+      }),
+    });
+    // Only B still waits for the user; A was carried out.
+    expect(mounted.host.querySelectorAll('[data-testid="plan-stale"]')).toHaveLength(1);
+    await click(buttonWithText(mounted.host, "Carry out anyway"));
+    expect(mounted.client.startTurn).toHaveBeenCalledWith(
+      "c1",
+      expect.objectContaining({ executePlan: { turnId: "t2" } }),
+    );
+  });
+
+  it("never reads a hand-typed 'Carry out the plan' as an execution", async () => {
+    mounted = mountChat({
+      view: "chat",
+      chatId: "c1",
+      chat: chatState({
+        chat: summary({ status: "completed" }),
+        turns: [
+          proposalTurn(),
+          turn({ id: "t2", promptMessageId: "m3", assistantMessageId: "m4", status: "completed" }),
+        ],
+        messages: [
+          userMessage("m1", "Make a teaser", "t1"),
+          assistantMessage({ id: "m2", turnId: "t1", status: "complete" }),
+          userMessage("m3", "Carry out the plan", "t2"),
+          assistantMessage({ id: "m4", turnId: "t2", status: "complete" }),
+        ],
+      }),
+    });
+    // The proposal still waits: the typed message carried nothing out.
+    expect(buttonWithText(mounted.host, "Carry out anyway")).not.toBeNull();
+  });
+
+  it("offers nothing while the proposal turn itself is still running", async () => {
     mounted = mountChat({
       view: "chat",
       chatId: "c1",
       chat: state([proposalTurn({ status: "running", endedAt: undefined })]),
     });
     expect(buttonWithText(mounted.host, "Carry out")).toBeNull();
-    unmountChat(mounted);
+  });
 
-    // A turn is running in the project.
+  it("disables the buttons while a turn runs in the project, and says why", async () => {
     mounted = mountChat({
       view: "chat",
       chatId: "c1",
       activeTurn: ACTIVE,
       chat: state([proposalTurn()]),
     });
-    expect(buttonWithText(mounted.host, "Carry out")).toBeNull();
+    expect(buttonWithText(mounted.host, "Carry out")?.disabled).toBe(true);
+    expect(buttonWithText(mounted.host, "Change")?.disabled).toBe(true);
+    expect(mounted.host.querySelector('[data-testid="plan-blocked"]')?.textContent).toBe(
+      "Wait for the agent to finish first.",
+    );
   });
 
   it("shows no buttons for an ordinary progress plan", async () => {

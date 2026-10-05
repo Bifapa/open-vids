@@ -669,8 +669,8 @@ export class StoryService {
           throw new StoryFailure(
             "unsupported",
             plan.report.state === "not_built"
-              ? "The story has not been built yet; run Build Story first"
-              : "This timeline was built before Story sync existed; run a full Build Story once to start tracking it",
+              ? 'Nothing was written: the story has not been built yet, so there is nothing to rebuild. A full Build Story creates the whole timeline from the graph: tell the user and propose it (they start it from the Story workspace, "Build the video")'
+              : 'Nothing was written: this timeline was built before Story sync existed, so a rebuild cannot tell what changed. A full Build Story takes the story clips over: it regenerates EVERY chapter\'s section and replaces the manual edits to clips the story generated (its result lists them), while manual additions and locked chapters are kept. Propose it to the user — they start it from the Story workspace ("Build the video") — and say what it would replace; do not work around this with timeline edits',
           );
         }
         const dryRun = request.dryRun === true;

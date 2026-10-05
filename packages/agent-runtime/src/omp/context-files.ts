@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { guardToolCallPaths } from "./path-guard.ts";
@@ -46,4 +47,19 @@ export async function projectContextFiles(
     }
   }
   return [];
+}
+
+/**
+ * A hash of what {@link projectContextFiles} returns now (the file's name and its text as the agent sees it, or the
+ * empty hash when there is none). Equal hashes mean a session opened now would be told the same project context.
+ */
+export async function contextFilesHash(projectDir: string): Promise<string> {
+  const hash = createHash("sha256");
+  for (const file of await projectContextFiles(projectDir)) {
+    hash.update(path.basename(file.path));
+    hash.update("\0");
+    hash.update(file.content);
+    hash.update("\0");
+  }
+  return hash.digest("hex");
 }

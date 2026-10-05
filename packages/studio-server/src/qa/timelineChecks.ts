@@ -1,4 +1,9 @@
-import { isChapter, type QaIssueDraft, type TimelineClip } from "@hyperframes/agent-protocol";
+import {
+  isChapter,
+  type QaIssueDraft,
+  type TimelineClip,
+  type TranscriptArtifact,
+} from "@hyperframes/agent-protocol";
 import {
   clipName,
   isAudible,
@@ -17,8 +22,8 @@ const MICRO_GAP_MIN = 0.04;
 const MICRO_GAP_MAX = 0.5;
 /** A video may run this far past its media before it counts as frozen (rounding of authored durations). */
 const OVERRUN_TOLERANCE = 0.1;
-/** A cut this close to a word's edge is not "inside" it. */
-const WORD_EDGE_MARGIN = 0.04;
+/** A cut this close to a word's edge is not "inside" it (the recognizer's timings are rarely tighter). */
+const WORD_EDGE_MARGIN = 0.1;
 const MESSAGE_LIMIT = 560;
 
 const limit = (text: string, max = MESSAGE_LIMIT): string =>
@@ -189,8 +194,76 @@ function pastMedia(timeline: QaTimeline): QaIssueDraft[] {
   return issues;
 }
 
+interface SpeechWord {
+  start: number;
+  /** The recognizer's end, capped at what the word's letters take to say. */
+  end: number;
+  text: string;
+}
+
+/** A letter or digit: a "word" without one (`♪`, `…`) is not speech. Annotations are `[Music]`, `(applause)`, `*laughs*`. */
+const SPEECH_TOKEN = /[\p{L}\p{N}]/gu;
+const ANNOTATION = /^(?:\[[^\]]*\]|\([^)]*\)|\{[^}]*\}|\*[^*]*\*)$/u;
+const EDGE_PUNCTUATION = /^[\s.,;:!?"'«»…-]+|[\s.,;:!?"'«»…-]+$/gu;
+/** Recognizer timings stretch a word over the pause after it: a word lasts at most this plus a share per letter. */
+const WORD_BASE_SECONDS = 0.3;
+const WORD_SECONDS_PER_LETTER = 0.09;
+/** Less speech than this (seconds, or share of the source) is the recognizer hearing things in music or noise. */
+const MIN_SPEECH_SECONDS = 1;
+const MIN_SPEECH_SHARE = 0.02;
+
+/** Names of folders and files that hold music or sound effects: no speech to cut through. */
+const NON_SPEECH_TOKENS = new Set([
+  "music",
+  "sfx",
+  "sound",
+  "sounds",
+  "fx",
+  "bgm",
+  "soundtrack",
+  "ambient",
+  "effects",
+  "jingle",
+]);
+
+/**
+ * Whether a source can carry speech: false when a folder or the file name has a token such as `music` or `sfx`
+ * (tokens split at anything but letters and digits, a trailing number such as `music2` ignored).
+ */
+export function isSpeechSource(src: string): boolean {
+  return !src
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .some((token) => NON_SPEECH_TOKENS.has(token.replace(/\d+$/, "")));
+}
+
+/** The words that are speech, with their ends capped: no `♪`, `…`, `[Music]`, `(applause)` or `*laughs*`. */
+function speechWords(words: TranscriptArtifact["words"]): SpeechWord[] {
+  const speech: SpeechWord[] = [];
+  for (const word of words) {
+    const letters = word.text.match(SPEECH_TOKEN)?.length ?? 0;
+    if (letters === 0 || ANNOTATION.test(word.text.replace(EDGE_PUNCTUATION, ""))) continue;
+    speech.push({
+      start: word.start,
+      end: Math.min(word.end, word.start + WORD_BASE_SECONDS + WORD_SECONDS_PER_LETTER * letters),
+      text: word.text,
+    });
+  }
+  return speech;
+}
+
+/** Whether a transcript has enough speech for a cut through it to matter. */
+function hasSpeech(transcript: TranscriptArtifact, sourceDuration: number | null): boolean {
+  if (transcript.speechSeconds < MIN_SPEECH_SECONDS) return false;
+  return !(
+    sourceDuration !== null &&
+    sourceDuration > 0 &&
+    transcript.speechSeconds / sourceDuration < MIN_SPEECH_SHARE
+  );
+}
+
 /** The first word whose interior contains `time` (a cut through it chops the word). */
-function wordAround(words: readonly { start: number; end: number; text: string }[], time: number) {
+function wordAround(words: readonly SpeechWord[], time: number): SpeechWord | null {
   let low = 0;
   let high = words.length - 1;
   while (low <= high) {
@@ -214,16 +287,24 @@ function inSilence(silences: readonly { start: number; end: number }[], time: nu
 }
 
 /**
- * A cut (clip start or end) that lands inside a spoken word of a clip whose source has a fresh transcript. Recognizer
- * word timings stretch over the pauses after a word, so a cut that lands in the source's measured silence is a cut
- * in a pause, not in the word, and is not reported.
+ * A cut (clip start or end) that lands inside a spoken word of a clip whose source has a fresh transcript with real
+ * speech. Recognizer word timings stretch over the pauses after a word, so a cut in a measured silence, or after the
+ * time the word's letters take to say, is a cut in a pause and is not reported. Music and effects sources are not
+ * looked at.
  */
 function cutsInsideWords(timeline: QaTimeline): QaIssueDraft[] {
   const issues: QaIssueDraft[] = [];
+  const wordsBySource = new Map<string, SpeechWord[]>();
   for (const c of timeline.snapshot.clips) {
-    if (!isAudible(timeline, c) || c.src === null) continue;
+    if (!isAudible(timeline, c) || c.src === null || !isSpeechSource(c.src)) continue;
     const transcript = timeline.transcripts.get(c.src);
-    if (!transcript || transcript.words.length === 0) continue;
+    if (!transcript || transcript.words.length === 0 || !hasSpeech(transcript, c.sourceDuration))
+      continue;
+    let words = wordsBySource.get(c.src);
+    if (!words) {
+      words = speechWords(transcript.words);
+      wordsBySource.set(c.src, words);
+    }
     const silences = timeline.silences?.get(c.src) ?? [];
     const rate = rateOf(timeline, c);
     const from = c.mediaStart ?? 0;
@@ -235,7 +316,7 @@ function cutsInsideWords(timeline: QaTimeline): QaIssueDraft[] {
         : [{ edge: "out", source: to, at: c.end, label: "ends" }]),
     ];
     for (const { edge, source, at, label } of edges) {
-      const word = wordAround(transcript.words, source);
+      const word = wordAround(words, source);
       if (!word || inSilence(silences, source)) continue;
       issues.push({
         kind: "awkward_cut",

@@ -1,6 +1,8 @@
 import type {
   AgentIntake,
   AnswerPermissionRequest,
+  AnswerQuestionRequest,
+  CancelRunRequest,
   AnswerStoryOfferRequest,
   AgentIntakeFile,
   CreateChatRequest,
@@ -28,6 +30,9 @@ import {
   SPECIALIST_IDS,
   STORY_ACTIONS,
   STORY_OFFER_STATES,
+  QUESTION_MAX_OPTIONS,
+  QUESTION_OPTION_MAX_CHARS,
+  QUESTION_STATES,
   THINKING_EFFORTS,
   isChatIntent,
   isSpecialistId,
@@ -49,6 +54,7 @@ import {
   type StoryOffer,
   type StoryOfferChapter,
   type StoryOfferState,
+  type QuestionRequest,
   type ThinkingEffort,
 } from "./types.js";
 import { parseExecutionQuality } from "./qa.js";
@@ -71,6 +77,13 @@ export const LIMITS = {
   fileNameChars: 255,
   /** Longest language tag a title request keeps (`pt-BR`, `zh-Hans-CN`); longer tags are clamped. */
   languageChars: 35,
+  /** Longest free-text answer to a mid-turn question. */
+  answerChars: 2_000,
+  /** Longest reason kept with a run cancellation. */
+  cancelReasonChars: 300,
+  /** Domains a chat can exclude, and the longest domain name (DNS limit). */
+  excludedSites: 64,
+  siteChars: 253,
 } as const;
 
 const fail = (message: string): { ok: false; message: string } => ({ ok: false, message });
@@ -411,6 +424,23 @@ export function parseCreateChat(body: unknown): Parsed<CreateChatRequest> {
   };
 }
 
+const SITE_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+
+/** Registrable domains (`openvids.ai`), lowercased, de-duplicated, in the order given; an empty list is valid. */
+function parseExcludedSites(value: unknown): Parsed<string[]> {
+  if (!Array.isArray(value)) return fail("excludedSites must be a list of domains");
+  if (value.length > LIMITS.excludedSites)
+    return fail(`excludedSites may list at most ${LIMITS.excludedSites} domains`);
+  const sites: string[] = [];
+  for (const entry of value) {
+    const site = typeof entry === "string" ? entry.trim().toLowerCase() : "";
+    if (site.length > LIMITS.siteChars || !SITE_PATTERN.test(site))
+      return fail("excludedSites entries must be domain names such as example.com");
+    if (!sites.includes(site)) sites.push(site);
+  }
+  return { ok: true, value: sites };
+}
+
 export function parseUpdateChat(body: unknown): Parsed<UpdateChatRequest> {
   const parsed = parseCreateChat(body);
   if (!parsed.ok) return parsed;
@@ -454,6 +484,11 @@ export function parseUpdateChat(body: unknown): Parsed<UpdateChatRequest> {
       if (!quality.ok) return quality;
       value.executionQuality = quality.value;
     }
+  }
+  if (body.excludedSites !== undefined) {
+    const sites = parseExcludedSites(body.excludedSites);
+    if (!sites.ok) return sites;
+    value.excludedSites = sites.value;
   }
   return Object.keys(value).length > 0 ? { ok: true, value } : fail("nothing to update");
 }
@@ -890,6 +925,56 @@ export function parseAnswerStoryOffer(body: unknown): Parsed<AnswerStoryOfferReq
   if (!isRecord(body)) return fail("body must be an object");
   const decision = STORY_OFFER_DECISIONS.find((known) => known === body.decision);
   return decision ? { ok: true, value: { decision } } : fail("decision must be accept or decline");
+}
+
+/** The answer of the user to a mid-turn question: free text or one of its options, never empty. */
+export function parseAnswerQuestion(body: unknown): Parsed<AnswerQuestionRequest> {
+  if (!isRecord(body)) return fail("body must be an object");
+  const answer = nonEmpty(body.answer)?.trim();
+  if (!answer) return fail("answer must be a non-empty string");
+  if (answer.length > LIMITS.answerChars)
+    return fail(`answer must be at most ${LIMITS.answerChars} characters`);
+  return { ok: true, value: { answer } };
+}
+
+/** Cancelling a run takes no required input; an optional short `reason` is kept. */
+export function parseCancelRun(body: unknown): Parsed<CancelRunRequest> {
+  if (body === undefined || body === null) return { ok: true, value: {} };
+  if (!isRecord(body)) return fail("body must be an object");
+  if (body.reason === undefined) return { ok: true, value: {} };
+  if (typeof body.reason !== "string") return fail("reason must be a string");
+  const reason = body.reason.trim().slice(0, LIMITS.cancelReasonChars);
+  return { ok: true, value: reason ? { reason } : {} };
+}
+
+/** Deleting a chat takes no body: an absent, null or empty-object body is fine, anything else is refused. */
+export function parseDeleteChat(body: unknown): Parsed<Record<string, never>> {
+  if (body === undefined || body === null) return { ok: true, value: {} };
+  if (isRecord(body) && Object.keys(body).length === 0) return { ok: true, value: {} };
+  return fail("a chat delete takes no body");
+}
+
+const QUESTION_AGENTS: readonly string[] = ["director", ...SPECIALIST_IDS, "jev"];
+
+/** A question as persisted in a chat log or carried by a `question.updated` event. */
+export function isQuestionRequest(value: unknown): value is QuestionRequest {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.agent === "string" &&
+    QUESTION_AGENTS.includes(value.agent) &&
+    typeof value.text === "string" &&
+    Array.isArray(value.options) &&
+    value.options.length <= QUESTION_MAX_OPTIONS &&
+    value.options.every(
+      (option) => typeof option === "string" && option.length <= QUESTION_OPTION_MAX_CHARS,
+    ) &&
+    typeof value.state === "string" &&
+    QUESTION_STATES.some((state) => state === value.state) &&
+    (value.answer === undefined || typeof value.answer === "string") &&
+    num(value.requestedAt) !== undefined &&
+    (value.answeredAt === undefined || num(value.answeredAt) !== undefined)
+  );
 }
 
 const INTAKE_FILES = 200;

@@ -7,6 +7,7 @@ import {
   ACTIVE,
   assistantMessage,
   chatState,
+  summary,
   storyOfferPart,
   turn,
   userMessage,
@@ -49,10 +50,13 @@ function open({
   offer = {},
   turns = [turn({ status: "completed" })],
   media = false,
+  elsewhere = null,
 }: {
   offer?: Partial<StoryOffer>;
   turns?: TurnSummary[];
   media?: boolean;
+  /** Another chat of the project holds it with a running turn; its title is listed when `title` is set. */
+  elsewhere?: { title?: string } | null;
 } = {}) {
   const chat = chatState({
     messages: [
@@ -68,7 +72,12 @@ function open({
       chat,
       streamStatus: "open",
       // The project stream reports the running turn the way the runtime does.
-      activeTurn: turns.some((entry) => entry.status === "running") ? ACTIVE : null,
+      activeTurn: elsewhere
+        ? { chatId: "c2", turnId: "t9", startedAt: 4000 }
+        : turns.some((entry) => entry.status === "running")
+          ? ACTIVE
+          : null,
+      chats: elsewhere?.title ? [summary({ id: "c2", title: elsewhere.title })] : [],
     },
     { chat },
     { projectHasMedia: () => media },
@@ -107,10 +116,36 @@ describe("a pending Story offer", () => {
     expect(buttons()).toEqual(["Open in Story", "No, edit right away"]);
   });
 
-  it("keeps the chapters but takes the answers away while a turn runs", () => {
+  const waiting = () => card()?.querySelector('[data-testid="story-offer-waiting"]');
+
+  it("keeps the chapters but takes the answers away while a turn runs, and says why", () => {
     open({ turns: [turn({ status: "running" })] });
     expect(card()?.querySelectorAll("ol li")).toHaveLength(3);
     expect(buttons()).toEqual([]);
+    expect(waiting()?.textContent).toBe("You can answer once the agent finishes this run.");
+  });
+
+  it("names the other chat that holds the project, and opens it from the card", async () => {
+    open({ elsewhere: { title: "Color grade" } });
+    expect(buttons()).toEqual(["Open it"]);
+    expect(waiting()?.textContent).toContain(
+      "“Color grade” is working on this project. You can answer once it finishes.",
+    );
+
+    await click(buttonWithText(card() ?? document.body, "Open it"));
+    expect(mounted?.client.getChat).toHaveBeenCalledWith("c2");
+  });
+
+  it("still says why when the other chat is not in the list", () => {
+    open({ elsewhere: {} });
+    expect(waiting()?.textContent).toContain(
+      "Another chat is working on this project. You can answer once it finishes.",
+    );
+  });
+
+  it("shows no waiting line when the answers are available", () => {
+    open();
+    expect(waiting()).toBeNull();
   });
 
   it("is a quiet line once declined or expired, with no list and no answers", () => {

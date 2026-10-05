@@ -6,6 +6,7 @@ import type {
   FramesRequest,
   SpecialistId,
   TimelineClip,
+  TakeIssue,
   TimelineSnapshot,
   TranscriptView,
 } from "@hyperframes/agent-protocol";
@@ -15,8 +16,9 @@ import { FakeEditingHost } from "../testing/editing.js";
 import { FakeAnalysisHost, FAKE_JPEG, SAMPLE_SOURCE, sampleOverview } from "../testing/analysis.js";
 import { TurnAnalysis } from "./executor.js";
 import { AnalysisToolError } from "./host.js";
-import { TRANSCRIPT_CHARS } from "./format.js";
-import { ANALYSIS_TOOL_NAMES, isAnalysisToolName } from "./tools.js";
+import { RESULT_CHARS, TRANSCRIPT_CHARS } from "./format.js";
+import { analyzeAndWait } from "./jobs.js";
+import { ANALYSIS_TOOL_NAMES, analysisToolsFor, isAnalysisToolName } from "./tools.js";
 
 const ANALYSIS = Object.values<string>(ANALYSIS_TOOL_NAMES);
 
@@ -35,20 +37,33 @@ function analysisToolsOf(
 }
 
 describe("analysis tool availability", () => {
-  it("gives the Director frame and cut tools only when Vision / the Editor cannot be delegated to", () => {
+  const sorted = (names: string[]) => [...names].sort();
+
+  it("gives the Director the tools of every specialist that is off in this chat", () => {
     const base = ["analyze_media", "read_analysis", "read_transcript", "save_segments"];
     expect(analysisToolsOf("director", ["editor", "vision"])).toEqual(base);
+    // Vision is off: the Director looks at frames and keeps the notes itself.
     expect(analysisToolsOf("director", ["editor"])).toEqual([
       ...base,
       "inspect_frames",
       "save_vision_notes",
     ]);
+    // The Editor is off: the Director plans and builds the cut itself.
     expect(analysisToolsOf("director", ["vision", "motion"])).toEqual([
       ...base,
       "plan_cut",
       "build_rough_cut",
     ]);
-    expect(analysisToolsOf("director", [])).toEqual(ANALYSIS);
+    expect(sorted(analysisToolsOf("director", []))).toEqual(sorted(ANALYSIS));
+  });
+
+  it("does not give specialists anything because another specialist is off", () => {
+    expect(analysisToolsOf("editor", ["editor"])).toEqual(
+      analysisToolsOf("editor", ["editor", "vision"]),
+    );
+    expect(analysisToolsOf("vision", ["vision"])).toEqual(
+      analysisToolsOf("vision", ["vision", "editor"]),
+    );
   });
 
   it("gives specialists what their domain needs", () => {
@@ -71,7 +86,12 @@ describe("analysis tool availability", () => {
     for (const reader of ["motion", "audio", "research"] as const) {
       expect(analysisToolsOf(reader, all)).toEqual(["read_analysis", "read_transcript"]);
     }
-    expect(analysisToolsOf("jev", all)).toEqual([]);
+  });
+
+  it("lets Jev only read the analysis, whatever is enabled", () => {
+    const all: SpecialistId[] = ["editor", "vision", "motion", "audio", "research"];
+    expect(analysisToolsFor("jev", all)).toEqual(["read_analysis"]);
+    expect(analysisToolsFor("jev", [])).toEqual(["read_analysis"]);
   });
 
   it("offers nothing without an analysis host, and no rough cut without an editing host", () => {
@@ -80,6 +100,8 @@ describe("analysis tool availability", () => {
       "build_rough_cut",
     );
     expect(analysisToolsOf("editor", ["editor"], { editing: false })).toContain("plan_cut");
+    // The Director inherits the rough cut the same way: no editing host, no build_rough_cut.
+    expect(analysisToolsOf("director", [], { editing: false })).not.toContain("build_rough_cut");
   });
 });
 
@@ -212,6 +234,37 @@ describe("read_analysis", () => {
     );
   });
 
+  it("keeps the 'continue with' notice of the shot list however many problems the picture has", async () => {
+    const { host, call } = setup();
+    host.shotsResult = {
+      source: SAMPLE_SOURCE,
+      sceneThreshold: 0.3,
+      shots: Array.from({ length: 2_000 }, (_, index) => ({
+        id: `k${index + 1}`,
+        start: index * 2,
+        end: index * 2 + 2,
+      })),
+      problems: Array.from({ length: 600 }, (_, index) => ({
+        kind: index % 2 === 0 ? "black" : "frozen",
+        start: index * 5,
+        end: index * 5 + 1,
+      })),
+    };
+    const first = (await call("read_analysis", { source: SAMPLE_SOURCE, section: "shots" })).text;
+    expect(first.length).toBeLessThanOrEqual(RESULT_CHARS);
+    expect(first).toMatch(/… \d+ more problems not shown/);
+    const notice = /… (\d+) more shots; continue with read_analysis section=shots offset=(\d+)$/;
+    const match = notice.exec(first);
+    expect(match).not.toBeNull();
+    // Following the offset reaches the next shot.
+    const offset = Number(match?.[2]);
+    expect(first).toContain(`k${offset} `);
+    const second = (
+      await call("read_analysis", { source: SAMPLE_SOURCE, section: "shots", offset })
+    ).text;
+    expect(second).toContain(`k${offset + 1} `);
+  });
+
   it("lists only the vision targets that are still open, and existing cut plans", async () => {
     const { host, call } = setup();
     host.overviewResult = {
@@ -249,6 +302,184 @@ describe("read_analysis", () => {
     expect(
       (await call("read_analysis", { source: SAMPLE_SOURCE, section: "cuts" })).text,
     ).toContain('cut-1 "rough cut"');
+  });
+});
+
+describe("read_analysis paging", () => {
+  const issue = (index: number): TakeIssue => ({
+    id: `t${index}`,
+    kind: "retake",
+    start: index * 10,
+    end: index * 10 + 4,
+    sentences: [`s${index}`],
+    confidence: 0.9,
+    action: "review",
+    note: `a long note about this take that takes up some room in the page ${index} `.repeat(3),
+    keep: null,
+  });
+  const ids = (text: string) =>
+    [...text.matchAll(/^(t\d+) /gm)].flatMap((m) => (m[1] ? [m[1]] : []));
+
+  it("pages a long list: each page names the offset of the next, and the pages together are the whole list", async () => {
+    const { host, call } = setup();
+    host.overviewResult = {
+      ...host.overviewResult,
+      takes: {
+        counts: { retake: 120 },
+        issues: Array.from({ length: 120 }, (_, i) => issue(i + 1)),
+      },
+    };
+    const seen: string[] = [];
+    let offset = 0;
+    for (let pages = 0; pages < 50; pages += 1) {
+      const { text, isError } = await call("read_analysis", {
+        source: SAMPLE_SOURCE,
+        section: "takes",
+        offset,
+      });
+      expect(isError).toBeUndefined();
+      seen.push(...ids(text));
+      const next = /continue with read_analysis section=takes offset=(\d+)/.exec(text);
+      if (!next) break;
+      const nextOffset = Number(next[1]);
+      expect(nextOffset).toBeGreaterThan(offset);
+      expect(ids(text)).toHaveLength(nextOffset - offset);
+      offset = nextOffset;
+    }
+    expect(seen).toEqual(Array.from({ length: 120 }, (_, i) => `t${i + 1}`));
+    expect(offset).toBeGreaterThan(0);
+  });
+
+  it("starts a page with the range it shows, pages the full silence list, and refuses a bad or too large offset", async () => {
+    const { host, call } = setup();
+    host.silenceResult = {
+      ...host.silenceResult,
+      silences: Array.from({ length: 900 }, (_, i) => ({ start: i * 3, end: i * 3 + 1 })),
+    };
+    const first = await call("read_analysis", { source: SAMPLE_SOURCE, section: "silence" });
+    const next = /continue with read_analysis section=silence offset=(\d+)/.exec(first.text);
+    expect(next).not.toBeNull();
+    const second = await call("read_analysis", {
+      source: SAMPLE_SOURCE,
+      section: "silence",
+      offset: Number(next?.[1]),
+    });
+    expect(second.text).toContain(`silences ${Number(next?.[1]) + 1}–`);
+    expect(second.text).toContain("of 900:");
+
+    expect(
+      (await call("read_analysis", { source: SAMPLE_SOURCE, section: "silence", offset: 5000 }))
+        .text,
+    ).toBe(
+      "Pauses of assets/raw-talk.mp4: 900 silences of at least 0.3 s below -35 dB · 3.9 s in total\nNo silences at offset 5000: the list has 900.",
+    );
+    expect(
+      (await call("read_analysis", { source: SAMPLE_SOURCE, section: "takes", offset: -1 })).text,
+    ).toBe("invalid_request: offset must be a whole number from 0");
+  });
+});
+
+describe("analyze_media progress and deadline", () => {
+  it("reports the job's progress on the tool's progress channel", async () => {
+    const { host, analysis } = setup();
+    host.runningPolls = 3;
+    host.progressScript = [10, 55, 90];
+    const seen: number[] = [];
+    const result = await analysis.execute(
+      "analyze_media",
+      { source: SAMPLE_SOURCE },
+      new AbortController().signal,
+      (percent) => seen.push(percent),
+    );
+    expect(result.isError).toBeUndefined();
+    expect(seen).toEqual([40, 10, 55, 90, 100]);
+  });
+
+  it("cancels a job that stops moving and says which stage stood still", async () => {
+    const host = new FakeAnalysisHost();
+    host.jobGate = Promise.withResolvers<void>().promise;
+    const analysis = new TurnAnalysis({
+      host,
+      editing: null,
+      turnSignal: new AbortController().signal,
+      pollMs: 1,
+      stallMs: 40,
+    });
+    const result = await analysis.execute(
+      "analyze_media",
+      { source: SAMPLE_SOURCE },
+      new AbortController().signal,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.text).toMatch(
+      /^stalled: The analysis of assets\/raw-talk\.mp4 made no progress for 1 seconds \(stage transcript, 40 %\) and was cancelled\./,
+    );
+    expect(host.cancelledJobs).toEqual(["job-1"]);
+  });
+
+  it("leaves a job someone else started running when it stalls", async () => {
+    const host = new FakeAnalysisHost();
+    host.jobGate = Promise.withResolvers<void>().promise;
+    host.joinsRunningJob = true;
+    const request = { source: SAMPLE_SOURCE };
+    await expect(
+      analyzeAndWait(host, request, new AbortController().signal, { pollMs: 1, stallMs: 20 }),
+    ).rejects.toMatchObject({
+      code: "stalled",
+      message: expect.stringContaining("started by someone else and keeps running"),
+    });
+    expect(host.cancelledJobs).toEqual([]);
+  });
+
+  it("does not stall while the progress keeps moving", async () => {
+    const host = new FakeAnalysisHost();
+    host.runningPolls = 6;
+    host.progressScript = [5, 10, 20, 30, 40, 50];
+    let clock = 0;
+    const job = await analyzeAndWait(
+      host,
+      { source: SAMPLE_SOURCE },
+      new AbortController().signal,
+      {
+        pollMs: 1,
+        stallMs: 1_000,
+        now: () => {
+          clock += 400;
+          return clock;
+        },
+      },
+    );
+    expect(job.status).toBe("completed");
+    expect(host.cancelledJobs).toEqual([]);
+  });
+
+  it("does not stall a recognizer that shows no progress but keeps reporting signs of life", async () => {
+    const waitFor = async (heartbeats: boolean) => {
+      const host = new FakeAnalysisHost();
+      host.runningPolls = 12;
+      host.heartbeats = heartbeats;
+      let clock = 0;
+      const outcome = await analyzeAndWait(
+        host,
+        { source: SAMPLE_SOURCE },
+        new AbortController().signal,
+        {
+          pollMs: 1,
+          stallMs: 1_000,
+          now: () => {
+            clock += 400;
+            return clock;
+          },
+        },
+      ).then(
+        (job) => job.status,
+        (error: unknown) => (error instanceof AnalysisToolError ? error.code : "other"),
+      );
+      return { outcome, cancelled: host.cancelledJobs };
+    };
+    // Same flat stage and progress for twelve polls (4.8 s of clock against a 1 s deadline): only the heartbeat differs.
+    expect(await waitFor(false)).toEqual({ outcome: "stalled", cancelled: ["job-1"] });
+    expect(await waitFor(true)).toEqual({ outcome: "completed", cancelled: [] });
   });
 });
 

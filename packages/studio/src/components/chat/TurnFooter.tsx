@@ -1,4 +1,4 @@
-import { ArrowCounterClockwise, Check, WarningCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowCounterClockwise, Check, WarningCircle } from "@phosphor-icons/react";
 import type { RevertMode, TurnSummary } from "@hyperframes/agent-protocol";
 import type { RevertUi } from "../../agent/agentRevertSlice";
 import { describeTurnError, isNoModelMessage } from "../../agent/agentErrors";
@@ -8,10 +8,29 @@ import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
 import { Spinner } from "../ui/Status";
 import { chatLink, noteBoxWarn } from "./chatStyles";
+import { TurnChanges } from "./TurnChanges";
+import { TurnUsage } from "./TurnUsage";
+
+/** "Retry this turn" on a failed turn: runs it again; `busy` while the new turn is being started. */
+export interface RetryTurn {
+  busy: boolean;
+  /** Why it cannot run right now (another run is active), or null. */
+  blockedReason: string | null;
+  onRetry: () => void;
+}
+
+/** Why a control beside it is disabled, in words — a tooltip alone leaves "nothing happens". */
+function BlockedReason({ children }: { children: string }) {
+  return (
+    <span data-testid="blocked-reason" className="text-xs leading-4 text-fg-3">
+      {children}
+    </span>
+  );
+}
 
 const MAX_FILES_SHOWN = 6;
 
-function TurnStatusNote({ turn }: { turn: TurnSummary }) {
+function TurnStatusNote({ turn, retry }: { turn: TurnSummary; retry: RetryTurn | undefined }) {
   const { t } = useTranslation();
   if (turn.status === "failed") {
     const message = turn.error
@@ -26,11 +45,32 @@ function TurnStatusNote({ turn }: { turn: TurnSummary }) {
         </div>
       );
     }
+    // The provider's own words (English, with its retry count) stay one hover away for anyone reporting the problem.
+    const detail = turn.error && turn.error.message !== message ? turn.error.message : undefined;
     return (
-      <p role="alert" className="flex items-start gap-1.5 text-xs leading-4 text-error">
-        <WarningCircle aria-hidden weight="fill" className="mt-px size-icon-sm shrink-0" />
-        <span>{message}</span>
-      </p>
+      <div className="grid justify-items-start gap-1.5">
+        <p role="alert" className="flex items-start gap-1.5 text-xs leading-4 text-error">
+          <WarningCircle aria-hidden weight="fill" className="mt-px size-icon-sm shrink-0" />
+          <span title={detail}>{message}</span>
+        </p>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {turn.error?.code === "provider_auth" && <ConnectModelButton />}
+          {retry && (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<ArrowClockwise aria-hidden className="size-icon-sm" />}
+              loading={retry.busy}
+              disabled={retry.blockedReason !== null}
+              title={retry.blockedReason ?? t("chat.turn.retryHint")}
+              onClick={retry.onRetry}
+            >
+              {t("chat.turn.retry")}
+            </Button>
+          )}
+          {retry?.blockedReason != null && <BlockedReason>{retry.blockedReason}</BlockedReason>}
+        </div>
+      </div>
     );
   }
   if (turn.status === "aborted") {
@@ -104,6 +144,8 @@ interface TurnFooterProps {
   onRevert: (mode?: RevertMode) => void;
   onUnrevert: (mode?: RevertMode) => void;
   onDismissRevert: () => void;
+  /** "Retry this turn" for a failed last turn; absent when there is nothing to retry. */
+  retry?: RetryTurn;
 }
 
 /**
@@ -117,6 +159,7 @@ export function TurnFooter({
   onRevert,
   onUnrevert,
   onDismissRevert,
+  retry,
 }: TurnFooterProps) {
   const { t } = useTranslation();
   const checkpoint = turn.checkpoint;
@@ -170,6 +213,9 @@ export function TurnFooter({
               {t("chat.turn.undo")}
             </button>
           ))}
+        {undoable && !pending && blockedReason !== null && (
+          <BlockedReason>{blockedReason}</BlockedReason>
+        )}
       </>
     );
   } else if (revertible) {
@@ -187,6 +233,7 @@ export function TurnFooter({
         >
           {t("chat.turn.revert")}
         </Button>
+        {blockedReason !== null && <BlockedReason>{blockedReason}</BlockedReason>}
         {files.length > 0 && (
           <span
             title={files.join("\n")}
@@ -200,22 +247,42 @@ export function TurnFooter({
             </span>
           </span>
         )}
+        <TurnChanges turn={turn} />
       </>
     );
   } else if (checkpoint?.status === "ready") {
     row = <span className="text-xs leading-4 text-fg-3">{t("chat.turn.noChanges")}</span>;
   } else if (checkpoint?.status === "unavailable") {
     row = <span className="text-xs leading-4 text-fg-3">{t("chat.turn.cannotRevert")}</span>;
+  } else if (checkpoint?.status === "active") {
+    // The turn is over but its history window has not closed yet (the runtime closes it before the next turn or on
+    // the next project load): Revert exists, it just is not ready, and the row says so instead of vanishing.
+    row = (
+      <>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<ArrowCounterClockwise aria-hidden className="size-icon-sm" />}
+          disabled
+          title={t("chat.turn.finalizing")}
+          className="-ml-2 text-fg-2"
+        >
+          {t("chat.turn.revert")}
+        </Button>
+        <BlockedReason>{t("chat.turn.finalizing")}</BlockedReason>
+      </>
+    );
   }
 
   return (
     <div className="grid gap-1" data-testid="turn-footer">
-      <TurnStatusNote turn={turn} />
+      <TurnStatusNote turn={turn} retry={retry} />
       {row && (
         <div className="flex min-h-ctl-sm min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           {row}
         </div>
       )}
+      <TurnUsage turn={turn} />
       {revert?.status === "error" && (
         <p role="alert" className="text-xs leading-4 text-error">
           {revert.message}

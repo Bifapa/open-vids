@@ -43,6 +43,8 @@ describe("editing inside the turn's checkpoint", () => {
       let inFlight: Promise<HostToolResult> | null = null;
       const director: { session?: ScriptedSession } = {};
       fixture.backend.promptScript = async (_input, session) => {
+        // A closing prompt of the turn (Render QA's report) must not repeat the edit.
+        if (inFlight) return "completed";
         director.session = session;
         // The model's reply ends while its edit is still being written.
         inFlight = session.callTool("edit_timeline", setComposition);
@@ -166,7 +168,14 @@ describe("Editor orchestration", () => {
   it("lets a delegated Editor inspect and edit the timeline, with labelled activity rows on its thread", async () => {
     const fixture = await createRuntimeFixture();
     try {
-      const chat = await fixture.chats.create({}, ["editor"]);
+      // Every specialist is on, so the Director delegates the editing instead of inheriting it.
+      const chat = await fixture.chats.create({}, [
+        "editor",
+        "motion",
+        "audio",
+        "vision",
+        "research",
+      ]);
       let directorTools: string[] = [];
       let editorResults: HostToolResult[] = [];
       fixture.backend.promptScript = async (_input, session) => {

@@ -9,14 +9,14 @@ import {
 } from "@hyperframes/agent-protocol";
 import type { HostToolResult } from "../backend.js";
 import { errorMessage } from "../errors.js";
+import { STORY_SECTIONS, formatStory, formatStoryPage, type StoryPageRequest } from "./format.js";
+import { StoryToolError, type StoryHost } from "./host.js";
 import {
-  formatStory,
   formatStoryBuild,
   formatStoryEdit,
   formatStoryError,
   formatStoryRebuild,
-} from "./format.js";
-import { StoryToolError, type StoryHost } from "./host.js";
+} from "./results.js";
 import { STORY_TOOL_NAMES, isStoryToolName, type StoryToolName } from "./tools.js";
 
 export interface TurnStoryOptions {
@@ -51,6 +51,27 @@ function checked<T>(parsed: ParsedStory<T>): T {
   if (!parsed.ok)
     throw new StoryToolError(parsed.error.code, parsed.error.message, parsed.error.opIndex);
   return parsed.value;
+}
+
+/** `read_story`'s arguments: a chapter or a section (not both), and the offset to continue from. */
+function readRequest(args: unknown): StoryPageRequest {
+  const record = withoutNulls(argsRecord(args), new Set());
+  const { chapter, section, offset = 0 } = record;
+  if (chapter !== undefined && (typeof chapter !== "string" || chapter.trim().length === 0))
+    throw new StoryToolError("invalid_request", "chapter must be a chapter id such as ch1");
+  if (typeof offset !== "number" || !Number.isInteger(offset) || offset < 0)
+    throw new StoryToolError("invalid_request", "offset must be a whole number from 0");
+  if (section === undefined)
+    return { ...(chapter !== undefined && { chapter: chapter.trim() }), offset };
+  const known = STORY_SECTIONS.find((candidate) => candidate === section);
+  if (!known)
+    throw new StoryToolError(
+      "invalid_request",
+      `section must be one of ${STORY_SECTIONS.join(", ")}`,
+    );
+  if (chapter !== undefined)
+    throw new StoryToolError("invalid_request", "pass either chapter or section, not both");
+  return { section: known, offset };
 }
 
 /** Fields where `null` is a real value (clear it); everywhere else models send `null` for "not given". */
@@ -102,10 +123,16 @@ function cleanOperation(operation: unknown): unknown {
  */
 export class TurnStory {
   private accepting = true;
+  private built = false;
   private readonly stop = new AbortController();
   private readonly inflight = new Set<Promise<unknown>>();
 
   constructor(private readonly options: TurnStoryOptions) {}
+
+  /** A real (not dry-run) `build_story` succeeded in this turn: the graph is frozen until the turn ends. */
+  hasBuilt(): boolean {
+    return this.built;
+  }
 
   execute(name: string, args: unknown, callSignal: AbortSignal): Promise<HostToolResult> {
     if (!this.accepting)
@@ -149,8 +176,12 @@ export class TurnStory {
     const { host, turnId, storyOptions } = this.options;
     switch (name) {
       case STORY_TOOL_NAMES.read:
-        return { text: formatStory(await host.view(signal)) };
+        return { text: formatStoryPage(await host.view(signal), readRequest(args)) };
       case STORY_TOOL_NAMES.edit: {
+        if (this.built)
+          return refuse(
+            "The story was already built in this turn, so the graph is frozen until the turn ends: edit_story is refused. Place late material on the timeline with edit_timeline, and tell the user what a later Build Story or a new edit should change.",
+          );
         const record = withoutNulls(argsRecord(args), new Set());
         const operations = Array.isArray(record.operations)
           ? record.operations.map(cleanOperation)
@@ -167,7 +198,9 @@ export class TurnStory {
             ...(allowLocked && { allowLocked }),
           }),
         );
-        return { text: formatStoryBuild(await host.build(request, signal)) };
+        const result = await host.build(request, signal);
+        if (!result.dryRun) this.built = true;
+        return { text: formatStoryBuild(result) };
       }
       case STORY_TOOL_NAMES.rebuild: {
         const request = checked(

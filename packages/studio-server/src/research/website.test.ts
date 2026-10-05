@@ -136,6 +136,25 @@ describe("the Websites setting", () => {
     await f.service.website(f.project, { url: "https://example.com" });
     expect(inspect).toHaveBeenCalledTimes(1);
   });
+
+  it("lets a turn's Allow once pass for the granted site only, while the switch is off", async () => {
+    const { f, inspect } = setup();
+    f.service.updatePolicy({ websites: { readLinkedPages: false } });
+    f.service.websiteGrant(f.project, { turnId: "turn-1", access: "read", site: "example.com" });
+
+    await f.service.website(f.project, { url: "https://www.example.com/", turnId: "turn-1" });
+    expect(inspect).toHaveBeenCalledTimes(1);
+
+    const other = await failure(
+      f.service.website(f.project, { url: "https://stripe.com/", turnId: "turn-1" }),
+    );
+    expect(other.code).toBe("blocked_by_policy");
+    const otherTurn = await failure(
+      f.service.website(f.project, { url: "https://www.example.com/", turnId: "turn-2" }),
+    );
+    expect(otherTurn.code).toBe("blocked_by_policy");
+    expect(inspect).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("the address rules", () => {

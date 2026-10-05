@@ -22,6 +22,7 @@ import type {
 } from "@hyperframes/agent-protocol";
 import { formatNumber, t, useTranslation, type TranslationKey } from "../../i18n";
 import { isPermissionPart } from "../../agent/permissionGuards";
+import { isQuestionPart } from "../../agent/questionGuards";
 import { isStoryOfferPart } from "../../agent/storyOfferGuards";
 import { cn } from "../ui/cn";
 import { Badge } from "../ui/Status";
@@ -31,6 +32,7 @@ import { chatMeasure, chatMeasureWide, noteBox, sectLabel } from "./chatStyles";
 import { DelegationRow } from "./DelegationRow";
 import { MarkdownLite } from "./MarkdownLite";
 import { PermissionCard } from "./PermissionCard";
+import { QuestionCard } from "./QuestionCard";
 import { StoryOfferCard } from "./StoryOfferCard";
 import { formatClockTime } from "./relativeTime";
 import { ThinkingBlock } from "./ThinkingBlock";
@@ -349,6 +351,8 @@ export function AssistantBlock({
             <ThinkingBlock part={group.part} live={streaming} />
           ) : isPermissionPart(group.part) ? (
             <PermissionCard turnId={message.turnId} permission={group.part.permission} />
+          ) : isQuestionPart(group.part) ? (
+            <QuestionCard turnId={message.turnId} question={group.part.question} />
           ) : isStoryOfferPart(group.part) ? (
             <StoryOfferCard turnId={message.turnId} offer={group.part.offer} />
           ) : null}

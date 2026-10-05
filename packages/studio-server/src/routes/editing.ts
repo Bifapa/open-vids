@@ -6,6 +6,7 @@ import {
   ASSET_RANGE_MIN_SECONDS,
   PRESET_KINDS,
   parseApplyEditsRequest,
+  isRecord,
   parseSetAssetRangeRequest,
   type AssetRange,
   type AssetRangesView,
@@ -18,7 +19,9 @@ import { EditFailure, isEditFailure } from "../editing/errors.js";
 import { MAIN_COMPOSITION, readInventory } from "../editing/inventory.js";
 import { MediaFacts, type MediaProber } from "../editing/mediaFacts.js";
 import { applyEdits, MEDIA_OVERRUN_TOLERANCE } from "../editing/operations.js";
-import { listPresets } from "../editing/presets.js";
+import type { AnalysisService } from "../analysis/service.js";
+import { MAX_PRESETS, pagePresets } from "../editing/presets.js";
+import { cancelRunning, trackRunning } from "../editing/replay.js";
 import { serializedEdits } from "../editing/queue.js";
 import { normalizeCompositionPath, probeProjectFile, readTimeline } from "../editing/service.js";
 import { resolveProjectRelative } from "../editing/timeline.js";
@@ -176,7 +179,7 @@ async function setAssetRange(
 export function registerEditingRoutes(
   api: Hono,
   adapter: StudioApiAdapter,
-  options: { probe?: MediaProber } = {},
+  options: { probe?: MediaProber; analysis?: Pick<AnalysisService, "sourceData"> } = {},
 ): void {
   const facts = new MediaFacts(options.probe);
 
@@ -220,7 +223,14 @@ export function registerEditingRoutes(
       };
       return c.json({ error }, 400);
     }
-    return c.json({ presets: await listPresets(adapter, { kind, query: c.req.query("query") }) });
+    const offset = Math.max(0, Number.parseInt(c.req.query("offset") ?? "0", 10) || 0);
+    const limit = Math.min(
+      MAX_PRESETS,
+      Math.max(1, Number.parseInt(c.req.query("limit") ?? String(MAX_PRESETS), 10) || MAX_PRESETS),
+    );
+    return c.json(
+      await pagePresets(adapter, { kind, query: c.req.query("query") }, { offset, limit }),
+    );
   });
 
   api.get("/projects/:id/editing/ranges", async (c) => {
@@ -269,18 +279,53 @@ export function registerEditingRoutes(
       const body: unknown = await c.req.json().catch(() => undefined);
       const parsed = parseApplyEditsRequest(body);
       if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+      const request = parsed.value;
+      let compositionPath: string;
       try {
-        const request = parsed.value;
-        const compositionPath = normalizeCompositionPath(request.composition);
+        compositionPath = normalizeCompositionPath(request.composition);
+      } catch (error) {
+        if (error instanceof EditFailure)
+          return c.json({ error: error.error }, statusOf(error.error));
+        throw error;
+      }
+      // A client that disconnects, or a cancel request for the id, stops the batch before it writes.
+      const tracked =
+        request.requestId === undefined
+          ? null
+          : trackRunning(project.dir, compositionPath, request.requestId);
+      const signal = AbortSignal.any(
+        tracked ? [tracked.controller.signal, c.req.raw.signal] : [c.req.raw.signal],
+      );
+      try {
         const response = await serializedEdits(project.dir, () =>
-          applyEdits({ project, compositionPath, adapter, facts }, request),
+          applyEdits(
+            {
+              project,
+              compositionPath,
+              adapter,
+              facts,
+              ...(options.analysis && { analysis: options.analysis }),
+            },
+            request,
+            { signal },
+          ),
         );
         return c.json(response);
       } catch (error) {
         if (error instanceof EditFailure)
           return c.json({ error: error.error }, statusOf(error.error));
         throw error;
+      } finally {
+        tracked?.done();
       }
     },
   );
+
+  api.post("/projects/:id/editing/cancel", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    const body: unknown = await c.req.json().catch(() => undefined);
+    const requestId = isRecord(body) && typeof body.requestId === "string" ? body.requestId : "";
+    return c.json({ cancelled: requestId !== "" && cancelRunning(project.dir, requestId) });
+  });
 }

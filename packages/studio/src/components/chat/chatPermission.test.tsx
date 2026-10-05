@@ -37,6 +37,21 @@ function open(overrides: Partial<PermissionRequest> = {}) {
 const card = () => document.body.querySelector('[data-testid="permission-card"]');
 const status = () => card()?.querySelector('[data-testid="permission-status"]')?.textContent;
 const buttons = () => [...(card()?.querySelectorAll("button") ?? [])].map((b) => b.textContent);
+const ASSET = { title: "Epic orchestral loop", source: "Openverse", license: "CC0" };
+
+/** A pending request to download outside material, as Research's candidate describes it. */
+function openDownload(overrides: Partial<PermissionRequest> = {}) {
+  return open({
+    kind: "asset_download",
+    action: "download",
+    site: null,
+    asset: ASSET,
+    ...overrides,
+  });
+}
+
+const sentence = () => card()?.querySelector('[data-testid="permission-sentence"]')?.textContent;
+const licenseLine = () => card()?.querySelector('[data-testid="permission-license"]')?.textContent;
 
 describe("a pending permission card", () => {
   it("names who asked, what for and the setting, with the three answers", () => {
@@ -146,6 +161,23 @@ describe("an answered permission card", () => {
     expect(card()?.textContent).not.toContain("is off");
   });
 
+  it.each<[PermissionRequest["state"], string]>([
+    ["allowed_once", "Allowed for this turn"],
+    ["enabled", "Asking turned off"],
+    ["denied", "Not allowed"],
+    ["expired", "The turn ended before an answer"],
+  ])("shows a download request as %s without buttons", (state, text) => {
+    openDownload({ state, answeredAt: 5000 });
+    expect(status()).toBe(text);
+    expect(buttons()).toEqual([]);
+    expect(card()?.querySelector('[data-testid="permission-setting"]')).toBeNull();
+    expect(card()?.querySelector('[data-testid="permission-license"]')).toBeNull();
+    // The record still says what was downloaded; "needs your OK" would contradict the status under it.
+    expect(card()?.textContent).toContain("Downloading material");
+    expect(card()?.textContent).not.toContain("needs your OK");
+    expect(sentence()).toBe("Research wants to download Epic orchestral loop from Openverse");
+  });
+
   it("drops a permission part the runtime worded in a way this Studio does not know", () => {
     const chat = chatState({
       messages: [
@@ -165,4 +197,130 @@ describe("an answered permission card", () => {
     mounted = mountChat({ view: "chat", chatId: "c1", chat }, { chat });
     expect(card()).toBeNull();
   });
+
+  it("drops a download request whose material is damaged", () => {
+    const chat = chatState({
+      messages: [
+        userMessage(),
+        assistantMessage({
+          parts: [
+            {
+              type: "permission",
+              id: "perm-y",
+              permission: Object.assign(permissionRequest({ kind: "asset_download" }), {
+                asset: { title: 7 },
+              }),
+            },
+          ],
+        }),
+      ],
+      turns: [turn({ status: "completed" })],
+    });
+    mounted = mountChat({ view: "chat", chatId: "c1", chat }, { chat });
+    expect(card()).toBeNull();
+  });
+});
+
+describe("a pending download permission card", () => {
+  it("names the material, where it comes from, its license and the setting, with the three answers", () => {
+    const { host } = openDownload();
+    expect(card()?.getAttribute("data-permission-kind")).toBe("asset_download");
+    expect(card()?.textContent).toContain("Downloading material needs your OK");
+    expect(sentence()).toBe("Research wants to download Epic orchestral loop from Openverse");
+    expect(licenseLine()).toBe("License: CC0");
+    // The Autonomy toggle as Settings words it, not a second copy, and where it lives.
+    const setting = card()?.querySelector('[data-testid="permission-setting"]')?.textContent;
+    expect(setting).toContain("Ask before downloading assets");
+    expect(setting).toContain("Agents list what they found and wait for your approval.");
+    expect(setting).toContain("Settings → Execution → Autonomy");
+    expect(buttons()).toEqual(["Allow for this turn", "Don't ask again", "Don't allow"]);
+    expect(host.querySelector('[data-testid="permission-status"]')).toBeNull();
+  });
+
+  it.each<[string, string | null]>([
+    ["a license that is null", null],
+    ["a blank license", "  "],
+  ])("says so when the license is not known (%s)", (_name, license) => {
+    openDownload({ asset: { ...ASSET, license } });
+    expect(licenseLine()).toBe("License unknown");
+  });
+
+  it.each<[string, Partial<PermissionRequest>, string]>([
+    [
+      "no source",
+      { asset: { ...ASSET, source: null } },
+      "Research wants to download Epic orchestral loop",
+    ],
+    [
+      "no source but the site",
+      { asset: { ...ASSET, source: null }, site: "pixabay.com" },
+      "Research wants to download Epic orchestral loop from pixabay.com",
+    ],
+    [
+      "no title",
+      { asset: { ...ASSET, title: " " } },
+      "Research wants to download material from Openverse",
+    ],
+    [
+      "no asset but the site",
+      { asset: undefined, site: "pixabay.com", agent: "director" },
+      "Main wants to download material from pixabay.com",
+    ],
+    [
+      "nothing known",
+      { asset: undefined },
+      "Research wants to download material from outside the project",
+    ],
+  ])("words the sentence with %s", (_name, overrides, text) => {
+    openDownload(overrides);
+    expect(sentence()).toBe(text);
+  });
+
+  it("shows no license line when the request carries no material", () => {
+    openDownload({ asset: undefined, site: "pixabay.com" });
+    expect(card()?.querySelector('[data-testid="permission-license"]')).toBeNull();
+  });
+
+  it("shows a title that looks like markup as plain text", () => {
+    openDownload({ asset: { ...ASSET, title: "<b>Loud</b> <br/> {agent}", source: "<i>x</i>" } });
+    expect(sentence()).toBe("Research wants to download <b>Loud</b> <br/> {agent} from <i>x</i>");
+    // Only the agent and the two names are bold; nothing the title says became an element.
+    expect(card()?.querySelectorAll('[data-testid="permission-sentence"] b')).toHaveLength(3);
+    expect(card()?.querySelector('[data-testid="permission-sentence"] br')).toBeNull();
+  });
+
+  it.each<[PermissionDecision, string, string]>([
+    ["once", "Allow for this turn", "Allowed for this turn"],
+    ["always", "Don't ask again", "Asking turned off"],
+    ["deny", "Don't allow", "Not allowed"],
+  ])("sends %s and settles into a status line", async (decision, label, statusText) => {
+    const { client, host } = openDownload();
+    await click(buttonWithText(host, label));
+    expect(client.answerPermission).toHaveBeenCalledWith("c1", "t1", "perm1", decision);
+    expect(card()?.getAttribute("data-permission-kind")).toBe("asset_download");
+    expect(status()).toBe(statusText);
+    expect(buttons()).toEqual([]);
+    expect(card()?.textContent).toContain("Downloading material");
+    expect(card()?.textContent).not.toContain("needs your OK");
+  });
+
+  it.each<[PermissionDecision, string, number]>([
+    ["once", "Allow for this turn", 0],
+    ["deny", "Don't allow", 0],
+    ["always", "Don't ask again", 1],
+  ])(
+    "%s reads the agent settings again only when asking was turned off, and leaves the Asset Search policy alone",
+    async (_decision, label, reads) => {
+      const changed = vi.fn();
+      const stop = onAssetSearchPolicyChanged(changed);
+      try {
+        const { client, host } = openDownload();
+        await click(buttonWithText(host, label));
+        expect(client.getSettings).toHaveBeenCalledTimes(reads);
+        expect(changed).not.toHaveBeenCalled();
+      } finally {
+        stop();
+      }
+    },
+  );
 });

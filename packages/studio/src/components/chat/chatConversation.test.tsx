@@ -331,15 +331,11 @@ describe("turn footer", () => {
     expect(noChanges.host.textContent).toContain("No project changes");
     unmountChat(noChanges);
 
-    const others: TurnCheckpoint[] = [
-      { status: "active", entryIds: ["e1"], createdAt: 1 },
-      { status: "unavailable", entryIds: [], createdAt: 1 },
-    ];
-    for (const checkpoint of others) {
-      const other = open(finished(checkpoint));
-      expect(buttonWithText(other.host, "Revert this turn")).toBeNull();
-      unmountChat(other);
-    }
+    // A checkpoint that is still closing has its own row (disabled Revert with the reason); one that was never
+    // made offers nothing.
+    const unavailable = open(finished({ status: "unavailable", entryIds: [], createdAt: 1 }));
+    expect(buttonWithText(unavailable.host, "Revert this turn")).toBeNull();
+    unmountChat(unavailable);
   });
 
   it("shows a reverted turn as Reverted, without a second revert button", () => {

@@ -411,6 +411,102 @@ describe("what an answer may be", () => {
   });
 });
 
+describe("a rate-limited host", () => {
+  function limited() {
+    const store = new PolicyStore({ dir: join(dir, "policy") });
+    store.setMode("any");
+    const net = new FakeNet();
+    const waits: number[] = [];
+    const fetcher = new PolicyFetcher({
+      transport: net.transport,
+      guard: new UrlGuard(resolver()),
+      sleep: async (ms) => void waits.push(ms),
+      random: () => 0.5,
+      now: () => Date.parse("2026-01-01T00:00:00Z"),
+    });
+    return { net, fetcher, policy: store.get(), waits };
+  }
+  const tooMany =
+    (headers: Record<string, string> = {}): Answer =>
+    () =>
+      new Response("", { status: 429, headers });
+
+  const jsonBody = (value: unknown) =>
+    new Response(JSON.stringify(value), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  it("waits with growing, jittered pauses and succeeds when the host recovers", async () => {
+    const { net, fetcher, policy, waits } = limited();
+    let answers = 0;
+    net.when("https://example.com/data", () => {
+      answers += 1;
+      return answers < 3 ? new Response("", { status: 429 }) : jsonBody({ ok: true });
+    });
+    expect(await fetcher.getJson("https://example.com/data", { policy })).toEqual({ ok: true });
+    expect(net.calls).toHaveLength(3);
+    // 1 s then 2 s, each stretched by the jitter (0.5 * 50 %).
+    expect(waits).toEqual([1250, 2500]);
+  });
+
+  it("follows Retry-After (seconds or a date) instead of guessing", async () => {
+    const { net, fetcher, policy, waits } = limited();
+    let answers = 0;
+    net.when("https://example.com/a", () => {
+      answers += 1;
+      return answers === 1
+        ? new Response("", { status: 429, headers: { "retry-after": "4" } })
+        : jsonBody([]);
+    });
+    await fetcher.getJson("https://example.com/a", { policy });
+    let dated = 0;
+    net.when("https://example.com/b", () => {
+      dated += 1;
+      return dated === 1
+        ? new Response("", {
+            status: 429,
+            headers: { "retry-after": "Thu, 01 Jan 2026 00:00:07 GMT" },
+          })
+        : jsonBody([]);
+    });
+    await fetcher.getJson("https://example.com/b", { policy });
+    expect(waits).toEqual([4000, 7000]);
+  });
+
+  it("fails rate_limited after the retries, naming the host and the wait it asked for", async () => {
+    const { net, fetcher, policy, waits } = limited();
+    net.when("https://example.com/data", tooMany({ "retry-after": "9" }));
+    const failure = await codeOf(fetcher.getJson("https://example.com/data", { policy }));
+    expect(failure).toContain("rate_limited: example.com answered 429");
+    expect(failure).toContain("wait 9 s");
+    // First attempt plus two retries.
+    expect(net.calls).toHaveLength(3);
+    expect(waits).toEqual([9000, 9000]);
+  });
+
+  it("does not wait for a host that asks for longer than the cap", async () => {
+    const { net, fetcher, policy, waits } = limited();
+    net.when("https://example.com/data", tooMany({ "retry-after": "600" }));
+    expect(await codeOf(fetcher.getJson("https://example.com/data", { policy }))).toContain(
+      "rate_limited",
+    );
+    expect(net.calls).toHaveLength(1);
+    expect(waits).toEqual([]);
+  });
+
+  it("also limits downloads", async () => {
+    const { net, fetcher, policy } = limited();
+    net.when("https://example.com/clip.mp4", tooMany());
+    expect(
+      await codeOf(
+        fetcher.download("https://example.com/clip.mp4", { policy }, join(dir, "clip.bin"), {
+          maxBytes: 1_000_000,
+        }),
+      ),
+    ).toContain("rate_limited");
+  });
+});
+
 describe("the production transport", () => {
   /** A service on loopback that no research request may ever reach. */
   let internal: Server | undefined;

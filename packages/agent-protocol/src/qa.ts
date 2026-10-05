@@ -280,6 +280,11 @@ export interface QaIssueDraft {
   fixable: boolean;
   owner: QaOwner | null;
   suggestion: string | null;
+  /**
+   * Carried over from the previous pass because this pass could not re-check it (Vision's review did not run): it is
+   * reported, never sent to a correction, and not counted as fixable.
+   */
+  notRechecked?: boolean;
 }
 
 export interface QaIssue extends QaIssueDraft {
@@ -300,19 +305,26 @@ export const QA_LIMITS = {
   framesPerRequest: 12,
   samples: 120,
   contextChars: 400,
+  accepted: 500,
 } as const;
 
 /** Issues farther apart in time than this are different issues, whatever their kind. */
 const MATCH_TOLERANCE_SECONDS = 0.75;
 
-function overlaps(a: QaIssueDraft, b: QaIssueDraft): boolean {
+/** What identifies a problem across passes. */
+export type QaMatchable = Pick<QaIssueDraft, "kind" | "subject" | "start" | "end">;
+
+function overlaps(a: QaMatchable, b: QaMatchable): boolean {
   return a.start <= b.end + MATCH_TOLERANCE_SECONDS && b.start <= a.end + MATCH_TOLERANCE_SECONDS;
 }
 
-/** The same problem in two passes: same kind, and the same subject when both name one, else overlapping times. */
-export function sameQaIssue(a: QaIssueDraft, b: QaIssueDraft): boolean {
+/**
+ * The same problem in two passes: same kind, overlapping times, and the same subject when both name one. Time is
+ * always part of it: two problems of one kind on one clip at different moments are two problems.
+ */
+export function sameQaIssue(a: QaMatchable, b: QaMatchable): boolean {
   if (a.kind !== b.kind) return false;
-  if (a.subject !== null && b.subject !== null) return a.subject === b.subject;
+  if (a.subject !== null && b.subject !== null && a.subject !== b.subject) return false;
   return overlaps(a, b);
 }
 
@@ -447,6 +459,7 @@ export function parseQaIssueDraft(value: unknown, field = "issue"): Parsed<QaIss
       fixable: value.fixable,
       owner,
       suggestion: boundedText(value.suggestion, QA_LIMITS.suggestionChars),
+      ...(value.notRechecked === true && { notRechecked: true }),
     },
   };
 }
@@ -464,6 +477,109 @@ function parseQaIssue(value: unknown, field: string): Parsed<QaIssue> {
     ok: true,
     value: { ...draft.value, id: value.id, status, firstSeenPass: value.firstSeenPass },
   };
+}
+
+// ── Issues the user marked intentional ───────────────────────────────────────
+
+/**
+ * A problem the user said is meant that way (an intentional fade from black, a dramatic pause). Kept per project in
+ * `.hyperframes/qa/accepted.json`: QA leaves matching issues out of every later pass (it never asks for them to be
+ * fixed again) and only counts them. A match is `sameQaIssue` on the same composition.
+ */
+export interface QaAcceptedIssue {
+  /** `acc-` + 8 hex digits. */
+  id: string;
+  composition: string;
+  kind: QaIssueKind;
+  /** The check that found it, for the record. */
+  check: string;
+  subject: string | null;
+  start: number;
+  end: number;
+  /** The issue's message when it was marked, so the list reads without the report. */
+  message: string;
+  acceptedAt: number;
+}
+
+const ACCEPTED_ID = /^acc-[0-9a-f]{8}$/;
+
+export function isAcceptedId(value: unknown): value is string {
+  return typeof value === "string" && ACCEPTED_ID.test(value);
+}
+
+export function parseQaAcceptedIssue(value: unknown, field = "accepted"): Parsed<QaAcceptedIssue> {
+  if (!isRecord(value)) return fail(`${field} must be an object`);
+  if (!isAcceptedId(value.id)) return fail(`${field}.id must look like acc-1a2b3c4d`);
+  const kind = QA_ISSUE_KINDS.find((known) => known === value.kind);
+  if (!kind) return fail(`${field}.kind must be one of: ${QA_ISSUE_KINDS.join(", ")}`);
+  const check = boundedText(value.check, QA_LIMITS.checkChars);
+  const message = boundedText(value.message, QA_LIMITS.messageChars);
+  if (typeof value.composition !== "string" || !value.composition || !check || !message)
+    return fail(`${field} needs composition, check and message`);
+  if (!finite(value.start) || !finite(value.end) || value.start < 0 || value.end < value.start)
+    return fail(`${field}: start and end must be seconds with end ≥ start ≥ 0`);
+  if (!finite(value.acceptedAt)) return fail(`${field}.acceptedAt must be a timestamp`);
+  return {
+    ok: true,
+    value: {
+      id: value.id,
+      composition: value.composition,
+      kind,
+      check,
+      subject: boundedText(value.subject, QA_LIMITS.subjectChars),
+      start: value.start,
+      end: value.end,
+      message,
+      acceptedAt: value.acceptedAt,
+    },
+  };
+}
+
+export interface QaAcceptedList {
+  items: QaAcceptedIssue[];
+}
+
+export function isQaAcceptedList(value: unknown): value is QaAcceptedList {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.items) &&
+    value.items.every((item) => parseQaAcceptedIssue(item).ok)
+  );
+}
+
+/** `POST …/qa/accepted`: marks one issue of a stored report intentional (the service reads it from the report). */
+export interface QaAcceptRequest {
+  reportId: string;
+  issueId: string;
+}
+
+export function parseQaAcceptRequest(body: unknown): Parsed<QaAcceptRequest> {
+  if (!isRecord(body)) return fail("body must be an object");
+  const reportId = optionalId(body.reportId);
+  const issueId = optionalId(body.issueId);
+  if (!reportId || !issueId) return fail("reportId and issueId are required");
+  return { ok: true, value: { reportId, issueId } };
+}
+
+/** The accepted entry, and the report re-read so its `acceptedIssueIds` includes it. */
+export interface QaAcceptResponse {
+  accepted: QaAcceptedIssue;
+  report: QaReport;
+}
+
+export function isQaAcceptResponse(value: unknown): value is QaAcceptResponse {
+  return isRecord(value) && parseQaAcceptedIssue(value.accepted).ok && isQaReport(value.report);
+}
+
+/** The accepted entry that hides `issue` in `composition`, or null. */
+export function findAcceptedQaIssue(
+  issue: QaMatchable,
+  composition: string,
+  accepted: readonly QaAcceptedIssue[],
+): QaAcceptedIssue | null {
+  return (
+    accepted.find((entry) => entry.composition === composition && sameQaIssue(entry, issue)) ?? null
+  );
 }
 
 // ── Checks and reports ───────────────────────────────────────────────────────
@@ -530,6 +646,12 @@ export interface QaCheckRequest {
   maxFrames: number;
 }
 
+/** A check of the timeline alone: no render is read, so the render-measured checks and Vision's samples are absent. */
+export interface QaTimelineCheckRequest {
+  /** The composition to check; the project's main composition when absent. */
+  composition?: string;
+}
+
 export interface QaCheckResponse {
   /** The project fingerprint when the check finished. */
   fingerprint: string;
@@ -571,6 +693,48 @@ export interface QaVisionRun {
   rounds: number;
   /** `provider/modelId` of the Vision run. */
   model: string | null;
+  /** Who looked at the frames: Vision, or the Director when Vision is off in the chat. Absent: Vision. */
+  reviewer?: "vision" | "director";
+}
+
+/**
+ * How much one pass checked. `full`: the render, the deterministic checks and a visual review; `deterministic`: the
+ * render and the deterministic checks, the visual review skipped by a cheap-path rule; `timeline`: no render, only the
+ * checks that read the timeline (too long to render unasked, or the render checks timed out).
+ */
+export const QA_SCOPES = ["full", "deterministic", "timeline"] as const;
+export type QaScope = (typeof QA_SCOPES)[number];
+
+/**
+ * Why a pass checked less than `full`: `too_long` (a composition over three minutes the user did not ask to render),
+ * `check_timeout` (the render checks ran out of time), `audio_only` (only audio changed since the last check),
+ * `small_change` (a few clips were only retimed since the last check).
+ */
+export const QA_SCOPE_REASONS = [
+  "too_long",
+  "check_timeout",
+  "audio_only",
+  "small_change",
+] as const;
+export type QaScopeReason = (typeof QA_SCOPE_REASONS)[number];
+
+/** The English `message` with the `qa.scope.<code>` locale key's placeholder values in `params`. */
+export interface QaScopeNote {
+  code: QaScopeReason;
+  message: string;
+  params?: CodedMessageParams;
+}
+
+function parseScopeNote(value: unknown): QaScopeNote | null {
+  if (!isRecord(value)) return null;
+  const code = QA_SCOPE_REASONS.find((known) => known === value.code);
+  const message = boundedText(value.message, QA_LIMITS.messageChars);
+  if (!code || !message) return null;
+  return {
+    code,
+    message,
+    ...(isRecord(value.params) && { params: readErrorParams(value.params) }),
+  };
 }
 
 /** What the runtime sends to store a pass; the service assigns `id` and `createdAt`. */
@@ -594,6 +758,12 @@ export interface QaReportInput {
   /** Issues of the previous pass that are gone. */
   resolved: QaIssue[];
   previousReportId: string | null;
+  /** How much this pass checked; absent in reports written before the field existed (read as `full`). */
+  scope?: QaScope;
+  /** Why the pass checked less than `full`. */
+  scopeNote?: QaScopeNote;
+  /** Issues left out of this pass because the user marked them intentional (see `QaAcceptedIssue`). */
+  suppressed?: number;
 }
 
 export interface QaReport extends QaReportInput {
@@ -603,6 +773,10 @@ export interface QaReport extends QaReportInput {
   counts: QaCounts;
   /** Derived when read: the project still has the fingerprint this report was rendered from. */
   current: boolean;
+  /** Derived when read: ids of `issues` the user has marked intentional since (or while) the report was written. */
+  acceptedIssueIds?: string[];
+  /** Derived when read: the render file is still in the project's renders folder. */
+  renderAvailable?: boolean;
 }
 
 export interface QaReportSummary {
@@ -617,6 +791,9 @@ export interface QaReportSummary {
   renderError: string | null;
   counts: QaCounts;
   current: boolean;
+  scope?: QaScope;
+  /** Derived when read: the render file is still in the project's renders folder. */
+  renderAvailable?: boolean;
 }
 
 export interface QaReportList {
@@ -699,6 +876,20 @@ export function parseQaCheckRequest(body: unknown): Parsed<QaCheckRequest> {
         body.composition && { composition: body.composition }),
       framesPerMinute: fpm,
       maxFrames: Math.round(max),
+    },
+  };
+}
+
+export function parseQaTimelineCheckRequest(body: unknown): Parsed<QaTimelineCheckRequest> {
+  if (body === undefined) return { ok: true, value: {} };
+  if (!isRecord(body)) return fail("body must be an object");
+  if (body.composition !== undefined && typeof body.composition !== "string")
+    return fail("composition must be a project-relative path");
+  return {
+    ok: true,
+    value: {
+      ...(typeof body.composition === "string" &&
+        body.composition && { composition: body.composition }),
     },
   };
 }
@@ -824,6 +1015,9 @@ export function parseQaReportInput(body: unknown): Parsed<QaReportInput> {
   if (!issues.ok) return issues;
   const resolved = parseIssueList(body.resolved, "resolved");
   if (!resolved.ok) return resolved;
+  const scope = QA_SCOPES.find((known) => known === body.scope);
+  const scopeNote = parseScopeNote(body.scopeNote);
+  const reviewer = rawVision.reviewer === "director" ? "director" : undefined;
   return {
     ok: true,
     value: {
@@ -850,10 +1044,14 @@ export function parseQaReportInput(body: unknown): Parsed<QaReportInput> {
         frames: finite(rawVision.frames) ? Math.max(0, Math.round(rawVision.frames)) : 0,
         rounds: finite(rawVision.rounds) ? Math.max(0, Math.round(rawVision.rounds)) : 0,
         model: typeof rawVision.model === "string" ? rawVision.model.slice(0, 200) : null,
+        ...(reviewer && { reviewer }),
       },
       issues: issues.value,
       resolved: resolved.value,
       previousReportId: optionalId(body.previousReportId),
+      ...(scope && { scope }),
+      ...(scopeNote && { scopeNote }),
+      ...(finite(body.suppressed) && { suppressed: Math.max(0, Math.round(body.suppressed)) }),
     },
   };
 }
@@ -873,6 +1071,14 @@ export const QA_PASS_PHASES = [
 ] as const;
 export type QaPassPhase = (typeof QA_PASS_PHASES)[number];
 
+/** A render's progress as the chat shows it. */
+export interface QaPassProgress {
+  /** 0–100. */
+  percent: number;
+  /** What the renderer is doing now, when it says. */
+  stage: string | null;
+}
+
 export interface QaPassState {
   pass: number;
   phase: QaPassPhase;
@@ -885,6 +1091,18 @@ export interface QaPassState {
   error: string | null;
   startedAt: number;
   endedAt?: number;
+  /** What this pass checked (known once its checks are chosen). */
+  scope?: QaScope;
+  scopeNote?: QaScopeNote;
+  /** The render's progress while the pass is rendering. */
+  progress?: QaPassProgress;
+  /**
+   * Set when the QA session ends: whether `renderPath` is still in the project. QA deletes its intermediate previews
+   * at the end of the turn, so only the last pass's render (and the Director's own) stays.
+   */
+  renderKept?: boolean;
+  /** Issues left out of this pass because the user marked them intentional. */
+  suppressed?: number;
 }
 
 /**
@@ -913,6 +1131,8 @@ export interface TurnQaState {
   reasonCode?: string;
   /** Placeholder values for `qa.reason.<reasonCode>`. */
   reasonParams?: CodedMessageParams;
+  /** What the last pass checked (`timeline`: the render was not checked). */
+  scope?: QaScope;
 }
 
 // ── Wire guards ──────────────────────────────────────────────────────────────

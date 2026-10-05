@@ -368,7 +368,7 @@ export class WebsiteFiles {
     request: WebsiteFileRequest,
     client?: AbortSignal,
   ): Promise<WebsiteFileResult> {
-    const policy = this.fullAccessPolicy(project, request.turnId);
+    const policy = this.fullAccessPolicy(project, request.turnId, request.url);
     const vetted = await this.options.guard.vetPublic(request.url);
     const guard = this.options.requests.begin(project.dir, request.requestId, client);
     try {
@@ -389,7 +389,7 @@ export class WebsiteFiles {
     request: RecordWebsiteRequest,
     client?: AbortSignal,
   ): Promise<RecordWebsiteResult> {
-    const policy = this.fullAccessPolicy(project, request.turnId);
+    const policy = this.fullAccessPolicy(project, request.turnId, request.url);
     assertInAllowedSites(request.url, request.allowedSites);
     const vetted = await this.options.guard.vetPublic(request.url);
     const record = this.options.record;
@@ -452,15 +452,16 @@ export class WebsiteFiles {
   }
 
   /**
-   * The full-access gate: both switches must be on, or a `full` grant of this turn; the answer names where the user
-   * turns them on. A granted turn passes as if the switches were on.
+   * The full-access gate: both switches must be on, or a `full` grant of this turn for the site of `url`; the answer
+   * names where the user turns them on. A granted turn passes as if the switches were on.
    */
   private fullAccessPolicy(
     project: ResolvedProject,
     turnId: string | undefined,
+    url: string,
   ): AssetSearchPolicy {
     const policy = this.options.store.get();
-    const granted = this.options.grants.allows(project.dir, turnId, "full");
+    const granted = this.options.grants.allows(project.dir, turnId, "full", url);
     if (!policy.websites.readLinkedPages && !granted) {
       throw new ResearchFailure(
         "blocked_by_policy",
@@ -497,6 +498,7 @@ export class WebsiteFiles {
         `${host} answered ${response.status}: the file or page is gone`,
       );
     }
+    if (response.status === 429) throw this.options.fetcher.rateLimited(host, response);
     throw new ResearchFailure("network", `${host} answered ${response.status}`);
   }
 

@@ -11,6 +11,7 @@ import { ResearchToolError } from "./host.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "../testing/runtimeFixture.js";
 import { researchPolicy, trustedSource } from "../testing/research.js";
 import { chapterNode, storyGraph, storyView } from "../testing/story.js";
+import { toolNames, usableTools } from "../testing/usable.js";
 
 async function settled(fixture: RuntimeFixture, chatId: string): Promise<void> {
   await waitUntil(
@@ -31,10 +32,17 @@ function script(fixture: RuntimeFixture, byAgent: Partial<Record<AgentId, Script
     (byAgent[session.input.agent] ?? (async () => "completed"))(input, session);
 }
 
-const toolNames = (session: ScriptedSession | undefined) =>
-  session?.input.hostTools.map((tool) => tool.name) ?? [];
-
 const EXTERNAL = ["search_assets", "inspect_url", "import_asset", "resolve_missing_asset"];
+
+/** What a resolve turn closes: the story's graph, its build, the timeline and renders. */
+const CLOSED_IN_RESOLVE = [
+  "edit_story",
+  "build_story",
+  "rebuild_story",
+  "edit_timeline",
+  "build_rough_cut",
+  "render_video",
+];
 
 function missingNode(id: string, overrides: Partial<MissingAssetNode> = {}): MissingAssetNode {
   return {
@@ -90,6 +98,7 @@ describe("the Research team in a turn", () => {
       let researchTask = "";
       script(fixture, {
         director: async (input, session) => {
+          if (directorPrompt) return "completed";
           directorPrompt = input.text;
           await session.callTool("delegate", {
             agent: "research",
@@ -155,6 +164,7 @@ describe("the Research team in a turn", () => {
       let roster = "";
       script(fixture, {
         director: async (input, session) => {
+          if (roster) return "completed";
           roster = input.text;
           await session.callTool("delegate", { agent: "research", title: "x", task: "x" });
           await session.callTool("wait_for_agents", {});
@@ -176,29 +186,30 @@ describe("the Research team in a turn", () => {
     }
   });
 
-  it("tells the Director to ask the user to enable Research, and gives nobody a research tool, when Research is off", async () => {
+  it("hands the research tools and the policy to the Director when Research is off in the chat", async () => {
     const fixture = await createRuntimeFixture();
     try {
       const chat = await fixture.chats.create({}, ["editor"]);
       let prompt = "";
       script(fixture, {
         director: async (input) => {
-          prompt = input.text;
+          prompt ||= input.text;
           return "completed";
         },
       });
       await fixture.turns.start(chat.id, { prompt: "Find ocean footage" });
       await settled(fixture, chat.id);
 
-      expect(prompt).toContain("Research is disabled in this chat");
-      expect(prompt).toContain("tell them to enable Research");
-      // The policy is still read: it decides whether the website tools (full access) are offered to the readers.
+      expect(prompt).toContain("Research is off in this chat, so you do its work yourself");
+      expect(prompt).toContain("trusted sources only");
+      expect(prompt).toContain("wikimedia-commons · Wikimedia Commons");
+      expect(prompt).not.toContain("tell them to enable Research");
       expect(fixture.research.policyCalls).toBe(1);
-      for (const session of fixture.backend.sessions) {
-        expect(
-          toolNames(session).filter((name) => name.includes("source") || EXTERNAL.includes(name)),
-        ).toEqual([]);
-      }
+      expect(toolNames(fixture.backend.sessionsOf("director")[0])).toEqual(
+        expect.arrayContaining([...EXTERNAL, "read_sources"]),
+      );
+      // Nobody else got a research tool: the other sessions are not opened at all.
+      expect(fixture.backend.sessionsOf("research")).toEqual([]);
     } finally {
       await fixture.cleanup();
     }
@@ -213,6 +224,7 @@ describe("the Research team in a turn", () => {
       let task = "";
       script(fixture, {
         director: async (input, session) => {
+          if (prompt) return "completed";
           prompt = input.text;
           await session.callTool("delegate", { agent: "research", title: "x", task: "x" });
           await session.callTool("wait_for_agents", {});
@@ -227,13 +239,8 @@ describe("the Research team in a turn", () => {
       await settled(fixture, chat.id);
 
       expect(prompt).toContain("could not be read");
-      expect(prompt).toContain("research is unavailable this turn");
+      expect(prompt).toContain("Research's tools try again when it calls them");
       expect(task).toContain('status="unavailable"');
-      for (const session of fixture.backend.sessions) {
-        expect(
-          toolNames(session).filter((name) => name === "read_sources" || EXTERNAL.includes(name)),
-        ).toEqual([]);
-      }
     } finally {
       await fixture.cleanup();
     }
@@ -247,9 +254,11 @@ describe("resolve turns", () => {
       const chat = await fixture.chats.create({}, ["research", "editor"]);
       fixture.story.viewResult = storyView(storyWithMissing());
       let prompt = "";
+      let closed: string[] | null = null;
       script(fixture, {
-        director: async (input) => {
-          prompt = input.text;
+        director: async (input, session) => {
+          prompt ||= input.text;
+          closed ??= await usableTools(session, [...CLOSED_IN_RESOLVE, ...EXTERNAL]);
           return "completed";
         },
       });
@@ -279,17 +288,8 @@ describe("resolve turns", () => {
 
       const director = toolNames(fixture.backend.sessionsOf("director")[0]);
       expect(director).toEqual(expect.arrayContaining(["read_story", "read_sources", "delegate"]));
-      for (const forbidden of [
-        "edit_story",
-        "build_story",
-        "rebuild_story",
-        "edit_timeline",
-        "build_rough_cut",
-        "render_video",
-        ...EXTERNAL,
-      ]) {
-        expect(director).not.toContain(forbidden);
-      }
+      // The session keeps its stable tool list; the resolve turn refuses these at dispatch.
+      expect(closed).toEqual([]);
     } finally {
       await fixture.cleanup();
     }
@@ -349,15 +349,17 @@ describe("resolve turns", () => {
     }
   });
 
-  it("does nothing and says why when Research is not enabled", async () => {
+  it("gives the Director the resolve work when Research is not enabled, with the story and the timeline still closed", async () => {
     const fixture = await createRuntimeFixture();
     try {
       const chat = await fixture.chats.create({}, ["editor"]);
       fixture.story.viewResult = storyView(storyWithMissing());
       let prompt = "";
+      let closed: string[] | null = null;
       script(fixture, {
-        director: async (input) => {
-          prompt = input.text;
+        director: async (input, session) => {
+          prompt ||= input.text;
+          closed ??= await usableTools(session, CLOSED_IN_RESOLVE);
           return "completed";
         },
       });
@@ -367,41 +369,96 @@ describe("resolve turns", () => {
       });
       await settled(fixture, chat.id);
 
-      expect(prompt).toContain("Research is not available in this turn");
-      expect(prompt).toContain("Do nothing");
-      expect(prompt).not.toContain("Missing Asset nodes to resolve");
-      // The policy is still read for the website settings (full access), even with nobody to search.
+      expect(prompt).toContain("Research is off in this chat, so you do its work yourself");
+      expect(prompt).toContain("Missing Asset nodes to resolve (2):");
+      expect(prompt).not.toContain("Do nothing");
       expect(fixture.research.policyCalls).toBe(1);
       const director = toolNames(fixture.backend.sessionsOf("director")[0]);
-      expect(director).not.toContain("edit_story");
-      expect(director).not.toContain("read_sources");
+      expect(director).toEqual(
+        expect.arrayContaining([...EXTERNAL, "read_sources", "read_story", "delegate"]),
+      );
+      expect(closed).toEqual([]);
+      expect(fixture.backend.sessionsOf("research")).toEqual([]);
     } finally {
       await fixture.cleanup();
     }
   });
 
-  it("offers no research tool in a build or rebuild turn, to anybody", async () => {
+  it("gives a build turn the research team of a normal turn, with the full-production steps", async () => {
     const fixture = await createRuntimeFixture();
     try {
       const chat = await fixture.chats.create({}, ["research", "editor"]);
       fixture.story.viewResult = storyView(storyWithMissing());
+      let directorPrompt = "";
+      let delegated: HostToolResult | null = null;
       script(fixture, {
-        director: async (_input, session) => {
-          await session.callTool("delegate", { agent: "research", title: "x", task: "x" });
+        director: async (input, session) => {
+          directorPrompt ||= input.text;
+          if (delegated !== null) return "completed";
+          delegated = await session.callTool("delegate", {
+            agent: "research",
+            title: "Find the sea sound",
+            task: "Find m2",
+          });
           await session.callTool("wait_for_agents", {});
           return "completed";
         },
       });
-      for (const storyAction of ["build", "rebuild"] as const) {
-        await fixture.turns.start(chat.id, { prompt: `${storyAction} it`, storyAction });
-        await settled(fixture, chat.id);
-      }
-      expect(fixture.backend.sessions.length).toBeGreaterThan(0);
-      for (const session of fixture.backend.sessions) {
-        expect(
-          toolNames(session).filter((name) => name === "read_sources" || EXTERNAL.includes(name)),
-        ).toEqual([]);
-      }
+      await fixture.turns.start(chat.id, { prompt: "Build the video", storyAction: "build" });
+      await settled(fixture, chat.id);
+
+      expect(delegated).not.toMatchObject({ isError: true });
+      const director = toolNames(fixture.backend.sessionsOf("director")[0]);
+      expect(director).toEqual(expect.arrayContaining(["read_sources", "edit_story"]));
+      expect(director.filter((name) => EXTERNAL.includes(name))).toEqual([]);
+      expect(toolNames(fixture.backend.sessionsOf("research")[0])).toEqual(
+        expect.arrayContaining(EXTERNAL),
+      );
+      expect(directorPrompt).toContain(
+        "Material from outside the project comes only from Research",
+      );
+      expect(directorPrompt).toContain("resolveMissing");
+      expect(directorPrompt).toContain("sound effects");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("offers no research tool in a rebuild turn, refuses delegating to Research and says so in the team roster", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, ["research", "editor"]);
+      fixture.story.viewResult = storyView(storyWithMissing());
+      let directorPrompt = "";
+      let delegated: HostToolResult | null = null;
+      let open: string[] | null = null;
+      script(fixture, {
+        director: async (input, session) => {
+          directorPrompt ||= input.text;
+          if (delegated !== null) return "completed";
+          delegated = await session.callTool("delegate", {
+            agent: "research",
+            title: "x",
+            task: "x",
+          });
+          open = await usableTools(session, ["read_sources", ...EXTERNAL]);
+          return "completed";
+        },
+      });
+      await fixture.turns.start(chat.id, { prompt: "Rebuild it", storyAction: "rebuild" });
+      await settled(fixture, chat.id);
+
+      expect(delegated).toMatchObject({
+        isError: true,
+        text: expect.stringContaining("Research cannot search or import in a Rebuild turn"),
+      });
+      expect(fixture.backend.sessionsOf("research")).toEqual([]);
+      expect(directorPrompt).toContain("Research cannot search or import in a Rebuild turn");
+      expect(directorPrompt).not.toContain(
+        "Material from outside the project comes only from Research",
+      );
+      // Every session keeps its stable tool list; the rebuild turn refuses the research tools at dispatch.
+      expect(open).toEqual([]);
     } finally {
       await fixture.cleanup();
     }
@@ -458,9 +515,11 @@ describe("a website tool asks the user from the chat", () => {
       await settled(fixture, chat.id);
 
       expect(read).toMatchObject({
-        text: expect.stringContaining("allowed reading linked pages once"),
+        text: expect.stringContaining("allowed reading linked pages on linear.app once"),
       });
-      expect(fixture.research.grants).toEqual([{ turnId: turn.id, access: "read" }]);
+      expect(fixture.research.grants).toEqual([
+        { turnId: turn.id, access: "read", site: "linear.app" },
+      ]);
       expect(fixture.research.websiteRequests).toEqual([
         { url: "https://linear.app", allowedSites: ["linear.app"], turnId: turn.id },
       ]);

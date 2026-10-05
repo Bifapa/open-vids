@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useMemo, useRef } from "react";
-import { Plus, FolderSimplePlus } from "@phosphor-icons/react";
+import { Plus, FolderSimplePlus, LockSimple } from "@phosphor-icons/react";
 import { useTranslation } from "../../i18n";
 import {
   buildTree,
@@ -28,6 +28,11 @@ interface FileTreeProps {
   onMoveFile?: (oldPath: string, newPath: string) => void;
   onImportFiles?: (files: FileList, dir?: string) => void;
   lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
+  /**
+   * An agent turn is running: nothing that changes an existing file starts (new file / folder, rename, duplicate,
+   * delete, move). Importing files from outside stays available.
+   */
+  locked?: boolean;
 }
 
 // ── Main FileTree Component ──
@@ -44,6 +49,7 @@ export const FileTree = memo(function FileTree({
   onMoveFile,
   onImportFiles,
   lintFindingsByFile,
+  locked = false,
 }: FileTreeProps) {
   const { t } = useTranslation();
   const tree = useMemo(() => buildTree(files), [files]);
@@ -72,11 +78,11 @@ export const FileTree = memo(function FileTree({
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, path: string, isFolder: boolean) => {
-      if (!hasFileOps) return;
+      if (!hasFileOps || locked) return;
       e.preventDefault();
       setContextMenu({ x: e.clientX, y: e.clientY, targetPath: path, targetIsFolder: isFolder });
     },
-    [hasFileOps],
+    [hasFileOps, locked],
   );
 
   const handleCloseContextMenu = useCallback(() => setContextMenu(null), []);
@@ -179,11 +185,18 @@ export const FileTree = memo(function FileTree({
 
   // ── Drag and Drop ──
 
-  const handleDragStart = useCallback((e: React.DragEvent, path: string) => {
-    dragSourceRef.current = path;
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", path);
-  }, []);
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, path: string) => {
+      if (locked) {
+        e.preventDefault();
+        return;
+      }
+      dragSourceRef.current = path;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", path);
+    },
+    [locked],
+  );
 
   const handleDragOver = useCallback((_e: React.DragEvent, folderPath: string) => {
     setDragOverFolder(folderPath);
@@ -199,7 +212,7 @@ export const FileTree = memo(function FileTree({
       }
 
       const sourcePath = dragSourceRef.current;
-      if (!sourcePath || !onMoveFile) {
+      if (!sourcePath || !onMoveFile || locked) {
         setDragOverFolder(null);
         return;
       }
@@ -213,7 +226,7 @@ export const FileTree = memo(function FileTree({
       setDragOverFolder(null);
       dragSourceRef.current = null;
     },
-    [onMoveFile, onImportFiles],
+    [onMoveFile, onImportFiles, locked],
   );
 
   const handleDragLeave = useCallback(() => {
@@ -224,13 +237,13 @@ export const FileTree = memo(function FileTree({
 
   const handleRootContextMenu = useCallback(
     (e: React.MouseEvent) => {
-      if (!hasFileOps) return;
+      if (!hasFileOps || locked) return;
       if (e.target === e.currentTarget) {
         e.preventDefault();
         setContextMenu({ x: e.clientX, y: e.clientY, targetPath: "", targetIsFolder: true });
       }
     },
-    [hasFileOps],
+    [hasFileOps, locked],
   );
 
   return (
@@ -241,21 +254,33 @@ export const FileTree = memo(function FileTree({
           <span className="min-w-0 flex-1">{t("editor.fileTree.files")}</span>
           <button
             onClick={() => handleNewFile("")}
-            className="flex size-ctl-xs items-center justify-center rounded-sm text-fg-3 transition-colors duration-hover hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-            title={t("editor.fileTree.newFile")}
+            disabled={locked}
+            className="flex size-ctl-xs items-center justify-center rounded-sm text-fg-3 transition-colors duration-hover hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:text-fg-disabled disabled:hover:bg-transparent disabled:hover:text-fg-disabled"
+            title={locked ? t("files.lock.agentEditing") : t("editor.fileTree.newFile")}
             aria-label={t("editor.fileTree.newFile")}
           >
             <Plus size={12} weight="bold" />
           </button>
           <button
             onClick={() => handleNewFolder("")}
-            className="flex size-ctl-xs items-center justify-center rounded-sm text-fg-3 transition-colors duration-hover hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-            title={t("editor.fileTree.newFolder")}
+            disabled={locked}
+            className="flex size-ctl-xs items-center justify-center rounded-sm text-fg-3 transition-colors duration-hover hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:text-fg-disabled disabled:hover:bg-transparent disabled:hover:text-fg-disabled"
+            title={locked ? t("files.lock.agentEditing") : t("editor.fileTree.newFolder")}
             aria-label={t("editor.fileTree.newFolder")}
           >
             <FolderSimplePlus size={12} />
           </button>
         </div>
+      )}
+      {hasFileOps && locked && (
+        <p
+          role="status"
+          data-testid="file-tree-lock"
+          className="flex items-start gap-1.5 px-3 pb-1.5 text-xs leading-[15px] text-fg-3"
+        >
+          <LockSimple aria-hidden size={12} weight="bold" className="mt-px shrink-0" />
+          {t("files.lock.treeNotice")}
+        </p>
       )}
 
       <div

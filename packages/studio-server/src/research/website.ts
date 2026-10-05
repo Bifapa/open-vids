@@ -153,7 +153,7 @@ export class WebsiteReader {
     const policy = this.options.store.get();
     if (
       !policy.websites.readLinkedPages &&
-      !this.options.grants.allows(project.dir, request.turnId, "read")
+      !this.options.grants.allows(project.dir, request.turnId, "read", request.url)
     ) {
       throw new ResearchFailure(
         "blocked_by_policy",

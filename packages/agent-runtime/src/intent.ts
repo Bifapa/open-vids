@@ -44,10 +44,21 @@ export function savesWebsiteFiles(toolName: string, args: unknown): boolean {
 }
 
 /**
+ * The orchestration tools that start or steer a run which could change the project: delegate, message_agent and jev
+ * (the names of `TOOL_NAMES` in agents/tools.ts, which imports this module).
+ */
+const WORK_STARTING_TOOLS: Readonly<Record<string, true>> = {
+  delegate: true,
+  message_agent: true,
+  jev: true,
+};
+
+/**
  * Why a project-changing call is refused in this turn; null when the turn may make it. An Ask turn refuses them
  * from the start; an Edit turn refuses them after its Director proposed a plan (`planProposed`) or offered Story
- * Mode (`storyOffered`), because the rest of that turn changes nothing until the user decides. `args` are the call's
- * arguments: they tell a saving website call from a reading one.
+ * Mode (`storyOffered`), because the rest of that turn changes nothing until the user decides — which also means no
+ * run may be started or steered then (delegate, message_agent, jev). `args` are the call's arguments: they tell a
+ * saving website call from a reading one.
  */
 export function intentRefusal(
   intent: ChatIntent,
@@ -58,7 +69,8 @@ export function intentRefusal(
 ): string | null {
   // An Ask turn's website save is refused by the research executor with its own, more specific message.
   const websiteSave = intent === "edit" && savesWebsiteFiles(toolName, args);
-  if (!changesProject(toolName) && !websiteSave) return null;
+  const startsWork = (planProposed || storyOffered) && Object.hasOwn(WORK_STARTING_TOOLS, toolName);
+  if (!changesProject(toolName) && !websiteSave && !startsWork) return null;
   if (intent === "ask") {
     return `This is an Ask turn: the user wants an answer only, so ${toolName} is not available. Answer from what you can read and inspect.`;
   }
@@ -107,8 +119,11 @@ export function renderPlanApprovalBlock(planApproval: PlanApproval): string {
   ].join("\n");
 }
 
-/** The block of a turn that carries out a plan the user approved: the steps, exactly as proposed. */
-export function renderExecutePlanBlock(steps: readonly PlanStep[]): string {
+/**
+ * The block of a turn that carries out a plan the user approved: the steps, exactly as proposed. `stale`: the project
+ * changed since the plan was proposed (manual edits, other chats, a revert, an import), so the steps may not fit it.
+ */
+export function renderExecutePlanBlock(steps: readonly PlanStep[], stale = false): string {
   const lines = steps.map(
     (step, index) =>
       `${index + 1}. ${step.title}${step.agent && step.agent !== "director" ? ` (${step.agent})` : ""}`,
@@ -117,6 +132,11 @@ export function renderExecutePlanBlock(steps: readonly PlanStep[]): string {
     "<approved-plan>",
     "The user approved this plan and asked you to carry it out now:",
     ...lines,
+    ...(stale
+      ? [
+          "The project changed after this plan was proposed (edits, a revert, imports or work in another chat). Before each step inspect the project (inspect_project, inspect_timeline, read_story) and adapt the step to what is there; skip a step that no longer applies and say so in your reply. Do not redo work that already exists.",
+        ]
+      : []),
     "Carry out every step in order. Track progress with update_plan as usual (started steps running, finished ones done); do not propose a new plan. Keep the reply short.",
     "</approved-plan>",
   ].join("\n");

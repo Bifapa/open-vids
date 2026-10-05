@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { BackendPromptInput } from "../backend.js";
 import { createRuntimeFixture, type RuntimeFixture } from "../testing/runtimeFixture.js";
 import { cleanCheck, qaDraft } from "../testing/qa.js";
+import { QaToolError } from "./host.js";
 import { qaChat, quality, script, settled, visionScript } from "./harness.js";
 
 const PENDING = "</render-qa-pending>";
@@ -102,7 +103,7 @@ describe("the Director's reply before render QA", () => {
   it("adds the instruction to the follow-up prompts before QA, not to the ones after", async () => {
     const fixture = await createRuntimeFixture();
     try {
-      const chatId = await qaChat(fixture, quality(1), ["editor"]);
+      const chatId = await qaChat(fixture, quality(1), ["editor", "vision"]);
       const prompts: string[] = [];
       script(fixture, {
         director: async (input, session) => {
@@ -119,6 +120,7 @@ describe("the Director's reply before render QA", () => {
           say(input, "Trimmed to 3 s.");
           return "completed";
         },
+        vision: visionScript([]),
       });
       await fixture.turns.start(chatId, { prompt: "Trim" });
       await settled(fixture, chatId);
@@ -138,7 +140,7 @@ describe("the Director's reply before render QA", () => {
     }
   });
 
-  it("leaves the reply untouched when QA is skipped because nothing changed", async () => {
+  it("leaves a turn that only answered untouched: nothing was attempted, so nothing is closed", async () => {
     const fixture = await createRuntimeFixture();
     try {
       const chatId = await qaChat(fixture, quality(2));
@@ -147,8 +149,9 @@ describe("the Director's reply before render QA", () => {
       await fixture.turns.start(chatId, { prompt: "What is in the project?" });
       await settled(fixture, chatId);
 
-      // QA applies to the turn, so the Director was told; it never started, so nothing is marked.
+      // QA applies to the turn, so the Director was told a check follows; it never started, so nothing is marked.
       expect(director.prompts[0]?.trimEnd().endsWith(PENDING)).toBe(true);
+      expect(director.prompts).toHaveLength(1);
       expect(fixture.chats.get(chatId)?.turns[0]?.qa).toBeUndefined();
       expect(replyParts(fixture, chatId)).toEqual([
         { text: "Done! The video is ready.", interim: false },
@@ -159,7 +162,74 @@ describe("the Director's reply before render QA", () => {
     }
   });
 
-  it("asks for the final answer when QA is skipped after the project changed (too long a composition)", async () => {
+  it("asks for a closing answer, and marks the reply before it interim, when an edit did not change the project", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      // Without an Editor the Director edits itself; the edit is refused, so the project stays as it was.
+      const chatId = await qaChat(fixture, quality(2), ["vision"]);
+      const prompts: string[] = [];
+      script(fixture, {
+        director: async (input, session) => {
+          prompts.push(input.text);
+          if (input.text.includes("<render-qa-skipped")) {
+            say(input, "Nothing changed: the edit was refused.");
+          } else {
+            await session.callTool("edit_timeline", { operations: [] });
+            say(input, "Done! The video is ready.");
+          }
+          return "completed";
+        },
+      });
+      await fixture.turns.start(chatId, { prompt: "Tighten the intro" });
+      await settled(fixture, chatId);
+
+      // The Director was told a check follows; nothing changed, so none will. Its reply may have promised one (or
+      // reported an edit that did not land): it answers once more.
+      expect(prompts).toHaveLength(2);
+      expect(prompts[1]).toContain("<render-qa-skipped>");
+      expect(prompts[1]).toContain("Nothing in the project changed");
+      expect(fixture.chats.get(chatId)?.turns[0]?.qa).toBeUndefined();
+      expect(replyParts(fixture, chatId)).toEqual([
+        { text: "Done! The video is ready.", interim: true },
+        { text: "Nothing changed: the edit was refused.", interim: false },
+      ]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("asks for the final answer when QA is skipped after the project changed (QA cannot tell what changed)", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chatId = await qaChat(fixture, quality(2));
+      const director = chattyDirector(fixture);
+      script(fixture, {
+        director: async (input, session) => {
+          const outcome = await director.run(input);
+          // Studio's QA service goes away after the Director's work.
+          if (session.prompts.length === 1)
+            fixture.qa.stateError = new QaToolError("studio_unavailable", "Studio is down");
+          return outcome;
+        },
+      });
+      await fixture.turns.start(chatId, { prompt: "Tighten the talk" });
+      await settled(fixture, chatId);
+
+      expect(fixture.chats.get(chatId)?.turns[0]?.qa).toMatchObject({ status: "skipped" });
+      // The reply promised a check that is not coming: it is interim, and the real answer follows.
+      expect(director.prompts.at(-1)).toContain("<render-qa-skipped>");
+      expect(director.prompts.at(-1)).toContain("Studio is down");
+      expect(replyParts(fixture, chatId)).toEqual([
+        { text: "Done! The video is ready.", interim: true },
+        { text: "Built, but not rendered or checked.", interim: false },
+      ]);
+      expect(fixture.editing.renderRequests).toEqual([]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("checks a composition too long to render unasked on the timeline alone, and the final report says so", async () => {
     const fixture = await createRuntimeFixture();
     try {
       fixture.editing.timelineResult = {
@@ -172,15 +242,21 @@ describe("the Director's reply before render QA", () => {
       await fixture.turns.start(chatId, { prompt: "Tighten the talk" });
       await settled(fixture, chatId);
 
-      expect(fixture.chats.get(chatId)?.turns[0]?.qa).toMatchObject({ status: "skipped" });
-      // The reply promised a check that is not coming: it is interim, and the real answer follows.
-      expect(director.prompts.at(-1)).toContain("<render-qa-skipped>");
+      expect(fixture.chats.get(chatId)?.turns[0]?.qa).toMatchObject({
+        status: "passed",
+        scope: "timeline",
+        passes: [{ scope: "timeline", scopeNote: { code: "too_long", params: { minutes: 6.7 } } }],
+      });
+      expect(fixture.editing.renderRequests).toEqual([]);
+      expect(fixture.qa.checkRequests).toEqual([]);
+      expect(fixture.qa.timelineCheckRequests).toHaveLength(1);
+      expect(director.prompts.at(-1)).toContain("<render-qa-final");
+      expect(director.prompts.at(-1)).toContain("TIMELINE only");
       expect(director.prompts.at(-1)).toContain("6.7 minutes long");
       expect(replyParts(fixture, chatId)).toEqual([
         { text: "Done! The video is ready.", interim: true },
-        { text: "Built, but not rendered or checked.", interim: false },
+        { text: "Final report.", interim: false },
       ]);
-      expect(fixture.editing.renderRequests).toEqual([]);
     } finally {
       await fixture.cleanup();
     }

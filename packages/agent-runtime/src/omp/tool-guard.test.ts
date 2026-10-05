@@ -38,3 +38,47 @@ describe("the turn's refusal in the tool_call guard", () => {
     ).toContain("resolves outside this project");
   });
 });
+
+describe("the write notice of the tool_call guard", () => {
+  const write = { path: "index.html", content: "<div></div>" };
+
+  it("is given only after every check let the write through", async () => {
+    const noted: string[] = [];
+    const options = { noteFileWrite: (toolName: string) => void noted.push(toolName) };
+
+    const asking = projectToolCallGuard(projectDir, () => "Ask turn: no file changes", undefined, {
+      ...options,
+      agent: "editor",
+    });
+    expect(await asking({ toolName: "write", input: write })).toMatchObject({ block: true });
+
+    const vision = projectToolCallGuard(projectDir, () => null, undefined, {
+      ...options,
+      agent: "vision",
+    });
+    expect(await vision({ toolName: "write", input: write })).toMatchObject({ block: true });
+
+    const outside = projectToolCallGuard(projectDir, () => null, undefined, options);
+    expect(
+      await outside({ toolName: "write", input: { path: "../escape.txt", content: "x" } }),
+    ).toMatchObject({ block: true });
+
+    const leased = projectToolCallGuard(projectDir, () => null, undefined, {
+      ...options,
+      claimWriteFiles: () => "held by another run",
+    });
+    expect(await leased({ toolName: "write", input: write })).toMatchObject({
+      block: true,
+      reason: "held by another run",
+    });
+    expect(noted).toEqual([]);
+
+    const open = projectToolCallGuard(projectDir, () => null, undefined, {
+      ...options,
+      claimWriteFiles: () => null,
+    });
+    expect(await open({ toolName: "write", input: write })).toBeUndefined();
+    expect(await open({ toolName: "read", input: { path: "index.html" } })).toBeUndefined();
+    expect(noted).toEqual(["write"]);
+  });
+});

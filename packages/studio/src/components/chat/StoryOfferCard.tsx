@@ -8,7 +8,7 @@ import { useTranslation, type TranslationKey } from "../../i18n";
 import { hasProjectMedia } from "../../media/mediaLibrary";
 import { Button, cn } from "../ui";
 import { BuildStoryButton } from "./BuildStoryButton";
-import { chatMeasureWide, noteBox } from "./chatStyles";
+import { chatLink, chatMeasureWide, noteBox } from "./chatStyles";
 import { formatDuration } from "./relativeTime";
 
 interface FailedAnswer {
@@ -34,6 +34,10 @@ export function StoryOfferCard({ turnId, offer }: { turnId: string; offer: Story
   const openStoryWorkspace = useAgentStore((state) => state.openStoryWorkspace);
   const turnRunning = useAgentStore(agentTurnRunning);
   const pending = useAgentStore((state) => state.pending);
+  const chatId = useAgentStore((state) => state.chatId);
+  const activeTurn = useAgentStore((state) => state.activeTurn);
+  const chats = useAgentStore((state) => state.chats);
+  const openChat = useAgentStore((state) => state.openChat);
   // Without the project's file tree (no editor around the chat) nothing says the footage is missing.
   const files = useFileManagerContextOptional();
   const titleId = useId();
@@ -45,6 +49,16 @@ export function StoryOfferCard({ turnId, offer }: { turnId: string; offer: Story
   const current = offer.state === "pending" && answered?.id === offer.id ? answered : offer;
   const open = current.state === "pending";
   const canAnswer = open && !turnRunning;
+  // Why the buttons are not there: a turn holds the project. Another chat's turn is named (and opened with a link),
+  // like the composer does; the offer's own turn simply has not finished yet.
+  const blockedBy = activeTurn && activeTurn.chatId !== chatId ? activeTurn : null;
+  const blockedTitle = blockedBy ? chats.find((chat) => chat.id === blockedBy.chatId)?.title : null;
+  let waitingKey: TranslationKey | null = null;
+  if (open && turnRunning) {
+    if (!blockedBy) waitingKey = "chat.storyOffer.waitingThisChat";
+    else
+      waitingKey = blockedTitle ? "chat.storyOffer.waitingNamed" : "chat.storyOffer.waitingOther";
+  }
 
   const answer = async (decision: StoryOfferDecision) => {
     if (busy) return;
@@ -101,6 +115,27 @@ export function StoryOfferCard({ turnId, offer }: { turnId: string; offer: Story
           </ol>
           {open && <p className="text-xs leading-[15px] text-fg-3">{t("chat.storyOffer.note")}</p>}
         </>
+      )}
+      {waitingKey && (
+        <p
+          data-testid="story-offer-waiting"
+          role="status"
+          className="text-xs leading-[15px] text-fg-3"
+        >
+          {t(waitingKey, { title: blockedTitle ?? "" })}
+          {blockedBy && (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={() => void openChat(blockedBy.chatId)}
+                className={cn(chatLink, "text-xs")}
+              >
+                {t("chat.composer.openBlocking")}
+              </button>
+            </>
+          )}
+        </p>
       )}
       {open && canAnswer && (
         <div className="grid gap-1.5">

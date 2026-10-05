@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { HostToolResult } from "../backend.js";
 import type { ScriptedSession } from "../testing/backend.js";
+import { isQaClosing } from "../qa/harness.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "../testing/runtimeFixture.js";
 
 function untilAborted(signal: AbortSignal): Promise<void> {
@@ -80,7 +81,8 @@ describe("story writes inside the turn", () => {
       const chat = await fixture.chats.create({}, []);
       const gate = Promise.withResolvers<void>();
       let build: Promise<HostToolResult> | null = null;
-      fixture.backend.promptScript = async (_input, session) => {
+      fixture.backend.promptScript = async (input, session) => {
+        if (isQaClosing(input)) return "completed";
         fixture.story.buildGate = gate.promise;
         build = session.callTool("build_story", {});
         await waitUntil(

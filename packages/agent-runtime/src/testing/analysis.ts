@@ -2,6 +2,7 @@ import type {
   AnalysisJob,
   AnalysisOverview,
   AnalyzeRequest,
+  ComputedStage,
   CutPlan,
   CutPlanRequest,
   CutPlanSummary,
@@ -201,6 +202,12 @@ export class FakeAnalysisHost implements AnalysisHost {
   joinsRunningJob = false;
   /** The next call of any route rejects with this error. */
   nextError: AnalysisToolError | null = null;
+  /** Progress values (0–100) the next running polls report, one each; 40 once they run out. */
+  progressScript: number[] = [];
+  /** The stage each running poll reports, in order (then `transcript`). */
+  stageScript: ComputedStage[] = [];
+  /** Set: every running poll reports a later `updatedAt` (a recognizer child that is alive and silent). */
+  heartbeats = false;
 
   readonly startRequests: AnalyzeRequest[] = [];
   readonly startSignals: AbortSignal[] = [];
@@ -222,6 +229,7 @@ export class FakeAnalysisHost implements AnalysisHost {
   private jobCount = 0;
   private pollsLeft = 0;
   private gateOpen = false;
+  private beat = 0;
   private readonly notes: VisionNote[] = [];
   private readonly inspected = new Set<number>();
 
@@ -234,16 +242,23 @@ export class FakeAnalysisHost implements AnalysisHost {
     }
   }
 
-  private job(id: string, source: string, status: AnalysisJob["status"]): AnalysisJob {
+  private job(
+    id: string,
+    source: string,
+    status: AnalysisJob["status"],
+    progress?: number,
+    stage?: ComputedStage,
+  ): AnalysisJob {
     return {
       id,
       source,
       status,
-      stage: status === "running" ? "transcript" : null,
-      progress: status === "running" ? 40 : 100,
+      stage: status === "running" ? (stage ?? "transcript") : null,
+      progress: status === "running" ? (progress ?? 40) : 100,
       results: status === "running" ? [] : structuredClone(this.jobResults),
       error: null,
       startedAt: 1,
+      updatedAt: status === "running" && this.heartbeats ? ++this.beat : 1,
       finishedAt: status === "running" ? null : 2,
     };
   }
@@ -271,10 +286,23 @@ export class FakeAnalysisHost implements AnalysisHost {
     this.guard(signal);
     const source = this.startRequests.at(-1)?.source ?? SAMPLE_SOURCE;
     if (this.cancelledJobs.includes(jobId)) return this.job(jobId, source, "cancelled");
-    if (!this.gateOpen) return this.job(jobId, source, "running");
+    if (!this.gateOpen)
+      return this.job(
+        jobId,
+        source,
+        "running",
+        this.progressScript.shift(),
+        this.stageScript.shift(),
+      );
     if (this.pollsLeft > 0) {
       this.pollsLeft -= 1;
-      return this.job(jobId, source, "running");
+      return this.job(
+        jobId,
+        source,
+        "running",
+        this.progressScript.shift(),
+        this.stageScript.shift(),
+      );
     }
     return this.job(jobId, source, "completed");
   }

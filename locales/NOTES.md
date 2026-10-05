@@ -917,7 +917,6 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `story.field.narrativeRole` — Narrative role of a chapter.
 - `story.field.sourceIn` — In-point of a source clip.
 - `story.field.sourceOut` — Out-point of a source clip.
-- `story.agent.researchOff` — Research is the name of a specialist agent (Исследователь); Agents menu is the chat's agent picker (chat.agents.title).
 - `story.workspace.label` — Accessible name of the Media / Story / Edit switch in the title bar.
 - `story.workspace.story` — Product mode name: stays Story.
 - `story.error.http` — {status} is an HTTP status code.
@@ -1333,3 +1332,20 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `chat.storyOffer.declinePrompt` — Sent as the user's own message in the chat when they decline the Story offer; the Director then carries out the request they made just before it.
 - `chat.storyOffer.noFootage` — Media is the Media workspace (Материалы).
 - `chat.story.build` — Button that compiles the story's chapters into the timeline (same as Build Story in the Story workspace).
+
+## agents-chat
+
+- `chat.usage.breakdown` — Tooltip under the token total: the input, output and cached-token counts, already formatted (12.4K).
+- `chat.usage.context` — How full the model's context window is: percent, tokens in use, window size.
+- `chat.plan.revisePrefix` — Pre-fills the message box when the user clicks Change on a plan; the trailing space is intentional. It is a request to the Director, so use the imperative.
+- `chat.permission.longRender` — <composition/> is the name of the composition file; {duration} is a formatted length such as 4 min 12 s.
+- `chat.permission.restrictedAsset.note` — A license the source calls restricted (all rights reserved, no reuse, unknown terms).
+
+## runtime-stages
+
+- `activity.analyzing_stage_transcript` — Chat row of a running media analysis: the file name, then the stage it is in (speech recognition).
+- `activity.analyzing_stage_speakers` — Chat row of a running media analysis: the stage that tells who speaks when.
+- `activity.analyzing_stage_silence` — Chat row of a running media analysis: the stage that finds pauses in the sound.
+- `activity.analyzing_stage_shots` — Chat row of a running media analysis: the stage that finds cuts between shots in the picture.
+- `activity.analyzing_stage_takes` — Chat row of a running media analysis: the stage that finds retakes, false starts and fillers.
+- `activity.analyzing_stage_segments` — Chat row of a running media analysis: the stage that drafts the content segments.

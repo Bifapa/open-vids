@@ -10,11 +10,13 @@ import {
   type ModelSelection,
   type SpecialistConfig,
   type SpecialistId,
+  type StoryAction,
   type TestJevResponse,
 } from "@hyperframes/agent-protocol";
 import type { AgentBackend } from "../backend.js";
 import { autonomyTeamLines } from "../autonomy.js";
 import { errorMessage } from "../errors.js";
+import { disabledSpecialists } from "./inherit.js";
 import type { JevRuntime, TurnAgentSetup } from "./orchestrator.js";
 import { jevInstructions } from "./roles.js";
 import { researchTeamLine, websiteAccessLine } from "../research/prompt.js";
@@ -24,12 +26,14 @@ const JEV_TEST_TIMEOUT_MS = 60_000;
 
 /**
  * Jev as it can actually run, or null. In API-key mode the stored key is required; with provider sign-in the model
- * must be one the runtime already has credentials for.
+ * must be one the runtime already has credentials for — unless the model list could not be loaded, which says nothing
+ * about credentials: Jev is then offered and a missing sign-in shows up as its own error.
  */
 export function resolveJev(
   settings: AgentSettings,
   apiKey: string | null,
   catalog: AgentModelCatalog,
+  catalogKnown = true,
 ): JevRuntime | null {
   const { jev } = settings;
   if (!jev.enabled || !jev.provider || !jev.modelId) return null;
@@ -39,9 +43,11 @@ export function resolveJev(
       ? { model, thinking: jev.thinking, credentials: { provider: jev.provider, apiKey } }
       : null;
   }
-  const usable = catalog.models.some(
-    (candidate) => candidate.provider === model.provider && candidate.modelId === model.modelId,
-  );
+  const usable =
+    !catalogKnown ||
+    catalog.models.some(
+      (candidate) => candidate.provider === model.provider && candidate.modelId === model.modelId,
+    );
   return usable ? { model, thinking: jev.thinking } : null;
 }
 
@@ -50,6 +56,8 @@ export function resolveTurnSetup(input: {
   settings: AgentSettings;
   jevApiKey: string | null;
   catalog: AgentModelCatalog;
+  /** False when the model list could not be loaded (the catalog is then empty, not "without credentials"). */
+  catalogKnown: boolean;
   editorContext?: EditorContext;
   /** The user's UI language (BCP-47); specialists are told to answer in it. */
   userLanguage?: string;
@@ -68,8 +76,9 @@ export function resolveTurnSetup(input: {
   return {
     enabled: SPECIALIST_IDS.filter((id) => chat.enabledAgents.includes(id)),
     specialists,
-    jev: resolveJev(settings, input.jevApiKey, catalog),
+    jev: resolveJev(settings, input.jevApiKey, catalog, input.catalogKnown),
     catalog,
+    catalogKnown: input.catalogKnown,
     ...(input.editorContext && { editorContext: input.editorContext }),
     ...(input.userLanguage && { userLanguage: input.userLanguage }),
     execution: { preset: quality.preset, budget: resolveExecutionBudget(quality) },
@@ -85,11 +94,21 @@ export function resolveTurnSetup(input: {
 const describeModel = (model: ModelSelection | null) =>
   model ? `${model.provider}/${model.modelId}` : "default model";
 
-/** The team roster the Director sees at the top of each turn. */
-export function renderTeam(setup: TurnAgentSetup): string {
+/**
+ * The team roster the Director sees at the top of each turn; `storyAction` is the turn's Story workspace action, if any.
+ * `inheritedTools` names the tools the turn gives the Director for the work of a specialist that is off.
+ */
+export function renderTeam(
+  setup: TurnAgentSetup,
+  storyAction: StoryAction | null,
+  inheritedTools: (specialist: SpecialistId) => readonly string[],
+): string {
   const lines: string[] = [];
+  const off = disabledSpecialists(setup.enabled);
   if (setup.enabled.length === 0) {
-    lines.push("No specialists are enabled in this chat: do the work yourself.");
+    lines.push(
+      "No specialists are enabled in this chat: you do all the work yourself, with every specialist's tools.",
+    );
   } else {
     lines.push("Specialists enabled in this chat (delegate only to these):");
     for (const id of setup.enabled) {
@@ -103,13 +122,24 @@ export function renderTeam(setup: TurnAgentSetup): string {
         }`,
       );
     }
-    const disabled = SPECIALIST_IDS.filter((id) => !setup.enabled.includes(id));
-    if (disabled.length > 0)
+    if (off.length > 0) {
+      const named = (id: SpecialistId) => {
+        const tools = inheritedTools(id);
+        return tools.length > 0
+          ? `${AGENT_DISPLAY_NAMES[id]} (${tools.join(", ")})`
+          : AGENT_DISPLAY_NAMES[id];
+      };
       lines.push(
-        `Disabled (never delegate): ${disabled.map((id) => AGENT_DISPLAY_NAMES[id]).join(", ")}.`,
+        `Off in this chat (never delegate to them; their work is yours, with their tools): ${off.map(named).join("; ")}.`,
       );
+    }
   }
-  lines.push(researchTeamLine(setup.enabled.includes("research"), setup.research));
+  if (!setup.catalogKnown) {
+    lines.push(
+      "The model list could not be loaded this turn: routing a task to another model cannot be verified, so keep the configured models.",
+    );
+  }
+  lines.push(researchTeamLine(setup.enabled.includes("research"), setup.research, storyAction));
   const website = websiteAccessLine(setup.research);
   if (website) lines.push(website);
   lines.push(
