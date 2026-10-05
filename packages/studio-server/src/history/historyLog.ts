@@ -106,7 +106,7 @@ function endAtRecordBoundary(fd: number): void {
   const bytes = Buffer.alloc(size);
   readSync(fd, bytes, 0, size, 0);
   const start = bytes.lastIndexOf(0x0a) + 1;
-  if (parseRecord(bytes.subarray(start).toString("utf-8"))) writeSync(fd, "\n");
+  if (parseRecord(bytes.subarray(start).toString("utf-8"))) writeSync(fd, "\n", size);
   else ftruncateSync(fd, start);
 }
 
@@ -114,8 +114,10 @@ function endAtRecordBoundary(fd: number): void {
 export function saveRecord(file: string, log: HistoryLog, record: LogRecord): void {
   let fd: number;
   try {
-    // No O_CREAT: an append never creates a log that would lack its baseline.
-    fd = openSync(file, constants.O_RDWR | constants.O_APPEND);
+    // No O_CREAT: an append never creates a log that would lack its baseline. No O_APPEND either: on Windows an
+    // append-only handle cannot be truncated, and the owner lock makes this process the only writer, so every write
+    // goes to an explicit offset at the end instead.
+    fd = openSync(file, constants.O_RDWR);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     return writeLog(file, log);
@@ -126,7 +128,9 @@ export function saveRecord(file: string, log: HistoryLog, record: LogRecord): vo
     const line = Buffer.from(`${JSON.stringify(record)}\n`);
     try {
       // A short write (a full disk) must not leave a fragment: it is cut off, and the failure reaches the caller.
-      for (let done = 0; done < line.length; ) done += writeSync(fd, line, done);
+      for (let done = 0; done < line.length; ) {
+        done += writeSync(fd, line, done, line.length - done, whole + done);
+      }
     } catch (error) {
       try {
         ftruncateSync(fd, whole);

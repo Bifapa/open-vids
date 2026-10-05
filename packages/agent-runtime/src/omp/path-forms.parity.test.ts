@@ -120,8 +120,9 @@ describe("path readings against OMP's real resolver (run under Bun)", () => {
     expect(landed(`@${outside}`)?.read).toBe(outside);
     expect(landed(`[${outside}]`)?.write).toBe(outside);
     expect(landed(`:${relativeOutside}`)?.read).toBe(path.resolve(cwd, relativeOutside));
-    expect(landed("~/x")?.read).toBe(path.join(homedir(), "x"));
-    expect(landed("~user/x")?.read).toBe(path.join(homedir(), "user", "x"));
+    // OMP may join the home dir with a forward slash on Windows; compare resolved paths.
+    expect(path.resolve(landed("~/x")?.read ?? "")).toBe(path.join(homedir(), "x"));
+    expect(path.resolve(landed("~user/x")?.read ?? "")).toBe(path.join(homedir(), "user", "x"));
   });
 
   it("runs agent sessions with URL reads disabled", () => {

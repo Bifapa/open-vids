@@ -148,7 +148,8 @@ function listFilesSorted(dir: string): string[] {
   const out: string[] = [];
   const walk = (d: string): void => {
     for (const name of readdirSync(d)) {
-      if (name === ".DS_Store") continue;
+      // Local litter (Finder metadata, Python bytecode caches from running a skill's scripts) is not skill content.
+      if (name === ".DS_Store" || name === "__pycache__") continue;
       const p = join(d, name);
       if (statSync(p).isDirectory()) walk(p);
       else out.push(p);

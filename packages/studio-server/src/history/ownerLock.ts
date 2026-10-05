@@ -27,28 +27,60 @@ export async function processStartKey(pid: number): Promise<string | null> {
       const boot = readFileSync("/proc/sys/kernel/random/boot_id", "utf-8").trim();
       return fields[19] ? `${boot}:${fields[19]}` : null;
     }
+    if (process.platform === "win32") {
+      const { stdout } = await run(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `[DateTimeOffset]::new((Get-Process -Id ${pid} -ErrorAction Stop).StartTime).ToUnixTimeMilliseconds()`,
+        ],
+        { encoding: "utf-8", timeout: 10_000, windowsHide: true },
+      );
+      const ms = Number(stdout.trim());
+      return Number.isFinite(ms) && ms > 0 ? `${WINDOWS_START_PREFIX}${ms}` : null;
+    }
     // TZ is pinned so a changed time zone never changes what the same process reports.
-    const { stdout } =
-      process.platform === "win32"
-        ? await run(
-            "powershell.exe",
-            [
-              "-NoProfile",
-              "-NonInteractive",
-              "-Command",
-              `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
-            ],
-            { encoding: "utf-8", timeout: 10_000, windowsHide: true },
-          )
-        : await run("ps", ["-o", "lstart=", "-p", String(pid)], {
-            encoding: "utf-8",
-            timeout: 5_000,
-            env: { ...process.env, TZ: "UTC", LC_ALL: "C" },
-          });
+    const { stdout } = await run("ps", ["-o", "lstart=", "-p", String(pid)], {
+      encoding: "utf-8",
+      timeout: 5_000,
+      env: { ...process.env, TZ: "UTC", LC_ALL: "C" },
+    });
     return stdout.trim() || null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Windows starts are epoch milliseconds. This process's own is computed in place rather than by starting PowerShell
+ * (which takes seconds on a busy machine, on every project open); it lands within a few hundred ms of what the OS
+ * reports, so Windows starts compare with a tolerance. A pid reused that soon after its owner started is not a case:
+ * the owner was alive to write the lock.
+ */
+const WINDOWS_START_PREFIX = "win-ms:";
+const WINDOWS_START_TOLERANCE_MS = 2_000;
+
+function ownStartKey(): Promise<string | null> {
+  if (process.platform !== "win32") return processStartKey(process.pid);
+  return Promise.resolve(
+    `${WINDOWS_START_PREFIX}${Math.round(Date.now() - process.uptime() * 1000)}`,
+  );
+}
+
+function windowsStartMs(key: string): number | null {
+  if (!key.startsWith(WINDOWS_START_PREFIX)) return null;
+  const ms = Number(key.slice(WINDOWS_START_PREFIX.length));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** Whether two start keys name the same process start. */
+export function sameStart(a: string, b: string): boolean {
+  const msA = windowsStartMs(a);
+  const msB = windowsStartMs(b);
+  if (msA === null || msB === null) return a === b;
+  return Math.abs(msA - msB) <= WINDOWS_START_TOLERANCE_MS;
 }
 
 /** This process's own start, read once: its owner lock names it, so a later process can tell a reused pid. */
@@ -106,7 +138,7 @@ async function holds(owner: Owner, starts: StartKeys): Promise<boolean> {
   if (!alive(owner.pid)) return false;
   if (owner.start === null) return true;
   const now = await startOf(starts, owner.pid);
-  return now === null || now === owner.start;
+  return now === null || sameStart(now, owner.start);
 }
 
 /** Takes `file` if nobody holds it: written aside and linked in, so a reader never sees it without its pid. */
@@ -167,7 +199,7 @@ export async function takeHistoryOwnership(home: string, waitMs: number): Promis
   const deadline = Date.now() + waitMs;
   const starts: StartKeys = new Map();
   mkdirSync(home, { recursive: true });
-  ownStart ??= processStartKey(process.pid);
+  ownStart ??= ownStartKey();
   const start = await ownStart;
   for (;;) {
     if (claim(file, start)) {

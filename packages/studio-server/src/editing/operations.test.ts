@@ -1744,7 +1744,13 @@ describe("asset ranges", () => {
 });
 
 describe("add_clip — file names that are not URL-safe", () => {
-  const NAMES = ["a b#1.mp4", "what?.mp4", "100%.mp4", 'say "hi" (1).mp4'];
+  // `?` and `"` cannot be in a Windows file name; the other characters still exercise encoding there.
+  const NAMES = [
+    "a b#1.mp4",
+    "100%.mp4",
+    "it's (1).mp4",
+    ...(process.platform === "win32" ? [] : ["what?.mp4", 'say "hi" (1).mp4']),
+  ];
 
   afterEach(() => {
     for (const name of NAMES) delete FAKE_MEDIA[name];
@@ -1782,20 +1788,23 @@ describe("add_clip — file names that are not URL-safe", () => {
     }
   });
 
-  it("does not let a file name add attributes to the clip", async () => {
-    const name = 'x" onerror="alert(1)" y=".mp4';
-    FAKE_MEDIA[name] = { kind: "video", durationSeconds: 5, hasAudio: false };
-    try {
-      withProject();
-      project?.write(`assets/${name}`, "bytes");
-      const { results, timeline } = await apply([
-        { op: "add_clip", asset: `assets/${name}`, start: 0, track: 11 },
-      ]);
-      const html = project?.read("index.html") ?? "";
-      expect(html).not.toContain("onerror=");
-      expect(clipOf(timeline.clips, results[0]?.clipId ?? "").src).toBe(`assets/${name}`);
-    } finally {
-      delete FAKE_MEDIA[name];
-    }
-  });
+  it.skipIf(process.platform === "win32")(
+    "does not let a file name add attributes to the clip",
+    async () => {
+      const name = 'x" onerror="alert(1)" y=".mp4';
+      FAKE_MEDIA[name] = { kind: "video", durationSeconds: 5, hasAudio: false };
+      try {
+        withProject();
+        project?.write(`assets/${name}`, "bytes");
+        const { results, timeline } = await apply([
+          { op: "add_clip", asset: `assets/${name}`, start: 0, track: 11 },
+        ]);
+        const html = project?.read("index.html") ?? "";
+        expect(html).not.toContain("onerror=");
+        expect(clipOf(timeline.clips, results[0]?.clipId ?? "").src).toBe(`assets/${name}`);
+      } finally {
+        delete FAKE_MEDIA[name];
+      }
+    },
+  );
 });

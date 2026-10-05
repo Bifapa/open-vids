@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HistoryBusyError, processStartKey, takeHistoryOwnership } from "./ownerLock";
+import { HistoryBusyError, processStartKey, sameStart, takeHistoryOwnership } from "./ownerLock";
 
 const spawned = vi.hoisted((): string[] => []);
 
@@ -69,5 +69,17 @@ describe("takeHistoryOwnership", () => {
     writeFileSync(join(home, "owner.pid"), "");
     const release = await takeHistoryOwnership(home, 0);
     release();
+  });
+});
+
+describe("sameStart", () => {
+  it("matches Windows starts within the tolerance and nothing further apart", () => {
+    expect(sameStart("win-ms:1000000", "win-ms:1001500")).toBe(true);
+    expect(sameStart("win-ms:1000000", "win-ms:1005000")).toBe(false);
+  });
+
+  it("compares other platforms' starts exactly", () => {
+    expect(sameStart("Mon Oct  5 10:00:00 2026", "Mon Oct  5 10:00:00 2026")).toBe(true);
+    expect(sameStart("Mon Oct  5 10:00:00 2026", "Mon Oct  5 10:00:01 2026")).toBe(false);
   });
 });
