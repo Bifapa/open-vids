@@ -74,8 +74,8 @@ describe("takeHistoryOwnership", () => {
 
 describe("sameStart", () => {
   it("matches Windows starts within the tolerance and nothing further apart", () => {
-    expect(sameStart("win-ms:1000000", "win-ms:1001500")).toBe(true);
-    expect(sameStart("win-ms:1000000", "win-ms:1005000")).toBe(false);
+    expect(sameStart("win-ms:1000000", "win-ms:1008000")).toBe(true);
+    expect(sameStart("win-ms:1000000", "win-ms:1020000")).toBe(false);
   });
 
   it("compares other platforms' starts exactly", () => {

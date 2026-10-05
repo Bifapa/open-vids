@@ -55,12 +55,12 @@ export async function processStartKey(pid: number): Promise<string | null> {
 
 /**
  * Windows starts are epoch milliseconds. This process's own is computed in place rather than by starting PowerShell
- * (which takes seconds on a busy machine, on every project open); it lands within a few hundred ms of what the OS
- * reports, so Windows starts compare with a tolerance. A pid reused that soon after its owner started is not a case:
- * the owner was alive to write the lock.
+ * (which takes seconds on a busy machine, on every project open); it lands within a few seconds of what the OS
+ * reports (runtime start-up before the clock starts), so Windows starts compare with a tolerance. A pid reused that
+ * soon after its owner started is not a case: the owner lived long enough to open a history and write the lock.
  */
 const WINDOWS_START_PREFIX = "win-ms:";
-const WINDOWS_START_TOLERANCE_MS = 2_000;
+const WINDOWS_START_TOLERANCE_MS = 10_000;
 
 function ownStartKey(): Promise<string | null> {
   if (process.platform !== "win32") return processStartKey(process.pid);
@@ -137,7 +137,11 @@ function ownerOf(file: string): Owner | null {
 async function holds(owner: Owner, starts: StartKeys): Promise<boolean> {
   if (!alive(owner.pid)) return false;
   if (owner.start === null) return true;
-  const now = await startOf(starts, owner.pid);
+  // This process's own lock (another history handle in it): its start is known without asking the OS.
+  const now =
+    owner.pid === process.pid
+      ? await (ownStart ??= ownStartKey())
+      : await startOf(starts, owner.pid);
   return now === null || sameStart(now, owner.start);
 }
 
