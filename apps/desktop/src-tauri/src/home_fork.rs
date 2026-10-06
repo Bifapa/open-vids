@@ -286,7 +286,8 @@ mod tests {
         let project = &finished["project"];
         assert_eq!(project["name"], "Talk fork");
         assert_eq!(project["forked_from"], "Talk");
-        assert_eq!(project["dir"], base.join("Talk fork").canonicalize().unwrap().to_string_lossy().as_ref());
+        let fork_dir = crate::platform::canonical_stable(&base.join("Talk fork"));
+        assert_eq!(project["dir"], fork_dir.to_string_lossy().as_ref());
         // Listed first in Recent, so the page can open it right away.
         let listed = state.lock().unwrap().recents.entries()[0].clone();
         assert_eq!(listed.key(), project["id"].as_str().unwrap());

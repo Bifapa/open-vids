@@ -240,7 +240,9 @@ pub fn start_key(pid: u32) -> Option<String> {
                 (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
             let ok = GetProcessTimes(process, &mut created, &mut exited, &mut kernel, &mut user);
             CloseHandle(process);
-            if ok == 0 {
+            // A process that has exited but whose object is still held open (a parent's handle) has an exit time:
+            // it no longer runs, so it has no start to compare.
+            if ok == 0 || exited.dwHighDateTime != 0 || exited.dwLowDateTime != 0 {
                 return None;
             }
             // 100 ns ticks since 1601-01-01 → epoch milliseconds.

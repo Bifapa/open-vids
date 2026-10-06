@@ -417,8 +417,8 @@ mod tests {
         let found = json_of(&body);
         assert_eq!(found["key"], key.as_str());
         assert_eq!(found["name"], "alpha");
-        // Recents keep the canonical folder (`/var` is `/private/var` on macOS).
-        let canonical = std::fs::canonicalize(&alpha).unwrap();
+        // Recents keep the canonical folder (`/var` is `/private/var` on macOS; no `\\?\` prefix on Windows).
+        let canonical = crate::platform::canonical_stable(&alpha);
         assert_eq!(found["dir"], canonical.to_string_lossy().as_ref());
 
         std::fs::remove_dir_all(&alpha).unwrap();
@@ -454,7 +454,7 @@ mod tests {
             assert!(is_key(p["key"].as_str().unwrap()));
         }
         // The folder comes with the list (server to server), so the sidecar needs no request per project.
-        let canonical = std::fs::canonicalize(&fresh).unwrap();
+        let canonical = crate::platform::canonical_stable(&fresh);
         assert_eq!(projects[0]["dir"], canonical.to_string_lossy().as_ref());
     }
 
