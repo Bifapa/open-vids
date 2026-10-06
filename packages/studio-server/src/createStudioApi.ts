@@ -20,6 +20,7 @@ import { registerCompositionFrameRoutes } from "./routes/editingFrames.js";
 import { registerAnalysisRoutes } from "./routes/analysis.js";
 import { registerStoryRoutes } from "./routes/story.js";
 import { registerResearchRoutes } from "./routes/research.js";
+import { registerCrossProjectRoutes } from "./routes/crossProject.js";
 import { registerQaRoutes } from "./routes/qa.js";
 import { registerAppPreferencesRoutes } from "./routes/appPreferences.js";
 import { registerActivityRoutes } from "./routes/activity.js";
@@ -61,6 +62,7 @@ export function createStudioApi(
   registerEditingRoutes(api, adapter, { analysis });
   const story = registerStoryRoutes(api, adapter, analysis);
   registerResearchRoutes(api, adapter, story);
+  registerCrossProjectRoutes(api, adapter);
   const qa = registerQaRoutes(api, adapter, analysis);
   options.shutdownSignal?.addEventListener(
     "abort",

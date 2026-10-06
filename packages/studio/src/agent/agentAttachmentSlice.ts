@@ -16,6 +16,11 @@ export interface AgentAttachmentSlice {
    * (said in a notice). Returns the ones that were added.
    */
   addAttachments(draftKey: string, items: readonly ComposerAttachment[]): ComposerAttachment[];
+  /**
+   * Attaches another project (a `#` mention); false when the draft is full. A project the draft already carries
+   * keeps its one chip and takes the new name, parts and token: a second chip would send two references to it.
+   */
+  attachProject(draftKey: string, attachment: ComposerAttachment): boolean;
   /** A finished or failed upload, or any other change to one chip. */
   patchAttachment(draftKey: string, id: string, patch: Partial<ComposerAttachment>): void;
   removeAttachment(draftKey: string, id: string): void;
@@ -54,6 +59,21 @@ export function createAgentAttachmentSlice({
             : state.notice,
       }));
       return added;
+    },
+
+    attachProject(draftKey, attachment) {
+      const { project } = attachment;
+      if (!project) return false;
+      const existing = (get().attachments[draftKey] ?? []).find(
+        (candidate) => candidate.project?.projectKey === project.projectKey,
+      );
+      if (!existing) return get().addAttachments(draftKey, [attachment]).length > 0;
+      get().patchAttachment(draftKey, existing.id, {
+        name: attachment.name,
+        project,
+        ...(attachment.mentionToken !== undefined && { mentionToken: attachment.mentionToken }),
+      });
+      return true;
     },
 
     patchAttachment(draftKey, id, patch) {

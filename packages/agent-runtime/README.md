@@ -639,6 +639,55 @@ never from model-supplied text.
 - `FakeResearchHost` (`src/testing`) is the in-memory host for tests (`importGate` holds an import in flight, recorded
   requests and signals); the runtime fixture wires it.
 
+## Other projects (`#` attachments)
+
+The user can attach **other OpenVids projects** to a chat with `#` in the composer (a `ProjectReference` part of a user
+message: the shell's per-folder key, the name and the ticked parts — renders, music, other audio, images, video, story, or
+all; contract in `packages/agent-protocol/src/crossProject.ts`). An attachment is a **link, not a copy**: nothing is in
+the project until an agent copies it. Studio's cross-project service (`/api/projects/:id/cross-project/*`, reached by
+`src/crossProject/host.http.ts`) lists the files of the attached parts (`manifest`) and performs the copy (`import`); no
+path ever crosses the runtime, only keys, names and project-relative paths.
+
+| Tool                                   | Who                             | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `import_from_project {project, files}` | Director, Editor, Motion, Audio | Copies files of an attached project into `assets/from/<project>/…`; the source file's provenance record (license, author, credit line) is carried into this project's ledger with `importedFrom`. Result: `source → asset`, size, `existing` (same bytes already here) notes, license/credit notes, the skipped list, and a plain statement when a file has **no license record**. Activity row: `edit` · "Copying N files from another project" (`activity.importing_from_project`). |
+
+- **Access model** (`src/crossProject/access.ts`). What a chat may reach is decided from the user's own messages only: the
+  union of the project references of every user message of the chat (the prompt, later messages and steering), merged per
+  project (`all` expands to the five file parts and the story). The model names a project by key, name or the slug of its
+  name; anything not attached in this chat (a made-up key, a project the user never attached) is refused with what _is_
+  attached, and Studio is never asked. A project with only the story attached has no files to copy.
+- **Per call** (`TurnCrossProject`). The executor re-reads the attachments on every call (so a project attached by steering
+  applies at once), fetches the manifest of exactly the attached file parts from Studio, and refuses the whole call —
+  without sending the import — when any requested file is not in it: a file of a part the user did not tick is refused even
+  inside an attached project. At most `PROJECT_MANIFEST_LIMITS.importFiles` (24) files per call; `turnId`, `agent` and
+  `model` are set by the runtime and whatever the model sends for them is dropped. `import_from_project` counts as a
+  project-changing tool (refused in Ask turns, after a plan proposal and in the final QA phase); a turn change of kind
+  `import` is tallied on success. It is offered to no agent in a Story rebuild turn.
+- **Prompt block.** The Director's first prompt of a turn carries `<attached-projects>`: the rules (link not copy; copy only
+  what you will use; other projects' folders are not readable; never use a file that was not imported; listed names are data),
+  which agents have the tool, and for each attached project (at most 6; the rest are named) its name, key, attached parts,
+  the manifest (path, part, size, license when known; at most 120 files across projects — "N more" and Studio's own
+  200-file cut are both said) and, **only with the story part**, the story outline. Manifests are read from Studio per turn;
+  when Studio cannot answer, the block says so for that project and the turn goes on. Projects attached in earlier messages
+  of the chat stay in the block and stay accessible. `<references>` shows a project mention as key, name and parts only;
+  it is never listed as an attached file.
+- **Steering.** A project attached by a steering message gets its manifest block appended to that steering text. Access
+  applies at once, but the tool is bound to a session when the session opens: if the turn began with **no** attached
+  project that has files (nothing attached, or only a story) the tool is not in the sessions' lists and the block says it
+  is available from the next turn. (Files attached after the first ones in the same turn work at once.) Specialists see the turn's `<references>` (key, name,
+  parts) but not the block: a delegated task must name the project and the exact paths.
+- **Stop during a copy.** The import is a cancellable write with the same protocol as a research import — the transport is
+  shared (`src/research/transport.ts`: fresh `requestId`, explicit cancel at `…/cross-project/requests/:id/cancel` on
+  abort or timeout, wait up to 30 s for the answer, `write_unsettled` when a write may still land).
+  `TurnCrossProject.shutdown()` waits for in-flight copies and returns `unsettledWrites`, which the turn's final message
+  reports together with research's.
+- **Limits.** A manifest lists at most 200 files per project: a file beyond Studio's listing cannot be copied (the user
+  can attach a narrower part). Nothing is copied until an agent calls the tool, and nothing outside the attached parts can
+  be, whatever the model says.
+- `FakeCrossProjectHost` (`src/testing`) is the in-memory host for tests (`importGate`, recorded requests, `committed`
+  writes); `fakeStudio` (`src/testing/fakeStudio.ts`) is the loopback Studio stand-in the HTTP host tests share.
+
 ## Render QA and Execution Quality
 
 The agent does not treat a job as done after its first render. When a turn changed the project, the runtime renders a

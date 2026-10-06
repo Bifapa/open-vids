@@ -17,6 +17,7 @@ import type { TurnAnalysis } from "../analysis/executor.js";
 import type { CheckpointHandle, CheckpointHost } from "../checkpointHost.js";
 import type { ChatService } from "../chats.js";
 import type { TurnEditing } from "../editing/executor.js";
+import type { TurnCrossProject } from "../crossProject/executor.js";
 import type { TurnFrames } from "../editing/frames.executor.js";
 import { RuntimeError } from "../errors.js";
 import type { PermissionBroker } from "../permissions.js";
@@ -62,6 +63,13 @@ export interface ActiveRun {
   story: TurnStory | null;
   /** The turn's research tools; closed (in-flight imports and resolutions awaited) before the checkpoint ends. */
   research: TurnResearch | null;
+  /**
+   * The turn's cross-project tool (copying files of the projects the user attached with `#`); closed and awaited
+   * before the checkpoint ends. Null when the runtime has no cross-project host.
+   */
+  crossProject: TurnCrossProject | null;
+  /** `import_from_project` is in the sessions' tool lists this turn (some project was attached when it began). */
+  crossProjectOffered: boolean;
   /**
    * The turn's permission requests: a website tool whose setting is off asks the user from the chat and waits here.
    * Expired at the turn's end so no waiting call hangs; the turn's grant is revoked then too.

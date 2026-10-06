@@ -23,6 +23,7 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 
 use super::coded_error::CodedError;
+use super::home_internal::HomeLink;
 
 /// How long to wait for the CLI to report the port it bound.
 const PORT_REPORT_TIMEOUT: Duration = Duration::from_secs(45);
@@ -262,10 +263,28 @@ pub fn start(
     bun: &Path,
     cli: &Path,
     project_dir: &Path,
+    home: &HomeLink,
     log: Arc<dyn Fn(&str) + Send + Sync>,
 ) -> Result<StudioServer, SidecarError> {
     let port = reserve_loopback_port().map_err(SidecarError::Spawn)?;
+    let mut command = studio_command(launcher, bun, cli, project_dir, port, home);
 
+    // Own supervision scope, so terminate() stops the CLI and every browser
+    // it spawned in one shot (process group on unix, Job Object on Windows).
+    crate::proc::configure(&mut command);
+
+    launch(command, log, PORT_REPORT_TIMEOUT, READY_TIMEOUT)
+}
+
+/// The Studio server command for `project_dir` on `port`, env included.
+fn studio_command(
+    launcher: &Path,
+    bun: &Path,
+    cli: &Path,
+    project_dir: &Path,
+    port: u16,
+    home: &HomeLink,
+) -> Command {
     let mut command = Command::new(bun);
     command
         // The runtime is the shipped tree; a module that fails to resolve must
@@ -294,15 +313,14 @@ pub fn start(
     // Project folders are untrusted input: the sidecar serves its bundled
     // Studio and never a `@hyperframes/studio` found next to a project.
     command.env("OPENVIDS_EMBEDDED_STUDIO", "1");
+    // How the sidecar reaches the user's other projects (`home_internal`).
+    for (key, value) in home.env() {
+        command.env(key, value);
+    }
     for (key, value) in super::ffmpeg_install::managed_env() {
         command.env(key, value);
     }
-
-    // Own supervision scope, so terminate() stops the CLI and every browser
-    // it spawned in one shot (process group on unix, Job Object on Windows).
-    crate::proc::configure(&mut command);
-
-    launch(command, log, PORT_REPORT_TIMEOUT, READY_TIMEOUT)
+    command
 }
 
 /// Spawn `command` (already configured for supervision) and wait until it
@@ -410,6 +428,7 @@ fn launch(
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use crate::home_internal::InternalSecret;
     use std::path::PathBuf;
 
     /// A stand-in runtime: records its pid, runs `body`, then stays alive.
@@ -424,6 +443,28 @@ mod tests {
             .stderr(Stdio::piped());
         crate::proc::configure(&mut command);
         (command, pid_file)
+    }
+
+    #[test]
+    fn the_studio_command_carries_the_home_url_and_secret() {
+        let link = HomeLink::new("http://127.0.0.1:4321", InternalSecret::generate());
+        let command = studio_command(
+            Path::new("serve.mjs"),
+            Path::new("bun"),
+            Path::new("cli.js"),
+            Path::new("/p"),
+            5000,
+            &link,
+        );
+        let env = |name: &str| {
+            command
+                .get_envs()
+                .find(|(key, _)| *key == name)
+                .and_then(|(_, value)| value.map(|v| v.to_string_lossy().into_owned()))
+        };
+        assert_eq!(env("OPENVIDS_HOME_URL").as_deref(), Some("http://127.0.0.1:4321"));
+        assert_eq!(env("OPENVIDS_HOME_SECRET").as_deref(), Some(link.secret().value()));
+        assert_eq!(env("OPENVIDS_EMBEDDED_STUDIO").as_deref(), Some("1"));
     }
 
     fn quiet() -> Arc<dyn Fn(&str) + Send + Sync> {

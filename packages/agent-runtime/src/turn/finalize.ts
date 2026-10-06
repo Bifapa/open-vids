@@ -76,6 +76,7 @@ export async function finalizeTurn(
   // Analysis jobs are cancelled and a rough cut already sent to the editing service is awaited for the same reason;
   // a story edit or build already sent to the story service is awaited too (it is atomic there).
   const research = await run.research?.shutdown().catch(() => null);
+  const crossProject = await run.crossProject?.shutdown().catch(() => null);
   await run.story?.shutdown().catch(() => undefined);
   await run.analysis?.shutdown().catch(() => undefined);
   await run.frames?.shutdown().catch(() => undefined);
@@ -113,14 +114,17 @@ export async function finalizeTurn(
     };
   }
   // A cancelled import Studio never settled may still write after this checkpoint closed: the user must hear it.
-  const unsettled = research?.unsettledWrites ?? [];
+  const unsettled = [
+    ...(research?.unsettledWrites ?? []),
+    ...(crossProject?.unsettledWrites ?? []),
+  ];
   if (unsettled.length > 0) {
     await bestEffort(() =>
       ctx.chats.emit(run.chatId, {
         type: "assistant.text.delta",
         messageId: run.assistantMessage.id,
         partId: ctx.ids(),
-        delta: `\n\nNote: Studio did not confirm whether ${unsettled.length === 1 ? "an asset import or website save" : `${unsettled.length} asset imports or website saves`} stopped with this turn wrote anything (${unsettled.join(", ")}). A file that still appears in assets/research or assets/web is not part of this turn's checkpoint; check the Sources panel.`,
+        delta: `\n\nNote: Studio did not confirm whether ${unsettled.length === 1 ? "an asset import, website save or project copy" : `${unsettled.length} asset imports, website saves or project copies`} stopped with this turn wrote anything (${unsettled.join(", ")}). A file that still appears in assets/research, assets/web or assets/from is not part of this turn's checkpoint; check the Sources panel.`,
       }),
     );
   }

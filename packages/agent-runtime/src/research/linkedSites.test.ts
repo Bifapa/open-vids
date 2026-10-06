@@ -83,6 +83,16 @@ describe("linkedSites", () => {
     expect(linkedSites(["mail me at team@openvids.ai"])).toEqual([]);
   });
 
+  it("does not read a #project mention token as a website", () => {
+    expect(linkedSites(["use the music of #name.io and #www.brand.com"])).toEqual([]);
+    expect(linksIn("#name.io/pricing")).toEqual([]);
+    // A real site next to the token still counts, and the fragment of a link is not a site either.
+    expect(linkedSites(["#name.io and openvids.ai, also https://linear.app/a#b.io"])).toEqual([
+      "linear.app",
+      "openvids.ai",
+    ]);
+  });
+
   it("never counts an IP address or localhost as a linked site", () => {
     expect(linkedSites(["http://127.0.0.1:8080/x http://localhost:3000 http://10.0.0.5/"])).toEqual(
       [],

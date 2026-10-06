@@ -83,10 +83,14 @@ export function formatDuration(seconds: number): string {
   return unit(s, "second");
 }
 
-/** `a, b and c` in the language's own list style. */
+/**
+ * `a, b and c` in the language's own list style. `narrow` is the plain comma list (`a, b, c`) of a label, with no
+ * "and" in any language.
+ */
 export function formatList(
   items: readonly string[],
   type: "conjunction" | "disjunction" = "conjunction",
+  style: "long" | "narrow" = "long",
 ): string {
-  return new Intl.ListFormat(locale(), { style: "long", type }).format(items);
+  return new Intl.ListFormat(locale(), { style, type }).format(items);
 }

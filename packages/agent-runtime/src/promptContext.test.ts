@@ -94,6 +94,24 @@ describe("attachments block", () => {
       renderPromptContext("Hi", undefined, [{ id: "u", kind: "url", url: "https://a.b" }]),
     ).not.toContain("<attachments>");
   });
+
+  it("does not treat a #project mention as an attached file and shows only its key, name and parts", () => {
+    const mention: MessageReference = {
+      id: "p1",
+      label: "Reel · renders, music",
+      kind: "project",
+      projectKey: "0123456789abcdef",
+      name: "Summer reel",
+      parts: ["renders", "music"],
+    };
+    const rendered = renderPromptContext("Use #Summer reel", undefined, [mention]);
+    expect(rendered).not.toContain("<attachments>");
+    expect(rendered).toContain(
+      '<references>\n{"kind":"project","projectKey":"0123456789abcdef","name":"Summer reel","parts":["renders","music"]}\n</references>',
+    );
+    expect(rendered).not.toContain("Reel · renders");
+    expect(rendered).not.toContain('"id":"p1"');
+  });
 });
 
 describe("user language block", () => {

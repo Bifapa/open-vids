@@ -17,6 +17,7 @@ import {
   type StudioApiAdapter,
   type BackgroundRemovalRender,
   createBackgroundRemovalJob,
+  createHomeExternalProjects,
   createProjectSignature,
   affectsProjectSignature,
   PREVIEW_BUNDLE_OPTIONS,
@@ -177,7 +178,7 @@ export function createViteAdapter(
     return _producerModuleLoader();
   };
 
-  return {
+  const adapter: StudioApiAdapter = {
     // The CLI resolves --proxy/--no-proxy against hyperframes.json before it
     // launches Vite. Direct `bun run dev` keeps the historical default-on
     // behavior when the child environment is absent.
@@ -487,4 +488,20 @@ export function createViteAdapter(
       return items;
     },
   };
+
+  // `#` project mentions: the desktop shell's project list when it linked this server (env), else the projects of the
+  // dev data folder, keyed by id.
+  adapter.externalProjects = createHomeExternalProjects(process.env) ?? {
+    async list() {
+      return (await adapter.listProjects()).map((project) => ({
+        key: project.id,
+        name: project.title ?? project.id,
+      }));
+    },
+    async resolve(key) {
+      const project = await adapter.resolveProject(key);
+      return project ? { key, name: project.title ?? project.id, dir: project.dir } : null;
+    },
+  };
+  return adapter;
 }

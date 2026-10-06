@@ -1,15 +1,23 @@
-import type { MessageReference } from "@hyperframes/agent-protocol";
+import type { MessageReference, ProjectPart } from "@hyperframes/agent-protocol";
 import { t } from "../i18n";
 import { TIMELINE_ASSET_MIME } from "../utils/timelineAssetDrop";
 import { containsMention } from "./composerMentions";
 
-export type AttachmentKind = "image" | "video" | "audio" | "file";
+/** What a chip can be: a file by its kind, or another project (a `#` mention). */
+export type FileAttachmentKind = "image" | "video" | "audio" | "file";
+export type AttachmentKind = FileAttachmentKind | "project";
 export type AttachmentStatus = "uploading" | "ready" | "failed";
 
-/** One file the next message carries, as the composer shows it. */
+/** What a project chip links: the other project's key (never its path) and the parts the user ticked. */
+export interface AttachedProject {
+  projectKey: string;
+  parts: ProjectPart[];
+}
+
+/** One file or project the next message carries, as the composer shows it. */
 export interface ComposerAttachment {
   id: string;
-  /** File name shown on the chip. */
+  /** File name shown on the chip; a project chip shows the project's name (and its parts) instead. */
   name: string;
   kind: AttachmentKind;
   status: AttachmentStatus;
@@ -18,10 +26,12 @@ export interface ComposerAttachment {
   sizeBytes?: number;
   durationSeconds?: number;
   /**
-   * The `@name` token in the prompt that picked this file (an `@` mention): the chip and the token go together —
-   * removing the chip removes the token, and deleting the token from the text drops the chip.
+   * The `@name` / `#name` token in the prompt that picked this attachment (a mention): the chip and the token go
+   * together — removing the chip removes the token, and deleting the token from the text drops the chip.
    */
   mentionToken?: string;
+  /** Set on (and only on) a project chip. */
+  project?: AttachedProject;
 }
 
 /** A project file named by an internal drag (Media tile, file tree row). */
@@ -36,7 +46,7 @@ const VIDEO_NAME = /\.(mp4|webm|mov|m4v|mkv|avi)$/i;
 const AUDIO_NAME = /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac)$/i;
 
 /** A file's kind by its MIME type, else by its extension; anything else is a plain file. */
-export function attachmentKindOf(name: string, mimeType = ""): AttachmentKind {
+export function attachmentKindOf(name: string, mimeType = ""): FileAttachmentKind {
   if (mimeType.startsWith("image/") || IMAGE_NAME.test(name)) return "image";
   if (mimeType.startsWith("video/") || VIDEO_NAME.test(name)) return "video";
   if (mimeType.startsWith("audio/") || AUDIO_NAME.test(name)) return "audio";
@@ -71,9 +81,39 @@ export function projectAttachment(file: DroppedProjectFile): ComposerAttachment 
   };
 }
 
+/** The chip of another project the user picked with `#`: a link, sent as a project reference. */
+export function projectMentionAttachment(input: {
+  projectKey: string;
+  name: string;
+  parts: readonly ProjectPart[];
+  mentionToken: string;
+}): ComposerAttachment {
+  return {
+    id: `attach-${(nextAttachmentId += 1)}`,
+    name: input.name,
+    kind: "project",
+    status: "ready",
+    path: null,
+    mentionToken: input.mentionToken,
+    project: { projectKey: input.projectKey, parts: [...input.parts] },
+  };
+}
+
 /** The message reference of a ready attachment; null while it is uploading or after a failed upload. */
 export function attachmentReference(attachment: ComposerAttachment): MessageReference | null {
-  if (attachment.status !== "ready" || attachment.path === null) return null;
+  if (attachment.status !== "ready") return null;
+  if (attachment.kind === "project") {
+    const { project } = attachment;
+    if (!project) return null;
+    return {
+      id: attachment.id,
+      kind: "project",
+      projectKey: project.projectKey,
+      name: attachment.name,
+      parts: [...project.parts],
+    };
+  }
+  if (attachment.path === null) return null;
   const common = {
     id: attachment.id,
     label: attachment.name,

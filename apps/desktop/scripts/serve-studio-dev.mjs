@@ -18,7 +18,15 @@
  * a stale server surfaces as a hard failure instead of a silent port shift.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,6 +39,10 @@ const PROJECT_ARG =
   process.env.OPENVIDS_PROJECT ?? process.argv.find((a) => !a.startsWith("-")) ?? null;
 
 const STUDIO_PROJECTS_DIR = join(REPO_ROOT, "packages", "studio", "data", "projects");
+// Where the Tauri shell publishes `{url, secret}` of its home server once it is
+// up (`home_internal::write_dev_link`). Vite starts before the shell, so it
+// gets the path, not the values; the Studio server re-reads the file per call.
+const HOME_LINK_FILE = join(REPO_ROOT, "packages", "studio", "data", "home-link.json");
 
 function log(message) {
   process.stderr.write(`[openvids] ${message}\n`);
@@ -130,7 +142,14 @@ log(
     (linked ? ` (#project/${linked.name})` : ""),
 );
 
-const child = spawn("bun", args, { cwd: REPO_ROOT, stdio: "inherit", windowsHide: true });
+// A link left by a previous run names a dead server and a dead secret.
+rmSync(HOME_LINK_FILE, { force: true });
+const child = spawn("bun", args, {
+  cwd: REPO_ROOT,
+  stdio: "inherit",
+  windowsHide: true,
+  env: { ...process.env, OPENVIDS_HOME_FILE: HOME_LINK_FILE },
+});
 child.on("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 0)));
 for (const sig of ["SIGINT", "SIGTERM"]) {
   process.on(sig, () => {

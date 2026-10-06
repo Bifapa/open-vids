@@ -5,6 +5,7 @@ import { TOOL_NAMES } from "../agents/tools.js";
 import { parseQuestionArgs, parseStoryOfferArgs } from "../agents/toolArgs.js";
 import { isAnalysisToolName } from "../analysis/tools.js";
 import { isLockRefusal, lockedEditAdvice } from "../autonomy.js";
+import { isCrossProjectToolName } from "../crossProject/tools.js";
 import { isEditingToolName } from "../editing/tools.js";
 import { framesToolsFor, isFramesToolName } from "../editing/frames.tools.js";
 import { changesProject, intentRefusal, savesWebsiteFiles } from "../intent.js";
@@ -108,6 +109,11 @@ async function dispatchToolCall(
   if (isResearchToolName(name)) {
     if (!run.research) return refuse("Research is not available in this runtime.");
     return run.research.execute(caller, name, args, signal);
+  }
+  if (isCrossProjectToolName(name)) {
+    if (!run.crossProject)
+      return refuse("Copying from other projects is not available in this runtime.");
+    return run.crossProject.execute(caller, name, args, signal);
   }
   if (isStoryToolName(name)) {
     if (!run.story) return refuse("Story Mode is not available in this runtime.");

@@ -1,5 +1,6 @@
 import { AGENT_DISPLAY_NAMES, type SpecialistId } from "@hyperframes/agent-protocol";
 import { FRAMES_ROLE_PROMPT } from "../editing/frames.tools.js";
+import { CROSS_PROJECT_ROLE_PROMPT } from "../crossProject/tools.js";
 import { disabledSpecialists } from "./inherit.js";
 
 /**
@@ -47,14 +48,17 @@ const QA_VISION = `Render QA review: besides your normal tasks, the runtime may 
 const SPECIALIST_TOOLING: Record<SpecialistId, string> = {
   editor: `Editing tools: inspect_project, inspect_timeline, browse_presets, edit_timeline, render_video. Build and change the timeline with edit_timeline (atomic batches of operations: add_clip, split_clip, trim_clip, move_clip, arrange_track, add_text, add_component, apply_captions, ...), never by hand-editing composition HTML. Start with inspect_project and inspect_timeline, make your edits in a few coherent batches, then verify with inspect_timeline. If a batch is refused, read the error (it names the failing operation), fix it and retry. Use file tools only for things the editing tools cannot express. When asked for a video or render, call render_video and report the output path.
 ${EDITING_CONVENTIONS}
-${FRAMES_ROLE_PROMPT}`,
+${FRAMES_ROLE_PROMPT}
+${CROSS_PROJECT_ROLE_PROMPT}`,
   motion: `Editing tools: inspect_project, inspect_timeline, browse_presets, edit_timeline. Add titles, lower thirds and graphics with edit_timeline (add_text, add_component with a block or component found via browse_presets) on tracks above the video they overlay, then verify with inspect_timeline. Use file tools only for animation the editing tools cannot express.
 Website style: when your task carries a website's style, or you read it yourself with read_website (allowed only for a site the user linked; pass save: true to keep its logo, fonts and screenshots under assets/web/<host>/), make the composition recognizably that brand: use its exact hex colors in their roles (background, surface, text, accent), its type scale and radii, its button/shape language and its motion character (durations and easing) — not a generic palette. Fonts: a Google Fonts family is referenced by family name in font-family (the renderer resolves it); a saved self-hosted font is loaded with @font-face from its assets/web/... path; a font that is neither saved nor on Google Fonts needs the closest Google Fonts match, and you say which one in your report. Use the saved logo file by its project path (never hotlink the site). Build the composition from the extracted tokens, then compare it with the screenshots (inspect via Vision when it is on).
 You also have get_website_file and record_website; if the user's full access to linked sites is off, calling one asks the user in chat to allow it — just call it when the task needs a file or a recording. Prefer the site's real file over imitating it: fetch a Lottie with mode "save" and load it with lottie-web, registering the player as window.__hfLottie (drive it from the paused GSAP timeline so preview and render seek it); a Rive file with its runtime; an SVG, video or picture as a file/clip; a font with @font-face. To recreate an animation faithfully, read its page CSS/JS with mode "read" and study the actual keyframes, easing and timing before writing GSAP. When the animation has no file (canvas, WebGL, CSS-only), record_website captures the page as an MP4 — cut it in as footage. Website files are license unknown: never claim a license for them.
 ${EDITING_CONVENTIONS}
-${FRAMES_ROLE_PROMPT}`,
+${FRAMES_ROLE_PROMPT}
+${CROSS_PROJECT_ROLE_PROMPT}`,
   audio: `Editing tools: inspect_project, inspect_timeline, edit_timeline. Place music and sound effects as audio clips on their own tracks with edit_timeline (add_clip, set_clip for volume and fades, trim_clip, move_clip), keep music about 0.2–0.4 under speech with a 1–2 s fadeIn/fadeOut (add_clip or set_clip), and verify with inspect_timeline.
-${EDITING_CONVENTIONS}`,
+${EDITING_CONVENTIONS}
+${CROSS_PROJECT_ROLE_PROMPT}`,
   vision: `Editing tools (read-only for you): inspect_project, inspect_timeline, browse_presets. Use them to see what the project contains and how the timeline is laid out.
 ${QA_VISION}
 ${FRAMES_ROLE_PROMPT}`,
@@ -107,6 +111,7 @@ function inheritedWork(id: SpecialistId): string {
     text
       .replace(`\n${EDITING_CONVENTIONS}`, "")
       .replace(`\n${FRAMES_ROLE_PROMPT}`, "")
+      .replace(`\n${CROSS_PROJECT_ROLE_PROMPT}`, "")
       .replace(` ${STORY_PRECEDENCE}`, "");
   const sections = [
     `${AGENT_DISPLAY_NAMES[id]} is off in this chat: you do its work yourself (${SPECIALIST_FOCUS[id]}). Its working rules (the team block of each turn names the tools you have for it):`,
@@ -141,6 +146,7 @@ Orchestration tools:
 Editing tools: inspect_project (assets, compositions, renders) and inspect_timeline (clips, and the user's playhead and selection when they sent the message) — inspect first, before planning or delegating an edit. browse_presets lists caption styles and motion graphics. render_video renders a composition to mp4 and returns its path. edit_timeline changes the timeline through atomic operations, never by hand-editing composition HTML; you have it while the Editor is off in this chat. When the Editor is enabled, delegate timeline assembly and edits to it with a self-contained task (the goal, the target length, which assets to use, the style and pacing), use Motion for titles and components and Audio for music and sound effects when they are enabled, then check the result with inspect_timeline. When the user asks for a video or a render, render it (call render_video yourself or ask the Editor to) once the edit is done, and tell the user the output path.
 ${EDITING_CONVENTIONS}
 ${FRAMES_ROLE_PROMPT}
+${CROSS_PROJECT_ROLE_PROMPT}
 
 ${LONG_FORM_DIRECTOR}
 

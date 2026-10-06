@@ -45,6 +45,12 @@
 //! - `POST /api/menu/:action` — one title-bar app menu action through the
 //!   shared `menu_action` (`lib.rs`), for pages with no Tauri IPC. Only the
 //!   `MENU_ACTIONS` ids run; anything else 404s.
+//!
+//! Sidecar door (`/internal/*`, its own per-launch secret instead of the token —
+//! see `home_internal`; `serve_one` hands it every such path before anything else):
+//!
+//! - `GET /internal/projects`, `GET /internal/projects/<key>` — the recents list
+//!   and one lookup, for Studio sidecars attaching other projects to a chat.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -55,6 +61,7 @@ use std::time::Duration;
 use super::coded_error::CodedError;
 use super::home_api::{self, respond_error, respond_json};
 use super::home_auth::{self, Head, HomeToken, TOKEN_HEADER};
+use super::home_internal::InternalSecret;
 use super::recents::RecentsStore;
 use super::structure::validate_structure;
 use super::tabs::{TabActions, TabsView};
@@ -173,7 +180,13 @@ pub fn thumb_name_for(dir: &Path, ext: &str) -> String {
     format!("{:016x}.{ext}", hasher.finish())
 }
 
-pub fn serve_one(mut stream: TcpStream, state: &Arc<Mutex<HomeInner>>, token: &str, port: u16) {
+pub fn serve_one(
+    mut stream: TcpStream,
+    state: &Arc<Mutex<HomeInner>>,
+    token: &str,
+    secret: &InternalSecret,
+    port: u16,
+) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     // Start/duplicate copy files and pickers wait on the user: no write
     // deadline short enough to cut those responses off.
@@ -183,6 +196,12 @@ pub fn serve_one(mut stream: TcpStream, state: &Arc<Mutex<HomeInner>>, token: &s
         respond(&mut stream, 400, "text/plain", b"bad request");
         return;
     };
+    // `/internal/*` is the sidecars' door: its own secret, no home token, no
+    // Studio grant, and a browser `Origin` is refused inside (`home_internal`).
+    if super::home_internal::owns(&head.path) {
+        super::home_internal::serve(&mut stream, state, secret, &head, port);
+        return;
+    }
     let (studio_origins, tabs_enabled) = studio_context(state);
     let studio = studio_grant(super::window_frame(), tabs_enabled, &head, &studio_origins, port);
     if !home_auth::origin_allowed(&head, port) && studio.is_none() {

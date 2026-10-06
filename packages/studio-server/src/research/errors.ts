@@ -33,6 +33,7 @@ export function researchStatus(
     case "unknown_candidate":
     case "unknown_node":
     case "unknown_asset":
+    case "unknown_project":
     case "no_story":
       return 404;
     case "conflict":

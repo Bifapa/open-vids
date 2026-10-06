@@ -47,6 +47,8 @@ export type {
   LayoutCheckResult,
   CapturedFrame,
   CompositionCapture,
+  ExternalProject,
+  ExternalProjectLocation,
   WebsiteFile,
   WebsiteInspection,
   WebsiteInspectionResult,
@@ -61,6 +63,7 @@ export type {
   StudioSelectionSnapshot,
   StudioSelectionTextField,
 } from "./types.js";
+export { createHomeExternalProjects } from "./crossProject/homeProjects.js";
 export { isSafePath, walkDir } from "./helpers/safePath.js";
 export { stampProjectHfIds } from "./helpers/hfIdPersist.js";
 export {

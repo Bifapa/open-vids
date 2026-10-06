@@ -4,6 +4,7 @@ import {
   type TimelineClip,
   type TranscriptArtifact,
 } from "@hyperframes/agent-protocol";
+import { hasNonSpeechToken } from "../helpers/audioNameTokens.js";
 import {
   clipName,
   isAudible,
@@ -212,29 +213,12 @@ const WORD_SECONDS_PER_LETTER = 0.09;
 const MIN_SPEECH_SECONDS = 1;
 const MIN_SPEECH_SHARE = 0.02;
 
-/** Names of folders and files that hold music or sound effects: no speech to cut through. */
-const NON_SPEECH_TOKENS = new Set([
-  "music",
-  "sfx",
-  "sound",
-  "sounds",
-  "fx",
-  "bgm",
-  "soundtrack",
-  "ambient",
-  "effects",
-  "jingle",
-]);
-
 /**
  * Whether a source can carry speech: false when a folder or the file name has a token such as `music` or `sfx`
  * (tokens split at anything but letters and digits, a trailing number such as `music2` ignored).
  */
 export function isSpeechSource(src: string): boolean {
-  return !src
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .some((token) => NON_SPEECH_TOKENS.has(token.replace(/\d+$/, "")));
+  return !hasNonSpeechToken(src);
 }
 
 /** The words that are speech, with their ends capped: no `♪`, `…`, `[Music]`, `(applause)` or `*laughs*`. */

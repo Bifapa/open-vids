@@ -135,6 +135,7 @@ export { FakeEditingHost } from "./editing.js";
 export { FakeQaHost, cleanCheck, qaDraft } from "./qa.js";
 export { FakeAnalysisHost, FAKE_JPEG, SAMPLE_SOURCE } from "./analysis.js";
 export { FakeFramesHost } from "./frames.js";
+export { FakeCrossProjectHost, manifestFile } from "./crossProject.js";
 export {
   FakeStoryHost,
   chapterNode,

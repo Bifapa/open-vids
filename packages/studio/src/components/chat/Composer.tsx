@@ -17,7 +17,7 @@ import { AgentsMenu } from "./AgentsMenu";
 import { ConnectModelButton, MANUAL_EDITOR_NOTE, NO_MODEL_SENTENCE } from "./ConnectModel";
 import { chatAgentName } from "./AgentMonogram";
 import { ComposerPortalContext, chipIconClass, chipLabelClass } from "./composerParts";
-import { useAssetMentions } from "./AssetMentionMenu";
+import { useComposerMentions } from "./useComposerMentions";
 import { AttachmentChips, useDraftAttachments } from "./AttachmentChips";
 import { ContextChips } from "./ContextChips";
 import { ExecutionQualityMenu } from "./ExecutionQualityMenu";
@@ -144,7 +144,7 @@ export function Composer() {
   }, [portal]);
 
   const fieldDisabled = blockedBy !== null || noModel || (chat === null && !isDraft);
-  const mentions = useAssetMentions({ areaRef, draft, disabled: fieldDisabled, setDraft });
+  const mentions = useComposerMentions({ areaRef, draft, disabled: fieldDisabled, setDraft });
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (mentions.handleKeyDown(event)) return;

@@ -2,6 +2,7 @@ import { TOOL_NAMES } from "../agents/tools.js";
 import { ANALYSIS_TOOL_NAMES } from "../analysis/tools.js";
 import { EDITING_TOOL_NAMES } from "../editing/tools.js";
 import { RESEARCH_TOOL_NAMES } from "../research/tools.js";
+import { CROSS_PROJECT_TOOL_NAMES } from "../crossProject/tools.js";
 import { STORY_TOOL_NAMES } from "../story/tools.js";
 import { savesWebsiteFiles } from "../intent.js";
 import type { QaPhase } from "./loop.js";
@@ -17,6 +18,7 @@ const CHANGES_PROJECT: Record<string, true> = {
   [RESEARCH_TOOL_NAMES.import]: true,
   [RESEARCH_TOOL_NAMES.resolve]: true,
   [RESEARCH_TOOL_NAMES.record]: true,
+  [CROSS_PROJECT_TOOL_NAMES.import]: true,
   [TOOL_NAMES.delegate]: true,
   [TOOL_NAMES.message]: true,
   [TOOL_NAMES.jev]: true,

@@ -36,6 +36,7 @@ import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
+  createHomeExternalProjects,
   createAgentGateway,
   resolveAgentRuntimeLaunch,
   createProjectSignature,
@@ -462,6 +463,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // launching a browser shutdown() has no way to know about and close.
   let shuttingDown = false;
 
+  const externalProjects = createHomeExternalProjects(process.env);
+
   const adapter: PreviewApiAdapter = {
     history: () => projectHistory(),
     // Explicit option wins (preview's resolved --proxy/--no-proxy + config);
@@ -815,6 +818,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     inspectWebsite: (opts) => inspectWebsiteViaCli(opts),
     // The page recorder is `cli record-site` in a child: same browser rules, real-time MP4.
     recordWebsite: (opts) => recordWebsiteViaCli(opts),
+    // The desktop app's other projects (`#` mentions): the shell hands its sidecar the home server's address and secret.
+    ...(externalProjects && { externalProjects }),
   };
 
   const agentGateway = createAgentGateway({

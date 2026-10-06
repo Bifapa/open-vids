@@ -1,9 +1,16 @@
 // @vitest-environment node
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { setImmediate as tick } from "node:timers/promises";
 import { isRecord } from "@hyperframes/agent-protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ProjectScope } from "../checkpointHost.js";
+import {
+  cancelRoute,
+  closeFakeStudios,
+  fakeStudio,
+  heldRoute,
+  json,
+  requestIdOf,
+  type Route,
+} from "../testing/fakeStudio.js";
 import {
   researchPolicy,
   sampleCandidate,
@@ -17,74 +24,13 @@ import { TurnResearch } from "./executor.js";
 import { HttpResearchHost, type HttpResearchHostOptions } from "./host.http.js";
 import { WebsiteResourceLog } from "./websiteResources.js";
 
-interface Seen {
-  method: string;
-  path: string;
-  body: unknown;
-}
-
-type Route = (request: Seen, response: ServerResponse) => void;
-
-const servers: Server[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    servers.splice(0).map(
-      (server) =>
-        new Promise<void>((resolve) => {
-          server.closeAllConnections();
-          server.close(() => resolve());
-        }),
-    ),
-  );
-});
-
-const json = (response: ServerResponse, status: number, body: unknown) => {
-  response.writeHead(status, { "content-type": "application/json" });
-  response.end(JSON.stringify(body));
-};
+afterEach(closeFakeStudios);
 
 const PROJECT = "/api/projects/p%201/research";
 
-/** A loopback stand-in for Studio's research routes: `routes` is keyed by "METHOD /path-without-query". */
-async function studio(routes: Record<string, Route>, options: HttpResearchHostOptions = {}) {
-  const seen: Seen[] = [];
-  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
-    let text = "";
-    request.setEncoding("utf8");
-    request.on("data", (chunk: string) => (text += chunk));
-    request.on("end", () => {
-      const url = request.url ?? "";
-      const record: Seen = {
-        method: request.method ?? "GET",
-        path: url,
-        body: text ? JSON.parse(text) : null,
-      };
-      seen.push(record);
-      const route =
-        routes[
-          `${record.method} ${url.split("?")[0]?.replace(/\/requests\/[^/]+\/cancel$/, "/requests/:id/cancel")}`
-        ];
-      if (route) route(record, response);
-      else json(response, 404, { error: `no route ${record.method} ${url}` });
-    });
-  });
-  servers.push(server);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("no port");
-  const scope: ProjectScope = {
-    projectId: "p 1",
-    projectDir: "/tmp/p",
-    studioOrigin: `http://127.0.0.1:${address.port}`,
-  };
-  const close = () =>
-    new Promise<void>((resolve) => {
-      server.closeAllConnections();
-      server.close(() => resolve());
-    });
-  return { host: new HttpResearchHost(scope, options), seen, close };
-}
+/** A loopback stand-in for Studio's research routes (see `fakeStudio`). */
+const studio = (routes: Record<string, Route>, options: HttpResearchHostOptions = {}) =>
+  fakeStudio(routes, (scope) => new HttpResearchHost(scope, options));
 
 const signal = () => new AbortController().signal;
 
@@ -442,31 +388,6 @@ function sampleWebsiteResult(body: unknown) {
 }
 
 const CANCEL_ROUTE = `POST ${PROJECT}/requests/:id/cancel`;
-
-/** A write's body carries the request id its cancel will name. */
-function requestIdOf(request: Seen | undefined): string {
-  if (!request || !isRecord(request.body) || typeof request.body.requestId !== "string")
-    throw new Error("no request id");
-  return request.body.requestId;
-}
-
-/** Studio's cancel route, answering with `state` and telling the test the cancel arrived. */
-function cancelRoute(state: string) {
-  const arrived = Promise.withResolvers<void>();
-  const route: Route = (request, response) => {
-    json(response, 200, { requestId: request.path.split("/").at(-2), state });
-    arrived.resolve();
-  };
-  return { route, arrived: arrived.promise };
-}
-
-/** A route that keeps the request open until the test answers it. */
-function heldRoute() {
-  const held = Promise.withResolvers<ServerResponse>();
-  const route: Route = (_request, response) => held.resolve(response);
-  return { route, held: held.promise };
-}
-
 const importResult = {
   asset: "assets/research/ocean-waves.mp4",
   provenance: sampleProvenance(),

@@ -334,12 +334,19 @@ export function createAgentGateway(options: AgentGatewayOptions): AgentGateway {
     }
 
     const token = randomBytes(32).toString("hex");
+    // The link to the desktop's home server (every project's folder) is for this server only, never the agents'.
+    const {
+      OPENVIDS_HOME_URL: _homeUrl,
+      OPENVIDS_HOME_SECRET: _homeSecret,
+      OPENVIDS_HOME_FILE: _homeFile,
+      ...inheritedEnv
+    } = process.env;
     let child: ChildProcess;
     try {
       child = spawn(launch.command, launch.args, {
         cwd: launch.cwd,
         env: {
-          ...process.env,
+          ...inheritedEnv,
           ...launch.env,
           OPENVIDS_AGENT_TOKEN: token,
           OPENVIDS_AGENT_PORT: "0",

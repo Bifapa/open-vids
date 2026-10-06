@@ -41,7 +41,6 @@ import {
   type UpdateAssetSearchPolicyRequest,
   type UpdateTrustedSourceRequest,
 } from "@hyperframes/agent-protocol";
-import { serialized } from "../analysis/store.js";
 import { MAIN_COMPOSITION } from "../editing/inventory.js";
 import { assetKindOf } from "../editing/mediaFacts.js";
 import { normalizeCompositionPath } from "../editing/service.js";
@@ -55,7 +54,7 @@ import { ResearchCache, type CacheEntry } from "./cache.js";
 import { RequestRegistry, type RequestGuard } from "./requestRegistry.js";
 import { ResearchFailure, isResearchFailure } from "./errors.js";
 import { planNormalization, systemToolkit, type MediaToolkit } from "./normalize.js";
-import { readLedger, writeLedger } from "./provenance.js";
+import { readLedger, withLedgerLock, writeLedger } from "./provenance.js";
 import {
   attributionLine,
   compositionExists,
@@ -310,7 +309,7 @@ export class ResearchService {
   }
 
   private lock<T>(project: ResolvedProject, task: () => Promise<T>): Promise<T> {
-    return serialized(`research\0${project.dir}`, task);
+    return withLedgerLock(project.dir, task);
   }
 
   private context(

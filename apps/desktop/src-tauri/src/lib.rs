@@ -65,6 +65,7 @@ mod home_api;
 mod home_auth;
 mod home_create;
 mod home_fork;
+mod home_internal;
 mod home_project;
 mod home_report;
 mod home_research;
@@ -697,6 +698,14 @@ pub fn run() {
             let _ = std::fs::create_dir_all(&data_root);
             let home = HomeServer::bind(recents_path, thumbs_dir)?;
             log_line(&format!("home server on {}", home.origin()));
+            // The dev Studio server (Vite) was started before this process, so
+            // it cannot inherit the sidecar env: it re-reads this file instead.
+            if dev {
+                let link_path = studio_projects_dir().with_file_name("home-link.json");
+                if let Err(error) = home_internal::write_dev_link(&link_path, &home.link()) {
+                    log_line(&format!("could not write {}: {error}", link_path.display()));
+                }
+            }
             // Production serves the staged blank template for the create
             // form; dev resolves the checkout instead (see create.rs).
             if !dev {

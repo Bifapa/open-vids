@@ -4,6 +4,7 @@ import type { TurnAgentSetup } from "../agents/orchestrator.js";
 import type { ToolAvailability } from "../agents/tools.js";
 import { TurnAnalysis } from "../analysis/executor.js";
 import { TurnEditing } from "../editing/executor.js";
+import { TurnCrossProject } from "../crossProject/executor.js";
 import type { EditingHost } from "../editing/host.js";
 import { TurnFrames } from "../editing/frames.executor.js";
 import { PermissionBroker } from "../permissions.js";
@@ -213,6 +214,21 @@ export async function openTurnTools(
         model: (agent) => modelOf(run, setup, agent),
       })
     : null;
+  run.crossProject = options.crossProject
+    ? new TurnCrossProject({
+        host: options.crossProject(scope),
+        turnId: run.turn.id,
+        turnSignal: signal,
+        enabled: setup.enabled,
+        turn: { mode: run.mode, action: run.storyAction },
+        messages: () => ctx.chats.get(run.chatId)?.messages ?? [],
+        model: (agent) => modelOf(run, setup, agent),
+      })
+    : null;
+  // The tool is bound to a session when it opens, so it is offered only when some attached project has files by now;
+  // files attached by steering later in a turn that began with none are readable in the prompt but imported from the
+  // next turn on.
+  run.crossProjectOffered = run.crossProject?.hasFiles() ?? false;
 
   // Story Mode is offered from an ordinary Edit turn while the graph is still empty and the chat has not declined it.
   // The graph is read once, here: an unreadable story means no offer (a failed accept is worse than a missed
@@ -224,6 +240,7 @@ export async function openTurnTools(
     editing: run.editing !== null,
     analysis: run.analysis !== null,
     frames: run.frames !== null,
+    crossProject: run.crossProjectOffered,
     story: run.story !== null,
     research: researchHost !== null,
     websites: researchHost !== null,

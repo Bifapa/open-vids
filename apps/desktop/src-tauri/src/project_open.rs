@@ -80,7 +80,7 @@ fn open_inner(
     let poisoned = || CodedError::plain("app_state_poisoned", "app state is poisoned");
     let app_state = app.state::<Mutex<AppState>>();
 
-    let (mode, multi, home_origin, existing, tab_count, clashes) = {
+    let (mode, multi, home_origin, home_link, existing, tab_count, clashes) = {
         let state = app_state.lock().map_err(|_| poisoned())?;
         let existing = if state.tabs.open_project(key).is_some() {
             Existing::Open
@@ -93,6 +93,7 @@ fn open_inner(
             state.mode,
             state.multi,
             state.home_origin.clone(),
+            state.home.link(),
             existing,
             state.tabs.tab_count(),
             state.tabs.name_taken_by_other(key, &project.id),
@@ -164,7 +165,7 @@ fn open_inner(
                     eprintln!("{line}");
                     logfile::sidecar(line);
                 });
-            let started = sidecar::start(&launcher, &bun, &cli, &project.dir, logger)
+            let started = sidecar::start(&launcher, &bun, &cli, &project.dir, &home_link, logger)
                 .map_err(|error| error.coded())?;
             (started.origin(), Some(started))
         }

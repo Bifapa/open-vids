@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use super::home_auth::HomeToken;
+use super::home_internal::{HomeLink, InternalSecret};
 use super::home_routes::{serve_one, thumb_name_for, HomeInner, OpenPhase, Opener, PrefsListener};
 use super::tabs::{TabActions, TabsView};
 
@@ -29,6 +30,8 @@ pub struct HomeServer {
     port: u16,
     #[allow(dead_code)]
     token: HomeToken,
+    /// Authenticates the Studio sidecars to `/internal/*` (see `home_internal`); never reaches a page.
+    internal_secret: InternalSecret,
     inner: Arc<Mutex<HomeInner>>,
     stop: Arc<AtomicBool>,
     accept: TcpListener,
@@ -53,6 +56,7 @@ impl HomeServer {
         let accept = TcpListener::bind(("127.0.0.1", 0))?;
         let port = accept.local_addr()?.port();
         let token = HomeToken::generate();
+        let internal_secret = InternalSecret::generate();
         let inner = Arc::new(Mutex::new(inner));
         let stop = Arc::new(AtomicBool::new(false));
 
@@ -60,6 +64,7 @@ impl HomeServer {
         let state = Arc::clone(&inner);
         let flag = Arc::clone(&stop);
         let token_value = token.value().to_string();
+        let secret = internal_secret.clone();
         thread::spawn(move || {
             let _ = shared.set_nonblocking(false);
             for stream in shared.incoming() {
@@ -70,8 +75,9 @@ impl HomeServer {
                     Ok(stream) => {
                         let state = Arc::clone(&state);
                         let token_value = token_value.clone();
+                        let secret = secret.clone();
                         thread::spawn(move || {
-                            serve_one(stream, &state, &token_value, port);
+                            serve_one(stream, &state, &token_value, &secret, port);
                         });
                     }
                     Err(_) => continue,
@@ -82,6 +88,7 @@ impl HomeServer {
         Ok(Self {
             port,
             token,
+            internal_secret,
             inner,
             stop,
             accept,
@@ -90,6 +97,16 @@ impl HomeServer {
 
     pub fn origin(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
+    }
+
+    /// How a Studio sidecar reaches this server: origin + `/internal/*` secret.
+    pub fn link(&self) -> HomeLink {
+        HomeLink::new(&self.origin(), self.internal_secret.clone())
+    }
+
+    #[cfg(test)]
+    pub fn internal_secret(&self) -> &InternalSecret {
+        &self.internal_secret
     }
 
     /// The opener runs the real project open (dev navigate / prod sidecar).
@@ -201,6 +218,16 @@ impl HomeServer {
                 inner.recents.update_meta(dir, Some(name), None, None);
             }
         }
+    }
+
+    /// Pin the open time of a recorded project (tests order the list by it).
+    #[cfg(test)]
+    pub fn set_last_opened_for_test(&self, dir: &Path, secs: u64) {
+        let mut inner = self.inner.lock().unwrap();
+        let key = inner.recents.find_by_dir(dir).map(|e| e.key()).unwrap();
+        let (_, mut entry) = inner.recents.take(&key).unwrap();
+        entry.last_opened = secs;
+        inner.recents.restore(entry);
     }
 
     #[cfg(test)]

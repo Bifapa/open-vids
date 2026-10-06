@@ -268,6 +268,7 @@ apps/desktop/
     src/home_create.rs     POST /api/create (scaffold, then open)
     src/home_project.rs    Rename (folder + meta.json) and Trash handlers (Recycle Bin via IFileOperation on Windows)
     src/home_auth.rs       Per-launch token + Host/Origin checks
+    src/home_internal.rs   `/internal/*` for the Studio sidecars: per-launch secret, recents list/lookup, dev link file
     src/prefs.rs           ~/.openvids/app/preferences.json (shared with Studio; home is USERPROFILE on Windows, $HOME elsewhere)
     src/platform.rs        Home dir (== Node os.homedir()), bun.exe name, verbatim-prefix stripping
     src/ffmpeg_install.rs  FFmpeg installer: `brew install ffmpeg` on macOS, gyan.dev essentials download into ~/.openvids/ffmpeg on Windows
@@ -452,7 +453,8 @@ is one the repository lockfile already pins (staging fails otherwise; only the e
 pins above are exempt), and then installed with `--frozen-lockfile`. What ships is what CI tested. The
 sidecar, the CLI launcher and the agent runtime run Bun with `--no-install`, so a module that fails to
 resolve is an error and never an npm download, and the sidecar sets `OPENVIDS_EMBEDDED_STUDIO=1` so a
-project folder can never supply its own Studio.
+project folder can never supply its own Studio. It also passes `OPENVIDS_HOME_URL` and
+`OPENVIDS_HOME_SECRET` (see "Security"), so the sidecar can list the user's other projects.
 
 A `package.json` named `hyperframes` is written beside the bundle. Two reasons:
 the render pipeline stamps provenance by walking up from its own module URL
@@ -572,6 +574,25 @@ page-drawn caption buttons add minimize, maximize and close (`capabilities/windo
   answers its own-origin requests for `open_project`, `welcome`, `check_updates` and
   the About read (plus their CORS preflights) only, and only while that Studio
   server is the open project.
+- `/internal/*` is the Studio sidecars' door to the recents list (`home_internal.rs`), used by
+  `#` project mentions in Agent Chat: `GET /internal/projects` →
+  `{ "projects": [{ "key", "name", "openedAt" }] }` (`key` is the Projects page's recent key, 16
+  hex chars of the folder-path hash; `openedAt` epoch ms; most recent first; folders that no
+  longer exist are skipped) and `GET /internal/projects/<key>` → `{ "key", "name", "dir" }`, or
+  404 (a key must match `^[0-9a-f]{16}$`; a path is never accepted). Auth is a second
+  per-launch secret (256 bits, OS randomness, `home_internal::InternalSecret`) sent as
+  `X-OpenVids-Secret`, compared in constant time; missing or wrong → 401 with nothing else
+  revealed. These routes accept only that secret (the page token opens nothing here) and the
+  secret opens no `/api/*` route; any request carrying an `Origin` header is refused (403), as
+  is a `Host` that does not name the server, and no CORS header is ever written. Percent-encoded
+  spellings (`/%69nternal/…`) are decoded once, like every other check, and get the same decision.
+  The shell hands each Studio sidecar `OPENVIDS_HOME_URL` (`http://127.0.0.1:<home port>`) and
+  `OPENVIDS_HOME_SECRET` in its env (`sidecar::studio_command`); the secret is never injected
+  into a page. `dir` is for the sidecar's own file reads and is never sent to a browser.
+  `desktop:dev` has no sidecar: Vite starts before the shell, so `serve-studio-dev.mjs` gives it
+  `OPENVIDS_HOME_FILE=packages/studio/data/home-link.json` (gitignored) and the shell writes
+  `{ "url", "secret" }` there (owner-only, replaced atomically) when its home server binds; the
+  script deletes a stale file first, and the Studio server re-reads it on each call.
 - Home pages (Projects, Settings, Report) are served with
   `Content-Security-Policy: frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN`,
   so a foreign page cannot frame them (Settings is framed by the Projects page of

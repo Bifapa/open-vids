@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeMention,
   applyMention,
+  applyMentionToken,
   containsMention,
   matchMentionAssets,
   withoutMention,
@@ -137,5 +138,71 @@ describe("withoutMention", () => {
   it("removes a mention that ends a sentence and keeps the full stop", () => {
     expect(withoutMention("Use @clip.mp4.", "@clip.mp4")).toBe("Use .");
     expect(withoutMention('Use "@clip.mp4" now', "@clip.mp4")).toBe('Use "" now');
+  });
+});
+
+describe("activeMention with the # trigger", () => {
+  it("follows the same boundary rules as @", () => {
+    expect(activeMention("#", 1, "#")).toEqual({ start: 0, query: "" });
+    expect(activeMention("use #promo", 10, "#")).toEqual({ start: 4, query: "promo" });
+    expect(activeMention("one\n#x", 6, "#")).toEqual({ start: 4, query: "x" });
+    expect(activeMention("see (#my-pro", 12, "#")).toEqual({ start: 5, query: "my-pro" });
+    expect(activeMention("use #pro and #other", 8, "#")).toEqual({ start: 4, query: "pro" });
+  });
+
+  it("is not a token in the middle of a word, a link or a second #", () => {
+    for (const text of ["issue#12", "https://example.com/#top", "a#b", "##tag", "c#"]) {
+      expect(activeMention(text, text.length, "#"), text).toBeNull();
+    }
+  });
+
+  it("ends at a space, so a markdown heading is not a token once the title starts", () => {
+    expect(activeMention("# Title", 7, "#")).toBeNull();
+    expect(activeMention("# ", 2, "#")).toBeNull();
+    expect(activeMention("#promo ", 7, "#")).toBeNull();
+  });
+
+  it("leaves colours and numbers to the caller: they are tokens, the popup decides", () => {
+    for (const text of ["#ff0000", "#fff", "#1", "#12"]) {
+      expect(activeMention(text, text.length, "#")).toEqual({ start: 0, query: text.slice(1) });
+    }
+  });
+
+  it("keeps the two triggers apart", () => {
+    expect(activeMention("#promo", 6)).toBeNull();
+    expect(activeMention("@clip", 5, "#")).toBeNull();
+    expect(activeMention("look at @clip and #promo", 24, "#")).toEqual({
+      start: 18,
+      query: "promo",
+    });
+  });
+});
+
+describe("applyMentionToken", () => {
+  it("replaces the typed token with the project token and a space, caret after it", () => {
+    expect(applyMentionToken("see #pro", { start: 4, query: "pro" }, 8, "#my-promo")).toEqual({
+      text: "see #my-promo ",
+      caret: 14,
+    });
+    expect(applyMentionToken("a #p and b", { start: 2, query: "p" }, 4, "#promo")).toEqual({
+      text: "a #promo  and b",
+      caret: 9,
+    });
+  });
+});
+
+describe("project tokens in the prompt", () => {
+  it("finds a #token that stands alone and not a longer slug that starts like it", () => {
+    expect(containsMention("Use #my-promo now", "#my-promo")).toBe(true);
+    expect(containsMention("(#my-promo), then", "#my-promo")).toBe(true);
+    expect(containsMention("#мой-проект!", "#мой-проект")).toBe(true);
+    expect(containsMention("Use #my-promo-2", "#my-promo")).toBe(false);
+    expect(containsMention("Use #my-promos", "#my-promo")).toBe(false);
+    expect(containsMention("issue#my-promo", "#my-promo")).toBe(false);
+  });
+
+  it("takes the token and the space after it out when the chip is removed", () => {
+    expect(withoutMention("Use #my-promo music", "#my-promo")).toBe("Use music");
+    expect(withoutMention("#a #a-2 #a", "#a")).toBe("#a-2 ");
   });
 });

@@ -50,6 +50,7 @@ const server = createServer(async (request, response) => {
       contentType: request.headers["content-type"],
       lastEventId: request.headers["last-event-id"],
       forgedHeader: request.headers["x-openvids-forged"],
+      home: [process.env.OPENVIDS_HOME_URL, process.env.OPENVIDS_HOME_SECRET, process.env.OPENVIDS_HOME_FILE].filter(Boolean),
       url: path,
       method: request.method,
       body: Buffer.concat(chunks).toString("utf8"),
@@ -182,6 +183,19 @@ describe("createAgentGateway", () => {
       count: 1,
     });
     expect(echo).not.toHaveProperty("forgedHeader");
+  });
+
+  it("keeps the link to the desktop's home server out of the runtime's environment", async () => {
+    const gateway = createGateway(createTempDir());
+    vi.stubEnv("OPENVIDS_HOME_URL", "http://127.0.0.1:5000");
+    vi.stubEnv("OPENVIDS_HOME_SECRET", "secret");
+    vi.stubEnv("OPENVIDS_HOME_FILE", "/tmp/home-link.json");
+    try {
+      const response = await gateway.handle(new Request("http://studio.test/agent/echo"), context);
+      expect(await response.json()).toMatchObject({ home: [] });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("forwards a project whose id and folder are not Latin-1", async () => {

@@ -2,6 +2,7 @@ import {
   CircleNotch,
   File,
   FilmStrip,
+  FolderOpen,
   ImageSquare,
   MusicNote,
   WarningCircle,
@@ -10,6 +11,7 @@ import {
 import { useAgentStore } from "../../agent/agentContext";
 import { NEW_CHAT_DRAFT } from "../../agent/agentDraftChat";
 import type { AttachmentKind, ComposerAttachment } from "../../agent/composerAttachments";
+import { projectChipLabel } from "../../agent/projectMentionLabels";
 import { useTranslation } from "../../i18n";
 import { cn } from "../ui/cn";
 
@@ -18,6 +20,7 @@ export const KIND_ICONS: Record<AttachmentKind, typeof File> = {
   video: FilmStrip,
   audio: MusicNote,
   file: File,
+  project: FolderOpen,
 };
 
 const NO_ATTACHMENTS: readonly ComposerAttachment[] = [];
@@ -48,6 +51,10 @@ export function AttachmentChips({ onRemoved }: { onRemoved: () => void }) {
     >
       {attachments.map((attachment) => {
         const Icon = KIND_ICONS[attachment.kind];
+        // A project chip says what it links: the project's name and the parts that were ticked.
+        const label = attachment.project
+          ? projectChipLabel(attachment.name, attachment.project.parts)
+          : attachment.name;
         const failed = attachment.status === "failed";
         const uploading = attachment.status === "uploading";
         return (
@@ -58,7 +65,7 @@ export function AttachmentChips({ onRemoved }: { onRemoved: () => void }) {
             title={
               failed
                 ? t("chat.attach.failedTitle", { name: attachment.name })
-                : (attachment.path ?? attachment.name)
+                : (attachment.path ?? label)
             }
             className={cn(
               "inline-flex h-ctl-sm max-w-full min-w-0 items-center gap-[5px] rounded-sm border bg-surface-1 pr-px pl-1.5 text-xs leading-none font-medium hover:border-border-strong",
@@ -76,7 +83,14 @@ export function AttachmentChips({ onRemoved }: { onRemoved: () => void }) {
             ) : (
               <Icon size={12} aria-hidden className="shrink-0 text-fg-3" />
             )}
-            <span className="max-w-[22ch] min-w-0 truncate">{attachment.name}</span>
+            <span
+              className={cn(
+                "min-w-0 truncate",
+                attachment.project ? "max-w-[36ch]" : "max-w-[22ch]",
+              )}
+            >
+              {label}
+            </span>
             {uploading && <span className="sr-only">{t("chat.attach.uploading")}</span>}
             {failed && <span className="sr-only">{t("chat.attach.failed")}</span>}
             <button

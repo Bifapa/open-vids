@@ -4,6 +4,7 @@ import {
   Cursor,
   File,
   FilmStrip,
+  FolderOpen,
   Image,
   LinkSimple,
   Waveform,
@@ -21,6 +22,7 @@ import type {
   UserMessage,
 } from "@hyperframes/agent-protocol";
 import { formatNumber, t, useTranslation, type TranslationKey } from "../../i18n";
+import { projectChipLabel } from "../../agent/projectMentionLabels";
 import { isPermissionPart } from "../../agent/permissionGuards";
 import { isQuestionPart } from "../../agent/questionGuards";
 import { isStoryOfferPart } from "../../agent/storyOfferGuards";
@@ -60,6 +62,8 @@ export function referenceChipLabel(reference: MessageReference): string {
           end: seconds(reference.end),
         })
       );
+    case "project":
+      return projectChipLabel(reference.name, reference.parts);
     case "asset":
       return reference.label ?? baseName(reference.path);
     case "url":
@@ -78,6 +82,7 @@ const REFERENCE_ICONS: Record<MessageReference["kind"], Icon> = {
   "editor-selection": Cursor,
   "timeline-range": Clock,
   asset: File,
+  project: FolderOpen,
   url: LinkSimple,
   image: Image,
   video: FilmStrip,
@@ -89,6 +94,7 @@ const REFERENCE_KIND_NAMES: Record<MessageReference["kind"], TranslationKey> = {
   "editor-selection": "chat.reference.kind.selection",
   "timeline-range": "chat.reference.kind.range",
   asset: "chat.reference.kind.asset",
+  project: "chat.reference.kind.project",
   url: "chat.reference.kind.link",
   image: "chat.reference.kind.image",
   video: "chat.reference.kind.video",
@@ -109,7 +115,14 @@ function ReferenceChip({ reference }: { reference: MessageReference }) {
       className="inline-flex h-ctl-sm max-w-full min-w-0 items-center gap-[5px] rounded-sm border border-border bg-bg-1 pr-2 pl-1.5 text-xs leading-none font-medium text-fg-2"
     >
       <KindIcon aria-hidden className="size-icon-sm shrink-0 text-fg-3" />
-      <span className="max-w-[22ch] min-w-0 truncate">{label}</span>
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          reference.kind === "project" ? "max-w-[36ch]" : "max-w-[22ch]",
+        )}
+      >
+        {label}
+      </span>
       <span className="sr-only"> {t("chat.reference.kindSr", { kind })}</span>
     </span>
   );

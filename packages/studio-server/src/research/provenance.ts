@@ -12,6 +12,7 @@ import {
   type AssetProvenance,
   type ProvenanceLedger,
 } from "@hyperframes/agent-protocol";
+import { serialized } from "../analysis/store.js";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { agentIdOf } from "./agents.js";
 import { pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
@@ -92,6 +93,12 @@ function recordOf(raw: unknown): AssetProvenance | null {
   ) {
     return null;
   }
+  const importedFrom =
+    isRecord(raw.importedFrom) &&
+    typeof raw.importedFrom.project === "string" &&
+    typeof raw.importedFrom.asset === "string"
+      ? { project: raw.importedFrom.project, asset: raw.importedFrom.asset }
+      : null;
   return {
     id,
     asset,
@@ -120,6 +127,7 @@ function recordOf(raw: unknown): AssetProvenance | null {
     converted,
     storyNode,
     need,
+    ...(importedFrom && { importedFrom }),
   };
 }
 
@@ -128,6 +136,15 @@ function recordOf(raw: unknown): AssetProvenance | null {
  * wrong schema) is kept as `provenance.json.bak` and read as empty, and records that are not usable are dropped.
  */
 export function readLedger(projectDir: string): ProvenanceLedger {
+  return loadLedger(projectDir, true);
+}
+
+/** The ledger of a project this process only reads (another project): a damaged file is read as empty, never backed up. */
+export function readLedgerReadOnly(projectDir: string): ProvenanceLedger {
+  return loadLedger(projectDir, false);
+}
+
+function loadLedger(projectDir: string, keepDamaged: boolean): ProvenanceLedger {
   const empty: ProvenanceLedger = { schema: PROVENANCE_SCHEMA, records: [] };
   const abs = resolveWithinProject(projectDir, PROVENANCE_PATH);
   if (!abs || !existsSync(abs) || !statSync(abs).isFile()) return empty;
@@ -135,15 +152,15 @@ export function readLedger(projectDir: string): ProvenanceLedger {
   try {
     raw = JSON.parse(readFileSync(abs, "utf-8"));
   } catch {
-    backUp(abs);
+    if (keepDamaged) backUp(abs);
     return empty;
   }
   if (!isRecord(raw) || raw.schema !== PROVENANCE_SCHEMA || !Array.isArray(raw.records)) {
-    backUp(abs);
+    if (keepDamaged) backUp(abs);
     return empty;
   }
   const records = raw.records.flatMap((entry) => recordOf(entry) ?? []);
-  if (records.length !== raw.records.length) backUp(abs);
+  if (records.length !== raw.records.length && keepDamaged) backUp(abs);
   return { schema: PROVENANCE_SCHEMA, records };
 }
 
@@ -161,4 +178,12 @@ export function writeLedger(projectDir: string, ledger: ProvenanceLedger): void 
   if (!abs) throw new Error(`${PROVENANCE_PATH} is outside the project`);
   mkdirSync(dirname(abs), { recursive: true });
   replaceFileAtomically(abs, `${JSON.stringify(ledger, null, 2)}\n`, 0o644);
+}
+
+/**
+ * Runs a read-modify-write of the project's ledger (and the files it describes) one at a time per project: Research
+ * imports and cross-project imports share it.
+ */
+export function withLedgerLock<T>(projectDir: string, task: () => Promise<T>): Promise<T> {
+  return serialized(`research\0${projectDir}`, task);
 }

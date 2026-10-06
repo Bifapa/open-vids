@@ -34,7 +34,7 @@ const clip = (text: string, limit: number): string => {
 
 const seconds = (value: number): string => `${Number(value.toFixed(1))} s`;
 
-const megabytes = (bytes: number): string =>
+export const megabytes = (bytes: number): string =>
   bytes >= 100_000
     ? `${(bytes / 1_000_000).toFixed(1)} MB`
     : `${Math.max(1, Math.round(bytes / 1_000))} kB`;

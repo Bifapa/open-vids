@@ -7,6 +7,7 @@ import { ANALYSIS_TOOL_NAMES } from "./analysis/tools.js";
 import type { StoryHost } from "./story/host.js";
 import type { ResearchHost } from "./research/host.js";
 import type { FramesHost } from "./editing/frames.js";
+import type { CrossProjectHost } from "./crossProject/host.js";
 import type { QaHost } from "./qa/host.js";
 import type { StreamTimerApi } from "./turnStream.js";
 
@@ -52,6 +53,12 @@ export interface TurnRunnerOptions {
    * inspect_composition tool; the production runtime always provides it.
    */
   frames?: (scope: ProjectScope) => FramesHost;
+  /**
+   * Opens the cross-project host (the manifests of the other projects the user attached with `#`, and copying their
+   * files) of a project. Without it the agents get no import_from_project tool and no <attached-projects> block;
+   * the production runtime always provides it.
+   */
+  crossProject?: (scope: ProjectScope) => CrossProjectHost;
   /**
    * How long the Director's model may stay silent (no event at all, no tool of its own running) before the turn is
    * stopped with a clear error (default 10 minutes). Delegated runs have their own watchdog.

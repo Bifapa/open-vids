@@ -190,6 +190,8 @@ export class TurnRunner {
       analysis: null,
       story: null,
       research: null,
+      crossProject: null,
+      crossProjectOffered: false,
       permissions: null,
       questions: null,
       qa: null,
@@ -317,13 +319,29 @@ export class TurnRunner {
     if (ctx.active !== run || run.finalizing) {
       throw new RuntimeError("turn_not_active", "Turn is no longer active", 409);
     }
-    const text = renderPromptContext(
+    const rendered = renderPromptContext(
       input.text,
       input.editorContext,
       input.references,
       input.userLanguage,
       { editorJson: "relevant" },
     );
+    // A project attached by this steering joins the chat's attachments at once (access reads the messages): its
+    // manifest rides on the steering the way the first prompt carries it.
+    const attachedKeys = (input.references ?? []).flatMap((reference) =>
+      reference.kind === "project" ? [reference.projectKey] : [],
+    );
+    const attachedBlock =
+      run.crossProject && attachedKeys.length > 0
+        ? await run.crossProject.promptBlock({
+            onlyKeys: attachedKeys,
+            offered: run.crossProjectOffered,
+          })
+        : "";
+    if (ctx.active !== run || run.finalizing) {
+      throw new RuntimeError("turn_not_active", "Turn is no longer active", 409);
+    }
+    const text = attachedBlock ? `${rendered}\n\n${attachedBlock}` : rendered;
     const queue = () => {
       run.pendingSteering.push(text);
       run.orchestrator?.notifySteer();

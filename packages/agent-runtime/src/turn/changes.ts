@@ -3,6 +3,7 @@ import { ANALYSIS_TOOL_NAMES } from "../analysis/tools.js";
 import type { HostToolResult } from "../backend.js";
 import { EDITING_TOOL_NAMES } from "../editing/tools.js";
 import { RESEARCH_TOOL_NAMES } from "../research/tools.js";
+import { CROSS_PROJECT_TOOL_NAMES } from "../crossProject/tools.js";
 import { STORY_TOOL_NAMES } from "../story/tools.js";
 import { savesWebsiteFiles } from "../intent.js";
 
@@ -73,6 +74,7 @@ export class ChangeTally {
         return;
       case RESEARCH_TOOL_NAMES.import:
       case RESEARCH_TOOL_NAMES.resolve:
+      case CROSS_PROJECT_TOOL_NAMES.import:
         this.note("import");
         return;
       case RESEARCH_TOOL_NAMES.record:

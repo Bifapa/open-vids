@@ -332,6 +332,30 @@ export interface StudioApiAdapter {
     outFile: string;
     signal: AbortSignal;
   }): Promise<WebsiteRecordingResult>;
+
+  /**
+   * Optional: the other projects this host knows (the `#` project mentions). `key` is the host's opaque per-project key
+   * (the desktop shell's folder key); the browser and the agents only ever see keys and names. `resolve` answers where
+   * a project is on disk, for this server only, or null when the key matches no project.
+   */
+  externalProjects?: {
+    list(): Promise<ExternalProject[]>;
+    resolve(key: string): Promise<ExternalProjectLocation | null>;
+  };
+}
+
+export interface ExternalProject {
+  key: string;
+  name: string;
+  /** When the user last opened it (epoch ms). */
+  openedAt?: number;
+}
+
+export interface ExternalProjectLocation {
+  key: string;
+  name: string;
+  /** Absolute folder; never leaves the server. */
+  dir: string;
 }
 
 export type WebsiteRecordingResult =

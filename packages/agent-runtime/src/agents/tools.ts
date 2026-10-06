@@ -17,6 +17,7 @@ import { buildStoryTools, timelineWritesAllowed, type StoryTurnMode } from "../s
 import { buildResearchTools, type KnownCandidate } from "../research/tools.js";
 import { changesProject } from "../intent.js";
 import { buildFrameTools } from "../editing/frames.tools.js";
+import { buildCrossProjectTools } from "../crossProject/tools.js";
 import { buildQaTools } from "../qa/tools.js";
 
 export const TOOL_NAMES = {
@@ -111,6 +112,11 @@ export interface ToolAvailability {
   qa?: boolean;
   /** The runtime has a frames host: the agents that judge the picture get `inspect_composition`. */
   frames?: boolean;
+  /**
+   * The runtime has a cross-project host and the user attached at least one other project in this chat: the agents
+   * that place media get `import_from_project` (the executor re-checks the attachment on every call).
+   */
+  crossProject?: boolean;
 }
 
 const stringProperty = (description: string, maxLength?: number) => ({
@@ -224,7 +230,19 @@ export function buildHostTools(
     availability.frames && agent !== "jev"
       ? buildFrameTools(agent, availability.enabled, execute)
       : [];
-  const projectTools = [...editing, ...analysis, ...story, ...research, ...frames, ...qa];
+  const crossProject =
+    availability.crossProject && agent !== "jev"
+      ? buildCrossProjectTools(agent, availability.enabled, turn, execute)
+      : [];
+  const projectTools = [
+    ...editing,
+    ...analysis,
+    ...story,
+    ...research,
+    ...frames,
+    ...crossProject,
+    ...qa,
+  ];
   const allTools =
     agent === "director"
       ? directorTools(availability, execute, projectTools)

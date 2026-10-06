@@ -28,14 +28,18 @@ const EXTRA_SHARED_SUFFIXES = [
 ];
 
 const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"'`\])}]+/gi;
-/** `www.example.com/path` without a scheme: people write links that way, and `www.` is unmistakable. */
-const WWW_IN_TEXT = /(?<![\w./@-])www\.[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:[/?#][^\s<>"'`\])}]*)?/gi;
+/**
+ * `www.example.com/path` without a scheme: people write links that way, and `www.` is unmistakable. Not after `#`: that
+ * is a `#project` mention token of the composer, never a link.
+ */
+const WWW_IN_TEXT = /(?<![\w./@#-])www\.[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:[/?#][^\s<>"'`\])}]*)?/gi;
 /**
  * A bare domain (`openvids.ai`, `linear.app/pricing`): people name their site that way too. Letters-only last label,
- * not part of an address, path or e-mail; file names are told apart by {@link FILE_EXTENSIONS}.
+ * not part of an address, path, e-mail or `#project` mention token; file names are told apart by
+ * {@link FILE_EXTENSIONS}.
  */
 const BARE_DOMAIN_IN_TEXT =
-  /(?<![\w./@:-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,24})(?![\w@-])(?:[/?#][^\s<>"'`\])}]*)?/gi;
+  /(?<![\w./@:#-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,24})(?![\w@-])(?:[/?#][^\s<>"'`\])}]*)?/gi;
 /** Last labels that name a file kind, not a site (`index.html`, `Chrome Bounce.wav`, `README.md`, `Node.js`). */
 const FILE_EXTENSIONS = new Set([
   "html",

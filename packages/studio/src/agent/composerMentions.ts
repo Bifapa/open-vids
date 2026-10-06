@@ -1,8 +1,11 @@
-/** The `@` token the caret is in, when it is in one. */
+/** The characters that open a mention: `@` names a project file, `#` another project. */
+export type MentionTrigger = "@" | "#";
+
+/** The mention token the caret is in, when it is in one. */
 export interface ActiveMention {
-  /** Index of the `@` in the text. */
+  /** Index of the trigger (`@` or `#`) in the text. */
   start: number;
-  /** What was typed after the `@`, up to the caret. */
+  /** What was typed after the trigger, up to the caret. */
   query: string;
 }
 
@@ -11,15 +14,20 @@ export const MENTION_LIMIT = 8;
 const WHITESPACE = /\s/;
 
 /**
- * The mention being typed: an `@` at the text start, or after whitespace or `(`, followed by non-whitespace
- * characters up to the caret. `mail@example` is not one, and neither is a caret past a space after the `@`.
+ * The mention being typed: a trigger (`@` unless told otherwise) at the text start, or after whitespace or `(`,
+ * followed by non-whitespace characters up to the caret. `mail@example`, `a#b` and a heading's `# ` are not one:
+ * the trigger has to open a word, and a caret past a space after it is out of the token.
  */
-export function activeMention(text: string, caret: number): ActiveMention | null {
+export function activeMention(
+  text: string,
+  caret: number,
+  trigger: MentionTrigger = "@",
+): ActiveMention | null {
   if (!Number.isInteger(caret) || caret < 0 || caret > text.length) return null;
   for (let index = caret - 1; index >= 0; index -= 1) {
     const char = text[index];
     if (char === undefined || WHITESPACE.test(char)) return null;
-    if (char !== "@") continue;
+    if (char !== trigger) continue;
     const before = index === 0 ? "" : text[index - 1];
     if (before === "" || before === "(" || (before !== undefined && WHITESPACE.test(before))) {
       return { start: index, query: text.slice(index + 1, caret) };
@@ -75,7 +83,17 @@ export function applyMention(
   caret: number,
   path: string,
 ): { text: string; caret: number } {
-  const inserted = `@${mentionBasename(path)} `;
+  return applyMentionToken(text, mention, caret, mentionToken(path));
+}
+
+/** Replaces the typed mention (from its start to the caret) with `<token> ` and puts the caret after the space. */
+export function applyMentionToken(
+  text: string,
+  mention: ActiveMention,
+  caret: number,
+  token: string,
+): { text: string; caret: number } {
+  const inserted = `${token} `;
   return {
     text: text.slice(0, mention.start) + inserted + text.slice(caret),
     caret: mention.start + inserted.length,

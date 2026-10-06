@@ -89,5 +89,11 @@ export async function buildFirstPrompt(
   const revertedBlocks = revertedBlock ? `\n\n${revertedBlock}` : "";
   const steering = renderSteeringBlocks(run.pendingSteering.splice(0));
   const steeringBlocks = steering.length > 0 ? `\n\n${steering.join("\n\n")}` : "";
-  return `${renderTeam(setup, run.storyAction, flags.inheritedTools)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage, { editorJson: "full" })}${intentBlock ? `\n\n${intentBlock}` : ""}${planBlocks}${offerBlocks}${declinedBlocks}${canvasBlock}${storyBlocks}${revertedBlocks}${flags.qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}${steeringBlocks}`;
+  // Projects the user attached with # in this or an earlier message of the chat: their manifests are read from Studio
+  // now (a project Studio cannot list is said so in the block, not an error).
+  const attachedBlock = run.crossProject
+    ? await run.crossProject.promptBlock({ offered: run.crossProjectOffered })
+    : "";
+  const attachedBlocks = attachedBlock ? `\n\n${attachedBlock}` : "";
+  return `${renderTeam(setup, run.storyAction, flags.inheritedTools)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage, { editorJson: "full" })}${intentBlock ? `\n\n${intentBlock}` : ""}${planBlocks}${offerBlocks}${declinedBlocks}${canvasBlock}${attachedBlocks}${storyBlocks}${revertedBlocks}${flags.qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}${steeringBlocks}`;
 }

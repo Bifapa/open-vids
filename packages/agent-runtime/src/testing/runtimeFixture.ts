@@ -13,6 +13,7 @@ import { FakeFramesHost } from "./frames.js";
 import { FakeEditingHost } from "./editing.js";
 import { FakeStoryHost } from "./story.js";
 import { FakeResearchHost } from "./research.js";
+import { FakeCrossProjectHost } from "./crossProject.js";
 import { FakeQaHost } from "./qa.js";
 import { ScriptedAgentBackend } from "./backend.js";
 
@@ -31,6 +32,7 @@ export interface RuntimeFixture {
   frames: FakeFramesHost;
   story: FakeStoryHost;
   research: FakeResearchHost;
+  crossProject: FakeCrossProjectHost;
   qa: FakeQaHost;
   now: () => number;
   setNow: (value: number) => void;
@@ -61,6 +63,7 @@ export async function createRuntimeFixture(
   const frames = new FakeFramesHost();
   const story = new FakeStoryHost();
   const research = new FakeResearchHost();
+  const crossProject = new FakeCrossProjectHost();
   const qa = new FakeQaHost();
   const usage = new UsageJournal(projectDir, store);
   const chats = await ChatService.open(scope, store, {
@@ -71,6 +74,7 @@ export async function createRuntimeFixture(
   const turns = new TurnRunner(chats, backend, checkpoints, store, settings, {
     editing: () => editing,
     analysis: () => analysis,
+    crossProject: () => crossProject,
     frames: () => frames,
     story: () => story,
     research: () => research,
@@ -95,6 +99,7 @@ export async function createRuntimeFixture(
     frames,
     story,
     research,
+    crossProject,
     qa,
     now,
     setNow: (value) => {

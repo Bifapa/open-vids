@@ -40,6 +40,8 @@ export type { QaHost } from "./qa/host.js";
 export { HttpResearchHost } from "./research/host.http.js";
 export { ResearchToolError } from "./research/host.js";
 export type { ResearchHost } from "./research/host.js";
+export { HttpCrossProjectHost } from "./crossProject/host.http.js";
+export type { CrossProjectHost } from "./crossProject/host.js";
 export { ChatService } from "./chats.js";
 export type { ChatServiceOptions, ChatEventSubscription } from "./chats.js";
 export { RuntimeError } from "./errors.js";

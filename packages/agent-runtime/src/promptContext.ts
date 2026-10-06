@@ -111,6 +111,8 @@ function formatBytes(bytes: number): string {
 function describeAttachment(reference: MessageReference): string | null {
   if (reference.kind === "url" || reference.kind === "timeline-range") return null;
   if (reference.kind === "editor-selection") return null;
+  // A project mention is not a file of this project: <attached-projects> describes it.
+  if (reference.kind === "project") return null;
   const path =
     reference.kind === "asset"
       ? reference.path
@@ -152,6 +154,13 @@ function withoutClipList(context: EditorContext): EditorContext {
   return { ...context, timeline: { ...context.timeline, elements: [] } };
 }
 
+/** One reference as the prompt's `<references>` shows it. Another project shows its key, name and parts only. */
+function describeReference(reference: MessageReference): string {
+  if (reference.kind !== "project") return JSON.stringify(reference);
+  const { kind, projectKey, name, parts } = reference;
+  return JSON.stringify({ kind, projectKey, name, parts });
+}
+
 /** Adds Studio-captured editor context, typed references and the user's language to the text received by a backend. */
 export function renderPromptContext(
   prompt: string,
@@ -173,7 +182,7 @@ export function renderPromptContext(
     blocks.push(`<editor-context>\n${JSON.stringify(shown, null, 2)}${note}\n</editor-context>`);
   }
   if (references.length > 0) {
-    const rendered = references.map((reference) => JSON.stringify(reference)).join("\n");
+    const rendered = references.map(describeReference).join("\n");
     blocks.push(`<references>\n${rendered}\n</references>`);
   }
   const language = renderUserLanguageBlock(userLanguage);
