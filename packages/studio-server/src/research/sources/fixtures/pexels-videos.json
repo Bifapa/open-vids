@@ -11,16 +11,64 @@
       "url": "https://www.pexels.com/video/water-crashing-on-rocks-1093662/",
       "image": "https://images.pexels.com/videos/1093662/free-video-1093662.jpg?auto=compress&cs=tinysrgb&fit=crop&h=630&w=1200",
       "duration": 8,
-      "user": { "id": 417939, "name": "Peter Fowler", "url": "https://www.pexels.com/@peter-fowler-417939" },
+      "user": {
+        "id": 417939,
+        "name": "Peter Fowler",
+        "url": "https://www.pexels.com/@peter-fowler-417939"
+      },
       "video_files": [
-        { "id": 37101, "quality": "sd", "file_type": "video/mp4", "width": 640, "height": 360, "fps": 25.0, "link": "https://videos.pexels.com/video-files/1093662/1093662-sd_640_360_25fps.mp4" },
-        { "id": 37102, "quality": "hd", "file_type": "video/mp4", "width": 1280, "height": 720, "fps": 25.0, "link": "https://videos.pexels.com/video-files/1093662/1093662-hd_1280_720_25fps.mp4" },
-        { "id": 37103, "quality": "hd", "file_type": "video/mp4", "width": 1920, "height": 1080, "fps": 25.0, "link": "https://videos.pexels.com/video-files/1093662/1093662-hd_1920_1080_25fps.mp4" },
-        { "id": 37104, "quality": "uhd", "file_type": "video/mp4", "width": 3840, "height": 2160, "fps": 25.0, "link": "https://videos.pexels.com/video-files/1093662/1093662-uhd_3840_2160_25fps.mp4" },
-        { "id": 37105, "quality": "hls", "file_type": "video/mp4", "width": null, "height": null, "fps": 25.0, "link": "https://videos.pexels.com/video-files/1093662/1093662-hls.m3u8" }
+        {
+          "id": 37101,
+          "quality": "sd",
+          "file_type": "video/mp4",
+          "width": 640,
+          "height": 360,
+          "fps": 25.0,
+          "link": "https://videos.pexels.com/video-files/1093662/1093662-sd_640_360_25fps.mp4"
+        },
+        {
+          "id": 37102,
+          "quality": "hd",
+          "file_type": "video/mp4",
+          "width": 1280,
+          "height": 720,
+          "fps": 25.0,
+          "link": "https://videos.pexels.com/video-files/1093662/1093662-hd_1280_720_25fps.mp4"
+        },
+        {
+          "id": 37103,
+          "quality": "hd",
+          "file_type": "video/mp4",
+          "width": 1920,
+          "height": 1080,
+          "fps": 25.0,
+          "link": "https://videos.pexels.com/video-files/1093662/1093662-hd_1920_1080_25fps.mp4"
+        },
+        {
+          "id": 37104,
+          "quality": "uhd",
+          "file_type": "video/mp4",
+          "width": 3840,
+          "height": 2160,
+          "fps": 25.0,
+          "link": "https://videos.pexels.com/video-files/1093662/1093662-uhd_3840_2160_25fps.mp4"
+        },
+        {
+          "id": 37105,
+          "quality": "hls",
+          "file_type": "video/mp4",
+          "width": null,
+          "height": null,
+          "fps": 25.0,
+          "link": "https://videos.pexels.com/video-files/1093662/1093662-hls.m3u8"
+        }
       ],
       "video_pictures": [
-        { "id": 1, "nr": 0, "picture": "https://images.pexels.com/videos/1093662/pictures/preview-0.jpg" }
+        {
+          "id": 1,
+          "nr": 0,
+          "picture": "https://images.pexels.com/videos/1093662/pictures/preview-0.jpg"
+        }
       ]
     },
     {
@@ -32,8 +80,24 @@
       "duration": 22,
       "user": { "id": 680589, "name": "Joey Farina", "url": "https://www.pexels.com/@joey" },
       "video_files": [
-        { "id": 125003, "quality": "sd", "file_type": "video/mp4", "width": 540, "height": 960, "fps": 29.97, "link": "https://videos.pexels.com/video-files/2499611/2499611-sd_540_960_30fps.mp4" },
-        { "id": 125004, "quality": "hd", "file_type": "video/mp4", "width": 1080, "height": 1920, "fps": 29.97, "link": "https://videos.pexels.com/video-files/2499611/2499611-hd_1080_1920_30fps.mp4" }
+        {
+          "id": 125003,
+          "quality": "sd",
+          "file_type": "video/mp4",
+          "width": 540,
+          "height": 960,
+          "fps": 29.97,
+          "link": "https://videos.pexels.com/video-files/2499611/2499611-sd_540_960_30fps.mp4"
+        },
+        {
+          "id": 125004,
+          "quality": "hd",
+          "file_type": "video/mp4",
+          "width": 1080,
+          "height": 1920,
+          "fps": 29.97,
+          "link": "https://videos.pexels.com/video-files/2499611/2499611-hd_1080_1920_30fps.mp4"
+        }
       ],
       "video_pictures": []
     },
@@ -46,8 +110,24 @@
       "duration": 15,
       "user": { "id": 1, "name": "", "url": "https://www.pexels.com/@anon" },
       "video_files": [
-        { "id": 9, "quality": "uhd", "file_type": "video/mp4", "width": 3840, "height": 2160, "fps": 30.0, "link": "https://videos.pexels.com/video-files/3571264/3571264-uhd_3840_2160_30fps.mp4" },
-        { "id": 8, "quality": "hd", "file_type": "video/mp4", "width": 2560, "height": 1440, "fps": 30.0, "link": "https://videos.pexels.com/video-files/3571264/3571264-hd_2560_1440_30fps.mp4" }
+        {
+          "id": 9,
+          "quality": "uhd",
+          "file_type": "video/mp4",
+          "width": 3840,
+          "height": 2160,
+          "fps": 30.0,
+          "link": "https://videos.pexels.com/video-files/3571264/3571264-uhd_3840_2160_30fps.mp4"
+        },
+        {
+          "id": 8,
+          "quality": "hd",
+          "file_type": "video/mp4",
+          "width": 2560,
+          "height": 1440,
+          "fps": 30.0,
+          "link": "https://videos.pexels.com/video-files/3571264/3571264-hd_2560_1440_30fps.mp4"
+        }
       ],
       "video_pictures": []
     },
@@ -60,8 +140,24 @@
       "duration": 5,
       "user": { "id": 2, "name": "Streamer", "url": "https://www.pexels.com/@streamer" },
       "video_files": [
-        { "id": 10, "quality": "hls", "file_type": "application/x-mpegURL", "width": null, "height": null, "fps": 25.0, "link": "https://videos.pexels.com/video-files/4/4-hls.m3u8" },
-        { "id": 11, "quality": "hd", "file_type": "video/webm", "width": 1920, "height": 1080, "fps": 25.0, "link": "https://videos.pexels.com/video-files/4/4-hd.webm" }
+        {
+          "id": 10,
+          "quality": "hls",
+          "file_type": "application/x-mpegURL",
+          "width": null,
+          "height": null,
+          "fps": 25.0,
+          "link": "https://videos.pexels.com/video-files/4/4-hls.m3u8"
+        },
+        {
+          "id": 11,
+          "quality": "hd",
+          "file_type": "video/webm",
+          "width": 1920,
+          "height": 1080,
+          "fps": 25.0,
+          "link": "https://videos.pexels.com/video-files/4/4-hd.webm"
+        }
       ],
       "video_pictures": []
     }
