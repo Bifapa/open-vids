@@ -87,6 +87,30 @@ describe("the home server's project list", () => {
     ]);
   });
 
+  it("keeps the folder the list carries only when it is an absolute path", async () => {
+    const { url } = await home({
+      "/internal/projects": {
+        body: {
+          projects: [
+            { key: "abs", name: "Abs", dir: "/tmp/abs" },
+            { key: "rel", name: "Rel", dir: "relative/dir" },
+            { key: "none", name: "None" },
+            { key: "bad", name: 7 },
+          ],
+        },
+      },
+    });
+    const projects = createHomeExternalProjects({
+      OPENVIDS_HOME_URL: url,
+      OPENVIDS_HOME_SECRET: SECRET,
+    });
+    expect(await projects?.list()).toEqual([
+      { key: "abs", name: "Abs", dir: "/tmp/abs" },
+      { key: "rel", name: "Rel" },
+      { key: "none", name: "None" },
+    ]);
+  });
+
   it("treats a wrong secret, a bad shape and an unusable folder as nothing", async () => {
     folder = mkdtempSync(join(tmpdir(), "ov-home-"));
     const file = join(folder, "plain.txt");

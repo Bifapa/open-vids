@@ -70,6 +70,9 @@ function recordIsMusic(record: AssetProvenance): boolean {
   );
 }
 
+/** `assets/from/<project>/`: where `import_from_project` puts what it copies. */
+const IMPORTED_FOLDER = /^assets\/from\/[^/]+\//;
+
 /**
  * Every file of another project belongs to exactly one part. Renders are the files under `renders/` (never music,
  * whatever they are called); the rest go by kind, and audio is music when the project's story, the file's provenance
@@ -87,7 +90,9 @@ function partOf(
   if (audio.effects.has(path)) return "audio";
   if (audio.music.has(path)) return "music";
   if (record && recordIsMusic(record)) return "music";
-  return hasMusicToken(path) ? "music" : "audio";
+  // A file imported from another project sits in a folder named after that project, whose name says nothing about
+  // the file: such a file is classified by its own record only.
+  return hasMusicToken(path.replace(IMPORTED_FOLDER, "")) ? "music" : "audio";
 }
 
 /**

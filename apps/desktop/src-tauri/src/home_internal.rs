@@ -4,7 +4,7 @@
 //! OTHER projects (`#` in the composer) it asks the shell, which owns the
 //! recents list, over loopback server-to-server HTTP:
 //!
-//! - `GET /internal/projects` → `{ "projects": [{ "key", "name", "openedAt" }] }`
+//! - `GET /internal/projects` → `{ "projects": [{ "key", "name", "openedAt", "dir" }] }` (`dir` so the sidecar needs no request per project)
 //!   (`openedAt` epoch ms, most recent first, only folders that still exist).
 //! - `GET /internal/projects/<key>` → `{ "key", "name", "dir" }`, or 404.
 //!
@@ -131,7 +131,14 @@ pub fn serve(
     if head.path == "/internal/projects" {
         let projects: Vec<_> = existing
             .iter()
-            .map(|e| json!({ "key": e.key(), "name": e.id, "openedAt": e.last_opened.saturating_mul(1000) }))
+            .map(|e| {
+                json!({
+                    "key": e.key(),
+                    "name": e.id,
+                    "openedAt": e.last_opened.saturating_mul(1000),
+                    "dir": e.dir.to_string_lossy(),
+                })
+            })
             .collect();
         return respond_json(stream, 200, &json!({ "projects": projects }));
     }
@@ -155,12 +162,15 @@ fn refuse(stream: &mut TcpStream, status: u16, text: &'static str) {
     respond_error(stream, status, &err);
 }
 
-/// The recents whose folder still exists, most recently opened first.
+/// The recents whose folder still exists, most recently opened first. The
+/// entries are copied under the lock; the folders are stat-ed after it is
+/// released, so a slow or stale volume never stalls the other home routes.
 fn existing_projects(state: &Arc<Mutex<HomeInner>>) -> Vec<RecentEntry> {
     let mut entries: Vec<RecentEntry> = state
         .lock()
-        .map(|inner| inner.recents.entries().iter().filter(|e| e.dir.is_dir()).cloned().collect())
+        .map(|inner| inner.recents.entries().to_vec())
         .unwrap_or_default();
+    entries.retain(|e| e.dir.is_dir());
     entries.sort_by_key(|e| std::cmp::Reverse(e.last_opened));
     entries
 }
@@ -442,8 +452,10 @@ mod tests {
         assert_eq!(seen, vec![("fresh", 3_000_000), ("old", 1_000_000)]);
         for p in &projects {
             assert!(is_key(p["key"].as_str().unwrap()));
-            assert!(p.get("dir").is_none(), "the list never carries paths");
         }
+        // The folder comes with the list (server to server), so the sidecar needs no request per project.
+        let canonical = std::fs::canonicalize(&fresh).unwrap();
+        assert_eq!(projects[0]["dir"], canonical.to_string_lossy().as_ref());
     }
 
     #[test]

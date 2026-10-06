@@ -1,4 +1,6 @@
-import { statSync } from "node:fs";
+import { realpath as realpathNative } from "node:fs";
+import { realpath as realpathJs, stat } from "node:fs/promises";
+import { promisify } from "node:util";
 import {
   PROJECT_FILE_PARTS,
   PROJECT_MANIFEST_LIMITS,
@@ -11,7 +13,7 @@ import {
   type ProjectPart,
   type ProjectPartsSummary,
 } from "@hyperframes/agent-protocol";
-import { realFilePath, realpath } from "../helpers/safePath.js";
+import { realFilePath } from "../helpers/safePath.js";
 import { ResearchFailure } from "../research/errors.js";
 import { withLedgerLock } from "../research/provenance.js";
 import { RequestRegistry } from "../research/requestRegistry.js";
@@ -35,8 +37,41 @@ export interface CrossProjectServiceOptions {
 const unknownProject = (): ResearchFailure =>
   new ResearchFailure("unknown_project", "No such project: it is not one the user has opened");
 
+const nativeRealpath = promisify(realpathNative.native);
+
+/** Same answer as core's `realpath` (native; some Windows volumes refuse it with EISDIR), without blocking the loop. */
+async function realFolder(path: string): Promise<string> {
+  try {
+    return await nativeRealpath(path);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "EISDIR")
+      return realpathJs(path);
+    throw error;
+  }
+}
+
 const samePlace = (a: string, b: string): boolean =>
   process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+
+/**
+ * `dir` as another project's place for this server: its real folder, or null when it is gone or is the open project
+ * itself.
+ */
+async function locatedAt(
+  project: ResolvedProject,
+  found: { key: string; name: string; dir: string },
+): Promise<LocatedProject | null> {
+  let root: string;
+  try {
+    root = await realFolder(found.dir);
+    if (!(await stat(root)).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  return samePlace(root, realFilePath(project.dir))
+    ? null
+    : { key: found.key, name: found.name, root };
+}
 
 /**
  * Where another project of the host is, for this server only: the real folder behind `key`, or null when the host
@@ -50,15 +85,7 @@ export async function locateExternalProject(
   const external = adapter.externalProjects;
   if (!external || key.length === 0 || key.length > 64) return null;
   const found = await external.resolve(key);
-  if (!found) return null;
-  let root: string;
-  try {
-    root = realpath(found.dir);
-    if (!statSync(root).isDirectory()) return null;
-  } catch {
-    return null;
-  }
-  return samePlace(root, realFilePath(project.dir)) ? null : { key, name: found.name, root };
+  return found ? locatedAt(project, found) : null;
 }
 
 /**
@@ -91,8 +118,15 @@ export class CrossProjectService {
     const external = this.options.adapter.externalProjects;
     if (!external) return { projects: [] };
     const entries = await external.list();
+    // An entry that carries its folder is checked here; only one without it costs a `resolve` of its own.
     const located = await Promise.all(
-      entries.map(async (entry) => ((await this.locateOrNull(project, entry.key)) ? entry : null)),
+      entries.map(async (entry) => {
+        const place =
+          entry.dir !== undefined
+            ? await locatedAt(project, { key: entry.key, name: entry.name, dir: entry.dir })
+            : await this.locateOrNull(project, entry.key);
+        return place ? entry : null;
+      }),
     );
     return {
       projects: located.flatMap((entry) =>

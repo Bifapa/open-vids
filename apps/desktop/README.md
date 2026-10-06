@@ -593,9 +593,10 @@ page-drawn caption buttons add minimize, maximize and close (`capabilities/windo
   server is the open project.
 - `/internal/*` is the Studio sidecars' door to the recents list (`home_internal.rs`), used by
   `#` project mentions in Agent Chat: `GET /internal/projects` →
-  `{ "projects": [{ "key", "name", "openedAt" }] }` (`key` is the Projects page's recent key, 16
+  `{ "projects": [{ "key", "name", "openedAt", "dir" }] }` (`key` is the Projects page's recent key, 16
   hex chars of the folder-path hash; `openedAt` epoch ms; most recent first; folders that no
-  longer exist are skipped) and `GET /internal/projects/<key>` → `{ "key", "name", "dir" }`, or
+  longer exist are skipped, checked outside the home lock; `dir` comes with the list so the sidecar
+  needs no request per project) and `GET /internal/projects/<key>` → `{ "key", "name", "dir" }`, or
   404 (a key must match `^[0-9a-f]{16}$`; a path is never accepted). Auth is a second
   per-launch secret (256 bits, OS randomness, `home_internal::InternalSecret`) sent as
   `X-OpenVids-Secret`, compared in constant time; missing or wrong → 401 with nothing else

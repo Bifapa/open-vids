@@ -15,6 +15,7 @@ import {
   type CrossProjectFixture,
   type TestProject,
 } from "./testSupport.js";
+import { projectSlug } from "./importFiles.js";
 import { CrossProjectService } from "./service.js";
 
 let fixture: CrossProjectFixture | undefined;
@@ -103,6 +104,19 @@ describe("the parts of another project", () => {
     expect(manifest.files).toHaveLength(10);
   });
 
+  it("classify what an earlier import brought by the file's own name, not by the folder named after its project", async () => {
+    const { f, service } = setup();
+    const other = f.add("abcd1234abcd1234", "Third");
+    other.write("assets/from/music-video/voice.mp3");
+    other.write("assets/from/music-video/bgm-loop.mp3");
+    other.write("assets/from/sounds-of-rome/bgm-loop.mp3");
+    const manifest = await service.manifest(f.project, "abcd1234abcd1234", ["music", "audio"]);
+    const partOf = (path: string) => manifest.files.find((file) => file.path === path)?.part;
+    expect(partOf("assets/from/music-video/voice.mp3")).toBe("audio");
+    expect(partOf("assets/from/music-video/bgm-loop.mp3")).toBe("music");
+    expect(partOf("assets/from/sounds-of-rome/bgm-loop.mp3")).toBe("music");
+  });
+
   it("do not offer a link, which could lead anywhere", async () => {
     const { f, service } = setup();
     const other = richProject(f);
@@ -189,6 +203,31 @@ describe("which projects can be reached", () => {
     });
   });
 
+  it("lists from the folders the host sends with the list, without a resolve per project", async () => {
+    const { f } = setup();
+    const alpha = f.add("aaaa1111aaaa1111", "Alpha");
+    let resolves = 0;
+    const service = new CrossProjectService({
+      adapter: {
+        externalProjects: {
+          list: async () => [
+            { key: "aaaa1111aaaa1111", name: "Alpha", openedAt: 7, dir: alpha.dir },
+            { key: "ownkey0000000000", name: "Open project", dir: f.own.dir },
+            { key: "gone1111gone1111", name: "Gone", dir: join(f.outside.dir, "missing") },
+          ],
+          resolve: async () => {
+            resolves += 1;
+            return null;
+          },
+        },
+      },
+    });
+    expect((await service.list(f.project)).projects).toEqual([
+      { key: "aaaa1111aaaa1111", name: "Alpha", openedAt: 7 },
+    ]);
+    expect(resolves).toBe(0);
+  });
+
   it("refuse a key the host does not know and the open project itself", async () => {
     const { f, service } = setup();
     for (const key of ["nosuchkey", "ownkey0000000000", "", "x".repeat(65)]) {
@@ -264,6 +303,78 @@ describe("importing files of another project", () => {
       asset: "assets/from/launch-film/a.mp3",
     });
     expect(readdirSync(join(f.own.dir, "assets/from/launch-film"))).toEqual(["a.mp3"]);
+  });
+
+  it("gives the source's license record to bytes the project holds without one", async () => {
+    const { f, service } = setup();
+    const other = f.add(KEY, "Launch Film");
+    other.write("assets/clip.mp3", "same-bytes");
+    writeLedgerFile(other, [provenanceRecord("assets/clip.mp3")]);
+    f.own.write("sounds/dragged-in.mp3", "same-bytes");
+
+    const first = await service.import(f.project, { projectKey: KEY, files: ["assets/clip.mp3"] });
+    expect(first.imported[0]).toMatchObject({
+      status: "existing",
+      asset: "sounds/dragged-in.mp3",
+      provenance: {
+        asset: "sounds/dragged-in.mp3",
+        license: "CC BY 4.0",
+        importedFrom: { project: "Launch Film", asset: "assets/clip.mp3" },
+      },
+    });
+    const ledger = readLedger(f.own.dir);
+    expect(ledger.records.map((record) => record.asset)).toEqual(["sounds/dragged-in.mp3"]);
+    expect(existsSync(join(f.own.dir, "assets/from"))).toBe(false);
+
+    // A second import finds the record already there and adds nothing.
+    const again = await service.import(f.project, { projectKey: KEY, files: ["assets/clip.mp3"] });
+    expect(again.imported[0]?.provenance).toEqual(ledger.records[0]);
+    expect(readLedger(f.own.dir).records).toHaveLength(1);
+  });
+
+  it("keeps the record when two files of one call hold the same bytes, whichever has it", async () => {
+    const { f, service } = setup();
+    const other = f.add(KEY, "Launch Film");
+    other.write("assets/a.mp3", "same");
+    other.write("assets/b.mp3", "same");
+    other.write("assets/c.mp3", "other");
+    other.write("assets/d.mp3", "other");
+    writeLedgerFile(other, [provenanceRecord("assets/b.mp3"), provenanceRecord("assets/c.mp3")]);
+    const result = await service.import(f.project, {
+      projectKey: KEY,
+      files: ["assets/a.mp3", "assets/b.mp3", "assets/c.mp3", "assets/d.mp3"],
+    });
+    const [a, b, c, d] = result.imported;
+    // a has no record, its duplicate b has one: the file gets b's. c has one, its duplicate d none: c's stays.
+    expect(a?.provenance).toMatchObject({
+      asset: "assets/from/launch-film/a.mp3",
+      importedFrom: { asset: "assets/b.mp3" },
+    });
+    expect(b?.provenance).toEqual(a?.provenance);
+    expect(c?.provenance).toMatchObject({ importedFrom: { asset: "assets/c.mp3" } });
+    expect(d?.provenance).toEqual(c?.provenance);
+    expect(readLedger(f.own.dir).records).toHaveLength(2);
+  });
+
+  it("puts a name without Latin letters in a folder of its own, spelled like the # token", async () => {
+    expect(projectSlug("My Video #2")).toBe("my-video-2");
+    expect(projectSlug("Мой проект")).toBe("мой-проект");
+    expect(projectSlug("Отпуск")).not.toBe(projectSlug("Свадьба"));
+    expect(projectSlug("🎬")).toBe("project");
+    expect(projectSlug("a".repeat(80))).toHaveLength(48);
+
+    const { f, service } = setup();
+    const holiday = f.add(KEY, "Отпуск 2024");
+    holiday.write("assets/song.mp3", "song");
+    const wedding = f.add("beef1234beef1234", "Свадьба");
+    wedding.write("assets/song.mp3", "other-song");
+    const one = await service.import(f.project, { projectKey: KEY, files: ["assets/song.mp3"] });
+    const two = await service.import(f.project, {
+      projectKey: "beef1234beef1234",
+      files: ["assets/song.mp3"],
+    });
+    expect(one.imported[0]?.asset).toBe("assets/from/отпуск-2024/song.mp3");
+    expect(two.imported[0]?.asset).toBe("assets/from/свадьба/song.mp3");
   });
 
   it("never overwrites: a different file under the same name gets a hash suffix", async () => {

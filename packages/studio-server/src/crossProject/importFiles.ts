@@ -58,15 +58,21 @@ interface Copy {
   bytes: number;
 }
 
-/** A project name as a folder name: `My Video #2` → `my-video-2`. */
+/** Longest folder name a project gets under `assets/from/`. */
+const SLUG_CHARS = 48;
+
+/**
+ * A project name as a folder name, spelled like the composer's `#` token and the runtime's name match
+ * (`My Video #2` → `my-video-2`, `Мой проект` → `мой-проект`): lower case, NFC, every run of characters that are not
+ * letters or digits (in any script) becomes one `-`. A name with no letter or digit at all (an emoji) is `project`.
+ */
 export function projectSlug(name: string): string {
   const slug = name
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 48)
+    .slice(0, SLUG_CHARS)
     .replace(/-+$/, "");
   return slug || "project";
 }
@@ -271,7 +277,12 @@ export async function importProjectFiles(options: ImportOptions): Promise<Import
       placed.set(copy.sha256, asset);
       results.push({ copy, asset, fresh: true });
     }
-    if (!results.some((result) => result.fresh)) {
+    // Bytes the project already holds copy nothing, but the source's license record still has to reach it when the
+    // project has none of its own for that file (a clip the user dragged in by hand): its credit line must not be lost.
+    const recordless = (asset: string) => !ledger.records.some((record) => record.asset === asset);
+    const adopts = (result: { copy: Copy; asset: string; fresh: boolean }) =>
+      !result.fresh && result.copy.file.record !== null && recordless(result.asset);
+    if (!results.some((result) => result.fresh || adopts(result))) {
       return { imported: results.map((result) => describe(result, ledger.records, null)), skipped };
     }
 
@@ -280,15 +291,19 @@ export async function importProjectFiles(options: ImportOptions): Promise<Import
     const written = new Map<string, AssetProvenance>();
     let failure: unknown;
     try {
-      for (const { copy, asset, fresh } of results) {
-        if (!fresh) continue;
-        const target = pinWithinProject(project.dir, asset);
-        if (!target)
-          throw new ResearchFailure("invalid_request", `${asset} is outside the project`);
-        mkdirSync(dirname(target), { recursive: true });
-        renameSync(copy.scratchFile, target);
+      for (const result of results) {
+        const { copy, asset, fresh } = result;
+        if (fresh) {
+          const target = pinWithinProject(project.dir, asset);
+          if (!target)
+            throw new ResearchFailure("invalid_request", `${asset} is outside the project`);
+          mkdirSync(dirname(target), { recursive: true });
+          renameSync(copy.scratchFile, target);
+        }
+        // The first copy of a file that has a record gives it its record; a duplicate adds one only when the file
+        // would otherwise have none.
         const record = copy.file.record;
-        if (!record) continue;
+        if (!record || written.has(asset) || (!fresh && !adopts(result))) continue;
         const id = newRecordId(ids, record, asset);
         ids.add(id);
         written.set(asset, {
@@ -341,7 +356,6 @@ function describe(
     asset,
     bytes: copy.bytes,
     status: fresh ? "copied" : "existing",
-    provenance:
-      (fresh ? written?.get(asset) : records.find((record) => record.asset === asset)) ?? null,
+    provenance: written?.get(asset) ?? records.find((record) => record.asset === asset) ?? null,
   };
 }

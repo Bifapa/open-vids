@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
-import { isExternalProjectList, isRecord } from "@hyperframes/agent-protocol";
+import { isRecord } from "@hyperframes/agent-protocol";
 import type { ExternalProject, ExternalProjectLocation, StudioApiAdapter } from "../types.js";
 
 type ExternalProjects = NonNullable<StudioApiAdapter["externalProjects"]>;
@@ -110,15 +110,28 @@ export function createHomeExternalProjects(
   return {
     async list(): Promise<ExternalProject[]> {
       const answer = await get("/internal/projects");
-      if (!answer || !isExternalProjectList(answer.body)) return [];
-      return answer.body.projects
-        .filter((entry) => entry.key.length > 0 && entry.key.length <= MAX_KEY_CHARS)
-        .slice(0, MAX_PROJECTS)
-        .map((entry) => ({
+      const body = answer?.body;
+      if (!isRecord(body) || !Array.isArray(body.projects)) return [];
+      const projects: ExternalProject[] = [];
+      for (const entry of body.projects) {
+        if (projects.length >= MAX_PROJECTS) break;
+        if (
+          !isRecord(entry) ||
+          typeof entry.key !== "string" ||
+          entry.key.length === 0 ||
+          entry.key.length > MAX_KEY_CHARS ||
+          typeof entry.name !== "string"
+        ) {
+          continue;
+        }
+        projects.push({
           key: entry.key,
           name: entry.name.slice(0, MAX_NAME_CHARS),
-          ...(entry.openedAt !== undefined && { openedAt: entry.openedAt }),
-        }));
+          ...(typeof entry.openedAt === "number" && { openedAt: entry.openedAt }),
+          ...(typeof entry.dir === "string" && isAbsolute(entry.dir) && { dir: entry.dir }),
+        });
+      }
+      return projects;
     },
 
     async resolve(key: string): Promise<ExternalProjectLocation | null> {

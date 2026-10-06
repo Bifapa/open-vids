@@ -349,6 +349,11 @@ export interface ExternalProject {
   name: string;
   /** When the user last opened it (epoch ms). */
   openedAt?: number;
+  /**
+   * Absolute folder, when the host knows it at list time: the list then needs no `resolve` per project. Server-side
+   * only, like `ExternalProjectLocation.dir`: it never reaches a browser or an agent.
+   */
+  dir?: string;
 }
 
 export interface ExternalProjectLocation {
