@@ -19,7 +19,8 @@ import { replaceFileAtomically } from "../helpers/atomicFile.js";
  * `newProject`, `updates`, `telemetry`, `onboarding`. `language` is `"system"` or a code from
  * `locales/index.json`.
  *
- * The file is re-read on every request: the desktop may have changed it since.
+ * The file is re-read on every request: the desktop may have changed it since. `updates.channel` is read here
+ * but only the desktop writes it: a patch naming it is refused (composition code can reach this route).
  */
 export const APP_THEMES = ["system", "dark", "light"] as const;
 export const NEW_PROJECT_WORKSPACES = ["media", "story", "edit"] as const;
@@ -298,7 +299,6 @@ const KNOWN_NEW_PROJECT: Record<string, (value: unknown) => boolean> = {
 
 const KNOWN_UPDATES: Record<string, (value: unknown) => boolean> = {
   autoCheck: (value) => typeof value === "boolean",
-  channel: isUpdateChannel,
 };
 
 const KNOWN_TELEMETRY: Record<string, (value: unknown) => boolean> = {
@@ -347,6 +347,15 @@ export function validatePreferencesPatch(patch: unknown): Document {
           key: "updates",
         },
       );
+    // Opting into pre-releases is the desktop Settings' call (the shell's `/api/preferences`). Studio's route is
+    // reachable by composition code, so it may read the channel (`normalize`) but never write it.
+    if ("channel" in updates) {
+      throw new InvalidPreferencesError(
+        `"updates.channel" can only be changed from the desktop app's Settings`,
+        "invalid_preferences.desktop_only",
+        { key: "updates.channel" },
+      );
+    }
     for (const [key, check] of Object.entries(KNOWN_UPDATES)) {
       if (key in updates && !check(updates[key])) {
         throw new InvalidPreferencesError(`Invalid value for "updates.${key}"`, undefined, {

@@ -83,14 +83,19 @@ jobs:
 
       # A re-run or a late event for an older beta must not move the channel backwards. Both versions are
       # pre-releases (`0.5.0-beta.2`, `0.6.0-beta.1`), for which `sort -V` agrees with semver precedence.
+      # The guard fails closed: only "the release has no beta.json asset yet" means there is no current
+      # manifest; any other failure (API or network error, rate limit, an unreadable current manifest)
+      # stops the job instead of falling through to the overwrite.
       - name: Publish the manifest unless a newer beta is already there
         run: |
           set -euo pipefail
           version="${TAG#v}"
-          mkdir -p current
+          assets="$(gh release view channel-beta --json assets --jq '.assets[].name')"
           current=""
-          if gh release download channel-beta --pattern beta.json --dir current >/dev/null 2>&1; then
-            current="$(jq -r '.version // empty' current/beta.json 2>/dev/null || true)"
+          if grep -qx 'beta.json' <<<"$assets"; then
+            mkdir -p current
+            gh release download channel-beta --pattern beta.json --dir current
+            current="$(jq -er '.version' current/beta.json)"
           fi
           if [ -n "$current" ] && [ "$current" != "$version" ]; then
             newest="$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -n 1)"

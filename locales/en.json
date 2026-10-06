@@ -4270,6 +4270,7 @@
   "errors.no_story": "There is no story yet; add nodes to create one",
   "errors.unknown_node": "No node \"{id}\" in the story",
   "errors.invalid_preferences.body": "Preferences must be a JSON object",
+  "errors.invalid_preferences.desktop_only": "\"{key}\" can only be changed in the desktop app’s Settings",
   "errors.invalid_preferences.object": "\"{key}\" must be an object",
   "errors.invalid_preferences.value": "Invalid value for \"{key}\"",
   "activity.searching_project": "Searching the project",

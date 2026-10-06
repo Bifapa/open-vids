@@ -4270,6 +4270,7 @@
   "errors.no_story": "Story ещё нет; добавьте узлы, чтобы создать его",
   "errors.unknown_node": "В Story нет узла «{id}»",
   "errors.invalid_preferences.body": "Настройки должны быть объектом JSON",
+  "errors.invalid_preferences.desktop_only": "«{key}» можно изменить только в настройках приложения",
   "errors.invalid_preferences.object": "«{key}» должен быть объектом",
   "errors.invalid_preferences.value": "Недопустимое значение для «{key}»",
   "activity.searching_project": "Поиск по проекту",

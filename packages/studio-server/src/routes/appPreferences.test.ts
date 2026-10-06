@@ -128,17 +128,33 @@ describe("app preferences route", () => {
     expect(stored()).toMatchObject({ density: "compact", updates: { autoCheck: false } });
   });
 
-  it("defaults the update channel to stable and stores beta without touching autoCheck", async () => {
+  it("reads the update channel (stable unless the desktop stored beta) but never lets Studio write it", async () => {
     expect(await get()).toMatchObject({ updates: { autoCheck: true, channel: "stable" } });
-    const response = await put({ updates: { channel: "beta" } });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ updates: { autoCheck: true, channel: "beta" } });
-    expect(stored()).toMatchObject({ updates: { channel: "beta" } });
+    // The desktop's Settings stored it: Studio's GET reports it and an unrelated update keeps it.
+    writeFileSync(path, JSON.stringify({ updates: { channel: "beta", autoCheck: false } }));
+    expect(await get()).toMatchObject({ updates: { autoCheck: false, channel: "beta" } });
+    const kept = await put({ updates: { autoCheck: true } });
+    expect(await kept.json()).toMatchObject({ updates: { autoCheck: true, channel: "beta" } });
     // An invalid stored channel reads as stable.
     writeFileSync(path, JSON.stringify({ updates: { channel: "nightly" } }));
     expect(await get()).toMatchObject({ updates: { channel: "stable" } });
     writeFileSync(path, JSON.stringify({ updates: { channel: 3 } }));
     expect(await get()).toMatchObject({ updates: { channel: "stable" } });
+  });
+
+  it.each([
+    [{ updates: { channel: "beta" } }],
+    [{ updates: { channel: "stable" } }],
+    [{ updates: { channel: "nightly" } }],
+    [{ density: "compact", updates: { autoCheck: false, channel: "beta" } }],
+  ])("refuses %j: the update channel is the desktop's to change", async (patch) => {
+    writeFileSync(path, JSON.stringify({ theme: "dark" }));
+    const response = await put(patch);
+    expect(response.status).toBe(400);
+    const body: { error: { code: string; params?: { key?: string } } } = await response.json();
+    expect(body.error.code).toBe("invalid_preferences.desktop_only");
+    expect(body.error.params?.key).toBe("updates.channel");
+    expect(stored()).toEqual({ theme: "dark" });
   });
 
   it("stores the usage statistics choice, merging the group key by key", async () => {
@@ -209,8 +225,6 @@ describe("app preferences route", () => {
     [{ confirmTrash: 1 }, "confirmTrash"],
     [{ density: "huge" }, "density"],
     [{ updates: { autoCheck: "yes" } }, "updates.autoCheck"],
-    [{ updates: { channel: "nightly" } }, "updates.channel"],
-    [{ updates: { channel: true } }, "updates.channel"],
     [{ updates: true }, "updates"],
     [{ telemetry: { enabled: "no" } }, "telemetry.enabled"],
     [{ telemetry: { enabled: null } }, "telemetry.enabled"],

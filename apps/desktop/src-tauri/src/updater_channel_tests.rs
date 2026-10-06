@@ -294,3 +294,96 @@ fn a_failing_stable_manifest_stays_an_error_unless_a_beta_is_on_offer() {
     let (answer, _) = offered("0.4.4", Channel::Beta, None, Some("0.5.0-beta.1"));
     assert_eq!(answer, Ok(Some("0.5.0-beta.1".to_string())));
 }
+
+fn release(version: &str) -> Release {
+    Release {
+        version: version.into(),
+        notes: None,
+        date: None,
+    }
+}
+
+/// A slot that was offered `version` by a finished check.
+fn offered_slot(version: &str) -> (Slot<&'static str>, u64) {
+    let mut slot: Slot<&'static str> = Slot::new();
+    let generation = slot.begin_check().expect("idle can check");
+    slot.finish_check(generation, Ok(Some(("update", release(version)))));
+    (slot, generation)
+}
+
+#[test]
+fn only_a_pre_release_version_counts_as_one() {
+    assert!(is_prerelease("0.5.0-beta.1"));
+    assert!(is_prerelease("0.5.0-rc.1+7"));
+    assert!(!is_prerelease("0.5.0"));
+    assert!(!is_prerelease("0.5.0+build-1"));
+    assert!(!is_prerelease("not a version"));
+}
+
+#[test]
+fn an_offered_beta_is_dropped_on_the_stable_channel_and_a_stable_one_is_kept() {
+    let (mut slot, _) = offered_slot("0.5.0-beta.2");
+    assert!(slot.discard_prerelease());
+    assert_eq!(slot.state, UpdateState::Idle);
+    assert!(slot.pending.is_none());
+    assert!(slot.begin_check().is_some(), "a fresh check can start");
+
+    let (mut slot, _) = offered_slot("0.5.0");
+    assert!(!slot.discard_prerelease());
+    assert!(matches!(slot.state, UpdateState::Available { .. }));
+    assert!(slot.pending.is_some());
+}
+
+#[test]
+fn a_beta_that_is_downloading_when_the_switch_goes_off_is_never_applied() {
+    let (mut slot, _) = offered_slot("0.5.0-beta.2");
+    let InstallStep::Download(generation, _) = slot.begin_install(false) else {
+        panic!("an available update starts downloading");
+    };
+    assert!(matches!(slot.state, UpdateState::Downloading { .. }));
+    assert_eq!(slot.begin_check(), None, "a download under way blocks a plain check");
+
+    assert!(slot.discard_prerelease());
+    assert_eq!(slot.state, UpdateState::Idle);
+    // The download ends later: its bytes are not handed to apply, and the slot is untouched.
+    assert!(slot.finish_download(generation, Ok(vec![1, 2, 3])).is_none());
+    assert_eq!(slot.state, UpdateState::Idle);
+    assert!(slot.bytes.is_none());
+    assert!(matches!(slot.begin_install(true), InstallStep::NotAvailable));
+    assert!(slot.begin_check().is_some(), "the fresh check for the stable channel starts");
+}
+
+#[test]
+fn a_parked_beta_is_dropped_but_an_install_that_is_restarting_is_left_alone() {
+    // Parked: downloaded, waiting for the user to agree to restart a busy project.
+    let (mut slot, _) = offered_slot("0.5.0-beta.2");
+    let InstallStep::Download(generation, _) = slot.begin_install(false) else {
+        panic!("an available update starts downloading");
+    };
+    let (_, bytes) = slot
+        .finish_download(generation, Ok(vec![9; 4]))
+        .expect("a finished download goes to apply");
+    slot.park(generation, bytes);
+    assert_eq!(
+        slot.state,
+        UpdateState::Ready {
+            version: "0.5.0-beta.2".into(),
+            restarting: false
+        }
+    );
+    assert!(slot.discard_prerelease());
+    assert_eq!(slot.state, UpdateState::Idle);
+    assert!(slot.bytes.is_none() && slot.pending.is_none());
+    assert!(matches!(slot.begin_install(true), InstallStep::NotAvailable));
+
+    // Restarting: `apply` is running and the app is about to exit; nothing can take it back.
+    let (mut slot, _) = offered_slot("0.5.0-beta.3");
+    let InstallStep::Download(generation, _) = slot.begin_install(true) else {
+        panic!("an available update starts downloading");
+    };
+    slot.finish_download(generation, Ok(vec![1]))
+        .expect("a finished download goes to apply");
+    let before = slot.state.clone();
+    assert!(!slot.discard_prerelease());
+    assert_eq!(slot.state, before);
+}

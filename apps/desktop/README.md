@@ -178,7 +178,8 @@ build is offered the next beta and then the stable release, never an older stabl
 the switch off never sees a beta. A beta manifest that is not there yet (no beta published) or has no
 entry for this platform counts as "no beta", not as a failed check. Flipping the switch saves the
 preference and starts a check at once (a check running meanwhile is repeated for the new channel).
-Turning the switch off does not roll the app back: the build stays on its beta until a newer stable
+Turning the switch off drops a beta that is offered, downloading or parked (the fresh check on the stable
+channel replaces it; `install` refuses one too), but does not roll the app back: the build stays on its beta until a newer stable
 release exists, and Settings links the stable download page. A beta build shows a “Beta” badge next to its
 version (`OV.buildChannel()`, from `OV_BOOT.channel`). The channel is a preference in `preferences.json`
 (`prefs.rs` and `studio-server` `preferences.ts` normalize it identically); it is not sent in usage statistics.

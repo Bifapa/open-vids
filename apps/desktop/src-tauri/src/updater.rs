@@ -136,6 +136,12 @@ pub fn is_newer(current: &semver::Version, offered: &semver::Version) -> bool {
     offered.cmp_precedence(current) == Ordering::Greater
 }
 
+/// Whether a version string is a pre-release (`0.5.0-beta.1`): what only the beta channel offers.
+/// A string that is not a version is not one either.
+fn is_prerelease(version: &str) -> bool {
+    semver::Version::parse(version).is_ok_and(|parsed| !parsed.pre.is_empty())
+}
+
 /// The manifest key holding this build's update, as the updater plugin
 /// resolves it: `{os}-{arch}` (`windows-x86_64` for the Windows NSIS builds,
 /// `darwin-aarch64` / `darwin-x86_64` for macOS). `None` where the plugin
@@ -279,6 +285,32 @@ impl<P: Clone> Slot<P> {
         self.bytes = None;
         self.forced = false;
         Some(self.generation)
+    }
+
+    /// The stable channel never offers a pre-release. Forget one that is offered, downloading or
+    /// parked (not one being installed right now: that restart is under way): the slot goes back to
+    /// `idle`, and the bumped generation turns the late end of a running download into a no-op.
+    /// Answers whether something was dropped.
+    fn discard_prerelease(&mut self) -> bool {
+        let offered = match &self.state {
+            UpdateState::Available { version, .. } | UpdateState::Downloading { version, .. } => {
+                version
+            }
+            UpdateState::Ready {
+                version,
+                restarting: false,
+            } => version,
+            _ => return false,
+        };
+        if !is_prerelease(offered) {
+            return false;
+        }
+        self.generation += 1;
+        self.state = UpdateState::Idle;
+        self.pending = None;
+        self.bytes = None;
+        self.forced = false;
+        true
     }
 
     fn finish_check(&mut self, generation: u64, outcome: Result<Option<(P, Release)>, CodedError>) {
@@ -513,8 +545,15 @@ pub fn check() -> UpdateState {
     let Some(app) = app() else {
         return UpdateState::failed(&unsupported());
     };
+    // The channel is read before the lock: the slot's mutex never waits on the disk. On the stable
+    // channel a beta that is offered, downloading or parked is dropped first, so the check below
+    // can start (`begin_check` refuses while a download is under way) and nothing of it is installed.
+    let stable = Channel::configured() == Channel::Stable;
     let generation = {
         let mut slot = slot();
+        if stable {
+            slot.discard_prerelease();
+        }
         match slot.begin_check() {
             Some(generation) => generation,
             None => return slot.state.clone(),
@@ -699,6 +738,12 @@ pub fn install(force: bool) -> Result<UpdateState, Refusal> {
     let Some(app) = app() else {
         return Err(Refusal::NotAvailable);
     };
+    // A beta offered, downloading or parked before the switch went off is not installed on the
+    // stable channel (read before the lock: the slot's mutex never waits on the disk).
+    let stable = Channel::configured() == Channel::Stable;
+    if stable && slot().discard_prerelease() {
+        return Err(Refusal::NotAvailable);
+    }
     let installable = matches!(
         state(),
         UpdateState::Available { .. } | UpdateState::Downloading { .. } | UpdateState::Ready { .. }
