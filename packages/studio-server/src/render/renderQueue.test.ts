@@ -300,6 +300,40 @@ describe("RenderQueue after the machine sleeps", () => {
     expect(await waiter.granted).toBe(true);
   });
 
+  it("gives a holder whose start cannot be checked a chance to beat when a fresh ticket joins right after a wake", async () => {
+    const { queue, dir } = queueIn({ staleMs: 500 });
+    const child = aliveChild();
+    // The machine just woke: the holder's slot and ticket are ten minutes old, its overdue beat has not run yet.
+    writeForeign(
+      dir,
+      { pid: child.pid, start: null, project: "Sleeper" },
+      { enqueuedAt: 1, slot: true, ageMs: 600_000 },
+    );
+    const waiter = await join_(queue, "Mine");
+    expect(waiter.standing()).toMatchObject({ held: false, holder: "Sleeper" });
+    expect(existsSync(join(dir, "slot.json"))).toBe(true);
+
+    // It beats in time: it is alive, and stays the holder.
+    const beat = new Date();
+    utimesSync(join(dir, "slot.json"), beat, beat);
+    for (const name of ticketFiles(dir)) utimesSync(join(dir, name), beat, beat);
+    await sleep(150);
+    expect(waiter.standing()).toMatchObject({ held: false, holder: "Sleeper" });
+  });
+
+  it("still takes a holder that never beats once the grace is over", async () => {
+    const { queue, dir } = queueIn({ staleMs: 500 });
+    const child = aliveChild();
+    writeForeign(
+      dir,
+      { pid: child.pid, start: null, project: "Hung" },
+      { enqueuedAt: 1, slot: true, ageMs: 600_000 },
+    );
+    const waiter = await join_(queue, "Mine");
+    expect(waiter.standing().held).toBe(false);
+    expect(await waiter.granted).toBe(true);
+  });
+
   it("never refreshes a slot that names another ticket (a holder taken for dead keeps its own render, not the new one's slot)", async () => {
     const { queue, dir } = queueIn();
     const holder = await join_(queue, "Evicted");

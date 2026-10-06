@@ -241,8 +241,12 @@ export class RenderQueue {
     const ticketBody = JSON.stringify({ id, enqueuedAt, ...who });
     const slotBody = JSON.stringify({ ticket: id, ...who });
     linkNew(ticketFile, ticketBody);
-    // Nobody polled before this ticket: the gap since the last look says nothing about a suspension.
-    if (this.waiting === 0) this.lastSurveyAt = Date.now();
+    // Nobody polled before this ticket, so the gap since the last look cannot show a suspension: the machine may have
+    // just woken, and every holder's heartbeat is overdue until it next beats. The first looks give them that chance.
+    if (this.waiting === 0) {
+      this.lastSurveyAt = Date.now();
+      this.graceUntil = this.lastSurveyAt + 2 * this.heartbeatMs;
+    }
     this.waiting += 1;
     let counted = true;
     const stopWaiting = (): void => {
