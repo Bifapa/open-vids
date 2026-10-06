@@ -52,6 +52,7 @@
 //! needs no filesystem, shell or process capability.
 
 mod agent_proxy;
+mod channel;
 mod chrome_install;
 mod cli_runner;
 mod coded_error;
@@ -401,6 +402,7 @@ fn open_project(
         &language,
         workspace.as_deref(),
         window_frame(),
+        channel::beta_features_enabled(),
     );
     let replaced = {
         let mut state = app_state.lock().map_err(|_| poisoned())?;
@@ -1703,12 +1705,17 @@ mod back_navigation_tests {
         let home = "http://127.0.0.1:57035";
         let studio_origin = "http://127.0.0.1:5210";
         assert_eq!(
-            sidecar::studio_url(studio_origin, "my video", home, "dark", "system", None, "overlay"),
+            sidecar::studio_url(studio_origin, "my video", home, "dark", "system", None, "overlay", false),
             "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system#project/my%20video"
         );
         assert_eq!(
-            sidecar::studio_url(studio_origin, "v", home, "light", "ru", Some("media"), "overlay"),
+            sidecar::studio_url(studio_origin, "v", home, "light", "ru", Some("media"), "overlay", false),
             "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=light&openvidsLanguage=ru&openvidsWorkspace=media#project/v"
+        );
+        // Beta features on: the channel goes last, after the frame hint.
+        assert_eq!(
+            sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "custom", true),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsFrame=custom&openvidsChannel=beta#project/v"
         );
     }
 
@@ -1718,18 +1725,18 @@ mod back_navigation_tests {
         let studio_origin = "http://127.0.0.1:5210";
         // macOS overlay: no parameter, links stay as they were.
         assert!(
-            !sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "overlay")
+            !sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "overlay", false)
                 .contains("openvidsFrame")
         );
         // Windows custom frame: the Studio header draws caption buttons.
         assert_eq!(
-            sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "custom"),
+            sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "custom", false),
             "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsFrame=custom#project/v"
         );
         // Windows system-frame fallback: explicit too, so the pages skip
         // their buttons. The workspace still sorts before the frame hint.
         assert_eq!(
-            sidecar::studio_url(studio_origin, "v", home, "dark", "system", Some("media"), "system"),
+            sidecar::studio_url(studio_origin, "v", home, "dark", "system", Some("media"), "system", false),
             "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsWorkspace=media&openvidsFrame=system#project/v"
         );
     }

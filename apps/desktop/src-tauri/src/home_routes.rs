@@ -464,6 +464,8 @@ fn serve_page(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, token: &str
         "locales": boot_locales(&prefs),
         "version": env!("CARGO_PKG_VERSION"),
         "frame": super::window_frame(),
+        "channel": super::channel::build_channel(),
+        "betaFeatures": super::channel::beta_features_enabled(),
     });
     // `<` cannot close the inline script: JSON-escape it.
     let boot = boot.to_string().replace('<', "\\u003c");

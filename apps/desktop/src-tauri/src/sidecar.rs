@@ -127,9 +127,12 @@ impl StudioServer {
 /// Windows without the system frame it also carries `openvidsFrame=custom`
 /// (or `=system` under the `OPENVIDS_SYSTEM_FRAME=1` fallback), so the Studio
 /// header knows which titlebar chrome to draw; on macOS the parameter is
-/// absent and the header keeps its traffic-light inset. A query survives View
+/// absent and the header keeps its traffic-light inset. With beta features on
+/// (`channel::beta_features_enabled`) it ends with `openvidsChannel=beta`;
+/// stable builds omit it. A query survives View
 /// \> Reload (it outlives hash rewrites) and the prod Hono server ignores it
 /// via its SPA fallback.
+#[allow(clippy::too_many_arguments)]
 pub fn studio_url(
     studio_origin: &str,
     project_id: &str,
@@ -138,6 +141,7 @@ pub fn studio_url(
     language: &str,
     workspace: Option<&str>,
     frame: &str,
+    beta: bool,
 ) -> String {
     let mut query = format!(
         "openvidsHome={}&openvidsTheme={}&openvidsLanguage={}",
@@ -152,6 +156,9 @@ pub fn studio_url(
     // links and tests stay byte-identical. Any other frame kind is explicit.
     if frame != "overlay" {
         query.push_str(&format!("&openvidsFrame={}", urlencode(frame)));
+    }
+    if beta {
+        query.push_str("&openvidsChannel=beta");
     }
     format!("{studio_origin}/?{query}#project/{}", urlencode(project_id))
 }

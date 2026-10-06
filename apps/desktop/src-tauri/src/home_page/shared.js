@@ -365,6 +365,19 @@
         : "overlay";
     return bootFrame;
   }
+  /* Beta features (Rust `channel::beta_features_enabled()` via OV_BOOT): on in
+     beta and debug builds. Pages gate beta-only UI on OV.betaFeatures(). */
+  function betaFeatures() {
+    var boot = window.OV_BOOT;
+    if (!boot && window.parent !== window) {
+      try {
+        boot = window.parent.OV_BOOT;
+      } catch {
+        /* Cross-origin parent: beta features stay off. */
+      }
+    }
+    return !!(boot && boot.betaFeatures === true);
+  }
   function applyCaptionFrame(doc) {
     if (frame() !== "custom") return;
     var min = doc.querySelector(".tl.min");
@@ -515,6 +528,7 @@
     pt: pt,
     matchesKey: matchesKey,
     frame: frame,
+    betaFeatures: betaFeatures,
     applyCaptionFrame: applyCaptionFrame,
     isCustomFrame: isCustomFrame,
     invoke: invoke,
