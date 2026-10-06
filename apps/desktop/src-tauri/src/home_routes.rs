@@ -36,6 +36,9 @@
 //!   pass-throughs (`home_agent`).
 //! - `/api/research/{policy,sources…}` — the global Asset Search policy
 //!   (`home_research`).
+//! - `/api/design-systems…` — the design-system library: list, detail,
+//!   rename and delete (`home_design`); `GET /design-files/<id>/…` — its
+//!   thumbnail, showcase and fonts, open like `/thumb/` and sandboxed.
 //! - `GET /api/system/check`, `/api/system/install/chrome[/cancel]` — the
 //!   first-run System check and the Chrome installer (`home_system`).
 //! - `GET /api/update/status`, `POST /api/update/check`, `POST /api/update/install`
@@ -63,6 +66,7 @@ use super::home_api::{self, respond_error, respond_json};
 use super::home_auth::{self, Head, HomeToken, TOKEN_HEADER};
 use super::home_internal::InternalSecret;
 use super::recents::RecentsStore;
+use super::sidecar::DesignIntent;
 use super::structure::validate_structure;
 use super::tabs::{FailedOpen, TabActions, TabsView};
 const PAGE: &str = include_str!("home_page/index.html");
@@ -91,8 +95,9 @@ pub enum OpenPhase {
 }
 
 /// Runs the real project open. The second argument is the Studio workspace
-/// to activate (`openvidsWorkspace`), when the open asks for one.
-pub type Opener = Arc<dyn Fn(PathBuf, Option<String>) + Send + Sync>;
+/// to activate (`openvidsWorkspace`), when the open asks for one; the third is
+/// the open intent (`openvidsDesign`, see [`DesignIntent`]).
+pub type Opener = Arc<dyn Fn(PathBuf, Option<String>, Option<DesignIntent>) + Send + Sync>;
 pub type PrefsListener = Arc<dyn Fn(&serde_json::Value) + Send + Sync>;
 
 /// Shared mutable home state behind the listener thread.
@@ -378,6 +383,9 @@ fn route(
         (_, p) if super::home_research::owns(p) => {
             super::home_research::handle(s, &method, p, body)
         }
+        (_, p) if super::home_design::owns(p) => super::home_design::handle(s, &method, p, body),
+        // Open like `/thumb/`: an `<img>` / `<iframe>` `src` cannot send the token (`home_design`).
+        ("GET", p) if super::home_design::owns_files(p) => super::home_design::serve_file(s, p),
         (_, p) if super::home_report::owns(p) => {
             super::home_report::handle(s, &method, p, body, head)
         }
@@ -659,6 +667,7 @@ fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
     Some(match name {
         "ov.css" => (CSS, include_bytes!("home_page/ov.css")),
         "home.css" => (CSS, include_bytes!("home_page/home.css")),
+        "design.css" => (CSS, include_bytes!("home_page/design.css")),
         "composer.css" => (CSS, include_bytes!("home_page/composer.css")),
         "tabs.css" => (CSS, include_bytes!("home_page/tabs.css")),
         "settings.css" => (CSS, include_bytes!("home_page/settings.css")),
@@ -668,6 +677,8 @@ fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
         "home.js" => (JS, include_bytes!("home_page/home.js")),
         "sheets.js" => (JS, include_bytes!("home_page/sheets.js")),
         "tabs.js" => (JS, include_bytes!("home_page/tabs.js")),
+        "design.js" => (JS, include_bytes!("home_page/design.js")),
+        "design-sheets.js" => (JS, include_bytes!("home_page/design-sheets.js")),
         "composer.js" => (JS, include_bytes!("home_page/composer.js")),
         "settings-core.js" => (JS, include_bytes!("home_page/settings-core.js")),
         "settings-general.js" => (JS, include_bytes!("home_page/settings-general.js")),
@@ -703,10 +714,12 @@ fn serve_asset(stream: &mut TcpStream, name: &str) {
 
 /// Mark the open of the project folder `dir` as started and hand it to the
 /// opener (lib.rs). Returns the project's key, which the page addresses it by.
+/// `design` is the open intent, when the open asks for one.
 pub fn begin_open(
     state: &Arc<Mutex<HomeInner>>,
     dir: PathBuf,
     workspace: Option<String>,
+    design: Option<DesignIntent>,
 ) -> String {
     let key = super::recents::project_key(&dir);
     let opener = state.lock().ok().and_then(|mut inner| {
@@ -714,7 +727,7 @@ pub fn begin_open(
         inner.opener.clone()
     });
     if let Some(opener) = opener {
-        opener(dir, workspace);
+        opener(dir, workspace, design);
     }
     key
 }
@@ -780,7 +793,7 @@ fn handle_pick_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
         None => respond(stream, 200, "application/json", br#"{"cancelled":true}"#),
         Some(dir) => match validate_structure(&dir) {
             Ok(project) => {
-                let key = begin_open(state, project.dir.clone(), None);
+                let key = begin_open(state, project.dir.clone(), None, None);
                 respond_json(
                     stream,
                     200,
@@ -818,6 +831,12 @@ fn handle_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8
     let id = json_field(body, "id");
     let workspace = json_field(body, "workspace")
         .filter(|w| super::prefs::WORKSPACES.contains(&w.as_str()));
+    // The only open intent there is: Studio starts with the design-system creation flow (`openvidsDesign=create`,
+    // from the optional `designSource`).
+    let design = DesignIntent::from_request(
+        json_field(body, "design").as_deref(),
+        json_field(body, "designSource").as_deref(),
+    );
     let found = state.lock().ok().and_then(|inner| {
         inner
             .recents
@@ -831,7 +850,7 @@ fn handle_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8
             } else {
                 match validate_structure(&entry.dir) {
                     Ok(project) => {
-                        let key = begin_open(state, project.dir.clone(), workspace);
+                        let key = begin_open(state, project.dir.clone(), workspace, design);
                         respond_json(stream, 200, &serde_json::json!({ "opening": true, "key": key }));
                     }
                     Err(err) => respond_error(stream, 400, &err.coded()),
@@ -912,6 +931,17 @@ fn status_line(code: u16) -> &'static str {
 
 pub fn respond(stream: &mut TcpStream, code: u16, content_type: &'static str, body: &[u8]) {
     write_response(stream, code, content_type, body, "");
+}
+
+/// `respond` with extra response headers: zero or more complete `Name: value\r\n` lines.
+pub fn respond_with_headers(
+    stream: &mut TcpStream,
+    code: u16,
+    content_type: &'static str,
+    body: &[u8],
+    extra_headers: &str,
+) {
+    write_response(stream, code, content_type, body, extra_headers);
 }
 
 /// Headers that keep a Home document out of a foreign page's frame: the

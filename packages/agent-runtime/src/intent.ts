@@ -2,14 +2,15 @@ import type { ChatIntent, PlanApproval, PlanStep } from "@hyperframes/agent-prot
 import { EDITING_TOOL_NAMES } from "./editing/tools.js";
 import { ANALYSIS_TOOL_NAMES } from "./analysis/tools.js";
 import { STORY_TOOL_NAMES } from "./story/tools.js";
+import { DESIGN_TOOL_NAMES } from "./design/tools.js";
 import { RESEARCH_TOOL_NAMES, websiteFileMode } from "./research/tools.js";
 import { CROSS_PROJECT_TOOL_NAMES } from "./crossProject/tools.js";
 
 /**
  * Tools that change the project or produce output from it: editing the timeline, rendering, building a rough cut,
- * editing/building the story, importing outside material, and the harness's own file writes. An Ask turn never gets
- * the runtime ones, an Edit turn loses them the moment it proposes a plan, and any call that names one anyway is
- * refused (see {@link intentRefusal}).
+ * editing/building the story, importing outside material, writing the design library or the project's design/ folder,
+ * and the harness's own file writes. An Ask turn never gets the runtime ones, an Edit turn loses them the moment it
+ * proposes a plan, and any call that names one anyway is refused (see {@link intentRefusal}).
  */
 const PROJECT_CHANGING_TOOLS: Readonly<Record<string, true>> = {
   [EDITING_TOOL_NAMES.edit]: true,
@@ -18,6 +19,8 @@ const PROJECT_CHANGING_TOOLS: Readonly<Record<string, true>> = {
   [STORY_TOOL_NAMES.edit]: true,
   [STORY_TOOL_NAMES.build]: true,
   [STORY_TOOL_NAMES.rebuild]: true,
+  [DESIGN_TOOL_NAMES.save]: true,
+  [DESIGN_TOOL_NAMES.attach]: true,
   [RESEARCH_TOOL_NAMES.import]: true,
   [RESEARCH_TOOL_NAMES.resolve]: true,
   [CROSS_PROJECT_TOOL_NAMES.import]: true,

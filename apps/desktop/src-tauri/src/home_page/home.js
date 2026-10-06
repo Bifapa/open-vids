@@ -726,6 +726,9 @@
     loSect.hidden = empty || searching;
     chatSect.hidden = searching;
     chatSect.classList.toggle("is-hero", empty);
+    /* Design systems (beta): the section steps aside while Recent is searched, and shows only systems (no empty
+       prompt) while there are no projects. design.js keeps no-op hooks in stable builds. */
+    OVDesign.sync({ hidden: searching, bare: empty });
     if (!loSect.hidden) renderStrip();
     const dis = S.loading || empty;
     $("#field").classList.toggle("is-disabled", dis);
@@ -1251,10 +1254,11 @@
   let pollTimer = null,
     overlay = null;
   /* `label` is the project's name; without one, `fallback` (a message key) stands in ("project", "last project"). */
-  function showOpening(label, fallback) {
+  function showOpening(label, fallback, note) {
     S.opening = true;
     S.openingLabel = label || "";
     S.openingFallback = fallback || "home.opening.project";
+    S.openingNote = note || "";
     if (!overlay) {
       overlay = document.createElement("div");
       overlay.className = "opening";
@@ -1296,12 +1300,22 @@
         { name: openingName() },
         { name: (inner) => '<span class="name">' + inner + "</span>" },
       ) +
-      "</span></div>";
+      "</span>" +
+      /* A note beside the open (the design system was not applied): readable, never blocking. */
+      (S.openingNote
+        ? '<span class="opening-note">' +
+          ic("alert", 12) +
+          "<span>" +
+          esc(S.openingNote) +
+          "</span></span>"
+        : "") +
+      "</div>";
   }
   function hideOpening() {
     clearInterval(pollTimer);
     pollTimer = null;
     S.opening = null;
+    S.openingNote = "";
     if (overlay) {
       overlay.remove();
       overlay = null;
@@ -1458,8 +1472,8 @@
     for (const type of ["visibilitychange", "focus", "openvids-tabs-changed"])
       (type === "visibilitychange" ? document : window).addEventListener(type, adoptForeignOpens);
   }
-  /* A project with no clips yet (new, or an empty folder) opens in Media: importing is the first step. */
-  function openProject(p, at) {
+  /* A project with no clips yet (new, or an empty folder) opens in Media: importing is the first step. `extra` adds fields to the open request (the design systems' Create flow sends design: "create"). */
+  function openProject(p, at, extra) {
     if (S.opening || isOpening(p.id)) return;
     if (p.missing)
       return toast(
@@ -1467,7 +1481,7 @@
         { label: tr("home.item.locate"), act: () => locate(p, at) },
       );
     closeMenu(false);
-    const req = p.media === 0 ? { id: p.id, workspace: "media" } : { id: p.id };
+    const req = Object.assign({ id: p.id }, p.media === 0 ? { workspace: "media" } : {}, extra);
     if (perProject()) return openInTab(p, req);
     showOpening(p.name);
     api("/api/open", req).catch((err) => {
@@ -1629,6 +1643,7 @@
         '<span></span></div><button class="btn" type="button" id="npChoose" aria-haspopup="menu" aria-expanded="false">' +
         th("home.new.choose") +
         "</button></div></div>" +
+        OVDesign.pickerHtml() +
         '<div class="np-row"><label>' +
         th("home.new.aspectRatio") +
         '<select class="sel" id="npAspect">' +
@@ -1668,6 +1683,8 @@
     );
     const q = (id) => sh.querySelector("#" + id),
       inp = q("npName");
+    /* Design systems (beta): the optional picker row; "None" unless one is chosen. */
+    const design = OVDesign.bindPicker(sh);
     const setErr = (id, els, msg) => {
       q(id).innerHTML = msg ? ic("alert", 12) + "<span>" + msg + "</span>" : "";
       els.forEach((el) => el.setAttribute("aria-invalid", msg ? "true" : "false"));
@@ -1773,12 +1790,16 @@
         height: h,
         duration: Number(q("npDur").value),
         workspace: np().openIn,
+        ...(design.id() ? { designSystemId: design.id() } : {}),
       })
         .then((res) => {
           close();
           clearSearch(false);
-          if (perProject() && res && res.key) openedInTab(res.key, name);
-          else showOpening(name);
+          const note = OVDesign.warning(res);
+          if (perProject() && res && res.key) {
+            openedInTab(res.key, name);
+            if (note) toast(note, null, "error");
+          } else showOpening(name, null, note);
         })
         .catch((err) => {
           busy = false;
@@ -2165,7 +2186,7 @@
       e.preventDefault();
       return setView(OV.matchesKey(e, "1") ? "grid" : "list");
     }
-    if (e.target.matches("input") || e.target.closest("#lastOpened, #ovTabs")) return;
+    if (e.target.matches("input") || e.target.closest("#lastOpened, #designs, #ovTabs")) return;
     const p = S.sel && byId(S.sel);
     if (e.key.startsWith("Arrow")) {
       e.preventDefault();
@@ -2441,6 +2462,13 @@
   initStartLocation();
   render();
   load();
+  /* Design systems (beta): the section above Recent; the dialogs open projects through openProject. */
+  OVDesign.mount({
+    recent: recentSect,
+    main,
+    projects: () => S.items,
+    open: (p, extra) => openProject(p, undefined, extra),
+  });
   /* The catalog finished loading, or the language changed: redraw everything built from script (static markup is
      re-applied by OVI18N). */
   window.addEventListener("ov-language", () => {

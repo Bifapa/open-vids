@@ -7,6 +7,7 @@ import {
   type ProjectSourceEntry,
   type ProjectSourcesView,
 } from "@hyperframes/agent-protocol";
+import { designLicenseWarnings } from "../design/licenses.js";
 import { MAIN_COMPOSITION } from "../editing/inventory.js";
 import { parseComposition } from "../editing/timeline.js";
 import { isCompositionSource } from "../helpers/hfIdPersist.js";
@@ -212,14 +213,20 @@ export function exportCheck(
   return {
     composition,
     assets: entries,
-    warnings: entries
-      .filter((entry) => entry.licenseStatus === "unknown" || entry.licenseStatus === "restricted")
-      .map((entry) => ({
-        asset: entry.asset,
-        status: entry.licenseStatus,
-        license: entry.license,
-        message: `${entry.asset}: ${entry.issues.find((issue) => issue !== "The file is no longer in the project") ?? entry.license}`,
-      })),
+    warnings: [
+      ...entries
+        .filter(
+          (entry) => entry.licenseStatus === "unknown" || entry.licenseStatus === "restricted",
+        )
+        .map((entry) => ({
+          asset: entry.asset,
+          status: entry.licenseStatus,
+          license: entry.license,
+          message: `${entry.asset}: ${entry.issues.find((issue) => issue !== "The file is no longer in the project") ?? entry.license}`,
+        })),
+      // The attached design system's fonts and logo whose license nobody established, and machine-only fonts.
+      ...designLicenseWarnings(projectDir),
+    ],
     credits: entries
       .filter((entry) => entry.licenseStatus === "attribution")
       .map((entry) => entry.attribution),

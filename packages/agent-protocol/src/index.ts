@@ -15,3 +15,4 @@ export * from "./usage.js";
 export * from "./usageReport.js";
 export * from "./frames.js";
 export * from "./crossProject.js";
+export * from "./design.js";

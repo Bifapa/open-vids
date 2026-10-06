@@ -42,7 +42,11 @@ function taskTextFor(deps: OrchestratorDeps, input: RunInput): string {
     ...(setup.editorContext && { editorContext: setup.editorContext }),
     ...(setup.userLanguage && { userLanguage: setup.userLanguage }),
   });
-  if (input.agent === "jev") return text;
+  // The agents that write compositions (and Jev, which edits files) are told which design system the project carries.
+  const writesCompositions =
+    input.agent === "editor" || input.agent === "motion" || input.agent === "jev";
+  const design = writesCompositions ? (setup.designBlock ?? null) : null;
+  if (input.agent === "jev") return [text, design].filter(Boolean).join("\n\n");
   // Research works under the user's Asset Search policy; it is stated with every task it gets. Every specialist is told
   // what the user's Autonomy settings mean for locked material (and Research for downloads).
   const research =
@@ -52,7 +56,7 @@ function taskTextFor(deps: OrchestratorDeps, input: RunInput): string {
   // Motion may read a linked site itself; it is told when full access is off so it asks the user instead of failing.
   const website = input.agent === "motion" ? websiteAccessLine(setup.research) : null;
   const autonomy = renderAutonomyBlock(setup.autonomy, input.agent);
-  return [text, research, website, autonomy].filter(Boolean).join("\n\n");
+  return [text, design, research, website, autonomy].filter(Boolean).join("\n\n");
 }
 
 /** The run, its first messages and its record, ready to be announced to the chat. */

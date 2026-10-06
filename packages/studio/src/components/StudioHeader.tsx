@@ -9,6 +9,7 @@ import {
   readOpenvidsHomeOrigin,
 } from "../utils/openvidsHost";
 import { WorkspaceSwitch } from "../story/WorkspaceSwitch";
+import { DesignButton } from "../design/DesignButton";
 import { Dock } from "./dock/Dock";
 import { OpenvidsAppMenu } from "./OpenvidsAppMenu";
 import { openSettings } from "./settings/settingsStore";
@@ -200,6 +201,7 @@ export function StudioHeader() {
         <TitlebarSeparator />
         <PanelToggles />
         <Dock.WindowMenu />
+        <DesignButton projectId={projectId} />
         <TitlebarSeparator />
         <Tooltip
           label={

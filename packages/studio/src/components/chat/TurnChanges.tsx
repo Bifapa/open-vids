@@ -22,6 +22,7 @@ const CHANGE_LABELS: Record<string, TranslationKey> = {
   web_save: "chat.turn.change.web_save",
   file_edit: "chat.turn.change.file_edit",
   render: "chat.turn.change.render",
+  design_attach: "studio.design.chat.change.attach",
 };
 
 /**

@@ -337,6 +337,42 @@ export const STORY_ACTIONS = ["review", "build", "rebuild", "resolve"] as const;
 export type StoryAction = (typeof STORY_ACTIONS)[number];
 
 /**
+ * A Design Systems action run as a turn: `create` — a new design system is made from a source (a brief, the current
+ * project, a video, a website or another project) and saved into the library; `edit` — an existing library system
+ * gets a new version ("make the accent warmer"). Ordinary checkpointed edit turns whose only writes are the library
+ * (through `save_design_system`) and, never by themselves, the project's compositions.
+ */
+export const DESIGN_ACTIONS = ["create", "edit"] as const;
+export type DesignAction = (typeof DESIGN_ACTIONS)[number];
+
+/** Where a design system comes from. `external_project` needs the `externalProjects` capability (a Projects-page project). */
+export const DESIGN_SOURCE_KINDS = [
+  "scratch",
+  "project",
+  "video",
+  "website",
+  "external_project",
+] as const;
+export type DesignSourceKind = (typeof DESIGN_SOURCE_KINDS)[number];
+
+/** A design system's id: the library folder's name (`~/.openvids/design-systems/<id>/`); lowercase, never starts with a dash. */
+export const DESIGN_SYSTEM_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,47}$/;
+
+/**
+ * The user's choices for a design action. `source` tells the agent what to build from (default `scratch`: the chat
+ * prompt is the brief); `systemId` names the library system an `edit` changes; `video` is a project-relative video
+ * (`source: "video"`); `url` a website (`source: "website"`; must be a site the chat links or the policy allows);
+ * `projectKey` a Projects-page project key (`source: "external_project"`).
+ */
+export interface DesignActionOptions {
+  source?: DesignSourceKind;
+  systemId?: string;
+  video?: string;
+  url?: string;
+  projectKey?: string;
+}
+
+/**
  * What happens to generated clips that were edited after the build when a rebuild would regenerate them: `keep`
  * leaves the edited material on the timeline (that part of the story change is not applied), `replace` rebuilds it.
  */
@@ -480,6 +516,10 @@ export interface TurnSummary {
   storyAction?: StoryAction;
   /** The user's choices for that action (build/rebuild). */
   storyOptions?: StoryActionOptions;
+  /** The Design Systems action the turn ran, if any. */
+  designAction?: DesignAction;
+  /** The user's choices for that action. */
+  designOptions?: DesignActionOptions;
   /** The plan proposal turn this turn carried out ("Carry out"); absent on every other turn. */
   executedPlanTurnId?: string;
   /** The Execution Quality the turn ran with (preset and the budget it resolved to). */

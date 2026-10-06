@@ -19,7 +19,7 @@ import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { importProjectFiles } from "./importFiles.js";
 import { chaptersOf, scanProjectFiles, storySynopsis } from "./projectFiles.js";
 
-interface LocatedProject {
+export interface LocatedProject {
   key: string;
   name: string;
   /** Real folder of the project. */
@@ -37,6 +37,29 @@ const unknownProject = (): ResearchFailure =>
 
 const samePlace = (a: string, b: string): boolean =>
   process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+
+/**
+ * Where another project of the host is, for this server only: the real folder behind `key`, or null when the host
+ * lists no projects, does not know the key, the folder is gone, or it is the open project itself.
+ */
+export async function locateExternalProject(
+  adapter: Pick<StudioApiAdapter, "externalProjects">,
+  project: ResolvedProject,
+  key: string,
+): Promise<LocatedProject | null> {
+  const external = adapter.externalProjects;
+  if (!external || key.length === 0 || key.length > 64) return null;
+  const found = await external.resolve(key);
+  if (!found) return null;
+  let root: string;
+  try {
+    root = realpath(found.dir);
+    if (!statSync(root).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  return samePlace(root, realFilePath(project.dir)) ? null : { key, name: found.name, root };
+}
 
 /**
  * Other projects, for `#` mentions: which exist, what each holds (by part), the manifest the agents read, and the
@@ -59,22 +82,8 @@ export class CrossProjectService {
     return located;
   }
 
-  private async locateOrNull(
-    project: ResolvedProject,
-    key: string,
-  ): Promise<LocatedProject | null> {
-    const external = this.options.adapter.externalProjects;
-    if (!external || key.length === 0 || key.length > 64) return null;
-    const found = await external.resolve(key);
-    if (!found) return null;
-    let root: string;
-    try {
-      root = realpath(found.dir);
-      if (!statSync(root).isDirectory()) return null;
-    } catch {
-      return null;
-    }
-    return samePlace(root, realFilePath(project.dir)) ? null : { key, name: found.name, root };
+  private locateOrNull(project: ResolvedProject, key: string): Promise<LocatedProject | null> {
+    return locateExternalProject(this.options.adapter, project, key);
   }
 
   /** The projects other than the open one that still exist, in the host's order (most recently opened first). */

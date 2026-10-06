@@ -61,6 +61,11 @@ export interface TurnAgentSetup {
   qaAvailable: boolean;
   /** The user's Autonomy settings as the turn started (see autonomy.ts). */
   autonomy: TurnAutonomy;
+  /**
+   * The `<project-design>` block of the design system the project carries (see design/prompt.ts); null when none is
+   * attached. Set when the turn's services open; every agent that writes compositions is told about it.
+   */
+  designBlock?: string | null;
 }
 
 export interface OrchestratorDeps {

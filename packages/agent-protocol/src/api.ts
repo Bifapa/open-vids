@@ -23,6 +23,8 @@ import type {
   PermissionDecision,
   PermissionRequest,
   SpecialistId,
+  DesignAction,
+  DesignActionOptions,
   StoryAction,
   StoryActionOptions,
   StoryOffer,
@@ -146,6 +148,12 @@ export interface StartTurnRequest {
   storyAction?: StoryAction;
   /** The user's choices for a `build` or `rebuild` action; refused with any other action. */
   storyOptions?: StoryActionOptions;
+  /**
+   * Run a Design Systems action ("create from this project", "edit the system") as this turn. Always an `edit`
+   * turn in the chat's mode; never combined with a story action or an executePlan. The prompt is the user's brief.
+   */
+  designAction?: DesignAction;
+  designOptions?: DesignActionOptions;
   /**
    * `auto`: the user started the project with the frame format on Auto, so the composition's current size is only a
    * placeholder and the agent must decide the format from the brief and the footage before building (edit_timeline's

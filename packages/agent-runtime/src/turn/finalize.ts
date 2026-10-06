@@ -78,6 +78,8 @@ export async function finalizeTurn(
   const research = await run.research?.shutdown().catch(() => null);
   const crossProject = await run.crossProject?.shutdown().catch(() => null);
   await run.story?.shutdown().catch(() => undefined);
+  // A design save or attach already sent to the design service is atomic there and awaited too.
+  await run.design?.shutdown().catch(() => undefined);
   await run.analysis?.shutdown().catch(() => undefined);
   await run.frames?.shutdown().catch(() => undefined);
   await run.editing?.shutdown().catch(() => undefined);

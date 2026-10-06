@@ -211,3 +211,21 @@ describe("ChangeTally", () => {
     ]);
   });
 });
+
+describe("design turn gates", () => {
+  it("keeps a design turn from proposing a plan until its system is saved", () => {
+    const unsaved = { ...open, designUnsaved: true };
+    expect(phaseGateRefusal(unsaved, "propose_plan")).toContain("Save the design system first");
+    expect(phaseGateRefusal({ ...open, designUnsaved: false }, "propose_plan")).toBeNull();
+    expect(phaseGateRefusal(unsaved, "request_input")).toBeNull();
+  });
+
+  it("tallies an attach as a change and the library save as none", () => {
+    const tally = new ChangeTally();
+    tally.noteToolCall("save_design_system", { name: "Acme" }, { text: "ok" });
+    tally.noteToolCall("attach_design_system", { id: "acme" }, { text: "refused", isError: true });
+    expect(tally.list()).toEqual([]);
+    tally.noteToolCall("attach_design_system", { id: "acme" }, { text: "ok" });
+    expect(tally.list()).toEqual([{ kind: "design_attach", count: 1 }]);
+  });
+});

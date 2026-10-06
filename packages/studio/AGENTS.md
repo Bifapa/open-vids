@@ -110,3 +110,16 @@ the unit test on the pure function underneath.
   card reads `acceptedIssueIds` (derived when the report is read) and the report
   view re-reads after every mark or undo. A pass's render link shows only for
   renders that survive the session (`isPassRenderLinked`).
+- **Design systems are a beta surface in `src/design/`** (`isBetaFeatureEnabled("designSystems")`;
+  with the flag off nothing renders, reads or touches the address). The header's `DesignButton`
+  popover and the chat's `DesignSavedCards` read one store (`studioDesignStore`, `/api/design-systems`
+  and `/api/projects/:id/design*`; reads abort and are dropped when superseded, no polling: it
+  re-reads when the popover opens and when any agent turn ends). Dialogs (create, edit, preview) live
+  in `DesignHost`, mounted beside Settings in `StudioRightPanels` because starting a turn
+  (`agentStore.runDesignAction`, request built by `agent/designTurn.ts`, carried by `retryTurnRequest`)
+  needs the project's agent store. The preview iframe is `sandbox=""` on purpose; never add
+  `allow-scripts`. The palette and display font shown for the attached system come from the
+  project's own `design/tokens.css`, not the library (which may be newer). "From another project"
+  appears only when `useDesignHostCapabilities(projectId, enabled)` finds other projects (the `#` mentions'
+  `cross-project` list, asked only while the create dialog is open; none or a failure means the option is hidden). The shell opens the create dialog with `openvidsDesign=create[&openvidsDesignSource=…]`,
+  read once and stripped (`designParam.ts`).

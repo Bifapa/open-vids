@@ -1,6 +1,6 @@
 # House Style
 
-Creative direction for compositions when no design spec (`frame.md` or `design.md`) is provided. These are starting points — override anything that doesn't serve the content. When a design spec exists, its brand values take precedence; house-style fills gaps.
+Creative direction for compositions when no design spec (`design/system.html`, `frame.md` or `design.md`) is provided. These are starting points — override anything that doesn't serve the content. When a design spec exists, its brand values take precedence; house-style fills gaps.
 
 ## Before Writing HTML
 

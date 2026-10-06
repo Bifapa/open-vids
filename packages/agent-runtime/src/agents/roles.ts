@@ -1,4 +1,5 @@
 import { AGENT_DISPLAY_NAMES, type SpecialistId } from "@hyperframes/agent-protocol";
+import { DESIGN_DIRECTOR, DESIGN_SPECIALIST } from "../design/prompt.js";
 import { FRAMES_ROLE_PROMPT } from "../editing/frames.tools.js";
 import { CROSS_PROJECT_ROLE_PROMPT } from "../crossProject/tools.js";
 import { disabledSpecialists } from "./inherit.js";
@@ -156,6 +157,8 @@ ${RESEARCH_DIRECTOR}
 
 ${WEBSITE_DIRECTOR}
 
+${DESIGN_DIRECTOR}
+
 ${QA_DIRECTOR}${inherited}
 
 Model routing: a specialist runs on its configured model. You may pass another model only when it is listed as allowed for that specialist, and you may lower (never raise) its thinking effort for a simple task.
@@ -174,7 +177,7 @@ ${SPECIALIST_TOOLING[id]}
 
 ${SPECIALIST_ANALYSIS[id]}
 
-${SPECIALIST_STORY[id]}
+${id === "editor" || id === "motion" ? `${SPECIALIST_STORY[id]}\n\n${DESIGN_SPECIALIST}` : SPECIALIST_STORY[id]}
 
 When a fast worker tool (jev) is available, you may hand it small, well-defined micro-tasks.
 

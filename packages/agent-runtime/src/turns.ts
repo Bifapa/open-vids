@@ -115,6 +115,12 @@ export class TurnRunner {
       throw new RuntimeError("invalid_request", "prompt must not be empty", 400);
     if (input.storyAction && !ctx.options.story)
       throw new RuntimeError("invalid_request", "Story Mode is not available in this runtime", 400);
+    if (input.designAction && !ctx.options.design)
+      throw new RuntimeError(
+        "invalid_request",
+        "Design systems are not available in this runtime",
+        400,
+      );
     const chatState = ctx.chats.get(chatId);
     if (!chatState) throw new RuntimeError("chat_not_found", "Chat was not found", 404);
     const busy = busyError(ctx, chatId);
@@ -128,10 +134,10 @@ export class TurnRunner {
       : executePlan
         ? "normal"
         : (input.mode ?? chatState.chat.activeMode);
-    // A Story workspace action and an approved plan always act; otherwise the request's intent, else the chat's
-    // (an old chat may still store the removed `plan`, read as `edit`), else Edit.
+    // A Story workspace action, a design action and an approved plan always act; otherwise the request's intent, else
+    // the chat's (an old chat may still store the removed `plan`, read as `edit`), else Edit.
     const intent: ChatIntent =
-      input.storyAction || executePlan
+      input.storyAction || input.designAction || executePlan
         ? "edit"
         : (input.intent ?? normalizeChatIntent(chatState.chat.intent) ?? "edit");
     const startedAt = ctx.now();
@@ -153,6 +159,8 @@ export class TurnRunner {
       ...(input.storyAction && { storyAction: input.storyAction }),
       ...(input.storyOptions && { storyOptions: input.storyOptions }),
       ...(executePlan && { executedPlanTurnId: executePlan.turnId }),
+      ...(input.designAction && { designAction: input.designAction }),
+      ...(input.designOptions && { designOptions: input.designOptions }),
     };
     const promptMessage: UserMessage = {
       id: promptMessageId,
@@ -189,6 +197,7 @@ export class TurnRunner {
       frames: null,
       analysis: null,
       story: null,
+      design: null,
       research: null,
       crossProject: null,
       crossProjectOffered: false,
@@ -200,6 +209,8 @@ export class TurnRunner {
       intent,
       planApproval: "never",
       executePlan,
+      designAction: input.designAction ?? null,
+      designOptions: input.designOptions ?? null,
       storyAction: input.storyAction ?? null,
       storyOptions: input.storyOptions ?? null,
       storyOfferEligible: false,

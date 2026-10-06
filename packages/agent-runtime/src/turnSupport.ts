@@ -5,6 +5,7 @@ import type { EditingHost } from "./editing/host.js";
 import { EDITING_TOOL_NAMES } from "./editing/tools.js";
 import { ANALYSIS_TOOL_NAMES } from "./analysis/tools.js";
 import type { StoryHost } from "./story/host.js";
+import type { DesignHost } from "./design/host.js";
 import type { ResearchHost } from "./research/host.js";
 import type { FramesHost } from "./editing/frames.js";
 import type { CrossProjectHost } from "./crossProject/host.js";
@@ -37,6 +38,11 @@ export interface TurnRunnerOptions {
    * story tools; the production runtime always provides it.
    */
   story?: (scope: ProjectScope) => StoryHost;
+  /**
+   * Opens the design host (the design-system library, the project's attached snapshot and extraction) of a project.
+   * Without it a design action is refused and the agents get no design tools; the production runtime always provides it.
+   */
+  design?: (scope: ProjectScope) => DesignHost;
   /**
    * Opens the research host (the Asset Search policy, finding and importing outside material, the project's sources)
    * of a project. Without it the agents get no research tools and renders report no license check; the production
@@ -78,6 +84,10 @@ export function writesTimeline(name: string): boolean {
     name === ANALYSIS_TOOL_NAMES.build
   );
 }
+
+/** What a design turn says when an agent tries to write the timeline or a composition anyway. */
+export const DESIGN_TURN_REFUSAL =
+  "This is a Design Systems turn: it writes only the design library (and the project's design/ folder through attach_design_system), never compositions or the timeline. Applying a system to existing compositions is a separate step the user approves; tell them it is saved and what applying would change.";
 
 /** The harness's own file-writing tools: they change project files without going through any host tool. */
 export function writesProjectFiles(name: string): boolean {

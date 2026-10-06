@@ -4,7 +4,7 @@ Video frames are not web pages. Use these rules for design-led compositions whil
 
 ## The Design Spec Is Brand, Not Layout
 
-The design spec (`frame.md` or `design.md`) defines what the brand looks like: colors, fonts, personality, constraints. It does NOT define how to compose a video frame. Use brand colors at video-appropriate intensity — not at web-UI opacity.
+The design spec (`design/system.html`, `frame.md` or `design.md`) defines what the brand looks like: colors, fonts, personality, constraints. It does NOT define how to compose a video frame. Use brand colors at video-appropriate intensity — not at web-UI opacity.
 
 **Strict from the design spec:** hex values (including background color), font families, weight relationships, Do's and Don'ts. If the user chose a light canvas, use a light canvas. If they chose dark, use dark. Do not override their palette.
 

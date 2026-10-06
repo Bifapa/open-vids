@@ -875,7 +875,7 @@ pub fn handle_start(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
             ),
         );
     }
-    let key = begin_open(state, dest.clone(), Some("media".to_string()));
+    let key = begin_open(state, dest.clone(), Some("media".to_string()), None);
     respond_json(
         stream,
         200,

@@ -16,6 +16,7 @@ import { useComposerRequestBridge } from "../agent/composerRequest";
 import { useEditorContextSource } from "../agent/editorContext";
 import { StoryPanel } from "../story/StoryPanel";
 import { SettingsDialog } from "./settings/SettingsDialog";
+import { DesignHost } from "../design/DesignHost";
 import { studioStoryStore } from "../story/storyContext";
 import { SourcesPanel } from "../research/SourcesPanel";
 import { studioSourcesStore } from "../research/researchContext";
@@ -374,6 +375,7 @@ export function StudioRightPanels({
         <SourcesPanel />
       </Dock.Panel>
       <SettingsDialog agentStore={agentStore} />
+      <DesignHost projectId={projectId} agentStore={agentStore} />
     </>
   );
 }

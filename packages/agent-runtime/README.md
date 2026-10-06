@@ -507,6 +507,71 @@ sync ledger).
 - `FakeStoryHost` (`src/testing`) is the in-memory host for tests (gates to hold an edit/build in flight, recorded
   requests and signals); the runtime fixture wires it.
 
+## Design Systems
+
+A design system is a saved look (palette, fonts, transitions, rules) in the user's global library
+(`~/.openvids/design-systems/<id>/`, owned by Studio's design service; contract in
+`packages/agent-protocol/src/design.ts`). Agents never write its HTML or CSS: they send a structured `DesignSystemSpec`
+and the service renders `system.html` / `tokens.css` / the thumbnail. A project carries one version of a system as a
+snapshot in `<project>/design/` (`system.html`, `tokens.css`, `fonts/`, `design.json`).
+
+- **Host** (`src/design/host.http.ts`, bound to one project; `${studioOrigin}/api/design-systems` and
+  `/api/projects/:id/design`): `list` (`GET /design-systems`), `get` (`GET /design-systems/:id[?version=n]`), `save`
+  (`PUT /design-systems/:id`, answers are validated with the protocol guards; a save ignores the turn's abort, like a
+  story edit, and may take minutes because Google fonts are downloaded), `extract` (`GET …/design/extract`),
+  `videoPalette` (`GET …/design/video-palette?video=&samples=`, measured colors of a project video), `projectState`
+  (`GET …/design`), `snapshot` (the state plus the tokens of `design/tokens.css` and the manifest in
+  `design/system.html`, parsed by `src/design/snapshot.ts`), `attach` (`PUT …/design {id}`) and `externalProject` (the
+  `external_project` source: `GET …/design/extract/external/:key`; the Studio server resolves the host's project key
+  through its `externalProjects` capability, so no folder reaches the runtime; fonts that are files of the other project
+  come back `unresolved`, a file of another project cannot be copied into the library). Service refusals arrive as `DesignToolError` with the service's `issues`.
+- **Design action.** `StartTurnRequest.designAction` (`create` | `edit`) and `designOptions` (`source`:
+  `scratch` | `project` | `video` | `website` | `external_project`; `systemId`, `video`, `url`, `projectKey`) are recorded on
+  `TurnSummary`. The turn is an `edit`-intent, checkpointed turn in the chat's mode (the chat's intent is left alone),
+  Director-led; the story blocks, the plan-approval block, the Story Mode offer and Render QA do not apply to it. A
+  runtime without a design host refuses the action.
+- **Tools** (`src/design/tools.ts`, executor `src/design/executor.ts`; the Director only, and only in a design turn):
+  `list_design_systems`, `read_design_system` (spec as text, with the version to use as `baseVersion`, plus the
+  manifest's guesses), `extract_project_design` (the deterministic extraction, counted; the other project's one for an
+  `external_project` source), `video_palette` (measured `#rrggbb` shares), `save_design_system` and
+  `attach_design_system` (copies a library system into the project's `design/`; never touches a composition). Both
+  writes are project-changing for the intent rules (never in an Ask turn, refused after a plan proposal); the save is
+  outside the project's history (Revert leaves the library alone, the attach is counted as `design_attach`).
+- **The user's choices are enforced by the executor, not the prompt.** A `create` saves with the chosen `source`
+  (`ref` = the video path, the site's host or the project key); a different `source.kind`, an id that is not the one
+  already created in this turn and any `baseVersion` are refused; later saves in the turn refine the system it created
+  (`baseVersion` is filled in). An `edit` saves only to `designOptions.systemId`, only after `read_design_system` of it in
+  this turn, and always on the version it read. A `project` / `external_project` save needs `extract_project_design`
+  first and is refused when a token holds a hex color the extraction does not list (alpha variants of listed colors are
+  fine). `video_palette` measures the chosen video. `attach_design_system` takes only the system saved in the turn (or
+  the edited one) and refuses a project that carries another system. The request is validated with
+  `parseSaveDesignSystemRequest` before it is sent; a refusal of the service (`invalid_system` with every issue, `conflict`)
+  is returned to the model verbatim so it can fix and retry; the result lists the library's notes (fonts downloaded,
+  system fonts that are not portable, unknown licenses).
+- **Sources** (`src/design/prompt.ts`, the `<design-turn>` block): `scratch` (the brief), `project` (group and name the
+  extraction, nothing invented), `video` (exact palette from `video_palette`, a few frames judged by Vision — or by the
+  Director with `inspect_frames` when Vision is off —, fonts and transitions flagged `guess: true`), `website`
+  (`read_website` of the chosen URL — it counts as linked in this turn — ends, in a design turn, with the draft
+  `websiteStyleToSpecDraft(style, saved)` (`src/design/website.ts`) built by fixed rules: palette → the tokens by role,
+  Google / saved self-hosted / system fonts → `google` / `file` / `system`, durations and easings → `--dur-*`, `--ease-*`
+  and transitions; the model refines and fills the tokens the draft lists as missing), `external_project` (see the
+  host), and `edit` (read, change what was asked coherently, save a new version). Unknown licenses are `null`, never
+  invented.
+- **No composition writes.** A design turn writes only the library (and `design/` on attach): `edit_timeline`,
+  `render_video`, `build_rough_cut` and the harness's `edit` / `write` are refused for everyone. Applying a system to
+  existing compositions is a separate, user-approved step: the Director may call `propose_plan` for it only after the
+  system is saved (and only when the user's plan approval offers it); the approved plan runs as an ordinary turn.
+- **The project's attached system in prompts** (`renderDesignSnapshotBlock`): when `design/system.html` exists every turn's
+  Director prompt, and the task of Editor, Motion and Jev, carry a compact `<project-design>` block — the system is the
+  first source of design truth; one `<link rel="stylesheet" href="design/tokens.css">` in the root `index.html` head
+  (which also makes the stored fonts resolve offline); use the `var(--…)` tokens and the system's fonts and
+  transitions; never hard-code a color it has; never restyle existing compositions unasked — plus the tokens, fonts,
+  transitions, rules and guesses (not the showcase). `inspect_project` ends with the attached id, version and
+  `updateAvailable`. Role text: `DESIGN_DIRECTOR` / `DESIGN_SPECIALIST`.
+- Chat rows: `listing_design_systems`, `reading_design_system {id}`, `extracting_project_design`,
+  `reading_video_palette`, `saving_design_system {id, name}`, `attaching_design_system {id}` (host tools get no `targets`).
+- `FakeDesignHost` (`src/testing/design.ts`) is the in-memory host for tests; the runtime fixture wires it.
+
 ## Research
 
 Research is the only specialist that can look for material outside the project. The Studio server (Milestone 7; contract
@@ -913,7 +978,7 @@ Vitest resolves `@hyperframes/agent-protocol` through its `node` export conditio
 
 ## Turn runner internals
 
-`turns.ts` is the public `TurnRunner`; the work lives in `src/turn/`: `run.ts` (the Director's prompt loop), `executors.ts` (the turn's tool services and brokers), `dispatch.ts` (every host-tool call: intent/phase refusals, family routing), `gates.ts` (phase and file-write rules), `sessions.ts`, `prompt.ts`, `finalize.ts`, `reverts.ts`, `storyOffers.ts`, `changes.ts`, `watchdog.ts`.
+`turns.ts` is the public `TurnRunner`; the work lives in `src/turn/`: `run.ts` (the Director's prompt loop), `executors.ts` (the turn's tool services and brokers), `dispatch.ts` (every host-tool call: intent/phase refusals, family routing), `gates.ts` (phase and file-write rules), `sessions.ts`, `prompt.ts`, `finalize.ts`, `reverts.ts`, `storyOffers.ts`, `changes.ts`, `watchdog.ts`. `designAction` / `designOptions` ride on `ActiveRun` like `storyAction`.
 
 - **Stable sessions.** A Director/specialist session is opened with the union of the tools any kind of turn would give it (Ask/Edit, story actions, plan and Story offers) and keeps them; the turn's real rules are enforced at dispatch with a refusal that says why. The session signature also holds the project's context-file hash (`AgentBackend.contextHash`), so an edited `AGENTS.md` reopens it.
 - **Director watchdog.** No backend event for `promptStallMs` (default 10 min) fails the turn with a clear error; the clock is held while one of the Director's own tools runs (render, analysis, a question to the user).
@@ -923,7 +988,7 @@ Vitest resolves `@hyperframes/agent-protocol` through its `node` export conditio
 - **Steering** received during setup, while the Director is idle, still starting its prompt, or refused by the model is queued and opens the next Director prompt (never a 409 or a failed turn); `BackendSession.steer` rejects whatever it cannot take now and the backend never queues text itself. A completed turn that left delegated runs open says they were stopped.
 - **`request_input`** asks the user one question (up to 6 options) and waits like a permission; the turn's end expires it, and so does cancelling the run that asked (only that question; the same holds for a `long_render` or download card a cancelled run is waiting on). Answer: `POST …/turns/:turnId/questions/:questionId`.
 - **Routes.** `DELETE /chats/:chatId` (409 `chat_busy` while the chat runs a turn, is being reverted or is already being deleted; the chat is reserved before the first await), `POST …/runs/:runId/cancel`, `PATCH /chats/:id {excludedSites}`; `ChatSummary.linkedSites` is recomputed from the user's messages.
-- **Change summary.** `TurnSummary.changes` counts what tools applied (`add_clip`, `remove_clip`, `move_clip`, `trim_clip`, `update_clip`, `captions`, `audio`, `canvas`, `story_edit`, `story_build`, `rough_cut`, `import`, `web_save`, `file_edit`, `render`).
+- **Change summary.** `TurnSummary.changes` counts what tools applied (`add_clip`, `remove_clip`, `move_clip`, `trim_clip`, `update_clip`, `captions`, `audio`, `canvas`, `story_edit`, `story_build`, `design_attach`, `rough_cut`, `import`, `web_save`, `file_edit`, `render`).
 - **Editor context** goes in full once, in the Director's first prompt of a turn; specialist tasks and steering carry it without the clip list.
 - **Carried-out plans.** A turn started from a proposal ("Carry out the plan") records the proposal's turn as `TurnSummary.executedPlanTurnId`.
 - **Wiring facts the tests rely on.** `openTurnTools` (`src/turn/executors.ts`) opens, from the options the app passes (`editing`, `frames`, `analysis`, `story`, `research`, `qa`), one executor per family and the brokers; a family's tools are offered when its host exists (`ToolAvailability`), and the Director's own set grows with every specialist that is off. A run's write leases end with the run (`runSettle`) and the turn's with `finalizeTurn`; `claimWriteFiles` (`sessions.ts`) asks the same store for the `edit`/`write` guard, with the running run of the calling specialist. `failureCode(error)` gives a failed turn its error code. In tests a session's tool list says nothing about the turn: `usableTools` (`src/testing/usable.ts`) calls the tools from inside a prompt script and reports the ones dispatch does not refuse, and `isQaClosing` (`src/qa/harness.ts`) lets a script skip Render QA's closing prompt (`<render-qa-skipped>`), which would otherwise run it a second time.

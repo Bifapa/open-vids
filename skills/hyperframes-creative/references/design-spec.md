@@ -1,6 +1,32 @@
-# Design Spec — `frame.md` / `design.md`
+# Design Spec — `design/system.html` / `frame.md` / `design.md`
 
 The single source of truth for **what a design spec is, how to find it, and how to read it.** Other references defer here for resolution + format; the _consumption_ contract ("brand, not layout") lives in `video-composition.md`.
+
+## What `design/system.html` is
+
+A project can carry an OpenVids **design system** — a saved look (palette, fonts, transitions, motion rules) from the user's design library, copied into the project's `design/` folder:
+
+```
+design/system.html   showcase + the system's manifest (read it for the spec; never edit it)
+design/tokens.css    the tokens as CSS custom properties + the @font-face rules for design/fonts
+design/fonts/        the font files the system stores (woff2 / ttf / otf)
+design/logo.*        the logo, when the system has one
+design/design.json   which system and version this copy is (id, version, unknown licenses, non-portable fonts)
+```
+
+It is the **first** source of design truth — above `frame.md` and `design.md`:
+
+- **Tokens are the normative layer.** `design/tokens.css` holds the 18 required tokens — `--bg`, `--fg`, `--muted`, `--surface`, `--border`, `--brand`, `--accent`, `--accent-2`, `--font-display`, `--font-body`, `--font-mono`, `--radius`, `--space-1…3`, `--dur-beat`, `--ease-standard`, `--ease-emphasis` — and usually extended ones (`--text-sm … --text-4xl`, `--leading-*`, `--shadow-*`, `--dur-fast`, `--dur-slow`). Quote them verbatim; never round or recolor them.
+- **The manifest is the structured context.** `design/system.html` embeds one `<script type="application/json" id="openvids-design-manifest">` block: `fonts` (family, role, source google/file/system, weights, license, `guess`, `portable`), `transitions` (name, kind, `durationSec`, `ease`, `guess`), `motionRules`, `dos`, `donts`, `colorNames` (token → human name), `summary` and `guesses` (everything that was only estimated). The rest of the page is a live showcase for people; its samples illustrate the tokens, they do not add values.
+- **Guesses are not exact.** A font or transition flagged `guess` (or listed in `guesses`) was read off a video: treat it as "similar", never claim it is the original, and prefer the exact tokens around it.
+- **Licenses:** a font or logo with no known license (`design.json` → `unknownLicenses`) is used as asked but reported to the user; a `system` font is not stored (`nonPortableFonts`) and may be missing on another machine.
+
+### Using it in compositions
+
+- Link it **once**, in the `<head>` of the root `index.html`: `<link rel="stylesheet" href="design/tokens.css">`. One link in the root document is enough — the renderer inlines the stylesheet and its fonts, which is also what makes the fonts resolve offline with nothing fetched at render time. A composition without that link does not see the system.
+- Use `var(--bg)`, `var(--fg)`, `var(--brand)`, `var(--font-display)`, `var(--dur-beat)`, `var(--ease-standard)` … instead of hard-coding what the system defines; set text with the system's font families by name (the `@font-face` rules are already declared). Take transitions from the manifest: the `kind`, `durationSec` and `ease` of the closest one (a CSS timing function or a GSAP ease name).
+- Never hard-code a color the system already has, and never restyle or recolor a composition the user did not ask you to change: applying a system to existing compositions is a separate step the user approves.
+- The library owns these files. Do not edit them; the user updates or detaches the system from OpenVids.
 
 ## What `frame.md` is
 
@@ -13,17 +39,18 @@ A spec is **YAML frontmatter + a markdown body**, and the two layers are not equ
 
 ## Resolving which spec to read
 
-Precedence — read the **first that exists**, ignore the rest:
+Precedence — read the **first that exists**:
 
 ```
-frame.md  →  design.md  →  DESIGN.md
+design/system.html  →  frame.md  →  design.md  →  DESIGN.md
 ```
 
 ```bash
-SPEC=$(ls frame.md design.md DESIGN.md 2>/dev/null | head -1)
+for f in design/system.html frame.md design.md DESIGN.md; do [ -f "$f" ] && SPEC=$f && break; done
 ```
 
-- `frame.md` is the preferred spec for video / hyperframes projects and wins when more than one exists.
+- `design/system.html` wins over everything: the system defines the tokens, fonts, transitions and motion rules. A `frame.md` or `design.md` next to it may still add composition and tone guidance the system does not state, but never overrides a value the system defines.
+- Without a system, `frame.md` is the preferred spec for video / hyperframes projects and wins over `design.md` when both exist; ignore the rest.
 - `frame.md` is **always lowercase** — there is no `FRAME.md` variant. (`design.md` and `DESIGN.md` are genuinely different files on Linux; a frame-preset ships an uppercase `FRAME.md` _template_, adopted as lowercase `frame.md` — see "Starting from a preset" below.)
 
 Load the spec **once, in Step 1**; every later step (expansion, authoring, adherence) consumes the already-loaded spec rather than re-resolving it.

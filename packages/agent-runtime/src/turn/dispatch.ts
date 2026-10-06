@@ -2,6 +2,7 @@ import type { AgentId, StoryOffer } from "@hyperframes/agent-protocol";
 import type { HostToolResult, ToolProgress } from "../backend.js";
 import { withCallerRun } from "../agents/callerRun.js";
 import { TOOL_NAMES } from "../agents/tools.js";
+import { designToolsFor, isDesignToolName } from "../design/tools.js";
 import { parseQuestionArgs, parseStoryOfferArgs } from "../agents/toolArgs.js";
 import { isAnalysisToolName } from "../analysis/tools.js";
 import { isLockRefusal, lockedEditAdvice } from "../autonomy.js";
@@ -12,8 +13,17 @@ import { changesProject, intentRefusal, savesWebsiteFiles } from "../intent.js";
 import { qaPhaseRefusal } from "../qa/phase.js";
 import { isQaToolName } from "../qa/tools.js";
 import { isResearchToolName } from "../research/tools.js";
-import { isStoryToolName, storyToolsFor, timelineWritesAllowed } from "../story/tools.js";
-import { STORY_TURN_TIMELINE_REFUSAL, writesTimeline } from "../turnSupport.js";
+import {
+  STORY_TOOL_NAMES,
+  isStoryToolName,
+  storyToolsFor,
+  timelineWritesAllowed,
+} from "../story/tools.js";
+import {
+  DESIGN_TURN_REFUSAL,
+  STORY_TURN_TIMELINE_REFUSAL,
+  writesTimeline,
+} from "../turnSupport.js";
 import type { ActiveRun, TurnContext } from "./context.js";
 import {
   askBeforeLockedEdits,
@@ -91,6 +101,7 @@ async function dispatchToolCall(
         qaPhase: run.qaPhase,
         planProposed: planProposed(run),
         storyOffered: run.storyOffer !== null,
+        designUnsaved: run.designAction !== null && !(run.design?.hasSaved() ?? false),
       },
       name,
     );
@@ -117,6 +128,9 @@ async function dispatchToolCall(
   }
   if (isStoryToolName(name)) {
     if (!run.story) return refuse("Story Mode is not available in this runtime.");
+    // A design turn changes the design library only: the story is read, never edited or built.
+    if (run.designAction !== null && name !== STORY_TOOL_NAMES.read)
+      return refuse(DESIGN_TURN_REFUSAL);
     const allowed = storyToolsFor(caller, run.setup?.enabled ?? [], {
       mode: run.mode,
       action: run.storyAction,
@@ -125,6 +139,14 @@ async function dispatchToolCall(
       return refuse(`${name} is not available to you in this turn.`);
     return run.story.execute(name, args, signal);
   }
+  if (isDesignToolName(name)) {
+    if (!run.design) return refuse("Design systems are not available in this turn.");
+    const allowed = designToolsFor(caller, { action: run.designAction });
+    if (!allowed.some((tool) => tool === name))
+      return refuse(`${name} is not available to you in this turn.`);
+    return run.design.execute(name, args, signal);
+  }
+  if (run.designAction !== null && writesTimeline(name)) return refuse(DESIGN_TURN_REFUSAL);
   if (!timelineWritesAllowed({ mode: run.mode, action: run.storyAction }) && writesTimeline(name))
     return refuse(STORY_TURN_TIMELINE_REFUSAL);
   if (isEditingToolName(name)) {

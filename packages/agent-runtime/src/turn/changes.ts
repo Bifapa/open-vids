@@ -1,6 +1,7 @@
 import { isRecord } from "@hyperframes/agent-protocol";
 import { ANALYSIS_TOOL_NAMES } from "../analysis/tools.js";
 import type { HostToolResult } from "../backend.js";
+import { DESIGN_TOOL_NAMES } from "../design/tools.js";
 import { EDITING_TOOL_NAMES } from "../editing/tools.js";
 import { RESEARCH_TOOL_NAMES } from "../research/tools.js";
 import { CROSS_PROJECT_TOOL_NAMES } from "../crossProject/tools.js";
@@ -64,6 +65,10 @@ export class ChangeTally {
         return;
       case ANALYSIS_TOOL_NAMES.build:
         this.note("rough_cut");
+        return;
+      case DESIGN_TOOL_NAMES.attach:
+        // The library save is not part of the project's history (Revert leaves it), so only the attach is counted.
+        this.note("design_attach");
         return;
       case STORY_TOOL_NAMES.edit:
         this.note("story_edit", Array.isArray(record.operations) ? record.operations.length : 1);

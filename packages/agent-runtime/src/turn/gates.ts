@@ -3,7 +3,11 @@ import { TOOL_NAMES } from "../agents/tools.js";
 import { intentRefusal } from "../intent.js";
 import { HEAVY_ANALYSIS } from "../qa/phase.js";
 import { timelineWritesAllowed } from "../story/tools.js";
-import { STORY_TURN_TIMELINE_REFUSAL, writesProjectFiles } from "../turnSupport.js";
+import {
+  DESIGN_TURN_REFUSAL,
+  STORY_TURN_TIMELINE_REFUSAL,
+  writesProjectFiles,
+} from "../turnSupport.js";
 import type { ActiveRun, TurnContext } from "./context.js";
 
 /** Whether the running turn's Director may propose a plan (the prompt block and `propose_plan` go together). */
@@ -31,7 +35,13 @@ export async function storyOfferOpen(
   run: ActiveRun,
   signal: AbortSignal,
 ): Promise<boolean> {
-  if (!run.story || run.mode !== "normal" || run.intent !== "edit" || run.executePlan !== null)
+  if (
+    !run.story ||
+    run.mode !== "normal" ||
+    run.intent !== "edit" ||
+    run.executePlan !== null ||
+    run.designAction !== null
+  )
     return false;
   if (ctx.chats.get(run.chatId)?.chat.storyDeclined === true) return false;
   const snapshot = await run.story.snapshot(signal);
@@ -44,6 +54,8 @@ export interface PhaseState {
   qaPhase: ActiveRun["qaPhase"];
   planProposed: boolean;
   storyOffered: boolean;
+  /** A design turn that has not saved its system yet: it may not propose applying a system that does not exist. */
+  designUnsaved?: boolean;
 }
 
 /**
@@ -58,6 +70,8 @@ export function phaseGateRefusal(state: PhaseState, name: string): string | null
       return `Render QA is checking the result: ${name} is not available now. Finish the corrections or the final report.`;
     if (name === TOOL_NAMES.offerStory && state.planProposed)
       return "This turn already published a plan proposal and nothing in the project changes until the user approves it, so Story Mode cannot be offered now. End the turn with a short summary of the plan.";
+    if (name === TOOL_NAMES.propose && state.designUnsaved)
+      return "Save the design system first (save_design_system): a plan to apply it to the compositions only makes sense once it exists. Then propose the plan, or end the turn with a short report.";
     if (name === TOOL_NAMES.propose && state.storyOffered)
       return "Story Mode is already offered in this turn, so a plan cannot be proposed now. End the turn with a short reply about the offer.";
   }
@@ -88,6 +102,7 @@ export function fileWriteRefusal(
   if (run.qaPhase === "final" || run.qaPhase === "review") {
     return `Render QA is ${run.qaPhase === "review" ? "reviewing the render" : "over and the Director is writing the final report"}: ${toolName} is refused now. Nothing may be edited, delegated, imported, built or rendered any more; report what was done and what QA found.`;
   }
+  if (run.designAction !== null) return DESIGN_TURN_REFUSAL;
   if (!timelineWritesAllowed({ mode: run.mode, action: run.storyAction }))
     return STORY_TURN_TIMELINE_REFUSAL;
   return null;

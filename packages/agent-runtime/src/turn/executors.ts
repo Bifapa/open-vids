@@ -3,6 +3,9 @@ import type { AgentId, StartTurnRequest } from "@hyperframes/agent-protocol";
 import type { TurnAgentSetup } from "../agents/orchestrator.js";
 import type { ToolAvailability } from "../agents/tools.js";
 import { TurnAnalysis } from "../analysis/executor.js";
+import { TurnDesign } from "../design/executor.js";
+import type { DesignHost } from "../design/host.js";
+import { designInventoryLine, renderDesignSnapshotBlock } from "../design/prompt.js";
 import { TurnEditing } from "../editing/executor.js";
 import { TurnCrossProject } from "../crossProject/executor.js";
 import type { EditingHost } from "../editing/host.js";
@@ -23,6 +26,16 @@ export interface TurnTools {
   researchHost: ResearchHost | null;
   researchAccess: ResearchAccess;
   availability: ToolAvailability;
+}
+
+/** The block that states the project's attached design system; null when none is attached or Studio cannot say. */
+async function designSnapshotBlock(host: DesignHost, signal: AbortSignal): Promise<string | null> {
+  try {
+    const snapshot = await host.snapshot(signal);
+    return renderDesignSnapshotBlock(snapshot);
+  } catch {
+    return null;
+  }
 }
 
 /** The path of a chat's derived website-resource file: the chat's own directory, beside its backend state. */
@@ -133,6 +146,12 @@ export async function openTurnTools(
     ids: ctx.ids,
   });
   const permissions = run.permissions;
+  const designHost = options.design ? options.design(scope) : null;
+  // The site the user chose for a website design source counts as linked in this turn (they gave it in the dialog).
+  const designUrl = run.designOptions?.url;
+  const withDesignUrl = (texts: string[]): string[] => (designUrl ? [...texts, designUrl] : texts);
+  // Every agent that writes compositions is told about the system the project carries (see design/prompt.ts).
+  setup.designBlock = designHost ? await designSnapshotBlock(designHost, signal) : null;
   run.editing =
     options.editing && editingHost
       ? new TurnEditing({
@@ -165,6 +184,15 @@ export async function openTurnTools(
                 return answer.state === "allowed_once" || answer.state === "enabled";
               }
             : undefined,
+          ...(designHost && {
+            designLine: async (callSignal: AbortSignal) => {
+              try {
+                return designInventoryLine(await designHost.projectState(callSignal));
+              } catch {
+                return null;
+              }
+            },
+          }),
         })
       : null;
   run.frames = options.frames
@@ -193,6 +221,16 @@ export async function openTurnTools(
         storyOptions: run.storyOptions,
       })
     : null;
+  run.design =
+    designHost && run.designAction
+      ? new TurnDesign({
+          host: designHost,
+          turnSignal: signal,
+          projectId: scope.projectId,
+          action: run.designAction,
+          options: run.designOptions,
+        })
+      : null;
   run.research = researchHost
     ? new TurnResearch({
         host: researchHost,
@@ -206,12 +244,13 @@ export async function openTurnTools(
         websiteSettings,
         permissions: run.permissions,
         websites: { chatId: run.chatId, resources: ctx.websiteResources },
-        userTexts: () => userTexts(ctx, run.chatId),
-        turnUserTexts: () => userTexts(ctx, run.chatId, run.turn.id),
+        userTexts: () => withDesignUrl(userTexts(ctx, run.chatId)),
+        turnUserTexts: () => withDesignUrl(userTexts(ctx, run.chatId, run.turn.id)),
         excludedSites: () => ctx.chats.get(run.chatId)?.chat.excludedSites ?? [],
         askBeforeDownloads: setup.autonomy.askBeforeDownloads,
         storyBuilt: () => run.story?.hasBuilt() ?? false,
         model: (agent) => modelOf(run, setup, agent),
+        designDraft: run.designAction === "create" && run.designOptions?.source === "website",
       })
     : null;
   run.crossProject = options.crossProject
@@ -257,6 +296,7 @@ export async function openTurnTools(
     planProposal: planProposalOffered(run),
     storyOffer: run.storyOfferEligible,
     storyAction: run.storyAction,
+    designAction: run.designAction,
     planClips: (plan) => ctx.active?.analysis?.planClips(plan),
   };
   return { editingHost, researchHost, researchAccess, availability };

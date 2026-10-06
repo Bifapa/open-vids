@@ -46,10 +46,11 @@ pub fn open_project(
     app: &tauri::AppHandle,
     dir: std::path::PathBuf,
     workspace: Option<String>,
+    design: Option<sidecar::DesignIntent>,
 ) -> Result<Option<String>, CodedError> {
     let key = recents::project_key(&dir);
     let mut began: Option<u64> = None;
-    let result = open_inner(app, &key, &dir, workspace, &mut began);
+    let result = open_inner(app, &key, &dir, workspace, design, &mut began);
     match result {
         Err(error) => {
             if fail_open(app, &key, began, &super::open_label(&dir), &error) {
@@ -68,6 +69,7 @@ fn open_inner(
     key: &str,
     dir: &Path,
     workspace: Option<String>,
+    design: Option<sidecar::DesignIntent>,
     began: &mut Option<u64>,
 ) -> Result<Option<String>, CodedError> {
     let project = structure::validate_structure(dir).map_err(|e| e.coded())?;
@@ -218,6 +220,8 @@ fn open_inner(
         channel::beta_features_enabled(),
         multi.then_some(key),
     );
+    // The open intent (`openvidsDesign=create`, with its source) joins the query, after the channel.
+    let target = sidecar::with_design_intent(target, design);
     // With tabs the project's page is its own webview, created now so a failed
     // creation still leaves the state untouched. It comes up on top and shown;
     // the others are hidden once the project is committed.

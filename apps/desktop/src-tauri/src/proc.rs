@@ -162,16 +162,22 @@ pub fn kill_group_now(pid: u32) {
     }
 }
 
-/// Whether `pid` names a live process right now.
-/// The production teardown never polls aliveness (it kills and reaps
-/// instead); copying a project asks it about the agent's lease holder.
+/// Whether `pid` names a live process right now. A process of another user
+/// (`EPERM` on unix) is alive. Used by the design-library lock (`design_lock`)
+/// and the tests; the production teardown never polls aliveness (it kills and
+/// reaps instead).
 pub fn is_alive(pid: u32) -> bool {
     if pid == 0 {
         return false;
     }
     #[cfg(unix)]
     {
-        unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+        // A pid beyond `pid_t` would wrap to a negative value, and `kill(-1, 0)` probes every process.
+        let Ok(pid) = libc::pid_t::try_from(pid) else {
+            return false;
+        };
+        // SAFETY: signal 0 only checks that the process exists and may be signalled.
+        unsafe { libc::kill(pid, 0) == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) }
     }
     #[cfg(windows)]
     {

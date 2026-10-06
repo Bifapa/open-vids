@@ -1,19 +1,19 @@
 # Prompt Expansion
 
-Run on every composition. Expansion is not about lengthening a short prompt — it's about grounding the user's intent against the design spec (`frame.md` or `design.md`) and `house-style.md` and producing a consistent intermediate that every downstream agent reads the same way.
+Run on every composition. Expansion is not about lengthening a short prompt — it's about grounding the user's intent against the design spec (`design/system.html`, `frame.md` or `design.md`) and `house-style.md` and producing a consistent intermediate that every downstream agent reads the same way.
 
-Runs AFTER design direction is established (Step 1). The expansion consumes the design spec (`frame.md` or `design.md`, if present) and produces output that cites its exact values.
+Runs AFTER design direction is established (Step 1). The expansion consumes the design spec (`design/system.html`, `frame.md` or `design.md`, if present) and produces output that cites its exact values.
 
 ## Prerequisites
 
 Read before generating:
 
-- the design spec — `frame.md` → `design.md` → `DESIGN.md` (read the first that exists) — extract brand colors, fonts, mood, and constraints. The expansion cites these exact values (hex codes, font names); it does not invent new ones.
+- the design spec — `design/system.html` → `frame.md` → `design.md` → `DESIGN.md` (read the first that exists) — extract brand colors, fonts, mood, and constraints. The expansion cites these exact values (hex codes, font names); it does not invent new ones.
 - `references/beat-direction.md` — per-beat planning format (concept, mood, choreography verbs, transitions, depth layers, rhythm). The expansion outputs each scene using this format.
 - `references/video-composition.md` — video-medium rules for density, scale, and color presence. The expansion applies these automatically.
 - `house-style.md` — its rules for Background Layer (2-5 decoratives), Color, Motion, Typography apply to every scene. The expansion writes output that conforms to them.
 
-If no design spec (`frame.md` or `design.md`) exists yet, run Step 1 (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
+If no design spec (`design/system.html`, `frame.md` or `design.md`) exists yet, run Step 1 (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
 
 ## Why always run it
 

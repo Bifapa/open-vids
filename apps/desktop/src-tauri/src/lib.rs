@@ -57,6 +57,9 @@ mod chrome_install;
 mod cli_runner;
 mod coded_error;
 mod create;
+mod design_library;
+mod design_lock;
+mod design_snapshot;
 mod drop_paths;
 mod ffmpeg_install;
 mod home;
@@ -66,6 +69,7 @@ mod home_auth;
 mod home_create;
 mod home_fork;
 mod home_internal;
+mod home_design;
 mod home_project;
 mod home_report;
 mod home_research;
@@ -1071,7 +1075,7 @@ pub fn run() {
             set_help_menu(&handle);
 
             if let Some(dir) = launch_project {
-                open_project_async(&handle, dir, None);
+                open_project_async(&handle, dir, None, None);
             }
             Ok(())
         })
@@ -1208,7 +1212,12 @@ fn check_for_updates(app: &tauri::AppHandle) {
 /// runs on a blocking worker rather than the async runtime's event loop.
 /// The home page's loading overlay polls `/api/open-state` while this runs;
 /// failures there surface as an inline toast, not a stuck spinner.
-fn open_project_async(app: &tauri::AppHandle, dir: PathBuf, workspace: Option<String>) {
+fn open_project_async(
+    app: &tauri::AppHandle,
+    dir: PathBuf,
+    workspace: Option<String>,
+    design: Option<sidecar::DesignIntent>,
+) {
     let handle = app.clone();
     // Mark the phase before the blocking work starts so the home page —
     // which the window still shows — can report "opening" immediately.
@@ -1226,7 +1235,7 @@ fn open_project_async(app: &tauri::AppHandle, dir: PathBuf, workspace: Option<St
         let label = open_label(&dir);
         // A failure is already published for the Projects page (the project's
         // open phase) by `project_open`; this is the log's line.
-        match project_open::open_project(&handle, dir, workspace) {
+        match project_open::open_project(&handle, dir, workspace, design) {
             Ok(Some(url)) => log_line(&format!("opened {url}")),
             Ok(None) => log_line(&format!("opening {label}: nothing to show (focused, superseded or declined)")),
             Err(err) => log_line(&format!("could not open the project: {err}")),
@@ -1235,7 +1244,7 @@ fn open_project_async(app: &tauri::AppHandle, dir: PathBuf, workspace: Option<St
 }
 
 fn home_opener(app: tauri::AppHandle) -> home_routes::Opener {
-    std::sync::Arc::new(move |dir, workspace| open_project_async(&app, dir, workspace))
+    std::sync::Arc::new(move |dir, workspace, design| open_project_async(&app, dir, workspace, design))
 }
 
 /// Which titlebar chrome the pages draw: `overlay` (macOS traffic lights),
@@ -1629,7 +1638,7 @@ fn pick_and_open(app: &tauri::AppHandle) {
             .set_title(i18n::t("dialog.openProject.title"))
             .pick_folder();
         if let Some(dir) = picked {
-            open_project_async(&handle, dir, None);
+            open_project_async(&handle, dir, None, None);
         }
     });
 }
@@ -1682,6 +1691,38 @@ mod back_navigation_tests {
             sidecar::studio_url(studio_origin, "v", home, "dark", "system", Some("media"), "system", false, None),
             "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsWorkspace=media&openvidsFrame=system#project/v"
         );
+    }
+
+    #[test]
+    fn the_design_intent_joins_the_query_before_the_hash_and_only_when_asked_for() {
+        let url = sidecar::studio_url(
+            "http://127.0.0.1:5210", "v", "http://127.0.0.1:57035", "dark", "system", Some("media"), "custom", true, None,
+        );
+        assert_eq!(sidecar::with_design_intent(url.clone(), None), url);
+        let create = sidecar::DesignIntent::from_request(Some("create"), None);
+        assert_eq!(
+            sidecar::with_design_intent(url.clone(), create),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsWorkspace=media&openvidsFrame=custom&openvidsChannel=beta&openvidsDesign=create#project/v"
+        );
+        let from_video = sidecar::DesignIntent::from_request(Some("create"), Some("video"));
+        assert_eq!(
+            sidecar::with_design_intent(url, from_video),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsWorkspace=media&openvidsFrame=custom&openvidsChannel=beta&openvidsDesign=create&openvidsDesignSource=video#project/v"
+        );
+    }
+
+    #[test]
+    fn only_design_create_is_an_open_intent_and_only_known_sources_pass() {
+        let intent = sidecar::DesignIntent::from_request;
+        for source in ["scratch", "project", "video", "website"] {
+            assert_eq!(intent(Some("create"), Some(source)).map(|i| i.source), Some(Some(source)));
+        }
+        assert_eq!(intent(Some("create"), None).map(|i| i.source), Some(None));
+        assert_eq!(intent(Some("create"), Some("bogus")).map(|i| i.source), Some(None), "unknown sources are dropped");
+        assert_eq!(intent(Some("create"), Some("")).map(|i| i.source), Some(None));
+        for design in [None, Some("other"), Some(""), Some("Create")] {
+            assert_eq!(intent(design, Some("video")), None, "{design:?}");
+        }
     }
 
     #[test]

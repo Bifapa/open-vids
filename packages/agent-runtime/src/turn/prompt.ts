@@ -2,6 +2,7 @@ import type { SpecialistId, StartTurnRequest } from "@hyperframes/agent-protocol
 import type { TurnAgentSetup } from "../agents/orchestrator.js";
 import { renderTeam } from "../agents/setup.js";
 import { renderExecutePlanBlock, renderIntentBlock, renderPlanApprovalBlock } from "../intent.js";
+import { renderDesignTurnBlock } from "../design/prompt.js";
 import {
   renderCanvasAutoBlock,
   renderCanvasAutoPlanBlock,
@@ -54,12 +55,26 @@ export async function buildFirstPrompt(
   },
 ): Promise<string> {
   const intentBlock = renderIntentBlock(run.intent);
-  // An execute turn carries the approved steps; a turn that may propose carries when to propose. Never both.
+  // An execute turn carries the approved steps; a turn that may propose carries when to propose. Never both. A design
+  // turn's own block says when it may propose (only to apply the saved system), so it has no general plan block.
   const planBlocks = run.executePlan
     ? `\n\n${renderExecutePlanBlock(run.executePlan.steps, flags.planStale)}`
-    : planProposalOffered(run)
+    : planProposalOffered(run) && run.designAction === null
       ? `\n\n${renderPlanApprovalBlock(run.planApproval)}`
       : "";
+  const designBlocks = [
+    run.designAction
+      ? renderDesignTurnBlock({
+          action: run.designAction,
+          options: run.designOptions,
+          visionEnabled: setup.enabled.includes("vision"),
+          websitesAvailable: run.research !== null,
+          planProposal: planProposalOffered(run),
+        })
+      : null,
+    setup.designBlock ?? null,
+  ].filter((block): block is string => block !== null);
+  const designText = designBlocks.length > 0 ? `\n\n${designBlocks.join("\n\n")}` : "";
   // The frame format is still open (the project was started with it on Auto): every turn of that chat carries a
   // canvas instruction until a successful edit sets it — a turn that acts sets it, an Ask turn states the choice.
   const canvasAuto =
@@ -68,7 +83,7 @@ export async function buildFirstPrompt(
     ? `\n\n${run.intent === "edit" ? renderCanvasAutoBlock() : renderCanvasAutoPlanBlock()}`
     : "";
   const storyBlocks =
-    run.mode === "story" && run.story
+    run.mode === "story" && run.story && run.designAction === null
       ? `\n\n${renderStoryBlocks(await storyBlockInput(run, setup))}`
       : "";
   // The turn may offer Story Mode (the tool is there): its block says when that is what the user's request is, and
@@ -76,7 +91,7 @@ export async function buildFirstPrompt(
   const offerBlocks = run.storyOfferEligible ? `\n\n${renderStoryOfferBlock()}` : "";
   const chatState = ctx.chats.get(run.chatId);
   const declinedBlocks =
-    chatState?.chat.storyDeclined === true && run.mode === "normal"
+    chatState?.chat.storyDeclined === true && run.mode === "normal" && run.designAction === null
       ? `\n\n${renderStoryDeclinedBlock()}`
       : "";
   // Earlier turns the user reverted since the Director's session last saw this chat: their edits are gone.
@@ -95,5 +110,5 @@ export async function buildFirstPrompt(
     ? await run.crossProject.promptBlock({ offered: run.crossProjectOffered })
     : "";
   const attachedBlocks = attachedBlock ? `\n\n${attachedBlock}` : "";
-  return `${renderTeam(setup, run.storyAction, flags.inheritedTools)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage, { editorJson: "full" })}${intentBlock ? `\n\n${intentBlock}` : ""}${planBlocks}${offerBlocks}${declinedBlocks}${canvasBlock}${attachedBlocks}${storyBlocks}${revertedBlocks}${flags.qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}${steeringBlocks}`;
+  return `${renderTeam(setup, run.storyAction, flags.inheritedTools)}\n\n${renderPromptContext(input.prompt, input.editorContext, input.references, input.userLanguage, { editorJson: "full" })}${intentBlock ? `\n\n${intentBlock}` : ""}${planBlocks}${offerBlocks}${declinedBlocks}${canvasBlock}${attachedBlocks}${designText}${storyBlocks}${revertedBlocks}${flags.qaWillApply ? `\n\n${renderInterimInstruction()}` : ""}${steeringBlocks}`;
 }

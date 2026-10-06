@@ -161,8 +161,10 @@ export async function runTurn(
       return outcome;
     };
     // Render QA will apply to this turn (it runs only if the project changed): every Director reply before it is interim.
+    // A design turn writes the library, never a composition, so there is nothing to render and check.
     const qaWillApply =
       run.intent === "edit" &&
+      run.designAction === null &&
       qa !== null &&
       editingHost !== null &&
       setup.execution.budget.qaPasses > 0 &&
@@ -181,6 +183,7 @@ export async function runTurn(
     // The Director's work is done: render QA renders, checks and (while passes are left) has the Director correct.
     if (
       run.intent === "edit" &&
+      run.designAction === null &&
       qa &&
       editingHost &&
       outcome === "completed" &&

@@ -1,4 +1,9 @@
-import { STORY_ACTIONS, type AgentId, type SpecialistId } from "@hyperframes/agent-protocol";
+import {
+  DESIGN_ACTIONS,
+  STORY_ACTIONS,
+  type AgentId,
+  type SpecialistId,
+} from "@hyperframes/agent-protocol";
 import type { BackendSession, HostTool, OpenBackendSessionInput } from "../backend.js";
 import type { TurnAgentSetup } from "../agents/orchestrator.js";
 import { directorInstructions, jevInstructions, specialistInstructions } from "../agents/roles.js";
@@ -9,19 +14,32 @@ import { dispatchTool } from "./dispatch.js";
 
 type PerTurn = Pick<
   ToolAvailability,
-  "mode" | "storyAction" | "intent" | "planProposal" | "storyOffer"
+  "mode" | "storyAction" | "designAction" | "intent" | "planProposal" | "storyOffer"
 >;
 
 /**
- * Every shape of turn the tool lists differ by: an Ask or Edit turn, a normal or story-mode one, each Story action,
- * with and without the plan and Story Mode offers.
+ * Every shape of turn the tool lists differ by: an Ask or Edit turn, a normal or story-mode one, each Story action and
+ * each design action, with and without the plan and Story Mode offers.
  */
-const SHAPE_FLAGS = { intent: "edit", planProposal: true, storyOffer: true } as const;
+const SHAPE_FLAGS = {
+  intent: "edit",
+  planProposal: true,
+  storyOffer: true,
+  designAction: null,
+} as const;
 const TURN_SHAPES: PerTurn[] = [
   { mode: "normal", storyAction: null, ...SHAPE_FLAGS },
   { mode: "story", storyAction: null, ...SHAPE_FLAGS },
   ...STORY_ACTIONS.map(
     (action): PerTurn => ({ mode: "story", storyAction: action, ...SHAPE_FLAGS }),
+  ),
+  ...DESIGN_ACTIONS.map(
+    (action): PerTurn => ({
+      mode: "normal",
+      storyAction: null,
+      ...SHAPE_FLAGS,
+      designAction: action,
+    }),
   ),
 ];
 

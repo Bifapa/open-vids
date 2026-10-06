@@ -31,6 +31,7 @@ import { createAgentComposerSlice, type AgentComposerSlice } from "./agentCompos
 import { createAgentQaSlice, type AgentQaSlice } from "./agentQaSlice";
 import { createAgentChatListSlice, type AgentChatListSlice } from "./agentChatListSlice";
 import { createAgentRunSlice, type AgentRunSlice } from "./agentRunSlice";
+import { createAgentDesignSlice, type AgentDesignSlice } from "./agentDesignSlice";
 import { createAgentPermissionSlice, type AgentPermissionSlice } from "./agentPermissionSlice";
 import { createAgentStoryOfferSlice, type AgentStoryOfferSlice } from "./agentStoryOfferSlice";
 import { createAgentRevertSlice, type AgentRevertSlice } from "./agentRevertSlice";
@@ -70,6 +71,7 @@ export interface AgentState
     AgentStoryOfferSlice,
     AgentChatListSlice,
     AgentRunSlice,
+    AgentDesignSlice,
     AgentAttachmentSlice {
   availability: AgentAvailability;
   unavailableMessage: string | null;
@@ -322,6 +324,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       ...createAgentPlanSlice({ set }),
       ...createAgentChatListSlice({ client, set, get, isDisposed, updateOpenChat }),
       ...createAgentRunSlice({ client, set, get, isDisposed, captureContext, onActionError }),
+      ...createAgentDesignSlice({ client, set, get, isDisposed, captureContext, onActionError }),
       ...createAgentComposerSlice({
         client,
         set,

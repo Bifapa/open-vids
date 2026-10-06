@@ -1409,3 +1409,151 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `dialog.tabs.limit.message` — Native dialog: memory warning. {count} is the number of projects already open.
 - `dialog.tabs.limit.open` — Native dialog confirm button: open the project anyway.
 - `dialog.tabs.limit.cancel` — Native dialog cancel button.
+
+## design-home
+
+- `home.design.title` — Heading of the Projects-page section that lists the saved design systems (a design system = a reusable look: colors, fonts, motion).
+- `home.design.create` — Button in the section heading: starts creating a new design system. The full accessible name is home.design.createAria.
+- `home.design.empty.body` — One sentence that explains what a design system is, shown when the library is empty.
+- `home.design.error.code.conflict` — A design system was saved by another window or process while this page showed an older version.
+- `home.design.card.aria` — Accessible name of a design system card; the source and warnings are appended after it, separated by commas.
+- `home.design.version` — Short version tag on a card, e.g. v3; keep the Latin v.
+- `home.design.version.long` — Version number in the header of the preview dialog.
+- `home.design.source.scratch` — Where a design system came from: written from a brief (a description given in the chat).
+- `home.design.source.project` — Where a design system came from: collected from a project's own compositions.
+- `home.design.source.external_project` — Where a design system came from: collected from a different project than the one that was open.
+- `home.design.source.withRef` — Tooltip of the source badge; {source} is the badge text, {ref} the project, video file or website it came from.
+- `home.design.source.video.desc` — “A guess” covers the fonts and transitions read off a video; they are labelled as guessed in the system.
+- `home.design.logo` — Lower-case noun used in a list of items without a known license, e.g. “Inter, logo”.
+- `home.design.warn.license` — Short chip on a card: a font or logo in the system has no recorded license.
+- `home.design.warn.license.tip` — {items} is a comma-separated list of font names and the word for logo.
+- `home.design.warn.system` — Short chip on a card: a font is installed on the computer but not stored in the design system.
+- `home.design.warn.system.tip` — {fonts} is a comma-separated list of font families.
+- `home.design.menu.view` — Menu item: opens the large preview of the design system.
+- `home.design.menu.delete` — Menu item; the ellipsis means a confirmation follows.
+- `home.design.toast.deleted` — Short confirmation after a design system is deleted.
+- `home.design.view.updated` — {when} is a short date such as “Oct 4, 2026”; the phrase is one segment of a line separated by “·”.
+- `home.design.view.transitions` — Label of a number: how many transitions (fades, slides…) the design system defines.
+- `home.design.view.versions` — Label of a number: how many versions of the design system are kept.
+- `home.design.font.role.display` — Font role: used for headings and large titles.
+- `home.design.font.role.mono` — Font role: fixed-width (monospace) text.
+- `home.design.font.source.file` — A font file kept inside the design system's own folder.
+- `home.design.font.similar` — Chip on a font that was guessed from a video and may differ from the real one.
+- `home.design.font.notPortable` — Chip on a font that is installed on this computer but not stored with the design system.
+- `home.design.create.go` — Opens the chosen project in Studio, where the agent then creates the design system.
+- `home.design.create.project` — Field label: the project that is opened for the agent to work in.
+- `home.design.pick.label` — Field label in the New Project dialog; the default choice is “None”.
+- `home.design.warning` — Shown on the opening screen of a new project when the project was created but the chosen design system could not be applied; {message} is the server's text.
+
+## design-runtime
+
+- `activity.saving_design_system` — Chat row while the agent saves a design system into the library; {name} is the system's name.
+- `activity.reading_video_palette` — Chat row while a program measures the dominant colors of a video's frames.
+
+## design-studio
+
+- `studio.design.button` — Tooltip and accessible name of the titlebar icon button (beta) that opens the design-system popover. Named "design system" in full because Studio's right-hand tab "Design" is the element inspector.
+- `studio.design.button.update` — Same button while the library holds a newer version of the system attached to the project (a dot is drawn on the icon).
+- `studio.design.title` — Heading and accessible name of the popover.
+- `studio.design.loading` — Shown while the project's attached design system is being read.
+- `studio.design.none.title` — The project has no design system attached.
+- `studio.design.none.hint` — Under the empty-state title; the library list follows.
+- `studio.design.current.label` — Accessible name of the card showing the attached system.
+- `studio.design.version` — Version of a design system, short form: v3.
+- `studio.design.displayFont` — The heading (display) font family of the attached system; {font} is the family name and is not translated.
+- `studio.design.displayFont.unknown` — Shown when the display font could not be read from the project's copy.
+- `studio.design.swatches` — Accessible name of a strip of colour swatches; {colors} is a comma-separated list of CSS colours.
+- `studio.design.swatches.none` — Accessible name of an empty swatch strip.
+- `studio.design.chips.label` — Accessible name of the list of warning chips (unknown licenses, system fonts).
+- `studio.design.chip.fontLicense` — Warning chip: nobody recorded the license of this font. {family} is the font family name.
+- `studio.design.chip.logoLicense` — Warning chip: nobody recorded the license of the system's logo.
+- `studio.design.chip.otherLicense` — Warning chip for an asset the system lists without a license; {name} is its raw name.
+- `studio.design.chip.nonPortable` — Warning chip: the font is installed on the author's machine and not stored in the design system.
+- `studio.design.chips.licenseNote` — Explains the license chips: such assets are listed in the export license check.
+- `studio.design.chips.portableNote` — Explains the system-font chips.
+- `studio.design.snapshotBroken` — Warning when the project's design/ folder (system.html, tokens.css) is missing or invalid.
+- `studio.design.removedFromLibrary` — Shown when the attached system was deleted from the library; the project keeps its copy.
+- `studio.design.update.note` — Shown only when the library holds a newer version; {latest} and {current} are version numbers.
+- `studio.design.update.button` — Button that updates the project's copy to the library's current version; only an explicit click does it. {version} is the version number.
+- `studio.design.update.effect` — States the real effect of an update: files in design/ are replaced; compositions that link design/tokens.css render with the new values.
+- `studio.design.preview` — Button that opens the system's showcase page in a dialog.
+- `studio.design.preview.description` — Under the preview dialog's title; the frame is sandboxed without scripts.
+- `studio.design.preview.frame` — Accessible title of the preview iframe; {name} is the system's name.
+- `studio.design.detach` — Button that removes the project's copy of the design system (the library keeps it). Matches the verb for connecting a system to a project.
+- `studio.design.detach.note` — Explains what detaching does and its one risk.
+- `studio.design.library.title` — Heading of the list of the user's design systems.
+- `studio.design.library.label` — Accessible name of the library list.
+- `studio.design.library.loading` — Shown while the library is being read.
+- `studio.design.library.empty` — Empty state of the library.
+- `studio.design.library.meta` — Second line of a library row: version, middle dot, display font family.
+- `studio.design.library.attach` — Accessible name of a library row's main button, which connects that system to the project; {name} is the system's name.
+- `studio.design.library.attachShort` — Label revealed on hover/focus of a library row: choosing the row connects the system.
+- `studio.design.library.attached` — State label of the system currently connected to the project.
+- `studio.design.library.attachNote` — States that connecting only copies files and edits no composition.
+- `studio.design.library.notes` — Accessible name of the warning mark on a library row; {notes} lists the warnings.
+- `studio.design.library.preview` — Accessible name of a row's preview icon button; {name} is the system's name.
+- `studio.design.library.previewTip` — Tooltip of the row's preview icon button.
+- `studio.design.library.edit` — Accessible name of a row's edit icon button: the agent changes the system and saves a new version.
+- `studio.design.library.editTip` — Tooltip of the row's edit icon button.
+- `studio.design.create.open` — Popover button that opens the create dialog (a brief by default).
+- `studio.design.create.fromProject` — Popover button that opens the create dialog with the "from this project" source chosen.
+- `studio.design.create.title` — Title of the create dialog.
+- `studio.design.create.description` — One line under the create dialog's title.
+- `studio.design.create.start` — Primary button of the create dialog: starts the agent turn.
+- `studio.design.source.label` — Accessible name of the radio group that chooses where the system comes from.
+- `studio.design.source.scratch` — Source option: the system is designed from a written brief.
+- `studio.design.source.scratch.description` — Description under the brief option.
+- `studio.design.source.project` — Source option: values are collected from the open project's compositions.
+- `studio.design.source.project.description` — Description under the project option; easings are animation curves, durations are lengths of motion.
+- `studio.design.source.video` — Source option: the system is read off one of the project's videos.
+- `studio.design.source.video.description` — Honest limit: fonts and transitions cannot be measured from a video.
+- `studio.design.source.website` — Source option: the system is read from a website's styles.
+- `studio.design.source.website.description` — Description under the website option.
+- `studio.design.source.external` — Source option, offered only when the desktop lists other projects; not available yet.
+- `studio.design.source.external.description` — Description under the other-project option.
+- `studio.design.brief.label` — Label of the brief text box.
+- `studio.design.brief.hint` — Hint under the brief box.
+- `studio.design.brief.placeholder` — Example text shown in the empty brief box.
+- `studio.design.notes.label` — Label of the optional notes box for sources other than a brief.
+- `studio.design.notes.hint` — Hint under the notes box.
+- `studio.design.video.label` — Label of the video picker.
+- `studio.design.video.none` — Shown instead of the picker when the project has no video; Media is the Media workspace.
+- `studio.design.video.hint` — Honest limit: only the palette is measured.
+- `studio.design.website.label` — Label of the website address field.
+- `studio.design.website.hint` — Tells the user the address is part of the message sent to the model.
+- `studio.design.website.invalid` — Error under the website field for an address that is not http(s).
+- `studio.design.external.label` — Label of the picker of another project.
+- `studio.design.edit.title` — Title of the edit dialog; {name} is the system's name.
+- `studio.design.edit.description` — Explains versioning: the edit never changes projects by itself.
+- `studio.design.edit.label` — Label of the change-request box.
+- `studio.design.edit.hint` — Hint under the change-request box.
+- `studio.design.edit.placeholder` — Example request shown in the empty box; imperative, as a message to the agent.
+- `studio.design.edit.start` — Primary button of the edit dialog: starts the agent turn.
+- `studio.design.agent.unavailable` — Why the dialog's start button is disabled: the agent runtime cannot be reached.
+- `studio.design.agent.working` — Why the start button is disabled: a turn is running in this project.
+- `studio.design.agent.starting` — Why the start button is disabled: a request is on its way.
+- `studio.design.agent.notReady` — Shown when the agent is not set up yet.
+- `studio.design.prompt.project` — Sent as the user's own chat message when they create a system from the open project; the agent reads it, so keep it an imperative request.
+- `studio.design.prompt.video` — Chat message for the video source; {video} is a project file path.
+- `studio.design.prompt.website` — Chat message for the website source; {url} is the address the user typed.
+- `studio.design.prompt.externalProject` — Chat message for the another-project source; {name} is that project's name.
+- `studio.design.chat.tag.create` — Small tag on a chat prompt that started creating a design system.
+- `studio.design.chat.tag.edit` — Small tag on a chat prompt that started editing a design system.
+- `studio.design.chat.saved.label` — Accessible name of the card under a finished design turn; {name} is the system's name.
+- `studio.design.chat.saved.title` — Title of the card: the agent saved this system to the library.
+- `studio.design.chat.saved.attachNote` — Line under the title while the system is not attached to the project.
+- `studio.design.chat.saved.attached` — Line under the title once the system is attached; {version} is the attached version.
+- `studio.design.chat.saved.stale` — Line under the title when the project holds an older version than the library.
+- `studio.design.chat.attach` — Button on the card: connects the saved system to this project (copies files; no composition changes).
+- `studio.design.error.invalid_request` — Error text for the design service's invalid_request code.
+- `studio.design.error.invalid_system` — Error text for invalid_system: the files break the design-system format.
+- `studio.design.error.not_found` — Error text for not_found: the system was removed from the library.
+- `studio.design.error.conflict` — Error text for conflict: someone else changed the library or the project's design.
+- `studio.design.error.busy` — Error text for busy: another process holds the library lock.
+- `studio.design.error.asset_unavailable` — Error text for asset_unavailable: a font or logo could not be read.
+- `studio.design.error.unavailable` — Error text for unavailable.
+- `studio.design.error.network` — The request did not reach the local server.
+- `studio.design.error.bad_response` — The server's answer was not what Studio expects.
+- `studio.design.error.http` — Generic failure text.
+- `studio.design.error.status` — Failure with an unexpected HTTP status; {status} is the number.
+- `studio.design.chat.change.attach` — Label of the badge under a finished turn that attached a design system to the project, shown as "label: count" like the other change kinds (the count is how many attachments the turn made).

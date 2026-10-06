@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
@@ -195,14 +195,18 @@ async function evictDeadOwner(
 }
 
 /**
- * One process at a time keeps a project's history open (a second opener would fork the log). Waits up to `waitMs`
- * for the owner to close, takes over a dead owner's lock.
+ * Takes the owner lock `file` (a pid, plus the start of the process that wrote it): waits up to `waitMs` for a live
+ * owner to let go, takes over a dead owner's lock, and throws `busy(ownerPid)` when the wait runs out. Returns the
+ * release. A hard-killed owner leaves its file behind; the next taker finds the owner dead and evicts it.
  */
-export async function takeHistoryOwnership(home: string, waitMs: number): Promise<() => void> {
-  const file = join(home, "owner.pid");
+export async function takeOwnerLock(
+  file: string,
+  waitMs: number,
+  busy: (ownerPid: number) => Error,
+): Promise<() => void> {
   const deadline = Date.now() + waitMs;
   const starts: StartKeys = new Map();
-  mkdirSync(home, { recursive: true });
+  mkdirSync(dirname(file), { recursive: true });
   ownStart ??= ownStartKey();
   const start = await ownStart;
   for (;;) {
@@ -216,7 +220,15 @@ export async function takeHistoryOwnership(home: string, waitMs: number): Promis
     const owner = ownerOf(file);
     if (owner === null) continue;
     if (!(await holds(owner, starts)) && (await evictDeadOwner(file, starts, start))) continue;
-    if (Date.now() >= deadline) throw new HistoryBusyError(owner.pid);
+    if (Date.now() >= deadline) throw busy(owner.pid);
     await new Promise((settle) => setTimeout(settle, 50));
   }
+}
+
+/**
+ * One process at a time keeps a project's history open (a second opener would fork the log). Waits up to `waitMs`
+ * for the owner to close, takes over a dead owner's lock.
+ */
+export function takeHistoryOwnership(home: string, waitMs: number): Promise<() => void> {
+  return takeOwnerLock(join(home, "owner.pid"), waitMs, (pid) => new HistoryBusyError(pid));
 }

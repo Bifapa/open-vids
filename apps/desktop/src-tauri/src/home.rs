@@ -838,6 +838,145 @@ mod tests {
         assert_eq!(json(&body)["phase"], "idle", "nothing started");
     }
 
+    #[test]
+    fn design_routes_follow_the_token_and_origin_rules_and_new_projects_can_carry_a_system() {
+        let (server, origin) = spawn("design");
+        let token = server.token_for_test();
+        let library = base("design-library");
+        crate::design_library::fixtures::write_system(&library, "brand", "Brand Kit", 10);
+        // The only test that reads this variable.
+        std::env::set_var("OPENVIDS_DESIGN_SYSTEMS_DIR", &library);
+        type OpenCalls = Vec<(Option<String>, Option<crate::sidecar::DesignIntent>)>;
+        let opened: std::sync::Arc<std::sync::Mutex<OpenCalls>> = Default::default();
+        let log = opened.clone();
+        server.set_opener(std::sync::Arc::new(move |_dir, workspace, design| {
+            log.lock().unwrap().push((workspace, design));
+        }));
+        let json = |body: &[u8]| serde_json::from_slice::<serde_json::Value>(body).unwrap();
+
+        // The JSON routes need the token.
+        for (method, path) in [
+            ("GET", "/api/design-systems"),
+            ("GET", "/api/design-systems/brand"),
+            ("PATCH", "/api/design-systems/brand"),
+            ("DELETE", "/api/design-systems/brand"),
+        ] {
+            let (code, _) = send(&origin, method, path, None, b"{}");
+            assert_eq!(code, 403, "{method} {path} needs the token");
+        }
+        let (code, body) = send(&origin, "GET", "/api/design-systems", Some(&token), b"");
+        assert_eq!(code, 200);
+        assert_eq!(json(&body)["systems"][0]["id"], "brand");
+        // The files are open GETs (an `<img>` / `<iframe>` `src` cannot send the token) and nothing else is served.
+        let (code, body) = send(&origin, "GET", "/design-files/brand/thumbnail.svg", None, b"");
+        assert_eq!(code, 200);
+        assert!(String::from_utf8_lossy(&body).starts_with("<svg"));
+        let (code, _) = send(&origin, "GET", "/design-files/brand/system.html", None, b"");
+        assert_eq!(code, 200);
+        for path in [
+            "/design-files/brand/tokens.css",
+            "/design-files/brand/meta.json",
+            "/design-files/brand/fonts/..%2Fmeta.json",
+            "/design-files/brand/%2e%2e/meta.json",
+            "/design-files/Brand/system.html",
+        ] {
+            let (code, _) = send(&origin, "GET", path, None, b"");
+            assert!(matches!(code, 400 | 404), "{path}: {code}");
+        }
+        // The old `/api` spellings are gone; a write on a file path is nothing.
+        let (code, _) = send(&origin, "GET", "/api/design-systems/brand/thumbnail", None, b"");
+        assert_eq!(code, 403);
+        let (code, _) = send(&origin, "DELETE", "/design-files/brand/system.html", None, b"");
+        assert_eq!(code, 403);
+
+        // The sandboxed showcase fetches its fonts with the origin `null`; no other origin gets in.
+        let font = "/design-files/brand/fonts/inter-400.woff2";
+        for (path, request_origin, status) in [
+            (font, Some("null"), 200),
+            (font, Some("https://evil.example"), 403),
+            (font, Some(origin.as_str()), 200),
+            ("/design-files/brand/thumbnail.svg", Some("null"), 403),
+            ("/design-files/brand/system.html", Some("null"), 403),
+            ("/api/design-systems", Some("null"), 403),
+        ] {
+            let (code, _) = send_with_origin(&origin, "GET", path, Some(&token), request_origin, b"");
+            assert_eq!(code, status, "{path} from {request_origin:?}");
+        }
+        let (code, _) = send_with_origin(&origin, "PATCH", "/api/design-systems/brand", Some(&token), Some("null"), br#"{"name":"x"}"#);
+        assert_eq!(code, 403, "a write never takes the null origin");
+
+        // A new project can carry a system: the snapshot and the link, and the answer says nothing is wrong.
+        let parent = base("design-parent");
+        let create = |name: &str, extra: serde_json::Value| {
+            let mut body = serde_json::json!({
+                "parent": parent.to_string_lossy(),
+                "name": name,
+                "fps": "30",
+                "width": 1920,
+                "height": 1080,
+                "duration": 10.0,
+            });
+            body.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            send(&origin, "POST", "/api/create", Some(&token), body.to_string().as_bytes())
+        };
+        let (code, body) = create("with-system", serde_json::json!({ "designSystemId": "brand" }));
+        assert_eq!(code, 200);
+        let answer = json(&body);
+        assert_eq!(answer["opening"], true);
+        assert!(answer.get("designWarning").is_none(), "{answer}");
+        let project = parent.join("with-system");
+        assert!(project.join("design/design.json").is_file());
+        assert!(project.join("design/fonts/inter-400.woff2").is_file());
+        let html = std::fs::read_to_string(project.join("index.html")).unwrap();
+        assert_eq!(html.matches("href=\"design/tokens.css\"").count(), 1);
+        assert!(html.find("design/tokens.css") < html.find("</head>"));
+
+        // A system that cannot be copied does not fail the creation: no `design/`, a warning in the answer.
+        let (code, body) = create("missing-system", serde_json::json!({ "designSystemId": "nope" }));
+        assert_eq!(code, 200);
+        let answer = json(&body);
+        assert_eq!(answer["opening"], true);
+        assert!(answer["designWarning"].as_str().is_some_and(|w| w.contains("nope")), "{answer}");
+        let project = parent.join("missing-system");
+        assert!(project.join("index.html").is_file());
+        assert!(!project.join("design").exists());
+        assert!(!std::fs::read_to_string(project.join("index.html")).unwrap().contains("design/tokens.css"));
+
+        // No system, null and "" mean none; a malformed id is refused before anything is created.
+        for (name, extra) in [("plain", serde_json::json!({})), ("null-id", serde_json::json!({ "designSystemId": null })), ("empty-id", serde_json::json!({ "designSystemId": "" }))] {
+            let (code, body) = create(name, extra);
+            let answer = json(&body);
+            assert_eq!((code, &answer["opening"]), (200, &serde_json::json!(true)), "{name}");
+            assert!(answer.get("designWarning").is_none(), "{name}: {answer}");
+            assert!(!parent.join(name).join("design").exists());
+        }
+        for (name, bad) in [("bad-1", serde_json::json!("../brand")), ("bad-2", serde_json::json!(7)), ("bad-3", serde_json::json!("Brand"))] {
+            let (code, body) = create(name, serde_json::json!({ "designSystemId": bad }));
+            assert_eq!((code, json(&body)["code"].clone()), (400, serde_json::json!("design_system_invalid")), "{name}");
+            assert!(!parent.join(name).exists(), "{name} was created");
+        }
+
+        // The open request may carry the design intent, and nothing else is passed on.
+        opened.lock().unwrap().clear();
+        // The opener of the real app records the open in recents; here that is done by hand.
+        server.record_open(&parent.join("plain"));
+        let key = recent_key(&origin, &token, "plain");
+        for (extra, want) in [
+            (serde_json::json!({ "design": "create" }), Some(None)),
+            (serde_json::json!({ "design": "create", "designSource": "website" }), Some(Some("website"))),
+            (serde_json::json!({ "design": "create", "designSource": "bogus" }), Some(None)),
+            (serde_json::json!({ "design": "other", "designSource": "video" }), None),
+            (serde_json::json!({}), None),
+        ] {
+            let mut body = serde_json::json!({ "id": key });
+            body.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            let (code, _) = send(&origin, "POST", "/api/open", Some(&token), body.to_string().as_bytes());
+            assert_eq!(code, 200);
+            let (_, design) = opened.lock().unwrap().pop().expect("the opener ran");
+            assert_eq!(design.map(|intent| intent.source), want, "{extra}");
+        }
+    }
+
     // The fake CLI is a JS file run by the same bun the app ships, so this runs on every platform.
     #[test]
     fn system_routes_are_gated_and_drive_the_cli_and_the_chrome_install() {

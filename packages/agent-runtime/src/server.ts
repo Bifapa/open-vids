@@ -34,6 +34,7 @@ import type { AnalysisHost } from "./analysis/host.js";
 import type { EditingHost } from "./editing/host.js";
 import type { FramesHost } from "./editing/frames.js";
 import type { StoryHost } from "./story/host.js";
+import type { DesignHost } from "./design/host.js";
 import type { ResearchHost } from "./research/host.js";
 import type { CrossProjectHost } from "./crossProject/host.js";
 import type { QaHost } from "./qa/host.js";
@@ -75,6 +76,8 @@ export interface RuntimeAppOptions {
   frames?: (scope: ProjectScope) => FramesHost;
   /** Opens the cross-project host (other attached projects: manifests, copying files) of a request's project. */
   crossProject?: (scope: ProjectScope) => CrossProjectHost;
+  /** Opens the design host (design-system library, the project's attached system and extraction) of a request's project. */
+  design?: (scope: ProjectScope) => DesignHost;
   /** Global (per-user) agent settings shared by every project. */
   settings: AgentSettingsStore;
   token: string;
@@ -116,6 +119,7 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
     qa: options.qa,
     ...(options.frames && { frames: options.frames }),
     ...(options.crossProject && { crossProject: options.crossProject }),
+    ...(options.design && { design: options.design }),
     now,
     ...(ids && { ids }),
     ...(options.sessionIdleMs !== undefined && { sessionIdleMs: options.sessionIdleMs }),

@@ -147,6 +147,8 @@ fn loopback_origin(origin: &str) -> bool {
 ///   and `<img>` loads send no Origin and pass.
 /// - The one exception is `POST /api/report/open`: its Origin may be any
 ///   loopback origin (the Studio sidecar's page calls it cross-port).
+/// - The other is `GET /design-files/:id/fonts/*`, which also takes the
+///   origin `null` (see `home_design`).
 pub fn origin_allowed(head: &Head, port: u16) -> bool {
     if let Some(host) = head.header("host") {
         let host = host.trim().to_lowercase();
@@ -159,6 +161,10 @@ pub fn origin_allowed(head: &Head, port: u16) -> bool {
         let origin = origin.trim().to_lowercase();
         if is_report_open(&head.method, &head.path) {
             return loopback_origin(&origin);
+        }
+        // A design system's fonts: the sandboxed showcase (opaque origin) fetches them with `Origin: null`.
+        if origin == "null" && super::home_design::is_font_get(&head.method, &head.path) {
+            return true;
         }
         let local = [
             format!("http://127.0.0.1:{port}"),

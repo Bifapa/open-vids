@@ -42,6 +42,7 @@ import {
   formatSources,
 } from "./format.js";
 import { formatRecordWebsite, formatWebsite, formatWebsiteFile } from "./formatWebsite.js";
+import { formatSpecDraft, websiteStyleToSpecDraft } from "../design/website.js";
 import { ResearchToolError, type ResearchHost } from "./host.js";
 import { ImportFlow } from "./importFlow.js";
 import { registrableDomain, websiteHostOf } from "./linkedSites.js";
@@ -146,6 +147,11 @@ export interface TurnResearchOptions {
    * frozen from then on: `import_asset` with `resolveMissing` and `resolve_missing_asset` are refused.
    */
   storyBuilt?: () => boolean;
+  /**
+   * A design turn that makes a system from a website: a successful `read_website` result ends with the draft spec the
+   * site's style maps to (see design/website.ts), so the model starts from exact colours, fonts and motion.
+   */
+  designDraft?: boolean;
   /** The model the calling agent runs (`provider/modelId`), recorded in the provenance of what it imports. */
   model: (agent: AgentId) => string | null;
 }
@@ -464,7 +470,13 @@ export class TurnResearch {
     const formatted = formatWebsite(outcome.value, {
       fullAccess: (this.options.access ?? DEFAULT_RESEARCH_ACCESS).websiteFiles,
     });
-    return withNote(formatted, joinNotes(outcome.note, gate.note));
+    const withDraft = this.options.designDraft
+      ? {
+          ...formatted,
+          text: `${formatted.text}\n\n${formatSpecDraft(websiteStyleToSpecDraft(outcome.value.site, outcome.value.saved))}`,
+        }
+      : formatted;
+    return withNote(withDraft, joinNotes(outcome.note, gate.note));
   }
 
   /** `get_website_file`: downloads one file of a linked site (or a file an earlier read of it listed), or reads its text. */

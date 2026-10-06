@@ -1,6 +1,6 @@
 ---
 name: hyperframes-creative
-description: Non-animation creative direction for HyperFrames videos. Use for design spec (frame.md / design.md) handling, palettes, typography, narration, beat planning, audio-reactive visuals, composition patterns, and brand / style decisions. For atomic motion patterns and scene blueprints, use `hyperframes-animation`.
+description: Non-animation creative direction for HyperFrames videos. Use for design spec (design/system.html / frame.md / design.md) handling, palettes, typography, narration, beat planning, audio-reactive visuals, composition patterns, and brand / style decisions. For atomic motion patterns and scene blueprints, use `hyperframes-animation`.
 ---
 
 # HyperFrames Creative
@@ -18,7 +18,7 @@ For motion patterns, scene blueprints, transitions, and CSS marker effects, use 
 
 ## Workflow
 
-1. If a project has a design spec, **read it first** and treat its frontmatter tokens as brand truth (colors, fonts, spacing, tone, constraints). Which file to read (precedence `frame.md` → `design.md` → `DESIGN.md`) and how to parse it (frontmatter = normative, prose = context) are defined once in [`references/design-spec.md`](references/design-spec.md) — resolve and load per that doc.
+1. If a project has a design spec, **read it first** and treat its tokens as brand truth (colors, fonts, spacing, tone, constraints). Which file to read (precedence `design/system.html` → `frame.md` → `design.md` → `DESIGN.md`) and how to parse it (a design system's tokens and manifest, or frontmatter = normative, prose = context) are defined once in [`references/design-spec.md`](references/design-spec.md) — resolve and load per that doc. A project that carries `design/system.html` links `design/tokens.css` once in the root `index.html` head and uses its `var(--…)` tokens.
 2. If no design spec exists and the user asks for visual direction, choose a route:
    - Ready-made frame-preset (optional) → `frame-presets/` (adopt a `FRAME.md` as `frame.md`; see `references/design-spec.md`)
    - Named style or mood → `references/visual-styles.md`

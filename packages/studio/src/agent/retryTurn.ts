@@ -46,8 +46,8 @@ export function carriedOutProposalIds(chat: ChatState): Set<string> {
 
 /**
  * The request that runs a failed turn again: its prompt and files, in the mode and intent it had, carrying out the
- * same plan or Story action when that is what it was. Null when the prompt is not in the chat any more, or when the
- * turn carried out a plan whose proposal is gone (it would run as a plain message).
+ * same plan, Story action or design action when that is what it was. Null when the prompt is not in the chat any
+ * more, or when the turn carried out a plan whose proposal is gone (it would run as a plain message).
  */
 export function retryTurnRequest(chat: ChatState, turn: TurnSummary): StartTurnRequest | null {
   const prompt = sentPrompt(chat, turn);
@@ -58,9 +58,14 @@ export function retryTurnRequest(chat: ChatState, turn: TurnSummary): StartTurnR
     prompt: prompt.text,
     ...(prompt.references.length > 0 && { references: prompt.references }),
     ...(turn.mode && { mode: turn.mode }),
-    ...(turn.intent && !proposal && !turn.storyAction && { intent: turn.intent }),
+    ...(turn.intent &&
+      !proposal &&
+      !turn.storyAction &&
+      !turn.designAction && { intent: turn.intent }),
     ...(proposal && { executePlan: { turnId: proposal.id } }),
     ...(turn.storyAction && { storyAction: turn.storyAction }),
     ...(turn.storyAction && turn.storyOptions && { storyOptions: turn.storyOptions }),
+    ...(turn.designAction && { designAction: turn.designAction }),
+    ...(turn.designAction && turn.designOptions && { designOptions: turn.designOptions }),
   };
 }

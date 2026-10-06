@@ -39,13 +39,56 @@ pub fn handle_create(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
         })
         .filter(|w| super::prefs::WORKSPACES.contains(&w.as_str()))
         .unwrap_or(defaults.open_in);
+    // Refused before the project exists: a request that names a design system it cannot mean creates nothing.
+    let design_id = match parse_design_id(body) {
+        Ok(id) => id,
+        Err(error) => {
+            respond_error(stream, 400, &error);
+            return;
+        }
+    };
     match scaffold_blank(&params) {
         Ok(scaffolded) => {
-            let key = begin_open(state, scaffolded.dir, Some(workspace));
-            respond_json(stream, 200, &serde_json::json!({ "opening": true, "key": key }));
+            // Copied before the open starts: the Studio server reads the project folder as soon as it runs.
+            let warning = design_id
+                .as_deref()
+                .and_then(|id| attach_design(&scaffolded.dir, id));
+            let key = begin_open(state, scaffolded.dir, Some(workspace), None);
+            let mut answer = serde_json::json!({ "opening": true, "key": key });
+            if let Some(warning) = warning {
+                answer["designWarning"] = serde_json::Value::String(warning);
+            }
+            respond_json(stream, 200, &answer);
         }
         Err(error) => respond_error(stream, 400, &error),
     }
+}
+
+/// The optional `designSystemId` of the create request (absent, `null` and `""` mean none). Anything else must
+/// be a library id.
+fn parse_design_id(body: &[u8]) -> Result<Option<String>, CodedError> {
+    let value = serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.get("designSystemId").cloned());
+    match value {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(id)) if id.is_empty() => Ok(None),
+        Some(serde_json::Value::String(id)) if super::design_library::is_design_id(&id) => Ok(Some(id)),
+        Some(_) => Err(CodedError::plain(
+            "design_system_invalid",
+            "designSystemId is not a design system id",
+        )),
+    }
+}
+
+/// Copies the design system into the new project and links its tokens from `index.html`. A failure never fails
+/// the creation: it is the message the page shows beside the opened project (`designWarning`). When the copy
+/// itself fails the project has no `design/` at all, never half of one.
+fn attach_design(project_dir: &std::path::Path, id: &str) -> Option<String> {
+    super::design_library::DesignLibrary::open()
+        .attach_to_new_project(project_dir, id)
+        .err()
+        .map(|error| error.message)
 }
 
 /// Scaffold a blank project from the template this build resolves.

@@ -169,6 +169,40 @@ pub fn studio_url(
     format!("{studio_origin}/?{query}#project/{}", urlencode(project_id))
 }
 
+/// What an open asks of Studio beyond showing the project: the design-system creation flow
+/// (`openvidsDesign=create`), optionally from a source (`openvidsDesignSource`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DesignIntent {
+    pub source: Option<&'static str>,
+}
+
+impl DesignIntent {
+    /// The sources a creation can start from (the `DESIGN_SOURCE_KINDS` of `agent-protocol`).
+    const SOURCES: [&'static str; 4] = ["scratch", "project", "video", "website"];
+
+    /// The intent of an open request's `design` and `designSource`: only `design: "create"` is one, and a source
+    /// that is not a known one is dropped (the flow then asks for it).
+    pub fn from_request(design: Option<&str>, source: Option<&str>) -> Option<Self> {
+        (design == Some("create")).then(|| Self {
+            source: Self::SOURCES.iter().copied().find(|known| Some(*known) == source),
+        })
+    }
+}
+
+/// `url` (a [`studio_url`]) with the open intent as query parameters: `openvidsDesign=create`, which Studio
+/// reads and strips, and `openvidsDesignSource=<source>` with it. Without an intent the URL is returned as it was.
+pub fn with_design_intent(url: String, design: Option<DesignIntent>) -> String {
+    let Some(design) = design else { return url };
+    let mut parameters = "&openvidsDesign=create".to_string();
+    if let Some(source) = design.source {
+        parameters.push_str(&format!("&openvidsDesignSource={}", urlencode(source)));
+    }
+    match url.split_once('#') {
+        Some((query, fragment)) => format!("{query}{parameters}#{fragment}"),
+        None => format!("{url}{parameters}"),
+    }
+}
+
 impl Drop for StudioServer {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {

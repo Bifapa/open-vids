@@ -4,6 +4,7 @@ import {
   QUESTION_OPTION_MAX_CHARS,
   SPECIALIST_IDS,
   THINKING_EFFORTS,
+  type DesignAction,
   type AgentId,
   type ChatIntent,
   type ChatMode,
@@ -13,6 +14,7 @@ import {
 import type { HostTool, HostToolResult, ToolProgress } from "../backend.js";
 import { buildAnalysisTools } from "../analysis/tools.js";
 import { buildEditingTools } from "../editing/tools.js";
+import { buildDesignTools } from "../design/tools.js";
 import { buildStoryTools, timelineWritesAllowed, type StoryTurnMode } from "../story/tools.js";
 import { buildResearchTools, type KnownCandidate } from "../research/tools.js";
 import { changesProject } from "../intent.js";
@@ -72,6 +74,11 @@ export interface ToolAvailability {
   mode?: ChatMode;
   /** The Story workspace action of the turn (`review`, `build`, `rebuild`), if any. */
   storyAction?: StoryAction | null;
+  /**
+   * The Design Systems action of the turn (`create`, `edit`), if any: the Director gets the design tools, and nobody
+   * writes the timeline (a design turn writes the design library, never compositions).
+   */
+  designAction?: DesignAction | null;
   /** What the user wants from the turn (default `edit`). An Ask turn gets no project-changing tools. */
   intent?: ChatIntent;
   /**
@@ -189,9 +196,10 @@ export function buildHostTools(
     mode: availability.mode ?? "normal",
     action: availability.storyAction ?? null,
   };
-  // A story-mode turn that does not build the story never writes the timeline: no edit_timeline, render_video or
-  // build_rough_cut for anyone (analysis and planning tools stay).
-  const timelineWrites = timelineWritesAllowed(turn);
+  // A story-mode turn that does not build the story, and a design turn, never write the timeline: no edit_timeline,
+  // render_video or build_rough_cut for anyone (analysis and planning tools stay).
+  const designAction = availability.designAction ?? null;
+  const timelineWrites = timelineWritesAllowed(turn) && designAction === null;
   const editing = availability.editing
     ? buildEditingTools(agent, availability.enabled, execute, { timelineWrites })
     : [];
@@ -234,10 +242,12 @@ export function buildHostTools(
     availability.crossProject && agent !== "jev"
       ? buildCrossProjectTools(agent, availability.enabled, turn, execute)
       : [];
+  const design = buildDesignTools(agent, { action: designAction }, execute);
   const projectTools = [
     ...editing,
     ...analysis,
     ...story,
+    ...design,
     ...research,
     ...frames,
     ...crossProject,

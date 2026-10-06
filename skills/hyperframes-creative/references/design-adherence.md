@@ -2,9 +2,9 @@
 
 Post-authoring verification that the composition follows the design spec. Run it after building, before serving the preview.
 
-If a design spec (`frame.md` / `design.md`) exists, read the HTML and check:
+If a design spec (`design/system.html` / `frame.md` / `design.md`) exists, read the HTML and check:
 
-1. **Colors** — every hex value in the composition appears in the spec's palette section (however the user labeled it: Colors, Palette, Theme, etc.). Flag any invented colors.
+1. **Colors** — every hex value in the composition appears in the spec's palette section (however the user labeled it: Colors, Palette, Theme, etc.; for a design system, the tokens in `design/tokens.css` — a composition should use `var(--…)` rather than a copied hex, and link `design/tokens.css` once in the root `index.html` head). Flag any invented colors.
 2. **Typography** — font families and weights match the spec's type spec. No substitutions.
 3. **Corners** — border-radius values match the declared corner style, if specified.
 4. **Spacing** — padding and gap values fall within the declared density range, if specified.

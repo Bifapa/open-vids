@@ -33,6 +33,7 @@ import { AgentMonogram, chatAgentName } from "./AgentMonogram";
 import { chatMeasure, chatMeasureWide, noteBox, sectLabel } from "./chatStyles";
 import { DelegationRow } from "./DelegationRow";
 import { MarkdownLite } from "./MarkdownLite";
+import { DesignTurnTag } from "./DesignTurnParts";
 import { PermissionCard } from "./PermissionCard";
 import { QuestionCard } from "./QuestionCard";
 import { StoryOfferCard } from "./StoryOfferCard";
@@ -187,6 +188,7 @@ export function UserMessageView({
           </Badge>
         )}
         {turn?.mode === "story" && <Badge size="sm">{t("chat.message.storyTag")}</Badge>}
+        <DesignTurnTag turn={turn} />
         {asked && <Badge size="sm">{t(INTENT_TAGS.ask)}</Badge>}
       </MessageHead>
       {references.length > 0 && (

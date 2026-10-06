@@ -1,5 +1,7 @@
 import type {
   ActiveTurnInfo,
+  DesignAction,
+  DesignActionOptions,
   AssistantMessage,
   ChatIntent,
   ChatMode,
@@ -29,6 +31,7 @@ import type { WebsiteResourceLog } from "../research/websiteResources.js";
 import type { SessionManager } from "../sessionManager.js";
 import type { AgentSettingsStore } from "../settings.js";
 import type { TurnStory } from "../story/executor.js";
+import type { TurnDesign } from "../design/executor.js";
 import type { FileChatStore } from "../store/index.js";
 import type { StreamTimerApi, StreamTimerHandle } from "../turnStream.js";
 import type { TurnRunnerOptions } from "../turnSupport.js";
@@ -61,6 +64,8 @@ export interface ActiveRun {
   analysis: TurnAnalysis | null;
   /** The turn's story tools; closed (in-flight edits/builds awaited) before the checkpoint ends. */
   story: TurnStory | null;
+  /** The turn's design tools (the design library, attach); closed (in-flight saves awaited) before the checkpoint ends. */
+  design: TurnDesign | null;
   /** The turn's research tools; closed (in-flight imports and resolutions awaited) before the checkpoint ends. */
   research: TurnResearch | null;
   /**
@@ -89,6 +94,10 @@ export interface ActiveRun {
   planApproval: PlanApproval;
   /** The approved plan this turn carries out, if the user started it from a proposal. */
   executePlan: ExecutePlan | null;
+  /** The Design Systems action the turn runs, if any: a design turn writes the library, never compositions. */
+  designAction: DesignAction | null;
+  /** The user's choices for the design action (source, system, video, site, project), if any. */
+  designOptions: DesignActionOptions | null;
   /** The Story workspace action the turn runs, if any. */
   storyAction: StoryAction | null;
   /** The user's choices for a build/rebuild action (scope, manual-edit policy, locked chapters), if any. */

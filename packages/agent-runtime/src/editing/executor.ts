@@ -73,6 +73,11 @@ export interface TurnEditingOptions {
   leases?: WriteLeases | undefined;
   /** The delegated run an agent is currently executing (null for the Director), for the leases. */
   runIdOf?: ((caller: AgentId) => string | null) | undefined;
+  /**
+   * One line about the design system the project carries (id, version, whether the library has a newer one), added to
+   * `inspect_project`; null when none is attached or it cannot be read. Absent without a design host.
+   */
+  designLine?: ((signal: AbortSignal) => Promise<string | null>) | undefined;
 }
 
 /** The last render the turn made with `render_video`, and the state of the project it was made from. */
@@ -186,7 +191,9 @@ export class TurnEditing {
           offset: optionalInteger(record, "offset", 0, 100_000),
           limit: optionalInteger(record, "limit", 1, 500),
         };
-        return { text: formatInventory(await host.inventory(signal), filter) };
+        const inventory = formatInventory(await host.inventory(signal), filter);
+        const design = (await this.options.designLine?.(signal)) ?? null;
+        return { text: design ? `${inventory}\n${design}` : inventory };
       }
       case EDITING_TOOL_NAMES.timeline: {
         const record = argsRecord(args);

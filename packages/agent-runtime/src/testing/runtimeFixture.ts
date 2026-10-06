@@ -12,6 +12,7 @@ import { FakeAnalysisHost } from "./analysis.js";
 import { FakeFramesHost } from "./frames.js";
 import { FakeEditingHost } from "./editing.js";
 import { FakeStoryHost } from "./story.js";
+import { FakeDesignHost } from "./design.js";
 import { FakeResearchHost } from "./research.js";
 import { FakeCrossProjectHost } from "./crossProject.js";
 import { FakeQaHost } from "./qa.js";
@@ -31,6 +32,7 @@ export interface RuntimeFixture {
   analysis: FakeAnalysisHost;
   frames: FakeFramesHost;
   story: FakeStoryHost;
+  design: FakeDesignHost;
   research: FakeResearchHost;
   crossProject: FakeCrossProjectHost;
   qa: FakeQaHost;
@@ -62,6 +64,7 @@ export async function createRuntimeFixture(
   const analysis = new FakeAnalysisHost();
   const frames = new FakeFramesHost();
   const story = new FakeStoryHost();
+  const design = new FakeDesignHost();
   const research = new FakeResearchHost();
   const crossProject = new FakeCrossProjectHost();
   const qa = new FakeQaHost();
@@ -77,6 +80,7 @@ export async function createRuntimeFixture(
     crossProject: () => crossProject,
     frames: () => frames,
     story: () => story,
+    design: () => design,
     research: () => research,
     qa: () => qa,
     analysisPollMs: 1,
@@ -98,6 +102,7 @@ export async function createRuntimeFixture(
     analysis,
     frames,
     story,
+    design,
     research,
     crossProject,
     qa,

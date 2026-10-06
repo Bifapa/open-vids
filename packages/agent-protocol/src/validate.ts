@@ -17,6 +17,13 @@ import type {
   UpdateAgentSettingsRequest,
   UpdateChatRequest,
 } from "./api.js";
+import {
+  DESIGN_ACTIONS,
+  DESIGN_SOURCE_KINDS,
+  DESIGN_SYSTEM_ID_PATTERN,
+  type DesignAction,
+  type DesignActionOptions,
+} from "./types.js";
 import { INTAKE_FILE_KINDS, REVERT_MODES, STORY_OFFER_DECISIONS } from "./api.js";
 import {
   CHAT_INTENTS,
@@ -824,6 +831,23 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
       return fail("a resolve action takes only storyOptions.missing");
     storyOptions = parsed.value;
   }
+  let designAction: StartTurnRequest["designAction"];
+  let designOptions: StartTurnRequest["designOptions"];
+  if (body.designAction !== undefined) {
+    designAction = DESIGN_ACTIONS.find((known) => known === body.designAction);
+    if (!designAction) return fail(`designAction must be one of: ${DESIGN_ACTIONS.join(", ")}`);
+    if (storyAction) return fail("a design action does not carry a story action");
+    if (executePlan) return fail("a design action does not carry an executePlan");
+    if (intent && intent !== "edit") return fail("a design action always runs as edit");
+  }
+  if (body.designOptions !== undefined) {
+    if (!designAction) return fail("designOptions need a designAction");
+    const parsed = parseDesignActionOptions(body.designOptions, designAction);
+    if (!parsed.ok) return parsed;
+    designOptions = parsed.value;
+  }
+  if (designAction === "edit" && !designOptions)
+    return fail("an edit design action needs designOptions.systemId");
   let canvas: StartTurnRequest["canvas"];
   if (body.canvas !== undefined) {
     if (body.canvas !== "auto") return fail('canvas must be "auto"');
@@ -842,6 +866,8 @@ export function parseStartTurn(body: unknown): Parsed<StartTurnRequest> {
       ...(executePlan && { executePlan }),
       ...(storyAction && { storyAction }),
       ...(storyOptions && { storyOptions }),
+      ...(designAction && { designAction }),
+      ...(designOptions && { designOptions }),
       ...(canvas && { canvas }),
       ...(userLanguage.value && { userLanguage: userLanguage.value }),
     },
@@ -856,6 +882,53 @@ function parseUserLanguage(value: unknown): Parsed<string | undefined> {
   if (typeof value !== "string" || !USER_LANGUAGE.test(value))
     return fail("userLanguage must be a BCP-47 language tag");
   return { ok: true, value };
+}
+
+/** The user's choices for a design action (see {@link DesignActionOptions}); `edit` needs the system it changes. */
+export function parseDesignActionOptions(
+  value: unknown,
+  action: DesignAction,
+): Parsed<DesignActionOptions> {
+  if (!isRecord(value)) return fail("designOptions must be an object");
+  const extra = Object.keys(value).find(
+    (key) =>
+      key !== "source" &&
+      key !== "systemId" &&
+      key !== "video" &&
+      key !== "url" &&
+      key !== "projectKey",
+  );
+  if (extra) return fail(`designOptions: unknown field "${extra}"`);
+  const options: DesignActionOptions = {};
+  if (value.source !== undefined) {
+    const source = DESIGN_SOURCE_KINDS.find((known) => known === value.source);
+    if (!source)
+      return fail(`designOptions.source must be one of: ${DESIGN_SOURCE_KINDS.join(", ")}`);
+    options.source = source;
+  }
+  if (value.systemId !== undefined) {
+    if (typeof value.systemId !== "string" || !DESIGN_SYSTEM_ID_PATTERN.test(value.systemId))
+      return fail("designOptions.systemId must be a design system id");
+    options.systemId = value.systemId;
+  }
+  for (const field of ["video", "url", "projectKey"] as const) {
+    const text = value[field];
+    if (text === undefined) continue;
+    if (typeof text !== "string" || text.trim().length === 0 || text.length > 2000)
+      return fail(`designOptions.${field} must be a non-empty string`);
+    options[field] = text;
+  }
+  if (action === "edit" && !options.systemId)
+    return fail("an edit design action needs designOptions.systemId");
+  if (action === "edit" && options.source)
+    return fail("an edit design action changes a saved system: it takes no source");
+  if (options.source === "video" && !options.video)
+    return fail('designOptions.source "video" needs designOptions.video');
+  if (options.source === "website" && !options.url)
+    return fail('designOptions.source "website" needs designOptions.url');
+  if (options.source === "external_project" && !options.projectKey)
+    return fail('designOptions.source "external_project" needs designOptions.projectKey');
+  return { ok: true, value: options };
 }
 
 const STORY_ID = /^[A-Za-z0-9_-]{1,64}$/;

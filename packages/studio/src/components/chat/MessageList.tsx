@@ -8,6 +8,7 @@ import { useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
 import { AgentThread } from "./AgentThread";
 import { BuildStoryButton } from "./BuildStoryButton";
+import { DesignSavedCards } from "./DesignTurnParts";
 import { NoModelState } from "./ConnectModel";
 import { chatAgentName } from "./AgentMonogram";
 import { chatMeasureWide, chatPadX, selItem } from "./chatStyles";
@@ -136,6 +137,7 @@ function MainThread({ chat, dockedTurnId }: { chat: ChatState; dockedTurnId: str
                   <BuildStoryButton />
                 </div>
               )}
+            {turn && <DesignSavedCards chat={chat} turn={turn} />}
             {turn && turn.status !== "running" && (
               <TurnFooter
                 turn={turn}
