@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 
 use super::project::Project;
+use super::sidecar::{with_design_intent, DesignIntent};
 
 /// The id of the Projects page in the tab strip and in `activate`.
 pub const HOME: &str = "home";
@@ -98,6 +99,21 @@ struct Slot<S> {
     open: Option<OpenProject<S>>,
     /// What the strip calls the project while it is still opening.
     name: String,
+    /// An open intent that arrived while the project's server was still
+    /// starting (the Projects page's "Create design system" on a project that
+    /// is opening): applied to its page once the project is committed.
+    pending_design: Option<DesignIntent>,
+}
+
+/// What an open intent for a project that already has a tab asks of the window.
+#[derive(Debug, PartialEq, Eq)]
+pub enum DesignRequest {
+    /// The project is open: navigate its page (this webview) to this address.
+    Navigate { label: String, url: String },
+    /// The project is still starting: the intent is kept for its commit.
+    Pending,
+    /// There is no tab for the project (it was closed meanwhile).
+    NoTab,
 }
 
 /// Why a tab could not be activated.
@@ -214,6 +230,7 @@ impl<S> Tabs<S> {
             gate: OpenGate::default(),
             open: None,
             name: name.to_string(),
+            pending_design: None,
         });
         slot.gate.begin(generation);
         generation
@@ -274,6 +291,37 @@ impl<S> Tabs<S> {
             }
             _ => Err(open),
         }
+    }
+
+    /// An open intent for a project that already has a tab. A project that is
+    /// open is handed its page to navigate to the intent's address (the stored
+    /// address stays as it was, without the intent, so a page taken over by a
+    /// foreign document is restored without replaying it); one still starting
+    /// remembers the intent for [`Tabs::take_pending_design`].
+    pub fn request_design(&mut self, key: &str, design: DesignIntent) -> DesignRequest {
+        let Some(slot) = self.slots.get_mut(key) else {
+            return DesignRequest::NoTab;
+        };
+        match slot.open.as_ref() {
+            Some(OpenProject {
+                surface: Surface::Child(label),
+                url,
+                ..
+            }) => DesignRequest::Navigate {
+                label: label.clone(),
+                url: with_design_intent(url.clone(), Some(design)),
+            },
+            Some(_) => DesignRequest::NoTab,
+            None => {
+                slot.pending_design = Some(design);
+                DesignRequest::Pending
+            }
+        }
+    }
+
+    /// The intent that arrived while `key` was starting, once (taken right after its commit).
+    pub fn take_pending_design(&mut self, key: &str) -> Option<DesignIntent> {
+        self.slots.get_mut(key)?.pending_design.take()
     }
 
     pub fn open_project(&self, key: &str) -> Option<&OpenProject<S>> {
@@ -690,6 +738,46 @@ mod tests {
         let restart = tabs.begin("e", "e");
         assert_eq!(tabs.fail("e", Some(restart)), FailedOpen::Owned);
         assert!(tabs.open_project("e").is_some());
+    }
+
+    #[test]
+    fn a_design_intent_on_an_open_tab_navigates_its_page_and_leaves_the_stored_address_clean() {
+        let torn = Arc::new(AtomicUsize::new(0));
+        let mut tabs = Tabs::default();
+        opened(&mut tabs, "a", &torn);
+        let stored = tabs.open_project("a").unwrap().url.clone();
+        let from_video = DesignIntent::from_request(Some("create"), Some("video")).unwrap();
+        let request = tabs.request_design("a", from_video);
+        assert_eq!(
+            request,
+            DesignRequest::Navigate {
+                label: "project-a".to_string(),
+                url: format!("{}&openvidsDesign=create&openvidsDesignSource=video#project/a", stored.trim_end_matches("#project/a")),
+            }
+        );
+        assert_eq!(
+            tabs.open_project("a").unwrap().url,
+            stored,
+            "a page taken over by a foreign document must be restored without replaying the intent"
+        );
+        assert_eq!(tabs.take_pending_design("a"), None, "an open tab keeps nothing pending");
+        assert_eq!(tabs.request_design("zz", from_video), DesignRequest::NoTab);
+    }
+
+    #[test]
+    fn a_design_intent_on_a_starting_tab_waits_for_its_commit_and_is_applied_once() {
+        let torn = Arc::new(AtomicUsize::new(0));
+        let mut tabs: Tabs<Server> = Tabs::default();
+        let first = tabs.begin("a", "a");
+        let create = DesignIntent::from_request(Some("create"), None).unwrap();
+        assert_eq!(tabs.request_design("a", create), DesignRequest::Pending);
+
+        // A superseded open's commit is refused and leaves the intent for the newer open.
+        let second = tabs.begin("a", "a");
+        assert!(tabs.commit("a", first, open("a", "http://127.0.0.1:1", &torn)).is_err());
+        assert!(matches!(tabs.commit("a", second, open("a", "http://127.0.0.1:2", &torn)), Ok(None)));
+        assert_eq!(tabs.take_pending_design("a"), Some(create));
+        assert_eq!(tabs.take_pending_design("a"), None, "the intent is applied once");
     }
 
     #[test]

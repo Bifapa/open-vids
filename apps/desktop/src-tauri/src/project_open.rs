@@ -21,7 +21,7 @@ use tauri::Manager;
 
 use super::coded_error::CodedError;
 use super::tab_webviews::{self, ChildSpec};
-use super::tabs::{OpenProject, Surface, SOFT_LIMIT};
+use super::tabs::{DesignRequest, OpenProject, Surface, SOFT_LIMIT};
 use super::{
     channel, logfile, platform, prefs, recents, resource_root, sidecar, structure, tab_actions,
     thumbnails, window_frame, AppState, Mode,
@@ -103,13 +103,23 @@ fn open_inner(
     if multi {
         match existing {
             Existing::Open => {
-                // Reopening focuses the tab it already has.
+                // Reopening focuses the tab it already has; a design-system
+                // creation asked for by the same open then starts in that page.
                 tab_actions::activate(app, key)
                     .map_err(|_| CodedError::plain("tab_unknown", "that tab is not open"))?;
+                if let Some(design) = design {
+                    apply_design(app, key, design);
+                }
                 clear_phase(app, key);
                 return Ok(None);
             }
-            Existing::Starting => return Ok(None),
+            Existing::Starting => {
+                // The open under way shows the project; the intent joins it at its commit.
+                if let Some(design) = design {
+                    apply_design(app, key, design);
+                }
+                return Ok(None);
+            }
             Existing::No => {}
         }
         // Each open project runs its own server, Chrome and agent runtime.
@@ -166,6 +176,9 @@ fn open_inner(
                 let _ = tab_actions::activate(app, key);
                 clear_phase(app, key);
             }
+            if let Some(design) = design {
+                apply_design(app, key, design);
+            }
             return Ok(None);
         }
     };
@@ -220,6 +233,9 @@ fn open_inner(
         channel::beta_features_enabled(),
         multi.then_some(key),
     );
+    // The address the page is restored to when a foreign document takes it over:
+    // without the open intent, which would otherwise be replayed.
+    let base_target = target.clone();
     // The open intent (`openvidsDesign=create`, with its source) joins the query, after the channel.
     let target = sidecar::with_design_intent(target, design);
     // With tabs the project's page is its own webview, created now so a failed
@@ -253,7 +269,7 @@ fn open_inner(
     let open = OpenProject {
         project: project.clone(),
         origin: studio_origin,
-        url: target.clone(),
+        url: base_target.clone(),
         _studio: studio,
         surface: surface.clone(),
     };
@@ -265,8 +281,10 @@ fn open_inner(
                 if multi {
                     let _ = state.tabs.activate(key);
                 }
+                // An intent that arrived while the server started.
+                let pending = state.tabs.take_pending_design(key);
                 tab_actions::publish_state(&state);
-                Ok(replaced)
+                Ok((replaced, pending))
             }
             Err(open) => {
                 if !state.tabs.has(key) {
@@ -278,7 +296,7 @@ fn open_inner(
         }
     };
     let replaced = match committed {
-        Ok(replaced) => replaced,
+        Ok(committed) => committed,
         Err(open) => {
             // A newer open of this project owns it now, or its tab was closed:
             // this one's page and server go.
@@ -289,12 +307,16 @@ fn open_inner(
             return Ok(None);
         }
     };
+    let (replaced, pending_design) = replaced;
     drop(replaced);
 
     match &surface {
         Surface::Child(label) => {
             tab_webviews::show(app, Some(label));
             tab_webviews::notify_tabs_changed(app);
+            if let Some(design) = pending_design {
+                navigate_child(app, label, &sidecar::with_design_intent(base_target, Some(design)));
+            }
         }
         Surface::Main => {
             let url = target.parse::<tauri::Url>().map_err(|e| {
@@ -312,6 +334,35 @@ fn open_inner(
     // home page serves. Best-effort: failures just keep the placeholder.
     thumbnails::refresh_thumbnail_async(app, project.dir.clone(), project.id.clone());
     Ok(Some(target))
+}
+
+/// An open intent for a project that already has a tab: an open tab's page is
+/// navigated to the intent's address (Studio reads and strips it), a starting
+/// one remembers it for its commit (`Tabs::request_design`). The state is
+/// locked for the bookkeeping only; the navigation runs after.
+fn apply_design(app: &tauri::AppHandle, key: &str, design: sidecar::DesignIntent) {
+    let request = app.try_state::<Mutex<AppState>>().and_then(|state| {
+        state
+            .lock()
+            .ok()
+            .map(|mut state| state.tabs.request_design(key, design))
+    });
+    if let Some(DesignRequest::Navigate { label, url }) = request {
+        navigate_child(app, &label, &url);
+    }
+}
+
+/// Take a project's page to `url`; a failure only costs the intent (the page stays as it is).
+fn navigate_child(app: &tauri::AppHandle, label: &str, url: &str) {
+    let Ok(address) = url.parse::<tauri::Url>() else {
+        super::log_line(&format!("could not build the project page's address {url:?}"));
+        return;
+    };
+    if let Some(webview) = app.get_webview(label) {
+        if let Err(error) = webview.navigate(address) {
+            super::log_line(&format!("could not start the design flow in the project's page: {error}"));
+        }
+    }
 }
 
 fn main_webview_navigate(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), CodedError> {
