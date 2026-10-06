@@ -259,6 +259,52 @@ describe("RenderQueue Export button", () => {
   });
 });
 
+describe("RenderQueue queued render", () => {
+  const queued: RenderJob = {
+    id: "waiting",
+    status: "queued",
+    progress: 0,
+    queuePosition: 2,
+    queueHolder: "Promo",
+    filename: "waiting.mp4",
+    createdAt: 1,
+  };
+
+  it("says where the render stands and who is rendering, with no progress meter, and can be cancelled", () => {
+    const onCancel = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    act(() => {
+      root?.render(
+        <RenderQueue
+          jobs={[queued]}
+          projectId="demo"
+          onDelete={vi.fn()}
+          onCancel={onCancel}
+          onOpen={vi.fn()}
+          onClearCompleted={vi.fn()}
+          onStartRender={vi.fn()}
+          isRendering
+          ffmpeg={ffmpegStatus}
+          ffmpegChecking={false}
+          onRecheckFfmpeg={recheck}
+        />,
+      );
+    });
+    expect(host.textContent).toContain("Queued · 2nd");
+    expect(host.textContent).toContain("Promo is rendering");
+    expect(host.querySelector('[role="meter"], [role="progressbar"]')).toBeNull();
+    const cancel = [...host.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Cancel Render"),
+    );
+    act(() => void cancel?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onCancel).toHaveBeenCalledWith("waiting");
+    // Not a finished render: it is not listed under Recent Renders.
+    expect(host.textContent).toContain("No renders yet");
+  });
+});
+
 describe("RenderQueue recent renders", () => {
   it("lists finished renders newest first and reports the newest render's duration", () => {
     const job = (id: string, createdAt: number, durationMs: number): RenderJob => ({

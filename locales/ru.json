@@ -3205,6 +3205,8 @@
   "renders.recent.clearTooltip": "Скрыть завершённые рендеры из списка (файлы останутся на диске)",
   "renders.recent.clear": "Очистить завершённые",
   "renders.job.rendering": "Рендер",
+  "renders.job.queued": "В очереди · {position}-й",
+  "renders.job.queueHolder": "Сейчас рендерится: {project}",
   "renders.job.progress": "Ход рендера: {percent}",
   "renders.job.cancel": "Отменить рендер",
   "renders.job.exportBlocked": "Экспорт заблокирован",

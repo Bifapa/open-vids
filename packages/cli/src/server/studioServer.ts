@@ -648,6 +648,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           }
         }
       })();
+      state.finished = run;
       inFlightRenders.set(abortController, run);
       const forget = () => void inFlightRenders.delete(abortController);
       run.then(forget, forget);

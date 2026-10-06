@@ -16,9 +16,17 @@ export interface ResolvedProject {
 /** Observable render job state, polled by the SSE progress handler. */
 export interface RenderJobState {
   id: string;
-  status: "rendering" | "complete" | "failed" | "cancelled";
+  /**
+   * `queued`: waiting for the machine-wide render slot (see render/renderQueue.ts); the route, not the adapter, owns
+   * this state. An adapter's own job only ever goes `rendering` → `complete` | `failed` | `cancelled`.
+   */
+  status: "queued" | "rendering" | "complete" | "failed" | "cancelled";
   progress: number;
   stage?: string;
+  /** While `queued`: 1 for the next render to start, 2 for the one after, and so on. */
+  queuePosition?: number;
+  /** While `queued`: the project of the render that holds the slot now. */
+  queueHolder?: { projectName: string };
   outputPath: string;
   error?: string;
   /**
@@ -27,6 +35,11 @@ export interface RenderJobState {
    * route still marks the job cancelled so the SSE stream terminates).
    */
   cancel?: () => void;
+  /**
+   * Optional: settles when the render has fully stopped (output written or removed, children gone). The queue frees
+   * the render slot then; without it the slot is freed once `status` leaves `rendering`.
+   */
+  finished?: Promise<unknown>;
 }
 
 export interface MediaProcessingJobState {

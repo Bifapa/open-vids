@@ -378,7 +378,7 @@ export function createViteAdapter(
           }
         }
       };
-      (async () => {
+      state.finished = (async () => {
         try {
           if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
             const systemChrome = findSystemChrome();

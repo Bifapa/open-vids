@@ -2,6 +2,7 @@ import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useState } from "react";
 import {
   ArrowSquareOut,
+  Clock,
   DotsThree,
   DownloadSimple,
   FilmStrip,
@@ -37,7 +38,7 @@ const FORMAT_LABEL: Record<string, string> = {
   webm: "WebM · VP9",
 };
 
-/** The running job: spinner, stage, percent and a thin meter, with Cancel beside it. */
+/** The job in progress: running (spinner, stage, percent, a thin meter) or waiting its turn; Cancel beside it. */
 export const RenderJobStatus = memo(function RenderJobStatus({
   job,
   onCancel,
@@ -46,19 +47,32 @@ export const RenderJobStatus = memo(function RenderJobStatus({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  const queued = job.status === "queued";
   return (
     <div className="mt-2.5 grid gap-2 rounded-md border border-border-subtle bg-bg-1 px-2.5 py-2">
       <div className="flex min-h-[18px] items-center gap-2">
-        <Spinner />
+        {queued ? <Clock size={12} className="shrink-0 text-fg-3" aria-hidden /> : <Spinner />}
         <b className="min-w-0 flex-1 truncate font-semibold text-fg">
-          {job.stage || t("renders.job.rendering")}
+          {queued
+            ? t("renders.job.queued", { position: job.queuePosition ?? 1 })
+            : job.stage || t("renders.job.rendering")}
         </b>
-        <span className="font-mono text-num text-fg-2">{formatPercent(job.progress / 100)}</span>
+        {!queued && (
+          <span className="font-mono text-num text-fg-2">{formatPercent(job.progress / 100)}</span>
+        )}
       </div>
-      <Meter
-        value={job.progress / 100}
-        label={t("renders.job.progress", { percent: formatPercent(job.progress / 100) })}
-      />
+      {queued ? (
+        job.queueHolder && (
+          <p role="status" className="m-0 truncate text-xs text-fg-3">
+            {t("renders.job.queueHolder", { project: job.queueHolder })}
+          </p>
+        )
+      ) : (
+        <Meter
+          value={job.progress / 100}
+          label={t("renders.job.progress", { percent: formatPercent(job.progress / 100) })}
+        />
+      )}
       <div className="flex min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1 truncate font-mono text-num text-fg-3">{job.filename}</span>
         <Button size="xs" variant="ghost" onClick={onCancel}>

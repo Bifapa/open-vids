@@ -144,8 +144,12 @@ export class HttpEditingHost implements EditingHost {
     let final: { status: string; error: string | null } | null = null;
     try {
       for await (const event of this.progressEvents(jobId, signal)) {
-        onProgress({ progress: event.progress, stage: event.stage });
-        if (event.status !== "rendering") {
+        // A render queued behind another one is waiting, not finished and not stuck: it carries on (only the
+        // caller's signal ends the wait) and says where it stands. The wait is not render time: nothing here
+        // bounds the render, and the stream keeps beating while queued.
+        const queued = event.status === "queued";
+        onProgress({ progress: event.progress, stage: queued ? queueStage(event) : event.stage });
+        if (!queued && event.status !== "rendering") {
           final = { status: event.status, error: event.error };
           break;
         }
@@ -230,15 +234,7 @@ export class HttpEditingHost implements EditingHost {
     }
   }
 
-  private async *progressEvents(
-    jobId: string,
-    signal: AbortSignal,
-  ): AsyncGenerator<{
-    progress: number;
-    status: string;
-    stage: string | null;
-    error: string | null;
-  }> {
+  private async *progressEvents(jobId: string, signal: AbortSignal): AsyncGenerator<ProgressEvent> {
     let response: Response;
     try {
       response = await fetch(`${this.api}/render/${encodeURIComponent(jobId)}/progress`, {
@@ -310,10 +306,25 @@ export class HttpEditingHost implements EditingHost {
   }
 }
 
+/** One `progress` event of the render SSE stream. `queuePosition` and `queueHolder` are set while `status` is `queued`. */
+interface ProgressEvent {
+  progress: number;
+  status: string;
+  stage: string | null;
+  error: string | null;
+  queuePosition: number | null;
+  queueHolder: string | null;
+}
+
+/** What a render waiting for the machine's render slot shows where a render stage would be. */
+function queueStage(event: ProgressEvent): string {
+  const place = event.queuePosition === null ? "" : ` (position ${event.queuePosition})`;
+  const behind = event.queueHolder === null ? "" : `, behind ${event.queueHolder}`;
+  return `Waiting in the render queue${place}${behind}`;
+}
+
 /** One `progress` event of the render SSE stream (`event:` + `data:` lines), or null for anything else. */
-function parseProgressEvent(
-  block: string,
-): { progress: number; status: string; stage: string | null; error: string | null } | null {
+function parseProgressEvent(block: string): ProgressEvent | null {
   let name = "message";
   const data: string[] = [];
   for (const line of block.split("\n")) {
@@ -324,11 +335,15 @@ function parseProgressEvent(
   try {
     const payload: unknown = JSON.parse(data.join("\n"));
     if (!isRecord(payload) || typeof payload.status !== "string") return null;
+    const holder = payload.queueHolder;
     return {
       progress: typeof payload.progress === "number" ? payload.progress : 0,
       status: payload.status,
       stage: typeof payload.stage === "string" ? payload.stage : null,
       error: typeof payload.error === "string" ? payload.error : null,
+      queuePosition: typeof payload.queuePosition === "number" ? payload.queuePosition : null,
+      queueHolder:
+        isRecord(holder) && typeof holder.projectName === "string" ? holder.projectName : null,
     };
   } catch {
     return null;

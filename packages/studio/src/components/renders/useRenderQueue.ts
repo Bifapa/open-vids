@@ -14,10 +14,15 @@ import { studioResearchClient } from "../../research/researchContext";
 import { readServerError } from "./serverError";
 import { ffmpegInstallMessage, useFfmpegStatus } from "./useFfmpegStatus";
 import { t } from "../../i18n";
+import { isActiveStatus, readActiveStatus, readQueueStanding } from "./renderQueueStatus";
 
 export interface RenderJob {
   id: string;
-  status: "rendering" | "complete" | "failed" | "cancelled";
+  status: "queued" | "rendering" | "complete" | "failed" | "cancelled";
+  /** While `queued`: 1 for the next render to start, 2 for the one after it. */
+  queuePosition?: number;
+  /** While `queued`: the project of the render that holds the machine's render slot. */
+  queueHolder?: string;
   progress: number;
   stage?: string;
   error?: string;
@@ -170,7 +175,7 @@ export function useRenderQueue(
       }
       setJobs((prev) =>
         prev.map((j) => {
-          if (j.id !== jobId || j.status !== "rendering") return j;
+          if (j.id !== jobId || !isActiveStatus(j.status)) return j;
           if (record && record.status !== "failed") return jobFromServer(record);
           return {
             ...j,
@@ -199,6 +204,8 @@ export function useRenderQueue(
           try {
             const data = JSON.parse(event.data);
             watch.failures = 0;
+            const live = readActiveStatus(data);
+            const standing = readQueueStanding(data);
             const terminal =
               data.status === "complete" || data.status === "failed" || data.status === "cancelled";
             setJobs((prev) =>
@@ -208,7 +215,13 @@ export function useRenderQueue(
                       ...j,
                       progress: data.progress ?? j.progress,
                       stage: data.stage ?? data.message ?? j.stage,
-                      status: terminal ? (data.status as RenderJob["status"]) : j.status,
+                      status: terminal
+                        ? data.status
+                        : isActiveStatus(j.status)
+                          ? (live ?? j.status)
+                          : j.status,
+                      queuePosition: standing.position,
+                      queueHolder: standing.holder,
                       durationMs: data.status === "complete" ? Date.now() - startTime : undefined,
                       error: data.error ?? j.error,
                     }
@@ -335,14 +348,24 @@ export function useRenderQueue(
         addSessionJob(failedJob);
         return;
       }
-      const { jobId } = await res.json();
+      const started: unknown = await res.json();
+      const jobId =
+        typeof started === "object" &&
+        started !== null &&
+        "jobId" in started &&
+        typeof started.jobId === "string"
+          ? started.jobId
+          : "";
+      const standing = readQueueStanding(started);
 
       const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
       const ext = FORMAT_EXT[format] ?? ".mp4";
       const job: RenderJob = {
         id: jobId,
-        status: "rendering",
+        status: readActiveStatus(started) ?? "rendering",
         progress: 0,
+        queuePosition: standing.position,
+        queueHolder: standing.holder,
         filename: `${jobId}${ext}`,
         createdAt: startTime,
       };
@@ -362,7 +385,9 @@ export function useRenderQueue(
       stopWatching(jobId);
       setJobs((prev) =>
         prev.map((j) =>
-          j.id === jobId && j.status === "rendering" ? { ...j, status: "cancelled" } : j,
+          j.id === jobId && isActiveStatus(j.status)
+            ? { ...j, status: "cancelled", queuePosition: undefined, queueHolder: undefined }
+            : j,
         ),
       );
       try {
@@ -412,13 +437,13 @@ export function useRenderQueue(
   // rows don't resurrect from history on reload.
   const clearCompleted = useCallback(() => {
     setJobs((prev) => {
-      const finished = prev.filter((j) => j.status !== "rendering");
+      const finished = prev.filter((j) => !isActiveStatus(j.status));
       if (projectId && finished.length > 0) {
         const hidden = readHiddenIds(projectId);
         for (const j of finished) hidden.add(j.id);
         writeHiddenIds(projectId, hidden);
       }
-      return prev.filter((j) => j.status === "rendering");
+      return prev.filter((j) => isActiveStatus(j.status));
     });
   }, [projectId]);
 
@@ -449,7 +474,7 @@ export function useRenderQueue(
     };
   }, [projectId, watches, stopWatching]);
 
-  const isRendering = jobs.some((j) => j.status === "rendering");
+  const isRendering = jobs.some((j) => isActiveStatus(j.status));
   return useMemo(
     () => ({
       jobs,

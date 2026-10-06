@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import {
   closeSync,
@@ -15,7 +15,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VALID_CANVAS_RESOLUTIONS } from "@hyperframes/parsers";
 import { registerRenderRoutes } from "./render";
-import type { StudioApiAdapter } from "../types";
+import type { RenderJobState, StudioApiAdapter } from "../types";
+
+// Every test gets its own render queue folder: the machine-wide one is shared with real renders and other test files.
+beforeEach(() => {
+  vi.stubEnv("OPENVIDS_RENDER_QUEUE_DIR", mkdtempSync(join(tmpdir(), "hf-render-queue-")));
+});
+afterEach(() => {
+  const dir = process.env.OPENVIDS_RENDER_QUEUE_DIR;
+  vi.unstubAllEnvs();
+  if (dir) rmSync(dir, { recursive: true, force: true });
+});
 
 function createAdapter(
   startRenderSpy: ReturnType<typeof vi.fn>,
@@ -32,10 +42,11 @@ function createAdapter(
     rendersDir: () => rendersDir,
     startRender: (opts) => {
       startRenderSpy(opts);
+      // Done at once: the machine-wide queue starts the next render only after this one stopped.
       return {
         id: opts.jobId,
-        status: "rendering",
-        progress: 0,
+        status: "complete",
+        progress: 100,
         outputPath: opts.outputPath,
       };
     },
@@ -659,6 +670,7 @@ describe("POST /render/:jobId/cancel", () => {
     const baseStartRender = adapter.startRender.bind(adapter);
     adapter.startRender = (opts) => {
       const state = baseStartRender(opts);
+      state.status = "rendering";
       state.cancel = () => {
         aborted = true;
       };
@@ -960,6 +972,147 @@ describe("GET /render/:jobId/download — Windows output paths", () => {
       expect(header).not.toContain("\\");
     } finally {
       cleanup();
+    }
+  });
+});
+
+describe("POST /projects/:id/render — the machine-wide render queue", () => {
+  /** One Studio server: its own route table and adapter, sharing the queue folder with the others like a process would. */
+  function studio(projectName: string, finished?: Promise<unknown>) {
+    const jobs: RenderJobState[] = [];
+    const rendersDir = mkdtempSync(join(tmpdir(), "hf-render-test-"));
+    const adapter: StudioApiAdapter = {
+      listProjects: () => [],
+      resolveProject: async (id: string) => ({ id, dir: tmpdir(), title: projectName }),
+      bundle: async () => null,
+      lint: async () => ({ findings: [] }),
+      runtimeUrl: "/api/runtime.js",
+      rendersDir: () => rendersDir,
+      startRender: (opts) => {
+        const job: RenderJobState = {
+          id: opts.jobId,
+          status: "rendering",
+          progress: 0,
+          outputPath: opts.outputPath,
+          finished,
+        };
+        jobs.push(job);
+        return job;
+      },
+    };
+    const app = new Hono();
+    const activity = registerRenderRoutes(app, adapter);
+    const start = async () => {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        body: "{}",
+      });
+      return (await res.json()) as {
+        jobId: string;
+        status: string;
+        queuePosition?: number;
+        queueHolder?: { projectName: string };
+      };
+    };
+    const firstProgressEvent = async (jobId: string) => {
+      const res = await app.request(`http://localhost/render/${jobId}/progress`);
+      const reader = res.body?.getReader();
+      const chunk = await reader?.read();
+      await reader?.cancel();
+      const data = new TextDecoder().decode(chunk?.value).split("data: ")[1] ?? "{}";
+      return JSON.parse(data.split("\n")[0] ?? "{}") as Record<string, unknown>;
+    };
+    return {
+      app,
+      jobs,
+      start,
+      firstProgressEvent,
+      activeRenders: () => activity.activeRenders({ id: "demo", dir: tmpdir() }),
+      cleanup: () => rmSync(rendersDir, { recursive: true, force: true }),
+    };
+  }
+
+  it("holds a second render, from another server too, until the first has stopped", async () => {
+    const alpha = studio("Alpha");
+    const beta = studio("Beta");
+    try {
+      const first = await alpha.start();
+      expect(first.status).toBe("rendering");
+      const second = await beta.start();
+      expect(second).toMatchObject({
+        status: "queued",
+        queuePosition: 1,
+        queueHolder: { projectName: "Alpha" },
+      });
+      expect(beta.jobs).toHaveLength(0);
+      expect(await beta.firstProgressEvent(second.jobId)).toMatchObject({
+        status: "queued",
+        queuePosition: 1,
+        queueHolder: { projectName: "Alpha" },
+      });
+      // A queued render counts as work in progress: an update must not restart over it.
+      expect(beta.activeRenders()).toBe(1);
+
+      const [running] = alpha.jobs;
+      if (running) running.status = "complete";
+      await vi.waitFor(() => expect(beta.jobs).toHaveLength(1));
+      expect(beta.jobs[0]?.status).toBe("rendering");
+      expect(await beta.firstProgressEvent(second.jobId)).toMatchObject({ status: "rendering" });
+    } finally {
+      alpha.cleanup();
+      beta.cleanup();
+    }
+  });
+
+  it("frees the slot only when the adapter says the render has fully stopped", async () => {
+    const finished = Promise.withResolvers<void>();
+    const alpha = studio("Alpha", finished.promise);
+    const beta = studio("Beta");
+    try {
+      await alpha.start();
+      const [running] = alpha.jobs;
+      if (!running) throw new Error("the first render did not start");
+      const second = await beta.start();
+      expect(second.status).toBe("queued");
+
+      // The job reports itself cancelled while its processes are still winding down: the slot stays taken.
+      running.status = "cancelled";
+      // A negative assertion over the queue's real polling clock: nothing else can show "still waiting".
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      expect(beta.jobs).toHaveLength(0);
+
+      finished.resolve();
+      await vi.waitFor(() => expect(beta.jobs).toHaveLength(1));
+    } finally {
+      alpha.cleanup();
+      beta.cleanup();
+    }
+  });
+
+  it("cancelling a queued render takes it out of the queue: it never starts", async () => {
+    const alpha = studio("Alpha");
+    const beta = studio("Beta");
+    const gamma = studio("Gamma");
+    try {
+      await alpha.start();
+      const second = await beta.start();
+      const third = await gamma.start();
+      expect(third.queuePosition).toBe(2);
+
+      const res = await beta.app.request(`http://localhost/render/${second.jobId}/cancel`, {
+        method: "POST",
+      });
+      expect(await res.json()).toEqual({ status: "cancelled" });
+      expect(beta.activeRenders()).toBe(0);
+
+      const [running] = alpha.jobs;
+      if (running) running.status = "complete";
+      await vi.waitFor(() => expect(gamma.jobs).toHaveLength(1));
+      expect(beta.jobs).toHaveLength(0);
+    } finally {
+      alpha.cleanup();
+      beta.cleanup();
+      gamma.cleanup();
     }
   });
 });

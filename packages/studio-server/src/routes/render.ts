@@ -9,6 +9,7 @@ import {
   statSync,
   lstatSync,
 } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
 import { dirname, join, resolve } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import type { RenderActivity } from "./activity.js";
@@ -17,6 +18,7 @@ import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { fileResponse } from "../helpers/fileResponse.js";
 import { openInDefaultApp } from "../helpers/openInDefaultApp.js";
+import { RenderQueue, type QueueStanding, type RenderTicket } from "../render/renderQueue.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
@@ -33,6 +35,19 @@ function contentDispositionHeader(disposition: "inline" | "attachment", filename
 export interface RenderRouteOptions {
   /** Test seam for the "open in the OS default player" route. */
   openPath?: (path: string) => Promise<void>;
+  /** Test seam: the render queue (default: the machine-wide one, `$OPENVIDS_RENDER_QUEUE_DIR` or `~/.openvids/render-queue`). */
+  queue?: RenderQueue;
+}
+
+type JobEntry = RenderJobState & { createdAt: number };
+
+/** Resolves once `job` has stopped: the adapter says so, else when it leaves `rendering`. */
+async function renderStopped(job: RenderJobState): Promise<void> {
+  if (job.finished) {
+    await job.finished.catch(() => undefined);
+    return;
+  }
+  while (job.status === "rendering") await sleep(250, undefined, { ref: false });
 }
 
 export function registerRenderRoutes(
@@ -42,7 +57,8 @@ export function registerRenderRoutes(
 ): RenderActivity {
   const openPath = options.openPath ?? openInDefaultApp;
   // Scoped job store — not shared across createStudioApi() calls
-  const renderJobs = new Map<string, RenderJobState & { createdAt: number }>();
+  const renderJobs = new Map<string, JobEntry>();
+  const queue = options.queue ?? new RenderQueue();
 
   // TTL cleanup for completed jobs (5 minutes)
   const TTL_MS = 300_000;
@@ -57,7 +73,7 @@ export function registerRenderRoutes(
   const cleanupFinishedJobs = () => {
     const now = Date.now();
     for (const [key, job] of renderJobs) {
-      if (job.status !== "rendering" && now - job.createdAt > TTL_MS) {
+      if (job.status !== "rendering" && job.status !== "queued" && now - job.createdAt > TTL_MS) {
         renderJobs.delete(key);
       }
     }
@@ -153,8 +169,7 @@ export function registerRenderRoutes(
       jobId = `${baseId}_${attempt}`;
     }
     const outputPath = join(rendersDir, `${jobId}${ext}`);
-
-    const jobState = adapter.startRender({
+    const startOptions = {
       project,
       outputPath,
       format: format as "mp4" | "webm" | "mov",
@@ -164,13 +179,67 @@ export function registerRenderRoutes(
       outputResolution,
       composition,
       variables,
-    });
-    (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
-    renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });
+    };
+
+    // The job exists (and its id is taken) as `queued` before anything is awaited; the adapter's own job replaces
+    // it when the render slot is granted. The slot is machine-wide: one render at a time, whoever asks.
+    const entry: JobEntry = {
+      id: jobId,
+      status: "queued",
+      progress: 0,
+      outputPath,
+      createdAt: Date.now(),
+    };
+    renderJobs.set(jobId, entry);
+    let ticket: RenderTicket;
+    try {
+      ticket = await queue.enqueue(project.title ?? project.id);
+    } catch (error) {
+      renderJobs.delete(jobId);
+      const detail = error instanceof Error ? error.message : String(error);
+      return c.json({ error: `could not join the render queue: ${detail}` }, 503);
+    }
+    entry.cancel = () => ticket.release();
+    const follow = (standing: QueueStanding) => {
+      entry.queuePosition = standing.position;
+      entry.queueHolder = standing.holder ? { projectName: standing.holder } : undefined;
+    };
+    follow(ticket.standing());
+    const unfollow = ticket.onChange(follow);
+
+    const begin = (): void => {
+      unfollow();
+      if (entry.status !== "queued") {
+        // Cancelled while it waited (or while it joined): nothing starts.
+        ticket.release();
+        return;
+      }
+      let job: JobEntry;
+      try {
+        job = Object.assign(adapter.startRender(startOptions), { createdAt: entry.createdAt });
+      } catch (error) {
+        entry.status = "failed";
+        entry.error = error instanceof Error ? error.message : String(error);
+        ticket.release();
+        return;
+      }
+      renderJobs.set(jobId, job);
+      void renderStopped(job).then(() => ticket.release());
+    };
+    if (ticket.standing().held || entry.status !== "queued") begin();
+    else void ticket.granted.then((granted) => (granted ? begin() : unfollow()));
 
     ensureCleanupTimer();
 
-    return c.json({ jobId, status: "rendering" });
+    const current = renderJobs.get(jobId) ?? entry;
+    return c.json({
+      jobId,
+      status: current.status,
+      ...(current.status === "queued" && {
+        queuePosition: current.queuePosition,
+        queueHolder: current.queueHolder,
+      }),
+    });
   });
 
   // SSE progress stream
@@ -190,21 +259,24 @@ export function registerRenderRoutes(
             status: current.status,
             stage: current.stage,
             error: current.error,
+            queuePosition: current.queuePosition,
+            queueHolder: current.queueHolder,
           }),
         });
-        if (current.status !== "rendering") break;
+        if (current.status !== "rendering" && current.status !== "queued") break;
         await stream.sleep(500);
       }
     });
   });
 
-  // Cancel an in-flight render. Marks the job cancelled immediately (so the
-  // SSE stream terminates) and invokes the adapter's abort hook when present.
+  // Cancel a queued or in-flight render. Marks the job cancelled immediately (so the
+  // SSE stream terminates) and invokes the cancel hook when present: for a queued job
+  // that gives up its place in the queue, for a running one the adapter's abort.
   api.post("/render/:jobId/cancel", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
     if (!job) return c.json({ error: "not found" }, 404);
-    if (job.status === "rendering") {
+    if (job.status === "rendering" || job.status === "queued") {
       job.status = "cancelled";
       job.cancel?.();
     }
@@ -405,7 +477,8 @@ export function registerRenderRoutes(
       const rendersDir = resolve(adapter.rendersDir(project));
       let count = 0;
       for (const job of renderJobs.values()) {
-        if (job.status === "rendering" && resolve(dirname(job.outputPath)) === rendersDir) count++;
+        const live = job.status === "rendering" || job.status === "queued";
+        if (live && resolve(dirname(job.outputPath)) === rendersDir) count++;
       }
       return count;
     },

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +7,15 @@ import { registerRenderRoutes } from "./render";
 import { registerActivityRoutes } from "./activity";
 import type { AgentGateway, AgentGatewayStatus } from "../agent/gateway";
 import type { RenderJobState, StudioApiAdapter } from "../types";
+
+beforeEach(() => {
+  vi.stubEnv("OPENVIDS_RENDER_QUEUE_DIR", mkdtempSync(join(tmpdir(), "hf-activity-queue-")));
+});
+afterEach(() => {
+  const dir = process.env.OPENVIDS_RENDER_QUEUE_DIR;
+  vi.unstubAllEnvs();
+  if (dir) rmSync(dir, { recursive: true, force: true });
+});
 
 function gateway(status: AgentGatewayStatus, activeTurn: unknown): AgentGateway {
   return {

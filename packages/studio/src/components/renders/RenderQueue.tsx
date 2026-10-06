@@ -18,6 +18,7 @@ import { Pill } from "../ui/Status";
 import { Tooltip } from "../ui/Tooltip";
 import { cn } from "../ui/cn";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
+import { isActiveStatus } from "./renderQueueStatus";
 import { Trans, useTranslation } from "../../i18n";
 
 export type StartRenderHandler = (
@@ -170,11 +171,11 @@ export const RenderQueue = memo(function RenderQueue({
   // probe gave no answer, and refusing on no answer would break setups that
   // are perfectly fine.
   const missingFfmpeg = ffmpeg && !ffmpeg.ok ? ffmpeg : null;
-  const running = jobs.filter((job) => job.status === "rendering");
+  const running = jobs.filter((job) => isActiveStatus(job.status));
   // Newest first by creation time: history from the server and jobs started in
   // this session arrive in different orders, so array order is not a clock.
   const finished = jobs
-    .filter((job) => job.status !== "rendering")
+    .filter((job) => !isActiveStatus(job.status))
     .sort((a, b) => b.createdAt - a.createdAt);
   const lastRenderDurationMs = finished.find(
     (job) => job.status === "complete" && job.durationMs !== undefined,

@@ -62,7 +62,7 @@ export async function processStartKey(pid: number): Promise<string | null> {
 const WINDOWS_START_PREFIX = "win-ms:";
 const WINDOWS_START_TOLERANCE_MS = 10_000;
 
-function ownStartKey(): Promise<string | null> {
+export function ownStartKey(): Promise<string | null> {
   if (process.platform !== "win32") return processStartKey(process.pid);
   return Promise.resolve(
     `${WINDOWS_START_PREFIX}${Math.round(Date.now() - process.uptime() * 1000)}`,

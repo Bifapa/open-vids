@@ -220,6 +220,47 @@ describe("HttpEditingHost", () => {
     expect(seen[0]?.body).toEqual({ quality: "draft", format: "mp4" });
   });
 
+  it("waits through a queued render and reports where it stands, then follows it to the end", async () => {
+    const stages: Array<string | null> = [];
+    const { host } = await studio({
+      "POST /api/projects/p%201/render": (_request, response) =>
+        json(response, 200, { jobId: "job1", status: "queued", queuePosition: 2 }),
+      "GET /api/render/job1/progress": (_request, response) => {
+        const send = sse(response);
+        const holder = { projectName: "Promo" };
+        send({ progress: 0, status: "queued", queuePosition: 2, queueHolder: holder });
+        send({ progress: 0, status: "queued", queuePosition: 1, queueHolder: holder });
+        send({ progress: 40, status: "rendering", stage: "capture", error: null });
+        send({ progress: 100, status: "complete", stage: "done", error: null });
+        response.end();
+      },
+      "GET /api/projects/p%201/renders": (_request, response) =>
+        json(response, 200, { renders: [{ id: "job1", filename: "job1.mp4", size: 5 }] }),
+      "GET /api/projects/p%201/editing/probe": (_request, response) =>
+        json(response, 200, {
+          path: "renders/job1.mp4",
+          kind: "video",
+          bytes: 2_000_000,
+          duration: 4,
+          width: 1920,
+          height: 1080,
+          hasAudio: true,
+        }),
+      "GET /api/projects/p%201/media/metadata": (_request, response) =>
+        json(response, 200, { path: "renders/job1.mp4", metadata: {} }),
+    });
+    const output = await host.render({ quality: "draft" }, abortSignal(), (event) =>
+      stages.push(event.stage),
+    );
+    expect(output.path).toBe("renders/job1.mp4");
+    expect(stages).toEqual([
+      "Waiting in the render queue (position 2), behind Promo",
+      "Waiting in the render queue (position 1), behind Promo",
+      "capture",
+      "done",
+    ]);
+  });
+
   it("fails a render whose output is missing or has no duration, and one that reports failure", async () => {
     const finish =
       (status: string, error: string | null): Route =>
