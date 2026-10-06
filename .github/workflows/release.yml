@@ -6,6 +6,11 @@ name: Release
 # That URL only resolves once the release is *published*: GitHub's "latest" is the most recent release
 # that is neither a draft nor a prerelease. The workflow therefore leaves the release as a draft —
 # check the assets, then publish it to make the update visible to installed apps.
+#
+# A tag with a pre-release version (`v0.5.0-beta.1`) is a BETA: its release is a GitHub pre-release and
+# carries `beta.json` instead of `latest.json`, so the stable update URL never sees it. Publishing the
+# beta release triggers beta-manifest.yml, which copies `beta.json` to the `channel-beta` release —
+# the fixed address installs that turned on "Get beta versions" read next to the stable manifest.
 
 on:
   push:
@@ -273,7 +278,34 @@ jobs:
           name: release-windows
           path: release-assets
 
-      - name: Write latest.json with both platforms
+      # The channel follows from the version: a pre-release version (`0.5.0-beta.1`) is a beta, anything
+      # else is stable. A beta's manifest is `beta.json` and its release is a GitHub pre-release, so
+      # `releases/latest/download/latest.json` (what stable installs read) never sees it; installs that
+      # opted into betas read the `channel-beta` release, which beta-manifest.yml refreshes from this
+      # release's `beta.json` when the beta is published.
+      - name: Determine the channel
+        id: channel
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          # Build metadata (`+…`) does not make a pre-release.
+          if [[ "${version%%+*}" == *-* ]]; then
+            {
+              echo "channel=beta"
+              echo "manifest=beta.json"
+              echo "prerelease=true"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "channel=stable"
+              echo "manifest=latest.json"
+              echo "prerelease=false"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write the update manifest with both platforms
+        env:
+          MANIFEST: ${{ steps.channel.outputs.manifest }}
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
@@ -307,15 +339,17 @@ jobs:
             --arg win_signature "$(cat "$setup_sig")" \
             --arg win_url "https://github.com/bazodev/open-vids/releases/download/${GITHUB_REF_NAME}/OpenVids_${version}_x64-setup.exe" \
             '{version: $version, notes: $notes, pub_date: $pub_date, platforms: {"darwin-aarch64": {signature: $mac_signature, url: $mac_url}, "windows-x86_64": {signature: $win_signature, url: $win_url}}}' \
-            > "release-assets/latest.json"
-          cat "release-assets/latest.json"
+            > "release-assets/${MANIFEST}"
+          cat "release-assets/${MANIFEST}"
 
       - name: Create or update the draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.channel.outputs.prerelease }}
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
+          # A beta is a GitHub pre-release: it is never "latest", so the stable download URL ignores it.
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             # Only a draft may be refreshed: a published release is what installed apps download.
             if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" != "true" ]; then
@@ -324,13 +358,15 @@ jobs:
             fi
             gh release edit "$GITHUB_REF_NAME" \
               --title "OpenVids ${version}" \
-              --notes-file "${RUNNER_TEMP}/release-notes.txt"
+              --notes-file "${RUNNER_TEMP}/release-notes.txt" \
+              --prerelease="$PRERELEASE"
             gh release upload "$GITHUB_REF_NAME" --clobber release-assets/*
           else
             gh release create "$GITHUB_REF_NAME" \
               --draft \
               --title "OpenVids ${version}" \
               --notes-file "${RUNNER_TEMP}/release-notes.txt" \
+              --prerelease="$PRERELEASE" \
               release-assets/*
           fi
           ls -l release-assets

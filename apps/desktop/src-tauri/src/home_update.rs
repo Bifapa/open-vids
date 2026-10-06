@@ -3,6 +3,9 @@
 //!
 //! - `GET /api/update/status` — `{currentVersion, phase, …}` (see `updater::UpdateState`).
 //! - `POST /api/update/check` — start a check (or join the one under way); answers the state.
+//!   Which releases it looks at follows `updates.channel` (stable, or beta = stable and
+//!   beta manifests, the newer wins): the Settings switch saves the preference, then asks for
+//!   a check.
 //! - `POST /api/update/install {force?}` — download, verify, install, restart; answers the
 //!   state. 409 `update_not_available` when there is nothing to install, 409 `update_busy`
 //!   (`params: {renders, agentTurn}`) when the open project is rendering or running an agent

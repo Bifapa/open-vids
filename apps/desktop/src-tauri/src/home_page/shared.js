@@ -365,18 +365,28 @@
         : "overlay";
     return bootFrame;
   }
-  /* Beta features (Rust `channel::beta_features_enabled()` via OV_BOOT): on in
-     beta and debug builds. Pages gate beta-only UI on OV.betaFeatures(). */
-  function betaFeatures() {
+  /* The shell's boot data: this page's, or the Projects page's when this one is
+     its iframe (Settings). Empty when neither is readable. */
+  function bootData() {
     var boot = window.OV_BOOT;
     if (!boot && window.parent !== window) {
       try {
         boot = window.parent.OV_BOOT;
       } catch {
-        /* Cross-origin parent: beta features stay off. */
+        /* Cross-origin parent: the safe defaults apply. */
       }
     }
-    return !!(boot && boot.betaFeatures === true);
+    return boot && typeof boot === "object" ? boot : {};
+  }
+  /* Beta features (Rust `channel::beta_features_enabled()` via OV_BOOT): on in
+     beta and debug builds. Pages gate beta-only UI on OV.betaFeatures(). */
+  function betaFeatures() {
+    return bootData().betaFeatures === true;
+  }
+  /* This build's channel (Rust `channel::build_channel()`): "beta" for a pre-release
+     version, otherwise "stable". Not the update preference: that is `updates.channel`. */
+  function buildChannel() {
+    return bootData().channel === "beta" ? "beta" : "stable";
   }
   function applyCaptionFrame(doc) {
     if (frame() !== "custom") return;
@@ -529,6 +539,7 @@
     matchesKey: matchesKey,
     frame: frame,
     betaFeatures: betaFeatures,
+    buildChannel: buildChannel,
     applyCaptionFrame: applyCaptionFrame,
     isCustomFrame: isCustomFrame,
     invoke: invoke,

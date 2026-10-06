@@ -71,6 +71,10 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSString",
 ] }
 
+[dev-dependencies]
+# The updater's channel selection runs against a mock app (updater.rs tests).
+tauri = { version = "2", features = ["test"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

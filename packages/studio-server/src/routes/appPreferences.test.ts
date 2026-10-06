@@ -128,6 +128,19 @@ describe("app preferences route", () => {
     expect(stored()).toMatchObject({ density: "compact", updates: { autoCheck: false } });
   });
 
+  it("defaults the update channel to stable and stores beta without touching autoCheck", async () => {
+    expect(await get()).toMatchObject({ updates: { autoCheck: true, channel: "stable" } });
+    const response = await put({ updates: { channel: "beta" } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ updates: { autoCheck: true, channel: "beta" } });
+    expect(stored()).toMatchObject({ updates: { channel: "beta" } });
+    // An invalid stored channel reads as stable.
+    writeFileSync(path, JSON.stringify({ updates: { channel: "nightly" } }));
+    expect(await get()).toMatchObject({ updates: { channel: "stable" } });
+    writeFileSync(path, JSON.stringify({ updates: { channel: 3 } }));
+    expect(await get()).toMatchObject({ updates: { channel: "stable" } });
+  });
+
   it("stores the usage statistics choice, merging the group key by key", async () => {
     expect(await get()).toMatchObject({ telemetry: { enabled: true } });
     writeFileSync(
@@ -196,6 +209,8 @@ describe("app preferences route", () => {
     [{ confirmTrash: 1 }, "confirmTrash"],
     [{ density: "huge" }, "density"],
     [{ updates: { autoCheck: "yes" } }, "updates.autoCheck"],
+    [{ updates: { channel: "nightly" } }, "updates.channel"],
+    [{ updates: { channel: true } }, "updates.channel"],
     [{ updates: true }, "updates"],
     [{ telemetry: { enabled: "no" } }, "telemetry.enabled"],
     [{ telemetry: { enabled: null } }, "telemetry.enabled"],

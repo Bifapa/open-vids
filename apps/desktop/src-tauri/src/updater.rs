@@ -37,7 +37,9 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
+use tauri::Runtime;
 use tauri_plugin_updater::{Update, UpdaterExt};
+use url::Url;
 
 use super::coded_error::CodedError;
 use super::{i18n, prefs};
@@ -55,6 +57,29 @@ const AUTO_CHECK_INTERVAL: Duration = Duration::from_secs(4 * 60 * 60);
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 /// Release notes beyond this are cut: they are shown in a settings row and a dialog.
 const NOTES_LIMIT: usize = 20_000;
+/// The beta channel's manifest: the only asset of the service release `channel-beta`,
+/// refreshed when a beta is published (`.github/workflows/beta-manifest.yml`). The
+/// stable manifest is the plugin's configured endpoint (`tauri.conf.json`).
+const BETA_MANIFEST_URL: &str =
+    "https://github.com/bazodev/open-vids/releases/download/channel-beta/beta.json";
+
+/// Which releases the user follows (`updates.channel`). Stable offers only stable
+/// releases; beta offers whichever of the stable and beta manifests is newer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Channel {
+    Stable,
+    Beta,
+}
+
+impl Channel {
+    /// The channel the preference says, read from the preferences file now.
+    fn configured() -> Self {
+        match prefs::update_channel(&prefs::load(&prefs::prefs_path())) {
+            "beta" => Self::Beta,
+            _ => Self::Stable,
+        }
+    }
+}
 
 /// The slot: what the page and the menu show.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -496,11 +521,23 @@ pub fn check() -> UpdateState {
         }
     };
     tauri::async_runtime::spawn(async move {
-        let outcome = find_update(&app).await;
+        // The preference is read again after the network round: a toggle flipped while
+        // this check ran made its answer one for the wrong channel.
+        let (channel, outcome) = loop {
+            let channel = Channel::configured();
+            let outcome = find_update(&app, channel, BETA_MANIFEST_URL).await;
+            if channel == Channel::configured() {
+                break (channel, outcome);
+            }
+        };
+        let on = if channel == Channel::Beta { ", beta channel" } else { "" };
         crate::logfile::shell(&match &outcome {
-            Ok(None) => format!("update check: {CURRENT_VERSION} is up to date"),
+            Ok(None) => format!("update check: {CURRENT_VERSION} is up to date{on}"),
             Ok(Some((_, release))) => {
-                format!("update check: {} available (running {CURRENT_VERSION})", release.version)
+                format!(
+                    "update check: {} available (running {CURRENT_VERSION}{on})",
+                    release.version
+                )
             }
             Err(err) => format!("update check failed: {err}"),
         });
@@ -509,14 +546,31 @@ pub fn check() -> UpdateState {
     state()
 }
 
-async fn find_update(app: &tauri::AppHandle) -> Result<Option<(Update, Release)>, CodedError> {
-    let updater = app
-        .updater_builder()
-        .version_comparator(|current, release| is_newer(&current, &release.version))
-        .timeout(CHECK_TIMEOUT)
-        .build()
-        .map_err(|e| check_error(&e))?;
-    let Some(update) = updater.check().await.map_err(|e| check_error(&e))? else {
+/// Check the channel's manifests and answer the newest update, if any.
+///
+/// Stable reads only the manifest the plugin is configured with (`endpoints` in
+/// `tauri.conf.json`: the latest stable release). Beta reads that one and
+/// `beta_manifest` and offers the newer of what they announce: the plugin's own
+/// endpoint list is a fallback chain (the first manifest that answers wins), so
+/// it cannot pick the newest by itself. Each manifest is checked by its own
+/// updater, so `is_newer` keeps ruling: a beta never downgrades to an older
+/// stable, a stable never "updates" to an older beta.
+async fn find_update<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    channel: Channel,
+    beta_manifest: &str,
+) -> Result<Option<(Update, Release)>, CodedError> {
+    let mut answers = vec![check_manifest(app, None).await];
+    if channel == Channel::Beta {
+        let answer = match Url::parse(beta_manifest) {
+            Ok(url) => check_manifest(app, Some(url)).await,
+            Err(err) => Err(err.into()),
+        };
+        answers.push(no_beta_is_none(answer));
+    }
+    let Some(update) = settle(answers, |update| update.version.as_str())
+        .map_err(|e| check_error(&e))?
+    else {
         return Ok(None);
     };
     let notes = update
@@ -536,6 +590,69 @@ async fn find_update(app: &tauri::AppHandle) -> Result<Option<(Update, Release)>
         date,
     };
     Ok(Some((update, release)))
+}
+
+/// One manifest, read by its own updater: `endpoint` or, without one, the
+/// configured (stable) endpoint.
+async fn check_manifest<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    endpoint: Option<Url>,
+) -> Result<Option<Update>, tauri_plugin_updater::Error> {
+    let mut builder = app
+        .updater_builder()
+        .version_comparator(|current, release| is_newer(&current, &release.version))
+        .timeout(CHECK_TIMEOUT);
+    if let Some(endpoint) = endpoint {
+        builder = builder.endpoints(vec![endpoint])?;
+    }
+    builder.build()?.check().await
+}
+
+/// A beta manifest that is not there yet (no beta was ever published), or that
+/// has no build for this platform, means "no beta", not a failed check.
+fn no_beta_is_none<U>(
+    answer: Result<Option<U>, tauri_plugin_updater::Error>,
+) -> Result<Option<U>, tauri_plugin_updater::Error> {
+    use tauri_plugin_updater::Error as E;
+    match answer {
+        Err(E::ReleaseNotFound | E::TargetNotFound(_) | E::TargetsNotFound(_)) => Ok(None),
+        other => other,
+    }
+}
+
+/// Fold the manifests' answers into one: the newest update when any manifest
+/// announced one (a failing sibling does not hide it), else the first error,
+/// else "up to date". Ties keep the earlier answer (stable before beta).
+fn settle<U, E>(
+    answers: Vec<Result<Option<U>, E>>,
+    version_of: impl Fn(&U) -> &str,
+) -> Result<Option<U>, E> {
+    let mut newest: Option<(semver::Version, U)> = None;
+    let mut failure = None;
+    for answer in answers {
+        match answer {
+            Ok(Some(update)) => {
+                let Ok(version) = semver::Version::parse(version_of(&update)) else {
+                    continue;
+                };
+                if newest
+                    .as_ref()
+                    .map_or(true, |(best, _)| is_newer(best, &version))
+                {
+                    newest = Some((version, update));
+                }
+            }
+            Ok(None) => {}
+            Err(err) => {
+                failure.get_or_insert(err);
+            }
+        }
+    }
+    match (newest, failure) {
+        (Some((_, update)), _) => Ok(Some(update)),
+        (None, Some(err)) => Err(err),
+        (None, None) => Ok(None),
+    }
 }
 
 /// The automatic check: a little after launch, then every `AUTO_CHECK_INTERVAL`
@@ -849,7 +966,8 @@ pub fn menu_check() {
 }
 
 fn wait_for_check() -> UpdateState {
-    let deadline = Instant::now() + CHECK_TIMEOUT + Duration::from_secs(5);
+    // The beta channel reads two manifests, one after the other.
+    let deadline = Instant::now() + CHECK_TIMEOUT * 2 + Duration::from_secs(5);
     loop {
         let now = state();
         if now != UpdateState::Checking || Instant::now() >= deadline {
@@ -945,6 +1063,11 @@ fn localized(err: &CodedError) -> String {
         None => text,
     }
 }
+
+/// Channel selection against local manifests (a mock app with the real plugin).
+#[cfg(test)]
+#[path = "updater_channel_tests.rs"]
+mod channel_tests;
 
 #[cfg(test)]
 mod tests {

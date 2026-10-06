@@ -1,0 +1,106 @@
+name: Beta manifest
+
+# Refresh the beta channel's update manifest when a beta release is PUBLISHED (a draft does nothing).
+#
+# Installs that turned on "Get beta versions" read, next to the stable manifest, a fixed address:
+#   https://github.com/bazodev/open-vids/releases/download/channel-beta/beta.json
+# `channel-beta` is a service pre-release that holds nothing but `beta.json`. A beta's own release
+# (tag `v0.5.0-beta.1`, built by release.yml) carries the same file as an asset; publishing that
+# release triggers this workflow, which validates the manifest and copies it over.
+#
+# `channel-beta` stays a pre-release and is never marked latest, so GitHub's `releases/latest` (what
+# stable installs read) cannot resolve to it. The workflow checks out nothing and runs no repository
+# code: it only moves one signed manifest between two releases with the `gh` CLI.
+
+on:
+  release:
+    types: [published]
+
+# Read-only by default; only the refresh job, which edits the service release, may write.
+permissions:
+  contents: read
+
+# One refresh at a time, in arrival order: two quickly published betas must not interleave.
+concurrency:
+  group: beta-manifest
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh the beta channel for ${{ github.event.release.tag_name }}
+    # A published pre-release of a `v<version>-<pre-release>` tag. The service release itself
+    # (`channel-beta`) is a published pre-release too and must not trigger a refresh of itself.
+    if: >-
+      github.event.release.prerelease
+      && !github.event.release.draft
+      && startsWith(github.event.release.tag_name, 'v')
+      && contains(github.event.release.tag_name, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      # The tag only ever reaches the shell through the environment, never through `${{ }}` in a script.
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Download the beta's manifest
+        run: |
+          set -euo pipefail
+          mkdir -p incoming
+          gh release download "$TAG" --pattern beta.json --dir incoming
+          cat incoming/beta.json
+
+      # The manifest must describe this very release for both platforms, with signatures and download
+      # URLs inside this release: a hand-edited or stale asset must never become the channel's answer.
+      - name: Check the manifest
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          prefix="https://github.com/${GH_REPO}/releases/download/${TAG}/"
+          jq -e --arg version "$version" --arg prefix "$prefix" '
+            .version == $version
+            and ([.platforms["darwin-aarch64"], .platforms["windows-x86_64"]]
+                 | all((.signature // "") != "" and ((.url // "") | startswith($prefix))))
+          ' incoming/beta.json >/dev/null || {
+            echo "beta.json of ${TAG} does not describe ${version} for darwin-aarch64 and windows-x86_64 inside that release" >&2
+            exit 1
+          }
+
+      - name: Make sure the channel-beta release exists
+        run: |
+          set -euo pipefail
+          if ! gh release view channel-beta >/dev/null 2>&1; then
+            gh release create channel-beta \
+              --title "Beta channel" \
+              --notes "Update manifest of the OpenVids beta channel. Managed by the Beta manifest workflow; do not edit or delete." \
+              --prerelease \
+              --latest=false
+          fi
+
+      # A re-run or a late event for an older beta must not move the channel backwards. Both versions are
+      # pre-releases (`0.5.0-beta.2`, `0.6.0-beta.1`), for which `sort -V` agrees with semver precedence.
+      - name: Publish the manifest unless a newer beta is already there
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          mkdir -p current
+          current=""
+          if gh release download channel-beta --pattern beta.json --dir current >/dev/null 2>&1; then
+            current="$(jq -r '.version // empty' current/beta.json 2>/dev/null || true)"
+          fi
+          if [ -n "$current" ] && [ "$current" != "$version" ]; then
+            newest="$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -n 1)"
+            if [ "$newest" = "$current" ]; then
+              echo "channel-beta already offers ${current}, which is newer than ${version}; leaving it" >&2
+              exit 0
+            fi
+          fi
+          gh release upload channel-beta incoming/beta.json --clobber
+          gh release edit channel-beta \
+            --notes "Update manifest of the OpenVids beta channel (currently ${version}). Managed by the Beta manifest workflow; do not edit or delete." \
+            --prerelease \
+            --latest=false

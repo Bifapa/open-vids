@@ -10,12 +10,12 @@
 //! The shell tells its pages: Studio gets `openvidsChannel=beta` in its URL
 //! (`sidecar::studio_url`), the Projects page `betaFeatures` in `OV_BOOT`.
 
-/// `beta` for a pre-release version, `stable` otherwise.
+/// `beta` for a pre-release version, `stable` otherwise. Build metadata
+/// (`0.5.0+build-1`) is not a pre-release; `release.yml` draws the same line.
 pub fn channel_of(version: &str) -> &'static str {
-    if version.contains('-') {
-        "beta"
-    } else {
-        "stable"
+    match semver::Version::parse(version) {
+        Ok(parsed) if !parsed.pre.is_empty() => "beta",
+        _ => "stable",
     }
 }
 
@@ -49,7 +49,9 @@ mod tests {
     #[test]
     fn pre_release_versions_are_beta() {
         assert_eq!(channel_of("0.5.0-beta.1"), "beta");
+        assert_eq!(channel_of("0.5.0-rc.2+7"), "beta");
         assert_eq!(channel_of("0.5.0"), "stable");
+        assert_eq!(channel_of("0.5.0+build-1"), "stable", "build metadata is not a pre-release");
     }
 
     #[test]

@@ -20,6 +20,7 @@ use serde_json::{json, Map, Value};
 pub const THEMES: [&str; 3] = ["system", "dark", "light"];
 pub const WORKSPACES: [&str; 3] = ["media", "story", "edit"];
 pub const LAUNCH_MODES: [&str; 2] = ["projects", "last"];
+pub const UPDATE_CHANNELS: [&str; 2] = ["stable", "beta"];
 pub const DENSITIES: [&str; 2] = ["default", "compact"];
 pub const FPS_CHOICES: [u64; 4] = [24, 25, 30, 60];
 const MAX_SIZE: u64 = 8192;
@@ -68,7 +69,7 @@ fn defaults_for(windows: bool) -> Value {
         "confirmTrash": true,
         "onLaunch": "projects",
         "density": "default",
-        "updates": { "autoCheck": true },
+        "updates": { "autoCheck": true, "channel": "stable" },
         "telemetry": { "enabled": true },
         "onboarding": { "completedAt": null }
     })
@@ -207,7 +208,8 @@ fn normalize_for(stored: Value, windows: bool) -> Value {
     let density = pick_str(out.get("density"), &DENSITIES, "default");
     out.insert("density".into(), json!(density));
 
-    // Update behaviour: whether the app checks for a new version after launch (`updater.rs`).
+    // Update behaviour (`updater.rs`): whether the app checks for a new version after launch,
+    // and which channel it follows (`beta` also offers pre-releases).
     let mut updates = match out.remove("updates") {
         Some(Value::Object(map)) => map,
         _ => Map::new(),
@@ -217,6 +219,8 @@ fn normalize_for(stored: Value, windows: bool) -> Value {
         .and_then(Value::as_bool)
         .unwrap_or(true);
     updates.insert("autoCheck".into(), json!(auto_check));
+    let channel = pick_str(updates.get("channel"), &UPDATE_CHANNELS, "stable");
+    updates.insert("channel".into(), json!(channel));
     out.insert("updates".into(), Value::Object(updates));
 
     // Anonymous usage statistics (`telemetry.rs`): on unless the user turned them off.
@@ -369,6 +373,14 @@ pub fn auto_check_updates(prefs: &Value) -> bool {
     prefs["updates"]["autoCheck"].as_bool().unwrap_or(true)
 }
 
+/// `updates.channel`: `"beta"` when the user opted into pre-releases, else `"stable"`.
+pub fn update_channel(prefs: &Value) -> &str {
+    match prefs["updates"]["channel"].as_str() {
+        Some("beta") => "beta",
+        _ => "stable",
+    }
+}
+
 /// `telemetry.enabled`: send anonymous usage statistics (`telemetry.rs`).
 pub fn telemetry_enabled(prefs: &Value) -> bool {
     prefs["telemetry"]["enabled"].as_bool().unwrap_or(true)
@@ -512,6 +524,25 @@ mod tests {
         let next = update(&path, &json!({"density":"huge"})).unwrap();
         assert_eq!(next["density"], "default");
         assert_eq!(next["updates"]["autoCheck"], false);
+    }
+
+    #[test]
+    fn the_update_channel_defaults_to_stable_and_only_beta_opts_in() {
+        let path = tmp("channel");
+        assert_eq!(load(&path)["updates"]["channel"], "stable");
+        assert_eq!(update_channel(&load(&path)), "stable");
+        let next = update(&path, &json!({"updates":{"channel":"beta"}})).unwrap();
+        assert_eq!(next["updates"], json!({"autoCheck": true, "channel": "beta"}));
+        assert_eq!(update_channel(&load(&path)), "beta");
+        // An unknown or mistyped channel reads back as stable, never as beta.
+        for stored in [r#""nightly""#, "true", "3", "null", r#""Beta""#] {
+            std::fs::write(&path, format!(r#"{{"updates":{{"channel":{stored}}}}}"#)).unwrap();
+            assert_eq!(load(&path)["updates"]["channel"], "stable", "{stored}");
+            assert_eq!(update_channel(&load(&path)), "stable", "{stored}");
+        }
+        // The helper never reads beta from an un-normalized document either.
+        assert_eq!(update_channel(&json!({})), "stable");
+        assert_eq!(update_channel(&json!({"updates":{"channel":"nightly"}})), "stable");
     }
 
     #[test]

@@ -22,7 +22,7 @@ OpenVids is at an early stage.
 
 - macOS 11 or later on Apple Silicon (no Intel build); Windows 10 or later on x64.
 - Prebuilt downloads are on [GitHub Releases](https://github.com/bazodev/open-vids/releases/latest): a `.dmg` for macOS and an NSIS `*-setup.exe` for Windows; you can also build from source.
-- The app checks GitHub Releases for updates and installs them on a button press; updates are verified with the project's updater signing key, not by OS code signing.
+- The app checks GitHub Releases for updates and installs them on a button press; updates are verified with the project's updater signing key, not by OS code signing. Settings › General › Updates has a “Get beta versions” switch: beta builds (`x.y.z-beta.N`) arrive before the stable release and may be less stable; turning it off does not roll the app back.
 - macOS builds are ad-hoc signed and not notarized, so macOS blocks the first launch (see [Install](#install)). Windows builds are unsigned, so SmartScreen warns about an unknown publisher at install/first launch.
 - Rendering and thumbnails need Chrome and FFmpeg installed on the machine; OpenVids does not ship them. On Windows the app offers a download button that fetches the official gyan.dev FFmpeg essentials build (SHA-256 verified) into `%USERPROFILE%\.openvids\ffmpeg`; the order is `HYPERFRAMES_FFMPEG_PATH` / `HYPERFRAMES_FFPROBE_PATH` if you set them, then that downloaded copy, then an FFmpeg on `PATH`.
 - The local Studio server is unauthenticated on loopback while a project is open. See [SECURITY.md](SECURITY.md).

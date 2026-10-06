@@ -25,6 +25,7 @@ export const APP_THEMES = ["system", "dark", "light"] as const;
 export const NEW_PROJECT_WORKSPACES = ["media", "story", "edit"] as const;
 export const LAUNCH_MODES = ["projects", "last"] as const;
 export const APP_DENSITIES = ["default", "compact"] as const;
+export const UPDATE_CHANNELS = ["stable", "beta"] as const;
 export const NEW_PROJECT_FPS = [24, 25, 30, 60] as const;
 export const MAX_FRAME_SIZE = 8192;
 const MAX_LOCATION_LENGTH = 1024;
@@ -55,6 +56,7 @@ export type NewProjectWorkspace = (typeof NEW_PROJECT_WORKSPACES)[number];
 export type LaunchMode = (typeof LAUNCH_MODES)[number];
 export type AppDensity = (typeof APP_DENSITIES)[number];
 export type NewProjectFps = (typeof NEW_PROJECT_FPS)[number];
+export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
 
 export interface NewProjectPreferences {
   location: string;
@@ -64,9 +66,10 @@ export interface NewProjectPreferences {
   fps: NewProjectFps;
 }
 
-/** Update behaviour. Only the choice is stored: the updater itself does not exist yet. */
+/** Update behaviour: the automatic check after launch and the channel the updater follows (`beta` also offers pre-releases). */
 export interface UpdatePreferences {
   autoCheck: boolean;
+  channel: UpdateChannel;
 }
 
 /** Anonymous usage statistics, sent by the desktop shell only (`apps/desktop/src-tauri/src/telemetry.rs`). */
@@ -134,7 +137,7 @@ export function defaultAppPreferences(
     confirmTrash: true,
     onLaunch: "projects",
     density: "default",
-    updates: { autoCheck: true },
+    updates: { autoCheck: true, channel: "stable" },
     telemetry: { enabled: true },
     onboarding: { completedAt: null },
   };
@@ -171,6 +174,7 @@ const isLanguage = oneOf(APP_LANGUAGES);
 const isWorkspace = oneOf(NEW_PROJECT_WORKSPACES);
 const isLaunchMode = oneOf(LAUNCH_MODES);
 const isDensity = oneOf(APP_DENSITIES);
+const isUpdateChannel = oneOf(UPDATE_CHANNELS);
 const isFps = oneOf(NEW_PROJECT_FPS);
 const isTimestamp = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value > 0;
@@ -261,6 +265,7 @@ function normalize(
       ...updates,
       autoCheck:
         typeof updates.autoCheck === "boolean" ? updates.autoCheck : base.updates.autoCheck,
+      channel: isUpdateChannel(updates.channel) ? updates.channel : base.updates.channel,
     },
     telemetry: {
       ...telemetry,
@@ -293,6 +298,7 @@ const KNOWN_NEW_PROJECT: Record<string, (value: unknown) => boolean> = {
 
 const KNOWN_UPDATES: Record<string, (value: unknown) => boolean> = {
   autoCheck: (value) => typeof value === "boolean",
+  channel: isUpdateChannel,
 };
 
 const KNOWN_TELEMETRY: Record<string, (value: unknown) => boolean> = {

@@ -113,7 +113,36 @@ hdiutil attach apps/desktop/src-tauri/target/release/bundle/dmg/OpenVids_*_aarch
 - [ ] Windows clean-machine checks: install → launch → System check finds Chrome/FFmpeg (or the FFmpeg download button installs the gyan.dev build into `%USERPROFILE%\.openvids\ffmpeg` with byte progress) → Home → create a new project → open it → chat turn → Render QA card → Export → quit leaves no `bun.exe`, Chrome or ffmpeg behind in Task Manager.
 - [ ] macOS clean-machine check: Home → create a new project → open it → chat turn → Render QA card → Export → quit.
 
-## 8. Documentation
+## 8. Beta channel (gate for a beta tag, e.g. `v0.5.0-beta.1`)
+
+A beta is a tag on `main` with a pre-release version (`bun run desktop:version 0.5.0-beta.1`); the stable run of
+this checklist applies to it too. Beta-only features (`BETA_FEATURES`, `OV.betaFeatures()`) are on in it and
+off in every stable build.
+
+- [ ] The tag, `desktop:version --check` and the app version agree; the version is `x.y.z-<pre-release>`.
+- [ ] The release workflow produced a draft that is a **pre-release** with `beta.json` (not `latest.json`),
+      `OpenVids_<v>_aarch64.{dmg,app.tar.gz,app.tar.gz.sig}` and `OpenVids_<v>_x64-setup.exe(.sig)`; `beta.json` lists
+      `darwin-aarch64` and `windows-x86_64` with URLs inside that release and signatures equal to the `.sig` files.
+      Verify both signatures with `minisign -Vm` against the updater key.
+- [ ] Stable is untouched: `https://github.com/bazodev/open-vids/releases/latest/download/latest.json` still answers
+      the previous stable version (a draft or a pre-release never becomes "latest").
+- [ ] Publish the draft (not before: a draft must not move the channel). The Beta manifest workflow succeeds and
+      `https://github.com/bazodev/open-vids/releases/download/channel-beta/beta.json` carries the new version; the
+      `channel-beta` release is a pre-release and not marked latest.
+- [ ] Data safety: a project and the settings written by this beta open in the previous stable build (or the beta
+      migration made a backup); the beta changed no file format irreversibly.
+- [ ] Packaged app, stable build with **Get beta versions off**: Settings › General › Check for Updates does not
+      offer the beta. Turn it **on**: a check starts at once and offers the beta; "Update and Restart" installs it
+      (macOS and Windows), the version row shows the **Beta** badge, beta-only features appear.
+- [ ] From a beta: the next beta is offered (`0.5.0-beta.1` → `0.5.0-beta.2`); when the matching stable release is
+      published it is offered next (`0.5.0-beta.N` → `0.5.0`) and installs over the beta.
+- [ ] Turning the switch off on a beta does not roll back: the app stays on the beta, the stable-download link opens
+      the latest stable release, and only a newer stable version is offered.
+- [ ] Windows: the NSIS installer of a beta shows `0.5.0-beta.N` in Apps & features and updates in place (passive
+      install over a previous beta/stable).
+- [ ] Release notes (the tag message) say that it is a beta and what is experimental.
+
+## 9. Documentation
 
 - [ ] Release notes: commit, test counts, E2E results, timings, known limitations.
 - [ ] Roadmap/status updated; `AGENTS.md` and package READMEs describe any changed contract.

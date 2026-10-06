@@ -17,16 +17,18 @@
   ];
   /* 23.976 and 29.97 are deliberately absent: Studio preview and export cannot honour them. */
   const FPS = [24, 25, 30, 60];
+  const STABLE_DOWNLOAD_URL = "https://github.com/bazodev/open-vids/releases/latest";
 
   /* Preference saves are queued so a late answer never replaces a newer one. */
   let queue = Promise.resolve();
-  function savePrefs(patch, rollback) {
+  function savePrefs(patch, rollback, saved) {
     queue = queue.then(() =>
       api("/api/preferences", patch, "PUT")
         .then((next) => {
           S.prefs = next;
           S.prefsNote = "";
           OVS.post({ type: "ov-prefs", prefs: next });
+          if (saved) saved();
         })
         .catch((err) => {
           S.prefsNote = OVS.failMsg("settings.note.saveFailed", { message: OV.describeError(err) });
@@ -237,16 +239,39 @@
           }),
     );
   }
+  /* The Updates group's Version row: a "Beta" badge when this build is a beta. */
+  function versionValue(st) {
+    const badge =
+      OV.buildChannel() === "beta"
+        ? `<span class="badge sm st-upd-beta-badge">${te("settings.general.updates.betaBadge")}</span>`
+        : "";
+    return `<span class="mono st-upd-ver">${esc(st ? st.currentVersion : "—")}</span>${badge}`;
+  }
+  /* The beta-channel switch, its warning, and what turning it off does (and does not). */
+  function betaChannel(prefs) {
+    return (
+      row(
+        te("settings.general.updates.beta"),
+        te("settings.general.updates.beta.hint"),
+        sw(
+          prefs.updates && prefs.updates.channel === "beta",
+          "beta-channel",
+          tr("settings.general.updates.beta"),
+        ),
+      ) +
+      `<div class="st-sub st-upd-beta-note"><span class="note">${te(
+        "settings.general.updates.beta.note",
+      )}</span> <button type="button" class="link" data-act="stable-download" data-fk="stable-download">${te(
+        "settings.general.updates.beta.download",
+      )}</button></div>`
+    );
+  }
   function updatesGroup(prefs) {
     const st = S.update;
     return (
       group(
         te("settings.general.group.updates"),
-        row(
-          te("settings.general.updates.version"),
-          null,
-          `<span class="mono st-upd-ver">${esc(st ? st.currentVersion : "—")}</span>`,
-        ) +
+        row(te("settings.general.updates.version"), null, versionValue(st)) +
           row(
             te("settings.general.autoUpdate"),
             null,
@@ -256,6 +281,7 @@
               tr("settings.general.autoUpdate"),
             ),
           ) +
+          betaChannel(prefs) +
           row(
             te("settings.general.telemetry"),
             te("settings.general.telemetry.hint"),
@@ -430,6 +456,20 @@
   CLICK["auto-update"] = () => {
     if (S.prefs)
       savePrefs({ updates: { autoCheck: !(S.prefs.updates && S.prefs.updates.autoCheck) } });
+  };
+  /* Either way the switch moves, the channel's answer is checked at once: a beta turned on
+     is offered now, one turned off stops being offered. */
+  CLICK["beta-channel"] = () => {
+    if (!S.prefs) return;
+    const on = !(S.prefs.updates && S.prefs.updates.channel === "beta");
+    savePrefs({ updates: { channel: on ? "beta" : "stable" } }, null, () => {
+      S.updateBusy = null;
+      updateRequest("/api/update/check", {});
+    });
+  };
+  /* GitHub's "latest" is the newest release that is not a pre-release: the stable download page. */
+  CLICK["stable-download"] = () => {
+    api("/api/open-external", { url: STABLE_DOWNLOAD_URL }).catch(() => {});
   };
   CLICK.telemetry = () => {
     if (S.prefs)

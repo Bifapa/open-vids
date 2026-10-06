@@ -899,6 +899,15 @@ html:lang(ru) .st-agents .seg.text button {
   color: var(--fg-2);
   font-size: var(--text-sm);
 }
+.st-upd-beta-badge {
+  margin-left: 6px;
+}
+.st-upd-beta-note {
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 16px;
+  text-wrap: pretty;
+}
 .st-ctl .btn {
   white-space: nowrap;
 }

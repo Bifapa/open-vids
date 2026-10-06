@@ -163,9 +163,25 @@ capability for the plugin, and the pages only see the token-gated home API:
 
 - `GET /api/update/status` — the current phase (`checking`, `available`, `downloading`, `ready`,
   `failed`, …) plus the version, release notes, download progress or the failure.
-- `POST /api/update/check` — ask the release feed (GitHub Releases `latest.json`) for a newer
+- `POST /api/update/check` — ask the release feed(s) of the chosen channel for a newer version.
 - `POST /api/update/install` `{ "force"?: boolean }` — download, verify the signature, install and
   restart. Nothing is downloaded without this call.
+
+**Channels.** `updates.channel` (`"stable"` by default, `"beta"` after Settings › General › Updates ›
+“Get beta versions”) picks what a check reads. Stable reads only the configured endpoint
+(`releases/latest/download/latest.json`). Beta reads that and the beta manifest
+(`releases/download/channel-beta/beta.json`, `BETA_MANIFEST_URL` in `updater.rs`) and offers the
+newer of the two: the plugin's `endpoints` list is a fallback chain (the first manifest that answers
+wins), so each manifest is checked by its own updater and `updater::settle` picks the newest. The
+`is_newer` rule stays strict semver precedence (`0.5.0-beta.1 < 0.5.0-beta.2 < 0.5.0`): a beta
+build is offered the next beta and then the stable release, never an older stable; a stable build with
+the switch off never sees a beta. A beta manifest that is not there yet (no beta published) or has no
+entry for this platform counts as "no beta", not as a failed check. Flipping the switch saves the
+preference and starts a check at once (a check running meanwhile is repeated for the new channel).
+Turning the switch off does not roll the app back: the build stays on its beta until a newer stable
+release exists, and Settings links the stable download page. A beta build shows a “Beta” badge next to its
+version (`OV.buildChannel()`, from `OV_BOOT.channel`). The channel is a preference in `preferences.json`
+(`prefs.rs` and `studio-server` `preferences.ts` normalize it identically); it is not sent in usage statistics.
 
 **Check for Updates…** in the app menu runs the same check: with the Projects page open it opens
 Settings › General, where the page shows progress and the install button; with a project open Rust
@@ -351,7 +367,7 @@ To cut a release:
    git push origin v0.1.1
    ```
 
-   The annotated tag's message becomes the release notes (`latest.json` and the
+   The annotated tag's message becomes the release notes (the manifest's `notes` and the
    GitHub Release).
 
 3. `.github/workflows/release.yml` checks that the tag and the app version
@@ -362,6 +378,19 @@ To cut a release:
    `releases/latest/download/latest.json` only resolves once the release is
    published — GitHub serves “latest” from published, non-prerelease releases,
    never from drafts. Windows updates run the NSIS installer in passive mode.
+
+**Betas.** A beta is a tag with a pre-release version (`bun run desktop:version 0.5.0-beta.1`, tag
+`v0.5.0-beta.1`). The same workflow builds it, but the release is a GitHub **pre-release**
+carrying `beta.json` instead of `latest.json`, so the stable endpoint never sees it. Publishing
+that release (not the draft) triggers `.github/workflows/beta-manifest.yml`, which validates
+`beta.json` and uploads it to the service pre-release `channel-beta`
+(`releases/download/channel-beta/beta.json`, a fixed address; it never moves back to an
+older beta). The signing key and the app identifier are the stable ones, so a beta installs over a
+stable build and back. Neither bundle needs a version transform: the NSIS template takes the
+version as is (installer name, `DisplayVersion`, `FileVersion`), derives the numeric
+`VIProductVersion` from `major.minor.patch` and compares versions with a semver-aware routine; the
+macOS bundle writes it verbatim into `CFBundleShortVersionString` and `CFBundleVersion`. (MSI would
+need a numeric pre-release; there is no MSI target.) See `RELEASE_CHECKLIST.md` › Beta channel.
 
 The build signs updates with the `TAURI_SIGNING_PRIVATE_KEY` and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets. In the workflow
