@@ -100,18 +100,18 @@ it("folds a delegated turn: Main keeps the plan and one row per delegation, a ro
   const rowStatuses = () =>
     rows().map((row) => row.querySelector("[data-run-status]")?.getAttribute("data-run-status"));
 
-  // Live: one row per delegation with its current step; the plan is open; the specialist's own words stay out.
+  // Live: one row per delegation with its current step; the plan is pinned in the dock as one line (the step that
+  // runs) and not drawn again in the feed; the specialist's own words stay out.
   expect(rows().map((row) => row.getAttribute("data-run-id"))).toEqual(["r1", "r2"]);
   expect(rowStatuses()).toEqual(["running", "running"]);
   expect(rows()[0]?.querySelector('[data-testid="delegation-step"]')?.textContent).toBe(
     "Editing scenes/intro.html",
   );
-  const livePlan = host.querySelector('[data-testid="turn-plan"]');
-  expect(
-    [...(livePlan?.querySelectorAll("[data-step-status]") ?? [])].map((step) =>
-      step.getAttribute("data-step-status"),
-    ),
-  ).toEqual(["running", "pending"]);
+  const dock = () => host.querySelector('[data-testid="plan-dock"]');
+  expect(dock()?.querySelector('[data-testid="plan-dock-step"]')?.textContent).toBe(
+    "Step 1 of 2 · Trim the intro",
+  );
+  expect(log()?.querySelector('[data-testid="turn-plan"]')).toBeNull();
   expect(log()?.textContent).not.toContain("Cut to 3.0s.");
   expect(log()?.textContent).not.toContain("Cut the intro to three seconds.");
 
@@ -133,7 +133,8 @@ it("folds a delegated turn: Main keeps the plan and one row per delegation, a ro
     { type: "turn.completed", turn: turn({ status: "completed", endedAt: 9900 }) },
   ]);
 
-  // Finished: the rows carry the outcome, the plan folds to one line but stays attached to the turn.
+  // Finished: the rows carry the outcome, the dock is gone and the plan folds to one line in the feed, still
+  // attached to the turn.
   expect(rowStatuses()).toEqual(["completed", "failed"]);
   expect(rows()[0]?.querySelector('[data-testid="delegation-outcome"]')?.textContent).toBe(
     "The intro now runs 3 s.",
@@ -141,7 +142,8 @@ it("folds a delegated turn: Main keeps the plan and one row per delegation, a ro
   expect(rows()[1]?.querySelector('[data-testid="delegation-outcome"]')?.textContent).toBe(
     "Frame 12 could not be read.",
   );
-  const donePlan = host.querySelector('[data-testid="turn-plan"]');
+  expect(dock()).toBeNull();
+  const donePlan = log()?.querySelector('[data-testid="turn-plan"]');
   expect(donePlan?.querySelector("[aria-expanded]")?.getAttribute("aria-expanded")).toBe("false");
   expect(donePlan?.querySelector("[data-step-status]")).toBeNull();
 

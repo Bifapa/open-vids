@@ -34,6 +34,7 @@ import { createAgentRunSlice, type AgentRunSlice } from "./agentRunSlice";
 import { createAgentPermissionSlice, type AgentPermissionSlice } from "./agentPermissionSlice";
 import { createAgentStoryOfferSlice, type AgentStoryOfferSlice } from "./agentStoryOfferSlice";
 import { createAgentRevertSlice, type AgentRevertSlice } from "./agentRevertSlice";
+import { createAgentPlanSlice, type AgentPlanSlice } from "./agentPlanSlice";
 import {
   createAgentSettingsSlice,
   type ActionResult,
@@ -63,6 +64,7 @@ export interface AgentState
     AgentSettingsSlice,
     AgentQaSlice,
     AgentRevertSlice,
+    AgentPlanSlice,
     AgentComposerSlice,
     AgentPermissionSlice,
     AgentStoryOfferSlice,
@@ -317,6 +319,7 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       ...createAgentStoryOfferSlice({ client, set, get, isDisposed, projectHasMedia }),
       ...createAgentAttachmentSlice({ set, get }),
       ...createAgentRevertSlice({ client, set, get, onTurnReverted: deps.onTurnReverted }),
+      ...createAgentPlanSlice({ set }),
       ...createAgentChatListSlice({ client, set, get, isDisposed, updateOpenChat }),
       ...createAgentRunSlice({ client, set, get, isDisposed, captureContext, onActionError }),
       ...createAgentComposerSlice({

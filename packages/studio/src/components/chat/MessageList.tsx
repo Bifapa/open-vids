@@ -1,11 +1,8 @@
 import { useMemo, useRef } from "react";
 import { ArrowDown, ClosedCaptioning, FilmStrip, Scissors, type Icon } from "@phosphor-icons/react";
 import type { ChatState, TurnSummary } from "@hyperframes/agent-protocol";
-import { useAgentStore, useAgentStoreApi } from "../../agent/agentContext";
-import { useComposerRequestStore } from "../../agent/composerRequest";
-import { NEW_CHAT_DRAFT } from "../../agent/agentDraftChat";
+import { useAgentStore } from "../../agent/agentContext";
 import { hasNoUsableModel, mainThreadMessages, type ThreadId } from "../../agent/agentSelectors";
-import { carriedOutProposalIds } from "../../agent/retryTurn";
 import { useChapterCount } from "../../story/useStoryActions";
 import { useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
@@ -19,6 +16,7 @@ import { PlanView } from "./PlanView";
 import { RenderQaCard } from "./RenderQaCard";
 import { TurnFooter, type RetryTurn } from "./TurnFooter";
 import { useAutoScroll } from "./useAutoScroll";
+import { usePlanApproval } from "./usePlanApproval";
 
 const SUGGESTIONS: { text: TranslationKey; icon: Icon }[] = [
   { text: "chat.empty.suggestion.pacing", icon: Scissors },
@@ -71,18 +69,20 @@ export function EmptyChat() {
   );
 }
 
-/** The clean conversation: prompts, Main's replies (with their plan and Working lists), QA, turn footers. */
-function MainThread({ chat }: { chat: ChatState }) {
+/**
+ * The clean conversation: prompts, Main's replies (with their plan and Working lists), QA, turn footers. The plan of
+ * `dockedTurnId` is pinned above the conversation (`PlanDock`) and is not drawn here a second time.
+ */
+function MainThread({ chat, dockedTurnId }: { chat: ChatState; dockedTurnId: string | null }) {
   const { t } = useTranslation();
   const reverts = useAgentStore((state) => state.reverts);
   const activeTurn = useAgentStore((state) => state.activeTurn);
   const pending = useAgentStore((state) => state.pending);
-  const executePlan = useAgentStore((state) => state.startPlanExecution);
   const revert = useAgentStore((state) => state.revert);
   const unrevert = useAgentStore((state) => state.unrevert);
   const dismissRevert = useAgentStore((state) => state.dismissRevert);
   const retryTurn = useAgentStore((state) => state.retryTurn);
-  const store = useAgentStoreApi();
+  const approvalFor = usePlanApproval(chat);
   const blockedReason = activeTurn ? t("chat.revert.waitForAgent") : null;
 
   const rows = useMemo(() => {
@@ -98,28 +98,8 @@ function MainThread({ chat }: { chat: ChatState }) {
     }));
   }, [chat]);
 
-  // A plan proposal is the user's to run or change. The last turn's is current; once another turn ran after it,
-  // it is out of date — still offered ("Carry out anyway") unless a later turn already carried it out.
   const lastTurn = chat.turns.at(-1);
   const chapterCount = useChapterCount();
-  const carriedOut = useMemo(() => carriedOutProposalIds(chat), [chat]);
-  const approvalFor = (turn: TurnSummary | undefined) =>
-    turn && turn.plan?.proposal === true && turn.status === "completed" && !carriedOut.has(turn.id)
-      ? {
-          busy: pending !== null,
-          stale: turn.id !== lastTurn?.id,
-          reason: activeTurn ? t("chat.plan.waitForAgent") : null,
-          onExecute: () => void executePlan(turn.id),
-          onRevise: () => {
-            // Nothing to type on its own: start the message the way a change request reads, never over a draft.
-            // The draft is read now, not subscribed to: typing must not re-render the whole conversation.
-            const { chatId, drafts, setDraft } = store.getState();
-            if ((drafts[chatId ?? NEW_CHAT_DRAFT] ?? "").trim() === "")
-              setDraft(t("chat.plan.revisePrefix"));
-            useComposerRequestStore.getState().focus();
-          },
-        }
-      : undefined;
   // Only the newest turn can be retried: older failures were moved on from.
   const retryFor = (turn: TurnSummary): RetryTurn | undefined =>
     turn.status === "failed" && turn.id === lastTurn?.id
@@ -141,12 +121,9 @@ function MainThread({ chat }: { chat: ChatState }) {
             <AssistantBlock
               message={message}
               plan={
-                turn?.plan && (
-                  <PlanView
-                    plan={turn.plan}
-                    live={turn.status === "running"}
-                    approval={approvalFor(turn)}
-                  />
+                turn?.plan &&
+                turn.id !== dockedTurnId && (
+                  <PlanView plan={turn.plan} turnId={turn.id} approval={approvalFor(turn)} />
                 )
               }
             />
@@ -177,7 +154,16 @@ function MainThread({ chat }: { chat: ChatState }) {
   );
 }
 
-export function MessageList({ chat, thread }: { chat: ChatState; thread: ThreadId }) {
+export function MessageList({
+  chat,
+  thread,
+  dockedTurnId,
+}: {
+  chat: ChatState;
+  thread: ThreadId;
+  /** The turn whose plan the pinned dock shows (main thread only). */
+  dockedTurnId: string | null;
+}) {
   const { t } = useTranslation();
   // Every folded event bumps `lastSeq`, so it is the one signal for "the content grew".
   const { ref, onScroll, detached, jumpToLatest } = useAutoScroll(chat.lastSeq);
@@ -203,7 +189,7 @@ export function MessageList({ chat, thread }: { chat: ChatState; thread: ThreadI
         )}
       >
         {thread === "main" ? (
-          <MainThread chat={chat} />
+          <MainThread chat={chat} dockedTurnId={dockedTurnId} />
         ) : (
           <AgentThread chat={chat} agent={thread} />
         )}

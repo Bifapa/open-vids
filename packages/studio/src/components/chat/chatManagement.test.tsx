@@ -324,7 +324,7 @@ describe("the phase line in the header", () => {
     expect(phase()).toBe("Render QA · pass 1/2 · Rendering");
   });
 
-  it("shows the plan step that is running, and just Working when there is no more to say", () => {
+  it("leaves the plan step to the pinned plan, and says just Working when there is no more to say", () => {
     open({
       ...runningChatState(),
       turns: [
@@ -340,12 +340,10 @@ describe("the phase line in the header", () => {
         }),
       ],
     });
-    expect(phase()).toBe("Step 2 of 3 · Add captions");
-    unmountChat(mounted);
-    mounted = undefined;
-
-    open(runningChatState());
     expect(phase()).toBe("Working");
+    expect(document.body.querySelector('[data-testid="plan-dock-step"]')?.textContent).toBe(
+      "Step 2 of 3 · Add captions",
+    );
   });
 
   it("shows the progress of a running render or analysis", () => {

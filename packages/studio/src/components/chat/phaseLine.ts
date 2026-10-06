@@ -1,4 +1,4 @@
-import type { Activity, ChatState, PlanStep, TurnSummary } from "@hyperframes/agent-protocol";
+import type { Activity, ChatState, TurnSummary } from "@hyperframes/agent-protocol";
 import { formatPercent, t } from "../../i18n";
 import { runningTurn } from "../../agent/agentSelectors";
 import { activityText } from "./ActivityRow";
@@ -19,16 +19,10 @@ function progressingActivity(chat: ChatState, turn: TurnSummary): Activity | nul
   return null;
 }
 
-function currentStep(steps: readonly PlanStep[]): { index: number; step: PlanStep } | null {
-  const index = steps.findIndex((step) => step.status === "running");
-  const step = steps[index];
-  return step ? { index, step } : null;
-}
-
 /**
  * One line about where a long turn is, for the chat header while it runs: the Render QA pass and what it is doing,
- * else the progress of a running render or analysis, else the Director's current plan step ("Step 2 of 4 · …").
- * Null when the turn has nothing more specific to say than "working".
+ * else the progress of a running render or analysis. Null when the turn has nothing more specific to say than
+ * "working" (the Director's plan step is in the pinned plan dock, not here).
  */
 export function phaseLine(chat: ChatState): string | null {
   const turn = runningTurn(chat);
@@ -54,13 +48,5 @@ export function phaseLine(chat: ChatState): string | null {
     });
   }
 
-  const step = turn.plan ? currentStep(turn.plan.steps) : null;
-  if (turn.plan && step) {
-    return t("chat.phase.step", {
-      step: step.index + 1,
-      total: turn.plan.steps.length,
-      title: step.step.title,
-    });
-  }
   return null;
 }

@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ChatState } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { describeTurnError, isNoModelMessage } from "../../agent/agentErrors";
 import { NO_MODEL_TITLE } from "./ConnectModel";
 import { t, useTranslation } from "../../i18n";
 import { activeThread, runningTurn } from "../../agent/agentSelectors";
+import { dockedPlanTurn } from "../../agent/planDock";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
 import { activityText } from "./ActivityRow";
 import { chatPadX } from "./chatStyles";
 import { Composer } from "./Composer";
 import { EmptyChat, MessageList } from "./MessageList";
+import { PlanDock } from "./PlanDock";
 
 const ANNOUNCE_EVERY_MS = 2000;
 
@@ -92,6 +94,12 @@ export function ChatView() {
   const openChat = useAgentStore((state) => state.openChat);
   const closeChat = useAgentStore((state) => state.closeChat);
 
+  // Main's plan is pinned above its conversation (a subagent thread has none): the running turn's, or the proposal
+  // waiting for the user. The list leaves that turn's plan out, so it is on screen once.
+  const docked = useMemo(
+    () => (chat && thread === "main" ? dockedPlanTurn(chat) : null),
+    [chat, thread],
+  );
   const announcement = useThrottledText(statusSentence(chat), ANNOUNCE_EVERY_MS);
 
   return (
@@ -120,8 +128,9 @@ export function ChatView() {
               {t("chat.view.reconnecting")}
             </p>
           )}
+          {docked && <PlanDock chat={chat} turn={docked} />}
           {/* A new thread is a new page: it starts at its newest content. */}
-          <MessageList key={thread} chat={chat} thread={thread} />
+          <MessageList key={thread} chat={chat} thread={thread} dockedTurnId={docked?.id ?? null} />
           <Composer />
         </>
       )}

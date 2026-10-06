@@ -11,9 +11,9 @@ export interface AutoScroll {
 }
 
 /**
- * Keeps a scroller pinned to its newest content while it grows, until the user scrolls up;
- * scrolling back to the bottom (or `jumpToLatest`) pins it again. `signal` is anything that
- * changes when content is added or grows.
+ * Keeps a scroller pinned to its newest content while it grows or while its own box changes height (the pinned plan
+ * dock above it opening, the composer below it growing), until the user scrolls up; scrolling back to the bottom
+ * (or `jumpToLatest`) pins it again. `signal` is anything that changes when content is added or grows.
  */
 export function useAutoScroll(signal: unknown): AutoScroll {
   const ref = useRef<HTMLDivElement>(null);
@@ -37,6 +37,18 @@ export function useAutoScroll(signal: unknown): AutoScroll {
   useLayoutEffect(() => {
     if (pinned.current) scrollToEnd();
   }, [signal, scrollToEnd]);
+
+  // A box that gets shorter keeps its scrollTop, so the newest content would slip below the fold with no scroll
+  // event to say so: follow the size, not only the content.
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (pinned.current) scrollToEnd();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [scrollToEnd]);
 
   const jumpToLatest = useCallback(() => {
     pinned.current = true;

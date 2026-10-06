@@ -34,6 +34,9 @@ const proposalTurn = (overrides: Partial<TurnSummary> = {}) =>
     ...overrides,
   });
 
+const dock = () => document.body.querySelector<HTMLElement>('[data-testid="plan-dock"]');
+const feedPlans = () => document.body.querySelectorAll('[role="log"] [data-testid="turn-plan"]');
+
 const state = (turns: TurnSummary[]) =>
   chatState({
     chat: summary({ status: "completed" }),
@@ -45,10 +48,12 @@ const state = (turns: TurnSummary[]) =>
   });
 
 describe("plan approval", () => {
-  it("shows Carry out / Change on the latest finished proposal, and both act", async () => {
+  it("pins Carry out / Change under the latest finished proposal, and both act", async () => {
     mounted = mountChat({ view: "chat", chatId: "c1", chat: state([proposalTurn()]) });
-    expect(buttonWithText(mounted.host, "Carry out")).not.toBeNull();
-    expect(buttonWithText(mounted.host, "Change")).not.toBeNull();
+    // The buttons live in the plan dock; the feed does not draw the proposal's plan a second time.
+    expect(dock()?.contains(buttonWithText(mounted.host, "Carry out"))).toBe(true);
+    expect(dock()?.contains(buttonWithText(mounted.host, "Change"))).toBe(true);
+    expect(feedPlans()).toHaveLength(0);
 
     await click(buttonWithText(mounted.host, "Change"));
     expect(document.activeElement).toBe(mounted.host.querySelector("textarea"));
@@ -159,8 +164,11 @@ describe("plan approval", () => {
         ],
       }),
     });
-    // Only B still waits for the user; A was carried out.
+    // Only B still waits for the user, in the dock; A was carried out and is back in the feed without buttons.
     expect(mounted.host.querySelectorAll('[data-testid="plan-stale"]')).toHaveLength(1);
+    expect(dock()?.getAttribute("data-turn-id")).toBe("t2");
+    expect(feedPlans()).toHaveLength(1);
+    expect(buttonWithText(feedPlans()[0] ?? document.body, "Carry out")).toBeNull();
     await click(buttonWithText(mounted.host, "Carry out anyway"));
     expect(mounted.client.startTurn).toHaveBeenCalledWith(
       "c1",
@@ -197,6 +205,8 @@ describe("plan approval", () => {
       chat: state([proposalTurn({ status: "running", endedAt: undefined })]),
     });
     expect(buttonWithText(mounted.host, "Carry out")).toBeNull();
+    // Its plan is pinned like any running turn's, as a progress plan without a decision to make.
+    expect(dock()?.getAttribute("data-turn-id")).toBe("t1");
   });
 
   it("disables the buttons while a turn runs in the project, and says why", async () => {
@@ -208,7 +218,7 @@ describe("plan approval", () => {
     });
     expect(buttonWithText(mounted.host, "Carry out")?.disabled).toBe(true);
     expect(buttonWithText(mounted.host, "Change")?.disabled).toBe(true);
-    expect(mounted.host.querySelector('[data-testid="plan-blocked"]')?.textContent).toBe(
+    expect(dock()?.querySelector('[data-testid="plan-blocked"]')?.textContent).toBe(
       "Wait for the agent to finish first.",
     );
   });
