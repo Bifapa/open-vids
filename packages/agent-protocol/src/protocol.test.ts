@@ -354,11 +354,45 @@ describe("validators", () => {
       { id: "6", kind: "asset", path: "assets/a.mp4" },
       { id: "7", kind: "timeline-range", start: 1, end: 2 },
       { id: "8", kind: "editor-selection", context },
+      { id: "9", kind: "project", projectKey: "0123456789abcdef", name: "Promo", parts: ["music"] },
     ];
     for (const reference of ok) expect(parseReference(reference).ok).toBe(true);
     expect(parseReference({ id: "x", kind: "timeline-range", start: 3, end: 1 }).ok).toBe(false);
     expect(parseReference({ id: "x", kind: "video", source: { type: "nope" } }).ok).toBe(false);
     expect(parseReference({ id: "x", kind: "hologram" }).ok).toBe(false);
+  });
+
+  it("parses a project reference: known parts only, `all` swallows the rest, the key is required", () => {
+    const parsed = parseReference({
+      id: "p",
+      kind: "project",
+      projectKey: "0123456789abcdef",
+      name: "  Promo  ",
+      parts: ["renders", "bogus", "music", "renders"],
+    });
+    expect(parsed.ok && parsed.value).toEqual({
+      id: "p",
+      kind: "project",
+      projectKey: "0123456789abcdef",
+      name: "Promo",
+      parts: ["renders", "music"],
+    });
+    const all = parseReference({
+      id: "p",
+      kind: "project",
+      projectKey: "k",
+      parts: ["music", "all"],
+    });
+    expect(all.ok && all.value).toMatchObject({ name: "k", parts: ["all"] });
+    for (const bad of [
+      { id: "p", kind: "project", parts: ["music"] },
+      { id: "p", kind: "project", projectKey: "k", parts: [] },
+      { id: "p", kind: "project", projectKey: "k", parts: ["bogus"] },
+      { id: "p", kind: "project", projectKey: "k" },
+      { id: "p", kind: "project", projectKey: "k".repeat(65), parts: ["music"] },
+    ]) {
+      expect(parseReference(bad).ok).toBe(false);
+    }
   });
 
   it("keeps the size and length of an attached file, drops nonsense, and accepts references on steering", () => {

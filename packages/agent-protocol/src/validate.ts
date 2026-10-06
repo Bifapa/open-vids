@@ -27,6 +27,7 @@ import {
   PERMISSION_DECISIONS,
   OAUTH_LOGIN_STATUSES,
   PLAN_APPROVALS,
+  PROJECT_PARTS,
   SPECIALIST_IDS,
   STORY_ACTIONS,
   STORY_OFFER_STATES,
@@ -47,6 +48,7 @@ import {
   type ModelConfig,
   type ModelSelection,
   type OAuthLoginState,
+  type ProjectPart,
   type SpecialistConfig,
   type SpecialistDefaults,
   type SpecialistId,
@@ -84,6 +86,8 @@ export const LIMITS = {
   /** Domains a chat can exclude, and the longest domain name (DNS limit). */
   excludedSites: 64,
   siteChars: 253,
+  /** Longest project key a `#` reference carries (the shell's keys are 16 characters). */
+  projectKeyChars: 64,
 } as const;
 
 const fail = (message: string): { ok: false; message: string } => ({ ok: false, message });
@@ -309,6 +313,13 @@ function parseFileFacts(value: Record<string, unknown>): {
   };
 }
 
+function parseProjectParts(value: unknown): ProjectPart[] {
+  if (!Array.isArray(value)) return [];
+  const parts = PROJECT_PARTS.filter((part) => value.includes(part));
+  // "all" already names every part.
+  return parts.includes("all") ? ["all"] : parts;
+}
+
 export function parseReference(value: unknown): Parsed<MessageReference> {
   if (!isRecord(value)) return fail("reference must be an object");
   const id = nonEmpty(value.id);
@@ -371,6 +382,16 @@ export function parseReference(value: unknown): Parsed<MessageReference> {
           ...(elementIds && { elementIds }),
         },
       };
+    }
+    case "project": {
+      const projectKey = nonEmpty(value.projectKey);
+      if (!projectKey || projectKey.length > LIMITS.projectKeyChars) {
+        return fail("project reference needs a projectKey");
+      }
+      const parts = parseProjectParts(value.parts);
+      if (parts.length === 0) return fail("project reference needs at least one known part");
+      const name = nonEmpty(value.name)?.trim().slice(0, LIMITS.titleChars) ?? projectKey;
+      return { ok: true, value: { ...common, kind: "project", projectKey, name, parts } };
     }
     case "editor-selection": {
       const context = parseEditorContext(value.context);

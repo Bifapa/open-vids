@@ -632,12 +632,48 @@ export interface EditorSelectionReference extends ReferenceBase {
   context: EditorContext;
 }
 
+/**
+ * What of another project a `#` mention attaches: the files of one kind (`renders`, `music` and `audio` for the
+ * other sounds, `images`, `video`), the project's Story (`story`), or everything (`all`).
+ */
+export const PROJECT_PARTS = [
+  "renders",
+  "music",
+  "audio",
+  "images",
+  "video",
+  "story",
+  "all",
+] as const;
+export type ProjectPart = (typeof PROJECT_PARTS)[number];
+
+/** The parts that name files; every file of another project belongs to exactly one of them. */
+export const PROJECT_FILE_PARTS = ["renders", "music", "audio", "images", "video"] as const;
+export type ProjectFilePart = (typeof PROJECT_FILE_PARTS)[number];
+
+/** Most parts one reference names (every part once). */
+export const MAX_PROJECT_PARTS = PROJECT_PARTS.length;
+
+/**
+ * Another OpenVids project the user attached with `#`: a link, not a copy. `projectKey` is the shell's per-folder
+ * key (16 hex characters of the SHA-256 of the folder path), never a path. The agents see the manifest of the named
+ * parts and copy what they use with `import_from_project`; they can reach no other project or part of this chat.
+ */
+export interface ProjectReference extends ReferenceBase {
+  kind: "project";
+  projectKey: string;
+  /** The project's name when it was attached (display only). */
+  name: string;
+  parts: ProjectPart[];
+}
+
 export type MessageReference =
   | MediaReference
   | UrlReference
   | AssetReference
   | TimelineRangeReference
-  | EditorSelectionReference;
+  | EditorSelectionReference
+  | ProjectReference;
 
 export type MessageReferenceKind = MessageReference["kind"];
 

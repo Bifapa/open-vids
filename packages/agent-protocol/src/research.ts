@@ -593,6 +593,11 @@ export interface AssetProvenance {
    */
   storyNode: string | null;
   need: string | null;
+  /**
+   * Set when the file was copied from another project with `import_from_project` and that project's record came
+   * with it (license, source and credit line unchanged): the other project's name and the file's path there.
+   */
+  importedFrom?: { project: string; asset: string };
 }
 
 export interface ProvenanceLedger {
@@ -663,6 +668,8 @@ export const RESEARCH_ERROR_CODES = [
   "restricted_license",
   "unknown_node",
   "unknown_asset",
+  /** `import_from_project` / the cross-project routes: the project key matches no project the user has opened. */
+  "unknown_project",
   "locked",
   "conflict",
   "no_story",

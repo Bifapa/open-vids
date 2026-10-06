@@ -14,3 +14,4 @@ export * from "./qa.js";
 export * from "./usage.js";
 export * from "./usageReport.js";
 export * from "./frames.js";
+export * from "./crossProject.js";
