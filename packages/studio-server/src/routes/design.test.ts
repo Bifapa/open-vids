@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
 import type { DesignError, SaveDesignSystemResult } from "@hyperframes/agent-protocol";
@@ -174,8 +174,9 @@ describe("design-systems files", () => {
     expect(html.status).toBe(200);
     expect(html.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(html.headers.get("content-security-policy")).toBe(
-      "sandbox; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:",
+      "sandbox allow-same-origin; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:",
     );
+    expect(html.headers.get("access-control-allow-origin")).toBeNull();
     expect(html.headers.get("x-content-type-options")).toBe("nosniff");
     expect(await html.text()).toContain("openvids-design-manifest");
 
@@ -184,8 +185,8 @@ describe("design-systems files", () => {
     const font = await send("GET", `/design-systems/sunset-talks/files/${fontPath}`);
     expect(font.headers.get("content-type")).toBe("font/woff2");
     expect(font.headers.get("content-security-policy")).toContain("sandbox");
-    // The sandboxed showcase has an opaque origin: its font requests need a CORS grant, nothing else does.
-    expect(font.headers.get("access-control-allow-origin")).toBe("*");
+    // The showcase keeps its origin (sandbox allow-same-origin, no scripts), so no response grants cross-origin reads.
+    expect(font.headers.get("access-control-allow-origin")).toBeNull();
     expect(
       Buffer.from(await font.arrayBuffer())
         .subarray(0, 4)
@@ -257,6 +258,25 @@ describe("project files through the routes' own resolver", () => {
     expect((await put("branded", sampleRequest({ spec, projectId: "demo" }))).status).toBe(200);
     const logo = await own.request("/design-systems/branded/files/logo.svg", { headers: HOST });
     expect(await logo.text()).toBe(SVG);
+
+    // Editing it later (the file moved or the edit runs from another project): the stored logo is named by its
+    // library path, the request still carries the projectId, and the missing project file keeps the stored copy.
+    rmSync(project.path("assets/logo.svg"));
+    const stored: { spec: ReturnType<typeof sampleSpec> } = await (
+      await own.request("/design-systems/branded", { headers: HOST })
+    ).json();
+    expect(stored.spec.logo?.projectPath).toBe("logo.svg");
+    const edited = await put(
+      "branded",
+      sampleRequest({
+        spec: { ...stored.spec, motionRules: ["Edited"] },
+        baseVersion: 1,
+        projectId: "demo",
+      }),
+    );
+    expect(edited.status).toBe(200);
+    const again = await own.request("/design-systems/branded/files/logo.svg", { headers: HOST });
+    expect(await again.text()).toBe(SVG);
 
     const traversal = sampleSpec({
       fonts: [],

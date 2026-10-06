@@ -106,7 +106,10 @@ function imageKindOf(data: Uint8Array): "png" | "jpg" | "webp" | null {
   return null;
 }
 
-/** Reads a file the project resolver named: a regular file (not a link), at most 8 MB. */
+/**
+ * Reads a file the project resolver named: a regular file (not a link), at most 8 MB; `null` when it is not there,
+ * so an edit can keep the stored copy of a logo or font it names by its library path.
+ */
 async function readProjectFile(
   context: ResolveContext,
   path: string,
@@ -124,6 +127,9 @@ async function readProjectFile(
     return readFileSync(resolved.absPath);
   } catch (error) {
     if (error instanceof DesignFailure) throw error;
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
+    // Not there (any more): the caller keeps a stored copy or reports the file as missing.
+    if (code === "ENOENT" || code === "ENOTDIR") return null;
     throw unavailable(`${what}: "${path}" cannot be read`);
   }
 }

@@ -21,7 +21,7 @@
  */
 
 import type { DesignSourceKind } from "./types.js";
-import { DESIGN_SOURCE_KINDS, DESIGN_SYSTEM_ID_PATTERN } from "./types.js";
+import { DESIGN_SOURCE_KINDS, isDesignSystemIdText } from "./types.js";
 import { isRecord, type Parsed } from "./validate.js";
 
 // ── Tokens ───────────────────────────────────────────────────────────────────
@@ -273,6 +273,11 @@ export interface AttachedDesign extends DesignLicenseFacts {
   /** The system's name when it was attached. */
   name: string;
   attachedAt: number;
+  /**
+   * The library entry's `createdAt` when it was attached: which system the id meant. A deleted and recreated id has a
+   * new one, so version numbers that started over are not mistaken for "no update". Absent in older snapshots.
+   */
+  createdAt?: number;
 }
 
 /** `GET /api/projects/:id/design` */
@@ -366,10 +371,13 @@ export const VIDEO_PALETTE_LIMITS = { minSamples: 1, maxSamples: 24, defaultSamp
  * current version is a `conflict`. `projectId` names the project that `projectPath`s resolve in.
  */
 export interface SaveDesignSystemRequest {
-  name: string;
+  /** Required when creating; an edit (`baseVersion`) may leave it out and keeps the current name (a rename made meanwhile is not undone). */
+  name?: string;
   source: DesignSystemSource;
   spec: DesignSystemSpec;
   baseVersion?: number;
+  /** With `baseVersion`: the `createdAt` of the system the author read, so an id deleted and recreated meanwhile is a `conflict`. */
+  baseCreatedAt?: number;
   projectId?: string;
 }
 
@@ -648,17 +656,24 @@ export function designSystemIdFromName(name: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 40)
     .replace(/-+$/g, "");
-  return slug.length > 0 ? slug : "system";
+  const id = slug.length > 0 ? slug : "system";
+  // A name Windows reserves for a device cannot be a folder there: "Con" becomes "con-system".
+  return isDesignSystemIdText(id) ? id : `${id}-system`;
 }
 
 export function isDesignSystemId(value: unknown): value is string {
-  return typeof value === "string" && DESIGN_SYSTEM_ID_PATTERN.test(value);
+  return typeof value === "string" && isDesignSystemIdText(value);
 }
 
 export function parseSaveDesignSystemRequest(body: unknown): ParsedDesign<SaveDesignSystemRequest> {
   if (!isRecord(body)) return bad("body must be an object");
-  const name = parseDesignSystemName(body.name);
-  if (name === null) return bad(`name must be 1 to ${DESIGN_LIMITS.nameChars} plain characters`);
+  let name: string | undefined;
+  if (body.name !== undefined || body.baseVersion === undefined) {
+    const parsedName = parseDesignSystemName(body.name);
+    if (parsedName === null)
+      return bad(`name must be 1 to ${DESIGN_LIMITS.nameChars} plain characters`);
+    name = parsedName;
+  }
   const source = parseDesignSystemSource(body.source);
   if (!source.ok) return bad(source.message);
   const spec = parseDesignSystemSpec(body.spec);
@@ -673,6 +688,16 @@ export function parseSaveDesignSystemRequest(body: unknown): ParsedDesign<SaveDe
       return bad("baseVersion must be a positive integer");
     baseVersion = body.baseVersion;
   }
+  let baseCreatedAt: number | undefined;
+  if (body.baseCreatedAt !== undefined) {
+    if (
+      baseVersion === undefined ||
+      typeof body.baseCreatedAt !== "number" ||
+      !Number.isFinite(body.baseCreatedAt)
+    )
+      return bad("baseCreatedAt must be a number and needs baseVersion");
+    baseCreatedAt = body.baseCreatedAt;
+  }
   let projectId: string | undefined;
   if (body.projectId !== undefined) {
     const id = text(body.projectId, 300);
@@ -682,10 +707,11 @@ export function parseSaveDesignSystemRequest(body: unknown): ParsedDesign<SaveDe
   return {
     ok: true,
     value: {
-      name,
+      ...(name !== undefined && { name }),
       source: source.value,
       spec: spec.value,
       ...(baseVersion !== undefined && { baseVersion }),
+      ...(baseCreatedAt !== undefined && { baseCreatedAt }),
       ...(projectId && { projectId }),
     },
   };

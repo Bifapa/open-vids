@@ -7,6 +7,7 @@ import { useTranslation, type TranslationKey } from "../i18n";
 import {
   availableSources,
   createSpecOf,
+  effectiveFields,
   websiteAddress,
   type CreateFields,
   type DesignHostCapabilities,
@@ -47,6 +48,7 @@ const SOURCE_COPY = {
 export function CreateDesignDialog({
   initialSource,
   videos,
+  videosLoaded,
   capabilities,
   blocker,
   onStart,
@@ -55,6 +57,8 @@ export function CreateDesignDialog({
   initialSource: DesignSourceKind;
   /** The project's video files (project-relative), for the "From a video" source. */
   videos: readonly string[];
+  /** The project's file list has been read; until then an empty `videos` only means "not known yet". */
+  videosLoaded: boolean;
   capabilities: DesignHostCapabilities;
   /** Why the agent cannot take the turn now, or null when it can. */
   blocker: string | null;
@@ -66,17 +70,19 @@ export function CreateDesignDialog({
   const [source, setSource] = useState<DesignSourceKind>(
     sources.includes(initialSource) ? initialSource : "scratch",
   );
-  const [fields, setFields] = useState<CreateFields>({
+  const [chosen, setChosen] = useState<CreateFields>({
     brief: "",
     notes: "",
-    video: videos[0] ?? "",
+    video: "",
     url: "",
-    projectKey: capabilities.externalProjects?.[0]?.key ?? "",
+    projectKey: "",
   });
   const [starting, setStarting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const briefRef = useRef<HTMLTextAreaElement>(null);
-  const set = (patch: Partial<CreateFields>) => setFields((current) => ({ ...current, ...patch }));
+  const set = (patch: Partial<CreateFields>) => setChosen((current) => ({ ...current, ...patch }));
+  // The lists of videos and projects arrive after the dialog opens: what is picked is worked out from what is there.
+  const fields = effectiveFields(chosen, videos, capabilities);
 
   const spec = createSpecOf(source, fields, capabilities);
   const urlInvalid =
@@ -190,8 +196,10 @@ export function CreateDesignDialog({
                 options={videos.map((path) => ({ value: path, label: path }))}
                 onCommit={(video) => set({ video })}
               />
-            ) : (
+            ) : videosLoaded ? (
               <p className="m-0 text-xs text-fg-3">{t("studio.design.video.none")}</p>
+            ) : (
+              <p className="m-0 text-xs text-fg-3">{t("studio.design.video.loading")}</p>
             )}
             <p className="m-0 text-xs leading-[15px] text-fg-3">{t("studio.design.video.hint")}</p>
           </div>

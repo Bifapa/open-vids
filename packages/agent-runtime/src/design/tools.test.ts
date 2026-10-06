@@ -26,29 +26,51 @@ function path(value: unknown, ...keys: string[]): unknown {
   return current;
 }
 
-function toolsOf(agent: AgentId, enabled: SpecialistId[], designAction: DesignAction | null) {
+function toolsOf(
+  agent: AgentId,
+  enabled: SpecialistId[],
+  designAction: DesignAction | null,
+  design = true,
+) {
   return buildHostTools(
     agent,
-    { enabled, jev: true, editing: true, analysis: true, story: true, designAction },
+    { enabled, jev: true, editing: true, analysis: true, story: true, designAction, design },
     async () => ({ text: "" }),
   ).map((tool) => tool.name);
 }
 
+const FREE_MODE = [
+  "list_design_systems",
+  "read_design_system",
+  "extract_project_design",
+  "save_design_system",
+  "attach_design_system",
+];
+
 describe("design tool availability", () => {
-  it("gives the design tools to the Director alone, and only in a design turn", () => {
+  it("gives the design tools to the Director alone: all of them in a design turn, the typed-request subset in an ordinary one", () => {
     for (const enabled of [TEAM, []]) {
       for (const agent of AGENTS) {
-        const normal = toolsOf(agent, enabled, null);
-        expect(normal.filter((name) => DESIGN_TOOLS.includes(name))).toEqual([]);
-        for (const action of DESIGN_ACTIONS) {
-          const names = toolsOf(agent, enabled, action).filter((name) =>
-            DESIGN_TOOLS.includes(name),
-          );
-          expect(names).toEqual(agent === "director" ? DESIGN_TOOLS : []);
-        }
+        const designOf = (action: DesignAction | null) =>
+          toolsOf(agent, enabled, action).filter((name) => DESIGN_TOOLS.includes(name));
+        expect(designOf(null)).toEqual(agent === "director" ? FREE_MODE : []);
+        for (const action of DESIGN_ACTIONS)
+          expect(designOf(action)).toEqual(agent === "director" ? DESIGN_TOOLS : []);
       }
     }
-    expect(designToolsFor("director", { action: null })).toEqual([]);
+    // The video palette belongs to the dialog-started video source.
+    expect(toolsOf("director", TEAM, null)).not.toContain("video_palette");
+  });
+
+  it("offers nothing without a design host, the beta flag being off", () => {
+    for (const agent of AGENTS) {
+      for (const action of [null, ...DESIGN_ACTIONS]) {
+        expect(
+          toolsOf(agent, TEAM, action, false).filter((name) => DESIGN_TOOLS.includes(name)),
+        ).toEqual([]);
+      }
+    }
+    expect(designToolsFor("director", { available: false, action: "create" })).toEqual([]);
   });
 
   it("hides every timeline writer in a design turn and keeps the readers", () => {
@@ -69,26 +91,31 @@ describe("design tool availability", () => {
     expect(changesProject("save_design_system")).toBe(true);
     expect(changesProject("attach_design_system")).toBe(true);
     expect(changesProject("read_design_system")).toBe(false);
-    const ask = buildHostTools(
-      "director",
-      {
-        enabled: TEAM,
-        jev: false,
-        editing: true,
-        analysis: true,
-        designAction: "create",
-        intent: "ask",
-      },
-      async () => ({ text: "" }),
-    ).map((tool) => tool.name);
-    expect(ask).toEqual(expect.arrayContaining(["list_design_systems", "read_design_system"]));
-    expect(ask).not.toContain("save_design_system");
-    expect(ask).not.toContain("attach_design_system");
+    for (const designAction of [null, "create"] as const) {
+      const ask = buildHostTools(
+        "director",
+        {
+          enabled: TEAM,
+          jev: false,
+          editing: true,
+          analysis: true,
+          design: true,
+          designAction,
+          intent: "ask",
+        },
+        async () => ({ text: "" }),
+      ).map((tool) => tool.name);
+      expect(ask).toEqual(expect.arrayContaining(["list_design_systems", "read_design_system"]));
+      expect(ask).not.toContain("save_design_system");
+      expect(ask).not.toContain("attach_design_system");
+    }
   });
 });
 
 describe("design tool descriptions and rows", () => {
-  const tools = buildDesignTools("director", { action: "create" }, async () => ({ text: "" }));
+  const tools = buildDesignTools("director", { available: true, action: "create" }, async () => ({
+    text: "",
+  }));
   const byName = (name: string) => {
     const tool = tools.find((candidate) => candidate.name === name);
     if (!tool) throw new Error(`no ${name}`);

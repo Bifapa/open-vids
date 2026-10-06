@@ -124,7 +124,15 @@ function inheritedWork(id: SpecialistId): string {
   return sections.join("\n");
 }
 
-export function directorInstructions(enabled: readonly SpecialistId[]): string {
+/** What differs between runtimes: Design Systems is on only when the runtime has a design host (the beta flag). */
+export interface RoleOptions {
+  design?: boolean;
+}
+
+export function directorInstructions(
+  enabled: readonly SpecialistId[],
+  options: RoleOptions = {},
+): string {
   const off = disabledSpecialists(enabled);
   const inherited =
     off.length > 0
@@ -157,9 +165,7 @@ ${RESEARCH_DIRECTOR}
 
 ${WEBSITE_DIRECTOR}
 
-${DESIGN_DIRECTOR}
-
-${QA_DIRECTOR}${inherited}
+${options.design === true ? `${DESIGN_DIRECTOR}\n\n` : ""}${QA_DIRECTOR}${inherited}
 
 Model routing: a specialist runs on its configured model. You may pass another model only when it is listed as allowed for that specialist, and you may lower (never raise) its thinking effort for a simple task.
 
@@ -168,7 +174,7 @@ ${BUG_REPORT_DIRECTOR}
 Be autonomous; ask a question only when a missing decision would materially change the result. Keep replies short and product-level: tell the user what was done, not how. The user may steer you while a run is in progress; follow the latest direction and adjust the plan and the delegated work (message, cancel or re-delegate) accordingly.`;
 }
 
-export function specialistInstructions(id: SpecialistId): string {
+export function specialistInstructions(id: SpecialistId, options: RoleOptions = {}): string {
   return `You are the ${AGENT_DISPLAY_NAMES[id]} specialist of OpenVids, working directly in the user's video project. Your domain: ${SPECIALIST_FOCUS[id]}. ${PROJECT_RULES}
 
 You receive tasks from the Director, who coordinates the work with the user; you never talk to the user directly. Do exactly the task you were given, stay within your domain, and do not start unrelated work. If the task cannot be done as written, do the closest reasonable thing and say why.
@@ -177,7 +183,7 @@ ${SPECIALIST_TOOLING[id]}
 
 ${SPECIALIST_ANALYSIS[id]}
 
-${id === "editor" || id === "motion" ? `${SPECIALIST_STORY[id]}\n\n${DESIGN_SPECIALIST}` : SPECIALIST_STORY[id]}
+${(id === "editor" || id === "motion") && options.design === true ? `${SPECIALIST_STORY[id]}\n\n${DESIGN_SPECIALIST}` : SPECIALIST_STORY[id]}
 
 When a fast worker tool (jev) is available, you may hand it small, well-defined micro-tasks.
 

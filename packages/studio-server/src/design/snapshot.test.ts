@@ -9,8 +9,9 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { dirname, join, sep } from "node:path";
+import type * as Fs from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
 import { exportCheck } from "../research/sourcesView.js";
 import { isDesignFailure } from "./errors.js";
@@ -23,6 +24,22 @@ import {
   updateDesign,
 } from "./snapshot.js";
 import { projectSpec, seedSystem, tempLibrary, tempProject } from "./projectTestSupport.js";
+
+/** Arms a failure in the snapshot's renames into `design/`: the process "dies" after that many of them. */
+const crash = vi.hoisted(() => ({ renamesBeforeFailure: null as number | null }));
+vi.mock("node:fs", async (importOriginal) => {
+  const actual: typeof Fs = await importOriginal();
+  return {
+    ...actual,
+    renameSync: (from: Fs.PathLike, to: Fs.PathLike) => {
+      if (crash.renamesBeforeFailure !== null && String(to).includes(`${sep}design${sep}`)) {
+        if (crash.renamesBeforeFailure === 0) throw new Error("simulated crash");
+        crash.renamesBeforeFailure -= 1;
+      }
+      actual.renameSync(from, to);
+    },
+  };
+});
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -108,9 +125,11 @@ describe("attachDesign", () => {
       "version",
       "name",
       "attachedAt",
+      "createdAt",
       "unknownLicenses",
       "nonPortableFonts",
     ]);
+    expect(JSON.parse(text).createdAt).toBe(library.readMeta("midnight")?.createdAt);
     expect(text).toBe(`${JSON.stringify(state.attached, null, 2)}\n`);
   });
 
@@ -265,6 +284,56 @@ describe("updateDesign", () => {
     expect((await readProjectDesignState(dir, library)).snapshotOk).toBe(false);
     expect((await updateDesign(dir, library)).snapshotOk).toBe(true);
   });
+
+  it("treats a system deleted and created again under the same id as an update, whatever its version number", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const { library, dir } = setup();
+    await seedSystem(library, "midnight");
+    await seedSystem(library, "midnight", { baseVersion: 1, brand: "#00ff88" });
+    await seedSystem(library, "midnight", { baseVersion: 2, brand: "#112233" });
+    const attached = await attachDesign(dir, library, "midnight");
+    expect(attached.attached).toMatchObject({ version: 3, createdAt: 1_000_000 });
+    expect(attached.updateAvailable).toBe(false);
+
+    await library.delete("midnight");
+    vi.setSystemTime(2_000_000);
+    await seedSystem(library, "midnight", { brand: "#abcdef" }); // version 1 again
+    const waiting = await readProjectDesignState(dir, library);
+    expect(waiting).toMatchObject({
+      attached: { version: 3, createdAt: 1_000_000 },
+      library: { version: 1 },
+      updateAvailable: true,
+      snapshotOk: true,
+    });
+
+    const updated = await updateDesign(dir, library);
+    expect(updated).toMatchObject({
+      attached: { version: 1, createdAt: 2_000_000 },
+      updateAvailable: false,
+    });
+    expect(readFileSync(join(dir, "design/tokens.css"), "utf-8")).toContain("#abcdef");
+    await expect(updateDesign(dir, library)).rejects.toMatchObject({ error: { code: "conflict" } });
+  });
+
+  it("leaves a snapshot that has no createdAt (an older one) to the version number alone", async () => {
+    const { library, dir } = setup();
+    await seedSystem(library, "midnight");
+    await attachDesign(dir, library, "midnight");
+    const path = join(dir, "design/design.json");
+    const record = JSON.parse(readFileSync(path, "utf-8"));
+    delete record.createdAt;
+    writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`);
+    expect(await readProjectDesignState(dir, library)).toMatchObject({
+      attached: { id: "midnight" },
+      updateAvailable: false,
+      snapshotOk: true,
+    });
+    await seedSystem(library, "midnight", { baseVersion: 1, brand: "#00ff88" });
+    expect((await readProjectDesignState(dir, library)).updateAvailable).toBe(true);
+    expect((await updateDesign(dir, library)).attached).toMatchObject({ version: 2 });
+    expect(JSON.parse(readFileSync(path, "utf-8")).createdAt).toBeTypeOf("number");
+  });
 });
 
 describe("detachDesign", () => {
@@ -347,6 +416,111 @@ describe("crash leftovers and forks", () => {
     expect(state).toMatchObject({ attached: { id: "midnight", version: 1 }, snapshotOk: true });
     expect(existsSync(staged)).toBe(false);
     expect(listing(dir, "design")).toContain("design/system.html");
+  });
+
+  describe("an interrupted swap", () => {
+    /** A project with "midnight" installed and a library that also holds "roboto" (other fonts) to switch to. */
+    const switching = async () => {
+      const { library, dir } = setup();
+      await seedSystem(library, "midnight");
+      await attachDesign(dir, library, "midnight");
+      await library.save("roboto", {
+        name: "Roboto",
+        source: { kind: "scratch" },
+        spec: {
+          ...projectSpec(),
+          fonts: [
+            {
+              family: "Roboto",
+              role: "body",
+              source: "google",
+              weights: [400, 500],
+              license: null,
+            },
+          ],
+        },
+      });
+      const roboto = [
+        ...library.snapshotFiles("roboto").files.map((file) => `design/${file}`),
+        "design/design.json",
+      ].sort();
+      return { library, dir, roboto };
+    };
+
+    it("keeps every file it had installed and removes only the stale ones, wherever it stopped", async () => {
+      const probe = await switching();
+      const renames = probe.roboto.length;
+      expect(renames).toBeGreaterThan(4); // two fonts, tokens.css, system.html, design.json
+      for (let stopAfter = 0; stopAfter <= renames; stopAfter += 1) {
+        const { library, dir, roboto } = await switching();
+        const oldFonts = listing(dir, "design/fonts");
+        expect(oldFonts.length).toBeGreaterThan(0);
+        crash.renamesBeforeFailure = stopAfter;
+        const attempt = attachDesign(dir, library, "roboto");
+        if (stopAfter < renames) await expect(attempt).rejects.toThrow("simulated crash");
+        else await attempt;
+        crash.renamesBeforeFailure = null;
+
+        const state = await readProjectDesignState(dir, library);
+        expect(state).toMatchObject({ attached: { id: "roboto" }, snapshotOk: true });
+        expect(listing(dir, "design")).toEqual(roboto);
+        expect(listing(dir).filter((file) => file.startsWith(".hyperframes/"))).toEqual([]);
+      }
+    });
+
+    it("finishes dropping the old snapshot's files when it stopped after the last rename", async () => {
+      const { library, dir, roboto } = await switching();
+      const oldFiles = projectSnapshotFiles(dir);
+      // The state a crash right after the last rename leaves: the new snapshot is in design/ next to the old
+      // fonts, and the staging folder holds only its record.
+      const finished = tempProject();
+      cleanups.push(finished.dispose);
+      await attachDesign(finished.dir, library, "roboto");
+      cpSync(join(finished.dir, "design"), join(dir, "design"), { recursive: true });
+      const staged = join(dir, ".hyperframes/design-staging-2147483646-late");
+      mkdirSync(staged, { recursive: true });
+      writeFileSync(
+        join(staged, "previous.json"),
+        JSON.stringify({ previous: oldFiles, incoming: projectSnapshotFiles(finished.dir) }),
+      );
+      expect(listing(dir, "design").length).toBeGreaterThan(roboto.length);
+
+      expect(await readProjectDesignState(dir, library)).toMatchObject({
+        attached: { id: "roboto" },
+        snapshotOk: true,
+      });
+      expect(listing(dir, "design")).toEqual(roboto);
+      expect(existsSync(staged)).toBe(false);
+    });
+
+    it("never installs the leftovers of a cut-short write, and drops a folder without its record or design.json", async () => {
+      const { library, dir } = await switching();
+      const before = listing(dir, "design");
+      const stale = join(dir, ".hyperframes/design-staging-2147483646-cut");
+      mkdirSync(stale, { recursive: true });
+      writeFileSync(join(stale, "system.html"), "partial");
+      writeFileSync(join(stale, "previous.json.1.abc.tmp"), "{");
+      await readProjectDesignState(dir, library);
+      expect(existsSync(stale)).toBe(false);
+      expect(listing(dir, "design")).toEqual(before);
+    });
+
+    it("falls back to the files left in a staging folder that has no record (the shell's)", async () => {
+      const { library, dir, roboto } = await switching();
+      const staged = join(dir, ".hyperframes/design-staging-2147483646-shell");
+      for (const file of library.snapshotFiles("roboto").files) {
+        mkdirSync(dirname(join(staged, file)), { recursive: true });
+        cpSync(join(library.currentDir("roboto"), file), join(staged, file));
+      }
+      writeFileSync(
+        join(staged, "design.json"),
+        `${JSON.stringify({ schema: "openvids.project-design/1", id: "roboto", version: 1, name: "Roboto", attachedAt: 1, createdAt: 1, unknownLicenses: [], nonPortableFonts: [] }, null, 2)}\n`,
+      );
+      const state = await readProjectDesignState(dir, library);
+      expect(state.attached).toMatchObject({ id: "roboto" });
+      expect(existsSync(staged)).toBe(false);
+      for (const file of roboto) expect(existsSync(join(dir, file))).toBe(true);
+    });
   });
 
   it("a copy of the project (a fork) keeps a valid snapshot without the library", async () => {

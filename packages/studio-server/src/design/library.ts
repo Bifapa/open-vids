@@ -193,7 +193,7 @@ export class DesignLibrary {
       throw new DesignFailure("invalid_request", `"${id}" is not a design system id.`);
     const parsed = parseSaveDesignSystemRequest(request);
     if (!parsed.ok) throw new DesignFailure(parsed.error.code, parsed.error.message);
-    const { name, source, spec, baseVersion, projectId } = parsed.value;
+    const { name, source, spec, baseVersion, baseCreatedAt, projectId } = parsed.value;
     const missing = DESIGN_REQUIRED_TOKENS.filter((token) => spec.tokens[token] === undefined);
     if (missing.length > 0)
       throw new DesignFailure(
@@ -212,7 +212,9 @@ export class DesignLibrary {
       projectId,
       base,
     });
-    return this.write(() => this.commit(id, { name, source, spec, baseVersion }, assets));
+    return this.write(() =>
+      this.commit(id, { name, source, spec, baseVersion, baseCreatedAt }, assets),
+    );
   }
 
   /** The manifest of a saved version, or null when there is none (the save then fails on `baseVersion` under the lock). */
@@ -230,10 +232,13 @@ export class DesignLibrary {
 
   private commit(
     id: string,
-    request: Pick<SaveDesignSystemRequest, "name" | "source" | "spec" | "baseVersion">,
+    request: Pick<
+      SaveDesignSystemRequest,
+      "name" | "source" | "spec" | "baseVersion" | "baseCreatedAt"
+    >,
     assets: ResolvedAssets,
   ): SaveDesignSystemResult {
-    const { name, source, spec, baseVersion } = request;
+    const { name, source, spec, baseVersion, baseCreatedAt } = request;
     mkdirSync(this.root, { recursive: true });
     const dir = this.dirOf(id);
     if (this.existingDir(id) === null && lstatOrNull(dir) !== null)
@@ -253,7 +258,15 @@ export class DesignLibrary {
           "conflict",
           `Design system "${id}" is at version ${current.version}, not ${baseVersion}: read it again and redo the change.`,
         );
+      // The id was deleted and created again meanwhile: the author's version numbers mean another system.
+      if (baseCreatedAt !== undefined && current.createdAt !== baseCreatedAt)
+        throw new DesignFailure(
+          "conflict",
+          `Design system "${id}" was deleted and created again since it was read: read it again and redo the change.`,
+        );
     }
+    if (name === undefined && current === null)
+      throw new DesignFailure("invalid_request", "A new design system needs a name.");
     const version = Math.max(current?.version ?? 0, versionNumbers(dir)[0] ?? 0) + 1;
     const now = Date.now();
 
@@ -285,7 +298,8 @@ export class DesignLibrary {
     const meta: DesignSystemMeta = {
       schema: "openvids.design-system-meta/1",
       id,
-      name,
+      // An edit that does not name the system keeps the name it has now (a rename made meanwhile is not undone).
+      name: name ?? current?.name ?? "",
       version,
       source,
       createdAt: current?.createdAt ?? now,

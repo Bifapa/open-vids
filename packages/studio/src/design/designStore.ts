@@ -12,10 +12,14 @@ export type DesignMutation =
   | { kind: "update" }
   | { kind: "detach" };
 
-/** A failed action: what the user can read, and the server's own list of problems when it sent one. */
+/**
+ * A failed action: what the user can read, the server's own list of problems when it sent one, and the action that
+ * failed — so a surface shows it only next to the button that caused it.
+ */
 export interface DesignNotice {
   message: string;
   issues: string[];
+  mutation: DesignMutation;
 }
 
 export interface DesignState {
@@ -55,7 +59,7 @@ const EMPTY_PROJECT: DesignState["project"] = {
   error: null,
 };
 
-function describe(error: unknown): DesignNotice {
+function describe(error: unknown): { message: string; issues: string[] } {
   if (error instanceof DesignApiError) return { message: error.message, issues: error.issues };
   return { message: t("studio.design.error.http"), issues: [] };
 }
@@ -82,7 +86,7 @@ export function createDesignStore(deps: { client: DesignClient }): DesignStore {
         }
         done = true;
       } catch (error) {
-        if (get().projectId === projectId) set({ notice: describe(error) });
+        if (get().projectId === projectId) set({ notice: { ...describe(error), mutation } });
       }
       if (get().projectId !== projectId) return done;
       set({ mutation: null });

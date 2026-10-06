@@ -30,19 +30,37 @@ export function isDesignToolName(name: string): name is DesignToolName {
 
 type Executor = (name: string, args: unknown, signal: AbortSignal) => Promise<HostToolResult>;
 
-/** The turn the tools are built for: the Design Systems action it runs, if any. */
+/**
+ * The turn the tools are built for. `available`: the runtime has a design host (the feature is on). `action`: the
+ * Design Systems action the turn runs, if any; without one the turn is an ordinary turn in which the user may still
+ * ask for a design system in words ("free mode").
+ */
 export interface DesignTurnMode {
+  available: boolean;
   action: DesignAction | null;
 }
 
 /**
- * Design Systems tools exist only in design turns (`designAction` create or edit), and only the Director has them: it
- * builds the spec from what the other tools and the specialists (Vision's frames, Research's website reads) report. In
- * any other turn nobody has them; the project's attached system is read from the prompt and the files themselves.
+ * Free-mode tools: an ordinary turn gets the tools a typed request needs. The video palette belongs to the `video`
+ * source, which (like websites and other projects) starts only from the Design dialog.
+ */
+const FREE_MODE_TOOLS: readonly DesignToolName[] = [
+  DESIGN_TOOL_NAMES.list,
+  DESIGN_TOOL_NAMES.read,
+  DESIGN_TOOL_NAMES.extract,
+  DESIGN_TOOL_NAMES.save,
+  DESIGN_TOOL_NAMES.attach,
+];
+
+/**
+ * Design Systems tools exist only when the runtime has a design host, and only the Director has them: it builds the
+ * spec from what the other tools and the specialists (Vision's frames, Research's website reads) report. A design turn
+ * (`designAction` create or edit) gets all of them; an ordinary turn gets {@link FREE_MODE_TOOLS}, whose executor
+ * rules are stricter (see `TurnDesign`).
  */
 export function designToolsFor(agent: AgentId, turn: DesignTurnMode): DesignToolName[] {
-  if (agent !== "director" || turn.action === null) return [];
-  return Object.values(DESIGN_TOOL_NAMES);
+  if (agent !== "director" || !turn.available) return [];
+  return turn.action === null ? [...FREE_MODE_TOOLS] : Object.values(DESIGN_TOOL_NAMES);
 }
 
 const SYSTEM_MODEL = `A design system is saved in the user's global library as a structured spec; the server renders system.html (a showcase), tokens.css (the same tokens plus @font-face for the stored fonts) and a thumbnail from it, so you never write HTML or CSS files. The spec is: tokens (all ${DESIGN_REQUIRED_TOKENS.length} required ones: ${DESIGN_REQUIRED_TOKENS.join(", ")}; optional extended ones such as --text-sm … --text-4xl, --leading-tight, --shadow-sm/md/lg, --dur-fast, --dur-slow, and custom ones), colorNames (human names of the color tokens), fonts, transitions, motionRules, dos, donts, an optional logo and a one-or-two-sentence summary.`;
@@ -54,9 +72,9 @@ const DESCRIPTIONS: Record<DesignToolName, string> = {
   extract_project_design:
     "Read what this project's compositions actually use, counted by a program (no model): every color with its uses and the CSS properties it appeared in, fonts with how the project loads them, easings, durations, corner radii, font sizes, shadows and the tokens already declared. This is the only source of colors, fonts, easings and durations in a `project`-source turn: you group and name them, you never invent a value that is not in this result. In an `external project` turn the same extraction is read from the other project the user chose.",
   video_palette: `Measure the dominant colors of frames sampled across a project video (exact #rrggbb values with their share of the pixels), by a program, no model. Use it for the colors of a \`video\`-source turn; look at a few frames with the Vision tools for everything it cannot measure (fonts and transitions are only ever guesses). Pass video (a project-relative path from inspect_project) unless the user's choice for this turn already names it; samples is ${VIDEO_PALETTE_LIMITS.minSamples}–${VIDEO_PALETTE_LIMITS.maxSamples} (default ${VIDEO_PALETTE_LIMITS.defaultSamples}).`,
-  save_design_system: `Save a design system into the user's library: creates it, or saves a new version of an existing one (the previous version is kept). The call is validated before it is sent; if the library refuses the spec (invalid_system) the result lists EVERY problem — fix them all and call again. The result lists what the library did that the user should know: font files downloaded, a system font that is not portable, fonts or a logo with an unknown license. In a \`create\` turn the id is made from the name (or pass id) and the source is the one the user chose; the system must be new (a taken id is a conflict: pick another name) — after your first successful save, further saves in the turn refine that same system. In an \`edit\` turn you save only to the system the user chose, and only after reading it with read_design_system in this turn (the version you read is the baseVersion). Licenses: record a font's or logo's license exactly as found; when it is unknown pass license: null — never invent one. Google Fonts families use source "google" (their files are downloaded and stored), fonts in the project source "file" with projectPath, fonts installed on a machine "system". Anything you guessed (a font or a transition read off a video) gets guess: true. ${SYSTEM_MODEL}`,
+  save_design_system: `Save a design system into the user's library: creates it, or saves a new version of an existing one (the previous version is kept). The call is validated before it is sent; if the library refuses the spec (invalid_system) the result lists EVERY problem — fix them all and call again. The result lists what the library did that the user should know: font files downloaded, a system font that is not portable, fonts or a logo with an unknown license. In a \`create\` turn the id is made from the name (or pass id) and the source is the one the user chose; the system must be new (a taken id is a conflict: pick another name) — after your first successful save, further saves in the turn refine that same system. In an \`edit\` turn you save only to the system the user chose, and only after reading it with read_design_system in this turn (the version you read is the baseVersion; leave name out unless the user asked to rename it). In an ordinary turn (the user asked for a system in words, no Design dialog): create only from the brief (source scratch) or from this project (source project, after extract_project_design, with colors only from it); change an existing system only after reading it with read_design_system in this turn, on the version you read; a system from a video, a website or another project starts only from the Design button, so tell the user to use it. Licenses: record a font's or logo's license exactly as found; when it is unknown pass license: null — never invent one. Google Fonts families use source "google" (their files are downloaded and stored), fonts in the project source "file" with projectPath, fonts installed on a machine "system". Anything you guessed (a font or a transition read off a video) gets guess: true. ${SYSTEM_MODEL}`,
   attach_design_system:
-    "Attach an existing library system to this project: copies its current version into the project's design/ folder (system.html, tokens.css, fonts, logo, design.json). It never edits a composition: compositions use the system only when they link design/tokens.css, and applying it to them is a separate step the user approves. Only the system saved in this turn (or the one the user chose to edit) may be attached, and only to a project that carries no other system.",
+    "Attach an existing library system to this project: copies its current version into the project's design/ folder (system.html, tokens.css, fonts, logo, design.json). It never edits a composition: compositions use the system only when they link design/tokens.css, and applying it to them is a separate step the user approves. In a design turn only the system saved in this turn (or the one the user chose to edit) may be attached; in an ordinary turn any system of the library the user asked for. Only to a project that carries no other system: switching systems is the user's own action (the Design button).",
 };
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
@@ -207,7 +225,10 @@ const PARAMETERS: Record<DesignToolName, Record<string, unknown>> = {
     type: "object",
     properties: {
       id: str("Library id (lowercase letters, digits, dashes); default: made from the name.", 48),
-      name: str("The system's name.", DESIGN_LIMITS.nameChars),
+      name: str(
+        "The system's name. Required when creating; when changing a system you read, leave it out unless the user asked to rename it.",
+        DESIGN_LIMITS.nameChars,
+      ),
       source: {
         type: "object",
         description:
@@ -227,7 +248,7 @@ const PARAMETERS: Record<DesignToolName, Record<string, unknown>> = {
       },
       spec: specSchema,
     },
-    required: ["name", "spec"],
+    required: ["spec"],
     additionalProperties: false,
   },
   attach_design_system: {

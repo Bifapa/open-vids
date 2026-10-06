@@ -889,21 +889,21 @@ mod tests {
         let (code, _) = send(&origin, "DELETE", "/design-files/brand/system.html", None, b"");
         assert_eq!(code, 403);
 
-        // The sandboxed showcase fetches its fonts with the origin `null`; no other origin gets in.
+        // The framed showcase keeps this server's origin (`sandbox="allow-same-origin"`), so its font requests are
+        // same-origin; every other origin, the opaque `null` included, is refused and nothing is granted by CORS.
         let font = "/design-files/brand/fonts/inter-400.woff2";
-        for (path, request_origin, status) in [
-            (font, Some("null"), 200),
-            (font, Some("https://evil.example"), 403),
-            (font, Some(origin.as_str()), 200),
-            ("/design-files/brand/thumbnail.svg", Some("null"), 403),
-            ("/design-files/brand/system.html", Some("null"), 403),
-            ("/api/design-systems", Some("null"), 403),
-        ] {
-            let (code, _) = send_with_origin(&origin, "GET", path, Some(&token), request_origin, b"");
-            assert_eq!(code, status, "{path} from {request_origin:?}");
+        for path in [font, "/design-files/brand/thumbnail.svg", "/design-files/brand/system.html", "/api/design-systems"] {
+            for foreign in ["null", "https://evil.example", "http://127.0.0.1:1"] {
+                let (code, _) = send_with_origin(&origin, "GET", path, Some(&token), Some(foreign), b"");
+                assert_eq!(code, 403, "{path} from {foreign}");
+            }
+            let (code, _) = send_with_origin(&origin, "GET", path, Some(&token), Some(origin.as_str()), b"");
+            assert_eq!(code, 200, "{path} from the page's own origin");
         }
+        let (code, _) = send_with_origin(&origin, "GET", font, None, Some(origin.as_str()), b"");
+        assert_eq!(code, 200, "a font request of the framed page carries no token");
         let (code, _) = send_with_origin(&origin, "PATCH", "/api/design-systems/brand", Some(&token), Some("null"), br#"{"name":"x"}"#);
-        assert_eq!(code, 403, "a write never takes the null origin");
+        assert_eq!(code, 403, "a write never takes a foreign origin");
 
         // A new project can carry a system: the snapshot and the link, and the answer says nothing is wrong.
         let parent = base("design-parent");

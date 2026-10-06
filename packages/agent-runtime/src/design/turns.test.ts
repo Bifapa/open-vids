@@ -98,24 +98,130 @@ describe("design action turns", () => {
     }
   });
 
-  it("leaves an ordinary turn without design fields, blocks or the tools' effect", async () => {
+  it("leaves an ordinary turn without design fields or blocks; the typed-request tools are there, never a composition write", async () => {
     const fixture = await createRuntimeFixture();
     try {
       const chat = await fixture.chats.create({}, []);
       let promptText = "";
-      let refusal = "";
+      let director: ScriptedSession | undefined;
+      const answers: Record<string, string> = {};
       fixture.backend.promptScript = async (input, session) => {
         if (isQaClosing(input)) return "completed";
         promptText = input.text;
-        refusal = (await session.callTool("save_design_system", { name: "X", spec: sampleSpec() }))
-          .text;
+        director = session;
+        answers.palette = (await session.callTool("video_palette", { video: "assets/a.mp4" })).text;
+        answers.timeline = session.input.fileWriteRefusal?.("write") ?? "allowed";
         return "completed";
       };
       const turn = await run(fixture, chat.id, { prompt: "Trim the intro" });
       expect(turn?.designAction).toBeUndefined();
       expect(turn?.designOptions).toBeUndefined();
       expect(promptText).not.toContain("<design-turn");
-      expect(refusal).toContain("not available");
+      expect(toolNames(director)).toEqual(
+        expect.arrayContaining([
+          "list_design_systems",
+          "read_design_system",
+          "extract_project_design",
+          "save_design_system",
+          "attach_design_system",
+        ]),
+      );
+      // The video source starts from the Design dialog, and an ordinary turn still writes files as before.
+      expect(answers.palette).toContain("is not available to you in this turn");
+      expect(answers.timeline).toBe("allowed");
+      expect(director?.input.instructions).toContain("In an ordinary turn the same tools answer");
+      expect(fixture.design.saves).toEqual([]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("answers a typed request in an ordinary turn: create from the brief, change what was read, refuse a video source", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, []);
+      fixture.design.systems = [systemDetail("acme", { name: "Acme", version: 2, createdAt: 9 })];
+      const answers: string[] = [];
+      fixture.backend.promptScript = async (input, session) => {
+        if (isQaClosing(input)) return "completed";
+        const save = (args: unknown) => session.callTool("save_design_system", args);
+        answers.push(
+          (
+            await save({
+              name: "Reel",
+              source: { kind: "video", ref: "a.mp4" },
+              spec: sampleSpec(),
+            })
+          ).text,
+        );
+        answers.push((await save({ id: "acme", spec: sampleSpec() })).text);
+        await session.callTool("read_design_system", { id: "acme" });
+        answers.push(
+          (
+            await save({
+              id: "acme",
+              spec: sampleSpec({ tokens: sampleTokens({ "--accent": "#ff9d3a" }) }),
+            })
+          ).text,
+        );
+        answers.push((await save({ name: "Night Drive", spec: sampleSpec() })).text);
+        answers.push((await session.callTool("attach_design_system", { id: "night-drive" })).text);
+        return "completed";
+      };
+      const turn = await run(fixture, chat.id, {
+        prompt: "Warm up Acme's accent, then a new look",
+      });
+      expect(turn?.designAction).toBeUndefined();
+      expect(answers[0]).toContain("starts from the Design button");
+      expect(answers[1]).toContain("name must be");
+      expect(answers[2]).toContain("version 3");
+      expect(answers[3]).toContain("Saved design system night-drive");
+      expect(answers[4]).toContain("carries design system night-drive");
+      expect(fixture.design.saves.map((save) => save.id)).toEqual(["acme", "night-drive"]);
+      expect(fixture.design.saves[0]?.request).toMatchObject({ baseVersion: 2, baseCreatedAt: 9 });
+      expect(fixture.design.saves[0]?.request.name).toBeUndefined();
+      // Nothing in the compositions or the timeline changed; the attach is the turn's one counted change.
+      expect(fixture.editing.applyRequests).toHaveLength(0);
+      expect(turn?.changes).toEqual([{ kind: "design_attach", count: 1 }]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("has no design tools, role text, snapshot block or inventory line without a design host (the beta flag off)", async () => {
+    const fixture = await createRuntimeFixture({ design: undefined });
+    try {
+      const chat = await fixture.chats.create({}, ["editor", "motion"]);
+      fixture.design.state = {
+        attached: attachedDesign(),
+        library: { name: "Acme", version: 2 },
+        updateAvailable: false,
+        snapshotOk: true,
+      };
+      const instructions: string[] = [];
+      let promptText = "";
+      let inventory = "";
+      let offered = "";
+      fixture.backend.promptScript = async (input, session) => {
+        if (isQaClosing(input)) return "completed";
+        if (session.input.agent !== "director") return "completed";
+        promptText = input.text;
+        for (const agent of ["director", "editor", "motion"] as const)
+          for (const open of fixture.backend.sessionsOf(agent))
+            instructions.push(open.input.instructions);
+        instructions.push(session.input.instructions);
+        inventory = (await session.callTool("inspect_project", {})).text;
+        offered = toolNames(session).includes("save_design_system") ? "offered" : "absent";
+        return "completed";
+      };
+      await run(fixture, chat.id, { prompt: "Add a title" });
+      expect(offered).toBe("absent");
+      expect(promptText).not.toContain("<project-design");
+      expect(inventory).not.toContain("Design system:");
+      for (const text of instructions) {
+        expect(text).not.toContain("save_design_system");
+        expect(text).not.toContain("design/tokens.css");
+      }
       expect(fixture.design.saves).toEqual([]);
     } finally {
       await fixture.cleanup();

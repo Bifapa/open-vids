@@ -1509,7 +1509,7 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `studio.design.source.video.description` — Honest limit: fonts and transitions cannot be measured from a video.
 - `studio.design.source.website` — Source option: the system is read from a website's styles.
 - `studio.design.source.website.description` — Description under the website option.
-- `studio.design.source.external` — Source option, offered only when the desktop lists other projects; not available yet.
+- `studio.design.source.external` — Source option, offered only when the host lists other projects (the `#` mentions' cross-project list); hidden when there are none or the read fails.
 - `studio.design.source.external.description` — Description under the other-project option.
 - `studio.design.brief.label` — Label of the brief text box.
 - `studio.design.brief.hint` — Hint under the brief box.
@@ -1557,3 +1557,12 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `studio.design.error.http` — Generic failure text.
 - `studio.design.error.status` — Failure with an unexpected HTTP status; {status} is the number.
 - `studio.design.chat.change.attach` — Label of the badge under a finished turn that attached a design system to the project, shown as "label: count" like the other change kinds (the count is how many attachments the turn made).
+
+## design-fix
+
+- `studio.design.snapshotBroken.removed` — Warning in the design popover when the project's design/ copy is damaged AND the system was deleted from the user's library; the sentence before the comma is the same as studio.design.snapshotBroken.
+- `studio.design.update.recreated` — Shown instead of the usual update note when the library's system with the same name is a different one (deleted and created again), so its version number is not newer. {name} is the system's name; {latest} and {current} are version numbers.
+- `studio.design.update.replace` — Button for the recreated-system case: it replaces the project's copy with the library's system. {version} is the library's version number.
+- `studio.design.update.restore` — Button shown when the project's design files are missing or damaged and the library can put them back (same version, nothing newer).
+- `studio.design.update.restoreEffect` — Small print under the Restore button: only files are copied.
+- `studio.design.video.loading` — Shown in the Create dialog's From a video source while the project's file list is still being read, instead of claiming there is no video.

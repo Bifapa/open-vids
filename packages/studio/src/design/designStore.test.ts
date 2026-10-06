@@ -126,12 +126,32 @@ describe("attach, update and detach", () => {
     expect(store.getState().notice).toEqual({
       message: "That system is gone.",
       issues: [],
+      mutation: { kind: "attach", id: "sunset" },
     });
     expect(client.listLibrary).toHaveBeenCalledTimes(1);
     expect(store.getState().library.systems).toEqual([]);
     expect(store.getState().mutation).toBeNull();
 
     store.getState().dismissNotice();
+    expect(store.getState().notice).toBeNull();
+  });
+
+  it("names the update or detach that failed, so a surface can show it next to its own button", async () => {
+    const { store, client } = setup({ state: attachedState() });
+    await store.getState().open("demo");
+    client.update.mockRejectedValueOnce(new DesignApiError("conflict", "Nothing newer.", 409));
+    client.detach.mockRejectedValueOnce(new DesignApiError("busy", "The library is busy.", 503));
+
+    expect(await store.getState().update()).toBe(false);
+    expect(store.getState().notice).toMatchObject({
+      message: "Nothing newer.",
+      mutation: { kind: "update" },
+    });
+
+    expect(await store.getState().detach()).toBe(false);
+    expect(store.getState().notice).toMatchObject({ mutation: { kind: "detach" } });
+    // The next action starts clean.
+    expect(await store.getState().detach()).toBe(true);
     expect(store.getState().notice).toBeNull();
   });
 

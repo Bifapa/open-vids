@@ -191,6 +191,70 @@ describe("the update", () => {
     expect(current()?.textContent).toContain("v3");
     expect(trigger()?.hasAttribute("data-update")).toBe(false);
   });
+
+  it("offers Restore for a damaged copy at the library's current version, and restoring brings the preview back", async () => {
+    const mounted = mountButton({ state: attachedState({ snapshotOk: false }) });
+    await openPopover(mounted);
+    expect(update()?.getAttribute("data-repair")).toBe("restore");
+    expect(current()?.textContent).toContain("missing or damaged");
+    // The old advice to attach again is gone: there is a button for it.
+    expect(current()?.textContent).not.toContain("Attach the system again");
+    expect(byText(document, "button", /Update design system/)).toBeNull();
+    expect(button("Preview")?.disabled).toBe(true);
+    expect(mounted.client.update).not.toHaveBeenCalled();
+
+    await pressAndSettle(button("Restore design files"));
+
+    expect(mounted.client.update).toHaveBeenCalledExactlyOnceWith("demo");
+    expect(update()).toBeNull();
+    expect(current()?.textContent).not.toContain("missing or damaged");
+    expect(button("Preview")?.disabled).toBe(false);
+  });
+
+  it("labels the repair Update, not Restore, when the library is newer and the copy is damaged too", async () => {
+    const mounted = mountButton({
+      systems: [designSummary({ version: 3 })],
+      state: attachedState({
+        library: { name: "Sunset", version: 3 },
+        updateAvailable: true,
+        snapshotOk: false,
+      }),
+    });
+    await openPopover(mounted);
+    expect(update()?.getAttribute("data-repair")).toBe("update");
+    expect(button("Update design system to v3")).not.toBeNull();
+    expect(byText(document, "button", "Restore design files")).toBeNull();
+  });
+
+  it("offers Replace when the library's system of that name is a different one with no newer version", async () => {
+    const mounted = mountButton({
+      state: attachedState({
+        attached: attachedDesign({ version: 3 }),
+        library: { name: "Sunset", version: 1 },
+        updateAvailable: true,
+      }),
+      systems: [designSummary({ version: 1 })],
+    });
+    await openPopover(mounted);
+    expect(update()?.getAttribute("data-repair")).toBe("replace");
+    expect(update()?.textContent).toContain("different system");
+    expect(mounted.client.update).not.toHaveBeenCalled();
+
+    await pressAndSettle(byText(update() ?? document, "button", "Replace with the library's v1"));
+
+    expect(mounted.client.update).toHaveBeenCalledExactlyOnceWith("demo");
+  });
+
+  it("offers no repair for a damaged copy whose system left the library", async () => {
+    const mounted = mountButton({
+      systems: [],
+      state: attachedState({ library: null, snapshotOk: false }),
+    });
+    await openPopover(mounted);
+    expect(update()).toBeNull();
+    expect(byText(document, "button", "Restore design files")).toBeNull();
+    expect(current()?.textContent).toContain("can't be restored");
+  });
 });
 
 describe("attaching and detaching", () => {

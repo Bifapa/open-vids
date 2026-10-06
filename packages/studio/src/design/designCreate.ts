@@ -80,6 +80,26 @@ export interface CreateFields {
   projectKey: string;
 }
 
+/**
+ * The fields as the dialog shows them: a video or project the user has not picked yet is the first one on offer, and
+ * a pick that is no longer on offer (the list changed under it) falls back the same way. Both lists arrive after the
+ * dialog opens, so this is worked out at render time, never copied into the state once.
+ */
+export function effectiveFields(
+  fields: CreateFields,
+  videos: readonly string[],
+  capabilities: DesignHostCapabilities,
+): CreateFields {
+  const projects = capabilities.externalProjects ?? [];
+  return {
+    ...fields,
+    video: videos.includes(fields.video) ? fields.video : (videos[0] ?? ""),
+    projectKey: projects.some((project) => project.key === fields.projectKey)
+      ? fields.projectKey
+      : (projects[0]?.key ?? ""),
+  };
+}
+
 /** The turn the dialog would start, or null while the chosen source still lacks what it needs. */
 export function createSpecOf(
   source: DesignSourceKind,

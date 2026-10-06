@@ -76,6 +76,7 @@ function DesignHostBody({
       return (
         <CreateDesignDialog
           initialSource={dialog.source}
+          videosLoaded={files === null || files.fileTreeLoaded}
           videos={videos}
           capabilities={capabilities}
           blocker={blocker}

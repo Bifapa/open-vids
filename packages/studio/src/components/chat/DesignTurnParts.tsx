@@ -48,11 +48,21 @@ function DesignSavedCard({ design }: { design: SavedDesign }) {
   const store = useDesignStoreApi();
   const state = useDesignStore((s) => s.project.state);
   const mutation = useDesignStore((s) => s.mutation);
-  const failure = useDesignStore((s) => s.notice);
+  const notice = useDesignStore((s) => s.notice);
 
   const attached = state?.attached?.id === design.id ? state.attached : null;
-  const latest = state?.updateAvailable === true ? state.library?.version : undefined;
+  const library = state?.updateAvailable === true ? state.library : null;
   const busy = mutation !== null;
+  // A failure belongs to the button that was pressed: the popover's own Detach or another card's Attach is not this card's.
+  let failure: string | null = null;
+  if (notice) {
+    const failed = notice.mutation;
+    const mine =
+      attached === null
+        ? failed.kind === "attach" && failed.id === design.id
+        : library !== null && failed.kind === "update";
+    if (mine) failure = notice.message;
+  }
 
   let note: string;
   let action: ReactNode;
@@ -71,8 +81,15 @@ function DesignSavedCard({ design }: { design: SavedDesign }) {
         {t("studio.design.chat.attach")}
       </Button>
     );
-  } else if (latest !== undefined) {
-    note = t("studio.design.chat.saved.stale", { current: attached.version, latest });
+  } else if (library !== null) {
+    const newer = library.version > attached.version;
+    note = newer
+      ? t("studio.design.chat.saved.stale", { current: attached.version, latest: library.version })
+      : t("studio.design.update.recreated", {
+          name: library.name,
+          current: attached.version,
+          latest: library.version,
+        });
     action = (
       <Button
         size="sm"
@@ -83,7 +100,9 @@ function DesignSavedCard({ design }: { design: SavedDesign }) {
         icon={<ArrowsClockwise size={12} aria-hidden />}
         onClick={() => void store.getState().update()}
       >
-        {t("studio.design.update.button", { version: latest })}
+        {newer
+          ? t("studio.design.update.button", { version: library.version })
+          : t("studio.design.update.replace", { version: library.version })}
       </Button>
     );
   } else {
@@ -115,7 +134,7 @@ function DesignSavedCard({ design }: { design: SavedDesign }) {
         {action}
         {failure ? (
           <span role="alert" className="text-xs text-error">
-            {failure.message}
+            {failure}
           </span>
         ) : null}
       </div>

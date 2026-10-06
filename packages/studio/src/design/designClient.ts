@@ -194,7 +194,7 @@ export type DesignPreviewTarget =
   | { kind: "project"; projectId: string }
   | { kind: "library"; id: string; version?: number };
 
-/** The URL of the `system.html` showcase; the server sends it with a sandbox CSP, the iframe adds its own. */
+/** The URL of the `system.html` showcase; the server sends it with a script-less sandbox CSP, the iframe adds its own. */
 export function designPreviewUrl(target: DesignPreviewTarget): string {
   if (target.kind === "project") {
     return buildProjectApiPath(target.projectId, "/design/files/system.html");

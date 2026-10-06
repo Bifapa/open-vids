@@ -32,7 +32,7 @@ export const PROJECT_DESIGN_DIR = "design";
 const ATTACHED_FILE = "design.json";
 const STAGING_PARENT = ".hyperframes";
 const STAGING_PREFIX = "design-staging-";
-/** Written into a staging folder before `design.json`: the files of the snapshot being replaced. */
+/** Written last into a staging folder: the record of the snapshot being replaced and the one being installed. */
 const PREVIOUS_FILE = "previous.json";
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
@@ -45,6 +45,7 @@ function isAttached(value: unknown): value is AttachedDesign {
     typeof value.version === "number" &&
     typeof value.name === "string" &&
     typeof value.attachedAt === "number" &&
+    (value.createdAt === undefined || typeof value.createdAt === "number") &&
     Array.isArray(value.unknownLicenses) &&
     Array.isArray(value.nonPortableFonts)
   );
@@ -52,6 +53,22 @@ function isAttached(value: unknown): value is AttachedDesign {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+/**
+ * `previous.json` of a staging folder, written after every file and `design.json` are staged: the snapshot files being
+ * replaced, and every project-relative file the new snapshot consists of. (Older folders held the first list only.)
+ */
+interface StagingRecord {
+  previous: string[];
+  incoming: string[];
+}
+
+function readStagingRecord(stagingDir: string): StagingRecord | null {
+  const value = readJson(join(stagingDir, PREVIOUS_FILE));
+  if (!isRecord(value) || !isStringArray(value.previous) || !isStringArray(value.incoming))
+    return null;
+  return { previous: value.previous, incoming: value.incoming };
 }
 
 /** The bytes `design/design.json` holds: the shell writes the same layout (2-space JSON, trailing newline). */
@@ -63,6 +80,7 @@ function attachedJson(attached: AttachedDesign): string {
       version: attached.version,
       name: attached.name,
       attachedAt: attached.attachedAt,
+      ...(attached.createdAt !== undefined && { createdAt: attached.createdAt }),
       unknownLicenses: attached.unknownLicenses,
       nonPortableFonts: attached.nonPortableFonts,
     },
@@ -187,34 +205,46 @@ function swapOrder(relative: string): number {
   return 0;
 }
 
-/** Moves a fully staged snapshot into `design/` (file by file, `design.json` last), then drops what it replaces. */
+/**
+ * Moves a fully staged snapshot into `design/` (file by file, `design.json` last), then drops what it replaces. The
+ * set of files to keep comes from the staging record, not from what is left in the folder, so a swap that was
+ * interrupted after some renames and is finished later never removes a file it had already installed. A folder
+ * without a record (the shell's, or an older one) falls back to the files still in it.
+ */
 function applyStaged(projectDir: string, stagingDir: string): void {
-  const staged = filesUnder(stagingDir).filter((file) => file !== PREVIOUS_FILE);
-  const previous = readJson(join(stagingDir, PREVIOUS_FILE));
-  const incoming = new Set(staged.map((file) => `${PROJECT_DESIGN_DIR}/${file}`));
+  const record = readStagingRecord(stagingDir);
+  const legacy = readJson(join(stagingDir, PREVIOUS_FILE));
+  // A `.tmp` is a write the crash cut short (the record's), never part of the snapshot.
+  const staged = filesUnder(stagingDir).filter(
+    (file) => file !== PREVIOUS_FILE && !file.endsWith(".tmp"),
+  );
+  const incoming = new Set(
+    record ? record.incoming : staged.map((file) => `${PROJECT_DESIGN_DIR}/${file}`),
+  );
+  const previous = record ? record.previous : isStringArray(legacy) ? legacy : [];
   for (const file of staged.sort((a, b) => swapOrder(a) - swapOrder(b) || (a < b ? -1 : 1))) {
     const target = insideProject(projectDir, `${PROJECT_DESIGN_DIR}/${file}`);
     mkdirSync(dirname(target), { recursive: true });
     renameSync(join(stagingDir, file), target);
   }
-  if (isStringArray(previous)) {
-    removeFiles(
-      projectDir,
-      previous.filter((file) => !incoming.has(file) && file.startsWith(`${PROJECT_DESIGN_DIR}/`)),
-    );
-  }
+  removeFiles(
+    projectDir,
+    previous.filter((file) => !incoming.has(file) && file.startsWith(`${PROJECT_DESIGN_DIR}/`)),
+  );
   rmSync(stagingDir, { recursive: true, force: true });
 }
 
-/**
- * Finishes or drops what a crashed attach/update left in `.hyperframes/design-staging-*`: a folder whose `design.json`
- * is there was fully copied and validated, so its swap is completed; any other is thrown away. Folders of another
- * live process are left alone.
+/** Finishes or drops what a crashed attach/update left in `.hyperframes/design-staging-*`: a folder is complete when
+ * it has its record (or, from the shell or an older version, its `design.json`), and its swap is then completed; any
+ * other is thrown away. Folders of another live process are left alone.
  */
 function recoverStaging(projectDir: string): void {
   for (const stagingDir of stagingDirs(projectDir)) {
     if (ownerAlive(stagingDir)) continue;
-    if (isAttached(readJson(join(stagingDir, ATTACHED_FILE)))) {
+    const complete =
+      readStagingRecord(stagingDir) !== null ||
+      isAttached(readJson(join(stagingDir, ATTACHED_FILE)));
+    if (complete) {
       try {
         applyStaged(projectDir, stagingDir);
         continue;
@@ -243,13 +273,24 @@ function snapshotReadable(projectDir: string): boolean {
   }
 }
 
+/**
+ * Whether the library's entry is another system than the one the snapshot was taken from (the id was deleted and
+ * created again: its version numbers started over). Only decided when both sides know their `createdAt`.
+ */
+function lineageChanged(attached: AttachedDesign, entry: { createdAt: number }): boolean {
+  return attached.createdAt !== undefined && attached.createdAt !== entry.createdAt;
+}
+
 function stateOf(projectDir: string, library: SnapshotLibrary): ProjectDesignState {
   const attached = readAttachedDesign(projectDir);
   const entry = attached === null ? null : library.readMeta(attached.id);
   return {
     attached,
     library: entry ? { name: entry.name, version: entry.version } : null,
-    updateAvailable: attached !== null && entry !== null && entry.version > attached.version,
+    updateAvailable:
+      attached !== null &&
+      entry !== null &&
+      (entry.version > attached.version || lineageChanged(attached, entry)),
     snapshotOk: attached !== null && snapshotReadable(projectDir),
   };
 }
@@ -344,14 +385,17 @@ function stageFrom(
       version,
       name: meta.name,
       attachedAt: Date.now(),
+      createdAt: meta.createdAt,
       unknownLicenses: meta.unknownLicenses,
       nonPortableFonts: meta.nonPortableFonts,
     };
-    writeFileSync(
-      join(stagingDir, PREVIOUS_FILE),
-      JSON.stringify(projectSnapshotFiles(projectDir)),
-    );
     replaceFileAtomically(join(stagingDir, ATTACHED_FILE), attachedJson(attached), 0o644);
+    // The record goes last: a staging folder that has it is complete, whatever has been moved out of it since.
+    const record: StagingRecord = {
+      previous: projectSnapshotFiles(projectDir),
+      incoming: [...files, ATTACHED_FILE].map((file) => `${PROJECT_DESIGN_DIR}/${file}`),
+    };
+    replaceFileAtomically(join(stagingDir, PREVIOUS_FILE), JSON.stringify(record), 0o644);
     return { stagingDir, attached };
   } catch (error) {
     rmSync(stagingDir, { recursive: true, force: true });
@@ -409,7 +453,11 @@ export async function updateDesign(
       `The design system "${attached.name}" is no longer in the library`,
     );
   }
-  if (entry.version <= attached.version && snapshotReadable(projectDir)) {
+  if (
+    entry.version <= attached.version &&
+    !lineageChanged(attached, entry) &&
+    snapshotReadable(projectDir)
+  ) {
     throw new DesignFailure("conflict", "The project already has the library's latest version");
   }
   install(projectDir, library, attached.id);

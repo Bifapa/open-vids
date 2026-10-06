@@ -4729,7 +4729,7 @@
   "studio.design.chip.nonPortable": "{family}: system font",
   "studio.design.chips.licenseNote": "Unknown licenses are checked before export.",
   "studio.design.chips.portableNote": "System fonts are not stored with the system, so another machine may render them differently.",
-  "studio.design.snapshotBroken": "This project's copy of the design files is missing or damaged. Attach the system again to restore it.",
+  "studio.design.snapshotBroken": "This project's copy of the design files is missing or damaged.",
   "studio.design.removedFromLibrary": "This system is no longer in your library. The project keeps its own copy.",
   "studio.design.update.note": "Your library has version {latest}; this project uses version {current}.",
   "studio.design.update.button": "Update design system to v{version}",
@@ -4814,5 +4814,11 @@
   "studio.design.error.bad_response": "The design service answered something unexpected.",
   "studio.design.error.http": "Something went wrong. Try again.",
   "studio.design.error.status": "The design service answered with status {status}.",
-  "studio.design.chat.change.attach": "Design systems attached"
+  "studio.design.chat.change.attach": "Design systems attached",
+  "studio.design.snapshotBroken.removed": "This project's copy of the design files is missing or damaged, and the system is no longer in your library, so it can't be restored. Detach it and attach another one.",
+  "studio.design.update.recreated": "Your library's “{name}” (v{latest}) is a different system from this project's copy (v{current}), most likely deleted and created again.",
+  "studio.design.update.replace": "Replace with the library's v{version}",
+  "studio.design.update.restore": "Restore design files",
+  "studio.design.update.restoreEffect": "Copies the system's files from your library into this project again. No composition changes.",
+  "studio.design.video.loading": "Reading the project's files…"
 }

@@ -221,16 +221,15 @@ export async function openTurnTools(
         storyOptions: run.storyOptions,
       })
     : null;
-  run.design =
-    designHost && run.designAction
-      ? new TurnDesign({
-          host: designHost,
-          turnSignal: signal,
-          projectId: scope.projectId,
-          action: run.designAction,
-          options: run.designOptions,
-        })
-      : null;
+  run.design = designHost
+    ? new TurnDesign({
+        host: designHost,
+        turnSignal: signal,
+        projectId: scope.projectId,
+        action: run.designAction,
+        options: run.designOptions,
+      })
+    : null;
   run.research = researchHost
     ? new TurnResearch({
         host: researchHost,
@@ -297,6 +296,7 @@ export async function openTurnTools(
     storyOffer: run.storyOfferEligible,
     storyAction: run.storyAction,
     designAction: run.designAction,
+    design: designHost !== null,
     planClips: (plan) => ctx.active?.analysis?.planClips(plan),
   };
   return { editingHost, researchHost, researchAccess, availability };

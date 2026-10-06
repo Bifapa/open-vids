@@ -3,6 +3,7 @@ import { ArrowDown, ClosedCaptioning, FilmStrip, Scissors, type Icon } from "@ph
 import type { ChatState, TurnSummary } from "@hyperframes/agent-protocol";
 import { useAgentStore } from "../../agent/agentContext";
 import { hasNoUsableModel, mainThreadMessages, type ThreadId } from "../../agent/agentSelectors";
+import { isBetaFeatureEnabled } from "../../betaFeatures";
 import { useChapterCount } from "../../story/useStoryActions";
 import { useTranslation, type TranslationKey } from "../../i18n";
 import { cn } from "../ui/cn";
@@ -101,9 +102,11 @@ function MainThread({ chat, dockedTurnId }: { chat: ChatState; dockedTurnId: str
 
   const lastTurn = chat.turns.at(-1);
   const chapterCount = useChapterCount();
-  // Only the newest turn can be retried: older failures were moved on from.
+  // Only the newest turn can be retried: older failures were moved on from. A design turn is retried only where the
+  // design feature is on (a failed turn of a beta session, opened in a stable build, would run a design turn there).
+  const designOn = isBetaFeatureEnabled("designSystems");
   const retryFor = (turn: TurnSummary): RetryTurn | undefined =>
-    turn.status === "failed" && turn.id === lastTurn?.id
+    turn.status === "failed" && turn.id === lastTurn?.id && (designOn || !turn.designAction)
       ? {
           busy: pending !== null,
           blockedReason: activeTurn ? t("chat.turn.retryBlocked") : null,

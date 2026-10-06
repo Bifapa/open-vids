@@ -2,7 +2,7 @@
 //!
 //! `<project>/design/{system.html, tokens.css, logo.*, fonts/*, design.json}`, copied verbatim from the library's
 //! top level (the thumbnail is not copied), `design.json` last: `{schema: "openvids.project-design/1", id,
-//! version, name, attachedAt, unknownLicenses, nonPortableFonts}` (the key order of `AttachedDesign`, 2-space
+//! version, name, attachedAt, createdAt, unknownLicenses, nonPortableFonts}` (the key order of `AttachedDesign`, 2-space
 //! pretty JSON and a trailing newline: what the Studio server writes, byte for byte). The files are built in a
 //! staging folder inside the project and swapped in as a whole, so a failure leaves the previous `design/` (or
 //! none), never half of one, and nothing outside `design/` is written. [`DesignLibrary::attach_to_new_project`]
@@ -96,6 +96,7 @@ impl DesignLibrary {
             version: summary.version,
             name: summary.name,
             attached_at: now_ms(),
+            created_at: summary.created_at,
             unknown_licenses: summary.unknown_licenses,
             non_portable_fonts: summary.non_portable_fonts,
         };
@@ -299,7 +300,7 @@ mod tests {
         assert!(record.attached_at > 1_700_000_000_000);
         let text = std::fs::read_to_string(project.join("design/design.json")).expect("design.json");
         let expected = format!(
-            "{{\n  \"schema\": \"openvids.project-design/1\",\n  \"id\": \"brand\",\n  \"version\": 1,\n  \"name\": \"Brand Kit\",\n  \"attachedAt\": {},\n  \"unknownLicenses\": [\n    \"logo\"\n  ],\n  \"nonPortableFonts\": [\n    \"Helvetica\"\n  ]\n}}\n",
+            "{{\n  \"schema\": \"openvids.project-design/1\",\n  \"id\": \"brand\",\n  \"version\": 1,\n  \"name\": \"Brand Kit\",\n  \"attachedAt\": {},\n  \"createdAt\": 1000,\n  \"unknownLicenses\": [\n    \"logo\"\n  ],\n  \"nonPortableFonts\": [\n    \"Helvetica\"\n  ]\n}}\n",
             record.attached_at
         );
         assert_eq!(text, expected, "key order, 2-space pretty JSON, trailing newline");
@@ -320,6 +321,30 @@ mod tests {
         assert_eq!(tree(&f.project_dir.path().join("design")), ["design.json", "system.html", "tokens.css"]);
         let text = std::fs::read_to_string(f.project_dir.path().join("design/design.json")).expect("design.json");
         assert!(text.contains("\"unknownLicenses\": [],\n  \"nonPortableFonts\": []\n}\n"), "{text}");
+    }
+
+    #[test]
+    fn design_json_carries_the_library_entrys_created_at_after_attached_at() {
+        let f = fixture("snap-created");
+        // A system deleted and recreated under the same id has a new `createdAt`: the snapshot records which one it is of.
+        let mut meta = crate::design_library::fixtures::meta("brand", "Brand Kit", 10);
+        meta["createdAt"] = json!(1_777_000_000_123u64);
+        std::fs::write(f.library_dir.path().join("brand/meta.json"), meta.to_string()).expect("meta");
+        let record = f.library.snapshot_into(f.project_dir.path(), "brand").expect("snapshot");
+        assert_eq!(record.created_at, 1_777_000_000_123);
+        let text = std::fs::read_to_string(f.project_dir.path().join("design/design.json")).expect("design.json");
+        let keys: Vec<&str> = text
+            .lines()
+            .filter(|line| line.starts_with("  \""))
+            .filter_map(|line| line.trim_start().split('"').nth(1))
+            .collect();
+        assert_eq!(
+            keys,
+            ["schema", "id", "version", "name", "attachedAt", "createdAt", "unknownLicenses", "nonPortableFonts"],
+            "the key order of the TypeScript writer (`attachedJson`)"
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&text).expect("json");
+        assert_eq!(parsed["createdAt"], 1_777_000_000_123u64);
     }
 
     #[test]

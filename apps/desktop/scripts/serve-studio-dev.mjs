@@ -30,6 +30,8 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { devBetaFeatures } from "./beta-env.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DESKTOP = resolve(HERE, "..");
 const REPO_ROOT = resolve(DESKTOP, "..", "..");
@@ -148,7 +150,12 @@ const child = spawn("bun", args, {
   cwd: REPO_ROOT,
   stdio: "inherit",
   windowsHide: true,
-  env: { ...process.env, OPENVIDS_HOME_FILE: HOME_LINK_FILE },
+  env: {
+    ...process.env,
+    OPENVIDS_HOME_FILE: HOME_LINK_FILE,
+    // The shell sets this on the production sidecar; here a dev build is beta unless forced off.
+    OPENVIDS_BETA_FEATURES: devBetaFeatures(process.env.OPENVIDS_BETA_FEATURES),
+  },
 });
 child.on("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 0)));
 for (const sig of ["SIGINT", "SIGTERM"]) {

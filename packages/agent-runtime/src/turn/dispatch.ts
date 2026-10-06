@@ -141,7 +141,7 @@ async function dispatchToolCall(
   }
   if (isDesignToolName(name)) {
     if (!run.design) return refuse("Design systems are not available in this turn.");
-    const allowed = designToolsFor(caller, { action: run.designAction });
+    const allowed = designToolsFor(caller, { available: true, action: run.designAction });
     if (!allowed.some((tool) => tool === name))
       return refuse(`${name} is not available to you in this turn.`);
     return run.design.execute(name, args, signal);

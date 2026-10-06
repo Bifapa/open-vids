@@ -167,18 +167,32 @@ pub struct AttachedDesign {
     pub version: u32,
     pub name: String,
     pub attached_at: u64,
+    /// The library entry's `createdAt` (which system the id meant), after `attachedAt` like the TypeScript writer.
+    pub created_at: u64,
     pub unknown_licenses: Vec<String>,
     pub non_portable_fonts: Vec<String>,
 }
 
 // ── Ids, names, paths ───────────────────────────────────────────────────────
 
-/// `^[a-z0-9][a-z0-9-]{0,47}$` (`DESIGN_SYSTEM_ID_PATTERN`).
+/// `^[a-z0-9][a-z0-9-]{0,47}$` (`DESIGN_SYSTEM_ID_PATTERN`) and not a reserved device name (`isDesignSystemIdText`).
 pub fn is_design_id(id: &str) -> bool {
     let mut chars = id.chars();
-    chars.next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+    let pattern = chars.next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         && id.len() <= ID_CHARS
-        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    pattern && !is_reserved_device_name(id)
+}
+
+/// The names Windows reserves for devices (`con`, `prn`, `aux`, `nul`, `com0`–`com9`, `lpt0`–`lpt9`): a folder of
+/// that name cannot be created there, so the id is refused on every platform (`RESERVED_DEVICE_NAME` in
+/// `agent-protocol/src/types.ts`).
+fn is_reserved_device_name(id: &str) -> bool {
+    matches!(id, "con" | "prn" | "aux" | "nul")
+        || ["com", "lpt"].iter().any(|prefix| {
+            id.strip_prefix(prefix)
+                .is_some_and(|rest| rest.len() == 1 && rest.bytes().all(|b| b.is_ascii_digit()))
+        })
 }
 
 /// A library name as `parseDesignSystemName` takes it: not blank, at most 80 characters, no `<`, `>` or control
@@ -562,12 +576,25 @@ mod tests {
 
     #[test]
     fn ids_follow_the_pattern_and_names_the_plain_rules() {
-        for good in ["a", "0", "brand-kit", "a-", &"a".repeat(48)] {
+        for good in ["a", "0", "brand-kit", "a-", &"a".repeat(48), "con-system", "console", "com10", "lpt", "com", "nul-1"] {
             assert!(is_design_id(good), "{good:?}");
         }
         for bad in ["", "-a", "A", "a_b", "a b", "a.b", "../a", "a/b", "é", &"a".repeat(49)] {
             assert!(!is_design_id(bad), "{bad:?}");
         }
+        // The names Windows reserves for devices cannot be folders there, exactly as the protocol's `isDesignSystemIdText`.
+        let mut reserved = vec!["con".to_string(), "prn".to_string(), "aux".to_string(), "nul".to_string()];
+        for digit in 0..=9 {
+            reserved.push(format!("com{digit}"));
+            reserved.push(format!("lpt{digit}"));
+        }
+        for id in &reserved {
+            assert!(!is_design_id(id), "{id:?} is a reserved device name");
+        }
+    }
+
+    #[test]
+    fn names_are_plain_text_of_limited_length() {
         assert_eq!(parse_name("  Acme Brand  ").as_deref(), Some("Acme Brand"));
         assert_eq!(parse_name(&"я".repeat(80)).as_deref().map(|n| n.chars().count()), Some(80));
         for bad in ["", "   ", "a<b", "a>b", "tab\there", "line\nbreak", "nul\0", "\u{85}", &"x".repeat(81)] {

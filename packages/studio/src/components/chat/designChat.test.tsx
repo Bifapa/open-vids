@@ -5,6 +5,7 @@
  * turn that saved a system a card with one click to attach it (or update the project's older copy). Retrying a
  * failed design turn carries its action and options. All of it is beta-only.
  */
+import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   AssistantPart,
@@ -25,6 +26,7 @@ import {
   turn,
   userMessage,
 } from "../../agent/agentTestHarness";
+import { DesignApiError } from "../../design/designClient";
 import { DesignProvider } from "../../design/designContext";
 import { createDesignStore } from "../../design/designStore";
 import {
@@ -45,9 +47,9 @@ function savedPart(
 ): AssistantPart {
   return {
     type: "activity",
-    id: "a1",
+    id: `a-${params.id}`,
     activity: {
-      id: "act1",
+      id: `act-${params.id}`,
       category: "edit",
       status,
       label: "Saving design system",
@@ -208,6 +210,82 @@ describe("the card under a turn that saved a system", () => {
     expect(designClient.attach).toHaveBeenCalledWith("demo", "mono");
   });
 
+  it("shows a failed Attach only on the card whose button was pressed, and nothing for a failure from elsewhere", async () => {
+    const { designClient, store } = await open(
+      designChat({
+        parts: [savedPart("done"), savedPart("done", { id: "mono", name: "Mono" })],
+      }),
+      { systems: [designSummary(), designSummary({ id: "mono", name: "Mono", version: 1 })] },
+    );
+    const cardOf = (name: string) =>
+      document.querySelector<HTMLElement>(`[aria-label="Saved design system ${name}"]`);
+    const alertOf = (name: string) => cardOf(name)?.querySelector('[role="alert"]') ?? null;
+    designClient.attach.mockRejectedValueOnce(
+      new DesignApiError("busy", "The library is busy.", 503),
+    );
+
+    await click(buttonWithText(cardOf("Mono") ?? document.body, "Attach to this project"));
+    await settle();
+    expect(alertOf("Mono")?.textContent).toBe("The library is busy.");
+    expect(alertOf("Sunset")).toBeNull();
+
+    // The popover's own Detach failing is neither card's failure.
+    designClient.detach.mockRejectedValueOnce(
+      new DesignApiError("busy", "The library is busy.", 503),
+    );
+    await act(async () => {
+      await store.getState().detach();
+    });
+    expect(store.getState().notice?.mutation).toEqual({ kind: "detach" });
+    expect(alertOf("Mono")).toBeNull();
+    expect(alertOf("Sunset")).toBeNull();
+  });
+
+  it("shows a failed Update on the card that offers it, not on a card that offers Attach", async () => {
+    const { designClient } = await open(
+      designChat({
+        parts: [savedPart("done"), savedPart("done", { id: "mono", name: "Mono" })],
+      }),
+      {
+        systems: [
+          designSummary({ version: 3 }),
+          designSummary({ id: "mono", name: "Mono", version: 1 }),
+        ],
+        state: attachedState({
+          attached: attachedDesign({ version: 2 }),
+          library: { name: "Sunset", version: 3 },
+          updateAvailable: true,
+        }),
+      },
+    );
+    const cardOf = (name: string) =>
+      document.querySelector<HTMLElement>(`[aria-label="Saved design system ${name}"]`);
+    designClient.update.mockRejectedValueOnce(
+      new DesignApiError("conflict", "Nothing newer.", 409),
+    );
+
+    await click(buttonWithText(cardOf("Sunset") ?? document.body, "Update design system to v3"));
+    await settle();
+
+    expect(cardOf("Sunset")?.querySelector('[role="alert"]')?.textContent).toBe("Nothing newer.");
+    expect(cardOf("Mono")?.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("offers Replace on the card when the library's system of that name is a different one", async () => {
+    const { host, designClient } = await open(designChat({ parts: [savedPart("done")] }), {
+      systems: [designSummary({ version: 1 })],
+      state: attachedState({
+        attached: attachedDesign({ version: 3 }),
+        library: { name: "Sunset", version: 1 },
+        updateAvailable: true,
+      }),
+    });
+    expect(card()?.textContent).toContain("different system");
+    await click(buttonWithText(card() ?? host, "Replace with the library's v1"));
+    await settle();
+    expect(designClient.update).toHaveBeenCalledExactlyOnceWith("demo");
+  });
+
   it("uses the system an edit turn was asked to change, whatever the agent passed", async () => {
     const { host, designClient } = await open(
       designChat({
@@ -252,5 +330,28 @@ describe("retrying a failed design turn", () => {
         designOptions: { source: "website", url: "https://example.com" },
       }),
     );
+  });
+
+  it("offers no Retry for a failed design turn outside the beta channel, and still does for any other turn", async () => {
+    visitStudio("");
+    const design = await open(designChat({ status: "failed" }));
+    expect(buttonWithText(design.host, "Retry this turn")).toBeNull();
+    expect(design.agentClient.startTurn).not.toHaveBeenCalled();
+    cleanupMounted();
+
+    const ordinary = chatState({
+      chat: summary({ status: "failed" }),
+      messages: [userMessage("m1", "Trim the intro"), assistantMessage({ status: "failed" })],
+      turns: [
+        turn({
+          status: "failed",
+          endedAt: 9000,
+          checkpoint: null,
+          error: { code: "provider_overloaded", message: "529" },
+        }),
+      ],
+    });
+    const plain = await open(ordinary);
+    expect(buttonWithText(plain.host, "Retry this turn")).not.toBeNull();
   });
 });

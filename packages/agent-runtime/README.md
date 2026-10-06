@@ -515,6 +515,11 @@ A design system is a saved look (palette, fonts, transitions, rules) in the user
 and the service renders `system.html` / `tokens.css` / the thumbnail. A project carries one version of a system as a
 snapshot in `<project>/design/` (`system.html`, `tokens.css`, `fonts/`, `design.json`).
 
+- **Beta flag.** Design Systems is on only when the process env has `OPENVIDS_BETA_FEATURES=1` (the desktop shell sets it
+  from its release channel on the Studio sidecar, which the runtime inherits; `designFeatureEnabled` in
+  `src/design/feature.ts`). Off, `main.ts` wires no design host, so `designAction` is refused, no agent gets a design tool,
+  and neither the role prompts (`DESIGN_DIRECTOR` / `DESIGN_SPECIALIST`, `RoleOptions.design`), the `<project-design>`
+  block nor the `inspect_project` line mention design systems. `ToolAvailability.design` is that host's presence.
 - **Host** (`src/design/host.http.ts`, bound to one project; `${studioOrigin}/api/design-systems` and
   `/api/projects/:id/design`): `list` (`GET /design-systems`), `get` (`GET /design-systems/:id[?version=n]`), `save`
   (`PUT /design-systems/:id`, answers are validated with the protocol guards; a save ignores the turn's abort, like a
@@ -530,7 +535,7 @@ snapshot in `<project>/design/` (`system.html`, `tokens.css`, `fonts/`, `design.
   `TurnSummary`. The turn is an `edit`-intent, checkpointed turn in the chat's mode (the chat's intent is left alone),
   Director-led; the story blocks, the plan-approval block, the Story Mode offer and Render QA do not apply to it. A
   runtime without a design host refuses the action.
-- **Tools** (`src/design/tools.ts`, executor `src/design/executor.ts`; the Director only, and only in a design turn):
+- **Tools** (`src/design/tools.ts`, executor `src/design/executor.ts`; the Director only, when the feature is on — all of them in a design turn, the free-mode subset below in an ordinary one):
   `list_design_systems`, `read_design_system` (spec as text, with the version to use as `baseVersion`, plus the
   manifest's guesses), `extract_project_design` (the deterministic extraction, counted; the other project's one for an
   `external_project` source), `video_palette` (measured `#rrggbb` shares), `save_design_system` and
@@ -548,6 +553,22 @@ snapshot in `<project>/design/` (`system.html`, `tokens.css`, `fonts/`, `design.
   `parseSaveDesignSystemRequest` before it is sent; a refusal of the service (`invalid_system` with every issue, `conflict`)
   is returned to the model verbatim so it can fix and retry; the result lists the library's notes (fonts downloaded,
   system fonts that are not portable, unknown licenses).
+- **Free mode (typed requests).** In an ordinary turn (no `designAction`) the Director has `list_design_systems`,
+  `read_design_system`, `extract_project_design`, `save_design_system` and `attach_design_system` (no `video_palette`),
+  so "make a design system from this project", "attach Sunset" or "make the accent warmer" work from the chat. The same
+  executor, with `action: null`, applies stricter rules: a new system only from `scratch` or `project` (a `video`,
+  `website` or `external_project` source is refused with a pointer to the Design button — those start from the dialog; the
+  `project` source keeps its extraction-first and no-invented-hex rules, also for refinements of what the turn created);
+  a system that already exists is changed only after `read_design_system` in this turn, on the version read, with its
+  `baseCreatedAt`; creating over a taken id is the library's `conflict` with the way out spelled out; `attach` takes any
+  library system but never switches a project that carries another one. Nothing here writes a composition; applying a
+  system to existing compositions stays a separate, user-approved step.
+- **Name and lineage on a change.** A save that changes a system the turn read (an `edit`, a free-mode change, a
+  refinement of what the turn created) sends `baseVersion` and `baseCreatedAt` (the library entry's `createdAt`, so an id
+  deleted and recreated meanwhile is a `conflict`), and sends `name` only when the model changed it from the name it read,
+  so a rename made meanwhile is not undone. The project-extraction color guard applies to new systems only, not to an
+  `edit` of a system that came from a project; it accepts an opaque color whose only extracted form has alpha and the
+  other way round.
 - **Sources** (`src/design/prompt.ts`, the `<design-turn>` block): `scratch` (the brief), `project` (group and name the
   extraction, nothing invented), `video` (exact palette from `video_palette`, a few frames judged by Vision — or by the
   Director with `inspect_frames` when Vision is off —, fonts and transitions flagged `guess: true`), `website`

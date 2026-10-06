@@ -45,14 +45,19 @@ import { useDesignUi } from "./designUiStore";
 const world = vi.hoisted(
   (): {
     files: string[];
+    filesLoaded: boolean;
     capabilities: { externalProjects: null | { key: string; name: string }[] };
   } => ({
     files: [],
+    filesLoaded: true,
     capabilities: { externalProjects: null },
   }),
 );
 vi.mock("../contexts/FileManagerContext", () => ({
-  useFileManagerContextOptional: () => ({ fileTree: world.files }),
+  useFileManagerContextOptional: () => ({
+    fileTree: world.files,
+    fileTreeLoaded: world.filesLoaded,
+  }),
 }));
 vi.mock("./designCreate", async (importOriginal) => ({
   ...(await importOriginal<typeof designCreate>()),
@@ -109,6 +114,7 @@ async function chooseSource(value: string): Promise<void> {
 beforeEach(() => {
   visitStudio("beta");
   world.files = [];
+  world.filesLoaded = true;
   world.capabilities = { externalProjects: null };
   useDesignUi.setState({ dialog: null });
   useDockLayoutStore.setState({ pendingWorkspace: null, pendingActivation: null });
@@ -232,6 +238,14 @@ describe("starting a create turn", () => {
   it("cannot start from a video while the project has none", async () => {
     await openCreate("video");
     expect(dialog()?.textContent).toContain("This project has no videos yet");
+    expect(startButton()?.disabled).toBe(true);
+  });
+
+  it("does not claim the project has no video while its files are still being read", async () => {
+    world.filesLoaded = false;
+    await openCreate("video");
+    expect(dialog()?.textContent).toContain("Reading the project's files…");
+    expect(dialog()?.textContent).not.toContain("no videos yet");
     expect(startButton()?.disabled).toBe(true);
   });
 
@@ -382,14 +396,14 @@ describe("the preview", () => {
   // happy-dom would fetch the frame's `src` for real; with loading off it only prints that it skipped it.
   beforeEach(disableIframeLoading);
 
-  it("shows the project's snapshot in a frame that allows nothing", async () => {
+  it("shows the project's snapshot in a frame that can run no script", async () => {
     mountDesignHost();
     useDesignUi.getState().openPreview({ kind: "project", projectId: "demo" }, "Sunset");
     await settle();
     const frame = document.querySelector<HTMLIFrameElement>("iframe");
-    expect(frame?.getAttribute("sandbox")).toBe("");
+    expect(frame?.getAttribute("sandbox")).toBe("allow-same-origin");
+    expect([...(frame?.sandbox ?? [])]).toEqual(["allow-same-origin"]);
     expect(frame?.sandbox.contains("allow-scripts")).toBe(false);
-    expect(frame?.sandbox.contains("allow-same-origin")).toBe(false);
     expect(frame?.getAttribute("src")).toBe("/api/projects/demo/design/files/system.html");
     expect(frame?.getAttribute("title")).toBe("Preview of Sunset");
   });
@@ -399,7 +413,8 @@ describe("the preview", () => {
     useDesignUi.getState().openPreview({ kind: "library", id: "mono", version: 4 }, "Mono");
     await settle();
     const frame = document.querySelector<HTMLIFrameElement>("iframe");
-    expect(frame?.getAttribute("sandbox")).toBe("");
+    expect(frame?.getAttribute("sandbox")).toBe("allow-same-origin");
+    expect(frame?.sandbox.contains("allow-scripts")).toBe(false);
     expect(frame?.getAttribute("src")).toBe("/api/design-systems/mono/files/system.html?version=4");
   });
 });

@@ -17,13 +17,12 @@
 //! - `/design-files/<id>/logo.<ext>` and `/design-files/<id>/fonts/<file>` — what `system.html` references.
 //!
 //! Nothing else is served (not `tokens.css`, `meta.json` or `versions/`), and only through
-//! `DesignLibrary::file`'s strict relative-path rules. Every answer carries `Content-Security-Policy: sandbox;
-//! default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:` and
-//! `X-Content-Type-Options: nosniff`, so a showcase page cannot run script, load anything remote or reach the
-//! page that frames it. The page frames `system.html` with an opaque origin, so its font requests arrive as CORS
-//! requests from the origin `null`: the answers carry `Access-Control-Allow-Origin: *`, and
-//! `home_auth::origin_allowed` lets exactly a font GET through with that origin (a foreign website's own origin
-//! is still refused).
+//! `DesignLibrary::file`'s strict relative-path rules. Every answer carries `Content-Security-Policy: sandbox
+//! allow-same-origin; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:` and
+//! `X-Content-Type-Options: nosniff`: the page frames `system.html` with `sandbox="allow-same-origin"` (no
+//! `allow-scripts`, so no script can ever run, in the frame or when a file is opened on its own) and the document
+//! keeps this server's origin, so its font requests are same-origin and need no CORS. No answer carries an
+//! `Access-Control-Allow-*` header, and a request from another origin is refused by `home_auth::origin_allowed`.
 //!
 //! The routes are served regardless of the release channel; only the UI that reaches them is gated by the beta
 //! flag. Errors are `{ "error": { "code", "message" } }` with the status of `DesignError::status`.
@@ -38,7 +37,7 @@ use super::home_routes::{respond, respond_with_headers};
 
 const PREFIX: &str = "/api/design-systems";
 const FILES_PREFIX: &str = "/design-files/";
-const SANDBOX_HEADERS: &str = "Content-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:\r\nX-Content-Type-Options: nosniff\r\nAccess-Control-Allow-Origin: *\r\n";
+const SANDBOX_HEADERS: &str = "Content-Security-Policy: sandbox allow-same-origin; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:\r\nX-Content-Type-Options: nosniff\r\n";
 
 /// Whether `path` belongs to the JSON routes (`home_routes` hands it over).
 pub fn owns(path: &str) -> bool {
@@ -74,13 +73,6 @@ fn served_file(path: &str) -> Option<(&str, &str)> {
         || file.strip_prefix("logo.").is_some_and(|ext| !ext.is_empty())
         || file.strip_prefix("fonts/").is_some_and(|name| !name.is_empty());
     (!id.is_empty() && served).then_some((id, file))
-}
-
-/// Whether this is a GET of a font file: the one request `home_auth::origin_allowed` accepts with the origin
-/// `null` (the sandboxed showcase fetching its fonts).
-pub fn is_font_get(method: &str, path: &str) -> bool {
-    method.eq_ignore_ascii_case("GET")
-        && served_file(path).is_some_and(|(_, file)| file.starts_with("fonts/"))
 }
 
 fn body_json(body: &[u8]) -> Value {
@@ -197,16 +189,6 @@ mod tests {
         ] {
             assert_eq!(served_file(none), None, "{none}");
         }
-        assert!(is_font_get("GET", "/design-files/brand/fonts/a.woff2"));
-        assert!(is_font_get("get", "/design-files/brand/fonts/a.woff2"));
-        for (method, path) in [
-            ("POST", "/design-files/brand/fonts/a.woff2"),
-            ("GET", "/design-files/brand/system.html"),
-            ("GET", "/design-files/brand/thumbnail.svg"),
-            ("GET", "/api/design-systems/brand"),
-        ] {
-            assert!(!is_font_get(method, path), "{method} {path}");
-        }
     }
 
     /// One request against a scratch library; `(status, head, body)`.
@@ -320,13 +302,13 @@ mod tests {
         assert_eq!(status, 200);
         for header in [
             "Content-Type: text/html; charset=utf-8",
-            "Content-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:",
+            "Content-Security-Policy: sandbox allow-same-origin; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:",
             "X-Content-Type-Options: nosniff",
-            "Access-Control-Allow-Origin: *",
         ] {
             assert!(head.contains(header), "{header} missing in {head}");
         }
-        assert_eq!(body, std::fs::read(root.join("brand/system.html")).expect("file"));
+        // Fonts are same-origin requests of the framed page: no CORS grant on any answer.
+        assert!(!head.to_ascii_lowercase().contains("access-control-"), "{head}");
         for (path, content_type) in [
             ("/design-files/brand/fonts/inter-400.woff2", "font/woff2"),
             ("/design-files/brand/logo.svg", "image/svg+xml"),
@@ -335,7 +317,9 @@ mod tests {
             assert_eq!(status, 200, "{path}");
             assert!(head.contains(&format!("Content-Type: {content_type}")), "{head}");
             assert!(head.contains("X-Content-Type-Options: nosniff"), "{head}");
+            assert!(!head.to_ascii_lowercase().contains("access-control-"), "{head}");
         }
+        assert_eq!(body, std::fs::read(root.join("brand/system.html")).expect("file"));
 
         for (path, status) in [
             ("/design-files/brand/tokens.css", 404),

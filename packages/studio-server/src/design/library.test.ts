@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { processStartKey } from "../history/ownerLock.js";
 import { DesignFailure, isDesignFailure } from "./errors.js";
 import { DesignLibrary } from "./library.js";
@@ -519,6 +519,104 @@ describe("fonts and logo", () => {
     expect(readFileSync(join(root, "keep", "logo.svg"), "utf-8")).toBe(SVG);
     expect(readdirSync(join(root, "keep", "fonts"))).toHaveLength(1);
     expect(library.get("keep").spec.motionRules).toEqual(["Changed"]);
+  });
+});
+
+describe("an edit that carries the projectId", () => {
+  it("keeps a stored logo and file font when the project no longer has them", async () => {
+    writeProjectFile(projectDir, "assets/Brand.ttf", ttf("brand"));
+    writeProjectFile(projectDir, "assets/brand-logo.svg", SVG);
+    const spec = sampleSpec({
+      fonts: [
+        {
+          family: "Brand",
+          role: "display",
+          source: "file",
+          projectPath: "assets/Brand.ttf",
+          weights: [400],
+          license: null,
+        },
+      ],
+      logo: { projectPath: "assets/brand-logo.svg", license: { name: "Own work" } },
+    });
+    await library.save("keep", sampleRequest({ spec, projectId: "p1" }));
+    // The author moved on: the project has neither file any more, and the edit names the library's own logo path.
+    rmSync(join(projectDir, "assets"), { recursive: true });
+    const stored = library.get("keep").spec;
+    expect(stored.logo?.projectPath).toBe("logo.svg");
+    const edited = { ...stored, motionRules: ["Changed"] };
+    const { system } = await library.save(
+      "keep",
+      sampleRequest({ spec: edited, baseVersion: 1, projectId: "p1" }),
+    );
+    expect(system.version).toBe(2);
+    expect(readFileSync(join(root, "keep", "logo.svg"), "utf-8")).toBe(SVG);
+    expect(readdirSync(join(root, "keep", "fonts"))).toHaveLength(1);
+    expect(library.get("keep").spec.logo?.license).toEqual({ name: "Own work" });
+
+    // A file that was never stored is still reported missing, not silently dropped.
+    const other = { ...stored, logo: { projectPath: "assets/other.svg", license: null } };
+    expect(
+      await failureOf(
+        library.save("keep", sampleRequest({ spec: other, baseVersion: 2, projectId: "p1" })),
+      ),
+    ).toMatchObject({
+      code: "asset_unavailable",
+      message: expect.stringContaining("was not found in the project"),
+    });
+  });
+});
+
+describe("lineage and names on edits", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("refuses an edit whose baseCreatedAt is another system's (deleted and created again meanwhile)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const first = await library.save("brand", sampleRequest({ name: "Brand" }));
+    expect(first.system.createdAt).toBe(1_000_000);
+    await library.delete("brand");
+    vi.setSystemTime(2_000_000);
+    const again = await library.save("brand", sampleRequest({ name: "Brand" }));
+    expect(again.system).toMatchObject({ version: 1, createdAt: 2_000_000 });
+
+    // An edit that started from the first system (same id, same version number) must not land on the new one.
+    const stale = sampleRequest({ baseVersion: 1, baseCreatedAt: 1_000_000 });
+    expect(await failureOf(library.save("brand", stale))).toMatchObject({ code: "conflict" });
+    expect(library.readMeta("brand")?.version).toBe(1);
+
+    const fresh = await library.save(
+      "brand",
+      sampleRequest({ baseVersion: 1, baseCreatedAt: 2_000_000 }),
+    );
+    expect(fresh.system).toMatchObject({ version: 2, createdAt: 2_000_000 });
+    // Without baseCreatedAt the check is by version only, as before.
+    expect((await library.save("brand", sampleRequest({ baseVersion: 2 }))).system.version).toBe(3);
+  });
+
+  it("keeps the current name when an edit sends none, so a rename made meanwhile is not undone", async () => {
+    await library.save("sunset-talks", sampleRequest());
+    await library.rename("sunset-talks", "Golden Hour");
+    const { name: _name, ...nameless } = sampleRequest({ baseVersion: 1 });
+    const { system } = await library.save("sunset-talks", nameless);
+    expect(system).toMatchObject({ version: 2, name: "Golden Hour" });
+    expect(library.get("sunset-talks").name).toBe("Golden Hour");
+    // An edit that names the system changes it.
+    const renamed = await library.save(
+      "sunset-talks",
+      sampleRequest({ baseVersion: 2, name: "New name" }),
+    );
+    expect(renamed.system.name).toBe("New name");
+  });
+
+  it("still needs a name to create a system", async () => {
+    const { name: _name, ...nameless } = sampleRequest();
+    expect(await failureOf(library.save("fresh", nameless))).toMatchObject({
+      code: "invalid_request",
+    });
+    expect(library.readMeta("fresh")).toBeNull();
   });
 });
 

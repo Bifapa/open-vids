@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { Context, Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { bodyLimit } from "hono/body-limit";
@@ -21,11 +22,13 @@ const MAX_RENAME_BYTES = 16 * 1024;
 
 /**
  * Every response of a design file: a system's HTML is rendered in an iframe or opened directly, and what it holds was
- * validated at save but is still not trusted to run anything or load anything but its own files.
+ * validated at save but is still not trusted to run anything or load anything but its own files. `sandbox` without
+ * `allow-scripts` means no script can run whatever the file holds; `allow-same-origin` only lets the page's font
+ * requests be same-origin.
  */
 export const DESIGN_FILE_HEADERS: Record<string, string> = {
   "Content-Security-Policy":
-    "sandbox; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:",
+    "sandbox allow-same-origin; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:",
   "X-Content-Type-Options": "nosniff",
   "Cache-Control": "no-cache",
 };
@@ -48,17 +51,12 @@ export function designContentType(path: string): string {
 }
 
 /**
- * Headers of one design file. The showcase runs in a sandboxed iframe, whose origin is opaque: its `@font-face`
- * requests are CORS requests, so only font files answer with a CORS grant (they hold nothing private; the HTML and
- * CSS stay unreadable to other pages).
+ * Headers of one design file. The showcase runs in an iframe with `sandbox="allow-same-origin"` (never
+ * `allow-scripts`) and the CSP's own `sandbox allow-same-origin`, so the page keeps its origin: its `@font-face`
+ * requests are same-origin and no response here grants cross-origin reads (no `Access-Control-Allow-Origin`).
  */
 export function designFileHeaders(path: string): Record<string, string> {
-  const type = designContentType(path);
-  return {
-    ...DESIGN_FILE_HEADERS,
-    "Content-Type": type,
-    ...(type.startsWith("font/") && { "Access-Control-Allow-Origin": "*" }),
-  };
+  return { ...DESIGN_FILE_HEADERS, "Content-Type": designContentType(path) };
 }
 
 const failure = (error: DesignError) => ({ error });
@@ -103,7 +101,7 @@ export function registerDesignRoutes(
     const project = await adapter.resolveProject(projectId);
     if (!project) return null;
     const absPath = pinWithinProject(project.dir, path);
-    return absPath ? { absPath } : null;
+    return absPath !== null && existsSync(absPath) ? { absPath } : null;
   };
   const library = options.library ?? new DesignLibrary(undefined, { resolveProjectFile });
 

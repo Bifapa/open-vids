@@ -3,9 +3,11 @@ import { useTranslation } from "../i18n";
 import { designPreviewUrl, type DesignPreviewTarget } from "./designClient";
 
 /**
- * The system's `system.html` showcase in a frame that runs nothing: `sandbox=""` blocks scripts, forms, popups and
- * same-origin access, and the server sends the file with its own sandbox CSP as well. The page is a static sheet
- * (live samples are CSS-only), so no scripts are needed to read it.
+ * The system's `system.html` showcase in a frame that runs no script. `sandbox="allow-same-origin"` keeps scripts,
+ * forms, popups and navigation off (never add `allow-scripts`), and the server sends the file with
+ * `Content-Security-Policy: sandbox allow-same-origin; default-src 'none'; …` as well, so even a page that got a
+ * script past the format check cannot run it. Same-origin is allowed only so the page's own font requests are
+ * ordinary same-origin requests: the design routes grant no cross-origin access to anyone.
  */
 export function DesignPreviewDialog({
   target,
@@ -27,7 +29,7 @@ export function DesignPreviewDialog({
     >
       <iframe
         title={t("studio.design.preview.frame", { name: title })}
-        sandbox=""
+        sandbox="allow-same-origin"
         src={designPreviewUrl(target)}
         className="h-[min(520px,calc(100vh-10rem))] w-full rounded-md border border-border bg-white"
       />

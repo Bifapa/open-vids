@@ -145,3 +145,26 @@ describe("design actions in a start-turn request", () => {
     expect(parseDesignActionOptions({ source: "scratch", extra: 1 }, "create").ok).toBe(false);
   });
 });
+
+describe("reserved device names", () => {
+  it("never become library ids, so a folder of that name can be made on Windows", () => {
+    for (const name of ["Con", "NUL", "com1", "LPT9", "aux"]) {
+      const id = designSystemIdFromName(name);
+      expect(id).toBe(`${name.toLowerCase()}-system`);
+      expect(parseAttachDesignRequest({ id }).ok).toBe(true);
+      expect(parseAttachDesignRequest({ id: name.toLowerCase() }).ok).toBe(false);
+    }
+    expect(parseDesignActionOptions({ systemId: "con" }, "edit").ok).toBe(false);
+  });
+});
+
+describe("saving an edit", () => {
+  const body = { source: { kind: "scratch" }, spec: spec() };
+  it("may leave the name out only with a baseVersion, and the lineage only with one too", () => {
+    expect(parseSaveDesignSystemRequest(body).ok).toBe(false);
+    const edit = parseSaveDesignSystemRequest({ ...body, baseVersion: 2, baseCreatedAt: 5 });
+    expect(edit.ok && edit.value.name).toBeUndefined();
+    expect(edit.ok && edit.value.baseCreatedAt).toBe(5);
+    expect(parseSaveDesignSystemRequest({ ...body, name: "A", baseCreatedAt: 5 }).ok).toBe(false);
+  });
+});

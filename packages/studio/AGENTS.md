@@ -117,9 +117,19 @@ the unit test on the pure function underneath.
   re-reads when the popover opens and when any agent turn ends). Dialogs (create, edit, preview) live
   in `DesignHost`, mounted beside Settings in `StudioRightPanels` because starting a turn
   (`agentStore.runDesignAction`, request built by `agent/designTurn.ts`, carried by `retryTurnRequest`)
-  needs the project's agent store. The preview iframe is `sandbox=""` on purpose; never add
+  needs the project's agent store. The preview iframe is `sandbox="allow-same-origin"` on purpose
+  (the design routes answer with a CSP of `sandbox allow-same-origin` and `default-src 'none'`, and
+  with no CORS grant, so the page's font requests must be same-origin); never add
   `allow-scripts`. The palette and display font shown for the attached system come from the
-  project's own `design/tokens.css`, not the library (which may be newer). "From another project"
-  appears only when `useDesignHostCapabilities(projectId, enabled)` finds other projects (the `#` mentions'
-  `cross-project` list, asked only while the create dialog is open; none or a failure means the option is hidden). The shell opens the create dialog with `openvidsDesign=create[&openvidsDesignSource=…]`,
-  read once and stripped (`designParam.ts`).
+  project's own `design/tokens.css`, not the library (which may be newer). The popover's one repair
+  button calls `update()` and reads Update (library newer), Replace (the library's system of that
+  id is a different one: `updateAvailable` without a newer version) or Restore (the project's copy
+  is damaged, nothing newer); it is absent when the system left the library. A store `notice`
+  carries the mutation that failed, and a chat card shows it only when it came from that card's
+  button. The create dialog resolves the picked video/project at render time (`effectiveFields`):
+  both lists arrive after it opens, and "no videos" shows only once the file tree has loaded. Retry
+  is hidden for a design turn when the beta flag is off. "From another project" appears only when
+  `useDesignHostCapabilities(projectId, enabled)` finds other projects (the `#` mentions'
+  `cross-project` list, asked only while the create dialog is open; none or a failure means the
+  option is hidden). The shell opens the create dialog with
+  `openvidsDesign=create[&openvidsDesignSource=…]`, read once and stripped (`designParam.ts`).

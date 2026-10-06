@@ -358,6 +358,14 @@ export type DesignSourceKind = (typeof DESIGN_SOURCE_KINDS)[number];
 /** A design system's id: the library folder's name (`~/.openvids/design-systems/<id>/`); lowercase, never starts with a dash. */
 export const DESIGN_SYSTEM_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,47}$/;
 
+/** Names Windows reserves for devices (with or without an extension): a folder of that name cannot be created there. */
+const RESERVED_DEVICE_NAME = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
+
+/** Whether `id` is a usable library id: the pattern, and not a reserved device name (`con`, `nul`, `com1`, …). */
+export function isDesignSystemIdText(id: string): boolean {
+  return DESIGN_SYSTEM_ID_PATTERN.test(id) && !RESERVED_DEVICE_NAME.test(id);
+}
+
 /**
  * The user's choices for a design action. `source` tells the agent what to build from (default `scratch`: the chat
  * prompt is the brief); `systemId` names the library system an `edit` changes; `video` is a project-relative video

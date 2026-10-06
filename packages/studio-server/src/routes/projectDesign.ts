@@ -17,6 +17,7 @@ import {
   PROJECT_DESIGN_DIR,
   attachDesign,
   detachDesign,
+  projectSnapshotFiles,
   readProjectDesignState,
   updateDesign,
 } from "../design/snapshot.js";
@@ -160,6 +161,9 @@ export function registerProjectDesignRoutes(
       if (sub === "" || sub.includes("\0")) {
         throw new DesignFailure("invalid_request", "A file path is required");
       }
+      // Only what the snapshot itself installed: other files under design/ are the user's and never leave here.
+      if (!projectSnapshotFiles(project.dir).includes(`${PROJECT_DESIGN_DIR}/${sub}`))
+        throw new DesignFailure("not_found", `design/${sub} is not part of the project's snapshot`);
       const designDir = pinWithinProject(project.dir, PROJECT_DESIGN_DIR);
       const abs = designDir === null ? null : pinWithinProject(designDir, sub);
       if (abs === null) throw new DesignFailure("invalid_request", "Path is outside design/");

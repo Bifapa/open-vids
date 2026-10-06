@@ -4729,7 +4729,7 @@
   "studio.design.chip.nonPortable": "{family}: системный шрифт",
   "studio.design.chips.licenseNote": "Неизвестные лицензии проверяются перед экспортом.",
   "studio.design.chips.portableNote": "Системные шрифты не хранятся вместе с системой, поэтому на другом компьютере они могут выглядеть иначе.",
-  "studio.design.snapshotBroken": "Копия файлов дизайн-системы в проекте отсутствует или повреждена. Подключите систему заново, чтобы восстановить её.",
+  "studio.design.snapshotBroken": "Копия файлов дизайн-системы в проекте отсутствует или повреждена.",
   "studio.design.removedFromLibrary": "Этой системы больше нет в вашей библиотеке. У проекта осталась собственная копия.",
   "studio.design.update.note": "В библиотеке версия {latest}, а в проекте — версия {current}.",
   "studio.design.update.button": "Обновить дизайн-систему до v{version}",
@@ -4814,5 +4814,11 @@
   "studio.design.error.bad_response": "Служба дизайн-систем ответила неожиданно.",
   "studio.design.error.http": "Что-то пошло не так. Повторите попытку.",
   "studio.design.error.status": "Служба дизайн-систем ответила со статусом {status}.",
-  "studio.design.chat.change.attach": "Подключено дизайн-систем"
+  "studio.design.chat.change.attach": "Подключено дизайн-систем",
+  "studio.design.snapshotBroken.removed": "Копия файлов дизайн-системы в проекте отсутствует или повреждена, а самой системы уже нет в вашей библиотеке, поэтому восстановить её нельзя. Отключите её и подключите другую.",
+  "studio.design.update.recreated": "«{name}» (v{latest}) в вашей библиотеке — другая система, не та, что скопирована в проект (v{current}): скорее всего, её удалили и создали заново.",
+  "studio.design.update.replace": "Заменить на v{version} из библиотеки",
+  "studio.design.update.restore": "Восстановить файлы",
+  "studio.design.update.restoreEffect": "Снова копирует файлы системы из библиотеки в проект. Композиции не меняются.",
+  "studio.design.video.loading": "Чтение файлов проекта…"
 }

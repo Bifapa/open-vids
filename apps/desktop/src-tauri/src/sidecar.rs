@@ -347,6 +347,12 @@ fn studio_command(
     // Project folders are untrusted input: the sidecar serves its bundled
     // Studio and never a `@hyperframes/studio` found next to a project.
     command.env("OPENVIDS_EMBEDDED_STUDIO", "1");
+    // Beta features, decided here (build channel, `OPENVIDS_BETA_FEATURES`), as exactly `1` or `0`: the Studio
+    // server and the agent runtime it starts read only this value, never the channel.
+    command.env(
+        "OPENVIDS_BETA_FEATURES",
+        super::channel::env_value(super::channel::beta_features_enabled()),
+    );
     // How the sidecar reaches the user's other projects (`home_internal`).
     for (key, value) in home.env() {
         command.env(key, value);
@@ -499,6 +505,10 @@ mod tests {
         assert_eq!(env("OPENVIDS_HOME_URL").as_deref(), Some("http://127.0.0.1:4321"));
         assert_eq!(env("OPENVIDS_HOME_SECRET").as_deref(), Some(link.secret().value()));
         assert_eq!(env("OPENVIDS_EMBEDDED_STUDIO").as_deref(), Some("1"));
+        // Beta features reach the Studio server and the agent runtime it starts as exactly `1` or `0`.
+        let beta = env("OPENVIDS_BETA_FEATURES");
+        assert_eq!(beta.as_deref(), Some(crate::channel::env_value(crate::channel::beta_features_enabled())));
+        assert!(matches!(beta.as_deref(), Some("1" | "0")));
     }
 
     fn quiet() -> Arc<dyn Fn(&str) + Send + Sync> {

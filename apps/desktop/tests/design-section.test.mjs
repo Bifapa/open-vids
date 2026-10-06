@@ -257,13 +257,18 @@ test("Delete asks first, says projects keep their copy, and only then deletes", 
   win.happyDOM.abort();
 });
 
-test("View frames the showcase in a script-less sandbox and lists the fonts with their caveats", async () => {
+test("View frames the showcase in a script-less same-origin sandbox and lists the fonts with their caveats", async () => {
   const { win, doc } = load();
   await settle();
   card(doc, "risky").click();
   await settle();
   const frame = doc.querySelector(".ds-sheet iframe");
-  assert.equal(frame.getAttribute("sandbox"), "", "no allow-* token at all");
+  assert.equal(
+    frame.getAttribute("sandbox"),
+    "allow-same-origin",
+    "same origin for the fonts, and never allow-scripts",
+  );
+  assert.ok(!frame.getAttribute("sandbox").includes("allow-scripts"));
   assert.equal(frame.getAttribute("src"), "/design-files/risky/system.html");
   const text = doc.querySelector(".ds-details").textContent;
   assert.match(text, /Playfair Display/);

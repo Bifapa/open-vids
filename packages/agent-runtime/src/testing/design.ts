@@ -197,16 +197,26 @@ export class FakeDesignHost implements DesignHost {
       throw new DesignToolError("conflict", `The id ${id} is taken.`);
     if (request.baseVersion !== undefined && existing && existing.version !== request.baseVersion)
       throw new DesignToolError("conflict", `The current version is ${existing.version}.`);
+    if (
+      request.baseCreatedAt !== undefined &&
+      existing &&
+      existing.createdAt !== request.baseCreatedAt
+    )
+      throw new DesignToolError("conflict", `${id} was deleted and created again meanwhile.`);
     const version = (existing?.version ?? 0) + 1;
+    // A change without a name keeps the current one (a rename made meanwhile is not undone).
+    const name = request.name ?? existing?.name ?? id;
+    const createdAt = existing?.createdAt ?? 1;
     const detail = systemDetail(id, {
-      name: request.name,
+      name,
       version,
+      createdAt,
       source: request.source,
       spec: request.spec,
     });
     this.systems = [...this.systems.filter((system) => system.id !== id), detail];
     return {
-      system: summaryOf(id, { name: request.name, version, source: request.source }),
+      system: summaryOf(id, { name, version, createdAt, source: request.source }),
       notes: this.saveNotes,
     };
   }

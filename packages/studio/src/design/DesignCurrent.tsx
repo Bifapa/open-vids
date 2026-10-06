@@ -7,9 +7,25 @@ import { DesignChips, Swatches } from "./DesignParts";
 import type { DesignMutation } from "./designStore";
 
 /**
+ * What the one explicit repair action (`update()`) does for the attached system, or null when there is nothing to do:
+ * `update` — the library holds a newer version; `replace` — the library's system of this id is a different one (it was
+ * deleted and created again, so its version is not newer but it is not the project's copy); `restore` — the project's
+ * copy of the files is missing or damaged and the library can put them back.
+ */
+type RepairMode = "update" | "replace" | "restore";
+
+function repairModeOf(state: ProjectDesignState): RepairMode | null {
+  const { attached, library, updateAvailable, snapshotOk } = state;
+  if (!attached || !library) return null;
+  if (library.version > attached.version) return "update";
+  if (updateAvailable) return "replace";
+  return snapshotOk ? null : "restore";
+}
+
+/**
  * The system the project carries: its name and version, palette and display font as the project's own copy says,
- * the honest chips, and the three actions — Preview, Detach and, only when the library holds a newer version, an
- * explicit Update. Nothing here changes by itself.
+ * the honest chips, and the actions — Preview, Detach and, when the library can change or repair the project's copy,
+ * one explicit button for it (Update, Replace or Restore). Nothing here changes by itself.
  */
 export function DesignCurrent({
   state,
@@ -27,10 +43,11 @@ export function DesignCurrent({
   onUpdate(): void;
 }) {
   const { t } = useTranslation();
-  const { attached, library, updateAvailable, snapshotOk } = state;
+  const { attached, library, snapshotOk } = state;
   if (!attached) return null;
   const busy = mutation !== null;
   const palette = facts?.palette ?? [];
+  const repair = repairModeOf(state);
   return (
     <section
       aria-label={t("studio.design.current.label")}
@@ -61,25 +78,41 @@ export function DesignCurrent({
       {!snapshotOk ? (
         <p role="alert" className="m-0 flex items-start gap-1.5 text-xs text-warning">
           <Warning size={12} weight="fill" aria-hidden className="mt-px shrink-0" />
-          <span>{t("studio.design.snapshotBroken")}</span>
+          <span>
+            {library === null
+              ? t("studio.design.snapshotBroken.removed")
+              : t("studio.design.snapshotBroken")}
+          </span>
         </p>
       ) : null}
 
-      {library === null ? (
+      {library === null && snapshotOk ? (
         <p className="m-0 text-xs text-fg-3">{t("studio.design.removedFromLibrary")}</p>
       ) : null}
 
-      {updateAvailable && library ? (
+      {repair && library ? (
         <div
           data-testid="design-update"
+          data-repair={repair}
           className="flex flex-col gap-1.5 rounded-sm bg-surface-2 px-2 py-1.5"
         >
-          <p className="m-0 text-xs text-fg-2">
-            {t("studio.design.update.note", {
-              current: attached.version,
-              latest: library.version,
-            })}
-          </p>
+          {repair === "update" ? (
+            <p className="m-0 text-xs text-fg-2">
+              {t("studio.design.update.note", {
+                current: attached.version,
+                latest: library.version,
+              })}
+            </p>
+          ) : null}
+          {repair === "replace" ? (
+            <p className="m-0 text-xs text-fg-2">
+              {t("studio.design.update.recreated", {
+                name: library.name,
+                current: attached.version,
+                latest: library.version,
+              })}
+            </p>
+          ) : null}
           <Button
             size="sm"
             variant="primary"
@@ -88,10 +121,16 @@ export function DesignCurrent({
             icon={<ArrowsClockwise size={12} aria-hidden />}
             onClick={onUpdate}
           >
-            {t("studio.design.update.button", { version: library.version })}
+            {repair === "update"
+              ? t("studio.design.update.button", { version: library.version })
+              : repair === "replace"
+                ? t("studio.design.update.replace", { version: library.version })
+                : t("studio.design.update.restore")}
           </Button>
           <p className="m-0 text-2xs leading-[13px] text-fg-3">
-            {t("studio.design.update.effect")}
+            {repair === "restore"
+              ? t("studio.design.update.restoreEffect")
+              : t("studio.design.update.effect")}
           </p>
         </div>
       ) : null}

@@ -64,10 +64,10 @@ export function stableHostTools(
   return [...merged.values()];
 }
 
-function instructionsOf(agent: AgentId, enabled: readonly SpecialistId[]): string {
-  if (agent === "director") return directorInstructions(enabled);
+function instructionsOf(agent: AgentId, enabled: readonly SpecialistId[], design: boolean): string {
+  if (agent === "director") return directorInstructions(enabled, { design });
   if (agent === "jev") return jevInstructions();
-  return specialistInstructions(agent);
+  return specialistInstructions(agent, { design });
 }
 
 /** The run a specialist session is opened for: `parallel` is an additional, ephemeral session of a busy specialist. */
@@ -93,7 +93,7 @@ export async function agentSession(
   const hostTools = stableHostTools(agent, availability, (name, args, signal, progress) =>
     dispatchTool(ctx, chatId, agent, name, args, signal, progress, slot.runId),
   );
-  const instructions = instructionsOf(agent, availability.enabled);
+  const instructions = instructionsOf(agent, availability.enabled, availability.design === true);
   const contextHash = await ctx.backend.contextHash?.(ctx.chats.scope.projectDir);
   const parallel = run?.parallel === true;
   const open = async (): Promise<OpenBackendSessionInput> => ({

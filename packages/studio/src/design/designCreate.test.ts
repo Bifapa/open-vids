@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   availableSources,
   createSpecOf,
+  effectiveFields,
   websiteAddress,
   type CreateFields,
   type DesignHostCapabilities,
@@ -46,6 +47,40 @@ describe("websiteAddress", () => {
     ]) {
       expect(websiteAddress(bad)).toBeNull();
     }
+  });
+});
+
+describe("effectiveFields", () => {
+  const LISTED_TWO: DesignHostCapabilities = {
+    externalProjects: [
+      { key: "k-1", name: "Summer trip" },
+      { key: "k-2", name: "Winter trip" },
+    ],
+  };
+
+  it("takes the first video and project on offer until the user picks one", () => {
+    expect(effectiveFields(EMPTY, ["a.mp4", "b.mp4"], LISTED_TWO)).toMatchObject({
+      video: "a.mp4",
+      projectKey: "k-1",
+    });
+    expect(effectiveFields(EMPTY, [], NONE)).toMatchObject({ video: "", projectKey: "" });
+  });
+
+  it("keeps a pick that is still on offer and drops one that is not", () => {
+    const picked = { ...EMPTY, video: "b.mp4", projectKey: "k-2" };
+    expect(effectiveFields(picked, ["a.mp4", "b.mp4"], LISTED_TWO)).toMatchObject({
+      video: "b.mp4",
+      projectKey: "k-2",
+    });
+    expect(effectiveFields(picked, ["c.mp4"], LISTED)).toMatchObject({
+      video: "c.mp4",
+      projectKey: "k-1",
+    });
+  });
+
+  it("leaves the other fields alone", () => {
+    const typed = { ...EMPTY, brief: "Calm", notes: "Warm", url: "example.com" };
+    expect(effectiveFields(typed, [], NONE)).toEqual(typed);
   });
 });
 

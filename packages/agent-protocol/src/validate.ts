@@ -20,7 +20,7 @@ import type {
 import {
   DESIGN_ACTIONS,
   DESIGN_SOURCE_KINDS,
-  DESIGN_SYSTEM_ID_PATTERN,
+  isDesignSystemIdText,
   type DesignAction,
   type DesignActionOptions,
 } from "./types.js";
@@ -907,7 +907,7 @@ export function parseDesignActionOptions(
     options.source = source;
   }
   if (value.systemId !== undefined) {
-    if (typeof value.systemId !== "string" || !DESIGN_SYSTEM_ID_PATTERN.test(value.systemId))
+    if (typeof value.systemId !== "string" || !isDesignSystemIdText(value.systemId))
       return fail("designOptions.systemId must be a design system id");
     options.systemId = value.systemId;
   }

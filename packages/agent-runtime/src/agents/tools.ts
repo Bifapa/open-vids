@@ -79,6 +79,11 @@ export interface ToolAvailability {
    * writes the timeline (a design turn writes the design library, never compositions).
    */
   designAction?: DesignAction | null;
+  /**
+   * The runtime has a design host (Design Systems is on): the Director gets the design tools — all of them in a design
+   * turn, the typed-request subset (list, read, extract, save, attach) in an ordinary one.
+   */
+  design?: boolean;
   /** What the user wants from the turn (default `edit`). An Ask turn gets no project-changing tools. */
   intent?: ChatIntent;
   /**
@@ -242,7 +247,11 @@ export function buildHostTools(
     availability.crossProject && agent !== "jev"
       ? buildCrossProjectTools(agent, availability.enabled, turn, execute)
       : [];
-  const design = buildDesignTools(agent, { action: designAction }, execute);
+  const design = buildDesignTools(
+    agent,
+    { available: availability.design === true, action: designAction },
+    execute,
+  );
   const projectTools = [
     ...editing,
     ...analysis,

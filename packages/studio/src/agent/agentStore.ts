@@ -8,8 +8,6 @@ import {
   type ChatState,
   type ChatSummary,
   type EditorContext,
-  type StoryAction,
-  type StoryActionOptions,
   type UpdateChatRequest,
 } from "@hyperframes/agent-protocol";
 import { AgentApiError, isActiveTurn, type AgentClient } from "./agentClient";
@@ -34,6 +32,7 @@ import { createAgentRunSlice, type AgentRunSlice } from "./agentRunSlice";
 import { createAgentDesignSlice, type AgentDesignSlice } from "./agentDesignSlice";
 import { createAgentPermissionSlice, type AgentPermissionSlice } from "./agentPermissionSlice";
 import { createAgentStoryOfferSlice, type AgentStoryOfferSlice } from "./agentStoryOfferSlice";
+import { createAgentStoryActionSlice, type AgentStoryActionSlice } from "./agentStoryActionSlice";
 import { createAgentRevertSlice, type AgentRevertSlice } from "./agentRevertSlice";
 import { createAgentPlanSlice, type AgentPlanSlice } from "./agentPlanSlice";
 import {
@@ -47,7 +46,6 @@ import {
   type StreamHandle,
   type StreamStatus,
 } from "./agentStream";
-import { storyTurnRequest } from "./storyTurn";
 import { unsentOf, type SentDraft } from "./sentDraft";
 
 export type AgentAvailability = "loading" | "ready" | "unavailable";
@@ -72,6 +70,7 @@ export interface AgentState
     AgentChatListSlice,
     AgentRunSlice,
     AgentDesignSlice,
+    AgentStoryActionSlice,
     AgentAttachmentSlice {
   availability: AgentAvailability;
   unavailableMessage: string | null;
@@ -102,11 +101,6 @@ export interface AgentState
   closeChat(): void;
   renameChat(title: string): Promise<void>;
   setDraft(text: string): void;
-  /**
-   * Runs Review with AI / Build Story / Rebuild affected as a story-mode turn of the open chat (a new chat when
-   * none is open), with the user's choices for a build or rebuild.
-   */
-  runStoryAction(action: StoryAction, options?: StoryActionOptions): Promise<ActionResult>;
   /**
    * Starts a turn, or steers the live one when the chat is running; from the draft, creates the chat first and
    * opens it. `mode` is the new turn's mode (story while the Story workspace is shown); true once the server
@@ -325,6 +319,16 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
       ...createAgentChatListSlice({ client, set, get, isDisposed, updateOpenChat }),
       ...createAgentRunSlice({ client, set, get, isDisposed, captureContext, onActionError }),
       ...createAgentDesignSlice({ client, set, get, isDisposed, captureContext, onActionError }),
+      ...createAgentStoryActionSlice({
+        client,
+        set,
+        get,
+        captureContext,
+        applySummary,
+        resync,
+        onActionError,
+        fail,
+      }),
       ...createAgentComposerSlice({
         client,
         set,
@@ -541,32 +545,6 @@ export function createAgentStore(deps: AgentStoreDeps): AgentStore {
             finishedFirst ? t("agent.chat.justFinished") : undefined,
           );
           return false;
-        } finally {
-          set({ pending: null });
-        }
-      },
-
-      async runStoryAction(action, options) {
-        if (get().pending) return { ok: false, message: t("agent.chat.busyOther") };
-        let chatId = get().chatId;
-        set({ pending: "send", notice: null });
-        try {
-          if (!chatId) {
-            const created = await client.createChat({});
-            applySummary(created);
-            await get().openChat(created.id);
-            chatId = created.id;
-          }
-          await client.startTurn(
-            chatId,
-            storyTurnRequest(action, options, captureContext(), i18n.language),
-          );
-          if (get().streamStatus !== "open") await resync(chatId);
-          return { ok: true };
-        } catch (error) {
-          if (chatId) await onActionError(error, chatId);
-          else fail(error);
-          return { ok: false, message: describeAgentError(error) };
         } finally {
           set({ pending: null });
         }

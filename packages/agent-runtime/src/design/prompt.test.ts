@@ -230,18 +230,40 @@ describe("project design snapshot block", () => {
 });
 
 describe("role instructions", () => {
-  it("tell the Director and the specialists that write compositions about the system and the link", () => {
-    expect(directorInstructions([])).toContain(DESIGN_DIRECTOR);
+  it("tell the Director and the specialists that write compositions about the system and the link when the feature is on", () => {
+    expect(directorInstructions([], { design: true })).toContain(DESIGN_DIRECTOR);
     expect(DESIGN_DIRECTOR).toContain(
       "applying a system to existing compositions is a separate step the user approves",
     );
     for (const id of ["editor", "motion"] as const) {
-      expect(specialistInstructions(id)).toContain(DESIGN_SPECIALIST);
+      expect(specialistInstructions(id, { design: true })).toContain(DESIGN_SPECIALIST);
     }
     for (const id of ["vision", "research", "audio"] as const) {
-      expect(specialistInstructions(id)).not.toContain(DESIGN_SPECIALIST);
+      expect(specialistInstructions(id, { design: true })).not.toContain(DESIGN_SPECIALIST);
     }
     expect(DESIGN_SPECIALIST).toContain(TOKENS_LINK);
     expect(DESIGN_SPECIALIST).toContain("before frame.md or design.md");
+  });
+
+  it("say nothing about design systems when the feature is off", () => {
+    for (const options of [undefined, { design: false }]) {
+      expect(directorInstructions([], options)).not.toContain("Design systems:");
+      expect(directorInstructions([], options)).not.toContain("save_design_system");
+      for (const id of ["editor", "motion", "vision", "research", "audio"] as const) {
+        expect(specialistInstructions(id, options)).not.toContain("design/tokens.css");
+      }
+    }
+  });
+
+  it("tell the Director how a typed request works, and that video, website and other-project systems start from the Design button", () => {
+    expect(DESIGN_DIRECTOR).toContain("In an ordinary turn the same tools answer a typed request");
+    expect(DESIGN_DIRECTOR).toContain(
+      "call extract_project_design first and use only the colors it lists",
+    );
+    expect(DESIGN_DIRECTOR).toContain("on the version you read");
+    expect(DESIGN_DIRECTOR).toContain("started by the user from the Design button");
+    expect(DESIGN_DIRECTOR).toContain(
+      "never switching a project that already carries another system",
+    );
   });
 });

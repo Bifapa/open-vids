@@ -30,8 +30,8 @@ export interface TurnDesignOptions {
   turnSignal: AbortSignal;
   /** The project the turn works in: named on every save so a `file` font or the logo resolves in it. */
   projectId: string;
-  /** The design action of the turn. */
-  action: DesignAction;
+  /** The design action of the turn; null in an ordinary turn ("free mode": the user asked for a system in words). */
+  action: DesignAction | null;
   /** The user's choices for the turn; the tools apply them and the model cannot widen them. */
   options: DesignActionOptions | null;
 }
@@ -90,17 +90,33 @@ function hostOf(url: string): string {
   }
 }
 
-/** The system the turn has saved so far and the version the next save of it builds on. */
+/** The system the turn has saved so far: what `hasSaved` and the plan gate look at. */
 interface SavedSystem {
   id: string;
   version: number;
 }
 
-/** The current version of a system the turn read: what an edit's `baseVersion` has to be. */
+/** The current version of a system the turn read or saved: what a change's `baseVersion` and `baseCreatedAt` are. */
 interface ReadSystem {
   version: number;
+  /** The library entry's `createdAt`: an id deleted and recreated meanwhile is a different lineage. */
+  createdAt: number;
   name: string;
   source: DesignSystemSource;
+}
+
+/** What a save is made with — decided by the user's choices and the turn's rules, not by the model. */
+interface SaveTarget {
+  id: string;
+  baseVersion: number | undefined;
+  baseCreatedAt: number | undefined;
+  /** Left to the parser: a change sends it only when it differs from the name that was read. */
+  name: unknown;
+  source: DesignSystemSource;
+  /** A new system (or a refinement of one this turn created): its colors must come from the project's extraction. */
+  fromProject: boolean;
+  /** A change of a system that already existed. */
+  change: boolean;
 }
 
 /**
@@ -116,8 +132,12 @@ export class TurnDesign {
   private readonly inflight = new Set<Promise<unknown>>();
   private readonly reads = new Map<string, ReadSystem>();
   private saved: SavedSystem | null = null;
-  /** Hex colors the turn's extraction listed: a `project` or `external_project` turn may only use these. */
+  /** Systems this turn created: refining them keeps the creation's rules. */
+  private readonly createdIds = new Set<string>();
+  /** Hex colors the turn's extraction listed: a `project` or `external_project` save may only use these. */
   private extractedColors: Set<string> | null = null;
+  /** The same colors without alpha: a listed `#rrggbbaa` stands for its opaque `#rrggbb` too. */
+  private extractedBases: Set<string> = new Set();
 
   constructor(private readonly config: TurnDesignOptions) {}
 
@@ -190,7 +210,12 @@ export class TurnDesign {
     const detail = await this.config.host.get(id, version, signal);
     // Only the current version is what a save builds on: reading an older one leaves the recorded version alone.
     if (version === undefined)
-      this.reads.set(id, { version: detail.version, name: detail.name, source: detail.source });
+      this.reads.set(id, {
+        version: detail.version,
+        createdAt: detail.createdAt,
+        name: detail.name,
+        source: detail.source,
+      });
     return { text: formatSystemDetail(detail) };
   }
 
@@ -208,10 +233,15 @@ export class TurnDesign {
     this.extractedColors = new Set(extraction.colors.map((color) => color.value.toLowerCase()));
     for (const value of Object.values(extraction.declaredTokens))
       for (const hex of hexColorsIn(value)) this.extractedColors.add(hex);
+    this.extractedBases = new Set([...this.extractedColors].map((hex) => hex.slice(0, 7)));
     return { text: formatExtraction(extraction, title) };
   }
 
   private async palette(args: unknown, signal: AbortSignal): Promise<HostToolResult> {
+    if (this.config.action === null)
+      return refuse(
+        "A system from a video starts from the Design button (Design → Create → From a video): tell the user to use it. In an ordinary message you can build one from the brief or from this project.",
+      );
     const record = argsRecord(withoutNulls(args));
     const chosen = this.config.options?.video;
     const asked = typeof record.video === "string" ? record.video.trim() : undefined;
@@ -235,15 +265,35 @@ export class TurnDesign {
     };
   }
 
-  /** The id, base version, name and source a save is made with — decided by the user's choices, not the model. */
-  private saveTarget(record: Record<string, unknown>):
-    | {
-        id: string;
-        baseVersion: number | undefined;
-        name: unknown;
-        source: DesignSystemSource;
-      }
-    | HostToolResult {
+  /** A change of a system whose current version the turn read (or saved): on that version, name only if renamed. */
+  private changeTarget(
+    id: string,
+    record: Record<string, unknown>,
+    givenBase: unknown,
+  ): SaveTarget | HostToolResult {
+    const read = this.reads.get(id);
+    if (!read)
+      return refuse(
+        `Read ${id} with read_design_system first: a change is saved on top of the version you read.`,
+      );
+    if (givenBase !== undefined && givenBase !== read.version)
+      return refuse(
+        `baseVersion must be ${read.version}, the version of ${id} you read in this turn (omit it to use that). To build on a newer version read the system again.`,
+      );
+    // A rename made meanwhile must survive: the name goes with the save only when the model changed it.
+    const renamed = typeof record.name === "string" && record.name.trim() === read.name;
+    return {
+      id,
+      baseVersion: read.version,
+      baseCreatedAt: read.createdAt,
+      name: renamed ? undefined : record.name,
+      source: read.source,
+      fromProject: this.createdIds.has(id),
+      change: true,
+    };
+  }
+
+  private saveTarget(record: Record<string, unknown>): SaveTarget | HostToolResult {
     const { action, options } = this.config;
     const givenId = typeof record.id === "string" ? record.id : undefined;
     const givenBase = record.baseVersion;
@@ -251,6 +301,8 @@ export class TurnDesign {
       return refuse(
         "baseVersion must be a whole number (the version read_design_system returned).",
       );
+    const given = record.source;
+    const named = typeof record.name === "string" ? designSystemIdFromName(record.name) : undefined;
     if (action === "edit") {
       const systemId = options?.systemId;
       if (!systemId) return refuse("This edit turn names no system to change.");
@@ -258,64 +310,83 @@ export class TurnDesign {
         return refuse(
           `This turn edits the system ${systemId} the user chose: save to that id (or omit id), not ${givenId}. Saving under another id is a create action the user starts themselves.`,
         );
-      const read = this.reads.get(systemId);
-      if (!read)
-        return refuse(
-          `Read ${systemId} with read_design_system first: a change is saved on top of the version you read.`,
-        );
-      if (givenBase !== undefined && givenBase !== read.version)
-        return refuse(
-          `baseVersion must be ${read.version}, the version of ${systemId} you read in this turn (omit it to use that). To build on a newer version read the system again.`,
-        );
-      return {
-        id: systemId,
-        baseVersion: read.version,
-        name: record.name ?? read.name,
-        source: read.source,
-      };
+      return this.changeTarget(systemId, record, givenBase);
     }
-    const kind = this.source();
-    const given = record.source;
-    if (isRecord(given) && given.kind !== kind)
-      return refuse(
-        `The user chose "${kind}" as the source of this design system: the source is ${kind}, not ${String(given.kind)}. Omit source or pass kind "${kind}".`,
-      );
-    const ref =
-      kind === "video"
-        ? options?.video
-        : kind === "website"
-          ? options?.url && hostOf(options.url)
-          : kind === "external_project"
-            ? options?.projectKey
-            : kind === "project" && isRecord(given) && typeof given.ref === "string"
-              ? given.ref
-              : undefined;
-    const source: DesignSystemSource = { kind, ...(ref && { ref }) };
-    if (this.saved) {
-      if (givenId !== undefined && givenId !== this.saved.id)
+    if (action === "create") {
+      const kind = this.source();
+      if (isRecord(given) && given.kind !== kind)
         return refuse(
-          `This turn already created ${this.saved.id}: refine that system (omit id) rather than creating another one.`,
+          `The user chose "${kind}" as the source of this design system: the source is ${kind}, not ${String(given.kind)}. Omit source or pass kind "${kind}".`,
         );
-      return { id: this.saved.id, baseVersion: this.saved.version, name: record.name, source };
+      if (this.saved) {
+        if (givenId !== undefined && givenId !== this.saved.id)
+          return refuse(
+            `This turn already created ${this.saved.id}: refine that system (omit id) rather than creating another one.`,
+          );
+        return this.changeTarget(this.saved.id, record, givenBase);
+      }
+      if (givenBase !== undefined)
+        return refuse(
+          "A create turn makes a new system: omit baseVersion. Changing an existing system is an edit action the user starts on that system.",
+        );
+      const ref =
+        kind === "video"
+          ? options?.video
+          : kind === "website"
+            ? options?.url && hostOf(options.url)
+            : kind === "external_project"
+              ? options?.projectKey
+              : kind === "project" && isRecord(given) && typeof given.ref === "string"
+                ? given.ref
+                : undefined;
+      return this.newTarget(givenId ?? named ?? "", record, { kind, ...(ref && { ref }) });
     }
+    // Free mode: an ordinary turn. A system this turn read (or created) is changed on the version read; anything else
+    // is new, from the brief or from this project only.
+    const id = givenId ?? named ?? this.saved?.id;
+    if (id === undefined) return refuse("Pass id (or name): which system is this?");
+    if (this.reads.has(id)) return this.changeTarget(id, record, givenBase);
     if (givenBase !== undefined)
       return refuse(
-        "A create turn makes a new system: omit baseVersion. Changing an existing system is an edit action the user starts on that system.",
+        `Read ${id} with read_design_system first: a change is saved on top of the version you read. Omit baseVersion to create a new system.`,
       );
-    const id =
-      givenId ?? (typeof record.name === "string" ? designSystemIdFromName(record.name) : "");
-    return { id, baseVersion: undefined, name: record.name, source };
+    const kind = isRecord(given) ? given.kind : "scratch";
+    if (kind !== "scratch" && kind !== "project")
+      return refuse(
+        `A system from ${typeof kind === "string" ? kind : "that source"} starts from the Design button (Design → Create): tell the user to use it. In an ordinary message you can create a system from the brief (source scratch) or from this project (source project, after extract_project_design).`,
+      );
+    const ref =
+      kind === "project" && isRecord(given) && typeof given.ref === "string"
+        ? given.ref
+        : undefined;
+    return this.newTarget(id, record, { kind, ...(ref && { ref }) });
   }
 
-  /** The colors a `project`/`external_project` turn invented: hexes in the spec that its extraction does not hold. */
+  private newTarget(
+    id: string,
+    record: Record<string, unknown>,
+    source: DesignSystemSource,
+  ): SaveTarget {
+    return {
+      id,
+      baseVersion: undefined,
+      baseCreatedAt: undefined,
+      name: record.name,
+      source,
+      fromProject: true,
+      change: false,
+    };
+  }
+
+  /** The colors a `project`/`external_project` save invented: hexes in the spec that its extraction does not hold. */
   private inventedColors(tokens: Record<string, string>): string[] {
     const known = this.extractedColors;
     if (!known) return [];
     const invented = new Set<string>();
     for (const value of Object.values(tokens)) {
       for (const hex of hexColorsIn(value)) {
-        // An alpha variant of an extracted color is the same hue.
-        if (!known.has(hex) && !known.has(hex.slice(0, 7))) invented.add(hex);
+        // An alpha variant of a color is the same hue, whichever of the two the extraction lists.
+        if (!known.has(hex) && !this.extractedBases.has(hex.slice(0, 7))) invented.add(hex);
       }
     }
     return [...invented];
@@ -327,7 +398,8 @@ export class TurnDesign {
     const target = this.saveTarget(record);
     if ("text" in target) return target;
     const kind = target.source.kind;
-    if ((kind === "project" || kind === "external_project") && this.extractedColors === null)
+    const projectBased = target.fromProject && (kind === "project" || kind === "external_project");
+    if (projectBased && this.extractedColors === null)
       return refuse(
         "The colors, fonts, easings and durations of a project-based system come from extract_project_design: call it first and build the spec from its result.",
       );
@@ -336,6 +408,7 @@ export class TurnDesign {
       source: target.source,
       spec: record.spec,
       ...(target.baseVersion !== undefined && { baseVersion: target.baseVersion }),
+      ...(target.baseCreatedAt !== undefined && { baseCreatedAt: target.baseCreatedAt }),
       projectId,
     });
     if (!parsed.ok)
@@ -344,15 +417,28 @@ export class TurnDesign {
       return refuse(
         "id must be lowercase letters, digits and dashes (at most 48 characters), or omit it.",
       );
-    const invented = this.inventedColors(parsed.value.spec.tokens);
+    const invented = projectBased ? this.inventedColors(parsed.value.spec.tokens) : [];
     if (invented.length > 0)
       return refuse(
         `These colors are not in the project's extraction: ${invented.join(", ")}. A system made from a project uses only the colors the project uses — group and name them, never invent one. Replace them with colors from extract_project_design and save again.`,
       );
-    const result = await host.save(target.id, parsed.value, signal);
+    let result;
+    try {
+      result = await host.save(target.id, parsed.value, signal);
+    } catch (error) {
+      if (error instanceof DesignToolError && error.code === "conflict" && !target.change)
+        throw new DesignToolError(
+          "conflict",
+          `${error.message} If you meant to change the existing system ${target.id}, read it with read_design_system first and save on the version you read; otherwise choose another name.`,
+          error.issues,
+        );
+      throw error;
+    }
     this.saved = { id: result.system.id, version: result.system.version };
+    if (!target.change) this.createdIds.add(result.system.id);
     this.reads.set(result.system.id, {
       version: result.system.version,
+      createdAt: result.system.createdAt,
       name: result.system.name,
       source: result.system.source,
     });
@@ -365,10 +451,11 @@ export class TurnDesign {
     const id = record.id;
     if (!isDesignSystemId(id))
       throw new DesignToolError("invalid_request", "id must be a design system id");
+    // A design turn attaches only the system it made or edited; in an ordinary turn the user asked for it in words.
     const allowed = [this.saved?.id, options?.systemId].filter(
       (candidate): candidate is string => candidate !== undefined,
     );
-    if (!allowed.includes(id))
+    if (this.config.action !== null && !allowed.includes(id))
       return refuse(
         allowed.length === 0
           ? "Save the design system first: only the system this turn saved (or the one the user chose to edit) can be attached. The user picks any other system themselves."

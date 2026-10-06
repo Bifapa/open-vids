@@ -1,5 +1,13 @@
 // @vitest-environment node
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -175,8 +183,9 @@ describe("the project design routes", () => {
     expect(html.status).toBe(200);
     expect(html.headers.get("content-type")).toContain("text/html");
     expect(html.headers.get("content-security-policy")).toBe(
-      "sandbox; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:",
+      "sandbox allow-same-origin; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:",
     );
+    expect(html.headers.get("access-control-allow-origin")).toBeNull();
     expect(html.headers.get("x-content-type-options")).toBe("nosniff");
     expect((await html.text()).length).toBeGreaterThan(100);
     expect((await send("GET", "/files/..%2Findex.html")).status).toBeGreaterThanOrEqual(400);
@@ -184,6 +193,32 @@ describe("the project design routes", () => {
     expect((await send("GET", "/files/missing.css")).status).toBe(404);
     expect((await send("GET", "/files/fonts")).status).toBe(404);
     expect(made.read("index.html")).toContain("data-composition-id");
+  });
+
+  it("serves the snapshot's own fonts without a CORS grant, and not the user's files under design/", async () => {
+    const { send, library, made } = setup();
+    await seedSystem(library, "midnight");
+    await send("PUT", "", { id: "midnight" });
+    const fontPath = readdirSync(join(made.project.dir, "design/fonts")).find((file) =>
+      file.endsWith(".woff2"),
+    );
+    expect(fontPath).toBeDefined();
+    const font = await send("GET", `/files/fonts/${fontPath}`);
+    expect(font.status).toBe(200);
+    expect(font.headers.get("content-type")).toBe("font/woff2");
+    expect(font.headers.get("access-control-allow-origin")).toBeNull();
+
+    // The user's own brand fonts, notes and a copy of a snapshot-looking font nobody named: not part of the snapshot.
+    made.write("design/fonts/brand-licensed.ttf", "commercial font");
+    made.write("design/notes.txt", "private");
+    made.write("design/custom/user.woff2", "user font");
+    for (const path of ["fonts/brand-licensed.ttf", "notes.txt", "custom/user.woff2"]) {
+      const response = await send("GET", `/files/${path}`);
+      expect(response.status).toBe(404);
+      expect(response.headers.get("content-type")).not.toContain("font");
+    }
+    // design.json is part of the snapshot's record and stays readable.
+    expect((await send("GET", "/files/design.json")).status).toBe(200);
   });
 });
 

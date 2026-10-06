@@ -26,6 +26,8 @@ const sources = {
   shared: read("shared.js"),
   i18n: read("i18n.js"),
   sheets: read("sheets.js"),
+  design: read("design.js"),
+  designSheets: read("design-sheets.js"),
   composer: read("composer.js"),
   home: read("home.js"),
 };
@@ -104,6 +106,8 @@ function loadDocument({ frame, width, update = {}, language }) {
   // index.html's inline boot script does not run here: seed the catalog the way it does.
   if (language) win.eval("OVI18N.init(OV_BOOT.prefs.language, OV_BOOT.locales)");
   win.eval(sources.sheets);
+  win.eval(sources.design);
+  win.eval(sources.designSheets);
   win.eval(sources.composer);
   win.eval(sources.home);
   win.dispatchEvent(new win.Event("DOMContentLoaded"));

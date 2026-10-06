@@ -1,6 +1,6 @@
 /* Design systems (beta): the dialogs of the Projects page's section (design.js) and the New Project picker.
    view     — a large sheet: the system's own showcase (the token-free GET /design-files/:id/system.html) in a script-less
-              sandbox="" iframe beside the
+              sandbox="allow-same-origin" iframe beside the
               fonts with license / portability / "similar" markers and the counts. GET /api/design-systems/:id answers
               {…summary, fonts: [{family, role, source, portable, licenseName, guess}], transitions, versions}.
    create   — choose a source and the project the agent works in; the project opens in Studio with design: "create".
@@ -145,9 +145,10 @@
         "</button></div>",
     );
     sh.classList.add("ds-sheet");
-    /* Script-less and origin-less: sandbox="" lets the CSS-only samples animate and nothing else. */
+    /* Script-less: no allow-scripts, so nothing in the showcase can ever run. allow-same-origin keeps the document on
+       this server's origin, so its font requests are plain same-origin loads (the server grants no CORS to anyone). */
     const frame = document.createElement("iframe");
-    frame.setAttribute("sandbox", "");
+    frame.setAttribute("sandbox", "allow-same-origin");
     frame.setAttribute("referrerpolicy", "no-referrer");
     /* Focusable, so arrow keys can scroll the showcase where the webview lets Tab stop on a frame; the header button
        keeps Shift+Tab inside the dialog. */

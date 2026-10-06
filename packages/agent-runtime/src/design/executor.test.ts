@@ -10,7 +10,7 @@ import {
 import { TurnDesign, hexColorsIn } from "./executor.js";
 import { DesignToolError } from "./host.js";
 
-function setup(action: DesignAction, options: DesignActionOptions | null = null) {
+function setup(action: DesignAction | null, options: DesignActionOptions | null = null) {
   const host = new FakeDesignHost();
   const turnAbort = new AbortController();
   const design = new TurnDesign({
@@ -187,8 +187,10 @@ describe("save_design_system in an edit turn", () => {
     expect(saved.isError).not.toBe(true);
     expect(host.saves[0]).toMatchObject({
       id: "acme",
-      request: { name: "Acme", baseVersion: 4, source: { kind: "scratch" } },
+      request: { baseVersion: 4, baseCreatedAt: 1, source: { kind: "scratch" } },
     });
+    // The name the model read goes back only if it changed: a rename made meanwhile survives.
+    expect(host.saves[0]?.request.name).toBeUndefined();
     // The next save builds on the version just saved.
     await call("save_design_system", { spec: sampleSpec() });
     expect(host.saves[1]?.request.baseVersion).toBe(5);
@@ -394,5 +396,203 @@ describe("hexColorsIn", () => {
       "#ffffff",
       "#0a0b0c80",
     ]);
+  });
+});
+
+describe("an edit does not undo a rename or a recreated system", () => {
+  it("sends the name only when the model changed it from the one it read", async () => {
+    const { host, call } = setup("edit", { systemId: "acme" });
+    host.systems = [systemDetail("acme", { name: "Acme", version: 2 })];
+    await call("read_design_system", { id: "acme" });
+    // The user renames the system while the agent works; the agent sends back the name it read.
+    host.systems = host.systems.map((system) => ({ ...system, name: "Acme Studio" }));
+    await call("save_design_system", { name: "Acme", spec: sampleSpec() });
+    expect(host.saves[0]?.request.name).toBeUndefined();
+    expect(host.systems[0]?.name).toBe("Acme Studio");
+    // A real rename goes through.
+    await call("save_design_system", { name: "Acme Reborn", spec: sampleSpec() });
+    expect(host.saves[1]?.request.name).toBe("Acme Reborn");
+    expect(host.systems[0]?.name).toBe("Acme Reborn");
+  });
+
+  it("sends the lineage it read and gets the library's conflict when the id was recreated", async () => {
+    const { host, call } = setup("edit", { systemId: "acme" });
+    host.systems = [systemDetail("acme", { version: 2, createdAt: 500 })];
+    await call("read_design_system", { id: "acme" });
+    // Deleted and created again: the same id at version 2, another entry.
+    host.systems = [systemDetail("acme", { version: 2, createdAt: 900 })];
+    const result = await call("save_design_system", { spec: sampleSpec() });
+    expect(host.saves[0]?.request).toMatchObject({ baseVersion: 2, baseCreatedAt: 500 });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("conflict");
+  });
+
+  it("refines a system it created on that entry's lineage", async () => {
+    const { host, call } = setup("create");
+    await call("save_design_system", { name: "Fresh", spec: sampleSpec() });
+    await call("save_design_system", { spec: sampleSpec() });
+    expect(host.saves[1]?.request).toMatchObject({ baseVersion: 1, baseCreatedAt: 1 });
+    expect(host.saves[1]?.request.name).toBeUndefined();
+  });
+});
+
+describe("an edit of a system that came from a project", () => {
+  it("may use colors the extraction does not list: the guard is for new systems", async () => {
+    const { host, call } = setup("edit", { systemId: "acme" });
+    host.systems = [systemDetail("acme", { source: { kind: "project" } })];
+    await call("read_design_system", { id: "acme" });
+    const result = await call("save_design_system", {
+      spec: sampleSpec({ tokens: sampleTokens({ "--accent": "#ff9d3a" }) }),
+    });
+    expect(result.isError).not.toBe(true);
+    expect(host.saves[0]?.request.source).toEqual({ kind: "project" });
+  });
+});
+
+describe("the invented-color guard sees alpha in both directions", () => {
+  it("accepts an opaque color whose only extracted form has alpha, and the other way round", async () => {
+    const { host, call } = setup("create", { source: "project" });
+    host.extraction = {
+      ...emptyExtraction(),
+      colors: PALETTE.map((value, index) => ({
+        value: index === 0 ? `${value}99` : value,
+        count: 3,
+        roles: ["fill"],
+      })),
+    };
+    await call("extract_project_design", {});
+    const result = await call("save_design_system", {
+      name: "Alpha",
+      spec: sampleSpec({ tokens: sampleTokens({ "--bg": "#0b0b10", "--accent": "#ffb34780" }) }),
+    });
+    expect(result.isError).not.toBe(true);
+    const invented = await call("save_design_system", {
+      spec: sampleSpec({ tokens: sampleTokens({ "--bg": "#0b0b11" }) }),
+    });
+    expect(invented.isError).toBe(true);
+    expect(invented.text).toContain("#0b0b11");
+  });
+});
+
+describe("free mode (an ordinary turn: the user asked for a system in words)", () => {
+  it("creates from the brief and refuses a video, website or external-project source", async () => {
+    const { host, call, design } = setup(null);
+    for (const kind of ["video", "website", "external_project"] as const) {
+      const refused = await call("save_design_system", {
+        name: "From elsewhere",
+        source: { kind, ref: "x" },
+        spec: sampleSpec(),
+      });
+      expect(refused.isError, kind).toBe(true);
+      expect(refused.text).toContain("starts from the Design button");
+    }
+    expect(host.saves).toHaveLength(0);
+
+    const brief = await call("save_design_system", { name: "Night Drive", spec: sampleSpec() });
+    expect(brief.isError).not.toBe(true);
+    expect(host.saves[0]).toMatchObject({
+      id: "night-drive",
+      request: { name: "Night Drive", source: { kind: "scratch" }, projectId: "project-one" },
+    });
+    expect(host.saves[0]?.request.baseVersion).toBeUndefined();
+    expect(design.hasSaved()).toBe(true);
+  });
+
+  it("refuses the video palette: a video source starts from the dialog", async () => {
+    const { host, call } = setup(null);
+    const result = await call("video_palette", { video: "assets/clip.mp4" });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("Design button");
+    expect(host.paletteCalls).toEqual([]);
+  });
+
+  it("creates from the project only after the extraction and only with its colors", async () => {
+    const { host, call } = setup(null);
+    host.extraction = {
+      ...emptyExtraction(),
+      colors: PALETTE.map((value) => ({ value, count: 2, roles: ["fill"] })),
+    };
+    const early = await call("save_design_system", {
+      name: "Mine",
+      source: { kind: "project" },
+      spec: sampleSpec(),
+    });
+    expect(early.isError).toBe(true);
+    expect(early.text).toContain("extract_project_design");
+    await call("extract_project_design", {});
+    const invented = await call("save_design_system", {
+      name: "Mine",
+      source: { kind: "project" },
+      spec: sampleSpec({ tokens: sampleTokens({ "--brand": "#00ff00" }) }),
+    });
+    expect(invented.isError).toBe(true);
+    expect(invented.text).toContain("#00ff00");
+    const fine = await call("save_design_system", {
+      name: "Mine",
+      source: { kind: "project" },
+      spec: sampleSpec(),
+    });
+    expect(fine.isError).not.toBe(true);
+    expect(host.saves[0]?.request.source).toEqual({ kind: "project" });
+    // Refining the system it created keeps the creation's rules.
+    const refined = await call("save_design_system", {
+      spec: sampleSpec({ tokens: sampleTokens({ "--brand": "#00ff00" }) }),
+    });
+    expect(refined.isError).toBe(true);
+    expect(host.saves).toHaveLength(1);
+  });
+
+  it("changes an existing system only after reading it, on the version read, never creating by accident", async () => {
+    const { host, call } = setup(null);
+    host.systems = [systemDetail("acme", { name: "Acme", version: 3, createdAt: 77 })];
+    const unread = await call("save_design_system", { id: "acme", spec: sampleSpec() });
+    expect(unread.isError).toBe(true);
+    expect(unread.text).toContain("name must be");
+
+    const withBase = await call("save_design_system", {
+      id: "acme",
+      baseVersion: 3,
+      spec: sampleSpec(),
+    });
+    expect(withBase.isError).toBe(true);
+    expect(withBase.text).toContain("Read acme with read_design_system first");
+
+    // Creating over a taken id is the library's conflict, with the way out spelled out.
+    const taken = await call("save_design_system", { name: "Acme", spec: sampleSpec() });
+    expect(taken.isError).toBe(true);
+    expect(taken.text).toContain("conflict");
+    expect(taken.text).toContain("read it with read_design_system first");
+    expect(host.saves).toHaveLength(1);
+
+    await call("read_design_system", { id: "acme" });
+    const stale = await call("save_design_system", {
+      id: "acme",
+      baseVersion: 2,
+      spec: sampleSpec(),
+    });
+    expect(stale.isError).toBe(true);
+    expect(stale.text).toContain("baseVersion must be 3");
+    const changed = await call("save_design_system", {
+      id: "acme",
+      spec: sampleSpec({ tokens: sampleTokens({ "--accent": "#ff9d3a" }) }),
+    });
+    expect(changed.isError).not.toBe(true);
+    expect(host.saves[1]).toMatchObject({
+      id: "acme",
+      request: { baseVersion: 3, baseCreatedAt: 77 },
+    });
+    expect(host.saves[1]?.request.name).toBeUndefined();
+  });
+
+  it("attaches any system of the library, but never switches a project that carries another", async () => {
+    const { host, call } = setup(null);
+    host.systems = [systemDetail("sunset"), systemDetail("other")];
+    const attached = await call("attach_design_system", { id: "sunset" });
+    expect(attached.isError).not.toBe(true);
+    expect(host.attaches).toEqual(["sunset"]);
+    const switched = await call("attach_design_system", { id: "other" });
+    expect(switched.isError).toBe(true);
+    expect(switched.text).toContain("already carries");
+    expect(host.attaches).toEqual(["sunset"]);
   });
 });
