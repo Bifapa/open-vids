@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn only_the_secret_opens_the_internal_routes() {
         let (server, origin, dir) = spawn("auth");
-        server.record_open("alpha", &project(&dir, "alpha"));
+        server.record_open(&project(&dir, "alpha"));
         let secret = server.internal_secret().value().to_string();
         let token = server.token_for_test();
         let key = json_of(&call(&origin, "/internal/projects", &[(SECRET_HEADER, &secret)]).1)["projects"][0]["key"]
@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn the_secret_opens_nothing_outside_internal_and_the_token_nothing_inside() {
         let (server, origin, dir) = spawn("scope");
-        server.record_open("alpha", &project(&dir, "alpha"));
+        server.record_open(&project(&dir, "alpha"));
         let secret = server.internal_secret().value().to_string();
         let token = server.token_for_test();
         assert_ne!(secret, token);
@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn encoded_spellings_get_the_same_decision() {
         let (server, origin, dir) = spawn("encoded");
-        server.record_open("alpha", &project(&dir, "alpha"));
+        server.record_open(&project(&dir, "alpha"));
         let secret = server.internal_secret().value().to_string();
         let token = server.token_for_test();
         for path in [
@@ -366,7 +366,7 @@ mod tests {
     fn unknown_malformed_and_path_shaped_keys_are_404_never_a_lookup_by_path() {
         let (server, origin, dir) = spawn("keys");
         let alpha = project(&dir, "alpha");
-        server.record_open("alpha", &alpha);
+        server.record_open(&alpha);
         let secret = server.internal_secret().value().to_string();
         let auth = [(SECRET_HEADER, secret.as_str())];
 
@@ -394,7 +394,7 @@ mod tests {
     fn a_key_resolves_to_name_and_dir_and_a_vanished_folder_to_404() {
         let (server, origin, dir) = spawn("resolve");
         let alpha = project(&dir, "alpha");
-        server.record_open("alpha", &alpha);
+        server.record_open(&alpha);
         let secret = server.internal_secret().value().to_string();
         let auth = [(SECRET_HEADER, secret.as_str())];
 
@@ -421,9 +421,9 @@ mod tests {
         let old = project(&dir, "old");
         let gone = project(&dir, "gone");
         let fresh = project(&dir, "fresh");
-        server.record_open("old", &old);
-        server.record_open("gone", &gone);
-        server.record_open("fresh", &fresh);
+        server.record_open(&old);
+        server.record_open(&gone);
+        server.record_open(&fresh);
         server.set_last_opened_for_test(&old, 1_000);
         server.set_last_opened_for_test(&gone, 2_000);
         server.set_last_opened_for_test(&fresh, 3_000);
