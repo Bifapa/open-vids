@@ -14,6 +14,7 @@ import {
   parseCancelRun,
   parseCreateChat,
   parseDeleteChat,
+  parseUsageQuery,
   parseProjectTitleRequest,
   parseRevertTurn,
   parseSetJevApiKey,
@@ -51,6 +52,9 @@ import {
 } from "./serverHttp.js";
 import { defaultEnabledAgents, type AgentSettingsStore } from "./settings.js";
 import { FileChatStore, takeProjectOwnership } from "./store/index.js";
+import { UsageJournal } from "./usage/journal.js";
+import { usageEntriesOfTurn } from "./usage/entries.js";
+import { buildUsageReport } from "./usage/report.js";
 import { TurnRunner, type TurnRunnerOptions } from "./turns.js";
 
 export interface RuntimeAppOptions {
@@ -82,6 +86,7 @@ interface ProjectRuntime {
   scope: ProjectScope;
   store: FileChatStore;
   chats: ChatService;
+  usage: UsageJournal;
   turns: TurnRunner;
   /** Gives up this process's ownership of the project's chats. */
   release: () => void;
@@ -252,6 +257,28 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
   app.get(`${AGENT_RUNTIME_PREFIX}/chats`, (context) => {
     const { chats, turns } = context.get("project");
     return context.json({ chats: chats.list(), activeTurn: turns.activeTurn });
+  });
+
+  // What the project's agents used (tokens and cost), from the journal that outlives chats: slices total / by agent /
+  // by model / by chat, optionally for a period (`since`, `until` in epoch ms).
+  app.get(`${AGENT_RUNTIME_PREFIX}/usage`, async (context) => {
+    const parsed = parseUsageQuery(new URL(context.req.url).searchParams);
+    if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+    const { chats, turns, usage } = context.get("project");
+    // The running turn is read first: one that ends while the journal is read still counts, through its chat state.
+    const active = turns.activeTurn;
+    await chats.settleTurnHooks();
+    const journal = await usage.all();
+    const activeState = active ? chats.get(active.chatId) : null;
+    return context.json(
+      buildUsageReport({
+        journal,
+        live: active && activeState ? usageEntriesOfTurn(activeState, active.turnId) : [],
+        turnRunning: active !== null,
+        query: parsed.value,
+        chatTitles: new Map(chats.list().map((chat) => [chat.id, chat.title])),
+      }),
+    );
   });
 
   app.post(`${AGENT_RUNTIME_PREFIX}/chats`, async (context) => {
@@ -492,6 +519,7 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
       for (const result of runtimes) {
         if (result.status !== "fulfilled") continue;
         await result.value.turns.dispose();
+        await result.value.usage.drain();
         result.value.release();
       }
       await options.backend.dispose();
@@ -515,7 +543,12 @@ async function getProjectRuntime(
       const release = await takeProjectOwnership(scope.projectDir);
       try {
         const store = new FileChatStore(scope.projectDir);
-        const chats = await ChatService.open(scope, store, { now, ...(ids && { ids }) });
+        const usage = new UsageJournal(scope.projectDir, store);
+        const chats = await ChatService.open(scope, store, {
+          now,
+          ...(ids && { ids }),
+          onTurnEnded: (state, turnId) => usage.recordTurn(state, turnId),
+        });
         const turns = new TurnRunner(
           chats,
           options.backend,
@@ -524,8 +557,10 @@ async function getProjectRuntime(
           options.settings,
           turnOptions,
         );
+        // Rebuild a missing journal from the chat logs in the background; a failure is retried by the next use.
+        void usage.ready().catch(() => undefined);
         await turns.recoverCheckpoints();
-        return { scope, store, chats, turns, release };
+        return { scope, store, chats, usage, turns, release };
       } catch (error) {
         release();
         throw error;

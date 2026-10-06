@@ -80,6 +80,20 @@ export class FileChatStore {
     return parsed.loaded;
   }
 
+  /**
+   * A chat's log read as it is, without repairing it: a torn tail is ignored rather than truncated and the store's size
+   * bookkeeping is left alone. For readers that run beside the writer (usage recovery), which must never cut a line
+   * the writer is still appending.
+   */
+  async peek(chatId: string): Promise<LoadedChat> {
+    const file = join(chatDirectory(this.projectDir, chatId), "events.jsonl");
+    const contents = await readFile(file, "utf8").catch((error: unknown) => {
+      if (isMissing(error)) return "";
+      throw error;
+    });
+    return parseLog(file, contents).loaded;
+  }
+
   /** {@link load} without yielding: one chat's (compacted) log, read when something first asks for that chat. */
   loadSync(chatId: string): LoadedChat {
     const file = join(chatDirectory(this.projectDir, chatId), "events.jsonl");

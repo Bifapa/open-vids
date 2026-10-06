@@ -19,6 +19,7 @@ import {
   TitlebarSeparator,
 } from "./shell/TitlebarControls";
 import { ReportProblemButton } from "./shell/ReportProblemButton";
+import { UsageButton } from "./usage/UsageButton";
 import { Button, IconButton, OpenvidsLogo, Tooltip } from "./ui";
 import { StudioGear } from "./ui/StudioGear";
 import {
@@ -227,6 +228,7 @@ export function StudioHeader() {
           </Button>
         </Tooltip>
         <TitlebarSeparator />
+        <UsageButton projectId={projectId} />
         <Tooltip label={t("shell.header.settings")} side="bottom">
           <IconButton
             aria-label={t("shell.header.settings")}

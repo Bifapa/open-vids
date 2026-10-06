@@ -9,6 +9,7 @@ import {
   isQaAcceptResponse,
   isQaAcceptedList,
   isQaReport,
+  isUsageReport,
   isRecord,
   readErrorParams,
   isOAuthLoginState,
@@ -51,6 +52,8 @@ import {
   type SteerTurnResponse,
   type SubmitOAuthLoginInputRequest,
   type TestJevResponse,
+  type UsageQuery,
+  type UsageReport,
   type TurnSummary,
   type UpdateAgentSettingsRequest,
   type UpdateChatRequest,
@@ -203,6 +206,8 @@ export interface AgentClient {
   listQaAccepted(): Promise<QaAcceptedList>;
   /** Takes one issue back out of the intentional list; the list that remains. */
   removeQaAccepted(acceptedId: string): Promise<QaAcceptedList>;
+  /** What the project's agents used, from the runtime's journal (survives deleted chats); `query` bounds the period. */
+  getUsage(query: UsageQuery): Promise<UsageReport>;
   /** Same-origin URL of a project-relative render (`renders/<file>`). */
   renderFileUrl(renderPath: string): string;
   /** The project's start-from-chat intake, handed out once (Studio server); null when there is none. */
@@ -567,6 +572,13 @@ export function createAgentClient(
         buildProjectApiPath(projectId, `/qa/accepted/${enc(acceptedId)}`),
         isQaAcceptedList,
       ),
+    getUsage: ({ since, until }) => {
+      const params = new URLSearchParams();
+      if (since !== null) params.set("since", String(since));
+      if (until !== null) params.set("until", String(until));
+      const search = params.size > 0 ? `?${params.toString()}` : "";
+      return call("GET", `/usage${search}`, isUsageReport);
+    },
     renderFileUrl: (renderPath) =>
       buildProjectApiPath(projectId, `/renders/file/${enc(renderPath.replace(/^renders\//, ""))}`),
     claimIntake: async () => {

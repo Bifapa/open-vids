@@ -24,6 +24,11 @@ import { FileChatStore } from "./store/index.js";
 export interface ChatServiceOptions {
   now?: () => number;
   ids?: () => string;
+  /**
+   * Called after a turn's terminal event is applied (completed, failed, aborted — also when crash recovery closes a
+   * turn), with the chat as it stands. A failure never fails the event.
+   */
+  onTurnEnded?: (state: ChatState, turnId: string) => Promise<void>;
 }
 
 interface StoredChat {
@@ -48,6 +53,8 @@ export class ChatService {
   private readonly projectListeners = new Set<(event: ProjectEvent) => void>();
   private readonly now: () => number;
   private readonly ids: () => string;
+  private readonly onTurnEnded: ChatServiceOptions["onTurnEnded"];
+  private readonly turnHooks = new Set<Promise<void>>();
 
   private constructor(
     readonly scope: ProjectScope,
@@ -56,6 +63,7 @@ export class ChatService {
   ) {
     this.now = options.now ?? Date.now;
     this.ids = options.ids ?? randomUUID;
+    this.onTurnEnded = options.onTurnEnded;
   }
 
   static async open(
@@ -295,6 +303,15 @@ export class ChatService {
       if (this.eventTails.get(chatId) === settled) this.eventTails.delete(chatId);
     }
     if (isTurnTerminalEvent(emitted)) this.queueCompaction(chatId);
+    if (isTurnTerminalEvent(emitted) && this.onTurnEnded) {
+      // Not awaited: the turn's end must not wait on the journal's disk. `settleTurnHooks` and `drain` do.
+      const state = this.chats.get(chatId)?.state;
+      if (state) {
+        const hook = this.onTurnEnded(state, emitted.turn.id).catch(() => undefined);
+        this.turnHooks.add(hook);
+        void hook.finally(() => this.turnHooks.delete(hook));
+      }
+    }
     return emitted;
   }
 
@@ -359,10 +376,15 @@ export class ChatService {
    * test teardown drain before deleting directories, so no append can still be in flight when its directory goes.
    */
   async drain(): Promise<void> {
-    while (this.eventTails.size > 0) {
-      await Promise.allSettled([...this.eventTails.values()]);
+    while (this.eventTails.size > 0 || this.turnHooks.size > 0) {
+      await Promise.allSettled([...this.eventTails.values(), ...this.turnHooks]);
     }
     await this.store.drain();
+  }
+
+  /** Waits for the `onTurnEnded` calls in flight (a report that follows a turn's end must include its lines). */
+  async settleTurnHooks(): Promise<void> {
+    await Promise.allSettled([...this.turnHooks]);
   }
 
   subscribeChat(

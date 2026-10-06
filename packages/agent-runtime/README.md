@@ -61,6 +61,25 @@ recovered from project history.
 - **One owner per project.** A runtime process takes `<project>/.hyperframes/agent/owner.pid` (pid plus the process start, a
   dead owner's file is taken over) before it serves the project's chats; another live process gets `409
 project_served_elsewhere` instead of writing events with the same sequence numbers. `src/processLock.ts` is the lock.
+- **Project usage journal.** `<project>/.hyperframes/agent/usage.jsonl` (`src/usage/`) records what the project's agents
+  used, because the chats cannot: a deleted chat takes its usage along and a copied chat doubles it. When a turn ends
+  (`completed`, `failed`, `aborted`, and `interrupted` when crash recovery closes it) `ChatService` calls
+  `UsageJournal.recordTurn`, which appends one line per agent: the Director (`runId: null`) and each run, with the chat's id
+  and title, `turnId`, `runId`, agent, model, `UsageTotals` and the turn's end time (`UsageEntry`, `agent-protocol/src/usageReport.ts`).
+  A run the runtime started itself (the Vision run of a Render QA pass, `titleCode: render_qa_pass`) is marked
+  `internal: "render_qa"` and reported on its own row, like Jev. A line is one append (a half-written last line is skipped on
+  read and cut off by a newline before the next append); the later line of a `turnId` + `runId` wins, so writing a turn again
+  never counts it twice, and a turn found in a copied chat counts once. With no journal (a project from before it, a copied
+  project) it is rebuilt once from the chat logs (`FileChatStore.peek`, which never repairs a log the writer may be appending
+  to) and written whole through a temp file and a rename; turns that started before the fork marker
+  (`agent/fork.json` `{forkedAt}`) belong to the original project and are skipped, so a fork starts from zero.
+  `GET /v1/usage?since=&until=` (epoch ms; through the gateway `…/agent/usage`) answers a `UsageReport`: total, by agent, by
+  model, by chat (deleted chats named by the title they had), plus what the running turn has used so far
+  (`live`). Costs are the providers' own: a null `cost` is never counted as zero (`UsageSlice.unpricedTokens` carries the
+  tokens without a cost, so a cost with `unpricedTokens > 0` is a lower bound and a null one is "tokens only"). Costs are
+  summed as whole nano-dollars so the parts add up to the total exactly. Nothing else in OpenVids prices work (speech is a
+  local Kokoro model, transcription is local, stock libraries are free; the title generated for a new project is not
+  metered), so Studio labels the figures "Agent costs".
 - `DELETE /chats/:chatId` goes through `FileChatStore.deleteChat` (log, summary and every agent's session directory).
 
 Global (per-user) agent settings — Director defaults, per-specialist defaults, Jev, Autonomy — live in

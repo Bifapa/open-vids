@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ProjectScope } from "../checkpointHost.js";
 import { ChatService } from "../chats.js";
 import { AgentSettingsStore } from "../settings.js";
+import { UsageJournal } from "../usage/journal.js";
 import { FileChatStore } from "../store/index.js";
 import { TurnRunner, type TurnRunnerOptions } from "../turns.js";
 import { FakeCheckpointHost } from "./index.js";
@@ -21,6 +22,7 @@ export interface RuntimeFixture {
   store: FileChatStore;
   settings: AgentSettingsStore;
   chats: ChatService;
+  usage: UsageJournal;
   turns: TurnRunner;
   backend: ScriptedAgentBackend;
   checkpoints: FakeCheckpointHost;
@@ -60,7 +62,12 @@ export async function createRuntimeFixture(
   const story = new FakeStoryHost();
   const research = new FakeResearchHost();
   const qa = new FakeQaHost();
-  const chats = await ChatService.open(scope, store, { now, ids });
+  const usage = new UsageJournal(projectDir, store);
+  const chats = await ChatService.open(scope, store, {
+    now,
+    ids,
+    onTurnEnded: (state, turnId) => usage.recordTurn(state, turnId),
+  });
   const turns = new TurnRunner(chats, backend, checkpoints, store, settings, {
     editing: () => editing,
     analysis: () => analysis,
@@ -79,6 +86,7 @@ export async function createRuntimeFixture(
     store,
     settings,
     chats,
+    usage,
     turns,
     backend,
     checkpoints,
@@ -98,6 +106,7 @@ export async function createRuntimeFixture(
       // `turns.dispose()` already drains, but belt and suspenders: the directory must only go once no store write
       // is still in flight (Windows fails the removal, or the write, when they overlap).
       await chats.drain();
+      await usage.drain();
       await rm(root, { recursive: true, force: true });
     },
   };

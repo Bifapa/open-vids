@@ -282,3 +282,48 @@ describe("run cancel and question routes", () => {
     }
   });
 });
+
+describe("GET /usage", () => {
+  it("reports what the project's agents used, keeps it when the chat is deleted, and rejects a bad period", async () => {
+    const h = await harness();
+    try {
+      h.backend.promptScript = async (input) => {
+        input.onEvent({
+          type: "usage",
+          usage: {
+            input: 80,
+            output: 20,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 100,
+            cost: 0.25,
+          },
+        });
+        return "completed";
+      };
+      const chatId = String((await h.call("POST", "/chats", {})).body.id);
+      await h.call("POST", `/chats/${chatId}/turns`, { prompt: "Tighten the intro" });
+      await eventually(() => turnEnded(h, chatId), "the turn to end");
+
+      const first = await h.call("GET", "/usage");
+      expect(first.status).toBe(200);
+      expect(first.body).toMatchObject({
+        live: false,
+        total: { usage: { totalTokens: 100, cost: 0.25 }, unpricedTokens: 0 },
+        byAgent: [{ agent: "director", internal: false }],
+        byChat: [{ chatId, deleted: false }],
+      });
+
+      await h.call("DELETE", `/chats/${chatId}`);
+      const after = await h.call("GET", "/usage");
+      expect(after.body.total).toEqual(first.body.total);
+      expect(after.body.byChat).toMatchObject([{ chatId, deleted: true }]);
+
+      const future = await h.call("GET", `/usage?since=${Date.now() + 60_000}`);
+      expect(future.body.total).toMatchObject({ usage: { totalTokens: 0, cost: null } });
+      expect((await h.call("GET", "/usage?since=soon")).status).toBe(400);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});

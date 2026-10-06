@@ -12,4 +12,5 @@ export * from "./research.js";
 export * from "./website.js";
 export * from "./qa.js";
 export * from "./usage.js";
+export * from "./usageReport.js";
 export * from "./frames.js";

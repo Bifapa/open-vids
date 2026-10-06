@@ -1,6 +1,7 @@
 import { vi, type Mock } from "vitest";
 import {
   DEFAULT_EXECUTION_QUALITY,
+  emptyUsage,
   findAcceptedQaIssue,
   qaCounts,
 } from "@hyperframes/agent-protocol";
@@ -574,6 +575,14 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
       accepted.splice(index, 1);
       return { items: [...accepted] };
     }),
+    getUsage: vi.fn(async ({ since, until }) => ({
+      period: { since, until },
+      total: { usage: emptyUsage(), unpricedTokens: 0 },
+      byAgent: [],
+      byModel: [],
+      byChat: [],
+      live: false,
+    })),
     renderFileUrl: vi.fn(
       (renderPath) => `/api/projects/p1/renders/file/${renderPath.replace(/^renders\//, "")}`,
     ),
