@@ -202,6 +202,10 @@ export type EditOperation =
   /** Place a project asset (video, image or audio) on the timeline. */
   | {
       op: "add_clip";
+      /**
+       * The project asset. With `voiceLine` the asset comes from the line's selected take and this field is
+       * ignored (the parser fills it with an empty string when it is omitted).
+       */
       asset: string;
       start: number;
       track: number;
@@ -217,6 +221,12 @@ export type EditOperation =
       fadeIn?: number;
       fadeOut?: number;
       provenance?: Partial<ClipProvenance>;
+      /**
+       * Place a voiceover line: the server reads `.hyperframes/voice/takes.json` and uses the line's selected take
+       * (`asset` = its file, `mediaStart` = its start, `duration` = its length unless given). The clip is stamped
+       * `data-ov-voice-line` and joins the `voiceover` audio group (created when missing).
+       */
+      voiceLine?: string;
     }
   /**
    * Place several ranges of one video/audio source back to back on a track (a rough cut). Each range becomes one

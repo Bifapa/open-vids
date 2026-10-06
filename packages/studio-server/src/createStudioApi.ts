@@ -26,6 +26,8 @@ import { registerAppPreferencesRoutes } from "./routes/appPreferences.js";
 import { registerActivityRoutes } from "./routes/activity.js";
 import { registerDesignRoutes } from "./routes/design.js";
 import { registerProjectDesignRoutes } from "./routes/projectDesign.js";
+import { registerVoiceRoutes } from "./routes/voice.js";
+import { registerProjectVoiceRoutes } from "./routes/projectVoice.js";
 
 /**
  * Create a Hono sub-app with all studio API routes.
@@ -67,6 +69,8 @@ export function createStudioApi(
   registerCrossProjectRoutes(api, adapter);
   const designLibrary = registerDesignRoutes(api, adapter);
   registerProjectDesignRoutes(api, adapter, designLibrary);
+  const voiceEngine = registerVoiceRoutes(api, adapter);
+  registerProjectVoiceRoutes(api, adapter, voiceEngine);
   const qa = registerQaRoutes(api, adapter, analysis);
   options.shutdownSignal?.addEventListener(
     "abort",

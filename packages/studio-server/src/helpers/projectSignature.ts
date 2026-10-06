@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
-import { ASSET_RANGES_PATH } from "@hyperframes/agent-protocol";
+import { ASSET_RANGES_PATH, VOICE_SCRIPT_PATH } from "@hyperframes/agent-protocol";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 
 const SIGNATURE_TEXT_EXTENSIONS = new Set([
@@ -190,12 +190,14 @@ function collectProjectFiles(normalizedProjectDir: string): ProjectSignatureFile
  * Graph (`.hyperframes/story/graph.json`) and its timeline sync ledger (`.hyperframes/story/sync.json`), the
  * research provenance ledger (`.hyperframes/research/provenance.json`), and the user's picked asset fragments
  * (`.hyperframes/media/ranges.json`), which agent turns and the ranges route write and "Revert this turn" must roll
- * back together with the composition.
+ * back together with the composition. The voiceover takes (`.hyperframes/voice/takes.json`) join them: the generated
+ * audio lives under `assets/voice/`, which the signature already covers.
  */
 export const HISTORY_ONLY_TRACKED_PATHS = [
   ".hyperframes/story/graph.json",
   ".hyperframes/story/sync.json",
   ".hyperframes/research/provenance.json",
+  VOICE_SCRIPT_PATH,
   ASSET_RANGES_PATH,
 ] as const;
 

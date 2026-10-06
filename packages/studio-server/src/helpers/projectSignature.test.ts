@@ -89,6 +89,12 @@ describe("history-only tracked paths", () => {
     expect(affects(".hyperframes/media/ranges.json")).toBe(false);
     expect(tracksHistory(".hyperframes/media/other.json")).toBe(false);
     expect(tracksHistory("assets/research/ocean-1a2b3c4d.mp4")).toBe(true);
+    // Voiceover takes roll back with a turn; the scratch folder beside them does not, the audio is under assets/.
+    expect(tracksHistory(".hyperframes/voice/takes.json")).toBe(true);
+    expect(tracksHistory(".hyperframes/voice")).toBe(true);
+    expect(affects(".hyperframes/voice/takes.json")).toBe(false);
+    expect(tracksHistory(".hyperframes/voice/tmp/1-abcd1234.wav")).toBe(false);
+    expect(tracksHistory("assets/voice/hello-1a2b3c4d.wav")).toBe(true);
   });
 
   it("list the graph for project history but leave it out of the signature", () => {

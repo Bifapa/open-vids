@@ -1,0 +1,119 @@
+{
+  "schema": "openvids.voice-pricing/1",
+  "checkedAt": "2026-10-07",
+  "rates": [
+    {
+      "providerId": "gemini",
+      "model": "gemini-3.8-flash-tts",
+      "until": "2027-01-01",
+      "usdPerMinute": 0.0135,
+      "usdPer1MInputTokens": 0.5,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "providerId": "gemini",
+      "model": "gemini-3.8-flash-tts",
+      "from": "2027-01-01",
+      "usdPerMinute": 0.027,
+      "usdPer1MInputTokens": 1,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "providerId": "gemini",
+      "model": "gemini-3.8-flash-lite-tts",
+      "until": "2027-01-01",
+      "usdPerMinute": 0.009,
+      "usdPer1MInputTokens": 0.5,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "providerId": "gemini",
+      "model": "gemini-3.8-flash-lite-tts",
+      "from": "2027-01-01",
+      "usdPerMinute": 0.018,
+      "usdPer1MInputTokens": 1,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "providerId": "gemini",
+      "model": "gemini-3.1-flash-tts-preview",
+      "usdPerMinute": 0.03,
+      "usdPer1MInputTokens": 1,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "providerId": "gemini",
+      "model": "gemini-2.5-flash-preview-tts",
+      "usdPerMinute": 0.015,
+      "usdPer1MInputTokens": 0.5,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "providerId": "gemini",
+      "model": "gemini-2.5-pro-preview-tts",
+      "usdPerMinute": 0.03,
+      "usdPer1MInputTokens": 1,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "providerId": "openai",
+      "model": "tts-1-hd",
+      "usdPer1MChars": 30,
+      "source": "https://developers.openai.com/api/docs/pricing"
+    },
+    {
+      "providerId": "openai",
+      "model": "tts-1",
+      "usdPer1MChars": 15,
+      "source": "https://developers.openai.com/api/docs/pricing"
+    },
+    {
+      "providerId": "openai",
+      "model": "gpt-4o-mini-tts*",
+      "usdPer1MInputTokens": 0.6,
+      "source": "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts"
+    },
+    {
+      "providerId": "elevenlabs",
+      "model": "eleven_v4_turbo",
+      "usdPer1kChars": 0.04,
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "providerId": "elevenlabs",
+      "model": "eleven_v4",
+      "usdPer1kChars": 0.08,
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "providerId": "elevenlabs",
+      "model": "eleven_v3_conversational",
+      "usdPer1kChars": 0.04,
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "providerId": "elevenlabs",
+      "model": "eleven_v3",
+      "usdPer1kChars": 0.08,
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "providerId": "elevenlabs",
+      "model": "eleven_multilingual_v2",
+      "usdPer1kChars": 0.08,
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "providerId": "elevenlabs",
+      "model": "eleven_flash*",
+      "usdPer1kChars": 0.04,
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "providerId": "elevenlabs",
+      "model": "eleven_turbo*",
+      "usdPer1kChars": 0.04,
+      "source": "https://elevenlabs.io/pricing/api"
+    }
+  ]
+}

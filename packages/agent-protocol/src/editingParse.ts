@@ -28,6 +28,14 @@ import {
 import { MORE_OPERATION_KEYS, readMoreOperation } from "./editingParseMore.js";
 import { isRecord } from "./validate.js";
 
+const VOICE_LINE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+function readVoiceLineId(value: unknown): string | { ok: false; message: string } {
+  return typeof value === "string" && VOICE_LINE_ID.test(value)
+    ? value
+    : { ok: false, message: "voiceLine must be 1–64 letters, digits, - or _" };
+}
+
 const ALLOWED_KEYS: Record<EditOperationName, readonly string[]> = {
   add_clip: [
     "asset",
@@ -42,6 +50,7 @@ const ALLOWED_KEYS: Record<EditOperationName, readonly string[]> = {
     "fadeIn",
     "fadeOut",
     "provenance",
+    "voiceLine",
   ],
   add_sequence: [
     "asset",
@@ -94,7 +103,11 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
   let op: EditOperation | null = null;
   switch (name) {
     case "add_clip": {
-      const asset = need(readString(raw.asset, "asset", EDIT_LIMITS.pathChars));
+      const voiceLine = maybe("voiceLine", readVoiceLineId);
+      const asset =
+        voiceLine !== undefined && raw.asset === undefined
+          ? ""
+          : need(readString(raw.asset, "asset", EDIT_LIMITS.pathChars));
       const start = time("start");
       const onTrack = track();
       const duration = optTime("duration", true);
@@ -121,6 +134,7 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
           ...(fadeIn !== undefined && { fadeIn }),
           ...(fadeOut !== undefined && { fadeOut }),
           ...(stamp !== undefined && { provenance: stamp }),
+          ...(voiceLine !== undefined && { voiceLine }),
         };
       break;
     }

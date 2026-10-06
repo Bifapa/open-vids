@@ -38,6 +38,7 @@ import {
   stampProvenance,
   type CompositionModel,
 } from "./timeline.js";
+import { resolveVoiceLine, voiceClipAttributes, withVoiceoverGroup } from "./voiceLine.js";
 
 /**
  * An explicit frame wins; an explicit fit fills the canvas. Otherwise footage (video) fills the frame, scaled to fit,
@@ -67,8 +68,21 @@ export function clipGeometry(
 export async function addClip(
   env: EditEnv,
   batch: Batch,
-  op: Extract<EditOperation, { op: "add_clip" }>,
+  requested: Extract<EditOperation, { op: "add_clip" }>,
 ): Promise<EditOperationResult> {
+  // A voice line is placed from its selected take; the take's range is the clip's default.
+  const voice =
+    requested.voiceLine === undefined
+      ? null
+      : resolveVoiceLine(env.project.dir, requested.voiceLine);
+  const op = voice
+    ? {
+        ...requested,
+        asset: voice.file,
+        mediaStart: requested.mediaStart ?? voice.start,
+        duration: requested.duration ?? voice.end - voice.start,
+      }
+    : requested;
   const assetPath = resolveProjectRelative("index.html", op.asset);
   const kind = assetPath === null ? null : getTimelineAssetKind(assetPath);
   const facts = assetPath === null ? null : await env.facts.read(env.project.dir, assetPath);
@@ -161,9 +175,13 @@ export async function addClip(
     muted: isMedia ? op.muted : undefined,
     fadeIn: op.fadeIn,
     fadeOut: op.fadeOut,
-    attributes: provenanceAttributes(op.provenance),
+    attributes: {
+      ...provenanceAttributes(op.provenance),
+      ...(voice !== null && voiceClipAttributes(voice.lineId)),
+    },
   });
-  batch.html = insertTimelineAssetIntoSource(serializeModel(model), markup);
+  const inserted = insertTimelineAssetIntoSource(serializeModel(model), markup);
+  batch.html = voice === null ? inserted : withVoiceoverGroup(inserted);
   return { op: op.op, clipId: hfId, newClipId: null };
 }
 

@@ -124,14 +124,15 @@ function watchProjectTree(
     }
     for (const child of entries) descend(child);
   };
-  // `.hyperframes/` itself holds the two manifests the signature reads and `.hyperframes/story/` the history-tracked
-  // Story Graph; nothing else below it matters.
+  // `.hyperframes/` itself holds the two manifests the signature reads, `.hyperframes/story/` the history-tracked
+  // Story Graph and `.hyperframes/voice/` the history-tracked voiceover takes; nothing else below it matters.
   const descend = (dir: string) => {
     const rel = relative(projectDir, dir);
     if (
       shouldWatchProjectFile(rel) ||
       rel === ".hyperframes" ||
-      rel === join(".hyperframes", "story")
+      rel === join(".hyperframes", "story") ||
+      rel === join(".hyperframes", "voice")
     ) {
       watchDirectory(dir);
     }
@@ -166,7 +167,8 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
       const historyDirEvent =
         relativePath === ".hyperframes" ||
         relativePath === join(".hyperframes", "story") ||
-        relativePath === join(".hyperframes", "research");
+        relativePath === join(".hyperframes", "research") ||
+        relativePath === join(".hyperframes", "voice");
       if (!shouldWatchProjectFile(relativePath) && !historyDirEvent) {
         if (!affectsProjectHistory(projectDir, join(projectDir, relativePath))) return;
       }
