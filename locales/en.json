@@ -4467,6 +4467,7 @@
   "activity.context_compaction": "Summarizing the conversation to free up context",
   "activity.inspecting_composition": "{count, plural, one {Looking at # frame of the composition} other {Looking at # frames of the composition}}",
   "activity.request_input": "Asking you a question",
+  "activity.importing_from_project": "{count, plural, one {Copying # file from another project} other {Copying # files from another project}}",
   "activity.reading_analysis_section": "Reading the analysis · {section, select, speakers {speakers} silence {silence} shots {shots} takes {takes} segments {segments} vision {visual notes} cuts {cuts} other {{section}}}",
   "activity.planning_cut": "Planning the cut",
   "activity.planning_cut_labeled": "Planning the cut · {label}",

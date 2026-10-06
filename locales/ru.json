@@ -4467,6 +4467,7 @@
   "activity.context_compaction": "Сжатие переписки, чтобы освободить контекст",
   "activity.inspecting_composition": "{count, plural, one {Просмотр # кадра композиции} other {Просмотр # кадров композиции}}",
   "activity.request_input": "Вопрос к вам",
+  "activity.importing_from_project": "{count, plural, one {Копирование # файла из другого проекта} other {Копирование # файлов из другого проекта}}",
   "activity.reading_analysis_section": "Чтение анализа · {section, select, speakers {дикторы} silence {тишина} shots {планы} takes {дубли} segments {сегменты} vision {визуальные заметки} cuts {склейки} other {{section}}}",
   "activity.planning_cut": "Планирование монтажа",
   "activity.planning_cut_labeled": "Планирование монтажа · {label}",
