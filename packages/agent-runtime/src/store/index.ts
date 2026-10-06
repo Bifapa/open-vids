@@ -91,7 +91,7 @@ export class FileChatStore {
       if (isMissing(error)) return "";
       throw error;
     });
-    return parseLog(file, contents).loaded;
+    return parseLog(file, contents, readForkedAt(this.projectDir)).loaded;
   }
 
   /** {@link load} without yielding: one chat's (compacted) log, read when something first asks for that chat. */
