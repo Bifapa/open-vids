@@ -121,6 +121,7 @@
   "home.error.unknown": "unknown error",
   "home.toast.duplicated": "Duplicated “{name}” as “{copy}”.",
   "home.toast.forkCancelled": "Fork of “{name}” cancelled.",
+  "home.toast.forkContinues": "Lost touch with the fork of “{name}”. It keeps going in the background and will appear in Recent when it is done.",
   "home.toast.removed": "“{name}” removed from Recent. Files on disk are untouched.",
   "home.toast.relinked": "Relinked “{name}” to <path>{path}</path>",
   "home.toast.trashed": "Moved “{name}” to the Trash.",

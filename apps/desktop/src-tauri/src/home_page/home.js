@@ -1014,10 +1014,14 @@
   /* Fork: a copy with lineage, made in the background (a project can be gigabytes). The page shows progress with
      Cancel, then opens the fork. */
   let forkTimer = null,
-    forkOverlay = null;
-  function paintForking(st, p) {
-    if (!forkOverlay) return;
-    const pct = st.total > 0 ? Math.min(100, Math.floor((st.done / st.total) * 100)) : 0;
+    forkOverlay = null,
+    forkBar = null;
+  /* The card is built once: the poll only moves the bar and the label, so the Cancel button keeps its focus,
+     its pressed state and its disabled state between ticks. */
+  function buildForking(p) {
+    forkOverlay = document.createElement("div");
+    forkOverlay.className = "opening";
+    forkOverlay.setAttribute("role", "status");
     forkOverlay.innerHTML =
       '<div class="opening-card fork-card"><div class="fork-head"><i class="spinner"></i><span>' +
       OVI18N.rich(
@@ -1025,20 +1029,30 @@
         { name: p.name },
         { name: (inner) => '<span class="name">' + inner + "</span>" },
       ) +
-      '</span></div><div class="fork-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' +
-      pct +
-      '"><i style="width:' +
-      pct +
-      '%"></i></div><div class="fork-foot"><span class="fork-pct">' +
-      th("home.fork.progress", { done: formatBytes(st.done), total: formatBytes(st.total) }) +
-      '</span><button class="link" type="button" data-fork-cancel>' +
+      '</span></div><div class="fork-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i style="width:0%"></i></div><div class="fork-foot"><span class="fork-pct"></span><button class="link" type="button" data-fork-cancel>' +
       th("common.cancel") +
       "</button></div></div>";
+    forkBar = forkOverlay.querySelector(".fork-bar");
     const cancelBtn = forkOverlay.querySelector("[data-fork-cancel]");
     cancelBtn.onclick = () => {
       cancelBtn.disabled = true;
-      api("/api/fork/cancel", {}).catch(fail("home.error.forkCancel"));
+      api("/api/fork/cancel", {}).catch((err) => {
+        cancelBtn.disabled = false;
+        fail("home.error.forkCancel")(err);
+      });
     };
+    win.appendChild(forkOverlay);
+    paintForking({ done: 0, total: 0 });
+  }
+  function paintForking(st) {
+    if (!forkOverlay) return;
+    const pct = st.total > 0 ? Math.min(100, Math.floor((st.done / st.total) * 100)) : 0;
+    forkBar.setAttribute("aria-valuenow", pct);
+    forkBar.firstElementChild.style.width = pct + "%";
+    forkOverlay.querySelector(".fork-pct").textContent = OVI18N.t("home.fork.progress", {
+      done: formatBytes(st.done),
+      total: formatBytes(st.total),
+    });
   }
   function hideForking() {
     clearInterval(forkTimer);
@@ -1046,21 +1060,26 @@
     S.opening = null;
     if (forkOverlay) {
       forkOverlay.remove();
-      forkOverlay = null;
+      forkOverlay = forkBar = null;
     }
   }
+  /* A poll that fails is not a failed fork: the copy runs in the server and the next poll usually answers. After
+     this many in a row the page stops waiting, says the fork goes on, and finds it again in Recent (and, after a
+     reload, through /api/fork/state). */
+  const FORK_POLL_FAILURES = 10;
   function watchFork(p, at) {
     S.opening = true;
-    forkOverlay = document.createElement("div");
-    forkOverlay.className = "opening";
-    forkOverlay.setAttribute("role", "status");
-    win.appendChild(forkOverlay);
-    paintForking({ done: 0, total: 0 }, p);
+    buildForking(p);
     clearInterval(forkTimer);
+    let failures = 0,
+      inFlight = false;
     forkTimer = setInterval(() => {
+      if (inFlight) return;
+      inFlight = true;
       api("/api/fork/state")
         .then((st) => {
-          if (st.phase === "copying") return paintForking(st, p);
+          failures = 0;
+          if (st.phase === "copying") return paintForking(st);
           hideForking();
           if (st.phase === "done" && st.project) {
             load(() => {
@@ -1069,7 +1088,7 @@
             });
           } else if (st.phase === "cancelled") {
             toast(th("home.toast.forkCancelled", { name: p.name }));
-          } else {
+          } else if (st.phase === "failed") {
             toast(
               th("home.error.fork", {
                 name: p.name,
@@ -1081,8 +1100,13 @@
           }
         })
         .catch(() => {
+          if (++failures < FORK_POLL_FAILURES) return;
           hideForking();
-          fail("home.error.fork", { name: p.name })(new Error(tr("home.error.unknown")));
+          toast(th("home.toast.forkContinues", { name: p.name }));
+          load();
+        })
+        .finally(() => {
+          inFlight = false;
         });
     }, 300);
   }

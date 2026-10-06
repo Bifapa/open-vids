@@ -293,7 +293,12 @@ function parseLog(file: string, contents: string, forkedAt: number | null): Pars
   }
   // A copied project keeps its chats, not the history behind their checkpoints (see forkMarker.ts).
   const shown = forkedAt === null ? events : retireCheckpointsBefore(events, forkedAt);
-  return { loaded: { events: shown, state: foldChatEvents(shown), bytes }, torn, bytes };
+  const folded = foldChatEvents(shown);
+  // A dropped event still used its number: the next event must follow the highest one on disk, or it repeats a
+  // number the reader skips.
+  const lastOnDisk = events.reduce((highest, event) => Math.max(highest, event.seq), 0);
+  const state = folded && folded.lastSeq < lastOnDisk ? { ...folded, lastSeq: lastOnDisk } : folded;
+  return { loaded: { events: shown, state, bytes }, torn, bytes };
 }
 
 function isMissing(error: unknown): boolean {

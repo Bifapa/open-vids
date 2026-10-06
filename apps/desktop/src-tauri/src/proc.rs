@@ -40,7 +40,7 @@ use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
 #[cfg(windows)]
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, HANDLE};
 #[cfg(windows)]
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -49,7 +49,7 @@ use windows_sys::Win32::System::JobObjects::{
 };
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{
-    CREATE_NO_WINDOW, GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    CREATE_NO_WINDOW, GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
     PROCESS_SET_QUOTA, PROCESS_TERMINATE, TerminateProcess,
 };
 
@@ -188,6 +188,72 @@ pub fn is_alive(pid: u32) -> bool {
             // 259 reads alive. No OpenVids child exits 259.
             ok != 0 && code == STILL_ACTIVE
         }
+    }
+}
+
+/// Windows start keys are epoch milliseconds behind this prefix (`processLock.ts`).
+const WINDOWS_START_PREFIX: &str = "win-ms:";
+/// How far two Windows starts of one process may differ: a process's own start is computed from its uptime on the
+/// Node side, the other side reads the real creation time.
+const WINDOWS_START_TOLERANCE_MS: u64 = 10_000;
+
+/// When the process `pid` started, in the text form `processLock.ts` (`processStartKey`) writes into a lock file:
+/// `ps -o lstart=` (TZ and locale pinned) on macOS, `<boot id>:<start ticks>` on Linux, `win-ms:<epoch ms>` on
+/// Windows. `None` when the process does not exist, may not be queried, or the platform cannot tell.
+pub fn start_key(pid: u32) -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        // The command name sits in parentheses and may hold spaces; starttime is the 20th field after it.
+        let after = stat.get(stat.rfind(')')? + 2..)?;
+        let ticks = after.split(' ').nth(19)?;
+        let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+        Some(format!("{}:{ticks}", boot.trim()))
+    }
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        let output = Command::new("ps")
+            .args(["-o", "lstart=", "-p", &pid.to_string()])
+            .env("TZ", "UTC")
+            .env("LC_ALL", "C")
+            .output()
+            .ok()?;
+        let text = String::from_utf8(output.stdout).ok()?;
+        let text = text.trim();
+        (output.status.success() && !text.is_empty()).then(|| text.to_string())
+    }
+    #[cfg(windows)]
+    {
+        // SAFETY: the temporary handle is closed on the single path that opens it.
+        unsafe {
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if process.is_null() {
+                return None;
+            }
+            let (mut created, mut exited, mut kernel, mut user) =
+                (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
+            let ok = GetProcessTimes(process, &mut created, &mut exited, &mut kernel, &mut user);
+            CloseHandle(process);
+            if ok == 0 {
+                return None;
+            }
+            // 100 ns ticks since 1601-01-01 → epoch milliseconds.
+            let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+            let ms = ticks.checked_sub(116_444_736_000_000_000)? / 10_000;
+            Some(format!("{WINDOWS_START_PREFIX}{ms}"))
+        }
+    }
+}
+
+fn windows_start_ms(key: &str) -> Option<u64> {
+    key.strip_prefix(WINDOWS_START_PREFIX)?.parse().ok()
+}
+
+/// Whether two start keys name one start: equal text, or on Windows within the tolerance.
+pub fn same_start(a: &str, b: &str) -> bool {
+    match (windows_start_ms(a), windows_start_ms(b)) {
+        (Some(x), Some(y)) => x.abs_diff(y) <= WINDOWS_START_TOLERANCE_MS,
+        _ => a == b,
     }
 }
 
@@ -379,6 +445,23 @@ mod tests {
         let pid = child.id();
         let _ = child.wait();
         pid
+    }
+
+    #[test]
+    fn a_process_start_is_stable_and_windows_starts_match_within_the_tolerance() {
+        let me = std::process::id();
+        let start = start_key(me).expect("this process has a start");
+        assert_eq!(start_key(me).as_deref(), Some(start.as_str()));
+        assert!(same_start(&start, &start));
+        assert_eq!(start_key(dead_pid()), None);
+
+        assert!(same_start("win-ms:1000000", "win-ms:1009999"));
+        assert!(same_start("win-ms:1009999", "win-ms:1000000"));
+        assert!(!same_start("win-ms:1000000", "win-ms:1010001"));
+        // Other forms are compared as text; a Windows start is never equal to another form.
+        assert!(same_start("Tue Oct  6 18:00:00 2026", "Tue Oct  6 18:00:00 2026"));
+        assert!(!same_start("Tue Oct  6 18:00:00 2026", "Tue Oct  6 18:00:01 2026"));
+        assert!(!same_start("win-ms:1000000", "1000000"));
     }
 
     #[test]

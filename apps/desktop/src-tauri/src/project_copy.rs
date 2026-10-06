@@ -19,6 +19,7 @@
 //!   they are rebuilt on demand.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde_json::{json, Map, Value};
@@ -99,8 +100,12 @@ pub struct Copied {
 
 /// Name of the folder a copy is built in; the 16 hex digits are random.
 const TEMP_PREFIX: &str = ".openvids-fork-";
-/// Inside the temporary folder: who is building it.
+/// Inside the temporary folder, from its creation until the rename has published it: who is building it (pid and
+/// start). It is removed from the final folder afterwards; one a crash left there is never copied (`is_excluded`).
 const TEMP_MARKER: &str = ".openvids-fork.json";
+/// A temporary folder without a marker is younger than the copier's first write or a crash cut it short; it is swept
+/// only once it is this old, so a copy that is just starting (here or in another OpenVids process) is never taken.
+const MARKERLESS_GRACE: Duration = Duration::from_secs(10 * 60);
 /// The fork marker the agent runtime reads (`packages/agent-runtime/src/store/forkMarker.ts`).
 const FORK_MARKER: &str = ".hyperframes/agent/fork.json";
 
@@ -113,6 +118,9 @@ pub fn is_excluded(rel: &Path) -> bool {
     let Some(name) = parts.last() else {
         return false;
     };
+    if parts.len() == 1 && name == TEMP_MARKER {
+        return true;
+    }
     // Rendered output and the transcode cache sit at the root; the render engine's scratch and locks anywhere.
     if matches!(parts[0].as_str(), "renders" | ".transcode-cache")
         || name.ends_with(".lock.os")
@@ -441,7 +449,12 @@ fn build(
 ) -> Result<Copied, CopyError> {
     std::fs::write(
         temp.join(TEMP_MARKER),
-        json!({ "pid": std::process::id(), "source": src.to_string_lossy() }).to_string(),
+        json!({
+            "pid": std::process::id(),
+            "start": super::proc::start_key(std::process::id()),
+            "source": src.to_string_lossy(),
+        })
+        .to_string(),
     )?;
     copy_tree(src, temp, progress).map_err(|err| {
         if progress.cancelled() {
@@ -455,13 +468,18 @@ fn build(
     }
     write_fork_marker(temp)?;
     let uid = new_uid();
-    std::fs::remove_file(temp.join(TEMP_MARKER))?;
+    // The marker stays until the rename has published the folder: a sweep must never see the finished copy as
+    // abandoned.
     for _ in 0..1000 {
         let name = free_name(source_name, kind, parent);
         stamp(temp, &name, &uid, origin)?;
         let dest = parent.join(&name);
         match rename_noreplace(temp, &dest) {
-            Ok(()) => return Ok(Copied { name, dir: dest, uid }),
+            Ok(()) => {
+                // Best effort: a marker that stays is inert (it is not copied, and the folder is no temp name).
+                let _ = std::fs::remove_file(dest.join(TEMP_MARKER));
+                return Ok(Copied { name, dir: dest, uid });
+            }
             // Another copy took the name between the check and the rename: pick the next one.
             Err(_) if dest.exists() => continue,
             Err(err) => return Err(err.into()),
@@ -470,10 +488,29 @@ fn build(
     Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "no free name for the copy").into())
 }
 
-/// Remove copies a crash left behind: `.openvids-fork-<hex>` folders in `parents` whose builder is gone (no marker
-/// — the copy was complete and only the rename was missing — or a marker naming a dead process). A folder another
-/// running process is still building stays. Returns how many were removed.
+/// Remove copies a crash left behind: `.openvids-fork-<hex>` folders in `parents` whose builder is gone (a marker
+/// naming a process that no longer runs; a folder with no marker only once it is older than [`MARKERLESS_GRACE`]).
+/// A folder another running process is still building stays. Returns how many were removed.
 pub fn sweep_leftovers(parents: &[PathBuf]) -> usize {
+    sweep(parents, MARKERLESS_GRACE)
+}
+
+/// Whether the marker's process (pid and, when recorded, the start it had) still runs.
+fn builder_runs(marker: &Map<String, Value>) -> bool {
+    let Some(pid) = marker.get("pid").and_then(Value::as_u64).and_then(|pid| u32::try_from(pid).ok()) else {
+        return false;
+    };
+    if !super::proc::is_alive(pid) {
+        return false;
+    }
+    match (marker.get("start").and_then(Value::as_str), super::proc::start_key(pid)) {
+        // A pid that now belongs to another process (reused after a crash or reboot) is not the builder.
+        (Some(recorded), Some(now)) => super::proc::same_start(&now, recorded),
+        _ => true,
+    }
+}
+
+fn sweep(parents: &[PathBuf], markerless_grace: Duration) -> usize {
     let mut removed = 0;
     let mut seen: Vec<&PathBuf> = Vec::new();
     for parent in parents {
@@ -492,13 +529,16 @@ pub fn sweep_leftovers(parents: &[PathBuf]) -> usize {
             if !is_temp_name(&name) || !entry.file_type().is_ok_and(|t| t.is_dir()) {
                 continue;
             }
-            let builder = read_json_object(&path.join(TEMP_MARKER))
-                .and_then(|m| m.get("pid").and_then(Value::as_u64))
-                .and_then(|pid| u32::try_from(pid).ok());
-            if builder.is_some_and(super::proc::is_alive) {
-                continue;
-            }
-            if std::fs::remove_dir_all(&path).is_ok() {
+            let abandoned = match read_json_object(&path.join(TEMP_MARKER)) {
+                Some(marker) => !builder_runs(&marker),
+                None => entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|modified| modified.elapsed().ok())
+                    .is_some_and(|age| age >= markerless_grace),
+            };
+            if abandoned && std::fs::remove_dir_all(&path).is_ok() {
                 removed += 1;
             }
         }
@@ -527,11 +567,26 @@ pub enum Open {
 }
 
 /// The live process holding the agent's ownership lease (`.hyperframes/agent/owner.pid`, written by
-/// `takeProjectOwnership`: `<pid>` or `<pid> <start>`). A lease whose process is gone is stale.
+/// `takeProjectOwnership`: `<pid>` or `<pid> <start>`). A lease survives a hard kill, so a live pid alone proves
+/// nothing: it must also have started when the lease's writer did (`processLock.ts` `holds`). A lease whose process
+/// is gone, was replaced by an unrelated one that reuses the pid, or cannot be read is stale; a live process whose
+/// start cannot be told counts as the holder.
 fn lease_holder(dir: &Path) -> Option<u32> {
     let text = std::fs::read_to_string(dir.join(".hyperframes/agent/owner.pid")).ok()?;
-    let pid: u32 = text.split_whitespace().next()?.parse().ok()?;
-    super::proc::is_alive(pid).then_some(pid)
+    let text = text.trim_end_matches(['\r', '\n']);
+    let (pid, start) = match text.split_once(' ') {
+        Some((pid, start)) if !start.is_empty() => (pid, Some(start)),
+        Some(_) => return None,
+        None => (text, None),
+    };
+    let pid: u32 = pid.parse().ok()?;
+    if !super::proc::is_alive(pid) {
+        return None;
+    }
+    match (start, super::proc::start_key(pid)) {
+        (Some(recorded), Some(now)) if !super::proc::same_start(&now, recorded) => None,
+        _ => Some(pid),
+    }
 }
 
 /// The agent's work in the project makes a copy unsafe: a turn writes files and history while the copy reads them.
@@ -547,6 +602,7 @@ pub fn busy(dir: &Path, open: Open) -> Option<Busy> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proc;
 
     fn scratch(label: &str) -> PathBuf {
         let base = std::env::temp_dir().join(format!("openvids-copy-{label}-{}", std::process::id()));
@@ -750,6 +806,12 @@ mod tests {
         let marker = read_json(copied.dir.join(".hyperframes/agent/fork.json"));
         assert!(marker["forkedAt"].as_u64().unwrap() >= before);
         assert!(!src.join(".hyperframes/agent/fork.json").exists(), "the original has no marker");
+        assert!(!copied.dir.join(TEMP_MARKER).exists(), "the builder's marker is gone once the copy is published");
+        // A marker a crash left in a project is not copied into its forks.
+        write(src.join(TEMP_MARKER), "{}");
+        let again = copy_project(&src, Kind::Duplicate, &Progress::default()).unwrap();
+        assert!(!again.dir.join(TEMP_MARKER).exists());
+        std::fs::remove_file(src.join(TEMP_MARKER)).unwrap();
         // No history id: Studio mints the fork's own, so the original's undo entries are not shared.
         assert!(!copied.dir.join(".hyperframes/history-id").exists());
         let _ = std::fs::remove_dir_all(&base);
@@ -843,22 +905,40 @@ mod tests {
         // The builder crashed mid-copy.
         write(base.join(".openvids-fork-00000000000000aa").join(TEMP_MARKER), &marker(dead_pid));
         write(base.join(".openvids-fork-00000000000000aa/index.html"), "half");
-        // The copy was complete; the crash came between the marker's removal and the rename.
-        write(base.join(".openvids-fork-00000000000000bb/index.html"), "whole");
+        // No marker yet: a copy that is just starting, here or in another process (or one a crash cut at its very
+        // start).
+        write(base.join(".openvids-fork-00000000000000bb/index.html"), "starting");
+        // The builder's pid now belongs to an unrelated process (reused after a crash or a reboot).
+        let me = std::process::id();
+        let own_start = proc::start_key(me).expect("this process has a start");
+        let stale = if own_start.starts_with("win-ms:") { "win-ms:1000".to_string() } else { format!("{own_start} earlier") };
+        write(
+            base.join(".openvids-fork-00000000000000ee").join(TEMP_MARKER),
+            &json!({ "pid": me, "start": stale, "source": "x" }).to_string(),
+        );
+        write(base.join(".openvids-fork-00000000000000ee/index.html"), "half");
         // Another running process is still building this one.
         write(
             base.join(".openvids-fork-00000000000000cc").join(TEMP_MARKER),
-            &marker(std::process::id()),
+            &json!({ "pid": me, "start": own_start, "source": "x" }).to_string(),
         );
+        // Another running process, from before the start was recorded.
+        write(base.join(".openvids-fork-00000000000000ff").join(TEMP_MARKER), &marker(me));
         // Not ours: a user's folders that merely look similar.
         write(base.join(".openvids-fork-notahex/index.html"), "mine");
         write(base.join(".openvids-fork-00000000000000dd.bak/index.html"), "mine");
         write(base.join("Talk/index.html"), "mine");
 
         assert_eq!(sweep_leftovers(&[base.clone(), base.clone()]), 2);
-        assert!(!base.join(".openvids-fork-00000000000000aa").exists());
-        assert!(!base.join(".openvids-fork-00000000000000bb").exists());
+        assert!(!base.join(".openvids-fork-00000000000000aa").exists(), "a dead builder's copy goes");
+        assert!(!base.join(".openvids-fork-00000000000000ee").exists(), "a reused pid is not the builder");
+        assert!(base.join(".openvids-fork-00000000000000bb").exists(), "a young markerless copy stays");
         assert!(base.join(".openvids-fork-00000000000000cc").exists(), "a live build stays");
+        assert!(base.join(".openvids-fork-00000000000000ff").exists(), "a live build without a start stays");
+        // Once it is old enough nobody is about to write a marker into it.
+        assert_eq!(sweep(std::slice::from_ref(&base), Duration::ZERO), 1);
+        assert!(!base.join(".openvids-fork-00000000000000bb").exists());
+        assert!(base.join(".openvids-fork-00000000000000cc").exists());
         assert!(base.join(".openvids-fork-notahex/index.html").is_file());
         assert!(base.join(".openvids-fork-00000000000000dd.bak/index.html").is_file());
         assert!(base.join("Talk/index.html").is_file());
@@ -885,8 +965,18 @@ mod tests {
         assert_eq!(busy(&src, Open::No), None);
         // A live process holds the lease: it may be mid-turn and cannot be asked.
         let me = std::process::id();
-        write(src.join(".hyperframes/agent/owner.pid"), &format!("{me} Tue Oct  6 18:00:00 2026"));
-        assert_eq!(busy(&src, Open::No), Some(Busy::ServedElsewhere(me)));
+        let lease = src.join(".hyperframes/agent/owner.pid");
+        let start = proc::start_key(me).expect("this process has a start");
+        write(lease.clone(), &format!("{me} {start}"));
+        assert_eq!(busy(&src, Open::No), Some(Busy::ServedElsewhere(me)), "pid and start match");
+        write(lease.clone(), &me.to_string());
+        assert_eq!(busy(&src, Open::No), Some(Busy::ServedElsewhere(me)), "a lease without a start: the pid decides");
+        // The lease outlived its writer (hard kill) and an unrelated process took the pid: not a holder.
+        let stale = if start.starts_with("win-ms:") { "win-ms:1000".to_string() } else { format!("{start} earlier") };
+        write(lease.clone(), &format!("{me} {stale}"));
+        assert_eq!(busy(&src, Open::No), None, "a reused pid does not block a copy");
+        write(lease.clone(), &format!("{me} "));
+        assert_eq!(busy(&src, Open::No), None, "an unreadable lease is stale");
         // The app's own server answers for itself; the lease its runtime holds is no reason to refuse.
         assert_eq!(busy(&src, Open::Yes(Some(idle))), None);
         let _ = std::fs::remove_dir_all(&base);

@@ -121,6 +121,7 @@
   "home.error.unknown": "неизвестная ошибка",
   "home.toast.duplicated": "«{name}» продублирован как «{copy}».",
   "home.toast.forkCancelled": "Форк «{name}» отменён.",
+  "home.toast.forkContinues": "Связь с форком «{name}» потеряна. Он продолжается в фоне и появится в «Недавних проектах», когда закончится.",
   "home.toast.removed": "«{name}» убран из недавних. Файлы на диске не тронуты.",
   "home.toast.relinked": "«{name}» заново привязан к <path>{path}</path>",
   "home.toast.trashed": "«{name}» перемещён в Корзину.",

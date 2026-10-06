@@ -170,4 +170,38 @@ describe("a forked project's chats", () => {
     // What a client replaying the chat folds is the same.
     expect(checkpointOf([...service.events(CHAT)], "old")).toBeNull();
   });
+
+  it("keeps numbering after the highest event on disk when a dropped event was the last one", async () => {
+    const fixture = await createRuntimeFixture();
+    const dir = fixture.scope.projectDir;
+    // "Undo revert" on an old turn ended the original's log with a checkpoint update.
+    const log = chatLog([turn("old", 10, ready)]);
+    log.push({
+      type: "checkpoint.updated",
+      turnId: "old",
+      checkpoint: ready,
+      chatId: CHAT,
+      seq: log.length + 1,
+      ts: 99,
+    });
+    const highest = log.length;
+    for (const event of log) await fixture.store.append(event);
+    mkdirSync(join(dir, ".hyperframes", "agent"), { recursive: true });
+    writeFileSync(
+      join(dir, ".hyperframes", "agent", "fork.json"),
+      JSON.stringify({ forkedAt: 100 }),
+    );
+
+    const loaded = await fixture.store.load(CHAT);
+    expect(loaded.events.at(-1)?.seq).toBeLessThan(highest);
+    expect(loaded.state?.lastSeq).toBe(highest);
+    const peeked = await fixture.store.peek(CHAT);
+    expect(peeked.state?.lastSeq).toBe(highest);
+
+    const service = await ChatService.open(fixture.scope, fixture.store, { now: fixture.now });
+    const next = await service.update(CHAT, { title: "renamed" });
+    expect(next?.title).toBe("renamed");
+    expect(service.get(CHAT)?.lastSeq).toBe(highest + 1);
+    expect(service.events(CHAT).at(-1)?.seq).toBe(highest + 1);
+  });
 });
