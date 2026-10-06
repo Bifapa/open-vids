@@ -576,8 +576,9 @@ export function createAgentClient(
       const params = new URLSearchParams();
       if (since !== null) params.set("since", String(since));
       if (until !== null) params.set("until", String(until));
-      const search = params.size > 0 ? `?${params.toString()}` : "";
-      return call("GET", `/usage${search}`, isUsageReport);
+      // `URLSearchParams.size` is WebKit 17+; the app's minimum macOS ships Safari 16.
+      const query = params.toString();
+      return call("GET", query ? `/usage?${query}` : "/usage", isUsageReport);
     },
     renderFileUrl: (renderPath) =>
       buildProjectApiPath(projectId, `/renders/file/${enc(renderPath.replace(/^renders\//, ""))}`),

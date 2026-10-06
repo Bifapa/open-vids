@@ -11,11 +11,15 @@ import { sameValue } from "../store/compact.js";
 import { readForkedAt } from "../store/forkMarker.js";
 import { usageEntriesOfTurn } from "./entries.js";
 
-/** Where the journal reads the chat logs from when it has to be rebuilt. */
+/** Where the journal reads the chat logs from when it has to be rebuilt or reconciled. */
 export interface UsageLogSource {
   listChatIds(): Promise<string[]>;
   /** A chat's log as it is, without repairing it (the writer may be appending). */
   peek(chatId: string): Promise<{ state: ChatState | null }>;
+  /** The stored summary when it still describes the chat's log (null otherwise: read the log). */
+  readSummary(
+    chatId: string,
+  ): Promise<{ chat: { updatedAt: number }; recoverable: boolean } | null>;
 }
 
 const isMissing = (error: unknown): boolean =>
@@ -60,6 +64,8 @@ export class UsageJournal {
   private writes: Promise<void> = Promise.resolve();
   /** The file ends in a half-written line: the next append starts on a new line. */
   private tornTail = false;
+  /** The next load looks at every chat, not only those that changed since the journal's newest line. */
+  private reconcileAll = false;
 
   constructor(
     private readonly projectDir: string,
@@ -69,7 +75,7 @@ export class UsageJournal {
     this.file = join(this.agentDir, "usage.jsonl");
   }
 
-  /** Reads (or rebuilds) the journal. Shared by every caller; a failed attempt is retried by the next call. */
+  /** Reads (or rebuilds, or reconciles) the journal. Shared by every caller; a failed attempt is retried by the next call. */
   ready(): Promise<void> {
     if (!this.loading) {
       this.loading = this.load().catch((error: unknown) => {
@@ -86,21 +92,44 @@ export class UsageJournal {
     return [...this.entries.values()];
   }
 
-  /** Writes the lines of a turn that ended (or is closed by recovery), those that differ from what is recorded. */
+  /**
+   * Writes the lines of a turn that ended (or is closed by recovery), those that differ from what is recorded. A turn
+   * that started before the project was forked is the original's and is not written. When the write fails the next use
+   * reads the journal again and reconciles it with the chat logs, so the turn's lines are not lost for good.
+   */
   async recordTurn(state: ChatState, turnId: string): Promise<void> {
     await this.ready();
-    const changed = usageEntriesOfTurn(state, turnId).filter((entry) => {
-      const known = this.entries.get(usageEntryKey(entry));
-      return !known || !sameValue(known, entry);
-    });
+    const changed = this.entriesOf(state, turnId, readForkedAt(this.projectDir) ?? 0).filter(
+      (entry) => this.differs(entry),
+    );
     if (changed.length === 0) return;
-    const text = changed.map((entry) => `${JSON.stringify(entry)}\n`).join("");
+    try {
+      await this.write(changed);
+    } catch (error) {
+      this.loading = null;
+      this.reconcileAll = true;
+      throw error;
+    }
+  }
+
+  private differs(entry: UsageEntry): boolean {
+    const known = this.entries.get(usageEntryKey(entry));
+    return !known || !sameValue(known, entry);
+  }
+
+  /** What one turn contributes: nothing for a turn that started before the fork marker (it is the original's). */
+  private entriesOf(state: ChatState, turnId: string, forkedAt: number): UsageEntry[] {
+    const turn = state.turns.find((candidate) => candidate.id === turnId);
+    return !turn || turn.startedAt < forkedAt ? [] : usageEntriesOfTurn(state, turnId);
+  }
+
+  private async write(entries: readonly UsageEntry[]): Promise<void> {
+    const text = entries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
     const write = this.writes.catch(() => undefined).then(() => this.append(text));
     this.writes = write;
     await write;
-    for (const entry of changed) this.entries.set(usageEntryKey(entry), entry);
+    for (const entry of entries) this.entries.set(usageEntryKey(entry), entry);
   }
-
   /** Waits for the appends in flight (shutdown and test teardown, before directories are removed). */
   async drain(): Promise<void> {
     await this.writes.catch(() => undefined);
@@ -120,35 +149,55 @@ export class UsageJournal {
       if (!isMissing(error)) throw error;
     }
     this.entries.clear();
-    if (text !== null) {
-      this.tornTail = text.length > 0 && !text.endsWith("\n");
-      for (const entry of parseUsageJournal(text)) this.entries.set(usageEntryKey(entry), entry);
+    if (text === null) {
+      const rebuilt = await this.scan({ running: true, since: null });
+      for (const entry of rebuilt) this.entries.set(usageEntryKey(entry), entry);
+      await this.replaceFile(rebuilt.map((entry) => `${JSON.stringify(entry)}\n`).join(""));
+      this.tornTail = false;
       return;
     }
-    const rebuilt = await this.rebuild();
-    for (const entry of rebuilt) this.entries.set(usageEntryKey(entry), entry);
-    await this.replaceFile(rebuilt.map((entry) => `${JSON.stringify(entry)}\n`).join(""));
-    this.tornTail = false;
+    this.tornTail = text.length > 0 && !text.endsWith("\n");
+    let newest = -Infinity;
+    for (const entry of parseUsageJournal(text)) {
+      this.entries.set(usageEntryKey(entry), entry);
+      newest = Math.max(newest, entry.at);
+    }
+    // A turn can end without its lines landing (the process was killed after the turn's last event but before the
+    // append, or the append failed): the chat logs still hold it, so the journal takes it from there.
+    const everything = this.reconcileAll;
+    const missing = (await this.scan({ running: false, since: everything ? null : newest })).filter(
+      (entry) => this.differs(entry),
+    );
+    if (missing.length > 0) await this.write(missing);
+    this.reconcileAll = false;
   }
 
-  /** The entries of every turn the chat logs hold (a turn still running counts as far as it got). */
-  private async rebuild(): Promise<UsageEntry[]> {
+  /**
+   * The entries of the turns the chat logs hold, turns of the original project (before the fork marker) left out.
+   * `running` includes turns the log still calls running, as far as they got. With `since` a chat is only read when
+   * its stored summary says it changed after that time, or when the summary cannot be trusted.
+   */
+  private async scan(options: { running: boolean; since: number | null }): Promise<UsageEntry[]> {
     const forkedAt = readForkedAt(this.projectDir) ?? 0;
-    const rebuilt: UsageEntry[] = [];
+    const found: UsageEntry[] = [];
     for (const chatId of await this.source.listChatIds()) {
       let state: ChatState | null;
       try {
+        if (options.since !== null) {
+          const summary = await this.source.readSummary(chatId);
+          if (summary && !summary.recoverable && summary.chat.updatedAt <= options.since) continue;
+        }
         state = (await this.source.peek(chatId)).state;
       } catch {
         continue;
       }
       if (!state) continue;
       for (const turn of state.turns) {
-        if (turn.startedAt < forkedAt) continue;
-        rebuilt.push(...usageEntriesOfTurn(state, turn.id));
+        if (!options.running && turn.status === "running") continue;
+        found.push(...this.entriesOf(state, turn.id, forkedAt));
       }
     }
-    return rebuilt;
+    return found;
   }
 
   private async replaceFile(text: string): Promise<void> {

@@ -1,10 +1,12 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { UsageEntry, UsageTotals } from "@hyperframes/agent-protocol";
 import type { BackendPromptInput } from "../backend.js";
 import type { ScriptedSession } from "../testing/backend.js";
 import { createRuntimeFixture, waitUntil, type RuntimeFixture } from "../testing/runtimeFixture.js";
+import { ChatService } from "../chats.js";
+import { TurnRunner } from "../turns.js";
 import { parseUsageJournal, UsageJournal } from "./journal.js";
 import { buildUsageReport } from "./report.js";
 
@@ -121,7 +123,7 @@ describe("usage report fold", () => {
     });
   });
 
-  it("reports Render QA and Jev apart, adds the running turn, and prefers the journal", () => {
+  it("reports Render QA and Jev apart, and lets the running turn's live figures replace the journal's", () => {
     const journal = [
       entry({ turnId: "t1", runId: "r1", agent: "vision", internal: "render_qa" }),
       entry({ turnId: "t1", runId: "r2", agent: "jev" }),
@@ -133,7 +135,7 @@ describe("usage report fold", () => {
     ];
     const result = report(journal, { live, turnRunning: true });
     expect(result.live).toBe(true);
-    expect(result.total.usage.totalTokens).toBe(307);
+    expect(result.total.usage.totalTokens).toBe(1206);
     expect(result.byAgent.map((slice) => [slice.agent, slice.internal]).sort()).toEqual([
       ["director", false],
       ["jev", true],
@@ -257,6 +259,140 @@ describe("usage of finished turns", () => {
     }
   });
 
+  it("reconciles an existing journal with the chat logs: a turn whose lines never landed is added", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      scriptTurn(fixture);
+      const chat = await fixture.chats.create({}, ["editor"]);
+      await runTurn(fixture, chat.id);
+      const first = fixture.chats.get(chat.id)?.turns[0]?.id ?? "";
+      const journalFile = join(fixture.scope.projectDir, ".hyperframes", "agent", "usage.jsonl");
+      const afterFirst = await readFile(journalFile, "utf8");
+      scriptTurn(fixture);
+      await runTurn(fixture, chat.id);
+      const second = fixture.chats.get(chat.id)?.turns[1]?.id ?? "";
+      // The process died after the second turn's last event, before its lines were appended.
+      await writeFile(journalFile, afterFirst);
+
+      const restarted = new UsageJournal(fixture.scope.projectDir, fixture.store);
+      const turns = (await restarted.all()).map((line) => line.turnId);
+      expect(turns).toEqual([first, first, second, second]);
+      expect(parseUsageJournal(await readFile(journalFile, "utf8"))).toHaveLength(4);
+
+      // Nothing is added twice by the next start.
+      const again = new UsageJournal(fixture.scope.projectDir, fixture.store);
+      expect(await again.all()).toHaveLength(4);
+      expect(parseUsageJournal(await readFile(journalFile, "utf8"))).toHaveLength(4);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("picks up a turn whose append failed, on the next use", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      scriptTurn(fixture);
+      const chat = await fixture.chats.create({}, ["editor"]);
+      await runTurn(fixture, chat.id);
+      const journalFile = join(fixture.scope.projectDir, ".hyperframes", "agent", "usage.jsonl");
+      const afterFirst = await readFile(journalFile, "utf8");
+      const journal = new UsageJournal(fixture.scope.projectDir, fixture.store);
+      expect(await journal.all()).toHaveLength(2);
+
+      // The disk refuses the next append (the journal's path is a directory for a moment).
+      await rm(journalFile);
+      await mkdir(journalFile);
+      scriptTurn(fixture);
+      await runTurn(fixture, chat.id);
+      const second = fixture.chats.get(chat.id)?.turns[1]?.id ?? "";
+      const state = fixture.chats.get(chat.id);
+      expect(state).not.toBeNull();
+      if (state) await expect(journal.recordTurn(state, second)).rejects.toThrow();
+
+      await rm(journalFile, { recursive: true });
+      await writeFile(journalFile, afterFirst);
+      const lines = await journal.all();
+      expect(lines.filter((line) => line.turnId === second)).toHaveLength(2);
+      expect(parseUsageJournal(await readFile(journalFile, "utf8"))).toHaveLength(4);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("counts nothing of a turn that started before the fork, even when recovery closes it afterwards", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, []);
+      const started = await fixture.turns.start(chat.id, { prompt: "Work" });
+      await fixture.chats.emit(chat.id, {
+        type: "usage.updated",
+        turnId: started.id,
+        runId: null,
+        usage: totals(77, 0.7),
+      });
+      const state = fixture.chats.get(chat.id);
+      await fixture.turns.abort(chat.id, started.id);
+      await waitUntil(() => fixture.turns.activeTurn === null, "the turn to end");
+      await fixture.chats.drain();
+      expect(state).not.toBeNull();
+
+      // The project is forked after that turn started: the journal does not travel, the marker does.
+      const journalFile = join(fixture.scope.projectDir, ".hyperframes", "agent", "usage.jsonl");
+      await rm(journalFile);
+      await writeFile(
+        join(fixture.scope.projectDir, ".hyperframes", "agent", "fork.json"),
+        JSON.stringify({ forkedAt: started.startedAt + 1 }),
+      );
+      const forked = new UsageJournal(fixture.scope.projectDir, fixture.store);
+      const closed = fixture.chats.get(chat.id);
+      if (closed) await forked.recordTurn(closed, started.id);
+      expect(await forked.all()).toEqual([]);
+      expect(parseUsageJournal(await readFile(journalFile, "utf8"))).toEqual([]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("dates a crash-interrupted turn to what it did, not to the day recovery closed it", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const chat = await fixture.chats.create({}, []);
+      const started = await fixture.turns.start(chat.id, { prompt: "Work" });
+      fixture.backend.promptScript = async () => "completed";
+      await fixture.chats.emit(chat.id, {
+        type: "usage.updated",
+        turnId: started.id,
+        runId: null,
+        usage: totals(50, 0.5),
+      });
+      await fixture.chats.drain();
+      // The runtime died here. Days later another one opens the project and closes the turn.
+      const DAY = 86_400_000;
+      fixture.setNow(started.startedAt + 5 * DAY);
+      const reopened = await ChatService.open(fixture.scope, fixture.store, {
+        now: fixture.now,
+        onTurnEnded: (state, turnId) => fixture.usage.recordTurn(state, turnId),
+      });
+      const runner = new TurnRunner(
+        reopened,
+        fixture.backend,
+        fixture.checkpoints,
+        fixture.store,
+        fixture.settings,
+        { now: fixture.now },
+      );
+      await runner.recoverCheckpoints();
+      await reopened.drain();
+      expect(reopened.get(chat.id)?.turns[0]?.status).toBe("interrupted");
+      const lines = await fixture.usage.all();
+      const turnLine = lines.find((line) => line.turnId === started.id);
+      expect(turnLine?.at).toBe(started.startedAt);
+      await runner.dispose();
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("skips a torn last line, and starts the next append on a new line", async () => {
     const fixture = await createRuntimeFixture();
     try {
@@ -270,7 +406,8 @@ describe("usage of finished turns", () => {
       await writeFile(file, `${known}\nnot json\n{"chatId":"c1","turnId":"half","ru`);
 
       const journal = new UsageJournal(fixture.scope.projectDir, fixture.store);
-      expect((await journal.all()).map((line) => line.turnId)).toEqual(["older"]);
+      // The turn the journal lacks is taken from its chat log and appended after the torn line.
+      expect((await journal.all()).map((line) => line.turnId)).toEqual(["older", turnId, turnId]);
       if (state) await journal.recordTurn(state, turnId);
       const read = parseUsageJournal(await readFile(file, "utf8"));
       expect(read.map((line) => line.turnId)).toEqual(["older", turnId, turnId]);

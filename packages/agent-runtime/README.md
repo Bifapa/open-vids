@@ -69,7 +69,12 @@ project_served_elsewhere` instead of writing events with the same sequence numbe
   A run the runtime started itself (the Vision run of a Render QA pass, `titleCode: render_qa_pass`) is marked
   `internal: "render_qa"` and reported on its own row, like Jev. A line is one append (a half-written last line is skipped on
   read and cut off by a newline before the next append); the later line of a `turnId` + `runId` wins, so writing a turn again
-  never counts it twice, and a turn found in a copied chat counts once. With no journal (a project from before it, a copied
+  never counts it twice, and a turn found in a copied chat counts once. When the journal exists it is reconciled with the chat logs on load: a turn that ended without its lines landing (the process
+  was killed between the turn's last event and the append, or the append failed — a failed write makes the next use reload and
+  reconcile every chat) is appended from its log; chats whose stored summary is older than the journal's newest line are not
+  read. The fork cut-off applies to every write, recovery's included, so a pre-fork turn closed in a fork is never counted
+  there. A turn closed as `interrupted` by crash recovery is dated by what it did before the crash, not by the recovery day,
+  and the running turn's live figures replace what the journal holds for it. With no journal (a project from before it, a copied
   project) it is rebuilt once from the chat logs (`FileChatStore.peek`, which never repairs a log the writer may be appending
   to) and written whole through a temp file and a rename; turns that started before the fork marker
   (`agent/fork.json` `{forkedAt}`) belong to the original project and are skipped, so a fork starts from zero.

@@ -71,7 +71,7 @@ const modelKeyOf = (model: ModelSelection | null) =>
 export interface UsageReportInput {
   /** The journal's entries. */
   journal: readonly UsageEntry[];
-  /** What the running turn has used so far; an entry the journal already has is ignored. */
+  /** What the running turn has used so far: at least as recent as anything the journal holds for that turn, so it wins. */
   live: readonly UsageEntry[];
   /** A turn is running (its figures are in `live`, or it has not reported any yet). */
   turnRunning: boolean;
@@ -88,10 +88,7 @@ export interface UsageReportInput {
 export function buildUsageReport(input: UsageReportInput): UsageReport {
   const unique = new Map<string, UsageEntry>();
   for (const entry of input.journal) unique.set(usageEntryKey(entry), entry);
-  for (const entry of input.live) {
-    const key = usageEntryKey(entry);
-    if (!unique.has(key)) unique.set(key, entry);
-  }
+  for (const entry of input.live) unique.set(usageEntryKey(entry), entry);
   const { since, until } = input.query;
   const entries = [...unique.values()].filter(
     (entry) => (since === null || entry.at >= since) && (until === null || entry.at < until),

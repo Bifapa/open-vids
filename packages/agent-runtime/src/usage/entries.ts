@@ -11,10 +11,15 @@ export function usageEntriesOfTurn(state: ChatState, turnId: string): UsageEntry
   const turn = state.turns.find((candidate) => candidate.id === turnId);
   if (!turn) return [];
   const runs = state.runs.filter((run) => run.turnId === turnId);
+  // Recovery closes a crashed turn and its runs when the project is reopened, maybe days later: their `endedAt` is
+  // that moment, not when the money was spent, so an interrupted turn is dated by what it did before the crash.
+  const interrupted = turn.status === "interrupted";
   const at = Math.max(
-    turn.endedAt ?? turn.startedAt,
+    interrupted ? turn.startedAt : (turn.endedAt ?? turn.startedAt),
     turn.startedAt,
-    ...runs.map((run) => run.endedAt ?? run.startedAt),
+    ...runs.map((run) =>
+      interrupted && run.status === "interrupted" ? run.startedAt : (run.endedAt ?? run.startedAt),
+    ),
   );
   const base = { chatId: state.chat.id, chatTitle: state.chat.title, turnId, at };
   const entries: UsageEntry[] = [];
