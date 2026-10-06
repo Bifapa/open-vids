@@ -27,13 +27,18 @@ const DENIED_ELEMENTS = new Set([
 /**
  * Tags and handlers refused wherever they appear in the text: an HTML parser reads `<title>`, `<style>`, `<textarea>`
  * and `<xmp>` as raw text even inside `<svg>`, a browser's XML parser does not, so the same bytes can hide markup
- * from one reader and run in the other. The scan does not depend on how any parser reads the file.
+ * from one reader and run in the other. An XML namespace prefix (`<svg:script>`, `<x:a>`) may stand before the name.
+ * The scan does not depend on how any parser reads the file.
  */
 const DENIED_TAG_TEXT =
-  /<\s*\/?\s*(?:script|foreignobject|iframe|object|embed|image|img|a|animate\w*|set|audio|video|link|meta|base|textarea|xmp|noscript|template|math)\b/i;
+  /<\s*\/?\s*(?:[A-Za-z_][\w.-]*:)?(?:script|foreignobject|iframe|object|embed|image|img|a|animate\w*|set|audio|video|link|meta|base|textarea|xmp|noscript|template|math)\b/i;
 const EVENT_HANDLER_TEXT = /\son[a-z]+\s*=/i;
 /** Elements whose content is text for every reader: a `<` in them is markup one reader sees and another does not. */
 const TEXT_ONLY_ELEMENTS = new Set(["title", "desc", "style", "metadata"]);
+/** A processing instruction other than the XML declaration (`<?xml-stylesheet href=…?>` loads a stylesheet). */
+const PROCESSING_INSTRUCTION = /<\?(?!xml\s)/i;
+/** The part of a qualified name after its namespace prefix. */
+const localPart = (name: string): string => (name.split(":").at(-1) ?? "").toLowerCase();
 /** `url(` that points anywhere but at an id inside the document. */
 const OUTSIDE_URL = /url\(\s*(?!["']?\s*#)/i;
 
@@ -55,12 +60,13 @@ export function svgRefusal(svg: string): string | null {
   if (/<!\s*(?:ENTITY|DOCTYPE\s[^>]*\[)/i.test(svg)) return "it declares entities";
   const denied = DENIED_TAG_TEXT.exec(svg);
   if (denied) return `it contains ${denied[0].replace(/\s+/g, "")}`;
+  if (PROCESSING_INSTRUCTION.test(svg)) return "it has a processing instruction";
   if (EVENT_HANDLER_TEXT.test(svg)) return "it has an event handler";
   const document = readAsXml(svg);
   if (document === null) return "it is not well-formed XML";
   if (document.documentElement?.localName !== "svg") return "it is not an SVG image";
   for (const element of document.querySelectorAll("*")) {
-    const tag = element.localName.toLowerCase();
+    const tag = localPart(element.localName);
     if (DENIED_ELEMENTS.has(tag)) return `it contains <${tag}>`;
     if (TEXT_ONLY_ELEMENTS.has(tag)) {
       const text = element.textContent ?? "";
@@ -71,7 +77,9 @@ export function svgRefusal(svg: string): string | null {
     for (const attribute of element.attributes) {
       const name = attribute.name.toLowerCase();
       const value = attribute.value;
-      if (name.startsWith("on")) return `it has the event handler ${name}`;
+      if (localPart(name).startsWith("on")) return `it has the event handler ${name}`;
+      // CSS escapes (`u\72 l(`) can spell `url(` without writing it: a value with a backslash is not plain.
+      if (value.includes("\\")) return `${name} hides a reference`;
       if (/(?:^|:)(?:href|src)$/.test(name) && !value.trim().startsWith("#"))
         return `${name} leaves the file`;
       if (OUTSIDE_URL.test(value) || /javascript:|data:text\/html/i.test(value.replace(/\s/g, "")))

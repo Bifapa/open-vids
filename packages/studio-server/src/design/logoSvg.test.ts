@@ -70,6 +70,28 @@ describe("svgRefusal", () => {
     ["an entity declaration", `<!DOCTYPE svg [<!ENTITY x "y">]>${wrap("<rect/>")}`],
     ["markup in a title", wrap("<title>a<b>b</b></title>")],
     ["a '<' in a style", wrap("<style>a &lt; b</style><style>/*<*/</style>")],
+    [
+      "a script under a namespace prefix",
+      `<svg ${NS} xmlns:svg="http://www.w3.org/2000/svg"><svg:script>alert(1)</svg:script></svg>`,
+    ],
+    ["a prefixed foreignObject", wrap('<x:foreignObject xmlns:x="http://www.w3.org/2000/svg"/>')],
+    ["a prefixed anchor", wrap('<x:a xmlns:x="http://www.w3.org/2000/svg" href="#x"/>')],
+    [
+      "a prefixed animate",
+      wrap('<x:animate xmlns:x="http://www.w3.org/2000/svg" attributeName="href"/>'),
+    ],
+    ["a prefixed closing tag", wrap("<g></ x:script ><rect/>")],
+    [
+      "an xml-stylesheet processing instruction",
+      `<?xml version="1.0"?><?xml-stylesheet href="https://evil.test/a.css" type="text/css"?>${wrap("<rect/>")}`,
+    ],
+    ["a processing instruction inside the image", wrap('<?evil href="https://evil.test"?><rect/>')],
+    [
+      "a CSS-escaped url( in an attribute",
+      wrap('<rect style="filter:u\\72 l(https://evil.test/x.svg#f)"/>'),
+    ],
+    ["a backslash in any attribute value", wrap('<rect data-x="a\\b"/>')],
+    ["a prefixed event handler", wrap('<rect xmlns:x="urn:x" x:onclick="alert(1)"/>')],
     ["a root that is not svg", '<html><body><img src="x"></body></html>'],
     ["text that is not XML at all", "garbage"],
   ])("refuses %s", (_name, svg) => {
